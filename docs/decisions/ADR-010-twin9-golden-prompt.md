@@ -1,6 +1,11 @@
 # ADR-010 — Twin9 : Golden Prompt opérationnel, secret des gabarits, prépaiement
 
-Date : 2026-07-13 · Statut : accepté
+Date : 2026-07-13 · Statut : accepté, §1 révisé le 2026-10-17
+
+> **Révision du 2026-10-17 (§1).** L'algorithme ne voyage plus : le moteur
+> Twin9 devient privé (dépôt `4nd4ny/Twin_v9`) et s'exécutera sur le serveur
+> (plan du moteur PHP, lot 3). D'ici là, l'analyse approfondie est coupée.
+> Le secret des gabarits (§2), la facturation (§3) et le reste sont inchangés.
 
 ## Contexte
 

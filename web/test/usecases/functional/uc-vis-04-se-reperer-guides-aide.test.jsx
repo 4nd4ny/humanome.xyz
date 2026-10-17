@@ -438,18 +438,6 @@ describe('UC-VIS-04 — liens du panneau pour un compte multi-rôles', () => {
       },
     },
     {
-      name: 'Analyse approfondie',
-      href: '#/twin9',
-      badge: 'premium',
-      hint: 'Twin9',
-      reached: async () => {
-        await h1('Analyse approfondie Twin9')
-        // Compte reconnu : la garde de session laisse place à l'état du service.
-        expect((await screen.findByTestId('twin9-indisponible')).textContent).toBe('L’analyse Twin9 est momentanément indisponible.')
-        expect(screen.queryByTestId('twin9-garde-session')).toBeNull()
-      },
-    },
-    {
       name: 'Atelier de prompts',
       href: '#/promptologue',
       badge: null,

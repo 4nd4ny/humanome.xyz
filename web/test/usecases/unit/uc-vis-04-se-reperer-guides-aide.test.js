@@ -151,7 +151,6 @@ const ITEM = {
     badge: 'standard',
   },
   ouverte: { href: '#/twin6-ouverte', label: 'Cartographie ouverte', route: 'twin6ouverte', badge: 'gratuit', hint: 'Twin6 — open source' },
-  approfondie: { href: '#/twin9', label: 'Analyse approfondie', route: 'twin9', badge: 'premium', hint: 'Twin9' },
   partager: { href: '#/espace', label: 'Partager ma cartographie', hint: 'version choisie, réservée aux adultes' },
   file: { href: '#/cartographe', label: 'Ma file de relecture', route: 'cartographe' },
   comparer: { href: '#/cartographe/comparer', label: 'Comparer', route: 'cartographe', section: 'comparer' },
@@ -205,7 +204,7 @@ const FAMILY_HEAD = {
 }
 
 const DECOUVRIR = ['accueil', 'demo', 'essayer', 'referentiel', 'guides']
-const CARTOGRAPHIE = ['tableau', 'portfolio', 'cartographier', 'ouverte', 'approfondie', 'partager']
+const CARTOGRAPHIE = ['tableau', 'portfolio', 'cartographier', 'ouverte', 'partager']
 const ENCADRER = ['file', 'comparer', 'consistance']
 const ADMINISTRER = ['roles', 'golden', 'reglages', 'config', 'supervision']
 const COMPTE_CONNECTE = ['profil', 'credit', 'confidentialite']
@@ -277,14 +276,13 @@ describe('UC-VIS-04 — plan du site exhaustif par combinaison de rôles', () =>
     expect(all.slice(0, -1).flatMap((f) => f.items)).toEqual(fromFamilies)
     expect(fromFamilies).toHaveLength(Object.keys(ITEM).length - 4) // hors les 4 items de la famille compte
 
-    // Échelle de valeur : un badge par échelle de « cartographier un texte » (gratuit / standard /
-    // premium), plus « Essayer » (gratuit) ; aucun autre lien n'en porte.
+    // Échelle de valeur : un badge par échelle de « cartographier un texte » (gratuit / standard ;
+    // premium revient au lot 3), plus « Essayer » (gratuit) ; aucun autre lien n'en porte.
     const badged = Object.fromEntries(all.flatMap((f) => f.items).filter((i) => i.badge).map((i) => [i.label, i.badge]))
     expect(badged).toEqual({
       Essayer: 'gratuit',
       'Cartographier mes écrits': 'standard',
       'Cartographie ouverte': 'gratuit',
-      'Analyse approfondie': 'premium',
     })
 
     // Session explicite sans rôle (paramètre `authenticated`) : famille de compte connecté.

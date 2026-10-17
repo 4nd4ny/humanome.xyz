@@ -4,15 +4,20 @@
 // pour les règles fines (renvoi daté, signal non daté ignoré, priorité
 // attestation > renvoi, absence d'attestation datée → erreur).
 import { describe, it, expect } from 'vitest'
-import { readFileSync } from 'node:fs'
+import { existsSync, readFileSync } from 'node:fs'
 import { fileURLToPath } from 'node:url'
 import { twin9ToMergeDocument } from './mapper.js'
 import { validateDocument } from '../validation.js'
 
-const VEC = JSON.parse(
-  readFileSync(fileURLToPath(new URL('../../test/twin9-vectors/merge.vec.json', import.meta.url)), 'utf8'),
+// Le vecteur figé vit dans le dépôt privé 4nd4ny/Twin_v9, cloné à côté de
+// celui-ci (../Twin_v9) : sans lui (clone neuf, CI), les cas réels se sautent.
+const VEC_PATH = fileURLToPath(
+  new URL('../../../../Twin_v9/engine/test/twin9-vectors/merge.vec.json', import.meta.url),
 )
-const CARTO = JSON.parse(VEC.chain.carto_evolutive_json)
+const vecPresent = existsSync(VEC_PATH)
+const CARTO = vecPresent
+  ? JSON.parse(JSON.parse(readFileSync(VEC_PATH, 'utf8')).chain.carto_evolutive_json)
+  : null
 
 // Le schéma cartographie-merge exige les 7 pôles RESPIRE (domains minItems 7).
 const REFERENTIEL = {
@@ -34,8 +39,11 @@ const REFERENTIEL = {
   ],
 }
 
-describe('twin9ToMergeDocument (vecteur réel)', () => {
-  const doc = twin9ToMergeDocument(CARTO, REFERENTIEL, { generatedAt: '2026-02-01T12:00:00' })
+describe.skipIf(!vecPresent)('twin9ToMergeDocument (vecteur réel)', () => {
+  // Le corps d'un describe sauté est tout de même évalué à la collecte.
+  const doc = vecPresent
+    ? twin9ToMergeDocument(CARTO, REFERENTIEL, { generatedAt: '2026-02-01T12:00:00' })
+    : null
 
   it('est conforme au schéma, aux pôles VIDES près (portfolio épars — le viewer les tolère)', () => {
     // Le schéma (écrit depuis le corpus complet : « 5 à 10 par pôle observées »)

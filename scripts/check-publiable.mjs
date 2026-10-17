@@ -3,7 +3,8 @@
 // (GitHub) : ce script refuse de laisser partir, dans les fichiers SUIVIS par
 // git (l'index — donc ce qui serait poussé),
 //   (a) un gabarit Twin9 en clair (répertoires golden-twin9/, twin9-oracles/,
-//       golden-prompt/ — le contrat de la plateforme, jamais public) ;
+//       golden-prompt/ — le contrat de la plateforme, jamais public), ou le
+//       moteur Twin9 lui-même (dépôt privé 4nd4ny/Twin_v9) ;
 //   (b) un fichier de secrets réel (.env… hors .example) ou un cache Python
 //       compilé (.pyc / __pycache__, qui embarque un chemin absolu de build) ;
 //   (c) un secret en clair : clé API (sk-ant-…), secret PayPal, mot de passe ;
@@ -51,6 +52,18 @@ const PATH_RULES = [
     id: 'gabarit-twin9',
     test: (p) => /(^|\/)(golden-twin9|twin9-oracles|golden-prompt)\//.test(p),
     why: 'répertoire de gabarit Twin9 (jamais public)',
+  },
+  {
+    id: 'moteur-twin9',
+    // Le moteur vit dans le dépôt privé 4nd4ny/Twin_v9 (décision du
+    // 2026-10-17). Restent publics l'adaptateur d'affichage (mapper), le
+    // parseur de pôles (referentiel) et les utilitaires py/ qu'ils importent.
+    test: (p) =>
+      (/^engine\/src\/twin9\//.test(p) &&
+        !/^engine\/src\/twin9\/(mapper|referentiel|fiches-corpus|py\/(pyText|pyStr|stableHash|pyRound|md5))(\.test)?\.js$/.test(p)) ||
+      /^(engine\/test\/twin9-vectors|docs\/twin9)\//.test(p) ||
+      /^(docs\/plan-twin9-php\.md|web\/src\/views\/twin9\/run-helpers(\.test)?\.js|scripts\/twin9\/gen-oracles\.sh)$/.test(p),
+    why: 'moteur Twin9 (dépôt privé Twin_v9, jamais public)',
   },
   {
     id: 'env-reel',

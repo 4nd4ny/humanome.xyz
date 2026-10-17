@@ -44,6 +44,9 @@ Spécification complète : `docs/cahier-des-charges.md` ; plan de construction :
 - Documentation et UI en **français** ; code, commits et identifiants en **anglais**.
 - Un commit par lot cohérent ; tests verts avant commit ; `STATUS.md` mis à jour en fin de session.
 - `assets-existants/` est en **lecture seule absolue** (données réelles + prototypes de référence).
+- Le moteur Twin9 (code, vecteurs, specs, plan, futur moteur PHP) vit dans le dépôt **privé**
+  `4nd4ny/Twin_v9`, cloné à côté (`../Twin_v9`) : rien de ce moteur n'entre ici. Restent publics
+  `engine/src/twin9/mapper.js`, `referentiel.js` et leurs utilitaires `py/` ; `check-publiable` refuse le reste.
 - Les schémas JSON (`schemas/`) sont le contrat entre modules : toute friction de format
   se documente dans `docs/contrats.md`, on ne renomme pas un champ pour contourner.
 - Répertoires de build (`node_modules/`, `vendor/`, `dist/`) marqués `com.dropbox.ignored`

@@ -11,10 +11,21 @@ Interface ultime de cartographie (branche `feat/ultimate-cartography`) : validé
 **déployée le 2026-10-14** (`health` → `v1.1.0-106-gc6a0231`, migrations 022 et 023) puis fusionnée
 dans `main` (entrée du 2026-10-14 ci-dessous).
 
-Prochain chantier : le moteur Twin9 v9.8 en PHP, exécuté sur le serveur, planifié dans
-`docs/plan-twin9-php.md` (prompts T0 → T18, une conversation chacun ; entrée du 2026-10-17).
+Prochain chantier : le moteur Twin9 v9.8 en PHP, exécuté sur le serveur, planifié et développé
+dans le dépôt privé `4nd4ny/Twin_v9` (`docs/plan-twin9-php.md`, prompts T0 → T18, une conversation
+chacun ; entrées du 2026-10-17).
 
 ## Fait
+
+- 2026-10-17 — **Moteur Twin9 sorti du dépôt public (décision de Christian).** Le portage JS du
+  moteur, ses vecteurs et ses tests, les specs `docs/twin9/`, le plan `docs/plan-twin9-php.md`,
+  `run-helpers.js` et `gen-oracles.sh` vivent désormais dans le dépôt privé `4nd4ny/Twin_v9`, aux
+  mêmes chemins et avec leur historique ; le moteur PHP y naîtra aussi. L'historique de ce dépôt
+  a été réécrit pour les en retirer, et le dépôt GitHub recréé. Jusqu'au lot 3, l'analyse
+  approfondie est coupée : `#/twin9` affiche un avis, l'entrée de navigation est masquée. Restent
+  publics `mapper.js`, `referentiel.js` et leurs utilitaires `py/`, ainsi que le service (crédits,
+  PayPal, factures, atelier des gabarits). `check-publiable` refuse désormais les chemins du
+  moteur ; les tests sur vecteur réel se sautent sans `../Twin_v9`. ADR-010 §1 révisé.
 
 - 2026-10-17 — **Planning du moteur Twin9 v9.8 en PHP (`docs/plan-twin9-php.md`).** Six lots :
   préparer (dépôt privé `4nd4ny/Twin_v9` avec la v9.8 à sa racine, oracle tiré de la v9.8, vrai

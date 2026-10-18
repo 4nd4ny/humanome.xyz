@@ -1,6 +1,6 @@
 // Scénario bout-en-bout de l'espace cartographe (DoD P9, plan-prompts) —
 // le cartographe est le garde-fou humain obligatoire (cahier §3.3, §8).
-// Joué contre le dev-server Vite (proxy /api -> docker :8080, provider mock) :
+// Joué contre le dev-server Vite (proxy /api -> API locale :8080, provider mock) :
 //
 //   APPRENANT : création de compte -> portfolio (fixture 3 jours) -> run mock
 //   complet (24 appels /api/llm) -> confidentialité « partagée avec mon
@@ -40,15 +40,15 @@ import { fileURLToPath } from 'node:url'
 
 const root = dirname(dirname(dirname(fileURLToPath(import.meta.url))))
 
-/** Requête SQL sur la base de DÉVELOPPEMENT du conteneur docker (jamais ailleurs). */
+/** Requête SQL sur la base de DÉVELOPPEMENT, par le client mysql local (jamais ailleurs). */
 function devSql(query) {
-  return execFileSync('docker', ['compose', 'exec', '-T', 'mysql', 'mysql', '-uhumanome', '-phumanome_dev', 'humanome', '-N', '-e', query], { cwd: root, stdio: 'pipe' }).toString().trim()
+  return execFileSync('mysql', ['-h127.0.0.1', '-uhumanome', '-phumanome_dev', 'humanome', '-N', '-e', query], { cwd: root, stdio: 'pipe' }).toString().trim()
 }
 
 const FIXTURE_PATH = fileURLToPath(
   new URL('../../schemas/fixtures/portfolio-3-jours.md', import.meta.url),
 )
-const MIGRATE_TOKEN = 'dev_migrate_token' // docker-compose.yml (dev uniquement)
+const MIGRATE_TOKEN = 'dev_migrate_token' // .env.dev (dev uniquement, INSTALL.md §2)
 const APPRENANT_PASSWORD = 'mot-de-passe-e2e-2'
 const CARTOGRAPHE_PASSWORD = 'mot-de-passe-e2e-3'
 const SHARE_PASSWORD = 'partage-carto-1'

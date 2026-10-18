@@ -5,8 +5,8 @@ declare(strict_types=1);
 /**
  * CLI migration runner (idempotent, forward-only — ADR-008).
  *
- * Usage (dev): docker compose run --rm php php ../scripts/migrate.php
- *         or : docker compose exec php php /var/www/html/scripts/migrate.php
+ * Usage (dev): php scripts/migrate.php — from the repository root, with the
+ *              development environment exported (.env.dev, INSTALL.md §2).
  *
  * Config via env: DB_HOST, DB_NAME, DB_USER, DB_PASSWORD (optional DB_PORT).
  * Exit code 0 on success, 1 on failure.

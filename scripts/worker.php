@@ -38,7 +38,8 @@ if (!class_exists(\Humanome\Worker\Tick::class)) {
 }
 
 // Same secrets resolution as Bootstrap::envDir(): ~/app/shared on OVH
-// (outside the webroot), api/.env in dev, plain env vars in Docker.
+// (outside the webroot), api/.env when present, else plain env vars (dev:
+// .env.dev exported, INSTALL.md §2).
 $envCandidates = [
     getenv('HUMANOME_SHARED_DIR') ?: null,
     $root . '/../shared', // OVH: ~/app/releases/<ts>/scripts -> ~/app/shared

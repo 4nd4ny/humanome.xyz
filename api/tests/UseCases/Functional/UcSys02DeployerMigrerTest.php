@@ -726,7 +726,7 @@ final class UcSys02DeployerMigrerTest extends AuthTestBase
         $bare = $this->scriptLayout('import-prompt-packages.php', false);
         $noAutoload = AdmSupport::runPhp($bare . '/scripts/import-prompt-packages.php', [], $env, $bare);
         self::assertSame(
-            [1, '', "Error: composer autoload not found — run: docker compose run --rm php composer install\n"],
+            [1, '', "Error: composer autoload not found — run: cd api && composer install\n"],
             [$noAutoload['exit'], $noAutoload['stdout'], $noAutoload['stderr']],
         );
     }

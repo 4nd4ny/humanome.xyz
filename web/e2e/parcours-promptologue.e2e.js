@@ -1,5 +1,5 @@
 // Scénario bout-en-bout de l'atelier promptologue (DoD P10, plan-prompts) —
-// joué contre le dev-server Vite (proxy /api -> docker :8080, provider mock) :
+// joué contre le dev-server Vite (proxy /api -> API locale :8080, provider mock) :
 //
 //   compte + rôle `promptologue` (endpoint admin grant-role, jeton dev) ->
 //   nouveau brouillon depuis la dernière version publiée du paquet par défaut
@@ -31,12 +31,12 @@ import { fileURLToPath } from 'node:url'
 
 const root = dirname(dirname(dirname(fileURLToPath(import.meta.url))))
 
-/** Requête SQL sur la base de DÉVELOPPEMENT du conteneur docker (jamais ailleurs). */
+/** Requête SQL sur la base de DÉVELOPPEMENT, par le client mysql local (jamais ailleurs). */
 function devSql(query) {
-  return execFileSync('docker', ['compose', 'exec', '-T', 'mysql', 'mysql', '-uhumanome', '-phumanome_dev', 'humanome', '-N', '-e', query], { cwd: root, stdio: 'pipe' }).toString().trim()
+  return execFileSync('mysql', ['-h127.0.0.1', '-uhumanome', '-phumanome_dev', 'humanome', '-N', '-e', query], { cwd: root, stdio: 'pipe' }).toString().trim()
 }
 
-const MIGRATE_TOKEN = 'dev_migrate_token' // docker-compose.yml (dev uniquement)
+const MIGRATE_TOKEN = 'dev_migrate_token' // .env.dev (dev uniquement, INSTALL.md §2)
 const PASSWORD = 'mot-de-passe-e2e-4'
 const PKG = 'aurora-v3-reconstruit'
 const SENTINELLE =

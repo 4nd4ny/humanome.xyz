@@ -12,7 +12,7 @@
 // version publiée À LA PLACE de la première est servie par le même lien ;
 // retirer l'attestation efface la version et son lien.
 //
-// LOCAL UNIQUEMENT (docs/tests-e2e.md) : API docker sur :8080 avec les
+// LOCAL UNIQUEMENT (docs/tests-e2e.md) : API locale sur :8080 avec les
 // migrations à jour (dont 022), dev-server Vite lancé par Playwright. Le code
 // d'activation du compte part par mail(), absent en dev : le test active son
 // compte jetable directement dans la base de DÉVELOPPEMENT (jamais ailleurs).
@@ -36,9 +36,9 @@ const louFiles = () => [
   })),
 ]
 
-/** Requête SQL sur la base de DÉVELOPPEMENT du conteneur docker. */
+/** Requête SQL sur la base de DÉVELOPPEMENT, par le client mysql local. */
 function devSql(query) {
-  return execFileSync('docker', ['compose', 'exec', '-T', 'mysql', 'mysql', '-uhumanome', '-phumanome_dev', 'humanome', '-N', '-e', query], { cwd: root, stdio: 'pipe' }).toString().trim()
+  return execFileSync('mysql', ['-h127.0.0.1', '-uhumanome', '-phumanome_dev', 'humanome', '-N', '-e', query], { cwd: root, stdio: 'pipe' }).toString().trim()
 }
 
 /** Appel d'API depuis la page (cookie de session + jeton CSRF lu sur api/auth/me). */

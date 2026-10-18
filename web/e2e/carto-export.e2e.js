@@ -2,7 +2,7 @@
 //   « la démo anonymisée garde ses surlignages ; le HTML s'ouvre en file:// ».
 //
 // Parcours réel dans Chromium, servi par le dev-server Vite (aucune API
-// docker requise) : import des fichiers de Lou (données synthétiques),
+// requise) : import des fichiers de Lou (données synthétiques),
 // téléchargement de la copie autonome (portfolio inclus), ouverture du
 // fichier téléchargé en file:// avec TOUT le réseau coupé, surlignage d'une
 // trace dans le portfolio ; puis démo anonymisée (Sam → Personne A),

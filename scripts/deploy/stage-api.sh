@@ -50,6 +50,6 @@ git -C "$repo" describe --always --dirty 2>/dev/null > "$stage/VERSION" || echo 
 # Production vendor/ with the local Composer: composer.json pins the platform to
 # PHP 8.2 (the OVH version), so the installed set is the lock's, whatever the
 # local PHP.
-composer install --working-dir="$stage" --no-dev --optimize-autoloader --no-interaction --quiet
+composer install --no-dev --optimize-autoloader --no-interaction --quiet --working-dir="$stage"
 
 echo "staged release $(cat "$stage/VERSION") in $stage ($(find "$stage" -type f | wc -l | tr -d ' ') files)"

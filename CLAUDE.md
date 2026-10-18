@@ -49,8 +49,10 @@ Spécification complète : `docs/cahier-des-charges.md` ; plan de construction :
   `engine/src/twin9/mapper.js`, `referentiel.js` et leurs utilitaires `py/` ; `check-publiable` refuse le reste.
 - Les schémas JSON (`schemas/`) sont le contrat entre modules : toute friction de format
   se documente dans `docs/contrats.md`, on ne renomme pas un champ pour contourner.
-- Répertoires de build (`node_modules/`, `vendor/`, `dist/`) marqués `com.dropbox.ignored`
-  (le dépôt vit dans Dropbox) — refaire `xattr -w com.dropbox.ignored 1 <dir>` s'ils sont recréés.
+- Répertoires de build (`node_modules/`, `vendor/`, `dist/`) exclus de Dropbox, où vit le dépôt
+  (client File Provider) : `xattr -w 'com.apple.fileprovider.ignore#P' 1 <dir>` — l'ancien
+  `com.dropbox.ignored` n'y suffit plus —, à refaire s'ils sont recréés. `npm ci` se lance sur le
+  Mac, jamais dans la VM Linux (binaires natifs).
 - Sauvegarde hebdomadaire tant que GitHub est reporté : `git bundle create ../humanome-backup.bundle --all`.
 
 ## Commandes

@@ -26,7 +26,7 @@ final class ValidationTest extends TestCase
         sort($kinds);
 
         self::assertSame(
-            ['archive-export', 'cartographie-jour', 'cartographie-merge', 'competence', 'competency-map-master', 'prompt-package', 'referentiel'],
+            ['archive-export', 'cartographie-jour', 'cartographie-merge', 'competence', 'competency-map-master', 'prompt-package', 'referentiel', 'twin9-profil'],
             $kinds,
         );
     }

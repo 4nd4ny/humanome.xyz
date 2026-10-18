@@ -1,0 +1,945 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://humanome.xyz/schemas/twin9-profil.schema.json",
+  "title": "Profil d'un run Twin9",
+  "description": "Décrit un run Twin9 de bout en bout (planning du moteur PHP, docs/plan-twin9-php.md de Twin_v9, lot 4a) : chaque paramètre d'algorithme du config.json de la v9.8, ses backends exceptés, et les options de sa ligne de commande qui règlent l'algorithme, troncatures comprises ; le collège des lecteurs ; pour chaque autre étape, le modèle Claude, le budget de sortie, l'effort et la réflexion, l'étage servant de valeur par défaut ; la voie, le parallélisme, le budget, la durée, la clé, le jeu de gabarits et le référentiel. Toute clé inconnue est refusée ; aucune température, que les modèles 5.5 refusent. Correspondance avec la v9.8 : docs/contrats.md §7.",
+  "type": "object",
+  "additionalProperties": false,
+  "$defs": {
+    "modele": {
+      "type": "string",
+      "pattern": "^claude-[a-z0-9][a-z0-9.-]*$",
+      "description": "Identifiant d'un modèle Claude de l'API Anthropic, par exemple « claude-haiku-5-5 »."
+    },
+    "budget_sortie": {
+      "type": "integer",
+      "minimum": 1,
+      "description": "Budget de sortie de l'appel (max_tokens), réflexion comprise."
+    },
+    "effort": {
+      "enum": [
+        "low",
+        "medium",
+        "high",
+        "xhigh",
+        "max"
+      ],
+      "description": "Effort (output_config.effort). Absent : celui du modèle."
+    },
+    "reflexion": {
+      "enum": [
+        "coupee",
+        "adaptative"
+      ],
+      "description": "Réflexion : « coupee » sous la forme que le modèle accepte (disabled pour Haiku 5.5, between_tools pour Sonnet 5.5), ou « adaptative »."
+    },
+    "reglage_etage": {
+      "type": "object",
+      "additionalProperties": false,
+      "description": "Réglage d'un étage, valeur par défaut de ses étapes.",
+      "required": [
+        "modele",
+        "budget_sortie",
+        "reflexion"
+      ],
+      "properties": {
+        "modele": {
+          "$ref": "#/$defs/modele"
+        },
+        "budget_sortie": {
+          "$ref": "#/$defs/budget_sortie"
+        },
+        "effort": {
+          "$ref": "#/$defs/effort"
+        },
+        "reflexion": {
+          "$ref": "#/$defs/reflexion"
+        }
+      }
+    },
+    "reglage_etape": {
+      "type": "object",
+      "additionalProperties": false,
+      "description": "Ce qu'une étape change au réglage de son étage ; le reste vient de l'étage.",
+      "required": [],
+      "properties": {
+        "modele": {
+          "$ref": "#/$defs/modele"
+        },
+        "budget_sortie": {
+          "$ref": "#/$defs/budget_sortie"
+        },
+        "effort": {
+          "$ref": "#/$defs/effort"
+        },
+        "reflexion": {
+          "$ref": "#/$defs/reflexion"
+        }
+      }
+    },
+    "lecteur": {
+      "type": "object",
+      "additionalProperties": false,
+      "description": "Un lecteur du collège.",
+      "required": [
+        "nom",
+        "famille"
+      ],
+      "properties": {
+        "nom": {
+          "type": "string",
+          "pattern": "^[a-z0-9][a-z0-9_-]*$",
+          "description": "Nom du lecteur, unique dans le collège ; ses passes se nomment nom#1, nom#2…"
+        },
+        "famille": {
+          "type": "string",
+          "minLength": 1,
+          "description": "Famille déclarée : deux lecteurs d'une même famille ne comptent que pour une dans l'exigence de diversité."
+        },
+        "modele": {
+          "$ref": "#/$defs/modele",
+          "description": "Absent : celui de l'étage des lecteurs."
+        },
+        "poids": {
+          "type": "number",
+          "exclusiveMinimum": 0,
+          "default": 1.0,
+          "description": "Pondération dans la carte de chaleur (weight)."
+        },
+        "passes": {
+          "type": "integer",
+          "minimum": 1,
+          "default": 1,
+          "description": "Lectures décorrélées du même modèle (passes, ou --models nom:N)."
+        },
+        "budget_sortie": {
+          "$ref": "#/$defs/budget_sortie"
+        },
+        "effort": {
+          "$ref": "#/$defs/effort"
+        },
+        "reflexion": {
+          "$ref": "#/$defs/reflexion"
+        }
+      }
+    },
+    "troncature": {
+      "type": "integer",
+      "minimum": 1
+    }
+  },
+  "required": [
+    "schemaVersion",
+    "kind",
+    "mode",
+    "college",
+    "etages",
+    "etapes",
+    "voie",
+    "parallelisme",
+    "budget_usd",
+    "duree_minutes",
+    "cle",
+    "gabarits",
+    "referentiel",
+    "jours",
+    "rescan",
+    "memoire",
+    "seuils_consensus",
+    "juge_leger",
+    "jury",
+    "premiere_impression",
+    "calques",
+    "merge",
+    "scan_global",
+    "troncatures"
+  ],
+  "properties": {
+    "schemaVersion": {
+      "const": "1.0.0",
+      "description": "Version du schéma du profil."
+    },
+    "kind": {
+      "const": "twin9-profil",
+      "description": "Discriminant de type de document."
+    },
+    "mode": {
+      "enum": [
+        "test",
+        "complet"
+      ],
+      "default": "complet",
+      "description": "« test » : le run ne lit que la première journée du portfolio et le premier pôle du référentiel, pour les essais sur l'API."
+    },
+    "college": {
+      "type": "array",
+      "minItems": 1,
+      "items": {
+        "$ref": "#/$defs/lecteur"
+      },
+      "description": "Le collège des lecteurs (roster de la v9.8, --models). Noms uniques."
+    },
+    "etages": {
+      "type": "object",
+      "additionalProperties": false,
+      "description": "Les trois étages de modèles de la v9.8.",
+      "required": [
+        "lecteurs",
+        "rapide",
+        "profond"
+      ],
+      "properties": {
+        "lecteurs": {
+          "$ref": "#/$defs/reglage_etage",
+          "description": "Les lecteurs (taggers)."
+        },
+        "rapide": {
+          "$ref": "#/$defs/reglage_etage",
+          "description": "L'analyse rapide (backend_rapide, --modele-rapide)."
+        },
+        "profond": {
+          "$ref": "#/$defs/reglage_etage",
+          "description": "L'analyse profonde (backend_tribunal, --modele-tribunal)."
+        }
+      }
+    },
+    "etapes": {
+      "type": "object",
+      "additionalProperties": false,
+      "description": "Réglages propres à une étape ; sans réglage, elle suit son étage.",
+      "required": [],
+      "properties": {
+        "premiere_impression": {
+          "$ref": "#/$defs/reglage_etape",
+          "description": "Première impression (le Lecteur) (étage rapide)."
+        },
+        "greffier": {
+          "$ref": "#/$defs/reglage_etape",
+          "description": "Greffier (étage rapide)."
+        },
+        "juge_leger": {
+          "$ref": "#/$defs/reglage_etape",
+          "description": "Juge léger, chacune de ses passes (étage rapide)."
+        },
+        "contre_lecture": {
+          "$ref": "#/$defs/reglage_etape",
+          "description": "Contre-lecture (étage rapide)."
+        },
+        "accusation": {
+          "$ref": "#/$defs/reglage_etape",
+          "description": "Accusation (étage profond)."
+        },
+        "defense": {
+          "$ref": "#/$defs/reglage_etape",
+          "description": "Défense (étage profond)."
+        },
+        "replique": {
+          "$ref": "#/$defs/reglage_etape",
+          "description": "Réplique (étage profond)."
+        },
+        "briefing": {
+          "$ref": "#/$defs/reglage_etape",
+          "description": "Briefing (étage profond)."
+        },
+        "jures": {
+          "$ref": "#/$defs/reglage_etape",
+          "description": "Jurés, premier tour (étage profond)."
+        },
+        "relance": {
+          "$ref": "#/$defs/reglage_etape",
+          "description": "Relance (étage profond)."
+        },
+        "second_tour": {
+          "$ref": "#/$defs/reglage_etape",
+          "description": "Jurés, second tour (étage profond)."
+        },
+        "gardien_support": {
+          "$ref": "#/$defs/reglage_etape",
+          "description": "Gardien du support (étage rapide)."
+        },
+        "gardien_raisonnement": {
+          "$ref": "#/$defs/reglage_etape",
+          "description": "Gardien du raisonnement (étage profond)."
+        },
+        "president": {
+          "$ref": "#/$defs/reglage_etape",
+          "description": "Président (étage profond)."
+        },
+        "second_ressort": {
+          "$ref": "#/$defs/reglage_etape",
+          "description": "Second ressort : tous les appels du procès d'un faisceau (étage profond)."
+        },
+        "relectures": {
+          "$ref": "#/$defs/reglage_etape",
+          "description": "Relectures de la fusion : kairos, pôles, compétences, rapporteur (étage profond)."
+        },
+        "arpenteur": {
+          "$ref": "#/$defs/reglage_etape",
+          "description": "L'Arpenteur : condensés, lecture globale, retours aux sources (étage profond)."
+        }
+      }
+    },
+    "voie": {
+      "enum": [
+        "directe",
+        "lots"
+      ],
+      "default": "lots",
+      "description": "Appels directs, ou API Message Batches d'Anthropic, à moitié prix."
+    },
+    "parallelisme": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "appels_directs",
+        "journees"
+      ],
+      "properties": {
+        "appels_directs": {
+          "type": "integer",
+          "minimum": 1,
+          "default": 6,
+          "description": "Appels directs simultanés (remplace max_workers et parallel_jures)."
+        },
+        "journees": {
+          "type": "integer",
+          "minimum": 1,
+          "default": 10,
+          "description": "Journées menées de front, qui remplissent les lots."
+        }
+      }
+    },
+    "budget_usd": {
+      "type": [
+        "number",
+        "null"
+      ],
+      "exclusiveMinimum": 0,
+      "default": null,
+      "description": "Plafond de coût du run en dollars ; null : aucun."
+    },
+    "duree_minutes": {
+      "type": [
+        "integer",
+        "null"
+      ],
+      "minimum": 1,
+      "default": null,
+      "description": "Plafond de durée du run en minutes ; null : aucun."
+    },
+    "cle": {
+      "enum": [
+        "instance",
+        "personnelle"
+      ],
+      "default": "instance",
+      "description": "La clé Anthropic de l'instance, ou la clé personnelle de l'utilisateur."
+    },
+    "gabarits": {
+      "type": "string",
+      "minLength": 1,
+      "default": "v9.8",
+      "description": "Le jeu de gabarits des promptologues."
+    },
+    "referentiel": {
+      "type": "object",
+      "additionalProperties": false,
+      "description": "Le référentiel du run.",
+      "required": [
+        "id",
+        "version"
+      ],
+      "properties": {
+        "id": {
+          "type": "string",
+          "minLength": 1,
+          "default": "respire",
+          "description": "Identifiant du référentiel (referentiel_versions.referentiel_id)."
+        },
+        "version": {
+          "type": [
+            "string",
+            "null"
+          ],
+          "pattern": "^(0|[1-9]\\d*)\\.(0|[1-9]\\d*)\\.(0|[1-9]\\d*)(?:-((?:0|[1-9]\\d*|\\d*[a-zA-Z-][0-9a-zA-Z-]*)(?:\\.(?:0|[1-9]\\d*|\\d*[a-zA-Z-][0-9a-zA-Z-]*))*))?(?:\\+([0-9a-zA-Z-]+(?:\\.[0-9a-zA-Z-]+)*))?$",
+          "default": null,
+          "description": "Version publiée (semver) ; null : la dernière, figée dans la copie du profil au lancement."
+        }
+      }
+    },
+    "jours": {
+      "type": [
+        "integer",
+        "null"
+      ],
+      "minimum": 1,
+      "default": null,
+      "description": "--jours : les N premières journées ; null : toutes."
+    },
+    "rescan": {
+      "type": "boolean",
+      "default": false,
+      "description": "--rescan : de nouveaux calques même sur les journées inchangées."
+    },
+    "memoire": {
+      "type": "boolean",
+      "default": true,
+      "description": "La carte se souvient : état persistant entre les runs (--sans-etat le coupe)."
+    },
+    "seuils_consensus": {
+      "type": "object",
+      "additionalProperties": false,
+      "description": "Seuils du consensus journalier [CALIBRATION].",
+      "required": [
+        "conf_min",
+        "corrobore",
+        "instruire",
+        "instruire_min_modeles",
+        "suspicion_min"
+      ],
+      "properties": {
+        "conf_min": {
+          "type": "number",
+          "minimum": 0,
+          "maximum": 1,
+          "default": 0.4
+        },
+        "corrobore": {
+          "type": "number",
+          "minimum": 0,
+          "maximum": 1,
+          "default": 0.6
+        },
+        "instruire": {
+          "type": "number",
+          "minimum": 0,
+          "maximum": 1,
+          "default": 0.25
+        },
+        "instruire_min_modeles": {
+          "type": "integer",
+          "minimum": 1,
+          "default": 2
+        },
+        "suspicion_min": {
+          "type": "number",
+          "minimum": 0,
+          "maximum": 1,
+          "default": 0.15
+        }
+      }
+    },
+    "juge_leger": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "passes",
+        "contre_lecture"
+      ],
+      "properties": {
+        "passes": {
+          "type": "integer",
+          "minimum": 1,
+          "default": 2,
+          "description": "--leger-passes"
+        },
+        "contre_lecture": {
+          "type": "boolean",
+          "default": true,
+          "description": "--sans-contre-lecture la coupe."
+        }
+      }
+    },
+    "jury": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "mode",
+        "taille_aleatoire",
+        "graine",
+        "archiviste_si_produite",
+        "portraitiste_au_second_ressort",
+        "specialistes",
+        "par_competence"
+      ],
+      "properties": {
+        "mode": {
+          "enum": [
+            "socle4+1",
+            "socle2+2",
+            "aleatoire"
+          ],
+          "default": "socle4+1",
+          "description": "--jury"
+        },
+        "taille_aleatoire": {
+          "type": "integer",
+          "minimum": 2,
+          "maximum": 6,
+          "default": 5,
+          "description": "--jury-taille"
+        },
+        "graine": {
+          "type": "integer",
+          "default": 1
+        },
+        "archiviste_si_produite": {
+          "type": "boolean",
+          "default": true
+        },
+        "portraitiste_au_second_ressort": {
+          "type": "boolean",
+          "default": true
+        },
+        "specialistes": {
+          "type": "object",
+          "default": {},
+          "propertyNames": {
+            "pattern": "^[1-9][0-9]*$"
+          },
+          "additionalProperties": {
+            "type": "string",
+            "minLength": 1
+          },
+          "description": "Spécialiste imposé par numéro de pôle."
+        },
+        "par_competence": {
+          "type": "object",
+          "default": {},
+          "additionalProperties": {
+            "type": "string",
+            "minLength": 1
+          },
+          "description": "Spécialiste imposé par code de compétence."
+        }
+      }
+    },
+    "premiere_impression": {
+      "type": "boolean",
+      "default": true
+    },
+    "calques": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "accumulation",
+        "max_archives"
+      ],
+      "properties": {
+        "accumulation": {
+          "type": "boolean",
+          "default": true
+        },
+        "max_archives": {
+          "type": "integer",
+          "minimum": 0,
+          "default": 12
+        }
+      }
+    },
+    "merge": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "relectures",
+        "max_histoires",
+        "second_ressort",
+        "seuil_faisceau_journees",
+        "rapporteur"
+      ],
+      "properties": {
+        "relectures": {
+          "type": "boolean",
+          "default": true,
+          "description": "--sans-relectures les coupe."
+        },
+        "max_histoires": {
+          "type": "integer",
+          "minimum": 0,
+          "default": 12
+        },
+        "second_ressort": {
+          "type": "boolean",
+          "default": true
+        },
+        "seuil_faisceau_journees": {
+          "type": "integer",
+          "minimum": 1,
+          "default": 2
+        },
+        "rapporteur": {
+          "type": "boolean",
+          "default": true
+        }
+      }
+    },
+    "scan_global": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "enabled",
+        "retour_max_caracteres"
+      ],
+      "properties": {
+        "enabled": {
+          "type": "boolean",
+          "default": false,
+          "description": "--scan-global"
+        },
+        "retour_max_caracteres": {
+          "type": "integer",
+          "minimum": 1,
+          "default": 30000,
+          "description": "Taille d'un lot du retour aux sources, pas un plafond."
+        }
+      }
+    },
+    "troncatures": {
+      "type": "object",
+      "additionalProperties": false,
+      "description": "Les troncatures de la v9.8, à leurs valeurs d'origine.",
+      "required": [
+        "journee",
+        "tribunal",
+        "fusion",
+        "rapport",
+        "arpenteur"
+      ],
+      "properties": {
+        "journee": {
+          "type": "object",
+          "additionalProperties": false,
+          "description": "La journée : lecteurs, ancrage, greffier, juge léger, suspicions.",
+          "required": [
+            "justification_tag",
+            "alerte_lecteur",
+            "rejet_extrait",
+            "span_caracteres",
+            "calques_extrait",
+            "calques_lignes",
+            "trace_extrait",
+            "traces_par_verdict",
+            "ecarte_extrait",
+            "ecartes_par_verdict",
+            "suspicion_extrait",
+            "suspicions_minoritaires",
+            "suspicions_sous_seuil"
+          ],
+          "properties": {
+            "justification_tag": {
+              "$ref": "#/$defs/troncature",
+              "default": 400,
+              "description": "Justification d'un tag de lecteur."
+            },
+            "alerte_lecteur": {
+              "$ref": "#/$defs/troncature",
+              "default": 300,
+              "description": "Alerte d'instructions embarquées, signalée par un lecteur."
+            },
+            "rejet_extrait": {
+              "$ref": "#/$defs/troncature",
+              "default": 200,
+              "description": "Extrait d'un tag que l'ancrage rejette."
+            },
+            "span_caracteres": {
+              "$ref": "#/$defs/troncature",
+              "default": 1200,
+              "description": "Longueur d'un surlignage ancré, au-delà tronqué."
+            },
+            "calques_extrait": {
+              "$ref": "#/$defs/troncature",
+              "default": 240,
+              "description": "Extrait d'un surlignage dans le bloc des calques du greffier."
+            },
+            "calques_lignes": {
+              "$ref": "#/$defs/troncature",
+              "default": 10,
+              "description": "Lignes du bloc des calques."
+            },
+            "trace_extrait": {
+              "$ref": "#/$defs/troncature",
+              "default": 400,
+              "description": "Extrait d'une trace probante (juge léger, tribunal)."
+            },
+            "traces_par_verdict": {
+              "$ref": "#/$defs/troncature",
+              "default": 5,
+              "description": "Traces probantes d'un verdict."
+            },
+            "ecarte_extrait": {
+              "$ref": "#/$defs/troncature",
+              "default": 300,
+              "description": "Extrait d'une pièce écartée par le juge léger."
+            },
+            "ecartes_par_verdict": {
+              "$ref": "#/$defs/troncature",
+              "default": 2,
+              "description": "Pièces écartées gardées par verdict."
+            },
+            "suspicion_extrait": {
+              "$ref": "#/$defs/troncature",
+              "default": 300,
+              "description": "Extrait d'une suspicion du registre."
+            },
+            "suspicions_minoritaires": {
+              "$ref": "#/$defs/troncature",
+              "default": 2,
+              "description": "Suspicions « minoritaire » par compétence et par journée."
+            },
+            "suspicions_sous_seuil": {
+              "$ref": "#/$defs/troncature",
+              "default": 2,
+              "description": "Suspicions « sous-seuil » par compétence et par journée."
+            }
+          }
+        },
+        "tribunal": {
+          "type": "object",
+          "additionalProperties": false,
+          "description": "Le tribunal et le second ressort.",
+          "required": [
+            "piege",
+            "piece_extrait",
+            "dossier_vide_entete",
+            "citations_cartographe",
+            "citation_cartographe",
+            "prescription",
+            "faisceau_pieces",
+            "faisceau_extrait"
+          ],
+          "properties": {
+            "piege": {
+              "$ref": "#/$defs/troncature",
+              "default": 200,
+              "description": "Piège nommé par un juré."
+            },
+            "piece_extrait": {
+              "$ref": "#/$defs/troncature",
+              "default": 600,
+              "description": "Extrait d'une pièce du greffier."
+            },
+            "dossier_vide_entete": {
+              "$ref": "#/$defs/troncature",
+              "default": 400,
+              "description": "Début du dossier où chercher « DOSSIER VIDE »."
+            },
+            "citations_cartographe": {
+              "$ref": "#/$defs/troncature",
+              "default": 5,
+              "description": "Citations du dossier préparé pour le cartographe."
+            },
+            "citation_cartographe": {
+              "$ref": "#/$defs/troncature",
+              "default": 300,
+              "description": "Une citation de ce dossier."
+            },
+            "prescription": {
+              "$ref": "#/$defs/troncature",
+              "default": 800,
+              "description": "Prescription du président, pour l'apprenant ou le cartographe."
+            },
+            "faisceau_pieces": {
+              "$ref": "#/$defs/troncature",
+              "default": 8,
+              "description": "Suspicions versées au dossier d'un faisceau."
+            },
+            "faisceau_extrait": {
+              "$ref": "#/$defs/troncature",
+              "default": 400,
+              "description": "Extrait d'une suspicion dans ce dossier."
+            }
+          }
+        },
+        "fusion": {
+          "type": "object",
+          "additionalProperties": false,
+          "description": "La fusion et ses relectures (prompts et sorties JSON).",
+          "required": [
+            "attestation_citations",
+            "attestation_citation",
+            "profil_top_competences",
+            "resume_jour_etablies",
+            "resume_jour_citation",
+            "registre_tenu_lignes",
+            "registre_tenu_extrait",
+            "question_lecteur",
+            "scan_orpheline_extraits",
+            "scan_orpheline_extrait",
+            "scan_continuite_extrait",
+            "histoire_citation",
+            "histoire",
+            "rapporteur_citation",
+            "rapporteur_non_trouvees",
+            "rapporteur_kairos"
+          ],
+          "properties": {
+            "attestation_citations": {
+              "$ref": "#/$defs/troncature",
+              "default": 3,
+              "description": "Citations d'une attestation (journée ou faisceau)."
+            },
+            "attestation_citation": {
+              "$ref": "#/$defs/troncature",
+              "default": 300,
+              "description": "Une citation d'attestation."
+            },
+            "profil_top_competences": {
+              "$ref": "#/$defs/troncature",
+              "default": 5,
+              "description": "Compétences de la concentration du profil ipsatif (top 5)."
+            },
+            "resume_jour_etablies": {
+              "$ref": "#/$defs/troncature",
+              "default": 4,
+              "description": "Compétences citées par journée dans le résumé du kairos."
+            },
+            "resume_jour_citation": {
+              "$ref": "#/$defs/troncature",
+              "default": 160,
+              "description": "Une citation de ce résumé."
+            },
+            "registre_tenu_lignes": {
+              "$ref": "#/$defs/troncature",
+              "default": 15,
+              "description": "Lignes du registre des signaux ténus."
+            },
+            "registre_tenu_extrait": {
+              "$ref": "#/$defs/troncature",
+              "default": 120,
+              "description": "Extrait d'une ligne de ce registre."
+            },
+            "question_lecteur": {
+              "$ref": "#/$defs/troncature",
+              "default": 160,
+              "description": "Question spontanée du Lecteur, reprise par le kairos."
+            },
+            "scan_orpheline_extraits": {
+              "$ref": "#/$defs/troncature",
+              "default": 2,
+              "description": "Extraits d'une orpheline de l'Arpenteur, repris par le kairos."
+            },
+            "scan_orpheline_extrait": {
+              "$ref": "#/$defs/troncature",
+              "default": 120,
+              "description": "Un de ces extraits."
+            },
+            "scan_continuite_extrait": {
+              "$ref": "#/$defs/troncature",
+              "default": 100,
+              "description": "Extrait d'une continuité de l'Arpenteur, repris par le kairos."
+            },
+            "histoire_citation": {
+              "$ref": "#/$defs/troncature",
+              "default": 120,
+              "description": "Citation d'une attestation dans le prompt d'une histoire."
+            },
+            "histoire": {
+              "$ref": "#/$defs/troncature",
+              "default": 900,
+              "description": "Histoire d'une compétence."
+            },
+            "rapporteur_citation": {
+              "$ref": "#/$defs/troncature",
+              "default": 220,
+              "description": "Citation d'un territoire dense pour le rapporteur."
+            },
+            "rapporteur_non_trouvees": {
+              "$ref": "#/$defs/troncature",
+              "default": 6,
+              "description": "Non-trouvées significatives transmises au rapporteur."
+            },
+            "rapporteur_kairos": {
+              "$ref": "#/$defs/troncature",
+              "default": 4000,
+              "description": "Observations du kairos transmises au rapporteur."
+            }
+          }
+        },
+        "rapport": {
+          "type": "object",
+          "additionalProperties": false,
+          "description": "Le rapport évolutif en Markdown (rapport_evolutif.md).",
+          "required": [
+            "citation",
+            "scan_extrait",
+            "continuite_extraits",
+            "emergences",
+            "kairos_extrait",
+            "pole_competences",
+            "graine_extrait",
+            "signalements",
+            "cahier_citations",
+            "cahier_citation"
+          ],
+          "properties": {
+            "citation": {
+              "$ref": "#/$defs/troncature",
+              "default": 80,
+              "description": "Dernière citation d'une compétence dans la carte additive."
+            },
+            "scan_extrait": {
+              "$ref": "#/$defs/troncature",
+              "default": 200,
+              "description": "Extrait d'une orpheline ou d'une continuité."
+            },
+            "continuite_extraits": {
+              "$ref": "#/$defs/troncature",
+              "default": 4,
+              "description": "Extraits d'une continuité."
+            },
+            "emergences": {
+              "$ref": "#/$defs/troncature",
+              "default": 3,
+              "description": "Orphelines, connexions et nœuds du kairos, chacun."
+            },
+            "kairos_extrait": {
+              "$ref": "#/$defs/troncature",
+              "default": 300,
+              "description": "Évidence du pattern temporel, divergences impressions et verdicts."
+            },
+            "pole_competences": {
+              "$ref": "#/$defs/troncature",
+              "default": 4,
+              "description": "Compétences citées par pôle du profil ipsatif."
+            },
+            "graine_extrait": {
+              "$ref": "#/$defs/troncature",
+              "default": 160,
+              "description": "Extrait d'une graine du registre."
+            },
+            "signalements": {
+              "$ref": "#/$defs/troncature",
+              "default": 20,
+              "description": "Signalements du gardien des formulations."
+            },
+            "cahier_citations": {
+              "$ref": "#/$defs/troncature",
+              "default": 3,
+              "description": "Citations d'un dossier du cahier du cartographe."
+            },
+            "cahier_citation": {
+              "$ref": "#/$defs/troncature",
+              "default": 200,
+              "description": "Une de ces citations."
+            }
+          }
+        },
+        "arpenteur": {
+          "type": "object",
+          "additionalProperties": false,
+          "description": "L'Arpenteur.",
+          "required": [
+            "verbatim"
+          ],
+          "properties": {
+            "verbatim": {
+              "$ref": "#/$defs/troncature",
+              "default": 300,
+              "description": "Verbatim ancré au retour aux sources."
+            }
+          }
+        }
+      }
+    }
+  }
+}

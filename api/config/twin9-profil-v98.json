@@ -1,0 +1,143 @@
+{
+  "schemaVersion": "1.0.0",
+  "kind": "twin9-profil",
+  "mode": "complet",
+  "college": [
+    {
+      "nom": "haiku",
+      "famille": "anthropic",
+      "poids": 1.0,
+      "passes": 3
+    }
+  ],
+  "etages": {
+    "lecteurs": {
+      "modele": "claude-haiku-5-5",
+      "budget_sortie": 16000,
+      "reflexion": "coupee"
+    },
+    "rapide": {
+      "modele": "claude-haiku-5-5",
+      "budget_sortie": 16000,
+      "reflexion": "coupee"
+    },
+    "profond": {
+      "modele": "claude-sonnet-5-5",
+      "budget_sortie": 16000,
+      "reflexion": "coupee"
+    }
+  },
+  "etapes": {},
+  "voie": "lots",
+  "parallelisme": {
+    "appels_directs": 6,
+    "journees": 10
+  },
+  "budget_usd": null,
+  "duree_minutes": null,
+  "cle": "instance",
+  "gabarits": "v9.8",
+  "referentiel": {
+    "id": "respire",
+    "version": null
+  },
+  "jours": null,
+  "rescan": false,
+  "memoire": true,
+  "seuils_consensus": {
+    "conf_min": 0.4,
+    "corrobore": 0.6,
+    "instruire": 0.25,
+    "instruire_min_modeles": 2,
+    "suspicion_min": 0.15
+  },
+  "juge_leger": {
+    "passes": 2,
+    "contre_lecture": true
+  },
+  "jury": {
+    "mode": "socle4+1",
+    "taille_aleatoire": 5,
+    "graine": 1,
+    "archiviste_si_produite": true,
+    "portraitiste_au_second_ressort": true,
+    "specialistes": {},
+    "par_competence": {}
+  },
+  "premiere_impression": true,
+  "calques": {
+    "accumulation": true,
+    "max_archives": 12
+  },
+  "merge": {
+    "relectures": true,
+    "max_histoires": 12,
+    "second_ressort": true,
+    "seuil_faisceau_journees": 2,
+    "rapporteur": true
+  },
+  "scan_global": {
+    "enabled": false,
+    "retour_max_caracteres": 30000
+  },
+  "troncatures": {
+    "journee": {
+      "justification_tag": 400,
+      "alerte_lecteur": 300,
+      "rejet_extrait": 200,
+      "span_caracteres": 1200,
+      "calques_extrait": 240,
+      "calques_lignes": 10,
+      "trace_extrait": 400,
+      "traces_par_verdict": 5,
+      "ecarte_extrait": 300,
+      "ecartes_par_verdict": 2,
+      "suspicion_extrait": 300,
+      "suspicions_minoritaires": 2,
+      "suspicions_sous_seuil": 2
+    },
+    "tribunal": {
+      "piege": 200,
+      "piece_extrait": 600,
+      "dossier_vide_entete": 400,
+      "citations_cartographe": 5,
+      "citation_cartographe": 300,
+      "prescription": 800,
+      "faisceau_pieces": 8,
+      "faisceau_extrait": 400
+    },
+    "fusion": {
+      "attestation_citations": 3,
+      "attestation_citation": 300,
+      "profil_top_competences": 5,
+      "resume_jour_etablies": 4,
+      "resume_jour_citation": 160,
+      "registre_tenu_lignes": 15,
+      "registre_tenu_extrait": 120,
+      "question_lecteur": 160,
+      "scan_orpheline_extraits": 2,
+      "scan_orpheline_extrait": 120,
+      "scan_continuite_extrait": 100,
+      "histoire_citation": 120,
+      "histoire": 900,
+      "rapporteur_citation": 220,
+      "rapporteur_non_trouvees": 6,
+      "rapporteur_kairos": 4000
+    },
+    "rapport": {
+      "citation": 80,
+      "scan_extrait": 200,
+      "continuite_extraits": 4,
+      "emergences": 3,
+      "kairos_extrait": 300,
+      "pole_competences": 4,
+      "graine_extrait": 160,
+      "signalements": 20,
+      "cahier_citations": 3,
+      "cahier_citation": 200
+    },
+    "arpenteur": {
+      "verbatim": 300
+    }
+  }
+}

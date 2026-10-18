@@ -91,6 +91,7 @@ final class RgpdAudit
         'mass_runs' => '—',
         'golden_grants' => '—',             // authorisation record, not personal content
         'carto_publication_requests' => '—', // pending request code (migration 023), no content
+        'twin9_profils' => 'none',          // Twin9 run settings (migration 024), no content; no route serves them yet
     ];
 
     public static function schema(PDO $pdo): string

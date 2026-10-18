@@ -70,11 +70,11 @@ publiée en ligne via **GitBook** (Git Sync) :
 - **Décisions d'architecture** : [`docs/decisions/`](docs/decisions/) (ADR).
 
 Le sommaire GitBook ([`SUMMARY.md`](SUMMARY.md), config
-[`.gitbook.yaml`](.gitbook.yaml)) est généré par
+[`.gitbook.yaml`](.gitbook.yaml) et [`gitbook-docs.yaml`](gitbook-docs.yaml)) est généré par
 `node scripts/build-gitbook-summary.mjs` — à relancer quand la doc change.
 
-> Espace GitBook publié : _à renseigner après activation du Git Sync_
-> (voir la procédure côté mainteneur).
+> Documentation en ligne : **https://chamblandes.gitbook.io/humanome**
+> (synchronisée depuis ce dépôt, branche `main`).
 
 ## Développer / installer
 

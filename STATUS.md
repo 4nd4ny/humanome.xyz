@@ -17,6 +17,12 @@ chacun ; entrées du 2026-10-17).
 
 ## Fait
 
+- 2026-10-18 — **Documentation publiée sur GitBook : https://chamblandes.gitbook.io/humanome.**
+  Espace créé par Christian (Site Git Sync, sens GitHub → GitBook) ; `gitbook-docs.yaml` à la
+  racine : un espace « Documentation » sur `./`, qui reprend `.gitbook.yaml` et `SUMMARY.md` (quatre
+  parties, 145 pages, liens tous résolus). Vérifié en ligne : accueil et pages profondes servies.
+  Clôt l'action utilisateur de D10 (2026-07-17).
+
 - 2026-10-18 — **Front déployé : Twin9 coupé en ligne, D-69 à D-71 publiées (demande utilisateur).**
   Construit dans la VM du Mac depuis un clone neuf de `4nd4ny/humanome.xyz` (`bed91d2`), avec les
   données de la copie locale ; `deploy.mjs static` après un `--dry-run` relu : 2 envois, 1

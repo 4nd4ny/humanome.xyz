@@ -8,8 +8,10 @@ name: publiable
 #    régénérées depuis assets-existants/ (versionné) par les convertisseurs
 #    d'INSTALL.md §2, sans dépendance npm ;
 #  - `php` : suite PHP (PHPUnit) sous PHP 8.2, la version d'OVH, contre un
-#    MySQL 8 en service, après les données dérivées d'INSTALL.md §2 ; sans
-#    ../Twin_v9, les tests du moteur Twin9 privé sautent (ADR-011).
+#    MySQL 8 en service, dans l'environnement de développement d'INSTALL.md §2
+#    (valeurs de docker-compose.yml, clé de chiffrement jetable) et après ses
+#    données dérivées ; sans ../Twin_v9, les tests du moteur Twin9 privé
+#    sautent (ADR-011).
 #
 # Volontairement PAS dans cette CI :
 #  - la suite FRONT : ses fixtures importent des données GÉNÉRÉES
@@ -61,6 +63,9 @@ jobs:
       mysql:
         image: mysql:8.0
         env:
+          MYSQL_DATABASE: humanome
+          MYSQL_USER: humanome
+          MYSQL_PASSWORD: humanome_dev
           MYSQL_ROOT_PASSWORD: root_dev
         ports:
           - 3306:3306
@@ -68,9 +73,18 @@ jobs:
           --health-cmd "mysqladmin ping -h localhost -uroot -proot_dev"
           --health-interval 5s --health-timeout 3s --health-retries 20
     env:
+      APP_ENV: dev
       DB_HOST: 127.0.0.1
+      DB_NAME: humanome
+      DB_USER: humanome
+      DB_PASSWORD: humanome_dev
       DB_ROOT_PASSWORD: root_dev
+      MIGRATE_TOKEN: dev_migrate_token
+      DEMO_PROVIDER: mock
+      DEMO_PER_IP_PER_HOUR: 500
     steps:
+      - name: Clé de chiffrement jetable
+        run: echo "SODIUM_MASTER_KEY=$(openssl rand -hex 32)" >> "$GITHUB_ENV"
       - uses: actions/checkout@v4
       - uses: actions/setup-node@v4
         with:

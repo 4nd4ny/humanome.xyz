@@ -19,16 +19,21 @@ Spécification complète : `docs/cahier-des-charges.md` ; plan de construction :
 - **Backend** : PHP 8.2 + Slim 4 + PDO + MySQL 8 (utf8mb4). Pas d'ORM, pas de framework lourd.
 - **Frontend** : Vite + React 18. Routing par hash (ADR-009). DOMPurify pour le HTML narratif (ADR-007).
 - **Moteur** : `engine/` — package ESM sans dépendance DOM, s'exécute dans le navigateur (ADR-001).
-- **Tests** : PHPUnit (via Docker php:8.2), Vitest, Playwright (e2e, local uniquement).
+- **Twin9** : moteur PHP du dépôt privé `4nd4ny/Twin_v9` (`php/src`), que la plateforme charge s'il est
+  là ; ses runs tournent sur le serveur, par tranches (ADR-011).
+- **Tests** : PHPUnit (PHP et MySQL 8 locaux, CI sous PHP 8.2), Vitest, Playwright (e2e, local uniquement).
 
 ## Contraintes d'hébergement (OVH mutualisé — docs/hebergement.md)
 
 - Pas de Node serveur : build front en local, artefacts statiques déployés (ADR-003).
-- Pas de processus longs : les runs LLM tournent côté client (ADR-001) ; la masse passe
-  par une file de jobs MySQL + cron à ticks courts < 50 s (ADR-005).
+- Pas de processus longs : les runs LLM tournent côté client (ADR-001), sauf ceux de Twin9, exécutés
+  sur le serveur par tranches de 45 s au plus (ADR-011) ; la masse passe par une file de jobs MySQL
+  à ticks courts < 50 s (ADR-005), déclenchés de l'extérieur faute de cron.
 - Pas de SSH : déploiement FTP par releases + pointeur `current.txt` + endpoint migrate (ADR-008).
 - Secrets dans `~/app/shared/.env` (hors webroot), jamais dans le dépôt ni dans `www/`.
-- PHP local = 8.5 ≠ cible 8.2 : **tout PHP (composer, tests) s'exécute via Docker php:8.2**.
+- Pas de Docker en développement : PHP et MySQL 8 locaux. PHP local (8.5 sur le Mac) ≠ cible 8.2 :
+  Composer fixe la plateforme à 8.2 (`api/composer.json`) et la CI lance les tests sous 8.2, la
+  version d'OVH. Les fichiers `docker-compose` restent pour qui s'en sert.
 
 ## Principes RGPD non négociables (cahier §6)
 
@@ -44,9 +49,11 @@ Spécification complète : `docs/cahier-des-charges.md` ; plan de construction :
 - Documentation et UI en **français** ; code, commits et identifiants en **anglais**.
 - Un commit par lot cohérent ; tests verts avant commit ; `STATUS.md` mis à jour en fin de session.
 - `assets-existants/` est en **lecture seule absolue** (données réelles + prototypes de référence).
-- Le moteur Twin9 (code, vecteurs, specs, plan, futur moteur PHP) vit dans le dépôt **privé**
-  `4nd4ny/Twin_v9`, cloné à côté (`../Twin_v9`) : rien de ce moteur n'entre ici. Restent publics
-  `engine/src/twin9/mapper.js`, `referentiel.js` et leurs utilitaires `py/` ; `check-publiable` refuse le reste.
+- Le moteur Twin9 (code, vecteurs, specs, plan, moteur PHP) vit dans le dépôt **privé**
+  `4nd4ny/Twin_v9`, cloné à côté (`../Twin_v9`) : rien de ce moteur n'entre ici. La plateforme en
+  charge `php/src` depuis `TWIN_V9_DIR` (par défaut `../Twin_v9`) ; sans lui, Twin9 côté serveur
+  reste désactivé et ses tests sautent (ADR-011). Restent publics `engine/src/twin9/mapper.js`,
+  `referentiel.js` et leurs utilitaires `py/` ; `check-publiable` refuse le reste.
 - Les schémas JSON (`schemas/`) sont le contrat entre modules : toute friction de format
   se documente dans `docs/contrats.md`, on ne renomme pas un champ pour contourner.
 - Répertoires de build (`node_modules/`, `vendor/`, `dist/`) exclus de Dropbox, où vit le dépôt
@@ -57,9 +64,13 @@ Spécification complète : `docs/cahier-des-charges.md` ; plan de construction :
 
 ## Commandes
 
-- API : `docker compose up -d` puis http://localhost:8080/api/health ;
-  tests : `docker compose run --rm php composer test`.
-- Composer : `docker compose run --rm php composer <cmd>` (jamais le composer local).
-- Front : `cd web && npm run dev` (proxy /api → docker) ; `npm test` ; `npm run build`.
+- Environnement : `set -a; . ./.env.dev; set +a` dans chaque terminal (`.env.dev` à la racine,
+  INSTALL.md §2 ; pas d'`api/.env` en développement, que l'API et les scripts chargeraient
+  par-dessus l'environnement des tests) ; scripts PHP depuis la racine (`php scripts/migrate.php`).
+- API : `php -S localhost:8080 -t api/public` puis http://localhost:8080/api/health ;
+  tests : `cd api && composer test` (MySQL local, base `humanome_test` créée en root).
+- Composer : `cd api && composer <cmd>` (plateforme fixée à PHP 8.2).
+- Moteur Twin9 PHP : `cd ../Twin_v9/php && composer install && composer test`.
+- Front : `cd web && npm run dev` (proxy /api → :8080) ; `npm test` ; `npm run build`.
 - Moteur : `cd engine && npm test`.
 - Déploiement : `node scripts/deploy/deploy.mjs` (credentials dans `.env.deploy`, gitignoré).

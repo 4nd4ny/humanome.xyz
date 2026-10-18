@@ -1,5 +1,7 @@
 # ADR-001 — Exécution client-first du moteur de cartographie
 
+> **Amendé par [ADR-011](ADR-011-moteur-twin9-php.md)** : Twin9 ne s'exécute plus dans le navigateur mais sur le serveur, par tranches, et le portfolio et l'état de ses runs y sont gardés avec l'accord de l'apprenant.
+
 ## Statut
 
 Accepté — 2026-07 (décision pré-actée AD-1 du plan de construction).

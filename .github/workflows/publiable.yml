@@ -6,14 +6,17 @@ name: publiable
 #  - `engine` : suite du moteur (vecteurs figés versionnés) ; les données
 #    dérivées qu'elle lit (journées de démo, référentiel) sont d'abord
 #    régénérées depuis assets-existants/ (versionné) par les convertisseurs
-#    d'INSTALL.md §2, sans dépendance npm.
+#    d'INSTALL.md §2, sans dépendance npm ;
+#  - `php` : suite PHP (PHPUnit) sous PHP 8.2, la version d'OVH, contre un
+#    MySQL 8 en service, dans l'environnement de développement d'INSTALL.md §2
+#    (valeurs de docker-compose.yml, clé de chiffrement jetable) et après ses
+#    données dérivées ; sans ../Twin_v9, les tests du moteur Twin9 privé
+#    sautent (ADR-011).
 #
 # Volontairement PAS dans cette CI :
 #  - la suite FRONT : ses fixtures importent des données GÉNÉRÉES
 #    (web/public/data/**, gitignorées, dérivées d'assets-existants via une
-#    chaîne convert/generate multi-étapes) — elle tourne en local ;
-#  - la suite PHP : nécessite Docker (php:8.2) + MySQL — elle tourne en local
-#    (`docker compose run --rm php composer test`).
+#    chaîne convert/generate multi-étapes) — elle tourne en local.
 
 on:
   push:
@@ -52,3 +55,56 @@ jobs:
           node scripts/extract-referentiel.mjs
       - run: npm test
         working-directory: engine
+
+  php:
+    name: Tests PHP
+    runs-on: ubuntu-latest
+    services:
+      mysql:
+        image: mysql:8.0
+        env:
+          MYSQL_DATABASE: humanome
+          MYSQL_USER: humanome
+          MYSQL_PASSWORD: humanome_dev
+          MYSQL_ROOT_PASSWORD: root_dev
+        ports:
+          - 3306:3306
+        options: >-
+          --health-cmd "mysqladmin ping -h localhost -uroot -proot_dev"
+          --health-interval 5s --health-timeout 3s --health-retries 20
+    env:
+      APP_ENV: dev
+      DB_HOST: 127.0.0.1
+      DB_NAME: humanome
+      DB_USER: humanome
+      DB_PASSWORD: humanome_dev
+      DB_ROOT_PASSWORD: root_dev
+      MIGRATE_TOKEN: dev_migrate_token
+      DEMO_PROVIDER: mock
+      DEMO_PER_IP_PER_HOUR: 500
+    steps:
+      - name: Clé de chiffrement jetable
+        run: echo "SODIUM_MASTER_KEY=$(openssl rand -hex 32)" >> "$GITHUB_ENV"
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 20
+      - uses: shivammathur/setup-php@v2
+        with:
+          php-version: '8.2'
+          extensions: pdo_mysql, mbstring, curl, sodium
+          tools: composer:v2
+          coverage: none
+      - run: npm ci
+        working-directory: engine
+      - name: Données dérivées (référentiel, paquet de prompts par défaut)
+        run: |
+          node scripts/convert/carto-data-to-merge-json.mjs
+          node scripts/convert/extracted-to-day-json.mjs
+          node scripts/extract-referentiel.mjs
+          node scripts/enrich-referentiel.mjs
+          node scripts/build-default-prompt-package.mjs
+      - run: composer install --no-interaction --no-progress
+        working-directory: api
+      - run: composer test
+        working-directory: api

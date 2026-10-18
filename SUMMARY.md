@@ -171,3 +171,4 @@
 * [ADR-009 — Routing par hash dans l'application front](docs/decisions/ADR-009-routing-hash.md)
 * [ADR-010 — Éditeur du module Portfolio : repli sur une textarea améliorée (Sqilium non intégrable)](docs/decisions/ADR-010-editeur-portfolio.md)
 * [ADR-010 — Twin9 : Golden Prompt opérationnel, secret des gabarits, prépaiement](docs/decisions/ADR-010-twin9-golden-prompt.md)
+* [ADR-011 — Moteur Twin9 v9.8 en PHP](docs/decisions/ADR-011-moteur-twin9-php.md)

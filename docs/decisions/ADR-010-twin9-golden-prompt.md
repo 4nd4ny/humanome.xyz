@@ -1,5 +1,7 @@
 # ADR-010 — Twin9 : Golden Prompt opérationnel, secret des gabarits, prépaiement
 
+> **Amendé par [ADR-011](ADR-011-moteur-twin9-php.md)** : le moteur PHP s'exécute sur le serveur et appelle Anthropic en direct ou par lots (§1) ; le coût moyen par journée remplace le devis par run simulé (§3) ; l'accord de l'apprenant garde son portfolio et l'état du run sur le serveur, à la place de la garde `--donnees-reelles` (§5).
+
 Date : 2026-07-13 · Statut : accepté, §1 révisé le 2026-10-17
 
 > **Révision du 2026-10-17 (§1).** L'algorithme ne voyage plus : le moteur

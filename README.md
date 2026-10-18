@@ -4,7 +4,7 @@
 
 [![Site](https://img.shields.io/badge/site-humanome.xyz-2ea44f)](https://humanome.xyz)
 [![Licence AGPL-3.0](https://img.shields.io/badge/licence-AGPL--3.0-blue)](LICENSE)
-[![CI publiable](https://github.com/4nd4ny/humanome/actions/workflows/publiable.yml/badge.svg)](https://github.com/4nd4ny/humanome/actions/workflows/publiable.yml)
+[![CI publiable](https://github.com/4nd4ny/humanome.xyz/actions/workflows/publiable.yml/badge.svg)](https://github.com/4nd4ny/humanome.xyz/actions/workflows/publiable.yml)
 
 humanome.xyz (contraction de *human* + *genome*) est un artifact numérique de
 l'écosystème scolaire **RESPIRE** (Harmonia Éducation). Il permet à quiconque —

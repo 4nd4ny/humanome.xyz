@@ -4,7 +4,7 @@
 
 Les 14 prompts P0→P13 (v1.0) puis les 11 chantiers v1.1 (D1→D11) sont appliqués, intégrés,
 déployés sur https://humanome.xyz et vérifiés en ligne. Code public :
-https://github.com/4nd4ny/humanome (`main` + tags `v1.0.0`/`v1.1.0`). Voir « Actions restantes
+https://github.com/4nd4ny/humanome.xyz (`main` + tags `v1.0.0`/`v1.1.0`). Voir « Actions restantes
 (utilisateur) » en fin de fichier.
 
 Interface ultime de cartographie (branche `feat/ultimate-cartography`) : validée par Christian,
@@ -21,7 +21,8 @@ chacun ; entrées du 2026-10-17).
   moteur, ses vecteurs et ses tests, les specs `docs/twin9/`, le plan `docs/plan-twin9-php.md`,
   `run-helpers.js` et `gen-oracles.sh` vivent désormais dans le dépôt privé `4nd4ny/Twin_v9`, aux
   mêmes chemins et avec leur historique ; le moteur PHP y naîtra aussi. L'historique de ce dépôt
-  a été réécrit pour les en retirer, et le dépôt GitHub recréé. Jusqu'au lot 3, l'analyse
+  a été réécrit pour les en retirer, puis publié sous le nom `4nd4ny/humanome.xyz` (l'ancien
+  `4nd4ny/humanome` est à supprimer une fois la copie vérifiée). Jusqu'au lot 3, l'analyse
   approfondie est coupée : `#/twin9` affiche un avis, l'entrée de navigation est masquée. Restent
   publics `mapper.js`, `referentiel.js` et leurs utilitaires `py/`, ainsi que le service (crédits,
   PayPal, factures, atelier des gabarits). `check-publiable` refuse désormais les chemins du

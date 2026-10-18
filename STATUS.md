@@ -25,8 +25,9 @@ chacun ; entrées du 2026-10-17).
   ne contient que le nouveau, sans trace du moteur ; API inchangée (`v1.1.0-106-gc6a0231`).
   Copies locales (clones git) : `13. Cartographie/github/humanome.xyz` et `github/Twin_v9`, séparées
   des fichiers non versionnés de `13. Cartographie/humanome.xyz/` (hooks activés, `.env.deploy` et
-  `web/public/data` recopiés, sans `node_modules`). Les tags `v1.0.0`/`v1.1.0` restent à pousser
-  sur le nouveau dépôt (refusés par le proxy de la session).
+  `web/public/data` recopiés, sans `node_modules`). Tags `v1.0.0`/`v1.1.0` recréés sur GitHub par
+  deux releases, au choix de Christian : ce sont des tags légers, que `git describe` (version de
+  l'API, `stage-api.sh`) ne lit qu'avec `--tags` ; les tags annotés d'origine restent dans l'ancienne copie.
 
 - 2026-10-17 — **Moteur Twin9 sorti du dépôt public (décision de Christian).** Le portage JS du
   moteur, ses vecteurs et ses tests, les specs `docs/twin9/`, le plan `docs/plan-twin9-php.md`,

@@ -30,6 +30,7 @@ schémas ; les deux runtimes sont testés (`engine/src/validation.test.js`,
 | `prompt-package.schema.json` | `prompt-package` | Paquet promptologue : textes de prompts + variables + code JS d'orchestration (sandbox Web Worker) + métadonnées (version, auteur, modèle cible, référentiel compatible, changelog). |
 | `competency-map-master.schema.json` | `competency-map-master` | Archive de l'interface de cartographie (`#/cartographie`, master v4, `schemaVersion` 4.x) : référentiel embarqué, journées et variantes (verdicts résumés), détail par journée (extraits, ancres, jury, portfolio du jour), délibérations de run, état de l'apprenant (cases, étiquettes, choix de variante, ensembles, réponses au jury, repères, notes, carnet du dialogue, préférences). Produite par l'espace Export de l'interface et embarquée par l'archive de compte. Fixture : `schemas/fixtures/carto/competency-map-master-exemple.json`, sortie EXACTE de l'interface (`web/scripts/carto-master-fixture.mjs`). |
 | `archive-export.schema.json` | `archive-export` | Format pivot de portabilité (ADR-006) : archive autoporteuse embarquant portfolios en texte intégral, référentiels et prompt-packages COMPLETS, cartographies produites, jeux de l'interface de cartographie (`jeuxCartographie`, depuis la 1.1.0) et journal d'audit. Sert l'export/suppression RGPD, l'import de compte et le seed d'instance. Référence les 5 autres schémas par `$ref` sur leur `$id` absolu. |
+| `twin9-profil.schema.json` | `twin9-profil` | Profil d'un run Twin9, décrit de bout en bout (`docs/plan-twin9-php.md` de `Twin_v9`, lot 4a, T12) : paramètres d'algorithme de la v9.8, troncatures comprises, collège des lecteurs, modèle et réglages de chaque étape, voie, plafonds, clé, gabarits, référentiel. Rangé dans `twin9_profils` (migration 024) ; document de référence : le profil v9.8, `api/config/twin9-profil-v98.json`. Validé côté PHP seulement (`ProfilRepository`) ; voir §7. |
 
 Chaque document porte `schemaVersion` (semver du schéma d'enveloppe : « 1.0.0 »
 partout, sauf l'archive de compte, « 1.1.0 » depuis le 2026-10-14, et le master
@@ -340,3 +341,174 @@ est figé par un test vert commenté comme tel.
 
 Les autres anomalies (comportements, gardes, messages) sont indexées dans
 [`docs/cas-utilisation/README.md`](cas-utilisation/README.md#index-des-anomalies-de-production).
+
+## 7. Le profil Twin9 (`twin9-profil`, T12)
+
+Un profil décrit un run Twin9 de bout en bout ; le moteur l'exécute tel quel
+(`docs/plan-twin9-php.md` de `Twin_v9`, lot 4a). Le schéma est
+`schemas/twin9-profil.schema.json` ; `api/src/Twin9/ProfilRepository.php`
+valide et range les profils.
+
+- **Le profil v9.8**, `api/config/twin9-profil-v98.json`, est le profil par
+  défaut, en lecture seule : Haiku 5.5 aux lecteurs (un lecteur en trois
+  passes) et à l'analyse rapide, Sonnet 5.5 à l'analyse profonde, la voie
+  par lots, et pour tout le reste les valeurs du `config.json` de la v9.8.
+  Chacun range ses propres profils (`twin9_profils`), partis d'une copie.
+- **Fermé** : toute clé inconnue est refusée, à tous les niveaux. Aucune
+  température : les modèles 5.5 la refusent.
+- **Valeurs par défaut** : un réglage absent prend la valeur que le schéma
+  lui donne (`default`), comme la v9.8 lit son `config.json` avec
+  `.get(clé, défaut)` ; un réglage sans valeur par défaut est obligatoire
+  (le collège, les étages, la famille d'un lecteur…). Le profil rangé est
+  complet : le moteur n'a rien à deviner. Le validateur PHP (opis) ne
+  vérifie pas `required` pour une propriété dotée d'un `default` (option
+  `allowDefaults`) : `ProfilRepository` complète donc le profil avant de le
+  valider.
+- **Objets JSON** : un profil voyage décodé en objets (`stdClass`) ou en
+  texte JSON, jamais en tableau PHP, où `{}` et `[]` se confondraient (§6,
+  UC-CAR-04). MySQL réordonne les clés d'un profil rangé (§6, UC-ADM-05) ;
+  rien n'en dépend.
+- **Validation** : PHP seulement. Le profil n'est pas un document que le
+  moteur du navigateur produit ou lit ; `scripts/build-validators.mjs` ne le
+  compile pas.
+
+### 7.1 Ce que la v9.8 règle, et où le profil le range
+
+| `config.json` de la v9.8 | Profil |
+|---|---|
+| `seuils_consensus`, `juge_leger`, `jury`, `premiere_impression`, `calques`, `merge`, `scan_global` | mêmes clés, mêmes valeurs dans le profil v9.8 (`ProfilTest` le vérifie sur le `config.json` de `TWIN_V9_DIR`) |
+| `max_workers`, `parallel_jures` | `parallelisme.appels_directs` : réglages d'exécution, sans effet sur aucun prompt |
+| `backend_tribunal`, `backend_rapide` | `etages.profond`, `etages.rapide` (modèle Claude, budget de sortie, effort, réflexion) |
+| `backend_tribunal_local` | sans objet : le backend local de `--donnees-reelles` ; l'accord de l'apprenant le remplace (ADR-011) |
+
+| Option de `twin9.py` | Profil |
+|---|---|
+| `--jours N` | `jours` (`null` : toutes) |
+| `--sans-relectures` | `merge.relectures` |
+| `--rescan` | `rescan` |
+| `--sans-etat` | `memoire` |
+| `--models nom:N` | `college` (un lecteur et ses `passes`) |
+| `--modele-tribunal`, `--modele-rapide` | `etages.profond.modele`, `etages.rapide.modele` |
+| `--jury`, `--jury-taille` | `jury.mode`, `jury.taille_aleatoire` |
+| `--leger-passes`, `--sans-contre-lecture` | `juge_leger.passes`, `juge_leger.contre_lecture` |
+| `--scan-global` | `scan_global.enabled` |
+| `--portfolio`, `--out`, `--roster`, `--config`, `--etat`, `--mock`, `--salt`, `--donnees-reelles` | hors profil : fichiers, simulé, garde des données sensibles |
+
+S'y ajoutent ce que la plateforme règle : `mode` (« test » : la première
+journée du portfolio et le premier pôle du référentiel ; « complet » par
+défaut), `voie` (« directe » ou « lots »), `parallelisme.journees` (journées
+menées de front), `budget_usd` et `duree_minutes` (`null` : aucun plafond),
+`cle` (« instance » ou « personnelle »), `gabarits` (le jeu, « v9.8 » par
+défaut) et `referentiel` (`id`, et `version`, `null` pour la dernière
+publiée, figée dans la copie du profil au lancement).
+
+### 7.2 Étages et étapes
+
+Chaque étage (`etages.lecteurs`, `etages.rapide`, `etages.profond`) donne un
+modèle Claude, un budget de sortie (`max_tokens`, réflexion comprise), un
+effort facultatif (absent : celui du modèle) et une réflexion : « coupee »,
+sous la forme que le modèle accepte (`disabled` pour Haiku 5.5,
+`between_tools` pour Sonnet 5.5), ou « adaptative ». Un lecteur du collège
+et une étape (`etapes.<étape>`) ne portent que ce qu'ils changent à leur
+étage. Les étapes, et l'étage qu'elles suivent comme dans la v9.8 :
+
+| Étape | Étage | Appels |
+|---|---|---|
+| `premiere_impression` | rapide | première impression (le Lecteur) |
+| `greffier` | rapide | greffier |
+| `juge_leger` | rapide | juge léger, chacune de ses passes |
+| `contre_lecture` | rapide | contre-lecture |
+| `accusation` | profond | accusation |
+| `defense` | profond | défense |
+| `replique` | profond | réplique |
+| `briefing` | profond | briefing |
+| `jures` | profond | jurés, premier tour |
+| `relance` | profond | relance |
+| `second_tour` | profond | jurés, second tour |
+| `gardien_support` | rapide | gardien du support |
+| `gardien_raisonnement` | profond | gardien du raisonnement |
+| `president` | profond | président |
+| `second_ressort` | profond | tous les appels du procès d'un faisceau |
+| `relectures` | profond | relectures de la fusion : kairos, pôles, compétences, rapporteur |
+| `arpenteur` | profond | l'Arpenteur : condensés, lecture globale, retours aux sources |
+
+Les deux gardiens sont deux étapes, puisque la v9.8 les place sur deux
+étages. Le second ressort rejoue le procès d'une journée sur un faisceau :
+sans réglage, chacun de ses appels suit son étape (accusation, jurés…) ;
+un réglage de `second_ressort` vaut pour tous.
+
+### 7.3 Les troncatures
+
+Les troncatures écrites dans le code de la v9.8 font partie de l'algorithme :
+elles deviennent des réglages, à leurs valeurs d'origine. Un nombre de
+caractères pour un extrait, un nombre d'éléments pour une liste. Les seuils
+des règles (statut temporel, alertes de pôle, diversité du collège) restent
+dans le moteur : ce ne sont pas des troncatures. L'endroit de chacune dans
+la v9.8 est inventorié dans `Twin_v9`, avec le moteur PHP qui les lit.
+
+| `troncatures.journee` | Défaut | Ce qui est tronqué |
+|---|---:|---|
+| `justification_tag` | 400 | justification d'un tag de lecteur |
+| `alerte_lecteur` | 300 | alerte d'instructions embarquées, signalée par un lecteur |
+| `rejet_extrait` | 200 | extrait d'un tag que l'ancrage rejette |
+| `span_caracteres` | 1200 | longueur d'un surlignage ancré, au-delà tronqué |
+| `calques_extrait` | 240 | extrait d'un surlignage dans le bloc des calques du greffier |
+| `calques_lignes` | 10 | lignes du bloc des calques |
+| `trace_extrait` | 400 | extrait d'une trace probante (juge léger, tribunal) |
+| `traces_par_verdict` | 5 | traces probantes d'un verdict |
+| `ecarte_extrait` | 300 | extrait d'une pièce écartée par le juge léger |
+| `ecartes_par_verdict` | 2 | pièces écartées gardées par verdict |
+| `suspicion_extrait` | 300 | extrait d'une suspicion du registre |
+| `suspicions_minoritaires` | 2 | suspicions « minoritaire » par compétence et par journée |
+| `suspicions_sous_seuil` | 2 | suspicions « sous-seuil » par compétence et par journée |
+
+| `troncatures.tribunal` | Défaut | Ce qui est tronqué |
+|---|---:|---|
+| `piege` | 200 | piège nommé par un juré |
+| `piece_extrait` | 600 | extrait d'une pièce du greffier |
+| `dossier_vide_entete` | 400 | début du dossier où chercher « DOSSIER VIDE » |
+| `citations_cartographe` | 5 | citations du dossier préparé pour le cartographe |
+| `citation_cartographe` | 300 | une citation de ce dossier |
+| `prescription` | 800 | prescription du président, pour l'apprenant ou le cartographe |
+| `faisceau_pieces` | 8 | suspicions versées au dossier d'un faisceau |
+| `faisceau_extrait` | 400 | extrait d'une suspicion dans ce dossier |
+
+| `troncatures.fusion` | Défaut | Ce qui est tronqué |
+|---|---:|---|
+| `attestation_citations` | 3 | citations d'une attestation (journée ou faisceau) |
+| `attestation_citation` | 300 | une citation d'attestation |
+| `profil_top_competences` | 5 | compétences de la concentration du profil ipsatif (top 5) |
+| `resume_jour_etablies` | 4 | compétences citées par journée dans le résumé du kairos |
+| `resume_jour_citation` | 160 | une citation de ce résumé |
+| `registre_tenu_lignes` | 15 | lignes du registre des signaux ténus |
+| `registre_tenu_extrait` | 120 | extrait d'une ligne de ce registre |
+| `question_lecteur` | 160 | question spontanée du Lecteur, reprise par le kairos |
+| `scan_orpheline_extraits` | 2 | extraits d'une orpheline de l'Arpenteur, repris par le kairos |
+| `scan_orpheline_extrait` | 120 | un de ces extraits |
+| `scan_continuite_extrait` | 100 | extrait d'une continuité de l'Arpenteur, repris par le kairos |
+| `histoire_citation` | 120 | citation d'une attestation dans le prompt d'une histoire |
+| `histoire` | 900 | histoire d'une compétence |
+| `rapporteur_citation` | 220 | citation d'un territoire dense pour le rapporteur |
+| `rapporteur_non_trouvees` | 6 | non-trouvées significatives transmises au rapporteur |
+| `rapporteur_kairos` | 4000 | observations du kairos transmises au rapporteur |
+
+| `troncatures.rapport` | Défaut | Ce qui est tronqué (dans `rapport_evolutif.md`) |
+|---|---:|---|
+| `citation` | 80 | dernière citation d'une compétence dans la carte additive |
+| `scan_extrait` | 200 | extrait d'une orpheline ou d'une continuité |
+| `continuite_extraits` | 4 | extraits d'une continuité |
+| `emergences` | 3 | orphelines, connexions et nœuds du kairos, chacun |
+| `kairos_extrait` | 300 | évidence du pattern temporel, divergences impressions et verdicts |
+| `pole_competences` | 4 | compétences citées par pôle du profil ipsatif |
+| `graine_extrait` | 160 | extrait d'une graine du registre |
+| `signalements` | 20 | signalements du gardien des formulations |
+| `cahier_citations` | 3 | citations d'un dossier du cahier du cartographe |
+| `cahier_citation` | 200 | une de ces citations |
+
+| `troncatures.arpenteur` | Défaut | Ce qui est tronqué |
+|---|---:|---|
+| `verbatim` | 300 | verbatim ancré au retour aux sources |
+
+Les plafonds déjà réglables dans le `config.json` restent à leur place :
+`calques.max_archives`, `merge.max_histoires`,
+`scan_global.retour_max_caracteres`.

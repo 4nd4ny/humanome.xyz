@@ -29,6 +29,7 @@ final class Validation
         'cartographie-merge',
         'competency-map-master',
         'archive-export',
+        'twin9-profil',
     ];
 
     private const MAX_ERRORS = 20;
@@ -66,6 +67,16 @@ final class Validation
         }
 
         return ['valid' => false, 'errors' => (new ErrorFormatter())->format($result->error())];
+    }
+
+    /** Path of the schema of a document kind: <schemas>/<kind>.schema.json. */
+    public static function schemaPath(string $kind, ?string $schemasDir = null): string
+    {
+        if (!in_array($kind, self::SUPPORTED_KINDS, true)) {
+            throw new InvalidArgumentException(sprintf('Unsupported document kind "%s"', $kind));
+        }
+
+        return ($schemasDir ?? self::defaultSchemasDir()) . '/' . $kind . '.schema.json';
     }
 
     private static function defaultSchemasDir(): string

@@ -343,7 +343,7 @@ IndexedDB).
 ### Exécuter
 
 ```sh
-docker compose run --rm php vendor/bin/phpunit --filter UcPro05 --testdox
+(cd api && vendor/bin/phpunit --filter UcPro05 --testdox)
 cd web && npx vitest run test/usecases/unit/uc-pro-05 test/usecases/functional/uc-pro-05
 cd engine && npx vitest run test/usecases/unit/uc-pro-05
 ```

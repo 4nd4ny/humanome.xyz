@@ -214,7 +214,7 @@ L'administrateur ouvre « Administrer » → « Supervision Twin9 » (`#/admin/t
 ### Exécuter
 
 ```sh
-docker compose run --rm php vendor/bin/phpunit --filter UcAdm05 --testdox
+(cd api && vendor/bin/phpunit --filter UcAdm05 --testdox)
 cd web && npx vitest run test/usecases/unit/uc-adm-05 test/usecases/functional/uc-adm-05
 ```
 

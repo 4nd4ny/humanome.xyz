@@ -272,7 +272,7 @@ contrat HTTP des routes du compte (`web/test/usecases/support/cpt.js`).
 ### Exécuter
 
 ```sh
-docker compose run --rm php vendor/bin/phpunit --filter UcCpt01
+(cd api && vendor/bin/phpunit --filter UcCpt01)
 cd web && npx vitest run test/usecases --testNamePattern UC-CPT-01
 ```
 

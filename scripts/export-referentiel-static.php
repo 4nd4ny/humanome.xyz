@@ -7,7 +7,8 @@ declare(strict_types=1);
  * plan M3): the public consultation page reads these files directly —
  * zero PHP involved at consultation time.
  *
- * Usage (dev): docker compose run --rm php php ../scripts/export-referentiel-static.php [outDir]
+ * Usage (dev): php scripts/export-referentiel-static.php [outDir] — from the
+ *              repository root, .env.dev exported (INSTALL.md §2).
  * Default output: web/public/data/referentiel/
  *   - <referentielId>-v<semver>.json  (one schema-valid document per version)
  *   - index.json                      (list {referentielId, semver, label, publishedAt, fichier})
@@ -19,7 +20,7 @@ declare(strict_types=1);
 $root = dirname(__DIR__);
 $autoload = $root . '/api/vendor/autoload.php';
 if (!is_file($autoload)) {
-    fwrite(STDERR, "Error: composer autoload not found — run: docker compose run --rm php composer install\n");
+    fwrite(STDERR, "Error: composer autoload not found — run: cd api && composer install\n");
     exit(1);
 }
 require $autoload;

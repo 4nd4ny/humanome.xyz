@@ -247,7 +247,7 @@ Le retrait automatique par une nouvelle révision (A5) est couvert par
 ### Exécuter
 
 ```sh
-docker compose run --rm php vendor/bin/phpunit --filter UcCar05 --testdox
+(cd api && vendor/bin/phpunit --filter UcCar05 --testdox)
 cd web && npx vitest run test/usecases/unit/uc-car-05 test/usecases/functional/uc-car-05
 ```
 

@@ -216,7 +216,7 @@ dans l'en-tête, à côté du bouton d'aide « ? ».
 ### Exécuter
 
 ```sh
-docker compose run --rm -e DB_TEST_NAME=humanome_test_vis php vendor/bin/phpunit --filter UcVis05 --testdox
+(cd api && DB_TEST_NAME=humanome_test_vis vendor/bin/phpunit --filter UcVis05 --testdox)
 cd web && npx vitest run test/usecases/unit/uc-vis-05 test/usecases/functional/uc-vis-05
 ```
 

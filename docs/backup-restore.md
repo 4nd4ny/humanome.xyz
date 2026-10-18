@@ -23,7 +23,7 @@ pas de shell : lancer ce script depuis un poste de travail ou une CI. Les dumps
 
 ## Restauration — procédure TESTÉE
 
-La restauration a été **vérifiée de bout en bout** sur l'environnement Docker :
+La restauration a été **vérifiée de bout en bout** en développement :
 dump d'une base peuplée → nouvelle base → import → 29 tables restaurées.
 
 ```bash
@@ -33,8 +33,8 @@ node scripts/backup/backup-db.mjs --out backups/restore-test.sql
 # 2. Restauration dans une base cible
 mysql -h<hôte> -u<user> -p<mdp> <base_cible> < backups/restore-test.sql
 
-# En développement (Docker) :
-docker compose exec -T mysql mysql -uroot -proot_dev humanome < backups/restore-test.sql
+# En développement (MySQL local, comptes d'INSTALL.md §2) :
+mysql -h127.0.0.1 -uroot -proot_dev humanome < backups/restore-test.sql
 ```
 
 Vérification post-restauration :

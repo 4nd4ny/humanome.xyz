@@ -305,7 +305,7 @@ ou le lien « Créer un portfolio » du tableau de bord `#/espace`).
 ### Exécuter
 
 ```sh
-docker compose run --rm php vendor/bin/phpunit --filter UcApp01 --testdox
+(cd api && vendor/bin/phpunit --filter UcApp01 --testdox)
 cd web && npx vitest run test/usecases --testNamePattern UC-APP-01
 cd engine && npx vitest run test/usecases --testNamePattern UC-APP-01
 ```

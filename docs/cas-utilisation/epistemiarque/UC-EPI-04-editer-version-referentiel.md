@@ -230,7 +230,7 @@ nom d'un pôle, renommages groupés).
 ### Exécuter
 
 ```sh
-docker compose run --rm php vendor/bin/phpunit --filter UcEpi04 --testdox
+(cd api && vendor/bin/phpunit --filter UcEpi04 --testdox)
 cd web && npx vitest run test/usecases/unit/uc-epi-04
 ```
 
@@ -254,7 +254,7 @@ cd web && npx vitest run test/usecases/unit/uc-epi-04
   `label VARCHAR(190)` et `semver VARCHAR(32)` (migration 003) ne sont bornées
   ni par le schéma `referentiel` (`label` sans `maxLength`) ni par
   `Semver::isValid` (une pré-version longue reste valide). En MySQL 8 strict
-  (défaut de `docker-compose`), l'`INSERT` lève une `PDOException` : `500`
+  (son défaut), l'`INSERT` lève une `PDOException` : `500`
   « Internal error » au lieu d'un `422`, aucun brouillon. En mode non strict,
   la colonne serait tronquée et divergerait de `content.label` /
   `content.version`. Correctif attendu : `maxLength` 190 sur `label` et

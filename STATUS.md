@@ -13,10 +13,33 @@ dans `main` (entrée du 2026-10-14 ci-dessous).
 
 Chantier en cours : le moteur Twin9 v9.8 en PHP, exécuté sur le serveur (ADR-011), planifié et
 développé dans le dépôt privé `4nd4ny/Twin_v9` (`docs/plan-twin9-php.md`, prompts T0 → T18, une
-conversation chacun ; entrées du 2026-10-17). T0, le cadre, est en pull request dans les deux
-dépôts (entrée du 2026-10-18).
+conversation chacun ; entrées du 2026-10-17). T0, le cadre, est fusionné dans les deux dépôts
+(entrées du 2026-10-18) ; suivent T1 (l'oracle, dans `Twin_v9`) et, en parallèle, T12 (le profil).
 
 ## Fait
+
+- 2026-10-18 — **Documentation sans Docker (branche `feat/twin9-t0-docs-without-docker`, demande
+  de Christian après la fusion de T0).** Ce qui citait Docker comme environnement de travail passe
+  au PHP et au MySQL locaux : les 51 lignes « Exécuter » des fiches de cas d'utilisation
+  (`(cd api && vendor/bin/phpunit …)`) et leur README, `docs/strategie-tests.md` (la CI joue
+  désormais PHPUnit et le moteur), `docs/tests-e2e.md`, `docs/backup-restore.md`,
+  `docs/securite-checklist.md`, `docs/administration.md`, `docs/plan-masse.md`, le chapitre
+  d'exploitation de la formation des administrateurs, les commentaires (`api/config/`, en-têtes
+  HTTP, `CurlHttpClient`, `LeakFilter`, `worker.php`) et l'usage des scripts PHP.
+  - Ce qui exécutait Docker passe aussi en local : `stage-api.sh` installe le `vendor/` de
+    production avec le Composer local (plateforme fixée à PHP 8.2, même jeu que le `composer.lock`) ;
+    les scénarios Playwright et `scripts/dev/dod-p11.sh` interrogent la base de développement par
+    le client `mysql` ; les scripts PHP sans `vendor/` conseillent `cd api && composer install`
+    (attendu par UC-SYS-02-F16).
+  - Restent, volontairement : `docker-compose*.yml` et `docker/`, pour qui s'en sert ; les journaux
+    (`STATUS.md`, `docs/cartographie-ultime/JOURNAL.md`) et le plan de construction historique
+    (`docs/plan-prompts.md`), qui consignent ce qui s'est fait alors ; les données
+    d'`assets-existants/`.
+  - Vérification, sans Docker : API **1 493 verts** (22 min 41 s) ; l'étape Composer de
+    `stage-api.sh` n'installe que les dépendances de production (plateforme ≥ 8.2) ; l'assistant
+    SQL des scénarios e2e et les ticks, requêtes et lectures de `dod-p11.sh` tournent contre le
+    MySQL local ; `check-publiable` OK. Non rejoués : les scénarios Playwright, et `dod-p11.sh`
+    en entier, cassé avant ce changement (voir les dettes).
 
 - 2026-10-18 — **Moteur Twin9 en PHP, T0 : le cadre (branche `feat/twin9-t0-php-engine-frame`,
   ici et dans `Twin_v9`).** Aucun code du moteur ; rien de la v9.8 dans ce dépôt.
@@ -1567,11 +1590,10 @@ dépôts (entrée du 2026-10-18).
 
 ## Dettes techniques / décisions en attente
 
-- Développement sans Docker (2026-10-18, ADR-011) : `CLAUDE.md`, `INSTALL.md` et `README.md`
-  donnent les commandes sans conteneur, mais `docs/strategie-tests.md`, `docs/cas-utilisation/`
-  (README et fiches), `docs/tests-e2e.md` et les en-têtes d'usage des scripts PHP (`scripts/*.php`)
-  citent encore `docker compose run` ; leurs équivalents : `cd api && composer test:usecases`,
-  `php scripts/…` depuis la racine, l'environnement exporté (`INSTALL.md` §2).
+- `scripts/dev/dod-p11.sh` (répétition de la DoD P11) s'arrête à la première inscription
+  (`422`, `emailConfirm` manquant) : il n'envoie pas la double saisie de l'email ni n'active le
+  compte, exigés depuis D5. Constaté le 2026-10-18 en le passant sans Docker ; ses appels SQL,
+  ses ticks CLI et sa lecture des documents marchent en local.
 - Golden Prompt : non fourni, hors git par design (`assets-existants/golden-prompt/` gitignoré).
 - Pipeline Python amont absent : moteur rétro-conçu en M4 avec oracles
   (`intermediate/carto_merge.json`, `intermediate/prompts/`).

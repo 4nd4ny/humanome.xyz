@@ -14,7 +14,7 @@ Dernière revue : M9 (2026-07-12).
 
 | Audit | Commande | Résultat |
 |---|---|---|
-| PHP | `docker compose run --rm php composer audit` | **0 advisory.** Deps directes : slim/slim 4.15.2, slim/psr7 1.8.0, vlucas/phpdotenv 5.6.4, opis/json-schema 2.6.0, phpunit 10.5.64 (dev). |
+| PHP | `cd api && composer audit` | **0 advisory.** Deps directes : slim/slim 4.15.2, slim/psr7 1.8.0, vlucas/phpdotenv 5.6.4, opis/json-schema 2.6.0, phpunit 10.5.64 (dev). |
 | JS (prod) | `cd web && npm audit --omit=dev` | **0 vulnérabilité.** Ce qui est déployé (bundle statique) est propre. |
 | JS (dev) | `cd web && npm audit` | 5 (3 modérées, 1 haute, 1 critique) — **toutes dans l'outillage de dev** : vite / vitest (UI) / vite-node / esbuild / @vitest/mocker. Voir A06. |
 
@@ -165,7 +165,7 @@ Dernière revue : M9 (2026-07-12).
   always set`) **se propage** dans `www/api/`. `api/deploy/webroot/.htaccess`
   **réaffirme** défensivement les valeurs API (CSP `default-src 'none'`, X-Frame
   `DENY`, …) pour qu'Apache et PHP s'accordent. **Non vérifiable avant déploiement**
-  (le docker sert l'API sans le `.htaccess` du front) → **smoke à faire après
+  (le serveur de développement sert l'API sans le `.htaccess` du front) → **smoke à faire après
   déploiement** : `curl -sI https://humanome.xyz/api/health` doit montrer la CSP
   `default-src 'none'` et `X-Frame-Options: DENY`, pas les valeurs du front.
 - **Erreurs masquées en prod** : `Bootstrap::createApp()` n'active

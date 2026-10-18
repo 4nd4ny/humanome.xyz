@@ -207,7 +207,7 @@ compétence dans la liste « Compétence ».
 ### Exécuter
 
 ```sh
-docker compose run --rm php vendor/bin/phpunit --filter UcCar03 --testdox
+(cd api && vendor/bin/phpunit --filter UcCar03 --testdox)
 cd web && npx vitest run test/usecases/unit/uc-car-03 test/usecases/functional/uc-car-03
 ```
 

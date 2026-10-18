@@ -41,8 +41,8 @@ et sans jamais retoucher un JSON produit à la main.
   et `2-kairos-final.md` déposés à la main dans `web/public/data/twin6/prompts/` —
   **aucune source versionnée** ne les fournit (AN-2).
 - Pour `dump-fiches.mjs` : API joignable et `MIGRATE_TOKEN` (UC-SYS-02).
-- Pour `stage-api.sh` : image Docker `humanome-php` (étape `composer`, hors
-  périmètre : UC-SYS-02).
+- Pour `stage-api.sh` : Composer local, plateforme fixée à PHP 8.2 (étape
+  `composer`, hors périmètre : UC-SYS-02).
 
 ## Garanties en cas de succès
 
@@ -420,7 +420,7 @@ cd engine && npx vitest run test/usecases/unit/uc-sys-04-construire-artefacts-de
 - La conséquence d'AN-1 sur l'export d'archive du front (UC-APP-06) a été
   constatée en appelant `exportArchive` avec un référentiel 7.1.0 injecté ; elle
   n'est figée ici qu'au niveau du moteur (F06), le front relevant d'UC-APP-06.
-- L'exécution complète de `stage-api.sh` (Docker, `composer`) n'est pas rejouée :
+- L'exécution complète de `stage-api.sh` (`composer`) n'est pas rejouée :
   seul son ordre est vérifié (U06) ; sa conséquence d'AN-4 (paquet Twin6 non
   régénéré) est déduite du comportement de `build-twin6-prompt-package.mjs`
   figé par F16. `validate-corpus.mjs` enregistre encore un

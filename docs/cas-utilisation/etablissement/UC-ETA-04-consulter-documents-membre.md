@@ -206,7 +206,7 @@ couverte par les tests fonctionnels API ci-dessous.
 ### Exécuter
 
 ```sh
-docker compose run --rm php vendor/bin/phpunit --filter UcEta04 --testdox
+(cd api && vendor/bin/phpunit --filter UcEta04 --testdox)
 cd web && npx vitest run test/usecases/unit/uc-eta-04 test/usecases/functional/uc-eta-04
 ```
 

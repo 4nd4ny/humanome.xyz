@@ -1,8 +1,8 @@
 // Playwright — tests bout-en-bout du parcours apprenant (DoD P8).
 //
 // LOCAL UNIQUEMENT (CLAUDE.md : « Tests : … Playwright (e2e, local uniquement) ») :
-// jamais déployé, jamais en CI OVH. Prérequis : l'API docker tourne sur
-// http://localhost:8080 avec le provider LLM mock (docker-compose.override.yml,
+// jamais déployé, jamais en CI OVH. Prérequis : l'API locale tourne sur
+// http://localhost:8080 avec le provider LLM mock (php -S, .env.dev exporté :
 // DEMO_PROVIDER=mock) — voir docs/tests-e2e.md.
 //
 // Le serveur web est le dev-server Vite (proxy /api -> :8080), lancé par

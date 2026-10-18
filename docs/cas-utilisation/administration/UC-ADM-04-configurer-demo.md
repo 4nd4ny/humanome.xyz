@@ -293,7 +293,7 @@ par exemple juste avant ou juste après une présentation.
 ### Exécuter
 
 ```sh
-docker compose run --rm php vendor/bin/phpunit --filter UcAdm04 --testdox
+(cd api && vendor/bin/phpunit --filter UcAdm04 --testdox)
 cd web && npx vitest run test/usecases/unit/uc-adm-04 test/usecases/functional/uc-adm-04
 ```
 

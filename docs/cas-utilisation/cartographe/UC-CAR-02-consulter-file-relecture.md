@@ -221,7 +221,7 @@ Le cartographe ouvre `#/cartographe` (file) puis clique sur « Relire »
 ### Exécuter
 
 ```sh
-docker compose run --rm php vendor/bin/phpunit --filter UcCar02 --testdox
+(cd api && vendor/bin/phpunit --filter UcCar02 --testdox)
 cd web && npx vitest run test/usecases/unit/uc-car-02 test/usecases/functional/uc-car-02
 ```
 

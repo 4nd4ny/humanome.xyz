@@ -13,7 +13,7 @@ cœur du MVP (plan-prompts P8, cahier §3.2/§3.6/§6), chaque étape étant un
 1. Création de compte (email unique par run : rejouable sans nettoyage),
    double saisie de l'email ; le code d'activation (D5) part par `mail()`,
    absent en dev : le compte jetable est activé dans la base de
-   **développement** (`docker compose exec mysql`), puis connexion par l'UI.
+   **développement** (client `mysql` local), puis connexion par l'UI.
 2. Création d'un portfolio : collage de la fixture
    `schemas/fixtures/portfolio-3-jours.md`, segmentation automatique vérifiée
    (3 journées datées 2026-01-05..07), sauvegarde locale (IndexedDB).
@@ -43,20 +43,24 @@ cœur du MVP (plan-prompts P8, cahier §3.2/§3.6/§6), chaque étape étant un
 
 ## Prérequis
 
-1. **API docker avec le provider LLM mock** (aucune clé API nécessaire) :
+1. **API locale avec le provider LLM mock** (aucune clé API nécessaire), dans
+   un terminal à part, l'environnement de développement exporté
+   (`INSTALL.md` §2) :
 
    ```sh
-   docker compose up -d          # php 8.2 + mysql 8, http://localhost:8080
+   set -a; . ./.env.dev; set +a
+   php -S localhost:8080 -t api/public        # http://localhost:8080
    curl -s http://localhost:8080/api/health   # {"status":"ok",...,"db":"ok"}
    ```
 
-   `docker-compose.override.yml` (auto-chargé, jamais déployé) fournit
-   `DEMO_PROVIDER=mock` (réponses tirées de `schemas/fixtures/`) et remonte le
-   quota `/api/llm` à 500/h/IP — le quota de production (20/h) bloquerait le
-   run de 24 appels en plein milieu.
+   `.env.dev` fournit `DEMO_PROVIDER=mock` (réponses tirées de
+   `schemas/fixtures/`) et remonte le quota `/api/llm` à 500/h/IP
+   (`DEMO_PER_IP_PER_HOUR`) — le quota de production (20/h) bloquerait le run
+   de 24 appels en plein milieu. Les scénarios agissent aussi sur la base de
+   développement par le client `mysql`, qui doit être dans le `PATH`.
 
-   Migrations à jour si la base est neuve :
-   `curl -X POST -H 'X-Migrate-Token: dev_migrate_token' http://localhost:8080/api/admin/migrate`.
+   Migrations à jour si la base est neuve : `php scripts/migrate.php`, depuis
+   la racine.
 
 2. **Dépendances web + navigateur Playwright** (une fois) :
 
@@ -101,7 +105,7 @@ IP) et l'état navigateur (IndexedDB) d'étape en étape.
 - `POST /api/auth/register` est limité à **10/h par IP** (P3) : au-delà de
   ~10 exécutions dans l'heure sur la même base dev, l'inscription répondra
   429. Remède dev : attendre, ou vider la table `rate_limits`
-  (`docker compose exec mysql mysql -uhumanome -phumanome_dev humanome -e
+  (`mysql -h127.0.0.1 -uhumanome -phumanome_dev humanome -e
   'TRUNCATE rate_limits;'`).
 - Le run n'exécute que le pipeline embarqué (v1 assumée, P8.3) : le choix de
   version de prompt est tracé dans `runMeta`, l'exécution des paquets publiés
@@ -111,7 +115,7 @@ IP) et l'état navigateur (IndexedDB) d'étape en étape.
 
 ## M7 — parcours cartographe (P9) et promptologue (P10)
 
-Deux scénarios séquentiels ajoutés en M7, mêmes prérequis (API docker + mock,
+Deux scénarios séquentiels ajoutés en M7, mêmes prérequis (API locale + mock,
 dev-server Vite lancé par Playwright, `workers: 1`).
 
 ### `web/e2e/parcours-cartographe.e2e.js` (DoD P9)

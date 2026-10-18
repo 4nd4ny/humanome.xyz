@@ -1,6 +1,6 @@
 // Scénario bout-en-bout du parcours apprenant (DoD P8, plan-prompts) —
 // LE parcours cœur du MVP, joué contre le dev-server Vite (proxy /api ->
-// docker :8080, provider LLM mock) :
+// API locale :8080, provider LLM mock) :
 //
 //   création de compte -> portfolio (fixture 3 jours, segmentation vérifiée)
 //   -> run mock complet via « Service humanome » (24 appels /api/llm)
@@ -28,9 +28,9 @@ import { validateDocument } from '../../engine/src/validation.js'
 
 const root = dirname(dirname(dirname(fileURLToPath(import.meta.url))))
 
-/** Requête SQL sur la base de DÉVELOPPEMENT du conteneur docker (jamais ailleurs). */
+/** Requête SQL sur la base de DÉVELOPPEMENT, par le client mysql local (jamais ailleurs). */
 function devSql(query) {
-  return execFileSync('docker', ['compose', 'exec', '-T', 'mysql', 'mysql', '-uhumanome', '-phumanome_dev', 'humanome', '-N', '-e', query], { cwd: root, stdio: 'pipe' }).toString().trim()
+  return execFileSync('mysql', ['-h127.0.0.1', '-uhumanome', '-phumanome_dev', 'humanome', '-N', '-e', query], { cwd: root, stdio: 'pipe' }).toString().trim()
 }
 
 const FIXTURE_PATH = fileURLToPath(

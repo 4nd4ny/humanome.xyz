@@ -217,7 +217,7 @@ saisit dans le formulaire « Accepter une invitation » de `#/cartographe`.
 ### Exécuter
 
 ```sh
-docker compose run --rm php vendor/bin/phpunit --filter UcCar01 --testdox
+(cd api && vendor/bin/phpunit --filter UcCar01 --testdox)
 cd web && npx vitest run test/usecases/unit/uc-car-01 test/usecases/functional/uc-car-01
 ```
 

@@ -358,7 +358,7 @@ journalisant que des compteurs.
 ### Exécuter
 
 ```sh
-docker compose run --rm php vendor/bin/phpunit --filter UcSys01 --testdox
+(cd api && vendor/bin/phpunit --filter UcSys01 --testdox)
 cd engine && npx vitest run test/usecases/unit/uc-sys-01
 ```
 

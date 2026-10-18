@@ -6,7 +6,7 @@
 // (web/src/lib/sandbox/protocol.js) et on exécute un paquet HOSTILE dont le code
 // d'orchestration tente d'exfiltrer / d'échapper. Chaque tentative doit échouer.
 //
-// Ce test n'a PAS besoin de l'API docker : seul le dev-server Vite est requis
+// Ce test n'a PAS besoin de l'API locale : seul le dev-server Vite est requis
 // (il sert /src/lib/sandbox/protocol.js). Il tourne donc même sans base.
 //
 // Le discriminant CRITIQUE est le fetch { mode:'no-cors' } : une origine opaque

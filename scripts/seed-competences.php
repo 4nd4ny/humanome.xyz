@@ -7,7 +7,8 @@ declare(strict_types=1);
  * Logique dans Humanome\Referentiel\CompetenceSeeder (partagée avec l'endpoint
  * POST /api/admin/seed-competences). Idempotent, applique le gate de parité.
  *
- * Usage (dev) : docker compose run --rm -w /var/www/html php php scripts/seed-competences.php
+ * Usage (dev) : php scripts/seed-competences.php, depuis la racine du dépôt,
+ * .env.dev exporté (INSTALL.md §2).
  */
 
 $root = dirname(__DIR__);

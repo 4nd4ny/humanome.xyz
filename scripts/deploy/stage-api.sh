@@ -1,6 +1,6 @@
 #!/usr/bin/env bash
 # Stages a PHP release for deployment (ADR-008): copies api/ sources, installs
-# production dependencies with the php:8.2 Docker image, stamps VERSION.
+# production dependencies with the local Composer, stamps VERSION.
 # Output: build/api-release/ (flat, ready to upload as app/releases/<ts>/).
 set -euo pipefail
 
@@ -47,8 +47,9 @@ node "$repo/scripts/build-twin6-prompt-package.mjs"
 
 git -C "$repo" describe --always --dirty 2>/dev/null > "$stage/VERSION" || echo "unknown" > "$stage/VERSION"
 
-# Production vendor/ via the same PHP image as the dev stack (no local composer)
-docker run --rm -v "$stage":/app -w /app humanome-php \
-  composer install --no-dev --optimize-autoloader --no-interaction --quiet
+# Production vendor/ with the local Composer: composer.json pins the platform to
+# PHP 8.2 (the OVH version), so the installed set is the lock's, whatever the
+# local PHP.
+composer install --no-dev --optimize-autoloader --no-interaction --quiet --working-dir="$stage"
 
 echo "staged release $(cat "$stage/VERSION") in $stage ($(find "$stage" -type f | wc -l | tr -d ' ') files)"

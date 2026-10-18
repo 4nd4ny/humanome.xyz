@@ -240,7 +240,7 @@ et sur les requêtes émises, jamais sur l'état de ce serveur factice.
 ### Exécuter
 
 ```sh
-docker compose run --rm php vendor/bin/phpunit --filter UcAdm02 --testdox
+(cd api && vendor/bin/phpunit --filter UcAdm02 --testdox)
 cd web && npx vitest run test/usecases/unit/uc-adm-02 test/usecases/functional/uc-adm-02
 ```
 

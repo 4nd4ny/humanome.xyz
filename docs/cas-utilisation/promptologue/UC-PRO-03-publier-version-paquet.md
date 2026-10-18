@@ -224,7 +224,7 @@ vérifie leurs réponses par l'API (UC-PRO-03-F05).
 ### Exécuter
 
 ```sh
-docker compose run --rm php vendor/bin/phpunit --filter UcPro03 --testdox
+(cd api && vendor/bin/phpunit --filter UcPro03 --testdox)
 cd web && npx vitest run test/usecases --testNamePattern UC-PRO-03
 ```
 

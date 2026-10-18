@@ -1,6 +1,6 @@
 #!/usr/bin/env bash
 # P11 operational DoD rehearsal (M8) — replays docs/plan-masse.md §8 OUTSIDE
-# PHPUnit, against the running dev stack (docker compose up -d + migrations):
+# PHPUnit, against the local dev API (php -S api/public, migrations applied):
 #
 #   1. establishment account (grant-role), LLM/budget config, cohorte;
 #   2. 20 fixture learners join WITH explicit consent (422 without) and each
@@ -17,7 +17,9 @@
 # Local dev only: fixture accounts (dod-p11-*@example.org) are recreated on
 # each run, the register rate-limit is reset between fixture registrations.
 #
-# Usage: bash scripts/dev/dod-p11.sh   (from anywhere; needs jq, curl, node)
+# Usage: bash scripts/dev/dod-p11.sh   (from anywhere, with the development
+#        environment exported for the CLI ticks: .env.dev, INSTALL.md §2;
+#        needs jq, curl, node and the mysql client)
 
 set -euo pipefail
 
@@ -46,7 +48,7 @@ check() { # label expected actual
   if [ "$2" = "$3" ]; then ok "$1 : $3"; else ko "$1 : attendu $2, obtenu $3"; fi
 }
 
-sql() { docker compose exec -T -e MYSQL_PWD=humanome_dev mysql mysql -N -B -uhumanome humanome -e "$1"; }
+sql() { MYSQL_PWD=humanome_dev mysql -h127.0.0.1 -N -B -uhumanome humanome -e "$1"; }
 
 # call <jar> <csrf|-> <method> <path> [json] -> RESP_CODE + RESP_BODY
 call() {
@@ -77,8 +79,7 @@ register() { # email displayName jar -> prints csrf
 
 # One REAL CLI cron tick (mock provider, 5 LLM calls) -> JSON counters line.
 tick() {
-  docker compose exec -T -w /var/www/html -e WORKER_PROVIDER=mock -e WORKER_TICK_MAX_CALLS=5 \
-    php php scripts/worker.php
+  WORKER_PROVIDER=mock WORKER_TICK_MAX_CALLS=5 php scripts/worker.php
 }
 
 jobs_done()   { sql "SELECT COUNT(*) FROM mass_jobs WHERE run_id = $1 AND status = 'done';"; }
@@ -87,7 +88,7 @@ run_status()  { sql "SELECT status FROM mass_runs WHERE id = $1;"; }
 spent_usd()   { sql "SELECT spent_usd FROM etablissement_config WHERE user_id = $ETAB_ID;"; }
 
 dump_documents() { # run_id -> JSONL on stdout (PDO returns the JSON column verbatim)
-  docker compose exec -T -w /var/www/html php php -r '
+  php -r '
     $pdo = new PDO(sprintf("mysql:host=%s;dbname=%s;charset=utf8mb4", getenv("DB_HOST"), getenv("DB_NAME")),
                    getenv("DB_USER"), getenv("DB_PASSWORD"));
     $stmt = $pdo->query("SELECT document FROM mass_jobs WHERE status = \"done\" AND run_id = " . (int) $argv[1]);

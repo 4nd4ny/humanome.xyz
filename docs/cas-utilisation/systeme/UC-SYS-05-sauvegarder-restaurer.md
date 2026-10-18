@@ -37,7 +37,7 @@ données personnelles hors de l'hébergement, conservation après effacement).
 - Node ≥ 20 (le script n'a aucune dépendance npm) et client `mysqldump` dans le
   `PATH`.
 - L'hôte MySQL est joignable depuis la machine sur le port par défaut 3306
-  (`DB_PORT` est ignoré : AN-2) : par exemple la base Docker locale, ou une
+  (`DB_PORT` est ignoré : AN-2) : par exemple la base MySQL locale, ou une
   base OVH CloudDB ouverte aux adresses autorisées. L'hôte de la base
   mutualisée de production (`<compte>.mysql.db`) n'est résolu que dans le
   réseau d'OVH : il n'est pas joignable depuis un poste ou une CI (AN-6).
@@ -95,8 +95,7 @@ données personnelles hors de l'hébergement, conservation après effacement).
   d'environnement l'emporte toujours sur le fichier.
 - **A2 — Restauration** (procédure manuelle, `docs/backup-restore.md`) :
   `mysql -h<hôte> -u<utilisateur> -p<mdp> <base_cible> < <dump>.sql` (en
-  développement : `docker compose exec -T mysql mysql -uroot -p<mdp> humanome <
-  <dump>.sql`), puis vérification :
+  développement : `mysql -h127.0.0.1 -uroot -p<mdp> humanome < <dump>.sql`), puis vérification :
   `SELECT COUNT(*) FROM information_schema.tables WHERE table_schema='<base>'`.
   Aucun script ne l'outille.
 - **A3 — Sauvegarde primaire OVH** : sauvegardes automatiques quotidiennes de
@@ -191,7 +190,7 @@ Aucun : le script n'expose aucune fonction et appelle `main()` au chargement
 ### Tests existants liés (non-régression)
 
 - Aucun test automatisé préexistant. `docs/backup-restore.md` rapporte une
-  restauration vérifiée à la main sur l'environnement Docker (dump d'une base
+  restauration vérifiée à la main en développement (dump d'une base
   peuplée → nouvelle base → import → 29 tables restaurées).
 
 ### Exécuter

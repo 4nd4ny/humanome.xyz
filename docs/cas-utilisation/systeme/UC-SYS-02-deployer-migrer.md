@@ -370,7 +370,7 @@ Le mainteneur lance `./scripts/deploy/stage-api.sh` puis
 ### Exécuter
 
 ```sh
-docker compose run --rm php vendor/bin/phpunit --filter UcSys02 --testdox
+(cd api && vendor/bin/phpunit --filter UcSys02 --testdox)
 cd engine && npx vitest run test/usecases/unit/uc-sys-02
 ```
 
@@ -451,7 +451,7 @@ cd engine && npx vitest run test/usecases/unit/uc-sys-02
   transfert FTP réel (connexion, FTPS, droits, dossiers partiels d'un upload
   interrompu) et les réponses du vrai site ; côté serveur, la séquence HTTP
   des étapes 4 à 9 est rejouée par UC-SYS-02-F01/F02, le front-controller par
-  F10 et les scripts CLI par F11 et F15 à F18. `stage-api.sh` (Docker, Node,
+  F10 et les scripts CLI par F11 et F15 à F18. `stage-api.sh` (Composer, Node,
   réécriture de `build/`) n'est pas exécuté : l'étape 2 est décrite d'après
   le script.
 - Fenêtre de déploiement : entre l'écriture de `current.txt` (étape 3) et la

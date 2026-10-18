@@ -279,7 +279,7 @@ d'essai (UC-PRO-05), pas de ce cas.
 ### Exécuter
 
 ```sh
-docker compose run --rm php vendor/bin/phpunit --filter UcPro02 --testdox
+(cd api && vendor/bin/phpunit --filter UcPro02 --testdox)
 cd web && npx vitest run test/usecases --testNamePattern UC-PRO-02
 cd engine && npx vitest run test/usecases/unit/uc-pro-02
 ```

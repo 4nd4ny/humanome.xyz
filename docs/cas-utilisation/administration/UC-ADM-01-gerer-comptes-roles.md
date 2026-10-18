@@ -272,7 +272,7 @@ comptes », ou carte « Rôles » de l'accueil `#/admin`).
 ### Exécuter
 
 ```sh
-docker compose run --rm php vendor/bin/phpunit --filter UcAdm01 --testdox
+(cd api && vendor/bin/phpunit --filter UcAdm01 --testdox)
 cd web && npx vitest run test/usecases/unit/uc-adm-01 test/usecases/functional/uc-adm-01
 ```
 

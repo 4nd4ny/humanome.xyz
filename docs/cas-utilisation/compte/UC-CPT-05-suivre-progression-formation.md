@@ -208,7 +208,7 @@ public, puis coche (ou décoche) « Chapitre terminé ».
 ### Exécuter
 
 ```sh
-docker compose run --rm php vendor/bin/phpunit --filter UcCpt05
+(cd api && vendor/bin/phpunit --filter UcCpt05)
 cd web && npx vitest run test/usecases --testNamePattern UC-CPT-05
 ```
 

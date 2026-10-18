@@ -230,7 +230,7 @@ dans UC-ADM-01-U10 (`RequireRole::any('admin')`) et UC-CPT-02-U07
 ### Exécuter
 
 ```sh
-docker compose run --rm php vendor/bin/phpunit --filter UcAdm03 --testdox
+(cd api && vendor/bin/phpunit --filter UcAdm03 --testdox)
 cd web && npx vitest run test/usecases --testNamePattern UC-ADM-03
 ```
 

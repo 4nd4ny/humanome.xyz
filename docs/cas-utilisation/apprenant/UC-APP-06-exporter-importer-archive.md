@@ -263,7 +263,7 @@ archive ») dans la section « Mes données » du tableau de bord `#/espace`.
 ### Exécuter
 
 ```sh
-docker compose run --rm php vendor/bin/phpunit --filter UcApp06 --testdox
+(cd api && vendor/bin/phpunit --filter UcApp06 --testdox)
 cd web && npx vitest run test/usecases --testNamePattern UC-APP-06
 cd engine && npx vitest run test/usecases --testNamePattern UC-APP-06
 ```

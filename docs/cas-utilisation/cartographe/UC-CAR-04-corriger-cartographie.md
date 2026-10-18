@@ -248,7 +248,7 @@ UC-CAR-03-U04.
 ### Exécuter
 
 ```sh
-docker compose run --rm php vendor/bin/phpunit --filter UcCar04 --testdox
+(cd api && vendor/bin/phpunit --filter UcCar04 --testdox)
 cd web && npx vitest run test/usecases/unit/uc-car-04 test/usecases/functional/uc-car-04
 ```
 

@@ -60,6 +60,7 @@ final class RgpdAuditTest extends MasseTestCase
         'referentiel_votes.user_id' => 'CASCADE', // migration 015 (gouvernance : le vote d'un membre purgé disparaît)
         'competence_votes.user_id' => 'CASCADE', // migration 016 (vote par compétence : idem)
         'carto_publication_requests.apprenant_id' => 'CASCADE', // migration 023 (demande de publication garantie : à l'apprenant)
+        'twin9_profils.user_id' => 'CASCADE', // migration 024 (T12 : les profils Twin9 appartiennent à leur auteur, registre §12)
         // --- documented anonymisation (SET NULL) ---
         'audit_events.user_id' => 'SET NULL',
         'referentiel_versions.created_by' => 'SET NULL',

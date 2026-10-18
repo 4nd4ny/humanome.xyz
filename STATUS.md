@@ -14,9 +14,32 @@ dans `main` (entrée du 2026-10-14 ci-dessous).
 Chantier en cours : le moteur Twin9 v9.8 en PHP, exécuté sur le serveur (ADR-011), planifié et
 développé dans le dépôt privé `4nd4ny/Twin_v9` (`docs/plan-twin9-php.md`, prompts T0 → T18, une
 conversation chacun ; entrées du 2026-10-17). T0, le cadre, est fusionné dans les deux dépôts
-(entrées du 2026-10-18) ; suivent T1 (l'oracle, dans `Twin_v9`) et, en parallèle, T12 (le profil).
+(entrées du 2026-10-18), T1, l'oracle, dans `Twin_v9` ; T3, les fondations du moteur, y attend sa
+revue. Ici, T12, le profil, attend la sienne (entrée du 2026-10-18).
 
 ## Fait
+
+- 2026-10-18 — **Moteur Twin9 en PHP, T12 : le profil (branche `feat/twin9-t12-profile`).** Rien
+  de la v9.8 dans ce dépôt.
+  - Contrat `schemas/twin9-profil.schema.json` (`kind` « twin9-profil », fermé à tous les
+    niveaux) : les paramètres d'algorithme du `config.json` de la v9.8, ses backends exceptés ; les
+    options de sa ligne de commande qui règlent l'algorithme ; les 48 troncatures de son code, à
+    leurs valeurs d'origine ; le mode, test (première journée, premier pôle) ou complet ; le
+    collège, chaque lecteur avec sa famille ; trois étages (lecteurs, rapide, profond) et 17
+    étapes qui les suivent ou s'en écartent : modèle Claude, budget de sortie, effort, réflexion,
+    aucune température ; la voie, le parallélisme, budget et durée, la clé, le jeu de gabarits,
+    le référentiel. `docs/contrats.md` §7 donne la correspondance avec la v9.8 ; l'endroit de
+    chaque troncature dans son code reste dans `Twin_v9`.
+  - Le profil v9.8 (`api/config/twin9-profil-v98.json`), par défaut et en lecture seule : Haiku
+    5.5 aux lecteurs (un lecteur en trois passes) et à l'analyse rapide, Sonnet 5.5 à l'analyse
+    profonde, la voie par lots ; pour le reste, les valeurs de la v9.8.
+  - Migration 024 : `twin9_profils` (propriétaire, nom unique par propriétaire, profil JSON),
+    CASCADE à la purge (registre §12). `ProfilRepository` : un réglage absent prend la valeur par
+    défaut du schéma, comme la v9.8 lit son `config.json` ; un profil invalide n'est jamais
+    écrit ; seul son propriétaire le modifie ou le supprime. `Validation` connaît le nouveau
+    `kind`, côté PHP seulement.
+  - Pas encore de route : la page et les droits viennent avec T13. D'ici là, l'export du compte
+    ne restitue pas les profils (`rgpd-audit.php` : `none`).
 
 - 2026-10-18 — **Documentation sans Docker (branche `feat/twin9-t0-docs-without-docker`, demande
   de Christian après la fusion de T0).** Ce qui citait Docker comme environnement de travail passe

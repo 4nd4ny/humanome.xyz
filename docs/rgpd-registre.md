@@ -222,6 +222,19 @@ exécution du service/contrat, **f** = intérêt légitime.
 | Tables | `twin9_credits`, `twin9_credit_events`. |
 | Sort à la suppression | CASCADE (le solde et son journal appartiennent à la personne). |
 
+## 12. Profils Twin9
+
+| Élément | Détail |
+|---|---|
+| Finalité | Régler les runs Twin9 de la personne : modèles, seuils, troncatures, voie, plafonds (`docs/plan-twin9-php.md` de `Twin_v9`, lot 4a). |
+| Personnes concernées | Titulaires de compte qui règlent leurs runs Twin9. |
+| Données | **Réglages uniquement**, validés par `schemas/twin9-profil.schema.json` : aucun contenu de portfolio ni de prompt, aucune clé (le profil dit laquelle employer, celle de l'instance ou la clé personnelle, jamais la clé elle-même). |
+| Base légale | **b** (exécution du service demandé par la personne). |
+| Durée | Vie du compte, ou jusqu'à ce que la personne supprime le profil. |
+| Destinataires | Interne. |
+| Tables | `twin9_profils` (migration 024). |
+| Sort à la suppression | CASCADE (le profil appartient à la personne). |
+
 ---
 
 ## Référentiel et système de prompts (donnée non personnelle)

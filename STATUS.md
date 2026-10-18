@@ -17,12 +17,22 @@ chacun ; entrées du 2026-10-17).
 
 ## Fait
 
+- 2026-10-18 — **Front déployé : Twin9 coupé en ligne, D-69 à D-71 publiées (demande utilisateur).**
+  Construit dans la VM du Mac depuis un clone neuf de `4nd4ny/humanome.xyz` (`bed91d2`), avec les
+  données de la copie locale ; `deploy.mjs static` après un `--dry-run` relu : 2 envois, 1
+  suppression (l'ancien paquet, qui embarquait le moteur), données inchangées. Vérifié en ligne
+  (Chromium) : accueil, `#/twin9` (avis), `#/cartographie` ; ancien paquet en 404, `www/assets/`
+  ne contient que le nouveau, sans trace du moteur ; API inchangée (`v1.1.0-106-gc6a0231`).
+  Nouvelle copie locale : `humanome.xyz/humanome.xyz` (hooks activés, `.env.deploy` et
+  `web/public/data` recopiés, sans `node_modules`). Les tags `v1.0.0`/`v1.1.0` restent à pousser
+  sur le nouveau dépôt (refusés par le proxy de la session).
+
 - 2026-10-17 — **Moteur Twin9 sorti du dépôt public (décision de Christian).** Le portage JS du
   moteur, ses vecteurs et ses tests, les specs `docs/twin9/`, le plan `docs/plan-twin9-php.md`,
   `run-helpers.js` et `gen-oracles.sh` vivent désormais dans le dépôt privé `4nd4ny/Twin_v9`, aux
   mêmes chemins et avec leur historique ; le moteur PHP y naîtra aussi. L'historique de ce dépôt
-  a été réécrit pour les en retirer, puis publié sous le nom `4nd4ny/humanome.xyz` (l'ancien
-  `4nd4ny/humanome` est à supprimer une fois la copie vérifiée). Jusqu'au lot 3, l'analyse
+  a été réécrit pour les en retirer, puis publié sous le nom `4nd4ny/humanome.xyz` (l'ancien,
+  renommé `humanome~trash` et rendu privé, est à supprimer une fois la copie vérifiée). Jusqu'au lot 3, l'analyse
   approfondie est coupée : `#/twin9` affiche un avis, l'entrée de navigation est masquée. Restent
   publics `mapper.js`, `referentiel.js` et leurs utilitaires `py/`, ainsi que le service (crédits,
   PayPal, factures, atelier des gabarits). `check-publiable` refuse désormais les chemins du

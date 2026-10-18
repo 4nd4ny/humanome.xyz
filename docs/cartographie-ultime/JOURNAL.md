@@ -76,6 +76,7 @@ autorisation, puis fusionné dans `main` (D-46).
 | Seconde lecture : date et jury | la date dite comme celle de l'analyse, une fois ; « Réflexions des membres du jury » : une ligne par membre, un niveau de moins (D-69) | ✅ | ✅ voir §3 | ✅ | `22a44a5` |
 | Hauteur proportionnelle | la hauteur dessinée d'un secteur suit la confiance sur une échelle régulière, du départ (0,25) au bord : 0,5 au tiers de l'anneau, 0,75 aux deux tiers ; cercles à intervalles égaux ; l'aire n'encode plus rien en soi (D-70) | ✅ | ✅ voir §3 + e2e Chromium | ✅ | `c922004` |
 | Journée voisine | boutons de la modale du jour sans l'année, sauf quand elle change ; « 1er » dans les dates compactes (D-71) | ✅ | ✅ voir §3 | ✅ | `bd482de` |
+| Déploiement | D-69 à D-71 : front déployé le 2026-10-18 avec la coupure de Twin9, vérifié en ligne au bureau | ✅ | — | ✅ vérification en ligne (Chromium) | voir STATUS.md (2026-10-18) |
 
 Légende : ✅ fait · ⏳ en cours · — pas commencé.
 

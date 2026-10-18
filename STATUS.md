@@ -23,7 +23,8 @@ chacun ; entrées du 2026-10-17).
   suppression (l'ancien paquet, qui embarquait le moteur), données inchangées. Vérifié en ligne
   (Chromium) : accueil, `#/twin9` (avis), `#/cartographie` ; ancien paquet en 404, `www/assets/`
   ne contient que le nouveau, sans trace du moteur ; API inchangée (`v1.1.0-106-gc6a0231`).
-  Nouvelle copie locale : `humanome.xyz/humanome.xyz` (hooks activés, `.env.deploy` et
+  Copies locales (clones git) : `13. Cartographie/github/humanome.xyz` et `github/Twin_v9`, séparées
+  des fichiers non versionnés de `13. Cartographie/humanome.xyz/` (hooks activés, `.env.deploy` et
   `web/public/data` recopiés, sans `node_modules`). Les tags `v1.0.0`/`v1.1.0` restent à pousser
   sur le nouveau dépôt (refusés par le proxy de la session).
 

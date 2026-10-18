@@ -277,7 +277,7 @@ UC-ADM-01-U10 et UC-CPT-02-U07.
 ### Exécuter
 
 ```sh
-docker compose run --rm php vendor/bin/phpunit --filter UcApp05 --testdox
+(cd api && vendor/bin/phpunit --filter UcApp05 --testdox)
 cd web && npx vitest run test/usecases --testNamePattern UC-APP-05
 ```
 

@@ -382,7 +382,7 @@ Cartographier mes écrits », ou le bouton du tableau de bord `#/espace`).
 ### Exécuter
 
 ```sh
-docker compose run --rm php vendor/bin/phpunit --filter UcApp02 --testdox
+(cd api && vendor/bin/phpunit --filter UcApp02 --testdox)
 cd web && npx vitest run test/usecases --testNamePattern UC-APP-02
 cd engine && npx vitest run test/usecases --testNamePattern UC-APP-02
 ```
@@ -429,7 +429,7 @@ cd engine && npx vitest run test/usecases --testNamePattern UC-APP-02
   journée échoue et le run continue d'appeler le proxy (A-02), chaque refus
   allongeant le délai. L'assistant n'en tient pas compte (l'estimation
   annonce 93 appels pour 3 journées sans avertissement) ; seul
-  `docker-compose.override.yml` relève le quota, en développement. Figé côté
+  `DEMO_PER_IP_PER_HOUR` relève le quota, en développement (500 dans `.env.dev`). Figé côté
   API par F24.
 - **A-06 — Troncature non signalée en mode clé personnelle.** `extractDay`
   échoue « bruyamment » quand l'appel s'est arrêté sur le budget de sortie

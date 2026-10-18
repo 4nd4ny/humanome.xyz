@@ -301,7 +301,7 @@ L'apprenant ouvre `#/twin6-ouverte`, colle son portfolio et clique sur
 ### Exécuter
 
 ```sh
-docker compose run --rm php vendor/bin/phpunit --filter UcApp09 --testdox
+(cd api && vendor/bin/phpunit --filter UcApp09 --testdox)
 cd web && npx vitest run test/usecases/unit/uc-app-09 test/usecases/functional/uc-app-09
 cd engine && npx vitest run test/usecases/unit/uc-app-09
 ```

@@ -67,7 +67,7 @@ worker abandonne le job sans écrire).
 
 ## 2. Dimensionnement d'un tick (< 50 s)
 
-Mesuré (Docker php:8.2, MockProvider, prompt 4 000 caractères) : **0,18 ms
+Mesuré (PHP 8.2, MockProvider, prompt 4 000 caractères) : **0,18 ms
 par appel mock** — le coût propre du worker (requêtes SQL comprises : ~2 ms
 par checkpoint) est négligeable. **Le tick est borné par la latence du LLM
 réel** : en prod M5 (Sonnet, thinking désactivé, JSON compact, 8 192 tokens

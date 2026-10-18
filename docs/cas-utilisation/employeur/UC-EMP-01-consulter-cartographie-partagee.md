@@ -229,7 +229,7 @@ l'apprenant.
 ### Exécuter
 
 ```sh
-docker compose run --rm php vendor/bin/phpunit --filter UcEmp01
+(cd api && vendor/bin/phpunit --filter UcEmp01)
 cd web && npx vitest run test/usecases --testNamePattern UC-EMP-01
 ```
 

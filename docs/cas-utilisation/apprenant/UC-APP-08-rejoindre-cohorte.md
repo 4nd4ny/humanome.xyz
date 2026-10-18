@@ -275,7 +275,7 @@ UC-CPT-02-U07.
 ### Exécuter
 
 ```sh
-docker compose run --rm php vendor/bin/phpunit --filter UcApp08 --testdox
+(cd api && vendor/bin/phpunit --filter UcApp08 --testdox)
 cd web && npx vitest run test/usecases --testNamePattern UC-APP-08
 ```
 

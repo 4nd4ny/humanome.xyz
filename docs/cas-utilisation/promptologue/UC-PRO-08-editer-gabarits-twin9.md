@@ -263,7 +263,7 @@ de UC-SYS-04.
 ### Exécuter
 
 ```sh
-docker compose run --rm php vendor/bin/phpunit --filter UcPro08 --testdox
+(cd api && vendor/bin/phpunit --filter UcPro08 --testdox)
 cd web && npx vitest run test/usecases/unit/uc-pro-08 test/usecases/functional/uc-pro-08
 cd engine && npx vitest run test/usecases/unit/uc-pro-08
 ```

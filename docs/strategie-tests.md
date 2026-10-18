@@ -12,9 +12,9 @@ Selenium ne ferait que dupliquer cette couche avec un outil plus fragile.
 
 | Couche | Outil | Portée | Où | Quand |
 |---|---|---|---|---|
-| **Unitaire + intégration API** | **PHPUnit** (php 8.2 via Docker) | Routes Slim, dépôts, services, gouvernance, crédits/PayPal, RGPD — contre une **vraie base MySQL** | `api/tests/` | À chaque changement PHP, avant chaque commit/release |
+| **Unitaire + intégration API** | **PHPUnit** (PHP local, CI sous PHP 8.2) | Routes Slim, dépôts, services, gouvernance, crédits/PayPal, RGPD — contre une **vraie base MySQL** | `api/tests/` | À chaque changement PHP, avant chaque commit/release |
 | **Unitaire + composant** | **Vitest** (Node) | Moteur ESM (parité octet Twin9, merge, sunburst) et front React (vues, hooks, lib, aide, thème) en **jsdom** | `engine/src/**/*.test.js`, `web/src/**/*.test.{js,jsx}` | À chaque changement JS, avant chaque commit/release |
-| **Bout-en-bout (e2e)** | **Playwright** (Chromium) | Parcours réels dans un vrai navigateur : apprenant, cartographe, promptologue, nav/burger, timeline, guides — avec l'API docker en provider **mock** | `web/e2e/*.e2e.js` | Avant une release, et sur tout changement touchant un parcours utilisateur |
+| **Bout-en-bout (e2e)** | **Playwright** (Chromium) | Parcours réels dans un vrai navigateur : apprenant, cartographe, promptologue, nav/burger, timeline, guides — avec l'API locale en provider **mock** | `web/e2e/*.e2e.js` | Avant une release, et sur tout changement touchant un parcours utilisateur |
 
 ### Tests par cas d'utilisation
 
@@ -27,7 +27,7 @@ ou par l'IHM) :
 
 | Couche | Emplacement | Lancement ciblé |
 |---|---|---|
-| API PHP | `api/tests/UseCases/{Unit,Functional}/` (suites PHPUnit `usecases-unit`, `usecases-functional`) | `docker compose run --rm php composer test:usecases` |
+| API PHP | `api/tests/UseCases/{Unit,Functional}/` (suites PHPUnit `usecases-unit`, `usecases-functional`) | `cd api && composer test:usecases` |
 | Front | `web/test/usecases/{unit,functional}/` | `cd web && npm run test:usecases` |
 | Moteur | `engine/test/usecases/unit/` (aussi joué en CI) | `cd engine && npm run test:usecases` |
 
@@ -64,9 +64,8 @@ non-régression ne repose pas sur un seul outil e2e mais sur la **combinaison** 
 ## Checklist de non-régression avant une release
 
 ```sh
-# 1. API (PHP) — base MySQL réelle (Docker)
-docker compose up -d
-docker compose run --rm php composer test          # PHPUnit (historique + cas d'utilisation), 100 % vert
+# 1. API (PHP) — base MySQL réelle (MySQL 8 local, environnement exporté : INSTALL.md §2)
+cd api && composer test                            # PHPUnit (historique + cas d'utilisation), 100 % vert
 
 # 2. Moteur
 cd engine && npm test                              # Vitest
@@ -76,7 +75,7 @@ cd web && npm test                                 # Vitest (jsdom)
 npm run build                                       # le build de prod doit passer
 
 # 4. Bout-en-bout (navigateur réel) — local uniquement
-#    Prérequis : API docker en provider mock (docker-compose.override.yml)
+#    Prérequis : API locale (php -S) en provider mock (DEMO_PROVIDER=mock, .env.dev)
 cd web && npm run test:e2e                          # Playwright, ~30 s
 ```
 
@@ -85,13 +84,14 @@ Une release ne part que si **les quatre passent**. Les détails d'exécution e2e
 
 ## Automatiser (recommandé, backlog D10)
 
-Aujourd'hui la checklist est **manuelle** (lancée avant chaque release). Pour la
-rendre systématique à chaque release, deux ajouts, sans changer d'outils :
+Aujourd'hui la checklist est en partie **manuelle** (lancée avant chaque release).
+Pour la rendre systématique à chaque release, deux ajouts, sans changer d'outils :
 
-1. **Intégration continue GitHub Actions** (`.github/workflows/ci.yml`) : au
-   `push`/`pull_request`, jouer les couches 1–3 (PHPUnit + Vitest + build). Les
-   e2e Playwright peuvent tourner en CI aussi (chromium headless), mais ils
-   exigent l'API docker + le provider mock — à ajouter dans un second temps.
+1. **Intégration continue GitHub Actions** : `.github/workflows/publiable.yml`
+   joue déjà, à chaque `push`/`pull_request`, PHPUnit (job « Tests PHP ») et le
+   moteur (« Tests moteur ») ; restent le front et son build. Les e2e Playwright
+   peuvent tourner en CI aussi (chromium headless), mais ils exigent l'API
+   locale + le provider mock — à ajouter dans un second temps.
 2. **Hook pre-commit** local : refuser un commit si une suite est rouge (et,
    couplé au futur `scripts/check-publiable.mjs`, refuser un secret ou un
    gabarit confidentiel — voir plan de dev D10).

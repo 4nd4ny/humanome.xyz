@@ -225,7 +225,7 @@ couverture RGPD de l'effacement de compte.
 ### Exécuter
 
 ```sh
-docker compose run --rm php vendor/bin/phpunit --filter UcSys03 --testdox
+(cd api && vendor/bin/phpunit --filter UcSys03 --testdox)
 ```
 
 ## Anomalies constatées

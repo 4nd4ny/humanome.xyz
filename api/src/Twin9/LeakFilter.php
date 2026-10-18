@@ -125,7 +125,7 @@ final class LeakFilter
      *
      * Folding order: (1) the fullwidth block U+FF01..U+FF5E → ASCII — a MANUAL
      * fold so the most common homoglyph bypass is defeated even where the intl
-     * extension is absent (docker image, some shared hosts); (2) NFKC via intl
+     * extension is absent (some PHP builds and shared hosts); (2) NFKC via intl
      * WHEN available, for the broader compatibility set. Combining marks and
      * punctuation are dropped by the alnum filter.
      *

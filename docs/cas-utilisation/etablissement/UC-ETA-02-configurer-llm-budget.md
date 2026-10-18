@@ -206,7 +206,7 @@ L'établissement ouvre `#/etablissement` et modifie la section
 ### Exécuter
 
 ```sh
-docker compose run --rm php vendor/bin/phpunit --filter UcEta02 --testdox
+(cd api && vendor/bin/phpunit --filter UcEta02 --testdox)
 cd web && npx vitest run test/usecases/unit/uc-eta-02 test/usecases/functional/uc-eta-02
 ```
 

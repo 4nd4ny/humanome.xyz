@@ -227,7 +227,7 @@ l'assistant (portfolio, référentiel, fournisseur LLM simulé) sont injectées.
 ### Exécuter
 
 ```sh
-docker compose run --rm php vendor/bin/phpunit --filter UcCpt04
+(cd api && vendor/bin/phpunit --filter UcCpt04)
 cd web && npx vitest run test/usecases --testNamePattern UC-CPT-04
 ```
 

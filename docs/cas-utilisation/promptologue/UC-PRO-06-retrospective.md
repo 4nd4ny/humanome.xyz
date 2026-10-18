@@ -231,7 +231,7 @@ dans `description`, AN-3).
 ### Exécuter
 
 ```sh
-docker compose run --rm php vendor/bin/phpunit --filter UcPro06 --testdox
+(cd api && vendor/bin/phpunit --filter UcPro06 --testdox)
 cd web && npx vitest run test/usecases/unit/uc-pro-06 test/usecases/functional/uc-pro-06
 cd engine && npx vitest run test/usecases/unit/uc-pro-06
 ```

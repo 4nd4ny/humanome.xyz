@@ -222,7 +222,7 @@ la section Export de son espace) et utilise la « Zone de danger ».
 ### Exécuter
 
 ```sh
-docker compose run --rm php vendor/bin/phpunit --filter UcCpt06
+(cd api && vendor/bin/phpunit --filter UcCpt06)
 cd web && npx vitest run test/usecases --testNamePattern UC-CPT-06
 ```
 

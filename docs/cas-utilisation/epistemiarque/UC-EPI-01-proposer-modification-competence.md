@@ -303,7 +303,7 @@ L'épistémiarque ouvre l'atelier `#/epistemiarque` (menu « Faire évoluer ›
 ### Exécuter
 
 ```sh
-docker compose run --rm php vendor/bin/phpunit --filter UcEpi01 --testdox
+(cd api && vendor/bin/phpunit --filter UcEpi01 --testdox)
 cd web && npx vitest run test/usecases/unit/uc-epi-01 test/usecases/functional/uc-epi-01
 ```
 

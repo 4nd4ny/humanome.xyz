@@ -198,8 +198,8 @@ paquet par défaut, et la **démo publique s'édite** via `/api/admin/demo-confi
 Section `#/admin/config`. Le fichier `api/config/app.php` documente, en un seul
 endroit versionné, les variables d'environnement lues par l'application et
 leurs valeurs par défaut. Chaque valeur est surchargeable par variable
-d'environnement (`~/app/shared/.env` hors webroot en prod ; `docker-compose.yml`
-en dev) — la variable, si non vide, gagne.
+d'environnement (`~/app/shared/.env` hors webroot en prod ; `.env.dev` exporté
+en dev, `INSTALL.md` §2) — la variable, si non vide, gagne.
 
 **Le fichier ne contient jamais de secret.** Les secrets (mot de passe MySQL,
 `ANTHROPIC_API_KEY`, `MIGRATE_TOKEN`, `POW_SECRET`, `SODIUM_MASTER_KEY`) et le

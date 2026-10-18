@@ -265,7 +265,7 @@ affiche « Majorité atteinte : la compétence peut être entérinée. »
 ### Exécuter
 
 ```sh
-docker compose run --rm php vendor/bin/phpunit --filter UcEpi03 --testdox
+(cd api && vendor/bin/phpunit --filter UcEpi03 --testdox)
 cd web && npx vitest run test/usecases/unit/uc-epi-03 test/usecases/functional/uc-epi-03
 ```
 

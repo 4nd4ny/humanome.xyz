@@ -265,7 +265,7 @@ de l'accueil.
 ### Exécuter
 
 ```sh
-docker compose run --rm -e DB_TEST_NAME=humanome_test_vis php vendor/bin/phpunit --filter UcVis03 --testdox
+(cd api && DB_TEST_NAME=humanome_test_vis vendor/bin/phpunit --filter UcVis03 --testdox)
 cd web && npx vitest run test/usecases/unit/uc-vis-03 test/usecases/functional/uc-vis-03
 cd engine && npx vitest run test/usecases/unit/uc-vis-03
 ```

@@ -273,7 +273,7 @@ Twin9, menu du compte) ou y revient depuis PayPal.
 ### Exécuter
 
 ```sh
-docker compose run --rm php vendor/bin/phpunit --filter UcApp11 --testdox
+(cd api && vendor/bin/phpunit --filter UcApp11 --testdox)
 cd web && npx vitest run test/usecases/unit/uc-app-11 test/usecases/functional/uc-app-11
 ```
 

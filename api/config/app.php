@@ -18,7 +18,8 @@ declare(strict_types=1);
  *
  * Chaque valeur est surchargeable par variable d'environnement : la variable,
  * si non vide, gagne sur le défaut ci-dessous (voir api/src/Env.php). En prod
- * les env vivent dans ~/app/shared/.env ; en dev dans docker-compose.yml.
+ * les env vivent dans ~/app/shared/.env ; en dev dans .env.dev, exporté dans le
+ * terminal (INSTALL.md §2).
  *
  * Retour : une liste de groupes, chacun décrivant ses entrées. Une entrée
  * `secret` n'expose que `configured` (booléen) ; une entrée publique expose sa

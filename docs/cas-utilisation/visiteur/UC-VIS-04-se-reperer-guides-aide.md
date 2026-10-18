@@ -248,7 +248,7 @@ statique, sans API.
 ### Exécuter
 
 ```sh
-docker compose run --rm -e DB_TEST_NAME=humanome_test_vis php vendor/bin/phpunit --filter UcVis04 --testdox
+(cd api && DB_TEST_NAME=humanome_test_vis vendor/bin/phpunit --filter UcVis04 --testdox)
 cd web && npx vitest run test/usecases/unit/uc-vis-04 test/usecases/functional/uc-vis-04
 ```
 

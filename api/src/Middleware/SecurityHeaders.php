@@ -32,12 +32,12 @@ use Psr\Http\Server\RequestHandlerInterface;
  *     Referer should leak.
  *   - Permissions-Policy — deny every powerful feature; the API needs none.
  *   - Strict-Transport-Security — HTTPS is forced by the front .htaccess; pin it
- *     here too. Ignored by browsers over plain HTTP (harmless in docker dev).
+ *     here too. Ignored by browsers over plain HTTP (harmless in local dev).
  *
  * These values are duplicated defensively in api/deploy/webroot/.htaccess: on
  * OVH the static-front www/.htaccess "Header always set" cascades into www/api/,
  * and would otherwise override PHP-set headers for the same names. The .htaccess
- * override keeps Apache and PHP agreeing on the SAME values. In dev/docker (no
+ * override keeps Apache and PHP agreeing on the SAME values. In local dev (no
  * front .htaccess in front of the API) this middleware is the sole source.
  *
  * The static front's own headers (including its wider CSP with the sandbox

@@ -231,7 +231,7 @@ l'accueil `#/admin`, ou onglet « Monitoring »).
 ### Exécuter
 
 ```sh
-docker compose run --rm php vendor/bin/phpunit --filter UcAdm06 --testdox
+(cd api && vendor/bin/phpunit --filter UcAdm06 --testdox)
 cd web && npx vitest run test/usecases/unit/uc-adm-06 test/usecases/functional/uc-adm-06
 ```
 

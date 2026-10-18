@@ -230,7 +230,7 @@ le membre ouvre l'atelier et suit « Voter / voir ».
 ### Exécuter
 
 ```sh
-docker compose run --rm php vendor/bin/phpunit --filter UcEpi02 --testdox
+(cd api && vendor/bin/phpunit --filter UcEpi02 --testdox)
 cd web && npx vitest run test/usecases/unit/uc-epi-02 test/usecases/functional/uc-epi-02
 ```
 
@@ -239,7 +239,7 @@ cd web && npx vitest run test/usecases/unit/uc-epi-02 test/usecases/functional/u
 - **AN1 — Commentaire de vote non borné.** Les routes de vote
   (`competences.php`, `referentiel.php`) ne contrôlent que le type du
   commentaire, stocké en `TEXT` (65 535 octets). Au-delà, MySQL 8 en mode
-  strict (défaut de `docker-compose`, aucune surcharge de `sql_mode` dans
+  strict (son défaut, aucune surcharge de `sql_mode` dans
   `Db.php`) lève une `PDOException` : réponse `500` « Internal error » au lieu
   d'un `422`, aucun bulletin. En mode non strict (selon la configuration de
   l'hébergement), le commentaire serait tronqué en silence. Figé par

@@ -268,7 +268,7 @@ client appelle directement une route de lecture publique.
 ### Exécuter
 
 ```sh
-docker compose run --rm php vendor/bin/phpunit --filter UcPro01 --testdox
+(cd api && vendor/bin/phpunit --filter UcPro01 --testdox)
 cd web && npx vitest run test/usecases --testNamePattern UC-PRO-01
 ```
 

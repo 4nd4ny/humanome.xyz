@@ -5,8 +5,8 @@ declare(strict_types=1);
 namespace Humanome\Llm;
 
 /**
- * Production HttpClient over ext-curl (available on OVH mutualisé and in the
- * php:8.2 Docker image). No redirect following, response size cap enforced
+ * Production HttpClient over ext-curl (available on OVH mutualisé, in local
+ * development and in CI). No redirect following, response size cap enforced
  * during the transfer (anti-abuse for gdoc-text).
  */
 final class CurlHttpClient implements HttpClient

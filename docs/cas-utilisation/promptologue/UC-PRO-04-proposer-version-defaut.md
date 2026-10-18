@@ -163,7 +163,7 @@ la ligne d'une version publiée.
 ### Exécuter
 
 ```sh
-docker compose run --rm php vendor/bin/phpunit --filter UcPro04 --testdox
+(cd api && vendor/bin/phpunit --filter UcPro04 --testdox)
 cd web && npx vitest run test/usecases --testNamePattern UC-PRO-04
 ```
 

@@ -66,10 +66,10 @@ les cite dans « Tests existants liés ».
 ### Exécuter
 
 ```sh
-# API — suites « cas d'utilisation » (PHP 8.2 + MySQL via Docker)
-docker compose up -d
-docker compose run --rm php composer test:usecases
-docker compose run --rm php vendor/bin/phpunit --filter UcEmp01 --testdox   # un seul UC
+# API — suites « cas d'utilisation » (PHP et MySQL 8 locaux, environnement
+# de développement exporté : INSTALL.md §2)
+(cd api && composer test:usecases)
+(cd api && vendor/bin/phpunit --filter UcEmp01 --testdox)   # un seul UC
 
 # Front et moteur
 cd web && npm run test:usecases
@@ -78,12 +78,13 @@ cd engine && npm run test:usecases
 
 `DB_TEST_NAME` (défaut `humanome_test`) choisit la base de test : plusieurs
 processus PHPUnit peuvent tourner en parallèle sur le même serveur MySQL,
-chacun dans sa base (`docker compose run --rm -e DB_TEST_NAME=humanome_test_b php …`).
+chacun dans sa base (`(cd api && DB_TEST_NAME=humanome_test_b vendor/bin/phpunit …)`).
 
 Les tests moteur (`engine/test/usecases/`) tournent aussi dans la CI GitHub
 (job « Tests moteur ») : ils ne lisent que des fichiers versionnés. Les tests
-front et PHP, comme les suites historiques, s'exécutent en local (données
-dérivées de `web/public/data/` générées, voir [UC-SYS-04](systeme/UC-SYS-04-construire-artefacts-derives.md)).
+PHP aussi (job « Tests PHP »), après les données dérivées d'`INSTALL.md` §2.
+Les tests front, comme les suites historiques du front, s'exécutent en local
+(données dérivées de `web/public/data/` générées, voir [UC-SYS-04](systeme/UC-SYS-04-construire-artefacts-derives.md)).
 
 Les utilitaires partagés par les tests d'un même lot vivent dans
 `api/tests/UseCases/Support/` et `web/test/usecases/support/` (faux serveurs

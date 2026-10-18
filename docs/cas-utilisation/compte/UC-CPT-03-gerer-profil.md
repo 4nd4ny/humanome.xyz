@@ -202,7 +202,7 @@ dans la navigation) et clique « Modifier » ou « Ajouter une photo ».
 ### Exécuter
 
 ```sh
-docker compose run --rm php vendor/bin/phpunit --filter UcCpt03
+(cd api && vendor/bin/phpunit --filter UcCpt03)
 cd web && npx vitest run test/usecases --testNamePattern UC-CPT-03
 ```
 

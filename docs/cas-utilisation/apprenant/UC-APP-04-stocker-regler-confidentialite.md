@@ -328,7 +328,7 @@ de session au montage) sont exercés par les tests fonctionnels IHM.
 ### Exécuter
 
 ```sh
-docker compose run --rm php vendor/bin/phpunit --filter UcApp04 --testdox
+(cd api && vendor/bin/phpunit --filter UcApp04 --testdox)
 cd web && npx vitest run test/usecases --testNamePattern UC-APP-04
 ```
 

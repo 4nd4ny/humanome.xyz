@@ -379,7 +379,7 @@ L'apprenant ouvre `#/twin9` (ou `#/twin9/demo` pour la démonstration).
 ### Exécuter
 
 ```sh
-docker compose run --rm php vendor/bin/phpunit --filter UcApp10 --testdox
+(cd api && vendor/bin/phpunit --filter UcApp10 --testdox)
 cd web && npx vitest run test/usecases/unit/uc-app-10 test/usecases/functional/uc-app-10
 cd engine && npx vitest run test/usecases/unit/uc-app-10
 ```

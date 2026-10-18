@@ -32,7 +32,7 @@ declare(strict_types=1);
  *     base, jamais renvoyée par l'API (seulement un booléen « configurée »).
  *
  * Chaque clé est surchargeable par variable d'environnement (~/app/shared/.env
- * en production, docker-compose.yml en dev) — la variable, si non vide, gagne
+ * en production, .env.dev exporté en dev) — la variable, si non vide, gagne
  * sur la valeur ci-dessous (mais perd face à un override en base) :
  *
  *   enabled            DEMO_ENABLED              Interrupteur général de la démo.

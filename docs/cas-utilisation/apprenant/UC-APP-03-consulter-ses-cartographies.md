@@ -220,7 +220,7 @@ la page Confidentialité.
 ### Exécuter
 
 ```sh
-docker compose run --rm php vendor/bin/phpunit --filter UcApp03 --testdox
+(cd api && vendor/bin/phpunit --filter UcApp03 --testdox)
 cd web && npx vitest run test/usecases --testNamePattern UC-APP-03
 ```
 

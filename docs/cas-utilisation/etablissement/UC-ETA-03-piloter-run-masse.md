@@ -276,7 +276,7 @@ tableau reste figé sur le dernier état reçu.
 ### Exécuter
 
 ```sh
-docker compose run --rm php vendor/bin/phpunit --filter UcEta03 --testdox
+(cd api && vendor/bin/phpunit --filter UcEta03 --testdox)
 cd web && npx vitest run test/usecases/unit/uc-eta-03 test/usecases/functional/uc-eta-03
 ```
 

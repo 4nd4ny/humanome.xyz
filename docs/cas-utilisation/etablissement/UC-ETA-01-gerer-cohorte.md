@@ -226,7 +226,7 @@ L'établissement ouvre l'accueil de son espace (`#/etablissement`, section
 ### Exécuter
 
 ```sh
-docker compose run --rm php vendor/bin/phpunit --filter UcEta01 --testdox
+(cd api && vendor/bin/phpunit --filter UcEta01 --testdox)
 cd web && npx vitest run test/usecases/unit/uc-eta-01 test/usecases/functional/uc-eta-01
 ```
 

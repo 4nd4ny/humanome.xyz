@@ -213,7 +213,7 @@ contiennent pas l'auteur du brouillon.
 ### Exécuter
 
 ```sh
-docker compose run --rm -e DB_TEST_NAME=humanome_test_vis php vendor/bin/phpunit --filter UcVis02 --testdox
+(cd api && DB_TEST_NAME=humanome_test_vis vendor/bin/phpunit --filter UcVis02 --testdox)
 cd web && npx vitest run test/usecases/unit/uc-vis-02 test/usecases/functional/uc-vis-02
 ```
 

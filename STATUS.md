@@ -37,15 +37,17 @@ dépôts (entrée du 2026-10-18).
     (documenté dans `api/.env.example`), par défaut `../Twin_v9`, dossier `php/src` en PSR-4,
     préfixe `Twin9\`. Sans lui, Twin9 côté serveur reste désactivé (`EngineLoader::isLoaded()`)
     et ses tests sautent (`api/tests/Twin9/EngineLoaderTest.php`).
-  - CI publique : job `php` (PHP 8.2, MySQL 8 en service, données dérivées d'`INSTALL.md` §2)
-    qui lance la suite existante. `Twin_v9` (pull request 1) : `php/composer.json` (PHP 8.2,
+  - CI publique : job `php` (PHP 8.2, MySQL 8 en service, l'environnement et les données dérivées
+    d'`INSTALL.md` §2, clé de chiffrement jetable) qui lance la suite existante ; une partie des
+    tests suppose cet environnement (`MIGRATE_TOKEN`, `SODIUM_MASTER_KEY`). `Twin_v9` (pull request 1) : `php/composer.json` (PHP 8.2,
     PHPUnit), la classe vide `Twin9\Engine` et son test, son job `php` sous PHP 8.2 (vert, 8.2.34).
   - Vérification, sans Docker (PHP 8.3 local, MySQL 8.0.46 des paquets du système, `.env.dev`
     d'`INSTALL.md` §2, `../Twin_v9` cloné) : API **1 493 verts** (14 342 assertions, 24 min 52 s),
     dont les 4 du chargeur, moteur réel compris ; sans `../Twin_v9`, son test saute. Plateforme
     démarrée (`php -S`) avec et sans `../Twin_v9` : `/api/health` → `db: ok`,
     `/api/referentiel/versions` → 200, moteur chargé seulement quand il est là ; commandes
-    d'`INSTALL.md` §3 passées ; `check-publiable` OK.
+    d'`INSTALL.md` §3 passées ; `check-publiable` OK. CI de la pull request verte : `php` sous
+    PHP 8.2.34, 1 493 tests dont le moteur réel sauté (15 min 17 s), `engine`, `check-publiable`.
 
 - 2026-10-18 — **Documentation publiée sur GitBook : https://chamblandes.gitbook.io/humanome.**
   Espace créé par Christian (Site Git Sync, sens GitHub → GitBook) ; `gitbook-docs.yaml` à la

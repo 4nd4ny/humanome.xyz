@@ -11,11 +11,41 @@ Interface ultime de cartographie (branche `feat/ultimate-cartography`) : validé
 **déployée le 2026-10-14** (`health` → `v1.1.0-106-gc6a0231`, migrations 022 et 023) puis fusionnée
 dans `main` (entrée du 2026-10-14 ci-dessous).
 
-Prochain chantier : le moteur Twin9 v9.8 en PHP, exécuté sur le serveur, planifié et développé
-dans le dépôt privé `4nd4ny/Twin_v9` (`docs/plan-twin9-php.md`, prompts T0 → T18, une conversation
-chacun ; entrées du 2026-10-17).
+Chantier en cours : le moteur Twin9 v9.8 en PHP, exécuté sur le serveur (ADR-011), planifié et
+développé dans le dépôt privé `4nd4ny/Twin_v9` (`docs/plan-twin9-php.md`, prompts T0 → T18, une
+conversation chacun ; entrées du 2026-10-17). T0, le cadre, est en pull request dans les deux
+dépôts (entrée du 2026-10-18).
 
 ## Fait
+
+- 2026-10-18 — **Moteur Twin9 en PHP, T0 : le cadre (branche `feat/twin9-t0-php-engine-frame`,
+  ici et dans `Twin_v9`).** Aucun code du moteur ; rien de la v9.8 dans ce dépôt.
+  - ADR-011 « Moteur Twin9 v9.8 en PHP » : la v9.8 réécrite en PHP, exécutée sur le serveur par
+    tranches, par le tick de l'ADR-005 ; Anthropic seul, en direct ou par lots, avec les réglages
+    que chaque modèle accepte ; le moteur vit dans `Twin_v9`, que la plateforme charge ; portfolio
+    et état du run gardés sur le serveur avec l'accord de l'apprenant, qui remplace la garde
+    `--donnees-reelles` ; coût moyen à la place du devis par run simulé. ADR-001, 005, 008 et 010
+    portent en tête « Amendé par ADR-011 » ; `SUMMARY.md` régénéré.
+  - Plus de Docker en développement (les fichiers `docker-compose` restent) : PHP et MySQL 8
+    locaux, Composer fixé à PHP 8.2. `INSTALL.md` §2 crée les comptes MySQL et `.env.dev`, à la
+    racine (valeurs de `docker-compose.yml`), qu'on exporte dans le terminal pour l'API, les
+    scripts et les tests ; pas d'`api/.env` en développement : l'API et les scripts le
+    chargeraient par-dessus l'environnement des tests (deux tests de `UcSys03` échouent alors).
+    §2 ajoute aussi le `npm ci` du moteur qu'exige `build-default-prompt-package.mjs` ; §3 et
+    §5 sans conteneur ; `CLAUDE.md` et le résumé du `README.md` suivent.
+  - Chargeur `api/src/Twin9/EngineLoader.php`, appelé au démarrage (`Bootstrap`) : `TWIN_V9_DIR`
+    (documenté dans `api/.env.example`), par défaut `../Twin_v9`, dossier `php/src` en PSR-4,
+    préfixe `Twin9\`. Sans lui, Twin9 côté serveur reste désactivé (`EngineLoader::isLoaded()`)
+    et ses tests sautent (`api/tests/Twin9/EngineLoaderTest.php`).
+  - CI publique : job `php` (PHP 8.2, MySQL 8 en service, données dérivées d'`INSTALL.md` §2)
+    qui lance la suite existante. `Twin_v9` (pull request 1) : `php/composer.json` (PHP 8.2,
+    PHPUnit), la classe vide `Twin9\Engine` et son test, son job `php` sous PHP 8.2 (vert, 8.2.34).
+  - Vérification, sans Docker (PHP 8.3 local, MySQL 8.0.46 des paquets du système, `.env.dev`
+    d'`INSTALL.md` §2, `../Twin_v9` cloné) : API **1 493 verts** (14 342 assertions, 24 min 52 s),
+    dont les 4 du chargeur, moteur réel compris ; sans `../Twin_v9`, son test saute. Plateforme
+    démarrée (`php -S`) avec et sans `../Twin_v9` : `/api/health` → `db: ok`,
+    `/api/referentiel/versions` → 200, moteur chargé seulement quand il est là ; commandes
+    d'`INSTALL.md` §3 passées ; `check-publiable` OK.
 
 - 2026-10-18 — **Documentation publiée sur GitBook : https://chamblandes.gitbook.io/humanome.**
   Espace créé par Christian (Site Git Sync, sens GitHub → GitBook) ; `gitbook-docs.yaml` à la
@@ -1535,6 +1565,11 @@ chacun ; entrées du 2026-10-17).
 
 ## Dettes techniques / décisions en attente
 
+- Développement sans Docker (2026-10-18, ADR-011) : `CLAUDE.md`, `INSTALL.md` et `README.md`
+  donnent les commandes sans conteneur, mais `docs/strategie-tests.md`, `docs/cas-utilisation/`
+  (README et fiches), `docs/tests-e2e.md` et les en-têtes d'usage des scripts PHP (`scripts/*.php`)
+  citent encore `docker compose run` ; leurs équivalents : `cd api && composer test:usecases`,
+  `php scripts/…` depuis la racine, l'environnement exporté (`INSTALL.md` §2).
 - Golden Prompt : non fourni, hors git par design (`assets-existants/golden-prompt/` gitignoré).
 - Pipeline Python amont absent : moteur rétro-conçu en M4 avec oracles
   (`intermediate/carto_merge.json`, `intermediate/prompts/`).

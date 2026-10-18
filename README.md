@@ -78,7 +78,7 @@ Le sommaire GitBook ([`SUMMARY.md`](SUMMARY.md), config
 
 ## Développer / installer
 
-Voir [INSTALL.md](INSTALL.md). En bref : `docker compose up -d`, migrations,
+Voir [INSTALL.md](INSTALL.md). En bref : PHP et MySQL 8 locaux, migrations,
 imports, `cd web && npm run build`. Tests : PHPUnit, Vitest, Playwright.
 
 ## Contribuer

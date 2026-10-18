@@ -1,5 +1,7 @@
 # ADR-005 — Traitements de masse : file de jobs MySQL + worker cron à ticks courts
 
+> **Amendé par [ADR-011](ADR-011-moteur-twin9-php.md)** : le même tick fait aussi avancer les runs Twin9, en tranches de 45 s au plus ; faute de cron sur l'offre gratuite d'OVH, il est déclenché de l'extérieur, avec un jeton qui ne sert qu'à lui, et par la page du run ouverte.
+
 ## Statut
 
 Accepté — 2026-07 (décision pré-actée AD-5 du plan de construction).

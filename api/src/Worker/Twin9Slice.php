@@ -96,9 +96,10 @@ final class Twin9Slice
     /**
      * Advances at most $n runs from $debut until $fin (microtime).
      *
+     * @param int|null $utilisateur those of one user only: the page of their run advances them (T9)
      * @return array<string, int> the slice's counters
      */
-    public function advanceUntil(int $n, float $debut, float $fin): array
+    public function advanceUntil(int $n, float $debut, float $fin, ?int $utilisateur = null): array
     {
         $this->debut = $debut;
         $this->fin = $fin;
@@ -106,8 +107,8 @@ final class Twin9Slice
         $this->compteurs = ['runs' => 0, 'passes' => 0, 'moteurMs' => 0, 'appels' => 0, 'reponses' => 0, 'pannes' => 0,
                             'reprises' => 0, 'coupes' => 0, 'termines' => 0, 'echoues' => 0, 'lots' => 0,
                             'releves' => 0, 'verifications' => 0, 'annules' => 0];
-        $this->lots->menage($this->dernierDepart, $this->compteurs);
-        foreach ($this->runs->aAvancer($n + self::SURVOLS) as $id) {
+        $this->lots->menage($this->dernierDepart, $this->compteurs, $utilisateur);
+        foreach ($this->runs->aAvancer($n + self::SURVOLS, $utilisateur) as $id) {
             if ($this->compteurs['runs'] >= $n || microtime(true) >= $this->dernierDepart) {
                 break;
             }

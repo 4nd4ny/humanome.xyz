@@ -28,7 +28,7 @@ Responsable du traitement : Harmonia Éducation. Contact : voir la section
 Selon votre usage, nous pouvons traiter :
 
 - **Compte** : votre adresse email, un nom affiché de votre choix, et une empreinte de votre mot de passe (jamais le mot de passe en clair). Finalité : vous authentifier et rattacher vos données à votre profil.
-- **Portfolio** : le texte de votre journal réflexif. Par défaut il reste **dans votre navigateur** (stockage local IndexedDB) et ne transite par nos serveurs que le temps d'un traitement que vous déclenchez, ou s'il est déposé dans une cohorte d'établissement (voir plus bas). Finalité : produire votre cartographie de compétences.
+- **Portfolio** : le texte de votre journal réflexif. Par défaut il reste **dans votre navigateur** (stockage local IndexedDB) et ne transite par nos serveurs que le temps d'un traitement que vous déclenchez, s'il est déposé dans une cohorte d'établissement, ou si vous lancez une analyse approfondie Twin9, qui le garde avec votre accord (voir plus bas). Finalité : produire votre cartographie de compétences.
 - **Cartographies** : le résultat JSON de l'analyse de votre portfolio. Enregistré sur le serveur **uniquement si vous l'y autorisez** (opt-in daté), sinon conservé localement et dans vos exports.
 - **Progression de formation** : les chapitres de formation que vous avez parcourus, pour afficher votre avancement.
 - **Clés d'API personnelles** : si vous choisissez d'utiliser votre propre clé d'un fournisseur de modèle de langage, elle est **chiffrée au repos** et n'est jamais réaffichée ni exposée.
@@ -62,6 +62,7 @@ lien de partage, ou en supprimant votre compte.
 - **Versions partagées** : conservées jusqu'à ce que vous les retiriez (effacement immédiat), que vous publiiez une nouvelle version à leur place (l'ancienne est effacée, le lien reste) ou que vous supprimiez votre compte. Retirer votre attestation de majorité les efface aussitôt du serveur, avec leurs liens. Les pages partagées ne sont pas indexées par les moteurs de recherche. Une demande de publication garantie est effacée à son usage, à son annulation ou au bout de 30 jours.
 - **Sessions** : un cookie de session strictement nécessaire, expirant après une période d'inactivité ; l'enregistrement serveur de la session disparaît avec votre compte.
 - **Compteurs anti-abus** : fenêtres courtes (à l'heure ou à la journée), à identifiants hachés, sans lien avec votre profil.
+- **Analyses approfondies Twin9** : votre portfolio et l'état de chaque analyse restent sur le serveur jusqu'à ce que vous les effaciez — la suppression de votre compte les efface ; chez Anthropic, un lot de requêtes est supprimé dès que ses réponses sont relevées, et n'y reste jamais plus de 29 jours.
 
 ## Vos droits
 
@@ -82,6 +83,7 @@ mode d'usage, le texte transmis et le destinataire changent :
 - **Assistant tuteur** : l'assistant (bouton « 💬 ») transmet à **Anthropic** (modèle Claude Haiku) **uniquement votre question et la rubrique que vous consultez** — jamais votre portfolio ni vos cartographies. **Aucune conversation n'est stockée côté serveur** (compteurs anonymes seulement) ; l'historique n'existe que dans votre navigateur, le temps de la session.
 - **Clé personnelle** : si vous enregistrez votre propre clé d'API, **vous choisissez** votre fournisseur (Anthropic, OpenAI, Google, etc.). Le texte est transmis au fournisseur que vous avez sélectionné, sous votre propre relation contractuelle avec lui.
 - **Établissement** : le traitement utilise soit la **clé de l'établissement**, soit la clé de la plateforme, selon la configuration choisie par l'établissement ; le texte est transmis au fournisseur correspondant.
+- **Analyse approfondie Twin9** : votre portfolio est transmis à **Anthropic** (modèles Claude), avec la clé de la plateforme ou votre propre clé ; par lots, Anthropic garde chaque lot de requêtes jusqu'à sa suppression, 29 jours au plus (détails ci-dessous).
 - **Dialogue d'accompagnement** (espace Dialogue de la cartographie) : il fonctionne **sans modèle de langage**, entièrement dans votre navigateur. Si vous choisissez d'activer les relances et donnez votre accord, chaque relance que vous demandez transmet **uniquement la question, votre réponse et le passage cité**, directement depuis votre navigateur, au fournisseur que vous avez choisi (avec votre propre clé) ou à Ollama sur votre ordinateur — jamais par nos serveurs. Vos réponses restent dans votre carnet, dans votre navigateur.
 
 Ces fournisseurs agissent comme sous-traitants pour le seul temps du traitement.
@@ -92,22 +94,28 @@ explicitement autorisé.
 ### Analyse approfondie Twin9
 
 L'**analyse approfondie Twin9** est une exception au principe « tout reste dans
-le navigateur ». Contrairement aux analyses classiques (qui s'exécutent
-localement), Twin9 fait **transiter le texte de votre portfolio par notre
-serveur puis par le fournisseur du modèle choisi**, le temps de l'analyse. Ce
-texte n'est **pas conservé côté serveur** : les appels sont sans état, seuls des
-compteurs (nombre d'appels, tokens, modèle — jamais de contenu) sont journalisés
-pour la facturation. L'état de l'analyse et ses résultats restent en local dans
-votre navigateur. Chaque lancement requiert un **consentement explicite**.
+le navigateur » : elle s'exécute **sur notre serveur**, par étapes, et y garde
+ce dont elle a besoin. À chaque lancement, vous donnez votre **accord
+explicite**, daté, pour que votre **portfolio** et **l'état de l'analyse** — ses
+réglages, le journal de ses appels au modèle, ses résultats et la mémoire de
+votre carte, qui évite de refaire une journée inchangée — **restent sur le
+serveur jusqu'à ce que vous les effaciez** ; la suppression de votre compte les
+efface. Sans cet accord, l'analyse ne part pas. Nos journaux techniques n'en
+gardent que des compteurs (nombre d'appels, jetons, coût, durée — jamais de
+contenu).
 
-Le **résultat** de l'analyse (le document JSON produit, jamais votre portfolio)
-peut, comme toute cartographie, être **enregistré sur nos serveurs si — et
-seulement si — vous le décidez** : l'enregistrement se fait d'abord dans votre
-navigateur, puis la copie serveur est un choix explicite et daté (opt-in),
-réversible à tout moment depuis « Mes cartographies ». Rien n'est stocké côté
-serveur sans cette décision. Pour des journaux d'élèves réels soumis à des
-exigences renforcées de protection des données, l'outil local (hors ligne)
-reste la réponse appropriée.
+Le texte de votre portfolio est transmis au fournisseur du modèle,
+**Anthropic** (modèles Claude), avec la clé de la plateforme ou votre propre
+clé. Par la **voie par lots**, Anthropic garde chaque lot de requêtes jusqu'à ce
+que notre serveur le supprime, dès ses réponses relevées ; un lot qui n'aurait
+pas été supprimé n'y reste jamais plus de **29 jours**.
+
+Les résultats d'une analyse ne sont lus que par vous, et par le cartographe
+auquel vous êtes lié si vous le décidez (« Mon cartographe peut lire les
+résultats », réversible). L'administrateur de la plateforme ne voit que des
+compteurs, jamais votre portfolio ni vos résultats. Pour des journaux d'élèves
+réels soumis à des exigences renforcées de protection des données, l'outil
+local (hors ligne) reste la réponse appropriée.
 
 ## Cookies
 

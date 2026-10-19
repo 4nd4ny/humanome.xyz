@@ -21,6 +21,7 @@ import { normalizeReferential, referentialErrors, toEmbeddedReferential } from '
 import { adaptAuroraDay, dateFromPassages, looksLikeCartoPole, looksLikeKairos, looksLikeSiteDay } from './importers/aurora-day.js'
 import { importAuroraCoreTrees } from './importers/aurora-core.js'
 import { importCartoMerge, importSiteMerge, looksLikeCartoMerge, looksLikeSiteMerge } from './importers/merge.js'
+import { importTwin9Run, looksLikeTwin9Run } from './importers/twin9-run.js'
 import { importPortfolioText, portfolioSummary } from './importers/portfolio.js'
 import { importMetrics, looksLikeMetrics } from './importers/metrics.js'
 import { importArchive, looksLikeArchive } from './archive.js'
@@ -173,6 +174,12 @@ export function recognize(files, { now = new Date().toISOString(), allowRemote =
         const errors = referentialErrors(doc)
         if (errors.length) report.push({ severity: 'blocking', code: 'referentiel-invalide', message: `${f.path} : ${errors.join(' ; ')}`, file: f.path })
         else result.referential = toEmbeddedReferential(doc)
+      } else if (looksLikeTwin9Run(doc)) {
+        const r = importTwin9Run(doc, { fileName: name, now })
+        result.variants.push(...r.variants)
+        result.narratives.push(...r.narratives)
+        result.runDetails.push(...r.runDetails)
+        report.push(...r.report.map((x) => ({ ...x, file: f.path })))
       } else if (looksLikeSiteMerge(doc)) {
         const r = importSiteMerge(doc, { fileName: name, now })
         result.variants.push(...r.variants)

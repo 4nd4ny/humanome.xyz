@@ -241,6 +241,33 @@ Les jeux de gabarits des promptologues (T14) et les brouillons de référentiel
 | `/api/twin9/profils` | POST | Compte, + CSRF. Le profil doit être valide (schéma, règles de l'API) et admis (référentiel publié, jeu connu, clé personnelle ouverte) |
 | `/api/twin9/profils/{id}` | GET/PUT/DELETE | Son propriétaire, + CSRF sur PUT et DELETE ; 404 pour tout autre |
 
+### Runs Twin9 (T9, `#/twin9`)
+
+Chacun lance, suit et lit ses runs, et seulement les siens. Il choisit qui
+d'autre lit leurs résultats : personne, ou le cartographe auquel il est lié.
+L'administrateur ne voit que des compteurs. Chaque ligne de la matrice a son
+test dans `api/tests/Twin9/RunsTest.php`.
+
+| Ce que l'on fait | Visiteur | Compte | Cartographe lié | `admin` |
+|---|---|---|---|---|
+| Lancer un run : un de ses profils ou celui de la v9.8, son portfolio, son accord | — (401) | ✔ (accord exigé, 422 sans lui) | comme tout compte | comme tout compte |
+| Lancer avec le profil d'un autre | — | — (404) | — (404) | — (404) |
+| Suivre ses runs, les annuler, les reprendre, régler leur visibilité | — (401) | ✔ les siens | — (404) | — (404) |
+| Faire avancer ses runs par la page du run (route de session) | — (401) | ✔ les siens seulement, jamais avec le jeton du tick | — | — |
+| Lire les résultats d'un run (filtrés, ADR-010 §2) | — (401) | ✔ les siens | ✔ si le run lui est visible (`cartographe`) | — (404) |
+| Voir les compteurs de tous les runs, sans contenu | — (401) | — (403) | — (403) | ✔ |
+
+| Route | Méthode | Accès |
+|---|---|---|
+| `/api/twin9/runs` | GET | Compte : ses runs (sans portfolio ni résultat), et si Twin9 tourne sur l'instance |
+| `/api/twin9/runs` | POST | Compte, + CSRF : `{profil, portfolio: {nom, texte}, accord, visibilite}` ; le profil est revalidé et admis (`ProfilPolicy`), son référentiel figé |
+| `/api/twin9/runs/avancer` | POST | Compte, + CSRF : une tranche, de la durée de celles du tick et sous son verrou, pour ses seuls runs |
+| `/api/twin9/runs/{id}` | GET | Son propriétaire : sa progression, lue dans son journal ; 404 pour tout autre |
+| `/api/twin9/runs/{id}/annuler`, `/reprendre` | POST | Son propriétaire, + CSRF ; 409 hors de l'état voulu |
+| `/api/twin9/runs/{id}/visibilite` | PUT | Son propriétaire, + CSRF : `privee` ou `cartographe` |
+| `/api/twin9/runs/{id}/resultats` | GET | Son propriétaire ; le cartographe lié si le run lui est visible ; 404 pour tout autre, administrateur compris |
+| `/api/twin9/admin/runs` | GET | `admin` : compteurs, statut, dates ; jamais de portfolio ni de résultat |
+
 ### Backlog (hors v1, annexe B du plan)
 
 Marketplace employeur (bibliothèque payante des cartographies consenties,

@@ -15,10 +15,49 @@ Chantier en cours : le moteur Twin9 v9.8 en PHP, exécuté sur le serveur (ADR-0
 développé dans le dépôt privé `4nd4ny/Twin_v9` (`docs/plan-twin9-php.md`, prompts T0 → T18, une
 conversation chacun ; entrées du 2026-10-17). T0 à T7 et T12 sont fusionnés : le moteur passe
 l'oracle complet dans `Twin_v9`, le profil est ici, les runs tournent sur le serveur par tranches.
-T8, la voie par lots, et T13, la page de configuration, attendent leur revue (entrées du 2026-10-19) ;
-viennent ensuite T9 et T14.
+T8, la voie par lots, T13, la page de configuration, et T9, lancer, suivre et lire un run, attendent
+leur revue (entrées du 2026-10-19) ; viennent ensuite T10 et T14.
 
 ## Fait
+
+- 2026-10-19 — **Moteur Twin9 en PHP, T9 : lancer, suivre, lire (branche `feat/twin9-t9-runs`, sur
+  celle de T13).** Un run Twin9 se lance depuis le front, se suit, s'annule, se reprend et s'ouvre dans
+  la cartographie, délibérations comprises (`docs/contrats.md` §8.1 et §8.4).
+  - Migration 027 : `twin9_runs` reçoit `attestation`, `visibilite` (`privee`, `cartographe`) et
+    `accord_at`.
+  - Lancer (`Twin9\Lancement`, `POST /api/twin9/runs`) : un profil de la personne, ou celui de la
+    v9.8, revalidé et admis, copié avec la version de son référentiel figée ; le jeu de gabarits
+    vivant comme instantané ; l'accord exigé à chaque lancement. Les réglages du moteur viennent de
+    cette copie seule (`MoteurReglages` : paramètres d'algorithme, backends aux modèles des étages,
+    collège développé comme le fait `twin9.py`, graines et sels compris) : tirés du profil v9.8, ils
+    rejouent le scénario `02-cloud` de l'oracle appel par appel (`PariteTest`). L'attestation garde le
+    profil, les versions du jeu de gabarits (`ProtocoleRepository::jeu`), le référentiel et le commit
+    du moteur (`EngineLoader::commit` : la tête de `TWIN_V9_DIR`, sinon son fichier `COMMIT`).
+  - Suivre (`GET /api/twin9/runs/{id}`) : appels par état, journées finies, fusion, lots chez
+    Anthropic, et en mots ce qui retient le run ; annuler, reprendre, visibilité. La page du run fait
+    avancer les runs de son propriétaire par `POST /api/twin9/runs/avancer`, une tranche sous le
+    verrou du tick (`Tick` : `twin9Utilisateur` ; `Twin9Slice`, `Twin9Lots::menage` et
+    `RunRepository::aAvancer` filtrent par utilisateur), jamais avec le jeton du tick.
+  - Lire (`Twin9\Resultats`, `GET /api/twin9/runs/{id}/resultats`) : les sorties et, pour les
+    journées reprises de la mémoire, leurs cartes du jour, sans leur texte ; tout passe le filtre de
+    fuite contre le jeu de gabarits du run (`LeakFilter::indexer`/`expurger`), le compte des
+    expurgations à l'audit. Lus par le propriétaire, et par le cartographe lié si le run lui est
+    visible ; l'administrateur n'a que des compteurs (`GET /api/twin9/admin/runs`).
+  - Front : `#/twin9` (Twin9View) lance (profil, portfolio de la bibliothèque ou fichier, accord,
+    visibilité), liste ses analyses ; `#/twin9/<id>` suit le run, le fait avancer, l'annule, le
+    reprend, et l'ouvre dans la cartographie (`twin9RunFiles`, document `twin9-run`). L'interface en
+    fait une journée par carte du jour, chaque verdict avec son dossier (`twin9Dossier` dans
+    `engine/src/twin9/mapper.js` ; `carto/core/importers/twin9-run.js`) : traces et extraits (le
+    surlignage marche), et, dans sa journée, le jury, le président, le débat et les pièces du greffier
+    (`RunJury` montre tout juré et tous les temps du débat). Pas d'entrée de navigation avant le lot 3.
+  - Textes : l'accord de Twin9View, la politique de confidentialité, le registre RGPD (§2, §8, §13),
+    l'aide de la rubrique, la matrice « Runs Twin9 » de `docs/autorisations.md`.
+  - Tests : `RunsTest` (9, moteur factice, chaque ligne de la matrice), `MoteurReglagesTest`,
+    `PariteTest::testTheV98ProfileDrivesTheEngine`, `EngineLoaderTest` (commit) ; front :
+    `Twin9View.test`, `twin9-run.test` (dont les sorties réelles de l'oracle, sautées sans Twin_v9),
+    `Jury.twin9.test`, `mapper.test` (`twin9Dossier`). Bout en bout : `web/e2e/twin9-run.e2e.js`
+    (moteur factice, Anthropic simulé par `WORKER_PROVIDER=mock`, `docs/tests-e2e.md`). Le moteur
+    factice écrit désormais des sorties à la forme de la v9.8 là où la plateforme les lit.
 
 - 2026-10-19 — **Moteur Twin9 en PHP, T13 : la page de configuration et les droits (branche
   `feat/twin9-t13-configuration`, sur celle de T8).** Chacun règle les profils de ses runs Twin9 sur
@@ -1733,6 +1772,9 @@ viennent ensuite T9 et T14.
   Des runs en voie directe peuvent l'occuper toute ; à revoir si la masse sert en même temps (T18).
 - Twin9 (T13) : le nombre de runs par tick et la durée d'une tranche (T7) se règlent par
   `/api/twin9/admin/config` seulement ; `#/admin/twin9` ne les montre pas encore.
+- Twin9 (T9) : les compteurs des runs pour l'administrateur ne sont servis que par
+  `/api/twin9/admin/runs` ; `#/admin/twin9` (UC-ADM-05) ne les montre pas encore. On n'efface un run
+  qu'en supprimant son compte ; UC-APP-10 décrit encore le moteur du navigateur (lot 3).
 - Twin9 (T8) : un compte purgé emporte ses lots de la base, pas de chez Anthropic, qui les garde
   29 jours ; la purge de T10 devra les annuler et les supprimer d'abord. Un lot soumis avec une clé
   qui change ensuite d'espace de travail n'est plus joignable.

@@ -61,6 +61,53 @@ final class EngineLoader
         return $source !== null && isset(self::$loaders[$source]);
     }
 
+    /**
+     * The engine's commit, which a run's attestation keeps (T9): the HEAD of
+     * the Twin_v9 checkout, else the first line of its COMMIT file (a copy
+     * without git, as the deployment leaves it), else null.
+     */
+    public static function commit(?string $directory = null): ?string
+    {
+        $directory ??= self::directory();
+        $git = $directory . '/.git';
+        if (is_file($git) && preg_match('/^gitdir:\s*(\S+)/', (string) file_get_contents($git), $m) === 1) {
+            $git = str_starts_with($m[1], '/') ? $m[1] : $directory . '/' . $m[1];   // a worktree
+        }
+        $head = is_file($git . '/HEAD') ? trim((string) file_get_contents($git . '/HEAD')) : '';
+        if (str_starts_with($head, 'ref: ')) {
+            $head = self::reference($git, substr($head, 5)) ?? '';
+        }
+        if (preg_match('/^[0-9a-f]{40}$/', $head) === 1) {
+            return $head;
+        }
+        $fichier = $directory . '/COMMIT';
+        $commit = is_file($fichier) ? trim(strtok((string) file_get_contents($fichier), "\n") ?: '') : '';
+
+        return preg_match('/^[0-9a-f]{7,40}$/', $commit) === 1 ? $commit : null;
+    }
+
+    /** A reference's commit: its file, else packed-refs; in a worktree, the common directory holds both. */
+    private static function reference(string $git, string $ref): ?string
+    {
+        $communs = [$git];
+        if (is_file($git . '/commondir')) {
+            $commun = trim((string) file_get_contents($git . '/commondir'));
+            $communs[] = str_starts_with($commun, '/') ? $commun : $git . '/' . $commun;
+        }
+        foreach ($communs as $dir) {
+            if (is_file($dir . '/' . $ref)) {
+                return trim((string) file_get_contents($dir . '/' . $ref));
+            }
+            if (is_file($dir . '/packed-refs')
+                && preg_match('/^([0-9a-f]{40}) ' . preg_quote($ref, '/') . '$/m',
+                    (string) file_get_contents($dir . '/packed-refs'), $m) === 1) {
+                return $m[1];
+            }
+        }
+
+        return null;
+    }
+
     private static function sourceDirectory(string $directory): ?string
     {
         $source = realpath($directory . '/php/src');

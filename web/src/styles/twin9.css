@@ -1,0 +1,71 @@
+/* Analyse approfondie Twin9 (T9) : lancer un run, le suivre, l'ouvrir dans la
+   cartographie. Les boutons, listes et champs sont ceux de la page de
+   configuration (.config) ; restent l'accord, la progression, l'attestation. */
+
+.twin9 h3 {
+  margin: 1.25rem 0 0.5rem;
+}
+
+.twin9-lancer {
+  display: grid;
+  gap: 0.75rem;
+}
+
+.twin9-case {
+  display: block;
+  line-height: 1.5;
+}
+
+.twin9-case input[type='checkbox'] {
+  width: 1.1rem;
+  height: 1.1rem;
+  vertical-align: -0.15rem;
+}
+
+.twin9-accord {
+  border: 1px solid var(--line);
+  border-radius: 8px;
+  padding: 0.5rem 0.75rem;
+  margin: 0;
+}
+
+.twin9-accord > legend {
+  padding: 0 0.35rem;
+  color: var(--ink-soft);
+}
+
+.twin9-runs ul,
+.twin9-progression {
+  padding-left: 1.2rem;
+  margin: 0.25rem 0 0.75rem;
+}
+
+.twin9-runs li,
+.twin9-progression li {
+  margin: 0.25rem 0;
+}
+
+.twin9-statut {
+  margin: 0.25rem 0 0.5rem;
+}
+
+.twin9-run .config-actions {
+  margin: 0.75rem 0;
+}
+
+.twin9-attestation {
+  margin-top: 1rem;
+  color: var(--ink-soft);
+}
+
+.twin9-attestation dl {
+  display: grid;
+  grid-template-columns: max-content 1fr;
+  gap: 0.25rem 0.75rem;
+  margin: 0.5rem 0;
+}
+
+.twin9-attestation dd {
+  margin: 0;
+  overflow-wrap: anywhere;
+}

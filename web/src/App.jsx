@@ -487,6 +487,13 @@ export default function App({ lib, fetchMeFn = fetchMe }) {
     navigate('#/cartographie/partage')
   }
 
+  // Un run Twin9 du serveur (T9) s'ouvre dans l'interface, dans un nouveau jeu
+  // qui porte son titre, avec le dossier de chaque verdict.
+  function openInInterface(files, { title } = {}) {
+    setIncomingCarto({ id: `${Date.now()}-${Math.random()}`, files, title })
+    navigate('#/cartographie')
+  }
+
   // Anciennes adresses de l'interface V3 (#/merge, #/cartographie-v3) : on
   // remplace l'entrée d'historique par #/cartographie.
   useEffect(() => {
@@ -542,7 +549,7 @@ export default function App({ lib, fetchMeFn = fetchMe }) {
       view = route.section === 'credit' ? <CreditView lib={lib} /> : <AccountView />
       break
     case 'twin9':
-      view = <Twin9View section={route.section} lib={lib} />
+      view = <Twin9View section={route.section} onOpenInInterface={openInInterface} />
       break
     case 'twin9atelier':
       view = <Twin9AtelierView roles={roles} />

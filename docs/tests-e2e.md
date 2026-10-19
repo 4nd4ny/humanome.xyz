@@ -218,6 +218,34 @@ passent.
   (`DEMO_DAILY_GLOBAL_TOKENS`, 503). Remède dev : `TRUNCATE rate_limits,
   llm_usage_daily, llm_pow_challenges;` (comme pour `rate_limits` en P8).
 
+## T9 — l'analyse approfondie sur le serveur
+
+### `web/e2e/twin9-run.e2e.js` (DoD T9)
+
+Un run lancé depuis le front va au bout, se suit, se reprend et s'ouvre dans
+la cartographie (plan du moteur PHP de `Twin_v9`, lot 2) : compte, profil par
+la voie directe, `#/twin9` (portfolio en fichier, accord), la page du run (ses
+tours retenus le temps d'annuler puis de reprendre, puis jusqu'au bout),
+« Ouvrir dans la cartographie » : la compétence jugée montre, dans sa
+journée, la délibération de son jury. Le compte, effacé de la base de
+développement, emporte ses runs.
+
+Le moteur est le **moteur factice** public, et Anthropic est simulé : l'API
+locale se lance avec
+
+```sh
+set -a; . ./.env.dev; set +a
+TWIN_V9_DIR=api/tests/fixtures/twin9-factice WORKER_PROVIDER=mock ANTHROPIC_API_KEY=sk-ant-simule \
+  php -S localhost:8080 -t api/public
+```
+
+`WORKER_PROVIDER=mock` répond à chaque appel Twin9 par un texte fixe
+(`Llm\MockMultiHttpClient`), comme il le fait pour la masse ; la clé n'est
+qu'un nom, aucune requête ne part. Le scénario verse le jeu de gabarits du
+moteur factice dans la base de développement (`twin9_protocole`, noms
+`factice/…`) et l'en retire à la fin. Migrations à jour : `php
+scripts/migrate.php` (027).
+
 ### Note historique — diff UI promptologue (corrigé)
 
 Un bug d'intégration avait été signalé ici : `DiffView` (`EditeurSection.jsx`)

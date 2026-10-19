@@ -72,23 +72,218 @@ final class RunRepository
     }
 
     /**
+     * What a run launched from the platform was launched with (T9): its
+     * attestation, who reads its results, when its owner agreed.
+     *
+     * @param array<string, mixed> $attestation its profile, template set, referential and engine
+     */
+    public function attester(int $id, array $attestation, string $visibilite, \DateTimeImmutable $accord): void
+    {
+        $this->pdo->prepare('UPDATE twin9_runs SET attestation = ?, visibilite = ?, accord_at = ? WHERE id = ?')
+            ->execute([json_encode($attestation, JSON_THROW_ON_ERROR | JSON_UNESCAPED_UNICODE | JSON_UNESCAPED_SLASHES),
+                       $visibilite, $accord->format('Y-m-d H:i:s'), $id]);
+    }
+
+    /**
      * The runs a slice advances, $n at most: in progress, the oldest of each
-     * map only, the least recently advanced first.
+     * map only, the least recently advanced first; those of one user only
+     * when the page of their run advances them (T9).
      *
      * @return list<int>
      */
-    public function aAvancer(int $n): array
+    public function aAvancer(int $n, ?int $userId = null): array
     {
-        $stmt = $this->pdo->query(
+        $stmt = $this->pdo->prepare(
             'SELECT r.id FROM twin9_runs r
-              WHERE r.statut = "en_cours"
+              WHERE r.statut = "en_cours"' . ($userId === null ? '' : ' AND r.user_id = ?') . '
                 AND NOT EXISTS (SELECT 1 FROM twin9_runs o
                                  WHERE o.carte_id = r.carte_id AND o.statut = "en_cours" AND o.id < r.id)
               ORDER BY r.avance_at IS NOT NULL, r.avance_at, r.id
               LIMIT ' . max(1, $n)
         );
+        $stmt->execute($userId === null ? [] : [$userId]);
 
         return array_map(intval(...), $stmt->fetchAll(PDO::FETCH_COLUMN));
+    }
+
+    /**
+     * A user's runs, newest first, as their list shows them: no portfolio, no
+     * output.
+     *
+     * @return list<array{id: int, journal: string, statut: string, attente: string|null, visibilite: string,
+     *                    profil: string|null, mode: string, created_at: string, finished_at: string|null}>
+     */
+    public function duProprietaire(int $userId): array
+    {
+        $stmt = $this->pdo->prepare(
+            'SELECT r.id, c.portfolio AS journal, r.statut, r.attente, r.visibilite, r.attestation, r.reglages,
+                    r.created_at, r.finished_at
+               FROM twin9_runs r JOIN twin9_cartes c ON c.id = r.carte_id
+              WHERE r.user_id = ? ORDER BY r.id DESC'
+        );
+        $stmt->execute([$userId]);
+        $runs = [];
+        foreach ($stmt->fetchAll() as $row) {
+            $attestation = $row['attestation'] === null ? null : json_decode((string) $row['attestation'], false, 512,
+                JSON_THROW_ON_ERROR);
+            $runs[] = [
+                'id' => (int) $row['id'],
+                'journal' => (string) $row['journal'],
+                'statut' => (string) $row['statut'],
+                'attente' => $row['attente'] === null ? null : (string) $row['attente'],
+                'visibilite' => (string) $row['visibilite'],
+                'profil' => $attestation?->profil?->nom ?? null,
+                'mode' => (string) self::unpack((string) $row['reglages'])->profil->mode,
+                'created_at' => (string) $row['created_at'],
+                'finished_at' => $row['finished_at'] === null ? null : (string) $row['finished_at'],
+            ];
+        }
+
+        return $runs;
+    }
+
+    /**
+     * A run as its page follows it (T9): its status and what holds it back,
+     * its progress read in its journal — calls by state, days done, batches
+     * at Anthropic, an earlier run of its map it waits for —, its
+     * attestation and, once done, its counters. No portfolio, no output.
+     *
+     * @return array<string, mixed>|null
+     */
+    public function suivi(int $id): ?array
+    {
+        $stmt = $this->pdo->prepare(
+            'SELECT r.id, r.user_id, r.carte_id, c.portfolio AS journal, r.statut, r.attente, r.visibilite,
+                    r.attestation, r.reglages, r.compteurs, r.created_at, r.avance_at, r.finished_at, r.accord_at
+               FROM twin9_runs r JOIN twin9_cartes c ON c.id = r.carte_id WHERE r.id = ?'
+        );
+        $stmt->execute([$id]);
+        $row = $stmt->fetch();
+        if ($row === false) {
+            return null;
+        }
+        $profil = self::unpack((string) $row['reglages'])->profil;
+
+        $stmt = $this->pdo->prepare('SELECT statut, COUNT(*) FROM twin9_appels WHERE run_id = ? GROUP BY statut');
+        $stmt->execute([$id]);
+        $appels = ['envoye' => 0, 'attente' => 0, 'repondu' => 0, 'panne' => 0];
+        foreach ($stmt->fetchAll(PDO::FETCH_KEY_PAIR) as $statut => $n) {
+            $appels[(string) $statut] = (int) $n;
+        }
+        $stmt = $this->pdo->prepare(
+            'SELECT SUM(chemin LIKE "journees/%/carto_jour.json"), SUM(chemin = "carto_evolutive.json")
+               FROM twin9_resultats WHERE run_id = ?'
+        );
+        $stmt->execute([$id]);
+        [$journees, $fusion] = $stmt->fetch(PDO::FETCH_NUM);
+        $stmt = $this->pdo->prepare(
+            'SELECT COUNT(*) FROM twin9_lots WHERE run_id = ? AND statut IN ("soumission", "en_cours")'
+        );
+        $stmt->execute([$id]);
+        $lots = (int) $stmt->fetchColumn();
+        $stmt = $this->pdo->prepare(
+            'SELECT COUNT(*) FROM twin9_runs WHERE carte_id = ? AND statut = "en_cours" AND id < ?'
+        );
+        $stmt->execute([(int) $row['carte_id'], $id]);
+        $avant = (int) $stmt->fetchColumn();
+        $attente = $row['attente'] === null ? null : (string) $row['attente'];
+        // what holds it back or stopped it, in words: an earlier run of its map, what the slice
+        // noted (the provider's rate, a batch at Anthropic, the key), its turn not yet come; a failure's reason
+        $retard = match ((string) $row['statut']) {
+            'en_cours' => match (true) {
+                $avant > 0 => 'Un run précédent du même portfolio doit finir d’abord',
+                $attente !== null => ucfirst($attente),
+                $row['avance_at'] === null => 'En attente de son premier tour',
+                default => null,
+            },
+            'echoue' => $attente === null ? null : ucfirst($attente),
+            default => null,
+        };
+
+        return [
+            'id' => (int) $row['id'],
+            'user_id' => (int) $row['user_id'],
+            'journal' => (string) $row['journal'],
+            'statut' => (string) $row['statut'],
+            'attente' => $attente,
+            'retard' => $retard,
+            'visibilite' => (string) $row['visibilite'],
+            'mode' => (string) $profil->mode,
+            'voie' => (string) $profil->voie,
+            'attestation' => $row['attestation'] === null ? null : json_decode((string) $row['attestation'], true,
+                512, JSON_THROW_ON_ERROR),
+            'progression' => [
+                'appels' => $appels,
+                'journees' => (int) $journees,
+                'fusion' => (int) $fusion > 0,
+                'lots' => $lots,
+                'runs_avant' => $avant,
+            ],
+            'compteurs' => $row['compteurs'] === null ? null : json_decode((string) $row['compteurs'], true, 512,
+                JSON_THROW_ON_ERROR),
+            'created_at' => (string) $row['created_at'],
+            'avance_at' => $row['avance_at'] === null ? null : substr((string) $row['avance_at'], 0, 19),
+            'finished_at' => $row['finished_at'] === null ? null : (string) $row['finished_at'],
+            'accord_at' => $row['accord_at'] === null ? null : (string) $row['accord_at'],
+        ];
+    }
+
+    /**
+     * Who reads a run: its owner, and the cartographes they linked when it says so.
+     *
+     * @return array{user_id: int, visibilite: string, statut: string, carte_id: int}|null
+     */
+    public function acces(int $id): ?array
+    {
+        $stmt = $this->pdo->prepare('SELECT user_id, visibilite, statut, carte_id FROM twin9_runs WHERE id = ?');
+        $stmt->execute([$id]);
+        $row = $stmt->fetch();
+
+        return $row === false ? null : ['user_id' => (int) $row['user_id'], 'visibilite' => (string) $row['visibilite'],
+                                        'statut' => (string) $row['statut'], 'carte_id' => (int) $row['carte_id']];
+    }
+
+    /**
+     * Its owner stops a run in progress: the tick no longer advances it, and
+     * cancels then deletes its batches at Anthropic (Twin9Lots). Its journal
+     * stays, for a resumption. False when it was not in progress.
+     */
+    public function annuler(int $id, int $userId): bool
+    {
+        $stmt = $this->pdo->prepare(
+            'UPDATE twin9_runs SET statut = "annule", attente = NULL, finished_at = NOW()
+              WHERE id = ? AND user_id = ? AND statut = "en_cours"'
+        );
+        $stmt->execute([$id, $userId]);
+
+        return $stmt->rowCount() === 1;
+    }
+
+    /**
+     * Its owner resumes a run cancelled or failed: it goes on from its
+     * journal, where it stopped. False when it was neither.
+     */
+    public function reprendre(int $id, int $userId): bool
+    {
+        $stmt = $this->pdo->prepare(
+            'UPDATE twin9_runs SET statut = "en_cours", attente = NULL, finished_at = NULL
+              WHERE id = ? AND user_id = ? AND statut IN ("annule", "echoue")'
+        );
+        $stmt->execute([$id, $userId]);
+
+        return $stmt->rowCount() === 1;
+    }
+
+    /** Who reads the run's results besides its owner. False when it is not theirs. */
+    public function rendreVisible(int $id, int $userId, string $visibilite): bool
+    {
+        if (($this->acces($id)['user_id'] ?? null) !== $userId) {
+            return false;
+        }
+        $this->pdo->prepare('UPDATE twin9_runs SET visibilite = ? WHERE id = ? AND user_id = ?')
+            ->execute([$visibilite, $id, $userId]);
+
+        return true;
     }
 
     /**

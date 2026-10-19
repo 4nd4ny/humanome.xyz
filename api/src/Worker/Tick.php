@@ -11,6 +11,7 @@ use Humanome\Keys\KeyVault;
 use Humanome\Llm\AnthropicProvider;
 use Humanome\Llm\CurlHttpClient;
 use Humanome\Llm\LlmRuntime;
+use Humanome\Llm\MockMultiHttpClient;
 use Humanome\Llm\MockProvider;
 use Humanome\Llm\Pricing;
 use Humanome\Packages\PromptPackageRepository;
@@ -64,6 +65,8 @@ final class Tick
     private readonly ?array $twin9Pauses;
     private readonly ?int $twin9Octets;
     private readonly ?float $twin9Fenetre;
+    /** The page of a run advances its owner's runs, and nothing else (T9). */
+    private readonly ?int $twin9Utilisateur;
 
     private readonly JobQueue $queue;
     private readonly ConfigRepository $configs;
@@ -83,9 +86,10 @@ final class Tick
      * @param array{budgetSeconds?: int, maxCalls?: int, maxTokens?: int,
      *              providerFactory?: callable(array<string, mixed>): object,
      *              twin9Sender?: CallSender, twin9Lots?: BatchApi, twin9Runs?: int, twin9Pauses?: list<float>,
-     *              twin9Octets?: int, twin9Fenetre?: float} $options
+     *              twin9Octets?: int, twin9Fenetre?: float, twin9Utilisateur?: int} $options
      *        twin9*: tests — the sender of the Twin9 calls, the batch API, the runs a tick advances, the pauses
-     *        between attempts, a batch's bound, the window to find a lost batch
+     *        between attempts, a batch's bound, the window to find a lost batch;
+     *        twin9Utilisateur: the page of a run advances its owner's Twin9 runs only, no mass job (T9)
      */
     public function __construct(private readonly PDO $pdo, array $options = [])
     {
@@ -104,6 +108,7 @@ final class Tick
         $this->twin9Pauses = $options['twin9Pauses'] ?? null;
         $this->twin9Octets = $options['twin9Octets'] ?? null;
         $this->twin9Fenetre = $options['twin9Fenetre'] ?? null;
+        $this->twin9Utilisateur = $options['twin9Utilisateur'] ?? null;
         $this->queue = new JobQueue($pdo);
         $this->configs = new ConfigRepository($pdo, KeyVault::masterKeyFromEnv());
         $this->cohortes = new CohorteRepository($pdo);
@@ -132,7 +137,7 @@ final class Tick
 
         try {
             $this->counters += $this->advanceTwin9();
-            while (!$this->exhausted()) {
+            while ($this->twin9Utilisateur === null && !$this->exhausted()) {
                 $jobs = $this->queue->reserve(1);
                 if ($jobs === []) {
                     break;
@@ -163,9 +168,11 @@ final class Tick
             return [];
         }
         $config = new Twin9Config(new SettingsRepository($this->pdo));
+        // WORKER_PROVIDER=mock (local instance, end-to-end tests): a simulated Anthropic answers
+        $simule = Env::get('WORKER_PROVIDER') === 'mock';
         $slice = new Twin9Slice(
             $this->pdo,
-            $this->twin9Sender ?? new DirectCalls(LlmRuntime::multiHttpClient()),
+            $this->twin9Sender ?? new DirectCalls($simule ? new MockMultiHttpClient() : LlmRuntime::multiHttpClient()),
             new RunKey($this->pdo, $config),
             $config,
             $this->twin9Lots ?? new AnthropicBatches(LlmRuntime::httpClient()),
@@ -175,7 +182,7 @@ final class Tick
         $reserve = min(1.0, max(0.25, 0.1 * $this->budgetSeconds));
         $counters = [];
         foreach ($slice->advanceUntil($this->twin9Runs ?? $config->runsParTick(), $this->startedAt,
-            $this->startedAt + $this->budgetSeconds - $reserve) as $name => $value) {
+            $this->startedAt + $this->budgetSeconds - $reserve, $this->twin9Utilisateur) as $name => $value) {
             $counters['twin9' . ucfirst($name)] = $value;
         }
         $this->twin9Ran = $counters['twin9Runs'] > 0;

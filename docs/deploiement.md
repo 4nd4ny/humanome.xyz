@@ -85,6 +85,15 @@ le relève (`docs/contrats.md` §8.3). Un run de dix journées compte quelque
 déclencheur est fréquent, plus le run est court. Un run dont les lots sont
 encore chez Anthropic ne compte pas parmi les N runs du tick.
 
+La page d'un run fait aussi avancer les runs de son propriétaire tant
+qu'elle est ouverte (T9) : une tranche de la même durée, sous le même verrou
+que le tick, qui finit plus tôt quand ses runs n'attendent plus rien, par une
+route de session qui ne connaît pas le jeton du tick.
+
+L'attestation d'un run garde le commit du moteur : la tête du dépôt
+`TWIN_V9_DIR`, ou, sur un hébergement sans git, la première ligne d'un fichier
+`COMMIT` posé à la racine de la copie de `Twin_v9`.
+
 Sur une offre avec cron (perso/pro), planifier plutôt `php scripts/worker.php`
 et `php scripts/maintenance.php`.
 

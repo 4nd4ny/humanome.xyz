@@ -196,14 +196,17 @@ final class Twin9Lots
      * ended; a lost one, once found, deleted.
      *
      * @param array<string, int> $compteurs the slice's
+     * @param int|null $utilisateur those of one user's runs only, when the page of their run advances them (T9)
      */
-    public function menage(float $fin, array &$compteurs): void
+    public function menage(float $fin, array &$compteurs, ?int $utilisateur = null): void
     {
-        $this->pdo->exec(
+        $sien = $utilisateur === null ? '' : ' AND r.user_id = ?';
+        $params = $utilisateur === null ? [] : [$utilisateur];
+        $this->pdo->prepare(
             'DELETE l FROM twin9_lots l JOIN twin9_runs r ON r.id = l.run_id
-              WHERE l.statut = "supprime" AND r.statut <> "en_cours"'
-        );
-        foreach ($this->lots('r.statut <> "en_cours"', [], 20) as $lot) {
+              WHERE l.statut = "supprime" AND r.statut <> "en_cours"' . $sien
+        )->execute($params);
+        foreach ($this->lots('r.statut <> "en_cours"' . $sien, $params, 20) as $lot) {
             if (microtime(true) >= $fin) {
                 return;
             }

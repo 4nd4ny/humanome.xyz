@@ -56,7 +56,29 @@ final class LeakFilter
      */
     public static function redact(string $gabaritSansVariables, string $sortie): array
     {
-        $index = self::index($gabaritSansVariables);
+        return self::expurger(self::index($gabaritSansVariables), $sortie);
+    }
+
+    /**
+     * The index of confidential material, built once to filter several
+     * outputs against it (T9: a run's whole template set, fiches included,
+     * against what its results show).
+     *
+     * @return array<string, true>
+     */
+    public static function indexer(string $confidentiel): array
+    {
+        return self::index($confidentiel);
+    }
+
+    /**
+     * redact() against an index built by indexer().
+     *
+     * @param array<string, true> $index
+     * @return array{sortie: string, fuites: int} as redact(): the count stays server-side
+     */
+    public static function expurger(array $index, string $sortie): array
+    {
         if ($index === [] || $sortie === '') {
             return ['sortie' => $sortie, 'fuites' => 0];
         }

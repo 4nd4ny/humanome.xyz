@@ -120,6 +120,50 @@ export function deleteProfil(id, options) {
   return apiFetch(`twin9/profils/${id}`, { ...options, method: 'DELETE' })
 }
 
+// ---- Runs sur le serveur (T9 : lancer, suivre, lire) ---------------------
+
+/** Ses runs, et si l'analyse approfondie tourne sur cette instance : {disponible, runs}. */
+export function fetchRuns(options) {
+  return apiFetch('twin9/runs', options)
+}
+
+/**
+ * Lance un run : son profil (null : celui de la v9.8), son portfolio, l'accord
+ * de la personne, qui chaque lancement demande. Rend le run tel que sa page le suit.
+ * @param {{profil: number|null, portfolio: {nom: string, texte: string}, accord: boolean, visibilite?: string}} lancement
+ */
+export function lancerRun(lancement, options) {
+  return apiFetch('twin9/runs', { ...options, method: 'POST', body: lancement })
+}
+
+/** Un de ses runs, tel que sa page le suit : statut, progression, ce qui le retarde. */
+export function fetchRun(id, options) {
+  return apiFetch(`twin9/runs/${id}`, options)
+}
+
+/** La page d'un run fait avancer les runs de la personne : {avance, locked}. */
+export function avancerRuns(options) {
+  return apiFetch('twin9/runs/avancer', { ...options, method: 'POST' })
+}
+
+export function annulerRun(id, options) {
+  return apiFetch(`twin9/runs/${id}/annuler`, { ...options, method: 'POST' })
+}
+
+export function reprendreRun(id, options) {
+  return apiFetch(`twin9/runs/${id}/reprendre`, { ...options, method: 'POST' })
+}
+
+/** Qui lit ses résultats, outre elle-même : personne ('privee') ou son cartographe ('cartographe'). */
+export function rendreRunVisible(id, visibilite, options) {
+  return apiFetch(`twin9/runs/${id}/visibilite`, { ...options, method: 'PUT', body: { visibilite } })
+}
+
+/** Ses résultats, filtrés : {run, lecteur, sorties: {chemin: texte}, memoire: [journées]}. */
+export function fetchResultats(id, options) {
+  return apiFetch(`twin9/runs/${id}/resultats`, options)
+}
+
 // ---- Administration (rôle admin) ----------------------------------------
 
 export function fetchProtocoleList(options) {

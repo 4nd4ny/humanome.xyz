@@ -200,6 +200,17 @@ export function DayPieces({ pieces, traces, date, onOpenPassage }) {
 
 export const JUROR_ORDER = ['linguiste', 'historien', 'anthropologue', 'philosophe', 'pedagogue', 'sociologue', 'creatif']
 
+/** Les temps du débat : ceux d'AuroraCore, puis ceux d'un tribunal Twin9 (briefing, relance, gardiens). */
+const DEBATE = [
+  ['accusation', 'Accusation'],
+  ['defense', 'Défense'],
+  ['replique', 'Réplique de l’accusation'],
+  ['briefing', 'Briefing neutre'],
+  ['relance', 'Relance'],
+  ['gardien_support', 'Gardien du support'],
+  ['gardien_raisonnement', 'Gardien du raisonnement'],
+]
+
 const DECISION = [
   ['verdict_argumente', 'Verdict argumenté'],
   ['prescription', 'Prescription'],
@@ -265,7 +276,9 @@ export function RunJury({ run, shown = [], decision = true }) {
   const president = run?.president && typeof run.president === 'object' ? run.president : null
   const delib = run?.deliberation ?? {}
   const debate = run?.debate ?? {}
-  const voices = JUROR_ORDER.filter((k) => jury[k] && typeof jury[k] === 'object')
+  // Les voix d'AuroraCore dans leur ordre, puis celles d'un autre jury (Twin9 : chaque juré par son nom).
+  const isVoice = (k) => jury[k] && typeof jury[k] === 'object' && !Array.isArray(jury[k])
+  const voices = [...JUROR_ORDER.filter(isVoice), ...Object.keys(jury).filter((k) => !JUROR_ORDER.includes(k) && isVoice(k))]
   const pieces = Array.isArray(run?.pieces) ? run.pieces : []
   const reasoning = REASONING.filter(([key]) => txt(president?.[key]).trim())
   return (
@@ -278,7 +291,8 @@ export function RunJury({ run, shown = [], decision = true }) {
           {voices.map((k) => (
             <details key={k} className="carto-jury-voice">
               <summary>
-                {JUROR_LABELS[k] ?? k} — {txt(jury[k].position) || 'position non dite'} · confiance {fmt(jury[k].confiance)}
+                {JUROR_LABELS[k] ?? (txt(jury[k].label) || k)} — {txt(jury[k].position) || 'position non dite'}
+                {typeof jury[k].confiance === 'number' ? ` · confiance ${fmt(jury[k].confiance)}` : ''}
               </summary>
               <p>{txt(jury[k].synthese)}</p>
               {delib[k]?.markdown ? (
@@ -312,14 +326,10 @@ export function RunJury({ run, shown = [], decision = true }) {
           ) : null}
         </details>
       ) : null}
-      {debate.accusation || debate.defense || debate.replique ? (
+      {DEBATE.some(([key]) => debate[key]?.markdown) ? (
         <details className="carto-jury-section">
           <summary>Débat contradictoire</summary>
-          {[
-            ['accusation', 'Accusation'],
-            ['defense', 'Défense'],
-            ['replique', 'Réplique de l’accusation'],
-          ].map(([key, label]) =>
+          {DEBATE.map(([key, label]) =>
             debate[key]?.markdown ? (
               <details key={key}>
                 <summary>{label}</summary>
@@ -329,6 +339,12 @@ export function RunJury({ run, shown = [], decision = true }) {
           )}
         </details>
       ) : null}
+      {(Array.isArray(run?.notes) ? run.notes : []).map((n) => (
+        <details key={n.titre} className="carto-jury-section">
+          <summary>{n.titre}</summary>
+          <Markdown text={n.markdown} />
+        </details>
+      ))}
       {pieces.length > 0 ? (
         <details className="carto-jury-section">
           <summary>Pièces du Greffier ({pieces.length}, verbatim)</summary>

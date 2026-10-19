@@ -13,13 +13,12 @@ dans `main` (entrée du 2026-10-14 ci-dessous).
 
 Chantier en cours : le moteur Twin9 v9.8 en PHP, exécuté sur le serveur (ADR-011), planifié et
 développé dans le dépôt privé `4nd4ny/Twin_v9` (`docs/plan-twin9-php.md`, prompts T0 → T18, une
-conversation chacun ; entrées du 2026-10-17). T0 à T7 et T12 sont fusionnés : le moteur passe
-l'oracle complet dans `Twin_v9`, le profil est ici, les runs tournent sur le serveur par tranches.
-T8, la voie par lots, T13, la page de configuration, T9, lancer, suivre et lire un run, T10, coûts,
-plafonds, relance, purge et export, T14, les jeux de gabarits, T15, plusieurs référentiels dans la
-gouvernance (plan validé par Christian le 2026-10-19), et la stratégie A de T8, que Christian a
-choisie le 2026-10-19 avec l'historique des évaluations, attendent leur revue (entrées du
-2026-10-19). T16 demandera d'abord un plan.
+conversation chacun ; entrées du 2026-10-17). T0 à T10 et T12 à T15 sont fusionnés : le moteur
+passe l'oracle complet dans `Twin_v9`, le profil est ici, les runs tournent sur le serveur par
+tranches, par appels directs ou par lots, se lancent, se suivent, se lisent et se paient, sur des
+jeux de gabarits et, dans la gouvernance, des référentiels de toute structure. La base commune et
+la stratégie A de T8, que Christian a choisies le 2026-10-19 avec l'historique des évaluations,
+attendent leur revue (entrée du 2026-10-19). T16 demandera d'abord un plan.
 
 ## Fait
 

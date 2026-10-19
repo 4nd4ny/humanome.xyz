@@ -212,12 +212,14 @@ const BASE = {
   twin9atelier: {
     titre: 'Atelier Twin9 (gabarits du Golden Prompt)',
     intro:
-      'L’édition des gabarits du Golden Prompt Twin9 — le secret industriel de la plateforme. ' +
-      'Réservée aux administrateurs-promptologues (les DEUX rôles) : on y lit, édite et rend les ' +
-      'gabarits, mais aucun appel LLM n’y est fait.',
+      'Les gabarits du Golden Prompt Twin9 — le secret industriel de la plateforme. ' +
+      'Réservé aux administrateurs-promptologues (les DEUX rôles) : on y lit le jeu v9.8, on le ' +
+      'copie et l’on édite sa copie, mais aucun appel LLM n’y est fait.',
     points: [
       'Accès réservé à admin ∧ promptologue : le contenu des gabarits ne transite jamais vers un autre profil.',
-      'Chaque enregistrement archive une version : l’historique est consultable.',
+      'Le jeu v9.8 se lit seulement : copiez-le sous un nom pour en éditer la copie, la vôtre ; la copie d’un autre se lit.',
+      'Chaque enregistrement archive une version, qui se relit et se restaure ; une variable qu’aucune étape ne fournit au gabarit est refusée.',
+      'Une copie se choisit dans un profil (page Configuration) ; l’administrateur peut en faire le jeu par défaut.',
       'Le banc d’essai rend un gabarit avec des variables d’exemple, sans aucun débit ni appel au modèle.',
       'La supervision commerciale (contribution, promo, comptes) reste dans #/admin/twin9 (administrateur).',
     ],

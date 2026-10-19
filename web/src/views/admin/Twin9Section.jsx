@@ -2,7 +2,9 @@
 //   1. Réglages  : marge Twin9/Twin6, promo « Twin9 gratuit clé perso », packs
 //                  PayPal, offre de modèles -> PUT partiel (diff). Décision
 //                  COMMERCIALE, admin seul.
-//   2. Comptes   : supervision des comptes ayant une activité (soldes/cumuls).
+//   2. Jeu par défaut (T14) : le jeu de gabarits du profil par défaut, parmi
+//                  le jeu v9.8 et les copies des promptologues (sans contenu).
+//   3. Comptes   : supervision des comptes ayant une activité (soldes/cumuls).
 //
 // L'ÉDITION DES GABARITS a quitté cette section : elle vit dans #/twin9-atelier
 // (Twin9AtelierView), réservée aux administrateurs-promptologues (les deux
@@ -10,7 +12,14 @@
 
 import { useCallback, useEffect, useState } from 'react'
 import { ApiError, ApiUnavailableError } from '../../api/client.js'
-import { fetchComptes, fetchTwin9Config, formatUsd, saveTwin9Config } from '../../api/twin9.js'
+import {
+  fetchComptes,
+  fetchJeux,
+  fetchTwin9Config,
+  fixerJeuDefaut,
+  formatUsd,
+  saveTwin9Config,
+} from '../../api/twin9.js'
 
 /** Étages connus (contrat serveur Twin9Config::ETAGES) — ordre canonique. */
 const ETAGES = ['taggers', 'rapide', 'tribunal']
@@ -384,7 +393,88 @@ function ReglagesBloc({ config, fetchFn, onSaved }) {
   )
 }
 
-// ---- 2. Comptes ------------------------------------------------------------
+// ---- 2. Jeu de gabarits par défaut -----------------------------------------
+
+/**
+ * Le jeu de gabarits que prend le profil par défaut, et tout profil créé
+ * depuis lui : le jeu v9.8 ou la copie d'un promptologue. Noms seulement,
+ * jamais le contenu (AD-D2).
+ */
+function JeuDefautBloc({ fetchFn }) {
+  const [jeux, setJeux] = useState(null)
+  const [choix, setChoix] = useState('')
+  const [defaut, setDefaut] = useState('')
+  const [busy, setBusy] = useState(false)
+  const [message, setMessage] = useState(null)
+  const [error, setError] = useState(null)
+
+  useEffect(() => {
+    let vivant = true
+    fetchJeux({ fetchFn })
+      .then((res) => {
+        if (!vivant) return
+        setJeux(res?.jeux ?? [])
+        setDefaut(res?.defaut ?? 'v9.8')
+        setChoix(res?.defaut ?? 'v9.8')
+      })
+      .catch(() => vivant && setError('Jeux de gabarits indisponibles.'))
+    return () => {
+      vivant = false
+    }
+  }, [fetchFn])
+
+  async function save() {
+    setBusy(true)
+    setMessage(null)
+    setError(null)
+    try {
+      const res = await fixerJeuDefaut(choix, { fetchFn })
+      setDefaut(res?.defaut ?? choix)
+      setMessage(`Jeu par défaut : « ${res?.defaut ?? choix} ».`)
+    } catch (err) {
+      setError(err instanceof ApiError ? err.message : 'Enregistrement impossible.')
+    } finally {
+      setBusy(false)
+    }
+  }
+
+  return (
+    <div className="twin9-admin-bloc">
+      <h3>Jeu de gabarits par défaut</h3>
+      {jeux ? (
+        <>
+          <div className="admin-field">
+            <label htmlFor="twin9-jeu-defaut">Jeu du profil par défaut</label>
+            <div className="admin-field-input">
+              <select id="twin9-jeu-defaut" value={choix} onChange={(event) => setChoix(event.target.value)}>
+                {jeux.map((j) => (
+                  <option key={j.id} value={j.id}>
+                    {j.id === 'v9.8' ? 'v9.8' : `${j.id} (de ${j.auteur ?? 'compte supprimé'})`}
+                  </option>
+                ))}
+              </select>
+            </div>
+          </div>
+          <button type="button" disabled={busy || choix === defaut} onClick={save}>
+            Enregistrer
+          </button>
+        </>
+      ) : null}
+      {message ? (
+        <p role="status" className="admin-message">
+          {message}
+        </p>
+      ) : null}
+      {error ? (
+        <p role="alert" className="load-error">
+          {error}
+        </p>
+      ) : null}
+    </div>
+  )
+}
+
+// ---- 3. Comptes ------------------------------------------------------------
 
 /** Supervision : tous les comptes ayant une activité, triés par le serveur. */
 function ComptesBloc({ comptes }) {
@@ -477,9 +567,11 @@ export default function Twin9Section({ fetchFn }) {
       <p className="privacy-note">
         L’édition des gabarits du Golden Prompt a déménagé vers l’
         <a href="#/twin9-atelier">atelier Twin9</a> (réservé aux administrateurs-promptologues).
-        Cette section garde la supervision commerciale : contribution, promo, packs, comptes.
+        Cette section garde la supervision commerciale : contribution, promo, packs, comptes ; et le
+        jeu de gabarits par défaut.
       </p>
       {config ? <ReglagesBloc config={config} fetchFn={fetchFn} onSaved={setConfig} /> : null}
+      <JeuDefautBloc fetchFn={fetchFn} />
       <ComptesBloc comptes={comptes} />
     </section>
   )

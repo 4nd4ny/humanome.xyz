@@ -86,7 +86,7 @@ strictement vide après) et par les tests de purge de chaque module
 (`AuthAccountDeletionTest`, `CartographiesPurgeTest`, `CartographePurgeTest`,
 `MasseRgpdPurgeTest`).
 
-### Twin9 sur le serveur (migrations 024 à 028, T10)
+### Twin9 sur le serveur (migrations 024 à 029, T10 et T14)
 
 Les runs Twin9 gardent sur le serveur, avec l'accord de la personne, son
 portfolio et l'état de ses runs (ADR-011 §5, registre §13). Légende de la
@@ -103,6 +103,8 @@ colonne export : `archive` = dans l'archive « un clic », lu par
 | 025 | `twin9_resultats` | oui (sorties du run) | chaîne via `twin9_runs` | `archive` |
 | 026 | `twin9_lots` | non (identifiants, compteurs) | chaîne via `twin9_runs` ; le lot chez Anthropic : ci-dessous | `—` |
 | 028 | `twin9_lots_a_effacer` | non (identifiant Anthropic seul, sans propriétaire) | — (vidée par le tick) | `—` |
+| 029 | `twin9_jeux` | non (une copie des gabarits v9.8, contenu de plateforme) | SET NULL `user_id` : la copie survit, sans auteur | `—` |
+| 029 | `twin9_jeux_gabarits`, `twin9_jeux_versions` | non (gabarits et leurs versions) | SET NULL `updated_by` / `created_by` | `—` |
 
 **Les lots encore chez Anthropic** (`DELETE /api/auth/account`,
 `Twin9\RunPurge`) : ceux de la clé personnelle sont annulés, puis supprimés

@@ -232,11 +232,11 @@ final class CoutsTest extends TestCase
             \dirname(__DIR__, 3) . '/web/public/data/referentiel/respire-v7.json'), true, 512, JSON_THROW_ON_ERROR),
             'Import initial RESPIRE v7');
         $politique = new ProfilPolicy($this->pdo, $config);
-        $politique->admettre(ProfilRepository::validate(ProfilRepository::v98()));
+        $politique->admettre(ProfilRepository::validate(ProfilRepository::v98()), $this->user);
         $profil = ProfilRepository::v98();
         $profil->etapes->president = (object) ['modele' => 'claude-inconnu-1'];
         try {
-            $politique->admettre(ProfilRepository::validate($profil));
+            $politique->admettre(ProfilRepository::validate($profil), $this->user);
             self::fail('un modèle sans prix est refusé');
         } catch (Twin9Exception $e) {
             self::assertSame(422, $e->getStatusCode());

@@ -4,7 +4,7 @@
 |---|---|
 | **Acteur principal** | Administrateur (rôle `admin`) |
 | **Acteurs secondaires** | Apprenants et établissements (offre, prix et promotion appliqués à leurs analyses, UC-APP-09/10/11) ; PayPal (montants des packs) |
-| **Portée** | humanome.xyz — vue `#/admin/twin9` (section « Supervision Twin9 » de l'administration), routes `GET/PUT /api/twin9/admin/config`, `GET /api/twin9/admin/comptes` |
+| **Portée** | humanome.xyz — vue `#/admin/twin9` (section « Supervision Twin9 » de l'administration), routes `GET/PUT /api/twin9/admin/config`, `GET /api/twin9/admin/comptes`, `GET /api/twin9/admin/jeux`, `PUT /api/twin9/admin/jeux/defaut` |
 | **Niveau** | Objectif utilisateur |
 | **Cahier des charges** | §3.8 et §4.10 (administration), §7 (modèle économique : coût API + marge) ; ADR-010 §3 et §6 ; décision AD-D2 (`docs/autorisations.md`) |
 | **Statut** | Implémenté (supervision commerciale séparée de l'atelier des gabarits, AD-D2) |
@@ -13,10 +13,10 @@
 
 Permettre à l'administrateur de piloter l'offre commerciale de Twin9 et de la
 cartographie ouverte Twin6 — contributions (marges), promotion « Twin9 gratuit
-avec sa propre clé », packs de recharge, offre de modèles par étage — et de
-suivre les soldes et cumuls de tous les comptes qui utilisent le crédit
-prépayé, **sans jamais voir le contenu des gabarits** (réservé à l'atelier,
-UC-PRO-08).
+avec sa propre clé », packs de recharge, offre de modèles par étage —, de
+fixer le jeu de gabarits par défaut (T14) et de suivre les soldes et cumuls de
+tous les comptes qui utilisent le crédit prépayé, **sans jamais voir le
+contenu des gabarits** (réservé à l'atelier, UC-PRO-08).
 
 ## Déclencheur
 
@@ -47,8 +47,9 @@ L'administrateur ouvre « Administrer » → « Supervision Twin9 » (`#/admin/t
    contributions `marge` et `marge_twin6`, promotion, packs, modèles avec prix
    **catalogue** et étages, interrupteur, rythme, réglages du pipeline) et
    `GET /api/twin9/admin/comptes`.
-3. Elle affiche le formulaire des réglages, la table des comptes et un renvoi
-   vers l'atelier (`#/twin9-atelier`) pour les gabarits.
+3. Elle affiche le formulaire des réglages, le jeu de gabarits par défaut (A5),
+   la table des comptes et un renvoi vers l'atelier (`#/twin9-atelier`) pour
+   les gabarits.
 4. L'administrateur modifie la contribution Twin9 (par exemple 1,20 → 1,35) et
    clique « Enregistrer les réglages ». La vue calcule le **diff** (seules les
    clés de premier niveau modifiées), le vérifie sommairement et envoie
@@ -88,6 +89,16 @@ L'administrateur ouvre « Administrer » → « Supervision Twin9 » (`#/admin/t
   étant de premier niveau, un `PUT {pipeline: {...}}` **remplace** tout l'objet
   importé (seuils, jury, merge…) : les clés non renvoyées sont perdues (de même
   pour `packs` et `modeles`).
+- **A5 — Jeu de gabarits par défaut** (T14, étape 3) : la section lit `GET
+  /api/twin9/admin/jeux` — le jeu v9.8 et les copies des promptologues, par
+  leur nom et leur auteur, **sans contenu** — et propose le jeu par défaut ;
+  « Enregistrer » envoie `PUT /api/twin9/admin/jeux/defaut {jeu}` (jeton CSRF)
+  et affiche « Jeu par défaut : « {jeu} ». ». Le profil par défaut, celui
+  qu'ouvre la page Configuration et que prend un run lancé sans profil, prend
+  ce jeu (UC-PRO-08, RG11). Un profil déjà enregistré ne change pas : s'il
+  nommait l'ancien jeu par défaut, que son propriétaire ne peut plus choisir,
+  il est refusé au lancement jusqu'à ce qu'il en choisisse un autre. Un jeu
+  inconnu → `404` « Jeu de gabarits introuvable », affiché.
 
 ## Scénarios d'erreur
 
@@ -115,8 +126,9 @@ L'administrateur ouvre « Administrer » → « Supervision Twin9 » (`#/admin/t
 
 ## Règles de gestion
 
-- **RG1** — Supervision = `admin` seul (`RequireRole::any('admin')`) ; le contenu
-  des gabarits exige `admin` ∧ `promptologue` et vit dans l'atelier (AD-D2).
+- **RG1** — Supervision = `admin` seul (`RequireRole::any('admin')`), jeu de
+  gabarits par défaut compris ; le contenu des gabarits exige `admin` ∧
+  `promptologue` et vit dans l'atelier (AD-D2).
 - **RG2** — Contributions : `marge` (Twin9, 1,20 par défaut) et `marge_twin6`
   (1,10 par défaut), nombres entre 1 et 5. Les apprenants ne voient que les prix
   margés (arrondis à 4 décimales), jamais la marge ni le prix catalogue.
@@ -144,6 +156,7 @@ L'administrateur ouvre « Administrer » → « Supervision Twin9 » (`#/admin/t
 | Donnée | Traitement |
 |---|---|
 | Configuration Twin9 | Réglage `twin9_config` (table `settings`) ; aucune donnée personnelle |
+| Jeu de gabarits par défaut | Réglage `twin9_gabarits_defaut` (son identifiant seul) ; la liste des jeux montre le nom affiché de l'auteur d'une copie, jamais un gabarit |
 | Table des comptes | Nom affiché et email des comptes actifs, solde, cumuls, dernière activité — visibles de l'administrateur seul, jamais de contenu |
 | Prix catalogue et marges | Vue administrateur seulement |
 
@@ -153,13 +166,14 @@ L'administrateur ouvre « Administrer » → « Supervision Twin9 » (`#/admin/t
 |---|---|---|
 | Front | `web/src/router.js` — `parseHash` ; `web/src/nav.js` — `navGroups` | Route `#/admin/twin9`, entrée réservée à l'admin |
 | Front | `web/src/views/AdminView.jsx` | Garde de session et de rôle, dépêche de la section |
-| Front | `web/src/views/admin/Twin9Section.jsx` | Réglages (diff, validation cliente), table des comptes |
-| Front | `web/src/api/twin9.js` — `fetchTwin9Config`, `saveTwin9Config`, `fetchComptes`, `formatUsd` | Client de supervision |
-| API | `GET/PUT /api/twin9/admin/config`, `GET /api/twin9/admin/comptes` — `api/src/routes/twin9.php` | Routes de supervision (admin) |
+| Front | `web/src/views/admin/Twin9Section.jsx` | Réglages (diff, validation cliente), jeu de gabarits par défaut, table des comptes |
+| Front | `web/src/api/twin9.js` — `fetchTwin9Config`, `saveTwin9Config`, `fetchComptes`, `fetchJeux`, `fixerJeuDefaut`, `formatUsd` | Client de supervision |
+| API | `GET/PUT /api/twin9/admin/config`, `GET /api/twin9/admin/comptes`, `GET /api/twin9/admin/jeux`, `PUT /api/twin9/admin/jeux/defaut` — `api/src/routes/twin9.php` | Routes de supervision (admin) |
 | API | `api/src/Middleware/RequireRole.php` — `any('admin')` | Garde admin (401 / 403, RG1, E1) — logique unitaire couverte par UC-ADM-01-U10 |
 | API | `api/src/Middleware/CsrfMiddleware.php` | Jeton CSRF des mutations (E5) — logique unitaire couverte par UC-CPT-02-U07 |
 | Domaine | `api/src/Twin9/Twin9Config.php` — `read`, `update`, `defaults`, `publicView` | Configuration effective, validation, vue publique |
 | Domaine | `api/src/Twin9/FactureService.php` — `comptes` | Table de supervision |
+| Domaine | `api/src/Twin9/TemplateSets.php` — `lister`, `defaut`, `fixerDefaut` | Jeux de gabarits, jeu par défaut (A5) |
 | Domaine | `api/src/Packages/SettingsRepository.php` | Persistance |
 
 ## Jeux de tests
@@ -176,6 +190,7 @@ L'administrateur ouvre « Administrer » → « Supervision Twin9 » (`#/admin/t
 | UC-ADM-05-U06 | `Twin9Section` (diff) | **Anomalie 1 figée** : config relue de MySQL → packs renvoyés (les modèles ne le sont plus depuis T10) | idem |
 | UC-ADM-05-U07 | `Twin9Section` (comptes), `formatUsd` | Montants en USD (4 décimales sous le centime) ; aucun compte → message | idem |
 | UC-ADM-05-U13 | `AdminView` | Admin → section Twin9 ; non-admin → espace réservé sans appel ; copie statique → message (RG1, E1, E4) | idem |
+| UC-ADM-05-U14 | `Twin9Section` (jeu par défaut) | Jeux par leur nom et leur auteur, sans contenu ; « Enregistrer » désactivé sur le défaut actuel, puis `PUT jeux/defaut {jeu}` (A5) | idem |
 | UC-ADM-05-U08 | `Twin9Config::update` | Fusion partielle, persistance de la configuration complète (défauts figés), clé inconnue refusée sans écriture (RG7) | `api/tests/UseCases/Unit/UcAdm05SuperviserTwin9Test.php` |
 | UC-ADM-05-U09 | `Twin9Config::update` | Bornes de chaque réglage (RG2-RG6), liste acceptée pour `pipeline` ; configuration entière inchangée après les refus | idem |
 | UC-ADM-05-U10 | `Twin9Config::update` | **Anomalie 2 figée** : message « 1 et 100 USD » pour une borne à 500 | idem |
@@ -203,10 +218,12 @@ L'administrateur ouvre « Administrer » → « Supervision Twin9 » (`#/admin/t
 | UC-ADM-05-F15 | E2 | API | 400 corps scalaire ; `[1]` → 422, `[]` → 200 ; 422 par cas, configuration entière inchangée | idem |
 | UC-ADM-05-F16 | Anomalie 1 | API | Config relue : clés réordonnées par MySQL (cause) | idem |
 | UC-ADM-05-F17 | E5 | API | Session admin sans jeton CSRF ou jeton faux → 403, configuration inchangée | idem |
+| UC-ADM-05-F18 | A5 | IHM | `<App/>` : la copie d'un promptologue choisie → PUT avec CSRF → confirmation, aucun appel aux gabarits ; jeu inconnu → message du serveur | `web/test/usecases/functional/uc-adm-05-superviser-twin9.test.jsx` |
 
 ### Tests existants liés (non-régression)
 
-- `api/tests/Twin9ProtocoleTest.php` — défauts et bornes de la config, vue publique, garde admin de la supervision.
+- `api/tests/Twin9ProtocoleTest.php` — défauts et bornes de la config, vue publique, garde admin de la supervision, jeu de gabarits par défaut (`testTheAdministratorFixesTheDefaultSet`).
+- `api/tests/Twin9/JeuxGabaritsTest.php` — le profil par défaut prend le jeu par défaut (A5).
 - `api/tests/Twin9FactureTest.php` — `testAdminComptesIsAdminOnlyAndAggregates`.
 - `api/tests/Twin9PayPalTest.php` — packs 200 et 500 configurables.
 - `web/src/views/admin/Twin9Section.test.jsx` — supervision sans contenu, diff, promotion, pack, comptes, garde d'`AdminView`.

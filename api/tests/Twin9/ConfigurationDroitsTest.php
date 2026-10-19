@@ -8,15 +8,17 @@ use Humanome\Referentiel\ReferentielRepository;
 use Humanome\Tests\CartographeTestCase;
 use Humanome\Tests\TestDb;
 use Humanome\Twin9\ProfilRepository;
+use Humanome\Twin9\ProtocoleRepository;
 use stdClass;
 
 /**
  * The rights of Twin9's configuration (T13), one test per line of the matrix
  * written in docs/autorisations.md, « Configuration Twin9 »: each account
  * sets its own profiles, and only them; its budget, duration, key, published
- * referential and template set; the administrator sets the instance's prices
- * and opens the personal keys; the instance's key comes from the environment,
- * never from the interface.
+ * referential and template set (T14: the v9.8's, the default, its own copies
+ * in the atelier); the administrator sets the instance's prices, its default
+ * template set, and opens the personal keys; the instance's key comes from
+ * the environment, never from the interface.
  */
 final class ConfigurationDroitsTest extends CartographeTestCase
 {
@@ -24,6 +26,9 @@ final class ConfigurationDroitsTest extends CartographeTestCase
     {
         parent::setUp();
         self::$pdo->exec('DELETE FROM referentiel_versions');
+        self::$pdo->exec('DELETE FROM twin9_protocole');
+        self::$pdo->exec('DELETE FROM twin9_jeux');
+        self::$pdo->exec("DELETE FROM settings WHERE name = 'twin9_gabarits_defaut'");
         $doc = json_decode((string) file_get_contents(\dirname(__DIR__, 3) . '/web/public/data/referentiel/respire-v7.json'),
             true, 512, JSON_THROW_ON_ERROR);
         (new ReferentielRepository(self::$pdo))->importPublishedDocument($doc, 'Import initial RESPIRE v7');
@@ -162,15 +167,59 @@ final class ConfigurationDroitsTest extends CartographeTestCase
         }
     }
 
-    /** The template set: the v9.8's, until the promptologues' sets (T14). */
-    public function testOnlyAKnownTemplateSet(): void
+    /**
+     * The template set (T14): every account chooses the v9.8's or the
+     * instance's default; an account of the atelier, its own copies too,
+     * while it belongs to it; another's copy, no one.
+     */
+    public function testTheTemplateSetsAProfileChooses(): void
     {
+        (new ProtocoleRepository(self::$pdo))->put('lourd/21a-accusation', 'Accusation FICTIVE de {$CODE}', null);
         $compte = $this->registerAs('jeu@example.org', 'Jeu');
-        self::assertSame(['v9.8'], self::json($this->as_($compte, 'GET', '/api/twin9/configuration'))['gabarits']);
-        $profil = ProfilRepository::v98();
-        $profil->gabarits = 'le mien';
+        $atelier = $this->registerAs('atelier@example.org', 'Atelier', ['admin', 'promptologue']);
+        $autre = $this->registerAs('autre@example.org', 'Autre', ['admin', 'promptologue']);
+        foreach ([[$atelier, 'mienne'], [$autre, 'sienne']] as [$auteur, $id]) {
+            self::assertSame(201, $this->as_($auteur, 'POST', '/api/twin9/admin/jeux', ['id' => $id])->getStatusCode());
+        }
+        $choisir = function (array $user, string $jeu): int {
+            $profil = ProfilRepository::v98();
+            $profil->gabarits = $jeu;
 
-        self::assertSame(422, $this->as_($compte, 'POST', '/api/twin9/profils', ['nom' => 'Jeu', 'profil' => $profil])
+            return $this->as_($user, 'POST', '/api/twin9/profils', ['nom' => "Jeu $jeu", 'profil' => $profil])
+                ->getStatusCode();
+        };
+        $offerts = fn (array $user): array => self::json($this->as_($user, 'GET', '/api/twin9/configuration'))['gabarits'];
+
+        self::assertSame(['v9.8'], $offerts($compte));
+        self::assertSame(['v9.8', 'mienne'], $offerts($atelier));
+        foreach ([[$compte, 'v9.8', 201], [$compte, 'mienne', 422], [$compte, 'le mien', 422],
+                  [$atelier, 'mienne', 201], [$atelier, 'sienne', 422]] as [$user, $jeu, $statut]) {
+            self::assertSame($statut, $choisir($user, $jeu), "{$user['id']} $jeu");
+        }
+
+        // the administrator's default: everyone's, and the default profile's
+        self::assertSame(200, $this->as_($autre, 'PUT', '/api/twin9/admin/jeux/defaut', ['jeu' => 'sienne'])->getStatusCode());
+        self::assertSame(['v9.8', 'sienne'], $offerts($compte));
+        self::assertSame('sienne', self::json($this->as_($compte, 'GET', '/api/twin9/configuration'))['defaut']['gabarits']);
+        self::assertSame(201, $choisir($compte, 'sienne'));
+
+        // out of the atelier, one's copies are no longer offered
+        self::setRoles($atelier['id'], ['admin']);
+        self::assertSame(['v9.8', 'sienne'], $offerts($atelier));
+        self::assertSame(422, $choisir($atelier, 'mienne'));
+
+        // the default changed back, a profile saved on the former one keeps it, refused until it chooses another
+        self::assertSame(200, $this->as_($autre, 'PUT', '/api/twin9/admin/jeux/defaut', ['jeu' => 'v9.8'])->getStatusCode());
+        $ancien = array_values(array_filter(self::json($this->as_($compte, 'GET', '/api/twin9/configuration'))['profils'],
+            static fn (array $p): bool => $p['nom'] === 'Jeu sienne'))[0]['id'];
+        self::assertSame('sienne', self::json($this->as_($compte, 'GET', "/api/twin9/profils/$ancien"))['profil']['gabarits']);
+        $profil = ProfilRepository::v98();
+        $profil->gabarits = 'sienne';
+        $refus = $this->as_($compte, 'PUT', "/api/twin9/profils/$ancien", ['nom' => 'Jeu sienne', 'profil' => $profil]);
+        self::assertSame(422, $refus->getStatusCode());
+        self::assertSame('Profil refusé — /gabarits : ce jeu de gabarits ne vous est pas proposé', self::json($refus)['error']);
+        $profil->gabarits = 'v9.8';
+        self::assertSame(200, $this->as_($compte, 'PUT', "/api/twin9/profils/$ancien", ['nom' => 'Jeu sienne', 'profil' => $profil])
             ->getStatusCode());
     }
 

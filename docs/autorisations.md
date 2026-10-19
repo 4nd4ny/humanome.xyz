@@ -201,7 +201,8 @@ l'établissement (l'accès exige l'adhésion active).
 | Golden Prompt (import, autorisations d'accès) | GET/POST | `admin` |
 | Clés plateforme, plafonds démo, config | GET/PUT | `admin` |
 | Attribution / révocation des rôles | POST/DELETE | `admin` |
-| **Gabarits Twin9 — CONTENU** (`/api/twin9/admin/protocole**`, `/api/twin9/admin/tester`) | GET/PUT/POST | **`admin` ∧ `promptologue`** (les DEUX rôles, `RequireRole::all`, AD-D2) |
+| **Gabarits Twin9 — CONTENU** (`/api/twin9/admin/jeux/{jeu}/protocole**`, `/api/twin9/admin/jeux/{jeu}/tester`) et copie du jeu v9.8 (`POST /api/twin9/admin/jeux`) | GET/PUT/POST | **`admin` ∧ `promptologue`** (les DEUX rôles, `RequireRole::all`, AD-D2) ; écrire (`PUT`, `…/restore`) : l'auteur de la copie seul, jamais le jeu v9.8 (403, T14) |
+| Jeux de gabarits Twin9 — liste sans contenu (`GET /api/twin9/admin/jeux`) et jeu par défaut (`PUT /api/twin9/admin/jeux/defaut`) | GET/PUT | `admin` (T14) |
 | Twin9 supervision (config, contribution, promo, comptes) | GET/PUT | `admin` |
 
 > **AD-D2.** L'édition des gabarits du Golden Prompt Twin9 (lecture ET écriture du
@@ -210,7 +211,10 @@ l'établissement (l'accès exige l'adhésion active).
 > (403). La supervision commerciale (contribution, promo « Twin9 gratuit »,
 > comptes) reste `admin` seul. Front : l'éditeur vit sous « Faire évoluer » →
 > `#/twin9-atelier` (visible seulement avec les deux rôles) ; `#/admin/twin9`
-> garde la supervision.
+> garde la supervision. Depuis T14, l'atelier lit le jeu v9.8 sans l'écrire —
+> l'import seul l'écrit — et chacun y écrit ses copies, et elles seules ; la
+> question « Qui voit les gabarits ? » restant ouverte, D2 s'applique
+> (`TemplateSets::ATELIER`).
 
 ### Configuration Twin9 (T13, `#/configuration`)
 
@@ -227,18 +231,23 @@ fixe ce qui vaut pour toute l'instance. Chaque ligne de la matrice a son test da
 | Sa clé : celle de l'instance ou la sienne | — | ✔ ; la sienne si l'administrateur l'a ouverte | idem |
 | Sa clé personnelle elle-même (son coffre, `#/compte`) | — | ✔ | ✔ |
 | Le référentiel de ses runs | — | parmi les publiés | idem |
-| Le jeu de gabarits de ses runs | — | « v9.8 » | idem |
+| Le jeu de gabarits de ses runs (T14) | — | le jeu v9.8 ou le jeu par défaut | idem ; avec `promptologue` (atelier), ses copies aussi, tant qu'il en est |
+| Le jeu v9.8 (T14) | — | — | lecture dans l'atelier (`admin` ∧ `promptologue`) ; seul l'import l'écrit |
+| Copier le jeu v9.8, éditer sa copie, ses versions, son retour arrière (T14) | — | — | `admin` ∧ `promptologue` : ✔ la sienne ; la copie d'un autre se lit (403 en écriture) ; `admin` seul : — (403) |
+| Le jeu de gabarits par défaut, celui du profil par défaut (T14) | — | — (403) | ✔ (`#/admin/twin9`, `/api/twin9/admin/jeux/defaut`) |
 | Prix, marge, ouverture des clés personnelles | — | — (403) | ✔ (`#/admin/twin9`, `/api/twin9/admin/config`) |
 | Runs par tick, durée d'une tranche (T7) | — | — (403) | ✔ (`/api/twin9/admin/config`, pas encore à l'écran) |
 | La clé de l'instance | — | — | à l'installation (`ANTHROPIC_API_KEY`, `docs/deploiement.md`), jamais par l'interface |
 
-Les jeux de gabarits des promptologues (T14) et les brouillons de référentiel
-(T15) ajouteront leurs lignes à cette matrice.
+Les jeux de gabarits des promptologues (T14) y ont leurs lignes, testées dans
+`ConfigurationDroitsTest.php` (le jeu de ses runs), `Twin9ProtocoleTest.php` et
+`UcPro08EditerGabaritsTwin9Test.php` (le jeu v9.8, les copies, le jeu par
+défaut) ; les brouillons de référentiel (T15) ajouteront les leurs.
 
 | Route | Méthode | Accès |
 |---|---|---|
-| `/api/twin9/configuration` | GET | Compte : ses profils (sans leur document), le profil v9.8, les référentiels publiés et leurs versions, les jeux de gabarits, sa clé personnelle (ouverte, enregistrée) |
-| `/api/twin9/profils` | POST | Compte, + CSRF. Le profil doit être valide (schéma, règles de l'API) et admis (référentiel publié, jeu connu, clé personnelle ouverte) |
+| `/api/twin9/configuration` | GET | Compte : ses profils (sans leur document), le profil par défaut (celui de la v9.8, avec le jeu de gabarits par défaut), les référentiels publiés et leurs versions, les jeux de gabarits qu'il peut choisir, sa clé personnelle (ouverte, enregistrée) |
+| `/api/twin9/profils` | POST | Compte, + CSRF. Le profil doit être valide (schéma, règles de l'API) et admis (référentiel publié, jeu qu'il peut choisir, clé personnelle ouverte) |
 | `/api/twin9/profils/{id}` | GET/PUT/DELETE | Son propriétaire, + CSRF sur PUT et DELETE ; 404 pour tout autre |
 
 ### Runs Twin9 (T9, `#/twin9`)

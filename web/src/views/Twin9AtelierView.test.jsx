@@ -1,8 +1,9 @@
 // Atelier Twin9 (#/twin9-atelier, AD-D2) — édition des gabarits du Golden
 // Prompt réservée à admin ∧ promptologue (les DEUX rôles). Garde front doublée
-// côté serveur (RequireRole::all). Gabarits FICTIFS (noms plats).
+// côté serveur (RequireRole::all). Les jeux de gabarits (T14) : le jeu v9.8 se
+// lit, une copie de son auteur s'édite. Gabarits FICTIFS (noms plats).
 import { afterEach, describe, expect, it, vi } from 'vitest'
-import { cleanup, fireEvent, render, screen } from '@testing-library/react'
+import { act, cleanup, fireEvent, render, screen, waitFor } from '@testing-library/react'
 import Twin9AtelierView from './Twin9AtelierView.jsx'
 import { resetApiClient } from '../api/client.js'
 
@@ -36,8 +37,19 @@ const PROTOCOLES = {
   ],
 }
 
+const JEUX = {
+  defaut: 'v9.8',
+  jeux: [
+    { id: 'v9.8', auteur: null, mien: false, gabarits: 2, created_at: null, defaut: true },
+    { id: 'essai', auteur: 'Camille', mien: true, gabarits: 2, created_at: '2026-10-19 10:00:00', defaut: false },
+  ],
+}
+
+const COPIE = 'api/twin9/admin/jeux/essai'
+
 const baseRoutes = {
-  'GET api/twin9/admin/protocole': () => jsonResponse(200, PROTOCOLES),
+  'GET api/twin9/admin/jeux': () => jsonResponse(200, JEUX),
+  [`GET ${COPIE}/protocole`]: () => jsonResponse(200, PROTOCOLES),
 }
 
 describe('Twin9AtelierView — garde admin ∧ promptologue', () => {
@@ -77,12 +89,12 @@ describe('Twin9AtelierView — édition et banc d’essai', () => {
     let putBody = null
     await renderAtelier({
       ...baseRoutes,
-      'GET api/twin9/admin/protocole/gabarit-alpha': jsonResponse(200, {
+      [`GET ${COPIE}/protocole/gabarit-alpha`]: jsonResponse(200, {
         name: 'gabarit-alpha',
         content: 'CONTENU FICTIF {$TEXTE_JOURNEE}',
         variables: ['TEXTE_JOURNEE', 'PIECES'],
       }),
-      'PUT api/twin9/admin/protocole/gabarit-alpha': (init) => {
+      [`PUT ${COPIE}/protocole/gabarit-alpha`]: (init) => {
         putBody = JSON.parse(init.body)
         return jsonResponse(200, { name: 'gabarit-alpha', variables: ['TEXTE_JOURNEE'], status: 'updated' })
       },
@@ -103,21 +115,21 @@ describe('Twin9AtelierView — édition et banc d’essai', () => {
     let liveContent = 'CONTENU V2 (vivant)'
     await renderAtelier({
       ...baseRoutes,
-      'GET api/twin9/admin/protocole/gabarit-alpha': () =>
+      [`GET ${COPIE}/protocole/gabarit-alpha`]: () =>
         jsonResponse(200, { name: 'gabarit-alpha', content: liveContent, variables: [] }),
-      'GET api/twin9/admin/protocole/gabarit-alpha/versions': () =>
+      [`GET ${COPIE}/protocole/gabarit-alpha/versions`]: () =>
         jsonResponse(200, {
           name: 'gabarit-alpha',
           versions: [{ version: 1, longueur: 10, variables: [], created_at: '2026-07-10 09:00:00' }],
         }),
-      'GET api/twin9/admin/protocole/gabarit-alpha/versions/1': jsonResponse(200, {
+      [`GET ${COPIE}/protocole/gabarit-alpha/versions/1`]: jsonResponse(200, {
         name: 'gabarit-alpha',
         version: 1,
         content: 'CONTENU V1 (archivé)',
         variables: [],
         created_at: '2026-07-10 09:00:00',
       }),
-      'POST api/twin9/admin/protocole/gabarit-alpha/restore': (init) => {
+      [`POST ${COPIE}/protocole/gabarit-alpha/restore`]: (init) => {
         restoreBody = JSON.parse(init.body)
         liveContent = 'CONTENU V1 (archivé)' // le vivant devient la version restaurée
         return jsonResponse(200, { name: 'gabarit-alpha', variables: [], status: 'updated', restored_from: 1 })
@@ -146,7 +158,7 @@ describe('Twin9AtelierView — édition et banc d’essai', () => {
     let postBody = null
     await renderAtelier({
       ...baseRoutes,
-      'POST api/twin9/admin/tester': (init) => {
+      [`POST ${COPIE}/tester`]: (init) => {
         postBody = JSON.parse(init.body)
         return jsonResponse(200, { rendu: 'RENDU FICTIF DU GABARIT', non_resolues: [] })
       },
@@ -161,5 +173,82 @@ describe('Twin9AtelierView — édition et banc d’essai', () => {
     expect(rendu.textContent).toBe('RENDU FICTIF DU GABARIT')
     expect(rendu.tagName).toBe('PRE')
     expect(postBody).toEqual({ name: 'gabarit-alpha', variables: { TEXTE_JOURNEE: 'exemple', PIECES: '' } })
+  })
+
+  it('le jeu v9.8 se lit seulement : ni « Enregistrer » ni « Restaurer », l’éditeur en lecture', async () => {
+    const fetchFn = await renderAtelier({
+      ...baseRoutes,
+      'GET api/twin9/admin/jeux/v9.8/protocole': () => jsonResponse(200, PROTOCOLES),
+      'GET api/twin9/admin/jeux/v9.8/protocole/gabarit-beta': jsonResponse(200, {
+        name: 'gabarit-beta',
+        content: 'CONTENU V9.8 FICTIF',
+        variables: [],
+      }),
+      'GET api/twin9/admin/jeux/v9.8/protocole/gabarit-beta/versions': jsonResponse(200, {
+        name: 'gabarit-beta',
+        versions: [{ version: 1, longueur: 5, variables: [], created_at: '2026-07-10 09:00:00' }],
+      }),
+    })
+
+    fireEvent.change(screen.getByLabelText('Jeu'), { target: { value: 'v9.8' } })
+    await screen.findByText(/Le jeu v9.8 est en lecture seule : copiez-le pour le modifier/)
+    fireEvent.click(screen.getByRole('button', { name: /gabarit-beta/ }))
+    const textarea = await screen.findByLabelText(/Contenu du gabarit/)
+    expect(textarea.value).toBe('CONTENU V9.8 FICTIF')
+    expect(textarea.readOnly).toBe(true)
+    expect(screen.getByText(/Lecture : gabarit-beta/)).toBeTruthy()
+    expect(screen.queryByRole('button', { name: 'Enregistrer' })).toBeNull()
+    fireEvent.click(screen.getByRole('button', { name: 'Voir les versions' }))
+    await screen.findByRole('button', { name: 'Voir' })
+    expect(screen.queryByRole('button', { name: 'Restaurer' })).toBeNull()
+    expect(fetchFn.mock.calls.some(([, init]) => (init?.method ?? 'GET') !== 'GET')).toBe(false)
+  })
+
+  it('copie le jeu v9.8 sous un nom, puis ouvre la copie', async () => {
+    let jeux = { defaut: 'v9.8', jeux: [JEUX.jeux[0]] }
+    let postBody = null
+    const fetchFn = routedFetch({
+      'GET api/twin9/admin/jeux': () => jsonResponse(200, jeux),
+      'GET api/twin9/admin/jeux/v9.8/protocole': () => jsonResponse(200, PROTOCOLES),
+      'POST api/twin9/admin/jeux': (init) => {
+        postBody = JSON.parse(init.body)
+        jeux = { defaut: 'v9.8', jeux: [JEUX.jeux[0], { ...JEUX.jeux[1], id: 'mienne' }] }
+        return jsonResponse(201, { id: 'mienne', gabarits: 2 })
+      },
+      'GET api/twin9/admin/jeux/mienne/protocole': () => jsonResponse(200, PROTOCOLES),
+    })
+    render(<Twin9AtelierView roles={['admin', 'promptologue']} deps={{ fetchFn }} />)
+    await screen.findByText(/Le jeu v9.8 est en lecture seule/)
+
+    fireEvent.change(screen.getByLabelText(/Copier le jeu v9.8 sous le nom/), { target: { value: 'mienne' } })
+    fireEvent.click(screen.getByRole('button', { name: 'Copier' }))
+    await screen.findByText(/Copie « mienne » créée \(2 gabarits\)/)
+    expect(postBody).toEqual({ id: 'mienne' })
+    expect(screen.getByLabelText('Jeu').value).toBe('mienne')
+    expect(screen.getByText(/jeu « mienne »/)).toBeTruthy()
+    expect(screen.queryByText(/Le jeu v9.8 est en lecture seule/)).toBeNull()
+  })
+
+  it('n’affiche pas la liste d’un jeu quitté avant sa réponse', async () => {
+    let rendreV98 = null
+    await renderAtelier({
+      ...baseRoutes,
+      'GET api/twin9/admin/jeux': () =>
+        jsonResponse(200, { ...JEUX, jeux: [...JEUX.jeux, { ...JEUX.jeux[1], id: 'autre', mien: false, auteur: 'Noé' }] }),
+      'GET api/twin9/admin/jeux/v9.8/protocole': () =>
+        new Promise((resolve) => {
+          rendreV98 = () => resolve(jsonResponse(200, { protocole: [{ ...PROTOCOLES.protocole[0], name: 'gabarit-v98' }] }))
+        }),
+      'GET api/twin9/admin/jeux/autre/protocole': () =>
+        jsonResponse(200, { protocole: [{ ...PROTOCOLES.protocole[0], name: 'gabarit-autre' }] }),
+    })
+
+    fireEvent.change(screen.getByLabelText('Jeu'), { target: { value: 'v9.8' } })
+    fireEvent.change(screen.getByLabelText('Jeu'), { target: { value: 'autre' } })
+    await screen.findByRole('button', { name: /gabarit-autre/ })
+    await act(async () => rendreV98())
+    await waitFor(() => expect(screen.getByLabelText('Jeu').value).toBe('autre'))
+    expect(screen.queryByRole('button', { name: /gabarit-v98/ })).toBeNull()
+    expect(screen.getByText(/jeu « autre »/)).toBeTruthy()
   })
 })

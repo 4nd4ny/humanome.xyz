@@ -75,6 +75,9 @@ final class RgpdAuditTest extends MasseTestCase
         'golden_grants.granted_by' => 'SET NULL', // migration 010 (P12.1 admin)
         'twin9_protocole.updated_by' => 'SET NULL', // migration 011 (T3a): platform template survives its editor
         'twin9_protocole_versions.created_by' => 'SET NULL', // migration 011 (T3a)
+        'twin9_jeux.user_id' => 'SET NULL', // migration 029 (T14): a copy of the v9.8's templates survives its author
+        'twin9_jeux_gabarits.updated_by' => 'SET NULL', // migration 029 (T14)
+        'twin9_jeux_versions.created_by' => 'SET NULL', // migration 029 (T14)
     ];
 
     public function testAucuneColonneUtilisateurSansCleEtrangere(): void

@@ -31,6 +31,7 @@ schémas ; les deux runtimes sont testés (`engine/src/validation.test.js`,
 | `competency-map-master.schema.json` | `competency-map-master` | Archive de l'interface de cartographie (`#/cartographie`, master v4, `schemaVersion` 4.x) : référentiel embarqué, journées et variantes (verdicts résumés), détail par journée (extraits, ancres, jury, portfolio du jour), délibérations de run, état de l'apprenant (cases, étiquettes, choix de variante, ensembles, réponses au jury, repères, notes, carnet du dialogue, préférences). Produite par l'espace Export de l'interface et embarquée par l'archive de compte. Fixture : `schemas/fixtures/carto/competency-map-master-exemple.json`, sortie EXACTE de l'interface (`web/scripts/carto-master-fixture.mjs`). |
 | `archive-export.schema.json` | `archive-export` | Format pivot de portabilité (ADR-006) : archive autoporteuse embarquant portfolios en texte intégral, référentiels et prompt-packages COMPLETS, cartographies produites, jeux de l'interface de cartographie (`jeuxCartographie`, depuis la 1.1.0), analyses approfondies Twin9 du compte (`analysesTwin9`, depuis la 1.2.0, §8.5) et journal d'audit. Sert l'export/suppression RGPD, l'import de compte et le seed d'instance. Référence les 5 autres schémas par `$ref` sur leur `$id` absolu. |
 | `twin9-profil.schema.json` | `twin9-profil` | Profil d'un run Twin9, décrit de bout en bout (`docs/plan-twin9-php.md` de `Twin_v9`, lot 4a, T12) : paramètres d'algorithme de la v9.8, troncatures comprises, collège des lecteurs, modèle et réglages de chaque étape, voie, plafonds, clé, gabarits, référentiel. Rangé dans `twin9_profils` (migration 024) ; document de référence : le profil v9.8, `api/config/twin9-profil-v98.json`. Validé côté PHP seulement (`ProfilRepository`) ; voir §7. |
+| `twin9-protocole-contrat.json` | — | Pas un schéma : les variables que le moteur fournit à chaque gabarit du jeu v9.8, par son nom (noms seuls, ADR-010 §2). Une copie du jeu n'en emploie pas d'autre (§8.6, T14). Lu par `TemplateSets`, livré avec la release (`scripts/deploy/stage-api.sh`). |
 
 Chaque document porte `schemaVersion` (semver du schéma d'enveloppe : « 1.0.0 »
 partout, sauf l'archive de compte, « 1.1.0 » depuis le 2026-10-14 et « 1.2.0 »
@@ -391,10 +392,13 @@ valide et range les profils.
   et `max`, pour toute étape où les réglages se combinent ainsi
   (`CallSettings::parEtape`) ; le profil est refusé, l'étape nommée.
 - **Choix admis** (`ProfilPolicy`, T13) : un référentiel publié et, s'il est
-  donné, une de ses versions publiées ; un jeu de gabarits que l'instance
-  connaît (« v9.8 » jusqu'à T14) ; la clé personnelle là où l'administrateur
-  l'a ouverte. Les droits sont au chapitre « Configuration Twin9 » de
-  `docs/autorisations.md`.
+  donné, une de ses versions publiées ; un jeu de gabarits que son
+  propriétaire peut choisir (T14, §8.6 : le jeu v9.8, le jeu par défaut, ses
+  copies tant qu'il est de l'atelier) ; la clé personnelle là où
+  l'administrateur l'a ouverte. Les droits sont au chapitre « Configuration
+  Twin9 » de `docs/autorisations.md`. Le profil par défaut, que sert
+  `GET /api/twin9/configuration` (`defaut`) et que prend un run lancé sans
+  profil, est celui de la v9.8 avec le jeu de gabarits par défaut.
 
 ### 7.1 Ce que la v9.8 règle, et où le profil le range
 
@@ -422,9 +426,10 @@ S'y ajoutent ce que la plateforme règle : `mode` (« test » : la première
 journée du portfolio et le premier pôle du référentiel ; « complet » par
 défaut), `voie` (« directe » ou « lots »), `parallelisme.journees` (journées
 menées de front), `budget_usd` et `duree_minutes` (`null` : aucun plafond),
-`cle` (« instance » ou « personnelle »), `gabarits` (le jeu, « v9.8 » par
-défaut) et `referentiel` (`id`, et `version`, `null` pour la dernière
-publiée, figée dans la copie du profil au lancement).
+`cle` (« instance » ou « personnelle »), `gabarits` (l'identifiant du jeu :
+« v9.8 », valeur du schéma, ou le nom d'une copie, §8.6) et `referentiel`
+(`id`, et `version`, `null` pour la dernière publiée, figée dans la copie du
+profil au lancement).
 
 ### 7.2 Étages et étapes
 
@@ -674,10 +679,11 @@ une suivante le relève.
 ### 8.4 Lancer, suivre, lire (T9)
 
 - **Le lancement** (`Twin9\Lancement`, `POST /api/twin9/runs`) : le profil
-  choisi, un des siens ou celui de la v9.8, est revalidé (§7) et admis
-  (`ProfilPolicy`) ; sa version de référentiel, nulle, devient la dernière
-  publiée, figée dans la copie. Le jeu de gabarits vivant (`twin9_protocole`)
-  devient l'instantané du run. Le moteur construit une fois sa `Plateforme`
+  choisi, un des siens ou celui par défaut (celui de la v9.8, avec le jeu de
+  gabarits par défaut, T14), est revalidé (§7) et admis (`ProfilPolicy`) ;
+  sa version de référentiel, nulle, devient la dernière publiée, figée dans
+  la copie. Le jeu de gabarits que choisit le profil (§8.6) devient
+  l'instantané du run. Le moteur construit une fois sa `Plateforme`
   pour lire le portfolio : le nom de son journal range la carte. Le run garde
   son **attestation** (`twin9_runs.attestation`) : `profil` (`id`, nul pour
   celui de la v9.8, `nom`, et `mode` depuis T10), `gabarits` (`jeu`, `versions` de chaque gabarit
@@ -789,3 +795,56 @@ une suivante le relève.
   (le texte JSON de chaque clé). Ce que le moteur et les modèles ont écrit
   passe le filtre de fuite contre tous les jeux de gabarits des runs du
   compte. L'archive de compte l'embarque (`analysesTwin9`, §4, point 13).
+
+### 8.6 Les jeux de gabarits (T14)
+
+- **Le jeu v9.8** est celui qu'écrit l'import (`POST /api/admin/twin9/import`,
+  `twin9_protocole`, `twin9_protocole_versions`) : l'atelier le lit, ne
+  l'écrit jamais (`403`). Son identifiant est « v9.8 ».
+- **Une copie** (`TemplateSets::copier`, `POST /api/twin9/admin/jeux {id}`,
+  atelier) prend chaque gabarit du jeu v9.8 tel qu'il est, sans son histoire
+  (migration 029 : `twin9_jeux`, `twin9_jeux_gabarits`, `twin9_jeux_versions`).
+  Son nom est son identifiant : `[a-z0-9][a-z0-9._-]*`, 64 caractères au
+  plus, unique, « v9.8 » compris ; ni renommé, ni supprimé. Elle a les
+  gabarits du jeu v9.8 et aucun autre : un `PUT` sur un nom qu'elle n'a pas
+  répond `404`. Son auteur seul l'écrit (`403` pour tout autre), avec les
+  versions et le retour arrière de `ProtocoleRepository`, rangés par jeu ;
+  tout atelier la lit.
+- **Les variables fournies** : un gabarit d'une copie n'emploie que celles
+  que son étape lui fournit — celles que `schemas/twin9-protocole-contrat.json`
+  nomme pour ce gabarit, et celles que son original du jeu v9.8 emploie —,
+  sinon `422` « Variable qu’aucune étape ne fournit à ce gabarit : {$X} ». Un
+  gabarit que ni l'un ni l'autre ne nomme (les fiches `tagger/P1` à `P7`) n'en
+  reçoit aucune. Le contrat reprend celui de `Twin_v9`
+  (`engine/src/twin9/protocole-contrat.json`), complété de `MA_POSITION_R1`
+  (relance, second tour) et `LISTE_61` (Arpenteur), que le moteur fournit et
+  que les gabarits v9.8 emploient ; un test le vérifie sur les gabarits de
+  `TWIN_V9_DIR` (`JeuxGabaritsTest`).
+- **Le choix d'un profil** (`gabarits`, `TemplateSets::pour`) : le jeu v9.8,
+  le jeu par défaut, et, tant que son propriétaire est de l'atelier
+  (`TemplateSets::ATELIER`, `admin` ∧ `promptologue` selon AD-D2), ses
+  copies. **Le jeu par défaut** (`twin9_gabarits_defaut`, `PUT
+  /api/twin9/admin/jeux/defaut {jeu}`, administrateur ; « v9.8 » sans choix)
+  est celui du profil par défaut. Un profil enregistré ne change pas : s'il
+  nomme un jeu que son propriétaire ne peut plus choisir (un ancien jeu par
+  défaut, une copie de quelqu'un sorti de l'atelier), il est refusé, à
+  l'enregistrement comme au lancement (`422` « … ce jeu de gabarits ne vous
+  est pas proposé »), comme l'est une clé personnelle que l'administrateur a
+  fermée, jusqu'à ce qu'il en choisisse un autre ; la page Configuration le
+  montre, sans le proposer.
+- **Dans un run** : l'instantané est le jeu du profil
+  (`ProtocoleRepository::jeu`), son attestation en garde le nom et la version
+  de chaque gabarit, et l'empreinte des réglages le contenu (§8.2). La
+  mémoire d'une carte est rangée par jeu (`twin9_cartes.gabarits`) : un run
+  d'un autre jeu ne reprend pas les journées d'un premier. Le lancement et
+  l'aperçu refusent (`422`) une copie à qui manque un gabarit du jeu v9.8
+  (ajouté par un import après la copie), et un jeu que le moteur ne lit pas
+  (une fiche du référentiel mal formée : le moteur lit les pôles dans
+  `tagger/P1` à `P7`), sans citer le gabarit ; le journal du serveur ne
+  garde que la classe de l'erreur du moteur.
+- **`GET /api/twin9/admin/jeux`** (administrateur) rend `{defaut, jeux}`,
+  chaque jeu avec `id`, `auteur` (nom affiché, nul pour le jeu v9.8 ou un
+  compte supprimé), `mien`, `gabarits` (leur nombre), `created_at` et
+  `defaut` ; jamais un contenu. Les routes de contenu sont celles de l'atelier,
+  par jeu : `/api/twin9/admin/jeux/{jeu}/protocole{/nom}{/versions{/v}|/restore}`
+  et `/api/twin9/admin/jeux/{jeu}/tester`.

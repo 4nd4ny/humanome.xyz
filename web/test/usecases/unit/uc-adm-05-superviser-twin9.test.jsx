@@ -37,11 +37,20 @@ const CONFIG = {
   pipeline: {},
 }
 
+const JEUX = {
+  defaut: 'v9.8',
+  jeux: [
+    { id: 'v9.8', auteur: null, mien: false, gabarits: 29, created_at: null, defaut: true },
+    { id: 'essai', auteur: 'Camille', mien: false, gabarits: 29, created_at: '2026-10-19 10:00:00', defaut: false },
+  ],
+}
+
 function monter(config = CONFIG, comptes = []) {
   const fetchFn = vi.fn(async (url, init = {}) => {
     const key = `${init.method ?? 'GET'} ${url}`
     if (key === 'GET api/twin9/admin/config') return jsonResponse(200, config)
     if (key === 'GET api/twin9/admin/comptes') return jsonResponse(200, { comptes })
+    if (key === 'GET api/twin9/admin/jeux') return jsonResponse(200, JEUX)
     if (key === 'PUT api/twin9/admin/config') return jsonResponse(200, { ...config, ...JSON.parse(init.body) })
     return jsonResponse(404, { error: 'absent' })
   })
@@ -187,12 +196,18 @@ describe('UC-ADM-05 — garde de la vue d’administration (AdminView isolée)',
       const key = `${init.method ?? 'GET'} ${url}`
       if (key === 'GET api/twin9/admin/config') return jsonResponse(200, CONFIG)
       if (key === 'GET api/twin9/admin/comptes') return jsonResponse(200, { comptes: [] })
+      if (key === 'GET api/twin9/admin/jeux') return jsonResponse(200, JEUX)
       return jsonResponse(404, { error: 'absent' })
     })
 
     render(<AdminView section="twin9" deps={{ fetchMeFn: async () => ({ user: { id: 1, roles: ['admin'] } }), fetchFn }} />)
     expect(await screen.findByRole('heading', { name: 'Twin9 — supervision' })).toBeDefined()
-    expect(fetchFn.mock.calls.map(([url]) => url).sort()).toEqual(['api/twin9/admin/comptes', 'api/twin9/admin/config'])
+    await screen.findByLabelText('Jeu du profil par défaut')
+    expect(fetchFn.mock.calls.map(([url]) => url).sort()).toEqual([
+      'api/twin9/admin/comptes',
+      'api/twin9/admin/config',
+      'api/twin9/admin/jeux',
+    ])
     cleanup()
     fetchFn.mockClear()
 
@@ -214,5 +229,29 @@ describe('UC-ADM-05 — garde de la vue d’administration (AdminView isolée)',
     )
     expect((await screen.findByText(/Copie statique du site/)).textContent).toContain('l’administration a besoin de l’API')
     expect(fetchFn).not.toHaveBeenCalled()
+  })
+})
+
+describe('UC-ADM-05 — jeu de gabarits par défaut (T14, Twin9Section isolée)', () => {
+  it('UC-ADM-05-U14 — les jeux par leur nom et leur auteur, jamais leur contenu ; « Enregistrer » envoie le jeu choisi (PUT jeux/defaut), désactivé tant qu’il est déjà le défaut', async () => {
+    const fetchFn = monter()
+    const choix = await screen.findByLabelText('Jeu du profil par défaut')
+    expect(within(choix).getAllByRole('option').map((o) => o.textContent)).toEqual(['v9.8', 'essai (de Camille)'])
+    expect(choix.value).toBe('v9.8')
+    const bloc = choix.closest('.twin9-admin-bloc')
+    expect(within(bloc).getByRole('button', { name: 'Enregistrer' }).disabled).toBe(true)
+
+    fetchFn.mockImplementation(async (url, init = {}) =>
+      `${init.method ?? 'GET'} ${url}` === 'PUT api/twin9/admin/jeux/defaut'
+        ? jsonResponse(200, { defaut: JSON.parse(init.body).jeu })
+        : jsonResponse(404, { error: 'absent' }),
+    )
+    fireEvent.change(choix, { target: { value: 'essai' } })
+    await act(async () => {
+      fireEvent.click(within(bloc).getByRole('button', { name: 'Enregistrer' }))
+    })
+    expect(within(bloc).getByText('Jeu par défaut : « essai ».')).toBeDefined()
+    expect(puts(fetchFn)).toEqual([{ jeu: 'essai' }])
+    expect(fetchFn.mock.calls.some(([url]) => url.includes('/protocole'))).toBe(false)
   })
 })

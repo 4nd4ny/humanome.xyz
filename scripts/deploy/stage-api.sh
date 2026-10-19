@@ -17,6 +17,8 @@ cp "$repo/api/composer.json" "$repo/api/composer.lock" "$stage/"
 # JSON Schemas: the dual-runtime validation contract (P1) ships with the release
 mkdir -p "$stage/schemas"
 cp "$repo/schemas/"*.schema.json "$stage/schemas/"
+# the variables the engine gives each Twin9 template: the atelier checks a copy's edits against it (T14)
+cp "$repo/schemas/twin9-protocole-contrat.json" "$stage/schemas/"
 if [ -d "$repo/api/config" ]; then cp -R "$repo/api/config" "$stage/config"; fi
 if [ -d "$repo/scripts/migrations" ]; then
   mkdir -p "$stage/scripts"

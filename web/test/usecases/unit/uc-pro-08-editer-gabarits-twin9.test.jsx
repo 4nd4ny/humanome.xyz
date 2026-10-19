@@ -3,17 +3,20 @@
 //
 // Code sollicité appelé directement : la route #/twin9-atelier, l'entrée de
 // navigation réservée à la CONJONCTION admin ∧ promptologue (AD-D2), les
-// fonctions d'atelier du client web/src/api/twin9.js (noms HIÉRARCHIQUES
-// encodés, méthodes, corps, CSRF) et le rendu en TEXTE BRUT des contenus
-// confidentiels par Twin9AtelierView. Gabarits FICTIFS.
+// fonctions d'atelier du client web/src/api/twin9.js (jeu, puis noms
+// HIÉRARCHIQUES encodés, méthodes, corps, CSRF) et le rendu en TEXTE BRUT des
+// contenus confidentiels par Twin9AtelierView. Gabarits FICTIFS.
 import { afterEach, describe, expect, it, vi } from 'vitest'
 import { cleanup, fireEvent, render, screen } from '@testing-library/react'
 import { parseHash } from '../../../src/router.js'
 import { navGroups } from '../../../src/nav.js'
 import { fetchMe, resetApiClient } from '../../../src/api/client.js'
 import {
+  copierJeu,
+  fetchJeux,
   fetchProtocole,
   fetchProtocoleList,
+  fixerJeuDefaut,
   fetchProtocoleVersion,
   fetchProtocoleVersions,
   restoreProtocoleVersion,
@@ -46,30 +49,37 @@ describe('UC-PRO-08 — accès à l’atelier', () => {
 })
 
 describe('UC-PRO-08 — client API de l’atelier', () => {
-  it('UC-PRO-08-U03 — noms hiérarchiques encodés (%2F), lectures en GET, écritures avec corps et jeton CSRF', async () => {
+  it('UC-PRO-08-U03 — jeu puis noms hiérarchiques encodés (%2F), lectures en GET, écritures avec corps et jeton CSRF', async () => {
     const fetchFn = vi.fn(async (url) =>
       url === 'api/auth/me' ? jsonResponse(200, { user: { id: 1 }, csrfToken: 'csrf-uc-pro-08' }) : jsonResponse(200, {}),
     )
     await fetchMe({ fetchFn })
     const opts = { fetchFn }
-    await fetchProtocoleList(opts)
-    await fetchProtocole('lourd/20-greffier', opts)
-    await saveProtocole('lourd/20-greffier', 'Nouveau contenu {$CODE}', opts)
-    await fetchProtocoleVersions('lourd/20-greffier', opts)
-    await fetchProtocoleVersion('lourd/20-greffier', 2, opts)
-    await restoreProtocoleVersion('lourd/20-greffier', 2, opts)
-    await testerProtocole('lourd/20-greffier', { CODE: '1.01' }, opts)
+    await fetchJeux(opts)
+    await copierJeu('essai', opts)
+    await fixerJeuDefaut('essai', opts)
+    await fetchProtocoleList('v9.8', opts)
+    await fetchProtocole('essai', 'lourd/20-greffier', opts)
+    await saveProtocole('essai', 'lourd/20-greffier', 'Nouveau contenu {$CODE}', opts)
+    await fetchProtocoleVersions('essai', 'lourd/20-greffier', opts)
+    await fetchProtocoleVersion('essai', 'lourd/20-greffier', 2, opts)
+    await restoreProtocoleVersion('essai', 'lourd/20-greffier', 2, opts)
+    await testerProtocole('essai', 'lourd/20-greffier', { CODE: '1.01' }, opts)
 
+    const copie = 'api/twin9/admin/jeux/essai/protocole/lourd%2F20-greffier'
     expect(
       fetchFn.mock.calls.slice(1).map(([url, init]) => [init.method, url, init.body && JSON.parse(init.body), init.headers['X-CSRF-Token']]),
     ).toEqual([
-      ['GET', 'api/twin9/admin/protocole', undefined, undefined],
-      ['GET', 'api/twin9/admin/protocole/lourd%2F20-greffier', undefined, undefined],
-      ['PUT', 'api/twin9/admin/protocole/lourd%2F20-greffier', { content: 'Nouveau contenu {$CODE}' }, 'csrf-uc-pro-08'],
-      ['GET', 'api/twin9/admin/protocole/lourd%2F20-greffier/versions', undefined, undefined],
-      ['GET', 'api/twin9/admin/protocole/lourd%2F20-greffier/versions/2', undefined, undefined],
-      ['POST', 'api/twin9/admin/protocole/lourd%2F20-greffier/restore', { version: 2 }, 'csrf-uc-pro-08'],
-      ['POST', 'api/twin9/admin/tester', { name: 'lourd/20-greffier', variables: { CODE: '1.01' } }, 'csrf-uc-pro-08'],
+      ['GET', 'api/twin9/admin/jeux', undefined, undefined],
+      ['POST', 'api/twin9/admin/jeux', { id: 'essai' }, 'csrf-uc-pro-08'],
+      ['PUT', 'api/twin9/admin/jeux/defaut', { jeu: 'essai' }, 'csrf-uc-pro-08'],
+      ['GET', 'api/twin9/admin/jeux/v9.8/protocole', undefined, undefined],
+      ['GET', copie, undefined, undefined],
+      ['PUT', copie, { content: 'Nouveau contenu {$CODE}' }, 'csrf-uc-pro-08'],
+      ['GET', `${copie}/versions`, undefined, undefined],
+      ['GET', `${copie}/versions/2`, undefined, undefined],
+      ['POST', `${copie}/restore`, { version: 2 }, 'csrf-uc-pro-08'],
+      ['POST', 'api/twin9/admin/jeux/essai/tester', { name: 'lourd/20-greffier', variables: { CODE: '1.01' } }, 'csrf-uc-pro-08'],
     ])
   })
 })
@@ -79,11 +89,14 @@ describe('UC-PRO-08 — rendu des contenus confidentiels (composant isolé)', ()
     const piege = 'Consigne FICTIVE <img src=x onerror="window.__pwned=1"> <b>gras</b> {$CODE}'
     const fetchFn = vi.fn(async (url, init = {}) => {
       const key = `${init.method ?? 'GET'} ${url}`
-      if (key === 'GET api/twin9/admin/protocole') {
+      if (key === 'GET api/twin9/admin/jeux') {
+        return jsonResponse(200, { defaut: 'v9.8', jeux: [{ id: 'v9.8', auteur: null, mien: false, gabarits: 1, created_at: null, defaut: true }] })
+      }
+      if (key === 'GET api/twin9/admin/jeux/v9.8/protocole') {
         return jsonResponse(200, { protocole: [{ name: 'lourd/20-greffier', longueur: piege.length, variables: ['CODE', 'EXTRAIT'], updated_at: '2026-07-10 09:00:00' }] })
       }
-      if (key === 'GET api/twin9/admin/protocole/lourd%2F20-greffier') return jsonResponse(200, { name: 'lourd/20-greffier', content: piege, variables: ['CODE'] })
-      if (key === 'POST api/twin9/admin/tester') return jsonResponse(200, { rendu: piege.replace('{$CODE}', '1.01'), non_resolues: ['EXTRAIT'] })
+      if (key === 'GET api/twin9/admin/jeux/v9.8/protocole/lourd%2F20-greffier') return jsonResponse(200, { name: 'lourd/20-greffier', content: piege, variables: ['CODE'] })
+      if (key === 'POST api/twin9/admin/jeux/v9.8/tester') return jsonResponse(200, { rendu: piege.replace('{$CODE}', '1.01'), non_resolues: ['EXTRAIT'] })
       return jsonResponse(404, { error: 'absent' })
     })
     const { container } = render(<Twin9AtelierView roles={['admin', 'promptologue']} deps={{ fetchFn }} />)
@@ -101,7 +114,7 @@ describe('UC-PRO-08 — rendu des contenus confidentiels (composant isolé)', ()
     expect(screen.getByText('Variables non résolues : EXTRAIT')).toBeDefined()
     expect(container.querySelector('img, b, [onerror]')).toBeNull()
     expect(window.__pwned).toBeUndefined()
-    expect(JSON.parse(fetchFn.mock.calls.find(([u]) => u === 'api/twin9/admin/tester')[1].body)).toEqual({
+    expect(JSON.parse(fetchFn.mock.calls.find(([u]) => u === 'api/twin9/admin/jeux/v9.8/tester')[1].body)).toEqual({
       name: 'lourd/20-greffier',
       variables: { CODE: '1.01', EXTRAIT: '' },
     })

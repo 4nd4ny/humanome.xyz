@@ -14,6 +14,7 @@ use Humanome\Tests\TestDb;
 use Humanome\Tests\UseCases\Support\TwinSupport;
 use Humanome\Twin9\FicheStore;
 use Humanome\Twin9\ProtocoleRepository;
+use Humanome\Twin9\TemplateSets;
 use Humanome\Twin9\Twin9Config;
 use Humanome\Twin9\Twin9Exception;
 use PDO;
@@ -33,8 +34,11 @@ use Slim\Psr7\Response;
  * Le dépôt des gabarits CONFIDENTIELS (ProtocoleRepository) est appelé
  * directement : écriture versionnée et attribuée, historique, lecture d'une
  * version, restauration non destructive, validations (nom hiérarchique,
- * taille), extraction des variables, liste sans contenu. Plus la garde de
- * rôle conjonctive (RequireRole::all) sans session. Gabarits FICTIFS.
+ * taille), extraction des variables, liste sans contenu. Les jeux de
+ * gabarits (TemplateSets, T14) : copie du jeu v9.8, écriture réservée à
+ * l'auteur d'une copie, variables qu'une étape fournit, jeux qu'un compte
+ * choisit, jeu par défaut. Plus la garde de rôle conjonctive
+ * (RequireRole::all) sans session. Gabarits FICTIFS.
  */
 final class UcPro08EditerGabaritsTwin9Test extends TestCase
 {
@@ -50,6 +54,8 @@ final class UcPro08EditerGabaritsTwin9Test extends TestCase
     {
         self::$pdo->exec('DELETE FROM twin9_protocole_versions');
         self::$pdo->exec('DELETE FROM twin9_protocole');
+        self::$pdo->exec('DELETE FROM twin9_jeux');
+        self::$pdo->exec("DELETE FROM settings WHERE name = 'twin9_gabarits_defaut'");
         self::$pdo->exec('DELETE FROM users');
     }
 
@@ -219,7 +225,7 @@ final class UcPro08EditerGabaritsTwin9Test extends TestCase
             }
         };
         $guard = RequireRole::all('admin', 'promptologue');
-        $request = (new ServerRequestFactory())->createServerRequest('GET', '/api/twin9/admin/protocole');
+        $request = (new ServerRequestFactory())->createServerRequest('GET', '/api/twin9/admin/jeux/v9.8/protocole');
 
         $response = $guard->process($request, $handler);
         self::assertSame(401, $response->getStatusCode());
@@ -307,5 +313,135 @@ final class UcPro08EditerGabaritsTwin9Test extends TestCase
         $brut = (string) json_encode($config->referentiel(), JSON_UNESCAPED_UNICODE);
         self::assertStringNotContainsString('FICHE FICTIVE', $brut);
         self::assertStringNotContainsString('PRÉAMBULE SECRET', $brut);
+    }
+
+    #[TestDox('UC-PRO-08-U12 — copie du jeu v9.8 (T14) : chaque gabarit tel quel, sans son histoire, à son auteur ; nom de copie [a-z0-9._-], 64 car. max, libre ; le jeu v9.8 ne bouge pas ; compte supprimé → copie sans auteur')]
+    public function testU12ACopyOfTheV98Set(): void
+    {
+        $camille = self::user('camille@example.org');
+        $v98 = new ProtocoleRepository(self::$pdo);
+        $jeux = new TemplateSets(self::$pdo);
+        try {
+            $jeux->copier('essai', $camille);
+            self::fail('rien à copier');
+        } catch (Twin9Exception $e) {
+            self::assertSame([409, 'Aucun gabarit v9.8 à copier : ils n’ont pas encore été importés'], [$e->getStatusCode(), $e->getMessage()]);
+        }
+        $v98->put('lourd/20-greffier', 'G1 FICTIF {$CODE}', null);
+        $v98->put('lourd/20-greffier', TwinSupport::GABARIT_GREFFIER, null);
+        $v98->put('tagger/1-tag-pole', TwinSupport::GABARIT_TAG, null);
+        $avant = self::$pdo->query('SELECT * FROM twin9_protocole ORDER BY name')->fetchAll();
+
+        self::assertSame(['id' => 'essai.2_b-c', 'gabarits' => 2], $jeux->copier('essai.2_b-c', $camille));
+        $copie = new ProtocoleRepository(self::$pdo, 'essai.2_b-c');
+        self::assertSame($v98->jeu()['gabarits'], $copie->jeu()['gabarits'], 'les gabarits du jeu v9.8, tels quels');
+        self::assertSame(['lourd/20-greffier' => 1, 'tagger/1-tag-pole' => 1], $copie->jeu()['versions'], 'sans leur histoire');
+        self::assertSame([], $copie->versions('lourd/20-greffier'));
+        self::assertSame($camille, (int) self::$pdo->query('SELECT user_id FROM twin9_jeux')->fetchColumn());
+        foreach (['Essai', 'é', '-x', '.x', 'a b', 'a/b', str_repeat('a', 65), ''] as $invalide) {
+            try {
+                $jeux->copier($invalide, $camille);
+                self::fail('nom accepté : ' . $invalide);
+            } catch (Twin9Exception $e) {
+                self::assertSame(422, $e->getStatusCode(), $invalide);
+            }
+        }
+        foreach (['v9.8', 'essai.2_b-c'] as $pris) {
+            try {
+                $jeux->copier($pris, $camille);
+                self::fail('nom pris accepté : ' . $pris);
+            } catch (Twin9Exception $e) {
+                self::assertSame([409, 'Ce nom est déjà pris'], [$e->getStatusCode(), $e->getMessage()]);
+            }
+        }
+        self::assertSame($avant, self::$pdo->query('SELECT * FROM twin9_protocole ORDER BY name')->fetchAll(), 'le jeu v9.8 ne bouge pas');
+
+        // RGPD : la copie appartient à la plateforme ; son auteur passe à NULL avec son compte.
+        $jeux->ecrire('essai.2_b-c', 'lourd/20-greffier', 'Greffier FICTIF retouché {$CODE}', $camille);
+        self::$pdo->exec('DELETE FROM users WHERE id = ' . $camille);
+        self::assertSame([null], self::$pdo->query('SELECT user_id FROM twin9_jeux')->fetchAll(\PDO::FETCH_COLUMN));
+        self::assertSame([[null, null]], self::$pdo->query('SELECT g.updated_by, v.created_by FROM twin9_jeux_gabarits g '
+            . "JOIN twin9_jeux_versions v ON v.jeu = g.jeu AND v.name = g.name WHERE g.name = 'lourd/20-greffier'")->fetchAll(\PDO::FETCH_NUM));
+        self::assertSame('Greffier FICTIF retouché {$CODE}', $copie->get('lourd/20-greffier')['content']);
+    }
+
+    #[TestDox('UC-PRO-08-U13 — écrire une copie (T14) : son auteur seul, ses gabarits seuls, les variables que l’étape fournit (contrat + original v9.8) ; le jeu v9.8 en lecture seule ; une restauration rend un contenu de la copie')]
+    public function testU13WritingACopy(): void
+    {
+        $camille = self::user('camille@example.org');
+        $noe = self::user('noe@example.org');
+        $v98 = new ProtocoleRepository(self::$pdo);
+        $v98->put('lourd/21a-accusation', 'Accusation FICTIVE {$CODE} {$EXTRAIT}', null);
+        $v98->put('tagger/P1', '# Pôle FICTIF', null);
+        $jeux = new TemplateSets(self::$pdo);
+        $jeux->copier('essai', $camille);
+
+        self::assertSame([], $jeux->variablesRefusees('lourd/21a-accusation', '{$CODE} {$NOM} {$DOSSIER} {$COMPETENCE_FICHE} {$EXTRAIT}'),
+            'le contrat, et l’original v9.8 (EXTRAIT)');
+        self::assertSame(['REPLIQUE', 'X'], $jeux->variablesRefusees('lourd/21a-accusation', '{$CODE} {$REPLIQUE} {$X} {$REPLIQUE}'));
+        self::assertSame(['POLE_NOM'], $jeux->variablesRefusees('tagger/P1', '{$POLE_NOM}'), 'une fiche ne reçoit aucune variable');
+        self::assertSame(['CODE'], $jeux->variablesRefusees('inconnu/x', '{$CODE}'));
+        self::assertSame(['CALQUES', 'CODE', 'COMPETENCE_FICHE', 'FEUILLES', 'NOM', 'POLE_NOM', 'POLE_NUM'],
+            TemplateSets::contrat()['lourd/20-greffier']);
+
+        self::assertSame('updated', $jeux->ecrire('essai', 'lourd/21a-accusation', 'Accusation retouchée {$NOM}', $camille)['status']);
+        foreach ([
+            ['v9.8', 'lourd/21a-accusation', 'x', $camille, 403, 'Le jeu v9.8 est en lecture seule : copiez-le pour le modifier'],
+            ['essai', 'lourd/21a-accusation', 'x', $noe, 403, 'Seul l’auteur d’une copie la modifie'],
+            ['inconnu', 'lourd/21a-accusation', 'x', $camille, 404, 'Jeu de gabarits introuvable'],
+            ['essai', 'lourd/99-nouveau', 'x', $camille, 404, 'Gabarit introuvable'],
+            ['essai', 'lourd/21a-accusation', ' ', $camille, 422, 'Contenu de gabarit requis'],
+            ['essai', 'lourd/21a-accusation', '{$PLAIDOIRIE}', $camille, 422, 'Variable qu’aucune étape ne fournit à ce gabarit : {$PLAIDOIRIE}'],
+        ] as [$jeu, $name, $content, $user, $statut, $message]) {
+            try {
+                $jeux->ecrire($jeu, $name, $content, $user);
+                self::fail("écriture acceptée : $jeu $name");
+            } catch (Twin9Exception $e) {
+                self::assertSame([$statut, $message], [$e->getStatusCode(), $e->getMessage()]);
+            }
+        }
+        foreach ([['v9.8', $camille, 403], ['essai', $noe, 403], ['inconnu', $camille, 404]] as [$jeu, $user, $statut]) {
+            try {
+                $jeux->restaurer($jeu, 'lourd/21a-accusation', 1, $user);
+                self::fail("restauration acceptée : $jeu");
+            } catch (Twin9Exception $e) {
+                self::assertSame($statut, $e->getStatusCode());
+            }
+        }
+        self::assertSame(1, $jeux->restaurer('essai', 'lourd/21a-accusation', 1, $camille)['restored_from']);
+        self::assertSame('Accusation FICTIVE {$CODE} {$EXTRAIT}', (new ProtocoleRepository(self::$pdo, 'essai'))->get('lourd/21a-accusation')['content']);
+        self::assertSame('Accusation FICTIVE {$CODE} {$EXTRAIT}', $v98->get('lourd/21a-accusation')['content']);
+        self::assertSame([], $v98->versions('lourd/21a-accusation'));
+    }
+
+    #[TestDox('UC-PRO-08-U14 — les jeux qu’un compte choisit (T14) : le jeu v9.8, le jeu par défaut, et ses copies tant qu’il est de l’atelier ; le jeu par défaut, que l’administrateur fixe parmi ceux qui existent')]
+    public function testU14TheSetsAnAccountChooses(): void
+    {
+        $camille = self::user('camille@example.org');
+        $noe = self::user('noe@example.org');
+        self::roles($camille, ['admin', 'promptologue']);
+        (new ProtocoleRepository(self::$pdo))->put('lourd/20-greffier', TwinSupport::GABARIT_GREFFIER, null);
+        $jeux = new TemplateSets(self::$pdo);
+        $jeux->copier('b-camille', $camille);
+        $jeux->copier('a-camille', $camille);
+
+        self::assertSame('v9.8', $jeux->defaut());
+        self::assertSame(['v9.8', 'a-camille', 'b-camille'], $jeux->pour($camille));
+        self::assertSame(['v9.8'], $jeux->pour($noe));
+
+        $jeux->fixerDefaut('b-camille');
+        self::assertSame('b-camille', $jeux->defaut());
+        self::assertSame(['v9.8', 'b-camille'], $jeux->pour($noe));
+        self::assertSame(['v9.8', 'b-camille', 'a-camille'], $jeux->pour($camille));
+        self::roles($camille, ['admin']);
+        self::assertSame(['v9.8', 'b-camille'], $jeux->pour($camille), 'hors de l’atelier, ses copies ne lui sont plus offertes');
+        try {
+            $jeux->fixerDefaut('inconnu');
+            self::fail('jeu inconnu accepté');
+        } catch (Twin9Exception $e) {
+            self::assertSame([404, 'Jeu de gabarits introuvable'], [$e->getStatusCode(), $e->getMessage()]);
+        }
+        self::assertSame(['v9.8', 'a-camille', 'b-camille'], array_column($jeux->lister(), 'id'));
+        self::assertSame([false, false, true], array_column($jeux->lister(), 'defaut'));
     }
 }

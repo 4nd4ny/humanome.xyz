@@ -243,7 +243,8 @@ final class UcSys03MaintenanceSupervisionTest extends TestCase
             }
         }
         self::assertEquals(
-            ['competence_versions.submitted_by', 'referentiel_versions.submitted_by', 'twin9_protocole.updated_by'],
+            ['competence_versions.submitted_by', 'referentiel_versions.submitted_by', 'twin9_jeux_gabarits.updated_by',
+             'twin9_protocole.updated_by'],
             $ungoverned,
             'FK vers users invisibles pour footprint()',
         );

@@ -5,21 +5,32 @@ declare(strict_types=1);
 /**
  * Twin9 server routes (T3a admin surface + T3b user surface, ADR-010).
  *
- * The templates stored in twin9_protocole are the platform's industrial
- * secret: this file is the ONLY place where their content leaves the
- * database, and every such route is gated by RequireRole::any('admin')
- * (ADR-010 §2/§6 — promptologues get 403 like everyone else). Error
- * messages stay generic: no template fragment, ever.
+ * The templates stored in twin9_protocole (the v9.8's set) and
+ * twin9_jeux_gabarits (its copies) are the platform's industrial secret: this
+ * file is the ONLY place where their content leaves the database, and every
+ * such route is gated by RequireRole::all('admin', 'promptologue') (ADR-010
+ * §2/§6, AD-D2 — anyone else gets 403). Error messages stay generic: no
+ * template fragment, ever.
+ *
+ * Template sets (T14, Twin_v9's docs/plan-twin9-php.md, lot 4b): the v9.8's,
+ * which the import writes and the atelier only reads, and the copies the
+ * promptologues make of it ({jeu} = "v9.8" or a copy's id):
+ *   GET  /api/twin9/admin/jeux                      admin: the sets, the default (no content)
+ *   PUT  /api/twin9/admin/jeux/defaut               admin: {jeu} the instance's default set
+ *   POST /api/twin9/admin/jeux                      atelier: {id} copy the v9.8's set
+ *   GET  /api/twin9/admin/jeux/{jeu}/protocole                 list (metadata, no content)
+ *   GET  /api/twin9/admin/jeux/{jeu}/protocole/{name}/versions edit history (metadata)
+ *   GET  /api/twin9/admin/jeux/{jeu}/protocole/{name}/versions/{v} one archived version WITH content
+ *   POST /api/twin9/admin/jeux/{jeu}/protocole/{name}/restore  {version} — a copy's author
+ *   GET  /api/twin9/admin/jeux/{jeu}/protocole/{name}          one template WITH content
+ *   PUT  /api/twin9/admin/jeux/{jeu}/protocole/{name}          {content} — a copy's author, edit + version
+ *   POST /api/twin9/admin/jeux/{jeu}/tester                    {name, variables{}} -> {rendu, non_resolues}
+ * The atelier is admin ∧ promptologue (AD-D2): only it reads a template.
  *
  * Admin routes:
- *   GET  /api/twin9/admin/protocole                 list (metadata, no content)
- *   GET  /api/twin9/admin/protocole/{name}/versions edit history (metadata)
- *   GET  /api/twin9/admin/protocole/{name}          one template WITH content
- *   PUT  /api/twin9/admin/protocole/{name}          {content} — edit + version
  *   GET  /api/twin9/admin/config                    Twin9Config (admin shape)
  *   PUT  /api/twin9/admin/config                    partial update, 422 on bounds
- *   POST /api/twin9/admin/tester                    {name, variables{}} -> {rendu, non_resolues}
- *   POST /api/admin/twin9/import                    X-Migrate-Token (deploy script)
+ *   POST /api/admin/twin9/import                    X-Migrate-Token (deploy script): the v9.8's set
  *
  * User routes (T3b — any logged-in user, ADR-010 §1/§3/§4; the templates are
  * rendered SERVER-SIDE and only the model output travels back, through the
@@ -34,8 +45,8 @@ declare(strict_types=1);
  *   POST /api/twin9/credit/paypal/capturer {order_id} -> {solde_microusd}
  *
  * {name} is hierarchical ('lourd/20-greffier'): the routes use a greedy
- * {name:.+} pattern, and the /versions route is registered FIRST so FastRoute
- * matches it before the greedy catch-all.
+ * {name:.+} pattern, and the /versions routes are registered FIRST so
+ * FastRoute matches them before the greedy catch-all.
  */
 
 use Humanome\Auth\Audit;
@@ -56,6 +67,7 @@ use Humanome\Twin9\LeakFilter;
 use Humanome\Twin9\PayPalClient;
 use Humanome\Twin9\ProtocoleRepository;
 use Humanome\Twin9\SoldeInsuffisantException;
+use Humanome\Twin9\TemplateSets;
 use Humanome\Twin9\Twin9Config;
 use Humanome\Twin9\Twin9Exception;
 use Psr\Http\Message\ResponseInterface as Response;
@@ -133,20 +145,61 @@ return function (App $app): void {
     $atelier = RequireRole::all('admin', 'promptologue');
 
     // ==================================================================
-    // 1. Templates (protocole) — atelier : admin ∧ promptologue (AD-D2)
+    // 1. Template sets (T14) and their templates — the list and the default:
+    //    admin (no content); a copy, the content, its versions, its rollback
+    //    and the test bench: the atelier, admin ∧ promptologue (AD-D2). The
+    //    v9.8's set is read-only; a copy is written by its author alone.
     // ==================================================================
 
-    // GET /api/twin9/admin/protocole — metadata list (noms des gabarits :
-    // révèle la structure du protocole, gardé comme le contenu).
-    $app->get('/twin9/admin/protocole', $wrap(function (Request $request, Response $response) use ($json): Response {
-        return $json($response, ['protocole' => (new ProtocoleRepository(Db::get()))->list()]);
+    $jeux = static fn (): TemplateSets => new TemplateSets(Db::get());
+
+    // GET /api/twin9/admin/jeux — the sets, the v9.8's first: id, author,
+    // whether the session's, number of templates, date, the default. No content.
+    $app->get('/twin9/admin/jeux', $wrap(function (Request $request, Response $response) use ($json, $jeux): Response {
+        $moi = (int) $request->getAttribute('userId');
+        $sets = $jeux();
+
+        return $json($response, ['defaut' => $sets->defaut(), 'jeux' => array_map(static fn (array $j): array => [
+            'id' => $j['id'], 'auteur' => $j['auteur'], 'mien' => $j['auteur_id'] === $moi,
+            'gabarits' => $j['gabarits'], 'created_at' => $j['created_at'], 'defaut' => $j['defaut'],
+        ], $sets->lister())]);
+    }))->add($admin);
+
+    // PUT /api/twin9/admin/jeux/defaut {jeu} — the instance's default set: the
+    // default profile's, which a new profile starts from (404 unknown).
+    $app->put('/twin9/admin/jeux/defaut', $wrap(function (Request $request, Response $response) use ($json, $parseBody, $jeux): Response {
+        $body = $parseBody($request);
+        $jeu = \is_array($body) && \is_string($body['jeu'] ?? null) ? $body['jeu'] : '';
+        if ($jeu === '') {
+            return $json($response, ['error' => 'Champ requis : jeu'], 422);
+        }
+        $sets = $jeux();
+        $sets->fixerDefaut($jeu);
+
+        return $json($response, ['defaut' => $sets->defaut()]);
+    }))->add($admin);
+
+    // POST /api/twin9/admin/jeux {id} — copies the v9.8's set under the name
+    // given, the session's to edit (422 invalid name, 409 taken or nothing to copy).
+    $app->post('/twin9/admin/jeux', $wrap(function (Request $request, Response $response) use ($json, $parseBody, $jeux): Response {
+        $body = $parseBody($request);
+        $id = \is_array($body) && \is_string($body['id'] ?? null) ? $body['id'] : '';
+
+        return $json($response, $jeux()->copier($id, (int) $request->getAttribute('userId')), 201);
     }))->add($atelier);
 
-    // GET /api/twin9/admin/protocole/{name}/versions — edit history.
-    // Registered BEFORE the greedy {name:.+} routes (FastRoute matches in
-    // registration order).
-    $app->get('/twin9/admin/protocole/{name:.+}/versions', $wrap(function (Request $request, Response $response, array $args) use ($json): Response {
-        $repo = new ProtocoleRepository(Db::get());
+    $set = '/twin9/admin/jeux/{jeu:[a-z0-9][a-z0-9._-]*}';
+
+    // GET …/{jeu}/protocole — metadata list (noms des gabarits : révèle la
+    // structure du protocole, gardé comme le contenu).
+    $app->get($set . '/protocole', $wrap(function (Request $request, Response $response, array $args) use ($json, $jeux): Response {
+        return $json($response, ['protocole' => $jeux()->lire((string) $args['jeu'])->list()]);
+    }))->add($atelier);
+
+    // GET …/{jeu}/protocole/{name}/versions — edit history. Registered BEFORE
+    // the greedy {name:.+} routes (FastRoute matches in registration order).
+    $app->get($set . '/protocole/{name:.+}/versions', $wrap(function (Request $request, Response $response, array $args) use ($json, $jeux): Response {
+        $repo = $jeux()->lire((string) $args['jeu']);
         $name = (string) $args['name'];
         if ($repo->get($name) === null) {
             return $json($response, ['error' => 'Gabarit introuvable'], 404);
@@ -155,11 +208,10 @@ return function (App $app): void {
         return $json($response, ['name' => $name, 'versions' => $repo->versions($name)]);
     }))->add($atelier);
 
-    // GET /api/twin9/admin/protocole/{name}/versions/{version} — one ARCHIVED
-    // version WITH content (D13 : lecture avant restauration). Même garde que
-    // le contenu vivant.
-    $app->get('/twin9/admin/protocole/{name:.+}/versions/{version:[0-9]+}', $wrap(function (Request $request, Response $response, array $args) use ($json): Response {
-        $archived = (new ProtocoleRepository(Db::get()))->version((string) $args['name'], (int) $args['version']);
+    // GET …/{jeu}/protocole/{name}/versions/{version} — one ARCHIVED version
+    // WITH content (D13 : lecture avant restauration).
+    $app->get($set . '/protocole/{name:.+}/versions/{version:[0-9]+}', $wrap(function (Request $request, Response $response, array $args) use ($json, $jeux): Response {
+        $archived = $jeux()->lire((string) $args['jeu'])->version((string) $args['name'], (int) $args['version']);
         if ($archived === null) {
             return $json($response, ['error' => 'Version introuvable'], 404);
         }
@@ -167,30 +219,25 @@ return function (App $app): void {
         return $json($response, $archived);
     }))->add($atelier);
 
-    // POST /api/twin9/admin/protocole/{name}/restore {version} — restaure une
-    // version archivée comme gabarit VIVANT (D13, ADR-010 §6). Jamais
-    // destructif : le contenu courant est archivé d'abord (put()), l'histoire
-    // reste complète. Restaurer un contenu identique au vivant = no-op.
-    $app->post('/twin9/admin/protocole/{name:.+}/restore', $wrap(function (Request $request, Response $response, array $args) use ($json, $parseBody): Response {
+    // POST …/{jeu}/protocole/{name}/restore {version} — restaure une version
+    // archivée d'une copie, par son auteur (D13, ADR-010 §6). Jamais
+    // destructif : le contenu courant est archivé d'abord. Restaurer un
+    // contenu identique au vivant = no-op. Le jeu v9.8 : 403.
+    $app->post($set . '/protocole/{name:.+}/restore', $wrap(function (Request $request, Response $response, array $args) use ($json, $parseBody, $jeux): Response {
         $body = $parseBody($request);
         $version = \is_array($body) && \is_int($body['version'] ?? null) ? $body['version'] : 0;
         if ($version < 1) {
             return $json($response, ['error' => 'Champ requis : version (entier >= 1)'], 422);
         }
 
-        $result = (new ProtocoleRepository(Db::get()))->restore(
-            (string) $args['name'],
-            $version,
-            (int) $request->getAttribute('userId'),
-        );
-
-        return $json($response, $result);
+        return $json($response, $jeux()->restaurer((string) $args['jeu'], (string) $args['name'], $version,
+            (int) $request->getAttribute('userId')));
     }))->add($atelier);
 
-    // GET /api/twin9/admin/protocole/{name} — WITH content. This route is THE
-    // point where an admin-promptologue (and no one else) reads a template.
-    $app->get('/twin9/admin/protocole/{name:.+}', $wrap(function (Request $request, Response $response, array $args) use ($json): Response {
-        $template = (new ProtocoleRepository(Db::get()))->get((string) $args['name']);
+    // GET …/{jeu}/protocole/{name} — WITH content. This route is THE point
+    // where an admin-promptologue (and no one else) reads a template.
+    $app->get($set . '/protocole/{name:.+}', $wrap(function (Request $request, Response $response, array $args) use ($json, $jeux): Response {
+        $template = $jeux()->lire((string) $args['jeu'])->get((string) $args['name']);
         if ($template === null) {
             return $json($response, ['error' => 'Gabarit introuvable'], 404);
         }
@@ -198,22 +245,19 @@ return function (App $app): void {
         return $json($response, $template);
     }))->add($atelier);
 
-    // PUT /api/twin9/admin/protocole/{name} {content} — edit (previous
-    // content archived as a version). 422: empty or >= 256 Ko.
-    $app->put('/twin9/admin/protocole/{name:.+}', $wrap(function (Request $request, Response $response, array $args) use ($json, $parseBody): Response {
+    // PUT …/{jeu}/protocole/{name} {content} — edit a template of a copy, by
+    // its author (previous content archived as a version). 403: the v9.8's
+    // set, or another's copy; 404: a template the copy does not have; 422:
+    // empty or >= 256 Ko, or a variable no step gives the template.
+    $app->put($set . '/protocole/{name:.+}', $wrap(function (Request $request, Response $response, array $args) use ($json, $parseBody, $jeux): Response {
         $body = $parseBody($request);
         $content = \is_array($body) && \is_string($body['content'] ?? null) ? $body['content'] : '';
         if ($content === '') {
             return $json($response, ['error' => 'Champ requis : content (texte non vide)'], 422);
         }
 
-        $result = (new ProtocoleRepository(Db::get()))->put(
-            (string) $args['name'],
-            $content,
-            (int) $request->getAttribute('userId'),
-        );
-
-        return $json($response, $result);
+        return $json($response, $jeux()->ecrire((string) $args['jeu'], (string) $args['name'], $content,
+            (int) $request->getAttribute('userId')));
     }))->add($atelier);
 
     // ==================================================================
@@ -239,11 +283,11 @@ return function (App $app): void {
 
     // ==================================================================
     // 3. Test bench — atelier : admin ∧ promptologue (le rendu CONTIENT le
-    //    gabarit), rendering WITHOUT any LLM call
+    //    gabarit), rendering WITHOUT any LLM call, a template of any set
     // ==================================================================
 
-    // POST /api/twin9/admin/tester {name, variables{}} -> {rendu, non_resolues}
-    $app->post('/twin9/admin/tester', $wrap(function (Request $request, Response $response) use ($json, $parseBody): Response {
+    // POST /api/twin9/admin/jeux/{jeu}/tester {name, variables{}} -> {rendu, non_resolues}
+    $app->post($set . '/tester', $wrap(function (Request $request, Response $response, array $args) use ($json, $parseBody, $jeux): Response {
         $body = $parseBody($request);
         $name = \is_array($body) && \is_string($body['name'] ?? null) ? $body['name'] : '';
         $variables = \is_array($body) && \is_array($body['variables'] ?? null) ? $body['variables'] : [];
@@ -251,7 +295,7 @@ return function (App $app): void {
             return $json($response, ['error' => 'Champ requis : name'], 422);
         }
 
-        return $json($response, (new ProtocoleRepository(Db::get()))->render($name, $variables));
+        return $json($response, $jeux()->lire((string) $args['jeu'])->render($name, $variables));
     }))->add($atelier);
 
     // ==================================================================

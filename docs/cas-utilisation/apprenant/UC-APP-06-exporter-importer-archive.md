@@ -265,7 +265,7 @@ archive ») dans la section « Mes données » du tableau de bord `#/espace`.
 | UC-APP-06-F11 | Nominal, étape 9 (anomalie A-04) | IHM | **Comportement actuel** : « Mes portfolios » non rafraîchi avant rechargement | idem |
 | UC-APP-06-F12 | Nominal (étape 3) | API | Compte sans secret, liste + document du paquet, masse vide | `api/tests/UseCases/Functional/UcApp06ExporterImporterArchiveTest.php` |
 | UC-APP-06-F13 | A1 | API | Sans session : `auth/me` et masse en 401, paquets lisibles | idem |
-| UC-APP-06-F14 | RG1, RG7 | API | Table de routage : aucun motif « export » / « archive », seuls imports d'administration ; chemins plausibles en 404 ; paquet privé ni listé ni lisible | idem |
+| UC-APP-06-F14 | RG1, RG7 | API | Table de routage : aucun motif « export » / « archive », seuls imports d'administration et celui d'un référentiel (UC-EPI-05, un document public) ; chemins plausibles en 404 ; paquet privé ni listé ni lisible | idem |
 | UC-APP-06-F15 | A4 (anomalie A-05) | IHM | **Comportement actuel** : référentiel « inconnu » importé (`null`) puis réexporté comme le référentiel embarqué | `web/test/usecases/functional/uc-app-06-exporter-importer-archive.test.jsx` |
 | UC-APP-06-F16 | A1 | IHM | Sans compte mais en ligne : bandeau anonyme, `account` null, paquet public embarqué, pas de masse | idem |
 

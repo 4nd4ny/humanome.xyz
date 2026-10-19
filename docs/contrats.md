@@ -24,7 +24,7 @@ schémas ; les deux runtimes sont testés (`engine/src/validation.test.js`,
 
 | Schéma | `kind` | Rôle |
 |---|---|---|
-| `referentiel.schema.json` | `referentiel` | Référentiel de compétences (RESPIRE v7 : 7 pôles, 61 compétences), versionné semver + `contentHash` SHA-256, édité par les épistémiarques, historisé (cahier §4.1). Document réel : `web/public/data/referentiel/respire-v7.json`. |
+| `referentiel.schema.json` | `referentiel` | Référentiel de compétences de toute structure depuis T15 (§9) : des pôles numérotés de 1 à N, les niveaux qu'il déclare avec le motif de leurs codes, ses compétences et leurs éléments plus fins ; RESPIRE v7 (7 pôles, 61 compétences « P.NN ») garde sa structure par une clause du schéma. Versionné semver + `contentHash` SHA-256, édité par les épistémiarques, historisé (cahier §4.1). Document réel : `web/public/data/referentiel/respire-v7.json`. |
 | `cartographie-jour.schema.json` | `cartographie-jour` | Résultat de la cartographie d'UNE feuille de portfolio (une journée) : 7 pôles (pièces, examen adversarial du pédagogue, verdicts, rapport narratif) + synthèse kairos. Documents réels : `web/public/data/demo/jours/<date>.json` (59 feuilles). |
 | `cartographie-merge.schema.json` | `cartographie-merge` | Agrégat chronologique de TOUTES les feuilles (merge évolutif v3) : séries temporelles par pôle et par compétence, archétypes, profil ipsatif, narratifs HTML. Source du sunburst. Document réel : `web/public/data/demo/merge.json`. |
 | `prompt-package.schema.json` | `prompt-package` | Paquet promptologue : textes de prompts + variables + code JS d'orchestration (sandbox Web Worker) + métadonnées (version, auteur, modèle cible, référentiel compatible, changelog). |
@@ -35,7 +35,8 @@ schémas ; les deux runtimes sont testés (`engine/src/validation.test.js`,
 
 Chaque document porte `schemaVersion` (semver du schéma d'enveloppe : « 1.0.0 »
 partout, sauf l'archive de compte, « 1.1.0 » depuis le 2026-10-14 et « 1.2.0 »
-depuis T10, et le master
+depuis T10, un référentiel d'une autre structure que RESPIRE, « 2.0.0 »
+depuis T15 (RESPIRE reste en 1.0.0, valide tel quel), et le master
 de l'interface de cartographie, « 4.x ») et `kind` (discriminant, `const` dans
 chaque schéma) — c'est la clé de dispatch de `validateDocument(kind, data)` des
 deux runtimes.
@@ -121,7 +122,7 @@ donnée réelle est la vérité :
 | `domains[].competences[].statut` : seule « présence établie » observée (le merge ne retient que les compétences établies) | enum complet des 3 statuts conservé (contrat plus général que le corpus) |
 | `archetype` : 6 valeurs toutes observées | enum fermé |
 | `profilMeta.ponderation_temporelle` **absente du corpus** mais lue par le viewer historique (`cartographie.html` affiche « -X %/an ») | champ **optionnel** documenté dans le schéma (`decote_annuelle` seul champ consommé) — voir §4 |
-| Fixtures `referentiel-mini.json` et référentiel embarqué dans `archive-export-exemple.json` : 2 pôles / 4 compétences, en contradiction assumée avec le schéma (7/61) | **fixtures corrigées** (2026-07) : remplacées par un instantané du référentiel réel RESPIRE v7 (`schemas/fixtures/referentiel-respire-v7.json`) ; références alignées (`referentielCompatible`, `referentielId: "respire"`, `referentielVersion: "7.0.0"`, exemples de variables). Le schéma n'a pas été assoupli : 7 pôles / 61 compétences sont une propriété structurelle de RESPIRE v7, cohérente avec le document réel ; un référentiel de forme différente imposera une révision majeure conjointe schéma + référentiel. |
+| Fixtures `referentiel-mini.json` et référentiel embarqué dans `archive-export-exemple.json` : 2 pôles / 4 compétences, en contradiction assumée avec le schéma (7/61) | **fixtures corrigées** (2026-07) : remplacées par un instantané du référentiel réel RESPIRE v7 (`schemas/fixtures/referentiel-respire-v7.json`) ; références alignées (`referentielCompatible`, `referentielId: "respire"`, `referentielVersion: "7.0.0"`, exemples de variables). Le schéma n'a pas été assoupli : 7 pôles / 61 compétences sont une propriété structurelle de RESPIRE v7, cohérente avec le document réel ; un référentiel de forme différente imposera une révision majeure conjointe schéma + référentiel. **T15 a fait cette révision** (schéma 2.0.0, §9) : toute structure, et RESPIRE gardé à 7/61 par une clause du schéma. |
 
 Notes de cohérence hors de portée de JSON Schema (vérifiées par le code, pas
 par les schémas) : jointures `pid` → `passagesSaillants`, `pieceId` →
@@ -848,3 +849,88 @@ une suivante le relève.
   `defaut` ; jamais un contenu. Les routes de contenu sont celles de l'atelier,
   par jeu : `/api/twin9/admin/jeux/{jeu}/protocole{/nom}{/versions{/v}|/restore}`
   et `/api/twin9/admin/jeux/{jeu}/tester`.
+
+## 9. Plusieurs référentiels (T15)
+
+Le schéma `referentiel` passe en **2.0.0** (`docs/plan-twin9-php.md` de
+`Twin_v9`, lot 4c, première tâche ; cas UC-EPI-05). Un document 1.0.0 — RESPIRE
+— y reste valide tel quel, avec la même empreinte.
+
+- **Les pôles** : de 1 à N, numérotés de 1 à N sans trou (`num`, contrôlé par
+  `ReferentielRepository::validateDocument`) ; un pôle lettré (A à E) porte son
+  rang (1 à 5), sa lettre étant celle de ses codes et de son nom. Une
+  `description` facultative (Markdown) dit ce que cherche le pôle.
+- **Les niveaux** (`niveaux`, facultatif) : du plus large au plus fin, chacun
+  `{nom, motif}` ; le premier tient lieu de compétence (les entrées de
+  `competences`), le suivant est celui de leurs `elements`, et ainsi de suite.
+  Le motif est une expression PCRE sans ancres (100 caractères au plus, sans
+  caractère de contrôle) ; un code la suit **en entier**
+  (`ReferentielRepository::regexDuMotif` : `^(?:motif)$`), sans quoi le
+  moteur ne le retrouverait pas et sa compétence disparaîtrait sans bruit du
+  run. Un motif reste entre ses ancres : il compile seul (aucun groupe fermé
+  avant l'heure, comme `Z)|(?:`) et n'use d'aucun verbe `(*…)` (`(*ACCEPT)`
+  finirait la correspondance avant l'ancre de fin) ; sinon, « Motif
+  illisible ». Les codes s'y confrontent sous une limite de retour arrière de
+  10 000 pas (un code a 8 caractères) : un motif qui la dépasse est refusé
+  une fois, à son pointeur (« Motif trop coûteux à évaluer »), et n'est plus
+  évalué. Sans `niveaux` : un niveau, « compétence », au motif de RESPIRE
+  `\d\.\d{2}` (`NIVEAU_PAR_DEFAUT`, `MOTIF_PAR_DEFAUT`). Exemple, l'Humanome
+  V18 : `[{"nom": "capacité", "motif": "[A-E][1-4]"}, {"nom": "facette",
+  "motif": "[A-E][1-4]\\.[1-9]"}]`.
+- **Les codes** : 1 à 8 caractères (lettres, chiffres, `.`, `_`, `-`, le
+  premier lettre ou chiffre), uniques dans tout le référentiel ; 8, la taille
+  des colonnes qui les rangent (`cartography_annotations.competence_code`).
+- **Les éléments** (`elements` d'une compétence, et d'un élément) :
+  `{code, nom, description?, elements?}` ; un élément d'un niveau que le
+  référentiel ne déclare pas est refusé. Une description est du texte libre
+  (Markdown) : les manifestations ou le faux positif d'une facette y vont.
+- **L'empreinte** ne change pas de définition : pôles `{num, nom, couleur}`
+  et compétences `{code, nom, pole}` ; niveaux, descriptions et éléments sont
+  gardés dans le document, hors d'elle (`ContentHash::normalize` les range
+  dans un ordre fixe, éléments compris, quoi qu'en fasse le JSON de MySQL).
+- **RESPIRE garde sa structure** : une clause du schéma (`allOf` : si
+  `id` vaut `respire`) lui impose 7 pôles, 61 compétences au format `P.NN` et
+  aucun niveau déclaré. Tout chemin vers une de ses versions passe par elle :
+  fork et édition au grain document, publication, coupe de release depuis
+  ses compétences (UC-EPI-03, dont c'était déjà le contrôle de complétude),
+  import initial. Il ne s'importe pas par l'atelier (`409`).
+- **L'import** (`POST /api/referentiel/import {document, niveau?}`,
+  épistémiarque ou administrateur) valide le document tel quel, le lit au
+  niveau choisi (`ReferentielRepository::auNiveau` : les éléments de ce
+  niveau deviennent les compétences, sous le pôle de leur compétence
+  d'origine, leurs éléments plus fins dessous ; les niveaux plus larges ne
+  sont pas gardés ; une branche qui s'arrête au-dessus de ce niveau, qui
+  disparaîtrait, est refusée et nommée, comme un niveau sans élément), le
+  valide de nouveau et l'enregistre en brouillon, dont l'importateur est
+  l'auteur. Identifiant d'un référentiel importé :
+  `[a-z0-9][a-z0-9._-]{0,63}`. Les pointeurs d'un refus désignent le document
+  trié par code ; le message nomme le code fautif. Le reste du cycle est
+  celui du grain document (UC-EPI-04), ouvert à tous les référentiels : les
+  listes `GET /api/referentiel/drafts` et `/proposals` les couvrent tous, un
+  fork prend `referentiel` (défaut `respire` ; un identifiant de la même
+  forme, la nouvelle version gardant celui de sa source : la colonne ignore
+  la casse). `GET /api/referentiels`
+  (public) rend les référentiels publiés : `[{id, label, versions}]`, le
+  libellé de la dernière version, les versions de la plus récente à la plus
+  ancienne. Les lectures publiques de `/api/referentiel` restent celles de
+  RESPIRE.
+- **Le profil Twin9** (§7) : `referentiel.version` peut désigner un brouillon
+  (ou une proposition au vote) si le propriétaire du profil en est l'auteur,
+  qu'il est épistémiarque ou administrateur (`ProfilPolicy::AUTEURS`) et que
+  le profil est en mode essai ; sinon `422` « Profil refusé —
+  /referentiel/version : un brouillon ne sert qu’aux runs d’essai de son
+  auteur ». `GET /api/twin9/configuration` rend, pour chaque référentiel,
+  `{id, versions, brouillons}` : ses versions publiées et ses propres
+  brouillons, un référentiel jamais publié n'y figurant que pour son auteur.
+- **Le lancement** (§8.4) : jusqu'à ce que le moteur reçoive le référentiel
+  de son run (T16), il lit les fiches RESPIRE de son jeu de gabarits, quel
+  que soit le profil ; un run ou son aperçu sur un autre référentiel est donc
+  refusé (`422` « L’analyse approfondie ne lit encore que le référentiel
+  RESPIRE »). Un brouillon de RESPIRE sert le run d'essai de son auteur.
+- **Les annotations** (`POST /api/cartographies/{id}/annotations`) : une
+  cartographie qui désigne une version de référentiel
+  (`referentiel_version_id`) n'accepte que ses codes ; sans référentiel
+  désigné, la forme de RESPIRE (`[1-7].NN`), comme avant.
+- **Hors T15** : le moteur (T16) et la cartographie (T17) ne lisent encore que
+  RESPIRE et ses 7 pôles ; la page publique `#/referentiel` ne montre que
+  lui ; `ReferentielDiff` ignore niveaux et éléments.

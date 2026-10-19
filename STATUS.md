@@ -16,10 +16,65 @@ développé dans le dépôt privé `4nd4ny/Twin_v9` (`docs/plan-twin9-php.md`, p
 conversation chacun ; entrées du 2026-10-17). T0 à T7 et T12 sont fusionnés : le moteur passe
 l'oracle complet dans `Twin_v9`, le profil est ici, les runs tournent sur le serveur par tranches.
 T8, la voie par lots, T13, la page de configuration, T9, lancer, suivre et lire un run, T10, coûts,
-plafonds, relance, purge et export, et T14, les jeux de gabarits, attendent leur revue (entrées du
-2026-10-19) ; vient ensuite T15, dont le prompt demande d'abord un plan.
+plafonds, relance, purge et export, T14, les jeux de gabarits, et T15, plusieurs référentiels dans la
+gouvernance (plan validé par Christian le 2026-10-19), attendent leur revue (entrées du 2026-10-19).
+Le parallélisme des runs par lots (T8) attend le choix de Christian entre deux alternatives (entrée
+T15, « À trancher ») ; T16 demandera d'abord un plan.
 
 ## Fait
+
+- 2026-10-19 — **Moteur Twin9 en PHP, T15 : plusieurs référentiels, la gouvernance (branche
+  `feat/twin9-t15-referentiels`, sur celle de T14 ; `Twin_v9` : `feat/twin9-t15-referentiels`).**
+  La gouvernance accepte un référentiel de toute structure : l'épistémiarque l'importe et choisit le
+  niveau qui tient lieu de compétence ; un code hors du motif de son niveau est refusé ; un brouillon
+  sert aux runs d'essai de son auteur (`docs/contrats.md` §9, UC-EPI-05). Plan validé par Christian
+  avec ses trois choix : le lancement refuse un autre référentiel que RESPIRE jusqu'à T16, une section
+  d'atelier, des codes de 8 caractères au plus. Le référentiel alternatif consulté
+  (respire.school/referentiel, l'Humanome V18 : 5 pôles A à E, 20 capacités, 64 facettes) a guidé le
+  format ; rien de lui n'entre dans le dépôt, les tests prennent deux référentiels fictifs.
+  - Schéma `referentiel` 2.0.0 : pôles numérotés de 1 à N, `niveaux` déclarés avec le motif de leurs
+    codes (sans eux, le niveau et le motif de RESPIRE), `elements` des niveaux plus fins, descriptions
+    en Markdown ; l'empreinte ne change pas de définition. RESPIRE garde sa structure par une clause du
+    schéma (7 pôles, 61 compétences « P.NN », aucun niveau déclaré) : tout chemin vers une de ses
+    versions la respecte, la coupe de sa release comprise. Validateurs compilés régénérés.
+  - Import (`POST /api/referentiel/import`, épistémiarque ou admin) : validé tel quel, lu au niveau
+    choisi (`ReferentielRepository::auNiveau`), validé de nouveau, brouillon de l'importateur ; RESPIRE
+    refusé (`409`). Le cycle du grain document s'ouvre à tous les référentiels (listes, fork avec
+    `referentiel`) ; `GET /api/referentiels` rend les publiés.
+  - Profils et runs : `ProfilPolicy` admet le brouillon de son auteur en mode essai (tant qu'il est
+    épistémiarque ou admin), la page Configuration le propose ; le lancement et l'aperçu refusent un
+    autre référentiel que RESPIRE tant que le moteur lit les fiches de son jeu de gabarits (T16).
+  - Annotations : le code d'une annotation appartient au référentiel que la cartographie désigne ;
+    sans référentiel désigné, la forme de RESPIRE.
+  - Front : section « Autres référentiels » de l'atelier épistémiarque (`#/epistemiarque/referentiels` :
+    importer un fichier et choisir son niveau, lire le document (« Voir »), soumettre, voter, retirer,
+    publier ; un refus montre ses pointeurs et écarte le fichier) ; brouillons proposés dans la page
+    Configuration ; aide de l'atelier.
+  - Revue indépendante du lot, ses constats corrigés avec leurs tests : un motif reste entre ses
+    ancres (il compile seul, aucun verbe `(*…)`) et s'évalue sous une limite de retour arrière (un
+    motif catastrophique coûtait une minute de calcul pour 2 000 codes) ; une branche qui s'arrête
+    au-dessus du niveau choisi est refusée et nommée au lieu de disparaître ; un fork prend un
+    `referentiel` de la forme d'un identifiant et garde celui de sa source (la colonne ignore la casse :
+    « Respire » aurait classé une version de RESPIRE à part) ; un pôle numéroté `1.0` ne donne plus un
+    `500` ; le document au vote se lit avant le vote.
+  - Textes : UC-EPI-05 (nouveau), UC-EPI-03 et UC-EPI-04, le catalogue des cas et `SUMMARY.md`,
+    `docs/autorisations.md` (P4, « Configuration Twin9 », runs), `docs/contrats.md` (§1, §3, §9).
+  - Tests : UC-EPI-05 (U01-U10, F01-F15, dont la DoD : un référentiel à 5 pôles lettrés, A1 à E4,
+    s'enregistre, se vote et se publie, un autre à 9 pôles aussi ; RESPIRE ne change pas),
+    `ConfigurationDroitsTest` (la ligne de la matrice), `RunsTest` (le refus du lancement),
+    `AnnotationsTest`, `ConfigurationView.test`.
+  - À trancher (T8, voie par lots) : mesuré sur l'oracle de PLANT-01 (10 journées, toutes de front),
+    un run fait 286 vagues d'appels, dont 15 pour les journées et 271 pour la fusion, que la v9.8
+    enchaîne un appel après l'autre (25 faisceaux du second ressort, 21 relectures) ; par lots,
+    chaque vague attend un lot. Base commune proposée : lancer ensemble les appels indépendants de la
+    fusion (aucun prompt ne change) : 27 vagues. Puis A, toutes les journées de front avec une réserve
+    de crédit pour finir la carte, ou B, des lots chronologiques de journées, une carte à chaque lot.
+    Regrouper ou découper les journées changerait le protocole sans raccourcir le run.
+  - Pas encore : le moteur (T16) et la cartographie (T17) ne lisent que RESPIRE ; la page publique du
+    référentiel ne montre que lui ; l'import lit du JSON au format du schéma (le Markdown de la V18 se
+    convertit d'abord) ; UC-EPI-04 AN2 (libellé ou version trop longs : `500`) vaut aussi à l'import ;
+    l'attestation d'un run désigne son référentiel par `id@version`, et un brouillon peut changer
+    ensuite : quand le moteur lira ce référentiel (T16), elle devra aussi en garder l'empreinte.
 
 - 2026-10-19 — **Moteur Twin9 en PHP, T14 : les jeux de gabarits (branche
   `feat/twin9-t14-template-sets`, sur celle de T10 ; `Twin_v9` : `feat/twin9-t14-template-sets`).** Un

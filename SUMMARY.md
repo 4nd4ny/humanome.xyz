@@ -139,6 +139,7 @@
     * [UC-EPI-02 — Voter sur une proposition](docs/cas-utilisation/epistemiarque/UC-EPI-02-voter-proposition.md)
     * [UC-EPI-03 — Entériner et publier (compétence, release du référentiel)](docs/cas-utilisation/epistemiarque/UC-EPI-03-enteriner-publier.md)
     * [UC-EPI-04 — Éditer une version complète du référentiel](docs/cas-utilisation/epistemiarque/UC-EPI-04-editer-version-referentiel.md)
+    * [UC-EPI-05 — Importer un référentiel d'une autre structure](docs/cas-utilisation/epistemiarque/UC-EPI-05-importer-referentiel.md)
   * Établissement
     * [UC-ETA-01 — Créer et gérer une cohorte](docs/cas-utilisation/etablissement/UC-ETA-01-gerer-cohorte.md)
     * [UC-ETA-02 — Configurer le moteur LLM, le budget et le jeton worker](docs/cas-utilisation/etablissement/UC-ETA-02-configurer-llm-budget.md)

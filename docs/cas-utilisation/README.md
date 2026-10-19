@@ -171,6 +171,7 @@ rejouant les fixtures : aucun appel réseau réel).
 | [UC-EPI-02](epistemiarque/UC-EPI-02-voter-proposition.md) | Voter sur une proposition | 16 | 21 | 2 |
 | [UC-EPI-03](epistemiarque/UC-EPI-03-enteriner-publier.md) | Entériner et publier (compétence, release du référentiel) | 15 | 20 | 3 |
 | [UC-EPI-04](epistemiarque/UC-EPI-04-editer-version-referentiel.md) | Éditer une version complète du référentiel | 12 | 17 | 2 |
+| [UC-EPI-05](epistemiarque/UC-EPI-05-importer-referentiel.md) | Importer un référentiel d'une autre structure | 10 | 15 | — |
 
 ### Établissement
 
@@ -202,7 +203,7 @@ rejouant les fixtures : aucun appel réseau réel).
 | [UC-SYS-04](systeme/UC-SYS-04-construire-artefacts-derives.md) | Construire les données et artefacts dérivés | 6 | 16 | 4 |
 | [UC-SYS-05](systeme/UC-SYS-05-sauvegarder-restaurer.md) | Sauvegarder et restaurer la base | 0 | 8 | 6 |
 
-**Total : 58 cas d'utilisation, 966 tests unitaires et 1105 tests fonctionnels identifiés, 212 anomalies de production documentées.**
+**Total : 59 cas d'utilisation, 976 tests unitaires et 1120 tests fonctionnels identifiés, 212 anomalies de production documentées.**
 
 Les comptes portent sur les identifiants distincts (`UC-…-Unn`, `UC-…-Fnn`) présents dans les fichiers de tests ; un identifiant paramétré (`it.each`) compte pour un.
 <!-- catalogue:end -->

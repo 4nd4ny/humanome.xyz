@@ -21,8 +21,15 @@ export function createEpistemiarqueApi(apiFetchFn = apiFetch) {
     /** GET api/referentiel/versions — versions publiées (métadonnées). */
     listVersions: () => apiFetchFn('referentiel/versions'),
 
-    /** GET api/referentiel/drafts — brouillons + propositions (méta + tally). */
+    /** GET api/referentiel/drafts — brouillons + propositions de tous les référentiels (méta + tally). */
     listDrafts: () => apiFetchFn('referentiel/drafts'),
+
+    /** GET api/referentiels — les référentiels publiés, leur libellé et leurs versions (T15). */
+    listCatalogue: () => apiFetchFn('referentiels'),
+
+    /** POST api/referentiel/import — un référentiel en brouillon, lu au niveau choisi (T15). */
+    importReferentiel: (document, niveau = null) =>
+      apiFetchFn('referentiel/import', { method: 'POST', body: niveau ? { document, niveau } : { document } }),
 
     /** GET api/referentiel/drafts/{id} — un brouillon/proposition AVEC contenu. */
     getDraft: (id) => apiFetchFn(`referentiel/drafts/${e(id)}`),

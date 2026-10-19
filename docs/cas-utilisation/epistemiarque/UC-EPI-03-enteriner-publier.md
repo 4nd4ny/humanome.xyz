@@ -78,7 +78,8 @@ affiche « Majorité atteinte : la compétence peut être entérinée. »
 6. Le serveur assemble le document depuis la dernière version publiée de
    chaque compétence et les pôles (`description` = définition rognée, hors
    hash), recalcule le `contentHash` structurel, valide le document (schéma :
-   exactement 7 pôles et 61 compétences, plus contrôles d'intégrité), refuse
+   exactement 7 pôles et 61 compétences, la clause qui garde RESPIRE depuis
+   T15, plus contrôles d'intégrité), refuse
    une semver existante ou non strictement supérieure aux versions publiées,
    puis insère la release publiée et son lockfile dans une transaction →
    `201` `{status: "imported", id, semver, contentHash}`.
@@ -168,7 +169,8 @@ affiche « Majorité atteinte : la compétence peut être entérinée. »
   releases ; précédence semver (1.10.0 > 1.9.0), pas ordre alphabétique.
 - **RG4** — Une release n'a pas de second vote : les évolutions ont été
   entérinées compétence par compétence ; elle est soumise à la complétude
-  (schéma 7/61 + intégrité) et produit un lockfile de provenance.
+  (schéma 7/61, la clause de RESPIRE depuis T15, + intégrité) et produit un
+  lockfile de provenance.
 - **RG5** — Le `contentHash` d'une release ne porte que le corps structurel
   `{pôles (num, nom, couleur), compétences (code, nom, pôle)}` — hash
   identique octet par octet à celui de l'extracteur Node
@@ -307,11 +309,13 @@ cd web && npx vitest run test/usecases/unit/uc-epi-03 test/usecases/functional/u
   `loadPublishedReferentiel`, UC-APP-02) lisent le même export statique : elles
   n'épinglent la release qu'après ré-export et redéploiement, contrairement à
   ce qu'annonce la carte de l'atelier (AN3).
-- **L2** — Le schéma du référentiel fige 7 pôles et 61 compétences : ajouter
-  ou retirer une compétence (évolution « mineure » ou « majeure » décrite dans
-  la formation épistémiarque, chapitre 4) n'est pas possible — aucune route
-  ne crée ni ne retire une compétence atomique, et la release serait refusée
-  par le gate de complétude.
+- **L2** — Le schéma du référentiel fige les 7 pôles et 61 compétences de
+  RESPIRE (une clause depuis T15 ; un autre référentiel a la structure qu'il
+  déclare, UC-EPI-05) : ajouter ou retirer une compétence de RESPIRE
+  (évolution « mineure » ou « majeure » décrite dans la formation
+  épistémiarque, chapitre 4) n'est pas possible — aucune route ne crée ni ne
+  retire une compétence atomique, et la release serait refusée par le gate de
+  complétude.
 - **L3** — Le diff entre releases est structurel : une évolution de
   définition ou de fiche seule donne `identical: true`.
 - **L4** — Une release peut être coupée sans aucun nouvel entérinement (même

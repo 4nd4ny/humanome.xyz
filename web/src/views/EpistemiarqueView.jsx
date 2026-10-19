@@ -9,11 +9,14 @@
 // qu'une autre peut rester en débat. Les débats Decidim étayent la discussion.
 //
 // Sections : atelier (61 compétences par pôle + brouillons + votes + coupe de
-// release) | editer/<id> (éditeur riche d'une compétence) | proposition/<id> (vote).
+// release) | editer/<id> (éditeur riche d'une compétence) | proposition/<id> (vote)
+// | referentiels (T15 : les autres référentiels, importés, votés, publiés).
 
 import { useCallback, useEffect, useMemo, useState } from 'react'
 import { ApiError, ApiUnavailableError, fetchMe } from '../api/client.js'
+import { createEpistemiarqueApi } from './epistemiarque/api.js'
 import { createCompetenceApi, nextCompetenceVersion } from './epistemiarque/competence-api.js'
+import ReferentielsSection from './epistemiarque/ReferentielsSection.jsx'
 
 const DECIDIM_URL = 'https://participer.harmonia.education'
 
@@ -39,11 +42,12 @@ function errorMessage(error) {
 
 /**
  * @param {{section?: string|null, lib?: object, deps?: object}} props
- *   deps : coutures de test {fetchMeFn, api}
+ *   deps : coutures de test {fetchMeFn, api, docApi}
  */
 export default function EpistemiarqueView({ section = null, deps = {} }) {
   const fetchMeFn = deps.fetchMeFn ?? fetchMe
   const api = useMemo(() => deps.api ?? createCompetenceApi(), [deps.api])
+  const docApi = useMemo(() => deps.docApi ?? createEpistemiarqueApi(), [deps.docApi])
   const [sessionState, setSessionState] = useState({ status: 'loading', user: null })
 
   useEffect(() => {
@@ -97,6 +101,8 @@ export default function EpistemiarqueView({ section = null, deps = {} }) {
     const propMatch = /^proposition\/(.+)$/.exec(section ?? '')
     if (section === null || section === '') {
       body = <AtelierSection api={api} canVote={isMember} />
+    } else if (section === 'referentiels') {
+      body = <ReferentielsSection api={docApi} canVote={isMember} />
     } else if (editMatch) {
       body = <EditeurSection api={api} draftId={decodeURIComponent(editMatch[1])} />
     } else if (propMatch) {
@@ -186,6 +192,9 @@ function AtelierSection({ api, canVote }) {
 
   return (
     <div className="epi-atelier">
+      <p>
+        <a href="#/epistemiarque/referentiels">Autres référentiels</a> : en importer un, le voter, le publier.
+      </p>
       {proposals.length > 0 ? (
         <section className="epi-block" aria-label="Propositions au vote">
           <h2>Compétences au vote</h2>

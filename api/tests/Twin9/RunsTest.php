@@ -5,9 +5,11 @@ declare(strict_types=1);
 namespace Humanome\Tests\Twin9;
 
 use Humanome\Llm\LlmRuntime;
+use Humanome\Referentiel\ContentHash;
 use Humanome\Referentiel\ReferentielRepository;
 use Humanome\Tests\CartographeTestCase;
 use Humanome\Tests\TestDb;
+use Humanome\Tests\UseCases\Support\ReferentielsFictifs;
 use Humanome\Twin9\CreditService;
 use Humanome\Twin9\MoteurReglages;
 use Humanome\Twin9\ProfilRepository;
@@ -294,6 +296,42 @@ final class RunsTest extends CartographeTestCase
         self::assertSame('présence établie', $jour['verdicts']['1.01']['statut']);
         self::assertStringNotContainsString('Premier jour', json_encode(array_diff_key($jour, ['verdicts' => 1])),
             'le texte de la journée que garde la mémoire ne revient pas');
+    }
+
+    /**
+     * Until the engine receives its run's referential (T16), it reads RESPIRE's
+     * fiches whatever the profile names (T15): a run, or its preview, on
+     * another referential is refused, even published; a draft of RESPIRE's
+     * serves its author's test run.
+     */
+    public function testARunReadsRespireOnlyUntilTheEngineReceivesItsReferential(): void
+    {
+        $neuf = ReferentielsFictifs::neufPoles();
+        (new ReferentielRepository(self::$pdo))->importPublishedDocument(
+            ['contentHash' => ContentHash::compute($neuf)] + $neuf, 'Publié');
+        $alice = $this->registerAs('alice@example.org', 'Alice');
+        $profil = ProfilRepository::v98();
+        $profil->voie = 'directe';
+        $profil->referentiel = (object) ['id' => 'fictif-neuf', 'version' => null];
+        $cree = $this->as_($alice, 'POST', '/api/twin9/profils', ['nom' => 'Neuf pôles', 'profil' => $profil]);
+        self::assertSame(201, $cree->getStatusCode(), (string) $cree->getBody());
+        foreach (['/api/twin9/runs', '/api/twin9/runs/apercu'] as $route) {
+            $refus = $this->as_($alice, 'POST', $route, $this->lancement(self::json($cree)['id']));
+            self::assertSame([422, 'L’analyse approfondie ne lit encore que le référentiel RESPIRE'],
+                [$refus->getStatusCode(), self::json($refus)['error'] ?? null], $route);
+        }
+        self::assertSame([], self::json($this->as_($alice, 'GET', '/api/twin9/runs'))['runs']);
+
+        $epi = $this->registerAs('epi@example.org', 'Épi', ['epistemiarque']);
+        (new ReferentielRepository(self::$pdo))->createDraft('respire', '7.0.0', '7.1.0', null, $epi['id']);
+        $essai = ProfilRepository::v98();
+        $essai->voie = 'directe';
+        $essai->mode = 'test';
+        $essai->referentiel = (object) ['id' => 'respire', 'version' => '7.1.0'];
+        $id = self::json($this->as_($epi, 'POST', '/api/twin9/profils', ['nom' => 'Brouillon', 'profil' => $essai]))['id'];
+        $lance = $this->as_($epi, 'POST', '/api/twin9/runs', $this->lancement($id));
+        self::assertSame(201, $lance->getStatusCode(), (string) $lance->getBody());
+        self::assertSame('termine', $this->jusquAuBout($epi, self::json($lance)['id'])['statut']);
     }
 
     /** A profile of $user's, by the direct lane. @return int its id */

@@ -96,7 +96,9 @@ moment du prompt correspondant.
 |---|---|---|---|---|---|---|---|---|---|
 | `/api/referentiel` (dernière version publiée) | GET | ✔ | ✔ | ✔ | ✔ | ✔ | ✔ | ✔ | ✔ |
 | `/api/referentiel/versions`, `/versions/{v}`, diff | GET | ✔ | ✔ | ✔ | ✔ | ✔ | ✔ | ✔ | ✔ |
-| Brouillons : création, édition, relecture | POST/PUT | — | — | — | — | ✔ | — | — | ✔ |
+| `/api/referentiels` (référentiels publiés, leurs versions, T15) | GET | ✔ | ✔ | ✔ | ✔ | ✔ | ✔ | ✔ | ✔ |
+| Brouillons : création, édition, relecture (tous les référentiels depuis T15) | POST/PUT | — | — | — | — | ✔ | — | — | ✔ |
+| Import d'un référentiel d'une autre structure, en brouillon (`/api/referentiel/import`, T15 ; RESPIRE refusé, 409) | POST | — | — | — | — | ✔ | — | — | ✔ |
 | Publication d'une version (immuable) | POST | — | — | — | — | ✔ | — | — | ✔ |
 
 ### P6 — Proxy LLM et démo (cahier §3.1)
@@ -230,7 +232,7 @@ fixe ce qui vaut pour toute l'instance. Chaque ligne de la matrice a son test da
 | Le budget et la durée de ses runs | — | ✔ | ✔ |
 | Sa clé : celle de l'instance ou la sienne | — | ✔ ; la sienne si l'administrateur l'a ouverte | idem |
 | Sa clé personnelle elle-même (son coffre, `#/compte`) | — | ✔ | ✔ |
-| Le référentiel de ses runs | — | parmi les publiés | idem |
+| Le référentiel de ses runs | — | parmi les publiés ; avec `epistemiarque`, ses propres brouillons aussi, pour ses runs d'essai (T15), tant qu'il l'est | idem (un `admin` écrit aussi des brouillons) |
 | Le jeu de gabarits de ses runs (T14) | — | le jeu v9.8 ou le jeu par défaut | idem ; avec `promptologue` (atelier), ses copies aussi, tant qu'il en est |
 | Le jeu v9.8 (T14) | — | — | lecture dans l'atelier (`admin` ∧ `promptologue`) ; seul l'import l'écrit |
 | Copier le jeu v9.8, éditer sa copie, ses versions, son retour arrière (T14) | — | — | `admin` ∧ `promptologue` : ✔ la sienne ; la copie d'un autre se lit (403 en écriture) ; `admin` seul : — (403) |
@@ -242,12 +244,15 @@ fixe ce qui vaut pour toute l'instance. Chaque ligne de la matrice a son test da
 Les jeux de gabarits des promptologues (T14) y ont leurs lignes, testées dans
 `ConfigurationDroitsTest.php` (le jeu de ses runs), `Twin9ProtocoleTest.php` et
 `UcPro08EditerGabaritsTwin9Test.php` (le jeu v9.8, les copies, le jeu par
-défaut) ; les brouillons de référentiel (T15) ajouteront les leurs.
+défaut) ; les brouillons de référentiel (T15) y ont la leur, testée dans
+`ConfigurationDroitsTest.php` (`testADraftServesOnlyItsAuthorsTestRuns`) ;
+jusqu'à T16, un run sur un autre référentiel que RESPIRE est refusé
+(`RunsTest.php`, `testARunReadsRespireOnlyUntilTheEngineReceivesItsReferential`).
 
 | Route | Méthode | Accès |
 |---|---|---|
-| `/api/twin9/configuration` | GET | Compte : ses profils (sans leur document), le profil par défaut (celui de la v9.8, avec le jeu de gabarits par défaut), les référentiels publiés et leurs versions, les jeux de gabarits qu'il peut choisir, sa clé personnelle (ouverte, enregistrée) |
-| `/api/twin9/profils` | POST | Compte, + CSRF. Le profil doit être valide (schéma, règles de l'API) et admis (référentiel publié, jeu qu'il peut choisir, clé personnelle ouverte) |
+| `/api/twin9/configuration` | GET | Compte : ses profils (sans leur document), le profil par défaut (celui de la v9.8, avec le jeu de gabarits par défaut), les référentiels publiés et leurs versions, ses propres brouillons (T15), les jeux de gabarits qu'il peut choisir, sa clé personnelle (ouverte, enregistrée) |
+| `/api/twin9/profils` | POST | Compte, + CSRF. Le profil doit être valide (schéma, règles de l'API) et admis (référentiel publié, ou son brouillon en mode essai, T15 ; jeu qu'il peut choisir ; clé personnelle ouverte) |
 | `/api/twin9/profils/{id}` | GET/PUT/DELETE | Son propriétaire, + CSRF sur PUT et DELETE ; 404 pour tout autre |
 
 ### Runs Twin9 (T9, `#/twin9`)
@@ -273,7 +278,7 @@ l'export, dans `PurgeExportTest.php` (T10).
 |---|---|---|
 | `/api/twin9/runs` | GET | Compte : ses runs (sans portfolio ni résultat), et si Twin9 tourne sur l'instance |
 | `/api/twin9/runs/apercu` | POST | Compte, + CSRF : `{profil, portfolio}` ; les journées nouvelles ou changées, le coût et la durée estimés, les plafonds, son crédit ; 404 pour le profil d'un autre ; rien n'est gardé |
-| `/api/twin9/runs` | POST | Compte, + CSRF : `{profil, portfolio: {nom, texte}, accord, visibilite}` ; le profil est revalidé et admis (`ProfilPolicy` : modèles au prix de l'instance compris), son référentiel figé |
+| `/api/twin9/runs` | POST | Compte, + CSRF : `{profil, portfolio: {nom, texte}, accord, visibilite}` ; le profil est revalidé et admis (`ProfilPolicy` : modèles au prix de l'instance compris), son référentiel figé ; jusqu'à T16, un autre référentiel que RESPIRE est refusé (422), à l'aperçu aussi |
 | `/api/twin9/runs/avancer` | POST | Compte, + CSRF : une tranche, de la durée de celles du tick et sous son verrou, pour ses seuls runs |
 | `/api/twin9/runs/{id}` | GET | Son propriétaire : sa progression, lue dans son journal ; 404 pour tout autre |
 | `/api/twin9/runs/{id}/annuler`, `/reprendre` | POST | Son propriétaire, + CSRF ; `/reprendre` accepte `{budget_usd}`, un nouveau budget ; 409 hors de l'état voulu |

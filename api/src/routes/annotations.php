@@ -72,6 +72,29 @@ return function (App $app): void {
 
     $notFound = fn (Response $response): Response => $json($response, ['error' => 'Cartographie introuvable'], 404);
 
+    /**
+     * The codes of the referential version a cartography names (T15: any
+     * referential, not only RESPIRE), or null when it names none.
+     *
+     * @return array<string, true>|null
+     */
+    $codesDuReferentiel = static function (int $cartoId): ?array {
+        $stmt = Db::get()->prepare('SELECT rv.content FROM cartographies c
+            JOIN referentiel_versions rv ON rv.id = c.referentiel_version_id WHERE c.id = ?');
+        $stmt->execute([$cartoId]);
+        $content = $stmt->fetchColumn();
+        if ($content === false) {
+            return null;
+        }
+        $doc = json_decode((string) $content, true);
+        $codes = [];
+        foreach (\is_array($doc['competences'] ?? null) ? $doc['competences'] : [] as $c) {
+            $codes[(string) ($c['code'] ?? '')] = true;
+        }
+
+        return $codes;
+    };
+
     /** @return array{level: string, type: string}|null */
     $access = function (Request $request, int $cartoId): ?array {
         return (new Links(Db::get()))->access(
@@ -86,7 +109,7 @@ return function (App $app): void {
     // commentaire|hallucination|oubli, texte} -> 201 (owner or linked
     // cartographe).
     // ------------------------------------------------------------------
-    $app->post('/cartographies/{id:[0-9]+}/annotations', $wrap(function (Request $request, Response $response, array $args) use ($json, $access, $notFound, $maxTexteChars): Response {
+    $app->post('/cartographies/{id:[0-9]+}/annotations', $wrap(function (Request $request, Response $response, array $args) use ($json, $access, $notFound, $maxTexteChars, $codesDuReferentiel): Response {
         $cartoId = (int) $args['id'];
         if ($access($request, $cartoId) === null) {
             return $notFound($response);
@@ -95,7 +118,11 @@ return function (App $app): void {
         $data = (array) ($request->getParsedBody() ?? []);
         $errors = [];
         $competenceCode = \is_string($data['competenceCode'] ?? null) ? trim($data['competenceCode']) : '';
-        if (preg_match('/^[1-7]\.\d{2}$/', $competenceCode) !== 1) {
+        // a cartography that names its referential takes its codes (T15); otherwise RESPIRE's form
+        $codes = $codesDuReferentiel($cartoId);
+        if ($codes !== null && !isset($codes[$competenceCode])) {
+            $errors['competenceCode'] = 'Code de compétence inconnu du référentiel de la cartographie';
+        } elseif ($codes === null && preg_match('/^[1-7]\.\d{2}$/', $competenceCode) !== 1) {
             $errors['competenceCode'] = 'Code de compétence invalide (attendu : "<pôle 1-7>.<rang à 2 chiffres>", ex. "1.01")';
         }
         $type = $data['type'] ?? null;

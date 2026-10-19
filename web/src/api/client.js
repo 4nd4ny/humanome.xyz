@@ -168,6 +168,8 @@ export async function apiFetch(path, options = {}) {
     const error = new ApiError(serverMessage ?? defaultMessage(response.status), response.status, code)
     error.serverMessage = serverMessage
     error.fields = data.fields && typeof data.fields === 'object' ? data.fields : null
+    // a refused document's details, by JSON pointer ({errors: {"/poles": ["…"]}}, the référentiel's routes)
+    error.errors = data.errors && typeof data.errors === 'object' && !Array.isArray(data.errors) ? data.errors : null
     throw error
   }
 

@@ -2,7 +2,7 @@
   "$schema": "https://json-schema.org/draft/2020-12/schema",
   "$id": "https://humanome.xyz/schemas/referentiel.schema.json",
   "title": "Référentiel de compétences",
-  "description": "Référentiel de compétences humaines (7 pôles, 61 compétences) utilisé par les cartographies. Public en lecture, modifiable par les épistémiarques, historisé : chaque version est identifiée par un semver et un hash de contenu (cahier §4.1). Déduit du document réel web/public/data/referentiel/respire-v7.json.",
+  "description": "Référentiel de compétences de toute structure (T15) : des pôles numérotés de 1 à N, des compétences dont les codes suivent le motif que le référentiel déclare, et leurs éléments des niveaux plus fins. RESPIRE v7, le premier publié, compte 7 pôles et 61 compétences au format « 1.01 » ; l'Humanome V18, 5 pôles lettrés, des capacités A1 à E4 et leurs facettes. Public en lecture, modifiable par les épistémiarques, historisé : chaque version est identifiée par un semver et un hash de contenu (cahier §4.1). Version 2.0.0 du schéma ; un document 1.0.0 (RESPIRE) y reste valide tel quel.",
   "type": "object",
   "additionalProperties": false,
   "required": [
@@ -44,17 +44,40 @@
     "contentHash": {
       "type": "string",
       "pattern": "^[0-9a-f]{64}$",
-      "description": "Empreinte SHA-256 (hexadécimal minuscule, 64 caractères) du contenu normalisé du référentiel. Garantit l'intégrité et permet la déduplication : deux documents de même hash ont un contenu identique, quelle que soit leur provenance (cahier §4.1, ADR-006)."
+      "description": "Empreinte SHA-256 (hexadécimal minuscule, 64 caractères) du contenu normalisé du référentiel : pôles (numéro, nom, couleur) et compétences (code, nom, pôle). Garantit l'intégrité et permet la déduplication : deux documents de même hash ont la même structure, quelle que soit leur provenance (cahier §4.1, ADR-006). Niveaux, descriptions et éléments n'y entrent pas."
     },
     "source": {
       "type": "string",
       "description": "Provenance du document : d'où et comment ce référentiel a été construit ou converti. Champ libre de traçabilité. Exemple : « Reconstruit depuis agrege.par_competence (carto_merge.json) et domainsData (carto-data.js) »."
     },
+    "niveaux": {
+      "type": "array",
+      "minItems": 1,
+      "description": "Facultatif. Les niveaux du référentiel sous ses pôles, du plus large au plus fin, chacun avec le motif de ses codes : le premier tient lieu de compétence (les entrées de « competences »), le suivant est celui de leurs « elements », et ainsi de suite. Absent : un seul niveau, « compétence », au motif de RESPIRE « \\d\\.\\d{2} ». Un code qui ne suit pas le motif de son niveau, en entier, est refusé : le moteur ne le retrouverait pas, et sa compétence disparaîtrait sans bruit du run. Exemple (Humanome V18) : capacité « [A-E][1-4] », puis facette « [A-E][1-4]\\.[1-9] ».",
+      "items": {
+        "type": "object",
+        "additionalProperties": false,
+        "required": ["nom", "motif"],
+        "properties": {
+          "nom": {
+            "type": "string",
+            "minLength": 1,
+            "description": "Nom du niveau. Exemples : « compétence », « capacité », « facette »."
+          },
+          "motif": {
+            "type": "string",
+            "minLength": 1,
+            "maxLength": 100,
+            "pattern": "^[^\\x00-\\x1f]+$",
+            "description": "Expression régulière (PCRE) des codes du niveau, sans ancres : un code la suit en entier. Exemples : « \\d\\.\\d{2} », « [A-E][1-4] »."
+          }
+        }
+      }
+    },
     "poles": {
       "type": "array",
-      "minItems": 7,
-      "maxItems": 7,
-      "description": "Les 7 pôles du référentiel, dans l'ordre de leur numéro (1 à 7). Le nombre de pôles est une propriété structurelle du référentiel RESPIRE ; une évolution du nombre de pôles imposerait une nouvelle version majeure de ce schéma.",
+      "minItems": 1,
+      "description": "Les pôles du référentiel, numérotés de 1 à N sans trou : 7 pour RESPIRE, 5 pour l'Humanome V18, dont les pôles lettrés A à E portent les numéros 1 à 5.",
       "items": {
         "type": "object",
         "additionalProperties": false,
@@ -63,36 +86,37 @@
           "num": {
             "type": "integer",
             "minimum": 1,
-            "maximum": 7,
-            "description": "Numéro du pôle (1 à 7). Les compétences y sont rattachées par ce numéro et leur code commence par ce chiffre."
+            "description": "Numéro du pôle, son rang de 1 à N. Les compétences y sont rattachées par ce numéro."
           },
           "nom": {
             "type": "string",
             "minLength": 1,
-            "description": "Nom complet du pôle. Exemple : « TETE — Penser & Comprendre »."
+            "description": "Nom complet du pôle. Exemples : « TETE — Penser & Comprendre », « A · Percevoir et éprouver »."
           },
           "couleur": {
             "type": ["string", "null"],
             "pattern": "^#[0-9a-fA-F]{6}$",
             "description": "Couleur hexadécimale du pôle pour la visualisation (sunburst), au format « #rrggbb ». Null si aucune couleur n'est attribuée (l'interface applique alors sa couleur par défaut). Exemple : « #2563eb »."
+          },
+          "description": {
+            "type": "string",
+            "description": "Facultatif. Ce que le pôle cherche, en texte libre (Markdown). Hors du hash de contenu, comme la description d'une compétence."
           }
         }
       }
     },
     "competences": {
       "type": "array",
-      "minItems": 61,
-      "maxItems": 61,
-      "description": "Les 61 compétences du référentiel, triées par code. Le nombre de compétences est une propriété structurelle du référentiel RESPIRE v7 ; l'ajout ou le retrait d'une compétence par les épistémiarques imposerait une révision de ce schéma en même temps que la version majeure du référentiel.",
+      "minItems": 1,
+      "description": "Les compétences du référentiel, triées par code : les éléments de son premier niveau (61 pour RESPIRE v7).",
       "items": {
         "type": "object",
         "additionalProperties": false,
         "required": ["code", "nom", "pole"],
         "properties": {
           "code": {
-            "type": "string",
-            "pattern": "^\\d\\.\\d{2}$",
-            "description": "Code unique de la compétence au format « P.NN » où P est le numéro du pôle et NN le rang à deux chiffres dans le pôle. C'est l'identifiant utilisé partout ailleurs (cartographies, prompts). Exemples : « 1.01 », « 6.10 »."
+            "$ref": "#/$defs/code",
+            "description": "Code unique de la compétence, qui suit le motif de son niveau. C'est l'identifiant utilisé partout ailleurs (cartographies, prompts). Exemples : « 1.01 », « 6.10 » (RESPIRE), « A1 » (Humanome V18, au niveau capacité)."
           },
           "nom": {
             "type": "string",
@@ -102,13 +126,59 @@
           "pole": {
             "type": "integer",
             "minimum": 1,
-            "maximum": 7,
-            "description": "Numéro du pôle de rattachement (référence poles[].num). Cohérent avec le premier chiffre du code."
+            "description": "Numéro du pôle de rattachement (référence poles[].num)."
           },
           "description": {
             "type": "string",
-            "description": "Définition lisible de la compétence, éditée par les épistémiarques et affichée dans le référentiel public. Champ FACULTATIF : les versions antérieures à l'enrichissement RESPIRE v7.1 n'en ont pas. Ce champ N'ENTRE PAS dans le hash de contenu (le hash reste l'identité STRUCTURELLE — quels pôles/compétences existent) : deux versions au même contenu structurel mais aux définitions différentes partagent le même contentHash, la version (semver) portant l'évolution rédactionnelle. Exemple : « Capacité à douter méthodiquement, évaluer la validité des sources et détecter les biais… »."
+            "description": "Définition lisible de la compétence, éditée par les épistémiarques et affichée dans le référentiel public, en texte libre (Markdown). Champ FACULTATIF : les versions antérieures à l'enrichissement RESPIRE v7.1 n'en ont pas. Ce champ N'ENTRE PAS dans le hash de contenu (le hash reste l'identité STRUCTURELLE — quels pôles/compétences existent) : deux versions au même contenu structurel mais aux définitions différentes partagent le même contentHash, la version (semver) portant l'évolution rédactionnelle. Exemple : « Capacité à douter méthodiquement, évaluer la validité des sources et détecter les biais… »."
+          },
+          "elements": {
+            "type": "array",
+            "description": "Facultatif. Les éléments du niveau suivant (les facettes d'une capacité, par exemple), hors du hash de contenu.",
+            "items": { "$ref": "#/$defs/element" }
           }
+        }
+      }
+    }
+  },
+  "allOf": [
+    {
+      "description": "RESPIRE garde sa structure (T15) : 7 pôles, 61 compétences au format « P.NN », son seul niveau. Elle ne change qu'en révisant ce schéma.",
+      "if": {
+        "required": ["id"],
+        "properties": { "id": { "const": "respire" } }
+      },
+      "then": {
+        "not": { "required": ["niveaux"] },
+        "properties": {
+          "poles": { "minItems": 7, "maxItems": 7 },
+          "competences": {
+            "minItems": 61,
+            "maxItems": 61,
+            "items": { "properties": { "code": { "pattern": "^\\d\\.\\d{2}$" } } }
+          }
+        }
+      }
+    }
+  ],
+  "$defs": {
+    "code": {
+      "type": "string",
+      "pattern": "^[A-Za-z0-9][A-Za-z0-9._-]{0,7}$",
+      "description": "Un code : 1 à 8 caractères, lettres, chiffres, « . », « _ » ou « - », le premier lettre ou chiffre."
+    },
+    "element": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["code", "nom"],
+      "description": "Un élément d'un niveau plus fin que la compétence : son code (unique dans le référentiel, au motif de son niveau), son nom, sa description en texte libre (Markdown) et ses propres éléments.",
+      "properties": {
+        "code": { "$ref": "#/$defs/code" },
+        "nom": { "type": "string", "minLength": 1 },
+        "description": { "type": "string" },
+        "elements": {
+          "type": "array",
+          "items": { "$ref": "#/$defs/element" }
         }
       }
     }

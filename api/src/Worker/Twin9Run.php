@@ -86,8 +86,9 @@ final class Twin9Run
     }
 
     /**
-     * The days whose calls may leave: the oldest the run has under way, as
-     * many as it leads abreast (parallelisme.journees).
+     * The days whose calls may leave: by direct calls, the oldest the run has
+     * under way, as many as it leads abreast (parallelisme.journees); by
+     * batches, all of them (T8, strategy A: each wave waits a whole batch).
      *
      * @return array<string, true>
      */
@@ -96,7 +97,7 @@ final class Twin9Run
         $jours = [];
         foreach ($this->attendus as $call) {
             $jour = self::jour($call->id);
-            if ($jour !== null && !isset($jours[$jour]) && \count($jours) < $this->journeesDeFront) {
+            if ($jour !== null && !isset($jours[$jour]) && ($this->parLots || \count($jours) < $this->journeesDeFront)) {
                 $jours[$jour] = true;
             }
         }

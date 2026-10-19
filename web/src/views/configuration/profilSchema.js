@@ -122,7 +122,7 @@ const LIBELLES = {
   voie: 'Voie',
   parallelisme: 'Parallélisme',
   appels_directs: 'Appels directs simultanés',
-  journees: 'Journées menées de front',
+  journees: 'Journées menées de front (appels directs)',
   budget_usd: 'Budget (USD)',
   duree_minutes: 'Durée (minutes)',
   cle: 'Clé Anthropic',

@@ -305,7 +305,7 @@
           "type": "integer",
           "minimum": 1,
           "default": 10,
-          "description": "Journées menées de front, qui remplissent les lots."
+          "description": "Journées menées de front par appels directs ; par lots, toutes le sont."
         }
       }
     },

@@ -13,9 +13,14 @@
 //
 // Avant de lancer (T10), l'accord donné, la page dit combien de journées le
 // run instruirait — un portfolio déjà évalué n'instruit que ses journées
-// nouvelles ou changées —, son coût et sa durée estimés, les plafonds du
-// profil. Un run arrêté par son budget reprend sous un nouveau budget ; sa
-// carte, incomplète, s'ouvre dans la cartographie, qui le dit.
+// nouvelles ou changées —, son coût estimé (en moyenne, au plus bas, au plus
+// haut, d'après les évaluations passées de mêmes réglages, T8) et sa durée,
+// les journées que le crédit ou le budget admet avec leur fusion (T8,
+// stratégie A : les autres attendent une prochaine analyse), ou le refus, qui
+// dit ce qu'il faudrait et ne laisse pas lancer ; les plafonds du profil. Un
+// run arrêté par son budget reprend sous un nouveau budget, par son crédit
+// une fois rechargé, avant sa fusion comme les autres ; sa carte, incomplète,
+// s'ouvre dans la cartographie, qui le dit. Son attestation dit son admission.
 
 import { useCallback, useEffect, useState } from 'react'
 import { ApiError } from '../api/client.js'
@@ -63,34 +68,66 @@ function phraseJournees({ total, nouvelles, changees }) {
   return `Ce portfolio a déjà été évalué : ${n} journée${s(n)} sur ${total} à instruire (${quoi}), les autres reprises telles quelles.`
 }
 
-/** Avant de lancer : les journées à instruire, le coût et la durée estimés, les plafonds, le crédit s'il ne suffit pas. */
+/**
+ * Avant de lancer : les journées à instruire ; le coût estimé, en moyenne, au plus bas et au plus haut, et la durée ;
+ * celles que le crédit ou le budget admet avec leur fusion (T8), ou le refus, qui dit ce qu'il faudrait ; les plafonds.
+ */
 function Apercu({ apercu }) {
   const e = apercu.estimation
+  const a = apercu.admission
   const source =
-    e.runs != null
-      ? `moyenne par journée ${e.runs > 1 ? `de ${e.runs} runs passés` : 'd’un run passé'} de ce profil${apercu.mode === 'test' ? ' en essai' : ''}`
+    e.evaluations != null
+      ? `d’après ${e.evaluations > 1 ? `${e.evaluations} évaluations passées` : 'une évaluation passée'} de mêmes réglages`
       : `d’après le vrai run de PLANT-01, en essai${e.poles > 1 ? `, × ${e.poles} pôles` : ''}`
+  const cout =
+    dollars(e.min_usd) === dollars(e.max_usd)
+      ? dollars(e.cout_usd)
+      : `${dollars(e.cout_usd)} en moyenne, de ${dollars(e.min_usd)} à ${dollars(e.max_usd)}`
+  const temps = e.duree_s != null ? ` · durée estimée : ${duree(e.duree_s)}` : apercu.voie === 'lots' ? ' · par lots, la durée dépend d’Anthropic' : ''
   const { budget_usd: budget, duree_minutes: minutes } = apercu.plafonds
+  const s = (n) => (n > 1 ? 's' : '')
   return (
     <section className="twin9-apercu" aria-label="Avant de lancer">
       <p>{phraseJournees(apercu.journees)}</p>
-      <p>
-        Coût estimé : {dollars(e.cout_usd)}
-        {e.duree_s != null ? ` · durée estimée : ${duree(e.duree_s)}` : ' · par lots, la durée dépend d’Anthropic'} ({source}).
-      </p>
+      {a?.refus ? (
+        <p role="alert">
+          {a.refus}.{a.limite === 'credit' ? <> <a href="#/compte/credit">Recharger</a></> : null}
+        </p>
+      ) : (
+        <>
+          {a?.en_attente > 0 ? (
+            <p>
+              {a.limite === 'budget' ? 'Le budget du profil' : 'Votre crédit'}
+              {a.limite === 'credit' && a.autres_usd > 0 ? `, déduits les ${dollars(a.autres_usd)} que vos analyses en cours peuvent encore dépenser,` : ''}{' '}
+              couvre {a.instruites} des {a.instruites + a.en_attente} journées à instruire, avec leur fusion,{' '}
+              {e.evaluations != null ? 'au coût le plus haut observé' : 'd’après le run de référence'}, réserves des appels comprises.{' '}
+              {a.en_attente > 1 ? `Les ${a.en_attente} autres attendront` : 'L’autre attendra'} une prochaine analyse
+              {a.changees_en_attente > 0
+                ? ` ; d’ici là, la carte garde la version déjà évaluée de${a.changees_en_attente > 1 ? `s ${a.changees_en_attente} journées changées` : ' la journée changée'}`
+                : ''}
+              .
+            </p>
+          ) : null}
+          <p>
+            Coût estimé{a?.en_attente > 0 ? ` (${a.instruites} journée${s(a.instruites)})` : ''} : {cout}
+            {temps} ({source}).
+          </p>
+        </>
+      )}
       {budget != null || minutes != null ? (
         <p>
           Plafonds du profil : {[budget != null ? `budget ${dollars(budget)}` : null, minutes != null ? `durée ${minutes} min` : null].filter(Boolean).join(' · ')}.
         </p>
       ) : null}
-      {apercu.credit_usd != null && apercu.credit_usd < e.cout_usd ? (
-        <p role="alert">
-          Votre crédit ({dollars(apercu.credit_usd)}) ne couvre pas cette estimation : le run s’arrêtera faute de crédit.{' '}
-          <a href="#/compte/credit">Recharger</a>
-        </p>
-      ) : null}
     </section>
   )
+}
+
+/** Ce qu'un run a pris à son lancement (T8) : les journées qu'il instruit, celles laissées à une prochaine analyse. */
+function phraseAdmission({ instruites = 0, en_attente: attente = 0 }) {
+  const s = (n) => (n > 1 ? 's' : '')
+  const prises = `${instruites} journée${s(instruites)} à instruire`
+  return attente > 0 ? `${prises} ; ${attente} laissée${s(attente)} à une prochaine analyse` : prises
 }
 
 /** Le nom d'un portfolio de la bibliothèque, en fichier : son titre nomme sa carte d'un run à l'autre. */
@@ -183,7 +220,8 @@ function Lancer({ deps }) {
     )
   }
 
-  const pret = accord && choisi !== null && choisi.texte.trim() !== '' && !occupe
+  // refusé d'avance (T8) : le crédit ou le budget ne couvre pas même une journée et sa fusion
+  const pret = accord && choisi !== null && choisi.texte.trim() !== '' && !occupe && !apercu?.donnees?.admission?.refus
 
   const lancer = async (e) => {
     e.preventDefault()
@@ -483,6 +521,12 @@ function PageDuRun({ id, deps, onOpenInInterface }) {
             </dd>
             <dt>Moteur</dt>
             <dd>{run.attestation.moteur?.commit ? run.attestation.moteur.commit.slice(0, 12) : 'version inconnue'}</dd>
+            {run.attestation.admission ? (
+              <>
+                <dt>Admission</dt>
+                <dd>{phraseAdmission(run.attestation.admission)}</dd>
+              </>
+            ) : null}
             <dt>Accord</dt>
             <dd>{run.accord_at ?? '—'}</dd>
           </dl>

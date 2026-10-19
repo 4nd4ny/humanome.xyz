@@ -3,9 +3,11 @@
 // avancer jusqu'au bout, l'annule, le reprend, choisit qui lit ses résultats
 // et l'ouvre dans la cartographie. T10 : avant de lancer, les journées à
 // instruire, le coût et la durée estimés ; un run arrêté par son budget
-// reprend sous un nouveau ; sa carte incomplète s'ouvre, marquée.
+// reprend sous un nouveau ; sa carte incomplète s'ouvre, marquée. T8 : les
+// journées que le crédit admet avec leur fusion, ou le refus et ce qu'il
+// faudrait ; un run arrêté avant sa fusion se reprend comme les autres.
 import { afterEach, describe, expect, it, vi } from 'vitest'
-import { cleanup, fireEvent, render, screen, waitFor } from '@testing-library/react'
+import { cleanup, fireEvent, render, screen, waitFor, within } from '@testing-library/react'
 import Twin9View from './Twin9View.jsx'
 import { resetApiClient } from '../api/client.js'
 import { createMemoryAdapter, createPortfolioStore } from '../lib/portfolio-store.js'
@@ -71,9 +73,10 @@ const apercu = (extra = {}) => ({
   voie: 'directe',
   cle: 'instance',
   journees: { total: 3, nouvelles: 1, changees: 0 },
-  estimation: { cout_usd: 2.26, duree_s: 1316, runs: 2, par_journee: { cout_usd: 1.129, duree_s: 658 } },
+  estimation: { cout_usd: 2.258431, min_usd: 1.904, max_usd: 3.104321, reserve_usd: 1.128, duree_s: 1316, evaluations: 2 },
+  admission: { journees: 3, total: 3, limite: 'credit', instruites: 1, en_attente: 0, changees_en_attente: 0, autres_usd: 0, refus: null },
   plafonds: { budget_usd: 5, duree_minutes: null },
-  credit_usd: 1.5,
+  credit_usd: 100,
   ...extra,
 })
 
@@ -132,7 +135,7 @@ describe('Twin9View — lancer (T9)', () => {
     })
   })
 
-  it('avant de lancer, l’accord donné, dit les journées à instruire, le coût et la durée estimés', async () => {
+  it('avant de lancer, l’accord donné, dit les journées à instruire, le coût estimé et sa fourchette, la durée', async () => {
     const corps = []
     const fetchFn = routedFetch({
       'GET api/twin9/runs': jsonResponse(200, { disponible: true, runs: [] }),
@@ -153,9 +156,88 @@ describe('Twin9View — lancer (T9)', () => {
     expect(avant.textContent).toContain(
       'Ce portfolio a déjà été évalué : 1 journée sur 3 à instruire (1 nouvelle), les autres reprises telles quelles.',
     )
-    expect(avant.textContent).toContain('Coût estimé : 2,26 $ · durée estimée : 22 min (moyenne par journée de 2 runs passés de ce profil).')
+    expect(avant.textContent).toContain(
+      'Coût estimé : 2,26 $ en moyenne, de 1,90 $ à 3,10 $ · durée estimée : 22 min (d’après 2 évaluations passées de mêmes réglages).',
+    )
     expect(avant.textContent).toContain('Plafonds du profil : budget 5,00 $.')
-    expect(screen.getByRole('alert').textContent).toContain('Votre crédit (1,50 $) ne couvre pas cette estimation')
+    expect(avant.textContent).not.toContain('attendr')
+    expect(screen.queryByRole('alert')).toBeNull()
+  })
+
+  it('dit les journées que le crédit admet avec leur fusion, et que les autres attendent (T8)', async () => {
+    const fetchFn = routedFetch({
+      'GET api/twin9/runs': jsonResponse(200, { disponible: true, runs: [] }),
+      'GET api/twin9/configuration': jsonResponse(200, { profils: [] }),
+      'POST api/twin9/runs/apercu': jsonResponse(
+        200,
+        apercu({
+          journees: { total: 60, nouvelles: 58, changees: 2 },
+          admission: { journees: 42, total: 60, limite: 'credit', instruites: 42, en_attente: 18, changees_en_attente: 2, autres_usd: 0, refus: null },
+        }),
+      ),
+    })
+    render(<Twin9View deps={{ fetchFn, store: await bibliotheque() }} />)
+    fireEvent.click(await screen.findByRole('checkbox', { name: /J’accepte que mon portfolio/ }))
+    const avant = await screen.findByRole('region', { name: 'Avant de lancer' })
+    expect(avant.textContent).toContain(
+      'Votre crédit couvre 42 des 60 journées à instruire, avec leur fusion, au coût le plus haut observé, réserves des appels comprises. ' +
+        'Les 18 autres attendront une prochaine analyse ; d’ici là, la carte garde la version déjà évaluée des 2 journées changées.',
+    )
+    expect(avant.textContent).toContain('Coût estimé (42 journées) : 2,26 $ en moyenne')
+    expect(screen.getByRole('button', { name: 'Lancer l’analyse' }).disabled).toBe(false)
+  })
+
+  it('déduit ce que les analyses en cours peuvent encore dépenser ; le budget du profil borne de même (T8)', async () => {
+    const fetchFn = routedFetch({
+      'GET api/twin9/runs': jsonResponse(200, { disponible: true, runs: [] }),
+      'GET api/twin9/configuration': jsonResponse(200, { profils: [{ id: 3, nom: 'Direct' }] }),
+      'POST api/twin9/runs/apercu': (init) =>
+        jsonResponse(
+          200,
+          JSON.parse(init.body).profil === 3
+            ? apercu({
+                estimation: { cout_usd: 1.2, min_usd: 1.2, max_usd: 1.2, reserve_usd: 0.6, duree_s: null, reference: 'PLANT-01', poles: 7 },
+                admission: { journees: 1, total: 3, limite: 'budget', instruites: 1, en_attente: 1, changees_en_attente: 0, autres_usd: 0, refus: null },
+              })
+            : apercu({
+                admission: { journees: 2, total: 3, limite: 'credit', instruites: 1, en_attente: 2, changees_en_attente: 0, autres_usd: 2.5, refus: null },
+              }),
+        ),
+    })
+    render(<Twin9View deps={{ fetchFn, store: await bibliotheque() }} />)
+    fireEvent.click(await screen.findByRole('checkbox', { name: /J’accepte que mon portfolio/ }))
+    await waitFor(() =>
+      expect(screen.getByRole('region', { name: 'Avant de lancer' }).textContent).toContain(
+        'Votre crédit, déduits les 2,50 $ que vos analyses en cours peuvent encore dépenser, couvre 1 des 3 journées à instruire, ' +
+          'avec leur fusion, au coût le plus haut observé, réserves des appels comprises. Les 2 autres attendront une prochaine analyse.',
+      ),
+    )
+    fireEvent.change(screen.getByLabelText('Profil'), { target: { value: '3' } })
+    await waitFor(() =>
+      expect(screen.getByRole('region', { name: 'Avant de lancer' }).textContent).toContain(
+        'Le budget du profil couvre 1 des 2 journées à instruire, avec leur fusion, d’après le run de référence, réserves des ' +
+          'appels comprises. L’autre attendra une prochaine analyse.',
+      ),
+    )
+  })
+
+  it('dit quand le crédit ne couvre pas une carte, même d’une journée, ce qu’il faudrait, et ne lance pas (T8)', async () => {
+    const refus = 'Votre crédit ne couvre pas une carte, même d’une journée : il faudrait 3,11 $ (une journée et sa fusion, au coût le plus haut observé, réserves des appels comprises)'
+    const fetchFn = routedFetch({
+      'GET api/twin9/runs': jsonResponse(200, { disponible: true, runs: [] }),
+      'GET api/twin9/configuration': jsonResponse(200, { profils: [] }),
+      'POST api/twin9/runs/apercu': jsonResponse(
+        200,
+        apercu({ admission: { journees: 0, total: 3, limite: 'credit', instruites: 0, en_attente: 1, changees_en_attente: 0, autres_usd: 0, refus } }),
+      ),
+    })
+    render(<Twin9View deps={{ fetchFn, store: await bibliotheque() }} />)
+    fireEvent.click(await screen.findByRole('checkbox', { name: /J’accepte que mon portfolio/ }))
+    const alerte = await screen.findByRole('alert')
+    expect(alerte.textContent).toBe(`${refus}. Recharger`)
+    expect(within(alerte).getByRole('link', { name: 'Recharger' }).getAttribute('href')).toBe('#/compte/credit')
+    expect(screen.getByRole('region', { name: 'Avant de lancer' }).textContent).not.toContain('Coût estimé')
+    expect(screen.getByRole('button', { name: 'Lancer l’analyse' }).disabled).toBe(true)
   })
 
   it('dit au premier run que toutes ses journées s’instruisent, d’après le run de référence', async () => {
@@ -167,7 +249,7 @@ describe('Twin9View — lancer (T9)', () => {
         apercu({
           voie: 'lots',
           journees: { total: 3, nouvelles: 3, changees: 0 },
-          estimation: { cout_usd: 1.69, duree_s: null, reference: 'PLANT-01', poles: 7, par_journee: { cout_usd: 0.5645, duree_s: null } },
+          estimation: { cout_usd: 1.69327, min_usd: 1.6931, max_usd: 1.6934, reserve_usd: 0.564, duree_s: null, reference: 'PLANT-01', poles: 7 },
           plafonds: { budget_usd: null, duree_minutes: null },
           credit_usd: 100,
         }),
@@ -285,6 +367,32 @@ describe('Twin9View — la page du run (T9)', () => {
     fireEvent.change(screen.getByLabelText(/Nouveau budget/), { target: { value: '5' } })
     fireEvent.click(reprendre)
     await waitFor(() => expect(corps).toEqual([{ budget_usd: 5 }]))
+  })
+
+  it('reprend, rechargé ou sous un nouveau budget, un run arrêté avant d’entamer la réserve de sa fusion (T8)', async () => {
+    const arrete = (attente, budget) =>
+      run({
+        statut: 'echoue',
+        attente,
+        retard: attente[0].toUpperCase() + attente.slice(1),
+        attestation: { ...run().attestation, admission: { journees: 42, total: 60, limite: 'credit', instruites: 42, en_attente: 18 } },
+        progression: { appels: { envoye: 0, attente: 1, repondu: 9, panne: 0 }, journees: 2, fusion: false, lots: 0, runs_avant: 0 },
+        cout: { depense_microusd: 900000, budget_usd: budget, duree_minutes: null },
+      })
+    for (const [attente, budget, recharger] of [
+      ['crédit insuffisant (fusion réservée) : carte incomplète', null, true],
+      ['crédit insuffisant (engagé par vos autres analyses) : carte incomplète', null, true],
+      ['budget atteint (fusion réservée) : carte incomplète', 2, false],
+    ]) {
+      const fetchFn = routedFetch({ 'GET api/twin9/runs/7': jsonResponse(200, arrete(attente, budget)) })
+      render(<Twin9View section="7" deps={{ fetchFn, pause: async () => {} }} />)
+      await waitFor(() => expect(screen.getByRole('status').textContent).toBe(`Arrêté — ${arrete(attente, budget).retard}`))
+      expect(screen.queryByRole('link', { name: 'Recharger mon crédit' }) !== null).toBe(recharger)
+      expect(screen.queryByLabelText(/Nouveau budget/) !== null).toBe(!recharger)
+      expect(screen.getByRole('button', { name: 'Reprendre' })).toBeTruthy()
+      expect(screen.getByText('42 journées à instruire ; 18 laissées à une prochaine analyse')).toBeTruthy()
+      cleanup()
+    }
   })
 
   it('ouvre dans la cartographie la carte incomplète d’un run arrêté, qui le dit', async () => {

@@ -10,8 +10,11 @@ declare(strict_types=1);
  *   (etablissement_config.worker_token_hash, sha256). No session, therefore
  *   naturally outside the CSRF double-submit (no ambient credentials).
  *   The runner only ever sees ITS establishment's jobs.
- * - POST /api/admin/worker-tick: one bounded PHP tick on demand
- *   (X-Migrate-Token trust model, ADR-008) — external trigger without SSH.
+ * - POST /api/admin/worker-tick: one bounded PHP tick on demand — external
+ *   trigger without SSH. Its own token, WORKER_TICK_TOKEN (X-Worker-Tick-Token),
+ *   opens no other route: the trigger never holds the migration token, which
+ *   also grants roles and imports templates (ADR-011 §2). X-Migrate-Token
+ *   still opens it (ADR-008 trust model).
  *
  * Logging: counters only, never portfolio or document content (§6.5).
  */
@@ -271,18 +274,27 @@ return function (App $app): void {
 
     // ------------------------------------------------------------------
     // POST /api/admin/worker-tick — one bounded tick, external trigger
-    // without SSH (same trust model as /api/admin/migrate, ADR-008).
+    // without SSH: X-Worker-Tick-Token (WORKER_TICK_TOKEN, this route's
+    // alone), or X-Migrate-Token (ADR-008). A trigger that hangs up does not
+    // stop the slice (ignore_user_abort).
     // Body (optional): {budgetSeconds?: 1..45, maxCalls?: 1..50}.
     // ------------------------------------------------------------------
     $app->post('/admin/worker-tick', $wrap(function (Request $request, Response $response) use ($json): Response {
-        $token = Env::get('MIGRATE_TOKEN');
-        if ($token === '') {
+        $tickToken = Env::get('WORKER_TICK_TOKEN');
+        $migrateToken = Env::get('MIGRATE_TOKEN');
+        if ($tickToken === '' && $migrateToken === '') {
             return $json($response, ['error' => 'Not found'], 404);
         }
-        $given = $request->getHeaderLine('X-Migrate-Token');
-        if ($given === '' || !hash_equals($token, $given)) {
+        $given = $request->getHeaderLine('X-Worker-Tick-Token');
+        $givenMigrate = $request->getHeaderLine('X-Migrate-Token');
+        $allowed = ($tickToken !== '' && $given !== '' && hash_equals($tickToken, $given))
+            || ($migrateToken !== '' && $givenMigrate !== '' && hash_equals($migrateToken, $givenMigrate));
+        if (!$allowed) {
             return $json($response, ['error' => 'Forbidden'], 403);
         }
+        ignore_user_abort(true);
+        // PHP's own limit (CPU time on Linux) must not cut a slice either
+        @set_time_limit(Tick::MAX_SECONDS + 15);
 
         $data = (array) ($request->getParsedBody() ?? []);
         $options = [];

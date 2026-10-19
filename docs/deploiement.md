@@ -64,13 +64,20 @@ L'offre OVH **gratuite** n'inclut pas de cron (vérifié dans le panel :
 « Ce service n'est pas accessible pour l'offre Hébergement gratuit 100M »).
 Aucun cron n'est requis pour la **correction** : les compteurs de démo sont
 indexés par jour UTC (rollover automatique) et l'expiration des liens est
-appliquée à la lecture. Pour la cartographie de masse et la maintenance,
-déclencher depuis un planificateur externe :
+appliquée à la lecture. Pour les runs Twin9, la cartographie de masse et la
+maintenance, déclencher depuis un planificateur externe :
 
 ```bash
-curl -X POST https://humanome.xyz/api/admin/worker-tick  -H "X-Migrate-Token: $TOKEN"
+curl -X POST https://humanome.xyz/api/admin/worker-tick  -H "X-Worker-Tick-Token: $WORKER_TICK_TOKEN"
 curl -X POST https://humanome.xyz/api/admin/maintenance   -H "X-Migrate-Token: $TOKEN"
 ```
+
+Le jeton du tick (`WORKER_TICK_TOKEN`, ADR-011) n'ouvre que cette route : le
+planificateur ne tient pas celui des migrations, qui donne aussi les rôles et
+l'import des gabarits. Un tick avance d'abord au plus N runs Twin9, puis la
+masse, dans une tranche de 45 s au plus ; N et la durée de la tranche se
+règlent dans la configuration Twin9 (`runs_par_tick`, `secondes_par_tranche`).
+Un déclencheur qui raccroche n'interrompt pas la tranche.
 
 Sur une offre avec cron (perso/pro), planifier plutôt `php scripts/worker.php`
 et `php scripts/maintenance.php`.

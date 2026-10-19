@@ -16,7 +16,7 @@
 ~/                      # home FTP, HORS webroot
   .ovhconfig            # config PHP OVH — ne pas écraser sans raison
   app/
-    shared/.env         # secrets : MySQL, clé Anthropic, MIGRATE_TOKEN, clé libsodium
+    shared/.env         # secrets : MySQL, clé Anthropic, MIGRATE_TOKEN, WORKER_TICK_TOKEN, clé libsodium
     releases/<ts>/      # code PHP par release (N conservées)
     current.txt         # chemin de la release active (pas de symlink en FTP)
   www/                  # webroot public

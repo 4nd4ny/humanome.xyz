@@ -37,6 +37,8 @@ Dernière revue : M9 (2026-07-12).
 - **Outillage admin par jeton de déploiement** (`/admin/*`, ADR-008) : « n'existe
   pas » (404) si `MIGRATE_TOKEN` non configuré, 403 sinon, comparaison
   `hash_equals` (temps constant). Tests : `AdminRolesTest`, `SystemRoutesTest`.
+  `worker-tick` accepte aussi `WORKER_TICK_TOKEN`, qui n'ouvre aucune autre
+  route (ADR-011, test `WorkerTickTokenTest`).
 - **En-têtes anti-cadrage** : `X-Frame-Options: DENY` (API) et `frame-ancestors`
   (front `'self'`, API `'none'`) — voir A05.
 

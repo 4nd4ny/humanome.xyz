@@ -15,10 +15,52 @@ Chantier en cours : le moteur Twin9 v9.8 en PHP, exécuté sur le serveur (ADR-0
 développé dans le dépôt privé `4nd4ny/Twin_v9` (`docs/plan-twin9-php.md`, prompts T0 → T18, une
 conversation chacun ; entrées du 2026-10-17). T0 à T7 et T12 sont fusionnés : le moteur passe
 l'oracle complet dans `Twin_v9`, le profil est ici, les runs tournent sur le serveur par tranches.
-T8, la voie par lots, T13, la page de configuration, T9, lancer, suivre et lire un run, et T10, coûts,
-plafonds, relance, purge et export, attendent leur revue (entrées du 2026-10-19) ; vient ensuite T14.
+T8, la voie par lots, T13, la page de configuration, T9, lancer, suivre et lire un run, T10, coûts,
+plafonds, relance, purge et export, et T14, les jeux de gabarits, attendent leur revue (entrées du
+2026-10-19) ; vient ensuite T15, dont le prompt demande d'abord un plan.
 
 ## Fait
+
+- 2026-10-19 — **Moteur Twin9 en PHP, T14 : les jeux de gabarits (branche
+  `feat/twin9-t14-template-sets`, sur celle de T10 ; `Twin_v9` : `feat/twin9-t14-template-sets`).** Un
+  promptologue de l'atelier copie le jeu v9.8, qui reste en lecture seule, édite sa copie avec les
+  versions et le retour arrière de l'atelier, et la choisit dans son profil ; l'administrateur fixe le
+  jeu par défaut (`docs/contrats.md` §8.6). Sans réponse à « Qui voit les gabarits ? », D2
+  s'applique : l'atelier reste aux comptes à la fois administrateur et promptologue
+  (`TemplateSets::ATELIER`).
+  - Migration 029 : `twin9_jeux` (une copie, son nom, son auteur), `twin9_jeux_gabarits`,
+    `twin9_jeux_versions` ; le jeu v9.8 reste dans `twin9_protocole`, que seul l'import écrit.
+  - `ProtocoleRepository` travaille sur un jeu (le jeu v9.8 par défaut) ; `TemplateSets` copie le
+    jeu v9.8 (chaque gabarit tel quel, sans son histoire), réserve l'écriture d'une copie à son auteur
+    et à ses gabarits, dit les jeux qu'un compte choisit (le jeu v9.8, le jeu par défaut, ses copies
+    tant qu'il est de l'atelier) et garde le jeu par défaut (`twin9_gabarits_defaut`).
+  - Une variable qu'aucune étape ne fournit est refusée à l'enregistrement : le contrat des
+    variables, repris de `Twin_v9`, complété de `MA_POSITION_R1` et `LISTE_61` que le moteur fournit,
+    entre dans `schemas/twin9-protocole-contrat.json` (livré avec la release, `stage-api.sh`) ;
+    s'y ajoutent les variables de l'original v9.8 du gabarit.
+  - Routes : l'atelier passe par jeu, `/api/twin9/admin/jeux/{jeu}/protocole…` et `…/tester`, et
+    copie par `POST /api/twin9/admin/jeux` (admin ∧ promptologue) ; l'administrateur lit les jeux
+    (`GET /api/twin9/admin/jeux`, sans contenu) et fixe le jeu par défaut (`PUT
+    /api/twin9/admin/jeux/defaut`). Les anciennes routes `/api/twin9/admin/protocole…` partent.
+  - Profils et runs : `ProfilPolicy` admet un jeu que le propriétaire peut choisir (un profil resté
+    sur un jeu qui ne lui est plus proposé est refusé, comme une clé personnelle fermée) ; le profil
+    par défaut prend le jeu par défaut ; un run prend le jeu de son profil comme instantané, son
+    attestation le nomme, et chaque jeu a sa mémoire de carte. Le lancement refuse (`422`) une copie
+    à qui manque un gabarit du jeu v9.8 et un jeu que le moteur ne lit pas (fiche mal formée), au
+    lieu d'une erreur du serveur.
+  - Front : `#/twin9-atelier` choisit le jeu (le vôtre, en lecture seule pour le jeu v9.8 et la copie
+    d'un autre), copie le jeu v9.8 sous un nom ; `#/admin/twin9` fixe le jeu par défaut ; aide de
+    l'atelier.
+  - Textes : UC-PRO-08 et UC-ADM-05 (scénarios, règles, tests), `docs/autorisations.md` (matrice
+    « Configuration Twin9 », P12, AD-D2), `docs/contrats.md` (§7, §8.4, §8.6), registre RGPD et
+    `docs/rgpd-verification.md` (migration 029), `rgpd-audit`.
+  - Tests : `JeuxGabaritsTest` (dont la DoD : un mot changé dans une copie se retrouve dans le prompt
+    rendu, moteur factice et vrai moteur de `TWIN_V9_DIR` ; le jeu v9.8 ne change jamais ; les copies
+    incomplètes ou illisibles refusées au lancement ; le contrat couvre les gabarits v9.8),
+    `Twin9ProtocoleTest` et UC-PRO-08 réécrits par jeu (U12-U14, F23-F24), `ConfigurationDroitsTest`
+    (les jeux d'un profil, dont un ancien jeu par défaut), UC-ADM-05 (U14, F18), `RgpdAuditTest`,
+    UC-SYS-03-U07 ; front : `Twin9AtelierView.test` (dont une réponse tardive d'un jeu quitté),
+    `ConfigurationView.test` (un jeu qui n'est plus proposé).
 
 - 2026-10-19 — **Moteur Twin9 en PHP, T10 : coûts, clés, relance, purge (branche
   `feat/twin9-t10-costs`, sur celle de T9 ; `Twin_v9` : `feat/twin9-t10-costs`).** Chaque appel d'un
@@ -1825,6 +1867,12 @@ plafonds, relance, purge et export, attendent leur revue (entrées du 2026-10-19
   joignable. À la suppression d'un compte, un lot de sa clé encore en cours d'annulation, ou dont la
   soumission n'a pas eu de réponse, reste chez Anthropic jusqu'à ce qu'Anthropic l'efface (29 jours
   au plus) : la clé part avec le compte.
+- Twin9 (T14) : une copie de gabarits ne se renomme ni ne se supprime ; un gabarit qu'un import
+  ultérieur ajoute au jeu v9.8 n'entre pas dans les copies déjà faites (leurs runs sont refusés au
+  lancement). L'atelier ne vérifie pas la forme d'une fiche du référentiel d'une copie : une fiche
+  que le moteur ne lit plus fait refuser ses runs au lancement. Le contrat ne nomme que les
+  variables qu'emploient les gabarits v9.8 : une variable que le moteur fournit à une étape sans que
+  la v9.8 s'en serve est refusée. « Qui voit les gabarits ? » reste ouverte (D2 s'applique).
 - Twin9 (T10) : les appels minimaux qui vérifient les réglages avant le premier lot ne sont pas
   débités (quelques jetons) ; un appel coupé par la fin d'une tranche n'est pas débité non plus,
   ce qu'Anthropic en facture reste à la charge de l'instance. `#/admin/twin9` garde le palier des

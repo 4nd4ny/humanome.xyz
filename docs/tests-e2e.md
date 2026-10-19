@@ -250,7 +250,8 @@ alors « L'analyse approfondie n'est pas disponible sur cette instance »).
 qu'un nom, aucune requête ne part. Le scénario verse le jeu de gabarits du
 moteur factice dans la base de développement (`twin9_protocole`, noms
 `factice/…`) et l'en retire à la fin. Migrations à jour : `php
-scripts/migrate.php` (028).
+scripts/migrate.php` (029, T14 : un profil choisit son jeu de gabarits parmi
+ceux de `twin9_jeux`).
 
 ### Note historique — diff UI promptologue (corrigé)
 

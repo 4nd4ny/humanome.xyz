@@ -161,7 +161,7 @@ rejouant les fixtures : aucun appel réseau réel).
 | [UC-PRO-05](promptologue/UC-PRO-05-banc-essai.md) | Évaluer un paquet au banc d'essai | 32 | 29 | 3 |
 | [UC-PRO-06](promptologue/UC-PRO-06-retrospective.md) | Régénérer rétrospectivement des cartographies | 13 | 22 | 3 |
 | [UC-PRO-07](promptologue/UC-PRO-07-sandbox.md) | Exécuter le code d'un paquet en sandbox | 16 | 13 | 2 |
-| [UC-PRO-08](promptologue/UC-PRO-08-editer-gabarits-twin9.md) | Éditer les gabarits du Golden Prompt Twin9 | 11 | 22 | 5 |
+| [UC-PRO-08](promptologue/UC-PRO-08-editer-gabarits-twin9.md) | Éditer les gabarits du Golden Prompt Twin9 | 14 | 24 | 5 |
 
 ### Épistémiarque
 
@@ -189,7 +189,7 @@ rejouant les fixtures : aucun appel réseau réel).
 | [UC-ADM-02](administration/UC-ADM-02-gerer-golden-prompt.md) | Gérer le Golden Prompt et ses accès | 12 | 22 | 2 |
 | [UC-ADM-03](administration/UC-ADM-03-valider-paquet-defaut-reglages.md) | Valider le paquet par défaut et les réglages | 12 | 14 | 2 |
 | [UC-ADM-04](administration/UC-ADM-04-configurer-demo.md) | Configurer la démo publique | 27 | 22 | 2 |
-| [UC-ADM-05](administration/UC-ADM-05-superviser-twin9.md) | Superviser Twin9 | 13 | 17 | 4 |
+| [UC-ADM-05](administration/UC-ADM-05-superviser-twin9.md) | Superviser Twin9 | 14 | 18 | 4 |
 | [UC-ADM-06](administration/UC-ADM-06-monitoring.md) | Consulter le monitoring | 21 | 17 | 3 |
 
 ### Système et exploitation
@@ -202,7 +202,7 @@ rejouant les fixtures : aucun appel réseau réel).
 | [UC-SYS-04](systeme/UC-SYS-04-construire-artefacts-derives.md) | Construire les données et artefacts dérivés | 6 | 16 | 4 |
 | [UC-SYS-05](systeme/UC-SYS-05-sauvegarder-restaurer.md) | Sauvegarder et restaurer la base | 0 | 8 | 6 |
 
-**Total : 58 cas d'utilisation, 962 tests unitaires et 1102 tests fonctionnels identifiés, 212 anomalies de production documentées.**
+**Total : 58 cas d'utilisation, 966 tests unitaires et 1105 tests fonctionnels identifiés, 212 anomalies de production documentées.**
 
 Les comptes portent sur les identifiants distincts (`UC-…-Unn`, `UC-…-Fnn`) présents dans les fichiers de tests ; un identifiant paramétré (`it.each`) compte pour un.
 <!-- catalogue:end -->

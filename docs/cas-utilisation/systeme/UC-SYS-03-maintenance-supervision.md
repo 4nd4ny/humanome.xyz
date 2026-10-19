@@ -243,8 +243,9 @@ couverture RGPD de l'effacement de compte.
 - **AN-2 — Listes codées en dur de `RgpdAudit` en dérive par rapport au
   schéma.** (1) `USER_COLUMNS` ne contient ni `submitted_by` ni
   `updated_by`, alors que `referentiel_versions.submitted_by` (migration 015),
-  `competence_versions.submitted_by` (016) et `twin9_protocole.updated_by`
-  (011) sont des clés étrangères vers `users` : l'empreinte d'un compte
+  `competence_versions.submitted_by` (016), `twin9_protocole.updated_by`
+  (011) et `twin9_jeux_gabarits.updated_by` (029) sont des clés étrangères
+  vers `users` : l'empreinte d'un compte
   (section 3 du rapport, `residualReferences`) ignore ces références, et le
   contrôle anti-fuite, fait sur le **nom** de colonne, ne verrait pas une
   future colonne `*_by` sans FK. (2) `EXPORT_COVERAGE` n'a pas d'entrée pour

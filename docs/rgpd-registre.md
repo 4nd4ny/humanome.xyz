@@ -263,7 +263,10 @@ anonymisée, ce qui est cohérent avec son caractère immuable et collectif. Ce
 n'est donc pas un traitement de données personnelles d'apprenant.
 
 Il en va de même des gabarits Twin9 (`twin9_protocole`,
-`twin9_protocole_versions`, migration 011) : contenu de plateforme
-confidentiel (ADR-010), sans donnée personnelle. Les colonnes `updated_by` /
-`created_by` (l'administrateur éditeur) passent en **SET NULL** à la
-suppression de son compte, comme `golden_grants.granted_by`.
+`twin9_protocole_versions`, migration 011) et des copies qu'en font les
+promptologues (`twin9_jeux`, `twin9_jeux_gabarits`, `twin9_jeux_versions`,
+migration 029, T14) : contenu de plateforme confidentiel (ADR-010), sans
+donnée personnelle. Les colonnes `updated_by` / `created_by` (l'éditeur) et
+`twin9_jeux.user_id` (l'auteur d'une copie) passent en **SET NULL** à la
+suppression de son compte, comme `golden_grants.granted_by` : la copie
+survit, que personne ne modifie plus.

@@ -60,6 +60,20 @@ final class RgpdAudit
             'SELECT COUNT(*) FROM share_links s
                JOIN cartographies c ON c.id = s.cartographie_id
               WHERE c.user_id = ?',
+        // Twin9 (migration 025): a map's memory dies with the map, a run's
+        // journal and outputs with the run, both with the account
+        'twin9_memoire' =>
+            'SELECT COUNT(*) FROM twin9_memoire m
+               JOIN twin9_cartes c ON c.id = m.carte_id
+              WHERE c.user_id = ?',
+        'twin9_appels' =>
+            'SELECT COUNT(*) FROM twin9_appels a
+               JOIN twin9_runs r ON r.id = a.run_id
+              WHERE r.user_id = ?',
+        'twin9_resultats' =>
+            'SELECT COUNT(*) FROM twin9_resultats s
+               JOIN twin9_runs r ON r.id = s.run_id
+              WHERE r.user_id = ?',
     ];
 
     /**
@@ -92,6 +106,13 @@ final class RgpdAudit
         'golden_grants' => '—',             // authorisation record, not personal content
         'carto_publication_requests' => '—', // pending request code (migration 023), no content
         'twin9_profils' => 'none',          // Twin9 run settings (migration 024), no content; no route serves them yet
+        // Twin9 runs (migration 025): portfolio, settings, journal, outputs,
+        // map memory; in the account export with T10 (ADR-011 §5)
+        'twin9_cartes' => 'none',
+        'twin9_memoire' => 'none',
+        'twin9_runs' => 'none',
+        'twin9_appels' => 'none',
+        'twin9_resultats' => 'none',
     ];
 
     public static function schema(PDO $pdo): string

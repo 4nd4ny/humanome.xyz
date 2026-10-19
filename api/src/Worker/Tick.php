@@ -102,7 +102,8 @@ final class Tick
     /**
      * Runs one tick. Returns its counters (the only thing ever logged):
      * locked, jobsTouched, jobsCompleted, jobsFailed, jobsReleased, calls,
-     * callErrors, budgetBlocked, elapsedMs.
+     * callErrors, budgetBlocked, elapsedMs, and those of the Twin9 runs,
+     * prefixed twin9, when the engine is loaded.
      *
      * @return array<string, int|bool>
      */

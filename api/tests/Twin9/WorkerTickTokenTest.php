@@ -6,6 +6,7 @@ namespace Humanome\Tests\Twin9;
 
 use Humanome\Tests\AuthTestBase;
 use Humanome\Tests\TestDb;
+use Humanome\Worker\Tick;
 
 /**
  * The external trigger's token (T7, ADR-011 §2): WORKER_TICK_TOKEN opens
@@ -73,6 +74,33 @@ final class WorkerTickTokenTest extends AuthTestBase
                 $status = $this->request($method, $path, [], [$header => self::TICK])->getStatusCode();
                 self::assertContains($status, [401, 403], "$method $path ($header) : $status");
             }
+        }
+    }
+
+    /**
+     * The slice gets the time it needs where PHP has a limit, and the route
+     * never sets one where there is none: in the test suite (CLI), such a
+     * limit ended the whole run a minute later.
+     */
+    public function testTheRouteRaisesTheTimeLimitButNeverSetsOne(): void
+    {
+        $tick = fn () => self::assertSame(200, $this->request('POST', '/api/admin/worker-tick',
+            ['budgetSeconds' => 1], ['X-Worker-Tick-Token' => self::TICK])->getStatusCode());
+        $avant = (int) ini_get('max_execution_time');
+        try {
+            set_time_limit(0);
+            $tick();
+            self::assertSame('0', ini_get('max_execution_time'));
+
+            set_time_limit(30);
+            $tick();
+            self::assertSame((string) (Tick::MAX_SECONDS + 15), ini_get('max_execution_time'));
+
+            set_time_limit(300);
+            $tick();
+            self::assertSame('300', ini_get('max_execution_time'));
+        } finally {
+            set_time_limit($avant);
         }
     }
 

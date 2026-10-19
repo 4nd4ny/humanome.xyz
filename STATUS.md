@@ -28,7 +28,8 @@ dans les deux dépôts (entrée du 2026-10-19) ; viennent ensuite T8, la voie pa
     v9.8 —, portfolio, instantané du jeu de gabarits, horloge figée, compteurs) ; `twin9_appels`, le
     journal, écrit avant et après chaque appel, jamais le prompt ni la clé ; `twin9_resultats`.
     Réglages, portfolio, gabarits, mémoire, réponses et sorties sont compressés (zlib). Un run fini ne
-    garde du journal que ses compteurs ; la purge du compte emporte tout (cascade).
+    garde du journal que ses compteurs ; la purge du compte emporte tout (cascade, registre §13, que
+    `scripts/rgpd-audit.php` connaît ; l'export du compte attend T10).
   - Le tick (`Worker/Tick.php`, `Worker/Twin9Slice.php`) avance d'abord au plus N runs Twin9, puis la
     masse avec le temps qui reste ; `runs_par_tick` (défaut 3) et `secondes_par_tranche` (défaut 40,
     45 au plus) rejoignent `Twin9Config`. Chaque passe rejoue le run ; ses appels partent ensemble,
@@ -50,7 +51,9 @@ dans les deux dépôts (entrée du 2026-10-19) ; viennent ensuite T8, la voie pa
     rangée dans chaque entrée de la mémoire à côté de celle de la v9.8 : d'autres réglages d'appel
     relisent les journées.
   - Route `worker-tick` : un jeton à elle, `WORKER_TICK_TOKEN` (en-tête `X-Worker-Tick-Token`), qui
-    n'ouvre aucune autre route ; `X-Migrate-Token` l'ouvre toujours ; `ignore_user_abort`.
+    n'ouvre aucune autre route ; `X-Migrate-Token` l'ouvre toujours ; `ignore_user_abort` ; elle relève
+    la limite de temps de PHP là où il y en a une, sans jamais en poser une (en CLI, elle aurait tué la
+    suite de tests une minute plus tard).
     `scripts/worker.php` charge le moteur. `symfony/polyfill-intl-normalizer` entre dans
     `api/composer.json` : le moteur appelle `Normalizer`, et OVH n'a peut-être pas `intl`.
   - Moteur factice, public (`api/tests/fixtures/twin9-factice`), chargé par `EngineLoader` comme le

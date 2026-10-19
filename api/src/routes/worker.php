@@ -293,8 +293,13 @@ return function (App $app): void {
             return $json($response, ['error' => 'Forbidden'], 403);
         }
         ignore_user_abort(true);
-        // PHP's own limit (CPU time on Linux) must not cut a slice either
-        @set_time_limit(Tick::MAX_SECONDS + 15);
+        // PHP's own limit (CPU time on Linux) must not cut a slice either.
+        // Raised where there is one, never imposed where there is none (CLI):
+        // it would outlive the request and end the process later.
+        $limit = (int) ini_get('max_execution_time');
+        if ($limit > 0) {
+            @set_time_limit(max($limit, Tick::MAX_SECONDS + 15));
+        }
 
         $data = (array) ($request->getParsedBody() ?? []);
         $options = [];

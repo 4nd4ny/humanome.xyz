@@ -1,0 +1,358 @@
+<?php
+
+declare(strict_types=1);
+
+namespace Humanome\Worker;
+
+use Humanome\Twin9\CallJournal;
+use Humanome\Twin9\CallSender;
+use Humanome\Twin9\CallSettings;
+use Humanome\Twin9\MapStore;
+use Humanome\Twin9\RunKey;
+use Humanome\Twin9\RunRepository;
+use Humanome\Twin9\Twin9Config;
+use PDO;
+use Twin9\Plateforme;
+use Twin9\Run\Pending;
+
+/**
+ * The Twin9 part of a tick (ADR-011 §2, Twin_v9's docs/plan-twin9-php.md, lot
+ * 1): at most N runs advance within the slice. Each pass replays a run from
+ * its start, its answers taken from the journal, its days done from the
+ * memory; the calls it waits for leave, concurrently, and each answer is
+ * written as it comes back; a new pass follows as soon as a call may leave
+ * again. A call is written to the journal before it leaves and after it
+ * comes back; no transaction stays open while one waits.
+ *
+ * Attempts are the v9.8's (three, two then four seconds apart), within the
+ * slice: a rate refusal waits its Retry-After without spending one, a 429
+ * without one (a spending cap) holds the run back, a refusal of the model is
+ * a failure. A call the slice's end cuts leaves again in the next one; when
+ * it had at least half a slice, the cut counts as an attempt, so that a call
+ * too long for any slice ends as a failure instead of being paid again and
+ * again. A tick that dies leaves its calls in flight sent: the next takes
+ * them up, their attempt counted.
+ *
+ * Only the oldest days a run has under way send their calls (the days led
+ * abreast, parallelisme.journees), at most parallelisme.appels_directs at a
+ * time; the key is read for each call. Logging: counters only.
+ */
+final class Twin9Slice
+{
+    /** The v9.8's attempts of a call (aurora/backends.py: RETRIES = 2). */
+    public const TENTATIVES = 3;
+
+    /** The v9.8's pauses between attempts, in seconds: 2 × (attempt + 1). */
+    public const PAUSES = [2.0, 4.0];
+
+    /** A spending cap answers 429 without Retry-After: the run's calls wait this long. */
+    public const PAUSE_PLAFOND = 60.0;
+
+    private readonly RunRepository $runs;
+
+    /** @var list<float> */
+    private readonly array $pauses;
+
+    /** @var array<int, Twin9Run> the runs of the slice, by id */
+    private array $etats = [];
+
+    /** @var array<string, int> */
+    private array $compteurs = [];
+
+    private float $debut = 0.0;
+
+    private float $fin = 0.0;
+
+    private float $dernierDepart = 0.0;
+
+    /** @param array{pauses?: list<float>} $options tests: shorter pauses */
+    public function __construct(
+        private readonly PDO $pdo,
+        private readonly CallSender $sender,
+        private readonly RunKey $cles,
+        private readonly Twin9Config $config,
+        array $options = [],
+    ) {
+        $this->runs = new RunRepository($pdo);
+        $this->pauses = $options['pauses'] ?? self::PAUSES;
+    }
+
+    /**
+     * Advances at most $n runs from $debut until $fin (microtime).
+     *
+     * @return array<string, int> the slice's counters
+     */
+    public function advanceUntil(int $n, float $debut, float $fin): array
+    {
+        $this->debut = $debut;
+        $this->fin = $fin;
+        $this->dernierDepart = $fin - min(5.0, 0.1 * ($fin - $debut));
+        $this->compteurs = ['runs' => 0, 'passes' => 0, 'moteurMs' => 0, 'appels' => 0, 'reponses' => 0, 'pannes' => 0,
+                            'reprises' => 0, 'coupes' => 0, 'termines' => 0, 'echoues' => 0];
+        foreach ($this->runs->aAvancer($n) as $id) {
+            $run = $this->ouvrir($id);
+            if ($run !== null) {
+                $this->etats[$id] = $run;
+                $this->compteurs['runs']++;
+            }
+        }
+
+        while ($this->etats !== [] && microtime(true) < $this->fin) {
+            foreach ($this->etats as $run) {
+                if ($run->aJouer()) {
+                    $this->passer($run);
+                }
+            }
+            foreach ($this->etats as $run) {
+                $this->envoyer($run);
+            }
+            $reveil = $this->reveil();
+            if ($this->sender->running() === 0) {
+                if ($reveil === null || $reveil >= $this->dernierDepart) {
+                    break;
+                }
+                usleep(max(0, (int) ((min($reveil, $this->fin) - microtime(true)) * 1_000_000)));
+                continue;
+            }
+            foreach ($this->sender->wait(min($this->fin, $reveil ?? $this->fin)) as $issue) {
+                $this->inscrire($issue);
+            }
+        }
+        $this->couper();
+        foreach ($this->etats as $run) {
+            $this->runs->avance($run->id, $run->attente);
+        }
+
+        return $this->compteurs;
+    }
+
+    private function ouvrir(int $id): ?Twin9Run
+    {
+        $r = $this->runs->charger($id);
+        if ($r === null || $r['statut'] !== 'en_cours') {
+            return null;
+        }
+        $profil = $r['profil'];
+        if (($profil->voie ?? null) !== 'directe') {
+            $this->runs->avance($id, 'voie par lots : pas encore en service');
+
+            return null;
+        }
+        $journal = new CallJournal($this->pdo, $id);
+        $this->compteurs['reprises'] += $journal->reprendreLesCoupes(self::TENTATIVES);
+        try {
+            $moteur = json_decode($r['moteur'], false, 512, JSON_THROW_ON_ERROR);
+            $plateforme = new Plateforme($r['moteur'], $r['portfolio_nom'], $r['portfolio'], $r['gabarits'],
+                $r['sortie'], $r['horloge'],
+                CallSettings::empreinte($profil, $moteur->config->troncatures ?? null, $r['gabarits']));
+        } catch (\Throwable $e) {
+            $this->echec($id, $e, 'réglages, portfolio ou gabarits illisibles par le moteur');
+
+            return null;
+        }
+
+        return new Twin9Run(
+            $id,
+            $r['user_id'],
+            $plateforme,
+            $journal,
+            new MapStore($this->pdo, $r['carte_id']),
+            fn (string $chemin, string $contenu) => $this->runs->ecrireSortie($id, $chemin, $contenu),
+            new CallSettings($profil),
+            (string) $profil->cle,
+            max(1, (int) $profil->parallelisme->appels_directs),
+            max(1, (int) $profil->parallelisme->journees),
+        );
+    }
+
+    /** One pass of a run: done, or the calls it waits for. */
+    private function passer(Twin9Run $run): void
+    {
+        if ($this->runs->statut($run->id) !== 'en_cours') {
+            unset($this->etats[$run->id]); // cancelled meanwhile
+
+            return;
+        }
+        $run->nouvelles = false;
+        $run->passes++;
+        $this->compteurs['passes']++;
+        $debut = hrtime(true);
+        try {
+            $run->plateforme->passe($run->journal, $run->memoire, $run->sortie);
+        } catch (Pending $p) {
+            $run->attendus = $p->calls;
+
+            return;
+        } catch (\Throwable $e) {
+            unset($this->etats[$run->id]);
+            $this->echec($run->id, $e, 'erreur du moteur');
+
+            return;
+        } finally {
+            $this->compteurs['moteurMs'] += intdiv(hrtime(true) - $debut, 1_000_000);
+        }
+        unset($this->etats[$run->id]);
+        if ($this->runs->terminer($run->id)) {
+            $this->compteurs['termines']++;
+        }
+    }
+
+    /** The calls of a run that may leave now. */
+    private function envoyer(Twin9Run $run): void
+    {
+        $run->reveil = null;
+        if ($run->suspendu || microtime(true) >= $this->dernierDepart) {
+            return;
+        }
+        $jours = [];
+        foreach ($run->attendus as $call) {
+            $jour = self::jour($call->id);
+            if ($jour !== null && !isset($jours[$jour]) && \count($jours) < $run->journeesDeFront) {
+                $jours[$jour] = true;
+            }
+        }
+        foreach ($run->attendus as $call) {
+            if (\count($run->enVol) >= $run->appelsDirects) {
+                return;
+            }
+            $jour = self::jour($call->id);
+            if (isset($run->enVol[$call->id]) || ($jour !== null && !isset($jours[$jour]))) {
+                continue;
+            }
+            $tentative = 1;
+            $etat = $run->journal->etat($call->id);
+            if ($etat !== null && $etat['sha256'] === $call->sha256) {
+                if ($etat['statut'] === 'repondu' || $etat['statut'] === 'panne') {
+                    continue;
+                }
+                if ($etat['reprise_at'] !== null && $etat['reprise_at'] > microtime(true)) {
+                    $run->reveil = min($run->reveil ?? INF, $etat['reprise_at']);
+                    continue;
+                }
+                $tentative = $etat['tentatives'] + 1;
+            }
+            $cle = $this->cles->pour($run->userId, $run->cle);
+            if ($cle === null) {
+                $run->attente = 'clé Anthropic indisponible';
+                $run->suspendu = true;
+
+                return;
+            }
+            $reglage = $run->reglages->pour($call->step, $call->id);
+            $run->journal->envoye($call, $reglage['modele'], $tentative);
+            $this->sender->send($run->id, $call, $reglage, $cle, $this->fin);
+            $run->enVol[$call->id] = $tentative;
+            $this->compteurs['appels']++;
+        }
+    }
+
+    /** @param array<string, mixed> $issue an outcome of the sender */
+    private function inscrire(array $issue): void
+    {
+        $run = $this->etats[$issue['run']] ?? null;
+        $call = $issue['appel'];
+        if ($run === null) {
+            return;
+        }
+        $tentative = $run->enVol[$call->id] ?? 1;
+        unset($run->enVol[$call->id]);
+        $modele = $run->reglages->pour($call->step, $call->id)['modele'];
+        $mesure = [
+            'modele_servi' => $issue['modele_servi'] ?? null,
+            'stop_reason' => $issue['stop_reason'] ?? null,
+            'tokens_in' => $issue['tokens_in'] ?? null,
+            'tokens_out' => $issue['tokens_out'] ?? null,
+            'cout_microusd' => isset($issue['tokens_in'])
+                ? $this->config->coutMicrousd($modele, (int) $issue['tokens_in'], (int) ($issue['tokens_out'] ?? 0))
+                : null,
+            'duree_ms' => (int) round(((float) $issue['duree']) * 1000),
+        ];
+        if ($issue['ok']) {
+            $run->journal->repondu($call, (string) $issue['texte'], $mesure);
+            $run->nouvelles = true;
+            $this->compteurs['reponses']++;
+
+            return;
+        }
+        if (!empty($issue['refus'])) {
+            $run->journal->panne($call, (string) $issue['erreur'], $mesure);
+            $run->nouvelles = true;
+            $this->compteurs['pannes']++;
+
+            return;
+        }
+        if (!empty($issue['debit']) && ($issue['attendre'] !== null || ($issue['http'] ?? null) === 429)) {
+            // a rate refusal spends no attempt; without Retry-After, a 429 is a spending cap
+            $plafond = $issue['attendre'] === null;
+            $run->journal->plusTard($call, microtime(true) + ($plafond ? self::PAUSE_PLAFOND : (float) $issue['attendre']),
+                $tentative - 1);
+            if ($plafond) {
+                $run->attente = 'plafond de dépense atteint chez le fournisseur';
+                $run->suspendu = true;
+            } else {
+                $run->attente = 'débit du fournisseur';
+            }
+            $this->compteurs['reprises']++;
+
+            return;
+        }
+        if ($tentative >= self::TENTATIVES) {
+            $run->journal->panne($call, 'échec après ' . self::TENTATIVES . ' tentatives : ' . $issue['erreur'], $mesure);
+            $run->nouvelles = true;
+            $this->compteurs['pannes']++;
+
+            return;
+        }
+        $run->journal->plusTard($call, microtime(true) + $this->pauses[$tentative - 1], $tentative);
+        $this->compteurs['reprises']++;
+    }
+
+    /** The slice ends: the calls still running are cut, and leave again in the next one. */
+    private function couper(): void
+    {
+        foreach ($this->sender->abort() as $coupe) {
+            $run = $this->etats[$coupe['run']] ?? null;
+            if ($run === null) {
+                continue;
+            }
+            $call = $coupe['appel'];
+            $tentative = $run->enVol[$call->id] ?? 1;
+            unset($run->enVol[$call->id]);
+            $compte = $coupe['duree'] >= ($this->fin - $this->debut) / 2;
+            if ($compte && $tentative >= self::TENTATIVES) {
+                $run->journal->panne($call, 'délai dépassé : l\'appel ne tient pas dans une tranche');
+                $this->compteurs['pannes']++;
+            } else {
+                $run->journal->plusTard($call, microtime(true), $compte ? $tentative : $tentative - 1);
+            }
+            $this->compteurs['coupes']++;
+        }
+    }
+
+    /** The earliest moment a call held back may leave, if any. */
+    private function reveil(): ?float
+    {
+        $reveil = null;
+        foreach ($this->etats as $run) {
+            if ($run->reveil !== null) {
+                $reveil = min($reveil ?? INF, $run->reveil);
+            }
+        }
+
+        return $reveil;
+    }
+
+    private function echec(int $id, \Throwable $e, string $raison): void
+    {
+        // the class only: an engine's message may quote a template or the portfolio
+        error_log(sprintf('[twin9] run %d : %s (%s)', $id, $raison, $e::class));
+        $this->runs->echouer($id, $raison);
+        $this->compteurs['echoues']++;
+    }
+
+    /** The day a call belongs to ("journees/<day>/"), or null for the merge's. */
+    private static function jour(string $id): ?string
+    {
+        return preg_match('#^journees/[^/]+/#', $id, $m) === 1 ? $m[0] : null;
+    }
+}

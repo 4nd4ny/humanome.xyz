@@ -1,0 +1,214 @@
+<?php
+
+declare(strict_types=1);
+
+namespace Humanome\Twin9;
+
+use PDO;
+use Twin9\Run\Call;
+use Twin9\Run\Journal;
+
+/**
+ * The journal of a run's calls (ADR-011 §2, twin9_appels): written before
+ * each call (its id, step, models, the SHA-256 of its prompt, its attempt)
+ * and after (the response or the failure, tokens, cost, time, model served).
+ * The engine reads the outcomes; the slice reads what is still to send.
+ * Never the prompt, never the key.
+ *
+ * Loaded by parts, as the engine asks: the calls of a day together, the
+ * merge's together, so that a day the memory gives back is never loaded.
+ */
+final class CallJournal implements Journal
+{
+    /** @var array<string, array<string, mixed>> the rows loaded, by call id */
+    private array $rows = [];
+
+    /** @var array<string, true> the parts loaded */
+    private array $parts = [];
+
+    public function __construct(private readonly PDO $pdo, private readonly int $runId)
+    {
+    }
+
+    public function outcome(string $id): ?array
+    {
+        $row = $this->row($id);
+        if ($row === null) {
+            return null;
+        }
+        if ($row['statut'] === 'repondu') {
+            $row['reponse'] ??= RunRepository::uncompress((string) $row['blob']);
+            $this->rows[$id] = $row;
+
+            return ['sha256' => $row['sha256'], 'response' => $row['reponse']];
+        }
+        if ($row['statut'] === 'panne') {
+            return ['sha256' => $row['sha256'], 'failure' => (string) $row['panne']];
+        }
+
+        return null;
+    }
+
+    /**
+     * Where a call stands: its status ('envoye', 'attente', 'repondu',
+     * 'panne'), its prompt's SHA-256, its attempts and when it may leave
+     * again; null for a call never sent.
+     *
+     * @return array{statut: string, sha256: string, tentatives: int, reprise_at: float|null}|null
+     */
+    public function etat(string $id): ?array
+    {
+        $row = $this->row($id);
+
+        return $row === null ? null : ['statut' => $row['statut'], 'sha256' => $row['sha256'],
+                                       'tentatives' => $row['tentatives'], 'reprise_at' => $row['reprise_at']];
+    }
+
+    /** Before a call leaves: its row, its attempt counted. */
+    public function envoye(Call $call, string $modele, int $tentative): void
+    {
+        $this->pdo->prepare(
+            'INSERT INTO twin9_appels (run_id, appel, etape, modele, modele_envoye, sha256, statut, tentatives,
+                    reprise_at, reponse, panne, envoye_at)
+             VALUES (?, ?, ?, ?, ?, ?, "envoye", ?, NULL, NULL, NULL, NOW(3))
+             ON DUPLICATE KEY UPDATE etape = VALUES(etape), modele = VALUES(modele),
+                    modele_envoye = VALUES(modele_envoye), sha256 = VALUES(sha256), statut = "envoye",
+                    tentatives = VALUES(tentatives), reprise_at = NULL, reponse = NULL, panne = NULL,
+                    envoye_at = NOW(3)'
+        )->execute([$this->runId, $call->id, $call->step, $call->model, $modele, $call->sha256, $tentative]);
+        $this->rows[$call->id] = ['statut' => 'envoye', 'sha256' => $call->sha256, 'tentatives' => $tentative,
+                                  'reprise_at' => null, 'panne' => null, 'blob' => null, 'reponse' => null];
+    }
+
+    /**
+     * After: the response.
+     *
+     * @param array{modele_servi?: string|null, stop_reason?: string, tokens_in?: int, tokens_out?: int,
+     *              cout_microusd?: int|null, duree_ms?: int} $mesure
+     */
+    public function repondu(Call $call, string $reponse, array $mesure): void
+    {
+        $this->apres($call, 'repondu', $mesure, $reponse, null);
+        $this->rows[$call->id] = ['statut' => 'repondu', 'sha256' => $call->sha256,
+                                  'tentatives' => $this->rows[$call->id]['tentatives'] ?? 1, 'reprise_at' => null,
+                                  'panne' => null, 'blob' => null, 'reponse' => $reponse];
+    }
+
+    /**
+     * After: a failure, which the engine sees as the v9.8 sees a call failed
+     * after its attempts.
+     *
+     * @param array<string, mixed> $mesure
+     */
+    public function panne(Call $call, string $raison, array $mesure = []): void
+    {
+        $this->apres($call, 'panne', $mesure, null, $raison);
+        $this->rows[$call->id] = ['statut' => 'panne', 'sha256' => $call->sha256,
+                                  'tentatives' => $this->rows[$call->id]['tentatives'] ?? 1, 'reprise_at' => null,
+                                  'panne' => $raison, 'blob' => null, 'reponse' => null];
+    }
+
+    /** After: the call leaves again later, its attempts as given. */
+    public function plusTard(Call $call, float $repriseAt, int $tentatives): void
+    {
+        $this->pdo->prepare(
+            'UPDATE twin9_appels SET statut = "attente", tentatives = ?, reprise_at = FROM_UNIXTIME(?)
+              WHERE run_id = ? AND appel = ?'
+        )->execute([$tentatives, sprintf('%.3F', $repriseAt), $this->runId, $call->id]);
+        $this->rows[$call->id] = ['statut' => 'attente', 'sha256' => $call->sha256, 'tentatives' => $tentatives,
+                                  'reprise_at' => $repriseAt, 'panne' => null, 'blob' => null, 'reponse' => null];
+    }
+
+    /**
+     * The calls a tick left sent without an outcome, which died with it: each
+     * leaves again, its attempt counted; its last attempt spent, it fails.
+     * Called before the journal is read.
+     *
+     * @return int the calls taken up again
+     */
+    public function reprendreLesCoupes(int $tentativesMax): int
+    {
+        $this->pdo->prepare(
+            'UPDATE twin9_appels SET statut = "panne", panne = "délai dépassé : le tick s\'est arrêté pendant l\'appel",
+                    repondu_at = NOW(3)
+              WHERE run_id = ? AND statut = "envoye" AND tentatives >= ?'
+        )->execute([$this->runId, $tentativesMax]);
+        $stmt = $this->pdo->prepare(
+            'UPDATE twin9_appels SET statut = "attente", reprise_at = FROM_UNIXTIME(?) WHERE run_id = ? AND statut = "envoye"'
+        );
+        $stmt->execute([sprintf('%.3F', microtime(true)), $this->runId]);
+        $this->rows = [];
+        $this->parts = [];
+
+        return $stmt->rowCount();
+    }
+
+    /** @param array<string, mixed> $mesure */
+    private function apres(Call $call, string $statut, array $mesure, ?string $reponse, ?string $panne): void
+    {
+        $this->pdo->prepare(
+            'UPDATE twin9_appels SET statut = ?, reponse = ?, panne = ?, modele_servi = ?, stop_reason = ?,
+                    jetons_entree = ?, jetons_sortie = ?, cout_microusd = ?, duree_ms = ?, reprise_at = NULL,
+                    repondu_at = NOW(3)
+              WHERE run_id = ? AND appel = ?'
+        )->execute([
+            $statut,
+            $reponse === null ? null : RunRepository::compress($reponse),
+            $panne === null ? null : mb_substr($panne, 0, 255),
+            isset($mesure['modele_servi']) ? mb_substr((string) $mesure['modele_servi'], 0, 80) : null,
+            isset($mesure['stop_reason']) ? mb_substr((string) $mesure['stop_reason'], 0, 32) : null,
+            $mesure['tokens_in'] ?? null,
+            $mesure['tokens_out'] ?? null,
+            $mesure['cout_microusd'] ?? null,
+            $mesure['duree_ms'] ?? null,
+            $this->runId,
+            $call->id,
+        ]);
+    }
+
+    /** @return array<string, mixed>|null */
+    private function row(string $id): ?array
+    {
+        $part = self::part($id);
+        if (!isset($this->parts[$part])) {
+            $this->load($part);
+        }
+
+        return $this->rows[$id] ?? null;
+    }
+
+    /** The part of the journal a call belongs to: its day ("journees/<day>/"), or the merge's (""). */
+    private static function part(string $id): string
+    {
+        return preg_match('#^journees/[^/]+/#', $id, $m) === 1 ? $m[0] : '';
+    }
+
+    private function load(string $part): void
+    {
+        $sql = 'SELECT appel, statut, sha256, tentatives, UNIX_TIMESTAMP(reprise_at) AS reprise_at, panne, reponse
+                  FROM twin9_appels WHERE run_id = ? AND ';
+        if ($part === '') {
+            $stmt = $this->pdo->prepare($sql . 'LEFT(appel, 9) <> "journees/"');
+            $stmt->execute([$this->runId]);
+        } else {
+            $stmt = $this->pdo->prepare($sql . 'LEFT(appel, CHAR_LENGTH(?)) = ?');
+            $stmt->execute([$this->runId, $part, $part]);
+        }
+        foreach ($stmt->fetchAll() as $row) {
+            $id = (string) $row['appel'];
+            if (isset($this->rows[$id])) {
+                continue; // written by this slice: newer than the table read
+            }
+            $this->rows[$id] = [
+                'statut' => (string) $row['statut'],
+                'sha256' => (string) $row['sha256'],
+                'tentatives' => (int) $row['tentatives'],
+                'reprise_at' => $row['reprise_at'] === null ? null : (float) $row['reprise_at'],
+                'panne' => $row['panne'],
+                'blob' => $row['reponse'],
+                'reponse' => null,
+            ];
+        }
+        $this->parts[$part] = true;
+    }
+}

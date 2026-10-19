@@ -512,3 +512,78 @@ la v9.8 est inventorié dans `Twin_v9`, avec le moteur PHP qui les lit.
 Les plafonds déjà réglables dans le `config.json` restent à leur place :
 `calques.max_archives`, `merge.max_histoires`,
 `scan_global.retour_max_caracteres`.
+
+## 8. Le moteur Twin9 et la plateforme (T7)
+
+Un run Twin9 s'exécute sur le serveur, par tranches (ADR-011 §2). La
+plateforme ne connaît du moteur, chargé depuis `TWIN_V9_DIR` (ADR-011 §4), que
+ce contrat ; le moteur factice des tests (`api/tests/fixtures/twin9-factice`,
+public) l'implémente aussi.
+
+- **`Twin9\Plateforme`**, construite une fois par run et par tranche avec :
+  les réglages de la v9.8 en JSON (`config` et `roster` effectifs, options
+  `jours`, `rescan`, `test`, `memoire`), le nom et le texte du portfolio, le
+  jeu de gabarits (chaque gabarit par son nom, `lourd/20-greffier`, les fiches
+  `tagger/P1` à `P7` comprises), la sortie du run (`--out` : les identifiants
+  des calques en portent une empreinte), son horloge, figée à sa création, et
+  l'empreinte de ses réglages (ci-dessous).
+- **`passe(journal, memoire, sortie)`** rejoue le run depuis son début : la
+  passe qui finit rend la main, les autres lèvent `Twin9\Run\Pending`, dont
+  les `calls` sont les appels attendus (`Twin9\Run\Call` : `id`, `step`,
+  `label`, `model`, `prompt`, `sha256`).
+- **Le journal** (`Twin9\Run\Journal`, `CallJournal`) : `outcome(id)` rend
+  `{sha256, response}` ou `{sha256, failure}`. Une réponse ne sert que si
+  l'empreinte du prompt recalculé est la même.
+- **La mémoire** (`Twin9\Run\Store`, `MapStore`) : un texte JSON par clé,
+  lu entrée par entrée. Le moteur écrit une journée finie aussitôt (`journees/<jour>`
+  et `calques/<jour>`, sous `test/` en mode test), si aucun de ses appels n'a
+  échoué ; le reste (`faisceaux`, `scan_global`, les marques que la fusion
+  laisse dans les journées) à la fin du run, comme la v9.8 écrit son état. Un
+  faisceau du second ressort ne se relit donc pas en cours de run : la
+  « chose jugée » de la v9.8 ne marque pas les graines comme le fait un premier
+  jugement, et la carte changerait. Il se rejoue depuis le journal, sans
+  qu'aucun appel reparte.
+- **Les sorties** arrivent par `sortie(chemin, contenu)` dès qu'elles sont
+  écrites : `journees/<jour>/carto_jour.json` à la fin de chaque journée,
+  puis `carto_evolutive.json`, `profil_ipsatif.json`, `rapport.md`,
+  `rapport_evolutif.md`, `scan_global.json`. Une journée reprise de la
+  mémoire n'a pas de carte du jour, comme dans la v9.8.
+
+### 8.1 Les réglages d'un run
+
+`twin9_runs.reglages` garde la copie du profil (`profil`, §7 : réglages
+d'appel, voie, parallélisme, clé, référentiel et jeu de gabarits) et les
+réglages de la v9.8 que lit le moteur (`moteur`). Jusqu'au lancement (T9),
+qui les tirera du profil, ce sont ceux de l'appelant ; les tests de parité
+y mettent ceux de l'oracle. Les nombres gardent leur forme : `1.0` reste un
+flottant, comme en Python, où il n'est pas `1` (`JSON_PRESERVE_ZERO_FRACTION`).
+
+Chaque appel part avec les réglages de son étape (`CallSettings`) : l'étape
+du moteur (`Call::step`, la tâche de la v9.8) donne l'étape du profil, puis
+son étage, comme au §7.2.
+
+| `step` du moteur | Étape du profil |
+|---|---|
+| `tagger` | le lecteur du collège (par son nom, `tags_<nom>#<passe>_P<n>.json`), sinon l'étage des lecteurs |
+| `premiere_impression`, `greffier`, `contre_lecture`, `accusation`, `defense`, `replique`, `briefing`, `relance`, `gardien_support`, `gardien_raisonnement`, `president` | la même |
+| `leger` | `juge_leger` |
+| `jure`, `jure2` | `jures`, `second_tour` |
+| `merge_kairos`, `merge_pole`, `merge_competence`, `merge_rapporteur` | `relectures` |
+| `condense`, `arpenteur`, `retour_sources` | `arpenteur` |
+| tout appel sous `second_ressort/` | son étape, puis `second_ressort` par-dessus |
+
+La réflexion coupée part sous la forme que le modèle accepte : `disabled`,
+`between_tools` pour Sonnet 5.5 ; « adaptative » part en `adaptive`.
+L'effort, s'il est réglé, part en `output_config.effort`. Jamais de
+température.
+
+### 8.2 L'empreinte des réglages
+
+Une entrée de la mémoire (journée, faisceau, condensé et arpentage de
+l'Arpenteur) ne se reprend que sous les mêmes réglages : à côté de
+l'empreinte de la v9.8, elle garde celle de la plateforme
+(`CallSettings::empreinte`), qui couvre ce que la v9.8 ne compte pas et qui
+change une réponse : les réglages d'appel des étages, des étapes et des
+lecteurs, les troncatures, les gabarits et les fiches du jeu (hors `merge/` :
+la mémoire ne garde pas les relectures). Les sorties gardent l'empreinte de
+la v9.8.

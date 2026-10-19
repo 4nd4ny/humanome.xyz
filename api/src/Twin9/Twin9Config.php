@@ -23,6 +23,10 @@ use Humanome\Packages\SettingsRepository;
  *             (seuils_consensus, jury, juge_leger, merge, scan_global) — the
  *             ALGORITHM's knobs, not secret (ADR-010 §2 residual), consumed
  *             by the JS engine.
+ *   runs_par_tick         int, the Twin9 runs a tick advances at most (1..20,
+ *                         default 3 — ADR-011 §2)
+ *   secondes_par_tranche  int, the length of a tick's slice in seconds
+ *                         (5..45, default 40 — OVH: 45 s at most)
  *
  * publicView() is the ONLY shape the front ever sees: prices WITH margin
  * applied (the raw list price and the margin stay admin-only).
@@ -100,6 +104,8 @@ final class Twin9Config
             'enabled' => false,
             'appels_par_minute' => 30,
             'pipeline' => [],
+            'runs_par_tick' => 3,
+            'secondes_par_tranche' => 40,
         ];
     }
 
@@ -220,6 +226,18 @@ final class Twin9Config
     }
 
     /** @return list<array{montant_usd: float|int, libelle: string}> */
+    /** The Twin9 runs a tick advances at most (ADR-011 §2). */
+    public function runsParTick(): int
+    {
+        return (int) $this->read()['runs_par_tick'];
+    }
+
+    /** The length of a tick's slice, in seconds (45 at most). */
+    public function secondesParTranche(): int
+    {
+        return (int) $this->read()['secondes_par_tranche'];
+    }
+
     public function packs(): array
     {
         return $this->read()['packs'];
@@ -422,6 +440,14 @@ final class Twin9Config
         }
         if (!\is_array($config['pipeline'])) {
             throw new Twin9Exception('Configuration pipeline invalide : objet attendu', 422);
+        }
+        $runs = $config['runs_par_tick'];
+        if (!\is_int($runs) || $runs < 1 || $runs > 20) {
+            throw new Twin9Exception('Runs par tick hors bornes (1 à 20)', 422);
+        }
+        $secondes = $config['secondes_par_tranche'];
+        if (!\is_int($secondes) || $secondes < 5 || $secondes > 45) {
+            throw new Twin9Exception('Durée de tranche hors bornes (5 à 45 secondes)', 422);
         }
     }
 }

@@ -74,6 +74,10 @@ final class RgpdAudit
             'SELECT COUNT(*) FROM twin9_resultats s
                JOIN twin9_runs r ON r.id = s.run_id
               WHERE r.user_id = ?',
+        'twin9_lots' => // migration 026: a run's batches, ids and counts only
+            'SELECT COUNT(*) FROM twin9_lots l
+               JOIN twin9_runs r ON r.id = l.run_id
+              WHERE r.user_id = ?',
     ];
 
     /**
@@ -113,6 +117,7 @@ final class RgpdAudit
         'twin9_runs' => 'none',
         'twin9_appels' => 'none',
         'twin9_resultats' => 'none',
+        'twin9_lots' => '—',                // a run's batches (migration 026): ids and counts, no content
     ];
 
     public static function schema(PDO $pdo): string

@@ -286,8 +286,10 @@ final class Twin9Config
      * above the exact figure — unlike prixMicrousdParToken(), which rounds
      * per token and would overbill fractional prices by up to 33 %).
      * USD/Mtok × tokens = micro-USD exactly (1e6/1e6). Null: unknown model.
+     * A call made in a batch costs half (the Message Batches API's price, T8).
      */
-    public function coutMicrousd(string $modelId, int $tokensIn, int $tokensOut, string $protocole = 'twin9'): ?int
+    public function coutMicrousd(string $modelId, int $tokensIn, int $tokensOut, string $protocole = 'twin9',
+                                 bool $parLots = false): ?int
     {
         $config = $this->read();
         $modele = $config['modeles'][$modelId] ?? null;
@@ -296,9 +298,10 @@ final class Twin9Config
         }
         [$in, $out] = $modele['prix_usd_mtok'];
         $marge = $protocole === 'twin6' ? (float) $config['marge_twin6'] : (float) $config['marge'];
+        $part = $parLots ? 0.5 : 1.0;
 
-        return (int) ceil($tokensIn * (float) $in * $marge)
-            + (int) ceil($tokensOut * (float) $out * $marge);
+        return (int) ceil($tokensIn * (float) $in * $part * $marge)
+            + (int) ceil($tokensOut * (float) $out * $part * $marge);
     }
 
     /**

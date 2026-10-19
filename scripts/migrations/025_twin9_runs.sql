@@ -16,7 +16,7 @@
 --   keeps its counters only (twin9_runs.compteurs) and its rows go.
 -- twin9_resultats: the run's outputs, compressed.
 --
--- RGPD (registre §12): portfolio and run state stay on the server until their
+-- RGPD (registre §13): portfolio and run state stay on the server until their
 -- owner deletes them; account purge removes everything (CASCADE).
 --
 -- Forward-only, expand pattern (ADR-008): new tables, which the previously

@@ -22,7 +22,8 @@ use PHPUnit\Framework\TestCase;
  * and T2's real run go through the platform as a run does: the MySQL journal
  * and memory, slices, answers in a shuffled order, the engine of TWIN_V9_DIR.
  * Each call leaves once, with the v9.8's prompt; the outputs are the
- * oracle's, compared as decoded JSON. Without Twin_v9, these tests skip.
+ * oracle's, compared as decoded JSON. By batches too (T8): a run by batches
+ * sends the prompts a direct run sends. Without Twin_v9, these tests skip.
  */
 final class PariteTest extends TestCase
 {
@@ -147,6 +148,18 @@ final class PariteTest extends TestCase
         $this->rejouer('16-test-mode', $user);
     }
 
+    /**
+     * By batches (T8): each wave of calls leaves in a batch, each call once,
+     * with the v9.8's prompt. Killed as its second batch is about to leave,
+     * then as its fourth has left without its answer, the run resumes,
+     * nothing is paid twice, and its outputs are the oracle's.
+     */
+    public function testTheTestModeByBatchesKilledBetweenTwoBatches(): void
+    {
+        $this->rejouer('16-test-mode', $this->utilisateur('lots@example.test'), parLots: true,
+            incidents: [2 => 'tue', 4 => 'tue_apres']);
+    }
+
     public function testTheRealRun(): void
     {
         if (!is_file(self::$dir . '/oracle/reel/calls.jsonl')) {
@@ -163,10 +176,13 @@ final class PariteTest extends TestCase
      * @param array<string, array<string, string>>|null $record the answers, the oracle's by default
      * @param (\Closure(string): bool)|null $tueur whether the tick dies as this call is about to leave
      * @param bool $comparer whether the calls and outputs must be the oracle's
+     * @param bool $parLots by batches (ReplayBatchApi), rather than directly
+     * @param array<int, string> $incidents by batches: the creations that make the tick die ('tue', 'tue_apres')
      * @return int the run
      */
     private function rejouer(string $id, int $user, float $part = 1.0, ?\Closure $avant = null, ?array $record = null,
-                             ?\Closure $tueur = null, bool $comparer = true): int
+                             ?\Closure $tueur = null, bool $comparer = true, bool $parLots = false,
+                             array $incidents = []): int
     {
         $dir = self::$dir . ($id === 'reel' ? '/oracle/reel' : '/oracle/scenarios/' . $id);
         [$scenario, $moteur, $portfolio, $sortie] = $this->scenario($dir);
@@ -174,7 +190,7 @@ final class PariteTest extends TestCase
         // a test that failed may have left its run in progress: it must not take this one's slices
         self::$pdo->exec('UPDATE twin9_runs SET statut = "annule" WHERE statut = "en_cours"');
         $runs = new RunRepository(self::$pdo);
-        $run = $runs->creer($user, self::profil(), $moteur, basename($portfolio), (string) file_get_contents($portfolio),
+        $run = $runs->creer($user, self::profil($parLots), $moteur, basename($portfolio), (string) file_get_contents($portfolio),
             pathinfo($portfolio, PATHINFO_FILENAME), self::gabarits(), new \DateTimeImmutable(self::HORLOGE), $sortie);
         if ($avant !== null) {
             $stmt = self::$pdo->prepare('SELECT carte_id FROM twin9_runs WHERE id = ?');
@@ -183,23 +199,29 @@ final class PariteTest extends TestCase
         }
 
         $envoi = new ReplaySender($record, part: $part, tueur: $tueur, strict: $comparer);
+        $lots = new ReplayBatchApi($record, $incidents);
         $morts = 0;
         for ($tranches = 1; $runs->statut($run) === 'en_cours'; $tranches++) {
             self::assertLessThan(100, $tranches, "$id : le run ne va pas au bout");
             try {
-                (new Tick(self::$pdo, ['budgetSeconds' => 5, 'twin9Sender' => $envoi, 'twin9Runs' => 1]))->run();
+                (new Tick(self::$pdo, ['budgetSeconds' => 5, 'twin9Sender' => $envoi, 'twin9Lots' => $lots,
+                                       'twin9Runs' => 1, 'twin9Fenetre' => 0.2]))->run();
             } catch (\RuntimeException $e) {
                 self::assertSame('tick tué', $e->getMessage());
                 $morts++;
             }
         }
-        self::assertSame($tueur === null ? 0 : 1, $morts);
+        self::assertSame(\count($incidents) + ($tueur === null ? 0 : 1), $morts);
 
         self::assertSame('termine', $runs->statut($run), $id);
         if (!$comparer) {
             return $run;
         }
-        $envoyes = array_map(static fn (string $k): string => substr($k, strpos($k, ':') + 1), array_keys($envoi->envois));
+        $envoyes = $parLots ? array_map('strval', array_keys($lots->envois))
+            : array_map(static fn (string $k): string => substr($k, strpos($k, ':') + 1), array_keys($envoi->envois));
+        if ($parLots) {
+            self::assertSame([], $lots->restants(), "$id : chaque lot relevé est supprimé");
+        }
         sort($envoyes, SORT_STRING);
         $attendus = array_keys($record);
         sort($attendus, SORT_STRING);
@@ -246,11 +268,11 @@ final class PariteTest extends TestCase
         return [$scenario, $moteur, self::$dir . '/' . $option('--portfolio'), (string) $option('--out')];
     }
 
-    /** The profile of the parity runs: the v9.8's, by the direct lane, every call of a pass at once. */
-    private static function profil(): \stdClass
+    /** The profile of the parity runs: the v9.8's, directly (every call of a pass at once) or by batches. */
+    private static function profil(bool $parLots = false): \stdClass
     {
         $profil = ProfilRepository::v98();
-        $profil->voie = 'directe';
+        $profil->voie = $parLots ? 'lots' : 'directe';
         $profil->parallelisme->appels_directs = 10000;
 
         return ProfilRepository::validate($profil);

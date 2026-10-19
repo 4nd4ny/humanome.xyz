@@ -17,6 +17,9 @@ use Twin9\Run\Journal;
  *
  * Loaded by parts, as the engine asks: the calls of a day together, the
  * merge's together, so that a day the memory gives back is never loaded.
+ *
+ * A call in a batch (T8) carries its batch and its custom_id, and stays sent
+ * from slice to slice until its batch is collected.
  */
 final class CallJournal implements Journal
 {
@@ -64,18 +67,19 @@ final class CallJournal implements Journal
                                        'tentatives' => $row['tentatives'], 'reprise_at' => $row['reprise_at']];
     }
 
-    /** Before a call leaves: its row, its attempt counted. */
-    public function envoye(Call $call, string $modele, int $tentative): void
+    /** Before a call leaves, directly or in a batch: its row, its attempt counted. */
+    public function envoye(Call $call, string $modele, int $tentative, ?int $lotId = null, ?string $customId = null): void
     {
         $this->pdo->prepare(
-            'INSERT INTO twin9_appels (run_id, appel, etape, modele, modele_envoye, sha256, statut, tentatives,
-                    reprise_at, reponse, panne, envoye_at)
-             VALUES (?, ?, ?, ?, ?, ?, "envoye", ?, NULL, NULL, NULL, NOW(3))
+            'INSERT INTO twin9_appels (run_id, appel, etape, modele, modele_envoye, sha256, statut, lot_id, custom_id,
+                    tentatives, reprise_at, reponse, panne, envoye_at)
+             VALUES (?, ?, ?, ?, ?, ?, "envoye", ?, ?, ?, NULL, NULL, NULL, NOW(3))
              ON DUPLICATE KEY UPDATE etape = VALUES(etape), modele = VALUES(modele),
                     modele_envoye = VALUES(modele_envoye), sha256 = VALUES(sha256), statut = "envoye",
-                    tentatives = VALUES(tentatives), reprise_at = NULL, reponse = NULL, panne = NULL,
-                    envoye_at = NOW(3)'
-        )->execute([$this->runId, $call->id, $call->step, $call->model, $modele, $call->sha256, $tentative]);
+                    lot_id = VALUES(lot_id), custom_id = VALUES(custom_id), tentatives = VALUES(tentatives),
+                    reprise_at = NULL, reponse = NULL, panne = NULL, envoye_at = NOW(3)'
+        )->execute([$this->runId, $call->id, $call->step, $call->model, $modele, $call->sha256, $lotId, $customId,
+                    $tentative]);
         $this->rows[$call->id] = ['statut' => 'envoye', 'sha256' => $call->sha256, 'tentatives' => $tentative,
                                   'reprise_at' => null, 'panne' => null, 'blob' => null, 'reponse' => null];
     }
@@ -88,7 +92,7 @@ final class CallJournal implements Journal
      */
     public function repondu(Call $call, string $reponse, array $mesure): void
     {
-        $this->apres($call, 'repondu', $mesure, $reponse, null);
+        $this->apres($call->id, 'repondu', $mesure, $reponse, null);
         $this->rows[$call->id] = ['statut' => 'repondu', 'sha256' => $call->sha256,
                                   'tentatives' => $this->rows[$call->id]['tentatives'] ?? 1, 'reprise_at' => null,
                                   'panne' => null, 'blob' => null, 'reponse' => $reponse];
@@ -102,7 +106,7 @@ final class CallJournal implements Journal
      */
     public function panne(Call $call, string $raison, array $mesure = []): void
     {
-        $this->apres($call, 'panne', $mesure, null, $raison);
+        $this->apres($call->id, 'panne', $mesure, null, $raison);
         $this->rows[$call->id] = ['statut' => 'panne', 'sha256' => $call->sha256,
                                   'tentatives' => $this->rows[$call->id]['tentatives'] ?? 1, 'reprise_at' => null,
                                   'panne' => $raison, 'blob' => null, 'reponse' => null];
@@ -120,9 +124,10 @@ final class CallJournal implements Journal
     }
 
     /**
-     * The calls a tick left sent without an outcome, which died with it: each
-     * leaves again, its attempt counted; its last attempt spent, it fails.
-     * Called before the journal is read.
+     * The direct calls a tick left sent without an outcome, which died with
+     * it: each leaves again, its attempt counted; its last attempt spent, it
+     * fails. A call in a batch waits for its batch. Called before the journal
+     * is read.
      *
      * @return int the calls taken up again
      */
@@ -131,20 +136,106 @@ final class CallJournal implements Journal
         $this->pdo->prepare(
             'UPDATE twin9_appels SET statut = "panne", panne = "délai dépassé : le tick s\'est arrêté pendant l\'appel",
                     repondu_at = NOW(3)
-              WHERE run_id = ? AND statut = "envoye" AND tentatives >= ?'
+              WHERE run_id = ? AND statut = "envoye" AND lot_id IS NULL AND tentatives >= ?'
         )->execute([$this->runId, $tentativesMax]);
         $stmt = $this->pdo->prepare(
-            'UPDATE twin9_appels SET statut = "attente", reprise_at = FROM_UNIXTIME(?) WHERE run_id = ? AND statut = "envoye"'
+            'UPDATE twin9_appels SET statut = "attente", reprise_at = FROM_UNIXTIME(?)
+              WHERE run_id = ? AND statut = "envoye" AND lot_id IS NULL'
         );
         $stmt->execute([sprintf('%.3F', microtime(true)), $this->runId]);
-        $this->rows = [];
-        $this->parts = [];
+        $this->oublier();
 
         return $stmt->rowCount();
     }
 
+    /**
+     * The calls of a batch, by custom_id: each with its id, its prompt's
+     * SHA-256, its attempts, its status and the model it was sent to.
+     *
+     * @return array<string, array{appel: string, sha256: string, tentatives: int, statut: string, modele: string}>
+     */
+    public function duLot(int $lotId): array
+    {
+        $stmt = $this->pdo->prepare(
+            'SELECT appel, custom_id, sha256, tentatives, statut, COALESCE(modele_envoye, modele) AS modele
+               FROM twin9_appels WHERE run_id = ? AND lot_id = ?'
+        );
+        $stmt->execute([$this->runId, $lotId]);
+        $appels = [];
+        foreach ($stmt->fetchAll() as $row) {
+            $appels[(string) $row['custom_id']] = ['appel' => (string) $row['appel'], 'sha256' => (string) $row['sha256'],
+                                                   'tentatives' => (int) $row['tentatives'],
+                                                   'statut' => (string) $row['statut'], 'modele' => (string) $row['modele']];
+        }
+
+        return $appels;
+    }
+
+    /**
+     * A batch collected: one of its calls answered.
+     *
+     * @param array<string, mixed> $mesure
+     */
+    public function reponseDuLot(string $appel, string $reponse, array $mesure): void
+    {
+        $this->apres($appel, 'repondu', $mesure, $reponse, null);
+        $this->invalider($appel);
+    }
+
+    /**
+     * A batch collected: one of its calls failed.
+     *
+     * @param array<string, mixed> $mesure
+     */
+    public function panneDuLot(string $appel, string $raison, array $mesure = []): void
+    {
+        $this->apres($appel, 'panne', $mesure, null, $raison);
+        $this->invalider($appel);
+    }
+
+    /** A call of a batch leaves again in a next one, its attempts as given. */
+    public function aResoumettre(string $appel, int $tentatives): void
+    {
+        $this->pdo->prepare(
+            'UPDATE twin9_appels SET statut = "attente", tentatives = ?, reprise_at = NOW(3) WHERE run_id = ? AND appel = ?'
+        )->execute([max(0, $tentatives), $this->runId, $appel]);
+        $this->invalider($appel);
+    }
+
+    /**
+     * A batch that did not leave, or that left without its answers: its
+     * calls still sent wait again, their attempt given back.
+     *
+     * @return int the calls given back
+     */
+    public function rendreLeLot(int $lotId): int
+    {
+        $stmt = $this->pdo->prepare(
+            'UPDATE twin9_appels SET statut = "attente", tentatives = GREATEST(tentatives, 1) - 1, reprise_at = NOW(3),
+                    lot_id = NULL
+              WHERE run_id = ? AND lot_id = ? AND statut = "envoye"'
+        );
+        $stmt->execute([$this->runId, $lotId]);
+        $this->oublier();
+
+        return $stmt->rowCount();
+    }
+
+    /** Rows written elsewhere: the journal is read again. */
+    public function oublier(): void
+    {
+        $this->rows = [];
+        $this->parts = [];
+    }
+
+    /** A row written without what the cache keeps of it: read again when asked. */
+    private function invalider(string $appel): void
+    {
+        unset($this->rows[$appel], $this->parts[self::part($appel)]);
+    }
+
     /** @param array<string, mixed> $mesure */
-    private function apres(Call $call, string $statut, array $mesure, ?string $reponse, ?string $panne): void
+    private function apres(string $id, string $statut, array $mesure, ?string $reponse, ?string $panne): void
     {
         $this->pdo->prepare(
             'UPDATE twin9_appels SET statut = ?, reponse = ?, panne = ?, modele_servi = ?, stop_reason = ?,
@@ -162,7 +253,7 @@ final class CallJournal implements Journal
             $mesure['cout_microusd'] ?? null,
             $mesure['duree_ms'] ?? null,
             $this->runId,
-            $call->id,
+            $id,
         ]);
     }
 

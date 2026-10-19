@@ -15,9 +15,38 @@ Chantier en cours : le moteur Twin9 v9.8 en PHP, exécuté sur le serveur (ADR-0
 développé dans le dépôt privé `4nd4ny/Twin_v9` (`docs/plan-twin9-php.md`, prompts T0 → T18, une
 conversation chacun ; entrées du 2026-10-17). T0 à T7 et T12 sont fusionnés : le moteur passe
 l'oracle complet dans `Twin_v9`, le profil est ici, les runs tournent sur le serveur par tranches.
-T8, la voie par lots, attend sa revue (entrée du 2026-10-19) ; viennent ensuite T9 et T13.
+T8, la voie par lots, et T13, la page de configuration, attendent leur revue (entrées du 2026-10-19) ;
+viennent ensuite T9 et T14.
 
 ## Fait
+
+- 2026-10-19 — **Moteur Twin9 en PHP, T13 : la page de configuration et les droits (branche
+  `feat/twin9-t13-configuration`, sur celle de T8).** Chacun règle les profils de ses runs Twin9 sur
+  `#/configuration`.
+  - La page (`ConfigurationView`, `views/configuration/profilSchema.js`) se construit depuis
+    `schemas/twin9-profil.schema.json`, sans liste de réglages tenue à côté : une section repliée
+    par partie du profil, qui compte ses réglages modifiés ; un interrupteur pour le mode essai ;
+    chaque réglage commandé selon son type (choix, case, nombre, texte, tables, collège des
+    lecteurs) ; une valeur modifiée marquée, sa valeur par défaut au survol ; l'aide du schéma
+    paraît quand on entre dans le réglage. On y ouvre ses profils, on en crée un depuis le profil
+    v9.8, on l'enregistre, le copie ou le supprime (après confirmation) ; le serveur valide et la
+    page affiche son message. Pas d'entrée de navigation tant que Twin9 reste masqué (lot 3) : la
+    page s'ouvre par son adresse.
+  - Routes (`routes/twin9-configuration.php`) : `GET /api/twin9/configuration` (ses profils, le
+    profil v9.8, les référentiels publiés et leurs versions, les jeux de gabarits, sa clé
+    personnelle : ouverte, enregistrée) ; `POST /api/twin9/profils` ; `GET`, `PUT`, `DELETE
+    /api/twin9/profils/{id}`, à son propriétaire seul (404 pour tout autre).
+  - `ProfilPolicy` admet les choix d'un profil : un référentiel publié et, s'il est donné, une de
+    ses versions publiées ; un jeu de gabarits connu (« v9.8 » jusqu'à T14) ; la clé personnelle
+    là où l'administrateur l'a ouverte. `ProfilRepository` refuse la réflexion coupée aux efforts
+    `xhigh` et `max`, que l'API refuse, en nommant l'étape (`CallSettings::parEtape`, dont
+    `combinaisons` dérive désormais) — la dette notée en T7 est levée ; il garde aux nombres la
+    forme d'un flottant (`1.0`), que la v9.8 lit et que le navigateur ne distingue pas.
+  - Droits : la matrice « Configuration Twin9 » de `docs/autorisations.md`, une ligne par droit,
+    chacune testée dans `ConfigurationDroitsTest` (13 tests, dont le coffre de la clé personnelle
+    et la clé de l'instance, qui ne passe jamais par l'interface). Front : `ConfigurationView.test`
+    (9 tests ; l'un énumère les réglages du schéma, plus de 150, et n'en trouve aucun hors de la
+    page). `rgpd-audit` : `twin9_profils` est désormais servi (`via`).
 
 - 2026-10-19 — **Moteur Twin9 en PHP, T8 : la voie par lots (branche `feat/twin9-t8-batches`).** Un
   run réglé « lots » envoie ses appels par l'API Message Batches d'Anthropic, à moitié prix
@@ -1702,9 +1731,8 @@ T8, la voie par lots, attend sa revue (entrée du 2026-10-19) ; viennent ensuite
   journal. La voie par lots (T8) n'a pas ce coût.
 - Twin9 (T7) : le tick donne d'abord sa tranche aux runs Twin9, la masse prend le temps qui reste.
   Des runs en voie directe peuvent l'occuper toute ; à revoir si la masse sert en même temps (T18).
-- Twin9 (T7) : l'API refuse la réflexion coupée à l'effort `xhigh` ou `max` (Haiku 5.5 comme
-  Sonnet 5.5) ; le profil l'admet encore. La page de configuration (T13) devra l'empêcher. Par
-  lots (T8), la vérification qui précède le premier lot arrête un tel run, avec la raison de l'API.
+- Twin9 (T13) : le nombre de runs par tick et la durée d'une tranche (T7) se règlent par
+  `/api/twin9/admin/config` seulement ; `#/admin/twin9` ne les montre pas encore.
 - Twin9 (T8) : un compte purgé emporte ses lots de la base, pas de chez Anthropic, qui les garde
   29 jours ; la purge de T10 devra les annuler et les supprimer d'abord. Un lot soumis avec une clé
   qui change ensuite d'espace de travail n'est plus joignable.

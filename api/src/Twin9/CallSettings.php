@@ -97,25 +97,38 @@ final class CallSettings
     }
 
     /**
+     * What each step of the run is sent with, by step: the readers' stage,
+     * each reader, each step of the profile, each under the second instance,
+     * and a step the profile does not know.
+     *
+     * @return array<string, array{modele: string, budget_sortie: int, effort: string|null, reflexion: string}>
+     */
+    public function parEtape(): array
+    {
+        $reglages = ['lecteurs' => $this->pour('tagger', '')];
+        foreach ($this->profil->college as $lecteur) {
+            $reglages['lecteur ' . $lecteur->nom] = $this->pour('tagger', '/tags_' . $lecteur->nom . '_P1.json');
+        }
+        foreach (self::ETAPES as $step => $etape) {
+            $reglages[$etape] = $this->pour($step, '');
+            $reglages[$etape . ' au second ressort'] = $this->pour($step, 'second_ressort/');
+        }
+        $reglages['autre étape'] = $this->pour('', '');
+
+        return $reglages;
+    }
+
+    /**
      * Every combination of model and settings a call of the run may be sent
-     * with: each reader, each step, each step of the second instance, a step
-     * the profile does not know. The batch lane checks them all before the
+     * with (parEtape(), once each). The batch lane checks them all before the
      * run's first batch (T8).
      *
      * @return list<array{modele: string, budget_sortie: int, effort: string|null, reflexion: string}>
      */
     public function combinaisons(): array
     {
-        $reglages = [$this->pour('tagger', '')];
-        foreach ($this->profil->college as $lecteur) {
-            $reglages[] = $this->pour('tagger', '/tags_' . $lecteur->nom . '_P1.json');
-        }
-        foreach ([...array_keys(self::ETAPES), ''] as $step) {
-            $reglages[] = $this->pour($step, '');
-            $reglages[] = $this->pour($step, 'second_ressort/');
-        }
         $uniques = [];
-        foreach ($reglages as $reglage) {
+        foreach ($this->parEtape() as $reglage) {
             $uniques[json_encode($reglage, JSON_THROW_ON_ERROR)] = $reglage;
         }
 

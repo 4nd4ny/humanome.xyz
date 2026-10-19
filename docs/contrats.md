@@ -370,7 +370,19 @@ valide et range les profils.
   rien n'en dépend.
 - **Validation** : PHP seulement. Le profil n'est pas un document que le
   moteur du navigateur produit ou lit ; `scripts/build-validators.mjs` ne le
-  compile pas.
+  compile pas. La page `#/configuration` (T13) se construit depuis le schéma
+  et laisse au serveur la validation, dont elle affiche le message.
+- **Nombres** : un réglage que le schéma type `number` garde la forme d'un
+  flottant (`1.0`, non `1`), quelle que soit la forme reçue : le navigateur
+  ne distingue pas `1` de `1.0`, et la v9.8 lit `1.0` (T13).
+- **Règle de l'API** (T13) : la réflexion coupée refuse les efforts `xhigh`
+  et `max`, pour toute étape où les réglages se combinent ainsi
+  (`CallSettings::parEtape`) ; le profil est refusé, l'étape nommée.
+- **Choix admis** (`ProfilPolicy`, T13) : un référentiel publié et, s'il est
+  donné, une de ses versions publiées ; un jeu de gabarits que l'instance
+  connaît (« v9.8 » jusqu'à T14) ; la clé personnelle là où l'administrateur
+  l'a ouverte. Les droits sont au chapitre « Configuration Twin9 » de
+  `docs/autorisations.md`.
 
 ### 7.1 Ce que la v9.8 règle, et où le profil le range
 

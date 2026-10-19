@@ -1,0 +1,173 @@
+/* Page #/configuration (T13) : les profils des runs Twin9, construits depuis
+   leur schéma. Une section par partie ; une valeur modifiée se distingue de
+   la valeur par défaut ; l'aide d'un réglage paraît quand on y entre. */
+
+.config-barre {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 0.5rem 0.75rem;
+  margin: 0.75rem 0 1rem;
+}
+
+.config-barre select {
+  flex: 1 1 14rem;
+}
+
+.config-barre input {
+  flex: 1 1 12rem;
+}
+
+/* Les actions restent ensemble quand la barre passe à la ligne. */
+.config-actions {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 0.5rem;
+}
+
+.config button:not([role='switch']) {
+  font: inherit;
+  min-height: 44px;
+  padding: 0.5rem 1rem;
+  border-radius: 8px;
+  border: 1px solid var(--line);
+  background: var(--card);
+  color: var(--ink);
+  cursor: pointer;
+}
+
+.config button:not([role='switch']):hover {
+  border-color: var(--accent);
+  color: var(--accent);
+}
+
+.config button[type='submit'] {
+  background: var(--accent-solid);
+  border-color: var(--accent);
+  color: #fff;
+}
+
+.config button[type='submit']:hover {
+  background: var(--accent-solid-hover);
+  color: #fff;
+}
+
+.config button:disabled {
+  opacity: 0.5;
+  cursor: default;
+}
+
+.config-barre select,
+.config-barre input,
+.config-commande select,
+.config-commande input[type='number'],
+.config-commande input[type='text'],
+.config-table-ligne input {
+  font: inherit;
+  padding: 0.45rem 0.6rem;
+  min-height: 44px;
+  border: 1px solid var(--line);
+  border-radius: 8px;
+  background: var(--card);
+  color: var(--ink);
+  max-width: 100%;
+}
+
+.config-mode {
+  margin: 0.5rem 0 1rem;
+}
+
+.config-partie {
+  border-top: 1px solid var(--line);
+}
+
+.config-partie > summary {
+  cursor: pointer;
+  padding: 0.75rem 0;
+  font-weight: 600;
+  min-height: 44px;
+}
+
+.config-partie-simple {
+  padding: 0.35rem 0;
+}
+
+.config-corps {
+  padding: 0 0 1rem;
+}
+
+.config-groupe {
+  border: 1px solid var(--line);
+  border-radius: 8px;
+  margin: 0.5rem 0;
+  padding: 0.5rem 0.75rem;
+}
+
+.config-groupe > legend {
+  padding: 0 0.35rem;
+  color: var(--ink-soft);
+}
+
+.config-champ {
+  display: grid;
+  grid-template-columns: minmax(11rem, 1fr) 2fr;
+  gap: 0.25rem 0.75rem;
+  align-items: center;
+  padding: 0.2rem 0;
+}
+
+.config-champ > label {
+  color: var(--ink-soft);
+}
+
+.config-champ.is-modified > label,
+.config-champ.is-modified > legend,
+.config-mode.is-modified .admin-demo-toggle-label {
+  color: var(--accent-strong);
+  font-weight: 600;
+}
+
+.config-modifie {
+  color: var(--accent);
+}
+
+.config-compte {
+  color: var(--accent-strong);
+  font-weight: 400;
+}
+
+.config-commande input[type='number'] {
+  width: 10rem;
+}
+
+.config-commande input[type='checkbox'] {
+  width: 1.25rem;
+  height: 1.25rem;
+}
+
+/* L'aide se montre au moment où l'on règle, pas avant. */
+.config-aide {
+  display: none;
+  grid-column: 1 / -1;
+  margin: 0;
+  color: var(--ink-faint);
+  font-size: 0.85rem;
+}
+
+.config-champ:focus-within > .config-aide,
+.config-mode:focus-within > .config-aide {
+  display: block;
+}
+
+.config-table-ligne {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 0.5rem;
+  margin: 0.35rem 0;
+}
+
+@media (max-width: 640px) {
+  .config-champ {
+    grid-template-columns: 1fr;
+  }
+}

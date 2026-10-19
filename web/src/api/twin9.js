@@ -94,6 +94,32 @@ export function rembourserSolde(options) {
   })
 }
 
+// ---- Configuration (T13 : les profils de ses runs, tout compte) ----------
+
+/** Ses profils (sans document), le profil v9.8 et ce que l'instance permet de choisir. */
+export function fetchConfiguration(options) {
+  return apiFetch('twin9/configuration', options)
+}
+
+/** Un de ses profils : {id, nom, profil}. */
+export function fetchProfil(id, options) {
+  return apiFetch(`twin9/profils/${id}`, options)
+}
+
+/** Un nouveau profil, rendu complété : {id, nom, profil}. */
+export function createProfil(nom, profil, options) {
+  return apiFetch('twin9/profils', { ...options, method: 'POST', body: { nom, profil } })
+}
+
+/** Un de ses profils, modifié, rendu complété : {id, nom, profil}. */
+export function saveProfil(id, nom, profil, options) {
+  return apiFetch(`twin9/profils/${id}`, { ...options, method: 'PUT', body: { nom, profil } })
+}
+
+export function deleteProfil(id, options) {
+  return apiFetch(`twin9/profils/${id}`, { ...options, method: 'DELETE' })
+}
+
 // ---- Administration (rôle admin) ----------------------------------------
 
 export function fetchProtocoleList(options) {

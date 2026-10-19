@@ -32,6 +32,30 @@ final class ReferentielRepository
     }
 
     /**
+     * Every published referential, by id: its versions, newest first (semver
+     * precedence), without content.
+     *
+     * @return array<string, list<string>>
+     */
+    public function publishedSemvers(): array
+    {
+        $stmt = $this->pdo->prepare(
+            'SELECT referentiel_id, semver FROM referentiel_versions WHERE status = ? ORDER BY referentiel_id'
+        );
+        $stmt->execute(['published']);
+        $versions = [];
+        foreach ($stmt->fetchAll() as $row) {
+            $versions[(string) $row['referentiel_id']][] = (string) $row['semver'];
+        }
+        foreach ($versions as &$liste) {
+            usort($liste, static fn (string $a, string $b): int => Semver::compare($b, $a));
+        }
+        unset($liste);
+
+        return $versions;
+    }
+
+    /**
      * Published versions, newest first (semver precedence), content included.
      *
      * @return list<array<string, mixed>>

@@ -109,7 +109,7 @@ final class RgpdAudit
         'mass_runs' => '—',
         'golden_grants' => '—',             // authorisation record, not personal content
         'carto_publication_requests' => '—', // pending request code (migration 023), no content
-        'twin9_profils' => 'none',          // Twin9 run settings (migration 024), no content; no route serves them yet
+        'twin9_profils' => 'via',           // Twin9 run settings (migration 024), no content; GET /api/twin9/profils/{id} (T13)
         // Twin9 runs (migration 025): portfolio, settings, journal, outputs,
         // map memory; in the account export with T10 (ADR-011 §5)
         'twin9_cartes' => 'none',

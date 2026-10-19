@@ -26,7 +26,12 @@ use stdClass;
  *
  * A profile travels as decoded JSON objects (stdClass) or as JSON text, never
  * as a PHP array, where an empty object ({}) and an empty list ([]) would be
- * one and the same.
+ * one and the same. A setting the schema types as a number keeps a float's
+ * form (1.0, not 1), as Python reads the v9.8's config.json, whatever form
+ * the page sent it in (T13).
+ *
+ * Beyond the schema, the API's own rule (T13): thinking cut refuses the
+ * efforts xhigh and max, for any step the settings resolve to.
  */
 final class ProfilRepository
 {
@@ -36,6 +41,9 @@ final class ProfilRepository
 
     /** Errors quoted in the message of a refused profile. */
     private const MAX_ERREURS = 5;
+
+    /** The efforts the API refuses with thinking cut. */
+    private const EFFORTS_REFLECHIS = ['xhigh', 'max'];
 
     public function __construct(private readonly PDO $pdo)
     {
@@ -71,6 +79,7 @@ final class ProfilRepository
             (string) file_get_contents(Validation::schemaPath(self::KIND)), false, 512, JSON_THROW_ON_ERROR,
         );
         self::complete($profil, $schema, $schema);
+        $profil = self::flottants($profil, $schema, $schema);
 
         $result = Validation::validate(self::KIND, $profil);
         if (!$result['valid']) {
@@ -93,6 +102,13 @@ final class ProfilRepository
                 );
             }
             $noms[$lecteur->nom] = true;
+        }
+
+        foreach ((new CallSettings($profil))->parEtape() as $etape => $reglage) {
+            if ($reglage['reflexion'] === 'coupee' && \in_array($reglage['effort'], self::EFFORTS_REFLECHIS, true)) {
+                throw new Twin9Exception('Profil invalide — ' . $etape . ' : l\'effort « ' . $reglage['effort']
+                    . ' » demande la réflexion adaptative, que l\'API exige à cet effort', 422);
+            }
         }
 
         return $profil;
@@ -202,6 +218,29 @@ final class ProfilRepository
                 }
             }
         }
+    }
+
+    /** Each integer where the schema wants a number becomes a float: the v9.8 reads 1.0, not 1. */
+    private static function flottants(mixed $valeur, stdClass $node, stdClass $schema): mixed
+    {
+        $node = self::resolve($node, $schema);
+        $types = (array) ($node->type ?? []);
+        if (\is_int($valeur) && \in_array('number', $types, true)) {
+            return (float) $valeur;
+        }
+        if ($valeur instanceof stdClass) {
+            foreach ((array) ($node->properties ?? []) as $cle => $enfant) {
+                if (property_exists($valeur, $cle)) {
+                    $valeur->{$cle} = self::flottants($valeur->{$cle}, $enfant, $schema);
+                }
+            }
+        } elseif (\is_array($valeur) && isset($node->items)) {
+            foreach ($valeur as $i => $item) {
+                $valeur[$i] = self::flottants($item, $node->items, $schema);
+            }
+        }
+
+        return $valeur;
     }
 
     /** A node of the schema with its local $ref (#/$defs/…) merged in. */

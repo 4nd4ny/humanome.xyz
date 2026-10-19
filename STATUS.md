@@ -16,12 +16,80 @@ développé dans le dépôt privé `4nd4ny/Twin_v9` (`docs/plan-twin9-php.md`, p
 conversation chacun ; entrées du 2026-10-17). T0 à T7 et T12 sont fusionnés : le moteur passe
 l'oracle complet dans `Twin_v9`, le profil est ici, les runs tournent sur le serveur par tranches.
 T8, la voie par lots, T13, la page de configuration, T9, lancer, suivre et lire un run, T10, coûts,
-plafonds, relance, purge et export, T14, les jeux de gabarits, et T15, plusieurs référentiels dans la
-gouvernance (plan validé par Christian le 2026-10-19), attendent leur revue (entrées du 2026-10-19).
-Le parallélisme des runs par lots (T8) attend le choix de Christian entre deux alternatives (entrée
-T15, « À trancher ») ; T16 demandera d'abord un plan.
+plafonds, relance, purge et export, T14, les jeux de gabarits, T15, plusieurs référentiels dans la
+gouvernance (plan validé par Christian le 2026-10-19), et la stratégie A de T8, que Christian a
+choisie le 2026-10-19 avec l'historique des évaluations, attendent leur revue (entrées du
+2026-10-19). T16 demandera d'abord un plan.
 
 ## Fait
+
+- 2026-10-19 — **Moteur Twin9 en PHP, T8 : la base commune et la stratégie A, choisies par Christian
+  (branche `feat/twin9-t8-strategie-a`, sur celle de T15 ; `Twin_v9` : `feat/twin9-t8-vagues`, sur
+  celle de T10).** Par lots, chaque vague d'appels attend un lot entier : il faut en faire le moins
+  possible, sans épuiser le crédit d'une personne avant qu'une carte soit finie (`docs/contrats.md`
+  §8.3 et §8.7).
+  - Moteur (`Twin_v9`) : la fusion lance ensemble ce que la v9.8 enchaîne sans que les appels se
+    lisent (faisceaux du second ressort, relectures avant le rapporteur, condensés et retours aux
+    sources de l'Arpenteur) ; la passe qui finit les joue dans l'ordre de la v9.8, et l'oracle reste
+    identique à l'octet. PLANT-01 passe de 286 vagues à 27, de 310 à 30 avec l'Arpenteur (un test
+    le fixe). L'aperçu du moteur donne la taille de chaque journée, et les journées que la mémoire
+    garde au-delà de celles qu'un run prend (la carte est additive : la fusion les relit).
+  - Par lots, toutes les journées du run sont de front ; `parallelisme.journees` ne règle plus que
+    la voie directe.
+  - Historique des évaluations (migration 030, `Twin9\Evaluations`) : un run fini laisse, sans
+    aucun contenu, la personne évaluée, la taille en Ko de chaque journée de sa carte avec ce qu'elle
+    a coûté (rien pour une journée reprise de la mémoire ; marquée quand un appel a échoué), le coût
+    de la fusion, le plus grand pire cas réservé par un appel d'une journée et de la fusion, le coût
+    final, la durée, et les réglages du profil : modèles et performance, paramètres de l'algorithme,
+    jeu de gabarits. La suppression du compte anonymise la ligne (SET NULL), qui reste pour les
+    prévisions ; l'export du compte la porte avec son run. Un échec de la consignation n'empêche
+    jamais le run de finir.
+  - Prévision : une journée coûte une part fixe (les fiches de son pôle, dans chaque prompt de
+    lecture) et une part par Ko, ni l'une ni l'autre négative, une fusion de même par les Ko de sa
+    carte : la droite des moindres carrés des 200 dernières évaluations de mêmes réglages, converties
+    à la voie et à la marge du run. Entre les tailles observées, au plus bas et au plus haut, les
+    écarts extrêmes ; au-delà, ce qu'un tel coût permet (sous la plus petite taille, au plus ce
+    qu'elle a coûté ; au-dessus de la plus grande, au plus autant au Ko). À défaut, le vrai run de
+    PLANT-01. Elle remplace la moyenne par journée des runs du même profil.
+  - Admission (stratégie A) : un lancement prend les premières journées que le crédit — moins ce que
+    les autres analyses en cours de la personne peuvent encore en dépenser — ou le budget tient, au
+    coût le plus haut, avec la fusion de leur carte et de quoi réserver le pire cas d'un appel (T10) ;
+    les autres attendent une prochaine analyse, une journée changée restant d'ici là dans sa version
+    déjà évaluée. Un profil qui relit tout (`rescan`, sans mémoire) prend tout ou rien. Le run garde
+    la fusion en réserve, et ce qui lui est accordé (`engagement`) : un appel d'une journée n'entame
+    jamais la réserve, ni aucun appel ce que les autres runs en cours peuvent encore dépenser
+    (`crédit insuffisant (fusion réservée)`, `budget atteint (fusion réservée)`, `crédit insuffisant
+    (engagé par vos autres analyses)`, qui se reprennent comme les arrêts par le crédit ou le budget).
+    Refusé, le lancement dit ce qu'il faudrait ; la page le dit d'avance et ne laisse pas lancer. Un
+    lancement à la fois par personne. La page de lancement dit la fourchette et les journées admises,
+    la page du run son admission.
+  - Revue indépendante du lot (un agent qui ne l'avait pas écrit) : quatorze points, corrigés chacun
+    avec un test qui échouait sans lui — la fusion d'une carte coupée sous-estimée (droite par
+    l'origine) ; la carte relue par la fusion comptée sans les journées de la mémoire ; les autres
+    runs en cours ignorés ; un arrêt par la réserve sans issue sur la page ; les pires cas réservés
+    avant chaque appel absents de l'admission ; une seule taille mal reconnue par arrondi ; une
+    signature sans les paramètres de l'algorithme ni le jeu de gabarits ; les profils qui relisent
+    tout ; les journées en panne comptées comme des journées ; toutes les évaluations relues ; un
+    échec de consignation qui bloquait le run ; les textes « observé » sans observation ; le
+    bouton de lancement actif sur un refus ; le cache de mémoire de l'oracle nourri par le test par
+    passes.
+  - Textes : `docs/contrats.md` (§7.1, §8.3, §8.5, §8.7), registre RGPD (§13, §13 bis) et
+    vérification RGPD, schéma d'archive (description), `docs/tests-e2e.md`, STATUS. UC-APP-10 décrit
+    encore le moteur du navigateur (T11) : il n'est pas repris ici.
+  - Tests : `EvaluationsTest` (consignation sans contenu ni identifiant de journée, carte additive,
+    panne, pires cas, anonymisation, échec de consignation ; droites, écarts, au-delà des tailles
+    observées, une seule taille, conversion par lots et marge, 200 dernières, signature),
+    `ApercuTest` (estimation, carte gardée par la mémoire, admission, refus et ses trois formes,
+    budget, journées changées en attente, autres analyses en cours), `CoutsTest` (la réserve, en
+    direct et par lots ; l'engagement d'un autre run), `LotsTest` (toutes les journées de front),
+    `PurgeExportTest`, `RgpdAuditTest`, `Twin9View.test`, bout en bout `twin9-run.e2e.js` ; dans
+    `Twin_v9`, l'oracle, le compte des vagues et l'aperçu.
+  - À valider : la base légale proposée pour l'historique, l'intérêt légitime (registre §13 bis) ; le
+    coût le plus haut observé pour admettre (plutôt que la moyenne), et la place gardée pour le pire
+    cas d'un appel ; l'anonymisation plutôt que l'effacement à la suppression du compte ; la droite
+    (part fixe et part par Ko) et ses bornes ; ce que l'historique garde en plus de la liste demandée
+    (coût de chaque journée et de la fusion, pires cas, paramètres de l'algorithme et jeu de
+    gabarits), pour tracer ces droites et comparer ce qui est comparable.
 
 - 2026-10-19 — **Moteur Twin9 en PHP, T15 : plusieurs référentiels, la gouvernance (branche
   `feat/twin9-t15-referentiels`, sur celle de T14 ; `Twin_v9` : `feat/twin9-t15-referentiels`).**
@@ -69,7 +137,8 @@ T15, « À trancher ») ; T16 demandera d'abord un plan.
     chaque vague attend un lot. Base commune proposée : lancer ensemble les appels indépendants de la
     fusion (aucun prompt ne change) : 27 vagues. Puis A, toutes les journées de front avec une réserve
     de crédit pour finir la carte, ou B, des lots chronologiques de journées, une carte à chaque lot.
-    Regrouper ou découper les journées changerait le protocole sans raccourcir le run.
+    Regrouper ou découper les journées changerait le protocole sans raccourcir le run. Tranché par
+    Christian le 2026-10-19 : la base commune et A (entrée T8 ci-dessus).
   - Pas encore : le moteur (T16) et la cartographie (T17) ne lisent que RESPIRE ; la page publique du
     référentiel ne montre que lui ; l'import lit du JSON au format du schéma (le Markdown de la V18 se
     convertit d'abord) ; UC-EPI-04 AN2 (libellé ou version trop longs : `500`) vaut aussi à l'import ;

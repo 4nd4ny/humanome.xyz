@@ -20,6 +20,7 @@ use Humanome\Db;
 use Humanome\Env;
 use Humanome\Mail\MailerFactory;
 use Humanome\Middleware\CsrfMiddleware;
+use Humanome\Twin9\RunPurge;
 use Psr\Http\Message\ResponseInterface as Response;
 use Psr\Http\Message\ServerRequestInterface as Request;
 use Slim\App;
@@ -499,9 +500,14 @@ return function (App $app): void {
         }
 
         $pdo = Db::get();
+        // Twin9 (T10, ADR-011 §5): the account's batches still at Anthropic go too — those of its own
+        // key now, while the key exists; the instance's, handed to the tick with the purge
+        $twin9 = new RunPurge($pdo);
+        $twin9->lotsPersonnels($userId, microtime(true) + 10.0);
         try {
             $pdo->beginTransaction();
             Audit::record($pdo, $userId, Audit::ACCOUNT_DELETED);
+            $twin9->confier($userId);
             Users::purge($pdo, $userId);
             $pdo->commit();
         } catch (\Throwable $e) {

@@ -9,11 +9,14 @@ use Humanome\Twin9\CallJournal;
 use Humanome\Twin9\CallSender;
 use Humanome\Twin9\CallSettings;
 use Humanome\Twin9\MapStore;
+use Humanome\Twin9\RunCosts;
 use Humanome\Twin9\RunKey;
 use Humanome\Twin9\RunRepository;
+use Humanome\Twin9\SoldeInsuffisantException;
 use Humanome\Twin9\Twin9Config;
 use PDO;
 use Twin9\Plateforme;
+use Twin9\Run\Call;
 use Twin9\Run\Pending;
 
 /**
@@ -44,6 +47,13 @@ use Twin9\Run\Pending;
  * and it does not count among the N runs. Played, its pass's calls leave in
  * bounded batches. The batches of runs no longer in progress are cancelled
  * and deleted first.
+ *
+ * A call leaves holding its worst case (T10, RunCosts): debited from its
+ * owner's credits with the instance's key, counted against the run's budget.
+ * A call whose worst case its budget or its owner's credit cannot hold does
+ * not leave, nor any new one after it; once its duration has ended, none
+ * leaves. The slice settles what its calls' outcomes free, and a run held
+ * back that has nothing out any more stops, its map incomplete, to resume.
  */
 final class Twin9Slice
 {
@@ -60,6 +70,8 @@ final class Twin9Slice
     private const SURVOLS = 20;
 
     private readonly RunRepository $runs;
+
+    private readonly RunCosts $couts;
 
     private readonly Twin9Lots $lots;
 
@@ -88,7 +100,8 @@ final class Twin9Slice
         array $options = [],
     ) {
         $this->runs = new RunRepository($pdo);
-        $this->lots = new Twin9Lots($pdo, $lots, $cles, $config, $options['octets'] ?? Twin9Lots::OCTETS,
+        $this->couts = new RunCosts($pdo, $config);
+        $this->lots = new Twin9Lots($pdo, $lots, $cles, $this->couts, $options['octets'] ?? Twin9Lots::OCTETS,
             $options['fenetre'] ?? Twin9Lots::FENETRE);
         $this->pauses = $options['pauses'] ?? self::PAUSES;
     }
@@ -142,7 +155,17 @@ final class Twin9Slice
         }
         $this->couper();
         foreach ($this->etats as $run) {
-            $this->runs->avance($run->id, $run->attente);
+            if ($this->runs->statut($run->id) !== 'en_cours') {
+                $this->couts->liberer($run->id); // cancelled meanwhile: what its calls hold goes back
+                continue;
+            }
+            $this->couts->regler($run->id);
+            // held back with nothing out any more: it stops, its map incomplete, to resume
+            if ($run->bloque !== null && $run->envoyes === 0 && $this->lots->enVol($run->id) === 0) {
+                $this->arreter($run->id, $run->bloque);
+                continue;
+            }
+            $this->runs->avance($run->id, $run->bloque ?? $run->attente);
         }
 
         return $this->compteurs;
@@ -170,6 +193,8 @@ final class Twin9Slice
         $profil = $r['profil'];
         $journal = new CallJournal($this->pdo, $id);
         $this->compteurs['reprises'] += $journal->reprendreLesCoupes(self::TENTATIVES);
+        $this->couts->regler($id);
+        $plafonds = RunCosts::plafonds($profil, $r['debut']);
         try {
             $moteur = json_decode($r['moteur'], false, 512, JSON_THROW_ON_ERROR);
             $plateforme = new Plateforme($r['moteur'], $r['portfolio_nom'], $r['portfolio'], $r['gabarits'],
@@ -181,7 +206,7 @@ final class Twin9Slice
             return null;
         }
 
-        return new Twin9Run(
+        $run = new Twin9Run(
             $id,
             $r['user_id'],
             $plateforme,
@@ -193,7 +218,12 @@ final class Twin9Slice
             max(1, (int) $profil->parallelisme->appels_directs),
             max(1, (int) $profil->parallelisme->journees),
             $parLots,
+            $plafonds['budget'],
+            $plafonds['limite'],
         );
+        $run->engage = $this->couts->engage($id);
+
+        return $run;
     }
 
     /** One pass of a run: done, or the calls it waits for. */
@@ -223,6 +253,7 @@ final class Twin9Slice
             $this->compteurs['moteurMs'] += intdiv(hrtime(true) - $debut, 1_000_000);
         }
         unset($this->etats[$run->id]);
+        $this->couts->liberer($run->id);
         if ($this->runs->terminer($run->id)) {
             $this->compteurs['termines']++;
         }
@@ -240,10 +271,14 @@ final class Twin9Slice
                 $refus = $this->lots->soumettre($run, $this->debut, $this->dernierDepart, $this->fin, $this->compteurs);
                 if ($refus !== null) {
                     unset($this->etats[$run->id]);
-                    $this->runs->echouer($run->id, $refus);
-                    $this->compteurs['echoues']++;
+                    $this->arreter($run->id, $refus);
                 }
             }
+
+            return;
+        }
+        if ($run->horsDuree()) {
+            $run->bloque = RunCosts::DUREE;
 
             return;
         }
@@ -257,6 +292,7 @@ final class Twin9Slice
                 continue;
             }
             $tentative = 1;
+            $detenu = null;
             $etat = $run->journal->etat($call->id);
             if ($etat !== null && $etat['sha256'] === $call->sha256) {
                 if ($etat['statut'] === 'repondu' || $etat['statut'] === 'panne') {
@@ -267,6 +303,27 @@ final class Twin9Slice
                     continue;
                 }
                 $tentative = $etat['tentatives'] + 1;
+                $detenu = $etat['reserve'];
+            }
+            $reglage = $run->reglages->pour($call->step, $call->id);
+            // a call already holding its worst case leaves with it; a new one holds its own, if it can
+            $reserve = null;
+            if ($detenu === null) {
+                if ($run->bloque !== null) {
+                    continue;
+                }
+                $reserve = $this->couts->pireCas($reglage['modele'], $call->prompt, $reglage['budget_sortie'], false,
+                    $run->credits());
+                if ($reserve === null) {
+                    unset($this->etats[$run->id]);
+                    $this->arreter($run->id, 'aucun prix pour ' . $reglage['modele'] . ' sur cette instance');
+
+                    return;
+                }
+                if ($run->budget !== null && $run->engage + $reserve > $run->budget) {
+                    $run->bloque = RunCosts::BUDGET;
+                    continue;
+                }
             }
             $cle = $this->cles->pour($run->userId, $run->cle);
             if ($cle === null) {
@@ -275,12 +332,48 @@ final class Twin9Slice
 
                 return;
             }
-            $reglage = $run->reglages->pour($call->step, $call->id);
-            $run->journal->envoye($call, $reglage['modele'], $tentative);
+            if (!$this->partir($run, $call, $reglage['modele'], $tentative, $reserve)) {
+                continue;
+            }
             $this->sender->send($run->id, $call, $reglage, $cle, $this->fin);
             $run->enVol[$call->id] = $tentative;
+            $run->envoyes++;
             $this->compteurs['appels']++;
         }
+    }
+
+    /**
+     * A call written as sent, with the worst case it newly holds, debited
+     * from its owner's credits with the instance's key, in one transaction.
+     * False when the credit does not cover it: it does not leave.
+     */
+    private function partir(Twin9Run $run, Call $call, string $modele, int $tentative, ?int $reserve): bool
+    {
+        if ($reserve === null) {
+            $run->journal->envoye($call, $modele, $tentative);
+
+            return true;
+        }
+        $this->pdo->beginTransaction();
+        try {
+            if ($run->credits()) {
+                $this->couts->debiter($run->userId, $run->id, $call->step, $modele, $reserve);
+            }
+            $run->journal->envoye($call, $modele, $tentative, null, null, $reserve);
+            $this->pdo->commit();
+        } catch (SoldeInsuffisantException) {
+            $this->pdo->rollBack();
+            $run->bloque = RunCosts::CREDIT;
+
+            return false;
+        } catch (\Throwable $e) {
+            $this->pdo->rollBack();
+            $run->journal->oublier();
+            throw $e;
+        }
+        $run->engage += $reserve;
+
+        return true;
     }
 
     /** @param array<string, mixed> $issue an outcome of the sender */
@@ -300,7 +393,8 @@ final class Twin9Slice
             'tokens_in' => $issue['tokens_in'] ?? null,
             'tokens_out' => $issue['tokens_out'] ?? null,
             'cout_microusd' => isset($issue['tokens_in'])
-                ? $this->config->coutMicrousd($modele, (int) $issue['tokens_in'], (int) ($issue['tokens_out'] ?? 0))
+                ? $this->couts->cout($modele, (int) $issue['tokens_in'], (int) ($issue['tokens_out'] ?? 0), false,
+                    $run->credits())
                 : null,
             'duree_ms' => (int) round(((float) $issue['duree']) * 1000),
         ];
@@ -383,7 +477,15 @@ final class Twin9Slice
     {
         // the class only: an engine's message may quote a template or the portfolio
         error_log(sprintf('[twin9] run %d : %s (%s)', $id, $raison, $e::class));
-        $this->runs->echouer($id, $raison);
-        $this->compteurs['echoues']++;
+        $this->arreter($id, $raison);
+    }
+
+    /** A run stops, for a resumption: what its calls hold goes back (RunCosts). */
+    private function arreter(int $id, string $raison): void
+    {
+        if ($this->runs->echouer($id, $raison)) {
+            $this->compteurs['echoues']++;
+        }
+        $this->couts->liberer($id);
     }
 }

@@ -10,13 +10,17 @@ declare(strict_types=1);
  * « Runs Twin9 ».
  *
  *   GET  /api/twin9/runs                     own runs, and whether Twin9 runs on this instance
+ *   POST /api/twin9/runs/apercu              {profil, portfolio}: the days new or changed, the estimated cost and
+ *                                            duration, the caps, before a launch (T10)
  *   POST /api/twin9/runs                     {profil: id|null, portfolio: {nom, texte}, accord, visibilite?} -> 201
  *   POST /api/twin9/runs/avancer             the page advances its owner's runs (never the tick's token)
- *   GET  /api/twin9/runs/{id}                its progress, read in its journal (owner)
+ *   GET  /api/twin9/runs/{id}                its progress, read in its journal, and its cost (owner)
  *   POST /api/twin9/runs/{id}/annuler        stop it (owner)
- *   POST /api/twin9/runs/{id}/reprendre      resume it, cancelled or failed (owner)
+ *   POST /api/twin9/runs/{id}/reprendre      resume it, cancelled or stopped, {budget_usd?} a new budget (owner)
  *   PUT  /api/twin9/runs/{id}/visibilite     {visibilite: privee|cartographe} (owner)
  *   GET  /api/twin9/runs/{id}/resultats      its results, filtered (owner; a linked cartographe if visible)
+ *   GET  /api/twin9/mes-analyses             the account's runs, journals, outputs and maps, which its archive
+ *                                            carries (T10)
  *   GET  /api/twin9/admin/runs               every run's counters, never its content (admin)
  *
  * Anyone else's run is not found (404), whoever asks. Writes carry the CSRF
@@ -32,6 +36,8 @@ use Humanome\Packages\SettingsRepository;
 use Humanome\Twin9\EngineLoader;
 use Humanome\Twin9\Lancement;
 use Humanome\Twin9\Resultats;
+use Humanome\Twin9\RunCosts;
+use Humanome\Twin9\RunExport;
 use Humanome\Twin9\RunRepository;
 use Humanome\Twin9\Twin9Config;
 use Humanome\Twin9\Twin9Exception;
@@ -108,21 +114,41 @@ return function (App $app): void {
         }
     ));
 
+    /** @return array{0: int|null, 1: array{nom: string, texte: string}} the profile and the portfolio a body names, or 422 */
+    $choix = static function (array $c): array {
+        $profil = $c['profil'] ?? null;
+        if ($profil !== null && !\is_int($profil)) {
+            throw new Twin9Exception('Profil invalide : identifiant ou null (le profil v9.8)', 422);
+        }
+        $portfolio = $c['portfolio'] ?? null;
+        if (!\is_array($portfolio) || !\is_string($portfolio['nom'] ?? null) || !\is_string($portfolio['texte'] ?? null)) {
+            throw new Twin9Exception('Portfolio requis : {nom, texte}', 422);
+        }
+
+        return [$profil, $portfolio];
+    };
+
+    $lancement = static fn (): Lancement => new Lancement(Db::get(), new Twin9Config(new SettingsRepository(Db::get())));
+
+    // Before a launch (T10): what the run would instruct — the portfolio's days new or changed since the
+    // map's memory —, what it would cost and last, and its caps. Nothing is kept.
+    $app->post('/twin9/runs/apercu', $wrap(
+        function (Request $request, Response $response, array $args, int $userId) use ($json, $corps, $choix,
+                                                                                        $lancement): Response {
+            [$profil, $portfolio] = $choix($corps($request));
+
+            return $json($response, $lancement()->apercu($userId, $profil, $portfolio['nom'], $portfolio['texte']));
+        }
+    ));
+
     $app->post('/twin9/runs', $wrap(
-        function (Request $request, Response $response, array $args, int $userId) use ($json, $corps, $suivi): Response {
+        function (Request $request, Response $response, array $args, int $userId) use ($json, $corps, $choix,
+                                                                                        $lancement, $suivi): Response {
             $c = $corps($request);
-            $profil = $c['profil'] ?? null;
-            if ($profil !== null && !\is_int($profil)) {
-                throw new Twin9Exception('Profil invalide : identifiant ou null (le profil v9.8)', 422);
-            }
-            $portfolio = $c['portfolio'] ?? null;
-            if (!\is_array($portfolio) || !\is_string($portfolio['nom'] ?? null) || !\is_string($portfolio['texte'] ?? null)) {
-                throw new Twin9Exception('Portfolio requis : {nom, texte}', 422);
-            }
+            [$profil, $portfolio] = $choix($c);
             $visibilite = $c['visibilite'] ?? 'privee';
-            $id = (new Lancement(Db::get(), new Twin9Config(new SettingsRepository(Db::get()))))->lancer(
-                $userId, $profil, $portfolio['nom'], $portfolio['texte'], ($c['accord'] ?? false) === true,
-                \is_string($visibilite) ? $visibilite : '');
+            $id = $lancement()->lancer($userId, $profil, $portfolio['nom'], $portfolio['texte'],
+                ($c['accord'] ?? false) === true, \is_string($visibilite) ? $visibilite : '');
 
             return $json($response, $suivi($id), 201);
         }
@@ -161,6 +187,8 @@ return function (App $app): void {
             if (!(new RunRepository(Db::get()))->annuler($id, $userId)) {
                 throw new Twin9Exception('Ce run n’est pas en cours', 409);
             }
+            // what its calls hold goes back; its batches at Anthropic, once the tick has cancelled them
+            (new RunCosts(Db::get(), new Twin9Config(new SettingsRepository(Db::get()))))->liberer($id);
 
             return $json($response, $suivi($id));
         }
@@ -170,7 +198,17 @@ return function (App $app): void {
         function (Request $request, Response $response, array $args, int $userId) use ($json, $sien, $suivi): Response {
             $id = (int) $args['id'];
             $sien($id, $userId);
-            if (!(new RunRepository(Db::get()))->reprendre($id, $userId)) {
+            // a new budget, when its budget stopped it: dollars, or null for none
+            $c = json_decode((string) $request->getBody(), true);
+            $plafonds = [];
+            if (\is_array($c) && \array_key_exists('budget_usd', $c)) {
+                $budget = $c['budget_usd'];
+                if ($budget !== null && ((!\is_int($budget) && !\is_float($budget)) || $budget <= 0)) {
+                    throw new Twin9Exception('Budget invalide : un nombre de dollars positif, ou null pour aucun', 422);
+                }
+                $plafonds['budget_usd'] = $budget;
+            }
+            if (!(new RunRepository(Db::get()))->reprendre($id, $userId, $plafonds)) {
                 throw new Twin9Exception('Seul un run annulé ou arrêté reprend', 409);
             }
 
@@ -213,10 +251,25 @@ return function (App $app): void {
 
             return $json($response, [
                 'run' => ['id' => $id, 'journal' => $suivi['journal'], 'statut' => $suivi['statut'],
-                          'mode' => $suivi['mode'], 'attestation' => $suivi['attestation'],
+                          'retard' => $suivi['retard'], 'mode' => $suivi['mode'],
+                          'attestation' => $suivi['attestation'],
                           'created_at' => $suivi['created_at'], 'finished_at' => $suivi['finished_at']],
                 'lecteur' => $lecteur,
             ] + (new Resultats($pdo))->lire($id, $userId));
+        }
+    ));
+
+    // The account's runs, which its archive carries (T10, ADR-011 §5; UC-APP-06, read in the browser like
+    // mes-documents-masse): settings, portfolio, journal, outputs, and the memory of its maps, filtered as its
+    // results are; written a run at a time.
+    $app->get('/twin9/mes-analyses', $wrap(
+        function (Request $request, Response $response, array $args, int $userId): Response {
+            $corps = $response->getBody();
+            (new RunExport(Db::get()))->ecrire($userId, static function (string $morceau) use ($corps): void {
+                $corps->write($morceau);
+            });
+
+            return $response->withHeader('Content-Type', 'application/json')->withStatus(200);
         }
     ));
 

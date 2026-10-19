@@ -16,8 +16,17 @@ use stdClass;
  * (MoteurReglages), never from a config.json; the live template set, as the
  * run's snapshot; the portfolio its owner sends; their consent to keep it,
  * and the run's state, on the server until they erase them (ADR-011 §5). The
- * attestation keeps what the run was launched with: its profile, the
- * versions of its template set, its referential, the engine's commit.
+ * attestation keeps what the run was launched with: its profile and its
+ * mode, the versions of its template set, its referential, the engine's
+ * commit.
+ *
+ * Before a launch (T10, apercu()): the portfolio's days the run would
+ * instruct — new or changed since its map's memory; it takes the others back
+ * without a call —, and what it would cost and last: the average by day of
+ * the runs done of the same profile in the same mode, failing those the real
+ * run of PLANT-01 (T2), made in test mode, times the referential's poles for
+ * a complete run; with its caps. This replaces ADR-010's quote by a
+ * simulated run (ADR-011 §6).
  */
 final class Lancement
 {
@@ -26,6 +35,16 @@ final class Lancement
 
     /** A portfolio's size, at most: the run keeps it, compressed, in a MEDIUMBLOB. */
     public const PORTFOLIO_OCTETS = 2_000_000;
+
+    /**
+     * The real run of PLANT-01 (T2, Twin_v9's oracle/README.md), the estimate
+     * when no run of the profile is done: in test mode — its first day, the
+     * referential's first pole —, by direct calls, at Anthropic's list
+     * prices: 0.1344 $ and 94 s of wall time.
+     */
+    public const REFERENCE_MICROUSD = 134_400;
+
+    public const REFERENCE_SECONDES = 94;
 
     /** The JSON of the engine's settings: 1.0 stays a float, as the v9.8 reads it. */
     private const JSON = JSON_THROW_ON_ERROR | JSON_UNESCAPED_UNICODE | JSON_PRESERVE_ZERO_FRACTION;
@@ -51,6 +70,99 @@ final class Lancement
         if (!\in_array($visibilite, self::VISIBILITES, true)) {
             throw new Twin9Exception('Visibilité inconnue : privee ou cartographe', 422);
         }
+        $horloge = $maintenant ?? new \DateTimeImmutable();
+        $sortie = 'twin9/runs/' . bin2hex(random_bytes(8));
+        ['profil' => $profil, 'nom' => $nom, 'moteur' => $moteur, 'jeu' => $jeu, 'plateforme' => $plateforme]
+            = $this->preparer($userId, $profilId, $portfolioNom, $portfolio, $horloge, $sortie);
+
+        $runs = new RunRepository($this->pdo);
+        $id = $runs->creer($userId, $profil, $moteur, trim($portfolioNom), $portfolio, $plateforme->journal(),
+            $jeu['gabarits'], $horloge, $sortie);
+        $runs->attester($id, [
+            'profil' => ['id' => $profilId, 'nom' => $nom, 'mode' => $profil->mode],
+            'gabarits' => ['jeu' => $profil->gabarits, 'versions' => $jeu['versions'],
+                           'empreinte' => self::empreinte($jeu['gabarits'])],
+            'referentiel' => ['id' => $profil->referentiel->id, 'version' => $profil->referentiel->version],
+            'moteur' => ['commit' => EngineLoader::commit()],
+        ], $visibilite, $horloge);
+
+        return $id;
+    }
+
+    /**
+     * What a launch would do, before it (T10): the portfolio's days the run
+     * would instruct, new or changed since its map's memory; what it would
+     * cost and last; its caps; its owner's credit when the instance's key
+     * pays. Nothing is kept.
+     *
+     * @return array<string, mixed>
+     * @throws Twin9Exception as lancer() does
+     */
+    public function apercu(int $userId, ?int $profilId, string $portfolioNom, string $portfolio): array
+    {
+        ['profil' => $profil, 'plateforme' => $plateforme]
+            = $this->preparer($userId, $profilId, $portfolioNom, $portfolio, new \DateTimeImmutable(), 'twin9/apercu');
+        if (!method_exists($plateforme, 'apercu')) {
+            throw new Twin9Exception('L’aperçu demande une version plus récente du moteur', 503);
+        }
+        $runs = new RunRepository($this->pdo);
+        $carte = $runs->carte($userId, $plateforme->journal(), (string) $profil->referentiel->id,
+            (string) $profil->gabarits);
+        $vue = $plateforme->apercu(new MapStore($this->pdo, $carte ?? 0));
+        $etats = array_count_values(array_column($vue['journees'], 'etat'));
+        $nouvelles = $etats['nouvelle'] ?? 0;
+        $changees = $etats['changee'] ?? 0;
+
+        $instance = $profil->cle === 'instance';
+        $passes = $runs->passes($profilId, (string) $profil->mode);
+        if ($passes !== null) {
+            $parJour = ['cout_microusd' => intdiv($passes['cout_microusd'], $passes['journees']),
+                        'duree_s' => intdiv($passes['duree_s'], $passes['journees'])];
+            $source = ['runs' => $passes['runs']];
+        } else {
+            // the reference run read one pole: a complete run reads the referential's
+            $poles = $profil->mode === 'test' ? 1 : max(1, (int) $vue['poles']);
+            $parJour = [
+                'cout_microusd' => (int) round(self::REFERENCE_MICROUSD * $poles * ($profil->voie === 'lots' ? 0.5 : 1.0)
+                    * ($instance ? $this->config->marge() : 1.0)),
+                // by batches, the time is Anthropic's: the reference, made by direct calls, says nothing of it
+                'duree_s' => $profil->voie === 'lots' ? null : self::REFERENCE_SECONDES * $poles,
+            ];
+            $source = ['reference' => 'PLANT-01', 'poles' => $poles];
+        }
+        // the merge is made again at each run: at least a day's worth
+        $jours = max(1, $nouvelles + $changees);
+
+        return [
+            'journal' => $plateforme->journal(),
+            'mode' => (string) $profil->mode,
+            'voie' => (string) $profil->voie,
+            'cle' => (string) $profil->cle,
+            'journees' => ['total' => \count($vue['journees']), 'nouvelles' => $nouvelles, 'changees' => $changees],
+            'estimation' => [
+                'cout_usd' => round($parJour['cout_microusd'] * $jours / 1_000_000, 2),
+                'duree_s' => $parJour['duree_s'] === null ? null : $parJour['duree_s'] * $jours,
+                'par_journee' => ['cout_usd' => round($parJour['cout_microusd'] / 1_000_000, 4),
+                                  'duree_s' => $parJour['duree_s']],
+            ] + $source,
+            'plafonds' => ['budget_usd' => $profil->budget_usd ?? null, 'duree_minutes' => $profil->duree_minutes ?? null],
+            'credit_usd' => $instance ? round((new CreditService($this->pdo))->balance($userId) / 1_000_000, 2) : null,
+        ];
+    }
+
+    /**
+     * What a launch and its preview share: the portfolio checked, the
+     * profile copied and admitted, the engine and the template set present,
+     * the engine's settings drawn from the copy, and the platform built over
+     * them as the slices build it.
+     *
+     * @return array{profil: stdClass, nom: string, moteur: stdClass,
+     *               jeu: array{gabarits: array<string, string>, versions: array<string, int>},
+     *               plateforme: \Twin9\Plateforme}
+     */
+    private function preparer(int $userId, ?int $profilId, string $portfolioNom, string $portfolio,
+                              \DateTimeImmutable $horloge, string $sortie): array
+    {
         $portfolioNom = trim($portfolioNom);
         if ($portfolioNom === '' || \strlen($portfolioNom) > 255 || preg_match('#[/\\\\\x00-\x1f]#', $portfolioNom) === 1) {
             throw new Twin9Exception('Nom de portfolio invalide', 422);
@@ -77,28 +189,16 @@ final class Lancement
             throw new Twin9Exception('Aucun gabarit sur cette instance : l’analyse approfondie ne peut partir', 503);
         }
         $moteur = MoteurReglages::depuis($profil);
-        $horloge = $maintenant ?? new \DateTimeImmutable();
-        $sortie = 'twin9/runs/' . bin2hex(random_bytes(8));
         try {
-            $journal = (new \Twin9\Plateforme(json_encode($moteur, self::JSON), $portfolioNom, $portfolio,
-                $jeu['gabarits'], $sortie, $horloge))->journal();
+            $plateforme = new \Twin9\Plateforme(json_encode($moteur, self::JSON), $portfolioNom, $portfolio,
+                $jeu['gabarits'], $sortie, $horloge,
+                CallSettings::empreinte($profil, $moteur->config->troncatures ?? null, $jeu['gabarits']));
         } catch (\InvalidArgumentException|\RuntimeException $e) {
             error_log('[twin9-lancement] ' . $e->getMessage());
             throw new Twin9Exception('Portfolio illisible par le moteur', 422);
         }
 
-        $runs = new RunRepository($this->pdo);
-        $id = $runs->creer($userId, $profil, $moteur, $portfolioNom, $portfolio, $journal, $jeu['gabarits'], $horloge,
-            $sortie);
-        $runs->attester($id, [
-            'profil' => ['id' => $profilId, 'nom' => $nom],
-            'gabarits' => ['jeu' => $profil->gabarits, 'versions' => $jeu['versions'],
-                           'empreinte' => self::empreinte($jeu['gabarits'])],
-            'referentiel' => ['id' => $profil->referentiel->id, 'version' => $profil->referentiel->version],
-            'moteur' => ['commit' => EngineLoader::commit()],
-        ], $visibilite, $horloge);
-
-        return $id;
+        return ['profil' => $profil, 'nom' => $nom, 'moteur' => $moteur, 'jeu' => $jeu, 'plateforme' => $plateforme];
     }
 
     /**

@@ -7,6 +7,7 @@ namespace Humanome\Tests\Twin9;
 use Humanome\MigrationRunner;
 use Humanome\Tests\TestDb;
 use Humanome\Twin9\CallSettings;
+use Humanome\Twin9\CreditService;
 use Humanome\Twin9\EngineLoader;
 use Humanome\Twin9\MapStore;
 use Humanome\Twin9\MoteurReglages;
@@ -360,7 +361,10 @@ final class PariteTest extends TestCase
     {
         self::$pdo->prepare('INSERT INTO users (email, password_hash, display_name) VALUES (?, ?, ?)')
             ->execute([$email, 'x', $email]);
+        $id = (int) self::$pdo->lastInsertId();
+        // the instance's key pays from its owner's credits (T10)
+        (new CreditService(self::$pdo))->adjust($id, 1_000_000_000, 'crédit des tests');
 
-        return (int) self::$pdo->lastInsertId();
+        return $id;
     }
 }

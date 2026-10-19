@@ -20,6 +20,10 @@ use Twin9\Run\Journal;
  *
  * A call in a batch (T8) carries its batch and its custom_id, and stays sent
  * from slice to slice until its batch is collected.
+ *
+ * A call holds its worst case from the moment it leaves (T10, RunCosts): an
+ * attempt that brings no outcome keeps it for the next, an outcome leaves it
+ * for RunCosts to settle.
  */
 final class CallJournal implements Journal
 {
@@ -54,34 +58,42 @@ final class CallJournal implements Journal
 
     /**
      * Where a call stands: its status ('envoye', 'attente', 'repondu',
-     * 'panne'), its prompt's SHA-256, its attempts and when it may leave
-     * again; null for a call never sent.
+     * 'panne'), its prompt's SHA-256, its attempts, when it may leave again
+     * and the worst case it holds (T10); null for a call never sent.
      *
-     * @return array{statut: string, sha256: string, tentatives: int, reprise_at: float|null}|null
+     * @return array{statut: string, sha256: string, tentatives: int, reprise_at: float|null, reserve: int|null}|null
      */
     public function etat(string $id): ?array
     {
         $row = $this->row($id);
 
         return $row === null ? null : ['statut' => $row['statut'], 'sha256' => $row['sha256'],
-                                       'tentatives' => $row['tentatives'], 'reprise_at' => $row['reprise_at']];
+                                       'tentatives' => $row['tentatives'], 'reprise_at' => $row['reprise_at'],
+                                       'reserve' => $row['reserve']];
     }
 
-    /** Before a call leaves, directly or in a batch: its row, its attempt counted. */
-    public function envoye(Call $call, string $modele, int $tentative, ?int $lotId = null, ?string $customId = null): void
+    /**
+     * Before a call leaves, directly or in a batch: its row, its attempt
+     * counted, and the worst case it holds — $reserve, newly held, or the one
+     * it already holds (null).
+     */
+    public function envoye(Call $call, string $modele, int $tentative, ?int $lotId = null, ?string $customId = null,
+                           ?int $reserve = null): void
     {
         $this->pdo->prepare(
             'INSERT INTO twin9_appels (run_id, appel, etape, modele, modele_envoye, sha256, statut, lot_id, custom_id,
-                    tentatives, reprise_at, reponse, panne, envoye_at)
-             VALUES (?, ?, ?, ?, ?, ?, "envoye", ?, ?, ?, NULL, NULL, NULL, NOW(3))
+                    tentatives, reprise_at, reponse, panne, reserve_microusd, envoye_at)
+             VALUES (?, ?, ?, ?, ?, ?, "envoye", ?, ?, ?, NULL, NULL, NULL, ?, NOW(3))
              ON DUPLICATE KEY UPDATE etape = VALUES(etape), modele = VALUES(modele),
                     modele_envoye = VALUES(modele_envoye), sha256 = VALUES(sha256), statut = "envoye",
                     lot_id = VALUES(lot_id), custom_id = VALUES(custom_id), tentatives = VALUES(tentatives),
-                    reprise_at = NULL, reponse = NULL, panne = NULL, envoye_at = NOW(3)'
+                    reprise_at = NULL, reponse = NULL, panne = NULL,
+                    reserve_microusd = COALESCE(VALUES(reserve_microusd), reserve_microusd), envoye_at = NOW(3)'
         )->execute([$this->runId, $call->id, $call->step, $call->model, $modele, $call->sha256, $lotId, $customId,
-                    $tentative]);
+                    $tentative, $reserve]);
         $this->rows[$call->id] = ['statut' => 'envoye', 'sha256' => $call->sha256, 'tentatives' => $tentative,
-                                  'reprise_at' => null, 'panne' => null, 'blob' => null, 'reponse' => null];
+                                  'reprise_at' => null, 'panne' => null, 'blob' => null, 'reponse' => null,
+                                  'reserve' => $reserve ?? $this->rows[$call->id]['reserve'] ?? null];
     }
 
     /**
@@ -95,7 +107,8 @@ final class CallJournal implements Journal
         $this->apres($call->id, 'repondu', $mesure, $reponse, null);
         $this->rows[$call->id] = ['statut' => 'repondu', 'sha256' => $call->sha256,
                                   'tentatives' => $this->rows[$call->id]['tentatives'] ?? 1, 'reprise_at' => null,
-                                  'panne' => null, 'blob' => null, 'reponse' => $reponse];
+                                  'panne' => null, 'blob' => null, 'reponse' => $reponse,
+                                  'reserve' => $this->rows[$call->id]['reserve'] ?? null];
     }
 
     /**
@@ -109,7 +122,8 @@ final class CallJournal implements Journal
         $this->apres($call->id, 'panne', $mesure, null, $raison);
         $this->rows[$call->id] = ['statut' => 'panne', 'sha256' => $call->sha256,
                                   'tentatives' => $this->rows[$call->id]['tentatives'] ?? 1, 'reprise_at' => null,
-                                  'panne' => $raison, 'blob' => null, 'reponse' => null];
+                                  'panne' => $raison, 'blob' => null, 'reponse' => null,
+                                  'reserve' => $this->rows[$call->id]['reserve'] ?? null];
     }
 
     /** After: the call leaves again later, its attempts as given. */
@@ -120,7 +134,8 @@ final class CallJournal implements Journal
               WHERE run_id = ? AND appel = ?'
         )->execute([$tentatives, sprintf('%.3F', $repriseAt), $this->runId, $call->id]);
         $this->rows[$call->id] = ['statut' => 'attente', 'sha256' => $call->sha256, 'tentatives' => $tentatives,
-                                  'reprise_at' => $repriseAt, 'panne' => null, 'blob' => null, 'reponse' => null];
+                                  'reprise_at' => $repriseAt, 'panne' => null, 'blob' => null, 'reponse' => null,
+                                  'reserve' => $this->rows[$call->id]['reserve'] ?? null];
     }
 
     /**
@@ -276,7 +291,8 @@ final class CallJournal implements Journal
 
     private function load(string $part): void
     {
-        $sql = 'SELECT appel, statut, sha256, tentatives, UNIX_TIMESTAMP(reprise_at) AS reprise_at, panne, reponse
+        $sql = 'SELECT appel, statut, sha256, tentatives, UNIX_TIMESTAMP(reprise_at) AS reprise_at, panne, reponse,
+                       reserve_microusd
                   FROM twin9_appels WHERE run_id = ? AND ';
         if ($part === '') {
             $stmt = $this->pdo->prepare($sql . 'LEFT(appel, 9) <> "journees/"');
@@ -298,6 +314,7 @@ final class CallJournal implements Journal
                 'panne' => $row['panne'],
                 'blob' => $row['reponse'],
                 'reponse' => null,
+                'reserve' => $row['reserve_microusd'] === null ? null : (int) $row['reserve_microusd'],
             ];
         }
         $this->parts[$part] = true;

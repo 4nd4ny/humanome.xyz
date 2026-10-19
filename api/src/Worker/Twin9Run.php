@@ -36,6 +36,20 @@ final class Twin9Run
     /** By batches: the calls of its pass have gone to their batches in this slice. */
     public bool $soumis = false;
 
+    /** What it has committed (RunCosts): the worst cases its calls hold, the real costs settled, in micro-USD. */
+    public int $engage = 0;
+
+    /** Why no new call of it leaves (RunCosts: its budget, its duration, its owner's credit); null: nothing. */
+    public ?string $bloque = null;
+
+    /** Calls it sent in this slice, directly or in batches: while any, it does not stop. */
+    public int $envoyes = 0;
+
+    /**
+     * @param string $cle "instance" (its owner's credits pay, margin included) or "personnelle"
+     * @param int|null $budget its budget in micro-USD (T10); null: none
+     * @param float|null $limite when its duration ends (unix time); null: none
+     */
     public function __construct(
         public readonly int $id,
         public readonly int $userId,
@@ -48,7 +62,21 @@ final class Twin9Run
         public readonly int $appelsDirects,
         public readonly int $journeesDeFront,
         public readonly bool $parLots = false,
+        public readonly ?int $budget = null,
+        public readonly ?float $limite = null,
     ) {
+    }
+
+    /** Whether its owner's credits pay its calls, the margin included: the instance's key. */
+    public function credits(): bool
+    {
+        return $this->cle === 'instance';
+    }
+
+    /** Whether its duration has ended. */
+    public function horsDuree(): bool
+    {
+        return $this->limite !== null && microtime(true) >= $this->limite;
     }
 
     /** Whether to play a pass: none yet, or answers arrived and a call may leave. */

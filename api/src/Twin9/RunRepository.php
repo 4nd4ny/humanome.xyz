@@ -27,6 +27,9 @@ final class RunRepository
      */
     private const JSON = JSON_THROW_ON_ERROR | JSON_UNESCAPED_UNICODE | JSON_PRESERVE_ZERO_FRACTION;
 
+    /** A period of the run ends: its seconds join those of the periods before (T10). */
+    private const ACTIF = 'actif_s = actif_s + GREATEST(0, TIMESTAMPDIFF(SECOND, COALESCE(debut_at, created_at), NOW()))';
+
     public function __construct(private readonly PDO $pdo)
     {
     }
@@ -57,7 +60,8 @@ final class RunRepository
         $carteId = (int) $stmt->fetchColumn();
 
         $this->pdo->prepare(
-            'INSERT INTO twin9_runs (user_id, carte_id, reglages, portfolio, gabarits, horloge) VALUES (?, ?, ?, ?, ?, ?)'
+            'INSERT INTO twin9_runs (user_id, carte_id, reglages, portfolio, gabarits, horloge, debut_at)
+             VALUES (?, ?, ?, ?, ?, ?, NOW())'
         )->execute([
             $userId,
             $carteId,
@@ -164,11 +168,16 @@ final class RunRepository
         }
         $profil = self::unpack((string) $row['reglages'])->profil;
 
-        $stmt = $this->pdo->prepare('SELECT statut, COUNT(*) FROM twin9_appels WHERE run_id = ? GROUP BY statut');
+        $stmt = $this->pdo->prepare(
+            'SELECT statut, COUNT(*) AS n, SUM(COALESCE(cout_microusd, 0)) AS cout FROM twin9_appels WHERE run_id = ?
+              GROUP BY statut'
+        );
         $stmt->execute([$id]);
         $appels = ['envoye' => 0, 'attente' => 0, 'repondu' => 0, 'panne' => 0];
-        foreach ($stmt->fetchAll(PDO::FETCH_KEY_PAIR) as $statut => $n) {
-            $appels[(string) $statut] = (int) $n;
+        $depense = 0;
+        foreach ($stmt->fetchAll() as $ligne) {
+            $appels[(string) $ligne['statut']] = (int) $ligne['n'];
+            $depense += (int) $ligne['cout'];
         }
         $stmt = $this->pdo->prepare(
             'SELECT SUM(chemin LIKE "journees/%/carto_jour.json"), SUM(chemin = "carto_evolutive.json")
@@ -186,9 +195,11 @@ final class RunRepository
         );
         $stmt->execute([(int) $row['carte_id'], $id]);
         $avant = (int) $stmt->fetchColumn();
+        $compteurs = $row['compteurs'] === null ? null : json_decode((string) $row['compteurs'], true, 512,
+            JSON_THROW_ON_ERROR);
         $attente = $row['attente'] === null ? null : (string) $row['attente'];
         // what holds it back or stopped it, in words: an earlier run of its map, what the slice
-        // noted (the provider's rate, a batch at Anthropic, the key), its turn not yet come; a failure's reason
+        // noted (the provider's rate, a batch at Anthropic, the key, its caps), its turn not yet come; a stop's reason
         $retard = match ((string) $row['statut']) {
             'en_cours' => match (true) {
                 $avant > 0 => 'Un run précédent du même portfolio doit finir d’abord',
@@ -219,8 +230,14 @@ final class RunRepository
                 'lots' => $lots,
                 'runs_avant' => $avant,
             ],
-            'compteurs' => $row['compteurs'] === null ? null : json_decode((string) $row['compteurs'], true, 512,
-                JSON_THROW_ON_ERROR),
+            // what it cost its owner so far (the real cost of its calls, margin included with the instance's
+            // key), and its caps (T10)
+            'cout' => [
+                'depense_microusd' => (int) ($compteurs['cout_microusd'] ?? $depense),
+                'budget_usd' => $profil->budget_usd ?? null,
+                'duree_minutes' => $profil->duree_minutes ?? null,
+            ],
+            'compteurs' => $compteurs,
             'created_at' => (string) $row['created_at'],
             'avance_at' => $row['avance_at'] === null ? null : substr((string) $row['avance_at'], 0, 19),
             'finished_at' => $row['finished_at'] === null ? null : (string) $row['finished_at'],
@@ -251,7 +268,7 @@ final class RunRepository
     public function annuler(int $id, int $userId): bool
     {
         $stmt = $this->pdo->prepare(
-            'UPDATE twin9_runs SET statut = "annule", attente = NULL, finished_at = NOW()
+            'UPDATE twin9_runs SET statut = "annule", attente = NULL, finished_at = NOW(), ' . self::ACTIF . '
               WHERE id = ? AND user_id = ? AND statut = "en_cours"'
         );
         $stmt->execute([$id, $userId]);
@@ -260,18 +277,44 @@ final class RunRepository
     }
 
     /**
-     * Its owner resumes a run cancelled or failed: it goes on from its
-     * journal, where it stopped. False when it was neither.
+     * Its owner resumes a run cancelled or stopped: it goes on from its
+     * journal, where it stopped, its duration counted again from now (T10).
+     * A run its budget stopped goes on under a new one, given here: a number
+     * of dollars, or null for none. False when it was neither cancelled nor
+     * stopped.
+     *
+     * @param array{budget_usd?: float|int|null} $plafonds
      */
-    public function reprendre(int $id, int $userId): bool
+    public function reprendre(int $id, int $userId, array $plafonds = []): bool
     {
-        $stmt = $this->pdo->prepare(
-            'UPDATE twin9_runs SET statut = "en_cours", attente = NULL, finished_at = NULL
-              WHERE id = ? AND user_id = ? AND statut IN ("annule", "echoue")'
-        );
-        $stmt->execute([$id, $userId]);
+        $this->pdo->beginTransaction();
+        try {
+            $stmt = $this->pdo->prepare('SELECT reglages FROM twin9_runs
+                                          WHERE id = ? AND user_id = ? AND statut IN ("annule", "echoue") FOR UPDATE');
+            $stmt->execute([$id, $userId]);
+            $blob = $stmt->fetchColumn();
+            if ($blob === false) {
+                $this->pdo->rollBack();
 
-        return $stmt->rowCount() === 1;
+                return false;
+            }
+            $reglages = null;
+            if (\array_key_exists('budget_usd', $plafonds)) {
+                $reglages = self::unpack((string) $blob);
+                $reglages->profil->budget_usd = $plafonds['budget_usd'];
+            }
+            $this->pdo->prepare(
+                'UPDATE twin9_runs SET statut = "en_cours", attente = NULL, finished_at = NULL, debut_at = NOW(),
+                        reglages = COALESCE(?, reglages)
+                  WHERE id = ?'
+            )->execute([$reglages === null ? null : self::pack($reglages), $id]);
+            $this->pdo->commit();
+        } catch (\Throwable $e) {
+            $this->pdo->rollBack();
+            throw $e;
+        }
+
+        return true;
     }
 
     /** Who reads the run's results besides its owner. False when it is not theirs. */
@@ -291,11 +334,13 @@ final class RunRepository
      *
      * @return array{id: int, user_id: int, carte_id: int, statut: string, profil: stdClass, moteur: string,
      *               sortie: string, portfolio_nom: string, portfolio: string, gabarits: array<string, string>,
-     *               horloge: \DateTimeImmutable}|null
+     *               horloge: \DateTimeImmutable, debut: float}|null debut: when its current period began (unix time)
      */
     public function charger(int $id): ?array
     {
-        $stmt = $this->pdo->prepare('SELECT * FROM twin9_runs WHERE id = ?');
+        $stmt = $this->pdo->prepare(
+            'SELECT r.*, UNIX_TIMESTAMP(COALESCE(r.debut_at, r.created_at)) AS debut FROM twin9_runs r WHERE r.id = ?'
+        );
         $stmt->execute([$id]);
         $row = $stmt->fetch();
         if ($row === false) {
@@ -316,6 +361,7 @@ final class RunRepository
             'portfolio' => (string) $portfolio->texte,
             'gabarits' => array_map('strval', (array) self::unpack((string) $row['gabarits'])),
             'horloge' => new \DateTimeImmutable((string) $row['horloge']),
+            'debut' => (float) $row['debut'],
         ];
     }
 
@@ -401,7 +447,8 @@ final class RunRepository
             // its batches deleted at Anthropic go with the journal; one still there waits for the tick
             $this->pdo->prepare('DELETE FROM twin9_lots WHERE run_id = ? AND statut = "supprime"')->execute([$id]);
             $this->pdo->prepare(
-                'UPDATE twin9_runs SET statut = "termine", attente = NULL, compteurs = ?, finished_at = NOW() WHERE id = ?'
+                'UPDATE twin9_runs SET statut = "termine", attente = NULL, compteurs = ?, finished_at = NOW(), '
+                . self::ACTIF . ' WHERE id = ?'
             )->execute([json_encode($compteurs, JSON_THROW_ON_ERROR | JSON_UNESCAPED_UNICODE), $id]);
             $this->pdo->commit();
         } catch (\Throwable $e) {
@@ -412,12 +459,20 @@ final class RunRepository
         return true;
     }
 
-    /** The engine failed on this run: it stops, its journal kept, for a resumption once mended. */
-    public function echouer(int $id, string $raison): void
+    /**
+     * The run stops — the engine failed on it, or it reached its budget, its
+     * duration or its owner's credit (T10) —, its journal kept, for a
+     * resumption. False when it was no longer in progress.
+     */
+    public function echouer(int $id, string $raison): bool
     {
-        $this->pdo->prepare(
-            'UPDATE twin9_runs SET statut = "echoue", attente = ?, finished_at = NOW() WHERE id = ? AND statut = "en_cours"'
-        )->execute([mb_substr($raison, 0, 255), $id]);
+        $stmt = $this->pdo->prepare(
+            'UPDATE twin9_runs SET statut = "echoue", attente = ?, finished_at = NOW(), ' . self::ACTIF . '
+              WHERE id = ? AND statut = "en_cours"'
+        );
+        $stmt->execute([mb_substr($raison, 0, 255), $id]);
+
+        return $stmt->rowCount() === 1;
     }
 
     /** @return array<string, mixed>|null the counters of a run done */
@@ -432,7 +487,9 @@ final class RunRepository
 
     /**
      * The counters a run keeps of its journal: calls, attempts, failures,
-     * tokens, cost and time, by step, the models served and its batches.
+     * tokens, cost and time, by step, the models served and its batches; the
+     * days it instructed and how long it was active (T10: the averages shown
+     * before a launch).
      *
      * @return array<string, mixed>
      */
@@ -441,6 +498,18 @@ final class RunRepository
         $stmt = $this->pdo->prepare('SELECT COUNT(*) FROM twin9_lots WHERE run_id = ?');
         $stmt->execute([$id]);
         $lots = (int) $stmt->fetchColumn();
+        $stmt = $this->pdo->prepare(
+            'SELECT COUNT(DISTINCT SUBSTRING_INDEX(appel, "/", 2)) FROM twin9_appels
+              WHERE run_id = ? AND appel LIKE "journees/%"'
+        );
+        $stmt->execute([$id]);
+        $journees = (int) $stmt->fetchColumn();
+        $stmt = $this->pdo->prepare(
+            'SELECT actif_s + GREATEST(0, TIMESTAMPDIFF(SECOND, COALESCE(debut_at, created_at), NOW()))
+               FROM twin9_runs WHERE id = ?'
+        );
+        $stmt->execute([$id]);
+        $dureeS = (int) $stmt->fetchColumn();
         $stmt = $this->pdo->prepare(
             'SELECT etape, statut, COUNT(*) AS n, SUM(tentatives) AS tentatives, SUM(jetons_entree) AS entree,
                     SUM(jetons_sortie) AS sortie, SUM(cout_microusd) AS cout, SUM(duree_ms) AS duree
@@ -472,8 +541,52 @@ final class RunRepository
         );
         $stmt->execute([$id]);
 
-        return $total + ['lots' => $lots, 'par_etape' => $parEtape, 'modeles_servis' => array_map(intval(...),
-            $stmt->fetchAll(PDO::FETCH_KEY_PAIR))];
+        return $total + ['lots' => $lots, 'journees' => $journees, 'duree_s' => $dureeS, 'par_etape' => $parEtape,
+                         'modeles_servis' => array_map(intval(...), $stmt->fetchAll(PDO::FETCH_KEY_PAIR))];
+    }
+
+    /**
+     * What the runs done of a profile, in a mode, cost and lasted, summed
+     * over those that instructed at least one day (T10: the averages shown
+     * before a launch). The profile is the v9.8's (null) or one of its
+     * owner's, as the attestation names it.
+     *
+     * @return array{runs: int, journees: int, cout_microusd: int, duree_s: int}|null null: none
+     */
+    public function passes(?int $profilId, string $mode): ?array
+    {
+        $stmt = $this->pdo->prepare(
+            'SELECT compteurs FROM twin9_runs
+              WHERE statut = "termine" AND compteurs IS NOT NULL AND attestation IS NOT NULL
+                AND JSON_UNQUOTE(JSON_EXTRACT(attestation, "$.profil.id")) = ?
+                AND JSON_UNQUOTE(JSON_EXTRACT(attestation, "$.profil.mode")) = ?'
+        );
+        $stmt->execute([$profilId === null ? 'null' : (string) $profilId, $mode]);
+        $somme = ['runs' => 0, 'journees' => 0, 'cout_microusd' => 0, 'duree_s' => 0];
+        foreach ($stmt->fetchAll(PDO::FETCH_COLUMN) as $json) {
+            $c = json_decode((string) $json, true, 512, JSON_THROW_ON_ERROR);
+            if ((int) ($c['journees'] ?? 0) < 1) {
+                continue;
+            }
+            $somme['runs']++;
+            $somme['journees'] += (int) $c['journees'];
+            $somme['cout_microusd'] += (int) ($c['cout_microusd'] ?? 0);
+            $somme['duree_s'] += (int) ($c['duree_s'] ?? 0);
+        }
+
+        return $somme['runs'] === 0 ? null : $somme;
+    }
+
+    /** The map of an owner's portfolio, referential and template set, if a run made it. */
+    public function carte(int $userId, string $journal, string $referentiel, string $gabarits): ?int
+    {
+        $stmt = $this->pdo->prepare(
+            'SELECT id FROM twin9_cartes WHERE user_id = ? AND portfolio = ? AND referentiel = ? AND gabarits = ?'
+        );
+        $stmt->execute([$userId, $journal, $referentiel, $gabarits]);
+        $id = $stmt->fetchColumn();
+
+        return $id === false ? null : (int) $id;
     }
 
     public static function compress(string $text): string

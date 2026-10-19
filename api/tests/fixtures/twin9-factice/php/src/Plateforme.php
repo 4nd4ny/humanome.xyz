@@ -33,6 +33,7 @@ use Twin9\Run\Store;
  * deliberation drawn from its calls' answers; the merge attests that
  * competence on each day, names each day ("journee"), and carries a story,
  * a pole report and a kairos. The memory keeps a day's map as « carto ».
+ * Before a run, apercu() says which days it would instruct (T10).
  */
 final class Plateforme
 {
@@ -70,6 +71,33 @@ final class Plateforme
     public function journal(): string
     {
         return $this->journal;
+    }
+
+    /**
+     * Before a run (T10), as the real engine says it: the days it takes, each
+     * new, changed or unchanged in the memory of the map; and the poles, one
+     * by tagger/P<n> fiche of the set, one without any.
+     *
+     * @return array{journees: list<array{id: string, date: ?string, titre: ?string, etat: string}>, poles: int}
+     */
+    public function apercu(Store $memoire): array
+    {
+        $prefixe = $this->reglages['test'] ? 'test/' : '';
+        $journees = [];
+        foreach ($this->jours as $jour) {
+            $entree = $this->reglages['memoire']
+                ? json_decode((string) $memoire->read($prefixe . 'journees/' . $jour['id']), true) : null;
+            $etat = match (true) {
+                !\is_array($entree) => 'nouvelle',
+                $entree['empreinte'] === sha1($jour['texte']) && $entree['reglages'] === $this->empreinte => 'inchangee',
+                default => 'changee',
+            };
+            $journees[] = ['id' => $jour['id'], 'date' => preg_match('/^\d{4}-\d{2}-\d{2}$/', $jour['id']) === 1
+                ? $jour['id'] : null, 'titre' => null, 'etat' => $etat];
+        }
+
+        return ['journees' => $journees,
+                'poles' => max(1, \count(preg_grep('#^tagger/P\d+$#', array_keys($this->gabarits))))];
     }
 
     /**

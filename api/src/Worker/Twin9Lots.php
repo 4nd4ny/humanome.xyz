@@ -8,8 +8,9 @@ use Humanome\Twin9\AnthropicBatches;
 use Humanome\Twin9\AnthropicCaller;
 use Humanome\Twin9\BatchApi;
 use Humanome\Twin9\CallJournal;
+use Humanome\Twin9\RunCosts;
 use Humanome\Twin9\RunKey;
-use Humanome\Twin9\Twin9Config;
+use Humanome\Twin9\SoldeInsuffisantException;
 use PDO;
 use Twin9\Run\Call;
 
@@ -33,6 +34,11 @@ use Twin9\Run\Call;
  *   its attempt given back. Then the batch is deleted at Anthropic, which
  *   would keep it 29 days otherwise.
  * - The batches of a run no longer in progress are cancelled, then deleted.
+ * - Each call holds its worst case, at half price, when its batch is written
+ *   (T10, RunCosts): a batch holds no more than its run's budget and its
+ *   owner's credit leave room for, the rest waits for a next one.
+ * - The batches of an account erased, submitted with the instance's key, are
+ *   cancelled and deleted from twin9_lots_a_effacer.
  *
  * No transaction stays open while Anthropic answers. Logging: counters only.
  */
@@ -65,7 +71,7 @@ final class Twin9Lots
         private readonly PDO $pdo,
         private readonly BatchApi $api,
         private readonly RunKey $cles,
-        private readonly Twin9Config $config,
+        private readonly RunCosts $couts,
         private readonly int $octets = self::OCTETS,
         private readonly float $fenetre = self::FENETRE,
     ) {
@@ -141,6 +147,12 @@ final class Twin9Lots
     {
         $avantLaFin = min(self::TEMPS_SOUMISSION, 0.25 * ($fin - $debut));
         $run->soumis = true;
+        if ($run->horsDuree()) {
+            $run->bloque = RunCosts::DUREE;
+            $run->attente = $this->enVol($run->id) > 0 ? self::EN_COURS : null;
+
+            return null;
+        }
         $candidats = $this->candidats($run);
         if ($candidats === []) {
             $run->attente = $this->enVol($run->id) > 0 ? self::EN_COURS : null;
@@ -163,10 +175,32 @@ final class Twin9Lots
                 return $refus;
             }
         }
+        // the room the owner's credit leaves, with the instance's key; the budget's is the run's to count
+        $solde = $run->credits() ? $this->couts->solde($run->userId) : null;
         $corps = '';
         $membres = [];
-        foreach ($candidats as [$call, $tentative]) {
+        foreach ($candidats as [$call, $tentative, $detenu]) {
             $reglage = $run->reglages->pour($call->step, $call->id);
+            // a call already holding its worst case goes with it; a new one holds its own, if there is room
+            $reserve = null;
+            if ($detenu === null) {
+                if ($run->bloque !== null) {
+                    continue;
+                }
+                $reserve = $this->couts->pireCas($reglage['modele'], $call->prompt, $reglage['budget_sortie'], true,
+                    $run->credits());
+                if ($reserve === null) {
+                    return 'aucun prix pour ' . $reglage['modele'] . ' sur cette instance';
+                }
+                if ($run->budget !== null && $run->engage + $reserve > $run->budget) {
+                    $run->bloque = RunCosts::BUDGET;
+                    continue;
+                }
+                if ($solde !== null && $reserve > $solde) {
+                    $run->bloque = RunCosts::CREDIT;
+                    continue;
+                }
+            }
             $ligne = json_encode(['custom_id' => self::customId($call->id),
                                   'params' => AnthropicCaller::params($reglage['modele'], $call->prompt,
                                       $reglage['budget_sortie'], $reglage['reflexion'], $reglage['effort'])],
@@ -180,11 +214,15 @@ final class Twin9Lots
                 $membres = [];
             }
             $corps .= ($corps === '' ? '' : ',') . $ligne;
-            $membres[] = [$call, $reglage['modele'], $tentative];
+            $membres[] = [$call, $reglage['modele'], $tentative, $reserve];
+            if ($reserve !== null) {
+                $run->engage += $reserve;
+                $solde = $solde === null ? null : $solde - $reserve;
+            }
         }
         $refus = $this->envoyer($run, $cle, $corps, $membres, $fin - $avantLaFin, $fin, $compteurs);
         if ($refus === null && !$run->suspendu) {
-            $run->attente = self::EN_COURS;
+            $run->attente = $this->enVol($run->id) > 0 ? self::EN_COURS : null;
         }
 
         return $refus;
@@ -206,6 +244,9 @@ final class Twin9Lots
             'DELETE l FROM twin9_lots l JOIN twin9_runs r ON r.id = l.run_id
               WHERE l.statut = "supprime" AND r.statut <> "en_cours"' . $sien
         )->execute($params);
+        if ($utilisateur === null) {
+            $this->effacer($fin, $compteurs);
+        }
         foreach ($this->lots('r.statut <> "en_cours"' . $sien, $params, 20) as $lot) {
             if (microtime(true) >= $fin) {
                 return;
@@ -229,6 +270,7 @@ final class Twin9Lots
                 }
                 (new CallJournal($this->pdo, $lot['run_id']))->rendreLeLot($lot['id']);
                 $this->pdo->prepare('UPDATE twin9_lots SET statut = "annulation" WHERE id = ?')->execute([$lot['id']]);
+                $this->couts->liberer($lot['run_id']); // its calls given back, what they held goes back too
                 $compteurs['annules']++;
                 $lot['statut'] = 'annulation';
             }
@@ -240,6 +282,44 @@ final class Twin9Lots
                 }
             }
             $this->supprimer($lot, $cle, $fin, false);
+        }
+    }
+
+    /**
+     * The batches of accounts erased, submitted with the instance's key
+     * (twin9_lots_a_effacer): cancelled while in progress, deleted once
+     * ended; gone, forgotten.
+     *
+     * @param array<string, int> $compteurs the slice's
+     */
+    private function effacer(float $fin, array &$compteurs): void
+    {
+        $lots = $this->pdo->query('SELECT lot FROM twin9_lots_a_effacer ORDER BY depose_at, lot LIMIT 20')
+            ->fetchAll(PDO::FETCH_COLUMN);
+        if ($lots === []) {
+            return;
+        }
+        $cle = $this->cles->pour(0, 'instance');
+        if ($cle === null) {
+            return;
+        }
+        foreach ($lots as $lot) {
+            if (microtime(true) >= $fin) {
+                return;
+            }
+            $etat = $this->api->etat($cle, (string) $lot, $fin);
+            if (!$etat['ok'] && ($etat['http'] ?? null) !== 404) {
+                continue;
+            }
+            if ($etat['ok'] && ($etat['lot']['processing_status'] ?? '') !== 'ended') {
+                $this->api->annuler($cle, (string) $lot, $fin);
+                $compteurs['annules']++;
+                continue;
+            }
+            if ($etat['ok'] && !$this->api->supprimer($cle, (string) $lot, $fin)['ok']) {
+                continue;
+            }
+            $this->pdo->prepare('DELETE FROM twin9_lots_a_effacer WHERE lot = ?')->execute([(string) $lot]);
         }
     }
 
@@ -295,7 +375,7 @@ final class Twin9Lots
             if (microtime(true) >= $fin) {
                 return false;
             }
-            $this->inscrire($journal, $appel, (array) ($ligne['result'] ?? []), $compteurs);
+            $this->inscrire($journal, $appel, (array) ($ligne['result'] ?? []), $lot['cle'] === 'instance', $compteurs);
             $appels[$customId]['statut'] = 'inscrit';
         }
         foreach ($appels as $appel) {
@@ -311,21 +391,23 @@ final class Twin9Lots
     }
 
     /**
-     * One result of a batch, as a direct call's outcome is written.
+     * One result of a batch, as a direct call's outcome is written: its real
+     * cost at half price, the margin included with the instance's key.
      *
      * @param array{appel: string, tentatives: int, modele: string} $appel
      * @param array<string, mixed> $resultat
      * @param array<string, int> $compteurs
      */
-    private function inscrire(CallJournal $journal, array $appel, array $resultat, array &$compteurs): void
+    private function inscrire(CallJournal $journal, array $appel, array $resultat, bool $marge,
+                              array &$compteurs): void
     {
         $type = $resultat['type'] ?? null;
         if ($type === 'succeeded' && \is_array($resultat['message'] ?? null)) {
             $lu = AnthropicCaller::lireMessage($resultat['message']);
             $mesure = ['modele_servi' => $lu['modele_servi'], 'stop_reason' => $lu['stop_reason'],
                        'tokens_in' => $lu['tokens_in'], 'tokens_out' => $lu['tokens_out'],
-                       'cout_microusd' => $this->config->coutMicrousd($appel['modele'], $lu['tokens_in'],
-                           $lu['tokens_out'], parLots: true)];
+                       'cout_microusd' => $this->couts->cout($appel['modele'], $lu['tokens_in'], $lu['tokens_out'],
+                           true, $marge)];
             if ($lu['ok']) {
                 $journal->reponseDuLot($appel['appel'], $lu['texte'], $mesure);
                 $compteurs['reponses']++;
@@ -449,11 +531,14 @@ final class Twin9Lots
     }
 
     /**
-     * One batch: its row and its calls written, then it leaves. Refused, it
-     * did not leave: its calls wait again. Without an answer, it may have
-     * left all the same: it is to find.
+     * One batch: its row and its calls written, each new worst case debited
+     * from the owner's credits with the instance's key, in one transaction;
+     * then it leaves. Refused, it did not leave: its calls wait again,
+     * holding their worst cases. Without an answer, it may have left all the
+     * same: it is to find.
      *
-     * @param list<array{0: Call, 1: string, 2: int}> $membres
+     * @param list<array{0: Call, 1: string, 2: int, 3: int|null}> $membres each call, its model, its attempt and the
+     *                                                                       worst case it newly holds
      * @param float $dernier the latest a batch may leave in this slice
      * @param array<string, int> $compteurs
      * @return string|null why the run fails, or null
@@ -476,15 +561,27 @@ final class Twin9Lots
                 'INSERT INTO twin9_lots (run_id, statut, cle, requetes, octets, soumis_at) VALUES (?, "soumission", ?, ?, ?, NOW(3))'
             )->execute([$run->id, $run->cle, \count($membres), \strlen($corps)]);
             $lotId = (int) $this->pdo->lastInsertId();
-            foreach ($membres as [$call, $modele, $tentative]) {
-                $run->journal->envoye($call, $modele, $tentative, $lotId, self::customId($call->id));
+            foreach ($membres as [$call, $modele, $tentative, $reserve]) {
+                if ($reserve !== null && $run->credits()) {
+                    $this->couts->debiter($run->userId, $run->id, $call->step, $modele, $reserve);
+                }
+                $run->journal->envoye($call, $modele, $tentative, $lotId, self::customId($call->id), $reserve);
             }
             $this->pdo->commit();
+        } catch (SoldeInsuffisantException) {
+            // the credit moved meanwhile: the batch waits for a next slice
+            $this->pdo->rollBack();
+            $run->journal->oublier();
+            $run->bloque = RunCosts::CREDIT;
+            $run->suspendu = true;
+
+            return null;
         } catch (\Throwable $e) {
             $this->pdo->rollBack();
             $run->journal->oublier();
             throw $e;
         }
+        $run->envoyes += \count($membres);
         $issue = $this->api->creer($cle, $corps, $fin);
         if ($issue['ok']) {
             $this->pdo->prepare('UPDATE twin9_lots SET lot = ?, statut = "en_cours" WHERE id = ?')
@@ -539,7 +636,7 @@ final class Twin9Lots
      * The calls of a run's pass that go into batches: those of the days it
      * leads abreast, neither answered, failed, nor in a batch already.
      *
-     * @return list<array{0: Call, 1: int}> each call with its attempt
+     * @return list<array{0: Call, 1: int, 2: int|null}> each call with its attempt and the worst case it holds
      */
     private function candidats(Twin9Run $run): array
     {
@@ -553,14 +650,16 @@ final class Twin9Lots
             }
             $vus[$call->id] = true;
             $tentative = 1;
+            $detenu = null;
             $etat = $run->journal->etat($call->id);
             if ($etat !== null && $etat['sha256'] === $call->sha256) {
                 if (\in_array($etat['statut'], ['repondu', 'panne', 'envoye'], true)) {
                     continue;
                 }
                 $tentative = $etat['tentatives'] + 1;
+                $detenu = $etat['reserve'];
             }
-            $candidats[] = [$call, $tentative];
+            $candidats[] = [$call, $tentative, $detenu];
         }
 
         return $candidats;
@@ -574,7 +673,8 @@ final class Twin9Lots
         return $stmt->fetchColumn() !== false;
     }
 
-    private function enVol(int $runId): int
+    /** A run's batches at Anthropic, or whose submission is under way. */
+    public function enVol(int $runId): int
     {
         $stmt = $this->pdo->prepare('SELECT COUNT(*) FROM twin9_lots WHERE run_id = ? AND statut IN ("soumission", "en_cours")');
         $stmt->execute([$runId]);

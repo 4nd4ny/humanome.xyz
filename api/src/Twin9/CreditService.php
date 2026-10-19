@@ -19,6 +19,10 @@ use PDOException;
  *     no-op that just returns the current state.
  *   * every balance mutation writes exactly one ledger event, in the same
  *     transaction. Counters only, never content (cahier §6.5).
+ *   * debit() and adjust() join the caller's transaction when one is open
+ *     (T10: a Twin9 run's reservation is written with its call, its
+ *     settlement with the calls it settles), and leave its commit or its
+ *     rollback to the caller.
  */
 final class CreditService
 {
@@ -66,7 +70,10 @@ final class CreditService
             throw new \InvalidArgumentException('debit() amount must be > 0 micro-USD');
         }
 
-        $this->pdo->beginTransaction();
+        $own = !$this->pdo->inTransaction();
+        if ($own) {
+            $this->pdo->beginTransaction();
+        }
         try {
             if ($allowOverdraft) {
                 $this->upsertBalance($userId, -$microusd);
@@ -78,7 +85,9 @@ final class CreditService
                 );
                 $stmt->execute([$microusd, $userId, $microusd]);
                 if ($stmt->rowCount() === 0) {
-                    $this->pdo->rollBack();
+                    if ($own) {
+                        $this->pdo->rollBack();
+                    }
 
                     throw new SoldeInsuffisantException($this->balance($userId), $microusd);
                 }
@@ -86,11 +95,15 @@ final class CreditService
 
             $this->insertEvent($userId, 'debit', -$microusd, $label, $model, $tokensIn, $tokensOut, null);
             $newBalance = $this->lockedBalance($userId);
-            $this->pdo->commit();
+            if ($own) {
+                $this->pdo->commit();
+            }
         } catch (SoldeInsuffisantException $e) {
-            throw $e; // already rolled back
+            throw $e; // already rolled back, or left to the caller
         } catch (\Throwable $e) {
-            $this->pdo->rollBack();
+            if ($own) {
+                $this->pdo->rollBack();
+            }
             throw $e;
         }
 
@@ -171,14 +184,21 @@ final class CreditService
             throw new \InvalidArgumentException('adjust() amount must be non-zero');
         }
 
-        $this->pdo->beginTransaction();
+        $own = !$this->pdo->inTransaction();
+        if ($own) {
+            $this->pdo->beginTransaction();
+        }
         try {
             $this->upsertBalance($userId, $microusd);
             $this->insertEvent($userId, 'adjust', $microusd, $label, $model, $tokensIn, $tokensOut, null);
             $newBalance = $this->lockedBalance($userId);
-            $this->pdo->commit();
+            if ($own) {
+                $this->pdo->commit();
+            }
         } catch (\Throwable $e) {
-            $this->pdo->rollBack();
+            if ($own) {
+                $this->pdo->rollBack();
+            }
             throw $e;
         }
 

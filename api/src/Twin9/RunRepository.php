@@ -287,12 +287,19 @@ final class RunRepository
      * Its owner resumes a run cancelled or stopped: it goes on from its
      * journal, where it stopped, its duration counted again from now (T10).
      * A run its budget stopped goes on under a new one, given here: a number
-     * of dollars, or null for none. False when it was neither cancelled nor
-     * stopped.
+     * of dollars, or null for none. Admitted again (T8): what it may still
+     * spend of its owner's credit never goes beyond what their other runs in
+     * progress leave free. False when it was neither cancelled nor stopped.
      *
      * @param array{budget_usd?: float|int|null} $plafonds
      */
     public function reprendre(int $id, int $userId, array $plafonds = []): bool
+    {
+        return $this->sousVerrou($userId, fn (): bool => $this->reprendreAdmis($id, $userId, $plafonds));
+    }
+
+    /** @param array{budget_usd?: float|int|null} $plafonds */
+    private function reprendreAdmis(int $id, int $userId, array $plafonds): bool
     {
         $this->pdo->beginTransaction();
         try {
@@ -310,11 +317,18 @@ final class RunRepository
                 $reglages = self::unpack((string) $blob);
                 $reglages->profil->budget_usd = $plafonds['budget_usd'];
             }
+            // what it has committed, and what the owner's other runs in progress leave free
+            $stmt = $this->pdo->prepare(
+                'SELECT COALESCE(SUM(COALESCE(reserve_microusd, cout_microusd, 0)), 0) FROM twin9_appels WHERE run_id = ?'
+            );
+            $stmt->execute([$id]);
+            $engage = (int) $stmt->fetchColumn();
+            ['solde' => $solde, 'autres' => $autres] = $this->disponible($userId, $id);
             $this->pdo->prepare(
                 'UPDATE twin9_runs SET statut = "en_cours", attente = NULL, finished_at = NULL, debut_at = NOW(),
-                        reglages = COALESCE(?, reglages)
+                        reglages = COALESCE(?, reglages), engagement_microusd = LEAST(engagement_microusd, ?)
                   WHERE id = ?'
-            )->execute([$reglages === null ? null : self::pack($reglages), $id]);
+            )->execute([$reglages === null ? null : self::pack($reglages), $engage + max(0, $solde - $autres), $id]);
             $this->pdo->commit();
         } catch (\Throwable $e) {
             $this->pdo->rollBack();
@@ -449,7 +463,7 @@ final class RunRepository
     {
         $this->pdo->beginTransaction();
         try {
-            $stmt = $this->pdo->prepare('SELECT statut, user_id, reglages FROM twin9_runs WHERE id = ? FOR UPDATE');
+            $stmt = $this->pdo->prepare('SELECT statut, user_id, reglages, gabarits FROM twin9_runs WHERE id = ? FOR UPDATE');
             $stmt->execute([$id]);
             $run = $stmt->fetch();
             if ($run === false || $run['statut'] !== 'en_cours') {
@@ -461,9 +475,15 @@ final class RunRepository
             $this->pdo->exec('SAVEPOINT evaluation');
             try {
                 (new Evaluations($this->pdo))->consigner($id, (int) $run['user_id'],
-                    self::unpack((string) $run['reglages'])->profil, $octets, $marge, $compteurs['duree_s']);
+                    self::unpack((string) $run['reglages'])->profil,
+                    Lancement::empreinte((array) self::unpack((string) $run['gabarits'])), $octets, $marge,
+                    $compteurs['duree_s']);
             } catch (\Throwable $e) {
-                $this->pdo->exec('ROLLBACK TO SAVEPOINT evaluation');
+                try {
+                    $this->pdo->exec('ROLLBACK TO SAVEPOINT evaluation');
+                } catch (\Throwable) {
+                    throw $e; // the transaction itself is lost (a deadlock): the run ends at the next slice
+                }
                 error_log('[twin9] évaluation du run ' . $id . ' non consignée : ' . $e::class);
             }
             $this->pdo->prepare('DELETE FROM twin9_appels WHERE run_id = ?')->execute([$id]);
@@ -483,26 +503,51 @@ final class RunRepository
     }
 
     /**
-     * What an owner's runs in progress may still spend of their credit (T8):
-     * for each, what its launch granted it, less what it has committed — the
-     * worst cases its calls hold, the real costs of those settled. The run
-     * asking left out.
+     * An owner's credit, and what their runs in progress may still spend of
+     * it (T8): for each, what its launch granted it, less what it has
+     * committed — the worst cases its calls hold, the real costs of those
+     * settled —; the run asking left out. One statement, one snapshot: a
+     * call's hold, or its settlement, moves the credit and its run's
+     * commitment together.
+     *
+     * @return array{solde: int, autres: int} in micro-USD
      */
-    public function engagementsEnCours(int $userId, int $sauf = 0): int
+    public function disponible(int $userId, int $sauf = 0): array
     {
         $stmt = $this->pdo->prepare(
-            'SELECT r.engagement_microusd, COALESCE(SUM(COALESCE(a.reserve_microusd, a.cout_microusd, 0)), 0)
-               FROM twin9_runs r LEFT JOIN twin9_appels a ON a.run_id = r.id
-              WHERE r.user_id = ? AND r.statut = "en_cours" AND r.engagement_microusd > 0 AND r.id <> ?
-              GROUP BY r.id, r.engagement_microusd'
+            'SELECT (SELECT COALESCE(MAX(balance_microusd), 0) FROM twin9_credits WHERE user_id = ?),
+                    (SELECT COALESCE(SUM(GREATEST(0, CAST(r.engagement_microusd AS SIGNED)
+                              - (SELECT COALESCE(SUM(COALESCE(a.reserve_microusd, a.cout_microusd, 0)), 0)
+                                   FROM twin9_appels a WHERE a.run_id = r.id))), 0)
+                       FROM twin9_runs r
+                      WHERE r.user_id = ? AND r.statut = "en_cours" AND r.engagement_microusd > 0 AND r.id <> ?)'
         );
-        $stmt->execute([$userId, $sauf]);
-        $reste = 0;
-        foreach ($stmt->fetchAll(PDO::FETCH_NUM) as [$engagement, $engage]) {
-            $reste += max(0, (int) $engagement - (int) $engage);
-        }
+        $stmt->execute([$userId, $userId, $sauf]);
+        [$solde, $autres] = $stmt->fetch(PDO::FETCH_NUM);
 
-        return $reste;
+        return ['solde' => (int) $solde, 'autres' => (int) $autres];
+    }
+
+    /**
+     * $f under its owner's admission lock (T8): one launch, or resumption,
+     * at a time, for the next to count what the previous was granted.
+     *
+     * @template T
+     * @param \Closure(): T $f
+     * @return T
+     * @throws Twin9Exception 503 when another one keeps the lock
+     */
+    public function sousVerrou(int $userId, \Closure $f): mixed
+    {
+        $verrou = $this->pdo->quote('twin9_admission_' . $userId);
+        if ((int) $this->pdo->query('SELECT GET_LOCK(' . $verrou . ', 10)')->fetchColumn() !== 1) {
+            throw new Twin9Exception('Un autre lancement est en cours : réessayez dans un instant', 503);
+        }
+        try {
+            return $f();
+        } finally {
+            $this->pdo->query('SELECT RELEASE_LOCK(' . $verrou . ')');
+        }
     }
 
     /**

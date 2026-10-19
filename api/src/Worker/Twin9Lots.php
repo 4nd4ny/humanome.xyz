@@ -10,6 +10,7 @@ use Humanome\Twin9\BatchApi;
 use Humanome\Twin9\CallJournal;
 use Humanome\Twin9\RunCosts;
 use Humanome\Twin9\RunKey;
+use Humanome\Twin9\RunRepository;
 use Humanome\Twin9\SoldeInsuffisantException;
 use PDO;
 use Twin9\Run\Call;
@@ -175,8 +176,10 @@ final class Twin9Lots
                 return $refus;
             }
         }
-        // the room the owner's credit leaves, with the instance's key; the budget's is the run's to count
-        $solde = $run->credits() ? $this->couts->solde($run->userId) : null;
+        // the room the owner's credit leaves, with the instance's key, and what their other runs in progress may
+        // still spend of it, read together (T8); the budget's is the run's to count
+        ['solde' => $solde, 'autres' => $autres] = $run->credits()
+            ? (new RunRepository($this->pdo))->disponible($run->userId, $run->id) : ['solde' => null, 'autres' => 0];
         $corps = '';
         $membres = [];
         foreach ($candidats as [$call, $tentative, $detenu]) {
@@ -194,7 +197,7 @@ final class Twin9Lots
                 }
                 // never into the merge's reserve for a day's call, nor into what the owner's other runs may
                 // still spend (T8)
-                $retenue = $run->retenue($call, $reserve, $solde);
+                $retenue = $run->retenue($call, $reserve, $solde, $autres);
                 if ($retenue !== null) {
                     $run->bloque = $retenue;
                     continue;

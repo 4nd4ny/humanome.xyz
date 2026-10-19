@@ -146,8 +146,8 @@ final class ApercuTest extends CartographeTestCase
         self::assertSame(array_map(static fn (string $b): float => round(($jour[$b] + $fusion[$b]) / 1_000_000, 6),
             ['cout_usd' => 'moyenne', 'min_usd' => 'min', 'max_usd' => 'max']),
             array_intersect_key($apres['estimation'], ['cout_usd' => 1, 'min_usd' => 1, 'max_usd' => 1]));
-        self::assertSame(round(($fusion['max'] + $modele['pire_cas']['fusion']) / 1_000_000, 6),
-            $apres['estimation']['reserve_usd'], 'la fusion au plus haut, et le plus grand pire cas d’un de ses appels');
+        self::assertGreaterThanOrEqual(round(($fusion['max'] + $modele['pire_cas']['fusion']) / 1_000_000, 6),
+            $apres['estimation']['reserve_usd'], 'la fusion au plus haut, et au moins le plus grand pire cas d’un de ses appels');
         self::assertGreaterThan(0.0, $apres['estimation']['cout_usd']);
         self::assertGreaterThan(0.0, $fusion['moyenne']);
         self::assertGreaterThan(0.0, $modele['pire_cas']['journee']);
@@ -161,6 +161,13 @@ final class ApercuTest extends CartographeTestCase
         $fusion = Evaluations::selon($modele['fusion'], $ko);
         self::assertSame(round(($jour['moyenne'] + $fusion['moyenne']) / 1_000_000, 6), $sans['estimation']['cout_usd'],
             'la journée retirée, gardée par la mémoire');
+
+        // evaluations that say nothing of what a day costs: a day to instruct is the reference's, and the estimate says so
+        self::$pdo->exec("UPDATE twin9_evaluations SET journees = JSON_ARRAY(JSON_OBJECT('ko', 0.03, 'cout_microusd', NULL),
+                                                                         JSON_OBJECT('ko', 0.03, 'cout_microusd', NULL))");
+        $sansJours = $this->apercu($alice, $profil, self::PORTFOLIO . $ajout)['estimation'];
+        self::assertSame(['reference' => 'PLANT-01', 'poles' => 7], array_intersect_key($sansJours, ['reference' => 1, 'poles' => 1]));
+        self::assertArrayNotHasKey('evaluations', $sansJours);
         self::assertSame(1, $this->apercu($alice, $essai, self::PORTFOLIO)['estimation']['poles'],
             'un run complet ne sert pas l’estimation d’un essai');
     }

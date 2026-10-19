@@ -55,9 +55,6 @@ final class Lancement
 
     public const REFERENCE_SECONDES = 94;
 
-    /** How long a launch waits for its owner's previous one to be admitted, in seconds. */
-    private const ATTENTE_ADMISSION = 10;
-
     /** The JSON of the engine's settings: 1.0 stays a float, as the v9.8 reads it. */
     private const JSON = JSON_THROW_ON_ERROR | JSON_UNESCAPED_UNICODE | JSON_PRESERVE_ZERO_FRACTION;
 
@@ -90,19 +87,17 @@ final class Lancement
         $runs = new RunRepository($this->pdo);
         // T8, strategy A: the days that fit with the merge's reserve; the others wait for a next run. One launch
         // of an owner at a time, for the next to count what this one is granted
-        $verrou = $this->pdo->quote('twin9_admission_' . $userId);
-        if ((int) $this->pdo->query('SELECT GET_LOCK(' . $verrou . ', ' . self::ATTENTE_ADMISSION . ')')->fetchColumn() !== 1) {
-            throw new Twin9Exception('Un autre lancement est en cours : réessayez dans un instant', 503);
-        }
-        try {
+        [$id, $admission, $reserve, $engagement] = $runs->sousVerrou($userId, function () use (
+            $runs, $userId, $profil, $moteur, $portfolioNom, $portfolio, $plateforme, $jeu, $horloge, $sortie
+        ): array {
             $admission = null;
             $reserve = 0;
             $engagement = 0;
             if (method_exists($plateforme, 'apercu')) {
                 $carte = $runs->carte($userId, $plateforme->journal(), (string) $profil->referentiel->id,
                     (string) $profil->gabarits);
-                ['admission' => $admission, 'reserve' => $reserve, 'engagement' => $engagement]
-                    = $this->prevoir($userId, $profil, $plateforme->apercu(new MapStore($this->pdo, $carte ?? 0)));
+                ['admission' => $admission, 'reserve' => $reserve, 'engagement' => $engagement] = $this->prevoir(
+                    $userId, $profil, $jeu['gabarits'], $plateforme->apercu(new MapStore($this->pdo, $carte ?? 0)));
                 if ($admission['refus'] !== null) {
                     throw new Twin9Exception($admission['refus'], 422);
                 }
@@ -111,11 +106,10 @@ final class Lancement
                     $moteur = MoteurReglages::depuis($profil);
                 }
             }
-            $id = $runs->creer($userId, $profil, $moteur, trim($portfolioNom), $portfolio, $plateforme->journal(),
-                $jeu['gabarits'], $horloge, $sortie, $reserve, $engagement);
-        } finally {
-            $this->pdo->query('SELECT RELEASE_LOCK(' . $verrou . ')');
-        }
+
+            return [$runs->creer($userId, $profil, $moteur, trim($portfolioNom), $portfolio, $plateforme->journal(),
+                $jeu['gabarits'], $horloge, $sortie, $reserve, $engagement), $admission, $reserve, $engagement];
+        });
         $runs->attester($id, [
             'profil' => ['id' => $profilId, 'nom' => $nom, 'mode' => $profil->mode],
             'admission' => $admission === null ? null : array_diff_key($admission, ['refus' => true])
@@ -141,7 +135,7 @@ final class Lancement
      */
     public function apercu(int $userId, ?int $profilId, string $portfolioNom, string $portfolio): array
     {
-        ['profil' => $profil, 'plateforme' => $plateforme]
+        ['profil' => $profil, 'jeu' => $jeu, 'plateforme' => $plateforme]
             = $this->preparer($userId, $profilId, $portfolioNom, $portfolio, new \DateTimeImmutable(), 'twin9/apercu');
         if (!method_exists($plateforme, 'apercu')) {
             throw new Twin9Exception('L’aperçu demande une version plus récente du moteur', 503);
@@ -154,7 +148,7 @@ final class Lancement
         $nouvelles = $etats['nouvelle'] ?? 0;
         $changees = $etats['changee'] ?? 0;
 
-        ['estimation' => $estimation, 'admission' => $admission] = $this->prevoir($userId, $profil, $vue);
+        ['estimation' => $estimation, 'admission' => $admission] = $this->prevoir($userId, $profil, $jeu['gabarits'], $vue);
 
         return [
             'journal' => $plateforme->journal(),
@@ -185,43 +179,51 @@ final class Lancement
      * The days it takes: the first days of the portfolio, in order, as long as
      * what they need fits in the lowest of its limits — its owner's credit
      * with the instance's key, less what their other runs in progress may
-     * still spend of it, and its budget: their cost at the most, the merge of
-     * their map at the most included, and room for the worst case a call holds
-     * before leaving (T10), one of a day's and one of the merge's, the largest
-     * observed (failing that, a day's worth each). The others wait for a next
-     * run, the memory keeping those done; a profile that reads every day again
-     * at each run (rescan, or no memory) takes all or none. Refused — not even
-     * a day to instruct and its merge fit, nor the merge alone with nothing to
-     * instruct —, it says what it would take, to the cent above. The estimate
-     * is the run's as it would go, or as the refusal says it.
+     * still spend of it (read together: RunRepository::disponible()), and its
+     * budget: their cost at the most, the merge of their map at the most
+     * included, and room for the worst case a call holds before leaving
+     * (T10), one of a day's and one of the merge's — the largest observed
+     * (failing that, a day's worth each), and at least what the run's call
+     * settings hold on a prompt as large as the set's two largest templates
+     * and its largest day to instruct (the map, for the merge's). The others
+     * wait for a next run, the memory keeping those done; a profile that reads
+     * every day again at each run (rescan, or no memory) takes all or none.
+     * Refused — not even a day to instruct and its merge fit, nor the merge
+     * alone with nothing to instruct —, it says what it would take, to the
+     * cent above. The estimate is the run's as it would go, or as the refusal
+     * says it; its source, the evaluations when they say all it needs, else
+     * the reference.
      *
      * Its reserve is the merge of its map at the most, with the worst case of a
      * call of it: its days' calls never eat into it. Its engagement, with the
      * instance's key, is what it was granted: what it needs.
      *
+     * @param array<string, string> $gabarits its template set, each template by name
      * @param array{journees: list<array{id: string, etat: string, octets?: int}>,
      *              memoire?: list<array{id: string, octets: int}>, poles: int} $vue the engine's preview
      * @return array{estimation: array<string, mixed>, admission: array<string, mixed>, reserve: int, engagement: int}
      */
-    private function prevoir(int $userId, stdClass $profil, array $vue): array
+    private function prevoir(int $userId, stdClass $profil, array $gabarits, array $vue): array
     {
         $instance = $profil->cle === 'instance';
         $parLots = $profil->voie === 'lots';
         $marge = $instance ? $this->config->marge() : 1.0;
         // by size, when the engine gives each day's (T8); an older engine, by the reference
         $tailles = array_filter($vue['journees'], static fn (array $j): bool => !isset($j['octets'])) === [];
-        $modele = $tailles ? (new Evaluations($this->pdo))->modele(Evaluations::signature($profil), $parLots, $marge) : null;
+        $modele = $tailles ? (new Evaluations($this->pdo))->modele(Evaluations::signature($profil,
+            self::empreinte($gabarits)), $parLots, $marge) : null;
         // the reference run read one pole: a complete run reads the referential's
         $poles = $profil->mode === 'test' ? 1 : max(1, (int) $vue['poles']);
         $reference = self::REFERENCE_MICROUSD * $poles * ($parLots ? 0.5 : 1.0) * $marge;
         $bornes = ['min', 'moyenne', 'max'];
 
         // what bounds it: its owner's credit with the instance's key, less what their runs in progress may still
-        // spend of it; its budget; the lower of them
-        $autres = $instance ? (new RunRepository($this->pdo))->engagementsEnCours($userId) : 0;
+        // spend of it, read together; its budget; the lower of them
+        ['solde' => $solde, 'autres' => $autres] = $instance
+            ? (new RunRepository($this->pdo))->disponible($userId) : ['solde' => 0, 'autres' => 0];
         $limites = [];
         if ($instance) {
-            $limites['credit'] = (new CreditService($this->pdo))->balance($userId) - $autres;
+            $limites['credit'] = $solde - $autres;
         }
         if (($profil->budget_usd ?? null) !== null) {
             $limites['budget'] = (int) round((float) $profil->budget_usd * 1_000_000);
@@ -235,8 +237,23 @@ final class Lancement
             ? array_fill_keys($bornes, $reference) : Evaluations::selon($modele['journee'], $ko);
         $parCarte = static fn (float $ko): array => ($modele['fusion'] ?? null) === null
             ? array_fill_keys($bornes, $reference) : Evaluations::selon($modele['fusion'], $ko);
-        $pireJour = $modele['pire_cas']['journee'] ?? $reference;
-        $pireFusion = $modele['pire_cas']['fusion'] ?? $reference;
+        // the worst case a call holds: the largest observed, else a day's worth; at least what its settings hold on
+        // a prompt of the set's two largest templates and this many bytes
+        $gabarit = 2 * max(0, 0, ...array_map('strlen', array_values($gabarits)));
+        $combinaisons = (new CallSettings($profil))->combinaisons();
+        $grille = $this->config->read();
+        $pireCas = static function (?float $observe, int $octets) use ($reference, $gabarit, $combinaisons, $grille,
+                                                                       $parLots, $instance): float {
+            $pire = $observe ?? $reference;
+            foreach ($combinaisons as $c) {
+                $pire = max($pire, (float) (Twin9Config::cout($grille, $c['modele'], $gabarit + $octets, $c['budget_sortie'],
+                    'twin9', $parLots, $instance) ?? 0));
+            }
+
+            return $pire;
+        };
+        $pireJour = static fn (int $octets): float => $pireCas($modele['pire_cas']['journee'] ?? null, $octets);
+        $pireFusion = static fn (float $ko): float => $pireCas($modele['pire_cas']['fusion'] ?? null, (int) ceil($ko * 1024));
 
         // the map the merge reads: the days of the memory, and the new days as the run takes them
         $ko = 0.0;
@@ -249,25 +266,28 @@ final class Lancement
             $attente[$jour['etat']] = ($attente[$jour['etat']] ?? 0) + 1;
         }
         unset($attente['inchangee']);
-        $etat = static fn (array $jours, float $ko, int $instruites, array $attente): array => [
+        $etat = static fn (array $jours, float $ko, int $instruites, int $octets, array $attente): array => [
             'jours' => $jours, 'fusion' => $parCarte($ko), 'instruites' => $instruites, 'attente' => $attente,
-            'besoin' => $jours['max'] + ($instruites > 0 ? $pireJour : 0.0) + $parCarte($ko)['max'] + $pireFusion];
+            'pire_fusion' => $pireFusion($ko), 'besoin' => $jours['max'] + ($instruites > 0 ? $pireJour($octets) : 0.0)
+                + $parCarte($ko)['max'] + $pireFusion($ko)];
 
         // what each first days of the portfolio cost, and need
         $jours = array_fill_keys($bornes, 0.0);
         $instruites = 0;
-        $etats = [$etat($jours, $ko, 0, $attente)];
+        $plusGrande = 0;
+        $etats = [$etat($jours, $ko, 0, 0, $attente)];
         foreach ($vue['journees'] as $jour) {
             $taille = Evaluations::ko($jour['octets'] ?? 0);
             $ko += $jour['etat'] === 'nouvelle' ? $taille : 0.0;
             if ($jour['etat'] !== 'inchangee') {
                 $instruites++;
                 $attente[$jour['etat']]--;
+                $plusGrande = max($plusGrande, (int) ($jour['octets'] ?? 0));
                 foreach ($parJour($taille) as $b => $cout) {
                     $jours[$b] += $cout;
                 }
             }
-            $etats[] = $etat($jours, $ko, $instruites, $attente);
+            $etats[] = $etat($jours, $ko, $instruites, $plusGrande, $attente);
         }
         $total = \count($vue['journees']);
         $admises = 0;
@@ -296,15 +316,17 @@ final class Lancement
         $usd = static fn (float $microusd): float => round($microusd / 1_000_000, 6);
         // by batches, the time is Anthropic's: the reference, made by direct calls, says nothing of it
         $secondes = $modele['secondes_par_journee'] ?? (float) (self::REFERENCE_SECONDES * $poles);
+        // the evaluations say it all only when they say what its days and its merge cost
+        $observe = ($modele['fusion'] ?? null) !== null && ($retenu['instruites'] === 0 || ($modele['journee'] ?? null) !== null);
 
         return [
             'estimation' => [
                 'cout_usd' => $usd($retenu['jours']['moyenne'] + $retenu['fusion']['moyenne']),
                 'min_usd' => $usd($retenu['jours']['min'] + $retenu['fusion']['min']),
                 'max_usd' => $usd($retenu['jours']['max'] + $retenu['fusion']['max']),
-                'reserve_usd' => $usd($retenu['fusion']['max'] + $pireFusion),
+                'reserve_usd' => $usd($retenu['fusion']['max'] + $retenu['pire_fusion']),
                 'duree_s' => $parLots ? null : (int) round($secondes * max(1, $retenu['instruites'])),
-            ] + ($modele !== null ? ['evaluations' => $modele['evaluations']] : ['reference' => 'PLANT-01', 'poles' => $poles]),
+            ] + ($observe ? ['evaluations' => $modele['evaluations']] : ['reference' => 'PLANT-01', 'poles' => $poles]),
             'admission' => [
                 'journees' => $admises,
                 'total' => $total,
@@ -314,9 +336,9 @@ final class Lancement
                 'changees_en_attente' => $refus === null ? $retenu['attente']['changee'] : $etats[0]['attente']['changee'],
                 'autres_usd' => $limite === 'credit' ? $usd($autres) : 0.0,
                 'refus' => $refus === null ? null : self::refus($refus, (string) $limite, $retenu['besoin'],
-                    $limite === 'credit' ? $autres : 0, $modele !== null),
+                    $limite === 'credit' ? $autres : 0, $observe),
             ],
-            'reserve' => $refus === null ? (int) ceil($retenu['fusion']['max'] + $pireFusion) : 0,
+            'reserve' => $refus === null ? (int) ceil($retenu['fusion']['max'] + $retenu['pire_fusion']) : 0,
             'engagement' => $refus === null && $instance ? (int) ceil($retenu['besoin']) : 0,
         ];
     }
@@ -433,8 +455,12 @@ final class Lancement
         return [ProfilRepository::validate($ligne['profil']), $ligne['nom']];
     }
 
-    /** The template set's fingerprint: each name and content, in name order. */
-    private static function empreinte(array $gabarits): string
+    /**
+     * The template set's fingerprint: each name and content, in name order.
+     *
+     * @param array<string, string> $gabarits
+     */
+    public static function empreinte(array $gabarits): string
     {
         ksort($gabarits, SORT_STRING);
         $contexte = hash_init('sha256');

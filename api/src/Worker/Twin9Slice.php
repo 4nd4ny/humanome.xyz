@@ -228,7 +228,6 @@ final class Twin9Slice
             $r['reserve_fusion'],
         );
         $run->engage = $this->couts->engage($id);
-        $run->engagementsAutres = $run->credits() ? $this->runs->engagementsEnCours($r['user_id'], $id) : 0;
 
         return $run;
     }
@@ -338,10 +337,10 @@ final class Twin9Slice
                     return;
                 }
                 // never into the merge's reserve for a day's call, nor into what the owner's other runs may
-                // still spend (T8); without either, the debit checks the credit itself
-                $solde = $run->credits() && $run->plancher($call) + $run->engagementsAutres > 0
-                    ? $this->couts->solde($run->userId) : null;
-                $retenue = $run->retenue($call, $reserve, $solde);
+                // still spend (T8): the credit and their commitments read together, as they are now
+                ['solde' => $solde, 'autres' => $autres] = $run->credits()
+                    ? $this->runs->disponible($run->userId, $run->id) : ['solde' => null, 'autres' => 0];
+                $retenue = $run->retenue($call, $reserve, $solde, $autres);
                 if ($retenue !== null) {
                     $run->bloque = $retenue;
                     continue;

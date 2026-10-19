@@ -17,7 +17,8 @@ use stdClass;
  * nothing for a day taken back from the memory —, what its merge cost, the
  * largest worst case a call of its days, and of its merge, held before
  * leaving (T10), its final cost and its active duration, and the settings its
- * profile chose. A row outlives its run; the account purge anonymizes it.
+ * profile chose, with its template set's fingerprint. A row outlives its run;
+ * the account purge anonymizes it.
  *
  * The forecasts (modele(), selon()) read the latest evaluations of the same
  * settings (signature()), each converted to the lane and the key of the run
@@ -47,14 +48,17 @@ final class Evaluations
     }
 
     /**
-     * What the forecasts compare: the mode, the referential, the template set,
-     * the models and the performance, the algorithm's parameters — all a
-     * run's calls depend on, but its lane and its key, which a forecast
-     * converts, its caps and its parallelism.
+     * What the forecasts compare: the mode, the referential and its version,
+     * the template set and its content, the models and the performance, the
+     * algorithm's parameters — all a run's calls depend on, but its lane and
+     * its key, which a forecast converts, its caps and its parallelism.
+     *
+     * @param string $jeu the template set's fingerprint (Lancement::empreinte()): an edited set is another one
      */
-    public static function signature(stdClass $profil): string
+    public static function signature(stdClass $profil, string $jeu): string
     {
-        return substr(hash('sha256', json_encode(CallSettings::canonique(self::comparables($profil)), self::JSON)), 0, 16);
+        return substr(hash('sha256', json_encode(CallSettings::canonique(self::comparables($profil, $jeu)), self::JSON)),
+            0, 16);
     }
 
     /** A size as the evaluations keep it, and as the forecasts read it: in kilobytes, to the hundredth. */
@@ -69,11 +73,13 @@ final class Evaluations
      * that the map's days do not name keeps its cost, its size unknown; a day
      * where a call failed says so (`panne`): the next run maps it again.
      *
+     * @param string $jeu its template set's fingerprint (Lancement::empreinte())
      * @param array<string, int> $octets the days of its map, in order — those the run took, then those its memory
      *        keeps —: each day's size in bytes, by its id
      * @param float $marge the instance's margin its costs include; 1.0 with its owner's own key
      */
-    public function consigner(int $runId, int $userId, stdClass $profil, array $octets, float $marge, int $dureeS): void
+    public function consigner(int $runId, int $userId, stdClass $profil, string $jeu, array $octets, float $marge,
+                              int $dureeS): void
     {
         $stmt = $this->pdo->prepare(
             'SELECT appel, statut, COALESCE(cout_microusd, 0), pire_cas_microusd FROM twin9_appels WHERE run_id = ?'
@@ -110,7 +116,7 @@ final class Evaluations
                                             cout_fusion_microusd, pire_cas_journee_microusd, pire_cas_fusion_microusd,
                                             cout_microusd, duree_s)
              VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)'
-        )->execute([$runId, $userId, self::signature($profil), json_encode(self::reglages($profil, $marge), self::JSON),
+        )->execute([$runId, $userId, self::signature($profil, $jeu), json_encode(self::reglages($profil, $jeu, $marge), self::JSON),
                     json_encode($journees, self::JSON), $coutJournees, $total - $coutJournees, $pireCas['journee'],
                     $pireCas['fusion'], $total, $dureeS]);
     }
@@ -252,25 +258,26 @@ final class Evaluations
     }
 
     /** @return array<string, mixed> its lane, key and margin, with what the forecasts compare */
-    private static function reglages(stdClass $profil, float $marge): array
+    private static function reglages(stdClass $profil, string $jeu, float $marge): array
     {
         return ['voie' => (string) $profil->voie, 'cle' => (string) $profil->cle, 'marge' => $marge]
-            + self::comparables($profil);
+            + self::comparables($profil, $jeu);
     }
 
     /**
-     * @return array<string, mixed> the mode, the referential, the template set, the models and the performance
-     *         (stages, steps, readers), the algorithm's parameters
+     * @return array<string, mixed> the mode, the referential and its version, the template set and its
+     *         fingerprint, the models and the performance (stages, steps, readers), the algorithm's parameters
      */
-    private static function comparables(stdClass $profil): array
+    private static function comparables(stdClass $profil, string $jeu): array
     {
         $lecteurs = [];
         foreach ($profil->college ?? [] as $lecteur) {
             $lecteurs[] = array_intersect_key((array) $lecteur, array_flip(self::LECTEUR));
         }
         $reglages = ['mode' => (string) $profil->mode, 'referentiel' => (string) ($profil->referentiel->id ?? ''),
-                     'gabarits' => (string) ($profil->gabarits ?? ''), 'etages' => $profil->etages,
-                     'etapes' => $profil->etapes ?? new stdClass(), 'lecteurs' => $lecteurs];
+                     'version_referentiel' => (string) ($profil->referentiel->version ?? ''),
+                     'gabarits' => (string) ($profil->gabarits ?? ''), 'empreinte_gabarits' => $jeu,
+                     'etages' => $profil->etages, 'etapes' => $profil->etapes ?? new stdClass(), 'lecteurs' => $lecteurs];
         foreach (self::ALGORITHME as $cle) {
             $reglages[$cle] = $profil->{$cle} ?? null;
         }

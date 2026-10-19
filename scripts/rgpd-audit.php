@@ -119,6 +119,7 @@ final class RgpdAudit
         'twin9_runs' => 'archive',
         'twin9_appels' => 'archive',
         'twin9_resultats' => 'archive',
+        'twin9_evaluations' => 'archive',   // a run done's evaluation (migration 030, T8): sizes, costs, settings, with its run
         'twin9_lots' => '—',                // a run's batches (migration 026): ids and counts, no content
         'twin9_lots_a_effacer' => '—',      // batches of erased accounts (migration 028): Anthropic's ids, no owner
         'twin9_jeux' => '—',                // copies of the v9.8's templates (migration 029): platform content, author SET NULL

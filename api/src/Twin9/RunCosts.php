@@ -94,12 +94,6 @@ final class RunCosts
         return $this->config->coutMicrousd($modele, $tokensIn, $tokensOut, 'twin9', $parLots, $marge);
     }
 
-    /** An owner's credit, in micro-USD. */
-    public function solde(int $userId): int
-    {
-        return $this->credits->balance($userId);
-    }
-
     /** What a run has committed: the worst cases its calls hold, the real costs of those settled. */
     public function engage(int $runId): int
     {

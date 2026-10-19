@@ -43,8 +43,6 @@ final class Twin9Run
     /** Why no new call of it leaves (RunCosts: its budget, its duration, its owner's credit); null: nothing. */
     public ?string $bloque = null;
 
-    /** What its owner's other runs in progress may still spend of their credit (T8), in micro-USD: none eats into it. */
-    public int $engagementsAutres = 0;
 
     /** Calls it sent in this slice, directly or in batches: while any, it does not stop. */
     public int $envoyes = 0;
@@ -120,11 +118,12 @@ final class Twin9Run
     /**
      * Why a new call may not hold its worst case now (T10, T8), or null: its
      * budget, or its owner's credit ($solde, with the instance's key; null
-     * otherwise, or for the debit to check alone), would go below what it may
-     * not eat into — for a day's call, its run's merge reserve; for the
-     * credit, what its owner's other runs in progress may still spend too.
+     * otherwise), would go below what it may not eat into — for a day's call,
+     * its run's merge reserve; for the credit, what its owner's other runs in
+     * progress may still spend too ($autres, read with $solde:
+     * RunRepository::disponible()).
      */
-    public function retenue(Call $call, int $reserve, ?int $solde): ?string
+    public function retenue(Call $call, int $reserve, ?int $solde, int $autres = 0): ?string
     {
         $propre = $this->plancher($call);
         if ($this->budget !== null && $this->engage + $reserve > $this->budget - $propre) {
@@ -135,7 +134,7 @@ final class Twin9Run
             $solde === null => null,
             $reserve > $solde => RunCosts::CREDIT,
             $reserve > $solde - $propre => RunCosts::RESERVE_CREDIT,
-            $reserve > $solde - $propre - $this->engagementsAutres => RunCosts::AUTRES,
+            $reserve > $solde - $propre - $autres => RunCosts::AUTRES,
             default => null,
         };
     }

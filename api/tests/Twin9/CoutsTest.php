@@ -277,8 +277,8 @@ final class CoutsTest extends TestCase
             ->execute([$autre, str_repeat('0', 64)]);
         $runs = new RunRepository($this->pdo);
         $id = $this->nouveauRun(self::SONNET);
-        self::assertSame(500_000, $runs->engagementsEnCours($this->user, $id));
-        self::assertSame(0, $runs->engagementsEnCours($this->user, $autre), 'le run qui demande laissé de côté');
+        self::assertSame(['solde' => 1_000_000, 'autres' => 500_000], $runs->disponible($this->user, $id));
+        self::assertSame(0, $runs->disponible($this->user, $autre)['autres'], 'le run qui demande laissé de côté');
 
         $this->jusquALArret(self::anthropic(), run: $id);
         self::assertSame('echoue', $runs->statut($id));
@@ -289,7 +289,55 @@ final class CoutsTest extends TestCase
         self::assertGreaterThanOrEqual(500_000, (new CreditService($this->pdo))->balance($this->user));
 
         self::assertTrue($runs->annuler($autre, $this->user));
-        self::assertSame(0, $runs->engagementsEnCours($this->user, $id), 'plus rien ne lui est gardé');
+        self::assertSame(0, $runs->disponible($this->user, $id)['autres'], 'plus rien ne lui est gardé');
+    }
+
+    /**
+     * T8: what another run in progress may still spend is read with the
+     * credit, at each call: its calls in the same slice move both together,
+     * and never hold this one back twice.
+     */
+    public function testAnotherRunsCallsInTheSameSliceNeverCountTwice(): void
+    {
+        $this->pdo->prepare('UPDATE twin9_credits SET balance_microusd = 1000000 WHERE user_id = ?')
+            ->execute([$this->user]);
+        // the other run, advanced first: granted 500,000 µ$, its day's two readers hold their worst cases first
+        $autre = $this->nouveauRun(self::SONNET, portfolio: "## J1\nUn jour.\n", journal: 'autre', engagement: 500_000);
+        $id = $this->nouveauRun(self::SONNET);
+
+        (new Tick($this->pdo, ['budgetSeconds' => 2, 'twin9Sender' => new DirectCalls(self::anthropic()),
+                               'twin9Pauses' => [0.05, 0.1]]))->run();
+        $envoyes = $this->pdo->prepare('SELECT COUNT(*) FROM twin9_appels WHERE run_id = ? AND appel LIKE "journees/%/tags_%"');
+        $envoyes->execute([$autre]);
+        self::assertSame(2, (int) $envoyes->fetchColumn());
+        $envoyes->execute([$id]);
+        self::assertSame(2, (int) $envoyes->fetchColumn(), 'les 500 000 µ$ que l’autre ne retient pas : deux appels, pas trois');
+    }
+
+    /**
+     * T8: a run resumed is admitted again: what it may still spend of the
+     * credit never goes beyond what the owner's other runs in progress leave
+     * free, so that they keep what they were granted.
+     */
+    public function testAResumedRunIsAdmittedAgain(): void
+    {
+        // a run granted 600,000 µ$, cancelled once it had spent 100,000
+        $this->pdo->prepare('UPDATE twin9_credits SET balance_microusd = 900000 WHERE user_id = ?')
+            ->execute([$this->user]);
+        $runs = new RunRepository($this->pdo);
+        $repris = $this->nouveauRun(self::SONNET, portfolio: "## J1\nRepris.\n", journal: 'repris', engagement: 600_000);
+        $this->pdo->prepare('INSERT INTO twin9_appels (run_id, appel, etape, modele, sha256, statut, cout_microusd)
+                             VALUES (?, "journees/J1/1-greffier.md", "greffier", "claude-sonnet-5-5", ?, "repondu", 100000)')
+            ->execute([$repris, str_repeat('0', 64)]);
+        self::assertTrue($runs->annuler($repris, $this->user));
+        // another, launched meanwhile, granted 800,000
+        $autre = $this->nouveauRun(self::SONNET, portfolio: "## J1\nAutre.\n", journal: 'autre', engagement: 800_000);
+
+        self::assertTrue($runs->reprendre($repris, $this->user));
+        self::assertSame(200_000, (int) $this->pdo->query("SELECT engagement_microusd FROM twin9_runs WHERE id = $repris")
+            ->fetchColumn(), 'ses 100 000 dépensés, et les 100 000 que l’autre laisse');
+        self::assertSame(['solde' => 900_000, 'autres' => 100_000], $runs->disponible($this->user, $autre),
+            'l’autre garde ses 800 000');
     }
 
     /** Its duration ended, no call leaves and the run stops; resumed, its duration counts again from then. */

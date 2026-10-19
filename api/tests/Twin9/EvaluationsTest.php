@@ -11,6 +11,7 @@ use Humanome\Twin9\CreditService;
 use Humanome\Twin9\DirectCalls;
 use Humanome\Twin9\EngineLoader;
 use Humanome\Twin9\Evaluations;
+use Humanome\Twin9\Lancement;
 use Humanome\Twin9\ProfilRepository;
 use Humanome\Twin9\RunRepository;
 use Humanome\Twin9\Twin9Config;
@@ -88,7 +89,7 @@ final class EvaluationsTest extends TestCase
         $compteurs = $runs->compteursDe($premier);
         $profil = $this->profil();
         self::assertSame($this->user, $e['user_id']);
-        self::assertSame(Evaluations::signature($profil), $e['signature']);
+        self::assertSame(Evaluations::signature($profil, Lancement::empreinte(self::GABARITS)), $e['signature']);
         $parJour = $this->couts($http->requests);
         self::assertEquals([
             ['ko' => round(\strlen('Premier jour : le capteur monté.') / 1024, 2), 'cout_microusd' => $parJour['J1']],
@@ -105,8 +106,10 @@ final class EvaluationsTest extends TestCase
         $config = new Twin9Config(new SettingsRepository($this->pdo));
         // MySQL's JSON keeps an object's keys in its own order
         self::assertEquals(['mode' => 'complet', 'voie' => 'directe', 'cle' => 'instance', 'marge' => $config->marge(),
-                            'referentiel' => 'respire', 'gabarits' => $profil->gabarits],
-            array_intersect_key($e['reglages'], array_flip(['mode', 'voie', 'cle', 'marge', 'referentiel', 'gabarits'])));
+                            'referentiel' => 'respire', 'version_referentiel' => '7.0.0', 'gabarits' => $profil->gabarits,
+                            'empreinte_gabarits' => Lancement::empreinte(self::GABARITS)],
+            array_intersect_key($e['reglages'], array_flip(['mode', 'voie', 'cle', 'marge', 'referentiel',
+                'version_referentiel', 'gabarits', 'empreinte_gabarits'])));
         self::assertEquals(json_decode(json_encode($profil->etages), true), $e['reglages']['etages'],
             'les modèles et la performance de chaque étage');
         self::assertCount(\count($profil->college), $e['reglages']['lecteurs']);
@@ -258,21 +261,26 @@ final class EvaluationsTest extends TestCase
 
         // a profile's signature: all its calls depend on, but its lane, its key, its caps and its parallelism
         $profil = $this->profil();
+        $jeu = Lancement::empreinte(self::GABARITS);
         $autre = json_decode(json_encode($profil));
         $autre->voie = 'lots';
         $autre->cle = 'personnelle';
         $autre->budget_usd = 3.0;
         $autre->duree_minutes = 30;
         $autre->parallelisme->journees = 2;
-        self::assertSame(Evaluations::signature($profil), Evaluations::signature($autre));
+        self::assertSame(Evaluations::signature($profil, $jeu), Evaluations::signature($autre, $jeu));
         foreach ([static fn (stdClass $p) => $p->etages->profond->effort = 'low',
                   static fn (stdClass $p) => $p->gabarits = 'defaut',
+                  static fn (stdClass $p) => $p->referentiel->version = '7.1.0',
                   static fn (stdClass $p) => $p->scan_global->enabled = !$p->scan_global->enabled,
                   static fn (stdClass $p) => $p->jury = (object) ((array) $p->jury + ['autre' => 1])] as $n => $changer) {
             $autre = json_decode(json_encode($profil));
             $changer($autre);
-            self::assertNotSame(Evaluations::signature($profil), Evaluations::signature($autre), (string) $n);
+            self::assertNotSame(Evaluations::signature($profil, $jeu), Evaluations::signature($autre, $jeu), (string) $n);
         }
+        self::assertNotSame(Evaluations::signature($profil, $jeu),
+            Evaluations::signature($profil, Lancement::empreinte(['factice/fusion' => 'Un gabarit changé.'] + self::GABARITS)),
+            'un jeu de gabarits changé');
     }
 
     /**

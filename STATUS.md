@@ -15,10 +15,56 @@ Chantier en cours : le moteur Twin9 v9.8 en PHP, exécuté sur le serveur (ADR-0
 développé dans le dépôt privé `4nd4ny/Twin_v9` (`docs/plan-twin9-php.md`, prompts T0 → T18, une
 conversation chacun ; entrées du 2026-10-17). T0 à T7 et T12 sont fusionnés : le moteur passe
 l'oracle complet dans `Twin_v9`, le profil est ici, les runs tournent sur le serveur par tranches.
-T8, la voie par lots, T13, la page de configuration, et T9, lancer, suivre et lire un run, attendent
-leur revue (entrées du 2026-10-19) ; viennent ensuite T10 et T14.
+T8, la voie par lots, T13, la page de configuration, T9, lancer, suivre et lire un run, et T10, coûts,
+plafonds, relance, purge et export, attendent leur revue (entrées du 2026-10-19) ; vient ensuite T14.
 
 ## Fait
+
+- 2026-10-19 — **Moteur Twin9 en PHP, T10 : coûts, clés, relance, purge (branche
+  `feat/twin9-t10-costs`, sur celle de T9 ; `Twin_v9` : `feat/twin9-t10-costs`).** Chaque appel d'un
+  run paie son coût réel, son pire cas réservé avant de partir ; un run ne dépasse jamais son budget
+  et s'arrête à ses plafonds, sa carte incomplète, pour reprendre ; la page dit avant de lancer ce
+  que le run instruira et coûtera ; le compte emporte ses runs, ses lots chez Anthropic compris, et
+  son export les contient (`docs/contrats.md` §8.5).
+  - Migration 028 : `twin9_appels.reserve_microusd`, `twin9_runs.debut_at` et `actif_s`, table
+    `twin9_lots_a_effacer`.
+  - Coûts (`Twin9\RunCosts`) : la grille couvre Haiku 5.5 (0,10 $ / 0,50 $ le million, 0,50 $ /
+    2,50 $ au-delà de 100 000 jetons de prompt, `palier_long`) et Sonnet 5.5 (2 $ / 10 $) ; le coût
+    d'un appel est l'usage rendu, à moitié prix par lots, marge comprise avec la clé de l'instance,
+    sans elle avec la clé de la personne (`Twin9Config::coutMicrousd`). Avant chaque envoi, direct ou
+    par lot, le pire cas (octets du prompt, budget de sortie) est réservé et, avec la clé de
+    l'instance, débité du crédit dans la transaction qui écrit l'appel (`CreditService` rejoint une
+    transaction ouverte) ; la réponse le solde (réconciliation par modèle), un run arrêté, annulé ou
+    fini rend le reste. Un profil dont un modèle n'a pas de prix est refusé (`ProfilPolicy`).
+  - Plafonds : budget et durée de la copie du profil. Ce qu'un run a engagé ne dépasse jamais son
+    budget ; un appel qui le dépasserait ne part pas, le run s'arrête une fois rien dehors (`echoue`,
+    « budget atteint : carte incomplète ») ; de même pour sa durée, comptée depuis son lancement ou
+    sa dernière reprise, et pour le crédit. `POST …/reprendre` accepte un nouveau budget. Le suivi
+    donne le coût réel et les plafonds ; les compteurs, les journées instruites et la durée active.
+  - Avant de lancer (`POST /api/twin9/runs/apercu`, `Lancement::apercu`) : les journées nouvelles ou
+    changées depuis la mémoire de la carte, par le moteur (`Plateforme::apercu`, dans `Twin_v9` et le
+    moteur factice), et le coût et la durée estimés : la moyenne par journée des runs finis du même
+    profil et du même mode, à défaut le vrai run de PLANT-01 (0,1344 $, 94 s, en essai) fois les
+    pôles du référentiel. Rien n'est gardé.
+  - Une clé par run : celle de l'instance ou celle de la personne (T7) ; aucune n'est écrite dans les
+    tables du moteur, le grand-livre ni l'export (test).
+  - Purge (`DELETE /api/auth/account`, `Twin9\RunPurge`) : ses lots chez Anthropic de sa propre clé
+    annulés et supprimés avant que la clé parte ; ceux de la clé de l'instance confiés au tick
+    (`twin9_lots_a_effacer`, l'identifiant Anthropic seul). Export (`GET /api/twin9/mes-analyses`,
+    `Twin9\RunExport`) : runs, journaux, sorties et mémoire des cartes, filtrés, dans l'archive de
+    compte (`analysesTwin9`, schéma 1.2.0, validateurs recompilés).
+  - Front : `#/twin9` montre, l'accord donné, les journées à instruire, le coût et la durée estimés,
+    les plafonds du profil, et prévient si le crédit ne suffit pas ; la page du run montre le coût,
+    reprend sous un nouveau budget, renvoie vers la recharge, et ouvre la carte incomplète d'un run
+    arrêté dans la cartographie, qui la dit incomplète (`twin9-run` : `incomplete`).
+  - Textes : `docs/contrats.md` §8.5 et §4 (point 13), `docs/autorisations.md`,
+    `docs/rgpd-verification.md`, le registre RGPD (§11, §13), la politique de confidentialité,
+    l'aide de la rubrique, `docs/tests-e2e.md`.
+  - Tests : `CoutsTest` (dont la DoD : plafonné à 1 $, le run s'arrête avant, et le dit ; aucune
+    clé écrite), `ApercuTest` (dont : une journée ajoutée n'instruit qu'elle), `PurgeExportTest`
+    (dont : après la purge, aucune ligne du compte dans les tables du moteur) ; les comptes des
+    autres tests de runs ont du crédit ; moteur : `PlateformeTest::testThePreviewSaysWhichDaysARunInstructs` ;
+    front : `Twin9View.test`, `twin9-run.test`, `archive.test` ; bout en bout : `twin9-run.e2e.js`.
 
 - 2026-10-19 — **Moteur Twin9 en PHP, T9 : lancer, suivre, lire (branche `feat/twin9-t9-runs`, sur
   celle de T13).** Un run Twin9 se lance depuis le front, se suit, s'annule, se reprend et s'ouvre dans
@@ -1775,9 +1821,15 @@ leur revue (entrées du 2026-10-19) ; viennent ensuite T10 et T14.
 - Twin9 (T9) : les compteurs des runs pour l'administrateur ne sont servis que par
   `/api/twin9/admin/runs` ; `#/admin/twin9` (UC-ADM-05) ne les montre pas encore. On n'efface un run
   qu'en supprimant son compte ; UC-APP-10 décrit encore le moteur du navigateur (lot 3).
-- Twin9 (T8) : un compte purgé emporte ses lots de la base, pas de chez Anthropic, qui les garde
-  29 jours ; la purge de T10 devra les annuler et les supprimer d'abord. Un lot soumis avec une clé
-  qui change ensuite d'espace de travail n'est plus joignable.
+- Twin9 (T8, T10) : un lot soumis avec une clé qui change ensuite d'espace de travail n'est plus
+  joignable. À la suppression d'un compte, un lot de sa clé encore en cours d'annulation, ou dont la
+  soumission n'a pas eu de réponse, reste chez Anthropic jusqu'à ce qu'Anthropic l'efface (29 jours
+  au plus) : la clé part avec le compte.
+- Twin9 (T10) : les appels minimaux qui vérifient les réglages avant le premier lot ne sont pas
+  débités (quelques jetons) ; un appel coupé par la fin d'une tranche n'est pas débité non plus,
+  ce qu'Anthropic en facture reste à la charge de l'instance. `#/admin/twin9` garde le palier des
+  longs prompts d'un modèle sans le montrer ni l'éditer (`PUT /api/twin9/admin/config` le règle).
+  L'estimation compte au moins une journée, la fusion se refaisant à chaque run.
 
 - `scripts/dev/dod-p11.sh` (répétition de la DoD P11) s'arrête à la première inscription
   (`422`, `emailConfirm` manquant) : il n'envoie pas la double saisie de l'email ni n'active le

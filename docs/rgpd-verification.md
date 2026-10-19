@@ -86,6 +86,41 @@ strictement vide après) et par les tests de purge de chaque module
 (`AuthAccountDeletionTest`, `CartographiesPurgeTest`, `CartographePurgeTest`,
 `MasseRgpdPurgeTest`).
 
+### Twin9 sur le serveur (migrations 024 à 028, T10)
+
+Les runs Twin9 gardent sur le serveur, avec l'accord de la personne, son
+portfolio et l'état de ses runs (ADR-011 §5, registre §13). Légende de la
+colonne export : `archive` = dans l'archive « un clic », lu par
+`GET /api/twin9/mes-analyses` (`analysesTwin9`, schéma 1.2.0).
+
+| Migration | Table | Personnelle ? | Suppression du compte | Export / accès |
+|---|---|---|---|---|
+| 024 | `twin9_profils` | oui (réglages, sans contenu) | CASCADE `user_id` | `via` (`GET /api/twin9/profils/{id}`) |
+| 025 | `twin9_cartes` | oui (carte d'un portfolio) | CASCADE `user_id` | `archive` |
+| 025 | `twin9_memoire` | **oui (journées, textes compris)** | chaîne via `twin9_cartes` | `archive` |
+| 025 | `twin9_runs` | **oui (copie du portfolio, réglages)** | CASCADE `user_id` | `archive` |
+| 025 | `twin9_appels` | **oui (réponses des modèles)** | chaîne via `twin9_runs` | `archive` |
+| 025 | `twin9_resultats` | oui (sorties du run) | chaîne via `twin9_runs` | `archive` |
+| 026 | `twin9_lots` | non (identifiants, compteurs) | chaîne via `twin9_runs` ; le lot chez Anthropic : ci-dessous | `—` |
+| 028 | `twin9_lots_a_effacer` | non (identifiant Anthropic seul, sans propriétaire) | — (vidée par le tick) | `—` |
+
+**Les lots encore chez Anthropic** (`DELETE /api/auth/account`,
+`Twin9\RunPurge`) : ceux de la clé personnelle sont annulés, puis supprimés
+une fois finis, avant la suppression du compte, tant que la clé existe ;
+ceux de la clé de l'instance laissent leur identifiant Anthropic dans
+`twin9_lots_a_effacer`, dans la transaction de la purge, et le tick les
+annule puis les supprime (`Twin9Lots`). Résidu : un lot de la clé
+personnelle encore en cours d'annulation, ou un lot dont la soumission n'a
+pas eu de réponse (son identifiant inconnu), reste chez Anthropic jusqu'à ce
+qu'Anthropic l'efface, 29 jours après sa création au plus.
+
+Preuves : `api/tests/Twin9/PurgeExportTest.php` — après la purge, aucune
+ligne du compte dans les tables du moteur, son lot confié au tick, celui
+d'un autre compte intact ; les lots annulés puis supprimés, de la clé de
+l'instance par le tick, de la clé personnelle à la purge ; l'export contient
+les runs, leurs journaux et la mémoire des cartes, filtrés. Aucune clé
+n'est écrite dans ces tables ni dans l'export : `CoutsTest::testNoKeyIsWrittenAnywhere`.
+
 ## Limites d'accès/portabilité identifiées (pas des bugs de purge)
 
 Ces deux points concernent l'**accès/portabilité** (RGPD art. 15/20), pas

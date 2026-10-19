@@ -246,13 +246,16 @@ Les jeux de gabarits des promptologues (T14) et les brouillons de référentiel
 Chacun lance, suit et lit ses runs, et seulement les siens. Il choisit qui
 d'autre lit leurs résultats : personne, ou le cartographe auquel il est lié.
 L'administrateur ne voit que des compteurs. Chaque ligne de la matrice a son
-test dans `api/tests/Twin9/RunsTest.php`.
+test dans `api/tests/Twin9/RunsTest.php` ; l'aperçu, dans `ApercuTest.php` ;
+l'export, dans `PurgeExportTest.php` (T10).
 
 | Ce que l'on fait | Visiteur | Compte | Cartographe lié | `admin` |
 |---|---|---|---|---|
+| Voir avant de lancer les journées à instruire, le coût et la durée estimés (rien n'est gardé) | — (401) | ✔ avec un de ses profils ou celui de la v9.8 | comme tout compte | comme tout compte |
 | Lancer un run : un de ses profils ou celui de la v9.8, son portfolio, son accord | — (401) | ✔ (accord exigé, 422 sans lui) | comme tout compte | comme tout compte |
 | Lancer avec le profil d'un autre | — | — (404) | — (404) | — (404) |
-| Suivre ses runs, les annuler, les reprendre, régler leur visibilité | — (401) | ✔ les siens | — (404) | — (404) |
+| Suivre ses runs, les annuler, les reprendre (sous un nouveau budget), régler leur visibilité | — (401) | ✔ les siens | — (404) | — (404) |
+| Exporter ses runs, leurs journaux et la mémoire de ses cartes | — (401) | ✔ les siens | — | — |
 | Faire avancer ses runs par la page du run (route de session) | — (401) | ✔ les siens seulement, jamais avec le jeton du tick | — | — |
 | Lire les résultats d'un run (filtrés, ADR-010 §2) | — (401) | ✔ les siens | ✔ si le run lui est visible (`cartographe`) | — (404) |
 | Voir les compteurs de tous les runs, sans contenu | — (401) | — (403) | — (403) | ✔ |
@@ -260,12 +263,14 @@ test dans `api/tests/Twin9/RunsTest.php`.
 | Route | Méthode | Accès |
 |---|---|---|
 | `/api/twin9/runs` | GET | Compte : ses runs (sans portfolio ni résultat), et si Twin9 tourne sur l'instance |
-| `/api/twin9/runs` | POST | Compte, + CSRF : `{profil, portfolio: {nom, texte}, accord, visibilite}` ; le profil est revalidé et admis (`ProfilPolicy`), son référentiel figé |
+| `/api/twin9/runs/apercu` | POST | Compte, + CSRF : `{profil, portfolio}` ; les journées nouvelles ou changées, le coût et la durée estimés, les plafonds, son crédit ; 404 pour le profil d'un autre ; rien n'est gardé |
+| `/api/twin9/runs` | POST | Compte, + CSRF : `{profil, portfolio: {nom, texte}, accord, visibilite}` ; le profil est revalidé et admis (`ProfilPolicy` : modèles au prix de l'instance compris), son référentiel figé |
 | `/api/twin9/runs/avancer` | POST | Compte, + CSRF : une tranche, de la durée de celles du tick et sous son verrou, pour ses seuls runs |
 | `/api/twin9/runs/{id}` | GET | Son propriétaire : sa progression, lue dans son journal ; 404 pour tout autre |
-| `/api/twin9/runs/{id}/annuler`, `/reprendre` | POST | Son propriétaire, + CSRF ; 409 hors de l'état voulu |
+| `/api/twin9/runs/{id}/annuler`, `/reprendre` | POST | Son propriétaire, + CSRF ; `/reprendre` accepte `{budget_usd}`, un nouveau budget ; 409 hors de l'état voulu |
 | `/api/twin9/runs/{id}/visibilite` | PUT | Son propriétaire, + CSRF : `privee` ou `cartographe` |
 | `/api/twin9/runs/{id}/resultats` | GET | Son propriétaire ; le cartographe lié si le run lui est visible ; 404 pour tout autre, administrateur compris |
+| `/api/twin9/mes-analyses` | GET | Compte : ses runs (copie du profil, portfolio, journal, sorties, filtrés) et la mémoire de ses cartes, pour l'archive de compte |
 | `/api/twin9/admin/runs` | GET | `admin` : compteurs, statut, dates ; jamais de portfolio ni de résultat |
 
 ### Backlog (hors v1, annexe B du plan)

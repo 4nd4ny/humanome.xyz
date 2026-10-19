@@ -223,28 +223,34 @@ passent.
 ### `web/e2e/twin9-run.e2e.js` (DoD T9)
 
 Un run lancé depuis le front va au bout, se suit, se reprend et s'ouvre dans
-la cartographie (plan du moteur PHP de `Twin_v9`, lot 2) : compte, profil par
-la voie directe, `#/twin9` (portfolio en fichier, accord), la page du run (ses
+la cartographie (plan du moteur PHP de `Twin_v9`, lot 2) : compte, crédité
+dans la base de développement (T10 : la clé de l'instance paie sur le crédit),
+profil par la voie directe, `#/twin9` (portfolio en fichier, accord ; la page
+dit alors les journées à instruire et le coût estimé, T10), la page du run (ses
 tours retenus le temps d'annuler puis de reprendre, puis jusqu'au bout),
 « Ouvrir dans la cartographie » : la compétence jugée montre, dans sa
-journée, la délibération de son jury. Le compte, effacé de la base de
-développement, emporte ses runs.
+journée, la délibération de son jury. Le compte, supprimé par
+`DELETE /api/auth/account`, emporte ses runs et ses cartes (T10).
 
 Le moteur est le **moteur factice** public, et Anthropic est simulé : l'API
 locale se lance avec
 
 ```sh
 set -a; . ./.env.dev; set +a
-TWIN_V9_DIR=api/tests/fixtures/twin9-factice WORKER_PROVIDER=mock ANTHROPIC_API_KEY=sk-ant-simule \
+TWIN_V9_DIR=$PWD/api/tests/fixtures/twin9-factice WORKER_PROVIDER=mock ANTHROPIC_API_KEY=sk-ant-simule \
   php -S localhost:8080 -t api/public
 ```
+
+Le chemin du moteur est absolu : le serveur intégré de PHP exécute l'API depuis
+`api/public`, où un chemin relatif à la racine ne mène nulle part (la page dit
+alors « L'analyse approfondie n'est pas disponible sur cette instance »).
 
 `WORKER_PROVIDER=mock` répond à chaque appel Twin9 par un texte fixe
 (`Llm\MockMultiHttpClient`), comme il le fait pour la masse ; la clé n'est
 qu'un nom, aucune requête ne part. Le scénario verse le jeu de gabarits du
 moteur factice dans la base de développement (`twin9_protocole`, noms
 `factice/…`) et l'en retire à la fin. Migrations à jour : `php
-scripts/migrate.php` (027).
+scripts/migrate.php` (028).
 
 ### Note historique — diff UI promptologue (corrigé)
 

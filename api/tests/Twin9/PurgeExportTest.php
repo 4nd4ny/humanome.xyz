@@ -49,6 +49,8 @@ final class PurgeExportTest extends CartographeTestCase
         'twin9_profils' => 'SELECT COUNT(*) FROM twin9_profils WHERE user_id = ?',
         'twin9_cartes' => 'SELECT COUNT(*) FROM twin9_cartes WHERE user_id = ?',
         'twin9_runs' => 'SELECT COUNT(*) FROM twin9_runs WHERE user_id = ?',
+        // T8: an evaluation stays, for the forecasts, no longer anyone's
+        'twin9_evaluations' => 'SELECT COUNT(*) FROM twin9_evaluations WHERE user_id = ?',
     ];
 
     protected function setUp(): void
@@ -94,13 +96,15 @@ final class PurgeExportTest extends CartographeTestCase
             ->fetchAll(PDO::FETCH_COLUMN);
         $avant = $this->lignes($alice['id'], $runs, $cartes);
         foreach (['twin9_profils', 'twin9_cartes', 'twin9_runs', 'twin9_appels', 'twin9_resultats', 'twin9_lots',
-                  'twin9_memoire'] as $table) {
+                  'twin9_memoire', 'twin9_evaluations'] as $table) {
             self::assertGreaterThan(0, $avant[$table], "$table avant la purge");
         }
 
         self::assertSame(204, $this->as_($alice, 'DELETE', '/api/auth/account')->getStatusCode());
 
         self::assertSame(array_fill_keys(array_keys($avant), 0), $this->lignes($alice['id'], $runs, $cartes));
+        self::assertSame(1, (int) self::$pdo->query("SELECT COUNT(*) FROM twin9_evaluations WHERE run_id = $fini AND user_id IS NULL")
+            ->fetchColumn(), 'son évaluation reste, anonyme');
         self::assertSame(['msgbatch_alice'], self::$pdo->query('SELECT lot FROM twin9_lots_a_effacer')
             ->fetchAll(PDO::FETCH_COLUMN), 'son lot chez Anthropic, confié au tick');
         self::assertSame(1, (int) self::$pdo->query('SELECT COUNT(*) FROM twin9_runs WHERE id = ' . $deBob)->fetchColumn());
@@ -139,8 +143,8 @@ final class PurgeExportTest extends CartographeTestCase
 
     /**
      * The account's export holds its runs — settings, portfolio, journal,
-     * outputs — and the memory of its maps; a recited template comes out
-     * redacted; another's runs stay out.
+     * outputs, evaluation (T8) — and the memory of its maps; a recited
+     * template comes out redacted; another's runs stay out.
      */
     public function testTheExportHoldsTheRunsTheirJournalsAndTheMemoryOfTheirMaps(): void
     {
@@ -164,6 +168,10 @@ final class PurgeExportTest extends CartographeTestCase
         self::assertSame(5, $a['compteurs']['appels'], 'un run fini garde ses compteurs');
         self::assertSame([], $a['appels']);
         self::assertArrayHasKey('carto_evolutive.json', $a['sorties']);
+        self::assertSame($a['compteurs']['cout_microusd'], $a['evaluation']['cout_microusd'], 'son évaluation');
+        self::assertCount(2, $a['evaluation']['journees']);
+        self::assertGreaterThan(0, $a['evaluation']['pire_cas_journee_microusd'], 'le plus grand pire cas d’un appel');
+        self::assertNull($b['evaluation'], 'un run en cours n’en a pas encore');
         self::assertSame('directe', $a['profil']['voie']);
         self::assertSame('Direct', $a['attestation']['profil']['nom']);
         self::assertSame(['journees/2026-01-05/1-greffier.md'], array_column($b['appels'], 'appel'));

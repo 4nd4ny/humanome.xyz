@@ -27,7 +27,9 @@ use stdClass;
  *   never exceeds its budget: a call whose worst case would go beyond it does
  *   not leave, nor any new one after it, and the run stops once nothing it
  *   sent is still out. Its owner's credit stops it the same way; its
- *   duration too, every call held back.
+ *   duration too, every call held back. The calls of its days never eat into
+ *   what it keeps for its merge, nor its calls into what its owner's other
+ *   runs in progress may still spend (T8, strategy A: Lancement::prevoir()).
  *
  * The ledger (twin9_credit_events) gets a reservation by call, and a
  * reconciliation or a refund by model each time calls are settled, with
@@ -41,6 +43,17 @@ final class RunCosts
     public const DUREE = 'durée atteinte : carte incomplète';
 
     public const CREDIT = 'crédit insuffisant : carte incomplète';
+
+    /**
+     * A day's call would eat into the merge's reserve (T8, strategy A), of its
+     * budget or of its owner's credit: the estimate of its days fell short.
+     */
+    public const RESERVE_BUDGET = 'budget atteint (fusion réservée) : carte incomplète';
+
+    public const RESERVE_CREDIT = 'crédit insuffisant (fusion réservée) : carte incomplète';
+
+    /** A call would eat into what its owner's other runs in progress may still spend (T8). */
+    public const AUTRES = 'crédit insuffisant (engagé par vos autres analyses) : carte incomplète';
 
     private readonly CreditService $credits;
 

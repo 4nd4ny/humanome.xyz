@@ -11,9 +11,9 @@ use PDO;
  * An account's Twin9 runs in its export (T10, ADR-011 §5; the archive's
  * `analysesTwin9`, docs/contrats.md §8.5): each run with its settings, its
  * portfolio, its attestation, its journal — the responses, never a prompt
- * (the journal keeps their SHA-256 only), never a key — and its outputs; the
- * memory of each of its maps. A run done keeps its counters only, its
- * journal gone (ADR-011 §5).
+ * (the journal keeps their SHA-256 only), never a key —, its outputs and its
+ * evaluation (T8, Evaluations); the memory of each of its maps. A run done
+ * keeps its counters only, its journal gone (ADR-011 §5).
  *
  * What the models and the engine wrote passes the leak filter (ADR-010 §2),
  * against every template set its runs took: a recitation is redacted, the
@@ -119,6 +119,39 @@ final class RunExport
                 JSON_THROW_ON_ERROR),
             'appels' => $appels,
             'sorties' => (object) $sorties,
+            'evaluation' => $this->evaluation($id),
+        ];
+    }
+
+    /**
+     * @return array<string, mixed>|null what a run done left to foresee the next ones (T8): sizes, costs, worst
+     *         cases, settings
+     */
+    private function evaluation(int $runId): ?array
+    {
+        $stmt = $this->pdo->prepare(
+            'SELECT reglages, journees, cout_journees_microusd, cout_fusion_microusd, pire_cas_journee_microusd,
+                    pire_cas_fusion_microusd, cout_microusd, duree_s, created_at
+               FROM twin9_evaluations WHERE run_id = ?'
+        );
+        $stmt->execute([$runId]);
+        $e = $stmt->fetch();
+        if ($e === false) {
+            return null;
+        }
+
+        return [
+            'reglages' => json_decode((string) $e['reglages'], true, 64, JSON_THROW_ON_ERROR),
+            'journees' => json_decode((string) $e['journees'], true, 64, JSON_THROW_ON_ERROR),
+            'cout_journees_microusd' => (int) $e['cout_journees_microusd'],
+            'cout_fusion_microusd' => (int) $e['cout_fusion_microusd'],
+            'pire_cas_journee_microusd' => $e['pire_cas_journee_microusd'] === null ? null
+                : (int) $e['pire_cas_journee_microusd'],
+            'pire_cas_fusion_microusd' => $e['pire_cas_fusion_microusd'] === null ? null
+                : (int) $e['pire_cas_fusion_microusd'],
+            'cout_microusd' => (int) $e['cout_microusd'],
+            'duree_s' => (int) $e['duree_s'],
+            'created_at' => (string) $e['created_at'],
         ];
     }
 

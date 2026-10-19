@@ -78,6 +78,7 @@ final class RgpdAuditTest extends MasseTestCase
         'twin9_jeux.user_id' => 'SET NULL', // migration 029 (T14): a copy of the v9.8's templates survives its author
         'twin9_jeux_gabarits.updated_by' => 'SET NULL', // migration 029 (T14)
         'twin9_jeux_versions.created_by' => 'SET NULL', // migration 029 (T14)
+        'twin9_evaluations.user_id' => 'SET NULL', // migration 030 (T8): an evaluation serves the forecasts, no longer anyone's
     ];
 
     public function testAucuneColonneUtilisateurSansCleEtrangere(): void

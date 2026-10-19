@@ -37,9 +37,10 @@ use Twin9\Run\Pending;
  * again. A tick that dies leaves its calls in flight sent: the next takes
  * them up, their attempt counted.
  *
- * Only the oldest days a run has under way send their calls (the days led
- * abreast, parallelisme.journees), at most parallelisme.appels_directs at a
- * time; the key is read for each call. Logging: counters only.
+ * By direct calls, only the oldest days a run has under way send their calls
+ * (the days led abreast, parallelisme.journees), at most
+ * parallelisme.appels_directs at a time; by batches, all its days (T8). The
+ * key is read for each call. Logging: counters only.
  *
  * A run by batches (T8, Twin9Lots) is opened only when its batches call for
  * it: one has ended, nothing is at Anthropic any more, or calls are still to
@@ -51,9 +52,13 @@ use Twin9\Run\Pending;
  * A call leaves holding its worst case (T10, RunCosts): debited from its
  * owner's credits with the instance's key, counted against the run's budget.
  * A call whose worst case its budget or its owner's credit cannot hold does
- * not leave, nor any new one after it; once its duration has ended, none
- * leaves. The slice settles what its calls' outcomes free, and a run held
- * back that has nothing out any more stops, its map incomplete, to resume.
+ * not leave, nor any new one after it; a day's call does not eat into what
+ * the run keeps for its merge either, nor any call into what its owner's
+ * other runs in progress may still spend (T8, Twin9Run::retenue()); once its
+ * duration has ended, none leaves. The slice settles what its calls'
+ * outcomes free, and a run held back that has nothing out any more stops, its
+ * map incomplete, to resume. A run done leaves its evaluation (T8,
+ * Evaluations).
  */
 final class Twin9Slice
 {
@@ -220,8 +225,10 @@ final class Twin9Slice
             $parLots,
             $plafonds['budget'],
             $plafonds['limite'],
+            $r['reserve_fusion'],
         );
         $run->engage = $this->couts->engage($id);
+        $run->engagementsAutres = $run->credits() ? $this->runs->engagementsEnCours($r['user_id'], $id) : 0;
 
         return $run;
     }
@@ -254,7 +261,17 @@ final class Twin9Slice
         }
         unset($this->etats[$run->id]);
         $this->couts->liberer($run->id);
-        if ($this->runs->terminer($run->id)) {
+        // its evaluation (T8): the size of each day of its map — those it took, those its memory keeps —, as the
+        // engine reads them; unknown, its costs alone
+        try {
+            $vue = method_exists($run->plateforme, 'apercu') ? $run->plateforme->apercu($run->memoire) : null;
+            $octets = $vue === null ? [] : array_column([...$vue['journees'], ...($vue['memoire'] ?? [])], 'octets', 'id');
+        } catch (\Throwable $e) {
+            error_log('[twin9-slice] taille des journées : ' . $e::class);
+            $octets = [];
+        }
+        if ($this->runs->terminer($run->id, array_map(intval(...), $octets),
+            $run->credits() ? $this->config->marge() : 1.0)) {
             $this->compteurs['termines']++;
         }
     }
@@ -320,8 +337,13 @@ final class Twin9Slice
 
                     return;
                 }
-                if ($run->budget !== null && $run->engage + $reserve > $run->budget) {
-                    $run->bloque = RunCosts::BUDGET;
+                // never into the merge's reserve for a day's call, nor into what the owner's other runs may
+                // still spend (T8); without either, the debit checks the credit itself
+                $solde = $run->credits() && $run->plancher($call) + $run->engagementsAutres > 0
+                    ? $this->couts->solde($run->userId) : null;
+                $retenue = $run->retenue($call, $reserve, $solde);
+                if ($retenue !== null) {
+                    $run->bloque = $retenue;
                     continue;
                 }
             }

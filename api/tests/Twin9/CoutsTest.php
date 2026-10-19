@@ -33,8 +33,10 @@ use stdClass;
  * its owner's credits at its real cost, margin included, half price by
  * batches; its worst case held before it leaves, a run never goes beyond its
  * budget, and stops at it, its map incomplete, to resume; its owner's credit
- * and its duration stop it the same way; the run's own key pays nothing
- * here; no key is ever written. Each test runs in a process of its own.
+ * and its duration stop it the same way; a day's call never eats into what
+ * the run keeps for its merge (T8, strategy A); the run's own key pays
+ * nothing here; no key is ever written. Each test runs in a process of its
+ * own.
  */
 #[RunTestsInSeparateProcesses]
 #[PreserveGlobalState(false)]
@@ -196,6 +198,100 @@ final class CoutsTest extends TestCase
         self::assertSame('termine', $runs->statut($id));
     }
 
+    /**
+     * T8, strategy A: a day's call never eats into what the run keeps for its
+     * merge; the run stops at it, its credit kept, and says so; resumed once
+     * topped up, it goes to its end. The merge's calls may spend it.
+     */
+    public function testADaysCallNeverEatsIntoTheMergesReserve(): void
+    {
+        $this->pdo->prepare('UPDATE twin9_credits SET balance_microusd = 1000000 WHERE user_id = ?')
+            ->execute([$this->user]);
+        $id = $this->nouveauRun(self::SONNET, reserve: 500_000);
+        $http = self::anthropic();
+
+        $this->jusquALArret($http);
+
+        $runs = new RunRepository($this->pdo);
+        self::assertSame('echoue', $runs->statut($id));
+        self::assertSame(RunCosts::RESERVE_CREDIT, $runs->suivi($id)['attente']);
+        self::assertSame('Crédit insuffisant (fusion réservée) : carte incomplète', $runs->suivi($id)['retard']);
+        [$appels] = $this->journal($id);
+        self::assertSame(2, $appels, 'deux appels tiennent au-dessus de la réserve, pas trois');
+        self::assertGreaterThanOrEqual(500_000, (new CreditService($this->pdo))->balance($this->user),
+            'la réserve reste au crédit');
+
+        (new CreditService($this->pdo))->adjust($this->user, 100_000_000, 'recharge');
+        self::assertTrue($runs->reprendre($id, $this->user));
+        $this->jusquALArret($http);
+        self::assertSame('termine', $runs->statut($id));
+
+        // its days in the memory, the next run only merges: its merge spends the reserve
+        $this->pdo->prepare('UPDATE twin9_credits SET balance_microusd = 300000 WHERE user_id = ?')
+            ->execute([$this->user]);
+        $fusion = $this->nouveauRun(self::SONNET, reserve: 10_000_000);
+        $this->jusquALArret($http);
+        self::assertSame('termine', $runs->statut($fusion), 'la fusion part, sous sa réserve');
+        self::assertSame(1, $runs->compteursDe($fusion)['appels']);
+    }
+
+    /** By batches too: a batch holds what the budget leaves above the reserve, and the run stops at it. */
+    public function testByBatchesADaysCallNeverEatsIntoTheReserveEither(): void
+    {
+        $id = $this->nouveauRun(self::SONNET + ['/voie' => 'lots', '/budget_usd' => 0.6], reserve: 250_000);
+        $lots = new FakeBatchApi(static fn (array $r): array => FakeBatchApi::message('vu', 'claude-sonnet-5-5',
+            intdiv(\strlen((string) $r['params']['messages'][0]['content']), 2), self::SORTIE));
+
+        $this->tickLots($lots);
+        $config = new Twin9Config(new SettingsRepository($this->pdo));
+        $detenu = 0;
+        foreach ($lots->requetes as $r) {
+            $detenu += (int) $config->coutMicrousd('claude-sonnet-5-5', \strlen((string) $r['params']['messages'][0]['content']),
+                20000, parLots: true);
+        }
+        self::assertNotSame([], $lots->requetes);
+        self::assertLessThan(4, \count($lots->requetes), 'moins que les quatre que tiendrait le budget seul');
+        self::assertLessThanOrEqual(600_000 - 250_000, $detenu, 'le lot ne prend que ce que la réserve laisse');
+        for ($n = 0; $n < 30 && (new RunRepository($this->pdo))->statut($id) === 'en_cours'; $n++) {
+            $this->tickLots($lots);
+        }
+        self::assertSame(RunCosts::RESERVE_BUDGET, (new RunRepository($this->pdo))->suivi($id)['attente']);
+    }
+
+    /**
+     * T8: a run's calls never eat into what its owner's other runs in
+     * progress may still spend of their credit — what their launch granted
+     * them, less what they have committed —; held back by it, the run stops
+     * and says so. Once the other run is no longer in progress, nothing is
+     * held for it.
+     */
+    public function testACallNeverEatsIntoWhatOtherRunsMayStillSpend(): void
+    {
+        $this->pdo->prepare('UPDATE twin9_credits SET balance_microusd = 1000000 WHERE user_id = ?')
+            ->execute([$this->user]);
+        // the other run, granted 600,000 µ$ of which it has spent 100,000; its key missing, it waits in progress
+        $autre = $this->nouveauRun(self::SONNET + ['/cle' => 'personnelle'], portfolio: "## J1\nAilleurs.\n", journal: 'autre',
+            engagement: 600_000);
+        $this->pdo->prepare('INSERT INTO twin9_appels (run_id, appel, etape, modele, sha256, statut, cout_microusd)
+                             VALUES (?, "journees/J0/1-greffier.md", "greffier", "claude-sonnet-5-5", ?, "repondu", 100000)')
+            ->execute([$autre, str_repeat('0', 64)]);
+        $runs = new RunRepository($this->pdo);
+        $id = $this->nouveauRun(self::SONNET);
+        self::assertSame(500_000, $runs->engagementsEnCours($this->user, $id));
+        self::assertSame(0, $runs->engagementsEnCours($this->user, $autre), 'le run qui demande laissé de côté');
+
+        $this->jusquALArret(self::anthropic(), run: $id);
+        self::assertSame('echoue', $runs->statut($id));
+        self::assertSame(RunCosts::AUTRES, $runs->suivi($id)['attente']);
+        self::assertSame('Crédit insuffisant (engagé par vos autres analyses) : carte incomplète', $runs->suivi($id)['retard']);
+        [$appels] = $this->journal($id);
+        self::assertSame(2, $appels, 'deux appels tiennent au-dessus de ce que l’autre peut encore dépenser, pas trois');
+        self::assertGreaterThanOrEqual(500_000, (new CreditService($this->pdo))->balance($this->user));
+
+        self::assertTrue($runs->annuler($autre, $this->user));
+        self::assertSame(0, $runs->engagementsEnCours($this->user, $id), 'plus rien ne lui est gardé');
+    }
+
     /** Its duration ended, no call leaves and the run stops; resumed, its duration counts again from then. */
     public function testItsDurationStopsARunAndCountsAgainOnceResumed(): void
     {
@@ -350,12 +446,14 @@ final class CoutsTest extends TestCase
     }
 
     /** Slices until no run is in progress. */
-    private function jusquALArret(FakeMultiHttpClient $http, int $max = 30): void
+    /** @param int|null $run this run only; null: every run */
+    private function jusquALArret(FakeMultiHttpClient $http, int $max = 30, ?int $run = null): void
     {
         for ($n = 1; $n <= $max; $n++) {
             (new Tick($this->pdo, ['budgetSeconds' => 2, 'twin9Sender' => new DirectCalls($http),
                                    'twin9Pauses' => [0.05, 0.1]]))->run();
-            if ((int) $this->pdo->query('SELECT COUNT(*) FROM twin9_runs WHERE statut = "en_cours"')->fetchColumn() === 0) {
+            if ((int) $this->pdo->query('SELECT COUNT(*) FROM twin9_runs WHERE statut = "en_cours"'
+                    . ($run === null ? '' : ' AND id = ' . $run))->fetchColumn() === 0) {
                 return;
             }
         }
@@ -371,9 +469,13 @@ final class CoutsTest extends TestCase
             ->run();
     }
 
-    /** @param array<string, mixed> $profil changes to the v9.8 profile (JSON pointer => value), by direct calls */
+    /**
+     * @param array<string, mixed> $profil changes to the v9.8 profile (JSON pointer => value), by direct calls
+     * @param int $reserve what it keeps for its merge, in micro-USD (T8)
+     * @param int $engagement what its launch granted it on its owner's credit, in micro-USD (T8)
+     */
     private function nouveauRun(array $profil = [], string $portfolio = self::PORTFOLIO,
-                                string $journal = 'journal-factice'): int
+                                string $journal = 'journal-factice', int $reserve = 0, int $engagement = 0): int
     {
         return (new RunRepository($this->pdo))->creer(
             $this->user,
@@ -384,6 +486,9 @@ final class CoutsTest extends TestCase
             $journal,
             self::GABARITS,
             new \DateTimeImmutable('2026-10-18T12:00:00+00:00'),
+            null,
+            $reserve,
+            $engagement,
         );
     }
 

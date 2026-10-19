@@ -192,12 +192,11 @@ final class Twin9Lots
                 if ($reserve === null) {
                     return 'aucun prix pour ' . $reglage['modele'] . ' sur cette instance';
                 }
-                if ($run->budget !== null && $run->engage + $reserve > $run->budget) {
-                    $run->bloque = RunCosts::BUDGET;
-                    continue;
-                }
-                if ($solde !== null && $reserve > $solde) {
-                    $run->bloque = RunCosts::CREDIT;
+                // never into the merge's reserve for a day's call, nor into what the owner's other runs may
+                // still spend (T8)
+                $retenue = $run->retenue($call, $reserve, $solde);
+                if ($retenue !== null) {
+                    $run->bloque = $retenue;
                     continue;
                 }
             }

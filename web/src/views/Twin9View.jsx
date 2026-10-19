@@ -10,16 +10,24 @@
 // résultats, et on l'ouvre dans la cartographie, délibérations comprises.
 // L'entrée de navigation reste masquée jusqu'au lot 3 (nav.js) : la page
 // s'ouvre par son adresse.
+//
+// Avant de lancer (T10), l'accord donné, la page dit combien de journées le
+// run instruirait — un portfolio déjà évalué n'instruit que ses journées
+// nouvelles ou changées —, son coût et sa durée estimés, les plafonds du
+// profil. Un run arrêté par son budget reprend sous un nouveau budget ; sa
+// carte, incomplète, s'ouvre dans la cartographie, qui le dit.
 
 import { useCallback, useEffect, useState } from 'react'
 import { ApiError } from '../api/client.js'
 import {
   annulerRun,
+  apercuRun,
   avancerRuns,
   fetchConfiguration,
   fetchResultats,
   fetchRun,
   fetchRuns,
+  formatUsd,
   lancerRun,
   rendreRunVisible,
   reprendreRun,
@@ -31,6 +39,59 @@ import '../styles/twin9.css'
 const STATUTS = { en_cours: 'En cours', termine: 'Terminé', annule: 'Annulé', echoue: 'Arrêté' }
 
 const pauseParDefaut = (ms) => new Promise((resolve) => setTimeout(resolve, ms))
+
+/** Des dollars, à la française : « 2,26 $ ». */
+const dollars = (usd) => `${Number(usd).toFixed(2).replace('.', ',')} $`
+
+/** Une durée en secondes, lisible : « 45 s », « 12 min », « 2 h 05 ». */
+function duree(s) {
+  if (s < 60) return `${Math.round(s)} s`
+  if (s < 3600) return `${Math.round(s / 60)} min`
+  const m = Math.round(s / 60)
+  return `${Math.floor(m / 60)} h ${String(m % 60).padStart(2, '0')}`
+}
+
+/** Les journées qu'un run instruirait : toutes au premier run, les nouvelles ou changées ensuite. */
+function phraseJournees({ total, nouvelles, changees }) {
+  const s = (k) => (k > 1 ? 's' : '')
+  const n = nouvelles + changees
+  if (nouvelles === total) return `${total} journée${s(total)} à instruire.`
+  if (n === 0) return 'Ce portfolio a déjà été évalué : aucune journée nouvelle ni changée, seule la fusion se refait.'
+  const quoi = [nouvelles ? `${nouvelles} nouvelle${s(nouvelles)}` : null, changees ? `${changees} changée${s(changees)}` : null]
+    .filter(Boolean)
+    .join(' et ')
+  return `Ce portfolio a déjà été évalué : ${n} journée${s(n)} sur ${total} à instruire (${quoi}), les autres reprises telles quelles.`
+}
+
+/** Avant de lancer : les journées à instruire, le coût et la durée estimés, les plafonds, le crédit s'il ne suffit pas. */
+function Apercu({ apercu }) {
+  const e = apercu.estimation
+  const source =
+    e.runs != null
+      ? `moyenne par journée ${e.runs > 1 ? `de ${e.runs} runs passés` : 'd’un run passé'} de ce profil${apercu.mode === 'test' ? ' en essai' : ''}`
+      : `d’après le vrai run de PLANT-01, en essai${e.poles > 1 ? `, × ${e.poles} pôles` : ''}`
+  const { budget_usd: budget, duree_minutes: minutes } = apercu.plafonds
+  return (
+    <section className="twin9-apercu" aria-label="Avant de lancer">
+      <p>{phraseJournees(apercu.journees)}</p>
+      <p>
+        Coût estimé : {dollars(e.cout_usd)}
+        {e.duree_s != null ? ` · durée estimée : ${duree(e.duree_s)}` : ' · par lots, la durée dépend d’Anthropic'} ({source}).
+      </p>
+      {budget != null || minutes != null ? (
+        <p>
+          Plafonds du profil : {[budget != null ? `budget ${dollars(budget)}` : null, minutes != null ? `durée ${minutes} min` : null].filter(Boolean).join(' · ')}.
+        </p>
+      ) : null}
+      {apercu.credit_usd != null && apercu.credit_usd < e.cout_usd ? (
+        <p role="alert">
+          Votre crédit ({dollars(apercu.credit_usd)}) ne couvre pas cette estimation : le run s’arrêtera faute de crédit.{' '}
+          <a href="#/compte/credit">Recharger</a>
+        </p>
+      ) : null}
+    </section>
+  )
+}
 
 /** Le nom d'un portfolio de la bibliothèque, en fichier : son titre nomme sa carte d'un run à l'autre. */
 function nomDeFichier(titre) {
@@ -90,6 +151,27 @@ function Lancer({ deps }) {
     }
   }, [fetchFn, deps.store])
 
+  // Avant de lancer, l'accord donné : ce que le run instruirait, et ce qu'il coûterait.
+  const local = donnees?.portfolios.find((p) => p.id === portfolio) ?? null
+  const choisi = local ? { nom: nomDeFichier(local.titre), texte: local.texte } : fichier
+  const [apercu, setApercu] = useState(null)
+  const nom = choisi?.nom ?? null
+  const texte = choisi?.texte ?? ''
+  useEffect(() => {
+    if (!accord || nom === null || texte.trim() === '') {
+      setApercu(null)
+      return undefined
+    }
+    let actif = true
+    setApercu({ chargement: true })
+    apercuRun({ profil: profil === '' ? null : Number(profil), portfolio: { nom, texte } }, { fetchFn })
+      .then((a) => actif && setApercu({ donnees: a }))
+      .catch((e) => actif && setApercu({ erreur: e.message }))
+    return () => {
+      actif = false
+    }
+  }, [accord, profil, nom, texte, fetchFn])
+
   if (etat.chargement) return <p>Chargement…</p>
   if (etat.erreur) {
     return etat.erreur instanceof ApiError && etat.erreur.status === 401 ? (
@@ -101,8 +183,6 @@ function Lancer({ deps }) {
     )
   }
 
-  const local = donnees.portfolios.find((p) => p.id === portfolio) ?? null
-  const choisi = local ? { nom: nomDeFichier(local.titre), texte: local.texte } : fichier
   const pret = accord && choisi !== null && choisi.texte.trim() !== '' && !occupe
 
   const lancer = async (e) => {
@@ -181,6 +261,13 @@ function Lancer({ deps }) {
               29 jours au plus. Voir la <a href="#/confidentialite">politique de confidentialité</a>.
             </label>
           </fieldset>
+          {apercu?.donnees ? <Apercu apercu={apercu.donnees} /> : null}
+          {apercu?.chargement ? <p>Estimation…</p> : null}
+          {apercu?.erreur ? (
+            <p className="load-error" role="alert">
+              {apercu.erreur}
+            </p>
+          ) : null}
           {erreur ? (
             <p className="load-error" role="alert">
               {erreur}
@@ -218,6 +305,7 @@ function PageDuRun({ id, deps, onOpenInInterface }) {
   const [erreur, setErreur] = useState(null)
   const [occupe, setOccupe] = useState(false)
   const [relance, setRelance] = useState(0)
+  const [budget, setBudget] = useState('')
 
   // Tant que la page est ouverte, elle fait avancer les runs de la personne (ADR-011 §2).
   useEffect(() => {
@@ -265,7 +353,8 @@ function PageDuRun({ id, deps, onOpenInInterface }) {
     try {
       const resultats = await fetchResultats(id, { fetchFn })
       const files = await twin9RunFiles(resultats, deps.getReferentiel ? { getReferentiel: deps.getReferentiel } : undefined)
-      onOpenInInterface?.(files, { title: `Twin9 · ${resultats.run.journal}` })
+      const incomplete = resultats.run.statut !== 'termine'
+      onOpenInInterface?.(files, { title: `Twin9 · ${resultats.run.journal}${incomplete ? ' — carte incomplète' : ''}` })
     } catch (e) {
       setErreur(e)
     } finally {
@@ -290,6 +379,12 @@ function PageDuRun({ id, deps, onOpenInInterface }) {
     ? { repondu: run.compteurs.appels - run.compteurs.pannes, panne: run.compteurs.pannes, envoye: 0, attente: 0 }
     : p.appels
   const enCours = appels.envoye + appels.attente
+  const cout = run.cout ?? null
+  // arrêté par son budget, il reprend sous un nouveau (vide : aucun) ; par le crédit, une fois rechargé
+  const parBudget = run.statut === 'echoue' && String(run.attente ?? '').startsWith('budget atteint')
+  const parCredit = run.statut === 'echoue' && String(run.attente ?? '').startsWith('crédit insuffisant')
+  const depenseUsd = (cout?.depense_microusd ?? 0) / 1_000_000
+  const budgetValide = budget === '' || Number(budget) > depenseUsd
   return (
     <article className="twin9-run">
       <p>
@@ -311,6 +406,12 @@ function PageDuRun({ id, deps, onOpenInInterface }) {
           {appels.panne > 0 ? ` · ${appels.panne} en panne` : ''}
         </li>
         {p.lots > 0 ? <li>{p.lots} lot{p.lots > 1 ? 's' : ''} chez Anthropic</li> : null}
+        {cout && (cout.depense_microusd > 0 || cout.budget_usd != null) ? (
+          <li>
+            Coût : {formatUsd(cout.depense_microusd)}
+            {cout.budget_usd != null ? ` · budget : ${dollars(cout.budget_usd)}` : ''}
+          </li>
+        ) : null}
       </ul>
       {erreur ? (
         <p className="load-error" role="alert">
@@ -323,12 +424,32 @@ function PageDuRun({ id, deps, onOpenInInterface }) {
             Annuler
           </button>
         ) : null}
+        {parBudget ? (
+          <label className="twin9-budget">
+            Nouveau budget (USD){' '}
+            <input
+              type="number"
+              min={depenseUsd}
+              step="0.01"
+              placeholder="aucun"
+              value={budget}
+              onChange={(e) => setBudget(e.target.value)}
+            />
+          </label>
+        ) : null}
         {run.statut === 'annule' || run.statut === 'echoue' ? (
-          <button type="button" disabled={occupe} onClick={() => agir(() => reprendreRun(id, { fetchFn }))}>
+          <button
+            type="button"
+            disabled={occupe || (parBudget && !budgetValide)}
+            onClick={() =>
+              agir(() => reprendreRun(id, { fetchFn }, parBudget ? { budget_usd: budget === '' ? null : Number(budget) } : undefined))
+            }
+          >
             Reprendre
           </button>
         ) : null}
-        {p.fusion ? (
+        {parCredit ? <a href="#/compte/credit">Recharger mon crédit</a> : null}
+        {p.fusion || (run.statut !== 'en_cours' && p.journees > 0) ? (
           <button type="button" className="twin9-ouvrir" disabled={occupe} onClick={ouvrir}>
             Ouvrir dans la cartographie
           </button>

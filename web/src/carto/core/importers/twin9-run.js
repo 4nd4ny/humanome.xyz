@@ -13,7 +13,9 @@
 // au niveau du run, comme pour un run AuroraCore. La fusion, par
 // l'adaptateur du moteur (`twin9ToMergeDocument`) et l'importeur des fusions
 // du site, donne les synthèses évolutives, et les journées dont la carte
-// manque.
+// manque. Un run arrêté avant sa fin (T10 : son budget, sa durée, le crédit)
+// n'apporte que ses journées finies, sans fusion peut-être : le rapport
+// d'import dit sa carte incomplète.
 
 import { twin9Dossier, twin9ToMergeDocument } from '@engine/twin9/mapper.js'
 import { importSiteMerge } from './merge.js'
@@ -21,9 +23,10 @@ import { canonicalJson, contentHash, normalizeConfidence, normalizeRole, normali
 import { splitExtract } from '../highlight.js'
 import { isIsoDate } from '../dates.js'
 
-/** Le document est-il un run Twin9 du serveur ? */
+/** Le document est-il un run Twin9 du serveur ? Arrêté avant sa fusion (T10), il n'a que ses journées. */
 export function looksLikeTwin9Run(doc) {
-  return Boolean(doc && typeof doc === 'object' && doc.kind === 'twin9-run' && doc.carto_evolutive && typeof doc.carto_evolutive === 'object')
+  const objet = (x) => Boolean(x && typeof x === 'object')
+  return Boolean(objet(doc) && doc.kind === 'twin9-run' && (objet(doc.carto_evolutive) || objet(doc.journees)))
 }
 
 /** Clé d'un juré dans l'interface : son nom, en minuscules sans accents (« Pédagogue » → « pedagogue »). */
@@ -48,17 +51,25 @@ export function importTwin9Run(doc, { fileName = 'twin9-run.json', now = new Dat
   const runId = `twin9:${doc.run?.id ?? doc.carto_evolutive?.journal_id ?? 'run'}`
   const provenance = { source: 'twin9', run: runId, files: [fileName], model: null, prompt: null, analysedAt: doc.run?.finished_at ?? null, importedAt: now }
 
+  // Un run arrêté avant sa fin (T10 : son budget, sa durée, le crédit) : sa carte le dit.
+  if (doc.incomplete) {
+    const raison = doc.run?.retard ? ` (${String(doc.run.retard).replace(/ : carte incomplète$/, '').toLowerCase()})` : ''
+    report.push({ severity: 'warning', code: 'twin9-incomplete', message: `Carte incomplète : le run s’est arrêté avant sa fin${raison}` })
+  }
+
   // La fusion : les synthèses évolutives, et les journées dont la carte manque.
   let fusion = { variants: [], narratives: [] }
-  try {
-    const merge = twin9ToMergeDocument(doc.carto_evolutive, doc.referentiel, {
-      generatedAt: doc.run?.finished_at ?? null,
-      journalId: doc.run?.journal ?? doc.carto_evolutive?.journal_id ?? null,
-      sourceProtocole: 'Twin9 — run du serveur',
-    })
-    fusion = importSiteMerge(merge, { fileName, now })
-  } catch (err) {
-    report.push({ severity: 'warning', code: 'twin9-fusion-illisible', message: `${fileName} : ${err.message}` })
+  if (doc.carto_evolutive) {
+    try {
+      const merge = twin9ToMergeDocument(doc.carto_evolutive, doc.referentiel, {
+        generatedAt: doc.run?.finished_at ?? null,
+        journalId: doc.run?.journal ?? doc.carto_evolutive?.journal_id ?? null,
+        sourceProtocole: 'Twin9 — run du serveur',
+      })
+      fusion = importSiteMerge(merge, { fileName, now })
+    } catch (err) {
+      report.push({ severity: 'warning', code: 'twin9-fusion-illisible', message: `${fileName} : ${err.message}` })
+    }
   }
 
   // La carte du jour de chaque date : son identifiant de journée est la date, ou elle la porte.

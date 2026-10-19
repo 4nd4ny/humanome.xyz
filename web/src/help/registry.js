@@ -188,7 +188,9 @@ const BASE = {
       'système de prompts et un modèle que vous choisissez — d’où un coût, payé d’avance.',
     points: [
       'Avec votre accord, votre portfolio et l’état de l’analyse restent sur notre serveur jusqu’à ce que vous les effaciez ; le texte part chez Anthropic, qui garde un lot de requêtes jusqu’à sa suppression, 29 jours au plus.',
+      'Avant de lancer, la page dit les journées à instruire — un portfolio déjà analysé n’instruit que ses journées nouvelles ou changées —, le coût et la durée estimés.',
       'L’analyse tourne sur le serveur ; sa page la suit et la fait avancer. Vous pouvez l’annuler, la reprendre, et l’ouvrir dans la cartographie, délibérations comprises.',
+      'Un budget et une durée, réglés dans votre profil, l’arrêtent avant de les dépasser : sa carte est alors incomplète, et vous la reprenez sous un nouveau budget.',
       'Rechargez votre crédit par PayPal, ou utilisez votre propre clé API — dans les deux cas notre système de prompts reste protégé.',
       'Une facture récapitulative mensuelle est disponible dans « Mon compte ».',
     ],

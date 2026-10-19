@@ -128,6 +128,17 @@ export function fetchRuns(options) {
 }
 
 /**
+ * Avant de lancer (T10) : les journées que le run instruirait — nouvelles ou
+ * changées depuis la mémoire de sa carte —, son coût et sa durée estimés, les
+ * plafonds de son profil, le crédit quand la clé de l'instance paie. Rien
+ * n'est gardé.
+ * @param {{profil: number|null, portfolio: {nom: string, texte: string}}} choix
+ */
+export function apercuRun(choix, options) {
+  return apiFetch('twin9/runs/apercu', { ...options, method: 'POST', body: choix })
+}
+
+/**
  * Lance un run : son profil (null : celui de la v9.8), son portfolio, l'accord
  * de la personne, qui chaque lancement demande. Rend le run tel que sa page le suit.
  * @param {{profil: number|null, portfolio: {nom: string, texte: string}, accord: boolean, visibilite?: string}} lancement
@@ -150,8 +161,12 @@ export function annulerRun(id, options) {
   return apiFetch(`twin9/runs/${id}/annuler`, { ...options, method: 'POST' })
 }
 
-export function reprendreRun(id, options) {
-  return apiFetch(`twin9/runs/${id}/reprendre`, { ...options, method: 'POST' })
+/**
+ * Reprend un run annulé ou arrêté ; arrêté par son budget, sous un nouveau
+ * budget (plafonds.budget_usd : des dollars, ou null pour aucun).
+ */
+export function reprendreRun(id, options, plafonds) {
+  return apiFetch(`twin9/runs/${id}/reprendre`, { ...options, method: 'POST', ...(plafonds ? { body: plafonds } : {}) })
 }
 
 /** Qui lit ses résultats, outre elle-même : personne ('privee') ou son cartographe ('cartographe'). */

@@ -119,6 +119,18 @@ describe('importTwin9Run (T9)', () => {
     expect(r.narratives).toEqual([])
   })
 
+  it('ouvre la carte incomplète d’un run arrêté avant sa fusion, et le dit (T10)', () => {
+    const incomplet = { ...doc(), carto_evolutive: null, incomplete: true }
+    incomplet.run = { ...incomplet.run, statut: 'echoue', retard: 'Budget atteint : carte incomplète' }
+    expect(looksLikeTwin9Run(incomplet)).toBe(true)
+    const r = importTwin9Run(incomplet)
+    expect(r.variants.map((v) => v.date)).toEqual(['2026-01-05', '2026-01-06'])
+    expect(r.narratives).toEqual([])
+    expect(r.report.filter((x) => x.severity === 'warning')).toEqual([
+      { severity: 'warning', code: 'twin9-incomplete', message: 'Carte incomplète : le run s’est arrêté avant sa fin (budget atteint)' },
+    ])
+  })
+
   it('met en quarantaine un run sans journée datée', () => {
     const r = importTwin9Run({ ...doc(), carto_evolutive: { competences: {} }, journees: {} })
     expect(r.report.find((x) => x.severity === 'blocking')).toMatchObject({ code: 'twin9-illisible' })

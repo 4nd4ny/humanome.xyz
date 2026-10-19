@@ -144,9 +144,11 @@ describe('UC-ADM-05 — réglages : diff envoyé au serveur (Twin9Section isolé
     expect(puts(fetchFn)).toEqual([])
   })
 
-  it('UC-ADM-05-U06 — ANOMALIE figée : une config relue de MySQL (clés réordonnées) fait repartir packs et modèles inchangés dans le diff', async () => {
+  it('UC-ADM-05-U06 — ANOMALIE figée : une config relue de MySQL (clés réordonnées) fait repartir les packs inchangés dans le diff', async () => {
     // Après un premier enregistrement, la colonne JSON MySQL renvoie les clés
-    // triées ({libelle, montant_usd}, {etages, prix_usd_mtok}).
+    // triées ({libelle, montant_usd}, {etages, prix_usd_mtok}). Depuis T10, un
+    // modèle garde ce que le formulaire n'édite pas (le palier des longs
+    // prompts), donc l'ordre de ses clés relues : seuls les packs repartent.
     const relue = {
       ...CONFIG,
       packs: CONFIG.packs.map((p) => ({ libelle: p.libelle, montant_usd: p.montant_usd })),
@@ -158,7 +160,7 @@ describe('UC-ADM-05 — réglages : diff envoyé au serveur (Twin9Section isolé
     await enregistrer()
 
     const [diff] = puts(fetchFn)
-    expect(Object.keys(diff).sort()).toEqual(['modeles', 'packs', 'twin9_cle_perso_ouverte'])
+    expect(Object.keys(diff).sort()).toEqual(['packs', 'twin9_cle_perso_ouverte'])
     expect(diff.twin9_cle_perso_ouverte).toBe(true)
   })
 })

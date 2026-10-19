@@ -19,6 +19,12 @@
 // Import restores them into that store: a dataset with the same id is
 // completed (what is there wins, duplicates ignored), otherwise created;
 // never on the server.
+//
+// Since 1.2.0 (Twin_v9's docs/plan-twin9-php.md, T10; ADR-011 §5), the
+// archive also carries the account's Twin9 analyses, which live on the
+// server: each run — the copy of its profile, its portfolio, its journal,
+// its outputs — and the memory of its maps, as GET /api/twin9/mes-analyses gives
+// them (`analysesTwin9`). Never imported back: a run is launched again.
 
 import { validateDocument } from '@engine/validation.js'
 import { apiFetch, fetchMe } from '../api/client.js'
@@ -31,7 +37,7 @@ import { buildArchive as buildMasterArchive } from '../carto/core/archive.js'
 import { importFiles as importIntoInterface } from '../carto/core/import.js'
 import { createDataset, isPristineDemo } from '../carto/core/model.js'
 
-export const ARCHIVE_SCHEMA_VERSION = '1.1.0'
+export const ARCHIVE_SCHEMA_VERSION = '1.2.0'
 
 // Traceability fallbacks for cartographies saved without run metadata (e.g.
 // a document imported by drag & drop): the archive schema REQUIRES the
@@ -115,6 +121,24 @@ async function defaultGetMassDocuments(fetchFn) {
     return Array.isArray(documents) ? documents : []
   } catch {
     return []
+  }
+}
+
+/**
+ * The account's Twin9 analyses on the server (1.2.0, ADR-011 §5): its runs
+ * and the memory of their maps, read-only. Nothing for a visitor, an account
+ * without runs, an instance without the route, a static copy or a browser
+ * offline, as for the mass documents; a server error is reported, never
+ * blocking the rest of the export.
+ * @returns {Promise<{data: object | null, error: string | null}>}
+ */
+async function defaultGetTwin9(fetchFn) {
+  try {
+    const data = await apiFetch('twin9/mes-analyses', fetchFn ? { fetchFn } : undefined)
+    const vide = !data || ((data.runs ?? []).length === 0 && (data.cartes ?? []).length === 0)
+    return { data: vide ? null : data, error: null }
+  } catch (error) {
+    return { data: null, error: Number(error?.status) >= 500 ? String(error.message) : null }
   }
 }
 
@@ -251,13 +275,15 @@ function toArchiveCartography(entry, referentielDoc, fallbackDate) {
  *   getAccount?: () => Promise<object | null>,
  *   getReferentiel?: () => Promise<{doc: object}>,
  *   getPromptPackages?: () => Promise<object[]>,
+ *   getTwin9?: () => Promise<{data: object | null, error: string | null}>,
  *   download?: (filename: string, text: string) => void,
  *   now?: () => Date,
  *   fetchFn?: typeof fetch,
  * }} [options] every dependency is injectable (tests, chantier B)
  * @returns {Promise<{archive: object, filename: string,
  *   counts: {portfolios: number, cartographies: number, jeux: number, jeuxError: string | null,
- *     jeuxExclus: string[]}}>} (jeuxExclus: titles of datasets left out, not matching their schema)
+ *     jeuxExclus: string[], analysesTwin9: number, twin9Error: string | null}}>} (jeuxExclus: titles of
+ *   datasets left out, not matching their schema; analysesTwin9: the Twin9 runs carried)
  * @throws {Error} French message; `error.validationErrors` carries the ajv
  *   errors if the assembled archive does not match its schema (never
  *   downloads an invalid archive).
@@ -276,8 +302,9 @@ export async function exportArchive(options = {}) {
 
   const getMassDocuments =
     options.getMassDocuments ?? (() => defaultGetMassDocuments(options.fetchFn))
+  const getTwin9 = options.getTwin9 ?? (() => defaultGetTwin9(options.fetchFn))
 
-  const [account, portfolios, entries, referentiel, promptPackages, massDocuments, jeux] =
+  const [account, portfolios, entries, referentiel, promptPackages, massDocuments, twin9, jeux] =
     await Promise.all([
       getAccount(),
       portfolioStore.list(),
@@ -285,6 +312,7 @@ export async function exportArchive(options = {}) {
       getReferentiel(),
       getPromptPackages(),
       getMassDocuments(),
+      getTwin9(),
       // Un stockage de l'interface illisible n'empêche pas l'export (portabilité,
       // RGPD) : il est signalé dans le compte rendu (counts.jeuxError).
       interfaceDatasets(interfaceStore, exportedAt).then(
@@ -313,6 +341,8 @@ export async function exportArchive(options = {}) {
     ],
     // Interface de cartographie (1.1.0) : chaque jeu, archive complète.
     jeuxCartographie: jeux.list,
+    // Analyses approfondies Twin9, sur le serveur (1.2.0) : runs et mémoire de leurs cartes.
+    ...(twin9.data ? { analysesTwin9: twin9.data } : {}),
     audit: [],
   }
 
@@ -337,6 +367,8 @@ export async function exportArchive(options = {}) {
       jeux: archive.jeuxCartographie.length,
       jeuxError: jeux.error ? String(jeux.error.message ?? jeux.error) : null,
       jeuxExclus: jeux.excluded.map((x) => x.title),
+      analysesTwin9: twin9.data?.runs?.length ?? 0,
+      twin9Error: twin9.error,
     },
   }
 }

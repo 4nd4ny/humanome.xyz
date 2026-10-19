@@ -139,7 +139,8 @@ function ReglagesBloc({ config, fetchFn, onSaved }) {
       if (!Number.isFinite(prixIn) || !Number.isFinite(prixOut)) {
         return { error: `Prix invalide pour « ${id} ».` }
       }
-      nextModeles[id] = { prix_usd_mtok: [prixIn, prixOut], etages: m.etages }
+      // ce que le formulaire n'édite pas (le palier des longs prompts, T10) reste tel quel
+      nextModeles[id] = { ...(config.modeles?.[id] ?? {}), prix_usd_mtok: [prixIn, prixOut], etages: m.etages }
     }
     if (JSON.stringify(nextModeles) !== JSON.stringify(config.modeles)) patch.modeles = nextModeles
 

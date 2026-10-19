@@ -178,6 +178,11 @@ final class Lancement
         $politique = new ProfilPolicy($this->pdo, $this->config);
         [$profil, $nom] = $this->profil($userId, $profilId, $politique);
         $politique->admettre($profil, $userId);
+        // T15: until the engine receives its run's referential (T16), it reads RESPIRE's fiches, those of
+        // its template set, whatever the profile names: a run on another referential would not be one
+        if ($profil->referentiel->id !== ReferentielRepository::DEFAULT_REFERENTIEL_ID) {
+            throw new Twin9Exception('L’analyse approfondie ne lit encore que le référentiel RESPIRE', 422);
+        }
         if ($profil->cle === 'personnelle' && !$politique->choix($userId)['cle_perso_enregistree']) {
             throw new Twin9Exception('Profil refusé — /cle : aucune clé Anthropic personnelle n’est enregistrée', 422);
         }

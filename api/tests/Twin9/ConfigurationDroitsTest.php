@@ -7,6 +7,7 @@ namespace Humanome\Tests\Twin9;
 use Humanome\Referentiel\ReferentielRepository;
 use Humanome\Tests\CartographeTestCase;
 use Humanome\Tests\TestDb;
+use Humanome\Tests\UseCases\Support\ReferentielsFictifs;
 use Humanome\Twin9\ProfilRepository;
 use Humanome\Twin9\ProtocoleRepository;
 use stdClass;
@@ -15,8 +16,9 @@ use stdClass;
  * The rights of Twin9's configuration (T13), one test per line of the matrix
  * written in docs/autorisations.md, « Configuration Twin9 »: each account
  * sets its own profiles, and only them; its budget, duration, key, published
- * referential and template set (T14: the v9.8's, the default, its own copies
- * in the atelier); the administrator sets the instance's prices, its default
+ * referential (T15: its own drafts for its test runs, while it writes them)
+ * and template set (T14: the v9.8's, the default, its own copies in the
+ * atelier); the administrator sets the instance's prices, its default
  * template set, and opens the personal keys; the instance's key comes from
  * the environment, never from the interface.
  */
@@ -155,7 +157,7 @@ final class ConfigurationDroitsTest extends CartographeTestCase
     public function testOnlyAPublishedReferential(): void
     {
         $compte = $this->registerAs('ref@example.org', 'Référentiel');
-        self::assertSame([['id' => 'respire', 'versions' => ['7.0.0']]],
+        self::assertSame([['id' => 'respire', 'versions' => ['7.0.0'], 'brouillons' => []]],
             self::json($this->as_($compte, 'GET', '/api/twin9/configuration'))['referentiels']);
 
         foreach ([['respire', null, 201], ['respire', '7.0.0', 201], ['respire', '9.9.9', 422], ['inconnu', null, 422]]
@@ -165,6 +167,61 @@ final class ConfigurationDroitsTest extends CartographeTestCase
             self::assertSame($statut, $this->as_($compte, 'POST', '/api/twin9/profils',
                 ['nom' => "Référentiel $n", 'profil' => $profil])->getStatusCode(), "$id $version");
         }
+    }
+
+    /**
+     * A draft of a referential serves only its author's test runs (T15): its
+     * author, while they write drafts (épistémiarque or administrator), may
+     * name it in a profile in test mode; nobody else, and not in complete
+     * mode. Published, the referential is everyone's.
+     */
+    public function testADraftServesOnlyItsAuthorsTestRuns(): void
+    {
+        $alix = $this->registerAs('alix@example.org', 'Alix', ['epistemiarque']);
+        $bao = $this->registerAs('bao@example.org', 'Bao', ['epistemiarque']);
+        $eleve = $this->registerAs('eleve@example.org', 'Élève');
+        $repo = new ReferentielRepository(self::$pdo);
+        $repo->importDraft(ReferentielsFictifs::neufPoles(), null, $alix['id']);
+        $repo->createDraft('respire', '7.0.0', '7.1.0', null, $alix['id']);
+        $refus = 'Profil refusé — /referentiel/version : un brouillon ne sert qu’aux runs d’essai de son auteur';
+
+        self::assertSame([['id' => 'respire', 'versions' => ['7.0.0'], 'brouillons' => ['7.1.0']],
+                          ['id' => 'fictif-neuf', 'versions' => [], 'brouillons' => ['1.0.0']]],
+            self::json($this->as_($alix, 'GET', '/api/twin9/configuration'))['referentiels']);
+        self::assertSame([['id' => 'respire', 'versions' => ['7.0.0'], 'brouillons' => []]],
+            self::json($this->as_($bao, 'GET', '/api/twin9/configuration'))['referentiels']);
+
+        $profil = function (string $id, ?string $version, string $mode): stdClass {
+            $profil = ProfilRepository::v98();
+            $profil->mode = $mode;
+            $profil->referentiel = (object) ['id' => $id, 'version' => $version];
+
+            return $profil;
+        };
+        $enregistrer = function (array $user, stdClass $profil): array {
+            $reponse = $this->as_($user, 'POST', '/api/twin9/profils', ['nom' => uniqid('p', true), 'profil' => $profil]);
+
+            return [$reponse->getStatusCode(), self::json($reponse)['error'] ?? null];
+        };
+        self::assertSame([201, null], $enregistrer($alix, $profil('fictif-neuf', '1.0.0', 'test')));
+        self::assertSame([201, null], $enregistrer($alix, $profil('respire', '7.1.0', 'test')));
+        self::assertSame([422, $refus], $enregistrer($alix, $profil('fictif-neuf', '1.0.0', 'complet')));
+        self::assertSame([422, 'Profil refusé — /referentiel/id : aucun référentiel publié sous ce nom'],
+            $enregistrer($alix, $profil('fictif-neuf', null, 'test')));
+        foreach ([$bao, $eleve] as $autre) {
+            self::assertSame([422, $refus], $enregistrer($autre, $profil('fictif-neuf', '1.0.0', 'test')));
+            self::assertSame([422, $refus], $enregistrer($autre, $profil('respire', '7.1.0', 'test')));
+        }
+
+        // out of the épistémiarques, its author's drafts are no longer offered
+        self::$pdo->prepare('DELETE FROM user_roles WHERE user_id = ?')->execute([$alix['id']]);
+        self::assertSame([['id' => 'respire', 'versions' => ['7.0.0'], 'brouillons' => []]],
+            self::json($this->as_($alix, 'GET', '/api/twin9/configuration'))['referentiels']);
+        self::assertSame([422, $refus], $enregistrer($alix, $profil('fictif-neuf', '1.0.0', 'test')));
+
+        // published, the referential is everyone's, in complete mode too
+        self::$pdo->exec("UPDATE referentiel_versions SET status = 'published', published_at = NOW() WHERE referentiel_id = 'fictif-neuf'");
+        self::assertSame([201, null], $enregistrer($eleve, $profil('fictif-neuf', null, 'complet')));
     }
 
     /**

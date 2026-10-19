@@ -4,6 +4,7 @@ declare(strict_types=1);
 
 namespace Humanome\Twin9;
 
+use Humanome\Auth\Users;
 use Humanome\Keys\KeyVault;
 use Humanome\Referentiel\ReferentielRepository;
 use PDO;
@@ -11,15 +12,20 @@ use stdClass;
 
 /**
  * What a profile may choose on this instance (T13, docs/autorisations.md,
- * « Configuration Twin9 »): a published referential, a template set its
- * owner may choose (T14: the v9.8's, the instance's default, a copy of
- * theirs while they belong to the atelier — TemplateSets::pour), the personal
- * key only where the administrator opened it, models the instance prices
- * (T10). The schema says what a profile is; this says what its owner may
- * pick. The default profile, the v9.8's, takes the instance's default set.
+ * « Configuration Twin9 »): a published referential, or a draft of its
+ * owner's for a test run (T15: a draft serves only its author's test runs,
+ * while they author drafts — AUTEURS), a template set its owner may choose
+ * (T14: the v9.8's, the instance's default, a copy of theirs while they
+ * belong to the atelier — TemplateSets::pour), the personal key only where
+ * the administrator opened it, models the instance prices (T10). The schema
+ * says what a profile is; this says what its owner may pick. The default
+ * profile, the v9.8's, takes the instance's default set.
  */
 final class ProfilPolicy
 {
+    /** Who writes a referential's drafts, and so may run their own in test mode (T15): the guard of the drafts. */
+    public const AUTEURS = ['epistemiarque', 'admin'];
+
     public function __construct(private readonly PDO $pdo, private readonly Twin9Config $config)
     {
     }
@@ -48,13 +54,7 @@ final class ProfilPolicy
         if (!\in_array($profil->gabarits, (new TemplateSets($this->pdo))->pour($userId), true)) {
             throw new Twin9Exception('Profil refusé — /gabarits : ce jeu de gabarits ne vous est pas proposé', 422);
         }
-        $versions = (new ReferentielRepository($this->pdo))->publishedSemvers()[$profil->referentiel->id] ?? null;
-        if ($versions === null) {
-            throw new Twin9Exception('Profil refusé — /referentiel/id : aucun référentiel publié sous ce nom', 422);
-        }
-        if ($profil->referentiel->version !== null && !\in_array($profil->referentiel->version, $versions, true)) {
-            throw new Twin9Exception('Profil refusé — /referentiel/version : version non publiée', 422);
-        }
+        $this->admettreReferentiel($profil, $userId);
         // every call of a run is priced, its worst case held before it leaves (T10)
         $prix = $this->config->modeles();
         foreach ((new CallSettings($profil))->combinaisons() as $reglage) {
@@ -66,18 +66,62 @@ final class ProfilPolicy
     }
 
     /**
-     * What the configuration page offers its user: the published
-     * referentials and their versions, the template sets they may choose,
-     * the personal key.
+     * A published version of the referential, its latest when the profile
+     * names none; or a draft (or a proposal under vote) of its owner's, for
+     * a test run, while they author drafts (T15).
      *
-     * @return array{referentiels: list<array{id: string, versions: list<string>}>, gabarits: list<string>,
-     *               cle_perso_ouverte: bool, cle_perso_enregistree: bool}
+     * @throws Twin9Exception 422 naming the choice refused
+     */
+    private function admettreReferentiel(stdClass $profil, int $userId): void
+    {
+        $repo = new ReferentielRepository($this->pdo);
+        $id = (string) $profil->referentiel->id;
+        $version = $profil->referentiel->version;
+        $publiees = $repo->publishedSemvers()[$id] ?? null;
+        if ($version !== null && ($publiees === null || !\in_array($version, $publiees, true))) {
+            $brouillon = $repo->findVersion($id, (string) $version);
+            if ($brouillon !== null && $brouillon['status'] !== 'published') {
+                if ($brouillon['createdBy'] !== $userId || $profil->mode !== 'test' || !$this->auteur($userId)) {
+                    throw new Twin9Exception('Profil refusé — /referentiel/version : un brouillon ne sert qu’aux runs '
+                        . 'd’essai de son auteur', 422);
+                }
+                return;
+            }
+        }
+        if ($publiees === null) {
+            throw new Twin9Exception('Profil refusé — /referentiel/id : aucun référentiel publié sous ce nom', 422);
+        }
+        if ($version !== null && !\in_array($version, $publiees, true)) {
+            throw new Twin9Exception('Profil refusé — /referentiel/version : version non publiée', 422);
+        }
+    }
+
+    /** Whether the user writes drafts of a referential (T15). */
+    private function auteur(int $userId): bool
+    {
+        return array_intersect(self::AUTEURS, Users::rolesOf($this->pdo, $userId)) !== [];
+    }
+
+    /**
+     * What the configuration page offers its user: the published
+     * referentials and their versions, their own drafts for a test run
+     * (T15), the template sets they may choose, the personal key.
+     *
+     * @return array{referentiels: list<array{id: string, versions: list<string>, brouillons: list<string>}>,
+     *               gabarits: list<string>, cle_perso_ouverte: bool, cle_perso_enregistree: bool}
      */
     public function choix(int $userId): array
     {
+        $repo = new ReferentielRepository($this->pdo);
+        $brouillons = $this->auteur($userId) ? $repo->brouillonsDe($userId) : [];
         $referentiels = [];
-        foreach ((new ReferentielRepository($this->pdo))->publishedSemvers() as $id => $versions) {
-            $referentiels[] = ['id' => (string) $id, 'versions' => $versions];
+        foreach ($repo->publishedSemvers() as $id => $versions) {
+            $referentiels[] = ['id' => (string) $id, 'versions' => $versions, 'brouillons' => $brouillons[$id] ?? []];
+            unset($brouillons[$id]);
+        }
+        // a referential with drafts only, never published: its author's test runs read it
+        foreach ($brouillons as $id => $semvers) {
+            $referentiels[] = ['id' => (string) $id, 'versions' => [], 'brouillons' => $semvers];
         }
         $enregistree = false;
         $master = KeyVault::masterKeyFromEnv();

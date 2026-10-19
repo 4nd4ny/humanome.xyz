@@ -12,10 +12,33 @@ use PDO;
  * published versions are IMMUTABLE, publication requires a STRICTLY
  * increasing semver, every write re-validates against the JSON Schema.
  * Plain PDO, prepared statements — no ORM.
+ *
+ * T15 (Twin_v9's docs/plan-twin9-php.md, lot 4c): a referential of any
+ * structure — poles numbered 1 to N, the levels it declares, each with the
+ * motif of its codes (RESPIRE's one level, « \d\.\d{2} », when it declares
+ * none) — is imported as a draft at the level that stands for competence,
+ * then voted and published as RESPIRE's document versions are. RESPIRE
+ * itself is not imported: its competences are edited one by one, and its
+ * structure — 7 poles, 61 competences « P.NN », its one level — is the
+ * schema's (allOf), so that every path to one of its versions keeps it,
+ * its release cut from its competences included.
  */
 final class ReferentielRepository
 {
     public const DEFAULT_REFERENTIEL_ID = 'respire';
+
+    /** The one level of a referential that declares none: RESPIRE's competences (T15). */
+    public const NIVEAU_PAR_DEFAUT = 'compétence';
+
+    /** The motif of its codes, the v9.8's: a pole's digit, then two (T15). */
+    public const MOTIF_PAR_DEFAUT = '\d\.\d{2}';
+
+    /** The PCRE backtracking limit while codes (8 characters at most) are matched against their motif (T15). */
+    private const LIMITE_RETOUR_ARRIERE = 10000;
+
+    /** The id of an imported referential (T15): lowercase, digits, « . », « _ », « - », 64 characters at most. */
+    public const ID_PATTERN = '/^[a-z0-9][a-z0-9._-]{0,63}$/D';
+
 
     public function __construct(private readonly PDO $pdo)
     {
@@ -79,8 +102,16 @@ final class ReferentielRepository
      *
      * @return list<array<string, mixed>>
      */
-    public function editableVersions(string $referentielId): array
+    public function editableVersions(?string $referentielId = null): array
     {
+        if ($referentielId === null) {
+            // every referential's (T15): the workbench lists them all
+            $stmt = $this->pdo->query(
+                "SELECT * FROM referentiel_versions WHERE status IN ('draft','review') ORDER BY id DESC"
+            );
+
+            return array_map($this->mapRow(...), $stmt->fetchAll());
+        }
         $stmt = $this->pdo->prepare(
             "SELECT * FROM referentiel_versions
              WHERE referentiel_id = ? AND status IN ('draft','review')
@@ -89,6 +120,67 @@ final class ReferentielRepository
         $stmt->execute([$referentielId]);
 
         return array_map($this->mapRow(...), $stmt->fetchAll());
+    }
+
+    /**
+     * The published referentials (T15), each with the label of its latest
+     * version and its versions, newest first; RESPIRE among them.
+     *
+     * @return list<array{id: string, label: string, versions: list<string>}>
+     */
+    public function catalogue(): array
+    {
+        $stmt = $this->pdo->prepare(
+            'SELECT referentiel_id, semver, label FROM referentiel_versions WHERE status = ? ORDER BY referentiel_id'
+        );
+        $stmt->execute(['published']);
+        $parId = [];
+        foreach ($stmt->fetchAll() as $row) {
+            $parId[(string) $row['referentiel_id']][(string) $row['semver']] = (string) $row['label'];
+        }
+        $out = [];
+        foreach ($parId as $id => $labels) {
+            $versions = array_map('strval', array_keys($labels));
+            usort($versions, static fn (string $a, string $b): int => Semver::compare($b, $a));
+            $out[] = ['id' => (string) $id, 'label' => $labels[$versions[0]], 'versions' => $versions];
+        }
+
+        return $out;
+    }
+
+    /**
+     * A user's versions not yet published, by referential (T15): the drafts
+     * their test runs may read.
+     *
+     * @return array<string, list<string>> referential id => semvers, newest first
+     */
+    public function brouillonsDe(int $userId): array
+    {
+        $stmt = $this->pdo->prepare(
+            "SELECT referentiel_id, semver FROM referentiel_versions
+             WHERE created_by = ? AND status IN ('draft','review') ORDER BY referentiel_id"
+        );
+        $stmt->execute([$userId]);
+        $out = [];
+        foreach ($stmt->fetchAll() as $row) {
+            $out[(string) $row['referentiel_id']][] = (string) $row['semver'];
+        }
+        foreach ($out as &$semvers) {
+            usort($semvers, static fn (string $a, string $b): int => Semver::compare($b, $a));
+        }
+        unset($semvers);
+
+        return $out;
+    }
+
+    /** A version of a referential, whatever its status (T15: a profile names a draft by its semver). */
+    public function findVersion(string $referentielId, string $semver): ?array
+    {
+        $stmt = $this->pdo->prepare('SELECT * FROM referentiel_versions WHERE referentiel_id = ? AND semver = ?');
+        $stmt->execute([$referentielId, $semver]);
+        $row = $stmt->fetch();
+
+        return $row === false ? null : $this->mapRow($row);
     }
 
     public function findPublished(string $referentielId, string $semver): ?array
@@ -251,6 +343,140 @@ final class ReferentielRepository
     // ----------------------------------------------------------------- drafts
 
     /**
+     * Import a referential as a draft (T15): its document is validated as it
+     * is, then read at the chosen level — that level's elements become the
+     * competences (auNiveau) — and validated again. The importer is its
+     * author. RESPIRE is not imported: its competences are edited one by one.
+     *
+     * @param array<string, mixed> $doc the referential, at any of its levels
+     * @param string|null $niveau the name of the level that stands for competence; null: the first
+     * @return array<string, mixed> the draft
+     */
+    public function importDraft(array $doc, ?string $niveau, ?int $createdBy): array
+    {
+        $id = $doc['id'] ?? null;
+        if ($id === self::DEFAULT_REFERENTIEL_ID) {
+            throw new ConflictException('RESPIRE s’édite compétence par compétence dans son atelier : il ne s’importe pas');
+        }
+        if (!\is_string($id) || preg_match(self::ID_PATTERN, $id) !== 1) {
+            throw new InvalidDocumentException('Identifiant de référentiel invalide', ['/id' => [
+                'Minuscules, chiffres, « . », « _ » ou « - », 64 caractères au plus']]);
+        }
+        $normalized = $this->validateDocument($doc);
+        $niveaux = self::niveaux($normalized);
+        $noms = array_column($niveaux, 'nom');
+        $k = $niveau === null ? 0 : array_search($niveau, $noms, true);
+        if ($k === false) {
+            throw new InvalidDocumentException('Niveau inconnu', ['/niveau' => [sprintf(
+                'Niveau inconnu : « %s » (le référentiel déclare : %s)', $niveau, implode(', ', $noms))]]);
+        }
+        $normalized = $this->validateDocument(self::auNiveau($normalized, $k));
+
+        $stmt = $this->pdo->prepare('SELECT id FROM referentiel_versions WHERE referentiel_id = ? AND semver = ?');
+        $stmt->execute([$normalized['id'], $normalized['version']]);
+        if ($stmt->fetch() !== false) {
+            throw new ConflictException(sprintf('La version %s du référentiel « %s » existe déjà',
+                $normalized['version'], $normalized['id']));
+        }
+        $this->pdo->prepare(
+            'INSERT INTO referentiel_versions
+                (referentiel_id, semver, label, status, content, content_hash, created_by)
+             VALUES (?, ?, ?, ?, ?, ?, ?)'
+        )->execute([
+            $normalized['id'], $normalized['version'], $normalized['label'], 'draft',
+            ContentHash::encode($normalized), $normalized['contentHash'], $createdBy,
+        ]);
+
+        return $this->findById((int) $this->pdo->lastInsertId());
+    }
+
+    /**
+     * A referential read at one of its levels (T15): the elements of level
+     * $k become its competences, each under the pole of its competence, its
+     * finer elements kept beneath it; the broader levels are not kept. A
+     * branch that stops above level $k would vanish without a word: refused,
+     * named, as a level without elements.
+     *
+     * @param array<string, mixed> $doc a valid referential
+     * @return array<string, mixed>
+     * @throws InvalidDocumentException
+     */
+    public static function auNiveau(array $doc, int $k): array
+    {
+        if ($k === 0) {
+            return $doc;
+        }
+        $niveaux = self::niveaux($doc);
+        $competences = [];
+        $perdus = [];
+        $descendre = static function (array $noeuds, int $profondeur, int $pole) use (&$descendre, &$competences, &$perdus, $k): void {
+            foreach ($noeuds as $noeud) {
+                if ($profondeur === $k) {
+                    $c = ['code' => $noeud['code'], 'nom' => $noeud['nom'], 'pole' => $pole];
+                    foreach (['description', 'elements'] as $cle) {
+                        if (\array_key_exists($cle, $noeud)) {
+                            $c[$cle] = $noeud[$cle];
+                        }
+                    }
+                    $competences[] = $c;
+                } elseif (($noeud['elements'] ?? []) !== []) {
+                    $descendre($noeud['elements'], $profondeur + 1, $pole);
+                } else {
+                    $perdus[] = $noeud['code'];
+                }
+            }
+        };
+        foreach ($doc['competences'] as $competence) {
+            $descendre([$competence], 0, (int) $competence['pole']);
+        }
+        if ($competences === []) {
+            throw new InvalidDocumentException('Niveau vide', ['/niveau' => [sprintf(
+                'Aucun élément au niveau « %s »', $niveaux[$k]['nom'])]]);
+        }
+        if ($perdus !== []) {
+            throw new InvalidDocumentException('Branches sans élément au niveau choisi', ['/niveau' => [sprintf(
+                'Sans élément au niveau « %s », ces éléments disparaîtraient de l’import : %s',
+                $niveaux[$k]['nom'], implode(', ', $perdus))]]);
+        }
+        $doc['competences'] = $competences;
+        $doc['niveaux'] = \array_slice($niveaux, $k);
+
+        return $doc;
+    }
+
+    /**
+     * The levels of a referential (T15): those it declares, else RESPIRE's
+     * one level, the competence at the motif « \d\.\d{2} ».
+     *
+     * @param array<string, mixed> $doc
+     * @return list<array{nom: string, motif: string}>
+     */
+    public static function niveaux(array $doc): array
+    {
+        $niveaux = $doc['niveaux'] ?? null;
+
+        return \is_array($niveaux) && $niveaux !== []
+            ? array_values($niveaux)
+            : [['nom' => self::NIVEAU_PAR_DEFAUT, 'motif' => self::MOTIF_PAR_DEFAUT]];
+    }
+
+    /**
+     * The regex a whole code follows to match a level's motif (T15); null: the
+     * motif does not compile, or would not stay inside its anchors — a group
+     * closed early (« Z)|(?: ») or a verb such as (*ACCEPT), which ends the
+     * match before the end anchor, would let every code through.
+     */
+    public static function regexDuMotif(string $motif): ?string
+    {
+        if (str_contains($motif, '(*') || @preg_match("\x01" . $motif . "\x01u", '') === false) {
+            return null;
+        }
+        $regex = "\x01^(?:" . $motif . ")$\x01uD";
+
+        return @preg_match($regex, '') === false ? null : $regex;
+    }
+
+    /**
      * New draft forked from an existing version (any status).
      *
      * @return array<string, mixed>|null null when the source version is unknown
@@ -300,7 +526,8 @@ final class ReferentielRepository
              VALUES (?, ?, ?, ?, ?, ?, ?)'
         );
         $insert->execute([
-            $referentielId,
+            // the source's id, not the request's: the column ignores case and trailing spaces
+            $source['referentiel_id'],
             $newSemver,
             $normalized['label'],
             'draft',
@@ -493,25 +720,88 @@ final class ReferentielRepository
             }
             $poleNums[$pole['num']] = true;
         }
+        // T15: the poles are their ranks, 1 to N, without a gap (1.0 is an integer for the schema)
+        $nums = array_map(static fn (array $pole): int => (int) $pole['num'], $normalized['poles']);
+        sort($nums);
+        if ($nums !== range(1, \count($nums))) {
+            $errors['/poles'][] = sprintf('Les pôles se numérotent de 1 à %d, sans trou', \count($nums));
+        }
+        // T15: each level's motif, which every code of the level follows in full
+        $niveaux = self::niveaux($normalized);
+        $regexes = [];
+        foreach ($niveaux as $n => $niveau) {
+            $regexes[$n] = self::regexDuMotif($niveau['motif']);
+            if ($regexes[$n] === null) {
+                $errors["/niveaux/{$n}/motif"][] = sprintf('Motif illisible : %s', $niveau['motif']);
+            }
+        }
         $codes = [];
-        foreach ($normalized['competences'] as $i => $competence) {
-            if (isset($codes[$competence['code']])) {
-                $errors["/competences/{$i}/code"][] = sprintf('Code de compétence dupliqué : %s', $competence['code']);
+        // a code has 8 characters at most: a motif that needs more steps than this
+        // backtracks catastrophically, and would cost a million steps for each code
+        $limite = ini_get('pcre.backtrack_limit');
+        ini_set('pcre.backtrack_limit', (string) self::LIMITE_RETOUR_ARRIERE);
+        try {
+            foreach ($normalized['competences'] as $i => $competence) {
+                if (isset($codes[$competence['code']])) {
+                    $errors["/competences/{$i}/code"][] = sprintf('Code de compétence dupliqué : %s', $competence['code']);
+                }
+                $codes[$competence['code']] = true;
+                if (!isset($poleNums[$competence['pole']])) {
+                    $errors["/competences/{$i}/pole"][] = sprintf(
+                        'La compétence %s référence un pôle inexistant (%d)',
+                        $competence['code'],
+                        $competence['pole'],
+                    );
+                }
+                self::controlerCode($competence, 0, "/competences/{$i}", $niveaux, $regexes, $codes, $errors);
             }
-            $codes[$competence['code']] = true;
-            if (!isset($poleNums[$competence['pole']])) {
-                $errors["/competences/{$i}/pole"][] = sprintf(
-                    'La compétence %s référence un pôle inexistant (%d)',
-                    $competence['code'],
-                    $competence['pole'],
-                );
-            }
+        } finally {
+            ini_set('pcre.backtrack_limit', (string) $limite);
         }
         if ($errors !== []) {
             throw new InvalidDocumentException('Document fails referentiel integrity checks', $errors);
         }
 
         return $normalized;
+    }
+
+    /**
+     * T15: a code follows its level's motif, an element sits at a level the
+     * referential declares, a code is never twice.
+     *
+     * @param array<string, mixed> $noeud a competence (level 0) or an element
+     * @param list<array{nom: string, motif: string}> $niveaux
+     * @param list<string|null> $regexes null for a level whose motif is refused (no longer evaluated)
+     * @param array<string, true> $codes the codes met so far
+     * @param array<string, list<string>> $errors
+     */
+    private static function controlerCode(array $noeud, int $profondeur, string $pointeur, array $niveaux,
+                                          array &$regexes, array &$codes, array &$errors): void
+    {
+        if (!isset($niveaux[$profondeur])) {
+            $errors[$pointeur][] = sprintf('Élément d’un niveau que le référentiel ne déclare pas (il en déclare %d)',
+                \count($niveaux));
+            return;
+        }
+        $regex = $regexes[$profondeur];
+        $suit = $regex === null ? null : @preg_match($regex, $noeud['code']);
+        if ($suit === false) {
+            // the backtracking limit: the motif is refused once, and no longer evaluated
+            $errors["/niveaux/{$profondeur}/motif"][] = sprintf('Motif trop coûteux à évaluer : %s',
+                $niveaux[$profondeur]['motif']);
+            $regexes[$profondeur] = null;
+        } elseif ($suit === 0) {
+            $errors[$pointeur . '/code'][] = sprintf('« %s » ne suit pas le motif %s du niveau « %s »',
+                $noeud['code'], $niveaux[$profondeur]['motif'], $niveaux[$profondeur]['nom']);
+        }
+        foreach ($noeud['elements'] ?? [] as $j => $element) {
+            $p = "{$pointeur}/elements/{$j}";
+            if (isset($codes[$element['code']])) {
+                $errors[$p . '/code'][] = sprintf('Code dupliqué : %s', $element['code']);
+            }
+            $codes[$element['code']] = true;
+            self::controlerCode($element, $profondeur + 1, $p, $niveaux, $regexes, $codes, $errors);
+        }
     }
 
     /**
@@ -542,6 +832,7 @@ final class ReferentielRepository
             'submittedBy' => isset($row['submitted_by']) && $row['submitted_by'] !== null
                 ? (int) $row['submitted_by']
                 : null,
+            'createdBy' => isset($row['created_by']) && $row['created_by'] !== null ? (int) $row['created_by'] : null,
             'decidimUrl' => $row['decidim_url'] ?? null,
             'content' => $content,
         ];

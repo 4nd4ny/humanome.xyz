@@ -17,22 +17,26 @@ use InvalidArgumentException;
  * The hash covers only the STRUCTURAL core (which poles/competences exist and
  * how they are named/placed). OPTIONAL annotation fields — notably a
  * competence's `description` (the épistémiarque-edited definition, RESPIRE
- * v7.1+) — are PRESERVED by normalize() in the stored document but DELIBERATELY
- * excluded from the hash: two versions with the same structure but different
- * definitions share one contentHash, the semver carrying the editorial change.
- * This keeps the hash byte-identical to the Node extractor and the pinned
- * fixtures, so no engine oracle or Twin9 vector moves.
+ * v7.1+), and since T15 a referential's `niveaux`, a pole's `description` and
+ * a competence's `elements` — are PRESERVED by normalize() in the stored
+ * document but DELIBERATELY excluded from the hash: two versions with the same
+ * structure but different definitions share one contentHash, the semver
+ * carrying the editorial change. This keeps the hash byte-identical to the Node
+ * extractor and the pinned fixtures, so no engine oracle or Twin9 vector moves.
  *
  * MySQL JSON columns reorder object keys, so documents are re-normalized
  * on every read/write instead of trusting stored key order.
  */
 final class ContentHash
 {
-    /** Top-level key order of a canonical referentiel document. */
+    /** Top-level key order of a canonical referentiel document (`niveaux`: T15, absent from RESPIRE's). */
     private const DOCUMENT_KEYS = [
         'schemaVersion', 'kind', 'id', 'version', 'label',
-        'contentHash', 'source', 'poles', 'competences',
+        'contentHash', 'source', 'niveaux', 'poles', 'competences',
     ];
+
+    /** Core keys of an element of a finer level (T15), before its other keys sorted. */
+    private const ELEMENT_KEYS = ['code', 'nom'];
 
     /**
      * @param array<string, mixed> $doc decoded referentiel document
@@ -83,10 +87,10 @@ final class ContentHash
      *
      * @param list<array<string, mixed>> $entries
      * @param list<string> $coreKeys core keys, in canonical order
-     * @param 'num'|'code' $sortKey key the list is sorted by
+     * @param 'num'|'code'|null $sortKey key the list is sorted by; null: the elements keep their order
      * @return list<array<string, mixed>>
      */
-    private static function canonicalEntries(array $entries, array $coreKeys, string $sortKey): array
+    private static function canonicalEntries(array $entries, array $coreKeys, ?string $sortKey): array
     {
         $out = [];
         foreach ($entries as $entry) {
@@ -104,9 +108,14 @@ final class ContentHash
             $extras = array_diff_key($entry, array_flip($coreKeys));
             ksort($extras);
             foreach ($extras as $key => $value) {
-                $canonical[$key] = $value;
+                // the elements of finer levels, in the same order whatever MySQL's JSON made of it
+                $canonical[$key] = $key === 'elements' && \is_array($value) && array_is_list($value)
+                    ? self::canonicalEntries($value, self::ELEMENT_KEYS, null) : $value;
             }
             $out[] = $canonical;
+        }
+        if ($sortKey === null) {
+            return $out;
         }
 
         if ($sortKey === 'num') {

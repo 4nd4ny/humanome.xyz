@@ -11,6 +11,13 @@ declare(strict_types=1);
  *
  * Epistemiarque writes: draft creation/edition/publication. Published
  * versions are immutable — every write on one is a 409.
+ *
+ * T15: every referential, not only RESPIRE. The épistémiarque imports one of
+ * any structure as a draft, at the level that stands for competence
+ * (POST /referentiel/import); its drafts and proposals join the workbench
+ * lists; a new version of it forks like RESPIRE's (POST /referentiel/drafts
+ * with « referentiel »). The published referentials are public
+ * (GET /referentiels). RESPIRE's public reads stay as they were.
  */
 
 use Humanome\Db;
@@ -120,6 +127,11 @@ return function (App $app): void {
         }
     ));
 
+    // The published referentials, each with its latest label and its versions (T15).
+    $app->get('/referentiels', $wrap(function (Request $request, Response $response) use ($json, $repo): Response {
+        return $json($response, $repo()->catalogue());
+    }));
+
     $app->get('/referentiel/diff/{from}/{to}', $wrap(
         function (Request $request, Response $response, array $args) use ($json, $repo): Response {
             $repository = $repo();
@@ -148,9 +160,14 @@ return function (App $app): void {
             }
             $label = isset($body['label']) && \is_string($body['label']) ? $body['label'] : null;
             $userId = $_SESSION['user_id'] ?? null;
+            // T15: a version of another referential forks the same way
+            $referentiel = $body['referentiel'] ?? ReferentielRepository::DEFAULT_REFERENTIEL_ID;
+            if (!\is_string($referentiel) || preg_match(ReferentielRepository::ID_PATTERN, $referentiel) !== 1) {
+                return $json($response, ['error' => 'Field "referentiel" must be a referentiel id'], 422);
+            }
 
             $draft = $repo()->createDraft(
-                ReferentielRepository::DEFAULT_REFERENTIEL_ID,
+                $referentiel,
                 $from,
                 $semver,
                 $label,
@@ -218,10 +235,36 @@ return function (App $app): void {
         return $payload;
     };
 
-    // Editable versions (drafts + proposals) — the workbench list.
+    // Import a referential of any structure as a draft, at the level that
+    // stands for competence (T15): {document, niveau?}. RESPIRE is not imported.
+    $app->post('/referentiel/import', $wrap(
+        function (Request $request, Response $response) use ($json, $parseBody, $repo): Response {
+            $body = $parseBody($request);
+            if ($body === null) {
+                return $json($response, ['error' => 'Invalid JSON body'], 400);
+            }
+            $document = $body['document'] ?? null;
+            if (!\is_array($document) || $document === [] || array_is_list($document)) {
+                return $json($response, ['error' => 'Champ requis : document (le référentiel, un objet JSON)'], 422);
+            }
+            $niveau = $body['niveau'] ?? null;
+            if ($niveau !== null && (!\is_string($niveau) || $niveau === '')) {
+                return $json($response, ['error' => 'Champ « niveau » : le nom d’un niveau du référentiel'], 422);
+            }
+            $userId = $_SESSION['user_id'] ?? null;
+            $draft = $repo()->importDraft($document, $niveau,
+                \is_int($userId) ? $userId : (\is_string($userId) && ctype_digit($userId) ? (int) $userId : null));
+
+            return $json($response, ['id' => $draft['id']]
+                + ReferentielRepository::metadata($draft)
+                + ['content' => $draft['content']], 201);
+        }
+    ))->add($epistemiarque);
+
+    // Editable versions (drafts + proposals) of every referential — the workbench list.
     $app->get('/referentiel/drafts', $wrap(
         function (Request $request, Response $response) use ($json, $repo, $withTally): Response {
-            $versions = $repo()->editableVersions(ReferentielRepository::DEFAULT_REFERENTIEL_ID);
+            $versions = $repo()->editableVersions();
 
             return $json($response, array_map($withTally, $versions));
         }
@@ -287,7 +330,7 @@ return function (App $app): void {
     $app->get('/referentiel/proposals', $wrap(
         function (Request $request, Response $response) use ($json, $repo, $governance): Response {
             $proposals = array_filter(
-                $repo()->editableVersions(ReferentielRepository::DEFAULT_REFERENTIEL_ID),
+                $repo()->editableVersions(),
                 static fn (array $v): bool => $v['status'] === 'review',
             );
 

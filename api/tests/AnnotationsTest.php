@@ -4,6 +4,10 @@ declare(strict_types=1);
 
 namespace Humanome\Tests;
 
+use Humanome\Referentiel\ContentHash;
+use Humanome\Referentiel\ReferentielRepository;
+use Humanome\Tests\UseCases\Support\ReferentielsFictifs;
+
 /**
  * P9 — per-competence annotations: owner and linked cartographe may write
  * and read; deletion is author-only; every unauthorized access answers the
@@ -74,6 +78,49 @@ final class AnnotationsTest extends CartographeTestCase
             self::assertSame(422, $response->getStatusCode(), 'case #' . $i);
         }
         self::assertSame(0, (int) self::$pdo->query('SELECT COUNT(*) FROM cartography_annotations')->fetchColumn());
+    }
+
+    /**
+     * T15: a cartography that names its referential takes that referential's
+     * codes, whatever its structure; one that names none keeps RESPIRE's form.
+     */
+    public function testACartographyOfAnotherReferentialTakesItsCodes(): void
+    {
+        self::$pdo->exec('DELETE FROM referentiel_versions');
+        $repo = new ReferentielRepository(self::$pdo);
+        $lettre = ReferentielsFictifs::lettre();
+        $repo->importPublishedDocument(['contentHash' => ContentHash::compute($lettre)] + $lettre, 'Publié');
+        $respire = json_decode((string) file_get_contents(\dirname(__DIR__, 2) . '/schemas/fixtures/referentiel-respire-v7.json'),
+            true, 512, JSON_THROW_ON_ERROR);
+        $repo->importPublishedDocument($respire, 'Import initial');
+        $lier = function (int $cartoId, string $referentiel): void {
+            self::$pdo->prepare('UPDATE cartographies SET referentiel_version_id = (SELECT id FROM referentiel_versions
+                WHERE referentiel_id = ?) WHERE id = ?')->execute([$referentiel, $cartoId]);
+        };
+        $annoter = fn (int $cartoId, string $code): array => [
+            ($r = $this->as_($this->carl, 'POST', "/api/cartographies/$cartoId/annotations",
+                self::annotation(['competenceCode' => $code])))->getStatusCode(),
+            self::json($r)['fields']['competenceCode'] ?? null,
+        ];
+        $inconnu = 'Code de compétence inconnu du référentiel de la cartographie';
+
+        $lier($this->cartoId, 'fictif-lettre');
+        self::assertSame([201, null], $annoter($this->cartoId, 'A1'));
+        self::assertSame([201, null], $annoter($this->cartoId, 'E4'));
+        foreach (['1.01', 'A1.1', 'F1'] as $code) {
+            self::assertSame([422, $inconnu], $annoter($this->cartoId, $code), $code);
+        }
+
+        $autre = $this->createCarto($this->maya);
+        $lier($autre, 'respire');
+        self::assertSame([201, null], $annoter($autre, '7.04'));
+        self::assertSame([422, $inconnu], $annoter($autre, '7.99'));
+        self::assertSame([422, $inconnu], $annoter($autre, 'A1'));
+
+        // a cartography that names no referential keeps RESPIRE's form
+        $libre = $this->createCarto($this->maya);
+        self::assertSame([201, null], $annoter($libre, '7.99'));
+        self::assertSame(422, $annoter($libre, 'A1')[0]);
     }
 
     public function testAccessMatrixCollapsesInto404(): void

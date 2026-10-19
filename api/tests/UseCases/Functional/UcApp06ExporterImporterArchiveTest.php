@@ -84,7 +84,9 @@ final class UcApp06ExporterImporterArchiveTest extends CartographeTestCase
     public function testF14NoServerArchiveRouteAndNoPrivatePackage(): void
     {
         // Table de routage RÉELLE : aucun motif « export » ni « archive » ; les
-        // seuls motifs « import » sont les imports d'administration (jeton technique).
+        // seuls motifs « import » sont les imports d'administration (jeton technique)
+        // et celui d'un référentiel par l'épistémiarque (T15, UC-EPI-05 : un document
+        // public, sans donnée personnelle) — aucun n'importe d'archive.
         $patterns = array_map(
             static fn ($route): string => $route->getPattern(),
             Bootstrap::createApp()->getRouteCollector()->getRoutes(),
@@ -92,7 +94,8 @@ final class UcApp06ExporterImporterArchiveTest extends CartographeTestCase
         self::assertSame([], array_values(preg_grep('/export|archive/i', $patterns)));
         $imports = array_values(preg_grep('/import/i', $patterns));
         sort($imports);
-        self::assertSame(['/admin/import-prompt-package', '/admin/import-referentiel', '/admin/twin9/import'], $imports);
+        self::assertSame(['/admin/import-prompt-package', '/admin/import-referentiel', '/admin/twin9/import',
+                          '/referentiel/import'], $imports);
 
         self::publish('golden-prompt', '1.0.0', true);
         $maya = $this->registerAs('maya@example.org', 'Maya');

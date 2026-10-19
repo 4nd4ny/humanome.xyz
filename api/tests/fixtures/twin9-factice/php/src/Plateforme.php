@@ -27,6 +27,12 @@ use Twin9\Run\Store;
  * its calls failed, and the next passes take it back; the rest ("faisceaux",
  * a count of the runs merged) enters it when the run completes; outputs are
  * told as they are written.
+ *
+ * Its outputs have the v9.8's shape where the platform reads them (T9): a
+ * day map names its day and judges one competence (1.01) with a jury and a
+ * deliberation drawn from its calls' answers; the merge attests that
+ * competence on each day, names each day ("journee"), and carries a story,
+ * a pole report and a kairos. The memory keeps a day's map as « carto ».
  */
 final class Plateforme
 {
@@ -83,7 +89,7 @@ final class Plateforme
             $entree = $memoire === null ? null : json_decode((string) $memoire->read($cle), true);
             if (\is_array($entree) && $entree['empreinte'] === sha1($jour['texte'])
                 && $entree['reglages'] === $this->empreinte) {
-                $cartes[] = $entree['carte'];
+                $cartes[] = $entree['carto'];
                 $reprises++;
                 continue;
             }
@@ -94,10 +100,11 @@ final class Plateforme
                 continue;
             }
             $cartes[] = $carte;
-            $sortie('journees/' . $jour['id'] . '/carto_jour.json', json_encode($carte, JSON_UNESCAPED_UNICODE));
+            $sortie('journees/' . $jour['id'] . '/carto_jour.json',
+                json_encode($carte, JSON_UNESCAPED_UNICODE | JSON_PRESERVE_ZERO_FRACTION));
             if ($memoire !== null && !$carte['panne']) {
                 $memoire->write($cle, json_encode(['empreinte' => sha1($jour['texte']), 'reglages' => $this->empreinte,
-                                                   'carte' => $carte], JSON_UNESCAPED_UNICODE));
+                                                   'texte' => $jour['texte'], 'carto' => $carte], JSON_UNESCAPED_UNICODE));
             }
         }
         if ($attendus !== []) {
@@ -111,7 +118,8 @@ final class Plateforme
             [$fusion] = $this->appel($journal, 'fusion', 'merge_rapporteur', 'factice/fusion', ['JOURS' => $resume]);
         }
         $sortie('carto_evolutive.json', json_encode(['journal' => $this->journal, 'horloge' => $this->horloge->format('c'),
-            'sortie' => $this->sortie, 'jours' => $cartes, 'fusion' => $fusion], JSON_UNESCAPED_UNICODE));
+            'sortie' => $this->sortie, 'jours' => $cartes, 'fusion' => $fusion] + $this->fusionV98($cartes, (string) $fusion),
+            JSON_UNESCAPED_UNICODE | JSON_PRESERVE_ZERO_FRACTION));
         if ($memoire !== null) {
             $avant = json_decode((string) $memoire->read($prefixe . 'faisceaux'), true);
             $memoire->write($prefixe . 'faisceaux', json_encode(['runs' => (\is_array($avant) ? $avant['runs'] : 0) + 1]));
@@ -149,8 +157,63 @@ final class Plateforme
             $precedent = $texte;
         }
 
+        $date = preg_match('/^\d{4}-\d{2}-\d{2}$/', $jour['id']) === 1 ? $jour['id'] : null;
+        $dernier = $etapes === [] ? '' : (string) end($etapes);
+
         return ['jour' => $jour['id'], 'lectures' => $lectures, 'etapes' => $etapes, 'panne' => $panne,
-                'horodatage' => $this->horloge->format('c')];
+                'horodatage' => $this->horloge->format('c'),
+                // the v9.8's day map, where the platform reads it: one competence judged by a jury of one
+                'journee' => $jour['id'], 'date' => $date, 'titre' => null,
+                'verdicts' => ['1.01' => [
+                    'code' => '1.01', 'nom' => 'Compétence factice', 'dossier_vide' => false,
+                    'statut' => 'présence établie', 'score_preuves' => 1, 'score_indices' => 0, 'confiance' => 0.8,
+                    'etage' => 'tribunal',
+                    'traces_probantes' => [['piece' => 1, 'extrait' => mb_substr($jour['texte'], 0, 80), 'date' => $date,
+                                            'type' => 'journal', 'role' => 'preuve']],
+                    'prescription' => ['pour_apprenant' => $dernier, 'pour_cartographe' => null],
+                    'jury' => ['mode' => 'factice', 'composition' => ['Lecteur'], 'positions_r1' => ['Lecteur' => 'présence'],
+                               'positions_finales' => ['Lecteur' => 'présence'], 'consensus' => true, 'dissidences' => [],
+                               'second_tour' => false],
+                    'deliberation' => [
+                        'greffier_md' => implode("\n\n", $lectures),
+                        'arene' => ['accusation_md' => $etapes[0] ?? '', 'defense_md' => $etapes[1] ?? '',
+                                    'replique_md' => null, 'briefing_md' => null],
+                        'jures' => ['Lecteur' => ['r1_md' => $lectures[0] ?? '', 'r2_md' => null, 'position_r1' => 'présence',
+                                                  'position_finale' => 'présence', 'pieces' => [1], 'piege' => null]],
+                        'relance_md' => null, 'gardiens' => ['support_md' => null, 'raisonnement_md' => null],
+                        'president_md' => $dernier,
+                    ],
+                ]],
+        ];
+    }
+
+    /**
+     * The v9.8's merge, where the platform reads it: competence 1.01 attested
+     * on each day, each day named; a story, a pole report, a kairos.
+     *
+     * @param list<array<string, mixed>> $cartes
+     * @return array<string, mixed>
+     */
+    private function fusionV98(array $cartes, string $fusion): array
+    {
+        $attestations = [];
+        foreach (array_values($cartes) as $i => $c) {
+            $attestations[] = ['jour_index' => $i, 'journee' => $c['jour'], 'date' => $c['date'] ?? null,
+                               'etage' => 'tribunal', 'confiance' => 0.8, 'score_preuves' => 1, 'score_indices' => 0,
+                               'citations' => []];
+        }
+        $dates = array_values(array_filter(array_column($cartes, 'date')));
+
+        return [
+            'journal_id' => $this->journal,
+            'periode' => ['debut' => $dates[0] ?? null, 'fin' => $dates === [] ? null : end($dates),
+                          'n_journees' => \count($cartes)],
+            'competences' => ['1.01' => ['code' => '1.01', 'nom' => 'Compétence factice', 'pole' => 1,
+                                         'attestations' => $attestations, 'signaux' => []]],
+            'histoires' => ['1.01' => $fusion],
+            'rapports_poles' => ['1' => $fusion],
+            'kairos_evolutif' => $fusion,
+        ];
     }
 
     /**

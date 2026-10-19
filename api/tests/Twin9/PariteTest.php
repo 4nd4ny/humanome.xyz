@@ -9,6 +9,7 @@ use Humanome\Tests\TestDb;
 use Humanome\Twin9\CallSettings;
 use Humanome\Twin9\EngineLoader;
 use Humanome\Twin9\MapStore;
+use Humanome\Twin9\MoteurReglages;
 use Humanome\Twin9\ProfilRepository;
 use Humanome\Twin9\RunRepository;
 use Humanome\Worker\Tick;
@@ -160,6 +161,39 @@ final class PariteTest extends TestCase
             incidents: [2 => 'tue', 4 => 'tue_apres']);
     }
 
+    /**
+     * The engine reads the profile's settings, and nothing else (T9): drawn
+     * from the v9.8 profile, they are the oracle's cloud settings — the
+     * backends' kind aside, « mock » under --mock — and the run they drive is
+     * the oracle's, call by call.
+     */
+    public function testTheV98ProfileDrivesTheEngine(): void
+    {
+        [, $oracle] = $this->scenario(self::$dir . '/oracle/scenarios/02-cloud');
+        $moteur = MoteurReglages::depuis(ProfilRepository::validate(ProfilRepository::v98()));
+        foreach ([$moteur->config->backend_tribunal, $moteur->config->backend_rapide, ...$moteur->roster] as $b) {
+            $b->kind = 'mock';   // --mock
+        }
+
+        foreach ((array) $oracle->config as $cle => $valeur) {
+            if (\in_array($cle, ['_note', 'backend_tribunal_local'], true)) {
+                continue;   // a comment; the local backend of --donnees-reelles (consent replaces it, ADR-011)
+            }
+            $attendu = str_starts_with($cle, 'backend_')
+                ? array_intersect_key((array) $valeur, array_flip(['kind', 'model', 'model_mini'])) : $valeur;
+            self::assertEquals($attendu, \is_object($moteur->config->{$cle}) && str_starts_with($cle, 'backend_')
+                ? (array) $moteur->config->{$cle} : $moteur->config->{$cle}, $cle);
+        }
+        $lus = ['name', 'kind', 'model', 'family', 'weight', 'enabled', 'passe', 'seed', 'salt'];
+        self::assertSame(
+            array_map(static fn (\stdClass $m): array => array_intersect_key((array) $m, array_flip($lus)), $oracle->roster),
+            array_map(static fn (\stdClass $m): array => array_intersect_key((array) $m, array_flip($lus)), $moteur->roster),
+        );
+        self::assertSame([null, false, true], [$moteur->jours, $moteur->test, $moteur->memoire]);
+
+        $this->rejouer('02-cloud', $this->utilisateur('profil@example.test'), moteur: $moteur);
+    }
+
     public function testTheRealRun(): void
     {
         if (!is_file(self::$dir . '/oracle/reel/calls.jsonl')) {
@@ -178,14 +212,16 @@ final class PariteTest extends TestCase
      * @param bool $comparer whether the calls and outputs must be the oracle's
      * @param bool $parLots by batches (ReplayBatchApi), rather than directly
      * @param array<int, string> $incidents by batches: the creations that make the tick die ('tue', 'tue_apres')
+     * @param \stdClass|null $moteur the engine's settings, the oracle's by default
      * @return int the run
      */
     private function rejouer(string $id, int $user, float $part = 1.0, ?\Closure $avant = null, ?array $record = null,
                              ?\Closure $tueur = null, bool $comparer = true, bool $parLots = false,
-                             array $incidents = []): int
+                             array $incidents = [], ?\stdClass $moteur = null): int
     {
         $dir = self::$dir . ($id === 'reel' ? '/oracle/reel' : '/oracle/scenarios/' . $id);
-        [$scenario, $moteur, $portfolio, $sortie] = $this->scenario($dir);
+        [$scenario, $oracle, $portfolio, $sortie] = $this->scenario($dir);
+        $moteur ??= $oracle;
         $record ??= self::record($dir . '/calls.jsonl');
         // a test that failed may have left its run in progress: it must not take this one's slices
         self::$pdo->exec('UPDATE twin9_runs SET statut = "annule" WHERE statut = "en_cours"');

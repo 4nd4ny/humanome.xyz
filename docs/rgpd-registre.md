@@ -169,9 +169,9 @@ exécution du service/contrat, **f** = intérêt légitime.
 | Finalité | Analyse du texte du portfolio pour produire la cartographie. |
 | Personnes concernées | Toute personne déclenchant un run. |
 | Données transmises | Le texte à analyser + consignes système. Jamais le mot de passe ni les identifiants de compte. |
-| Destinataire | **Démo** : Anthropic via le proxy plateforme. **Clé perso** : le fournisseur choisi par la personne. **Établissement** : la clé de l'établissement ou de la plateforme, selon sa configuration. |
+| Destinataire | **Démo** : Anthropic via le proxy plateforme. **Clé perso** : le fournisseur choisi par la personne. **Établissement** : la clé de l'établissement ou de la plateforme, selon sa configuration. **Run Twin9** : Anthropic, avec la clé de l'instance ou la clé personnelle de la personne (§13). |
 | Base légale | **a** (le run est déclenché par la personne). |
-| Conservation côté humanome | Aucune, au-delà de ce que la personne a explicitement stocké (§3). |
+| Conservation côté humanome | Aucune, au-delà de ce que la personne a explicitement stocké (§3) ou accepté de garder sur le serveur avec un run Twin9 (§13). |
 
 ### 8 bis. Dialogue d'accompagnement de l'interface ultime (P7)
 
@@ -241,11 +241,11 @@ exécution du service/contrat, **f** = intérêt légitime.
 |---|---|
 | Finalité | Exécuter sur le serveur, par tranches, les runs Twin9 de la personne (ADR-011), et reprendre une carte d'un run à l'autre. |
 | Personnes concernées | Titulaires de compte qui lancent des runs Twin9. |
-| Données | Par run (`twin9_runs`) : copie des réglages (profil et réglages de la v9.8), **copie du portfolio**, instantané du jeu de gabarits, horloge, compteurs. Journal des appels (`twin9_appels`) : empreinte SHA-256 du prompt (jamais le prompt), réponse du modèle, modèle servi, jetons, coût, durée ; jamais la clé. Lots (`twin9_lots`, voie par lots) : identifiant Anthropic, nombre de requêtes, taille, dates, aucun contenu. Sorties du run (`twin9_resultats`). Mémoire de la carte (`twin9_cartes`, `twin9_memoire`) : journées instruites, faisceaux, calques archivés, par portfolio, référentiel et jeu de gabarits. Tout ce contenu est compressé (zlib), non chiffré. |
-| Base légale | **a** : à chaque lancement, l'accord de l'apprenant pour garder son portfolio et l'état du run sur le serveur (ADR-011 §5). L'écran de lancement vient avec T9 : d'ici là, aucun run ne se lance depuis l'interface. |
+| Données | Par run (`twin9_runs`) : copie des réglages (profil et réglages de la v9.8), **copie du portfolio**, instantané du jeu de gabarits, horloge, compteurs, attestation (profil, versions du jeu de gabarits et du référentiel, commit du moteur), visibilité, date de l'accord. Journal des appels (`twin9_appels`) : empreinte SHA-256 du prompt (jamais le prompt), réponse du modèle, modèle servi, jetons, coût, durée ; jamais la clé. Lots (`twin9_lots`, voie par lots) : identifiant Anthropic, nombre de requêtes, taille, dates, aucun contenu. Sorties du run (`twin9_resultats`). Mémoire de la carte (`twin9_cartes`, `twin9_memoire`) : journées instruites, faisceaux, calques archivés, par portfolio, référentiel et jeu de gabarits. Tout ce contenu est compressé (zlib), non chiffré. |
+| Base légale | **a** : à chaque lancement, l'accord de l'apprenant pour garder son portfolio et l'état du run sur le serveur (ADR-011 §5), que l'écran de lancement (`#/twin9`, T9) demande, daté (`accord_at`) ; sans lui, rien ne part. |
 | Durée | Un run fini ne garde de son journal que les compteurs. Le run, portfolio et sorties compris, et la mémoire de ses cartes restent jusqu'à ce que la personne les efface (ADR-011 §5) ; aujourd'hui, en supprimant son compte. |
-| Destinataires | Anthropic (§8), le temps de chaque appel ; par lots, jusqu'à ce que le lot soit relevé, puis supprimé chez Anthropic, ou annulé puis supprimé avec son run. Un lot qui ne serait pas supprimé y resterait 29 jours. |
-| Tables | `twin9_cartes`, `twin9_memoire`, `twin9_runs`, `twin9_appels`, `twin9_resultats` (migration 025), `twin9_lots` (migration 026). |
+| Destinataires | Anthropic (§8), le temps de chaque appel ; par lots, jusqu'à ce que le lot soit relevé, puis supprimé chez Anthropic, ou annulé puis supprimé avec son run. Un lot qui ne serait pas supprimé y resterait 29 jours. Les résultats (sorties, cartes du jour de la mémoire) sont lus par la personne et, si elle le décide (visibilité « cartographe », réversible), par le cartographe auquel elle est liée ; l'administrateur ne voit que des compteurs (`docs/autorisations.md`, « Runs Twin9 »). |
+| Tables | `twin9_cartes`, `twin9_memoire`, `twin9_runs`, `twin9_appels`, `twin9_resultats` (migration 025), `twin9_lots` (migration 026) ; attestation, visibilité et accord (migration 027). |
 | Sort à la suppression | CASCADE depuis le compte (cartes et runs), puis depuis la carte (mémoire) et le run (journal, lots, sorties). Deux points attendent T10 : supprimer chez Anthropic les lots d'un compte purgé, et mettre ses runs dans l'export du compte. |
 
 ---

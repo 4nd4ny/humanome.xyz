@@ -58,6 +58,30 @@ final class ProtocoleRepository
     }
 
     /**
+     * The live template set as a run takes it (T9): each template's content by
+     * name — server-side only, the run keeps it as its snapshot — and the
+     * version of each, its archived versions plus the live one.
+     *
+     * @return array{gabarits: array<string, string>, versions: array<string, int>}
+     */
+    public function jeu(): array
+    {
+        $gabarits = [];
+        foreach ($this->pdo->query('SELECT name, content FROM twin9_protocole ORDER BY name')->fetchAll() as $row) {
+            $gabarits[(string) $row['name']] = (string) $row['content'];
+        }
+        $versions = array_fill_keys(array_keys($gabarits), 1);
+        $archives = $this->pdo->query('SELECT name, MAX(version) AS v FROM twin9_protocole_versions GROUP BY name');
+        foreach ($archives->fetchAll() as $row) {
+            if (isset($versions[(string) $row['name']])) {
+                $versions[(string) $row['name']] = (int) $row['v'] + 1;
+            }
+        }
+
+        return ['gabarits' => $gabarits, 'versions' => $versions];
+    }
+
+    /**
      * One template WITH its content (admin-only exposure — routes/twin9.php).
      *
      * @return array{name: string, content: string, variables: list<string>, updated_at: string}|null

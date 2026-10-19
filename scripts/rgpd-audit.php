@@ -111,12 +111,15 @@ final class RgpdAudit
         'carto_publication_requests' => '—', // pending request code (migration 023), no content
         'twin9_profils' => 'via',           // Twin9 run settings (migration 024), no content; GET /api/twin9/profils/{id} (T13)
         // Twin9 runs (migration 025): portfolio, settings, journal, outputs,
-        // map memory; in the account export with T10 (ADR-011 §5)
-        'twin9_cartes' => 'none',
-        'twin9_memoire' => 'none',
-        'twin9_runs' => 'none',
+        // map memory; in the account export with T10 (ADR-011 §5). Since T9 a
+        // run's progress, results and the day maps of its memory are served
+        // to their owner (GET /api/twin9/runs, /api/twin9/runs/{id}/resultats);
+        // its copy of the portfolio and its journal are not.
+        'twin9_cartes' => 'via',
+        'twin9_memoire' => 'via',
+        'twin9_runs' => 'via',
         'twin9_appels' => 'none',
-        'twin9_resultats' => 'none',
+        'twin9_resultats' => 'via',
         'twin9_lots' => '—',                // a run's batches (migration 026): ids and counts, no content
     ];
 

@@ -31,6 +31,42 @@ final class EngineLoaderTest extends TestCase
         }
     }
 
+    /**
+     * The engine's commit, for a run's attestation (T9): its checkout's HEAD,
+     * through a branch, packed or not, or a worktree's; else the COMMIT file a
+     * copy without git keeps; else nothing.
+     */
+    public function testTheEnginesCommitIsItsCheckoutsHeadElseItsCommitFile(): void
+    {
+        $sha = str_repeat('a1b2c3d4e5', 4);
+        $racine = sys_get_temp_dir() . '/twin_v9-commit-' . bin2hex(random_bytes(4));
+        $ecrire = static function (string $chemin, string $texte) use ($racine): void {
+            @mkdir(\dirname($racine . '/' . $chemin), 0777, true);
+            file_put_contents($racine . '/' . $chemin, $texte);
+        };
+        try {
+            self::assertNull(EngineLoader::commit($racine . '/rien'));
+
+            $ecrire('clone/.git/HEAD', "ref: refs/heads/main\n");
+            $ecrire('clone/.git/refs/heads/main', $sha . "\n");
+            self::assertSame($sha, EngineLoader::commit($racine . '/clone'));
+
+            $ecrire('emballe/.git/HEAD', "ref: refs/heads/main\n");
+            $ecrire('emballe/.git/packed-refs', "# pack-refs with: peeled\n$sha refs/heads/main\n");
+            self::assertSame($sha, EngineLoader::commit($racine . '/emballe'));
+
+            $ecrire('clone/.git/worktrees/t9/HEAD', "ref: refs/heads/main\n");
+            $ecrire('clone/.git/worktrees/t9/commondir', "../..\n");
+            $ecrire('arbre/.git', 'gitdir: ' . $racine . "/clone/.git/worktrees/t9\n");
+            self::assertSame($sha, EngineLoader::commit($racine . '/arbre'));
+
+            $ecrire('copie/COMMIT', "$sha\n");
+            self::assertSame($sha, EngineLoader::commit($racine . '/copie'));
+        } finally {
+            exec('rm -rf ' . escapeshellarg($racine));
+        }
+    }
+
     public function testDirectoryDefaultsToTwinV9NextToTheRepository(): void
     {
         TestDb::setEnv('TWIN_V9_DIR', '');

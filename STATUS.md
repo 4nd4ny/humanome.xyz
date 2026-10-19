@@ -63,25 +63,33 @@ choisie le 2026-10-19 avec l'historique des évaluations, attendent leur revue (
     Refusé, le lancement dit ce qu'il faudrait ; la page le dit d'avance et ne laisse pas lancer. Un
     lancement à la fois par personne. La page de lancement dit la fourchette et les journées admises,
     la page du run son admission.
-  - Revue indépendante du lot (un agent qui ne l'avait pas écrit) : quatorze points, corrigés chacun
-    avec un test qui échouait sans lui — la fusion d'une carte coupée sous-estimée (droite par
-    l'origine) ; la carte relue par la fusion comptée sans les journées de la mémoire ; les autres
-    runs en cours ignorés ; un arrêt par la réserve sans issue sur la page ; les pires cas réservés
-    avant chaque appel absents de l'admission ; une seule taille mal reconnue par arrondi ; une
-    signature sans les paramètres de l'algorithme ni le jeu de gabarits ; les profils qui relisent
-    tout ; les journées en panne comptées comme des journées ; toutes les évaluations relues ; un
-    échec de consignation qui bloquait le run ; les textes « observé » sans observation ; le
-    bouton de lancement actif sur un refus ; le cache de mémoire de l'oracle nourri par le test par
-    passes.
+  - Deux revues indépendantes du lot (des agents qui ne l'avaient pas écrit). La première, quatorze
+    points, corrigés chacun avec un test qui échouait sans lui : la fusion d'une carte coupée
+    sous-estimée (droite par l'origine) ; la carte relue par la fusion comptée sans les journées de
+    la mémoire ; les autres runs en cours ignorés ; un arrêt par la réserve sans issue sur la page ;
+    les pires cas réservés avant chaque appel absents de l'admission ; une seule taille mal reconnue
+    par arrondi ; une signature sans les paramètres de l'algorithme ni le jeu de gabarits ; les
+    profils qui relisent tout ; les journées en panne comptées comme des journées ; toutes les
+    évaluations relues ; un échec de consignation qui bloquait le run ; les textes « observé » sans
+    observation ; le bouton de lancement actif sur un refus ; le cache de mémoire de l'oracle nourri
+    par le test par passes. La seconde, sur ces corrections : ce que les autres runs peuvent encore
+    dépenser, figé en début de tranche quand le crédit était lu à chaque appel (désormais lus
+    ensemble, à chaque appel) ; le pire cas d'un appel qui peut dépasser celui observé ou la
+    journée de référence (désormais au moins ce que disent ses réglages) ; une reprise sans
+    admission ; la signature, qui ne voyait ni le contenu du jeu de gabarits ni la version du
+    référentiel ; la source « observé » quand une part venait de la référence ; une perte de
+    transaction pendant la consignation. La suite complète a ajouté la couverture d'export de
+    l'audit RGPD.
   - Textes : `docs/contrats.md` (§7.1, §8.3, §8.5, §8.7), registre RGPD (§13, §13 bis) et
     vérification RGPD, schéma d'archive (description), `docs/tests-e2e.md`, STATUS. UC-APP-10 décrit
     encore le moteur du navigateur (T11) : il n'est pas repris ici.
   - Tests : `EvaluationsTest` (consignation sans contenu ni identifiant de journée, carte additive,
     panne, pires cas, anonymisation, échec de consignation ; droites, écarts, au-delà des tailles
     observées, une seule taille, conversion par lots et marge, 200 dernières, signature),
-    `ApercuTest` (estimation, carte gardée par la mémoire, admission, refus et ses trois formes,
-    budget, journées changées en attente, autres analyses en cours), `CoutsTest` (la réserve, en
-    direct et par lots ; l'engagement d'un autre run), `LotsTest` (toutes les journées de front),
+    `ApercuTest` (estimation et sa source, carte gardée par la mémoire, admission, refus et ses
+    trois formes, budget, journées changées en attente, autres analyses en cours), `CoutsTest` (la
+    réserve, en direct et par lots ; l'engagement d'un autre run, lu avec le crédit dans la même
+    tranche ; la reprise admise de nouveau), `LotsTest` (toutes les journées de front),
     `PurgeExportTest`, `RgpdAuditTest`, `Twin9View.test`, bout en bout `twin9-run.e2e.js` ; dans
     `Twin_v9`, l'oracle, le compte des vagues et l'aperçu.
   - À valider : la base légale proposée pour l'historique, l'intérêt légitime (registre §13 bis) ; le

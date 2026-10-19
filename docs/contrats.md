@@ -885,7 +885,9 @@ crédit, ou le budget, permet de finir avec leur fusion.
   une fois l'appel réglé) ; `duree_s` (ses secondes actives) ; `reglages`
   (`voie`, `cle`, `marge` — le facteur que ses coûts comprennent, 1 avec la
   clé personnelle —, et ce que les prévisions comparent : `mode`,
-  `referentiel`, `gabarits`, les modèles et la performance — `etages`,
+  `referentiel` et `version_referentiel`, `gabarits` et
+  `empreinte_gabarits` — l'empreinte du jeu, celle de l'attestation : un jeu
+  modifié est un autre jeu —, les modèles et la performance — `etages`,
   `etapes`, `lecteurs`, avec modèle, budget de sortie, effort, réflexion et
   passes — et les paramètres de l'algorithme : `seuils_consensus`,
   `juge_leger`, `jury`, `premiere_impression`, `calques`, `merge`,
@@ -912,22 +914,30 @@ crédit, ou le budget, permet de finir avec leur fusion.
   au moins sa part au Ko ; au-dessus de la plus grande, au moins ce qu'elle
   a coûté, au plus autant au Ko. Jamais sous zéro. Une taille se lit comme
   elle se consigne, en Ko au centième (`Evaluations::ko`). Le pire cas
-  d'un appel : le plus grand observé. Par appels directs, les secondes
-  actives d'un run par journée instruite, fusion comprise, en moyenne.
-  Sans évaluation, la référence (§8.5) : par journée instruite, une journée
-  pour la fusion, et une journée pour le pire cas d'un appel de chacune.
+  d'un appel : le plus grand observé, et au moins ce que les réglages
+  d'appel du run réservent sur un prompt fait des deux plus grands gabarits
+  du jeu et de la plus grande journée à instruire (de la carte, pour la
+  fusion). Par appels directs, les secondes actives d'un run par journée
+  instruite, fusion comprise, en moyenne. Sans évaluation, la référence
+  (§8.5) : par journée instruite, une journée pour la fusion, et une journée
+  pour le pire cas d'un appel de chacune, au moins ce que disent ses
+  réglages. L'estimation dit sa source : les évaluations quand elles disent
+  tout ce qu'il lui faut (la fusion, et les journées s'il y en a à
+  instruire), sinon la référence.
 - **La carte que relit la fusion** : les journées que le run prend, et
   celles que la mémoire garde au-delà — les journées du portfolio qu'il ne
-  prend pas, celles de runs passés absentes du portfolio (`apercu()`,
-  `memoire`, avec la taille de leur texte gardé). Une journée changée
-  au-delà de la coupe y reste dans sa version déjà évaluée, jusqu'à la
-  prochaine analyse.
+  prend pas, comptées à la taille de leur texte actuel, et celles de runs
+  passés absentes du portfolio (`apercu()`, `memoire`), à la taille de leur
+  texte gardé. Une journée changée au-delà de la coupe y reste dans sa
+  version déjà évaluée, jusqu'à la prochaine analyse ; sa taille actuelle
+  approche celle-ci.
 - **L'admission** (`Lancement::prevoir`) : les premières journées du
   portfolio, dans l'ordre, tant que ce qu'elles demandent tient dans la plus
   basse des limites (`admission.limite` : `credit`, `budget`, ou `null`
   sans limite) — le crédit de la personne avec la clé de l'instance, moins
   ce que ses autres analyses en cours peuvent encore en dépenser
-  (`autres_usd`), et le budget du profil : leur coût au plus haut, la
+  (`autres_usd`, lus ensemble en une requête :
+  `RunRepository::disponible`), et le budget du profil : leur coût au plus haut, la
   fusion de leur carte au plus haut comprise, et de quoi réserver le pire
   cas d'un appel d'une journée et d'un appel de la fusion (T10 : chacun le
   réserve avant de partir). Les autres attendent une prochaine analyse : la
@@ -947,8 +957,9 @@ crédit, ou le budget, permet de finir avec leur fusion.
   réserves des appels comprises) », « … ne couvre pas la fusion de la
   carte … », « Ce profil relit toutes ses journées à chaque analyse, et
   votre crédit ne couvre pas le portfolio entier … » (« le budget du
-  profil… »). Un lancement à la fois par personne (`GET_LOCK`), pour que le
-  suivant compte ce que le précédent a obtenu. L'attestation garde
+  profil… »). Un lancement, ou une reprise, à la fois par personne
+  (`GET_LOCK`, `RunRepository::sousVerrou`), pour que le suivant compte ce
+  que le précédent a obtenu. L'attestation garde
   `admission`, `refus` excepté, avec `reserve_microusd` et
   `engagement_microusd`.
 - **La réserve de la fusion** (`twin9_runs.reserve_fusion_microusd`) : la
@@ -963,10 +974,14 @@ crédit, ou le budget, permet de finir avec leur fusion.
   l'instance, ce que le lancement a accordé au run sur le crédit, ce que
   demandent ses journées admises et leur fusion. Ce qu'un run en cours
   peut encore en dépenser — son engagement, moins ce qu'il a engagé : pires
-  cas réservés, coûts réglés (`RunRepository::engagementsEnCours`) —, les
-  autres runs de la même personne ne l'entament jamais ; retenu, un run
-  s'arrête, `crédit insuffisant (engagé par vos autres analyses) : carte
-  incomplète`.
+  cas réservés, coûts réglés —, les autres runs de la même personne ne
+  l'entament jamais : chaque appel le lit avec le crédit, en une requête
+  (`RunRepository::disponible`), si bien qu'une réservation ou un règlement
+  d'un autre run, qui déplace les deux d'autant, ne compte jamais deux fois.
+  Retenu, un run s'arrête, `crédit insuffisant (engagé par vos autres
+  analyses) : carte incomplète`. Repris, un run est admis de nouveau : son
+  engagement ne dépasse plus ce qu'il a engagé et ce que les autres runs en
+  cours laissent libre.
 - **L'estimation** de l'aperçu est celle du run tel qu'il partirait, ses
   journées admises et leur fusion (refusé, ce que dit le refus) :
   `min_usd`, `cout_usd` (la moyenne), `max_usd`, `reserve_usd`, en dollars

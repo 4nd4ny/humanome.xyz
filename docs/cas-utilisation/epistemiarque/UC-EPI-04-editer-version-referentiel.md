@@ -50,7 +50,8 @@ nom d'un pôle, renommages groupés).
    et la normalise, enregistre l'auteur (session) → `201` (métadonnées +
    `content`).
 2. Il liste les versions éditables (`GET /api/referentiel/drafts` : brouillons
-   et propositions, les plus récents d'abord, décompte pour celles au vote) et
+   et propositions de tous les référentiels depuis T15, les plus récents
+   d'abord, décompte pour celles au vote) et
    recharge le brouillon (`GET /api/referentiel/drafts/{id}`).
 3. Il envoie le document **complet** modifié : `PUT /api/referentiel/drafts/{id}`.
    Le serveur le normalise (ordre canonique, `contentHash` recalculé, clés
@@ -129,11 +130,14 @@ nom d'un pôle, renommages groupés).
 ## Règles de gestion
 
 - **RG1** — Un brouillon est un fork d'une version existante (publiée ou non)
-  du référentiel `respire` ; semver 2.0.0 valide et unique.
+  d'un référentiel : `respire`, ou celui que nomme `referentiel` (T15,
+  UC-EPI-05 A2) ; semver 2.0.0 valide et unique.
 - **RG2** — Chaque écriture porte le document **complet**, normalisé puis
-  validé : schéma `referentiel` (exactement 7 pôles et 61 compétences) et
-  intégrité (numéros de pôle uniques, codes uniques, rattachement à un pôle
-  existant) ; `id` invariant ; le `contentHash` fourni par le client est
+  validé : schéma `referentiel` 2.0.0 (RESPIRE : exactement 7 pôles et 61
+  compétences « P.NN », sans niveaux déclarés ; un autre référentiel : la
+  structure qu'il déclare, UC-EPI-05) et intégrité (numéros de pôle uniques,
+  de 1 à N sans trou, codes uniques et au motif de leur niveau, rattachement
+  à un pôle existant) ; `id` invariant ; le `contentHash` fourni par le client est
   ignoré et recalculé ; les clés de premier niveau inconnues sont écartées.
 - **RG3** — `contentHash` structurel : `{pôles (num, nom, couleur),
   compétences (code, nom, pôle)}` ; les descriptions sont conservées mais hors
@@ -168,7 +172,7 @@ nom d'un pôle, renommages groupés).
 
 | Couche | Élément | Rôle |
 |---|---|---|
-| Front | `web/src/views/epistemiarque/api.js` — `createEpistemiarqueApi`, `suggestNextVersion`, `DECIDIM_URL` | Client fin du grain version (branché sur aucune vue) |
+| Front | `web/src/views/epistemiarque/api.js` — `createEpistemiarqueApi`, `suggestNextVersion`, `DECIDIM_URL` | Client fin du grain version, que seule la section « Autres référentiels » emploie (UC-EPI-05) |
 | API | `api/src/routes/referentiel.php` — `GET/POST /referentiel/drafts`, `GET/PUT /referentiel/drafts/{id}`, `…/submit`, `…/withdraw`, `…/publish`, `GET /referentiel[/versions[/{semver}]]`, `GET /referentiel/diff/{from}/{to}` | Orchestration, 400/404/409/422 |
 | API | `api/src/Referentiel/RoleGuard.php` | 401/403 |
 | Domaine | `api/src/Referentiel/ReferentielRepository.php` — `createDraft`, `updateDraft`, `validateDocument`, `publish`, `findById`, `findPublished`, `editableVersions`, `publishedVersions`, `latestPublished`, `metadata` | Cycle de vie, invariants |
@@ -262,15 +266,18 @@ cd web && npx vitest run test/usecases/unit/uc-epi-04
 
 ## Limites
 
-- **L1** — Pas d'IHM : `web/src/views/epistemiarque/api.js` n'est importé par
-  aucune vue ; l'atelier `#/epistemiarque` ne travaille qu'au grain compétence
-  (UC-EPI-01 à 03).
+- **L1** — Pas d'IHM pour RESPIRE à ce grain : l'atelier `#/epistemiarque` ne
+  travaille RESPIRE qu'au grain compétence (UC-EPI-01 à 03) ; seule la section
+  « Autres référentiels » (UC-EPI-05) emploie `web/src/views/epistemiarque/api.js`,
+  pour les autres référentiels.
 - **L2** — Pas de concurrence optimiste à ce grain : deux enregistrements
   concurrents du même brouillon se succèdent, le dernier écrase le premier
   sans avertissement (contrairement au `If-Match` du grain compétence). Figé
   par UC-EPI-04-F15.
-- **L3** — Le schéma fige 7 pôles et 61 compétences : ajout, retrait, fusion
-  ou scission de compétences sont impossibles à ce grain aussi (UC-EPI-03 L2).
+- **L3** — Le schéma fige les 7 pôles et 61 compétences de RESPIRE (une
+  clause depuis T15) : ajout, retrait, fusion ou scission de ses compétences
+  sont impossibles à ce grain aussi (UC-EPI-03 L2). Un autre référentiel a la
+  structure qu'il déclare (UC-EPI-05).
 - **L4** — Aucune route ne supprime un brouillon abandonné.
 - **L5** — La publication ne régénère pas l'export statique lu par la page
   publique `#/referentiel` (UC-VIS-02 RG4) : `StaticExporter::export` n'est

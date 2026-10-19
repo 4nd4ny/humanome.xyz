@@ -565,9 +565,21 @@ public) l'implémente aussi.
 
 `twin9_runs.reglages` garde la copie du profil (`profil`, §7 : réglages
 d'appel, voie, parallélisme, clé, référentiel et jeu de gabarits) et les
-réglages de la v9.8 que lit le moteur (`moteur`). Jusqu'au lancement (T9),
-qui les tirera du profil, ce sont ceux de l'appelant ; les tests de parité
-y mettent ceux de l'oracle. Les nombres gardent leur forme : `1.0` reste un
+réglages de la v9.8 que lit le moteur (`moteur`). Au lancement (T9, §8.4),
+`MoteurReglages` les tire de la copie du profil, et de rien d'autre : les
+paramètres d'algorithme sous leurs noms du `config.json`, troncatures
+comprises ; `backend_tribunal` et `backend_rapide`, de type `anthropic`, aux
+modèles des étages profond et rapide (le rapide servant aussi de
+`model_mini`) ; `max_workers`, l'appel direct simultané du profil, et
+`parallel_jures`, vrai ; le collège développé comme le fait `twin9.py`, chaque
+passe un lecteur (`haiku#1`…), avec sa graine (`stable_hash("haiku|passe1")`
+modulo 2³¹−1) et son sel (`|passe1`) ; les options `jours`, `rescan`,
+`test` (le mode essai) et `memoire`. Le profil v9.8 donne ainsi les réglages
+du scénario `02-cloud` de l'oracle, au type des backends près (`mock` sous
+`--mock`), et un run qu'ils conduisent est celui de l'oracle, appel par appel
+(`PariteTest::testTheV98ProfileDrivesTheEngine`). Les autres tests de parité
+y mettent les réglages de leur scénario, que le profil ne sait pas tous dire
+(collèges de plusieurs familles). Les nombres gardent leur forme : `1.0` reste un
 flottant, comme en Python, où il n'est pas `1` (`JSON_PRESERVE_ZERO_FRACTION`).
 
 Chaque appel part avec les réglages de son étape (`CallSettings`) : l'étape
@@ -639,3 +651,47 @@ une suivante le relève.
   en cours annulés, leurs appels rendus, puis supprimés une fois finis.
 - **Entre deux lots**, le run n'est pas rejoué : la tranche demande seulement
   où en sont ses lots, et il ne compte pas parmi ses N runs.
+
+### 8.4 Lancer, suivre, lire (T9)
+
+- **Le lancement** (`Twin9\Lancement`, `POST /api/twin9/runs`) : le profil
+  choisi, un des siens ou celui de la v9.8, est revalidé (§7) et admis
+  (`ProfilPolicy`) ; sa version de référentiel, nulle, devient la dernière
+  publiée, figée dans la copie. Le jeu de gabarits vivant (`twin9_protocole`)
+  devient l'instantané du run. Le moteur construit une fois sa `Plateforme`
+  pour lire le portfolio : le nom de son journal range la carte. Le run garde
+  son **attestation** (`twin9_runs.attestation`) : `profil` (`id`, nul pour
+  celui de la v9.8, et `nom`), `gabarits` (`jeu`, `versions` de chaque gabarit
+  — ses versions archivées plus une —, `empreinte` du jeu), `referentiel`
+  (`id`, `version`), `moteur` (`commit` : la tête du dépôt `TWIN_V9_DIR`, sinon
+  la première ligne de son fichier `COMMIT`, sinon nul). Il garde aussi sa
+  visibilité (`privee` ou `cartographe`) et la date de l'accord (`accord_at`),
+  sans lequel rien ne part.
+- **Le suivi** (`GET /api/twin9/runs/{id}`) lit le journal : appels par état,
+  journées finies (cartes du jour écrites), fusion faite, lots chez Anthropic,
+  run antérieur de la même carte encore en cours ; `retard` dit en mots ce qui
+  le retient (un run précédent du même portfolio, le débit du fournisseur, un
+  lot chez Anthropic, la clé, son premier tour pas encore venu) ou ce qui l'a
+  arrêté. La page du run le fait avancer par `POST /api/twin9/runs/avancer` :
+  une tranche de la durée de celles du tick (`secondes_par_tranche`), sous
+  son verrou, pour les seuls runs de la session (`Tick` : `twin9Utilisateur`),
+  sans les jobs de masse ; elle finit plus tôt quand ces runs n'attendent plus
+  rien. Annuler arrête un run en cours
+  (ses lots sont annulés puis supprimés, §8.3) ; reprendre relance un run
+  annulé ou arrêté, depuis son journal.
+- **Les résultats** (`Twin9\Resultats`, `GET /api/twin9/runs/{id}/resultats`) :
+  ses sorties, et pour chaque journée que sa fusion nomme (`journee`) sans
+  qu'il en ait écrit la carte, la carte que la mémoire garde (`journees/<jour>`,
+  sous `test/` en mode essai), sans le texte de la journée. Chaque texte passe
+  le filtre de fuite (ADR-010 §2) contre tout le jeu de gabarits du run, fiches
+  comprises, variables vides ; les sorties rangées restent celles du moteur.
+- **Le document `twin9-run`** que la page remet à l'interface de cartographie
+  (`twin9RunFiles`, `web/src/lib/interface-handoff.js`) : `kind: "twin9-run"`,
+  `run` (`id`, `journal`, `mode`, `attestation`, dates), `referentiel` (le
+  publié), `carto_evolutive` (la fusion), `journees` (chaque carte du jour,
+  par journée) et `memoire` (les journées reprises). L'interface en fait une
+  journée par carte du jour, ses verdicts établis, renvoyés ou jugés, chacun
+  avec son dossier (`twin9Dossier`, `engine/src/twin9/mapper.js`) ; la
+  délibération d'un verdict jugé se lit dans sa journée (`runScope:
+  "journee"`), et les synthèses viennent de la fusion
+  (`carto/core/importers/twin9-run.js`).

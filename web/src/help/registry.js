@@ -187,8 +187,8 @@ const BASE = {
       'procédure calculée décide, rien n’est affirmé sans une citation exacte. Elle passe par notre ' +
       'système de prompts et un modèle que vous choisissez — d’où un coût, payé d’avance.',
     points: [
-      'Votre texte transite par notre serveur et par le fournisseur du modèle le temps de l’analyse ; il n’est pas conservé.',
-      'Le devis est calculé sur VOTRE portfolio avant tout paiement (nombre exact d’appels).',
+      'Avec votre accord, votre portfolio et l’état de l’analyse restent sur notre serveur jusqu’à ce que vous les effaciez ; le texte part chez Anthropic, qui garde un lot de requêtes jusqu’à sa suppression, 29 jours au plus.',
+      'L’analyse tourne sur le serveur ; sa page la suit et la fait avancer. Vous pouvez l’annuler, la reprendre, et l’ouvrir dans la cartographie, délibérations comprises.',
       'Rechargez votre crédit par PayPal, ou utilisez votre propre clé API — dans les deux cas notre système de prompts reste protégé.',
       'Une facture récapitulative mensuelle est disponible dans « Mon compte ».',
     ],

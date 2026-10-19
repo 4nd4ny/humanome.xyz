@@ -22,6 +22,11 @@
 //   - pieces/traces/passages ne sont PAS reconstitués : le document merge
 //     final n'en émet pas (cf. docs/contrats.md — recopie feuilles{} exclue).
 //
+// Le dossier d'une journée (T9) : `twin9Dossier`, plus bas, rend ce qu'un
+// verdict de carte du jour porte pour qui relit le raisonnement (traces
+// probantes, jury, délibération) ; l'interface de cartographie le joint à
+// chaque verdict d'un run du serveur (carto/core/importers/twin9-run.js).
+//
 // Narratifs : carto_evolutive les porte déjà — `histoires[code]` (histoire
 // d'apprentissage par compétence), `rapports_poles[num]` (rapport de pôle),
 // kairos (synthèse). Aucun appel LLM supplémentaire.
@@ -165,4 +170,81 @@ export function twin9ToMergeDocument(carto, referentiel, meta = {}) {
     sourceProtocole: meta.sourceProtocole ?? 'Twin9 — analyse approfondie (merge évolutif)',
     generatedAt: meta.generatedAt ?? null,
   })
+}
+
+const texte = (v) => (typeof v === 'string' && v.trim() !== '' ? v : null)
+const entier = (v) => {
+  const n = Number(v)
+  return Number.isFinite(n) ? Math.max(0, Math.round(n)) : 0
+}
+
+/**
+ * Le dossier d'une compétence pour une journée (T9) : ce que le verdict d'une
+ * carte du jour Twin9 (`journees/<jour>/carto_jour.json`, `verdicts[code]`)
+ * porte pour qui relit le raisonnement — statut, confiance, preuves et
+ * indices, motif, prescriptions, traces probantes (extraits datés), jury
+ * (composition, positions des deux tours, consensus, dissidences) et
+ * délibération complète (pièces du greffier, accusation, défense, réplique,
+ * briefing, chaque juré, relance, gardiens, président). Fonction pure : rien
+ * n'est inventé, un champ absent reste nul.
+ *
+ * @param {object} verdict verdicts[code] d'une carte du jour
+ * @returns {object} le dossier, en noms neutres (camelCase)
+ */
+export function twin9Dossier(verdict) {
+  const v = verdict && typeof verdict === 'object' ? verdict : {}
+  const d = v.deliberation && typeof v.deliberation === 'object' ? v.deliberation : {}
+  const arene = d.arene && typeof d.arene === 'object' ? d.arene : {}
+  const gardiens = d.gardiens && typeof d.gardiens === 'object' ? d.gardiens : {}
+  const jury = v.jury && typeof v.jury === 'object' ? v.jury : null
+  const positions = (p) => (p && typeof p === 'object' ? { ...p } : {})
+  return {
+    code: texte(v.code),
+    nom: texte(v.nom),
+    statut: texte(v.statut),
+    confiance: typeof v.confiance === 'number' ? v.confiance : null,
+    preuves: entier(v.score_preuves),
+    indices: entier(v.score_indices),
+    etage: texte(v.etage),
+    motif: texte(v.motif_regle) ?? texte(v.dossier_cartographe?.motif) ?? texte(v.leger?.resolution),
+    prescription: texte(v.prescription?.pour_apprenant),
+    prescriptionCartographe: texte(v.prescription?.pour_cartographe),
+    traces: (Array.isArray(v.traces_probantes) ? v.traces_probantes : []).map((t) => ({
+      piece: t?.piece ?? null,
+      extrait: typeof t?.extrait === 'string' ? t.extrait : '',
+      date: texte(t?.date),
+      type: texte(t?.type),
+      role: texte(t?.role),
+    })),
+    jury: jury
+      ? {
+          mode: texte(jury.mode),
+          composition: Array.isArray(jury.composition) ? [...jury.composition] : [],
+          positionsR1: positions(jury.positions_r1),
+          positionsFinales: positions(jury.positions_finales),
+          consensus: typeof jury.consensus === 'boolean' ? jury.consensus : null,
+          dissidences: Array.isArray(jury.dissidences) ? [...jury.dissidences] : [],
+          secondTour: jury.second_tour === true,
+          piegesNommes: Array.isArray(jury.pieges_nommes) ? [...jury.pieges_nommes] : [],
+        }
+      : null,
+    jures: Object.entries(d.jures && typeof d.jures === 'object' ? d.jures : {}).map(([nom, j]) => ({
+      nom,
+      tour1: texte(j?.r1_md),
+      tour2: texte(j?.r2_md),
+      positionTour1: texte(j?.position_r1),
+      positionFinale: texte(j?.position_finale),
+      piege: texte(j?.piege),
+    })),
+    greffier: texte(d.greffier_md),
+    accusation: texte(arene.accusation_md),
+    defense: texte(arene.defense_md),
+    replique: texte(arene.replique_md),
+    briefing: texte(arene.briefing_md),
+    relance: texte(d.relance_md),
+    gardienSupport: texte(gardiens.support_md),
+    gardienRaisonnement: texte(gardiens.raisonnement_md),
+    president: texte(d.president_md),
+    dossierCartographe: v.dossier_cartographe && typeof v.dossier_cartographe === 'object' ? { ...v.dossier_cartographe } : null,
+  }
 }

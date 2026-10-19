@@ -176,11 +176,12 @@ export function ObservationDays({ code, comp, dataset, t, getDetail, getRunDetai
   const byDate = new Map(dataset.days.map((d) => [d.date, d]))
   const verdicts = comp.verdicts
   const lastDate = verdicts.at(-1)?.date ?? null
-  // Délibérations de run (AuroraCore) : une seule fois, pour tout le journal.
+  // Délibérations de run (AuroraCore) : une seule fois, pour tout le journal. Celle
+  // d'une journée (run Twin9 du serveur) se lit dans sa journée, plus bas.
   const runRefs = []
   for (const v of verdicts) {
     const vd = verdictDetailOf(getDetail, v.date, v.variantId, code)
-    if (vd?.runRef && !runRefs.includes(vd.runRef)) runRefs.push(vd.runRef)
+    if (vd?.runRef && vd.runScope !== 'journee' && !runRefs.includes(vd.runRef)) runRefs.push(vd.runRef)
   }
   const variantOf = (v) => byDate.get(v.date)?.variants.find((x) => x.id === v.variantId)
   // Une seule analyse pour toutes les journées : dite une fois, ici (D-66).
@@ -248,6 +249,16 @@ export function ObservationDays({ code, comp, dataset, t, getDetail, getRunDetai
                   <details className="carto-jury-wrap">
                     <summary>Réflexions du jury</summary>
                     <JuryReflections detail={vd} date={v.date} confidence={v.confidence} onOpenPassage={onOpenPassage} />
+                  </details>
+                ) : null}
+                {vd?.runRef && vd.runScope === 'journee' ? (
+                  <details className="carto-jury-wrap">
+                    <summary>Délibération du jury</summary>
+                    {getRunDetail(vd.runRef) === undefined ? (
+                      <p className="carto-muted">Chargement de la délibération…</p>
+                    ) : (
+                      <JuryReflections detail={vd} run={getRunDetail(vd.runRef) ?? null} date={v.date} confidence={v.confidence} onOpenPassage={onOpenPassage} />
+                    )}
                   </details>
                 ) : null}
               </>

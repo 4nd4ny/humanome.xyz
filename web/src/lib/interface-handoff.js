@@ -36,3 +36,34 @@ export async function interfaceFiles(entry, { getReferentiel = loadPublishedRefe
   }
   return [{ path: cartographyFileName(entry), text: JSON.stringify(document) }]
 }
+
+/**
+ * Fichiers à remettre à l'interface pour un run Twin9 du serveur (T9) : un
+ * document `twin9-run` — le run, sa fusion, ses cartes du jour (celles que sa
+ * mémoire a reprises comprises), le référentiel publié —, que l'interface
+ * importe avec le dossier de chaque verdict, délibérations comprises
+ * (carto/core/importers/twin9-run.js).
+ * @param {{run: object, sorties: Record<string, string>, memoire?: string[]}} resultats GET /api/twin9/runs/{id}/resultats
+ * @param {{getReferentiel?: () => Promise<object>}} [seams]
+ * @returns {Promise<Array<{path: string, text: string}>>}
+ * @throws {Error} run sans fusion (rien à placer sur la ligne de temps)
+ */
+export async function twin9RunFiles(resultats, { getReferentiel = loadPublishedReferentiel } = {}) {
+  const fusion = resultats?.sorties?.['carto_evolutive.json']
+  if (typeof fusion !== 'string') throw new Error('Ce run n’a pas encore de fusion : rien à ouvrir dans la cartographie.')
+  const journees = {}
+  for (const [chemin, texte] of Object.entries(resultats.sorties)) {
+    const m = /^journees\/(.+)\/carto_jour\.json$/.exec(chemin)
+    if (m) journees[m[1]] = JSON.parse(texte)
+  }
+  const loaded = await getReferentiel()
+  const doc = {
+    kind: 'twin9-run',
+    run: resultats.run,
+    referentiel: loaded?.doc ?? loaded ?? null,
+    carto_evolutive: JSON.parse(fusion),
+    journees,
+    memoire: resultats.memoire ?? [],
+  }
+  return [{ path: `twin9-run-${resultats.run?.id ?? 'run'}.json`, text: JSON.stringify(doc) }]
+}

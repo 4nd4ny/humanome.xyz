@@ -207,3 +207,56 @@ describe('twin9ToMergeDocument (règles fines)', () => {
     expect(() => twin9ToMergeDocument({ competences: {} }, null)).toThrow(/referentiel/)
   })
 })
+
+describe('twin9Dossier (T9)', async () => {
+  const { twin9Dossier } = await import('./mapper.js')
+
+  it('rend le dossier d’un verdict jugé : traces, jury, délibération complète', () => {
+    const d = twin9Dossier({
+      code: '1.05',
+      nom: 'Pensée systémique',
+      statut: 'renvoi au cartographe',
+      score_preuves: '2',
+      score_indices: 1,
+      confiance: 0.5,
+      etage: 'tribunal',
+      motif_regle: 'détection et contestation subsistent',
+      traces_probantes: [{ piece: 1, extrait: 'Un extrait.', date: '2026-03-02', type: 'journal', role: 'preuve' }],
+      prescription: { pour_apprenant: 'Documente.', pour_cartographe: 'À explorer.' },
+      jury: { mode: 'socle4+1', composition: ['Linguiste'], positions_r1: { Linguiste: 'détection' }, positions_finales: { Linguiste: 'détection' }, consensus: false, dissidences: ['x'], second_tour: true, pieges_nommes: [] },
+      deliberation: {
+        greffier_md: 'Pièces.',
+        arene: { accusation_md: 'Accuse.', defense_md: 'Défend.', replique_md: '', briefing_md: 'Brief.' },
+        jures: { Linguiste: { r1_md: 'Tour 1.', r2_md: 'Tour 2.', position_r1: 'détection', position_finale: 'détection', piege: null } },
+        relance_md: 'Relance.',
+        gardiens: { support_md: 'Support.', raisonnement_md: null },
+        president_md: 'Président.',
+      },
+    })
+    expect(d).toMatchObject({
+      code: '1.05',
+      statut: 'renvoi au cartographe',
+      preuves: 2,
+      indices: 1,
+      motif: 'détection et contestation subsistent',
+      prescription: 'Documente.',
+      prescriptionCartographe: 'À explorer.',
+      greffier: 'Pièces.',
+      accusation: 'Accuse.',
+      replique: null,
+      briefing: 'Brief.',
+      relance: 'Relance.',
+      gardienSupport: 'Support.',
+      gardienRaisonnement: null,
+      president: 'Président.',
+    })
+    expect(d.traces).toEqual([{ piece: 1, extrait: 'Un extrait.', date: '2026-03-02', type: 'journal', role: 'preuve' }])
+    expect(d.jury).toMatchObject({ mode: 'socle4+1', consensus: false, secondTour: true, positionsFinales: { Linguiste: 'détection' } })
+    expect(d.jures).toEqual([{ nom: 'Linguiste', tour1: 'Tour 1.', tour2: 'Tour 2.', positionTour1: 'détection', positionFinale: 'détection', piege: null }])
+  })
+
+  it('n’invente rien d’un verdict léger : sans jury, sans délibération', () => {
+    const d = twin9Dossier({ code: '1.01', statut: 'présence établie', confiance: 0.76, score_preuves: 1, leger: { resolution: 'Deux lectures concordent.' } })
+    expect([d.jury, d.president, d.jures, d.traces, d.motif]).toEqual([null, null, [], [], 'Deux lectures concordent.'])
+  })
+})

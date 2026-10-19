@@ -425,6 +425,30 @@ describe('Twin9View — la page du run (T9)', () => {
     expect([doc.incomplete, doc.carto_evolutive, Object.keys(doc.journees)]).toEqual([true, null, ['2026-01-05']])
   })
 
+  it('ne propose pas la cartographie pour un run sur un autre référentiel que RESPIRE, et le dit (T16)', async () => {
+    const autre = { ...fini(), attestation: { ...fini().attestation, referentiel: { id: 'fictif-lettre', version: '1.0.0' } } }
+    const resultats = vi.fn(() => jsonResponse(200, {}))
+    const fetchFn = routedFetch({
+      'GET api/twin9/runs/7': jsonResponse(200, autre),
+      'GET api/twin9/runs/7/resultats': resultats,
+    })
+    render(<Twin9View section="7" deps={{ fetchFn, pause: async () => {} }} />)
+    await waitFor(() => expect(screen.getByRole('status').textContent).toBe('Terminé'))
+
+    expect(screen.queryByRole('button', { name: 'Ouvrir dans la cartographie' })).toBeNull()
+    expect(screen.getByText('La cartographie n’ouvre encore que les analyses du référentiel RESPIRE : celle-ci porte sur « fictif-lettre ».')).toBeTruthy()
+    expect(resultats).not.toHaveBeenCalled()
+  })
+
+  it('ouvre dans la cartographie un run sans référentiel dans son attestation : d’avant T16, il lit RESPIRE', async () => {
+    const ancien = { ...fini(), attestation: { ...fini().attestation, referentiel: undefined } }
+    const fetchFn = routedFetch({ 'GET api/twin9/runs/7': jsonResponse(200, ancien) })
+    render(<Twin9View section="7" deps={{ fetchFn, pause: async () => {} }} />)
+    await waitFor(() => expect(screen.getByRole('status').textContent).toBe('Terminé'))
+    expect(screen.getByRole('button', { name: 'Ouvrir dans la cartographie' })).toBeTruthy()
+    expect(screen.queryByText(/n’ouvre encore que les analyses du référentiel RESPIRE/)).toBeNull()
+  })
+
   it('laisse son cartographe lire les résultats, puis le lui retire', async () => {
     const corps = []
     const fetchFn = routedFetch({

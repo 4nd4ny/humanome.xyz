@@ -204,7 +204,8 @@ final class Twin9Slice
             $moteur = json_decode($r['moteur'], false, 512, JSON_THROW_ON_ERROR);
             $plateforme = new Plateforme($r['moteur'], $r['portfolio_nom'], $r['portfolio'], $r['gabarits'],
                 $r['sortie'], $r['horloge'],
-                CallSettings::empreinte($profil, $moteur->config->troncatures ?? null, $r['gabarits']));
+                CallSettings::empreinte($profil, $moteur->config->troncatures ?? null, $r['gabarits'],
+                    $moteur->referentiel ?? null));
         } catch (\Throwable $e) {
             $this->echec($id, $e, 'réglages, portfolio ou gabarits illisibles par le moteur');
 

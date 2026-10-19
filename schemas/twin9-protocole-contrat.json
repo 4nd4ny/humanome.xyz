@@ -1,5 +1,5 @@
 {
-  "_note": "Les variables {$VAR} que le moteur fournit à chaque gabarit du jeu v9.8, par son nom (noms seuls, ADR-010 §2). Une copie du jeu n'en emploie pas d'autre : l'atelier refuse à l'enregistrement une variable qu'aucune étape ne fournit au gabarit (T14) ; un gabarit absent d'ici, comme les fiches tagger/P1 à P7, n'en reçoit aucune. Repris du protocole-contrat.json de Twin_v9, complété de MA_POSITION_R1 (relance, second tour) et de LISTE_61 (Arpenteur), que le moteur fournit et que les gabarits v9.8 emploient.",
+  "_note": "Les variables {$VAR} que le moteur fournit à chaque gabarit du jeu v9.8, par son nom (noms seuls, ADR-010 §2). Une copie du jeu n'en emploie pas d'autre : l'atelier refuse à l'enregistrement une variable qu'aucune étape ne fournit au gabarit (T14). Repris du protocole-contrat.json de Twin_v9, complété de MA_POSITION_R1 (relance, second tour) et de LISTE_61 (Arpenteur), que le moteur fournit et que les gabarits v9.8 emploient ; puis des variables du référentiel du run (T16) : NB_COMPETENCES (le « 61 » de la v9.8), FORMAT_CODE (son « X.YY »), REFERENTIEL (son « RESPIRE »), LISTE_COMPETENCES (sa LISTE_61), qu'emploie la copie des gabarits rangée dans Twin_v9 (php/protocole), le jeu v9.8 de la plateforme. Les fiches du référentiel ne sont plus des gabarits du jeu : elles viennent de la base (T16).",
   "gabarits": {
     "lourd/10-premiere-impression": ["JOURNEE", "PORTFOLIO"],
     "lourd/20-greffier": ["CALQUES", "CODE", "COMPETENCE_FICHE", "FEUILLES", "NOM", "POLE_NOM", "POLE_NUM"],
@@ -15,13 +15,13 @@
     "lourd/24-president": ["AVIS_JURES", "CODE", "DOSSIER", "GARDIENS", "NOM", "PLAIDOIRIE", "POLE_NUM", "REPLIQUE", "REQUISITOIRE", "VERDICT_CALCULE"],
     "lourd/25a-gardien-support": ["AVIS_JURES", "CODE", "COMPETENCE_FICHE", "DOSSIER", "NOM", "PREMIERE_IMPRESSION"],
     "lourd/25b-gardien-raisonnement": ["AVIS_JURES", "CODE", "COMPETENCE_FICHE", "DOSSIER", "NOM", "PLAIDOIRIE", "REQUISITOIRE"],
-    "merge/01-kairos-evolutif": ["DATES_LISTE", "DERNIERE_DATE", "DONNEES", "NB_JOURNEES", "PREMIERE_DATE"],
-    "merge/02-pole-evolutif": ["DERNIERE_DATE", "DONNEES", "NB_JOURNEES", "POLE_NOM", "POLE_NUM", "PREMIERE_DATE"],
-    "merge/03-competence-evolution": ["CODE", "CONFIANCE_MOY", "CUMUL_INDICES", "CUMUL_PREUVES", "DERNIERE_DATE", "DONNEES", "NB_JOURNEES", "NB_JOURNEES_ETABLIES", "NOM", "POLE_NOM", "POLE_NUM", "PREMIERE_DATE", "SCORE_CUMULE", "STATUT_FINAL", "TRAJECTOIRE"],
-    "merge/04-rapporteur": ["DERNIERE_DATE", "DONNEES", "JOURNAL_ID", "NB_JOURNEES", "PREMIERE_DATE"],
+    "merge/01-kairos-evolutif": ["DATES_LISTE", "DERNIERE_DATE", "DONNEES", "FORMAT_CODE", "NB_COMPETENCES", "NB_JOURNEES", "PREMIERE_DATE"],
+    "merge/02-pole-evolutif": ["DERNIERE_DATE", "DONNEES", "FORMAT_CODE", "NB_COMPETENCES", "NB_JOURNEES", "POLE_NOM", "POLE_NUM", "PREMIERE_DATE"],
+    "merge/03-competence-evolution": ["CODE", "CONFIANCE_MOY", "CUMUL_INDICES", "CUMUL_PREUVES", "DERNIERE_DATE", "DONNEES", "FORMAT_CODE", "NB_COMPETENCES", "NB_JOURNEES", "NB_JOURNEES_ETABLIES", "NOM", "POLE_NOM", "POLE_NUM", "PREMIERE_DATE", "SCORE_CUMULE", "STATUT_FINAL", "TRAJECTOIRE"],
+    "merge/04-rapporteur": ["DERNIERE_DATE", "DONNEES", "FORMAT_CODE", "JOURNAL_ID", "NB_COMPETENCES", "NB_JOURNEES", "PREMIERE_DATE"],
     "scan/00-condense-fidele": ["DATE", "JOURNEE_ID", "TEXTE"],
-    "scan/01-arpenteur": ["CONDENSES", "DERNIERE_DATE", "JOURNAL_ID", "LISTE_61", "NB_JOURNEES", "PREMIERE_DATE"],
+    "scan/01-arpenteur": ["CONDENSES", "DERNIERE_DATE", "FORMAT_CODE", "JOURNAL_ID", "LISTE_61", "LISTE_COMPETENCES", "NB_COMPETENCES", "NB_JOURNEES", "PREMIERE_DATE"],
     "scan/02-retour-aux-sources": ["DESCRIPTION", "DOSSIER", "INDICES", "TITRE", "TYPE"],
-    "tagger/1-tag-pole": ["JOURNEE", "POLE_FICHES", "POLE_NOM", "POLE_NUM", "PORTFOLIO"]
+    "tagger/1-tag-pole": ["FORMAT_CODE", "JOURNEE", "POLE_FICHES", "POLE_NOM", "POLE_NUM", "PORTFOLIO", "REFERENTIEL"]
   }
 }

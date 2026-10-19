@@ -16,8 +16,9 @@ use PDO;
  * keeps its counters only, its journal gone (ADR-011 §5).
  *
  * What the models and the engine wrote passes the leak filter (ADR-010 §2),
- * against every template set its runs took: a recitation is redacted, the
- * count of redactions goes to the audit. The JSON is written piece by
+ * against every template set its runs took and the fiches of every
+ * referential their engine read (T16): a recitation is redacted, the count
+ * of redactions goes to the audit. The JSON is written piece by
  * piece, a run or a map at a time.
  */
 final class RunExport
@@ -178,19 +179,26 @@ final class RunExport
     }
 
     /**
-     * Every template its runs took, once each: what their outputs may recite.
+     * Every template its runs took, and every fiche and preamble of the
+     * referentials their engine read (T16), once each: what their outputs may
+     * recite.
      *
      * @return array<string, string>
      */
     private function gabarits(int $userId): array
     {
-        $stmt = $this->pdo->prepare('SELECT gabarits FROM twin9_runs WHERE user_id = ?');
+        $stmt = $this->pdo->prepare('SELECT gabarits, reglages FROM twin9_runs WHERE user_id = ?');
         $stmt->execute([$userId]);
         $tous = [];
-        foreach ($stmt->fetchAll(PDO::FETCH_COLUMN) as $blob) {
-            foreach ((array) json_decode(RunRepository::uncompress((string) $blob), true, 512, JSON_THROW_ON_ERROR)
-                     as $nom => $contenu) {
+        foreach ($stmt->fetchAll() as $run) {
+            foreach ((array) json_decode(RunRepository::uncompress((string) $run['gabarits']), true, 512,
+                JSON_THROW_ON_ERROR) as $nom => $contenu) {
                 $tous[hash('sha256', $nom . "\0" . $contenu)] = (string) $contenu;
+            }
+            $referentiel = json_decode(RunRepository::uncompress((string) $run['reglages']), false, 512,
+                JSON_THROW_ON_ERROR)->moteur->referentiel ?? null;
+            foreach ($referentiel === null ? [] : ReferentielMoteur::textes($referentiel) as $texte) {
+                $tous[hash('sha256', "referentiel\0" . $texte)] = $texte;
             }
         }
 

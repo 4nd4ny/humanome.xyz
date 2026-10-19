@@ -91,13 +91,16 @@ const PYTHON = spawnSync('python3', ['--version']).status === 0
 const GREFFIER = 'GABARIT FICTIF DU GREFFIER {$TEXTE_JOURNEE} — contenu à ne jamais journaliser'
 const TAGGING = 'Gabarit fictif de tagging {$POLE_FICHES}'
 
-/** Faux Twin_v9 : deux gabarits hiérarchiques, du bruit, un config.json complet. */
+/**
+ * Faux Twin_v9 : deux gabarits hiérarchiques sous php/protocole (le jeu que lit
+ * le moteur PHP depuis T16), du bruit, un config.json complet.
+ */
 function fauxTwinV9(extra = {}) {
   return dossier('twin-v9', {
-    'protocole/lourd/20-greffier.md': GREFFIER,
-    'protocole/tagger/1-tag-pole.md': TAGGING,
-    'protocole/.DS_Store': 'bruit',
-    'protocole/notes.txt': 'pas un gabarit',
+    'php/protocole/lourd/20-greffier.md': GREFFIER,
+    'php/protocole/tagger/1-tag-pole.md': TAGGING,
+    'php/protocole/.DS_Store': 'bruit',
+    'php/protocole/notes.txt': 'pas un gabarit',
     'config.json': JSON.stringify({
       seuils_consensus: { conf_min: 0.4 },
       jury: { mode: 'socle4+1' },
@@ -204,7 +207,7 @@ describe('UC-PRO-08 — fonctionnels (sous-processus) : garde anti-fuite des gab
 })
 
 describe('UC-PRO-08 — fonctionnels (sous-processus) : import technique A4 (scripts/twin9/import-protocole.mjs)', () => {
-  it('UC-PRO-08-F19 — A4, E4 : lecture de TWIN_V9_DIR : protocole/**/*.md seuls, noms hiérarchiques sans .md ; réglages du pipeline filtrés (jamais les backends Python) ; --dry-run n’envoie rien et ne journalise que noms et tailles, jamais le contenu ; dossier absent, protocole vide ou option inconnue → sortie 1', async () => {
+  it('UC-PRO-08-F19 — A4, E4 : lecture de TWIN_V9_DIR : php/protocole/**/*.md seuls, noms hiérarchiques sans .md ; réglages du pipeline filtrés (jamais les backends Python) ; --dry-run n’envoie rien et ne journalise que noms et tailles, jamais le contenu ; dossier absent, protocole vide ou option inconnue → sortie 1', async () => {
     const twin = fauxTwinV9()
     const r = await importer(['--dry-run'], { TWIN_V9_DIR: twin })
 
@@ -226,11 +229,18 @@ describe('UC-PRO-08 — fonctionnels (sous-processus) : import technique A4 (scr
     const absent = await importer(['--dry-run'], { TWIN_V9_DIR: join(twin, 'inexistant') })
     expect([absent.status, absent.stderr.trim()]).toEqual([
       1,
-      `Twin_v9 protocole directory not found: ${join(twin, 'inexistant', 'protocole')} (set TWIN_V9_DIR)`,
+      `Twin_v9 php/protocole directory not found: ${join(twin, 'inexistant', 'php', 'protocole')} (set TWIN_V9_DIR; Twin_v9 after T16)`,
     ])
-    const vide = dossier('twin-v9-vide', { 'protocole/lisez-moi.txt': 'aucun gabarit' })
+    // Un Twin_v9 d'avant T16 (gabarits sous protocole/ seulement) : refusé, rien n'est lu.
+    const ancien = dossier('twin-v9-ancien', { 'protocole/lourd/20-greffier.md': GREFFIER })
+    const avantT16 = await importer(['--dry-run'], { TWIN_V9_DIR: ancien })
+    expect([avantT16.status, avantT16.stderr.trim()]).toEqual([
+      1,
+      `Twin_v9 php/protocole directory not found: ${join(ancien, 'php', 'protocole')} (set TWIN_V9_DIR; Twin_v9 after T16)`,
+    ])
+    const vide = dossier('twin-v9-vide', { 'php/protocole/lisez-moi.txt': 'aucun gabarit' })
     const sansGabarit = await importer(['--dry-run'], { TWIN_V9_DIR: vide })
-    expect([sansGabarit.status, sansGabarit.stderr.trim()]).toEqual([1, `No .md template found under ${join(vide, 'protocole')}`])
+    expect([sansGabarit.status, sansGabarit.stderr.trim()]).toEqual([1, `No .md template found under ${join(vide, 'php', 'protocole')}`])
     // Toujours avec --dry-run : même si l'option inconnue cessait d'être
     // refusée, rien ne pourrait partir.
     const option = await importer(['--dry-run', '--envoyer-tout'], { TWIN_V9_DIR: twin })
@@ -239,11 +249,11 @@ describe('UC-PRO-08 — fonctionnels (sous-processus) : import technique A4 (scr
 
   it('UC-PRO-08-F20 — A4, E4 : envoi : POST {base}/api/admin/twin9/import avec X-Migrate-Token et {files, config} (sans référentiel ni fiches s’ils n’ont pu être extraits) ; réponse journalisée ; refus du serveur → sortie 1 « twin9 import failed »', async () => {
     const twin = fauxTwinV9()
-    const ok = await fauxServeur(200, { imported: 2 })
+    const ok = await fauxServeur(200, { imported: 2, retires: 0 })
     try {
       const r = await importer(['--base-url', ok.url], { TWIN_V9_DIR: twin })
       expect(r.status).toBe(0)
-      expect(r.stdout).toContain('import: HTTP 200 {"imported":2}')
+      expect(r.stdout).toContain('import: HTTP 200 {"imported":2,"retires":0}')
       expect(ok.requetes).toHaveLength(1)
       const [req] = ok.requetes
       expect([req.method, req.url, req.headers['x-migrate-token'], req.headers['content-type']]).toEqual([

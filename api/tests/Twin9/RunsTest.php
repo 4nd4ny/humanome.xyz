@@ -14,6 +14,7 @@ use Humanome\Twin9\CreditService;
 use Humanome\Twin9\MoteurReglages;
 use Humanome\Twin9\ProfilRepository;
 use Humanome\Twin9\ProtocoleRepository;
+use Humanome\Twin9\ReferentielMoteur;
 use Humanome\Twin9\RunRepository;
 use PHPUnit\Framework\Attributes\PreserveGlobalState;
 use PHPUnit\Framework\Attributes\RunTestsInSeparateProcesses;
@@ -57,6 +58,7 @@ final class RunsTest extends CartographeTestCase
         $doc = json_decode((string) file_get_contents(\dirname(__DIR__, 3) . '/web/public/data/referentiel/respire-v7.json'),
             true, 512, JSON_THROW_ON_ERROR);
         (new ReferentielRepository(self::$pdo))->importPublishedDocument($doc, 'Import initial RESPIRE v7');
+        TestDb::fichesRespire(self::$pdo); // the engine reads RESPIRE's fiches from the base (T16)
         $protocole = new ProtocoleRepository(self::$pdo);
         foreach (self::GABARITS as $nom => $contenu) {
             $protocole->put($nom, $contenu, null);
@@ -125,8 +127,9 @@ final class RunsTest extends CartographeTestCase
         // the engine reads the settings drawn from the run's copy of its profile, nothing else
         $copie = (new RunRepository(self::$pdo))->charger($run['id']);
         self::assertSame('7.0.0', $copie['profil']->referentiel->version, 'la version du référentiel est figée');
-        self::assertSame(json_encode(MoteurReglages::depuis($copie['profil']), JSON_PRESERVE_ZERO_FRACTION),
-            $copie['moteur']);
+        self::assertSame(json_encode(MoteurReglages::depuis($copie['profil'],
+            (new ReferentielMoteur(self::$pdo))->bloc('respire', '7.0.0')), JSON_PRESERVE_ZERO_FRACTION | JSON_UNESCAPED_UNICODE),
+            $copie['moteur'], 'et le référentiel du run, tiré de la base (T16)');
 
         $suivi = $this->jusquAuBout($alice, $run['id']);
         self::assertSame('termine', $suivi['statut']);
@@ -272,6 +275,38 @@ final class RunsTest extends CartographeTestCase
             (new RunRepository(self::$pdo))->sorties($id)['carto_evolutive.json']);
     }
 
+    /**
+     * The leak filter also indexes the fiches of the referential the run's
+     * engine read (T16), which are no longer in its template set: an answer
+     * reciting one comes back redacted.
+     */
+    public function testARecitedFicheOfItsReferentialIsRedactedInTheResults(): void
+    {
+        $fiche = 'Fiche FICTIVE confidentielle de la capacité A1 : ce que le jury y cherche, et que le modèle ne doit '
+            . 'jamais réciter.';
+        $lettre = ReferentielsFictifs::lettre();
+        $lettre['competences'][0]['description'] = $fiche;
+        (new ReferentielRepository(self::$pdo))->importPublishedDocument(
+            ['contentHash' => ContentHash::compute($lettre)] + $lettre, 'Publié');
+        TestDb::setEnv('WORKER_PROVIDER', '');
+        LlmRuntime::setMultiHttpClient(new FakeMultiHttpClient(static fn (): array => ['body' => FakeMultiHttpClient::message(
+            'Voici : ' . $fiche)]));
+        $alice = $this->registerAs('fiche@example.org', 'Alice');
+        $profil = ProfilRepository::v98();
+        $profil->voie = 'directe';
+        $profil->referentiel = (object) ['id' => 'fictif-lettre', 'version' => null];
+        $cree = $this->as_($alice, 'POST', '/api/twin9/profils', ['nom' => 'Lettré', 'profil' => $profil]);
+        $lance = $this->as_($alice, 'POST', '/api/twin9/runs', $this->lancement(self::json($cree)['id']));
+        self::assertSame(201, $lance->getStatusCode(), (string) $lance->getBody());
+        $id = self::json($lance)['id'];
+        $this->jusquAuBout($alice, $id);
+
+        $corps = (string) $this->as_($alice, 'GET', "/api/twin9/runs/$id/resultats")->getBody();
+        self::assertStringNotContainsString('que le modèle ne doit jamais réciter', $corps);
+        self::assertStringContainsString('[expurgé]', $corps);
+        self::assertNotNull(self::lastAudit('twin9_fuite_expurgee'));
+    }
+
     /** The days a run took back from its map's memory come with its results, their maps as the memory keeps them. */
     public function testTheDaysTakenBackFromMemoryAreInTheResults(): void
     {
@@ -299,12 +334,13 @@ final class RunsTest extends CartographeTestCase
     }
 
     /**
-     * Until the engine receives its run's referential (T16), it reads RESPIRE's
-     * fiches whatever the profile names (T15): a run, or its preview, on
-     * another referential is refused, even published; a draft of RESPIRE's
-     * serves its author's test run.
+     * The engine reads the run's referential (T16): a run, or its preview, on
+     * another referential, published, goes; its engine's settings carry it,
+     * drawn from the base at its frozen version, and its attestation its
+     * fingerprint; the preview counts its poles. A draft of RESPIRE's serves
+     * its author's test run.
      */
-    public function testARunReadsRespireOnlyUntilTheEngineReceivesItsReferential(): void
+    public function testARunReadsTheReferentialItsProfileNames(): void
     {
         $neuf = ReferentielsFictifs::neufPoles();
         (new ReferentielRepository(self::$pdo))->importPublishedDocument(
@@ -315,12 +351,20 @@ final class RunsTest extends CartographeTestCase
         $profil->referentiel = (object) ['id' => 'fictif-neuf', 'version' => null];
         $cree = $this->as_($alice, 'POST', '/api/twin9/profils', ['nom' => 'Neuf pôles', 'profil' => $profil]);
         self::assertSame(201, $cree->getStatusCode(), (string) $cree->getBody());
-        foreach (['/api/twin9/runs', '/api/twin9/runs/apercu'] as $route) {
-            $refus = $this->as_($alice, 'POST', $route, $this->lancement(self::json($cree)['id']));
-            self::assertSame([422, 'L’analyse approfondie ne lit encore que le référentiel RESPIRE'],
-                [$refus->getStatusCode(), self::json($refus)['error'] ?? null], $route);
-        }
-        self::assertSame([], self::json($this->as_($alice, 'GET', '/api/twin9/runs'))['runs']);
+        $apercu = $this->as_($alice, 'POST', '/api/twin9/runs/apercu', $this->lancement(self::json($cree)['id']));
+        self::assertSame(200, $apercu->getStatusCode(), (string) $apercu->getBody());
+        self::assertSame(9, self::json($apercu)['estimation']['poles'], 'la référence, pour ses neuf pôles');
+        $lance = $this->as_($alice, 'POST', '/api/twin9/runs', $this->lancement(self::json($cree)['id']));
+        self::assertSame(201, $lance->getStatusCode(), (string) $lance->getBody());
+        $id = self::json($lance)['id'];
+        $bloc = (new ReferentielMoteur(self::$pdo))->bloc('fictif-neuf', '1.0.0');
+        $moteur = json_decode((new RunRepository(self::$pdo))->charger($id)['moteur'], true);
+        self::assertSame($bloc, $moteur['referentiel']);
+        self::assertSame(['fictif-neuf', '1.0.0', '[1-9]\\.\\d{2}', 9],
+            [$bloc['id'], $bloc['version'], $bloc['motif'], \count($bloc['poles'])]);
+        self::assertSame(['id' => 'fictif-neuf', 'version' => '1.0.0', 'empreinte' => ReferentielMoteur::empreinte($bloc)],
+            self::json($lance)['attestation']['referentiel']);
+        self::assertSame('termine', $this->jusquAuBout($alice, $id)['statut']);
 
         $epi = $this->registerAs('epi@example.org', 'Épi', ['epistemiarque']);
         (new ReferentielRepository(self::$pdo))->createDraft('respire', '7.0.0', '7.1.0', null, $epi['id']);

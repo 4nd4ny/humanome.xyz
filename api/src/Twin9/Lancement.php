@@ -30,6 +30,11 @@ use stdClass;
  * referential's poles for a complete run; with its caps. This replaces
  * ADR-010's quote by a simulated run (ADR-011 §6).
  *
+ * The engine reads the run's referential from its settings, drawn from the
+ * base at the version its profile freezes (T16, ReferentielMoteur): any
+ * referential published, or a draft its author tries; the attestation keeps
+ * its fingerprint.
+ *
  * A launch takes the days its owner's credit, or its budget, lets in with
  * its merge (T8, the strategy A): the first days of the portfolio, as long as
  * they fit at the most with the merge of their map, which the run keeps in
@@ -81,14 +86,15 @@ final class Lancement
         }
         $horloge = $maintenant ?? new \DateTimeImmutable();
         $sortie = 'twin9/runs/' . bin2hex(random_bytes(8));
-        ['profil' => $profil, 'nom' => $nom, 'moteur' => $moteur, 'jeu' => $jeu, 'plateforme' => $plateforme]
-            = $this->preparer($userId, $profilId, $portfolioNom, $portfolio, $horloge, $sortie);
+        ['profil' => $profil, 'nom' => $nom, 'moteur' => $moteur, 'jeu' => $jeu, 'referentiel' => $referentiel,
+         'plateforme' => $plateforme] = $this->preparer($userId, $profilId, $portfolioNom, $portfolio, $horloge, $sortie);
 
         $runs = new RunRepository($this->pdo);
         // T8, strategy A: the days that fit with the merge's reserve; the others wait for a next run. One launch
         // of an owner at a time, for the next to count what this one is granted
         [$id, $admission, $reserve, $engagement] = $runs->sousVerrou($userId, function () use (
-            $runs, $userId, $profil, $moteur, $portfolioNom, $portfolio, $plateforme, $jeu, $horloge, $sortie
+            $runs, $userId, $profil, $moteur, $portfolioNom, $portfolio, $plateforme, $jeu, $referentiel, $horloge,
+            $sortie
         ): array {
             $admission = null;
             $reserve = 0;
@@ -97,13 +103,14 @@ final class Lancement
                 $carte = $runs->carte($userId, $plateforme->journal(), (string) $profil->referentiel->id,
                     (string) $profil->gabarits);
                 ['admission' => $admission, 'reserve' => $reserve, 'engagement' => $engagement] = $this->prevoir(
-                    $userId, $profil, $jeu['gabarits'], $plateforme->apercu(new MapStore($this->pdo, $carte ?? 0)));
+                    $userId, $profil, $jeu['gabarits'], $referentiel,
+                    $plateforme->apercu(new MapStore($this->pdo, $carte ?? 0)));
                 if ($admission['refus'] !== null) {
                     throw new Twin9Exception($admission['refus'], 422);
                 }
                 if ($admission['journees'] < $admission['total']) {
                     $profil->jours = $admission['journees'];
-                    $moteur = MoteurReglages::depuis($profil);
+                    $moteur = MoteurReglages::depuis($profil, $referentiel);
                 }
             }
 
@@ -116,7 +123,8 @@ final class Lancement
                 + ['reserve_microusd' => $reserve, 'engagement_microusd' => $engagement],
             'gabarits' => ['jeu' => $profil->gabarits, 'versions' => $jeu['versions'],
                            'empreinte' => self::empreinte($jeu['gabarits'])],
-            'referentiel' => ['id' => $profil->referentiel->id, 'version' => $profil->referentiel->version],
+            'referentiel' => ['id' => $profil->referentiel->id, 'version' => $profil->referentiel->version,
+                              'empreinte' => ReferentielMoteur::empreinte($referentiel)],
             'moteur' => ['commit' => EngineLoader::commit()],
         ], $visibilite, $horloge);
 
@@ -135,7 +143,7 @@ final class Lancement
      */
     public function apercu(int $userId, ?int $profilId, string $portfolioNom, string $portfolio): array
     {
-        ['profil' => $profil, 'jeu' => $jeu, 'plateforme' => $plateforme]
+        ['profil' => $profil, 'jeu' => $jeu, 'referentiel' => $referentiel, 'plateforme' => $plateforme]
             = $this->preparer($userId, $profilId, $portfolioNom, $portfolio, new \DateTimeImmutable(), 'twin9/apercu');
         if (!method_exists($plateforme, 'apercu')) {
             throw new Twin9Exception('L’aperçu demande une version plus récente du moteur', 503);
@@ -148,7 +156,8 @@ final class Lancement
         $nouvelles = $etats['nouvelle'] ?? 0;
         $changees = $etats['changee'] ?? 0;
 
-        ['estimation' => $estimation, 'admission' => $admission] = $this->prevoir($userId, $profil, $jeu['gabarits'], $vue);
+        ['estimation' => $estimation, 'admission' => $admission]
+            = $this->prevoir($userId, $profil, $jeu['gabarits'], $referentiel, $vue);
 
         return [
             'journal' => $plateforme->journal(),
@@ -184,8 +193,10 @@ final class Lancement
      * included, and room for the worst case a call holds before leaving
      * (T10), one of a day's and one of the merge's — the largest observed
      * (failing that, a day's worth each), and at least what the run's call
-     * settings hold on a prompt as large as the set's two largest templates
-     * and its largest day to instruct (the map, for the merge's). The others
+     * settings hold on a prompt twice as large as the larger of its largest
+     * template and the largest pole its readers read (T16: a pole's
+     * preamble and fiches), with its largest day to instruct (the map, for
+     * the merge's). The others
      * wait for a next run, the memory keeping those done; a profile that reads
      * every day again at each run (rescan, or no memory) takes all or none.
      * Refused — not even a day to instruct and its merge fit, nor the merge
@@ -199,11 +210,12 @@ final class Lancement
      * instance's key, is what it was granted: what it needs.
      *
      * @param array<string, string> $gabarits its template set, each template by name
+     * @param array<string, mixed> $referentiel its referential, as the engine reads it (ReferentielMoteur::bloc())
      * @param array{journees: list<array{id: string, etat: string, octets?: int}>,
      *              memoire?: list<array{id: string, octets: int}>, poles: int} $vue the engine's preview
      * @return array{estimation: array<string, mixed>, admission: array<string, mixed>, reserve: int, engagement: int}
      */
-    private function prevoir(int $userId, stdClass $profil, array $gabarits, array $vue): array
+    private function prevoir(int $userId, stdClass $profil, array $gabarits, array $referentiel, array $vue): array
     {
         $instance = $profil->cle === 'instance';
         $parLots = $profil->voie === 'lots';
@@ -211,7 +223,7 @@ final class Lancement
         // by size, when the engine gives each day's (T8); an older engine, by the reference
         $tailles = array_filter($vue['journees'], static fn (array $j): bool => !isset($j['octets'])) === [];
         $modele = $tailles ? (new Evaluations($this->pdo))->modele(Evaluations::signature($profil,
-            self::empreinte($gabarits)), $parLots, $marge) : null;
+            self::empreinte($gabarits), ReferentielMoteur::empreinte($referentiel)), $parLots, $marge) : null;
         // the reference run read one pole: a complete run reads the referential's
         $poles = $profil->mode === 'test' ? 1 : max(1, (int) $vue['poles']);
         $reference = self::REFERENCE_MICROUSD * $poles * ($parLots ? 0.5 : 1.0) * $marge;
@@ -238,8 +250,9 @@ final class Lancement
         $parCarte = static fn (float $ko): array => ($modele['fusion'] ?? null) === null
             ? array_fill_keys($bornes, $reference) : Evaluations::selon($modele['fusion'], $ko);
         // the worst case a call holds: the largest observed, else a day's worth; at least what its settings hold on
-        // a prompt of the set's two largest templates and this many bytes
-        $gabarit = 2 * max(0, 0, ...array_map('strlen', array_values($gabarits)));
+        // a prompt twice the set's largest template or the largest pole its readers read, and this many bytes
+        $gabarit = 2 * max(0, 0, ...array_map('strlen', array_values($gabarits)),
+            ...ReferentielMoteur::tailles($referentiel));
         $combinaisons = (new CallSettings($profil))->combinaisons();
         $grille = $this->config->read();
         $pireCas = static function (?float $observe, int $octets) use ($reference, $gabarit, $combinaisons, $grille,
@@ -376,7 +389,7 @@ final class Lancement
      *
      * @return array{profil: stdClass, nom: string, moteur: stdClass,
      *               jeu: array{gabarits: array<string, string>, versions: array<string, int>},
-     *               plateforme: \Twin9\Plateforme}
+     *               referentiel: array<string, mixed>, plateforme: \Twin9\Plateforme}
      */
     private function preparer(int $userId, ?int $profilId, string $portfolioNom, string $portfolio,
                               \DateTimeImmutable $horloge, string $sortie): array
@@ -395,11 +408,6 @@ final class Lancement
         $politique = new ProfilPolicy($this->pdo, $this->config);
         [$profil, $nom] = $this->profil($userId, $profilId, $politique);
         $politique->admettre($profil, $userId);
-        // T15: until the engine receives its run's referential (T16), it reads RESPIRE's fiches, those of
-        // its template set, whatever the profile names: a run on another referential would not be one
-        if ($profil->referentiel->id !== ReferentielRepository::DEFAULT_REFERENTIEL_ID) {
-            throw new Twin9Exception('L’analyse approfondie ne lit encore que le référentiel RESPIRE', 422);
-        }
         if ($profil->cle === 'personnelle' && !$politique->choix($userId)['cle_perso_enregistree']) {
             throw new Twin9Exception('Profil refusé — /cle : aucune clé Anthropic personnelle n’est enregistrée', 422);
         }
@@ -417,14 +425,21 @@ final class Lancement
             throw new Twin9Exception('Le jeu de gabarits « ' . $profil->gabarits . ' » n’a pas tous les gabarits du jeu '
                 . 'v9.8 : il faut en refaire une copie', 422);
         }
-        $moteur = MoteurReglages::depuis($profil);
+        // T16: the run's referential, drawn from the base at its frozen version, which the engine reads
+        $referentiel = (new ReferentielMoteur($this->pdo))->bloc((string) $profil->referentiel->id,
+            (string) $profil->referentiel->version);
+        $moteur = MoteurReglages::depuis($profil, $referentiel);
         try {
             $plateforme = new \Twin9\Plateforme(json_encode($moteur, self::JSON), $portfolioNom, $portfolio,
                 $jeu['gabarits'], $sortie, $horloge,
-                CallSettings::empreinte($profil, $moteur->config->troncatures ?? null, $jeu['gabarits']));
+                CallSettings::empreinte($profil, $moteur->config->troncatures ?? null, $jeu['gabarits'], $referentiel));
+        } catch (\Twin9\ReferentielInvalide $e) {
+            // the engine names the pole or the code at fault, never a fiche (T16)
+            throw new Twin9Exception('Le référentiel « ' . $profil->referentiel->id . ' » ne se lit pas : '
+                . preg_replace('/^Référentiel du moteur invalide : /u', '', $e->getMessage()), 422);
         } catch (\ValueError|\RuntimeException $e) {
-            // the engine reads the referential's fiches from the set (T14: a copy's may be malformed); the
-            // class only in the log, an engine's message may quote a template
+            // an engine before T16 reads RESPIRE's fiches from the set (T14: a copy's may be malformed), which the
+            // import of T16 no longer carries; the class only in the log, an engine's message may quote a template
             error_log('[twin9-lancement] ' . $e::class);
             throw new Twin9Exception('Le jeu de gabarits « ' . $profil->gabarits . ' » ne se lit pas : un gabarit y '
                 . 'manque, ou une fiche y est mal formée', 422);
@@ -433,7 +448,8 @@ final class Lancement
             throw new Twin9Exception('Portfolio illisible par le moteur', 422);
         }
 
-        return ['profil' => $profil, 'nom' => $nom, 'moteur' => $moteur, 'jeu' => $jeu, 'plateforme' => $plateforme];
+        return ['profil' => $profil, 'nom' => $nom, 'moteur' => $moteur, 'jeu' => $jeu, 'referentiel' => $referentiel,
+                'plateforme' => $plateforme];
     }
 
     /**

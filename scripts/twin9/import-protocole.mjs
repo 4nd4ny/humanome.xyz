@@ -3,7 +3,10 @@
 // (ADR-010: the templates live in `twin9_protocole`, never in the repo).
 //
 // Reads TWIN_V9_DIR (default: ../Twin_v9 next to the repo root, gitignored)
-//   protocole/**/*.md  -> {"lourd/20-greffier": "<content>", ...}
+//   php/protocole/**/*.md -> {"lourd/20-greffier": "<content>", ...}: the v9.8's
+//                         templates as the PHP engine reads them, the referential
+//                         as variables and without the pole files, whose fiches
+//                         come from the base (T16); the import replaces the set
 //   config.json        -> protocol settings ONLY (seuils_consensus, jury,
 //                         juge_leger, merge, scan_global — the Python
 //                         backends/workers knobs are NOT relevant server-side)
@@ -65,12 +68,12 @@ async function main() {
   const env = loadEnvDeploy()
 
   const twinDir = process.env.TWIN_V9_DIR ?? resolve(repoRoot, '../Twin_v9')
-  const protocoleDir = join(twinDir, 'protocole')
+  const protocoleDir = join(twinDir, 'php', 'protocole')
   if (!statSync(protocoleDir, { throwIfNoEntry: false })?.isDirectory()) {
-    throw new Error(`Twin_v9 protocole directory not found: ${protocoleDir} (set TWIN_V9_DIR)`)
+    throw new Error(`Twin_v9 php/protocole directory not found: ${protocoleDir} (set TWIN_V9_DIR; Twin_v9 after T16)`)
   }
 
-  // protocole/**/*.md -> {'lourd/20-greffier': content}
+  // php/protocole/**/*.md -> {'lourd/20-greffier': content}
   const files = {}
   for (const rel of walkMarkdownFiles(protocoleDir)) {
     const name = rel.split(sep).join('/').replace(/\.md$/, '')

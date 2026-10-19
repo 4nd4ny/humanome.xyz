@@ -246,8 +246,9 @@ Les jeux de gabarits des promptologues (T14) y ont leurs lignes, testées dans
 `UcPro08EditerGabaritsTwin9Test.php` (le jeu v9.8, les copies, le jeu par
 défaut) ; les brouillons de référentiel (T15) y ont la leur, testée dans
 `ConfigurationDroitsTest.php` (`testADraftServesOnlyItsAuthorsTestRuns`) ;
-jusqu'à T16, un run sur un autre référentiel que RESPIRE est refusé
-(`RunsTest.php`, `testARunReadsRespireOnlyUntilTheEngineReceivesItsReferential`).
+depuis T16, un run sur un autre référentiel que RESPIRE part, son moteur
+lisant le référentiel du profil (`RunsTest.php`,
+`testARunReadsTheReferentialItsProfileNames`).
 
 | Route | Méthode | Accès |
 |---|---|---|

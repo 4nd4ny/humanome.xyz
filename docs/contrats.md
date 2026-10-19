@@ -553,9 +553,11 @@ public) l'implémente aussi.
 
 - **`Twin9\Plateforme`**, construite une fois par run et par tranche avec :
   les réglages de la v9.8 en JSON (`config` et `roster` effectifs, options
-  `jours`, `rescan`, `test`, `memoire`), le nom et le texte du portfolio, le
-  jeu de gabarits (chaque gabarit par son nom, `lourd/20-greffier`, les fiches
-  `tagger/P1` à `P7` comprises), la sortie du run (`--out` : les identifiants
+  `jours`, `rescan`, `test`, `memoire`, et, depuis T16, `referentiel`, le
+  référentiel du run, §8.8), le nom et le texte du portfolio, le jeu de
+  gabarits (chaque gabarit par son nom, `lourd/20-greffier` ; sans
+  `referentiel`, le moteur y lit RESPIRE dans les fiches `tagger/P1` à `P7`,
+  comme avant T16), la sortie du run (`--out` : les identifiants
   des calques en portent une empreinte), son horloge, figée à sa création, et
   l'empreinte de ses réglages (ci-dessous).
 - **`passe(journal, memoire, sortie)`** rejoue le run depuis son début : la
@@ -584,15 +586,16 @@ public) l'implémente aussi.
   `{id, date, titre, etat}`, `etat` valant `nouvelle` (absente de la
   mémoire), `changee` (son texte, ses lecteurs ou l'empreinte des réglages ont
   changé, ou `rescan` la relit) ou `inchangee` (reprise sans appel, comme
-  `passe` la reprendrait) ; et `poles`, les pôles du référentiel du jeu.
-  Rien n'est écrit.
+  `passe` la reprendrait) ; et `poles`, les pôles du référentiel du run
+  (avant T16, ceux du jeu). Rien n'est écrit.
 
 ### 8.1 Les réglages d'un run
 
 `twin9_runs.reglages` garde la copie du profil (`profil`, §7 : réglages
 d'appel, voie, parallélisme, clé, référentiel et jeu de gabarits) et les
 réglages de la v9.8 que lit le moteur (`moteur`). Au lancement (T9, §8.4),
-`MoteurReglages` les tire de la copie du profil, et de rien d'autre : les
+`MoteurReglages` les tire de la copie du profil et du référentiel qu'elle
+nomme (T16), de rien d'autre : les
 paramètres d'algorithme sous leurs noms du `config.json`, troncatures
 comprises ; `backend_tribunal` et `backend_rapide`, de type `anthropic`, aux
 modèles des étages profond et rapide (le rapide servant aussi de
@@ -600,7 +603,8 @@ modèles des étages profond et rapide (le rapide servant aussi de
 `parallel_jures`, vrai ; le collège développé comme le fait `twin9.py`, chaque
 passe un lecteur (`haiku#1`…), avec sa graine (`stable_hash("haiku|passe1")`
 modulo 2³¹−1) et son sel (`|passe1`) ; les options `jours`, `rescan`,
-`test` (le mode essai) et `memoire`. Le profil v9.8 donne ainsi les réglages
+`test` (le mode essai) et `memoire` ; `referentiel`, le référentiel du run
+tiré de la base à sa version (T16, §8.8). Le profil v9.8 donne ainsi les réglages
 du scénario `02-cloud` de l'oracle, au type des backends près (`mock` sous
 `--mock`), et un run qu'ils conduisent est celui de l'oracle, appel par appel
 (`PariteTest::testTheV98ProfileDrivesTheEngine`). Les autres tests de parité
@@ -634,9 +638,11 @@ l'Arpenteur) ne se reprend que sous les mêmes réglages : à côté de
 l'empreinte de la v9.8, elle garde celle de la plateforme
 (`CallSettings::empreinte`), qui couvre ce que la v9.8 ne compte pas et qui
 change une réponse : les réglages d'appel des étages, des étapes et des
-lecteurs, les troncatures, les gabarits et les fiches du jeu (hors `merge/` :
-la mémoire ne garde pas les relectures). Les sorties gardent l'empreinte de
-la v9.8.
+lecteurs, les troncatures, les gabarits du jeu (hors `merge/` : la mémoire ne
+garde pas les relectures) et, depuis T16, le référentiel que lit le moteur
+(`ReferentielMoteur::empreinte`, §8.8 : ses fiches, préambules, noms, motif et
+libellé). Un run sans référentiel — d'avant T16, ses fiches dans son jeu —
+garde son empreinte. Les sorties gardent l'empreinte de la v9.8.
 
 ### 8.3 La voie par lots (T8)
 
@@ -690,13 +696,15 @@ une suivante le relève.
   choisi, un des siens ou celui par défaut (celui de la v9.8, avec le jeu de
   gabarits par défaut, T14), est revalidé (§7) et admis (`ProfilPolicy`) ;
   sa version de référentiel, nulle, devient la dernière publiée, figée dans
-  la copie. Le jeu de gabarits que choisit le profil (§8.6) devient
-  l'instantané du run. Le moteur construit une fois sa `Plateforme`
+  la copie ; le référentiel, à cette version, est tiré de la base dans les
+  réglages du moteur (T16, §8.8). Le jeu de gabarits que choisit le profil
+  (§8.6) devient l'instantané du run. Le moteur construit une fois sa `Plateforme`
   pour lire le portfolio : le nom de son journal range la carte. Le run garde
   son **attestation** (`twin9_runs.attestation`) : `profil` (`id`, nul pour
   celui de la v9.8, `nom`, et `mode` depuis T10), `gabarits` (`jeu`, `versions` de chaque gabarit
   — ses versions archivées plus une —, `empreinte` du jeu), `referentiel`
-  (`id`, `version`), `moteur` (`commit` : la tête du dépôt `TWIN_V9_DIR`, sinon
+  (`id`, `version`, et depuis T16 `empreinte`, §8.8), `moteur` (`commit` : la
+  tête du dépôt `TWIN_V9_DIR`, sinon
   la première ligne de son fichier `COMMIT`, sinon nul). Il garde aussi sa
   visibilité (`privee` ou `cartographe`) et la date de l'accord (`accord_at`),
   sans lequel rien ne part.
@@ -716,8 +724,9 @@ une suivante le relève.
   ses sorties, et pour chaque journée que sa fusion nomme (`journee`) sans
   qu'il en ait écrit la carte, la carte que la mémoire garde (`journees/<jour>`,
   sous `test/` en mode essai), sans le texte de la journée. Chaque texte passe
-  le filtre de fuite (ADR-010 §2) contre tout le jeu de gabarits du run, fiches
-  comprises, variables vides ; les sorties rangées restent celles du moteur.
+  le filtre de fuite (ADR-010 §2) contre tout le jeu de gabarits du run,
+  variables vides, et les préambules et fiches du référentiel que son moteur a
+  lus (T16, §8.8) ; les sorties rangées restent celles du moteur.
 - **Le document `twin9-run`** que la page remet à l'interface de cartographie
   (`twin9RunFiles`, `web/src/lib/interface-handoff.js`) : `kind: "twin9-run"`,
   `run` (`id`, `journal`, `mode`, `attestation`, dates), `referentiel` (le
@@ -727,7 +736,9 @@ une suivante le relève.
   avec son dossier (`twin9Dossier`, `engine/src/twin9/mapper.js`) ; la
   délibération d'un verdict jugé se lit dans sa journée (`runScope:
   "journee"`), et les synthèses viennent de la fusion
-  (`carto/core/importers/twin9-run.js`).
+  (`carto/core/importers/twin9-run.js`). La page ne le remet que pour un run
+  de RESPIRE (T16 : la cartographie ne lit encore que lui, T17) ; pour un
+  autre, elle le dit.
 
 ### 8.5 Coûts, plafonds, relance, purge et export (T10)
 
@@ -805,13 +816,18 @@ une suivante le relève.
   carte avec `journal`, `referentiel`, `gabarits`, `created_at` et `memoire`
   (le texte JSON de chaque clé). Ce que le moteur et les modèles ont écrit
   passe le filtre de fuite contre tous les jeux de gabarits des runs du
-  compte. L'archive de compte l'embarque (`analysesTwin9`, §4, point 13).
+  compte et les préambules et fiches des référentiels que leur moteur a lus
+  (T16). L'archive de compte l'embarque (`analysesTwin9`, §4, point 13).
 
 ### 8.6 Les jeux de gabarits (T14)
 
 - **Le jeu v9.8** est celui qu'écrit l'import (`POST /api/admin/twin9/import`,
   `twin9_protocole`, `twin9_protocole_versions`) : l'atelier le lit, ne
-  l'écrit jamais (`403`). Son identifiant est « v9.8 ».
+  l'écrit jamais (`403`). Son identifiant est « v9.8 ». Depuis T16, l'import
+  le remplace : il y écrit les gabarits de `php/protocole` de `TWIN_V9_DIR`,
+  et un gabarit qu'il ne porte plus en sort, son dernier contenu archivé
+  parmi ses versions — les fichiers de pôle `tagger/P1` à `P7`, dont la base
+  donne désormais les fiches (§8.8) ; il répond `{imported, retires}`.
 - **Une copie** (`TemplateSets::copier`, `POST /api/twin9/admin/jeux {id}`,
   atelier) prend chaque gabarit du jeu v9.8 tel qu'il est, sans son histoire
   (migration 029 : `twin9_jeux`, `twin9_jeux_gabarits`, `twin9_jeux_versions`).
@@ -829,8 +845,12 @@ une suivante le relève.
   reçoit aucune. Le contrat reprend celui de `Twin_v9`
   (`engine/src/twin9/protocole-contrat.json`), complété de `MA_POSITION_R1`
   (relance, second tour) et `LISTE_61` (Arpenteur), que le moteur fournit et
-  que les gabarits v9.8 emploient ; un test le vérifie sur les gabarits de
-  `TWIN_V9_DIR` (`JeuxGabaritsTest`).
+  que les gabarits v9.8 emploient, et, depuis T16, des variables du
+  référentiel (§8.8) : `REFERENTIEL` et `FORMAT_CODE` (lecture d'un pôle),
+  `NB_COMPETENCES` et `FORMAT_CODE` (relectures de la fusion),
+  `NB_COMPETENCES`, `FORMAT_CODE` et `LISTE_COMPETENCES` (Arpenteur) ; un
+  test le vérifie sur les gabarits de `TWIN_V9_DIR/php/protocole`
+  (`JeuxGabaritsTest`).
 - **Le choix d'un profil** (`gabarits`, `TemplateSets::pour`) : le jeu v9.8,
   le jeu par défaut, et, tant que son propriétaire est de l'atelier
   (`TemplateSets::ATELIER`, `admin` ∧ `promptologue` selon AD-D2), ses
@@ -849,10 +869,12 @@ une suivante le relève.
   mémoire d'une carte est rangée par jeu (`twin9_cartes.gabarits`) : un run
   d'un autre jeu ne reprend pas les journées d'un premier. Le lancement et
   l'aperçu refusent (`422`) une copie à qui manque un gabarit du jeu v9.8
-  (ajouté par un import après la copie), et un jeu que le moteur ne lit pas
-  (une fiche du référentiel mal formée : le moteur lit les pôles dans
-  `tagger/P1` à `P7`), sans citer le gabarit ; le journal du serveur ne
-  garde que la classe de l'erreur du moteur.
+  (ajouté par un import après la copie). Un moteur d'avant T16, qui lit les
+  pôles dans `tagger/P1` à `P7`, fait refuser de même un jeu qu'il ne lit
+  pas (une fiche mal formée, ou absente), sans citer le gabarit, le journal
+  du serveur ne gardant que la classe de son erreur ; depuis T16, le
+  référentiel vient de la base (§8.8), et les fichiers de pôle qu'une copie
+  faite avant garde encore ne sont plus lus.
 - **`GET /api/twin9/admin/jeux`** (administrateur) rend `{defaut, jeux}`,
   chaque jeu avec `id`, `auteur` (nom affiché, nul pour le jeu v9.8 ou un
   compte supprimé), `mien`, `gabarits` (leur nombre), `created_at` et
@@ -885,7 +907,9 @@ crédit, ou le budget, permet de finir avec leur fusion.
   une fois l'appel réglé) ; `duree_s` (ses secondes actives) ; `reglages`
   (`voie`, `cle`, `marge` — le facteur que ses coûts comprennent, 1 avec la
   clé personnelle —, et ce que les prévisions comparent : `mode`,
-  `referentiel` et `version_referentiel`, `gabarits` et
+  `referentiel`, `version_referentiel` et `empreinte_referentiel` (T16 :
+  celle du référentiel que lit le moteur, §8.8 ; vide pour un run d'avant,
+  qui lisait les fiches de son jeu), `gabarits` et
   `empreinte_gabarits` — l'empreinte du jeu, celle de l'attestation : un jeu
   modifié est un autre jeu —, les modèles et la performance — `etages`,
   `etapes`, `lecteurs`, avec modèle, budget de sortie, effort, réflexion et
@@ -915,10 +939,12 @@ crédit, ou le budget, permet de finir avec leur fusion.
   a coûté, au plus autant au Ko. Jamais sous zéro. Une taille se lit comme
   elle se consigne, en Ko au centième (`Evaluations::ko`). Le pire cas
   d'un appel : le plus grand observé, et au moins ce que les réglages
-  d'appel du run réservent sur un prompt fait des deux plus grands gabarits
-  du jeu et de la plus grande journée à instruire (de la carte, pour la
-  fusion). Par appels directs, les secondes actives d'un run par journée
-  instruite, fusion comprise, en moyenne. Sans évaluation, la référence
+  d'appel du run réservent sur un prompt deux fois plus grand que le plus
+  grand gabarit du jeu ou le plus grand pôle que lisent ses lecteurs (T16 :
+  son préambule et ses fiches, §8.8), avec la plus grande journée à
+  instruire (la carte, pour la fusion). Par appels directs, les secondes
+  actives d'un run par journée instruite, fusion comprise, en moyenne. Sans
+  évaluation, la référence
   (§8.5) : par journée instruite, une journée pour la fusion, et une journée
   pour le pire cas d'un appel de chacune, au moins ce que disent ses
   réglages. L'estimation dit sa source : les évaluations quand elles disent
@@ -989,6 +1015,93 @@ crédit, ou le budget, permet de finir avec leur fusion.
   lots) ; et sa source, `evaluations` (leur nombre) ou `reference` et
   `poles`. La page dit les journées admises ou le refus, qu'elle ne laisse
   pas lancer.
+
+### 8.8 Le référentiel du run (T16)
+
+Le moteur lit le référentiel du run, et non plus celui de la v9.8 (`Twin_v9`,
+T16, plan validé par Christian le 2026-10-20).
+
+- **Le bloc** (`Twin9\ReferentielMoteur::bloc`), tiré de la base au lancement
+  et à l'aperçu, à la version que fige la copie du profil (§8.4) — publiée,
+  ou brouillon de son auteur pour un run d'essai (§9) —, entre dans les
+  réglages du moteur (`moteur.referentiel`, §8.1) : `{id, version, label,
+  motif, poles: [{num, nom, entete, competences: [{code, nom, fiche}]}]}`.
+  `motif` est celui du premier niveau du document (§9) ; les pôles viennent
+  dans l'ordre de leurs numéros, les compétences d'un pôle dans l'ordre
+  naturel de leurs codes (`A2` avant `A10`), celui où le moteur les range.
+  - **RESPIRE** : préambules et fiches sont ceux que garde la base
+    (`FicheGenerator::corpus()`, la source unique de juillet 2026 :
+    `referentiel_poles.header` et la fiche de la dernière version publiée de
+    chaque compétence), les octets des fichiers de pôle de la v9.8 ; le vrai
+    moteur les lit comme il lit ceux-ci (`ReferentielMoteurTest`). Sans eux,
+    le lancement et l'aperçu répondent `503` « Les fiches du référentiel
+    RESPIRE ne sont pas dans la base de cette instance : l’analyse
+    approfondie ne peut partir (php scripts/seed-competences.php les y
+    verse) ».
+  - **Un autre référentiel** : préambule et fiches s'écrivent depuis son
+    document — le préambule, « # Pôle N — nom », puis sa description ; la
+    fiche, « ## CODE — nom », sa description, puis ses éléments plus fins,
+    chacun sous un titre d'un niveau plus bas (jusqu'à `######`), avec sa
+    description.
+- **Le moteur** (`Twin9\Referentiel::depuisBloc`) en tire ce que la v9.8
+  écrivait de RESPIRE : le nom d'un pôle (le titre de son préambule, « NOM :
+  sous-titre » lu « NOM — sous-titre » ; à défaut, le nom du bloc) et sa clé
+  (le premier mot de ce nom en capitales, accents ôtés, sinon `P` et son
+  numéro), celle du profil ipsatif et du jury ; le nombre de compétences
+  (« 61 »), la forme de leurs codes (`X.YY` ; `XY` pour `A1`), le nom du
+  référentiel (son libellé sans sa version : « RESPIRE v7 » donne
+  « RESPIRE »), l'ordre des codes. Il refuse un référentiel qu'il ne lit
+  pas — pôles qui ne se numérotent pas de 1 à N, pôle sans compétence, code
+  absent, fait de chiffres seulement, hors du motif ou en double, nom ou
+  fiche absent, motif illisible — : le lancement et l'aperçu répondent `422`
+  « Le référentiel « id » ne se lit pas : … », le pôle ou le code fautif
+  nommé, jamais une fiche ; aucun run n'est écrit.
+- **Le jury** garde ses sièges sur tout référentiel (décision de Christian du
+  2026-10-20) : un pôle de RESPIRE, reconnu à sa clé, assoit le spécialiste
+  et la paire de la v9.8 ; un autre, le « Spécialiste du pôle », qui lit son
+  domaine, et la paire (Spécialiste du pôle, Historien) — cinq sièges en
+  `socle4+1`, quatre en `socle2+2`. `jury.specialistes` du profil l'emporte.
+- **Les gabarits** : le jeu v9.8 est celui de `php/protocole` (§8.6), où les
+  mots de RESPIRE sont devenus des variables — `{$NB_COMPETENCES}` (« 61 »),
+  `{$FORMAT_CODE}` (« X.YY »), `{$REFERENTIEL}` (« RESPIRE »),
+  `{$LISTE_COMPETENCES}` (`{$LISTE_61}`) —, sans les fichiers de pôle. Pour
+  RESPIRE, ils rendent le texte de la v9.8 : un run de RESPIRE donné par ce
+  bloc rejoue les dix-sept scénarios de l'oracle octet pour octet (`Twin_v9`,
+  `OracleTest`). L'appel du navigateur (`POST /api/twin9/appel`) les reçoit
+  aux valeurs de RESPIRE.
+- **Les empreintes** : celle du référentiel (`ReferentielMoteur::empreinte`,
+  16 caractères hexadécimaux du SHA-256 de son JSON canonique, la même qu'il
+  soit relu en tableaux ou en objets) entre dans l'empreinte des réglages
+  (§8.2), l'attestation (`referentiel.empreinte`, §8.4) et ce que comparent
+  les prévisions (`empreinte_referentiel`, §8.7).
+- **Le filtre de fuite** indexe ses préambules et ses fiches, qui ne sont plus
+  dans le jeu, pour les résultats (§8.4) comme pour l'export (§8.5).
+- **La prévision** : le pire cas d'un appel compte le plus grand pôle que lit
+  un lecteur, son préambule et ses fiches joints comme le moteur les joint
+  (§8.7).
+- **La cartographie** ne lit encore que RESPIRE (T17) : la page d'un run sur
+  un autre référentiel ne propose pas « Ouvrir dans la cartographie », et le
+  dit ; ses résultats et l'archive du compte le gardent.
+- **Limites.**
+  - Les fiches de RESPIRE sont celles que la base publie au lancement, non
+    celles de l'instantané de la version figée
+    (`referentiel_snapshot_competences`) : une compétence publiée depuis
+    entre dans le run. L'empreinte du référentiel dit lesquelles il a lues.
+  - La mémoire d'une carte est rangée par référentiel, non par version
+    (`twin9_cartes.referentiel`) : une journée que la carte garde au-delà de
+    celles du run, lue sous une version ancienne, entre telle quelle dans la
+    fusion, même si un de ses codes a quitté la version nouvelle (à reprendre
+    avec T17).
+  - Une copie de jeu faite avant T16 garde les gabarits où la v9.8 écrit
+    RESPIRE en toutes lettres : sur un autre référentiel, ses prompts le
+    gardent ; il faut en refaire une copie.
+  - L'import de T16 change l'empreinte des réglages (jeu sans fichiers de
+    pôle, gabarits en variables, référentiel) : chaque journée que garde la
+    mémoire d'une carte sera relue une fois.
+  - Sans évaluation, la référence (§8.5) reste le run de PLANT-01 de T2, fois
+    les pôles : elle ignore la taille des fiches d'un autre référentiel.
+  - Le moteur ne refuse un référentiel qu'au lancement : sa publication (§9)
+    ne vérifie pas que le moteur le lit.
 
 ## 9. Plusieurs référentiels (T15)
 
@@ -1062,15 +1175,16 @@ Le schéma `referentiel` passe en **2.0.0** (`docs/plan-twin9-php.md` de
   auteur ». `GET /api/twin9/configuration` rend, pour chaque référentiel,
   `{id, versions, brouillons}` : ses versions publiées et ses propres
   brouillons, un référentiel jamais publié n'y figurant que pour son auteur.
-- **Le lancement** (§8.4) : jusqu'à ce que le moteur reçoive le référentiel
-  de son run (T16), il lit les fiches RESPIRE de son jeu de gabarits, quel
-  que soit le profil ; un run ou son aperçu sur un autre référentiel est donc
-  refusé (`422` « L’analyse approfondie ne lit encore que le référentiel
-  RESPIRE »). Un brouillon de RESPIRE sert le run d'essai de son auteur.
+- **Le lancement** (§8.4) : le moteur lit le référentiel de son run (T16,
+  §8.8) ; un run ou son aperçu sur un autre référentiel, publié, part. Un
+  brouillon sert le run d'essai de son auteur. (De T15 à T16, le moteur
+  lisait les fiches RESPIRE de son jeu, et un autre référentiel était refusé,
+  `422`.)
 - **Les annotations** (`POST /api/cartographies/{id}/annotations`) : une
   cartographie qui désigne une version de référentiel
   (`referentiel_version_id`) n'accepte que ses codes ; sans référentiel
   désigné, la forme de RESPIRE (`[1-7].NN`), comme avant.
-- **Hors T15** : le moteur (T16) et la cartographie (T17) ne lisent encore que
-  RESPIRE et ses 7 pôles ; la page publique `#/referentiel` ne montre que
-  lui ; `ReferentielDiff` ignore niveaux et éléments.
+- **Hors T15** : la cartographie (T17) ne lit encore que RESPIRE et ses
+  7 pôles (le moteur lit le référentiel du run depuis T16, §8.8) ; la page
+  publique `#/referentiel` ne montre que lui ; `ReferentielDiff` ignore
+  niveaux et éléments.

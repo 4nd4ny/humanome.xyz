@@ -99,6 +99,7 @@ Depuis la racine du dépôt, l'environnement exporté (§2) :
 php scripts/migrate.php                     # applique les migrations en attente
 php scripts/import-referentiel.php
 php scripts/import-referentiel.php web/public/data/referentiel/respire-v7.1.0.json
+php scripts/seed-competences.php            # les fiches de RESPIRE, que lit Twin9 (T16)
 php scripts/import-prompt-packages.php
 php scripts/export-referentiel-static.php
 ```

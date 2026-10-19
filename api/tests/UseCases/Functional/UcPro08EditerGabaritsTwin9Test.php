@@ -138,7 +138,7 @@ final class UcPro08EditerGabaritsTwin9Test extends CartographeTestCase
             ['lourd/20-greffier' => TwinSupport::GABARIT_GREFFIER, 'tagger/1-tag-pole' => TwinSupport::GABARIT_TAG],
             ['config' => ['jury' => ['taille_aleatoire' => 5]], 'referentiel' => TwinSupport::referentielFictif(), 'fiches' => TwinSupport::fichesFictives()],
         );
-        self::assertSame(['imported' => 2], self::json($response));
+        self::assertSame(['imported' => 2, 'retires' => 0], self::json($response));
 
         $config = new Twin9Config(new SettingsRepository(Db::get()));
         self::assertTrue($config->isEnabled());
@@ -168,7 +168,7 @@ final class UcPro08EditerGabaritsTwin9Test extends CartographeTestCase
         self::assertStringContainsString('Fiche : ' . TwinSupport::FICHE_SECRETE, $prompt);
         self::assertStringContainsString('PRÉAMBULE FICTIF DU PÔLE 1', $prompt);
 
-        self::assertSame(['imported' => 2], self::json($this->importer(['lourd/20-greffier' => TwinSupport::GABARIT_GREFFIER, 'tagger/1-tag-pole' => TwinSupport::GABARIT_TAG])));
+        self::assertSame(['imported' => 2, 'retires' => 0], self::json($this->importer(['lourd/20-greffier' => TwinSupport::GABARIT_GREFFIER, 'tagger/1-tag-pole' => TwinSupport::GABARIT_TAG])));
         self::assertSame(0, (int) self::$pdo->query('SELECT COUNT(*) FROM twin9_protocole_versions')->fetchColumn());
     }
 
@@ -359,12 +359,13 @@ final class UcPro08EditerGabaritsTwin9Test extends CartographeTestCase
         self::assertSame(['error' => 'Fichier invalide : 20'], self::json($numerique));
 
         // NAME_PATTERN se termine par « $ » sans /D : un saut de ligne final passe.
-        self::assertSame(['imported' => 1], self::json($this->importer(["lourd/20-greffier\n" => 'Gabarit FICTIF à saut de ligne'])));
+        self::assertSame(['imported' => 1, 'retires' => 0], self::json($this->importer(["lourd/20-greffier\n" => 'Gabarit FICTIF à saut de ligne'])));
         self::assertSame(["lourd/20-greffier\n"], self::$pdo->query('SELECT name FROM twin9_protocole')->fetchAll(\PDO::FETCH_COLUMN));
 
         // Un gabarit dont le dernier segment est « versions » est capté par la route
-        // d'historique (enregistrée d'abord) : importé, mais jamais relu.
-        self::assertSame(['imported' => 1], self::json($this->importer(['x/versions' => 'Gabarit FICTIF masqué'])));
+        // d'historique (enregistrée d'abord) : importé, mais jamais relu. L'import
+        // remplace le jeu (T16) : celui à saut de ligne, qu'il ne porte plus, en sort.
+        self::assertSame(['imported' => 1, 'retires' => 1], self::json($this->importer(['x/versions' => 'Gabarit FICTIF masqué'])));
         $lu = $this->atelier('GET', '/v9.8/protocole/x%2Fversions');
         self::assertSame(404, $lu->getStatusCode());
         self::assertSame(['error' => 'Gabarit introuvable'], self::json($lu));

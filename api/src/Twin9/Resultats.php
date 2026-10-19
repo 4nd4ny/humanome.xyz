@@ -17,9 +17,10 @@ use stdClass;
  * Never its portfolio, nor the day texts the memory keeps beside the maps.
  *
  * Everything shown passes the leak filter (ADR-010 §2) against the run's
- * whole template set, fiches included, as the run took it: a model that
- * recited a template sees its recitation redacted. The count of redactions
- * stays server-side, in the audit, never in the answer.
+ * whole template set, as the run took it, and the fiches of the referential
+ * its engine read (T16): a model that recited a template or a fiche sees its
+ * recitation redacted. The count of redactions stays server-side, in the
+ * audit, never in the answer.
  */
 final class Resultats
 {
@@ -70,7 +71,7 @@ final class Resultats
         ksort($sorties, SORT_STRING);
         sort($memoire, SORT_STRING);
 
-        $index = self::index($run['gabarits']);
+        $index = self::index($run['gabarits'], json_decode($run['moteur'], false, 512, JSON_THROW_ON_ERROR)->referentiel ?? null);
         $fuites = 0;
         foreach ($sorties as $chemin => $texte) {
             $sorties[$chemin] = self::filtrer($index, $texte, str_ends_with($chemin, '.json'), $fuites);
@@ -84,19 +85,21 @@ final class Resultats
 
     /**
      * The leak filter's index of a template set as confidential material:
-     * each template with its variables empty, the fiches (tagger/P*) among
-     * them.
+     * each template with its variables empty — the fiches (tagger/P*) among
+     * them, for a run whose engine read RESPIRE from its set —, and the
+     * preambles and fiches of the referential its engine read (T16).
      *
      * @param array<string, string> $gabarits
+     * @param mixed $referentiel the referential in the engine's settings (ReferentielMoteur::bloc()), or null
      * @return array<mixed> LeakFilter::indexer()'s
      */
-    public static function index(array $gabarits): array
+    public static function index(array $gabarits, mixed $referentiel = null): array
     {
-        return LeakFilter::indexer(implode("\n\n", array_map(
+        return LeakFilter::indexer(implode("\n\n", [...array_map(
             static fn (string $contenu): string => (string) preg_replace(ProtocoleRepository::VARIABLE_PATTERN, '',
                 $contenu),
-            $gabarits,
-        )));
+            array_values($gabarits),
+        ), ...($referentiel === null ? [] : ReferentielMoteur::textes($referentiel))]));
     }
 
     /**

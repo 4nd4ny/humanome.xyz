@@ -427,6 +427,11 @@ return function (App $app): void {
         // injected values WIN over anything the client sent for those names.
         $fiches = FicheStore::fromSettings(new SettingsRepository(Db::get()));
         $variables = array_merge($variables, $fiches->injecter($variables));
+        // T16: the v9.8's set is now the copy whose templates name their referential (Twin_v9's php/protocole);
+        // the browser's engine reads RESPIRE alone, until T11 removes it: its prompts take RESPIRE's values, those
+        // the v9.8's original templates wrote
+        $variables += ['NB_COMPETENCES' => 61, 'FORMAT_CODE' => 'X.YY', 'REFERENTIEL' => 'RESPIRE']
+            + (isset($variables['LISTE_61']) ? ['LISTE_COMPETENCES' => $variables['LISTE_61']] : []);
 
         $repo = new ProtocoleRepository(Db::get());
         $rendered = $repo->render($etape, $variables); // Twin9Exception 404 if unknown
@@ -930,8 +935,10 @@ return function (App $app): void {
     // ==================================================================
 
     // POST /api/admin/twin9/import {files: {name: content}, config?: {...}}
-    // -> upserts twin9_protocole (archiving versions), stores the protocol
-    // settings under twin9_config.pipeline, flips twin9_config.enabled=true.
+    // -> replaces the v9.8's set in twin9_protocole (archiving versions: a
+    // template the import no longer carries leaves the set, as the pole files
+    // did for the base in T16), stores the protocol settings under
+    // twin9_config.pipeline, flips twin9_config.enabled=true.
     $app->post('/admin/twin9/import', function (Request $request, Response $response) use ($json): Response {
         $token = Env::get('MIGRATE_TOKEN');
         if ($token === '') {
@@ -962,6 +969,10 @@ return function (App $app): void {
                 $repo->put($name, $content, null);
                 ++$imported;
             }
+            $retires = 0;
+            foreach (array_diff(array_column($repo->list(), 'name'), array_map('strval', array_keys($files))) as $name) {
+                $retires += $repo->retirer($name) ? 1 : 0;
+            }
 
             $config = new Twin9Config(new SettingsRepository(Db::get()));
             $update = ['enabled' => true];
@@ -988,6 +999,6 @@ return function (App $app): void {
             return $json($response, ['error' => 'Import failed, see server log'], 500);
         }
 
-        return $json($response, ['imported' => $imported]);
+        return $json($response, ['imported' => $imported, 'retires' => $retires]);
     });
 };

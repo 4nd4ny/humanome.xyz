@@ -57,6 +57,7 @@ final class JeuxGabaritsTest extends CartographeTestCase
         $doc = json_decode((string) file_get_contents(\dirname(__DIR__, 3) . '/web/public/data/referentiel/respire-v7.json'),
             true, 512, JSON_THROW_ON_ERROR);
         (new ReferentielRepository(self::$pdo))->importPublishedDocument($doc, 'Import initial RESPIRE v7');
+        TestDb::fichesRespire(self::$pdo); // the engine reads RESPIRE's fiches from the base (T16)
     }
 
     protected function tearDown(): void
@@ -189,7 +190,7 @@ final class JeuxGabaritsTest extends CartographeTestCase
      */
     public function testAWordChangedInACopyReachesTheRealEnginesPrompt(): void
     {
-        if (!is_file($this->reel . '/php/src/Plateforme.php') || !is_dir($this->reel . '/protocole')) {
+        if (!is_file($this->reel . '/php/src/Plateforme.php') || !is_dir($this->reel . '/php/protocole')) {
             self::markTestSkipped('Twin_v9 absent (TWIN_V9_DIR) : le vrai moteur et ses gabarits ne sont pas là');
         }
         TestDb::setEnv('TWIN_V9_DIR', $this->reel);
@@ -256,52 +257,13 @@ final class JeuxGabaritsTest extends CartographeTestCase
     }
 
     /**
-     * With the real engine (TWIN_V9_DIR): a fiche of the referential
-     * malformed in a copy makes its runs refused at launch, with a word on
-     * the set — never an error of the server.
-     */
-    public function testACopyWithAMalformedFicheIsRefusedAtLaunch(): void
-    {
-        if (!is_file($this->reel . '/php/src/Plateforme.php') || !is_dir($this->reel . '/protocole')) {
-            self::markTestSkipped('Twin_v9 absent (TWIN_V9_DIR) : le vrai moteur et ses gabarits ne sont pas là');
-        }
-        TestDb::setEnv('TWIN_V9_DIR', $this->reel);
-        self::assertTrue(EngineLoader::load());
-        $v98 = new ProtocoleRepository(self::$pdo);
-        foreach (self::gabaritsV98($this->reel) as $nom => $contenu) {
-            $v98->put($nom, $contenu, null);
-        }
-        $atelier = $this->registerAs('atelier@example.org', 'Atelier', ['admin', 'promptologue']);
-        $this->copier($atelier, 'essai');
-        self::assertSame(200, $this->as_($atelier, 'PUT', '/api/twin9/admin/jeux/essai/protocole/tagger%2FP1',
-            ['content' => 'Fiche FICTIVE sans aucune section de compétence.'])->getStatusCode());
-        $portfolio = ['nom' => 'PLANT-01.md', 'texte' => (string) file_get_contents($this->reel . '/tests/portfolios/PLANT-01.md')];
-        $profil = $this->profil($atelier, 'essai', mode: 'test');
-        $journal = (string) tempnam(sys_get_temp_dir(), 'lancement-');
-        ini_set('error_log', $journal);
-
-        foreach (['/api/twin9/runs/apercu', '/api/twin9/runs'] as $route) {
-            $refus = $this->as_($atelier, 'POST', $route, ['profil' => $profil, 'accord' => true, 'portfolio' => $portfolio]);
-            self::assertSame(422, $refus->getStatusCode(), $route);
-            self::assertSame('Le jeu de gabarits « essai » ne se lit pas : un gabarit y manque, ou une fiche y est mal formée',
-                self::json($refus)['error']);
-        }
-        self::assertSame(0, (int) self::$pdo->query('SELECT COUNT(*) FROM twin9_runs')->fetchColumn());
-        // the log names the engine's error, never what it read
-        $log = (string) file_get_contents($journal);
-        unlink($journal);
-        self::assertSame(2, substr_count($log, '[twin9-lancement] ValueError'));
-        self::assertStringNotContainsString('FICTIVE', $log);
-        self::assertStringNotContainsString('tagger', $log);
-    }
-
-    /**
      * The contract gives each template of the v9.8's set the variables it
-     * uses (TWIN_V9_DIR/protocole): a copy of it, saved as it is, passes.
+     * uses (TWIN_V9_DIR/php/protocole, T16): a copy of it, saved as it is,
+     * passes.
      */
     public function testTheContractGivesEveryV98TemplateItsVariables(): void
     {
-        if (!is_dir($this->reel . '/protocole')) {
+        if (!is_dir($this->reel . '/php/protocole')) {
             self::markTestSkipped('Twin_v9 absent (TWIN_V9_DIR) : ses gabarits ne sont pas là');
         }
         $contrat = TemplateSets::contrat();
@@ -387,7 +349,8 @@ final class JeuxGabaritsTest extends CartographeTestCase
     /** @return array<string, string> the v9.8's templates of a Twin_v9 checkout, by name */
     private static function gabaritsV98(string $dir): array
     {
-        $racine = $dir . '/protocole';
+        // T16: the platform's v9.8's set, the templates naming their referential, without the pole files
+        $racine = $dir . '/php/protocole';
         $gabarits = [];
         foreach (new \RecursiveIteratorIterator(new \RecursiveDirectoryIterator($racine, \FilesystemIterator::SKIP_DOTS)) as $f) {
             if (str_ends_with($f->getFilename(), '.md')) {

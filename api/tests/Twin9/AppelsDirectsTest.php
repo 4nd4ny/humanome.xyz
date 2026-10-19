@@ -145,6 +145,18 @@ final class AppelsDirectsTest extends TestCase
         $autre = ProfilRepository::v98();
         $autre->college[0]->budget_sortie = 100;
         self::assertNotSame($base, CallSettings::empreinte($autre, null, $gabarits));
+
+        // T16: the referential the engine reads is in it, decoded as arrays or as objects; a run without one keeps it
+        $bloc = ['id' => 'fictif', 'version' => '1.0.0', 'label' => 'Fictif', 'motif' => '[A-B][1-2]',
+                 'poles' => [['num' => 1, 'nom' => 'A', 'entete' => "# Pôle 1 — A\n",
+                              'competences' => [['code' => 'A1', 'nom' => 'Une', 'fiche' => '## A1 — Une']]]]];
+        self::assertSame($base, CallSettings::empreinte($profil, null, $gabarits, null));
+        $avec = CallSettings::empreinte($profil, null, $gabarits, $bloc);
+        self::assertNotSame($base, $avec);
+        self::assertSame($avec, CallSettings::empreinte($profil, null, $gabarits, json_decode(json_encode($bloc))));
+        $fiche = $bloc;
+        $fiche['poles'][0]['competences'][0]['fiche'] .= ' : une fiche changée';
+        self::assertNotSame($avec, CallSettings::empreinte($profil, null, $gabarits, $fiche));
     }
 
     /** The same profile, its keys in another order, as MySQL may give them back. */

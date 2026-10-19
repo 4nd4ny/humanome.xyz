@@ -121,6 +121,9 @@ final class RgpdAudit
         'twin9_resultats' => 'archive',
         'twin9_lots' => '—',                // a run's batches (migration 026): ids and counts, no content
         'twin9_lots_a_effacer' => '—',      // batches of erased accounts (migration 028): Anthropic's ids, no owner
+        'twin9_jeux' => '—',                // copies of the v9.8's templates (migration 029): platform content, author SET NULL
+        'twin9_jeux_gabarits' => '—',       // their templates (migration 029): platform content, editor SET NULL
+        'twin9_jeux_versions' => '—',       // their archived versions (migration 029): platform content, author SET NULL
     ];
 
     public static function schema(PDO $pdo): string

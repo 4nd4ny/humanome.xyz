@@ -11,10 +11,11 @@ use stdClass;
 /**
  * Launching a Twin9 run from the platform (T9, Twin_v9's docs/plan-twin9-php.md,
  * lot 2, « Lancer et suivre »): its owner from the session; a profile of theirs,
- * or the v9.8's, valid and admitted again, copied into the run with its
- * referential's version frozen; the engine's settings drawn from that copy
- * (MoteurReglages), never from a config.json; the live template set, as the
- * run's snapshot; the portfolio its owner sends; their consent to keep it,
+ * or the default one, the v9.8's, valid and admitted again, copied into the
+ * run with its referential's version frozen; the engine's settings drawn from
+ * that copy (MoteurReglages), never from a config.json; the profile's template
+ * set (T14: the v9.8's, the instance's default or a copy of a promptologue's),
+ * as the run's snapshot; the portfolio its owner sends; their consent to keep it,
  * and the run's state, on the server until they erase them (ADR-011 §5). The
  * attestation keeps what the run was launched with: its profile and its
  * mode, the versions of its template set, its referential, the engine's
@@ -54,7 +55,7 @@ final class Lancement
     }
 
     /**
-     * @param int|null $profilId a profile of its owner's; null: the v9.8's
+     * @param int|null $profilId a profile of its owner's; null: the default one, the v9.8's
      * @param string $portfolioNom the portfolio's file name: its stem names the journal, and the map
      * @param bool $accord the owner's consent, which every launch asks
      * @return int the run
@@ -174,9 +175,9 @@ final class Lancement
             throw new Twin9Exception('L’analyse approfondie n’est pas disponible sur cette instance', 503);
         }
 
-        [$profil, $nom] = $this->profil($userId, $profilId);
         $politique = new ProfilPolicy($this->pdo, $this->config);
-        $politique->admettre($profil);
+        [$profil, $nom] = $this->profil($userId, $profilId, $politique);
+        $politique->admettre($profil, $userId);
         if ($profil->cle === 'personnelle' && !$politique->choix($userId)['cle_perso_enregistree']) {
             throw new Twin9Exception('Profil refusé — /cle : aucune clé Anthropic personnelle n’est enregistrée', 422);
         }
@@ -184,17 +185,29 @@ final class Lancement
         $profil->referentiel->version ??= (new ReferentielRepository($this->pdo))
             ->publishedSemvers()[$profil->referentiel->id][0];
 
-        $jeu = (new ProtocoleRepository($this->pdo))->jeu();
+        $jeu = (new ProtocoleRepository($this->pdo, (string) $profil->gabarits))->jeu();
         if ($jeu['gabarits'] === []) {
             throw new Twin9Exception('Aucun gabarit sur cette instance : l’analyse approfondie ne peut partir', 503);
+        }
+        // a copy made before an import added a template to the v9.8's set lacks it: the run would stop on it (T14)
+        if ($profil->gabarits !== ProtocoleRepository::V98 && array_diff(
+            array_column((new ProtocoleRepository($this->pdo))->list(), 'name'), array_keys($jeu['gabarits'])) !== []) {
+            throw new Twin9Exception('Le jeu de gabarits « ' . $profil->gabarits . ' » n’a pas tous les gabarits du jeu '
+                . 'v9.8 : il faut en refaire une copie', 422);
         }
         $moteur = MoteurReglages::depuis($profil);
         try {
             $plateforme = new \Twin9\Plateforme(json_encode($moteur, self::JSON), $portfolioNom, $portfolio,
                 $jeu['gabarits'], $sortie, $horloge,
                 CallSettings::empreinte($profil, $moteur->config->troncatures ?? null, $jeu['gabarits']));
-        } catch (\InvalidArgumentException|\RuntimeException $e) {
-            error_log('[twin9-lancement] ' . $e->getMessage());
+        } catch (\ValueError|\RuntimeException $e) {
+            // the engine reads the referential's fiches from the set (T14: a copy's may be malformed); the
+            // class only in the log, an engine's message may quote a template
+            error_log('[twin9-lancement] ' . $e::class);
+            throw new Twin9Exception('Le jeu de gabarits « ' . $profil->gabarits . ' » ne se lit pas : un gabarit y '
+                . 'manque, ou une fiche y est mal formée', 422);
+        } catch (\InvalidArgumentException $e) {
+            error_log('[twin9-lancement] ' . $e::class);
             throw new Twin9Exception('Portfolio illisible par le moteur', 422);
         }
 
@@ -202,14 +215,15 @@ final class Lancement
     }
 
     /**
-     * The profile a run copies, valid under today's rules: its owner's, or the v9.8's.
+     * The profile a run copies, valid under today's rules: its owner's, or the
+     * default one, the v9.8's with the instance's default template set.
      *
      * @return array{0: stdClass, 1: string} the profile and its name
      */
-    private function profil(int $userId, ?int $profilId): array
+    private function profil(int $userId, ?int $profilId, ProfilPolicy $politique): array
     {
         if ($profilId === null) {
-            return [ProfilRepository::validate(ProfilRepository::v98()), 'Profil v9.8'];
+            return [ProfilRepository::validate($politique->defaut()), 'Profil v9.8'];
         }
         $ligne = (new ProfilRepository($this->pdo))->get($profilId);
         if ($ligne === null || $ligne['user_id'] !== $userId) {

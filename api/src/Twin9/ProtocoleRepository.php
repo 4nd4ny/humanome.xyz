@@ -7,12 +7,16 @@ namespace Humanome\Twin9;
 use PDO;
 
 /**
- * Store of the CONFIDENTIAL Twin9 prompt templates (ADR-010).
+ * Store of the CONFIDENTIAL Twin9 prompt templates (ADR-010), by template set.
  *
- * Templates live in the `twin9_protocole` table, keyed by a hierarchical
- * name ('lourd/20-greffier'). Every overwrite archives the previous content
- * into `twin9_protocole_versions` (per-name counter) so the admin editor can
- * roll back.
+ * The v9.8's set lives in the `twin9_protocole` table, keyed by a
+ * hierarchical name ('lourd/20-greffier'), as the import writes it; the
+ * copies the promptologues make of it (T14, TemplateSets) live in
+ * `twin9_jeux_gabarits`, under their set's id. Every overwrite archives the
+ * previous content first — `twin9_protocole_versions`, or
+ * `twin9_jeux_versions` for a copy — with a per-name counter, so the atelier
+ * can roll back. Who may write which set is TemplateSets' business: this
+ * class writes the set it is given.
  *
  * Placeholders use the exact Twin9 Python syntax: {$VAR} where VAR matches
  * [A-Z_][A-Z0-9_]* (templates.py). Rendering is NON-STRICT like the Python:
@@ -20,7 +24,7 @@ use PDO;
  * could leak template content.
  *
  * list() deliberately returns metadata WITHOUT content: the content is only
- * exposed by get(), which the routes reserve to the admin role.
+ * exposed by get(), which the routes reserve to the atelier.
  */
 final class ProtocoleRepository
 {
@@ -32,8 +36,37 @@ final class ProtocoleRepository
 
     public const MAX_CONTENT_BYTES = 262144; // 256 Ko
 
-    public function __construct(private readonly PDO $pdo)
+    /** The v9.8's set: the templates the import writes, read-only in the atelier (T14). */
+    public const V98 = 'v9.8';
+
+    /** Where the set's templates live, and their archived versions. */
+    private readonly string $gabarits;
+
+    private readonly string $versions;
+
+    /** The SQL condition that selects the set's rows: the v9.8's tables hold its rows alone. */
+    private readonly string $du;
+
+    /** For a copy, its id as the first column of an insert, and its quoted value. */
+    private readonly string $colonne;
+
+    private readonly string $valeur;
+
+    /** @param string $jeu the set: the v9.8's, or a copy's id (TemplateSets::ID_PATTERN) */
+    public function __construct(private readonly PDO $pdo, string $jeu = self::V98)
     {
+        if ($jeu === self::V98) {
+            [$this->gabarits, $this->versions, $this->du, $this->colonne, $this->valeur]
+                = ['twin9_protocole', 'twin9_protocole_versions', 'TRUE', '', ''];
+
+            return;
+        }
+        if (preg_match(TemplateSets::ID_PATTERN, $jeu) !== 1) {
+            throw new Twin9Exception('Jeu de gabarits introuvable', 404);
+        }
+        $cle = $pdo->quote($jeu);
+        [$this->gabarits, $this->versions, $this->du, $this->colonne, $this->valeur]
+            = ['twin9_jeux_gabarits', 'twin9_jeux_versions', 'jeu = ' . $cle, 'jeu, ', $cle . ', '];
     }
 
     /**
@@ -45,8 +78,8 @@ final class ProtocoleRepository
     public function list(): array
     {
         $rows = $this->pdo->query(
-            'SELECT name, CHAR_LENGTH(content) AS longueur, variables, updated_at
-             FROM twin9_protocole ORDER BY name'
+            "SELECT name, CHAR_LENGTH(content) AS longueur, variables, updated_at
+             FROM {$this->gabarits} WHERE {$this->du} ORDER BY name"
         )->fetchAll();
 
         return array_map(static fn (array $row): array => [
@@ -58,20 +91,23 @@ final class ProtocoleRepository
     }
 
     /**
-     * The live template set as a run takes it (T9): each template's content by
-     * name — server-side only, the run keeps it as its snapshot — and the
-     * version of each, its archived versions plus the live one.
+     * The set as a run takes it (T9): each template's content by name —
+     * server-side only, the run keeps it as its snapshot — and the version of
+     * each, its archived versions plus the live one.
      *
      * @return array{gabarits: array<string, string>, versions: array<string, int>}
      */
     public function jeu(): array
     {
         $gabarits = [];
-        foreach ($this->pdo->query('SELECT name, content FROM twin9_protocole ORDER BY name')->fetchAll() as $row) {
+        foreach ($this->pdo->query("SELECT name, content FROM {$this->gabarits} WHERE {$this->du} ORDER BY name")
+                     ->fetchAll() as $row) {
             $gabarits[(string) $row['name']] = (string) $row['content'];
         }
         $versions = array_fill_keys(array_keys($gabarits), 1);
-        $archives = $this->pdo->query('SELECT name, MAX(version) AS v FROM twin9_protocole_versions GROUP BY name');
+        $archives = $this->pdo->query(
+            "SELECT name, MAX(version) AS v FROM {$this->versions} WHERE {$this->du} GROUP BY name"
+        );
         foreach ($archives->fetchAll() as $row) {
             if (isset($versions[(string) $row['name']])) {
                 $versions[(string) $row['name']] = (int) $row['v'] + 1;
@@ -82,14 +118,14 @@ final class ProtocoleRepository
     }
 
     /**
-     * One template WITH its content (admin-only exposure — routes/twin9.php).
+     * One template WITH its content (atelier-only exposure — routes/twin9.php).
      *
      * @return array{name: string, content: string, variables: list<string>, updated_at: string}|null
      */
     public function get(string $name): ?array
     {
         $stmt = $this->pdo->prepare(
-            'SELECT name, content, variables, updated_at FROM twin9_protocole WHERE name = ?'
+            "SELECT name, content, variables, updated_at FROM {$this->gabarits} WHERE {$this->du} AND name = ?"
         );
         $stmt->execute([$name]);
         $row = $stmt->fetch();
@@ -106,10 +142,10 @@ final class ProtocoleRepository
     }
 
     /**
-     * Create or overwrite a template. The previous content (if different) is
-     * archived into twin9_protocole_versions first, attributed to its own
-     * author. Unchanged content is a no-op (idempotent re-imports do not
-     * pollute the history).
+     * Create or overwrite a template of the set. The previous content (if
+     * different) is archived among the set's versions first, attributed to
+     * its own author. Unchanged content is a no-op (idempotent re-imports do
+     * not pollute the history).
      *
      * @return array{name: string, variables: list<string>, status: 'created'|'updated'|'unchanged'}
      */
@@ -123,15 +159,15 @@ final class ProtocoleRepository
         $this->pdo->beginTransaction();
         try {
             $stmt = $this->pdo->prepare(
-                'SELECT content, variables, updated_by FROM twin9_protocole WHERE name = ? FOR UPDATE'
+                "SELECT content, variables, updated_by FROM {$this->gabarits} WHERE {$this->du} AND name = ? FOR UPDATE"
             );
             $stmt->execute([$name]);
             $existing = $stmt->fetch();
 
             if ($existing === false) {
                 $this->pdo->prepare(
-                    'INSERT INTO twin9_protocole (name, content, variables, updated_by)
-                     VALUES (?, ?, ?, ?)'
+                    "INSERT INTO {$this->gabarits} ({$this->colonne}name, content, variables, updated_by)
+                     VALUES ({$this->valeur}?, ?, ?, ?)"
                 )->execute([$name, $content, $variablesJson, $userId]);
                 $status = 'created';
             } elseif ((string) $existing['content'] === $content) {
@@ -144,7 +180,7 @@ final class ProtocoleRepository
                     $existing['updated_by'] === null ? null : (int) $existing['updated_by'],
                 );
                 $this->pdo->prepare(
-                    'UPDATE twin9_protocole SET content = ?, variables = ?, updated_by = ? WHERE name = ?'
+                    "UPDATE {$this->gabarits} SET content = ?, variables = ?, updated_by = ? WHERE {$this->du} AND name = ?"
                 )->execute([$content, $variablesJson, $userId, $name]);
                 $status = 'updated';
             }
@@ -165,8 +201,8 @@ final class ProtocoleRepository
     public function versions(string $name): array
     {
         $stmt = $this->pdo->prepare(
-            'SELECT version, CHAR_LENGTH(content) AS longueur, variables, created_at
-             FROM twin9_protocole_versions WHERE name = ? ORDER BY version DESC'
+            "SELECT version, CHAR_LENGTH(content) AS longueur, variables, created_at
+             FROM {$this->versions} WHERE {$this->du} AND name = ? ORDER BY version DESC"
         );
         $stmt->execute([$name]);
 
@@ -187,8 +223,8 @@ final class ProtocoleRepository
     public function version(string $name, int $version): ?array
     {
         $stmt = $this->pdo->prepare(
-            'SELECT name, version, content, variables, created_at
-             FROM twin9_protocole_versions WHERE name = ? AND version = ?'
+            "SELECT name, version, content, variables, created_at
+             FROM {$this->versions} WHERE {$this->du} AND name = ? AND version = ?"
         );
         $stmt->execute([$name, $version]);
         $row = $stmt->fetch();
@@ -290,9 +326,9 @@ final class ProtocoleRepository
     private function archiveVersion(string $name, string $content, string $variablesJson, ?int $authorId): void
     {
         $this->pdo->prepare(
-            'INSERT INTO twin9_protocole_versions (name, version, content, variables, created_by)
-             SELECT ?, COALESCE(MAX(version), 0) + 1, ?, ?, ?
-             FROM twin9_protocole_versions WHERE name = ?'
+            "INSERT INTO {$this->versions} ({$this->colonne}name, version, content, variables, created_by)
+             SELECT {$this->valeur}?, COALESCE(MAX(version), 0) + 1, ?, ?, ?
+             FROM {$this->versions} WHERE {$this->du} AND name = ?"
         )->execute([$name, $content, $variablesJson, $authorId, $name]);
     }
 

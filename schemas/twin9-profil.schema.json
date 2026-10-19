@@ -339,7 +339,7 @@
       "type": "string",
       "minLength": 1,
       "default": "v9.8",
-      "description": "Le jeu de gabarits des promptologues."
+      "description": "Le jeu de gabarits : celui de la v9.8, le jeu par défaut de l'instance, ou une copie d'un promptologue de l'atelier."
     },
     "referentiel": {
       "type": "object",

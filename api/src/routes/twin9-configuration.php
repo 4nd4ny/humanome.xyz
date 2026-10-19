@@ -9,15 +9,16 @@ declare(strict_types=1);
  * « Configuration Twin9 »); the administrator's settings (prices, margin,
  * personal keys, slices) stay at /api/twin9/admin/config.
  *
- *   GET    /api/twin9/configuration  the page's start: own profiles (no document), the v9.8 profile, the choices
+ *   GET    /api/twin9/configuration  the page's start: own profiles (no document), the default profile (the
+ *                                     v9.8's, with the instance's default template set), the choices
  *   POST   /api/twin9/profils        {nom, profil} -> 201 {id, nom, profil}
  *   GET    /api/twin9/profils/{id}   own profile -> {id, nom, profil}
  *   PUT    /api/twin9/profils/{id}   {nom?, profil} -> {id, nom, profil}
  *   DELETE /api/twin9/profils/{id}   -> 204
  *
  * A profile is valid (the schema, the API's rules) and admitted (ProfilPolicy:
- * a published referential, a known template set, the personal key where it is
- * opened) before it is written; it is answered completed, as stored. Another
+ * a published referential, a template set its owner may choose, the personal
+ * key where it is opened) before it is written; it is answered completed, as stored. Another
  * user's profile is not found (404), whoever asks.
  */
 
@@ -71,12 +72,12 @@ return function (App $app): void {
     $politique = static fn (): ProfilPolicy => new ProfilPolicy(Db::get(), new Twin9Config(new SettingsRepository(Db::get())));
 
     /**
-     * The body's profile, valid and admitted, and its name: decoded as objects,
-     * an empty object staying one.
+     * The body's profile, valid and admitted for its owner, and its name:
+     * decoded as objects, an empty object staying one.
      *
      * @return array{0: string|null, 1: stdClass}
      */
-    $corps = function (Request $request) use ($politique): array {
+    $corps = function (Request $request, int $userId) use ($politique): array {
         $corps = json_decode((string) $request->getBody(), false);
         if (!$corps instanceof stdClass || !isset($corps->profil)) {
             throw new Twin9Exception('Corps invalide : {nom, profil} attendu', 422);
@@ -87,7 +88,7 @@ return function (App $app): void {
         }
         $profil = ProfilRepository::validate($corps->profil instanceof stdClass ? $corps->profil
             : throw new Twin9Exception('Profil invalide : objet JSON attendu', 422));
-        $politique()->admettre($profil);
+        $politique()->admettre($profil, $userId);
 
         return [$nom, $profil];
     };
@@ -106,14 +107,14 @@ return function (App $app): void {
         function (Request $request, Response $response, array $args, int $userId) use ($json, $politique): Response {
             return $json($response, [
                 'profils' => (new ProfilRepository(Db::get()))->listForUser($userId),
-                'defaut' => ProfilRepository::v98(),
+                'defaut' => $politique()->defaut(),
             ] + $politique()->choix($userId));
         }
     ));
 
     $app->post('/twin9/profils', $wrap(
         function (Request $request, Response $response, array $args, int $userId) use ($json, $corps, $sien): Response {
-            [$nom, $profil] = $corps($request);
+            [$nom, $profil] = $corps($request, $userId);
             $id = (new ProfilRepository(Db::get()))->create($userId, $nom ?? '', $profil);
 
             return $json($response, $sien($id, $userId), 201);
@@ -130,7 +131,7 @@ return function (App $app): void {
         function (Request $request, Response $response, array $args, int $userId) use ($json, $corps, $sien): Response {
             $id = (int) $args['id'];
             $sien($id, $userId);
-            [$nom, $profil] = $corps($request);
+            [$nom, $profil] = $corps($request, $userId);
             (new ProfilRepository(Db::get()))->update($id, $userId, $profil, $nom);
 
             return $json($response, $sien($id, $userId));

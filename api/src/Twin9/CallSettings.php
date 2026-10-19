@@ -97,6 +97,45 @@ final class CallSettings
     }
 
     /**
+     * What each step of the run is sent with, by step: the readers' stage,
+     * each reader, each step of the profile, each under the second instance,
+     * and a step the profile does not know.
+     *
+     * @return array<string, array{modele: string, budget_sortie: int, effort: string|null, reflexion: string}>
+     */
+    public function parEtape(): array
+    {
+        $reglages = ['lecteurs' => $this->pour('tagger', '')];
+        foreach ($this->profil->college as $lecteur) {
+            $reglages['lecteur ' . $lecteur->nom] = $this->pour('tagger', '/tags_' . $lecteur->nom . '_P1.json');
+        }
+        foreach (self::ETAPES as $step => $etape) {
+            $reglages[$etape] = $this->pour($step, '');
+            $reglages[$etape . ' au second ressort'] = $this->pour($step, 'second_ressort/');
+        }
+        $reglages['autre étape'] = $this->pour('', '');
+
+        return $reglages;
+    }
+
+    /**
+     * Every combination of model and settings a call of the run may be sent
+     * with (parEtape(), once each). The batch lane checks them all before the
+     * run's first batch (T8).
+     *
+     * @return list<array{modele: string, budget_sortie: int, effort: string|null, reflexion: string}>
+     */
+    public function combinaisons(): array
+    {
+        $uniques = [];
+        foreach ($this->parEtape() as $reglage) {
+            $uniques[json_encode($reglage, JSON_THROW_ON_ERROR)] = $reglage;
+        }
+
+        return array_values($uniques);
+    }
+
+    /**
      * The fingerprint of what in a run's settings changes a response the
      * memory keeps, and that the v9.8's own fingerprints leave out (ADR-011
      * §2): the call settings of the stages, steps and readers, the

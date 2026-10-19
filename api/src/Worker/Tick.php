@@ -16,6 +16,8 @@ use Humanome\Llm\Pricing;
 use Humanome\Packages\PromptPackageRepository;
 use Humanome\Packages\SettingsRepository;
 use Humanome\Referentiel\ReferentielRepository;
+use Humanome\Twin9\AnthropicBatches;
+use Humanome\Twin9\BatchApi;
 use Humanome\Twin9\CallSender;
 use Humanome\Twin9\DirectCalls;
 use Humanome\Twin9\EngineLoader;
@@ -56,9 +58,12 @@ final class Tick
     private $providerFactory;
 
     private readonly ?CallSender $twin9Sender;
+    private readonly ?BatchApi $twin9Lots;
     private readonly ?int $twin9Runs;
     /** @var list<float>|null */
     private readonly ?array $twin9Pauses;
+    private readonly ?int $twin9Octets;
+    private readonly ?float $twin9Fenetre;
 
     private readonly JobQueue $queue;
     private readonly ConfigRepository $configs;
@@ -77,8 +82,10 @@ final class Tick
     /**
      * @param array{budgetSeconds?: int, maxCalls?: int, maxTokens?: int,
      *              providerFactory?: callable(array<string, mixed>): object,
-     *              twin9Sender?: CallSender, twin9Runs?: int, twin9Pauses?: list<float>} $options
-     *        twin9*: tests — the sender of the Twin9 calls, the runs a tick advances, the pauses between attempts
+     *              twin9Sender?: CallSender, twin9Lots?: BatchApi, twin9Runs?: int, twin9Pauses?: list<float>,
+     *              twin9Octets?: int, twin9Fenetre?: float} $options
+     *        twin9*: tests — the sender of the Twin9 calls, the batch API, the runs a tick advances, the pauses
+     *        between attempts, a batch's bound, the window to find a lost batch
      */
     public function __construct(private readonly PDO $pdo, array $options = [])
     {
@@ -92,8 +99,11 @@ final class Tick
         $this->maxTokens = $options['maxTokens'] ?? (int) (Env::get('WORKER_MAX_TOKENS', '8192') ?: 8192);
         $this->providerFactory = $options['providerFactory'] ?? $this->defaultProviderFactory(...);
         $this->twin9Sender = $options['twin9Sender'] ?? null;
+        $this->twin9Lots = $options['twin9Lots'] ?? null;
         $this->twin9Runs = $options['twin9Runs'] ?? null;
         $this->twin9Pauses = $options['twin9Pauses'] ?? null;
+        $this->twin9Octets = $options['twin9Octets'] ?? null;
+        $this->twin9Fenetre = $options['twin9Fenetre'] ?? null;
         $this->queue = new JobQueue($pdo);
         $this->configs = new ConfigRepository($pdo, KeyVault::masterKeyFromEnv());
         $this->cohortes = new CohorteRepository($pdo);
@@ -158,7 +168,9 @@ final class Tick
             $this->twin9Sender ?? new DirectCalls(LlmRuntime::multiHttpClient()),
             new RunKey($this->pdo, $config),
             $config,
-            $this->twin9Pauses === null ? [] : ['pauses' => $this->twin9Pauses],
+            $this->twin9Lots ?? new AnthropicBatches(LlmRuntime::httpClient()),
+            array_filter(['pauses' => $this->twin9Pauses, 'octets' => $this->twin9Octets, 'fenetre' => $this->twin9Fenetre],
+                static fn ($v): bool => $v !== null),
         );
         $reserve = min(1.0, max(0.25, 0.1 * $this->budgetSeconds));
         $counters = [];

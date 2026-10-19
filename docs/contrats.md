@@ -370,7 +370,19 @@ valide et range les profils.
   rien n'en dépend.
 - **Validation** : PHP seulement. Le profil n'est pas un document que le
   moteur du navigateur produit ou lit ; `scripts/build-validators.mjs` ne le
-  compile pas.
+  compile pas. La page `#/configuration` (T13) se construit depuis le schéma
+  et laisse au serveur la validation, dont elle affiche le message.
+- **Nombres** : un réglage que le schéma type `number` garde la forme d'un
+  flottant (`1.0`, non `1`), quelle que soit la forme reçue : le navigateur
+  ne distingue pas `1` de `1.0`, et la v9.8 lit `1.0` (T13).
+- **Règle de l'API** (T13) : la réflexion coupée refuse les efforts `xhigh`
+  et `max`, pour toute étape où les réglages se combinent ainsi
+  (`CallSettings::parEtape`) ; le profil est refusé, l'étape nommée.
+- **Choix admis** (`ProfilPolicy`, T13) : un référentiel publié et, s'il est
+  donné, une de ses versions publiées ; un jeu de gabarits que l'instance
+  connaît (« v9.8 » jusqu'à T14) ; la clé personnelle là où l'administrateur
+  l'a ouverte. Les droits sont au chapitre « Configuration Twin9 » de
+  `docs/autorisations.md`.
 
 ### 7.1 Ce que la v9.8 règle, et où le profil le range
 
@@ -587,3 +599,43 @@ change une réponse : les réglages d'appel des étages, des étapes et des
 lecteurs, les troncatures, les gabarits et les fiches du jeu (hors `merge/` :
 la mémoire ne garde pas les relectures). Les sorties gardent l'empreinte de
 la v9.8.
+
+### 8.3 La voie par lots (T8)
+
+Un run dont le profil dit `voie : "lots"` envoie ses appels par l'API Message
+Batches d'Anthropic, à moitié prix (ADR-011 §3). Une tranche soumet le lot,
+une suivante le relève.
+
+- **Le lot.** Les appels qu'attend une passe partent ensemble, ceux des
+  journées menées de front comme en direct. Un lot ne dépasse pas une dizaine
+  de mégaoctets (`Twin9Lots::OCTETS`) : au-delà, la vague se répartit en
+  plusieurs lots. Chaque requête porte, en `params`, le corps qu'aurait
+  l'appel direct (`AnthropicCaller::params`), et en `custom_id` les
+  32 premiers caractères hexadécimaux du SHA-256 de l'identifiant de l'appel.
+  Le journal garde ce `custom_id` avec le lot (`twin9_appels.custom_id`,
+  `lot_id`).
+- **La vérification.** Avant le premier lot d'un run, un appel direct minimal
+  (une phrase fixe, `AnthropicBatches::VERIFICATION`) part pour chaque
+  combinaison de modèle, budget de sortie, effort et réflexion que le profil
+  peut employer (`CallSettings::combinaisons`). Un refus (HTTP 400) arrête le
+  run, avec la raison que donne l'API ; une erreur du fournisseur le fait
+  attendre.
+- **La vie d'un lot** (`twin9_lots`) : `soumission`, la ligne écrite avant
+  que le lot parte ; `en_cours`, son identifiant Anthropic connu ; `releve`,
+  ses résultats écrits au journal ; `supprime`, supprimé chez Anthropic.
+  `annulation` vaut pour un run qui n'est plus en cours.
+- **Le relevé.** La tranche demande où en est chaque lot. Un lot fini voit ses
+  résultats entrer au journal comme ceux des appels directs
+  (`AnthropicCaller::lireMessage`), au coût de l'usage rendu, à moitié prix.
+  Une requête en erreur repart dans un lot suivant, sa tentative comptée
+  (trois, puis la panne) ; une requête expirée aussi, sa tentative rendue.
+  Le lot est ensuite supprimé chez Anthropic.
+- **Un lot perdu**, parti sans que sa réponse arrive, est cherché parmi les
+  lots de l'espace de la clé : même nombre de requêtes, créé dans les dix
+  minutes autour de son départ, puis, une fois fini, les mêmes `custom_id`.
+  Introuvable dix minutes après son départ, il n'est jamais parti, et ses
+  appels repartent.
+- **Un run qui n'est plus en cours** (annulé, en échec ou fini) voit ses lots
+  en cours annulés, leurs appels rendus, puis supprimés une fois finis.
+- **Entre deux lots**, le run n'est pas rejoué : la tranche demande seulement
+  où en sont ses lots, et il ne compte pas parmi ses N runs.

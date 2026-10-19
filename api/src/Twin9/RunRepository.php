@@ -124,6 +124,30 @@ final class RunRepository
         ];
     }
 
+    /**
+     * What a slice reads of a run before playing it: its owner, its status,
+     * what holds it back and its profile, without its portfolio nor its
+     * templates.
+     *
+     * @return array{user_id: int, statut: string, attente: string|null, profil: stdClass}|null
+     */
+    public function tete(int $id): ?array
+    {
+        $stmt = $this->pdo->prepare('SELECT user_id, statut, attente, reglages FROM twin9_runs WHERE id = ?');
+        $stmt->execute([$id]);
+        $row = $stmt->fetch();
+        if ($row === false) {
+            return null;
+        }
+
+        return [
+            'user_id' => (int) $row['user_id'],
+            'statut' => (string) $row['statut'],
+            'attente' => $row['attente'] === null ? null : (string) $row['attente'],
+            'profil' => self::unpack((string) $row['reglages'])->profil,
+        ];
+    }
+
     public function statut(int $id): ?string
     {
         $stmt = $this->pdo->prepare('SELECT statut FROM twin9_runs WHERE id = ?');
@@ -179,6 +203,8 @@ final class RunRepository
             }
             $compteurs = $this->compteurs($id);
             $this->pdo->prepare('DELETE FROM twin9_appels WHERE run_id = ?')->execute([$id]);
+            // its batches deleted at Anthropic go with the journal; one still there waits for the tick
+            $this->pdo->prepare('DELETE FROM twin9_lots WHERE run_id = ? AND statut = "supprime"')->execute([$id]);
             $this->pdo->prepare(
                 'UPDATE twin9_runs SET statut = "termine", attente = NULL, compteurs = ?, finished_at = NOW() WHERE id = ?'
             )->execute([json_encode($compteurs, JSON_THROW_ON_ERROR | JSON_UNESCAPED_UNICODE), $id]);
@@ -211,12 +237,15 @@ final class RunRepository
 
     /**
      * The counters a run keeps of its journal: calls, attempts, failures,
-     * tokens, cost and time, by step, and the models served.
+     * tokens, cost and time, by step, the models served and its batches.
      *
      * @return array<string, mixed>
      */
     private function compteurs(int $id): array
     {
+        $stmt = $this->pdo->prepare('SELECT COUNT(*) FROM twin9_lots WHERE run_id = ?');
+        $stmt->execute([$id]);
+        $lots = (int) $stmt->fetchColumn();
         $stmt = $this->pdo->prepare(
             'SELECT etape, statut, COUNT(*) AS n, SUM(tentatives) AS tentatives, SUM(jetons_entree) AS entree,
                     SUM(jetons_sortie) AS sortie, SUM(cout_microusd) AS cout, SUM(duree_ms) AS duree
@@ -248,7 +277,7 @@ final class RunRepository
         );
         $stmt->execute([$id]);
 
-        return $total + ['par_etape' => $parEtape, 'modeles_servis' => array_map(intval(...),
+        return $total + ['lots' => $lots, 'par_etape' => $parEtape, 'modeles_servis' => array_map(intval(...),
             $stmt->fetchAll(PDO::FETCH_KEY_PAIR))];
     }
 

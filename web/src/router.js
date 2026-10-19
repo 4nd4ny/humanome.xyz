@@ -99,6 +99,9 @@ export function parseHash(hash) {
   // supervision #/admin/twin9.
   if (path === '/twin9-atelier') return { name: 'twin9atelier', section: null }
 
+  // Configuration Twin9 (T13) : les profils des runs de la personne, #/configuration.
+  if (path === '/configuration') return { name: 'configuration', section: null }
+
   // Twin6 — cartographie ouverte (gratuite/open source) : #/twin6-ouverte.
   if (path === '/twin6-ouverte') return { name: 'twin6ouverte', section: null }
 

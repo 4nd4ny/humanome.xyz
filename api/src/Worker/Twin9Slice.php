@@ -4,6 +4,7 @@ declare(strict_types=1);
 
 namespace Humanome\Worker;
 
+use Humanome\Twin9\BatchApi;
 use Humanome\Twin9\CallJournal;
 use Humanome\Twin9\CallSender;
 use Humanome\Twin9\CallSettings;
@@ -36,6 +37,13 @@ use Twin9\Run\Pending;
  * Only the oldest days a run has under way send their calls (the days led
  * abreast, parallelisme.journees), at most parallelisme.appels_directs at a
  * time; the key is read for each call. Logging: counters only.
+ *
+ * A run by batches (T8, Twin9Lots) is opened only when its batches call for
+ * it: one has ended, nothing is at Anthropic any more, or calls are still to
+ * submit; otherwise the slice only asks Anthropic where its batches stand,
+ * and it does not count among the N runs. Played, its pass's calls leave in
+ * bounded batches. The batches of runs no longer in progress are cancelled
+ * and deleted first.
  */
 final class Twin9Slice
 {
@@ -48,7 +56,12 @@ final class Twin9Slice
     /** A spending cap answers 429 without Retry-After: the run's calls wait this long. */
     public const PAUSE_PLAFOND = 60.0;
 
+    /** The runs by batches a slice may look at beyond its N, their batches still at Anthropic. */
+    private const SURVOLS = 20;
+
     private readonly RunRepository $runs;
+
+    private readonly Twin9Lots $lots;
 
     /** @var list<float> */
     private readonly array $pauses;
@@ -65,15 +78,18 @@ final class Twin9Slice
 
     private float $dernierDepart = 0.0;
 
-    /** @param array{pauses?: list<float>} $options tests: shorter pauses */
+    /** @param array{pauses?: list<float>, octets?: int, fenetre?: float} $options tests: shorter pauses, smaller batches, a shorter window to find a lost batch */
     public function __construct(
         private readonly PDO $pdo,
         private readonly CallSender $sender,
         private readonly RunKey $cles,
         private readonly Twin9Config $config,
+        BatchApi $lots,
         array $options = [],
     ) {
         $this->runs = new RunRepository($pdo);
+        $this->lots = new Twin9Lots($pdo, $lots, $cles, $config, $options['octets'] ?? Twin9Lots::OCTETS,
+            $options['fenetre'] ?? Twin9Lots::FENETRE);
         $this->pauses = $options['pauses'] ?? self::PAUSES;
     }
 
@@ -88,8 +104,13 @@ final class Twin9Slice
         $this->fin = $fin;
         $this->dernierDepart = $fin - min(5.0, 0.1 * ($fin - $debut));
         $this->compteurs = ['runs' => 0, 'passes' => 0, 'moteurMs' => 0, 'appels' => 0, 'reponses' => 0, 'pannes' => 0,
-                            'reprises' => 0, 'coupes' => 0, 'termines' => 0, 'echoues' => 0];
-        foreach ($this->runs->aAvancer($n) as $id) {
+                            'reprises' => 0, 'coupes' => 0, 'termines' => 0, 'echoues' => 0, 'lots' => 0,
+                            'releves' => 0, 'verifications' => 0, 'annules' => 0];
+        $this->lots->menage($this->dernierDepart, $this->compteurs);
+        foreach ($this->runs->aAvancer($n + self::SURVOLS) as $id) {
+            if ($this->compteurs['runs'] >= $n || microtime(true) >= $this->dernierDepart) {
+                break;
+            }
             $run = $this->ouvrir($id);
             if ($run !== null) {
                 $this->etats[$id] = $run;
@@ -128,16 +149,24 @@ final class Twin9Slice
 
     private function ouvrir(int $id): ?Twin9Run
     {
+        $tete = $this->runs->tete($id);
+        if ($tete === null || $tete['statut'] !== 'en_cours') {
+            return null;
+        }
+        $parLots = ($tete['profil']->voie ?? null) === 'lots';
+        if ($parLots) {
+            $releve = $this->lots->relever($id, $tete['user_id'], $tete['attente'], $this->fin, $this->compteurs);
+            if (!$releve['jouer']) {
+                $this->runs->avance($id, $releve['attente']);
+
+                return null;
+            }
+        }
         $r = $this->runs->charger($id);
-        if ($r === null || $r['statut'] !== 'en_cours') {
+        if ($r === null) {
             return null;
         }
         $profil = $r['profil'];
-        if (($profil->voie ?? null) !== 'directe') {
-            $this->runs->avance($id, 'voie par lots : pas encore en service');
-
-            return null;
-        }
         $journal = new CallJournal($this->pdo, $id);
         $this->compteurs['reprises'] += $journal->reprendreLesCoupes(self::TENTATIVES);
         try {
@@ -162,6 +191,7 @@ final class Twin9Slice
             (string) $profil->cle,
             max(1, (int) $profil->parallelisme->appels_directs),
             max(1, (int) $profil->parallelisme->journees),
+            $parLots,
         );
     }
 
@@ -197,25 +227,31 @@ final class Twin9Slice
         }
     }
 
-    /** The calls of a run that may leave now. */
+    /** The calls of a run that may leave now: directly, or into its batches once a pass. */
     private function envoyer(Twin9Run $run): void
     {
         $run->reveil = null;
         if ($run->suspendu || microtime(true) >= $this->dernierDepart) {
             return;
         }
-        $jours = [];
-        foreach ($run->attendus as $call) {
-            $jour = self::jour($call->id);
-            if ($jour !== null && !isset($jours[$jour]) && \count($jours) < $run->journeesDeFront) {
-                $jours[$jour] = true;
+        if ($run->parLots) {
+            if ($run->passes > 0 && !$run->soumis) {
+                $refus = $this->lots->soumettre($run, $this->debut, $this->dernierDepart, $this->fin, $this->compteurs);
+                if ($refus !== null) {
+                    unset($this->etats[$run->id]);
+                    $this->runs->echouer($run->id, $refus);
+                    $this->compteurs['echoues']++;
+                }
             }
+
+            return;
         }
+        $jours = $run->joursDeFront();
         foreach ($run->attendus as $call) {
             if (\count($run->enVol) >= $run->appelsDirects) {
                 return;
             }
-            $jour = self::jour($call->id);
+            $jour = Twin9Run::jour($call->id);
             if (isset($run->enVol[$call->id]) || ($jour !== null && !isset($jours[$jour]))) {
                 continue;
             }
@@ -348,11 +384,5 @@ final class Twin9Slice
         error_log(sprintf('[twin9] run %d : %s (%s)', $id, $raison, $e::class));
         $this->runs->echouer($id, $raison);
         $this->compteurs['echoues']++;
-    }
-
-    /** The day a call belongs to ("journees/<day>/"), or null for the merge's. */
-    private static function jour(string $id): ?string
-    {
-        return preg_match('#^journees/[^/]+/#', $id, $m) === 1 ? $m[0] : null;
     }
 }

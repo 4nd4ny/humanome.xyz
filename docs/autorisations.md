@@ -212,6 +212,35 @@ l'établissement (l'accès exige l'adhésion active).
 > `#/twin9-atelier` (visible seulement avec les deux rôles) ; `#/admin/twin9`
 > garde la supervision.
 
+### Configuration Twin9 (T13, `#/configuration`)
+
+Chacun règle les profils de ses runs, et seulement les siens. L'administrateur
+fixe ce qui vaut pour toute l'instance. Chaque ligne de la matrice a son test dans
+`api/tests/Twin9/ConfigurationDroitsTest.php`.
+
+| Ce que l'on règle | Visiteur | Compte | `admin` |
+|---|---|---|---|
+| Ses profils : créer, lire, modifier, supprimer | — | ✔ les siens | ✔ les siens |
+| Le profil d'un autre | — | — (404) | — (404) |
+| Le profil v9.8, par défaut | — | lecture (une modification en fait une copie, la sienne) | idem |
+| Le budget et la durée de ses runs | — | ✔ | ✔ |
+| Sa clé : celle de l'instance ou la sienne | — | ✔ ; la sienne si l'administrateur l'a ouverte | idem |
+| Sa clé personnelle elle-même (son coffre, `#/compte`) | — | ✔ | ✔ |
+| Le référentiel de ses runs | — | parmi les publiés | idem |
+| Le jeu de gabarits de ses runs | — | « v9.8 » | idem |
+| Prix, marge, ouverture des clés personnelles | — | — (403) | ✔ (`#/admin/twin9`, `/api/twin9/admin/config`) |
+| Runs par tick, durée d'une tranche (T7) | — | — (403) | ✔ (`/api/twin9/admin/config`, pas encore à l'écran) |
+| La clé de l'instance | — | — | à l'installation (`ANTHROPIC_API_KEY`, `docs/deploiement.md`), jamais par l'interface |
+
+Les jeux de gabarits des promptologues (T14) et les brouillons de référentiel
+(T15) ajouteront leurs lignes à cette matrice.
+
+| Route | Méthode | Accès |
+|---|---|---|
+| `/api/twin9/configuration` | GET | Compte : ses profils (sans leur document), le profil v9.8, les référentiels publiés et leurs versions, les jeux de gabarits, sa clé personnelle (ouverte, enregistrée) |
+| `/api/twin9/profils` | POST | Compte, + CSRF. Le profil doit être valide (schéma, règles de l'API) et admis (référentiel publié, jeu connu, clé personnelle ouverte) |
+| `/api/twin9/profils/{id}` | GET/PUT/DELETE | Son propriétaire, + CSRF sur PUT et DELETE ; 404 pour tout autre |
+
 ### Backlog (hors v1, annexe B du plan)
 
 Marketplace employeur (bibliothèque payante des cartographies consenties,

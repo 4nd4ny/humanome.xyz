@@ -62,6 +62,22 @@ final class AnthropicCaller
     public static function requete(string $apiKey, string $model, string $prompt, int $maxTokens,
                                    string $reflexion = 'coupee', ?string $effort = null, ?string $system = null): array
     {
+        return [
+            'headers' => self::entetes($apiKey),
+            'body' => json_encode(self::params($model, $prompt, $maxTokens, $reflexion, $effort, $system),
+                JSON_THROW_ON_ERROR | JSON_UNESCAPED_UNICODE),
+        ];
+    }
+
+    /**
+     * The body of one call, which a batch carries as its request's params:
+     * the same in both lanes.
+     *
+     * @return array<string, mixed>
+     */
+    public static function params(string $model, string $prompt, int $maxTokens, string $reflexion = 'coupee',
+                                  ?string $effort = null, ?string $system = null): array
+    {
         $payload = [
             'model' => $model,
             'max_tokens' => $maxTokens,
@@ -75,13 +91,16 @@ final class AnthropicCaller
         }
         $payload['messages'] = [['role' => 'user', 'content' => $prompt]];
 
+        return $payload;
+    }
+
+    /** @return array<string, string> the headers of every request to the API */
+    public static function entetes(string $apiKey): array
+    {
         return [
-            'headers' => [
-                'x-api-key' => $apiKey,
-                'anthropic-version' => self::API_VERSION,
-                'content-type' => 'application/json',
-            ],
-            'body' => json_encode($payload, JSON_THROW_ON_ERROR | JSON_UNESCAPED_UNICODE),
+            'x-api-key' => $apiKey,
+            'anthropic-version' => self::API_VERSION,
+            'content-type' => 'application/json',
         ];
     }
 
@@ -134,6 +153,21 @@ final class AnthropicCaller
         if (!\is_array($data)) {
             return ['ok' => false, 'erreur' => 'réponse illisible du fournisseur'];
         }
+
+        return self::lireMessage($data);
+    }
+
+    /**
+     * What a message says, answered directly or in a batch's results: the
+     * text, the usage, the stop reason, the model served; a refusal of the
+     * model is a failure.
+     *
+     * @param array<string, mixed> $data a Messages API message
+     * @return array{ok: bool, texte: string, tokens_in: int, tokens_out: int, stop_reason: string,
+     *               modele_servi: string|null, refus?: bool, erreur?: string}
+     */
+    public static function lireMessage(array $data): array
+    {
         $texte = '';
         foreach ((array) ($data['content'] ?? []) as $block) {
             if (\is_array($block) && ($block['type'] ?? '') === 'text') {

@@ -13,11 +13,71 @@ dans `main` (entrée du 2026-10-14 ci-dessous).
 
 Chantier en cours : le moteur Twin9 v9.8 en PHP, exécuté sur le serveur (ADR-011), planifié et
 développé dans le dépôt privé `4nd4ny/Twin_v9` (`docs/plan-twin9-php.md`, prompts T0 → T18, une
-conversation chacun ; entrées du 2026-10-17). T0 à T6 et T12 sont fusionnés : le moteur passe
-l'oracle complet dans `Twin_v9`, le profil est ici. T7, l'exécution par tranches, attend sa revue
-dans les deux dépôts (entrée du 2026-10-19) ; viennent ensuite T8, la voie par lots, et T13.
+conversation chacun ; entrées du 2026-10-17). T0 à T7 et T12 sont fusionnés : le moteur passe
+l'oracle complet dans `Twin_v9`, le profil est ici, les runs tournent sur le serveur par tranches.
+T8, la voie par lots, et T13, la page de configuration, attendent leur revue (entrées du 2026-10-19) ;
+viennent ensuite T9 et T14.
 
 ## Fait
+
+- 2026-10-19 — **Moteur Twin9 en PHP, T13 : la page de configuration et les droits (branche
+  `feat/twin9-t13-configuration`, sur celle de T8).** Chacun règle les profils de ses runs Twin9 sur
+  `#/configuration`.
+  - La page (`ConfigurationView`, `views/configuration/profilSchema.js`) se construit depuis
+    `schemas/twin9-profil.schema.json`, sans liste de réglages tenue à côté : une section repliée
+    par partie du profil, qui compte ses réglages modifiés ; un interrupteur pour le mode essai ;
+    chaque réglage commandé selon son type (choix, case, nombre, texte, tables, collège des
+    lecteurs) ; une valeur modifiée marquée, sa valeur par défaut au survol ; l'aide du schéma
+    paraît quand on entre dans le réglage. On y ouvre ses profils, on en crée un depuis le profil
+    v9.8, on l'enregistre, le copie ou le supprime (après confirmation) ; le serveur valide et la
+    page affiche son message. Pas d'entrée de navigation tant que Twin9 reste masqué (lot 3) : la
+    page s'ouvre par son adresse.
+  - Routes (`routes/twin9-configuration.php`) : `GET /api/twin9/configuration` (ses profils, le
+    profil v9.8, les référentiels publiés et leurs versions, les jeux de gabarits, sa clé
+    personnelle : ouverte, enregistrée) ; `POST /api/twin9/profils` ; `GET`, `PUT`, `DELETE
+    /api/twin9/profils/{id}`, à son propriétaire seul (404 pour tout autre).
+  - `ProfilPolicy` admet les choix d'un profil : un référentiel publié et, s'il est donné, une de
+    ses versions publiées ; un jeu de gabarits connu (« v9.8 » jusqu'à T14) ; la clé personnelle
+    là où l'administrateur l'a ouverte. `ProfilRepository` refuse la réflexion coupée aux efforts
+    `xhigh` et `max`, que l'API refuse, en nommant l'étape (`CallSettings::parEtape`, dont
+    `combinaisons` dérive désormais) — la dette notée en T7 est levée ; il garde aux nombres la
+    forme d'un flottant (`1.0`), que la v9.8 lit et que le navigateur ne distingue pas.
+  - Droits : la matrice « Configuration Twin9 » de `docs/autorisations.md`, une ligne par droit,
+    chacune testée dans `ConfigurationDroitsTest` (13 tests, dont le coffre de la clé personnelle
+    et la clé de l'instance, qui ne passe jamais par l'interface). Front : `ConfigurationView.test`
+    (9 tests ; l'un énumère les réglages du schéma, plus de 150, et n'en trouve aucun hors de la
+    page). `rgpd-audit` : `twin9_profils` est désormais servi (`via`).
+
+- 2026-10-19 — **Moteur Twin9 en PHP, T8 : la voie par lots (branche `feat/twin9-t8-batches`).** Un
+  run réglé « lots » envoie ses appels par l'API Message Batches d'Anthropic, à moitié prix
+  (ADR-011 §3) ; `docs/contrats.md` §8.3 décrit le protocole.
+  - Migration 026 : `twin9_lots`, les lots d'un run (identifiant Anthropic, état, clé employée,
+    instance ou personnelle, jamais la clé elle-même, nombre de requêtes, taille, dates) ;
+    `twin9_appels` reçoit `lot_id` et `custom_id`.
+  - `Worker/Twin9Lots.php` : les appels qu'attend une passe partent en lots bornés à une dizaine de
+    mégaoctets. Chaque requête porte les `params` de l'appel direct et un `custom_id` tiré de
+    l'identifiant de l'appel (32 caractères), gardé au journal. Avant le premier lot, un appel
+    direct minimal part par combinaison de réglages du profil (`CallSettings::combinaisons`) : un
+    refus arrête le run avec la raison de l'API. Une tranche suivante relève le lot fini : les
+    réponses entrent au journal, au coût de l'usage à moitié prix (`coutMicrousd(…, parLots:
+    true)`) ; les requêtes en erreur ou expirées repartent (l'erreur compte une tentative,
+    l'expiration non) ; le lot est supprimé chez Anthropic. Un lot perdu se retrouve dans la liste
+    des lots de la clé, puis par ses `custom_id` ; introuvable au bout de dix minutes, ses appels
+    repartent. Les lots d'un run qui n'est plus en cours sont annulés, puis supprimés.
+  - `Twin9\AnthropicBatches`, derrière l'interface `BatchApi`, s'en tient à l'adresse verrouillée
+    et ne suit jamais le `results_url` que rend l'API. Entre deux lots, un run n'est pas rejoué et
+    ne compte pas parmi les N runs du tick.
+  - Tests : `LotsTest` (moteur factice et fournisseur de lots simulé : mêmes requêtes qu'en direct,
+    un lot soumis puis relevé, tué entre deux lots sans rien payer deux fois, lot perdu retrouvé,
+    erreurs et expirations, réglages refusés, annulation, bornes et coût), `AnthropicBatchesTest`.
+    `PariteTest` rejoue `16-test-mode` par lots, tué deux fois, à l'oracle près (8 tests, 90 s).
+  - **Constat** : la v9.8 enchaîne ses appels en vagues, et par lots chaque vague est un
+    aller-retour chez Anthropic. Un run de dix journées (`12-jury-random`) en compte quelque 150,
+    dont plus d'une centaine d'un seul appel ; une quinzaine de vagues de dix appels ou plus portent
+    plus de 90 % des appels. Un run par lots dure donc quelque 150 fois le délai d'un lot et
+    l'intervalle du déclencheur. Deux pistes, non codées : envoyer en direct les petites vagues, le
+    prix des lots restant sur l'essentiel des appels ; vérifier dans `Twin_v9` si les tribunaux d'une
+    même journée, que la v9.8 enchaîne, peuvent partir de front sans changer un prompt.
 
 - 2026-10-19 — **Moteur Twin9 en PHP, T7 : l'exécution par tranches (branche `feat/twin9-t7-slices`,
   avec `feat/twin9-t7-platform-entry` dans `Twin_v9`).** Les runs Twin9 tournent sur le serveur, par
@@ -1671,8 +1731,11 @@ dans les deux dépôts (entrée du 2026-10-19) ; viennent ensuite T8, la voie pa
   journal. La voie par lots (T8) n'a pas ce coût.
 - Twin9 (T7) : le tick donne d'abord sa tranche aux runs Twin9, la masse prend le temps qui reste.
   Des runs en voie directe peuvent l'occuper toute ; à revoir si la masse sert en même temps (T18).
-- Twin9 (T7) : l'API refuse la réflexion coupée à l'effort `xhigh` ou `max` (Haiku 5.5 comme
-  Sonnet 5.5) ; le profil l'admet encore. La page de configuration (T13) devra l'empêcher.
+- Twin9 (T13) : le nombre de runs par tick et la durée d'une tranche (T7) se règlent par
+  `/api/twin9/admin/config` seulement ; `#/admin/twin9` ne les montre pas encore.
+- Twin9 (T8) : un compte purgé emporte ses lots de la base, pas de chez Anthropic, qui les garde
+  29 jours ; la purge de T10 devra les annuler et les supprimer d'abord. Un lot soumis avec une clé
+  qui change ensuite d'espace de travail n'est plus joignable.
 
 - `scripts/dev/dod-p11.sh` (répétition de la DoD P11) s'arrête à la première inscription
   (`422`, `emailConfirm` manquant) : il n'envoie pas la double saisie de l'email ni n'active le

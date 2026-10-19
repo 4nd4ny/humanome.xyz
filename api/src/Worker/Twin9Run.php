@@ -33,6 +33,9 @@ final class Twin9Run
     /** When the first call it holds back (attempts, Retry-After) may leave; null: none. */
     public ?float $reveil = null;
 
+    /** By batches: the calls of its pass have gone to their batches in this slice. */
+    public bool $soumis = false;
+
     public function __construct(
         public readonly int $id,
         public readonly int $userId,
@@ -44,6 +47,7 @@ final class Twin9Run
         public readonly string $cle,
         public readonly int $appelsDirects,
         public readonly int $journeesDeFront,
+        public readonly bool $parLots = false,
     ) {
     }
 
@@ -51,5 +55,30 @@ final class Twin9Run
     public function aJouer(): bool
     {
         return $this->passes === 0 || ($this->nouvelles && \count($this->enVol) < $this->appelsDirects);
+    }
+
+    /**
+     * The days whose calls may leave: the oldest the run has under way, as
+     * many as it leads abreast (parallelisme.journees).
+     *
+     * @return array<string, true>
+     */
+    public function joursDeFront(): array
+    {
+        $jours = [];
+        foreach ($this->attendus as $call) {
+            $jour = self::jour($call->id);
+            if ($jour !== null && !isset($jours[$jour]) && \count($jours) < $this->journeesDeFront) {
+                $jours[$jour] = true;
+            }
+        }
+
+        return $jours;
+    }
+
+    /** The day a call belongs to ("journees/<day>/"), or null for the merge's. */
+    public static function jour(string $id): ?string
+    {
+        return preg_match('#^journees/[^/]+/#', $id, $m) === 1 ? $m[0] : null;
     }
 }

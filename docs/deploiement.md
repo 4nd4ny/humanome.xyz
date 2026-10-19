@@ -79,6 +79,12 @@ masse, dans une tranche de 45 s au plus ; N et la durée de la tranche se
 règlent dans la configuration Twin9 (`runs_par_tick`, `secondes_par_tranche`).
 Un déclencheur qui raccroche n'interrompt pas la tranche.
 
+Un run par lots n'avance qu'aux ticks : une tranche soumet un lot, une suivante
+le relève (`docs/contrats.md` §8.3). Un run de dix journées compte quelque
+150 vagues d'appels, donc autant de lots l'un après l'autre : plus le
+déclencheur est fréquent, plus le run est court. Un run dont les lots sont
+encore chez Anthropic ne compte pas parmi les N runs du tick.
+
 Sur une offre avec cron (perso/pro), planifier plutôt `php scripts/worker.php`
 et `php scripts/maintenance.php`.
 

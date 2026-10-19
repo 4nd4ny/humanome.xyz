@@ -39,6 +39,7 @@ import ConfidentialiteView from './views/ConfidentialiteView.jsx'
 import GuidesView from './views/GuidesView.jsx'
 import Twin9View from './views/Twin9View.jsx'
 import Twin9AtelierView from './views/Twin9AtelierView.jsx'
+import ConfigurationView from './views/ConfigurationView.jsx'
 import Twin6OuverteView from './views/Twin6OuverteView.jsx'
 import CreditView from './views/CreditView.jsx'
 
@@ -545,6 +546,9 @@ export default function App({ lib, fetchMeFn = fetchMe }) {
       break
     case 'twin9atelier':
       view = <Twin9AtelierView roles={roles} />
+      break
+    case 'configuration':
+      view = <ConfigurationView />
       break
     case 'twin6ouverte':
       view = <Twin6OuverteView lib={lib} />

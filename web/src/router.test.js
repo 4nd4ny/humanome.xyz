@@ -213,3 +213,10 @@ describe('subscribe / currentRoute', () => {
     expect(listener).toHaveBeenCalledTimes(2)
   })
 })
+
+describe('configuration Twin9 (T13)', () => {
+  it('route vers la page des profils, sans section', () => {
+    expect(parseHash('#/configuration')).toEqual({ name: 'configuration', section: null })
+    expect(parseHash('#/configuration/extra').name).toBe('not-found')
+  })
+})

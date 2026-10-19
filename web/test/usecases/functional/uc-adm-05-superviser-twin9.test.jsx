@@ -30,11 +30,20 @@ const COMPTES = {
   ],
 }
 
+const JEUX = {
+  defaut: 'v9.8',
+  jeux: [
+    { id: 'v9.8', auteur: null, mien: false, gabarits: 29, created_at: null, defaut: true },
+    { id: 'essai', auteur: 'Camille', mien: false, gabarits: 29, created_at: '2026-10-19 10:00:00', defaut: false },
+  ],
+}
+
 function routes(overrides = {}) {
   return {
     'GET auth/me': meResponse(['admin']),
     'GET twin9/admin/config': jsonResponse(200, CONFIG),
     'GET twin9/admin/comptes': jsonResponse(200, COMPTES),
+    'GET twin9/admin/jeux': jsonResponse(200, JEUX),
     'PUT twin9/admin/config': (url, init) => jsonResponse(200, { ...CONFIG, ...JSON.parse(init.body) }),
     ...overrides,
   }
@@ -173,4 +182,29 @@ describe('UC-ADM-05 — l’administrateur supervise Twin9', () => {
     expect(calls.some((c) => c.key.startsWith('GET twin9/admin'))).toBe(false)
     expect(screen.queryByRole('heading', { name: 'Twin9 — supervision' })).toBeNull()
   })
+
+  it('UC-ADM-05-F18 — jeu de gabarits par défaut (T14) : l’administrateur choisit la copie d’un promptologue → PUT avec CSRF → confirmation ; jeu disparu entre-temps → message du serveur', async () => {
+    let reponse = (init) => jsonResponse(200, { defaut: JSON.parse(init.body).jeu })
+    const { calls } = stubFetch(routes({ 'PUT twin9/admin/jeux/defaut': (url, init) => reponse(init) }))
+    openSupervision()
+    const choix = await screen.findByLabelText('Jeu du profil par défaut')
+    const bloc = choix.closest('.twin9-admin-bloc')
+    fireEvent.change(choix, { target: { value: 'essai' } })
+    await act(async () => {
+      fireEvent.click(within(bloc).getByRole('button', { name: 'Enregistrer' }))
+    })
+    expect(within(bloc).getByText('Jeu par défaut : « essai ».')).toBeDefined()
+    const put = calls.find((c) => c.key === 'PUT twin9/admin/jeux/defaut')
+    expect(bodyOf(put)).toEqual({ jeu: 'essai' })
+    expect(put.init.headers['X-CSRF-Token']).toBeTruthy()
+    expect(calls.some((c) => c.key.includes('/protocole'))).toBe(false)
+
+    reponse = () => jsonResponse(404, { error: 'Jeu de gabarits introuvable' })
+    fireEvent.change(choix, { target: { value: 'v9.8' } })
+    await act(async () => {
+      fireEvent.click(within(bloc).getByRole('button', { name: 'Enregistrer' }))
+    })
+    expect(within(bloc).getByRole('alert').textContent).toBe('Jeu de gabarits introuvable')
+  })
 })
+

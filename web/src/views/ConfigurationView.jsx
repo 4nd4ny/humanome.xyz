@@ -63,7 +63,10 @@ function Champ({ chemin, valeur, defaut, peutManquer, onChange, contexte }) {
   )
 
   if (champ === 'gabarits') {
-    commande = options(contexte.gabarits)
+    // un jeu qui ne lui est plus proposé (ancien jeu par défaut, copie hors de l'atelier) se voit, sans se choisir
+    const offerts = valeur == null || contexte.gabarits.includes(valeur) ? contexte.gabarits
+      : [...contexte.gabarits, { valeur, libelle: `${valeur} (ne vous est plus proposé)`, desactive: true }]
+    commande = options(offerts)
   } else if (champ === 'referentiel/id') {
     commande = options(contexte.referentiels.map((r) => r.id))
   } else if (champ === 'referentiel/version') {

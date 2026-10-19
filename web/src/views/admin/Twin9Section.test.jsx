@@ -57,9 +57,18 @@ const COMPTES = {
   ],
 }
 
+const JEUX = {
+  defaut: 'v9.8',
+  jeux: [
+    { id: 'v9.8', auteur: null, mien: false, gabarits: 29, created_at: null, defaut: true },
+    { id: 'essai', auteur: 'Camille', mien: false, gabarits: 29, created_at: '2026-10-19 10:00:00', defaut: false },
+  ],
+}
+
 const baseRoutes = {
   'GET api/twin9/admin/config': jsonResponse(200, CONFIG),
   'GET api/twin9/admin/comptes': jsonResponse(200, COMPTES),
+  'GET api/twin9/admin/jeux': jsonResponse(200, JEUX),
 }
 
 /** Attend la fin du chargement initial (les réglages sont rendus). */

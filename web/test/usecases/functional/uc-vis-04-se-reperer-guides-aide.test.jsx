@@ -381,7 +381,8 @@ describe('UC-VIS-04 — liens du panneau pour un compte multi-rôles', () => {
       ['api/prompt-packages', () => jsonResponse(200, [])],
       // Twin9 désactivé côté serveur : la vue l'annonce (garde propre à un compte connecté).
       ['api/twin9/meta', () => jsonResponse(200, { enabled: false })],
-      ['api/twin9/admin/protocole', () => jsonResponse(200, { protocole: [] })],
+      ['api/twin9/admin/jeux', () => jsonResponse(200, { defaut: 'v9.8', jeux: [{ id: 'v9.8', auteur: null, mien: false, gabarits: 0, created_at: null, defaut: true }] })],
+      ['api/twin9/admin/jeux/v9.8/protocole', () => jsonResponse(200, { protocole: [] })],
     ])
     vi.stubGlobal('fetch', mock)
     return mock
@@ -455,7 +456,7 @@ describe('UC-VIS-04 — liens du panneau pour un compte multi-rôles', () => {
       reached: async () => {
         await h1('Atelier Twin9 — Golden Prompt')
         // Rôles du SHELL admin ∧ promptologue : l'atelier (gabarits), pas l'écran réservé.
-        expect(await screen.findByRole('heading', { level: 3, name: 'Gabarits du Golden Prompt' })).toBeDefined()
+        expect(await screen.findByRole('heading', { level: 3, name: 'Gabarits du Golden Prompt — jeu « v9.8 »' })).toBeDefined()
         expect(screen.queryByTestId('twin9-atelier-reserve')).toBeNull()
       },
     },

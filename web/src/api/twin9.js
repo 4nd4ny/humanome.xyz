@@ -181,34 +181,54 @@ export function fetchResultats(id, options) {
 
 // ---- Administration (rôle admin) ----------------------------------------
 
-export function fetchProtocoleList(options) {
-  return apiFetch('twin9/admin/protocole', options)
+// Les jeux de gabarits (T14) : le jeu v9.8, en lecture seule, et les copies
+// qu'en font les promptologues ; « jeu » est « v9.8 » ou l'identifiant d'une copie.
+
+/** Les jeux de l'instance et le jeu par défaut, sans contenu (administrateur). */
+export function fetchJeux(options) {
+  return apiFetch('twin9/admin/jeux', options)
 }
 
-export function fetchProtocole(name, options) {
-  return apiFetch(`twin9/admin/protocole/${encodeURIComponent(name)}`, options)
+/** Copie le jeu v9.8 sous le nom donné (atelier). */
+export function copierJeu(id, options) {
+  return apiFetch('twin9/admin/jeux', { ...options, method: 'POST', body: { id } })
 }
 
-export function saveProtocole(name, content, options) {
-  return apiFetch(`twin9/admin/protocole/${encodeURIComponent(name)}`, {
+/** Le jeu par défaut de l'instance, celui du profil par défaut (administrateur). */
+export function fixerJeuDefaut(jeu, options) {
+  return apiFetch('twin9/admin/jeux/defaut', { ...options, method: 'PUT', body: { jeu } })
+}
+
+const jeuPath = (jeu) => `twin9/admin/jeux/${encodeURIComponent(jeu)}`
+
+export function fetchProtocoleList(jeu, options) {
+  return apiFetch(`${jeuPath(jeu)}/protocole`, options)
+}
+
+export function fetchProtocole(jeu, name, options) {
+  return apiFetch(`${jeuPath(jeu)}/protocole/${encodeURIComponent(name)}`, options)
+}
+
+export function saveProtocole(jeu, name, content, options) {
+  return apiFetch(`${jeuPath(jeu)}/protocole/${encodeURIComponent(name)}`, {
     ...options,
     method: 'PUT',
     body: { content },
   })
 }
 
-export function fetchProtocoleVersions(name, options) {
-  return apiFetch(`twin9/admin/protocole/${encodeURIComponent(name)}/versions`, options)
+export function fetchProtocoleVersions(jeu, name, options) {
+  return apiFetch(`${jeuPath(jeu)}/protocole/${encodeURIComponent(name)}/versions`, options)
 }
 
 /** Une version ARCHIVÉE avec son contenu (D13 — lecture avant restauration). */
-export function fetchProtocoleVersion(name, version, options) {
-  return apiFetch(`twin9/admin/protocole/${encodeURIComponent(name)}/versions/${version}`, options)
+export function fetchProtocoleVersion(jeu, name, version, options) {
+  return apiFetch(`${jeuPath(jeu)}/protocole/${encodeURIComponent(name)}/versions/${version}`, options)
 }
 
-/** Restaure une version archivée comme gabarit vivant (D13 — jamais destructif). */
-export function restoreProtocoleVersion(name, version, options) {
-  return apiFetch(`twin9/admin/protocole/${encodeURIComponent(name)}/restore`, {
+/** Restaure une version archivée d'une copie comme gabarit vivant (D13 — jamais destructif). */
+export function restoreProtocoleVersion(jeu, name, version, options) {
+  return apiFetch(`${jeuPath(jeu)}/protocole/${encodeURIComponent(name)}/restore`, {
     ...options,
     method: 'POST',
     body: { version },
@@ -223,8 +243,8 @@ export function saveTwin9Config(partial, options) {
   return apiFetch('twin9/admin/config', { ...options, method: 'PUT', body: partial })
 }
 
-export function testerProtocole(name, variables, options) {
-  return apiFetch('twin9/admin/tester', {
+export function testerProtocole(jeu, name, variables, options) {
+  return apiFetch(`${jeuPath(jeu)}/tester`, {
     ...options,
     method: 'POST',
     body: { name, variables },

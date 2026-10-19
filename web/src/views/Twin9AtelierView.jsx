@@ -4,16 +4,24 @@
 // front où le CONTENU d'un gabarit est visible, et seulement pour admin ∧
 // promptologue ; le serveur applique la même garde (RequireRole::all).
 //
-// La supervision commerciale (marge, promo Twin9 gratuit, comptes) reste dans
-// #/admin/twin9 (admin seul, Twin9Section).
+// Les jeux de gabarits (T14) : le jeu v9.8, importé, s'y lit sans jamais s'y
+// écrire ; on le copie sous un nom, et l'on édite sa copie, avec ses versions et
+// son retour arrière, puis on la choisit dans un profil (#/configuration). La
+// copie d'un autre se lit. Une variable qu'aucune étape ne fournit est refusée
+// par le serveur, qui le dit.
+//
+// La supervision commerciale (marge, promo Twin9 gratuit, comptes) et le jeu
+// par défaut restent dans #/admin/twin9 (admin seul, Twin9Section).
 //
 // Le contenu rendu (gabarit édité, rendu du banc d'essai) reste du TEXTE BRUT :
 // jamais de renderMarkdown/HTML — ce n'est pas du narratif, c'est un secret
 // industriel. React échappe le texte, on l'affiche tel quel dans <textarea>/<pre>.
 
-import { useCallback, useEffect, useState } from 'react'
+import { useCallback, useEffect, useRef, useState } from 'react'
 import { ApiError, ApiUnavailableError } from '../api/client.js'
 import {
+  copierJeu,
+  fetchJeux,
   fetchProtocole,
   fetchProtocoleList,
   fetchProtocoleVersion,
@@ -30,14 +38,114 @@ function frDate(iso) {
   return Number.isNaN(date.getTime()) ? iso : date.toLocaleString('fr-FR')
 }
 
+// ---- 0. Jeux de gabarits --------------------------------------------------
+
+/** Le nom d'un jeu dans la liste : « v9.8 (lecture seule) », « essai (le vôtre) »… */
+function libelleJeu(j) {
+  let qui = `de ${j.auteur ?? 'compte supprimé'}, lecture seule`
+  if (j.id === 'v9.8') qui = 'lecture seule'
+  else if (j.mien) qui = 'le vôtre'
+  return `${j.id} (${qui})${j.defaut ? ' · par défaut' : ''}`
+}
+
+/**
+ * Choisir le jeu qu'on lit ou édite ; copier le jeu v9.8 sous un nom, qui
+ * devient aussitôt le jeu ouvert.
+ */
+function JeuxBloc({ jeux, jeu, onChoisir, onCopie, fetchFn }) {
+  const [nom, setNom] = useState('')
+  const [busy, setBusy] = useState(false)
+  const [message, setMessage] = useState(null)
+  const [error, setError] = useState(null)
+
+  async function choisir(id) {
+    setMessage(null)
+    setError(null)
+    try {
+      await onChoisir(id)
+    } catch (err) {
+      setError(err instanceof ApiError ? err.message : 'Ce jeu ne s’ouvre pas.')
+    }
+  }
+
+  async function copier(event) {
+    event.preventDefault()
+    setBusy(true)
+    setMessage(null)
+    setError(null)
+    let copie = null
+    try {
+      copie = await copierJeu(nom.trim(), { fetchFn })
+      setNom('')
+      await onCopie(copie.id)
+      setMessage(
+        `Copie « ${copie.id} » créée (${copie.gabarits} gabarits). ` +
+          'Choisissez-la dans un profil de la page Configuration.',
+      )
+    } catch (err) {
+      if (copie) setError(`Copie « ${copie.id} » créée, mais elle ne s’ouvre pas : rechargez la page.`)
+      else setError(err instanceof ApiError ? err.message : 'Copie impossible.')
+    } finally {
+      setBusy(false)
+    }
+  }
+
+  return (
+    <div className="twin9-admin-bloc">
+      <h3>Jeux de gabarits</h3>
+      <div className="admin-field">
+        <label htmlFor="twin9-jeu">Jeu</label>
+        <div className="admin-field-input">
+          <select id="twin9-jeu" value={jeu} onChange={(event) => choisir(event.target.value)}>
+            {jeux.map((j) => (
+              <option key={j.id} value={j.id}>
+                {libelleJeu(j)}
+              </option>
+            ))}
+          </select>
+        </div>
+      </div>
+      <form className="twin9-admin-copie" onSubmit={copier}>
+        <div className="admin-field">
+          <label htmlFor="twin9-copie-nom">Copier le jeu v9.8 sous le nom</label>
+          <div className="admin-field-input">
+            <input
+              id="twin9-copie-nom"
+              type="text"
+              value={nom}
+              placeholder="minuscules, chiffres, . _ -"
+              onChange={(event) => setNom(event.target.value)}
+            />
+          </div>
+        </div>
+        <button type="submit" disabled={busy || nom.trim() === ''}>
+          Copier
+        </button>
+      </form>
+      {message ? (
+        <p role="status" className="admin-message">
+          {message}
+        </p>
+      ) : null}
+      {error ? (
+        <p role="alert" className="load-error">
+          {error}
+        </p>
+      ) : null}
+    </div>
+  )
+}
+
 // ---- 1. Gabarits -----------------------------------------------------------
 
 /**
- * Liste des gabarits (métadonnées seules) + éditeur du contenu. Cliquer un
- * gabarit charge son contenu (fetchProtocole) dans le <textarea> ; Enregistrer
- * versionne côté serveur (saveProtocole) ; « versions » liste l'historique.
+ * Liste des gabarits du jeu (métadonnées seules) + éditeur du contenu. Cliquer
+ * un gabarit charge son contenu (fetchProtocole) dans le <textarea> ;
+ * Enregistrer versionne côté serveur (saveProtocole) ; « versions » liste
+ * l'historique. Le jeu v9.8 et la copie d'un autre se lisent seulement.
  */
-function GabaritsBloc({ protocoles, fetchFn, onSaved }) {
+function GabaritsBloc({ jeu, protocoles, fetchFn, onSaved }) {
+  const modifiable = jeu.id !== 'v9.8' && jeu.mien
   const [selected, setSelected] = useState(null)
   const [content, setContent] = useState('')
   const [loading, setLoading] = useState(false)
@@ -56,7 +164,7 @@ function GabaritsBloc({ protocoles, fetchFn, onSaved }) {
     setVersions(null)
     setApercu(null)
     try {
-      const tpl = await fetchProtocole(name, { fetchFn })
+      const tpl = await fetchProtocole(jeu.id, name, { fetchFn })
       setContent(tpl?.content ?? '')
     } catch (err) {
       setError(err instanceof ApiError ? err.message : 'Chargement du gabarit impossible.')
@@ -70,13 +178,13 @@ function GabaritsBloc({ protocoles, fetchFn, onSaved }) {
     setMessage(null)
     setError(null)
     try {
-      const res = await saveProtocole(selected, content, { fetchFn })
+      const res = await saveProtocole(jeu.id, selected, content, { fetchFn })
       setMessage(
         res?.status === 'unchanged'
           ? 'Contenu inchangé — aucune nouvelle version.'
           : `Gabarit « ${selected} » enregistré (nouvelle version archivée).`,
       )
-      onSaved()
+      onSaved(jeu.id)
     } catch (err) {
       setError(err instanceof ApiError ? err.message : 'Enregistrement impossible.')
     } finally {
@@ -87,7 +195,7 @@ function GabaritsBloc({ protocoles, fetchFn, onSaved }) {
   async function loadVersions() {
     setError(null)
     try {
-      const res = await fetchProtocoleVersions(selected, { fetchFn })
+      const res = await fetchProtocoleVersions(jeu.id, selected, { fetchFn })
       setVersions(Array.isArray(res?.versions) ? res.versions : [])
     } catch (err) {
       setError(err instanceof ApiError ? err.message : 'Historique indisponible.')
@@ -98,7 +206,7 @@ function GabaritsBloc({ protocoles, fetchFn, onSaved }) {
   async function voirVersion(version) {
     setError(null)
     try {
-      const res = await fetchProtocoleVersion(selected, version, { fetchFn })
+      const res = await fetchProtocoleVersion(jeu.id, selected, version, { fetchFn })
       setApercu({ version, content: res?.content ?? '' })
     } catch (err) {
       setError(err instanceof ApiError ? err.message : 'Version indisponible.')
@@ -111,17 +219,17 @@ function GabaritsBloc({ protocoles, fetchFn, onSaved }) {
     setMessage(null)
     setError(null)
     try {
-      const res = await restoreProtocoleVersion(selected, version, { fetchFn })
+      const res = await restoreProtocoleVersion(jeu.id, selected, version, { fetchFn })
       setMessage(
         res?.status === 'unchanged'
           ? `La version ${version} est identique au gabarit vivant — rien à restaurer.`
           : `Version ${version} restaurée comme gabarit vivant (l’état précédent est archivé).`,
       )
       setApercu(null)
-      const tpl = await fetchProtocole(selected, { fetchFn })
+      const tpl = await fetchProtocole(jeu.id, selected, { fetchFn })
       setContent(tpl?.content ?? '')
       await loadVersions()
-      onSaved()
+      onSaved(jeu.id)
     } catch (err) {
       setError(err instanceof ApiError ? err.message : 'Restauration impossible.')
     } finally {
@@ -131,12 +239,19 @@ function GabaritsBloc({ protocoles, fetchFn, onSaved }) {
 
   return (
     <div className="twin9-admin-bloc">
-      <h3>Gabarits du Golden Prompt</h3>
+      <h3>Gabarits du Golden Prompt — jeu « {jeu.id} »</h3>
       <p className="twin9-admin-warning" role="note">
         <strong>Contenu confidentiel — ne pas divulguer.</strong> Ces gabarits sont le secret
         industriel de la plateforme (ADR-010) : ils ne sont visibles qu’ici, pour les
         administrateurs-promptologues.
       </p>
+      {modifiable ? null : (
+        <p className="privacy-note">
+          {jeu.id === 'v9.8'
+            ? 'Le jeu v9.8 est en lecture seule : copiez-le pour le modifier.'
+            : `Lecture seule : cette copie est celle de ${jeu.auteur ?? 'un compte supprimé'}.`}
+        </p>
+      )}
 
       {protocoles.length === 0 ? (
         <p>Aucun gabarit importé pour l’instant.</p>
@@ -163,7 +278,9 @@ function GabaritsBloc({ protocoles, fetchFn, onSaved }) {
 
       {selected ? (
         <div className="twin9-admin-editeur">
-          <h4>Édition : {selected}</h4>
+          <h4>
+            {modifiable ? 'Édition' : 'Lecture'} : {selected}
+          </h4>
           {loading ? (
             <p role="status">Chargement du contenu…</p>
           ) : (
@@ -174,13 +291,16 @@ function GabaritsBloc({ protocoles, fetchFn, onSaved }) {
                 className="twin9-admin-textarea"
                 rows={16}
                 spellCheck={false}
+                readOnly={!modifiable}
                 value={content}
                 onChange={(event) => setContent(event.target.value)}
               />
               <div className="twin9-admin-actions">
-                <button type="button" disabled={busy || content.trim() === ''} onClick={save}>
-                  Enregistrer
-                </button>
+                {modifiable ? (
+                  <button type="button" disabled={busy || content.trim() === ''} onClick={save}>
+                    Enregistrer
+                  </button>
+                ) : null}
                 <button
                   type="button"
                   className="admin-button-secondary"
@@ -215,7 +335,7 @@ function GabaritsBloc({ protocoles, fetchFn, onSaved }) {
                     <th scope="col">Longueur</th>
                     <th scope="col">Variables</th>
                     <th scope="col">Archivée le</th>
-                    <th scope="col">Actions</th>
+                    <th scope="col">{modifiable ? 'Actions' : 'Lire'}</th>
                   </tr>
                 </thead>
                 <tbody>
@@ -233,15 +353,20 @@ function GabaritsBloc({ protocoles, fetchFn, onSaved }) {
                           onClick={() => voirVersion(v.version)}
                         >
                           Voir
-                        </button>{' '}
-                        <button
-                          type="button"
-                          className="admin-button-secondary"
-                          disabled={busy}
-                          onClick={() => restaurer(v.version)}
-                        >
-                          Restaurer
                         </button>
+                        {modifiable ? (
+                          <>
+                            {' '}
+                            <button
+                              type="button"
+                              className="admin-button-secondary"
+                              disabled={busy}
+                              onClick={() => restaurer(v.version)}
+                            >
+                              Restaurer
+                            </button>
+                          </>
+                        ) : null}
                       </td>
                     </tr>
                   ))}
@@ -253,15 +378,20 @@ function GabaritsBloc({ protocoles, fetchFn, onSaved }) {
           {apercu ? (
             <div className="twin9-admin-apercu">
               <h5>
-                Version {apercu.version} (archivée, lecture seule) —{' '}
-                <button
-                  type="button"
-                  className="admin-button-secondary"
-                  disabled={busy}
-                  onClick={() => restaurer(apercu.version)}
-                >
-                  Restaurer cette version
-                </button>
+                Version {apercu.version} (archivée, lecture seule)
+                {modifiable ? (
+                  <>
+                    {' '}—{' '}
+                    <button
+                      type="button"
+                      className="admin-button-secondary"
+                      disabled={busy}
+                      onClick={() => restaurer(apercu.version)}
+                    >
+                      Restaurer cette version
+                    </button>
+                  </>
+                ) : null}
               </h5>
               <pre className="twin9-admin-rendu" data-testid="twin9-apercu-version">
                 {apercu.content}
@@ -281,7 +411,7 @@ function GabaritsBloc({ protocoles, fetchFn, onSaved }) {
  * sont générés depuis les .variables du gabarit choisi ; testerProtocole renvoie
  * {rendu, non_resolues}. Le rendu est du texte brut réservé à l'atelier.
  */
-function BancEssaiBloc({ protocoles, fetchFn }) {
+function BancEssaiBloc({ jeu, protocoles, fetchFn }) {
   const [name, setName] = useState('')
   const [vars, setVars] = useState({})
   const [result, setResult] = useState(null)
@@ -305,7 +435,7 @@ function BancEssaiBloc({ protocoles, fetchFn }) {
     setError(null)
     setResult(null)
     try {
-      setResult(await testerProtocole(name, vars, { fetchFn }))
+      setResult(await testerProtocole(jeu, name, vars, { fetchFn }))
     } catch (err) {
       setError(err instanceof ApiError ? err.message : 'Test impossible.')
     } finally {
@@ -420,35 +550,75 @@ export default function Twin9AtelierView({ roles = [], deps = {} }) {
   const fetchFn = deps.fetchFn
   const isAtelier = roles.includes('admin') && roles.includes('promptologue')
 
+  const [jeux, setJeux] = useState(null)
+  const [jeu, setJeu] = useState(null)
   const [protocoles, setProtocoles] = useState(null)
   const [status, setStatus] = useState('loading')
   const [error, setError] = useState(null)
 
+  // le dernier jeu demandé : une réponse arrivée après qu'on en a ouvert un autre ne s'affiche pas
+  const demande = useRef(null)
+
+  /** Ouvre un jeu : la liste de ses gabarits. */
+  const ouvrir = useCallback(
+    async (id) => {
+      const avant = demande.current
+      demande.current = id
+      try {
+        const pl = await fetchProtocoleList(id, { fetchFn })
+        if (demande.current !== id) return
+        setProtocoles(Array.isArray(pl?.protocole) ? pl.protocole : [])
+        setJeu(id)
+      } catch (err) {
+        if (demande.current === id) demande.current = avant // le jeu affiché reste celui d'avant
+        throw err
+      }
+    },
+    [fetchFn],
+  )
+
+  // les jeux, puis le jeu ouvert : sa première copie, sinon le jeu v9.8
   const load = useCallback(async () => {
     setStatus('loading')
     setError(null)
     try {
-      const pl = await fetchProtocoleList({ fetchFn })
-      setProtocoles(Array.isArray(pl?.protocole) ? pl.protocole : [])
+      const liste = (await fetchJeux({ fetchFn }))?.jeux ?? []
+      setJeux(liste)
+      await ouvrir(liste.find((j) => j.mien)?.id ?? 'v9.8')
       setStatus('ready')
     } catch (err) {
       setStatus('error')
       setError(err instanceof ApiUnavailableError ? err.message : 'Chargement impossible.')
     }
-  }, [fetchFn])
+  }, [fetchFn, ouvrir])
 
   useEffect(() => {
     if (isAtelier) load()
   }, [isAtelier, load])
 
-  const reloadProtocoles = useCallback(async () => {
-    try {
-      const pl = await fetchProtocoleList({ fetchFn })
-      setProtocoles(Array.isArray(pl?.protocole) ? pl.protocole : [])
-    } catch {
-      /* on garde la liste précédente : l'échec est déjà signalé par le bloc */
-    }
-  }, [fetchFn])
+  /** Une copie faite : la liste des jeux relue, la copie ouverte. */
+  const apresCopie = useCallback(
+    async (id) => {
+      setJeux((await fetchJeux({ fetchFn }))?.jeux ?? [])
+      await ouvrir(id)
+    },
+    [fetchFn, ouvrir],
+  )
+
+  /** La liste d'un jeu relue après une écriture, s'il est toujours celui qu'on regarde. */
+  const reloadProtocoles = useCallback(
+    async (id) => {
+      try {
+        const pl = await fetchProtocoleList(id, { fetchFn })
+        if (demande.current === id) setProtocoles(Array.isArray(pl?.protocole) ? pl.protocole : [])
+      } catch {
+        /* on garde la liste précédente : l'échec est déjà signalé par le bloc */
+      }
+    },
+    [fetchFn],
+  )
+
+  const courant = jeux?.find((j) => j.id === jeu) ?? { id: jeu ?? 'v9.8', mien: false, auteur: null }
 
   return (
     <div className="admin twin9-admin">
@@ -463,8 +633,15 @@ export default function Twin9AtelierView({ roles = [], deps = {} }) {
         </p>
       ) : (
         <section className="admin-twin9">
-          <GabaritsBloc protocoles={protocoles} fetchFn={fetchFn} onSaved={reloadProtocoles} />
-          <BancEssaiBloc protocoles={protocoles} fetchFn={fetchFn} />
+          <JeuxBloc jeux={jeux} jeu={jeu} onChoisir={ouvrir} onCopie={apresCopie} fetchFn={fetchFn} />
+          <GabaritsBloc
+            key={`gabarits-${jeu}`}
+            jeu={courant}
+            protocoles={protocoles}
+            fetchFn={fetchFn}
+            onSaved={reloadProtocoles}
+          />
+          <BancEssaiBloc key={`banc-${jeu}`} jeu={jeu} protocoles={protocoles} fetchFn={fetchFn} />
         </section>
       )}
     </div>

@@ -61,6 +61,8 @@ final class RgpdAuditTest extends MasseTestCase
         'competence_votes.user_id' => 'CASCADE', // migration 016 (vote par compétence : idem)
         'carto_publication_requests.apprenant_id' => 'CASCADE', // migration 023 (demande de publication garantie : à l'apprenant)
         'twin9_profils.user_id' => 'CASCADE', // migration 024 (T12 : les profils Twin9 appartiennent à leur auteur, registre §12)
+        'twin9_cartes.user_id' => 'CASCADE', // migration 025 (T7 : la mémoire d'une carte Twin9, registre §13)
+        'twin9_runs.user_id' => 'CASCADE', // migration 025 (T7 : le run, son portfolio, son journal et ses sorties, registre §13)
         // --- documented anonymisation (SET NULL) ---
         'audit_events.user_id' => 'SET NULL',
         'referentiel_versions.created_by' => 'SET NULL',

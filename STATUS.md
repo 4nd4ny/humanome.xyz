@@ -13,11 +13,63 @@ dans `main` (entrée du 2026-10-14 ci-dessous).
 
 Chantier en cours : le moteur Twin9 v9.8 en PHP, exécuté sur le serveur (ADR-011), planifié et
 développé dans le dépôt privé `4nd4ny/Twin_v9` (`docs/plan-twin9-php.md`, prompts T0 → T18, une
-conversation chacun ; entrées du 2026-10-17). T0, le cadre, est fusionné dans les deux dépôts
-(entrées du 2026-10-18), T1, l'oracle, dans `Twin_v9` ; T3, les fondations du moteur, y attend sa
-revue. Ici, T12, le profil, attend la sienne (entrée du 2026-10-18).
+conversation chacun ; entrées du 2026-10-17). T0 à T6 et T12 sont fusionnés : le moteur passe
+l'oracle complet dans `Twin_v9`, le profil est ici. T7, l'exécution par tranches, attend sa revue
+dans les deux dépôts (entrée du 2026-10-19) ; viennent ensuite T8, la voie par lots, et T13.
 
 ## Fait
+
+- 2026-10-19 — **Moteur Twin9 en PHP, T7 : l'exécution par tranches (branche `feat/twin9-t7-slices`,
+  avec `feat/twin9-t7-platform-entry` dans `Twin_v9`).** Les runs Twin9 tournent sur le serveur, par
+  tranches de 45 s au plus (ADR-011 §2) ; le contrat entre la plateforme et le moteur est au §8 de
+  `docs/contrats.md`.
+  - Migration 025 : `twin9_cartes` (la mémoire d'une carte : utilisateur, portfolio, référentiel, jeu
+    de gabarits) et `twin9_memoire` ; `twin9_runs` (copie des réglages — le profil et les réglages de la
+    v9.8 —, portfolio, instantané du jeu de gabarits, horloge figée, compteurs) ; `twin9_appels`, le
+    journal, écrit avant et après chaque appel, jamais le prompt ni la clé ; `twin9_resultats`.
+    Réglages, portfolio, gabarits, mémoire, réponses et sorties sont compressés (zlib). Un run fini ne
+    garde du journal que ses compteurs ; la purge du compte emporte tout (cascade, registre §13, que
+    `scripts/rgpd-audit.php` connaît ; l'export du compte attend T10).
+  - Le tick (`Worker/Tick.php`, `Worker/Twin9Slice.php`) avance d'abord au plus N runs Twin9, puis la
+    masse avec le temps qui reste ; `runs_par_tick` (défaut 3) et `secondes_par_tranche` (défaut 40,
+    45 au plus) rejoignent `Twin9Config`. Chaque passe rejoue le run ; ses appels partent ensemble,
+    chaque réponse s'inscrit à son retour, une nouvelle passe suit dès qu'une place se libère. Une
+    journée finie entre aussitôt en mémoire, sauf panne, et les passes suivantes la reprennent ; seules
+    les journées les plus anciennes envoient leurs appels (`parallelisme.journees`) ; un seul run à la
+    fois par carte. **Écart au planning** : un faisceau du second ressort ne se relit pas en cours de
+    run — la « chose jugée » de la v9.8 ne marque pas les graines comme un premier jugement, la carte
+    changerait ; il se rejoue depuis le journal, sans qu'aucun appel reparte.
+  - Appels directs : `AnthropicCaller::requete()` et `lire()`, `Twin9\DirectCalls` sur
+    `Llm\CurlMultiHttpClient` (`curl_multi`). Réglages d'appel par étape (`CallSettings`) ; réflexion
+    coupée `disabled`, ou `between_tools` pour Sonnet 5.5 ; jamais de température. Les trois tentatives
+    de la v9.8 dans la tranche ; un 429 ou 529 attend son `Retry-After` sans compter de tentative, un
+    429 sans (plafond de dépense) met le run en attente ; un refus du modèle est une panne ; modèle
+    servi, jetons et coût relevés ; la clé est lue à chaque envoi (`RunKey`). Un appel coupé par la fin
+    de la tranche repart à la suivante, et compte comme une tentative s'il a eu la moitié de la tranche.
+    `appeler()`, des routes du moteur du navigateur, prend la même forme de réflexion.
+  - L'empreinte des réglages (réglages d'appel, troncatures, gabarits et fiches hors relectures) est
+    rangée dans chaque entrée de la mémoire à côté de celle de la v9.8 : d'autres réglages d'appel
+    relisent les journées.
+  - Route `worker-tick` : un jeton à elle, `WORKER_TICK_TOKEN` (en-tête `X-Worker-Tick-Token`), qui
+    n'ouvre aucune autre route ; `X-Migrate-Token` l'ouvre toujours ; `ignore_user_abort` ; elle relève
+    la limite de temps de PHP là où il y en a une, sans jamais en poser une (en CLI, elle aurait tué la
+    suite de tests une minute plus tard).
+    `scripts/worker.php` charge le moteur. `symfony/polyfill-intl-normalizer` entre dans
+    `api/composer.json` : le moteur appelle `Normalizer`, et OVH n'a peut-être pas `intl`.
+  - Moteur factice, public (`api/tests/fixtures/twin9-factice`), chargé par `EngineLoader` comme le
+    vrai : `TrancheTest`, un processus par test, couvre le DoD (un run va au bout en tranches ; tué
+    entre deux appels, il reprend sans appel en double ; tué pendant un appel, seul celui-ci repart ;
+    deux runs simultanés gardent réglages, gabarits et clé ; aucune tranche ne dépasse sa durée), plus
+    la mémoire journée par journée sans panne, les tentatives, la clé, les journées de front, une carte
+    à la fois et l'empreinte des réglages. `WorkerTickTokenTest`, `AppelsDirectsTest`.
+  - Parité (`api/tests/Twin9/PariteTest.php`, saute sans `Twin_v9`) : `03-scan-default` (Arpenteur),
+    `12-jury-random`, `16-test-mode`, `10-resume` (sur la mémoire de `01-default`) et le vrai run de T2
+    passent par le tick, tranches de 5 s, réponses dans le désordre : chaque appel part une fois, les
+    sorties sont celles de l'oracle. S'y ajoutent un run tué en plein tribunal et un juré en panne
+    rejoué au run suivant. La suite passe en 89 s ; un mot changé dans le gabarit du rapporteur, le
+    dernier appel d'un run, fait échouer la première en 53 s et les sept en 66 s.
+  - Pas encore : la voie par lots (T8 ; un run réglé « lots » attend), le lancement depuis un profil et
+    la page du run (T9), crédits et plafonds (T10).
 
 - 2026-10-18 — **Moteur Twin9 en PHP, T12 : le profil (branche `feat/twin9-t12-profile`).** Rien
   de la v9.8 dans ce dépôt.
@@ -1612,6 +1664,15 @@ revue. Ici, T12, le profil, attend la sienne (entrée du 2026-10-18).
 - **i18n** (internationalisation de l'UI, aujourd'hui français uniquement).
 
 ## Dettes techniques / décisions en attente
+
+- Twin9, voie directe (T7) : un appel coupé par la fin d'une tranche repart à la suivante, et
+  Anthropic facture sans doute ce qu'il avait déjà produit. Idée, non codée : ne lancer un appel
+  que s'il tient dans le reste de la tranche, d'après la durée des appels de la même étape au
+  journal. La voie par lots (T8) n'a pas ce coût.
+- Twin9 (T7) : le tick donne d'abord sa tranche aux runs Twin9, la masse prend le temps qui reste.
+  Des runs en voie directe peuvent l'occuper toute ; à revoir si la masse sert en même temps (T18).
+- Twin9 (T7) : l'API refuse la réflexion coupée à l'effort `xhigh` ou `max` (Haiku 5.5 comme
+  Sonnet 5.5) ; le profil l'admet encore. La page de configuration (T13) devra l'empêcher.
 
 - `scripts/dev/dod-p11.sh` (répétition de la DoD P11) s'arrête à la première inscription
   (`422`, `emailConfirm` manquant) : il n'envoie pas la double saisie de l'email ni n'active le

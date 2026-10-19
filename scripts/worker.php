@@ -3,16 +3,17 @@
 declare(strict_types=1);
 
 /**
- * Mass-cartography worker — CLI entry point (P11, ADR-005,
- * docs/plan-masse.md). One BOUNDED tick per invocation, made for the OVH
- * cron (no long processes on shared hosting):
+ * Worker — CLI entry point (P11, ADR-005, docs/plan-masse.md; Twin9 runs,
+ * ADR-011). One BOUNDED tick per invocation, made for a cron (no long
+ * processes on shared hosting):
  *
  *     php scripts/worker.php
  *
  * The same tick is reachable without SSH through POST /api/admin/worker-tick
- * (X-Migrate-Token, api/src/routes/worker.php).
+ * (X-Worker-Tick-Token or X-Migrate-Token, api/src/routes/worker.php).
  *
- * Environment knobs (all optional): WORKER_TICK_BUDGET_SECONDS (default 40),
+ * Environment knobs (all optional): WORKER_TICK_BUDGET_SECONDS (default: the
+ * Twin9 configuration's slice, 40 s; 45 at most), TWIN_V9_DIR (the Twin9 engine),
  * WORKER_TICK_MAX_CALLS (bound a tick by LLM calls — dev/rehearsal tool),
  * WORKER_MAX_TOKENS (8192), WORKER_MODEL (claude-sonnet-4-5),
  * WORKER_PROVIDER=mock (local dev without a key), ANTHROPIC_API_KEY
@@ -56,6 +57,9 @@ if (!\Humanome\Db::isConfigured()) {
     fwrite(STDERR, "[worker] base de données non configurée\n");
     exit(1);
 }
+
+// The private Twin9 engine (ADR-011), when TWIN_V9_DIR holds it: its runs advance too.
+\Humanome\Twin9\EngineLoader::load();
 
 try {
     $counters = (new \Humanome\Worker\Tick(\Humanome\Db::get()))->run();

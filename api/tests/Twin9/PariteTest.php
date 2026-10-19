@@ -1,0 +1,308 @@
+<?php
+
+declare(strict_types=1);
+
+namespace Humanome\Tests\Twin9;
+
+use Humanome\MigrationRunner;
+use Humanome\Tests\TestDb;
+use Humanome\Twin9\CallSettings;
+use Humanome\Twin9\EngineLoader;
+use Humanome\Twin9\MapStore;
+use Humanome\Twin9\ProfilRepository;
+use Humanome\Twin9\RunRepository;
+use Humanome\Worker\Tick;
+use PDO;
+use PHPUnit\Framework\TestCase;
+
+/**
+ * The oracle through the tick (T7, Twin_v9's docs/plan-twin9-php.md, lot 1,
+ * « L'oracle en continu »): four simulated scenarios of the v9.8 — the
+ * Arpenteur, a random jury, the test mode, a resumption on a map's memory —
+ * and T2's real run go through the platform as a run does: the MySQL journal
+ * and memory, slices, answers in a shuffled order, the engine of TWIN_V9_DIR.
+ * Each call leaves once, with the v9.8's prompt; the outputs are the
+ * oracle's, compared as decoded JSON. Without Twin_v9, these tests skip.
+ */
+final class PariteTest extends TestCase
+{
+    private const HORLOGE = '2026-10-18T12:00:00';
+
+    private static PDO $pdo;
+
+    private static string $dir;
+
+    public static function setUpBeforeClass(): void
+    {
+        self::$dir = EngineLoader::directory();
+        if (!is_file(self::$dir . '/php/src/Plateforme.php') || !is_dir(self::$dir . '/oracle/scenarios')) {
+            return;
+        }
+        self::$pdo = TestDb::fresh();
+        (new MigrationRunner(self::$pdo, MigrationRunner::defaultMigrationsDir()))->run();
+    }
+
+    protected function setUp(): void
+    {
+        if (!is_file(self::$dir . '/php/src/Plateforme.php') || !is_dir(self::$dir . '/oracle/scenarios')) {
+            self::markTestSkipped('Twin_v9 absent (TWIN_V9_DIR) : ni le moteur ni son oracle ne sont là');
+        }
+        self::assertTrue(EngineLoader::load());
+        TestDb::setEnv('ANTHROPIC_API_KEY', 'sk-ant-parite');
+        TestDb::setEnv('WORKER_TICK_BUDGET_SECONDS', '');
+    }
+
+    protected function tearDown(): void
+    {
+        TestDb::restoreEnv();
+    }
+
+    public function testTheArpenteur(): void
+    {
+        $this->rejouer('03-scan-default', $this->utilisateur('arpenteur@example.test'));
+    }
+
+    public function testARandomJury(): void
+    {
+        $this->rejouer('12-jury-random', $this->utilisateur('jury@example.test'));
+    }
+
+    public function testTheTestMode(): void
+    {
+        $this->rejouer('16-test-mode', $this->utilisateur('essai@example.test'), part: 0.5);
+    }
+
+    /**
+     * 10-resume: the map remembers 01-default, its memory as the engine
+     * leaves it (played in one pass, with the oracle's answers, into the
+     * map's store): every day is taken back, only the merge is played again.
+     */
+    public function testAResumptionOnTheMemoryOfAMap(): void
+    {
+        $user = $this->utilisateur('reprise@example.test');
+        $this->rejouer('10-resume', $user, avant: function (int $carte): void {
+            $dir = self::$dir . '/oracle/scenarios/01-default';
+            [$scenario, $moteur, $portfolio, $sortie] = $this->scenario($dir);
+            $record = self::record($dir . '/calls.jsonl');
+            $journal = new class ($record) implements \Twin9\Run\Journal {
+                public function __construct(private readonly array $record)
+                {
+                }
+
+                public function outcome(string $id): ?array
+                {
+                    return $this->record[$id] ?? null;
+                }
+            };
+            (new \Twin9\Plateforme(json_encode($moteur, JSON_PRESERVE_ZERO_FRACTION | JSON_THROW_ON_ERROR),
+                basename($portfolio), (string) file_get_contents($portfolio), self::gabarits(), $sortie,
+                new \DateTimeImmutable(self::HORLOGE), $this->empreinte($moteur)))
+                ->passe($journal, new MapStore(self::$pdo, $carte), static function (): void {
+                });
+            self::assertNotEmpty((new MapStore(self::$pdo, $carte))->keys('journees/'));
+        });
+    }
+
+    /**
+     * Killed in the middle of a tribunal, as its first juror is about to be
+     * asked: the run resumes and goes to its end, no call twice.
+     */
+    public function testKilledInTheMiddleOfATribunalItResumes(): void
+    {
+        $tueur = static function (string $id): bool {
+            static $tue = false;
+            if (!$tue && preg_match('#/tribunal/[^/]+/23-#', $id) === 1) {
+                return $tue = true;
+            }
+
+            return false;
+        };
+        $this->rejouer('16-test-mode', $this->utilisateur('tue@example.test'), tueur: $tueur);
+    }
+
+    /**
+     * A juror that fails leaves its day out of the memory: the next run of
+     * the map plays the day again, and its run is the oracle's.
+     */
+    public function testAFailedJurorIsPlayedAgainByTheNextRun(): void
+    {
+        $user = $this->utilisateur('jure@example.test');
+        $dir = self::$dir . '/oracle/scenarios/16-test-mode';
+        $record = self::record($dir . '/calls.jsonl');
+        $jure = array_values(array_filter(array_keys($record), static fn (string $id): bool =>
+            preg_match('#/tribunal/[^/]+/23-#', $id) === 1))[0];
+        $enPanne = $record;
+        unset($enPanne[$jure]['response']);
+        $enPanne[$jure]['failure'] = 'Backend anthropic : échec après 3 tentatives : HTTP 529';
+        $premier = $this->rejouer('16-test-mode', $user, record: $enPanne, comparer: false);
+        $stmt = self::$pdo->prepare(
+            'SELECT m.cle FROM twin9_memoire m JOIN twin9_runs r ON r.carte_id = m.carte_id WHERE r.id = ? ORDER BY m.cle'
+        );
+        $stmt->execute([$premier]);
+        self::assertSame([], array_values(array_filter($stmt->fetchAll(PDO::FETCH_COLUMN),
+            static fn (string $k): bool => str_contains($k, 'journees/') || str_contains($k, 'calques/'))),
+            'la journée du juré en panne n\'entre pas en mémoire');
+        self::assertSame(1, (new RunRepository(self::$pdo))->compteursDe($premier)['pannes']);
+
+        $this->rejouer('16-test-mode', $user);
+    }
+
+    public function testTheRealRun(): void
+    {
+        if (!is_file(self::$dir . '/oracle/reel/calls.jsonl')) {
+            self::markTestSkipped('oracle/reel absent de Twin_v9');
+        }
+        $this->rejouer('reel', $this->utilisateur('reel@example.test'), part: 0.5);
+    }
+
+    /**
+     * A scenario through the tick, on the map of $user; $avant gets the
+     * run's map before the first slice.
+     *
+     * @param (\Closure(int): void)|null $avant
+     * @param array<string, array<string, string>>|null $record the answers, the oracle's by default
+     * @param (\Closure(string): bool)|null $tueur whether the tick dies as this call is about to leave
+     * @param bool $comparer whether the calls and outputs must be the oracle's
+     * @return int the run
+     */
+    private function rejouer(string $id, int $user, float $part = 1.0, ?\Closure $avant = null, ?array $record = null,
+                             ?\Closure $tueur = null, bool $comparer = true): int
+    {
+        $dir = self::$dir . ($id === 'reel' ? '/oracle/reel' : '/oracle/scenarios/' . $id);
+        [$scenario, $moteur, $portfolio, $sortie] = $this->scenario($dir);
+        $record ??= self::record($dir . '/calls.jsonl');
+        // a test that failed may have left its run in progress: it must not take this one's slices
+        self::$pdo->exec('UPDATE twin9_runs SET statut = "annule" WHERE statut = "en_cours"');
+        $runs = new RunRepository(self::$pdo);
+        $run = $runs->creer($user, self::profil(), $moteur, basename($portfolio), (string) file_get_contents($portfolio),
+            pathinfo($portfolio, PATHINFO_FILENAME), self::gabarits(), new \DateTimeImmutable(self::HORLOGE), $sortie);
+        if ($avant !== null) {
+            $stmt = self::$pdo->prepare('SELECT carte_id FROM twin9_runs WHERE id = ?');
+            $stmt->execute([$run]);
+            $avant((int) $stmt->fetchColumn());
+        }
+
+        $envoi = new ReplaySender($record, part: $part, tueur: $tueur, strict: $comparer);
+        $morts = 0;
+        for ($tranches = 1; $runs->statut($run) === 'en_cours'; $tranches++) {
+            self::assertLessThan(100, $tranches, "$id : le run ne va pas au bout");
+            try {
+                (new Tick(self::$pdo, ['budgetSeconds' => 5, 'twin9Sender' => $envoi, 'twin9Runs' => 1]))->run();
+            } catch (\RuntimeException $e) {
+                self::assertSame('tick tué', $e->getMessage());
+                $morts++;
+            }
+        }
+        self::assertSame($tueur === null ? 0 : 1, $morts);
+
+        self::assertSame('termine', $runs->statut($run), $id);
+        if (!$comparer) {
+            return $run;
+        }
+        $envoyes = array_map(static fn (string $k): string => substr($k, strpos($k, ':') + 1), array_keys($envoi->envois));
+        sort($envoyes, SORT_STRING);
+        $attendus = array_keys($record);
+        sort($attendus, SORT_STRING);
+        self::assertSame($attendus, $envoyes, "$id : chaque appel de l'oracle, une fois");
+
+        $sorties = $runs->sorties($run);
+        foreach ($scenario->outputs as $chemin) {
+            self::assertArrayHasKey($chemin, $sorties, "$id : $chemin");
+            $attendu = (string) file_get_contents($dir . '/outputs/' . $chemin);
+            str_ends_with($chemin, '.json')
+                ? self::assertSame(json_decode($attendu, true, 512, JSON_THROW_ON_ERROR),
+                    json_decode($sorties[$chemin], true, 512, JSON_THROW_ON_ERROR), "$id : $chemin")
+                : self::assertSame($attendu, $sorties[$chemin], "$id : $chemin");
+        }
+        if ($id !== 'reel') {
+            $chemins = array_map('strval', $scenario->outputs);
+            sort($chemins, SORT_STRING);
+            self::assertSame($chemins, array_keys($sorties), "$id : les sorties de l'oracle, rien d'autre");
+        }
+
+        return $run;
+    }
+
+    /**
+     * A scenario's settings as a run keeps them.
+     *
+     * @return array{0: \stdClass, 1: \stdClass, 2: string, 3: string} the scenario, the v9.8's settings, the
+     *         portfolio's file, the run's output
+     */
+    private function scenario(string $dir): array
+    {
+        $scenario = json_decode((string) file_get_contents($dir . '/scenario.json'), false, 512, JSON_THROW_ON_ERROR);
+        $commande = $scenario->command;
+        $option = static function (string $nom) use ($commande): ?string {
+            $i = array_search($nom, $commande, true);
+
+            return $i === false ? null : (string) $commande[$i + 1];
+        };
+        $jours = $option('--jours');
+        $moteur = (object) ['config' => $scenario->settings->config, 'roster' => $scenario->settings->roster,
+                            'jours' => $jours === null ? null : (int) $jours, 'test' => isset($scenario->test_mode),
+                            'memoire' => $scenario->state !== 'none'];
+
+        return [$scenario, $moteur, self::$dir . '/' . $option('--portfolio'), (string) $option('--out')];
+    }
+
+    /** The profile of the parity runs: the v9.8's, by the direct lane, every call of a pass at once. */
+    private static function profil(): \stdClass
+    {
+        $profil = ProfilRepository::v98();
+        $profil->voie = 'directe';
+        $profil->parallelisme->appels_directs = 10000;
+
+        return ProfilRepository::validate($profil);
+    }
+
+    /** The fingerprint of the settings, as the tick computes it for a parity run. */
+    private function empreinte(\stdClass $moteur): string
+    {
+        return CallSettings::empreinte(self::profil(), $moteur->config->troncatures ?? null, self::gabarits());
+    }
+
+    /** @return array<string, array<string, string>> the oracle's calls, by id */
+    private static function record(string $fichier): array
+    {
+        $record = [];
+        foreach (file($fichier) ?: [] as $ligne) {
+            $d = json_decode($ligne, true, 512, JSON_THROW_ON_ERROR);
+            $record[$d['artifact'] ?? $d['label']] = ['step' => $d['step'], 'model' => $d['model'],
+                                                      'sha256' => $d['prompt_sha256']]
+                + (isset($d['failure']) ? ['failure' => $d['failure']] : ['response' => $d['response']]);
+        }
+
+        return $record;
+    }
+
+    /**
+     * The v9.8's protocole/ as the platform imports it
+     * (scripts/twin9/import-protocole.mjs): each template by its path
+     * without ".md", its bytes as they are.
+     *
+     * @return array<string, string>
+     */
+    private static function gabarits(): array
+    {
+        $racine = self::$dir . '/protocole';
+        $gabarits = [];
+        $fichiers = new \RecursiveIteratorIterator(new \RecursiveDirectoryIterator($racine, \FilesystemIterator::SKIP_DOTS));
+        foreach ($fichiers as $f) {
+            if (str_ends_with($f->getFilename(), '.md')) {
+                $gabarits[substr($f->getPathname(), \strlen($racine) + 1, -3)] = (string) file_get_contents($f->getPathname());
+            }
+        }
+        ksort($gabarits, SORT_STRING);
+
+        return $gabarits;
+    }
+
+    private function utilisateur(string $email): int
+    {
+        self::$pdo->prepare('INSERT INTO users (email, password_hash, display_name) VALUES (?, ?, ?)')
+            ->execute([$email, 'x', $email]);
+
+        return (int) self::$pdo->lastInsertId();
+    }
+}

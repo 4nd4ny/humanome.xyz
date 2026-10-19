@@ -225,9 +225,13 @@ final class UcSys01TraiterFileJobsTest extends MasseTestCase
         self::assertSame(0, $code, $stderr);
         self::assertSame('', $stderr);
         $counters = json_decode(trim($stdout), true, 512, JSON_THROW_ON_ERROR);
+        // Ceux de Twin9 s'y ajoutent quand le moteur est cloné à côté du dépôt
+        // (ADR-011) : aucun run Twin9 ici, ils restent à zéro.
+        $twin9 = array_filter($counters, static fn (string $k): bool => str_starts_with($k, 'twin9'), ARRAY_FILTER_USE_KEY);
+        self::assertSame([], array_filter($twin9), 'aucun run Twin9');
         self::assertSame(
             ['locked' => false, 'jobsTouched' => 1, 'jobsCompleted' => 1, 'jobsFailed' => 0, 'jobsReleased' => 0, 'calls' => 8, 'callErrors' => 0, 'budgetBlocked' => 0],
-            array_diff_key($counters, ['elapsedMs' => true]),
+            array_diff_key($counters, ['elapsedMs' => true] + $twin9),
         );
         self::assertStringNotContainsString("aujourd'hui", $stdout, 'compteurs seulement, jamais de contenu');
 

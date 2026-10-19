@@ -18,7 +18,8 @@ L'administration se présente sous deux formes complémentaires :
 > `routes/packages.php`, `routes/worker.php`) protégé par le jeton
 > `X-Migrate-Token` (ADR-008, script de déploiement uniquement) :
 > `POST /api/admin/migrate`, `/api/admin/grant-role`, `/api/admin/default-package`,
-> `/api/admin/import-*`, `/api/admin/worker-tick`. Ces routes existent pour le
+> `/api/admin/import-*`, `/api/admin/worker-tick` (qui accepte aussi son propre
+> jeton, `WORKER_TICK_TOKEN`, celui du déclencheur externe). Ces routes existent pour le
 > pilotage hors-navigateur d'un hébergement sans SSH ; l'UI d'administration,
 > elle, s'appuie sur une **vraie session** avec le rôle `admin` et le CSRF.
 
@@ -202,7 +203,7 @@ d'environnement (`~/app/shared/.env` hors webroot en prod ; `.env.dev` exporté
 en dev, `INSTALL.md` §2) — la variable, si non vide, gagne.
 
 **Le fichier ne contient jamais de secret.** Les secrets (mot de passe MySQL,
-`ANTHROPIC_API_KEY`, `MIGRATE_TOKEN`, `POW_SECRET`, `SODIUM_MASTER_KEY`) et le
+`ANTHROPIC_API_KEY`, `MIGRATE_TOKEN`, `WORKER_TICK_TOKEN`, `POW_SECRET`, `SODIUM_MASTER_KEY`) et le
 **Golden Prompt** restent hors git, dans `~/app/shared/.env` et la base. Pour
 les entrées secrètes, `GET /api/admin/settings` et l'UI n'exposent que l'état
 `configuré`/`absent`, **jamais la valeur**.

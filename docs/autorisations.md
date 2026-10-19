@@ -192,7 +192,7 @@ l'établissement (l'accès exige l'adhésion active).
 | `/api/worker/jobs` | GET | **Machine** (runner de l'établissement) | Jeton `X-Worker-Token` (haché en base), hors rôles et hors CSRF (aucune session, donc aucun crédit ambiant) ; réserve avec bail 5 min, jobs de SON établissement uniquement ; refus si plafond consommé |
 | `/api/worker/jobs/{id}/checkpoint` | POST | Machine, son job | Jeton ; persiste l'avancement par pôle + renouvelle le bail ; 409 si le job n'est plus `running` |
 | `/api/worker/jobs/{id}/result` | POST | Machine, son job | Jeton ; document **re-validé au schéma côté serveur**, coût déclaré borné, `spent_usd` incrémenté ; 409 en rejeu |
-| `/api/admin/worker-tick` | POST | Technique (ADR-008) | Jeton `X-Migrate-Token` ; un tick borné, réponse = compteurs uniquement |
+| `/api/admin/worker-tick` | POST | Technique (ADR-008, ADR-011) | Jeton `WORKER_TICK_TOKEN` (`X-Worker-Tick-Token`), qui n'ouvre que cette route, ou `X-Migrate-Token` ; un tick borné (runs Twin9, puis masse), réponse = compteurs uniquement |
 
 ### P12 — Administration (cahier §3.8, §4.10)
 

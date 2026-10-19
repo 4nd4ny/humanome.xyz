@@ -1,0 +1,55 @@
+<?php
+
+declare(strict_types=1);
+
+namespace Humanome\Worker;
+
+use Humanome\Twin9\CallJournal;
+use Humanome\Twin9\CallSettings;
+use Humanome\Twin9\MapStore;
+use Twin9\Plateforme;
+use Twin9\Run\Call;
+
+/** A Twin9 run during one slice (Twin9Slice): its engine, journal and memory, and where it stands. */
+final class Twin9Run
+{
+    /** @var list<Call> the calls the last pass waits for */
+    public array $attendus = [];
+
+    /** @var array<string, int> the calls in flight, by id: their attempt */
+    public array $enVol = [];
+
+    /** Answers arrived since the last pass. */
+    public bool $nouvelles = false;
+
+    public int $passes = 0;
+
+    /** What holds the run back, for its page; null: nothing. */
+    public ?string $attente = null;
+
+    /** No more sending in this slice (no key, the provider's spending cap). */
+    public bool $suspendu = false;
+
+    /** When the first call it holds back (attempts, Retry-After) may leave; null: none. */
+    public ?float $reveil = null;
+
+    public function __construct(
+        public readonly int $id,
+        public readonly int $userId,
+        public readonly Plateforme $plateforme,
+        public readonly CallJournal $journal,
+        public readonly MapStore $memoire,
+        public readonly \Closure $sortie,
+        public readonly CallSettings $reglages,
+        public readonly string $cle,
+        public readonly int $appelsDirects,
+        public readonly int $journeesDeFront,
+    ) {
+    }
+
+    /** Whether to play a pass: none yet, or answers arrived and a call may leave. */
+    public function aJouer(): bool
+    {
+        return $this->passes === 0 || ($this->nouvelles && \count($this->enVol) < $this->appelsDirects);
+    }
+}

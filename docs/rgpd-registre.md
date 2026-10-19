@@ -50,12 +50,12 @@ exécution du service/contrat, **f** = intérêt légitime.
 | Finalité | Servir de source à la production d'une cartographie de compétences. |
 | Personnes concernées | Apprenants. |
 | Données | Texte libre du journal réflexif, segmenté par journée. |
-| Localisation | **Local par défaut** (IndexedDB navigateur) ; transite par le serveur uniquement le temps d'un traitement déclenché, ou lorsqu'il est déposé dans une cohorte d'établissement (§9). |
+| Localisation | **Local par défaut** (IndexedDB navigateur) ; transite par le serveur uniquement le temps d'un traitement déclenché, ou lorsqu'il est déposé dans une cohorte d'établissement (§9) ; reste sur le serveur avec un run Twin9, sur accord de l'apprenant (§13). |
 | Base légale | **a** (consentement) pour tout dépôt/traitement serveur ; le traitement purement local ne relève pas d'un stockage serveur. |
-| Durée | Local : tant que la personne ne vide pas son navigateur. Dépôt cohorte : jusqu'au retrait du consentement (quitter la cohorte) ou suppression du compte. |
+| Durée | Local : tant que la personne ne vide pas son navigateur. Dépôt cohorte : jusqu'au retrait du consentement (quitter la cohorte) ou suppression du compte. Run Twin9 : §13. |
 | Destinataires | Fournisseur de LLM le temps du traitement (§8) ; établissement si dépôt en cohorte (§9). |
-| Tables | Aucun stockage serveur en dehors des cohortes : `cohorte_portfolios` (dépôt B2B, §9). |
-| Sort à la suppression | `cohorte_portfolios` en CASCADE (compte apprenant et cohorte). |
+| Tables | Stockage serveur dans deux cas seulement : `cohorte_portfolios` (dépôt B2B, §9) et `twin9_runs` (run Twin9, §13). |
+| Sort à la suppression | `cohorte_portfolios` en CASCADE (compte apprenant et cohorte) ; `twin9_runs` en CASCADE (compte). |
 
 ## 3. Cartographies
 
@@ -234,6 +234,19 @@ exécution du service/contrat, **f** = intérêt légitime.
 | Destinataires | Interne. |
 | Tables | `twin9_profils` (migration 024). |
 | Sort à la suppression | CASCADE (le profil appartient à la personne). |
+
+## 13. Runs Twin9
+
+| Élément | Détail |
+|---|---|
+| Finalité | Exécuter sur le serveur, par tranches, les runs Twin9 de la personne (ADR-011), et reprendre une carte d'un run à l'autre. |
+| Personnes concernées | Titulaires de compte qui lancent des runs Twin9. |
+| Données | Par run (`twin9_runs`) : copie des réglages (profil et réglages de la v9.8), **copie du portfolio**, instantané du jeu de gabarits, horloge, compteurs. Journal des appels (`twin9_appels`) : empreinte SHA-256 du prompt (jamais le prompt), réponse du modèle, modèle servi, jetons, coût, durée ; jamais la clé. Sorties du run (`twin9_resultats`). Mémoire de la carte (`twin9_cartes`, `twin9_memoire`) : journées instruites, faisceaux, calques archivés, par portfolio, référentiel et jeu de gabarits. Tout ce contenu est compressé (zlib), non chiffré. |
+| Base légale | **a** : à chaque lancement, l'accord de l'apprenant pour garder son portfolio et l'état du run sur le serveur (ADR-011 §5). L'écran de lancement vient avec T9 : d'ici là, aucun run ne se lance depuis l'interface. |
+| Durée | Un run fini ne garde de son journal que les compteurs. Le run, portfolio et sorties compris, et la mémoire de ses cartes restent jusqu'à ce que la personne les efface (ADR-011 §5) ; aujourd'hui, en supprimant son compte. |
+| Destinataires | Anthropic, le temps de chaque appel (§8). |
+| Tables | `twin9_cartes`, `twin9_memoire`, `twin9_runs`, `twin9_appels`, `twin9_resultats` (migration 025). |
+| Sort à la suppression | CASCADE depuis le compte (cartes et runs), puis depuis la carte (mémoire) et le run (journal, sorties). L'export du compte ne les contient pas encore (T10). |
 
 ---
 

@@ -10,19 +10,29 @@ use Humanome\Etablissement\ConfigRepository;
 use Humanome\Keys\KeyVault;
 use Humanome\Llm\AnthropicProvider;
 use Humanome\Llm\CurlHttpClient;
+use Humanome\Llm\LlmRuntime;
 use Humanome\Llm\MockProvider;
 use Humanome\Llm\Pricing;
 use Humanome\Packages\PromptPackageRepository;
+use Humanome\Packages\SettingsRepository;
 use Humanome\Referentiel\ReferentielRepository;
+use Humanome\Twin9\CallSender;
+use Humanome\Twin9\DirectCalls;
+use Humanome\Twin9\EngineLoader;
+use Humanome\Twin9\RunKey;
+use Humanome\Twin9\Twin9Config;
 use PDO;
 
 /**
  * One bounded worker tick (ADR-005, docs/plan-masse.md §2-3): serialized by
- * GET_LOCK('humanome_worker'), reserves the oldest workable job, advances it
- * POLE BY POLE (checkpoint after EACH successful LLM call), verifies the
- * budget BEFORE each call, and hands control back once the ~40 s time budget
- * is spent. Invoked by the OVH cron (php scripts/worker.php) and by
- * POST /api/admin/worker-tick (X-Migrate-Token, routes/worker.php).
+ * GET_LOCK('humanome_worker'). First the Twin9 runs (ADR-011 §2): at most N
+ * advance within the slice (Twin9Slice), N and the slice's length being the
+ * administrator's (Twin9Config, 45 s at most). Then the mass cartography with
+ * the time left: reserves the oldest workable job, advances it POLE BY POLE
+ * (checkpoint after EACH successful LLM call), verifies the budget BEFORE
+ * each call, and hands control back once the time budget is spent. Invoked
+ * by the OVH cron (php scripts/worker.php) and by POST
+ * /api/admin/worker-tick (routes/worker.php).
  *
  * Engine lessons applied (M5, STATUS.md): stop_reason max_tokens fails loudly
  * (truncated JSON poisons documents); one immediate retry per call (stochastic
@@ -36,11 +46,19 @@ final class Tick
     public const LOCK_NAME = 'humanome_worker';
     public const CHARS_PER_TOKEN = 3.6; // engine/src/providers/estimate.js heuristic
 
+    /** A slice lasts 45 seconds at most (OVH, ADR-005 and ADR-011). */
+    public const MAX_SECONDS = 45;
+
     private readonly int $budgetSeconds;
     private readonly int $maxCalls;
     private readonly int $maxTokens;
     /** @var callable(array<string, mixed>): object */
     private $providerFactory;
+
+    private readonly ?CallSender $twin9Sender;
+    private readonly ?int $twin9Runs;
+    /** @var list<float>|null */
+    private readonly ?array $twin9Pauses;
 
     private readonly JobQueue $queue;
     private readonly ConfigRepository $configs;
@@ -53,14 +71,18 @@ final class Tick
     private float $startedAt = 0.0;
     /** @var array<string, int> */
     private array $counters = [];
+    /** Twin9 runs had the slice: the mass gets no guaranteed call past its end. */
+    private bool $twin9Ran = false;
 
     /**
      * @param array{budgetSeconds?: int, maxCalls?: int, maxTokens?: int,
-     *              providerFactory?: callable(array<string, mixed>): object} $options
+     *              providerFactory?: callable(array<string, mixed>): object,
+     *              twin9Sender?: CallSender, twin9Runs?: int, twin9Pauses?: list<float>} $options
+     *        twin9*: tests — the sender of the Twin9 calls, the runs a tick advances, the pauses between attempts
      */
     public function __construct(private readonly PDO $pdo, array $options = [])
     {
-        $this->budgetSeconds = $options['budgetSeconds'] ?? (int) (Env::get('WORKER_TICK_BUDGET_SECONDS', '40') ?: 40);
+        $this->budgetSeconds = min(self::MAX_SECONDS, $options['budgetSeconds'] ?? $this->configuredSeconds());
         // WORKER_TICK_MAX_CALLS bounds a CLI tick by calls, like the HTTP
         // tick's maxCalls option — the operational DoD rehearsal relies on it
         // (a mock call costs ~0.2 ms: a time-bounded tick would drain the
@@ -69,6 +91,9 @@ final class Tick
         $this->maxCalls = $options['maxCalls'] ?? ($envMaxCalls > 0 ? $envMaxCalls : PHP_INT_MAX);
         $this->maxTokens = $options['maxTokens'] ?? (int) (Env::get('WORKER_MAX_TOKENS', '8192') ?: 8192);
         $this->providerFactory = $options['providerFactory'] ?? $this->defaultProviderFactory(...);
+        $this->twin9Sender = $options['twin9Sender'] ?? null;
+        $this->twin9Runs = $options['twin9Runs'] ?? null;
+        $this->twin9Pauses = $options['twin9Pauses'] ?? null;
         $this->queue = new JobQueue($pdo);
         $this->configs = new ConfigRepository($pdo, KeyVault::masterKeyFromEnv());
         $this->cohortes = new CohorteRepository($pdo);
@@ -77,7 +102,8 @@ final class Tick
     /**
      * Runs one tick. Returns its counters (the only thing ever logged):
      * locked, jobsTouched, jobsCompleted, jobsFailed, jobsReleased, calls,
-     * callErrors, budgetBlocked, elapsedMs.
+     * callErrors, budgetBlocked, elapsedMs, and those of the Twin9 runs,
+     * prefixed twin9, when the engine is loaded.
      *
      * @return array<string, int|bool>
      */
@@ -95,6 +121,7 @@ final class Tick
         }
 
         try {
+            $this->counters += $this->advanceTwin9();
             while (!$this->exhausted()) {
                 $jobs = $this->queue->reserve(1);
                 if ($jobs === []) {
@@ -110,6 +137,55 @@ final class Tick
         }
 
         return ['locked' => false, 'elapsedMs' => $this->elapsedMs()] + $this->counters;
+    }
+
+    // ------------------------------------------------------------ Twin9 runs
+
+    /**
+     * The Twin9 runs of the slice, when the engine is loaded (ADR-011 §4):
+     * they keep a reserve of the slice to wind down in.
+     *
+     * @return array<string, int> their counters, prefixed twin9
+     */
+    private function advanceTwin9(): array
+    {
+        if (!EngineLoader::isLoaded() || !class_exists(\Twin9\Plateforme::class)) {
+            return [];
+        }
+        $config = new Twin9Config(new SettingsRepository($this->pdo));
+        $slice = new Twin9Slice(
+            $this->pdo,
+            $this->twin9Sender ?? new DirectCalls(LlmRuntime::multiHttpClient()),
+            new RunKey($this->pdo, $config),
+            $config,
+            $this->twin9Pauses === null ? [] : ['pauses' => $this->twin9Pauses],
+        );
+        $reserve = min(1.0, max(0.25, 0.1 * $this->budgetSeconds));
+        $counters = [];
+        foreach ($slice->advanceUntil($this->twin9Runs ?? $config->runsParTick(), $this->startedAt,
+            $this->startedAt + $this->budgetSeconds - $reserve) as $name => $value) {
+            $counters['twin9' . ucfirst($name)] = $value;
+        }
+        $this->twin9Ran = $counters['twin9Runs'] > 0;
+
+        return $counters;
+    }
+
+    /**
+     * The slice's length: WORKER_TICK_BUDGET_SECONDS where a CLI tick sets it,
+     * otherwise the administrator's (Twin9Config).
+     */
+    private function configuredSeconds(): int
+    {
+        $env = (int) (Env::get('WORKER_TICK_BUDGET_SECONDS', '') ?: 0);
+        if ($env > 0) {
+            return $env;
+        }
+        try {
+            return (new Twin9Config(new SettingsRepository($this->pdo)))->secondesParTranche();
+        } catch (\Throwable) {
+            return 40;
+        }
     }
 
     // -------------------------------------------------------------- one job
@@ -385,13 +461,13 @@ final class Tick
 
     /**
      * May a NEW LLM call start? At least one call per tick is guaranteed
-     * (progress even under a mis-tuned budget); beyond that the time and
-     * call budgets rule. On refusal the job goes back in line (checkpoint
-     * kept) and the tick winds down.
+     * (progress even under a mis-tuned budget), unless Twin9 runs had the
+     * slice; beyond that the time and call budgets rule. On refusal the job
+     * goes back in line (checkpoint kept) and the tick winds down.
      */
     private function mayStartCall(int $jobId): bool
     {
-        if ($this->counters['calls'] === 0) {
+        if ($this->counters['calls'] === 0 && !$this->twin9Ran) {
             return true;
         }
         if ($this->counters['calls'] >= $this->maxCalls || $this->exhausted()) {

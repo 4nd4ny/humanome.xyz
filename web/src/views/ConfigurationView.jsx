@@ -71,7 +71,9 @@ function Champ({ chemin, valeur, defaut, peutManquer, onChange, contexte }) {
     commande = options(contexte.referentiels.map((r) => r.id))
   } else if (champ === 'referentiel/version') {
     const ref = contexte.referentiels.find((r) => r.id === contexte.profil.referentiel?.id)
-    commande = options(ref?.versions ?? [], null)
+    // ses propres brouillons, pour ses runs d'essai (T15)
+    const brouillons = (ref?.brouillons ?? []).map((v) => ({ valeur: v, libelle: `${v} (brouillon, run d’essai)` }))
+    commande = options([...(ref?.versions ?? []), ...brouillons], null)
   } else if (g === 'choix') {
     commande = options(
       node.enum.map((v) => ({

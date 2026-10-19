@@ -128,6 +128,10 @@ const BASE = {
       'La soumettre ouvre un vote ; elle n’est entérinée qu’à la majorité des membres épistémiarques.',
       'Les débats de fond avec la société civile se tiennent sur l’espace participatif Decidim.',
       'Une compétence entérinée passe à la version suivante ; la coupe de release fige un référentiel complet.',
+      'Un référentiel d’une autre structure (« Autres référentiels ») s’importe depuis un fichier JSON, au niveau qui ' +
+        'tient lieu de compétence (la capacité plutôt que la facette, par exemple) ; un code qui ne suit pas le motif ' +
+        'de son niveau est refusé. Il se lit (« Voir »), se vote et se publie comme une version ; d’ici là, son brouillon ne sert qu’aux ' +
+        'runs d’essai de son auteur.',
     ],
   },
   promptologue: {

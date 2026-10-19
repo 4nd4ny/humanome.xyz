@@ -170,6 +170,25 @@ describe('ConfigurationView (T13)', { timeout: 15000 }, () => {
     expect(version().value).toBe('')
   })
 
+  it('propose aussi ses brouillons, pour ses runs d’essai (T15)', async () => {
+    const referentiels = [
+      { id: 'respire', versions: ['7.0.0'], brouillons: ['7.1.0'] },
+      { id: 'fictif-neuf', versions: [], brouillons: ['1.0.0'] },
+    ]
+    const { vue } = await ouvrir({ 'GET api/twin9/configuration': jsonResponse(200, configuration({ referentiels })) })
+    const version = () => vue.container.querySelector('#config-referentiel-version')
+    expect(within(version()).getAllByRole('option').map((o) => o.textContent)).toEqual([
+      'la dernière',
+      '7.0.0',
+      '7.1.0 (brouillon, run d’essai)',
+    ])
+    fireEvent.change(vue.container.querySelector('#config-referentiel-id'), { target: { value: 'fictif-neuf' } })
+    expect(within(version()).getAllByRole('option').map((o) => [o.value, o.textContent])).toEqual([
+      ['', 'la dernière'],
+      ['1.0.0', '1.0.0 (brouillon, run d’essai)'],
+    ])
+  })
+
   it('copie un profil sous un autre nom, sans toucher l’original', async () => {
     let envoye = null
     await ouvrir({

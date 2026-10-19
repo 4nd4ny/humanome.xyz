@@ -3,16 +3,17 @@
 // se suit, se reprend et s'ouvre dans la cartographie, délibérations comprises.
 //
 // Moteur factice (public) et Anthropic simulé : l'API locale est lancée avec
-//   TWIN_V9_DIR=api/tests/fixtures/twin9-factice WORKER_PROVIDER=mock ANTHROPIC_API_KEY=sk-ant-simule
+//   TWIN_V9_DIR=$PWD/api/tests/fixtures/twin9-factice WORKER_PROVIDER=mock ANTHROPIC_API_KEY=sk-ant-simule
 // (docs/tests-e2e.md, « T9 »). Le jeu de gabarits du moteur factice est
 // versé dans la base de développement le temps du scénario, puis retiré.
 //
-//   APPRENANTE : compte -> un profil par la voie directe -> #/twin9 : son
-//   portfolio en fichier, son accord, « Lancer l'analyse » -> la page du run :
-//   ses tours retenus, elle l'annule, puis le reprend -> il va au bout ->
-//   « Ouvrir dans la cartographie » : le run s'ouvre dans un nouveau jeu, la
-//   compétence jugée montre son jury -> le compte, effacé de la base de
-//   développement, emporte ses runs.
+//   APPRENANTE : compte, crédité -> un profil par la voie directe -> #/twin9 :
+//   son portfolio en fichier, son accord ; la page dit les journées à
+//   instruire et le coût estimé (T10) ; « Lancer l'analyse » -> la page du
+//   run : ses tours retenus, elle l'annule, puis le reprend -> il va au bout
+//   -> « Ouvrir dans la cartographie » : le run s'ouvre dans un nouveau jeu,
+//   la compétence jugée montre son jury -> elle supprime son compte, qui
+//   emporte ses runs.
 //
 // LOCAL UNIQUEMENT : npx playwright test e2e/twin9-run.e2e.js
 
@@ -93,6 +94,8 @@ test('analyse approfondie : lancée depuis le front, suivie, reprise, ouverte da
 
   await test.step('compte et profil par la voie directe', async () => {
     await registerAccount(page, { displayName: 'Lena (Twin9 e2e)', email })
+    // la clé de l'instance paie sur son crédit (T10)
+    devSql(`INSERT INTO twin9_credits (user_id, balance_microusd) SELECT id, 100000000 FROM users WHERE email = '${email}'`)
     const config = await apiCall(page, 'GET', 'twin9/configuration')
     expect(config.status).toBe(200)
     const profil = { ...config.body.defaut, voie: 'directe' }
@@ -113,6 +116,9 @@ test('analyse approfondie : lancée depuis le front, suivie, reprise, ouverte da
     const lancer = page.getByRole('button', { name: 'Lancer l’analyse' })
     await expect(lancer).toBeDisabled()
     await page.getByRole('checkbox', { name: /J’accepte que mon portfolio/ }).check()
+    const avant = page.getByRole('region', { name: 'Avant de lancer' })
+    await expect(avant).toContainText('2 journées à instruire.')
+    await expect(avant).toContainText(/Coût estimé : \d+,\d\d \$ · durée estimée : /)
     await lancer.click()
     await expect(page).toHaveURL(/#\/twin9\/\d+$/)
     await expect(page.getByRole('status')).toHaveText(/^En cours/)
@@ -147,10 +153,11 @@ test('analyse approfondie : lancée depuis le front, suivie, reprise, ouverte da
     await expect(jury.locator('summary').first()).toHaveText('Lecteur — présence')
   })
 
-  await test.step('nettoyage : le compte emporte ses runs', async () => {
+  await test.step('supprimer son compte : il emporte ses runs', async () => {
     const id = devSql(`SELECT id FROM users WHERE email = '${email}'`)
     expect(Number(devSql(`SELECT COUNT(*) FROM twin9_runs WHERE user_id = ${id}`))).toBe(1)
-    devSql(`DELETE FROM users WHERE id = ${id}`)
+    expect((await apiCall(page, 'DELETE', 'auth/account')).status).toBe(204)
     expect(Number(devSql(`SELECT COUNT(*) FROM twin9_runs WHERE user_id = ${id}`))).toBe(0)
+    expect(Number(devSql(`SELECT COUNT(*) FROM twin9_cartes WHERE user_id = ${id}`))).toBe(0)
   })
 })

@@ -9,6 +9,14 @@
 > exceptée tant qu'on n'y a rien ajouté, et les restaure à l'import. L'espace Export de l'interface garde
 > sa propre archive (un jeu à la fois). Voir `docs/cartographie-ultime/JOURNAL.md`,
 > D-25, et `docs/contrats.md`, décision 9.
+>
+> **Mise à jour T10 (moteur Twin9 en PHP, `Twin_v9`, « Purge et export »).**
+> L'archive passe en **1.2.0** : elle embarque aussi les analyses approfondies
+> Twin9 du compte, qui vivent sur le serveur — chaque run avec la copie de son
+> profil, son portfolio, son journal d'appels et ses sorties, et la mémoire de
+> ses cartes (`analysesTwin9`) —, lues comme les documents de masse, par une
+> lecture `GET api/twin9/mes-analyses`. Elles ne se réimportent pas : un run
+> se relance (RG9). Voir `docs/contrats.md`, décision 13 et §8.5.
 
 | Champ | Valeur |
 |---|---|
@@ -65,21 +73,23 @@ archive ») dans la section « Mes données » du tableau de bord `#/espace`.
    cartographies locaux, le référentiel publié (fichier statique, repli sur la
    copie embarquée), un paquet de prompts (`GET api/prompt-packages` puis
    `GET api/prompt-packages/{id}/{version}` du premier de la liste), ses
-   documents produits en cohorte (`GET api/mes-documents-masse`) et les jeux
+   documents produits en cohorte (`GET api/mes-documents-masse`), ses
+   analyses approfondies Twin9 (`GET api/twin9/mes-analyses`, RG9) et les jeux
    de données de l'interface de cartographie (stockage local
    `humanome-carto-v4`), démonstration exceptée tant qu'elle est intacte
    (RG8).
-4. Il assemble l'archive : `schemaVersion` `1.1.0`, `kind`, `exportedAt`,
+4. Il assemble l'archive : `schemaVersion` `1.2.0`, `kind`, `exportedAt`,
    `account`, `portfolios` (texte intégral + segmentation des journées
    datées), `referentiels`, `promptPackages`, `cartographies` (document +
    paquet + référentiel + `runMeta`), `jeuxCartographie` (un master v4
-   complet par jeu, portfolio et carnet compris), `audit` vide ; puis la
+   complet par jeu, portfolio et carnet compris), `analysesTwin9` quand le
+   compte a des runs, `audit` vide ; puis la
    valide avec le moteur (`validateDocument('archive-export')`, qui valide
    chaque jeu contre `competency-map-master`).
 5. Le fichier `humanome-export-AAAA-MM-JJ.json` (JSON indenté) est
    téléchargé ; message « Archive téléchargée (…) : n portfolio(s),
-   m cartographie(s). » — complété de « , k jeu(x) de l'interface de
-   cartographie » quand il y en a.
+   m cartographie(s). » — complété de « , a analyse(s) approfondie(s) » et
+   de « , k jeu(x) de l'interface de cartographie » quand il y en a.
 6. Sur un autre navigateur (stockage vide, avec ou sans compte), il clique
    « Importer une archive » et choisit le fichier.
 7. Le navigateur lit le fichier, vérifie qu'il s'agit de JSON, que
@@ -177,6 +187,13 @@ archive ») dans la section « Mes données » du tableau de bord `#/espace`.
   l'interface, jamais sur le serveur ; un jeu déjà présent est complété, et
   ne compte comme restauré que s'il gagne des journées, des analyses ou un
   état de l'apprenant (A3 : réimporter ne restaure rien).
+- **RG9** — Analyses approfondies Twin9 (1.2.0, T10) : tous les runs du
+  compte et la mémoire de leurs cartes, tels que les lit
+  `GET api/twin9/mes-analyses` — copie du profil, portfolio, journal d'appels
+  (réponses des modèles, jamais un prompt ni une clé), sorties, compteurs —,
+  filtrés contre la récitation des gabarits ; absents pour un visiteur ou un
+  compte sans run ; une lecture en échec n'empêche pas l'archive de partir,
+  le message le dit. Jamais réimportés : un run se relance.
 
 ## Données et RGPD
 
@@ -186,6 +203,7 @@ archive ») dans la section « Mes données » du tableau de bord `#/espace`.
 | Identité | `roles`, `email`, `displayName` lus via la session ; aucun secret |
 | Portfolios, cartographies | Lus / restaurés dans IndexedDB |
 | Documents de masse | Lus via `GET api/mes-documents-masse` (droit d'accès et de portabilité) |
+| Analyses Twin9 | Lues via `GET api/twin9/mes-analyses` (droit d'accès et de portabilité ; ADR-011 §5) |
 
 ## Code sollicité
 
@@ -198,7 +216,7 @@ archive ») dans la section « Mes données » du tableau de bord `#/espace`.
 | Front | `web/src/carto/core/store.js`, `archive.js` (`buildArchive`), `import.js` (`importFiles`) | Jeux de l'interface de cartographie : lecture, archive master v4, restauration |
 | Front | `web/src/api/client.js` — `fetchMe`, `apiFetch` ; `web/src/data/referentiel.js` ; `web/src/data/load.js` — `getReferentiel`, `frenchDate` | Lectures du compte, des paquets, de la masse ; référentiel publié ou embarqué ; dates des titres dérivés |
 | Moteur | `engine/src/validation.js` — `validateDocument('archive-export')` ; `schemas/archive-export.schema.json` | Contrat pivot (ADR-006) |
-| API | `GET /api/auth/me` (`api/src/routes/auth.php`), `GET /api/prompt-packages`, `GET /api/prompt-packages/{id}/{version}` (`packages.php`, lecture publique), `GET /api/mes-documents-masse` (`etablissement.php`, `RequireRole` `apprenant`) | Lectures seules |
+| API | `GET /api/auth/me` (`api/src/routes/auth.php`), `GET /api/prompt-packages`, `GET /api/prompt-packages/{id}/{version}` (`packages.php`, lecture publique), `GET /api/mes-documents-masse` (`etablissement.php`, `RequireRole` `apprenant`), `GET /api/twin9/mes-analyses` (`twin9-runs.php`, session) | Lectures seules |
 | Domaine | `api/src/Packages/PromptPackageRepository.php` — `listPublished`, `findPublished` | Paquet embarqué, filtrage des paquets privés |
 
 ## Jeux de tests

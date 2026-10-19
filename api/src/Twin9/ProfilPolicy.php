@@ -12,8 +12,9 @@ use stdClass;
 /**
  * What a profile may choose on this instance (T13, docs/autorisations.md,
  * « Configuration Twin9 »): a published referential, a template set the
- * instance has, the personal key only where the administrator opened it.
- * The schema says what a profile is; this says what its owner may pick.
+ * instance has, the personal key only where the administrator opened it,
+ * models the instance prices (T10). The schema says what a profile is; this
+ * says what its owner may pick.
  */
 final class ProfilPolicy
 {
@@ -40,6 +41,14 @@ final class ProfilPolicy
         }
         if ($profil->referentiel->version !== null && !\in_array($profil->referentiel->version, $versions, true)) {
             throw new Twin9Exception('Profil refusé — /referentiel/version : version non publiée', 422);
+        }
+        // every call of a run is priced, its worst case held before it leaves (T10)
+        $prix = $this->config->modeles();
+        foreach ((new CallSettings($profil))->combinaisons() as $reglage) {
+            if (!isset($prix[$reglage['modele']])) {
+                throw new Twin9Exception('Profil refusé — ' . $reglage['modele'] . ' : aucun prix pour ce modèle sur '
+                    . 'cette instance', 422);
+            }
         }
     }
 

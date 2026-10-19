@@ -15,7 +15,9 @@ use Humanome\Packages\SettingsRepository;
  *   marge     float, margin multiplier applied to Anthropic list prices (1..5)
  *   packs     list of {montant_usd (1..100), libelle} PayPal top-up offers
  *   modeles   map model_id => {prix_usd_mtok: [in, out] (>0), etages: subset
- *             of {taggers, rapide, tribunal}}
+ *             of {taggers, rapide, tribunal}, palier_long?: {au_dela_de:
+ *             prompt tokens (>0), prix_usd_mtok: [in, out] (>0)}} — the long
+ *             prompt tier some models bill above a prompt size (Haiku 5.5, T10)
  *   enabled   bool — false until the templates have been imported
  *   appels_par_minute  int, per-user rate limit of POST /api/twin9/appel
  *             (1..600, default 30 — T3b)
@@ -99,6 +101,18 @@ final class Twin9Config
                 'claude-opus-4-8' => [
                     'prix_usd_mtok' => [5, 25],
                     'etages' => ['tribunal'],
+                ],
+                // The v9.8 profile's models (T10), at Anthropic's list prices read on 2026-10-18
+                // (platform.claude.com/docs/en/about-claude/pricing): Haiku 5.5 bills a prompt
+                // over 100,000 tokens at its long prompt tier.
+                'claude-haiku-5-5' => [
+                    'prix_usd_mtok' => [0.1, 0.5],
+                    'palier_long' => ['au_dela_de' => 100000, 'prix_usd_mtok' => [0.5, 2.5]],
+                    'etages' => ['taggers', 'rapide'],
+                ],
+                'claude-sonnet-5-5' => [
+                    'prix_usd_mtok' => [2, 10],
+                    'etages' => ['taggers', 'rapide', 'tribunal'],
                 ],
             ],
             'enabled' => false,
@@ -286,18 +300,24 @@ final class Twin9Config
      * above the exact figure — unlike prixMicrousdParToken(), which rounds
      * per token and would overbill fractional prices by up to 33 %).
      * USD/Mtok × tokens = micro-USD exactly (1e6/1e6). Null: unknown model.
-     * A call made in a batch costs half (the Message Batches API's price, T8).
+     * A call made in a batch costs half (the Message Batches API's price, T8);
+     * a prompt over a model's long prompt tier is billed at that tier's price
+     * (T10); without the margin, the cost is Anthropic's (a run on its owner's
+     * key, T10).
      */
     public function coutMicrousd(string $modelId, int $tokensIn, int $tokensOut, string $protocole = 'twin9',
-                                 bool $parLots = false): ?int
+                                 bool $parLots = false, bool $avecMarge = true): ?int
     {
         $config = $this->read();
         $modele = $config['modeles'][$modelId] ?? null;
         if (!\is_array($modele)) {
             return null;
         }
-        [$in, $out] = $modele['prix_usd_mtok'];
-        $marge = $protocole === 'twin6' ? (float) $config['marge_twin6'] : (float) $config['marge'];
+        $palier = $modele['palier_long'] ?? null;
+        [$in, $out] = \is_array($palier) && $tokensIn > (int) $palier['au_dela_de']
+            ? $palier['prix_usd_mtok'] : $modele['prix_usd_mtok'];
+        $marge = !$avecMarge ? 1.0
+            : ($protocole === 'twin6' ? (float) $config['marge_twin6'] : (float) $config['marge']);
         $part = $parLots ? 0.5 : 1.0;
 
         return (int) ceil($tokensIn * (float) $in * $part * $marge)
@@ -431,6 +451,18 @@ final class Twin9Config
             if (!\is_array($etages) || $etages === [] || !array_is_list($etages)
                 || array_diff($etages, self::ETAGES) !== []) {
                 throw new Twin9Exception('Étages invalides (taggers, rapide, tribunal)', 422);
+            }
+            if (\array_key_exists('palier_long', $modele)) {
+                $palier = $modele['palier_long'];
+                $seuil = \is_array($palier) ? ($palier['au_dela_de'] ?? null) : null;
+                $prixLong = \is_array($palier) ? ($palier['prix_usd_mtok'] ?? null) : null;
+                if (!\is_int($seuil) || $seuil <= 0 || !\is_array($prixLong) || \count($prixLong) !== 2
+                    || !array_is_list($prixLong)
+                    || array_filter($prixLong, static fn ($p): bool => (!\is_int($p) && !\is_float($p)) || (float) $p <= 0)
+                        !== []) {
+                    throw new Twin9Exception('Palier des longs prompts invalide : {au_dela_de, prix_usd_mtok} attendu',
+                        422);
+                }
             }
         }
 

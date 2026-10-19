@@ -8,6 +8,7 @@ use Humanome\Keys\KeyVault;
 use Humanome\MigrationRunner;
 use Humanome\Packages\SettingsRepository;
 use Humanome\Tests\TestDb;
+use Humanome\Twin9\CreditService;
 use Humanome\Twin9\DirectCalls;
 use Humanome\Twin9\EngineLoader;
 use Humanome\Twin9\ProfilRepository;
@@ -426,7 +427,10 @@ final class TrancheTest extends TestCase
     {
         $this->pdo->prepare('INSERT INTO users (email, password_hash, display_name) VALUES (?, ?, ?)')
             ->execute([$email, 'x', $email]);
+        $id = (int) $this->pdo->lastInsertId();
+        // the instance's key pays from its owner's credits (T10)
+        (new CreditService($this->pdo))->adjust($id, 1_000_000_000, 'crédit des tests');
 
-        return (int) $this->pdo->lastInsertId();
+        return $id;
     }
 }

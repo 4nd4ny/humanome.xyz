@@ -83,7 +83,8 @@ final class RgpdAudit
     /**
      * Export coverage of the ONE-CLICK client archive (web/src/lib/archive.js),
      * per personal table. 'local' = the data originates from and is exported by
-     * the browser stores; 'via' = recoverable through another endpoint but NOT
+     * the browser stores; 'archive' = server-side, in the archive through an
+     * endpoint it reads; 'via' = recoverable through another endpoint but NOT
      * in the archive; 'none' = server-only, not recoverable by the person; '—'
      * = not personal content of the account holder. See docs/rgpd-verification.md.
      */
@@ -111,16 +112,15 @@ final class RgpdAudit
         'carto_publication_requests' => '—', // pending request code (migration 023), no content
         'twin9_profils' => 'via',           // Twin9 run settings (migration 024), no content; GET /api/twin9/profils/{id} (T13)
         // Twin9 runs (migration 025): portfolio, settings, journal, outputs,
-        // map memory; in the account export with T10 (ADR-011 §5). Since T9 a
-        // run's progress, results and the day maps of its memory are served
-        // to their owner (GET /api/twin9/runs, /api/twin9/runs/{id}/resultats);
-        // its copy of the portfolio and its journal are not.
-        'twin9_cartes' => 'via',
-        'twin9_memoire' => 'via',
-        'twin9_runs' => 'via',
-        'twin9_appels' => 'none',
-        'twin9_resultats' => 'via',
+        // map memory; in the archive since T10 (ADR-011 §5), `analysesTwin9`,
+        // read from GET /api/twin9/mes-analyses.
+        'twin9_cartes' => 'archive',
+        'twin9_memoire' => 'archive',
+        'twin9_runs' => 'archive',
+        'twin9_appels' => 'archive',
+        'twin9_resultats' => 'archive',
         'twin9_lots' => '—',                // a run's batches (migration 026): ids and counts, no content
+        'twin9_lots_a_effacer' => '—',      // batches of erased accounts (migration 028): Anthropic's ids, no owner
     ];
 
     public static function schema(PDO $pdo): string

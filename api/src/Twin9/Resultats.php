@@ -70,13 +70,10 @@ final class Resultats
         ksort($sorties, SORT_STRING);
         sort($memoire, SORT_STRING);
 
-        $index = LeakFilter::indexer(self::confidentiel($run['gabarits']));
+        $index = self::index($run['gabarits']);
         $fuites = 0;
         foreach ($sorties as $chemin => $texte) {
-            $sorties[$chemin] = str_ends_with($chemin, '.json')
-                ? json_encode(self::expurger($index, json_decode($texte, false, 512, JSON_THROW_ON_ERROR), $fuites),
-                    self::JSON)
-                : self::expurger($index, $texte, $fuites);
+            $sorties[$chemin] = self::filtrer($index, $texte, str_ends_with($chemin, '.json'), $fuites);
         }
         if ($fuites > 0) {
             Audit::record($this->pdo, $lecteurId, 'twin9_fuite_expurgee', ['run' => $runId, 'fuites' => $fuites]);
@@ -86,18 +83,35 @@ final class Resultats
     }
 
     /**
-     * The template set as confidential material: each template with its
-     * variables empty, the fiches (tagger/P*) among them.
+     * The leak filter's index of a template set as confidential material:
+     * each template with its variables empty, the fiches (tagger/P*) among
+     * them.
      *
      * @param array<string, string> $gabarits
+     * @return array<mixed> LeakFilter::indexer()'s
      */
-    private static function confidentiel(array $gabarits): string
+    public static function index(array $gabarits): array
     {
-        return implode("\n\n", array_map(
+        return LeakFilter::indexer(implode("\n\n", array_map(
             static fn (string $contenu): string => (string) preg_replace(ProtocoleRepository::VARIABLE_PATTERN, '',
                 $contenu),
             $gabarits,
-        ));
+        )));
+    }
+
+    /**
+     * A text the engine or a model wrote, filtered: every string of a JSON
+     * document, or the whole text.
+     *
+     * @param array<mixed> $index index()'s
+     * @param int $fuites the redactions, counted
+     */
+    public static function filtrer(array $index, string $texte, bool $json, int &$fuites): string
+    {
+        return $json
+            ? json_encode(self::expurger($index, json_decode($texte, false, 512, JSON_THROW_ON_ERROR), $fuites),
+                self::JSON)
+            : self::expurger($index, $texte, $fuites);
     }
 
     /** Every string of a decoded JSON document, filtered; the rest as it is. */

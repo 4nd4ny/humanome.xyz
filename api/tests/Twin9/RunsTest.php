@@ -8,6 +8,7 @@ use Humanome\Llm\LlmRuntime;
 use Humanome\Referentiel\ReferentielRepository;
 use Humanome\Tests\CartographeTestCase;
 use Humanome\Tests\TestDb;
+use Humanome\Twin9\CreditService;
 use Humanome\Twin9\MoteurReglages;
 use Humanome\Twin9\ProfilRepository;
 use Humanome\Twin9\ProtocoleRepository;
@@ -66,13 +67,23 @@ final class RunsTest extends CartographeTestCase
         parent::tearDown();
     }
 
+    /** Every account of these tests has credit: the instance's key pays from it (T10). */
+    protected function registerAs(string $email, string $name, array $roles = ['apprenant']): array
+    {
+        $user = parent::registerAs($email, $name, $roles);
+        (new CreditService(self::$pdo))->adjust($user['id'], 1_000_000_000, 'crédit des tests');
+
+        return $user;
+    }
+
     public function testAVisitorLaunchesAndReadsNothing(): void
     {
         $this->cookieSid = null;
-        foreach ([['GET', '/api/twin9/runs'], ['POST', '/api/twin9/runs'], ['POST', '/api/twin9/runs/avancer'],
-                  ['GET', '/api/twin9/runs/1'], ['POST', '/api/twin9/runs/1/annuler'],
-                  ['POST', '/api/twin9/runs/1/reprendre'], ['PUT', '/api/twin9/runs/1/visibilite'],
-                  ['GET', '/api/twin9/runs/1/resultats'], ['GET', '/api/twin9/admin/runs']] as [$method, $path]) {
+        foreach ([['GET', '/api/twin9/runs'], ['POST', '/api/twin9/runs'], ['POST', '/api/twin9/runs/apercu'],
+                  ['POST', '/api/twin9/runs/avancer'], ['GET', '/api/twin9/runs/1'],
+                  ['POST', '/api/twin9/runs/1/annuler'], ['POST', '/api/twin9/runs/1/reprendre'],
+                  ['PUT', '/api/twin9/runs/1/visibilite'], ['GET', '/api/twin9/runs/1/resultats'],
+                  ['GET', '/api/twin9/mes-analyses'], ['GET', '/api/twin9/admin/runs']] as [$method, $path]) {
             self::assertContains($this->request($method, $path, $method === 'GET' ? null : [])->getStatusCode(),
                 [401, 403], "$method $path");
         }
@@ -99,7 +110,7 @@ final class RunsTest extends CartographeTestCase
         self::assertSame('privee', $run['visibilite']);
         self::assertSame('journal-factice', $run['journal']);
         self::assertSame('En attente de son premier tour', $run['retard']);
-        self::assertSame(['id' => $profil, 'nom' => 'Direct'], $run['attestation']['profil']);
+        self::assertSame(['id' => $profil, 'nom' => 'Direct', 'mode' => 'complet'], $run['attestation']['profil']);
         self::assertSame(['respire', '7.0.0'], [$run['attestation']['referentiel']['id'],
                                                 $run['attestation']['referentiel']['version']]);
         $versions = $run['attestation']['gabarits']['versions'];

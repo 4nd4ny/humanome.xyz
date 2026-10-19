@@ -51,7 +51,9 @@ export default function ExportSection({
         text:
           `Archive téléchargée (${filename}) : ${counts.portfolios} portfolio(s), ` +
           `${counts.cartographies} cartographie(s)` +
+          (counts.analysesTwin9 ? `, ${counts.analysesTwin9} analyse(s) approfondie(s)` : '') +
           (counts.jeux ? `, ${counts.jeux} jeu(x) de l’interface de cartographie.` : '.') +
+          (counts.twin9Error ? ` Vos analyses approfondies n’ont pas pu être lues (${counts.twin9Error}).` : '') +
           (counts.jeuxError
             ? ` Vos jeux de l’interface de cartographie n’ont pas pu être lus (${counts.jeuxError}) : ` +
               'exportez-les depuis l’espace Export de la cartographie.'

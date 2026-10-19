@@ -77,7 +77,7 @@ describe('UC-APP-06 — export : assemblage de l’archive (étapes 2-4)', () =>
     const { archive, filename, counts } = await exportArchive({ cartoStore, portfolioStore, ...deps })
 
     expect(filename).toBe('humanome-export-2026-07-12.json')
-    expect(counts).toEqual({ portfolios: 1, cartographies: 0, jeux: 0, jeuxError: null, jeuxExclus: [] })
+    expect(counts).toEqual({ portfolios: 1, cartographies: 0, jeux: 0, jeuxError: null, jeuxExclus: [], analysesTwin9: 0, twin9Error: null })
     expect(archive.portfolios[0]).toMatchObject({
       titre: 'Portfolio sans titre',
       source: 'colle',

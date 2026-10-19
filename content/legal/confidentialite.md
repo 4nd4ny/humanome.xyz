@@ -70,7 +70,7 @@ Conformément au RGPD, vous disposez des droits d'**accès**, de **rectification
 d'**effacement**, de **limitation**, d'**opposition** et de **portabilité**.
 Concrètement, sur humanome.xyz :
 
-- **Accès et portabilité** : depuis votre [espace](#/espace) ou la page [Mon compte](#/compte), vous **exportez** en un clic une archive locale contenant votre portfolio, vos cartographies et le référentiel associé, dans un format JSON réutilisable.
+- **Accès et portabilité** : depuis votre [espace](#/espace) ou la page [Mon compte](#/compte), vous **exportez** en un clic une archive locale contenant votre portfolio, vos cartographies et le référentiel associé, et vos analyses approfondies Twin9 gardées sur le serveur, dans un format JSON réutilisable.
 - **Effacement** : depuis [Mon compte](#/compte), vous **supprimez votre compte** en un clic. Toutes vos données personnelles sont réellement effacées. Seule subsiste une trace d'audit **anonyme** et datée (le fait qu'une suppression a eu lieu), sans aucune donnée permettant de vous identifier.
 - **Rectification** : votre nom affiché et le contenu de vos portfolios/cartographies sont modifiables directement depuis votre espace.
 
@@ -100,15 +100,21 @@ explicite**, daté, pour que votre **portfolio** et **l'état de l'analyse** —
 réglages, le journal de ses appels au modèle, ses résultats et la mémoire de
 votre carte, qui évite de refaire une journée inchangée — **restent sur le
 serveur jusqu'à ce que vous les effaciez** ; la suppression de votre compte les
-efface. Sans cet accord, l'analyse ne part pas. Nos journaux techniques n'en
-gardent que des compteurs (nombre d'appels, jetons, coût, durée — jamais de
+efface. Sans cet accord, l'analyse ne part pas. Avant de la lancer, la page vous
+dit les journées qu'elle instruira, son coût et sa durée estimés, sans rien
+garder. L'export de vos données contient vos analyses : réglages, portfolio,
+journal des appels, résultats et mémoire de vos cartes. Nos journaux techniques
+n'en gardent que des compteurs (nombre d'appels, jetons, coût, durée — jamais de
 contenu).
 
 Le texte de votre portfolio est transmis au fournisseur du modèle,
 **Anthropic** (modèles Claude), avec la clé de la plateforme ou votre propre
 clé. Par la **voie par lots**, Anthropic garde chaque lot de requêtes jusqu'à ce
 que notre serveur le supprime, dès ses réponses relevées ; un lot qui n'aurait
-pas été supprimé n'y reste jamais plus de **29 jours**.
+pas été supprimé n'y reste jamais plus de **29 jours**. La suppression de votre
+compte annule et supprime aussi vos lots encore chez Anthropic ; un lot envoyé
+avec votre propre clé dont l'annulation n'est pas finie à ce moment-là, votre clé
+partant avec votre compte, est effacé par Anthropic dans ce même délai.
 
 Les résultats d'une analyse ne sont lus que par vous, et par le cartographe
 auquel vous êtes lié si vous le décidez (« Mon cartographe peut lire les

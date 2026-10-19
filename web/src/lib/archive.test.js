@@ -28,12 +28,13 @@ function makeStores() {
   }
 }
 
-/** Dépendances réseau neutralisées : archive anonyme, package par défaut absent. */
+/** Dépendances réseau neutralisées : archive anonyme, package par défaut absent, aucune analyse Twin9. */
 function offlineDeps() {
   return {
     getAccount: async () => null,
     getReferentiel: async () => ({ doc: referentielFixture, origin: 'bundled' }),
     getPromptPackages: async () => [],
+    getTwin9: async () => ({ data: null, error: null }),
     now: () => new Date('2026-07-12T10:00:00Z'),
   }
 }
@@ -74,7 +75,7 @@ describe('exportArchive', () => {
 
     expect(validateDocument('archive-export', archive).valid).toBe(true)
     expect(filename).toBe('humanome-export-2026-07-12.json')
-    expect(counts).toEqual({ portfolios: 1, cartographies: 1, jeux: 0, jeuxError: null, jeuxExclus: [] })
+    expect(counts).toEqual({ portfolios: 1, cartographies: 1, jeux: 0, jeuxError: null, jeuxExclus: [], analysesTwin9: 0, twin9Error: null })
     expect(archive.account).toBeNull()
     expect(archive.referentiels).toEqual([referentielFixture])
     expect(archive.promptPackages).toEqual([])
@@ -361,8 +362,8 @@ describe('archive 1.1.0 : les jeux de l’interface de cartographie', () => {
     const { cartoStore, portfolioStore } = makeStores()
     const interfaceStore = await interfaceWithLouAndDemo()
     const { archive, counts } = await exportArchive({ cartoStore, portfolioStore, interfaceStore, ...offlineDeps(), download: () => {} })
-    expect(archive.schemaVersion).toBe('1.1.0')
-    expect(counts).toEqual({ portfolios: 0, cartographies: 0, jeux: 1, jeuxError: null, jeuxExclus: [] })
+    expect(archive.schemaVersion).toBe('1.2.0')
+    expect(counts).toEqual({ portfolios: 0, cartographies: 0, jeux: 1, jeuxError: null, jeuxExclus: [], analysesTwin9: 0, twin9Error: null })
     expect(archive.jeuxCartographie.map((j) => j.datasetId)).toEqual(['ds-lou'])
     const [jeu] = archive.jeuxCartographie
     expect(jeu.includesPortfolio).toBe(true)
@@ -479,5 +480,77 @@ describe('archive 1.1.0 : les jeux de l’interface de cartographie', () => {
     const withJeu = { ...archive, jeuxCartographie: [masterFixture] }
     const report = await importArchive(JSON.stringify(withJeu), { ...makeStores(), interfaceStore: failing })
     expect(report).toEqual({ portfolios: 1, cartographies: 0, jeux: 0, jeuxError: 'base verrouillée' })
+  })
+})
+
+// T10 (Twin_v9's docs/plan-twin9-php.md, « Purge et export ») : depuis la
+// 1.2.0, l'archive porte les analyses approfondies Twin9 du compte, qui
+// vivent sur le serveur — runs, journaux, sorties, mémoire des cartes —,
+// telles que GET /api/twin9/mes-analyses les rend.
+describe('archive 1.2.0 : les analyses approfondies Twin9', () => {
+  const analyses = () => ({
+    runs: [
+      {
+        id: 7,
+        journal: 'mon-journal',
+        statut: 'termine',
+        attente: null,
+        profil: { voie: 'directe' },
+        portfolio: { nom: 'mon-journal.md', texte: '## 2026-01-05\nPremier jour.\n' },
+        compteurs: { appels: 5 },
+        appels: [],
+        sorties: { 'carto_evolutive.json': '{}' },
+      },
+    ],
+    cartes: [{ journal: 'mon-journal', referentiel: 'respire', gabarits: 'v9.8', memoire: { 'journees/2026-01-05': '{}' } }],
+  })
+
+  function jsonResponse(status, data) {
+    return {
+      ok: status >= 200 && status < 300,
+      status,
+      headers: { get: (name) => (name.toLowerCase() === 'content-type' ? 'application/json' : null) },
+      json: async () => data,
+    }
+  }
+
+  it('les embarque, archive conforme, et ne les réimporte pas', async () => {
+    const { archive, counts } = await exportArchive({
+      ...makeStores(),
+      ...offlineDeps(),
+      getTwin9: async () => ({ data: analyses(), error: null }),
+      download: () => {},
+    })
+    expect(archive.analysesTwin9).toEqual(analyses())
+    expect(counts).toMatchObject({ analysesTwin9: 1, twin9Error: null })
+    expect(validateDocument('archive-export', archive)).toEqual({ valid: true, errors: [] })
+
+    const stores = makeStores()
+    const restored = await importArchive(JSON.stringify(archive), stores)
+    expect(restored).toMatchObject({ portfolios: 0, cartographies: 0 })
+  })
+
+  it('les lit sur GET api/twin9/mes-analyses ; rien pour un visiteur ni sans la route ; une erreur du serveur dite, l’archive part quand même', async () => {
+    const route = (twin9) =>
+      vi.fn(async (url) => (url === 'api/twin9/mes-analyses' ? twin9 : jsonResponse(200, { documents: [] })))
+    const { getTwin9: _, ...reseau } = offlineDeps()
+
+    let out = await exportArchive({ ...makeStores(), ...reseau, fetchFn: route(jsonResponse(200, analyses())), download: () => {} })
+    expect(out.archive.analysesTwin9.runs.map((r) => r.id)).toEqual([7])
+
+    out = await exportArchive({ ...makeStores(), ...reseau, fetchFn: route(jsonResponse(401, { error: 'Authentification requise' })), download: () => {} })
+    expect(out.archive.analysesTwin9).toBeUndefined()
+    expect(out.counts).toMatchObject({ analysesTwin9: 0, twin9Error: null })
+
+    out = await exportArchive({ ...makeStores(), ...reseau, fetchFn: route(jsonResponse(200, { runs: [], cartes: [] })), download: () => {} })
+    expect(out.archive.analysesTwin9).toBeUndefined()
+
+    out = await exportArchive({ ...makeStores(), ...reseau, fetchFn: route(jsonResponse(404, { error: 'absent' })), download: () => {} })
+    expect(out.counts).toMatchObject({ analysesTwin9: 0, twin9Error: null })
+
+    out = await exportArchive({ ...makeStores(), ...reseau, fetchFn: route(jsonResponse(500, { error: 'Erreur interne' })), download: () => {} })
+    expect(out.archive.analysesTwin9).toBeUndefined()
+    expect(out.counts.twin9Error).toBe('Erreur interne')
+    expect(validateDocument('archive-export', out.archive).valid).toBe(true)
   })
 })

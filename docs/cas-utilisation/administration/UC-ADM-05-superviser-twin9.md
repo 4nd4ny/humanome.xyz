@@ -173,7 +173,7 @@ L'administrateur ouvre « Administrer » → « Supervision Twin9 » (`#/admin/t
 | UC-ADM-05-U03 | `Twin9Section` (diff) | Rien modifié → aucun PUT ; contribution seule | idem |
 | UC-ADM-05-U04 | `Twin9Section` (diff) | Pack supprimé, étage ajouté en ordre canonique | idem |
 | UC-ADM-05-U05 | `Twin9Section` (validation) | Contributions Twin9 / Twin6, montant de pack, identifiant, prix invalides → aucun PUT (E3) | idem |
-| UC-ADM-05-U06 | `Twin9Section` (diff) | **Anomalie 1 figée** : config relue de MySQL → packs et modèles renvoyés | idem |
+| UC-ADM-05-U06 | `Twin9Section` (diff) | **Anomalie 1 figée** : config relue de MySQL → packs renvoyés (les modèles ne le sont plus depuis T10) | idem |
 | UC-ADM-05-U07 | `Twin9Section` (comptes), `formatUsd` | Montants en USD (4 décimales sous le centime) ; aucun compte → message | idem |
 | UC-ADM-05-U13 | `AdminView` | Admin → section Twin9 ; non-admin → espace réservé sans appel ; copie statique → message (RG1, E1, E4) | idem |
 | UC-ADM-05-U08 | `Twin9Config::update` | Fusion partielle, persistance de la configuration complète (défauts figés), clé inconnue refusée sans écriture (RG7) | `api/tests/UseCases/Unit/UcAdm05SuperviserTwin9Test.php` |
@@ -224,13 +224,15 @@ cd web && npx vitest run test/usecases/unit/uc-adm-05 test/usecases/functional/u
    stockée dans une colonne JSON MySQL, qui réordonne les clés des objets
    (`{libelle, montant_usd}`, `{etages, prix_usd_mtok}`). `Twin9Section` compare
    ses packs et modèles au format `JSON.stringify` : dès que la configuration a
-   été enregistrée une fois, **packs et modèles repartent à chaque
-   enregistrement** même inchangés, « Aucune modification à enregistrer » ne
-   s'affiche plus, et un enregistrement peut écraser la modification
-   concurrente d'un autre administrateur sur ces clés. Comme toute mise à jour
-   persiste la configuration complète (RG7), l'import (qui active Twin9) suffit
-   à déclencher l'anomalie : en production, elle est permanente. Figé par
-   UC-ADM-05-U06 (cause : UC-ADM-05-F16).
+   été enregistrée une fois, **les packs repartent à chaque enregistrement**
+   même inchangés, « Aucune modification à enregistrer » ne s'affiche plus, et
+   un enregistrement peut écraser la modification concurrente d'un autre
+   administrateur sur ces clés. Comme toute mise à jour persiste la
+   configuration complète (RG7), l'import (qui active Twin9) suffit à
+   déclencher l'anomalie : en production, elle est permanente. Les modèles
+   repartaient de même jusqu'à T10 : depuis, un modèle garde ce que le
+   formulaire n'édite pas (le palier des longs prompts), et avec lui l'ordre
+   de ses clés relues. Figé par UC-ADM-05-U06 (cause : UC-ADM-05-F16).
 2. **Borne des packs annoncée à 100 USD.** Le serveur accepte jusqu'à 500 USD
    (et propose 200 et 500 par défaut), mais son message de refus dit « montant
    entre 1 et 100 USD » et le champ du formulaire affiche « 1 – 100 »

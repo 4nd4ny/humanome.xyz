@@ -29,11 +29,12 @@ schémas ; les deux runtimes sont testés (`engine/src/validation.test.js`,
 | `cartographie-merge.schema.json` | `cartographie-merge` | Agrégat chronologique de TOUTES les feuilles (merge évolutif v3) : séries temporelles par pôle et par compétence, archétypes, profil ipsatif, narratifs HTML. Source du sunburst. Document réel : `web/public/data/demo/merge.json`. |
 | `prompt-package.schema.json` | `prompt-package` | Paquet promptologue : textes de prompts + variables + code JS d'orchestration (sandbox Web Worker) + métadonnées (version, auteur, modèle cible, référentiel compatible, changelog). |
 | `competency-map-master.schema.json` | `competency-map-master` | Archive de l'interface de cartographie (`#/cartographie`, master v4, `schemaVersion` 4.x) : référentiel embarqué, journées et variantes (verdicts résumés), détail par journée (extraits, ancres, jury, portfolio du jour), délibérations de run, état de l'apprenant (cases, étiquettes, choix de variante, ensembles, réponses au jury, repères, notes, carnet du dialogue, préférences). Produite par l'espace Export de l'interface et embarquée par l'archive de compte. Fixture : `schemas/fixtures/carto/competency-map-master-exemple.json`, sortie EXACTE de l'interface (`web/scripts/carto-master-fixture.mjs`). |
-| `archive-export.schema.json` | `archive-export` | Format pivot de portabilité (ADR-006) : archive autoporteuse embarquant portfolios en texte intégral, référentiels et prompt-packages COMPLETS, cartographies produites, jeux de l'interface de cartographie (`jeuxCartographie`, depuis la 1.1.0) et journal d'audit. Sert l'export/suppression RGPD, l'import de compte et le seed d'instance. Référence les 5 autres schémas par `$ref` sur leur `$id` absolu. |
+| `archive-export.schema.json` | `archive-export` | Format pivot de portabilité (ADR-006) : archive autoporteuse embarquant portfolios en texte intégral, référentiels et prompt-packages COMPLETS, cartographies produites, jeux de l'interface de cartographie (`jeuxCartographie`, depuis la 1.1.0), analyses approfondies Twin9 du compte (`analysesTwin9`, depuis la 1.2.0, §8.5) et journal d'audit. Sert l'export/suppression RGPD, l'import de compte et le seed d'instance. Référence les 5 autres schémas par `$ref` sur leur `$id` absolu. |
 | `twin9-profil.schema.json` | `twin9-profil` | Profil d'un run Twin9, décrit de bout en bout (`docs/plan-twin9-php.md` de `Twin_v9`, lot 4a, T12) : paramètres d'algorithme de la v9.8, troncatures comprises, collège des lecteurs, modèle et réglages de chaque étape, voie, plafonds, clé, gabarits, référentiel. Rangé dans `twin9_profils` (migration 024) ; document de référence : le profil v9.8, `api/config/twin9-profil-v98.json`. Validé côté PHP seulement (`ProfilRepository`) ; voir §7. |
 
 Chaque document porte `schemaVersion` (semver du schéma d'enveloppe : « 1.0.0 »
-partout, sauf l'archive de compte, « 1.1.0 » depuis le 2026-10-14, et le master
+partout, sauf l'archive de compte, « 1.1.0 » depuis le 2026-10-14 et « 1.2.0 »
+depuis T10, et le master
 de l'interface de cartographie, « 4.x ») et `kind` (discriminant, `const` dans
 chaque schéma) — c'est la clé de dispatch de `validateDocument(kind, data)` des
 deux runtimes.
@@ -312,6 +313,17 @@ par `scripts/extract-referentiel.mjs`.
     réimportée joint ses lectures par identifiant, sans doublon ; celles qui
     sont déjà là gagnent.
 
+13. **Archive de compte 1.2.0 : les analyses approfondies Twin9 (T10,
+    ADR-011 §5).** `archive-export` gagne une seconde propriété OPTIONNELLE,
+    `analysesTwin9` : les runs Twin9 du compte et la mémoire de leurs cartes,
+    qui vivent sur le serveur, tels que `GET /api/twin9/mes-analyses` les rend
+    (§8.5). Le schéma type leur ossature (`runs[]` : `id`, `journal`,
+    `statut`, `profil`, `portfolio {nom, texte}`, `appels[]`, `sorties` ;
+    `cartes[]` : `journal`, `referentiel`, `gabarits`, `memoire`) et laisse
+    ouverts leurs contenus, ceux du moteur. Absente quand le compte n'a aucun
+    run ; jamais réimportée : un run se relance. Ajout rétro-compatible en
+    lecture, comme la 1.1.0.
+
 ## 5. Note d'outillage
 
 `engine/src/validation.js` importe les schémas en imports JSON « nus »
@@ -560,6 +572,13 @@ public) l'implémente aussi.
   puis `carto_evolutive.json`, `profil_ipsatif.json`, `rapport.md`,
   `rapport_evolutif.md`, `scan_global.json`. Une journée reprise de la
   mémoire n'a pas de carte du jour, comme dans la v9.8.
+- **`apercu(memoire)`** (T10), avant un run : les journées qu'il prendrait
+  (la première en mode essai, les N premières sous `jours`), chacune
+  `{id, date, titre, etat}`, `etat` valant `nouvelle` (absente de la
+  mémoire), `changee` (son texte, ses lecteurs ou l'empreinte des réglages ont
+  changé, ou `rescan` la relit) ou `inchangee` (reprise sans appel, comme
+  `passe` la reprendrait) ; et `poles`, les pôles du référentiel du jeu.
+  Rien n'est écrit.
 
 ### 8.1 Les réglages d'un run
 
@@ -661,7 +680,7 @@ une suivante le relève.
   devient l'instantané du run. Le moteur construit une fois sa `Plateforme`
   pour lire le portfolio : le nom de son journal range la carte. Le run garde
   son **attestation** (`twin9_runs.attestation`) : `profil` (`id`, nul pour
-  celui de la v9.8, et `nom`), `gabarits` (`jeu`, `versions` de chaque gabarit
+  celui de la v9.8, `nom`, et `mode` depuis T10), `gabarits` (`jeu`, `versions` de chaque gabarit
   — ses versions archivées plus une —, `empreinte` du jeu), `referentiel`
   (`id`, `version`), `moteur` (`commit` : la tête du dépôt `TWIN_V9_DIR`, sinon
   la première ligne de son fichier `COMMIT`, sinon nul). Il garde aussi sa
@@ -695,3 +714,78 @@ une suivante le relève.
   délibération d'un verdict jugé se lit dans sa journée (`runScope:
   "journee"`), et les synthèses viennent de la fusion
   (`carto/core/importers/twin9-run.js`).
+
+### 8.5 Coûts, plafonds, relance, purge et export (T10)
+
+- **Le coût d'un appel** est ce qu'il coûte à son auteur
+  (`twin9_appels.cout_microusd`, `Twin9Config::coutMicrousd`) : l'usage que
+  rend Anthropic, au prix de son modèle dans la grille de l'administrateur
+  (`modeles`), au palier des longs prompts au-delà de son seuil
+  (`palier_long {au_dela_de, prix_usd_mtok}` : Haiku 5.5, 0,50 $ et 2,50 $
+  le million au-delà de 100 000 jetons de prompt), à moitié prix par lots,
+  la marge comprise avec la clé de l'instance, sans elle avec la clé de
+  l'utilisateur. Un profil dont un modèle n'a pas de prix est refusé
+  (`ProfilPolicy`).
+- **Avant chaque envoi**, direct ou par lot, l'appel réserve son pire cas
+  (`RunCosts::pireCas`, `twin9_appels.reserve_microusd`) : les octets de son
+  prompt comme jetons d'entrée, son budget de sortie comme jetons de sortie,
+  au même prix. Avec la clé de l'instance, la réserve est débitée du crédit
+  de l'auteur, dans la transaction qui écrit l'appel (`CreditService` rejoint
+  la transaction ouverte), une réserve par appel au grand-livre
+  (`Twin9 run <id> · <étape> (réserve)`). Un appel garde sa réserve d'une
+  tentative à l'autre. Sa réponse la solde à la tranche suivante au plus
+  tard : le coût réel reste, le reste revient (`… · réconciliation`, par
+  modèle, avec les jetons réels). Un run arrêté, annulé ou fini rend tout ce
+  que ses appels tiennent encore (`… · remboursement`), sauf les appels d'un
+  lot encore chez Anthropic, soldés quand le lot est relevé ou annulé.
+- **Les plafonds** viennent de la copie du profil : `budget_usd` et
+  `duree_minutes`, `null` pour aucun. Ce qu'un run a engagé — réserves
+  tenues, coûts réels soldés — ne dépasse jamais son budget : un appel dont
+  la réserve le dépasserait ne part pas, ni aucun nouvel appel après lui
+  dans la tranche ; un lot ne prend que ce que le budget et le crédit
+  laissent. Sa durée compte depuis son lancement ou sa dernière reprise
+  (`twin9_runs.debut_at`) ; passée, aucun appel ne part. Retenu ainsi et sans
+  plus rien dehors, le run s'arrête (`echoue`), sa raison dans `attente` :
+  `budget atteint : carte incomplète`, `durée atteinte : carte incomplète`,
+  `crédit insuffisant : carte incomplète`. Ce qui est parti finit : un lot
+  chez Anthropic est relevé avant l'arrêt. `POST /api/twin9/runs/{id}/reprendre`
+  accepte `{budget_usd}`, des dollars ou `null`, le nouveau budget de la
+  copie du profil. Le suivi donne `cout` : `depense_microusd` (le coût réel
+  de ses appels), `budget_usd`, `duree_minutes`.
+- **Les compteurs** d'un run fini gagnent `journees` (les journées qu'il a
+  instruites) et `duree_s` (ses secondes actives, période par période :
+  `twin9_runs.actif_s`).
+- **L'aperçu** (`POST /api/twin9/runs/apercu`, `{profil, portfolio}`, ce que
+  demande un lancement, l'accord excepté ; rien n'est gardé) rend
+  `{journal, mode, voie, cle, journees: {total, nouvelles, changees},
+  estimation: {cout_usd, duree_s, par_journee: {cout_usd, duree_s}, runs |
+  reference, poles}, plafonds: {budget_usd, duree_minutes}, credit_usd}`.
+  L'estimation par journée est la moyenne des runs finis du même profil
+  (`attestation.profil.id`, nul pour celui de la v9.8) et du même mode
+  (`runs` : leur nombre), à défaut celle du vrai run de PLANT-01 de T2
+  (`reference`), en mode essai, 0,1344 $ et 94 s, fois les pôles du
+  référentiel pour un run complet, à moitié prix par lots, la marge avec la
+  clé de l'instance ; par lots, sa durée est nulle (celle d'Anthropic).
+  Multipliée par les journées nouvelles ou changées, au moins une : la
+  fusion se refait à chaque run. `credit_usd`, avec la clé de l'instance.
+- **Une carte incomplète** : la page d'un run arrêté avec des journées finies
+  l'ouvre dans la cartographie. Le document `twin9-run` porte alors
+  `incomplete: true`, et `carto_evolutive` peut être nul ; l'import le dit
+  (`twin9-incomplete`, avertissement) et le jeu s'intitule « … — carte
+  incomplète ».
+- **La purge** (`DELETE /api/auth/account`, `Twin9\RunPurge`) : les lignes du
+  moteur partent avec le compte (CASCADE). Avant, ses lots chez Anthropic
+  soumis avec sa propre clé sont annulés, puis supprimés une fois finis ;
+  ceux de la clé de l'instance laissent leur seul identifiant Anthropic dans
+  `twin9_lots_a_effacer`, que le tick annule puis supprime (`Twin9Lots`).
+- **L'export** (`GET /api/twin9/mes-analyses`, `Twin9\RunExport`) rend `{runs,
+  cartes}` : chaque run avec `id`, `journal`, `statut`, `attente`,
+  `visibilite`, ses dates, `attestation`, `profil` (sa copie), `portfolio
+  {nom, texte}`, `compteurs`, `appels[]` (son journal : `appel`, `etape`,
+  `modele`, `modele_envoye`, `modele_servi`, `statut`, `tentatives`,
+  `reponse`, `panne`, `stop_reason`, jetons, `cout_microusd`, `duree_ms`,
+  dates ; jamais un prompt ni une clé) et `sorties` (par chemin) ; chaque
+  carte avec `journal`, `referentiel`, `gabarits`, `created_at` et `memoire`
+  (le texte JSON de chaque clé). Ce que le moteur et les modèles ont écrit
+  passe le filtre de fuite contre tous les jeux de gabarits des runs du
+  compte. L'archive de compte l'embarque (`analysesTwin9`, §4, point 13).

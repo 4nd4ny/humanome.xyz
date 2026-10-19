@@ -42,28 +42,33 @@ export async function interfaceFiles(entry, { getReferentiel = loadPublishedRefe
  * document `twin9-run` — le run, sa fusion, ses cartes du jour (celles que sa
  * mémoire a reprises comprises), le référentiel publié —, que l'interface
  * importe avec le dossier de chaque verdict, délibérations comprises
- * (carto/core/importers/twin9-run.js).
+ * (carto/core/importers/twin9-run.js). Un run arrêté avant sa fin (T10 : son
+ * budget, sa durée, le crédit) remet ses journées finies, sans fusion
+ * peut-être, sa carte marquée incomplète.
  * @param {{run: object, sorties: Record<string, string>, memoire?: string[]}} resultats GET /api/twin9/runs/{id}/resultats
  * @param {{getReferentiel?: () => Promise<object>}} [seams]
  * @returns {Promise<Array<{path: string, text: string}>>}
- * @throws {Error} run sans fusion (rien à placer sur la ligne de temps)
+ * @throws {Error} run sans fusion ni journée finie (rien à placer sur la ligne de temps)
  */
 export async function twin9RunFiles(resultats, { getReferentiel = loadPublishedReferentiel } = {}) {
   const fusion = resultats?.sorties?.['carto_evolutive.json']
-  if (typeof fusion !== 'string') throw new Error('Ce run n’a pas encore de fusion : rien à ouvrir dans la cartographie.')
   const journees = {}
-  for (const [chemin, texte] of Object.entries(resultats.sorties)) {
+  for (const [chemin, texte] of Object.entries(resultats?.sorties ?? {})) {
     const m = /^journees\/(.+)\/carto_jour\.json$/.exec(chemin)
     if (m) journees[m[1]] = JSON.parse(texte)
+  }
+  if (typeof fusion !== 'string' && Object.keys(journees).length === 0) {
+    throw new Error('Ce run n’a encore ni fusion ni journée finie : rien à ouvrir dans la cartographie.')
   }
   const loaded = await getReferentiel()
   const doc = {
     kind: 'twin9-run',
     run: resultats.run,
     referentiel: loaded?.doc ?? loaded ?? null,
-    carto_evolutive: JSON.parse(fusion),
+    carto_evolutive: typeof fusion === 'string' ? JSON.parse(fusion) : null,
     journees,
     memoire: resultats.memoire ?? [],
+    incomplete: resultats.run?.statut !== 'termine',
   }
   return [{ path: `twin9-run-${resultats.run?.id ?? 'run'}.json`, text: JSON.stringify(doc) }]
 }

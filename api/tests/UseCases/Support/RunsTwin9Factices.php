@@ -18,7 +18,9 @@ use Humanome\Twin9\ProtocoleRepository;
  * lui (`#[RunInSeparateProcess]`) : le vrai moteur de `TWIN_V9_DIR` peut être
  * chargé dans les autres. Mêmes réglages que `api/tests/Twin9/RunsTest.php`.
  *
- * À utiliser dans une classe qui étend `CartographeTestCase`.
+ * À utiliser dans une classe qui étend `CartographeTestCase` ; un test
+ * unitaire (`TestCase`, après `TestDb::overrideEnv()`) n'en prend que
+ * `moteurFactice()`, puis charge le moteur (`EngineLoader::load()`).
  */
 trait RunsTwin9Factices
 {

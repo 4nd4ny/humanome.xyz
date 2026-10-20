@@ -1,0 +1,352 @@
+// UC-APP-10 — Lancer une analyse approfondie (Twin9) : tests UNITAIRES (front).
+// Fiche : docs/cas-utilisation/apprenant/UC-APP-10-analyse-approfondie-twin9.md
+//
+// Code sollicité appelé directement : les routes #/twin9 et #/twin9/<id> et
+// l'entrée « Analyse approfondie » de la navigation, le client des runs
+// (web/src/api/twin9.js : méthode, chemin, corps, jeton CSRF), le document
+// `twin9-run` que la page remet à l'interface de cartographie
+// (twin9RunFiles), et la vue Twin9View rendue seule avec ses coutures
+// (fetchFn, store, pause) : Lancer (journées à instruire), Apercu (admission,
+// refus) et PageDuRun (reprise après un arrêt par un plafond). Les runs
+// tournent sur le serveur (ADR-011) : le front ne fait que les lancer, les
+// suivre et les lire.
+import { afterEach, describe, expect, it, vi } from 'vitest'
+import { cleanup, fireEvent, render, screen, waitFor, within } from '@testing-library/react'
+import { parseHash } from '../../../src/router.js'
+import { navGroups } from '../../../src/nav.js'
+import { fetchMe, resetApiClient } from '../../../src/api/client.js'
+import {
+  annulerRun,
+  apercuRun,
+  avancerRuns,
+  fetchConfiguration,
+  fetchResultats,
+  fetchRun,
+  fetchRuns,
+  lancerRun,
+  rendreRunVisible,
+  reprendreRun,
+} from '../../../src/api/twin9.js'
+import { twin9RunFiles } from '../../../src/lib/interface-handoff.js'
+import { createMemoryAdapter, createPortfolioStore } from '../../../src/lib/portfolio-store.js'
+import Twin9View from '../../../src/views/Twin9View.jsx'
+import { jsonResponse } from '../support/twin.js'
+
+afterEach(() => {
+  cleanup()
+  resetApiClient()
+})
+
+const PORTFOLIO = '## 2026-01-05\nPremier jour : j’ai monté le capteur.\n## 2026-01-06\nDeuxième jour : j’ai lu les mesures.\n'
+
+/** Routeur de fetchFn : « MÉTHODE api/chemin » → réponse (objet ou fonction de init). */
+function routedFetch(routes) {
+  return vi.fn(async (url, init = {}) => {
+    const key = `${init.method ?? 'GET'} ${url}`
+    const handler = routes[key]
+    if (!handler) return jsonResponse(404, { error: `route non simulée : ${key}` })
+    return typeof handler === 'function' ? handler(init) : handler
+  })
+}
+
+/** Un run tel que sa page le suit (GET /api/twin9/runs/{id}). */
+const run = (extra = {}) => ({
+  id: 7,
+  journal: 'mon-journal',
+  statut: 'en_cours',
+  attente: null,
+  retard: 'En attente de son premier tour',
+  visibilite: 'privee',
+  mode: 'complet',
+  voie: 'directe',
+  attestation: {
+    profil: { id: 3, nom: 'Direct', mode: 'complet' },
+    gabarits: { jeu: 'v9.8', versions: {}, empreinte: 'abcdef0123456789' },
+    referentiel: { id: 'respire', version: '7.0.0', empreinte: '0123456789abcdef' },
+    moteur: { commit: null },
+  },
+  progression: { appels: { envoye: 0, attente: 0, repondu: 0, panne: 0 }, journees: 0, fusion: false, lots: 0, runs_avant: 0 },
+  cout: { depense_microusd: 0, budget_usd: null, duree_minutes: null },
+  compteurs: null,
+  created_at: '2026-10-20 10:00:00',
+  avance_at: null,
+  finished_at: null,
+  accord_at: '2026-10-20 10:00:00',
+  ...extra,
+})
+
+/** L'aperçu (POST /api/twin9/runs/apercu) d'un premier run de deux journées, d'après la référence. */
+const apercu = (extra = {}) => ({
+  journal: 'Mon_journal',
+  mode: 'complet',
+  voie: 'directe',
+  cle: 'instance',
+  journees: { total: 2, nouvelles: 2, changees: 0 },
+  estimation: { cout_usd: 3.38688, min_usd: 3.38688, max_usd: 3.38688, reserve_usd: 2.25792, duree_s: 1316, reference: 'PLANT-01', poles: 7 },
+  admission: { journees: 2, total: 2, limite: 'credit', instruites: 2, en_attente: 0, changees_en_attente: 0, autres_usd: 0, refus: null },
+  plafonds: { budget_usd: null, duree_minutes: null },
+  credit_usd: 100,
+  ...extra,
+})
+
+async function bibliotheque() {
+  const store = createPortfolioStore(createMemoryAdapter())
+  await store.create({ titre: 'Mon journal', texte: PORTFOLIO })
+  return store
+}
+
+/** Twin9View à #/twin9, l'aperçu donné ; l'accord coché, rend la région « Avant de lancer ». */
+async function avantDeLancer(reponseApercu) {
+  const fetchFn = routedFetch({
+    'GET api/twin9/runs': jsonResponse(200, { disponible: true, runs: [] }),
+    'GET api/twin9/configuration': jsonResponse(200, { profils: [] }),
+    'POST api/twin9/runs/apercu': jsonResponse(200, reponseApercu),
+  })
+  render(<Twin9View deps={{ fetchFn, store: await bibliotheque() }} />)
+  fireEvent.click(await screen.findByRole('checkbox', { name: /J’accepte que mon portfolio/ }))
+  return screen.findByRole('region', { name: 'Avant de lancer' })
+}
+
+describe('UC-APP-10 — routes et navigation', () => {
+  it('UC-APP-10-U01 — #/twin9 (lancer) et #/twin9/<id> (la page d’un run) ; l’entrée « Analyse approfondie », premium, pour un apprenant', () => {
+    expect(parseHash('#/twin9')).toEqual({ name: 'twin9', section: null })
+    expect(parseHash('#/twin9/12')).toEqual({ name: 'twin9', section: '12' })
+
+    const carto = navGroups({ roles: ['apprenant'] }).find((g) => g.id === 'cartographie')
+    const entree = carto.items.find((i) => i.label === 'Analyse approfondie')
+    expect(entree).toEqual({ href: '#/twin9', label: 'Analyse approfondie', route: 'twin9', badge: 'premium', hint: 'Twin9' })
+    // Elle suit la cartographie ouverte : l'échelle gratuit / standard / premium se lit dans l'ordre.
+    expect(carto.items.map((i) => i.label).slice(2, 5)).toEqual(['Cartographier mes écrits', 'Cartographie ouverte', 'Analyse approfondie'])
+    // Un visiteur ne la voit pas : la famille « Ma cartographie » est celle de l'apprenant.
+    expect(navGroups({ roles: [] }).flatMap((g) => g.items).some((i) => i.href === '#/twin9')).toBe(false)
+  })
+})
+
+describe('UC-APP-10 — client des runs', () => {
+  it('UC-APP-10-U02 — lectures en GET ; aperçu, lancement, avance, annulation, reprise (avec ou sans budget) en POST, visibilité en PUT, chacun avec le jeton CSRF', async () => {
+    const fetchFn = vi.fn(async (url) =>
+      url === 'api/auth/me' ? jsonResponse(200, { user: { id: 7 }, csrfToken: 'csrf-uc-app-10' }) : jsonResponse(200, { ok: true }),
+    )
+    const portfolio = { nom: 'Mon journal.md', texte: PORTFOLIO }
+    await fetchMe({ fetchFn })
+    await fetchRuns({ fetchFn })
+    await fetchConfiguration({ fetchFn })
+    await apercuRun({ profil: 3, portfolio }, { fetchFn })
+    await lancerRun({ profil: null, portfolio, accord: true, visibilite: 'cartographe' }, { fetchFn })
+    await fetchRun(7, { fetchFn })
+    await avancerRuns({ fetchFn })
+    await annulerRun(7, { fetchFn })
+    await reprendreRun(7, { fetchFn })
+    await reprendreRun(7, { fetchFn }, { budget_usd: 5 })
+    await reprendreRun(7, { fetchFn }, { budget_usd: null })
+    await rendreRunVisible(7, 'cartographe', { fetchFn })
+    await fetchResultats(7, { fetchFn })
+
+    const appels = fetchFn.mock.calls.slice(1).map(([url, init]) => [
+      init.method,
+      url,
+      init.body === undefined ? undefined : JSON.parse(init.body),
+      init.headers['X-CSRF-Token'],
+    ])
+    expect(appels).toEqual([
+      ['GET', 'api/twin9/runs', undefined, undefined],
+      ['GET', 'api/twin9/configuration', undefined, undefined],
+      ['POST', 'api/twin9/runs/apercu', { profil: 3, portfolio }, 'csrf-uc-app-10'],
+      ['POST', 'api/twin9/runs', { profil: null, portfolio, accord: true, visibilite: 'cartographe' }, 'csrf-uc-app-10'],
+      ['GET', 'api/twin9/runs/7', undefined, undefined],
+      ['POST', 'api/twin9/runs/avancer', undefined, 'csrf-uc-app-10'],
+      ['POST', 'api/twin9/runs/7/annuler', undefined, 'csrf-uc-app-10'],
+      ['POST', 'api/twin9/runs/7/reprendre', undefined, 'csrf-uc-app-10'],
+      ['POST', 'api/twin9/runs/7/reprendre', { budget_usd: 5 }, 'csrf-uc-app-10'],
+      ['POST', 'api/twin9/runs/7/reprendre', { budget_usd: null }, 'csrf-uc-app-10'],
+      ['PUT', 'api/twin9/runs/7/visibilite', { visibilite: 'cartographe' }, 'csrf-uc-app-10'],
+      ['GET', 'api/twin9/runs/7/resultats', undefined, undefined],
+    ])
+  })
+})
+
+describe('UC-APP-10 — le document remis à l’interface de cartographie', () => {
+  const FUSION = { journal_id: 'mon-journal', competences: { '1.01': { code: '1.01', attestations: [], signaux: [] } } }
+  const JOUR = { journee: '2026-01-05', date: '2026-01-05', verdicts: {} }
+  const REFERENTIEL_DU_RUN = {
+    id: 'respire',
+    version: '7.0.0',
+    label: 'RESPIRE v7',
+    poles: [{ num: 1, nom: 'TETE — Penser & Comprendre', couleur: '#2563eb' }],
+    competences: [
+      { code: '1.01', nom: 'Pensée critique', pole: 1 },
+      { code: '1.02', nom: 'Synthèse', pole: 1 },
+    ],
+  }
+  const PUBLIE = {
+    id: 'respire',
+    poles: [],
+    competences: [{ code: '1.01', description: 'Examiner avant de conclure.' }, { code: '1.02' }],
+  }
+  const resultats = (extra = {}) => ({
+    run: { id: 7, journal: 'mon-journal', statut: 'termine' },
+    lecteur: 'proprietaire',
+    sorties: {
+      'carto_evolutive.json': JSON.stringify(FUSION),
+      'journees/2026-01-05/carto_jour.json': JSON.stringify(JOUR),
+      'journees/2026-01-06/carto_jour.json': JSON.stringify({ ...JOUR, journee: '2026-01-06', date: '2026-01-06' }),
+      'rapport.md': '# Rapport',
+    },
+    memoire: ['2026-01-06'],
+    referentiel: REFERENTIEL_DU_RUN,
+    ...extra,
+  })
+
+  it('UC-APP-10-U03 — document `twin9-run` : fusion et cartes du jour lues, mémoire, référentiel du run complété des descriptions du publié de même identifiant, `incomplete` ; rien à ouvrir → erreur', async () => {
+    const getReferentiel = vi.fn(async () => ({ doc: PUBLIE }))
+    const files = await twin9RunFiles(resultats(), { getReferentiel })
+    expect(files.map((f) => f.path)).toEqual(['twin9-run-7.json'])
+    const doc = JSON.parse(files[0].text)
+    expect(doc.kind).toBe('twin9-run')
+    expect(doc.run).toEqual({ id: 7, journal: 'mon-journal', statut: 'termine' })
+    expect(doc.carto_evolutive).toEqual(FUSION)
+    expect(Object.keys(doc.journees)).toEqual(['2026-01-05', '2026-01-06'])
+    expect(doc.journees['2026-01-05']).toEqual(JOUR)
+    expect(doc.memoire).toEqual(['2026-01-06'])
+    expect(doc.incomplete).toBe(false)
+    // Le référentiel du run, ses pôles et ses compétences ; la description du publié s'y ajoute là où il en a une.
+    expect(doc.referentiel).toEqual({
+      ...REFERENTIEL_DU_RUN,
+      competences: [{ code: '1.01', nom: 'Pensée critique', pole: 1, description: 'Examiner avant de conclure.' }, { code: '1.02', nom: 'Synthèse', pole: 1 }],
+    })
+    // Seules les cartes du jour et la fusion entrent : pas le rapport.
+    expect(JSON.stringify(doc)).not.toContain('# Rapport')
+
+    // Un autre référentiel garde le sien, sans description d'un publié qui n'est pas lui.
+    const autre = { ...REFERENTIEL_DU_RUN, id: 'fictif-lettre', label: 'Fictif lettré' }
+    expect(JSON.parse((await twin9RunFiles(resultats({ referentiel: autre }), { getReferentiel }))[0].text).referentiel).toEqual(autre)
+    // Un run d'avant T16, qui ne le dit pas, a lu RESPIRE : le référentiel publié.
+    expect(JSON.parse((await twin9RunFiles(resultats({ referentiel: null }), { getReferentiel }))[0].text).referentiel).toEqual(PUBLIE)
+
+    // Un run arrêté : sa carte est incomplète, sa fusion peut manquer.
+    const arrete = resultats({
+      run: { id: 8, journal: 'mon-journal', statut: 'echoue' },
+      sorties: { 'journees/2026-01-05/carto_jour.json': JSON.stringify(JOUR) },
+      memoire: [],
+    })
+    const docArrete = JSON.parse((await twin9RunFiles(arrete, { getReferentiel }))[0].text)
+    expect([docArrete.incomplete, docArrete.carto_evolutive, Object.keys(docArrete.journees)]).toEqual([true, null, ['2026-01-05']])
+
+    // Rien à ouvrir : ni fusion ni journée finie.
+    await expect(twin9RunFiles(resultats({ sorties: { 'rapport.md': '# Rapport' } }), { getReferentiel })).rejects.toThrow(
+      'Ce run n’a encore ni fusion ni journée finie : rien à ouvrir dans la cartographie.',
+    )
+  })
+})
+
+describe('UC-APP-10 — Twin9View : avant de lancer', () => {
+  it('UC-APP-10-U04 — les journées à instruire : toutes au premier run ; les nouvelles ou changées d’un portfolio déjà évalué (A1) ; rien de neuf, la fusion seule', async () => {
+    const cas = [
+      [{ total: 2, nouvelles: 2, changees: 0 }, '2 journées à instruire.'],
+      [{ total: 1, nouvelles: 1, changees: 0 }, '1 journée à instruire.'],
+      [
+        { total: 3, nouvelles: 1, changees: 0 },
+        'Ce portfolio a déjà été évalué : 1 journée sur 3 à instruire (1 nouvelle), les autres reprises telles quelles.',
+      ],
+      [
+        { total: 4, nouvelles: 1, changees: 2 },
+        'Ce portfolio a déjà été évalué : 3 journées sur 4 à instruire (1 nouvelle et 2 changées), les autres reprises telles quelles.',
+      ],
+      [
+        { total: 3, nouvelles: 0, changees: 0 },
+        'Ce portfolio a déjà été évalué : aucune journée nouvelle ni changée, seule la fusion se refait.',
+      ],
+    ]
+    for (const [journees, phrase] of cas) {
+      const region = await avantDeLancer(apercu({ journees }))
+      expect(region.querySelector('p').textContent).toBe(phrase)
+      cleanup()
+    }
+  })
+
+  it('UC-APP-10-U05 — admission partielle : ce que le crédit couvre, que les autres attendent, le coût des journées admises (A2) ; refus : ce qu’il faudrait, « Recharger », bouton désactivé (E5)', async () => {
+    const partielle = await avantDeLancer(
+      apercu({ admission: { journees: 1, total: 2, limite: 'credit', instruites: 1, en_attente: 1, changees_en_attente: 0, autres_usd: 0, refus: null } }),
+    )
+    expect(partielle.textContent).toContain(
+      'Votre crédit couvre 1 des 2 journées à instruire, avec leur fusion, d’après le run de référence, réserves des appels comprises. ' +
+        'L’autre attendra une prochaine analyse.',
+    )
+    expect(partielle.textContent).toContain('Coût estimé (1 journée) : 3,39 $ · durée estimée : 22 min (d’après le vrai run de PLANT-01, en essai, × 7 pôles).')
+    expect(screen.getByRole('button', { name: 'Lancer l’analyse' }).disabled).toBe(false)
+    cleanup()
+
+    const refus =
+      'Votre crédit ne couvre pas une carte, même d’une journée : il faudrait 2,26 $ (une journée et sa fusion, d’après le run de référence, réserves des appels comprises)'
+    const refusee = await avantDeLancer(
+      apercu({ admission: { journees: 0, total: 2, limite: 'credit', instruites: 0, en_attente: 2, changees_en_attente: 0, autres_usd: 0, refus } }),
+    )
+    const alerte = within(refusee).getByRole('alert')
+    expect(alerte.textContent).toBe(`${refus}. Recharger`)
+    expect(within(alerte).getByRole('link', { name: 'Recharger' }).getAttribute('href')).toBe('#/compte/credit')
+    expect(refusee.textContent).not.toContain('Coût estimé')
+    expect(screen.getByRole('button', { name: 'Lancer l’analyse' }).disabled).toBe(true)
+  })
+})
+
+describe('UC-APP-10 — Twin9View : la page d’un run arrêté', () => {
+  it('UC-APP-10-U06 — arrêté par son budget : nouveau budget (au-delà de la dépense, ou vide pour aucun), reprise `{budget_usd}` ; par le crédit : « Recharger mon crédit », reprise sans budget (A4)', async () => {
+    const corps = []
+    const parBudget = run({
+      statut: 'echoue',
+      attente: 'budget atteint : carte incomplète',
+      retard: 'Budget atteint : carte incomplète',
+      progression: { appels: { envoye: 0, attente: 1, repondu: 5, panne: 0 }, journees: 1, fusion: false, lots: 0, runs_avant: 0 },
+      cout: { depense_microusd: 980_000, budget_usd: 1, duree_minutes: null },
+    })
+    let fetchFn = routedFetch({
+      'GET api/twin9/runs/7': jsonResponse(200, parBudget),
+      'POST api/twin9/runs/7/reprendre': (init) => {
+        corps.push(init.body === undefined ? undefined : JSON.parse(init.body))
+        return jsonResponse(200, parBudget)
+      },
+    })
+    render(<Twin9View section="7" deps={{ fetchFn, pause: async () => {} }} />)
+    await waitFor(() => expect(screen.getByRole('status').textContent).toBe('Arrêté — Budget atteint : carte incomplète'))
+    expect(screen.getByText('Coût : 0,98 $ · budget : 1,00 $')).toBeTruthy()
+    expect(screen.queryByRole('link', { name: 'Recharger mon crédit' })).toBeNull()
+
+    const champ = screen.getByLabelText(/Nouveau budget \(USD\)/)
+    const reprendre = screen.getByRole('button', { name: 'Reprendre' })
+    expect(champ.getAttribute('placeholder')).toBe('aucun')
+    // Un budget qui ne dépasse pas ce qui est dépensé ne reprend pas.
+    fireEvent.change(champ, { target: { value: '0.5' } })
+    expect(reprendre.disabled).toBe(true)
+    fireEvent.change(champ, { target: { value: '5' } })
+    expect(reprendre.disabled).toBe(false)
+    fireEvent.click(reprendre)
+    await waitFor(() => expect(corps).toEqual([{ budget_usd: 5 }]))
+    // Vide : aucun budget.
+    fireEvent.change(champ, { target: { value: '' } })
+    fireEvent.click(reprendre)
+    await waitFor(() => expect(corps).toEqual([{ budget_usd: 5 }, { budget_usd: null }]))
+    cleanup()
+
+    corps.length = 0
+    const parCredit = run({
+      statut: 'echoue',
+      attente: 'crédit insuffisant : carte incomplète',
+      retard: 'Crédit insuffisant : carte incomplète',
+      progression: { appels: { envoye: 0, attente: 0, repondu: 2, panne: 0 }, journees: 1, fusion: false, lots: 0, runs_avant: 0 },
+      cout: { depense_microusd: 120_000, budget_usd: null, duree_minutes: null },
+    })
+    fetchFn = routedFetch({
+      'GET api/twin9/runs/7': jsonResponse(200, parCredit),
+      'POST api/twin9/runs/7/reprendre': (init) => {
+        corps.push(init.body === undefined ? undefined : JSON.parse(init.body))
+        return jsonResponse(200, parCredit)
+      },
+    })
+    render(<Twin9View section="7" deps={{ fetchFn, pause: async () => {} }} />)
+    await waitFor(() => expect(screen.getByRole('status').textContent).toBe('Arrêté — Crédit insuffisant : carte incomplète'))
+    expect(screen.getByRole('link', { name: 'Recharger mon crédit' }).getAttribute('href')).toBe('#/compte/credit')
+    expect(screen.queryByLabelText(/Nouveau budget/)).toBeNull()
+    fireEvent.click(screen.getByRole('button', { name: 'Reprendre' }))
+    await waitFor(() => expect(corps).toEqual([undefined]))
+  })
+})

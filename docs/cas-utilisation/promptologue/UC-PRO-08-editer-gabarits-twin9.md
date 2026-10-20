@@ -125,7 +125,10 @@ L'administrateur-promptologue ouvre « Faire évoluer » → « Atelier Twin9 »
   un import partiel n'ôte rien ; les réglages du pipeline, la structure du référentiel (nettoyée :
   num/nom, code/nom) et les fiches confidentielles sont stockés ; Twin9 est
   **activé** ; réponse `{imported, retires}`. Les copies déjà faites ne changent
-  pas.
+  pas. Depuis T11, aucun run ne lit plus les réglages du pipeline,
+  l'activation ni les fiches ainsi stockées : ils servaient le moteur du
+  navigateur ; les runs prennent leurs réglages dans leur profil, et leurs
+  fiches dans la base (T16).
 - **A5 — Lire le jeu v9.8 ou la copie d'un autre** (étape 2, liste des jeux) :
   la vue l'ouvre en lecture seule — éditeur en lecture, ni « Enregistrer » ni
   « Restaurer », et la mention « Le jeu v9.8 est en lecture seule : copiez-le
@@ -185,9 +188,9 @@ L'administrateur-promptologue ouvre « Faire évoluer » → « Atelier Twin9 »
   restauration, le banc d'essai et la copie exigent `admin` ∧ `promptologue`
   (`RequireRole::all`, `TemplateSets::ATELIER`) ; la liste des jeux (noms,
   auteurs, sans contenu) est à l'administrateur, comme la supervision
-  (UC-ADM-05) ; les noms, longueurs et variables des gabarits du jeu v9.8
-  restent visibles de **tout utilisateur connecté** via `GET /api/twin9/meta`
-  (résidu assumé, ADR-010 §2, UC-APP-10).
+  (UC-ADM-05). Depuis T11, aucune métadonnée des gabarits n'est plus servie à
+  un autre utilisateur : `GET /api/twin9/meta` ne liste plus les étapes, que
+  seul lisait le moteur du navigateur (ADR-010 §2).
 - **RG2 — Nom** : segments `[a-z0-9][a-z0-9_-]*` séparés par `/` (insensible à la
   casse), 190 caractères au plus (un saut de ligne final passe : anomalie 3).
 - **RG3 — Contenu** : non vide (hors blancs), strictement inférieur à 256 Ko ;
@@ -236,7 +239,7 @@ L'administrateur-promptologue ouvre « Faire évoluer » → « Atelier Twin9 »
 
 | Donnée | Traitement |
 |---|---|
-| Gabarits (secret industriel) | En base : le jeu v9.8 dans `twin9_protocole`, les copies dans `twin9_jeux_gabarits` ; jamais dans le dépôt ; le **contenu** n'est jamais envoyé à un client sans les deux rôles ; les **métadonnées** du jeu v9.8 (noms, longueurs, variables) le sont à tout utilisateur connecté (`/api/twin9/meta`) |
+| Gabarits (secret industriel) | En base : le jeu v9.8 dans `twin9_protocole`, les copies dans `twin9_jeux_gabarits` ; jamais dans le dépôt ; ni le **contenu** ni les **métadonnées** (noms, longueurs, variables) ne sont envoyés à un client sans les deux rôles (depuis T11, `/api/twin9/meta` ne les liste plus) ; la liste des jeux, sans contenu, est à l'administrateur |
 | Historique | `twin9_protocole_versions`, `twin9_jeux_versions` ; auteur mis à `NULL` si son compte est supprimé (le gabarit appartient à la plateforme) |
 | Copies | `twin9_jeux` (nom, auteur, date) ; son auteur mis à `NULL` si son compte est supprimé : la copie survit, que personne ne modifie plus |
 | Auteur d'une édition | `updated_by` / `created_by` (identifiant de compte) |
@@ -307,7 +310,7 @@ autres tests de runs.
 | UC-PRO-08-F07 | E5 | IHM | API indisponible : message ; liste des jeux refusée (403) : « Chargement impossible. » ; aucun contenu | idem |
 | UC-PRO-08-F08 | Nominal, A1, A2, A3, A6 | API | Jeux → jeu v9.8 lu → copie → liste → lecture `%2F` → édition → PUT identique « unchanged » → versions → restauration → restauration identique « unchanged » → banc d'essai sans appel au modèle ni débit ; le jeu v9.8 intact | `api/tests/UseCases/Functional/UcPro08EditerGabaritsTwin9Test.php` |
 | UC-PRO-08-F09 | Nominal (étape 6) | API | Un mot changé dans une copie se retrouve dans le prompt de chaque lecture d'un run dont le profil la choisit ; un run du jeu v9.8, sur sa propre carte, garde les mots du jeu v9.8 (moteur factice) ; avec le vrai moteur de `TWIN_V9_DIR`, sauté sans lui, dans le prompt du tagger | `api/tests/Twin9/JeuxGabaritsTest.php` |
-| UC-PRO-08-F10 | A4 | API | Import : gabarits, réglages, référentiel, fiches (injectées ensuite dans l'appel d'un apprenant), activation, idempotence | `api/tests/UseCases/Functional/UcPro08EditerGabaritsTwin9Test.php` |
+| UC-PRO-08-F10 | A4 | API | Import : gabarits, réglages, référentiel servi par `/meta`, fiches gardées sur le serveur (jamais servies, pas plus que les noms des gabarits), activation, idempotence | `api/tests/UseCases/Functional/UcPro08EditerGabaritsTwin9Test.php` |
 | UC-PRO-08-F11 | E1 | API | 401 visiteur ; 403 promptologue seul et admin seul, sans fragment, copie comprise | idem |
 | UC-PRO-08-F12 | E2, E7 | API | 404 (statut et message) jeu, gabarit, version inconnus, nom hors format, PUT sur un nom que la copie n'a pas ; 403 sur le jeu v9.8 et la copie d'un autre | idem |
 | UC-PRO-08-F13 | E3 | API | 422 sur chaque saisie invalide, variable refusée et nom de copie compris, rien d'écrit | idem |
@@ -354,9 +357,9 @@ cd engine && npx vitest run test/usecases/unit/uc-pro-08
    `ProtocoleRepository::render` cherche les motifs `{$X}` dans le texte
    **rendu** et non dans le gabarit : une valeur saisie contenant `{$X}` fait
    apparaître `X` dans `non_resolues`, même si `X` a été fourni. Au banc
-   d'essai, le rapport est faux ; dans `/api/twin9/appel`, qui partage
-   `render()`, cela provoque un `422 Variables non résolues` et bloque l'analyse
-   payante (anomalie 2 de UC-APP-10). Figé par UC-PRO-08-U10.
+   d'essai, le rapport est faux ; jusqu'à T11, le proxy du moteur du
+   navigateur, `/api/twin9/appel`, qui partageait `render()`, en bloquait
+   l'analyse payante. Figé par UC-PRO-08-U10.
 3. **Nom à saut de ligne final accepté.** `NAME_PATTERN` se termine par `$` sans
    le modificateur `D` : en PCRE, `$` accepte un saut de ligne final, donc
    `assertValidName("lourd/20-greffier\n")` passe, contrairement à RG2. Par

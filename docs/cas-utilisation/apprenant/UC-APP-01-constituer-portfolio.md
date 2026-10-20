@@ -164,9 +164,11 @@ ou le lien « Créer un portfolio » du tableau de bord `#/espace`).
   journal de contenu ni d'identifiant). D'autres cas font transiter
   explicitement le texte, sans le stocker : cartographie en mode humanome
   (UC-APP-02, `POST /api/llm`), Twin6 en crédits (UC-APP-09,
-  `POST /api/twin6/appel`), Twin9 (UC-APP-10, `POST /api/twin9/appel`). La
-  seule route de **stockage** d'un portfolio est le dépôt explicite en
-  cohorte (UC-APP-08, `POST /api/cohortes/{id}/portfolio`).
+  `POST /api/twin6/appel`). La seule route dédiée au **stockage** d'un
+  portfolio est le dépôt explicite en cohorte (UC-APP-08,
+  `POST /api/cohortes/{id}/portfolio`) ; une analyse approfondie Twin9
+  (UC-APP-10, `POST /api/twin9/runs`) garde aussi le sien, avec l'état du
+  run, sous l'accord daté de l'apprenant et jusqu'à la suppression du compte.
 - **RG2** — `source` ∈ {`colle`, `gdocs`, `fichier`} (énumération du schéma
   `archive-export`).
 - **RG3** — Toute modification du **texte** relance la segmentation
@@ -209,7 +211,7 @@ ou le lien « Créer un portfolio » du tableau de bord `#/espace`).
 
 | Donnée | Traitement |
 |---|---|
-| Texte du portfolio | IndexedDB du navigateur uniquement (§6.1) pour ce cas ; transit sans conservation dans d'autres cas explicites (UC-APP-02 mode humanome, UC-APP-09, UC-APP-10) ; stockage serveur seulement par dépôt en cohorte (UC-APP-08) |
+| Texte du portfolio | IndexedDB du navigateur uniquement (§6.1) pour ce cas ; transit sans conservation dans d'autres cas explicites (UC-APP-02 mode humanome, UC-APP-09) ; stockage serveur seulement par dépôt en cohorte (UC-APP-08) ou, sous accord, avec un run Twin9 (UC-APP-10) |
 | Découpage en journées | IndexedDB, avec le portfolio |
 | Document Google Docs importé | Transite par le relais, jamais stocké ni journalisé (`no-store`) |
 | Identifiant du document | Jamais journalisé par l'application (ni table, ni `error_log`) ; paramètre d'URL d'un `GET`, il peut figurer dans les journaux d'accès de l'hébergeur |

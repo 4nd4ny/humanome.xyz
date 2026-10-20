@@ -3,7 +3,7 @@
 | Champ | Valeur |
 |---|---|
 | **Acteur principal** | Tout utilisateur qui lance des cartographies avec sa propre clé de fournisseur LLM (apprenant le plus souvent) |
-| **Acteurs secondaires** | Fournisseur LLM choisi (Anthropic, OpenAI, Google, OpenRouter, xAI, Ollama local) — appelé directement par le navigateur dans ce cas ; pour Twin9 voie « clé privée » (UC-APP-10), c'est le **serveur humanome** qui appelle Anthropic avec la clé déchiffrée (voir « Consommateurs de la clé serveur ») |
+| **Acteurs secondaires** | Fournisseur LLM choisi (Anthropic, OpenAI, Google, OpenRouter, xAI, Ollama local) — appelé directement par le navigateur dans ce cas ; pour un run Twin9 à clé personnelle (UC-APP-10), c'est le **serveur humanome** qui appelle Anthropic avec la clé déchiffrée (voir « Consommateurs de la clé serveur ») |
 | **Portée** | humanome.xyz — section « Clés API personnelles » de `#/compte` ; étape « Fournisseur » de l'assistant `#/espace/nouveau-run` ; `PUT`/`GET /api/keys`, `GET`/`DELETE /api/keys/{provider}` |
 | **Niveau** | Objectif utilisateur |
 | **Cahier des charges** | §4.5 (« clé API personnelle optionnelle »), §5, §6.2 (stockage serveur = opt-in) ; ADR-001 (exécution dans le navigateur), **ADR-004** (localStorage par défaut, opt-in serveur chiffré) |
@@ -136,7 +136,7 @@ personnelle ».
 |---|---|
 | Clé locale | `localStorage['humanome-keys']` du navigateur, jamais transmise à humanome |
 | Clé serveur (opt-in) | `user_api_keys.encrypted_key` (chiffré), `created_at` = dernière écriture ; CASCADE à la purge ; non réexportée (secret) |
-| Clé serveur `anthropic`, usage serveur | Déchiffrée **côté serveur** par `POST /api/twin9/appel` (voie `cle_privee`) pour appeler Anthropic depuis le serveur ; sa présence est révélée à son propriétaire par `GET /api/twin9/meta` (`cle_privee_disponible`) |
+| Clé serveur `anthropic`, usage serveur | Déchiffrée **côté serveur**, au moment de chaque appel d'un run Twin9 à clé personnelle (`RunKey`), pour appeler Anthropic depuis le serveur ; sa présence est révélée à son propriétaire par `GET /api/twin9/meta` (`cle_privee_disponible`) et par `GET /api/twin9/configuration` (`cle_perso_enregistree`) |
 | Journaux | Aucune clé journalisée |
 
 ### Consommateurs de la clé serveur
@@ -147,10 +147,11 @@ La clé enregistrée ici ne sert pas qu'à l'assistant de run :
   clés (`listKeys`) et révèle la clé `anthropic` (`revealKey`) pour un appel
   **depuis le navigateur** ; `revealKey` est testé en UC-APP-09-U28 et
   UC-CPT-04-U14.
-- **Twin9** voie « clé privée » (UC-APP-10, ADR-010 §4) : la clé `anthropic`
-  est déchiffrée **côté serveur** (`KeyVault::reveal`) et utilisée par le
-  serveur humanome pour appeler Anthropic ; `GET /api/twin9/meta` indique si
-  elle existe.
+- **Twin9**, profil à clé personnelle (UC-APP-10 A6, ADR-010 §4, ADR-011) :
+  la clé `anthropic` est déchiffrée **côté serveur** (`RunKey`, `KeyVault::reveal`)
+  au moment de chaque appel du run, jamais écrite ailleurs, et utilisée par le
+  serveur humanome pour appeler Anthropic ; `GET /api/twin9/meta` et `GET
+  /api/twin9/configuration` indiquent si elle existe.
 
 ## Code sollicité
 

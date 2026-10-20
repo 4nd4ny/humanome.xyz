@@ -99,7 +99,8 @@ final class UcAdm05SuperviserTwin9Test extends CartographeTestCase
         $maj = self::json($this->config(['marge' => 1.5, 'marge_twin6' => 1.25]));
         self::assertSame([1.5, 1.25], [$maj['marge'], $maj['marge_twin6']]);
 
-        // Étape 6 : un run Twin9 s'estime, et ses appels se paient, à la nouvelle contribution.
+        // Étape 6 : un run Twin9 s'estime à la nouvelle contribution (ses appels se règlent à la contribution
+        // du moment : api/tests/Twin9/CoutsTest.php).
         self::assertSame(self::estimation(1.5), $this->apercu($this->apprenant, $profil)['estimation']['cout_usd']);
         $meta = self::json($this->as_($this->apprenant, 'GET', '/api/twin9/meta'));
         self::assertSame([3.75, 18.75], $meta['modeles_twin6']['claude-sonnet-5']);
@@ -114,7 +115,7 @@ final class UcAdm05SuperviserTwin9Test extends CartographeTestCase
         self::assertSame(1_000_000_000 - 7500, (new CreditService(Db::get()))->balance($this->apprenant['id']));
     }
 
-    #[TestDox('UC-ADM-05-F10 — A1 : promotion « Twin9 avec sa clé » ouverte puis refermée → un profil à clé personnelle est refusé, admis et estimé sans contribution, puis refusé au lancement ; la clé de l’instance reste facturée pendant la promotion')]
+    #[TestDox('UC-ADM-05-F10 — A1 : promotion « Twin9 avec sa clé » ouverte puis refermée → un profil à clé personnelle est refusé, admis et estimé sans contribution, puis refusé au lancement ; pendant la promotion, un profil à la clé de l’instance s’estime toujours avec contribution')]
     #[RunInSeparateProcess]
     #[PreserveGlobalState(false)]
     public function testF10PromoWindow(): void
@@ -134,7 +135,7 @@ final class UcAdm05SuperviserTwin9Test extends CartographeTestCase
         self::assertSame(self::estimation(1.0), $apercu['estimation']['cout_usd']);
         self::assertNull($apercu['admission']['refus']);
 
-        // Promotion ouverte : la clé de l'instance, elle, reste facturée, contribution comprise.
+        // Promotion ouverte : un profil à la clé de l'instance, lui, s'estime toujours avec contribution.
         (new CreditService(Db::get()))->topup($this->apprenant['id'], 1_000_000_000, 'ORDER-ADM-05-PROMO');
         $instance = $this->profilDirect($this->apprenant, 'Instance');
         self::assertSame(self::estimation(1.2), $this->apercu($this->apprenant, $instance)['estimation']['cout_usd']);

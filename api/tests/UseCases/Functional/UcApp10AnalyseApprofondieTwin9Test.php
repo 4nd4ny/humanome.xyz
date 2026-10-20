@@ -517,7 +517,8 @@ final class UcApp10AnalyseApprofondieTwin9Test extends CartographeTestCase
 
         // RG10 : la page de Léa n'avance que ses runs.
         self::assertTrue(self::json($this->as_($lea, 'POST', '/api/twin9/runs/avancer'))['avance']);
-        self::assertSame('termine', self::json($this->as_($lea, 'GET', "/api/twin9/runs/$id"))['statut'], 'le sien avance');
+        // jusqu'au bout, quelle que soit la durée d'une tranche : chaque tour est une avance de la page de Léa
+        self::assertSame('termine', $this->jusquAuBout($lea, $id)['statut'], 'le sien avance');
         $suiviBob = self::json($this->as_($bob, 'GET', "/api/twin9/runs/$deBob"));
         self::assertSame(['en_cours', null], [$suiviBob['statut'], $suiviBob['avance_at']], 'le run de Bob n’a pas bougé');
     }

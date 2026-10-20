@@ -46,9 +46,10 @@ L'administrateur ouvre « Administrer » → « Supervision Twin9 » (`#/admin/t
    session et le rôle `admin`.
 2. La section charge `GET /api/twin9/admin/config` (forme administrateur :
    contributions `marge` et `marge_twin6`, promotion, packs, modèles avec prix
-   **catalogue** et étages, interrupteur, rythme, réglages du pipeline — ces
-   trois derniers, et les étages, ne commandent plus rien depuis T11, voir
-   Limites) et
+   **catalogue** et étages, interrupteur, rythme, réglages du pipeline —
+   l'interrupteur, le pipeline et les étages ne commandent plus rien depuis
+   T11, et le rythme ne borne plus que la cartographie ouverte, voir Limites)
+   et
    `GET /api/twin9/admin/comptes`.
 3. Elle affiche le formulaire des réglages, le jeu de gabarits par défaut (A5),
    la table des comptes et un renvoi vers l'atelier (`#/twin9-atelier`) pour
@@ -222,7 +223,7 @@ L'administrateur ouvre « Administrer » → « Supervision Twin9 » (`#/admin/t
 | UC-ADM-05-F07 | E3 | IHM | Identifiant vide : message, aucun PUT | idem |
 | UC-ADM-05-F08 | E4 | IHM | Erreur de chargement : message, pas de formulaire ; copie statique : message, aucun appel de supervision | idem |
 | UC-ADM-05-F09 | Nominal | API | Contributions changées → l'estimation d'un run Twin9 (×1,5), les prix Twin6 de `/meta` et le coût réel de `/api/twin6/appel` (×1,25) suivent | `api/tests/UseCases/Functional/UcAdm05SuperviserTwin9Test.php` |
-| UC-ADM-05-F10 | A1 | API | Promotion fermée : profil à clé personnelle refusé ; ouverte : admis, estimé sans contribution ; refermée : son lancement refusé ; la clé de l'instance reste facturée pendant la promotion | idem |
+| UC-ADM-05-F10 | A1 | API | Promotion fermée : profil à clé personnelle refusé ; ouverte : admis, estimé sans contribution ; refermée : son lancement refusé ; pendant la promotion, un profil à la clé de l'instance s'estime toujours avec contribution | idem |
 | UC-ADM-05-F11 | A2 | API | Packs → `/meta` et montant de l'ordre PayPal ; index hors grille 422 ; limite figée : pack désigné par sa position | idem |
 | UC-ADM-05-F12 | A3, A4 | API | Modèle retiré de l'offre : profil qui le nomme refusé (422) ; un modèle admis sur un étage que l'offre ne lui donne pas ; interrupteur fermé sans effet ; rythme de la cartographie ouverte (429) ; `pipeline` remplacé en entier | idem |
 | UC-ADM-05-F13 | Nominal (étape 7) | API | Table des comptes : actifs seulement, ordre, montants | idem |

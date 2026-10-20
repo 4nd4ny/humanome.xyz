@@ -403,7 +403,7 @@ final class UcEpi03EnterinerPublierTest extends TestCase
             '1.02' => "## 1.02\n\nCuriosité.",
             '2.01' => "## 2.01\n\nÉcoute.",
         ]], $generator->corpus());
-        // Structure du setting twin9_fiches (FicheStore::store) : pôles, en-têtes, fiche_md par code.
+        // Ce que lit le moteur Twin9 (ReferentielMoteur, T16) : pôles, en-têtes, fiche_md par code.
         self::assertSame(
             [
                 ['num' => 1, 'header' => "# Pôle 1\n\n---\n\n", 'competences' => [

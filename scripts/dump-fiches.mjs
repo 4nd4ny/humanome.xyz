@@ -3,10 +3,10 @@
 // scripts/data/fiches-v7.json DEPUIS LA BASE (GET /api/admin/dump-fiches), après
 // qu'un épistémiarque a édité une competence.fiche dans l'atelier. À lancer
 // AVANT le build Twin6 (web prebuild) pour que Twin6 reflète l'édition ; Twin9,
-// lui, se re-synchronise via POST /api/admin/generate-fiches.
+// lui, lit les fiches dans la base à chaque run (ReferentielMoteur, T16).
 //
-// Twin9 dérive de la base en direct (endpoint) ; Twin6 dérive du corpus au
-// build — ce script est le pont DB→corpus qui les garde alignés.
+// Twin9 lit la base en direct ; Twin6 dérive du corpus au build — ce script
+// est le pont DB→corpus qui les garde alignés.
 //
 // Usage : SITE_URL=https://humanome.xyz MIGRATE_TOKEN=… node scripts/dump-fiches.mjs
 //         (par défaut SITE_URL=http://localhost:8080 pour le dev)
@@ -50,7 +50,7 @@ if (!corpus.poleHeaders || !corpus.fiches) {
 // _comment IDENTIQUE à extract-fiches.mjs : le corpus est byte-stable quelle que
 // soit sa provenance (extract des P*.md OU dump de la BASE).
 const _comment =
-  'Fiches de scan par compétence + en-têtes de pôle, extraites des P*.md (Twin6 public = tagger Twin9) via le parsePole du moteur. SOURCE UNIQUE : injecté dans competence.content.fiche par le seed ; generate-fiches.mjs et FicheGenerator (PHP) reconstruisent P*.md (règle b) + le setting twin9_fiches à l’identique. Parité octet prouvée.'
+  'Fiches de scan par compétence + en-têtes de pôle, extraites des P*.md (Twin6 public = tagger Twin9) via le parsePole du moteur. SOURCE UNIQUE : injecté dans competence.content.fiche par le seed ; generate-fiches.mjs et FicheGenerator (PHP) reconstruisent P*.md (règle b) à l’identique ; le moteur Twin9 lit ces fiches dans la base. Parité octet prouvée.'
 
 writeFileSync(out, JSON.stringify({ _comment, poleHeaders: corpus.poleHeaders, fiches: corpus.fiches }, null, 2) + '\n')
 console.log(

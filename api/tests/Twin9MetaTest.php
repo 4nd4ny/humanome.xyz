@@ -9,19 +9,19 @@ use Humanome\Keys\KeyVault;
 use Humanome\Llm\LlmRuntime;
 use Humanome\Packages\SettingsRepository;
 use Humanome\Twin9\CreditService;
-use Humanome\Twin9\FicheStore;
 use Humanome\Twin9\ProtocoleRepository;
 use Humanome\Twin9\Twin9Config;
 
 /**
  * GET /api/twin9/meta (ADR-010 §2/§3) — what the credit page and the open
- * cartography (Twin6) read: the Twin6 offer, the promotion's state, the
- * packs, PayPal's availability, the referential's structure, the own balance
- * and whether a private key is stored. Never a template, never a fiche.
+ * cartography (Twin6) read: the Twin6 offer, the packs, PayPal's
+ * availability, the referential's structure, the own balance and whether a
+ * private key is stored. Never a template, never a fiche.
  *
  * T11 removed the browser's engine and its proxy, POST /api/twin9/appel: the
  * meta no longer lists the steps, the Twin9 offer or the pipeline's settings,
- * which only that engine read, and the proxy answers as an unknown route.
+ * which only that engine read, and the proxy answers as an unknown route. The
+ * promotion's state, which no view read, left it on 2026-10-20.
  *
  * SECRECY IMPERATIVE (ADR-010): every template here is a MADE-UP fixture —
  * no real Twin9 content in tests, ever.
@@ -44,7 +44,7 @@ final class Twin9MetaTest extends CartographeTestCase
         $pdo = Db::get();
         $pdo->exec('DELETE FROM twin9_protocole_versions');
         $pdo->exec('DELETE FROM twin9_protocole');
-        $pdo->exec("DELETE FROM settings WHERE name IN ('twin9_config', 'twin9_fiches', 'twin9_referentiel')");
+        $pdo->exec("DELETE FROM settings WHERE name IN ('twin9_config', 'twin9_referentiel')");
 
         TestDb::setEnv('ANTHROPIC_API_KEY', 'sk-ant-platform-test-key');
         TestDb::setEnv('SODIUM_MASTER_KEY', self::MASTER_KEY_HEX);
@@ -54,7 +54,6 @@ final class Twin9MetaTest extends CartographeTestCase
         LlmRuntime::setHttpClient($this->http);
 
         (new ProtocoleRepository($pdo))->put('fictif/01-essai', self::FAKE_GABARIT, null);
-        (new Twin9Config(new SettingsRepository($pdo)))->update(['enabled' => true]);
 
         $this->user = $this->registerAs('ada@example.org', 'Ada', ['apprenant']);
     }
@@ -80,12 +79,12 @@ final class Twin9MetaTest extends CartographeTestCase
         $body = self::json($response);
 
         // Exactly these fields: the steps, the Twin9 offer, the pipeline's
-        // settings and the enabled flag left with the browser's engine (T11).
-        self::assertSame(['modeles_twin6', 'twin9_cle_perso_ouverte', 'packs', 'referentiel', 'paypalConfigured',
+        // settings and the enabled flag left with the browser's engine (T11),
+        // the promotion's state, which no view read, on 2026-10-20.
+        self::assertSame(['modeles_twin6', 'packs', 'referentiel', 'paypalConfigured',
             'solde_microusd', 'cle_privee_disponible'], array_keys($body));
         // Twin6 (open) prices at its own +10 % contribution (list [3, 15] × 1.1), margin itself absent.
         self::assertSame([3.3, 16.5], $body['modeles_twin6']['claude-sonnet-5']);
-        self::assertFalse($body['twin9_cle_perso_ouverte']); // promo closed by default
         self::assertSame([10, 20, 50, 100, 200, 500], array_column($body['packs'], 'montant_usd'));
         self::assertSame([], $body['referentiel']); // none imported
         self::assertFalse($body['paypalConfigured']);
@@ -104,12 +103,16 @@ final class Twin9MetaTest extends CartographeTestCase
 
     public function testFichesAreNeverExposed(): void
     {
-        FicheStore::store(new SettingsRepository(Db::get()), [
-            ['num' => 1, 'header' => 'PRÉAMBULE SECRET', 'competences' => [
-                ['code' => '1.01', 'fiche_md' => 'FICHE ULTRA CONFIDENTIELLE'],
+        // The referential's structure /meta serves keeps names and codes only: a
+        // preamble or a fiche given along with it never leaves (since 2026-10-20
+        // the import sends no fiche, and no setting keeps one).
+        (new Twin9Config(new SettingsRepository(Db::get())))->setReferentiel([
+            ['num' => 1, 'nom' => 'TÊTE — Penser', 'header' => 'PRÉAMBULE SECRET', 'competences' => [
+                ['code' => '1.01', 'nom' => 'Pensée', 'fiche_md' => 'FICHE ULTRA CONFIDENTIELLE'],
             ]],
         ]);
         $raw = (string) $this->as_($this->user, 'GET', '/api/twin9/meta')->getBody();
+        self::assertStringContainsString('Pensée', $raw);
         self::assertStringNotContainsString('CONFIDENTIELLE', $raw);
         self::assertStringNotContainsString('PRÉAMBULE SECRET', $raw);
         self::assertStringNotContainsString('fiche_md', $raw);

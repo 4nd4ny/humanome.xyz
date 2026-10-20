@@ -189,8 +189,8 @@ describe('EpistemiarqueView — éditeur riche d’une compétence', () => {
 
 // ─────────────────────────────────────────────────────── fiche de scan
 // SOURCE UNIQUE des fiches (exigence 2026-07-16) : competence.content.fiche en
-// base est LA source dont Twin6 (P*.md au build) et Twin9 (twin9_fiches par
-// endpoint) se régénèrent. Le POINT DE DÉPART de cette chaîne est « l'édition
+// base est LA source dont Twin6 (P*.md au build) se régénère et que Twin9 lit à
+// chaque run (T16). Le POINT DE DÉPART de cette chaîne est « l'édition
 // d'une fiche dans l'atelier » : l'éditeur doit exposer la fiche ET, quand on
 // ne la touche pas, la faire repartir VERBATIM dans saveDraft (byte-parité).
 

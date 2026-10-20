@@ -104,16 +104,15 @@ L'administrateur-promptologue ouvre « Faire évoluer » → « Atelier Twin9 »
   y est en variables (`{$NB_COMPETENCES}`, `{$FORMAT_CODE}`, `{$REFERENTIEL}`,
   `{$LISTE_COMPETENCES}`), et les fichiers de pôle n'y sont plus, la base donnant
   les fiches (`docs/contrats.md` §8.8) ; un Twin_v9 d'avant T16, sans
-  `php/protocole`, est refusé (sortie 1) —, ne retient de `config.json` que les
-  réglages du protocole (`seuils_consensus`, `jury`, `juge_leger`, `merge`,
-  `scan_global` — jamais les backends ni les
-  workers Python), et fait extraire par le Twin_v9 lui-même (`python3`, module
-  `aurora.referentiel`) la structure **non secrète** du référentiel (num/nom,
-  code/nom) et, à part, les fiches **confidentielles** (en-tête de pôle,
-  `fiche_md`) ; si l'extraction échoue, il avertit et les omet (le serveur
-  conserve alors ceux qu'il détient). Il ne journalise que des noms et des tailles, jamais un contenu ;
+  `php/protocole`, est refusé (sortie 1) —, et fait extraire par le Twin_v9
+  lui-même (`python3`, module `aurora.referentiel`) la structure **non
+  secrète** du référentiel (num/nom, code/nom) ; si l'extraction échoue, il
+  avertit et l'omet (le serveur conserve alors celle qu'il détient). Il ne
+  lit plus `config.json` et n'envoie plus les fiches (2026-10-20 : ils
+  servaient le moteur du navigateur, T11). Il ne journalise que des noms et
+  des tailles, jamais un contenu ;
   `--dry-run` s'arrête là. Sinon, `POST {base}/api/admin/twin9/import {files,
-  config?, referentiel?, fiches?}` avec `X-Migrate-Token` (variable
+  referentiel?}` avec `X-Migrate-Token` (variable
   `MIGRATE_TOKEN`, sinon `.env.deploy` ; base : `--base-url`, sinon `SITE_URL`
   de `.env.deploy`, sinon `https://humanome.xyz`) ; toute réponse non 2xx fait
   échouer le script (sortie 1). Côté serveur : chaque fichier est écrit dans
@@ -122,13 +121,14 @@ L'administrateur-promptologue ouvre « Faire évoluer » → « Atelier Twin9 »
   variables, ce qu'envoie le script — **remplace** le jeu : un gabarit qu'il
   ne porte pas en sort, son dernier contenu archivé parmi ses versions (T16 :
   les fichiers de pôle `tagger/P1` à `P7`), les noms comparés sans la casse ;
-  un import partiel n'ôte rien ; les réglages du pipeline, la structure du référentiel (nettoyée :
-  num/nom, code/nom) et les fiches confidentielles sont stockés ; Twin9 est
-  **activé** ; réponse `{imported, retires}`. Les copies déjà faites ne changent
-  pas. Depuis T11, aucun run ne lit plus les réglages du pipeline,
-  l'activation ni les fiches ainsi stockées : ils servaient le moteur du
-  navigateur ; les runs prennent leurs réglages dans leur profil, et leurs
-  fiches dans la base (T16).
+  un import partiel n'ôte rien ; la structure du référentiel (nettoyée :
+  num/nom, code/nom) est stockée, que `/api/twin9/meta` sert à la cartographie
+  ouverte ; réponse `{imported, retires}`. Les copies déjà faites ne changent
+  pas. Des réglages ou des fiches qu'enverrait un ancien script sont ignorés :
+  jusqu'au 2026-10-20, l'import stockait les réglages du pipeline et les
+  fiches, et activait Twin9 — ce que plus aucun run ne lisait depuis T11 ;
+  les runs prennent leurs réglages dans leur profil, et leurs fiches dans la
+  base (T16).
 - **A5 — Lire le jeu v9.8 ou la copie d'un autre** (étape 2, liste des jeux) :
   la vue l'ouvre en lecture seule — éditeur en lecture, ni « Enregistrer » ni
   « Restaurer », et la mention « Le jeu v9.8 est en lecture seule : copiez-le
@@ -166,7 +166,7 @@ L'administrateur-promptologue ouvre « Faire évoluer » → « Atelier Twin9 »
   l'anomalie 1). Le script sort alors en `1` (« twin9 import failed »), après
   avoir journalisé le statut et le début de la réponse. Il s'arrête **avant tout
   envoi** (sortie `1`) sur une option inconnue, un répertoire
-  `TWIN_V9_DIR/protocole` absent, un protocole sans aucun `.md`, ou un jeton
+  `TWIN_V9_DIR/php/protocole` absent, un protocole sans aucun `.md`, ou un jeton
   introuvable.
 - **E5 — API indisponible ou liste refusée** (étape 2) : copie statique →
   message d'indisponibilité ; tout autre échec de la liste des jeux (par ex.
@@ -246,7 +246,7 @@ L'administrateur-promptologue ouvre « Faire évoluer » → « Atelier Twin9 »
 | Copies | `twin9_jeux` (nom, auteur, date) ; son auteur mis à `NULL` si son compte est supprimé : la copie survit, que personne ne modifie plus |
 | Auteur d'une édition | `updated_by` / `created_by` (identifiant de compte) |
 | Contrat des variables | `schemas/twin9-protocole-contrat.json` : noms de gabarits et de variables seulement, non secret (ADR-010 §2) |
-| Fiches confidentielles | Réglage `twin9_fiches`, écrit par l'import **et** régénéré à chaque déploiement depuis la base (`/api/admin/generate-fiches`, garde-fou 409, UC-SYS-02) ; jamais exposé |
+| Fiches | Dans la base (en-têtes de pôle, fiche de chaque version de compétence), versées par le seed (UC-SYS-02), lues par les runs Twin9 (T16) ; l'atelier ne les montre pas. Le réglage `twin9_fiches`, qu'écrivaient l'import et le déploiement et qu'aucun run ne lisait plus, est parti le 2026-10-20 |
 
 ## Code sollicité
 
@@ -263,9 +263,9 @@ L'administrateur-promptologue ouvre « Faire évoluer » → « Atelier Twin9 »
 | Domaine | `api/src/Twin9/ProtocoleRepository.php` — `list`, `jeu`, `get`, `put`, `versions`, `version`, `restore`, `render`, `extractVariables`, `assertValidName`, `assertValidContent` | Dépôt versionné des gabarits d'un jeu |
 | Domaine | `api/src/Twin9/ProfilPolicy.php`, `api/src/Twin9/Lancement.php` | Jeu choisi par un profil, profil par défaut, instantané et attestation du run |
 | Domaine | `api/src/Middleware/RequireRole.php` — `all` | Garde conjonctive |
-| Domaine | `api/src/Twin9/Twin9Config.php`, `api/src/Twin9/FicheStore.php` | Activation, réglages, référentiel, fiches (import) |
+| Domaine | `api/src/Twin9/Twin9Config.php` — `setReferentiel` | Structure du référentiel (import) |
 | Contrat | `schemas/twin9-protocole-contrat.json` (livré avec la release, `scripts/deploy/stage-api.sh`) | Variables fournies à chaque gabarit (RG10) |
-| Script | `scripts/twin9/import-protocole.mjs` | Acteur technique de A4 : lecture de `TWIN_V9_DIR`, filtre des réglages, extraction python du référentiel et des fiches, envoi avec `X-Migrate-Token` — script sans export, exécuté dès son chargement : couvert fonctionnellement seulement, en sous-processus (UC-PRO-08-F19 à F22) |
+| Script | `scripts/twin9/import-protocole.mjs` | Acteur technique de A4 : lecture de `TWIN_V9_DIR`, extraction python du référentiel, envoi avec `X-Migrate-Token` — script sans export, exécuté dès son chargement : couvert fonctionnellement seulement, en sous-processus (UC-PRO-08-F19 à F22) |
 | Script | `scripts/check-publiable.mjs` (+ `.githooks/pre-commit`, `.github/workflows/publiable.yml`) | Garde anti-fuite : aucun gabarit Twin9 ni secret dans les fichiers suivis (RG8) — script sans export, exécuté dès son chargement : couvert fonctionnellement seulement, en sous-processus (UC-PRO-08-F17, F18) |
 
 ## Jeux de tests
@@ -294,7 +294,7 @@ autres tests de runs.
 | UC-PRO-08-U08 | `extractVariables`, `list` | Variables ordonnées ; métadonnées sans contenu (RG5) | idem |
 | UC-PRO-08-U09 | `RequireRole::all` | Sans session → 401 ; admin seul, promptologue seul → 403 ; les deux → passage avec `userId` et rôles ; au moins un rôle | idem |
 | UC-PRO-08-U10 | `ProtocoleRepository::render` | Banc d'essai : une passe, variables saisies seules, fiches non injectées, absentes listées (RG6) ; **anomalie 2 figée** | idem |
-| UC-PRO-08-U11 | `FicheStore::store`, `Twin9Config::update`, `setReferentiel` | Briques de l'import : fiches nettoyées, référentiel réduit à num/nom et code/nom (ni fiche ni en-tête), pipeline, activation (A4) | idem |
+| UC-PRO-08-U11 | `Twin9Config::setReferentiel` | Brique de l'import : référentiel réduit à num/nom et code/nom (ni fiche ni en-tête), seule donnée gardée hors des gabarits depuis le 2026-10-20 (A4) | idem |
 | UC-PRO-08-U12 | `TemplateSets::copier` | Copie du jeu v9.8 telle quelle, sans histoire, à son auteur ; noms invalides (422) ou pris (409) ; rien à copier (409) ; le jeu v9.8 intact ; compte supprimé → copie sans auteur (RG9) | idem |
 | UC-PRO-08-U13 | `TemplateSets::ecrire`, `restaurer`, `variablesRefusees`, `contrat` | L'auteur seul, les gabarits de la copie seuls, les variables fournies (contrat + original) ; jeu v9.8 en lecture seule (RG9, RG10) | idem |
 | UC-PRO-08-U14 | `TemplateSets::pour`, `defaut`, `fixerDefaut`, `lister` | Jeux d'un compte : v9.8, défaut, ses copies tant qu'il est de l'atelier ; jeu par défaut parmi ceux qui existent (RG11) | idem |
@@ -312,18 +312,18 @@ autres tests de runs.
 | UC-PRO-08-F07 | E5 | IHM | API indisponible : message ; liste des jeux refusée (403) : « Chargement impossible. » ; aucun contenu | idem |
 | UC-PRO-08-F08 | Nominal, A1, A2, A3, A6 | API | Jeux → jeu v9.8 lu → copie → liste → lecture `%2F` → édition → PUT identique « unchanged » → versions → restauration → restauration identique « unchanged » → banc d'essai sans appel au modèle ni débit ; le jeu v9.8 intact | `api/tests/UseCases/Functional/UcPro08EditerGabaritsTwin9Test.php` |
 | UC-PRO-08-F09 | Nominal (étape 6) | API | Un mot changé dans une copie se retrouve dans le prompt de chaque lecture d'un run dont le profil la choisit ; un run du jeu v9.8, sur sa propre carte, garde les mots du jeu v9.8 (moteur factice) ; avec le vrai moteur de `TWIN_V9_DIR`, sauté sans lui, dans le prompt du tagger | `api/tests/Twin9/JeuxGabaritsTest.php` |
-| UC-PRO-08-F10 | A4 | API | Import : gabarits, réglages, référentiel servi par `/meta`, fiches gardées sur le serveur (jamais servies) ; `/meta` ne nomme plus les gabarits ; activation, idempotence | `api/tests/UseCases/Functional/UcPro08EditerGabaritsTwin9Test.php` |
+| UC-PRO-08-F10 | A4 | API | Import : gabarits, référentiel servi par `/meta` ; réglages et fiches d'un ancien script ignorés, rien n'en est gardé ; `/meta` ne nomme plus les gabarits ; idempotence | `api/tests/UseCases/Functional/UcPro08EditerGabaritsTwin9Test.php` |
 | UC-PRO-08-F11 | E1 | API | 401 visiteur ; 403 promptologue seul et admin seul, sans fragment, copie comprise | idem |
 | UC-PRO-08-F12 | E2, E7 | API | 404 (statut et message) jeu, gabarit, version inconnus, nom hors format, PUT sur un nom que la copie n'a pas ; 403 sur le jeu v9.8 et la copie d'un autre | idem |
 | UC-PRO-08-F13 | E3 | API | 422 sur chaque saisie invalide, variable refusée et nom de copie compris, rien d'écrit | idem |
-| UC-PRO-08-F14 | E4 | API | 404 / 403 / 400 (statuts et messages) à l'import ; **anomalie 1 figée** : import partiel, au premier import comme au réimport (Twin9 reste activé, gabarits mélangés) | idem |
+| UC-PRO-08-F14 | E4 | API | 404 / 403 / 400 (statuts et messages) à l'import ; **anomalie 1 figée** : import partiel, au premier import comme au réimport (gabarits mélangés, référentiel inchangé) | idem |
 | UC-PRO-08-F15 | E6 | API | Sans jeton CSRF ou jeton faux → 403 sur la copie, le PUT, la restauration, le banc d'essai ; rien d'écrit | idem |
 | UC-PRO-08-F16 | Anomalies 3-5 | API | Clé d'import numérique refusée ; nom à saut de ligne final accepté ; gabarit « …/versions » importé mais illisible | idem |
 | UC-PRO-08-F17 | RG8 | CLI | `scripts/check-publiable.mjs` dans un dépôt git temporaire : répertoires de gabarits refusés quel que soit le contenu, `.env` réel, clé, mot de passe hors tests → sortie 1 et liste sans contenu ; gabarit rangé ailleurs, ligne à marqueur, binaire, fichier non suivi : non relevés ; dépôt propre → sortie 0 | `engine/test/usecases/unit/uc-pro-08-editer-gabarits-twin9.test.js` |
 | UC-PRO-08-F18 | RG8 (Limites) | CLI | **Limite figée** : chemins lus dans l'index mais contenu lu sur le disque — clé indexée puis effacée du disque non relevée ; répertoire de gabarits supprimé du disque mais indexé toujours refusé | idem |
-| UC-PRO-08-F19 | A4, E4 | CLI | `scripts/twin9/import-protocole.mjs --dry-run` (copie en miroir temporaire, faux `TWIN_V9_DIR`) : `.md` de `php/protocole` seuls, noms hiérarchiques sans `.md`, réglages filtrés, noms et tailles journalisés sans contenu, rien envoyé ; répertoire absent, protocole vide, Twin_v9 d'avant T16 (sans `php/protocole`), option inconnue (avec `--dry-run`) → sortie 1 | idem |
-| UC-PRO-08-F20 | A4, E4 | CLI + HTTP simulé | Faux serveur `127.0.0.1` : `POST /api/admin/twin9/import`, `X-Migrate-Token`, corps `{files, config}` sans référentiel ni fiches non extraits ; refus 403 → sortie 1 « twin9 import failed » | idem |
-| UC-PRO-08-F21 | A4 | CLI + HTTP simulé | Faux module `aurora` (`python3`, sauté sans) : référentiel non secret (num/nom, code/nom) et fiches confidentielles (en-tête, `fiche_md`) envoyés séparément, pôles triés, aucun texte de fiche journalisé | idem |
+| UC-PRO-08-F19 | A4, E4 | CLI | `scripts/twin9/import-protocole.mjs --dry-run` (copie en miroir temporaire, faux `TWIN_V9_DIR`) : `.md` de `php/protocole` seuls, noms hiérarchiques sans `.md`, `config.json` plus lu, noms et tailles journalisés sans contenu, rien envoyé ; répertoire absent, protocole vide, Twin_v9 d'avant T16 (sans `php/protocole`), option inconnue (avec `--dry-run`) → sortie 1 | idem |
+| UC-PRO-08-F20 | A4, E4 | CLI + HTTP simulé | Faux serveur `127.0.0.1` : `POST /api/admin/twin9/import`, `X-Migrate-Token`, corps `{files}` (ni référentiel non extrait, ni réglages) ; refus 403 → sortie 1 « twin9 import failed » | idem |
+| UC-PRO-08-F21 | A4 | CLI + HTTP simulé | Faux module `aurora` (`python3`, sauté sans) : référentiel non secret (num/nom, code/nom), pôles triés ; ni en-tête ni fiche envoyés, aucun texte de fiche journalisé | idem |
 | UC-PRO-08-F22 | E4 | CLI + HTTP simulé | Jeton introuvable (ni `MIGRATE_TOKEN`, ni `.env.deploy` dans le miroir) → sortie 1 « MIGRATE_TOKEN missing (.env.deploy or environment) », aucune requête reçue par le faux serveur | idem |
 | UC-PRO-08-F23 | A6 | IHM | Sans copie, le jeu v9.8 ouvert en lecture ; « Copier » → POST avec CSRF → la copie ouverte, éditable | `web/test/usecases/functional/uc-pro-08-editer-gabarits-twin9.test.jsx` |
 | UC-PRO-08-F24 | A5, E7 | IHM | Liste des jeux (lecture seule, la sienne, le défaut) ; la copie d'un autre ouverte en lecture : ni « Enregistrer » ni « Restaurer », aucune écriture | idem |
@@ -349,12 +349,10 @@ cd engine && npx vitest run test/usecases/unit/uc-pro-08
 
 1. **Import non atomique.** `POST /api/admin/twin9/import` écrit les fichiers un
    par un sans transaction : si un fichier du lot est invalide, la réponse est
-   `422` mais les fichiers valides qui le précèdent sont **déjà** écrits ; la
-   configuration, le référentiel et les fiches ne sont pas mis à jour, et Twin9
-   garde son état d'activation antérieur. Au premier import il reste désactivé ;
-   lors d'un **réimport** (cas normal en production) il reste **activé** et sert
-   aux apprenants un mélange de gabarits neufs et anciens. Figé par
-   UC-PRO-08-F14.
+   `422` mais les fichiers valides qui le précèdent sont **déjà** écrits ; le
+   référentiel n'est pas mis à jour. Lors d'un **réimport** (cas normal en
+   production), le jeu v9.8 sert alors aux runs un mélange de gabarits neufs
+   et anciens. Figé par UC-PRO-08-F14.
 2. **Variables « non résolues » calculées sur le rendu.**
    `ProtocoleRepository::render` cherche les motifs `{$X}` dans le texte
    **rendu** et non dans le gabarit : une valeur saisie contenant `{$X}` fait

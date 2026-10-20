@@ -93,7 +93,8 @@ const TAGGING = 'Gabarit fictif de tagging {$POLE_FICHES}'
 
 /**
  * Faux Twin_v9 : deux gabarits hiérarchiques sous php/protocole (le jeu que lit
- * le moteur PHP depuis T16), du bruit, un config.json complet.
+ * le moteur PHP depuis T16), du bruit, un config.json complet — que l'import ne
+ * lit plus depuis le 2026-10-20.
  */
 function fauxTwinV9(extra = {}) {
   return dossier('twin-v9', {
@@ -207,7 +208,7 @@ describe('UC-PRO-08 — fonctionnels (sous-processus) : garde anti-fuite des gab
 })
 
 describe('UC-PRO-08 — fonctionnels (sous-processus) : import technique A4 (scripts/twin9/import-protocole.mjs)', () => {
-  it('UC-PRO-08-F19 — A4, E4 : lecture de TWIN_V9_DIR : php/protocole/**/*.md seuls, noms hiérarchiques sans .md ; réglages du pipeline filtrés (jamais les backends Python) ; --dry-run n’envoie rien et ne journalise que noms et tailles, jamais le contenu ; dossier absent, protocole vide ou option inconnue → sortie 1', async () => {
+  it('UC-PRO-08-F19 — A4, E4 : lecture de TWIN_V9_DIR : php/protocole/**/*.md seuls, noms hiérarchiques sans .md ; config.json n’est plus lu (2026-10-20) ; --dry-run n’envoie rien et ne journalise que noms et tailles, jamais le contenu ; dossier absent, protocole vide ou option inconnue → sortie 1', async () => {
     const twin = fauxTwinV9()
     const r = await importer(['--dry-run'], { TWIN_V9_DIR: twin })
 
@@ -216,13 +217,11 @@ describe('UC-PRO-08 — fonctionnels (sous-processus) : import technique A4 (scr
       `Twin_v9 dir: ${twin}`,
       `  lourd/20-greffier (${Buffer.byteLength(GREFFIER, 'utf8')} bytes)`,
       `  tagger/1-tag-pole (${Buffer.byteLength(TAGGING, 'utf8')} bytes)`,
-      'config keys: seuils_consensus, jury',
       'referentiel absent',
-      'fiches absentes',
       'dry-run: nothing sent',
     ])
-    // Faux Twin_v9 sans module aurora : référentiel et fiches non extraits, avertissement.
-    expect(r.stderr).toContain('referentiel/fiches NOT extracted')
+    // Faux Twin_v9 sans module aurora : référentiel non extrait, avertissement.
+    expect(r.stderr).toContain('referentiel NOT extracted')
     expect(r.stdout + r.stderr).not.toContain('GABARIT FICTIF')
     expect(r.stdout + r.stderr).not.toContain('tagging')
 
@@ -247,7 +246,7 @@ describe('UC-PRO-08 — fonctionnels (sous-processus) : import technique A4 (scr
     expect([option.status, option.stderr.trim(), option.stdout]).toEqual([1, 'Unknown option: --envoyer-tout', ''])
   })
 
-  it('UC-PRO-08-F20 — A4, E4 : envoi : POST {base}/api/admin/twin9/import avec X-Migrate-Token et {files, config} (sans référentiel ni fiches s’ils n’ont pu être extraits) ; réponse journalisée ; refus du serveur → sortie 1 « twin9 import failed »', async () => {
+  it('UC-PRO-08-F20 — A4, E4 : envoi : POST {base}/api/admin/twin9/import avec X-Migrate-Token et {files} (sans référentiel s’il n’a pu être extrait ; ni réglages ni fiches depuis le 2026-10-20) ; réponse journalisée ; refus du serveur → sortie 1 « twin9 import failed »', async () => {
     const twin = fauxTwinV9()
     const ok = await fauxServeur(200, { imported: 2, retires: 0 })
     try {
@@ -264,7 +263,6 @@ describe('UC-PRO-08 — fonctionnels (sous-processus) : import technique A4 (scr
       ])
       expect(req.body).toEqual({
         files: { 'lourd/20-greffier': GREFFIER, 'tagger/1-tag-pole': TAGGING },
-        config: { seuils_consensus: { conf_min: 0.4 }, jury: { mode: 'socle4+1' } },
       })
     } finally {
       await ok.fermer()
@@ -281,7 +279,7 @@ describe('UC-PRO-08 — fonctionnels (sous-processus) : import technique A4 (scr
     }
   })
 
-  it.skipIf(!PYTHON)('UC-PRO-08-F21 — A4 : extraction par le Twin_v9 lui-même (python3, module aurora) : référentiel NON secret réduit à num/nom et code/nom, fiches confidentielles (en-tête, fiche_md) envoyées à part, pôles triés ; aucun texte de fiche journalisé', async () => {
+  it.skipIf(!PYTHON)('UC-PRO-08-F21 — A4 : extraction par le Twin_v9 lui-même (python3, module aurora) : référentiel NON secret réduit à num/nom et code/nom, pôles triés ; les fiches ne partent plus (2026-10-20) ; aucun texte de fiche journalisé', async () => {
     const twin = fauxTwinV9({
       'aurora/__init__.py': '',
       'aurora/referentiel.py': [
@@ -302,24 +300,15 @@ describe('UC-PRO-08 — fonctionnels (sous-processus) : import technique A4 (scr
       const r = await importer(['--base-url', srv.url], { TWIN_V9_DIR: twin, PYTHONDONTWRITEBYTECODE: '1' })
       expect(r.status).toBe(0)
       expect(r.stdout).toContain('referentiel: 2 pôles')
-      expect(r.stdout).toContain('fiches: 3 confidentielles')
       expect(r.stdout + r.stderr).not.toContain('FICHE FICTIVE')
       const { body } = srv.requetes[0]
+      expect(Object.keys(body)).toEqual(['files', 'referentiel'])
       expect(body.referentiel).toEqual([
         { num: 1, nom: 'TÊTE', competences: [{ code: '1.01', nom: 'Pensée critique' }, { code: '1.02', nom: 'Cadrage' }] },
         { num: 2, nom: 'CŒUR', competences: [{ code: '2.01', nom: 'Écoute active' }] },
       ])
-      expect(body.fiches).toEqual([
-        {
-          num: 1,
-          header: 'En-tête fictif P1',
-          competences: [
-            { code: '1.01', fiche_md: 'FICHE FICTIVE 1.01' },
-            { code: '1.02', fiche_md: 'FICHE FICTIVE 1.02' },
-          ],
-        },
-        { num: 2, header: 'En-tête fictif P2', competences: [{ code: '2.01', fiche_md: 'FICHE FICTIVE 2.01' }] },
-      ])
+      // Ni en-tête ni fiche : le serveur les prend dans sa base (T16).
+      expect(JSON.stringify(body)).not.toMatch(/FICHE FICTIVE|En-tête fictif/)
     } finally {
       await srv.fermer()
     }

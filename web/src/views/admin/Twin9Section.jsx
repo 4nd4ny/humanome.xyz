@@ -21,9 +21,6 @@ import {
   saveTwin9Config,
 } from '../../api/twin9.js'
 
-/** Étages connus (contrat serveur Twin9Config::ETAGES) — ordre canonique. */
-const ETAGES = ['taggers', 'rapide', 'tribunal']
-
 /** @param {string} iso @returns {string} date/heure française courte ('—' si vide) */
 function frDate(iso) {
   if (typeof iso !== 'string' || iso === '') return '—'
@@ -47,16 +44,16 @@ function draftFromConfig(config) {
       id,
       prixIn: String(m.prix_usd_mtok?.[0] ?? ''),
       prixOut: String(m.prix_usd_mtok?.[1] ?? ''),
-      etages: Array.isArray(m.etages) ? [...m.etages] : [],
     })),
   }
 }
 
 /**
  * Réglages Twin9 : marge (1..5), packs (montant + libellé, ajout/suppression),
- * offre de modèles (id, prix [in, out], étages). Enregistrer envoie un DIFF de
- * clés de haut niveau (le serveur fusionne puis valide la config complète ;
- * 422 hors bornes affiché tel quel).
+ * offre de modèles (id, prix [in, out] ; un profil ne demande à un modèle que
+ * son prix — les « étages » sont partis le 2026-10-20). Enregistrer envoie un
+ * DIFF de clés de haut niveau (le serveur fusionne puis valide la config
+ * complète ; 422 hors bornes affiché tel quel).
  */
 function ReglagesBloc({ config, fetchFn, onSaved }) {
   const [draft, setDraft] = useState(() => draftFromConfig(config))
@@ -88,26 +85,10 @@ function ReglagesBloc({ config, fetchFn, onSaved }) {
       modeles: prev.modeles.map((m, j) => (j === i ? { ...m, [field]: value } : m)),
     }))
   }
-  function toggleEtage(i, etage) {
-    setDraft((prev) => ({
-      ...prev,
-      modeles: prev.modeles.map((m, j) =>
-        j === i
-          ? {
-              ...m,
-              // Ordre canonique conservé (comparaison de diff stable).
-              etages: m.etages.includes(etage)
-                ? m.etages.filter((e) => e !== etage)
-                : ETAGES.filter((e) => m.etages.includes(e) || e === etage),
-            }
-          : m,
-      ),
-    }))
-  }
   function addModele() {
     setDraft((prev) => ({
       ...prev,
-      modeles: [...prev.modeles, { id: '', prixIn: '', prixOut: '', etages: [] }],
+      modeles: [...prev.modeles, { id: '', prixIn: '', prixOut: '' }],
     }))
   }
   function removeModele(i) {
@@ -149,7 +130,7 @@ function ReglagesBloc({ config, fetchFn, onSaved }) {
         return { error: `Prix invalide pour « ${id} ».` }
       }
       // ce que le formulaire n'édite pas (le palier des longs prompts, T10) reste tel quel
-      nextModeles[id] = { ...(config.modeles?.[id] ?? {}), prix_usd_mtok: [prixIn, prixOut], etages: m.etages }
+      nextModeles[id] = { ...(config.modeles?.[id] ?? {}), prix_usd_mtok: [prixIn, prixOut] }
     }
     if (JSON.stringify(nextModeles) !== JSON.stringify(config.modeles)) patch.modeles = nextModeles
 
@@ -343,20 +324,6 @@ function ReglagesBloc({ config, fetchFn, onSaved }) {
                 />
               </div>
             </div>
-            <fieldset className="twin9-admin-etages">
-              <legend>Étages</legend>
-              {ETAGES.map((etage) => (
-                <label key={etage}>
-                  <input
-                    type="checkbox"
-                    checked={m.etages.includes(etage)}
-                    disabled={busy}
-                    onChange={() => toggleEtage(i, etage)}
-                  />
-                  {etage}
-                </label>
-              ))}
-            </fieldset>
             <button
               type="button"
               className="admin-button-secondary"

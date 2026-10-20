@@ -35,10 +35,10 @@ final class TwinSupport
     /** Gabarit FICTIF qui nomme les fiches confidentielles (le banc d'essai de l'atelier ne les injecte pas). */
     public const GABARIT_GREFFIER = "Greffier FICTIF.\nFiche : {\$COMPETENCE_FICHE}\nPôle : {\$POLE_FICHES}\nCode {\$CODE} — extrait : {\$EXTRAIT}";
 
-    /** Fiche FICTIVE longue, que l'import garde sur le serveur. */
+    /** Fiche FICTIVE longue, qu'enverrait un ancien script d'import (ignorée depuis le 2026-10-20). */
     public const FICHE_SECRETE = 'FICHE FICTIVE 1.01 : le cartographe observe la manière dont la personne confronte deux sources contradictoires avant de conclure.';
 
-    /** Poles/fiches FICTIFS pour FicheStore::store. */
+    /** Pôles et fiches FICTIFS, tels que les envoyait l'import jusqu'au 2026-10-20. */
     public static function fichesFictives(): array
     {
         return [

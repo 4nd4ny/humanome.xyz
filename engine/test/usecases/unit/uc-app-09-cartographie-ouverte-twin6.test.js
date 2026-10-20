@@ -5,8 +5,12 @@
 // des prompts PUBLICS (un scan-pole par pôle du référentiel, kairos),
 // extraction JSON tolérante, orchestration executerTwin6 (ordre, progression,
 // garde de troncature), projection vers cartographie-merge
-// (twin6ToMergeDocument), tout référentiel (U31), et provider « clé perso »
-// (createProvider direct). Gabarits, référentiels et portfolio FICTIFS.
+// (twin6ToMergeDocument), tout référentiel (U31), les gabarits du paquet servi
+// qui lisent le référentiel (U33, gabarits versionnés de scripts/data/twin6 et
+// fixture de RESPIRE v7), et provider « clé perso » (createProvider direct).
+// Ailleurs, gabarits, référentiels et portfolio FICTIFS.
+import { readFileSync } from 'node:fs'
+import { fileURLToPath } from 'node:url'
 import { describe, expect, it, vi } from 'vitest'
 import {
   TWIN6_CALLS,
@@ -21,6 +25,7 @@ import { twin6ToMergeDocument } from '../../../src/twin6/mapper.js'
 import { createProvider } from '../../../src/providers/index.js'
 import { validateDocument } from '../../../src/validation.js'
 import { validateDocumentPourReferentiel } from '../../../src/conformite.js'
+import { gabaritsTwin6 } from '../../../../scripts/twin6-gabarits.mjs'
 
 const POLES = [
   { num: 1, nom: 'TÊTE — Penser & Comprendre' },
@@ -312,6 +317,43 @@ describe('UC-APP-09 — tout référentiel (2026-10-20)', () => {
     expect(outSix.document).not.toHaveProperty('referentiel')
     expect(outSix.document.domains).toHaveLength(6)
     expect(validateDocumentPourReferentiel('cartographie-merge', outSix.document, six).errors).toEqual([])
+  })
+
+  it('UC-APP-09-U33 — le paquet servi (1.1.0) lit le référentiel : pour RESPIRE v7, les huit prompts de 1.0.0 à l’octet ; pour cinq pôles lettrés, son nom, ses pôles, ses compétences et la forme de ses codes, sans variable restante (RG10)', async () => {
+    const repo = fileURLToPath(new URL('../../../../', import.meta.url))
+    const respire = JSON.parse(readFileSync(`${repo}schemas/fixtures/referentiel-respire-v7.json`, 'utf8'))
+    const prompts = async (version, referentiel) => {
+      const provider = providerPour(referentiel)
+      const { scanPole, kairos } = gabaritsTwin6(repo, version)
+      await executerTwin6({
+        portfolio: PORTFOLIO,
+        templates: { scanPole, kairos, fiches: fichesPourTwin6(referentiel, TEMPLATES.fiches) },
+        referentiel,
+        provider,
+        model: 'm',
+        options: { meta: META },
+      })
+      return provider.complete.mock.calls.map(([params]) => params.prompt)
+    }
+
+    const v100 = await prompts('1.0.0', respire)
+    expect(v100).toHaveLength(8)
+    expect(await prompts('1.1.0', respire)).toEqual(v100)
+
+    const lettres = ['A', 'B', 'C', 'D', 'E']
+    const lettre = {
+      id: 'fictif-lettre',
+      poles: lettres.map((l, i) => ({ num: i + 1, nom: `${l} · Pôle fictif ${l}` })),
+      competences: lettres.map((l, i) => ({ code: `${l}1`, nom: `Capacité fictive ${l}1`, pole: i + 1 })),
+    }
+    const v110 = await prompts('1.1.0', lettre)
+    expect(v110).toHaveLength(6)
+    expect(v110[0]).toContain("Le numéro d'un des 5 pôles du **référentiel fictif-lettre** `1`")
+    expect(v110[0]).toContain('- **Codes** : format `XY` strict.')
+    expect(v110[5]).toContain("`carto_P[1..5].json` remplie jusqu'ici (les 5 verdicts avec leurs scores bruts, les 5 rapports pôle)")
+    for (const prompt of v110) {
+      expect(prompt).not.toMatch(/RESPIRE|X\.YY|\$\{/)
+    }
   })
 })
 

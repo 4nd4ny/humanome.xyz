@@ -13,21 +13,11 @@ use Humanome\Packages\SettingsRepository;
  *
  * Shape (all keys optional in storage, defaults below):
  *   marge     float, margin multiplier applied to Anthropic list prices (1..5)
- *   packs     list of {montant_usd (1..100), libelle} PayPal top-up offers
- *   modeles   map model_id => {prix_usd_mtok: [in, out] (>0), etages: subset
- *             of {taggers, rapide, tribunal}, palier_long?: {au_dela_de:
- *             prompt tokens (>0), prix_usd_mtok: [in, out] (>0)}} — the long
- *             prompt tier some models bill above a prompt size (Haiku 5.5, T10)
- *   enabled   bool — false until the templates have been imported; it gated
- *             the browser engine's proxy, POST /api/twin9/appel, and nothing
- *             reads it since T11 removed them
- *   appels_par_minute  int, per-user rate limit of POST /api/twin6/appel
- *             (1..600, default 30 — T3b)
- *   pipeline  free-form Twin9 protocol settings imported from config.json
- *             (seuils_consensus, jury, juge_leger, merge, scan_global) — the
- *             ALGORITHM's knobs, not secret (ADR-010 §2 residual), which the
- *             browser's engine read until T11; the server runs take theirs
- *             from their profile (T12).
+ *   packs     list of {montant_usd (1..500), libelle} PayPal top-up offers
+ *   modeles   map model_id => {prix_usd_mtok: [in, out] (>0), palier_long?:
+ *             {au_dela_de: prompt tokens (>0), prix_usd_mtok: [in, out] (>0)}}
+ *             — the long prompt tier some models bill above a prompt size
+ *             (Haiku 5.5, T10); a profile asks a model for its price only
  *   runs_par_tick         int, the Twin9 runs a tick advances at most (1..20,
  *                         default 3 — ADR-011 §2)
  *   secondes_par_tranche  int, the length of a tick's slice in seconds
@@ -35,6 +25,14 @@ use Humanome\Packages\SettingsRepository;
  *
  * publicView() is the ONLY shape the front ever sees of it: the Twin6 prices
  * WITH margin applied (the raw list price and the margin stay admin-only).
+ *
+ * Gone on 2026-10-20, with the browser's engine they served (T11): the
+ * switch `enabled` and the protocol settings `pipeline` the import wrote, the
+ * offer's model tiers (`etages`) the supervision edited, the rate
+ * `appels_par_minute` that bounded the open cartography's paid calls. A value
+ * of them still stored is ignored on read and leaves at the next save. No
+ * migration erases them yet: that is a contraction, which waits until the
+ * release that stops reading them is stable (ADR-008; STATUS.md).
  */
 final class Twin9Config
 {
@@ -54,8 +52,6 @@ final class Twin9Config
      * its published document.
      */
     public const REFERENTIEL_KEY = 'twin9_referentiel';
-
-    public const ETAGES = ['taggers', 'rapide', 'tribunal'];
 
     private const MARGE_MIN = 1.0;
     private const MARGE_MAX = 5.0;
@@ -100,15 +96,12 @@ final class Twin9Config
             'modeles' => [
                 'claude-haiku-4-5-20251001' => [
                     'prix_usd_mtok' => [1, 5],
-                    'etages' => ['taggers', 'rapide'],
                 ],
                 'claude-sonnet-5' => [
                     'prix_usd_mtok' => [3, 15],
-                    'etages' => ['taggers', 'rapide', 'tribunal'],
                 ],
                 'claude-opus-4-8' => [
                     'prix_usd_mtok' => [5, 25],
-                    'etages' => ['tribunal'],
                 ],
                 // The v9.8 profile's models (T10), at Anthropic's list prices read on 2026-10-18
                 // (platform.claude.com/docs/en/about-claude/pricing): Haiku 5.5 bills a prompt
@@ -116,16 +109,11 @@ final class Twin9Config
                 'claude-haiku-5-5' => [
                     'prix_usd_mtok' => [0.1, 0.5],
                     'palier_long' => ['au_dela_de' => 100000, 'prix_usd_mtok' => [0.5, 2.5]],
-                    'etages' => ['taggers', 'rapide'],
                 ],
                 'claude-sonnet-5-5' => [
                     'prix_usd_mtok' => [2, 10],
-                    'etages' => ['taggers', 'rapide', 'tribunal'],
                 ],
             ],
-            'enabled' => false,
-            'appels_par_minute' => 30,
-            'pipeline' => [],
             'runs_par_tick' => 3,
             'secondes_par_tranche' => 40,
         ];
@@ -139,11 +127,21 @@ final class Twin9Config
     public function read(): array
     {
         $stored = $this->settings->get(self::SETTING_KEY) ?? [];
-
-        return array_merge(self::defaults(), array_intersect_key(
+        $config = array_merge(self::defaults(), array_intersect_key(
             $stored,
             self::defaults(),
         ));
+        // A model's tiers, stored before 2026-10-20, are ignored like the
+        // keys that left (class doc).
+        if (\is_array($config['modeles'])) {
+            foreach ($config['modeles'] as $id => $modele) {
+                if (\is_array($modele)) {
+                    unset($config['modeles'][$id]['etages']);
+                }
+            }
+        }
+
+        return $config;
     }
 
     /**
@@ -214,16 +212,6 @@ final class Twin9Config
         $this->settings->set(self::REFERENTIEL_KEY, ['poles' => $clean]);
     }
 
-    public function isEnabled(): bool
-    {
-        return (bool) $this->read()['enabled'];
-    }
-
-    public function setEnabled(bool $enabled): void
-    {
-        $this->update(['enabled' => $enabled]);
-    }
-
     /** Contribution margin for a protocole: twin6 → marge_twin6, else twin9 marge. */
     public function marge(string $protocole = 'twin9'): float
     {
@@ -243,12 +231,6 @@ final class Twin9Config
         return (bool) $this->read()['twin9_cle_perso_ouverte'];
     }
 
-    public function appelsParMinute(): int
-    {
-        return (int) $this->read()['appels_par_minute'];
-    }
-
-    /** @return list<array{montant_usd: float|int, libelle: string}> */
     /** The Twin9 runs a tick advances at most (ADR-011 §2). */
     public function runsParTick(): int
     {
@@ -261,21 +243,16 @@ final class Twin9Config
         return (int) $this->read()['secondes_par_tranche'];
     }
 
+    /** @return list<array{montant_usd: float|int, libelle: string}> */
     public function packs(): array
     {
         return $this->read()['packs'];
     }
 
-    /** @return array<string, array{prix_usd_mtok: array{float|int, float|int}, etages: list<string>}> */
+    /** @return array<string, array{prix_usd_mtok: array{float|int, float|int}, palier_long?: array<string, mixed>}> */
     public function modeles(): array
     {
         return $this->read()['modeles'];
-    }
-
-    /** @return array<string, mixed> */
-    public function pipeline(): array
-    {
-        return $this->read()['pipeline'];
     }
 
     /**
@@ -386,10 +363,10 @@ final class Twin9Config
     /**
      * The PUBLIC shape for the front (ADR-010 §3), as /meta serves it to the
      * credit page and the open cartography: the Twin6 prices WITH margin
-     * applied, packs, the promotion's state, PayPal availability. Neither the
-     * raw list prices nor the margin itself ever leave the admin view. The
-     * Twin9 offer, the enabled flag and the pipeline's settings left it with
-     * the browser's engine (T11).
+     * applied, packs, PayPal availability. Neither the raw list prices nor the
+     * margin itself ever leave the admin view. The Twin9 offer and the
+     * pipeline's settings left it with the browser's engine (T11), the
+     * promotion's state on 2026-10-20 (no view read it).
      *
      * @return array<string, mixed>
      */
@@ -408,8 +385,6 @@ final class Twin9Config
             'paypalConfigured' => Env::get('PAYPAL_CLIENT_ID') !== '',
             'packs' => $config['packs'],
             'modeles_twin6' => $modelesTwin6,
-            // Promo state: when true, Twin9 is usable free with one's own key.
-            'twin9_cle_perso_ouverte' => (bool) $config['twin9_cle_perso_ouverte'],
         ];
     }
 
@@ -460,10 +435,10 @@ final class Twin9Config
                     throw new Twin9Exception('Prix invalide : nombre strictement positif attendu', 422);
                 }
             }
-            $etages = $modele['etages'] ?? null;
-            if (!\is_array($etages) || $etages === [] || !array_is_list($etages)
-                || array_diff($etages, self::ETAGES) !== []) {
-                throw new Twin9Exception('Étages invalides (taggers, rapide, tribunal)', 422);
+            $inconnues = array_diff(array_keys($modele), ['prix_usd_mtok', 'palier_long']);
+            if ($inconnues !== []) {
+                throw new Twin9Exception('Modèle ' . $modelId . ' : ' . (\count($inconnues) === 1 ? 'clé inconnue ' : 'clés inconnues ')
+                    . implode(', ', $inconnues), 422);
             }
             if (\array_key_exists('palier_long', $modele)) {
                 $palier = $modele['palier_long'];
@@ -479,16 +454,6 @@ final class Twin9Config
             }
         }
 
-        if (!\is_bool($config['enabled'])) {
-            throw new Twin9Exception('Champ enabled invalide : booléen attendu', 422);
-        }
-        $rythme = $config['appels_par_minute'];
-        if (!\is_int($rythme) || $rythme < 1 || $rythme > 600) {
-            throw new Twin9Exception('Rythme d’appels hors bornes (1 à 600 par minute)', 422);
-        }
-        if (!\is_array($config['pipeline'])) {
-            throw new Twin9Exception('Configuration pipeline invalide : objet attendu', 422);
-        }
         $runs = $config['runs_par_tick'];
         if (!\is_int($runs) || $runs < 1 || $runs > 20) {
             throw new Twin9Exception('Runs par tick hors bornes (1 à 20)', 422);

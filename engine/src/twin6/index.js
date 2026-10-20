@@ -8,7 +8,11 @@
 // Contrat des prompts (vérifié sur les .md source) : `${POLE}` = le NUMÉRO du
 // pôle ; la fiche de ce pôle et le portfolio sont des ENTRÉES attachées (pas de
 // placeholder dédié), injectées ici sous des titres explicites. Le kairos
-// reçoit les `carto_pole` de tous les pôles + le portfolio original.
+// reçoit les `carto_pole` de tous les pôles + le portfolio original. Les
+// gabarits de twin6-ouverte 1.1.0 lisent en outre le référentiel employé
+// (`${REFERENTIEL}`, `${NB_POLES}`, `${NB_COMPETENCES}`, `${FORMAT_CODE}`…,
+// ./variables.js), rendus ici avant tout appel ; ceux de 1.0.0, qui écrivent
+// RESPIRE v7 en toutes lettres, passent inchangés.
 //
 // Aucune E/S ni secret ici (convention moteur, P5) : les gabarits (scan-pole,
 // kairos, une fiche par pôle — tous PUBLICS) sont injectés par l'appelant, qui
@@ -18,9 +22,12 @@
 // ```json, préambule).
 
 import { twin6ToMergeDocument } from './mapper.js'
+import { rendreGabaritTwin6, variablesTwin6 } from './variables.js'
 
 // Les fiches d'un pôle pour tout référentiel (WP1, 2026-10-20), exposées avec le pipeline.
 export { fichesDuReferentiel, fichesPourTwin6 } from './fiches.js'
+// Les variables par lesquelles les gabarits 1.1.0 lisent le référentiel (2026-10-20).
+export { formatCodeTwin6, rendreGabaritTwin6, variablesTwin6 } from './variables.js'
 
 /** Nombre d'appels d'un run Twin6 sur RESPIRE v7 (7 pôles + kairos). */
 export const TWIN6_CALLS = 8
@@ -102,6 +109,10 @@ export async function executerTwin6({ portfolio, templates, referentiel, provide
 
   const { maxTokens = 8192, temperature, signal, onProgress, meta = {} } = options
   const poleNums = referentiel.poles.map((p) => p.num).sort((a, b) => a - b)
+  // Les variables du référentiel (gabarits 1.1.0) ; sans elles (1.0.0), rien ne change.
+  const variables = variablesTwin6(referentiel)
+  const scanPole = rendreGabaritTwin6(templates.scanPole, variables)
+  const kairosGabarit = rendreGabaritTwin6(templates.kairos, variables)
   const total = poleNums.length + 1
   let done = 0
   const usage = { inputTokens: 0, outputTokens: 0 }
@@ -122,7 +133,7 @@ export async function executerTwin6({ portfolio, templates, referentiel, provide
     const fiche = templates.fiches[num] ?? templates.fiches[String(num)]
     if (!fiche) throw new Error(`executerTwin6: fiche manquante pour le pôle ${num}`)
     onProgress?.({ phase: 'scan-pole', pole: num, done, total })
-    const prompt = buildScanPolePrompt(templates.scanPole, num, fiche, portfolio)
+    const prompt = buildScanPolePrompt(scanPole, num, fiche, portfolio)
     const res = await provider.complete({ model, prompt, maxTokens, temperature, signal })
     accumulate(`scan-pole/${num}`, res)
     const cartoPole = extractJson(res.text)
@@ -133,7 +144,7 @@ export async function executerTwin6({ portfolio, templates, referentiel, provide
 
   // Phase 2 — kairos transversal.
   onProgress?.({ phase: 'kairos', done, total })
-  const kairosPrompt = buildKairosPrompt(templates.kairos, cartoPoles, portfolio)
+  const kairosPrompt = buildKairosPrompt(kairosGabarit, cartoPoles, portfolio)
   const kres = await provider.complete({ model, prompt: kairosPrompt, maxTokens, temperature, signal })
   accumulate('kairos', kres)
   const kairos = extractJson(kres.text)

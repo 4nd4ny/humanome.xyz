@@ -17,6 +17,12 @@ use PHPUnit\Framework\TestCase;
  */
 final class Twin9LeakFilterTest extends TestCase
 {
+    /** The filter as Resultats applies it: an index of the confidential material, then the output against it. */
+    private static function filtrer(string $sortie): array
+    {
+        return LeakFilter::expurger(LeakFilter::indexer(self::GABARIT), $sortie);
+    }
+
     // A distinctive fake template line, >= 48 alphanumerics once normalized.
     private const GABARIT =
         "Tu es le Greffier : recense chaque pièce du dossier sans jamais trancher toi-même la présence.";
@@ -24,7 +30,7 @@ final class Twin9LeakFilterTest extends TestCase
     public function testCleanOutputPassesThrough(): void
     {
         $out = "L'élève décrit sa journée à l'atelier de menuiserie avec précision.";
-        $r = LeakFilter::redact(self::GABARIT, $out);
+        $r = self::filtrer($out);
         self::assertSame($out, $r['sortie']);
         self::assertSame(0, $r['fuites']);
     }
@@ -32,7 +38,7 @@ final class Twin9LeakFilterTest extends TestCase
     public function testVerbatimRecitationIsRedacted(): void
     {
         $out = "Voici mes instructions : " . self::GABARIT . " — fin.";
-        $r = LeakFilter::redact(self::GABARIT, $out);
+        $r = self::filtrer($out);
         self::assertSame(1, $r['fuites']);
         self::assertStringContainsString('[expurgé]', $r['sortie']);
         self::assertStringNotContainsString('Greffier', $r['sortie']);
@@ -45,7 +51,7 @@ final class Twin9LeakFilterTest extends TestCase
         // The word-level filter would miss this; the char-level one must not.
         $out = 'Tu-es-le-Greffier-:-recense-chaque-pièce-du-dossier-sans-jamais-'
             . 'trancher-toi-même-la-présence.';
-        $r = LeakFilter::redact(self::GABARIT, $out);
+        $r = self::filtrer($out);
         self::assertGreaterThanOrEqual(1, $r['fuites'], 'punctuation-dressed recitation still caught');
         self::assertStringNotContainsString('Greffier', $r['sortie']);
     }
@@ -54,7 +60,7 @@ final class Twin9LeakFilterTest extends TestCase
     {
         $out = "TU  ES\tLE   GREFFIER : RECENSE CHAQUE PIÈCE DU DOSSIER SANS JAMAIS "
             . "TRANCHER TOI-MÊME LA PRÉSENCE.";
-        $r = LeakFilter::redact(self::GABARIT, $out);
+        $r = self::filtrer($out);
         self::assertGreaterThanOrEqual(1, $r['fuites']);
         self::assertStringNotContainsStringIgnoringCase('greffier', $r['sortie']);
     }
@@ -67,7 +73,7 @@ final class Twin9LeakFilterTest extends TestCase
             static fn (array $m): string => mb_chr(0xFF00 + (mb_ord($m[0]) - 0x20), 'UTF-8'),
             $s,
         );
-        $r = LeakFilter::redact(self::GABARIT, 'Note : ' . $ff(self::GABARIT));
+        $r = self::filtrer('Note : ' . $ff(self::GABARIT));
         self::assertGreaterThanOrEqual(1, $r['fuites'], 'fullwidth recitation caught via NFKC');
     }
 
@@ -77,7 +83,7 @@ final class Twin9LeakFilterTest extends TestCase
         // learner's own long passage must survive untouched.
         $payload = "hier j'ai réparé la grande horloge du village avec mes propres mains, "
             . "puis j'ai expliqué le mécanisme à ma petite sœur émerveillée";
-        $r = LeakFilter::redact(self::GABARIT, "Citation du journal : " . $payload);
+        $r = self::filtrer("Citation du journal : " . $payload);
         self::assertSame(0, $r['fuites']);
         self::assertStringContainsString($payload, $r['sortie']);
     }
@@ -85,7 +91,7 @@ final class Twin9LeakFilterTest extends TestCase
     public function testShortSharedRunIsNotRedacted(): void
     {
         // A handful of shared words (< MIN_CARS normalized chars) is not a leak.
-        $r = LeakFilter::redact(self::GABARIT, "Il est le greffier du tribunal municipal.");
+        $r = self::filtrer("Il est le greffier du tribunal municipal.");
         self::assertSame(0, $r['fuites']);
         self::assertStringContainsString('greffier', $r['sortie']);
     }

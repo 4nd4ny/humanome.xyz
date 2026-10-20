@@ -49,19 +49,6 @@ final class LeakFilter
     public const MARQUEUR = '[expurgé]';
 
     /**
-     * @param string $gabaritSansVariables template rendered with every variable EMPTY
-     * @param string $sortie               raw model output
-     *
-     * @return array{sortie: string, fuites: int} filtered output + number of
-     *   redacted runs (0 = clean). The count is for SERVER-SIDE audit only and
-     *   MUST NOT be echoed to the client (finding B: it is a tuning oracle).
-     */
-    public static function redact(string $gabaritSansVariables, string $sortie): array
-    {
-        return self::expurger(self::index($gabaritSansVariables), $sortie);
-    }
-
-    /**
      * The index of confidential material, built once to filter several
      * outputs against it (T9: a run's whole template set, fiches included,
      * against what its results show).
@@ -74,10 +61,12 @@ final class LeakFilter
     }
 
     /**
-     * redact() against an index built by indexer().
+     * The output with every run it shares with the index redacted.
      *
-     * @param array<string, true> $index
-     * @return array{sortie: string, fuites: int} as redact(): the count stays server-side
+     * @param array<string, true> $index built by indexer()
+     * @return array{sortie: string, fuites: int} filtered output + number of
+     *   redacted runs (0 = clean). The count is for SERVER-SIDE audit only and
+     *   MUST NOT be echoed to the client (finding B: it is a tuning oracle).
      */
     public static function expurger(array $index, string $sortie): array
     {

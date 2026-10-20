@@ -86,18 +86,17 @@ describe('makeOwnKeyProvider', () => {
 })
 
 describe('fetchTwin6Offer', () => {
-  it('lit les prix Twin6 (+10 %) et l’état de la promo depuis /twin9/meta', async () => {
+  it('lit les prix Twin6 (+10 %) depuis /twin9/meta', async () => {
     const fetchFn = vi.fn(async () =>
       jsonResponse({
         modeles: { 'claude-sonnet-5': { prix_usd_mtok: [3.6, 18] } },
         modeles_twin6: { 'claude-sonnet-5': [3.3, 16.5] },
-        twin9_cle_perso_ouverte: true,
         referentiel: [{ num: 1, nom: 'TÊTE' }],
       }),
     )
     const offer = await fetchTwin6Offer({ fetchFn })
     expect(offer.modeles['claude-sonnet-5']).toEqual([3.3, 16.5])
-    expect(offer.twin9PromoOuverte).toBe(true)
+    expect(offer).not.toHaveProperty('twin9PromoOuverte')
     expect(offer.referentiel).toHaveLength(1)
   })
 })

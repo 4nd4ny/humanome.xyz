@@ -28,18 +28,20 @@ L'apprenant ouvre `#/twin6-ouverte`, colle son portfolio et clique sur
 ## Préconditions
 
 - L'apprenant a un compte actif et une session (UC-CPT-01, UC-CPT-02).
-- Le paquet public `data/twin6/twin6-ouverte-1.0.0.json` est servi par le site
+- Le paquet public `data/twin6/twin6-ouverte-1.1.0.json` est servi par le site
   (scanPole, kairos, fiches P1..P7). Ce fichier n'est **pas versionné**
   (`web/public/data/` est ignoré par git) : il est **construit** avant chaque
   build du front (`prebuild` de `web/package.json`) — `scripts/generate-fiches.mjs`
   régénère les fiches `P1.md`..`P7.md` de `web/public/data/twin6/prompts/` depuis
   le corpus versionné `scripts/data/fiches-v7.json`, puis
-  `scripts/build-twin6-package.mjs` assemble ces fiches avec `1-scan-pole.md`,
-  `2-kairos-final.md` et `0-mega-prompt.md` du même répertoire (modèle cible par
-  défaut `claude-sonnet-5`). Le même corpus alimente le paquet **publié** et
-  forkable `twin6-ouverte` 1.0.0 de l'atelier promptologue
+  `scripts/build-twin6-package.mjs` assemble ces fiches avec les gabarits
+  `1-scan-pole.md`, `2-kairos-final.md` et `0-mega-prompt.md`, versionnés dans
+  `scripts/data/twin6/` (modèle cible par défaut `claude-sonnet-5`), en deux
+  versions : 1.0.0, le paquet déployé à l'octet, et 1.1.0, dont les gabarits
+  lisent le référentiel (RG10). Le même corpus alimente les paquets **publiés**
+  et forkables `twin6-ouverte` 1.0.0 et 1.1.0 de l'atelier promptologue
   (`scripts/build-twin6-prompt-package.mjs`, régénéré par
-  `scripts/deploy/stage-api.sh` dans `build/prompt-packages/`, marqué réservé),
+  `scripts/deploy/stage-api.sh` dans `build/prompt-packages/`, marqués réservés),
   aux textes identiques octet pour octet. Ces constructions sont techniques,
   hors parcours de l'apprenant : elles relèvent de UC-SYS-04
   (`docs/cas-utilisation/systeme/UC-SYS-04-construire-artefacts-derives.md`).
@@ -65,7 +67,7 @@ L'apprenant ouvre `#/twin6-ouverte`, colle son portfolio et clique sur
 ## Garanties minimales (en cas d'échec)
 
 - Aucun document partiel n'est affiché ; le formulaire reste disponible.
-- Un appel **refusé** (401, 403, 413, 422, 429, 402) n'atteint pas l'amont et
+- Un appel **refusé** (401, 403, 413, 422, 402) n'atteint pas l'amont et
   n'est pas facturé ; un appel dont l'**amont échoue** (E11) est intégralement
   remboursé (réserve rendue).
 - En revanche, un appel **abouti** côté serveur est facturé au coût réel, même
@@ -80,7 +82,7 @@ L'apprenant ouvre `#/twin6-ouverte`, colle son portfolio et clique sur
 
 1. L'apprenant ouvre `#/twin6-ouverte`. La vue vérifie la session
    (`GET /api/auth/me`, qui sème aussi le jeton CSRF).
-2. La vue charge en parallèle le paquet PUBLIC (`GET data/twin6/twin6-ouverte-1.0.0.json`,
+2. La vue charge en parallèle le paquet PUBLIC (`GET data/twin6/twin6-ouverte-1.1.0.json`,
    contrôlé : scanPole, kairos, fiches) et l'offre (`GET /api/twin9/meta` :
    prix Twin6 déjà margés `modeles_twin6`, référentiel, solde) ; en parallèle
    encore (effets séparés), elle lit la liste des clés enregistrées
@@ -100,7 +102,8 @@ L'apprenant ouvre `#/twin6-ouverte`, colle son portfolio et clique sur
    le référentiel du run (RG9) et une fiche par pôle (RG6).
 5. Le moteur enchaîne **un appel scan-pole par pôle** du référentiel (pôles
    triés par numéro, 1→7 pour RESPIRE v7 : gabarit public où `${POLE}` devient
-   le numéro, fiche du pôle et portfolio attachés) puis **1 appel kairos** (les
+   le numéro et dont les variables du référentiel sont rendues, RG10, fiche du
+   pôle et portfolio attachés) puis **1 appel kairos** (les
    `carto_pole` de tous les pôles + le portfolio). Chaque appel est un
    `POST /api/twin6/appel {model, prompt, system, max_tokens}` avec le jeton CSRF ;
    la progression « étape n/N » (N = pôles + 1, 8 pour RESPIRE v7) et la
@@ -109,7 +112,7 @@ L'apprenant ouvre `#/twin6-ouverte`, colle son portfolio et clique sur
 6. Pour chaque appel, le serveur : vérifie le jeton CSRF de la session (403,
    E12), exige la session (401), la clé plateforme
    (503), borne le corps à 2 Mo (413), valide modèle, prompt et `max_tokens`
-   (422), applique le rythme par utilisateur (429), **réserve** atomiquement le
+   (422), **réserve** atomiquement le
    pire-cas au tarif Twin6 (402 sinon), appelle Anthropic sur l'URL verrouillée,
    **réconcilie** la réserve au coût réel et renvoie
    `{text, usage, model, stopReason, cout_microusd}` (aucun rendu, aucun filtre :
@@ -187,8 +190,10 @@ L'apprenant ouvre `#/twin6-ouverte`, colle son portfolio et clique sur
   prompt vide ou `max_tokens` non entier → `422` ; une liste JSON ou un corps
   vide sont traités comme un objet sans champ → `422` (modèle absent) ; rien
   n'est débité.
-- **E10 — Rythme dépassé** (étape 6) : au-delà de `appels_par_minute` (30 par
-  défaut) par utilisateur et par minute → `429` + `Retry-After`.
+- ~~**E10 — Rythme dépassé**~~ : retiré le 2026-10-20 avec le réglage
+  `appels_par_minute`, qui ne bornait plus que la cartographie ouverte depuis
+  T11, à la demande de Christian ; la dépense reste bornée par le solde prépayé
+  (RG3), le débit d'un compte ne l'est plus (voir Limites).
 - **E11 — Échec du fournisseur** (étape 6) : erreur amont → `502` (ou `504` sur
   délai, `429` si saturé) au message **générique** ; la réserve est rendue
   (événement « twin6/cartographie (remboursement échec) »).
@@ -227,8 +232,9 @@ L'apprenant ouvre `#/twin6-ouverte`, colle son portfolio et clique sur
   nom », sa description, puis chaque compétence (`fichesPourTwin6`). Le moteur,
   lui, arrête le run avant l'appel d'un pôle sans fiche (UC-APP-09-U06) ; la
   vue lui en donne toujours une.
-- **RG7** — Twin6 ne dépend ni de l'interrupteur Twin9 (`enabled`) ni de la
-  promotion « Twin9 gratuit » (UC-ADM-05).
+- **RG7** — Twin6 ne dépend ni de l'import de Twin9 ni de la promotion
+  « Twin9 gratuit » (UC-ADM-05). (L'interrupteur `enabled` qu'écrivait l'import
+  est parti le 2026-10-20.)
 - **RG8** — Projection : une compétence n'est « présente » sur une feuille que si
   une de ses traces retenues renvoie à un passage de cette feuille ; le verdict
   d'une feuille n'est jamais promu au-dessus du verdict global.
@@ -238,6 +244,14 @@ L'apprenant ouvre `#/twin6-ouverte`, colle son portfolio et clique sur
   exactement les pôles et les compétences de la version choisie. Un document
   d'un autre référentiel le nomme (`referentiel`), un document de RESPIRE non
   (T17) ; la version n'est pas dans le document.
+- **RG10** — Gabarits du paquet servi (1.1.0, 2026-10-20) : ce qu'écrit en
+  toutes lettres la 1.0.0 de RESPIRE v7 — « un des 7 pôles du référentiel
+  RESPIRE », « les 61 verdicts », la forme `X.YY`, quatre codes d'exemple — y
+  est une variable (`${REFERENTIEL}`, `${NB_POLES}`, `${NB_COMPETENCES}`,
+  `${FORMAT_CODE}`, `${PRECISION_FORMAT_CODE}`, `${CODES_EXEMPLE}`) que
+  `executerTwin6` rend depuis le référentiel du run avant tout appel
+  (`variablesTwin6`). Pour RESPIRE v7, les prompts sont ceux de 1.0.0 à
+  l'octet (UC-APP-09-U33).
 
 ## Données et RGPD
 
@@ -261,21 +275,22 @@ L'apprenant ouvre `#/twin6-ouverte`, colle son portfolio et clique sur
 | Front | `web/src/api/twin9.js` — `referentielPourMoteur`, `formatUsd` | Adaptation du référentiel de `/meta`, montants |
 | Front | `web/src/api/keys.js` — `listKeys`, `revealKey` | Clé enregistrée au profil |
 | Front | `web/src/api/client.js` — `fetchMe`, `apiFetch`, `ApiError`, `ApiUnavailableError` | Session et amorçage du jeton CSRF (étape 1), jeton sur chaque mutation, erreurs typées (E1, E2, E4) — unitaires : UC-APP-09-U15, U16 ; copie statique : UC-CPT-02-U12 |
-| Build | `scripts/build-twin6-package.mjs` (après `scripts/generate-fiches.mjs`, `prebuild` du front) | Construit le paquet public servi à l'étape 2 (précondition) — relève de UC-SYS-04 : rejoué en sous-processus dans un miroir temporaire par UC-SYS-04-F11 (gabarits absents) et F12 (gabarits fournis) |
+| Build | `scripts/build-twin6-package.mjs` (après `scripts/generate-fiches.mjs`, `prebuild` du front) | Construit le paquet public servi à l'étape 2 (précondition) — relève de UC-SYS-04 : rejoué en sous-processus dans un miroir temporaire par UC-SYS-04-F11 (fiches absentes, puis entrées versionnées seules) et F12 (1.0.0 et 1.1.0, dérive d'un gabarit) |
 | Build | `scripts/build-twin6-prompt-package.mjs` — `buildTwin6PromptPackageDoc` | Paquet publié forkable `twin6-ouverte` (même corpus) — relève de UC-SYS-04 : rejoué en sous-processus dans un miroir temporaire par UC-SYS-04-F11 et F12 ; test historique `web/src/views/promptologue/twin6-prompt-package.test.js` |
 | Front | `web/src/views/MergeView.jsx`, `web/src/components/StatBadges.jsx`, `web/src/lib/download-json.js` | Rendu sunburst commun, total « Compétences établies » du référentiel du run, export JSON (étape 8) — composants partagés (unitaires relevant de UC-APP-03 et UC-APP-12), rendus ici fonctionnellement (UC-APP-09-F01, F21, F22) |
 | Moteur | `engine/src/twin6/index.js` — `buildScanPolePrompt`, `buildKairosPrompt`, `extractJson`, `executerTwin6`, `TWIN6_CALLS`, `twin6CallsFor` | Orchestration : un scan par pôle + le kairos |
 | Moteur | `engine/src/twin6/fiches.js` — `fichesPourTwin6`, `fichesDuReferentiel` | La fiche de chaque pôle (RG6) |
+| Moteur | `engine/src/twin6/variables.js` — `variablesTwin6`, `rendreGabaritTwin6` | Les variables du référentiel dans les gabarits (RG10) |
+| Build | `scripts/twin6-gabarits.mjs` — `gabaritsTwin6` | Gabarits versionnés : 1.0.0 tels quels, 1.1.0 par remplacements vérifiés (RG10) — relève de UC-SYS-04 |
 | Moteur | `engine/src/twin6/mapper.js` — `twin6ToMergeDocument` | Projection vers `cartographie-merge` |
 | Moteur | `engine/src/providers/index.js` — `createProvider` (direct) | Voie clé perso |
 | API | `POST /api/twin6/appel` — `api/src/routes/twin9.php` | Proxy facturé (voie crédits) |
 | API | `api/src/Middleware/CsrfMiddleware.php` | Jeton CSRF des mutations (E12) — logique unitaire couverte par UC-CPT-02-U07 |
 | API | `GET /api/keys/anthropic` — `api/src/routes/keys.php`, `api/src/Keys/KeyVault.php` | Révélation de la clé enregistrée (A2) — garde propriétaire et chiffrement couverts par UC-CPT-04 |
 | API | `GET /api/twin9/meta` — `api/src/routes/twin9.php` | Offre (prix Twin6, référentiel, solde) |
-| Domaine | `api/src/Twin9/Twin9Config.php` — `coutMicrousd`, `reserveMicrousd`, `publicView`, `marge`, `modeles`, `appelsParMinute` | Tarification Twin6, bornes |
+| Domaine | `api/src/Twin9/Twin9Config.php` — `coutMicrousd`, `reserveMicrousd`, `publicView`, `marge`, `modeles` | Tarification Twin6, bornes |
 | Domaine | `api/src/Twin9/CreditService.php` — `debit`, `adjust` ; `SoldeInsuffisantException` | Réserve, réconciliation, remboursement |
 | Domaine | `api/src/Twin9/AnthropicCaller.php` | Appel amont verrouillé, erreurs génériques |
-| Domaine | `api/src/Auth/RateLimiter.php` | Rythme par utilisateur |
 
 ## Jeux de tests
 
@@ -296,6 +311,7 @@ L'apprenant ouvre `#/twin6-ouverte`, colle son portfolio et clique sur
 | UC-APP-09-U11 | `createProvider` direct (A1) | Appel direct à api.anthropic.com ; **anomalie figée** : `stopReason` non relayé | idem |
 | UC-APP-09-U12 | `executerTwin6` | **Limite figée** : référentiel vide → 1 appel kairos puis échec | idem |
 | UC-APP-09-U31 | `executerTwin6`, `twin6CallsFor`, `fichesPourTwin6`, `twin6ToMergeDocument` | Tout référentiel : cinq pôles lettrés → 6 appels, fiches écrites depuis le document, document qui le nomme et lui est conforme ; RESPIRE à six pôles → 7 appels, document de RESPIRE conforme à sa version (A4, A5, RG6, RG9) | idem |
+| UC-APP-09-U33 | `executerTwin6`, `gabaritsTwin6`, `variablesTwin6` | Paquet servi (1.1.0) : pour RESPIRE v7, les huit prompts de 1.0.0 à l'octet ; pour cinq pôles lettrés, son nom, ses pôles, ses compétences et la forme de ses codes, sans variable restante (RG10) | idem |
 | UC-APP-09-U13 | `parseHash` | `#/twin6-ouverte` → vue `twin6ouverte` | `web/test/usecases/unit/uc-app-09-cartographie-ouverte-twin6.test.jsx` |
 | UC-APP-09-U14 | `loadTwin6Package` | URL publique, modèle par défaut, HTTP en échec ou paquet incomplet → message (E6) | idem |
 | UC-APP-09-U15 | `makeCreditsProvider` | Corps, jeton CSRF de session, contrat moteur, contribution remontée | idem |
@@ -314,7 +330,6 @@ L'apprenant ouvre `#/twin6-ouverte`, colle son portfolio et clique sur
 | UC-APP-09-U25 | `CreditService::debit`, `SoldeInsuffisantException` | Aucun découvert, montants portés par l'exception | idem |
 | UC-APP-09-U26 | `AnthropicCaller::appeler` | URL verrouillée, système transmis, réflexion désactivée, usage réel | idem |
 | UC-APP-09-U27 | `AnthropicCaller::appeler` | Erreurs amont → 504/502/429 génériques | idem |
-| UC-APP-09-U30 | `RateLimiter` | Fenêtre d'une minute par compte, 31e appel → 30 s (E10) | idem |
 
 ### Tests fonctionnels
 
@@ -332,12 +347,11 @@ L'apprenant ouvre `#/twin6-ouverte`, colle son portfolio et clique sur
 | UC-APP-09-F21 | A4 | IHM | Autre référentiel publié choisi : décompte « 6 appels (5 pôles + synthèse) », 6 appels, fiches écrites depuis son document, export qui le nomme, total de ses compétences | idem |
 | UC-APP-09-F22 | A5 | IHM | Dernière version de RESPIRE à six pôles : 7 appels, document de RESPIRE aux pôles de cette version (noms du document publié), total de ses compétences | idem |
 | UC-APP-09-F10 | Nominal | API | 8 appels : contrat, `text` amont intact et `model`, coût 6 602 µUSD chacun, prompt public transmis tel quel, grand-livre réserve/réconciliation | `api/tests/UseCases/Functional/UcApp09CartographieOuverteTwin6Test.php` |
-| UC-APP-09-F11 | Nominal (étape 2), RG7 | API | `/api/twin9/meta` : prix Twin6, référentiel, solde ; Twin6 fonctionne l'interrupteur Twin9 fermé | idem |
+| UC-APP-09-F11 | Nominal (étape 2), RG7 | API | `/api/twin9/meta` : prix Twin6, référentiel, solde ; Twin6 fonctionne sans Twin9 importé | idem |
 | UC-APP-09-F12 | E7 | API | 401 sans session, aucun appel amont | idem |
 | UC-APP-09-F13 | E8 | API | 503 sans clé plateforme, rien débité | idem |
 | UC-APP-09-F14 | E9 | API | 422 / 413 / 400 (JSON scalaire ou illisible) ; liste JSON ou corps vide → 422 ; avant tout débit | idem |
 | UC-APP-09-F15 | E4 | API | 402 avec montants (réserve exacte), solde intact | idem |
-| UC-APP-09-F16 | E10 | API | 429 + `Retry-After: 30`, amont non appelé | idem |
 | UC-APP-09-F17 | E11 | API | 502 / 504 génériques, réserves rendues | idem |
 | UC-APP-09-F18 | A3, E5 | API | `max_tokens` borné (alias accepté, 8 192 par défaut), `stopReason max_tokens` relayé ; l'appel tronqué est facturé au coût réel (solde = recharge − somme des coûts) | idem |
 | UC-APP-09-F19 | RGPD | API | Sortie relayée non filtrée à l'apprenant ; grand-livre et audit sans prompt ni sortie | idem |
@@ -395,27 +409,25 @@ cd engine && npx vitest run test/usecases/unit/uc-app-09
   UC-APP-09-U12). La vue n'y mène plus : depuis le 2026-10-20, si
   `/api/twin9/meta` n'a jamais été importé, le run lit le document publié de
   RESPIRE (RG9).
-- Les gabarits publics `1-scan-pole.md` et `2-kairos-final.md` ne sont pas
-  versionnés (ci-dessous) : qu'ils nomment RESPIRE ou « 7 pôles » en toutes
-  lettres ne peut pas se vérifier ici. S'ils le font, un run sur un autre
-  référentiel (A4, A5) reçoit, dans le gabarit, ces mots faux, alors que la
-  fiche attachée et le décompte suivent le référentiel ; à vérifier sur la
-  source des gabarits.
+- Le méga-prompt du paquet (`0-mega-prompt.md`), un protocole manuel que le
+  moteur n'exécute pas, décrit RESPIRE v7 (P1..P7) dans ses deux versions.
 - Un pôle du référentiel où le run n'établit aucune présence produit un domaine
   vide, que le schéma refuse (anomalie 2) : plus un référentiel compte de
   pôles, plus le cas est probable.
 - La construction du paquet public (précondition) n'est pas testée au titre de
   ce cas mais de UC-SYS-04 : `scripts/build-twin6-package.mjs` (qui écrit
-  `web/public/data/twin6/twin6-ouverte-1.0.0.json`) et
+  `web/public/data/twin6/twin6-ouverte-1.0.0.json` et `-1.1.0.json`) et
   `scripts/build-twin6-prompt-package.mjs` y sont rejoués dans un miroir
-  temporaire (UC-SYS-04-F11, F12). Les gabarits publics `1-scan-pole.md`,
-  `2-kairos-final.md` et `0-mega-prompt.md` ne sont versionnés nulle part
-  (seules les fiches P1..P7 se régénèrent depuis `scripts/data/fiches-v7.json`) :
-  sur un clone neuf, le `prebuild` s'arrête d'abord sur `generate-fiches.mjs`,
-  qui échoue en `ENOENT` (dossier `twin6/prompts/` absent) ; une fois le dossier
-  créé, `build-twin6-package.mjs` s'arrête sur « prompt manquant » et le paquet
-  ne peut être reconstruit (UC-SYS-04 E5, figé par UC-SYS-04-F11). Les tests de
-  ce cas utilisent un paquet fictif de même forme.
+  temporaire (UC-SYS-04-F11, F12), depuis les gabarits versionnés
+  (`scripts/data/twin6/`, depuis le 2026-10-20). Les tests de ce cas utilisent
+  un paquet fictif de même forme, sauf UC-APP-09-U33, qui lit les gabarits
+  versionnés.
+- Aucun rythme ne borne plus les appels d'un compte (E10, retiré le
+  2026-10-20) : un compte crédité peut en lancer en parallèle sur la clé de la
+  plateforme, chacun occupant un processus PHP jusqu'à la réponse et les quotas
+  Anthropic de l'instance, que partagent les runs Twin9 à clé d'instance. Le
+  parcours de la vue (un appel après l'autre) n'en approche pas l'ancien seuil
+  (30 par minute). Une limite fixe dans le code reste à décider.
 - Le garde-fou de solde (RG5) est une heuristique client ; seul le refus 402
   serveur (réserve pire-cas) est opposable. Son message arrondit le solde au
   centime avec un point décimal : un solde de 1,999999 $ s'affiche « solde

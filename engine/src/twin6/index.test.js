@@ -149,6 +149,37 @@ describe('executerTwin6', () => {
     expect(validateDocumentPourReferentiel('cartographie-merge', out.document, lettre).errors).toEqual([])
   })
 
+  it('gabarits 1.1.0 : les variables du référentiel sont rendues avant tout appel, ${POLE} pôle par pôle', async () => {
+    const lettres = ['A', 'B', 'C', 'D', 'E']
+    const lettre = {
+      id: 'fictif-lettre',
+      poles: lettres.map((l, i) => ({ num: i + 1, nom: `${l} · Pôle fictif ${l}` })),
+      competences: lettres.map((l, i) => ({ code: `${l}1`, nom: `Capacité fictive ${l}1`, pole: i + 1 })),
+    }
+    const provider = {
+      complete: vi.fn(async ({ prompt }) => {
+        if (prompt.includes('## carto_P1')) {
+          return { text: JSON.stringify(kairosOut), usage: {}, model: 'mock-1', stopReason: 'end_turn' }
+        }
+        const num = Number(/Fiche des compétences du pôle (\d+)/.exec(prompt)[1])
+        const pole = { ...cartoPoleFor(num) }
+        pole.competences = [{ ...pole.competences[0], code: `${lettres[num - 1]}1` }]
+        return { text: JSON.stringify(pole), usage: {}, model: 'mock-1', stopReason: 'end_turn' }
+      }),
+    }
+    const lisants = {
+      scanPole: "Le pôle ${POLE}, un des ${NB_POLES} pôles du référentiel ${REFERENTIEL} ; codes `${FORMAT_CODE}`${PRECISION_FORMAT_CODE}, ex. ${CODES_EXEMPLE}.",
+      kairos: 'Les ${NB_POLES} carto_P[1..${NB_POLES}], les ${NB_COMPETENCES} verdicts, codes ${FORMAT_CODE}.',
+      fiches: fichesPourTwin6(lettre, templates.fiches),
+    }
+    await executerTwin6({ portfolio: 'x', templates: lisants, referentiel: lettre, provider, model: 'm' })
+
+    const prompts = provider.complete.mock.calls.map(([params]) => params.prompt)
+    expect(prompts[2].startsWith('Le pôle 3, un des 5 pôles du référentiel fictif-lettre ; codes `XY`, ex. A1, B1, C1 et D1.')).toBe(true)
+    expect(prompts[5].startsWith('Les 5 carto_P[1..5], les 5 verdicts, codes XY.')).toBe(true)
+    for (const prompt of prompts) expect(prompt).not.toContain('${')
+  })
+
   it('échoue explicitement sur une sortie tronquée (max_tokens)', async () => {
     const provider = { complete: vi.fn(async () => ({ text: '{}', usage: {}, model: 'm', stopReason: 'max_tokens' })) }
     await expect(

@@ -75,7 +75,7 @@ final class UcAdm05SuperviserTwin9Test extends TestCase
         self::assertSame(1.5, self::config()->marge(), 'rien écrit');
     }
 
-    #[TestDox('UC-ADM-05-U09 — bornes : contributions 1 à 5, packs 1 à 500 USD avec libellé, prix > 0, étages connus, rythme 1 à 600, booléens')]
+    #[TestDox('UC-ADM-05-U09 — bornes : contributions 1 à 5, packs 1 à 500 USD avec libellé, prix > 0, booléen ; un modèle ne porte que ses prix ; les réglages retirés le 2026-10-20 (interrupteur, rythme, pipeline) sont des clés inconnues')]
     public function testU09Bounds(): void
     {
         foreach ([
@@ -83,12 +83,8 @@ final class UcAdm05SuperviserTwin9Test extends TestCase
             ['marge' => 5.0],
             ['marge_twin6' => 1.0],
             ['packs' => [['montant_usd' => 1, 'libelle' => 'min'], ['montant_usd' => 500, 'libelle' => 'max']]],
-            ['modeles' => ['m' => ['prix_usd_mtok' => [0.25, 1.25], 'etages' => ['tribunal']]]],
-            ['appels_par_minute' => 1],
-            ['appels_par_minute' => 600],
-            ['enabled' => false],
-            ['pipeline' => [1, 2]], // « objet » attendu, mais une liste JSON passe (\is_array)
-            ['pipeline' => ['jury' => ['taille_aleatoire' => 4]]],
+            ['modeles' => ['m' => ['prix_usd_mtok' => [0.25, 1.25], 'palier_long' => ['au_dela_de' => 1000, 'prix_usd_mtok' => [1, 2]]]]],
+            ['modeles' => ['m' => ['prix_usd_mtok' => [0.25, 1.25]]]],
         ] as $ok) {
             self::config()->update($ok);
         }
@@ -104,13 +100,13 @@ final class UcAdm05SuperviserTwin9Test extends TestCase
             [['packs' => ['a' => ['montant_usd' => 10, 'libelle' => 'x']]], 'Packs invalides : liste non vide attendue'],
             [['packs' => [['montant_usd' => 10, 'libelle' => '  ']]], 'Pack invalide : libellé requis'],
             [['modeles' => []], 'Modèles invalides : au moins un modèle requis'],
-            [['modeles' => ['m' => ['prix_usd_mtok' => [1], 'etages' => ['taggers']]]], 'Prix invalide : [entrée, sortie] attendu'],
-            [['modeles' => ['m' => ['prix_usd_mtok' => [1, -2], 'etages' => ['taggers']]]], 'Prix invalide : nombre strictement positif attendu'],
-            [['modeles' => ['m' => ['prix_usd_mtok' => [1, 2], 'etages' => []]]], 'Étages invalides (taggers, rapide, tribunal)'],
-            [['enabled' => 'oui'], 'Champ enabled invalide : booléen attendu'],
-            [['appels_par_minute' => 0], 'Rythme d’appels hors bornes (1 à 600 par minute)'],
-            [['appels_par_minute' => 601], 'Rythme d’appels hors bornes (1 à 600 par minute)'],
-            [['pipeline' => 'texte'], 'Configuration pipeline invalide : objet attendu'],
+            [['modeles' => ['m' => ['prix_usd_mtok' => [1]]]], 'Prix invalide : [entrée, sortie] attendu'],
+            [['modeles' => ['m' => ['prix_usd_mtok' => [1, -2]]]], 'Prix invalide : nombre strictement positif attendu'],
+            [['modeles' => ['m' => ['prix_usd_mtok' => [1, 2], 'etages' => ['taggers']]]], 'Modèle m : clé inconnue etages'],
+            [['modeles' => ['m' => ['prix_usd_mtok' => [1, 2], 'etages' => ['taggers'], 'note' => 'x']]], 'Modèle m : clés inconnues etages, note'],
+            [['enabled' => true], 'Clé de configuration inconnue : enabled'],
+            [['appels_par_minute' => 30], 'Clé de configuration inconnue : appels_par_minute'],
+            [['pipeline' => []], 'Clé de configuration inconnue : pipeline'],
         ];
         foreach ($ko as [$partial, $message]) {
             try {
@@ -120,7 +116,7 @@ final class UcAdm05SuperviserTwin9Test extends TestCase
                 self::assertSame([422, $message], [$e->getStatusCode(), $e->getMessage()], json_encode($partial));
             }
         }
-        self::assertSame(600, self::config()->appelsParMinute(), 'dernier état valide conservé');
+        self::assertSame(['m' => ['prix_usd_mtok' => [0.25, 1.25]]], self::config()->modeles(), 'dernier état valide conservé');
         // Configuration ENTIÈRE inchangée par les refus (colonne JSON : assertEquals).
         self::assertEquals($valide, self::stored());
     }
@@ -139,24 +135,36 @@ final class UcAdm05SuperviserTwin9Test extends TestCase
         self::assertSame([10, 20, 50, 100, 200, 500], array_column(Twin9Config::defaults()['packs'], 'montant_usd'));
     }
 
-    #[TestDox('UC-ADM-05-U11 — lecture effective : défauts complétés, clés stockées inconnues ignorées ; vue publique sans marge ni prix catalogue')]
+    #[TestDox('UC-ADM-05-U11 — lecture effective : défauts complétés, clés stockées inconnues ignorées, dont les réglages retirés et les étages d’un modèle ; vue publique sans marge, prix catalogue ni promotion')]
     public function testU11EffectiveReadAndPublicView(): void
     {
-        (new SettingsRepository(self::$pdo))->set(Twin9Config::SETTING_KEY, ['marge_twin6' => 1.3, 'cle_obsolete' => 'x']);
+        (new SettingsRepository(self::$pdo))->set(Twin9Config::SETTING_KEY, [
+            'marge_twin6' => 1.3,
+            'cle_obsolete' => 'x',
+            // ce qu'avait stocké une instance d'avant le 2026-10-20
+            'enabled' => true,
+            'appels_par_minute' => 30,
+            'pipeline' => ['jury' => ['taille' => 5]],
+            'modeles' => ['claude-sonnet-5' => ['etages' => ['tribunal'], 'prix_usd_mtok' => [3, 15]]],
+        ]);
         $read = self::config()->read();
         self::assertSame(1.3, $read['marge_twin6']);
         self::assertArrayNotHasKey('cle_obsolete', $read);
         self::assertSame(array_keys(Twin9Config::defaults()), array_keys($read));
+        self::assertSame(['claude-sonnet-5' => ['prix_usd_mtok' => [3, 15]]], $read['modeles']);
+        // …et la prochaine mise à jour enregistre la configuration sans eux (la
+        // colonne JSON range ses clés à sa façon : on compare les ensembles).
+        self::config()->update(['marge' => 1.4]);
+        self::assertEqualsCanonicalizing(array_keys(Twin9Config::defaults()), array_keys(self::stored()));
+        self::assertEquals(['prix_usd_mtok' => [3, 15]], self::stored()['modeles']['claude-sonnet-5']);
 
         $public = self::config()->publicView();
         self::assertSame([3.9, 19.5], $public['modeles_twin6']['claude-sonnet-5']);
-        foreach (['marge', 'marge_twin6', 'appels_par_minute'] as $cleAdmin) {
+        foreach (['marge', 'marge_twin6', 'twin9_cle_perso_ouverte'] as $cleAdmin) {
             self::assertArrayNotHasKey($cleAdmin, $public);
         }
-        // l'offre Twin9, l'interrupteur et le pipeline ont quitté la vue publique avec le moteur du navigateur (T11)
-        foreach (['modeles', 'enabled', 'pipeline'] as $cleMoteur) {
-            self::assertArrayNotHasKey($cleMoteur, $public);
-        }
+        // l'offre Twin9 a quitté la vue publique avec le moteur du navigateur (T11)
+        self::assertArrayNotHasKey('modeles', $public);
     }
 
     #[TestDox('UC-ADM-05-U12 — table des comptes : seuls les comptes ayant une activité, solde, cumuls, dernière activité d’abord (anomalie figée : un remboursement compte en consommé)')]

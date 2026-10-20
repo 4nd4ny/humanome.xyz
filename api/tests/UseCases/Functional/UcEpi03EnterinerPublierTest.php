@@ -5,9 +5,8 @@ declare(strict_types=1);
 namespace Humanome\Tests\UseCases\Functional;
 
 use Humanome\Env;
-use Humanome\Packages\SettingsRepository;
 use Humanome\Tests\TestDb;
-use Humanome\Twin9\FicheStore;
+use Humanome\Twin9\ReferentielMoteur;
 use Humanome\Tests\UseCases\Support\EpiSupport;
 use PHPUnit\Framework\Attributes\TestDox;
 use Psr\Http\Message\ResponseInterface;
@@ -23,10 +22,11 @@ use Psr\Http\Message\ResponseInterface;
  * réels (Alix, Bao : seuil 2) mènent une proposition jusqu'à la majorité, puis
  * l'entérinent et coupent une release par l'API HTTP. La propagation est
  * rejouée par ses interfaces publiques : le script CLI d'export statique
- * (sortie dans un dossier TEMPORAIRE, jamais web/public/data) et les
- * endpoints d'exploitation /api/admin/dump-fiches (resynchronisation manuelle
- * du corpus), /api/admin/generate-fiches et /api/admin/seed-competences
- * (appelés par deploy.mjs), avec le jeton de migration et sans session.
+ * (sortie dans un dossier TEMPORAIRE, jamais web/public/data), les endpoints
+ * d'exploitation /api/admin/dump-fiches (resynchronisation manuelle du corpus)
+ * et /api/admin/seed-competences (appelé par deploy.mjs), avec le jeton de
+ * migration et sans session, et le bloc que lit le moteur des runs Twin9
+ * (ReferentielMoteur, T16), qui prend les fiches dans la base.
  */
 final class UcEpi03EnterinerPublierTest extends EpiSupport
 {
@@ -426,34 +426,39 @@ final class UcEpi03EnterinerPublierTest extends EpiSupport
         self::assertStringContainsString('Gate de parité ÉCHOUÉ', self::json($seed)['error']);
     }
 
-    #[TestDox('UC-EPI-03-F20 — propagation Twin9 : après entérinement d’une fiche, generate-fiches refuse l’écrasement (409 diff) sans force, puis l’applique avec force')]
-    public function testF20GenerateFichesAfterAnEnterinedFiche(): void
+    #[TestDox('UC-EPI-03-F20 — propagation Twin9 : une fiche entérinée est aussitôt celle que lit le moteur des runs (ReferentielMoteur, T16), sans étape de déploiement ; adoptée mais pas encore entérinée, elle ne l’est pas ; les 60 autres restent intactes')]
+    public function testF20AnEnterinedFicheReachesTwin9(): void
     {
         self::seedFullCorpus();
-        $settings = new SettingsRepository(self::$pdo);
-        $settings->delete(FicheStore::SETTING_KEY);
-        // Alignement initial (premier déploiement : FICHES_FORCE=1), puis idempotence.
-        self::assertSame(200, $this->tool('POST', '/api/admin/generate-fiches', ['force' => true])->getStatusCode());
-        $aligned = $this->tool('POST', '/api/admin/generate-fiches', ['force' => false]);
-        self::assertSame([200, 'unchanged', []], [$aligned->getStatusCode(), self::json($aligned)['status'], self::json($aligned)['changed']]);
+        $moteur = new ReferentielMoteur(self::$pdo);
+        $avant = self::fichesDuBloc($moteur->bloc('respire', '7.0.0'));
 
         $newFiche = "## 1.01 — Pensée Critique\n\n**Essence** — Douter, y compris de soi.\n\n---";
+        self::assertNotSame($newFiche, $avant['1.01']);
         $id = $this->adoptedProposal('1.01', '1.1.0', static function (array $content) use ($newFiche): array {
             $content['fiche'] = $newFiche;
 
             return $content;
         }, [$this->alix, $this->bao]);
+        self::assertSame($avant, self::fichesDuBloc($moteur->bloc('respire', '7.0.0')), 'adoptée, pas encore entérinée');
+
         self::assertSame(200, $this->publish($this->alix, $id)->getStatusCode());
+        self::assertSame(array_replace($avant, ['1.01' => $newFiche]), self::fichesDuBloc($moteur->bloc('respire', '7.0.0')));
+    }
 
-        // Étape 8 : le déploiement suivant (sans FICHES_FORCE) est arrêté par le garde-fou.
-        $guarded = $this->tool('POST', '/api/admin/generate-fiches', ['force' => false]);
-        self::assertSame(409, $guarded->getStatusCode());
-        self::assertSame(['diff', ['1.01']], [self::json($guarded)['status'], self::json($guarded)['changed']]);
-        self::assertNotSame($newFiche, FicheStore::fromSettings($settings)->competenceFiche('1.01'), 'rien n’est écrit sans force');
+    /**
+     * Les fiches du bloc, telles que les lit le moteur.
+     *
+     * @param array{poles: list<array{competences: list<array{code: string, fiche: string}>}>} $bloc
+     * @return array<string, string> code => fiche
+     */
+    private static function fichesDuBloc(array $bloc): array
+    {
+        $fiches = [];
+        foreach ($bloc['poles'] as $pole) {
+            $fiches += array_column($pole['competences'], 'fiche', 'code');
+        }
 
-        // Relance assumée (FICHES_FORCE=1) : la fiche entérinée atteint Twin9.
-        $forced = $this->tool('POST', '/api/admin/generate-fiches', ['force' => true]);
-        self::assertSame([200, 'applied', ['1.01']], [$forced->getStatusCode(), self::json($forced)['status'], self::json($forced)['changed']]);
-        self::assertSame($newFiche, FicheStore::fromSettings($settings)->competenceFiche('1.01'));
+        return $fiches;
     }
 }

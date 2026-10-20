@@ -11,7 +11,6 @@ use Humanome\Tests\CartographeTestCase;
 use Humanome\Tests\LlmFakeHttpClient;
 use Humanome\Tests\TestDb;
 use Humanome\Tests\UseCases\Support\TwinSupport;
-use Humanome\Twin9\FicheStore;
 use Humanome\Twin9\Twin9Config;
 use PHPUnit\Framework\Attributes\TestDox;
 use Psr\Http\Message\ResponseInterface;
@@ -45,7 +44,7 @@ final class UcPro08EditerGabaritsTwin9Test extends CartographeTestCase
         $pdo->exec('DELETE FROM twin9_protocole_versions');
         $pdo->exec('DELETE FROM twin9_protocole');
         $pdo->exec('DELETE FROM twin9_jeux');
-        $pdo->exec("DELETE FROM settings WHERE name IN ('twin9_config', 'twin9_fiches', 'twin9_referentiel', 'twin9_gabarits_defaut')");
+        $pdo->exec("DELETE FROM settings WHERE name IN ('twin9_config', 'twin9_referentiel', 'twin9_gabarits_defaut')");
         TestDb::setEnv('MIGRATE_TOKEN', self::TOKEN);
         $this->atelier = $this->registerAs('camille@example.org', 'Camille', ['admin', 'promptologue']);
     }
@@ -131,7 +130,7 @@ final class UcPro08EditerGabaritsTwin9Test extends CartographeTestCase
         self::assertSame(0, (int) self::$pdo->query('SELECT COUNT(*) FROM twin9_protocole_versions')->fetchColumn());
     }
 
-    #[TestDox('UC-PRO-08-F10 — A4 : import technique (X-Migrate-Token) — gabarits, réglages, référentiel, fiches (gardées sur le serveur, jamais servies) ; active Twin9 ; réimport identique sans nouvelle version')]
+    #[TestDox('UC-PRO-08-F10 — A4 : import technique (X-Migrate-Token) — gabarits et structure du référentiel ; les réglages et les fiches qu’enverrait un ancien script sont ignorés, rien n’est gardé d’eux ; réimport identique sans nouvelle version')]
     public function testF10TechnicalImport(): void
     {
         $response = $this->importer(
@@ -140,22 +139,18 @@ final class UcPro08EditerGabaritsTwin9Test extends CartographeTestCase
         );
         self::assertSame(['imported' => 2, 'retires' => 0], self::json($response));
 
-        $config = new Twin9Config(new SettingsRepository(Db::get()));
-        self::assertTrue($config->isEnabled());
-        self::assertEquals(['jury' => ['taille_aleatoire' => 5]], $config->pipeline(), 'colonne JSON : même contenu');
+        // Depuis le 2026-10-20, ni réglages du pipeline, ni interrupteur, ni fiches :
+        // les runs prennent les leurs dans leur profil (T12) et dans la base (T16).
+        self::assertSame(0, (int) self::$pdo->query(
+            "SELECT COUNT(*) FROM settings WHERE name IN ('twin9_config', 'twin9_fiches')")->fetchColumn());
         self::assertSame(['lourd/20-greffier', 'tagger/1-tag-pole'],
             self::$pdo->query('SELECT name FROM twin9_protocole ORDER BY name')->fetchAll(\PDO::FETCH_COLUMN));
         $apprenant = $this->registerAs('lea@example.org', 'Léa', ['apprenant']);
         $metaRaw = (string) $this->as_($apprenant, 'GET', '/api/twin9/meta')->getBody();
         $meta = json_decode($metaRaw, true);
         self::assertSame('CŒUR — Relier & Naviguer', $meta['referentiel'][1]['nom']);
-        self::assertStringNotContainsString('FICHE FICTIVE', $metaRaw, 'les fiches restent serveur');
-        self::assertStringNotContainsString('lourd/20-greffier', $metaRaw, 'les noms des gabarits aussi, depuis T11');
-
-        // Les fiches importées sont STOCKÉES, sur le serveur seul ; depuis T11, aucun appel ne les lit plus.
-        $fiches = FicheStore::fromSettings(new SettingsRepository(Db::get()));
-        self::assertSame(TwinSupport::FICHE_SECRETE, $fiches->competenceFiche('1.01'));
-        self::assertStringStartsWith('PRÉAMBULE FICTIF DU PÔLE 1', (string) $fiches->poleFiches(1));
+        self::assertStringNotContainsString('FICHE FICTIVE', $metaRaw, 'aucune fiche servie');
+        self::assertStringNotContainsString('lourd/20-greffier', $metaRaw, 'les noms des gabarits non plus, depuis T11');
 
         self::assertSame(['imported' => 2, 'retires' => 0], self::json($this->importer(['lourd/20-greffier' => TwinSupport::GABARIT_GREFFIER, 'tagger/1-tag-pole' => TwinSupport::GABARIT_TAG])));
         self::assertSame(0, (int) self::$pdo->query('SELECT COUNT(*) FROM twin9_protocole_versions')->fetchColumn());
@@ -285,16 +280,15 @@ final class UcPro08EditerGabaritsTwin9Test extends CartographeTestCase
         self::assertSame(0, (int) self::$pdo->query('SELECT COUNT(*) FROM twin9_protocole')->fetchColumn());
 
         // Comportement ACTUEL (premier import) : les fichiers valides AVANT le
-        // fichier invalide sont écrits (pas de transaction), et Twin9 n'est pas
-        // activé ; le 422 cite le NOM du fichier fautif (destiné au détenteur du jeton).
+        // fichier invalide sont écrits (pas de transaction) ; le 422 cite le NOM du
+        // fichier fautif (destiné au détenteur du jeton).
         $partiel = $this->importer(['tagger/1-tag-pole' => TwinSupport::GABARIT_TAG, 'lourd/20-greffier' => ['pas', 'une', 'chaine']]);
         self::assertSame(422, $partiel->getStatusCode());
         self::assertSame('Fichier invalide : lourd/20-greffier', self::json($partiel)['error']);
         self::assertSame(['tagger/1-tag-pole'], self::$pdo->query('SELECT name FROM twin9_protocole')->fetchAll(\PDO::FETCH_COLUMN));
-        self::assertFalse((new Twin9Config(new SettingsRepository(Db::get())))->isEnabled());
 
-        // RÉIMPORT (cas courant en production) : Twin9 déjà activé le RESTE, et
-        // sert un mélange de gabarits neufs et anciens ; référentiel non mis à jour.
+        // RÉIMPORT (cas courant en production) : le jeu sert un mélange de gabarits
+        // neufs et anciens ; référentiel non mis à jour.
         self::assertSame(200, $this->importer(
             ['tagger/1-tag-pole' => 'Tag FICTIF v1 {$TEXTE_JOURNEE}', 'lourd/20-greffier' => 'Greffier FICTIF v1 {$CODE}', 'merge/04-rapporteur' => 'Rapporteur FICTIF v1'],
             ['referentiel' => TwinSupport::referentielFictif()],
@@ -305,7 +299,6 @@ final class UcPro08EditerGabaritsTwin9Test extends CartographeTestCase
         );
         self::assertSame(422, $second->getStatusCode());
         $config = new Twin9Config(new SettingsRepository(Db::get()));
-        self::assertTrue($config->isEnabled(), 'Twin9 reste ACTIVÉ après un réimport partiel');
         $contenus = self::$pdo->query('SELECT name, content FROM twin9_protocole ORDER BY name')->fetchAll(\PDO::FETCH_KEY_PAIR);
         self::assertSame([
             'lourd/20-greffier' => 'Greffier FICTIF v1 {$CODE}',

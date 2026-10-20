@@ -7,7 +7,7 @@
 | **Portée** | Atelier `#/epistemiarque/referentiels` (section « Autres référentiels ») ; API `POST /api/referentiel/import`, `GET /api/referentiels`, et le cycle du grain document (`/api/referentiel/drafts…`, `/api/referentiel/proposals…`, UC-EPI-04) |
 | **Niveau** | Objectif utilisateur |
 | **Cahier des charges** | §3.5, §4.1 ; T15 (dépôt `Twin_v9`, `docs/plan-twin9-php.md`, lot 4c, première tâche) ; schéma `referentiel` 2.0.0 (`docs/contrats.md` §9) |
-| **Statut** | Implémenté (T15) ; le moteur lit le référentiel du run depuis T16 ; la cartographie ne lit encore que RESPIRE et ses 7 pôles (T17) |
+| **Statut** | Implémenté (T15) ; le moteur lit le référentiel du run depuis T16, la cartographie depuis T17 (`docs/contrats.md` §10) |
 
 ## Objectif
 
@@ -241,8 +241,8 @@ Aucune.
   exemple) se convertit d'abord.
 - **L3** — Le libellé et la version suivent UC-EPI-04 AN2 : trop longs, ils
   donnent un `500` au lieu d'un `422`.
-- **L4** — La cartographie (T17) ne lit encore que RESPIRE (le moteur lit le
-  référentiel du run depuis T16) ; la page publique `#/referentiel` ne montre
-  que lui.
+- **L4** — La page publique `#/referentiel` ne montre que RESPIRE. (Le
+  moteur lit le référentiel du run depuis T16, la cartographie depuis T17 :
+  la carte d'un run s'ouvre avec lui.)
 - **L5** — La comparaison de deux versions (`ReferentielDiff`) ignore les
   niveaux et les éléments.

@@ -379,6 +379,74 @@ final class RunsTest extends CartographeTestCase
     }
 
     /**
+     * A run's map is read with its referential (T17): its results carry the
+     * poles and the competences its engine read, in the engine's order, each
+     * pole with its colour; never a fiche, a preamble nor a description. On
+     * the same portfolio, a run of RESPIRE and one of another referential
+     * share nothing: neither the map, nor its memory, nor their profile's
+     * copy (twin9_cartes, twin9_memoire, their settings).
+     */
+    public function testTheResultsCarryTheReferentialTheMapIsReadWith(): void
+    {
+        $lettre = ReferentielsFictifs::lettre();
+        $lettre['poles'][1]['couleur'] = '#123456';
+        (new ReferentielRepository(self::$pdo))->importPublishedDocument(
+            ['contentHash' => ContentHash::compute($lettre)] + $lettre, 'Publié');
+        $alice = $this->registerAs('deux-cartes@example.org', 'Alice');
+        $profil = ProfilRepository::v98();
+        $profil->voie = 'directe';
+        $profil->referentiel = (object) ['id' => 'fictif-lettre', 'version' => null];
+        $autre = self::json($this->as_($alice, 'POST', '/api/twin9/profils', ['nom' => 'Lettré', 'profil' => $profil]))['id'];
+        $runs = [];
+        foreach (['respire' => $this->profil($alice), 'fictif-lettre' => $autre] as $id => $profilId) {
+            $lance = $this->as_($alice, 'POST', '/api/twin9/runs', $this->lancement($profilId));
+            self::assertSame(201, $lance->getStatusCode(), (string) $lance->getBody());
+            $runs[$id] = self::json($lance)['id'];
+            self::assertSame('termine', $this->jusquAuBout($alice, $runs[$id])['statut']);
+        }
+
+        $r = self::json($this->as_($alice, 'GET', '/api/twin9/runs/' . $runs['fictif-lettre'] . '/resultats'));
+        $ref = $r['referentiel'];
+        self::assertSame(['fictif-lettre', '1.0.0', 'Fictif lettré'], [$ref['id'], $ref['version'], $ref['label']]);
+        self::assertSame([[1, 'A · Pôle fictif A', null], [2, 'B · Pôle fictif B', '#123456']],
+            array_map(static fn (array $p): array => [$p['num'], $p['nom'], $p['couleur']], \array_slice($ref['poles'], 0, 2)));
+        self::assertCount(5, $ref['poles']);
+        self::assertCount(20, $ref['competences']);
+        self::assertSame(['code' => 'A1', 'nom' => 'Capacité fictive A1', 'pole' => 1], $ref['competences'][0]);
+        // never a fiche, a preamble nor a description
+        self::assertSame([['num', 'nom', 'couleur']], array_values(array_unique(array_map('array_keys', $ref['poles']),
+            SORT_REGULAR)));
+        self::assertSame([['code', 'nom', 'pole']], array_values(array_unique(array_map('array_keys', $ref['competences']),
+            SORT_REGULAR)));
+        self::assertStringNotContainsString('Définition fictive', json_encode($ref, JSON_UNESCAPED_UNICODE));
+        self::assertStringNotContainsString('Ce que cherche le pôle', json_encode($ref, JSON_UNESCAPED_UNICODE));
+        // the fake engine judged the first capacity of each pole, every day
+        $jour = json_decode($r['sorties']['journees/2026-01-05/carto_jour.json'], true);
+        self::assertSame(['A1', 'B1', 'C1', 'D1', 'E1'], array_keys($jour['verdicts']));
+        $fusion = json_decode($r['sorties']['carto_evolutive.json'], true);
+        self::assertSame(['1', '2', '3', '4', '5'], array_map('strval', array_keys($fusion['rapports_poles'])));
+
+        $respire = self::json($this->as_($alice, 'GET', '/api/twin9/runs/' . $runs['respire'] . '/resultats'))['referentiel'];
+        self::assertSame(['respire', '7.0.0', 7, 61], [$respire['id'], $respire['version'], \count($respire['poles']),
+                                                      \count($respire['competences'])]);
+        self::assertSame(['TETE — Penser & Comprendre', '#2563eb'], [$respire['poles'][0]['nom'], $respire['poles'][0]['couleur']]);
+
+        // two maps of one portfolio: their memories apart, each run with its profile's copy
+        $cartes = self::$pdo->query('SELECT id, referentiel FROM twin9_cartes ORDER BY referentiel')->fetchAll();
+        self::assertSame(['fictif-lettre', 'respire'], array_column($cartes, 'referentiel'));
+        $memoire = self::$pdo->query('SELECT carte_id, COUNT(*) AS n FROM twin9_memoire GROUP BY carte_id ORDER BY carte_id')
+            ->fetchAll();
+        self::assertCount(2, $memoire, 'chaque carte a sa mémoire');
+        $repo = new RunRepository(self::$pdo);
+        foreach ($runs as $id => $run) {
+            $charge = $repo->charger($run);
+            self::assertSame($id, $charge['profil']->referentiel->id);
+            self::assertSame($id, json_decode($charge['moteur'])->referentiel->id);
+        }
+        self::assertNotSame($repo->charger($runs['respire'])['carte_id'], $repo->charger($runs['fictif-lettre'])['carte_id']);
+    }
+
+    /**
      * An engine before T16 would ignore the run's referential and read
      * RESPIRE's in its set, whatever the profile names (review of T16): the
      * platform launches nothing with it, nor previews.

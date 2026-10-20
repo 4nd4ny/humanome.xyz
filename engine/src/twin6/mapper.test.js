@@ -3,7 +3,7 @@ import { twin6ToMergeDocument } from './mapper.js'
 import { validateDocument } from '../validation.js'
 
 // Référentiel minimal : 2 pôles, 3 compétences.
-// Le schéma cartographie-merge exige les 7 pôles RESPIRE (domains minItems 7) ;
+// Le schéma cartographie-merge exige d'un document de RESPIRE ses 7 pôles ;
 // en production Twin6 tourne toujours sur le référentiel complet. Les pôles 3–7
 // sans compétence attestée deviennent des domaines vides (légitimes).
 const referentiel = {

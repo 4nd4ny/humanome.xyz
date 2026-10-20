@@ -6,6 +6,7 @@ namespace Humanome\Tests;
 
 use Humanome\Db;
 use Humanome\Etablissement\ConfigRepository;
+use Humanome\Validation;
 use Psr\Http\Message\ResponseInterface;
 
 /**
@@ -135,6 +136,15 @@ final class WorkerRouteTest extends MasseTestCase
         unset($broken['poles']);
         $refused = $this->worker('POST', "/api/worker/jobs/{$job['id']}/result", ['document' => $broken]);
         self::assertSame(422, $refused->getStatusCode());
+
+        // T17: a day that names another referential than its run's (RESPIRE) is refused, even schema-valid —
+        // naming one would take an eighth pole out of RESPIRE's checks.
+        $autre = ['referentiel' => 'fictif-neuf'] + $document;
+        $autre['poles'][] = ['poleNum' => '8'] + $document['poles'][6];
+        self::assertTrue(Validation::validate('cartographie-jour', $autre)['valid']);
+        $refused = $this->worker('POST', "/api/worker/jobs/{$job['id']}/result", ['document' => $autre]);
+        self::assertSame(422, $refused->getStatusCode());
+        self::assertArrayHasKey('/referentiel', self::json($refused)['details']);
 
         // Valid -> done + usage accounted (bounded declared cost).
         $ok = $this->worker('POST', "/api/worker/jobs/{$job['id']}/result", [

@@ -8,6 +8,7 @@ import { existsSync, readFileSync } from 'node:fs'
 import { fileURLToPath } from 'node:url'
 import { twin9ToMergeDocument } from './mapper.js'
 import { validateDocument } from '../validation.js'
+import { POLE_PALETTE } from '../pipeline/merge-document.js'
 
 // Le vecteur figé vit dans le dépôt privé 4nd4ny/Twin_v9, cloné à côté de
 // celui-ci (../Twin_v9) : sans lui (clone neuf, CI), les cas réels se sautent.
@@ -19,7 +20,7 @@ const CARTO = vecPresent
   ? JSON.parse(JSON.parse(readFileSync(VEC_PATH, 'utf8')).chain.carto_evolutive_json)
   : null
 
-// Le schéma cartographie-merge exige les 7 pôles RESPIRE (domains minItems 7).
+// Un référentiel minimal aux 7 pôles de RESPIRE.
 const REFERENTIEL = {
   poles: [
     { num: 1, nom: 'TÊTE — Penser & Comprendre' },
@@ -205,6 +206,65 @@ describe('twin9ToMergeDocument (règles fines)', () => {
 
   it('échoue en français sans référentiel utilisable', () => {
     expect(() => twin9ToMergeDocument({ competences: {} }, null)).toThrow(/referentiel/)
+  })
+})
+
+describe('twin9ToMergeDocument (tout référentiel, T17)', () => {
+  /** Une fusion qui atteste, deux jours, la première compétence de chaque pôle. */
+  function fusion(referentiel) {
+    const attestations = ['2026-01-05', '2026-01-06'].map((date, i) => ({ jour_index: i, date, confiance: 0.8, score_preuves: 1, score_indices: 0 }))
+    const competences = {}
+    for (const p of referentiel.poles) {
+      const c = referentiel.competences.find((x) => x.pole === p.num)
+      competences[c.code] = { attestations, signaux: [] }
+    }
+    return { journal_id: 'test', histoires: {}, rapports_poles: { 1: 'Rapport du premier pôle.' }, competences }
+  }
+
+  it('cinq pôles lettrés : un domaine par pôle, à son nom et à la couleur de son rang ; le schéma l’accepte', () => {
+    const lettres = ['A', 'B', 'C', 'D', 'E']
+    const referentiel = {
+      id: 'fictif-lettre',
+      poles: lettres.map((l, i) => ({ num: i + 1, nom: `${l} · Pôle fictif ${l}` })),
+      competences: lettres.flatMap((l, i) => [1, 2].map((k) => ({ code: `${l}${k}`, nom: `Capacité fictive ${l}${k}`, pole: i + 1 }))),
+    }
+    const doc = twin9ToMergeDocument(fusion(referentiel), referentiel, { generatedAt: '2026-01-07T12:00:00' })
+    expect(doc.domains.map((d) => [d.id, d.color, d.competences.map((c) => c.code)])).toEqual(
+      lettres.map((l, i) => [`${l} · Pôle fictif ${l}`, POLE_PALETTE[i], [`${l}1`]]),
+    )
+    expect(Object.keys(doc.profilIpsatif)).toEqual(['1', '2', '3', '4', '5'])
+    expect(doc.domains[0].rapport_html).toContain('Rapport du premier pôle.')
+    // il nomme son référentiel, sans quoi il se lirait comme RESPIRE (7 pôles, codes P.NN)
+    expect(doc.referentiel).toBe('fictif-lettre')
+    expect(validateDocument('cartographie-merge', doc).errors).toEqual([])
+    const { referentiel: _nom, ...sansNom } = doc
+    expect(validateDocument('cartographie-merge', sansNom).valid).toBe(false)
+  })
+
+  it('neuf pôles : neuf domaines, les deux derniers aux couleurs qui prolongent celles de RESPIRE ; le schéma l’accepte', () => {
+    const referentiel = {
+      id: 'fictif-neuf',
+      poles: Array.from({ length: 9 }, (_, i) => ({ num: i + 1, nom: `Pôle fictif ${i + 1}` })),
+      competences: Array.from({ length: 9 }, (_, i) => ({ code: `${i + 1}.01`, nom: `Compétence fictive ${i + 1}.01`, pole: i + 1 })),
+    }
+    const doc = twin9ToMergeDocument(fusion(referentiel), referentiel, { generatedAt: '2026-01-07T12:00:00' })
+    expect(doc.domains.map((d) => d.color)).toEqual(POLE_PALETTE.slice(0, 9))
+    expect(doc.domains[8].competences.map((c) => c.code)).toEqual(['9.01'])
+    expect(Object.keys(doc.profilIpsatif)).toHaveLength(9)
+    expect(doc.referentiel).toBe('fictif-neuf')
+    expect(validateDocument('cartographie-merge', doc).errors).toEqual([])
+  })
+
+  it('RESPIRE ne nomme pas son référentiel : sa fusion reste celle d’avant T17', () => {
+    const respire = {
+      id: 'respire',
+      poles: REFERENTIEL.poles,
+      competences: REFERENTIEL.poles.map((p) => ({ code: `${p.num}.01`, nom: `Compétence ${p.num}.01`, pole: p.num })),
+    }
+    const doc = twin9ToMergeDocument(fusion(respire), respire, { generatedAt: '2026-01-07T12:00:00' })
+    expect('referentiel' in doc).toBe(false)
+    expect(doc.domains.map((d) => d.color)).toEqual(POLE_PALETTE.slice(0, 7))
+    expect(validateDocument('cartographie-merge', doc).errors).toEqual([])
   })
 })
 

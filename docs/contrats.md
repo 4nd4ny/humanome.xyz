@@ -729,18 +729,23 @@ une suivante le relève.
   de sa carte, variables vides, et les préambules et fiches des référentiels
   que leur moteur a lus (T16, §8.8) : les journées de la mémoire ont été
   jugées par ces runs-là. Les sorties rangées restent celles du moteur.
+  Depuis T17 (§10), la réponse porte aussi `referentiel`, celui avec lequel
+  se lit sa carte : les pôles et les compétences que son moteur a lus,
+  `{id, version, label, poles: [{num, nom, couleur}], competences: [{code,
+  nom, pole}]}`, jamais une fiche, un préambule ni une description ; nul pour
+  un run d'avant T16.
 - **Le document `twin9-run`** que la page remet à l'interface de cartographie
   (`twin9RunFiles`, `web/src/lib/interface-handoff.js`) : `kind: "twin9-run"`,
-  `run` (`id`, `journal`, `mode`, `attestation`, dates), `referentiel` (le
-  publié), `carto_evolutive` (la fusion), `journees` (chaque carte du jour,
+  `run` (`id`, `journal`, `mode`, `attestation`, dates), `referentiel` (celui
+  du run depuis T17, §10 ; le publié avant), `carto_evolutive` (la fusion), `journees` (chaque carte du jour,
   par journée) et `memoire` (les journées reprises). L'interface en fait une
   journée par carte du jour, ses verdicts établis, renvoyés ou jugés, chacun
   avec son dossier (`twin9Dossier`, `engine/src/twin9/mapper.js`) ; la
   délibération d'un verdict jugé se lit dans sa journée (`runScope:
   "journee"`), et les synthèses viennent de la fusion
-  (`carto/core/importers/twin9-run.js`). La page ne le remet que pour un run
-  de RESPIRE (T16 : la cartographie ne lit encore que lui, T17) ; pour un
-  autre, elle le dit.
+  (`carto/core/importers/twin9-run.js`). Depuis T17, la page le remet pour
+  un run de tout référentiel (§10) ; de T16 à T17, pour un run de RESPIRE
+  seul.
 
 ### 8.5 Coûts, plafonds, relance, purge et export (T10)
 
@@ -1223,7 +1228,113 @@ Le schéma `referentiel` passe en **2.0.0** (`docs/plan-twin9-php.md` de
   cartographie qui désigne une version de référentiel
   (`referentiel_version_id`) n'accepte que ses codes ; sans référentiel
   désigné, la forme de RESPIRE (`[1-7].NN`), comme avant.
-- **Hors T15** : la cartographie (T17) ne lit encore que RESPIRE et ses
-  7 pôles (le moteur lit le référentiel du run depuis T16, §8.8) ; la page
-  publique `#/referentiel` ne montre que lui ; `ReferentielDiff` ignore
-  niveaux et éléments.
+- **Hors T15** : la page publique `#/referentiel` ne montre que RESPIRE ;
+  `ReferentielDiff` ignore niveaux et éléments. (La cartographie, qui ne
+  lisait que RESPIRE et ses 7 pôles, lit le référentiel de chaque run depuis
+  T17, §10 ; le moteur, depuis T16, §8.8.)
+
+## 10. La cartographie de tout référentiel (T17)
+
+Le chemin d'un run vers la cartographie n'admettait que les 7 pôles de RESPIRE
+et ses codes `P.NN` (`docs/plan-twin9-php.md` de `Twin_v9`, lot 4c, dernière
+tâche). Il admet tout référentiel de la plateforme (§9) : 5 pôles lettrés aux
+capacités `A1` à `E4`, 9 pôles… Les changements de format, un par un :
+
+| Où | Avant | Depuis T17 |
+|---|---|---|
+| `cartographie-jour`, `cartographie-merge` : `referentiel` | — | facultatif : l'identifiant du référentiel du document (schéma `referentiel`, `id`, en minuscules : `^[a-z0-9][a-z0-9._-]{0,63}$`) ; absent ou `respire`, RESPIRE |
+| `cartographie-jour` : `poles`, `poleNum` | exactement 7 ; `"1"` à `"7"` | RESPIRE : de même ; un autre référentiel : 1 pôle au moins, numérotés de `"1"` à `"N"` (`^[1-9][0-9]*$`) |
+| `cartographie-merge` : `domains`, clés de `profilIpsatif`, `pole_num` | exactement 7 ; `1` à `7` | RESPIRE : de même ; un autre : 1 au moins ; `1` à N |
+| codes (`codeCompetence`) des deux documents | `^[1-7]\.\d{2}$` | RESPIRE : de même (`codeRespire` : verdicts, kairos, domaines, profil) ; un autre : le code d'un référentiel (schéma `referentiel`, `$defs/code` : `^[A-Za-z0-9][A-Za-z0-9._-]{0,7}$`) |
+| `competence` : `identite.code` | `^\d\.\d{2}$` | le code d'un référentiel, comme ci-dessus |
+| `cartographie-merge` : `color` d'un domaine | la couleur RESPIRE de son numéro (`POLE_COLORS`, 1 à 7 ; rien au-delà) | la couleur de son rang (`POLE_PALETTE`, ci-dessous) |
+| réponse de `GET /api/twin9/runs/{id}/resultats` | `run`, `lecteur`, `sorties`, `memoire` | et `referentiel` (§8.4) |
+| document `twin9-run` : `referentiel` | le référentiel publié | celui du run |
+
+Aucun champ n'est renommé. **RESPIRE garde sa structure**, comme dans le
+schéma `referentiel` (§9) : une clause des deux schémas (`allOf` : si
+`referentiel` est absent ou vaut `respire`) impose à son document 7 pôles et
+des codes `P.NN`. Ses documents ne nomment pas de référentiel : ils restent
+valides tels quels, et les validations qui supposent sa structure — les sondes
+de l'extraction (`extract.js`, `PoleAssembler`), le dépôt d'une journée par un
+navigateur de la masse, la référence et la sonde du banc, la relecture —
+gardent leur garantie (un document de 6 pôles, un pôle « 99 » ou un code
+« 1.1 » y sont refusés comme avant). Les deux routes qui valident un document
+venu d'un client refusent qu'il nomme un autre référentiel que le sien, ce qui
+le sortirait de ces contrôles (`422`, pointeur `/referentiel`) : le dépôt d'une
+journée par la masse (`POST /api/worker/jobs/{id}/result`, le référentiel de son
+run) et la révision d'une cartographie (`POST
+/api/cartographies/{id}/revisions`, le référentiel qu'elle désigne, RESPIRE à
+défaut). Un document d'un autre référentiel le
+nomme : l'adaptateur Twin9 (`twin9ToMergeDocument`) le fait pour ses
+documents-jour et sa fusion (`buildMergeDocument`, `meta.referentiel`), dès
+que le référentiel qu'il reçoit a un autre identifiant que `respire`. La
+fusion de RESPIRE ne change pas d'un octet : les 7 premières couleurs de la
+palette sont les siennes, dans l'ordre de ses pôles (parité du document :
+100 %). Le modèle atomique d'une compétence (`competence`,
+`competence_versions`) reste celui de RESPIRE, la colonne du code fixant
+celui du contenu ; son motif s'élargit pour ne plus être, à lui seul, un
+verrou.
+
+- **La palette des pôles** (`POLE_PALETTE`, `poleColor(rang)`,
+  `engine/src/pipeline/merge-document.js`) : les 7 couleurs de RESPIRE, puis
+  `#909def`, `#913c5b`, `#8eb608`, `#835106`, `#90209b`. Telles que
+  l'interface les affiche, dans ses 5 palettes (D-64) et ses 2 thèmes, elles
+  passent le script de la skill dataviz (`validate_palette.js`) sur les
+  voisins du soleil, de 8 à 12 pôles, bouclage du dernier au premier compris :
+  écart pour les daltoniens ≥ 8 (ΔE OKLab ×100), en vision normale ≥ 15 ;
+  dans la palette Contrastée (par défaut), bande de luminance, chroma et 3:1
+  sur la surface aussi. Au-delà de 12 pôles, couleurs et marques reprennent
+  au début : les noms des pôles les distinguent. En deçà de 8, ce sont les
+  couleurs de RESPIRE, dont le bouclage n'est validé qu'à 7 (et passe à 3 et
+  5) : à 4 pôles, le dernier (violet) touche le premier (bleu), que les
+  daltoniens confondent ; à 6, hors de la palette Contrastée, le bleu-vert
+  touche le bleu de trop près en vision normale. Un tel référentiel l'évite en
+  déclarant ses couleurs.
+  Les libellés qui comptaient « sept pôles » (le radar du tableau de bord et
+  celui de la comparaison) comptent ceux du référentiel.
+- **Le référentiel de l'interface** (`web/src/carto/core/referential.js`) :
+  un pôle sans couleur déclarée (`couleur: null`, comme les référentiels de
+  test) prend celle de son rang — il prenait un gris unique ; une couleur
+  déclarée reste la sienne. Un pôle **lettré** (`num: "A"`, 1 à 8 lettres,
+  un document venu d'ailleurs que la plateforme, qui numérote les siens, §9)
+  reçoit son numéro d'ordre : dès qu'un pôle porte une lettre, chacun reçoit
+  son rang dans le fichier (1, 2…), et ses compétences le suivent par sa
+  lettre (`pole: "A"`). Un pôle sans numéro entier (`3`, `"3"`) ni lettre est
+  refusé (`"3.5"`, `""`, `null` : `null` passait pour le pôle 0). Le nom
+  court d'un pôle lettré est sa lettre (« A · Percevoir » → « A »), comme
+  celui d'un pôle de RESPIRE son mot-clé (« TETE »). Les
+  **marques** (symbole et motif des distinctions renforcées, §6.1 de la
+  spécification) passent de 8 à 12 : `▼` zigzag, `◐` anneaux, `✦` triangles,
+  `✖` croix courtes (motifs dans `Sun.jsx`).
+- **Le référentiel d'un run** (`Resultats::referentiel`) : les pôles et
+  compétences du bloc que son moteur a lu (§8.8), gardé dans ses réglages —
+  dans l'ordre du moteur, tels qu'il les a lus, même si leur version (un
+  brouillon) a changé depuis —, chaque pôle avec la couleur que sa version a
+  dans la base (celle d'aujourd'hui pour un brouillon retouché depuis). Ni
+  fiche, ni préambule, ni description : les fiches en sont
+  faites, et le filtre de fuite les tient pour confidentielles (§8.8). La
+  page du run (`twin9RunFiles`) y ajoute les descriptions du référentiel
+  publié de même identifiant que le site charge (RESPIRE) ; l'importeur
+  (`importTwin9Run`) le rend — illisible, il le dit et le jeu garde le
+  sien —, et le jeu neuf qui reçoit le run l'adopte
+  (« Référentiel … adopté ») ; le titre du jeu porte son libellé
+  (`Twin9 · <journal> · <libellé>`). Un run d'avant T16, sans référentiel
+  dans ses réglages, s'ouvre avec le référentiel publié : il a lu RESPIRE.
+- **Les numéros de pôle d'une fusion** : pour un run Twin9, `importSiteMerge`
+  reçoit ceux du référentiel du run, dans l'ordre des domaines
+  (`buildMergeDocument` rend tous ses pôles, dans l'ordre de leurs numéros) :
+  la synthèse évolutive d'un pôle se range sous son numéro, quels que soient
+  ses codes (« 21 » au pôle 2). Pour une fusion du site, sans référentiel, le
+  numéro se lit toujours au début du code de la première compétence (`1.01`
+  → 1), à défaut au rang du domaine.
+- **Une carte par référentiel** (recette, `web/e2e/twin9-referentiels.e2e.js`) :
+  sur un même portfolio, RESPIRE et deux référentiels de test ont chacun leur
+  carte (`twin9_cartes`, par portfolio, référentiel et jeu de gabarits), donc
+  leur mémoire (`twin9_memoire` : journées, calques, faisceaux), et chaque
+  run la copie de son profil et son attestation ; leurs trois jeux coexistent
+  dans la cartographie.
+- **Le moteur factice** (`api/tests/fixtures/twin9-factice`) : son tribunal
+  juge la première compétence de chaque pôle du référentiel du run (1.01
+  seule sans référentiel), avec le nom qu'il lui donne ; sa fusion porte
+  leurs histoires et les rapports de leurs pôles.

@@ -535,7 +535,7 @@ export const TWIN6_PERIMETRE_NOTE =
 
 /**
  * Validation tolérante au périmètre partiel : le schéma cartographie-jour
- * exige exactement 7 pôles ; un document restreint est validé via une sonde
+ * exige d'un document de RESPIRE ses 7 pôles ; un document restreint est validé via une sonde
  * (pôles dupliqués/renumérotés 1..7), comme extractDay le fait pour chaque
  * pôle. Le marqueur `perimetre` (hors schéma, additionalProperties: false)
  * est retiré avant la sonde. Au-delà de 7 pôles, la validation STRICTE

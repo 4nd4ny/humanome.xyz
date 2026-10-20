@@ -174,7 +174,11 @@ export function rendreRunVisible(id, visibilite, options) {
   return apiFetch(`twin9/runs/${id}/visibilite`, { ...options, method: 'PUT', body: { visibilite } })
 }
 
-/** Ses résultats, filtrés : {run, lecteur, sorties: {chemin: texte}, memoire: [journées]}. */
+/**
+ * Ses résultats, filtrés : {run, lecteur, sorties: {chemin: texte}, memoire: [journées], referentiel} —
+ * referentiel, celui avec lequel se lit sa carte (T17 : pôles et compétences, sans description), nul
+ * pour un run d'avant T16.
+ */
 export function fetchResultats(id, options) {
   return apiFetch(`twin9/runs/${id}/resultats`, options)
 }

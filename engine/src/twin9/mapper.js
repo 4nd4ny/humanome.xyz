@@ -52,9 +52,10 @@ function competenceEntry(code, verdict) {
  *
  * @param {object} carto carto_evolutive.json déjà aplani en objet JSON
  *   (Maps/PyFloat sérialisés — même forme que ce que rend ResultatsTwin9).
- * @param {{competences: Array<{code:string, nom:string, pole:number}>,
+ * @param {{id?: string, competences: Array<{code:string, nom:string, pole:number}>,
  *   poles: Array<{num:number, nom:string}>}} referentiel même forme que pour
- *   l'adaptateur Twin6 (referentielPourMoteur / référentiel publié).
+ *   l'adaptateur Twin6 (referentielPourMoteur / référentiel publié) ; un
+ *   autre que RESPIRE (T17) nomme les documents qu'il fait (`referentiel`).
  * @param {object} [meta] { generatedAt, sourceProtocole, journalId } passé à
  *   buildMergeDocument (journalId défaut = carto.journal_id).
  * @returns {object} document `cartographie-merge` (schéma du viewer).
@@ -127,9 +128,12 @@ export function twin9ToMergeDocument(carto, referentiel, meta = {}) {
 
   // 3. Un document-jour par date ; le kairos (global, déjà à la forme
   //    jour-doc {kairos:{apprenant}, emergencesCrossPoles}) va au dernier.
+  //    Un document d'un autre référentiel que RESPIRE le nomme (T17).
+  const autre = typeof referentiel.id === 'string' && referentiel.id !== '' && referentiel.id !== 'respire' ? referentiel.id : null
   const dayDocs = dates.map((date, di) => {
     const jour = parDate.get(date)
     const doc = {
+      ...(autre ? { referentiel: autre } : {}),
       date,
       poles: referentiel.poles.map((p) => ({
         poleNum: Number(p.num),
@@ -169,6 +173,7 @@ export function twin9ToMergeDocument(carto, referentiel, meta = {}) {
     journalId: meta.journalId ?? carto.journal_id ?? null,
     sourceProtocole: meta.sourceProtocole ?? 'Twin9 — analyse approfondie (merge évolutif)',
     generatedAt: meta.generatedAt ?? null,
+    ...(autre ? { referentiel: autre } : {}),
   })
 }
 

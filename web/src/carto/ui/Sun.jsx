@@ -145,6 +145,11 @@ const PATTERN_SHAPES = {
   horizontal: <path d="M0 3 L6 3" />,
   vertical: <path d="M3 0 L3 6" />,
   grid: <path d="M0 3 L6 3 M3 0 L3 6" />,
+  // au-delà de huit pôles (T17)
+  zigzag: <path d="M0 4.5 L1.5 1.5 L3 4.5 L4.5 1.5 L6 4.5" style={{ fill: 'none' }} />,
+  rings: <circle cx="3" cy="3" r="1.6" style={{ fill: 'none' }} />,
+  triangles: <path d="M3 1.2 L5 4.8 L1 4.8 Z" />,
+  plus: <path d="M3 1.4 L3 4.6 M1.4 3 L4.6 3" />,
 }
 
 /**

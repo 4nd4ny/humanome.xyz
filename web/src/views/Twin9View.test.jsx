@@ -425,28 +425,92 @@ describe('Twin9View — la page du run (T9)', () => {
     expect([doc.incomplete, doc.carto_evolutive, Object.keys(doc.journees)]).toEqual([true, null, ['2026-01-05']])
   })
 
-  it('ne propose pas la cartographie pour un run sur un autre référentiel que RESPIRE, et le dit (T16)', async () => {
+  it('ouvre dans la cartographie un run sur un autre référentiel, avec ce référentiel, que le titre du jeu nomme (T17)', async () => {
     const autre = { ...fini(), attestation: { ...fini().attestation, referentiel: { id: 'fictif-lettre', version: '1.0.0' } } }
-    const resultats = vi.fn(() => jsonResponse(200, {}))
+    const referentiel = {
+      id: 'fictif-lettre',
+      version: '1.0.0',
+      label: 'Fictif lettré',
+      poles: [{ num: 1, nom: 'A · Pôle fictif A', couleur: null }],
+      competences: [{ code: 'A1', nom: 'Capacité fictive A1', pole: 1 }],
+    }
     const fetchFn = routedFetch({
       'GET api/twin9/runs/7': jsonResponse(200, autre),
-      'GET api/twin9/runs/7/resultats': resultats,
+      'GET api/twin9/runs/7/resultats': jsonResponse(200, {
+        run: { id: 7, journal: 'mon-journal', statut: 'termine' },
+        lecteur: 'proprietaire',
+        sorties: { 'journees/2026-01-05/carto_jour.json': JSON.stringify({ verdicts: {} }) },
+        memoire: [],
+        referentiel,
+      }),
     })
-    render(<Twin9View section="7" deps={{ fetchFn, pause: async () => {} }} />)
+    const publie = { id: 'respire', poles: [], competences: [{ code: 'A1', description: 'Une autre structure' }] }
+    const onOpenInInterface = vi.fn()
+    render(<Twin9View section="7" deps={{ fetchFn, pause: async () => {}, getReferentiel: async () => ({ doc: publie }) }} onOpenInInterface={onOpenInInterface} />)
     await waitFor(() => expect(screen.getByRole('status').textContent).toBe('Terminé'))
 
-    expect(screen.queryByRole('button', { name: 'Ouvrir dans la cartographie' })).toBeNull()
-    expect(screen.getByText('La cartographie n’ouvre encore que les analyses du référentiel RESPIRE : celle-ci porte sur « fictif-lettre ».')).toBeTruthy()
-    expect(resultats).not.toHaveBeenCalled()
+    fireEvent.click(screen.getByRole('button', { name: 'Ouvrir dans la cartographie' }))
+    await waitFor(() => expect(onOpenInInterface).toHaveBeenCalledTimes(1))
+    const [files, opts] = onOpenInInterface.mock.calls[0]
+    expect(opts.title).toBe('Twin9 · mon-journal · Fictif lettré')
+    // le sien, sans description d’un référentiel publié qui n’est pas lui
+    expect(JSON.parse(files[0].text).referentiel).toEqual(referentiel)
   })
 
-  it('ouvre dans la cartographie un run sans référentiel dans son attestation : d’avant T16, il lit RESPIRE', async () => {
-    const ancien = { ...fini(), attestation: { ...fini().attestation, referentiel: undefined } }
-    const fetchFn = routedFetch({ 'GET api/twin9/runs/7': jsonResponse(200, ancien) })
-    render(<Twin9View section="7" deps={{ fetchFn, pause: async () => {} }} />)
+  it('ouvre un run de RESPIRE avec le référentiel du run, et les descriptions du référentiel publié (T17)', async () => {
+    const referentiel = {
+      id: 'respire',
+      version: '7.0.0',
+      label: 'RESPIRE v7',
+      poles: [{ num: 1, nom: 'TETE — Penser & Comprendre', couleur: '#2563eb' }],
+      competences: [{ code: '1.01', nom: 'Pensée critique', pole: 1 }],
+    }
+    const fetchFn = routedFetch({
+      'GET api/twin9/runs/7': jsonResponse(200, fini()),
+      'GET api/twin9/runs/7/resultats': jsonResponse(200, {
+        run: { id: 7, journal: 'mon-journal', statut: 'termine' },
+        lecteur: 'proprietaire',
+        sorties: { 'journees/2026-01-05/carto_jour.json': JSON.stringify({ verdicts: {} }) },
+        memoire: [],
+        referentiel,
+      }),
+    })
+    const publie = { id: 'respire', poles: [], competences: [{ code: '1.01', description: 'Examiner avant de conclure.' }] }
+    const onOpenInInterface = vi.fn()
+    render(<Twin9View section="7" deps={{ fetchFn, pause: async () => {}, getReferentiel: async () => ({ doc: publie }) }} onOpenInInterface={onOpenInInterface} />)
     await waitFor(() => expect(screen.getByRole('status').textContent).toBe('Terminé'))
-    expect(screen.getByRole('button', { name: 'Ouvrir dans la cartographie' })).toBeTruthy()
-    expect(screen.queryByText(/n’ouvre encore que les analyses du référentiel RESPIRE/)).toBeNull()
+
+    fireEvent.click(screen.getByRole('button', { name: 'Ouvrir dans la cartographie' }))
+    await waitFor(() => expect(onOpenInInterface).toHaveBeenCalledTimes(1))
+    const [files, opts] = onOpenInInterface.mock.calls[0]
+    expect(opts.title).toBe('Twin9 · mon-journal · RESPIRE v7')
+    expect(JSON.parse(files[0].text).referentiel.competences).toEqual([
+      { code: '1.01', nom: 'Pensée critique', pole: 1, description: 'Examiner avant de conclure.' },
+    ])
+  })
+
+  it('ouvre un run d’avant T16, dont les résultats ne disent pas le référentiel, avec le référentiel publié : il a lu RESPIRE', async () => {
+    const ancien = { ...fini(), attestation: { ...fini().attestation, referentiel: undefined } }
+    const fetchFn = routedFetch({
+      'GET api/twin9/runs/7': jsonResponse(200, ancien),
+      'GET api/twin9/runs/7/resultats': jsonResponse(200, {
+        run: { id: 7, journal: 'mon-journal', statut: 'termine' },
+        lecteur: 'proprietaire',
+        sorties: { 'journees/2026-01-05/carto_jour.json': JSON.stringify({ verdicts: {} }) },
+        memoire: [],
+        referentiel: null,
+      }),
+    })
+    const publie = { id: 'respire', poles: [], competences: [] }
+    const onOpenInInterface = vi.fn()
+    render(<Twin9View section="7" deps={{ fetchFn, pause: async () => {}, getReferentiel: async () => ({ doc: publie }) }} onOpenInInterface={onOpenInInterface} />)
+    await waitFor(() => expect(screen.getByRole('status').textContent).toBe('Terminé'))
+
+    fireEvent.click(screen.getByRole('button', { name: 'Ouvrir dans la cartographie' }))
+    await waitFor(() => expect(onOpenInInterface).toHaveBeenCalledTimes(1))
+    const [files, opts] = onOpenInInterface.mock.calls[0]
+    expect(opts.title).toBe('Twin9 · mon-journal')
+    expect(JSON.parse(files[0].text).referentiel).toEqual(publie)
   })
 
   it('laisse son cartographe lire les résultats, puis le lui retire', async () => {

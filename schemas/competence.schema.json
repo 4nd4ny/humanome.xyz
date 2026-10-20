@@ -14,8 +14,8 @@
       "properties": {
         "code": {
           "type": "string",
-          "pattern": "^\\d\\.\\d{2}$",
-          "description": "Code unique « P.NN » (identité stable de la compétence, invariante d'une version à l'autre)."
+          "pattern": "^[A-Za-z0-9][A-Za-z0-9._-]{0,7}$",
+          "description": "Code unique de la compétence (identité stable, invariante d'une version à l'autre), sous la forme que déclare son référentiel (schéma referentiel, $defs/code : 1 à 8 caractères) : « P.NN » pour RESPIRE, « A1 » pour un référentiel lettré (T17)."
         },
         "nom": {
           "type": "string",

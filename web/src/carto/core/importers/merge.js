@@ -56,9 +56,11 @@ export function importCartoMerge(doc, { fileName = 'carto_merge.json', now = new
 
 /**
  * @param {object} doc cartographie-merge parsé
- * @param {{fileName?: string, now?: string}} [opts]
+ * @param {{fileName?: string, now?: string, poleNums?: number[]}} [opts] poleNums : le numéro du
+ *   pôle de chaque domaine, dans leur ordre, quand on connaît le référentiel (T17 : un run Twin9) ;
+ *   sinon le numéro se lit au début du code de la première compétence (« 3.01 » → 3), ou au rang
  */
-export function importSiteMerge(doc, { fileName = 'merge.json', now = new Date().toISOString() } = {}) {
+export function importSiteMerge(doc, { fileName = 'merge.json', now = new Date().toISOString(), poleNums = null } = {}) {
   const report = []
   const byDate = new Map() // date → Map(code → entrée parFeuille)
   const feuilleDates = (Array.isArray(doc.feuilles) ? doc.feuilles : [])
@@ -69,7 +71,7 @@ export function importSiteMerge(doc, { fileName = 'merge.json', now = new Date()
   const narratives = []
   const sourceDates = [...feuilleDates].sort()
   for (const [di, domain] of (doc.domains ?? []).entries()) {
-    let poleNum = null
+    let poleNum = poleNums?.[di] ?? null
     for (const comp of domain?.competences ?? []) {
       const code = typeof comp?.code === 'string' ? comp.code : null
       if (!code) continue

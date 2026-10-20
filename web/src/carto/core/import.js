@@ -179,6 +179,7 @@ export function recognize(files, { now = new Date().toISOString(), allowRemote =
         result.variants.push(...r.variants)
         result.narratives.push(...r.narratives)
         result.runDetails.push(...r.runDetails)
+        if (r.referential) result.referential = r.referential
         report.push(...r.report.map((x) => ({ ...x, file: f.path })))
       } else if (looksLikeSiteMerge(doc)) {
         const r = importSiteMerge(doc, { fileName: name, now })

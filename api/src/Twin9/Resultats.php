@@ -5,6 +5,7 @@ declare(strict_types=1);
 namespace Humanome\Twin9;
 
 use Humanome\Auth\Audit;
+use Humanome\Referentiel\ReferentielRepository;
 use PDO;
 use stdClass;
 
@@ -22,6 +23,10 @@ use stdClass;
  * earlier runs, under their own. A model that recited a template or a fiche
  * sees its recitation redacted. The count of redactions stays server-side,
  * in the audit, never in the answer.
+ *
+ * With them, the referential its map is read with (T17): the poles and
+ * competences its engine read, names and codes, with their colours; never a
+ * fiche, a preamble nor a description, of which the fiches are made.
  */
 final class Resultats
 {
@@ -39,8 +44,9 @@ final class Resultats
 
     /**
      * @param int $lecteurId who reads, for the audit of a redaction
-     * @return array{sorties: array<string, string>, memoire: list<string>} the outputs by path, filtered; the
-     *         days taken back from the map's memory
+     * @return array{sorties: array<string, string>, memoire: list<string>, referentiel: array<string, mixed>|null}
+     *         the outputs by path, filtered; the days taken back from the map's memory; the referential its map
+     *         is read with (referentiel())
      */
     public function lire(int $runId, int $lecteurId): array
     {
@@ -81,7 +87,45 @@ final class Resultats
             Audit::record($this->pdo, $lecteurId, 'twin9_fuite_expurgee', ['run' => $runId, 'fuites' => $fuites]);
         }
 
-        return ['sorties' => $sorties, 'memoire' => $memoire];
+        return ['sorties' => $sorties, 'memoire' => $memoire,
+                'referentiel' => $this->referentiel(json_decode($run['moteur'], false, 512, JSON_THROW_ON_ERROR)
+                    ->referentiel ?? null)];
+    }
+
+    /**
+     * The referential a run's map is read with (T17): the poles and the
+     * competences its engine read — its settings keep them, in its order,
+     * whatever its version became since —, each pole with the colour its
+     * version has in the base (a draft retouched since, its current one);
+     * never a fiche, a preamble nor a description. Null for a run of before
+     * T16, which read RESPIRE: the cartography takes the published one.
+     *
+     * @return array{id: string, version: string, label: string,
+     *               poles: list<array{num: int, nom: string, couleur: string|null}>,
+     *               competences: list<array{code: string, nom: string, pole: int}>}|null
+     */
+    private function referentiel(mixed $bloc): ?array
+    {
+        if (!$bloc instanceof stdClass || !\is_array($bloc->poles ?? null)) {
+            return null;
+        }
+        $version = (new ReferentielRepository($this->pdo))->findVersion((string) $bloc->id, (string) $bloc->version);
+        $couleurs = [];
+        foreach ($version['content']['poles'] ?? [] as $p) {
+            $couleurs[(int) $p['num']] = $p['couleur'] ?? null;
+        }
+        $poles = [];
+        $competences = [];
+        foreach ($bloc->poles as $p) {
+            $num = (int) $p->num;
+            $poles[] = ['num' => $num, 'nom' => (string) $p->nom, 'couleur' => $couleurs[$num] ?? null];
+            foreach ($p->competences ?? [] as $c) {
+                $competences[] = ['code' => (string) $c->code, 'nom' => (string) $c->nom, 'pole' => $num];
+            }
+        }
+
+        return ['id' => (string) $bloc->id, 'version' => (string) $bloc->version, 'label' => (string) $bloc->label,
+                'poles' => $poles, 'competences' => $competences];
     }
 
     /**

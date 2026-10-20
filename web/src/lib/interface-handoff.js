@@ -40,12 +40,18 @@ export async function interfaceFiles(entry, { getReferentiel = loadPublishedRefe
 /**
  * Fichiers à remettre à l'interface pour un run Twin9 du serveur (T9) : un
  * document `twin9-run` — le run, sa fusion, ses cartes du jour (celles que sa
- * mémoire a reprises comprises), le référentiel publié —, que l'interface
+ * mémoire a reprises comprises), son référentiel —, que l'interface
  * importe avec le dossier de chaque verdict, délibérations comprises
  * (carto/core/importers/twin9-run.js). Un run arrêté avant sa fin (T10 : son
  * budget, sa durée, le crédit) remet ses journées finies, sans fusion
  * peut-être, sa carte marquée incomplète.
- * @param {{run: object, sorties: Record<string, string>, memoire?: string[]}} resultats GET /api/twin9/runs/{id}/resultats
+ *
+ * Le référentiel est celui du run (T17) : ses pôles et ses compétences, tels
+ * que son moteur les a lus ; les résultats n'en portent aucune description
+ * (les fiches en sont faites), le référentiel publié de même identifiant
+ * donne les siennes. Un run d'avant T16, qui ne le dit pas, a lu RESPIRE : le
+ * référentiel publié.
+ * @param {{run: object, sorties: Record<string, string>, memoire?: string[], referentiel?: object | null}} resultats GET /api/twin9/runs/{id}/resultats
  * @param {{getReferentiel?: () => Promise<object>}} [seams]
  * @returns {Promise<Array<{path: string, text: string}>>}
  * @throws {Error} run sans fusion ni journée finie (rien à placer sur la ligne de temps)
@@ -61,14 +67,25 @@ export async function twin9RunFiles(resultats, { getReferentiel = loadPublishedR
     throw new Error('Ce run n’a encore ni fusion ni journée finie : rien à ouvrir dans la cartographie.')
   }
   const loaded = await getReferentiel()
+  const publie = loaded?.doc ?? loaded ?? null
   const doc = {
     kind: 'twin9-run',
     run: resultats.run,
-    referentiel: loaded?.doc ?? loaded ?? null,
+    referentiel: resultats.referentiel ? avecDescriptions(resultats.referentiel, publie) : publie,
     carto_evolutive: typeof fusion === 'string' ? JSON.parse(fusion) : null,
     journees,
     memoire: resultats.memoire ?? [],
     incomplete: resultats.run?.statut !== 'termine',
   }
   return [{ path: `twin9-run-${resultats.run?.id ?? 'run'}.json`, text: JSON.stringify(doc) }]
+}
+
+/** Le référentiel d'un run, avec les descriptions du référentiel publié de même identifiant. */
+function avecDescriptions(referentiel, publie) {
+  if (!publie || publie.id !== referentiel.id || !Array.isArray(referentiel.competences)) return referentiel
+  const descriptions = new Map((publie.competences ?? []).map((c) => [c.code, c.description]))
+  return {
+    ...referentiel,
+    competences: referentiel.competences.map((c) => (typeof descriptions.get(c.code) === 'string' ? { ...c, description: descriptions.get(c.code) } : c)),
+  }
 }

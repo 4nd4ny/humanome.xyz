@@ -37,14 +37,33 @@
 //
 // Aucune E/S ici : le moteur ne lit ni n'écrit rien de lui-même (P5).
 
-const POLE_COLORS = {
-  1: '#2563eb',
-  2: '#10b981',
-  3: '#ec4899',
-  4: '#8b5cf6',
-  5: '#f59e0b',
-  6: '#06b6d4',
-  7: '#f97316',
+/**
+ * Couleurs des pôles par rang (T17) : les sept de RESPIRE v7, dans l'ordre de
+ * ses pôles, puis cinq pour un référentiel qui en compte davantage. Validées
+ * par le script de la skill dataviz telles que l'interface les affiche, dans
+ * chaque palette et chaque thème, sur les voisins du soleil de 8 à 12 pôles,
+ * bouclage du dernier au premier compris. Au-delà de douze, elles reprennent
+ * au début, comme les marques : les noms des pôles les distinguent. En deçà de
+ * huit, ce sont celles de RESPIRE, dont le bouclage n'est validé qu'à sept.
+ */
+export const POLE_PALETTE = Object.freeze([
+  '#2563eb',
+  '#10b981',
+  '#ec4899',
+  '#8b5cf6',
+  '#f59e0b',
+  '#06b6d4',
+  '#f97316',
+  '#909def',
+  '#913c5b',
+  '#8eb608',
+  '#835106',
+  '#90209b',
+])
+
+/** Couleur du pôle de rang `rank` (1 pour le premier). */
+export function poleColor(rank) {
+  return POLE_PALETTE[(rank - 1) % POLE_PALETTE.length]
 }
 
 const ARCHETYPES = {
@@ -390,8 +409,9 @@ export function buildKairosHtml(periode, evolutionGlobale, narrativeMd) {
  * @param {object} narrativeTexts narratifs LLM (markdown, injectés tels quels) :
  *   { competences: { '1.01': md, … }, poles: { 1: md, …  (clés nombre ou chaîne) },
  *     kairos: md }
- * @param {object} [meta] provenance : { journalId, sourceProtocole, generatedAt }
- *   (generatedAt par défaut = agrege.date_construction)
+ * @param {object} [meta] provenance : { journalId, sourceProtocole, generatedAt, referentiel }
+ *   (generatedAt par défaut = agrege.date_construction ; referentiel, l'identifiant
+ *   du référentiel d'un document qui n'est pas de RESPIRE — T17 —, absent sinon)
  * @returns {object} document conforme à cartographie-merge.schema.json
  */
 export function buildMergeDocument(agrege, narrativeTexts, meta = {}) {
@@ -412,7 +432,7 @@ export function buildMergeDocument(agrege, narrativeTexts, meta = {}) {
   const domains = Object.keys(par_pole)
     .map(Number)
     .sort((a, b) => a - b)
-    .map((num) => {
+    .map((num, rank) => {
       const pole = par_pole[String(num)]
       const comps = rendered
         .filter((c) => c.pole === num)
@@ -453,7 +473,7 @@ export function buildMergeDocument(agrege, narrativeTexts, meta = {}) {
       const { tendance, stats } = computeTendance(pole.evolution_par_feuille)
       return {
         id: pole.pole_nom,
-        color: POLE_COLORS[num],
+        color: poleColor(rank + 1),
         competences: comps,
         parFeuille: pole.evolution_par_feuille.map((e) => ({ ...e })),
         tendance_temporelle: tendance,
@@ -493,6 +513,7 @@ export function buildMergeDocument(agrege, narrativeTexts, meta = {}) {
   return {
     schemaVersion: '1.0.0',
     kind: 'cartographie-merge',
+    ...(typeof meta.referentiel === 'string' && meta.referentiel !== '' ? { referentiel: meta.referentiel } : {}),
     generatedAt,
     source: { protocole: sourceProtocole, journalId },
     periode: {

@@ -4,6 +4,8 @@ declare(strict_types=1);
 
 namespace Humanome\Tests;
 
+use Humanome\Validation;
+
 /**
  * P9 — revisions: the correction history. Every stored document is
  * SERVER-VALIDATED against schemas/cartographie-<type> (422 with
@@ -89,6 +91,32 @@ final class CartographeRevisionsTest extends CartographeTestCase
             );
         }
         self::assertSame(0, (int) self::$pdo->query('SELECT COUNT(*) FROM cartography_revisions')->fetchColumn());
+    }
+
+    /**
+     * T17: a revision is of its cartography's referential — RESPIRE's when the
+     * cartography names none. Naming another, a schema-valid document of eight
+     * poles would escape RESPIRE's checks: refused.
+     */
+    public function testARevisionNamingAnotherReferentialIsRejected422(): void
+    {
+        $autre = ['referentiel' => 'fictif-neuf'] + self::jourDocument();
+        $autre['poles'][] = ['poleNum' => '8'] + $autre['poles'][6];
+        self::assertTrue(Validation::validate('cartographie-jour', $autre)['valid']);
+
+        $response = $this->as_($this->carl, 'POST', '/api/cartographies/' . $this->cartoId . '/revisions', [
+            'document' => $autre,
+        ]);
+        self::assertSame(422, $response->getStatusCode());
+        self::assertSame(['Le document est du référentiel de la cartographie, « respire »'],
+            self::json($response)['fields']['/referentiel']);
+        self::assertSame(0, (int) self::$pdo->query('SELECT COUNT(*) FROM cartography_revisions')->fetchColumn());
+
+        // RESPIRE named as such stays RESPIRE.
+        $respire = ['referentiel' => 'respire'] + self::jourDocument();
+        self::assertSame(201, $this->as_($this->carl, 'POST', '/api/cartographies/' . $this->cartoId . '/revisions', [
+            'document' => $respire,
+        ])->getStatusCode());
     }
 
     public function testTypeMismatchIsRejected422(): void

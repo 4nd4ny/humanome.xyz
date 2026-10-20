@@ -16,9 +16,13 @@
 // manque. Un run arrêté avant sa fin (T10 : son budget, sa durée, le crédit)
 // n'apporte que ses journées finies, sans fusion peut-être : le rapport
 // d'import dit sa carte incomplète.
+//
+// Son référentiel est celui du run (T17) : RESPIRE ou celui d'une autre
+// structure, 5 pôles lettrés, 9 pôles… Le jeu neuf qui le reçoit l'adopte.
 
 import { twin9Dossier, twin9ToMergeDocument } from '@engine/twin9/mapper.js'
 import { importSiteMerge } from './merge.js'
+import { referentialErrors, toEmbeddedReferential } from '../referential.js'
 import { canonicalJson, contentHash, normalizeConfidence, normalizeRole, normalizeStatus, stableId } from '../model.js'
 import { splitExtract } from '../highlight.js'
 import { isIsoDate } from '../dates.js'
@@ -44,10 +48,16 @@ const md = (texte) => (typeof texte === 'string' && texte.trim() !== '' ? { mark
 /**
  * @param {object} doc document twin9-run
  * @param {{fileName?: string, now?: string}} [opts]
- * @returns {{variants: Array<object>, narratives: Array<object>, runDetails: Array<{key: string, value: object}>, report: Array<object>}}
+ * @returns {{variants: Array<object>, narratives: Array<object>, runDetails: Array<{key: string, value: object}>,
+ *   referential: object | null, report: Array<object>}}
  */
 export function importTwin9Run(doc, { fileName = 'twin9-run.json', now = new Date().toISOString() } = {}) {
   const report = []
+  const erreurs = doc.referentiel ? referentialErrors(doc.referentiel) : []
+  const referential = doc.referentiel && erreurs.length === 0 ? toEmbeddedReferential(doc.referentiel) : null
+  if (erreurs.length > 0) {
+    report.push({ severity: 'warning', code: 'twin9-referentiel-illisible', message: `Référentiel du run illisible (${erreurs.slice(0, 3).join(' ; ')}) : le jeu garde le sien` })
+  }
   const runId = `twin9:${doc.run?.id ?? doc.carto_evolutive?.journal_id ?? 'run'}`
   const provenance = { source: 'twin9', run: runId, files: [fileName], model: null, prompt: null, analysedAt: doc.run?.finished_at ?? null, importedAt: now }
 
@@ -61,12 +71,15 @@ export function importTwin9Run(doc, { fileName = 'twin9-run.json', now = new Dat
   let fusion = { variants: [], narratives: [] }
   if (doc.carto_evolutive) {
     try {
-      const merge = twin9ToMergeDocument(doc.carto_evolutive, doc.referentiel, {
+      // le référentiel embarqué, ses pôles numérotés (un pôle lettré y a reçu son numéro d’ordre)
+      const merge = twin9ToMergeDocument(doc.carto_evolutive, referential ?? doc.referentiel, {
         generatedAt: doc.run?.finished_at ?? null,
         journalId: doc.run?.journal ?? doc.carto_evolutive?.journal_id ?? null,
         sourceProtocole: 'Twin9 — run du serveur',
       })
-      fusion = importSiteMerge(merge, { fileName, now })
+      // les domaines de la fusion sont les pôles du référentiel, dans l'ordre de leurs numéros
+      const poleNums = referential ? referential.poles.map((p) => p.num).sort((a, b) => a - b) : null
+      fusion = importSiteMerge(merge, { fileName, now, poleNums })
     } catch (err) {
       report.push({ severity: 'warning', code: 'twin9-fusion-illisible', message: `${fileName} : ${err.message}` })
     }
@@ -98,7 +111,7 @@ export function importTwin9Run(doc, { fileName = 'twin9-run.json', now = new Dat
     report.push({ severity: 'blocking', code: 'twin9-illisible', message: `${fileName} : aucune journée datée dans ce run` })
   }
   report.push({ severity: 'info', code: 'twin9-run', message: `Run Twin9 ${doc.run?.id ?? ''} : ${variants.length} journée(s), ${runDetails.length} délibération(s)` })
-  return { variants, narratives: fusion.narratives, runDetails, report }
+  return { variants, narratives: fusion.narratives, runDetails, referential, report }
 }
 
 /**

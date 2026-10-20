@@ -298,7 +298,7 @@ describe('UC-SYS-02 — outil de déploiement deploy.mjs (sous-processus, faux F
     }
   }, TIMEOUT)
 
-  it('UC-SYS-02-F21 — Nominal étapes 3 à 9 (RG6) : release téléversée sous un nom assaini, front-controller, PUIS current.txt, élagage à 3, et seulement ensuite la séquence distante (migrate, référentiel présent seulement, seed, fiches, paquets .json, santé) ; 409 des fiches → arrêt, pointeur déjà basculé ; sans MIGRATE_TOKEN → santé seule ; santé sans "ok" → code 1', async () => {
+  it('UC-SYS-02-F21 — Nominal étapes 3 à 9 (RG6) : release téléversée sous un nom assaini, front-controller, PUIS current.txt, élagage à 3, et seulement ensuite la séquence distante (migrate, référentiel présent seulement, seed, paquets .json, santé) ; seed en échec (E11) → arrêt, pointeur déjà basculé ; sans MIGRATE_TOKEN → santé seule ; santé sans "ok" → code 1', async () => {
     const files = {
       'build/api-release/VERSION': 'v1.4.0-2-gabc123/dirty\n',
       'build/api-release/public/index.php': '<?php // release factice (test)\n',
@@ -317,7 +317,6 @@ describe('UC-SYS-02 — outil de déploiement deploy.mjs (sous-processus, faux F
       'POST /api/admin/migrate': [200, '{"applied":[],"skipped":27}'],
       'POST /api/admin/import-referentiel': [200, '{"status":"unchanged"}'],
       'POST /api/admin/seed-competences': [200, '{"poles":7,"imported":0}'],
-      'POST /api/admin/generate-fiches': [200, '{"status":"unchanged"}'],
       'POST /api/admin/import-prompt-package': [200, '{"status":"unchanged"}'],
       // Le smoke ne regarde ni `db` ni les migrations : `"ok"` suffit.
       'GET /api/health': [200, '{"status":"ok","version":"test","db":"error"}'],
@@ -356,7 +355,6 @@ describe('UC-SYS-02 — outil de déploiement deploy.mjs (sous-processus, faux F
         'POST /api/admin/migrate',
         'POST /api/admin/import-referentiel',
         'POST /api/admin/seed-competences',
-        'POST /api/admin/generate-fiches',
         'POST /api/admin/import-prompt-package',
         'POST /api/admin/import-prompt-package',
         'GET /api/health',
@@ -365,18 +363,17 @@ describe('UC-SYS-02 — outil de déploiement deploy.mjs (sous-processus, faux F
       expect(requests.slice(0, -1).every((r) => r.token === MIGRATE_TOKEN)).toBe(true)
       expect(requests.at(-1).token).toBeNull()
       expect(requests[1].body).toBe(files['web/public/data/referentiel/respire-v7.1.0.json'])
-      expect(requests[3].body).toBe('{"force":false}')
-      expect(requests.slice(4, 6).map((r) => r.body).sort()).toEqual([files['build/prompt-packages/a-paquet.json'], files['build/prompt-packages/b-paquet.json']])
+      expect(requests.slice(3, 5).map((r) => r.body).sort()).toEqual([files['build/prompt-packages/a-paquet.json'], files['build/prompt-packages/b-paquet.json']])
 
-      // Garde-fou des fiches (409) : arrêt avant paquets et santé ; le pointeur
-      // a DÉJÀ basculé sur la nouvelle release. FICHES_FORCE=1 (environnement) → force.
-      replies['POST /api/admin/generate-fiches'] = [409, '{"status":"diff","changed":["P1C1"]}']
+      // Seed en échec (E11) : arrêt avant paquets et santé ; le pointeur a DÉJÀ
+      // basculé sur la nouvelle release. (Jusqu'au 2026-10-20, c'était le
+      // garde-fou des fiches, generate-fiches, parti avec la copie qu'il gardait.)
+      replies['POST /api/admin/seed-competences'] = [500, '{"error":"Seed failed: Gate de parité ÉCHOUÉ (test)"}']
       requests.length = 0
-      const blocked = await deploy(checkout, ['api'], { FICHES_FORCE: '1' })
+      const blocked = await deploy(checkout, ['api'])
       expect(blocked.status).toBe(1)
-      expect(blocked.stderr).toBe('deploy failed: fiche generation blocked (twin9_fiches diff) — vérifier, puis FICHES_FORCE=1 si intentionnel\n')
-      expect(requests.map((r) => r.url)).toEqual(['/api/admin/migrate', '/api/admin/import-referentiel', '/api/admin/seed-competences', '/api/admin/generate-fiches'])
-      expect(requests[3].body).toBe('{"force":true}')
+      expect(blocked.stderr).toBe('deploy failed: competence seed failed\n')
+      expect(requests.map((r) => r.url)).toEqual(['/api/admin/migrate', '/api/admin/import-referentiel', '/api/admin/seed-competences'])
       expect(requests[0].ftpCallsBefore).toBe(ftpCalls(checkout).length) // FTP terminé avant le refus
       const newest = uploads(checkout).at(-1)
       expect(newest.path).toBe('app/current.txt')

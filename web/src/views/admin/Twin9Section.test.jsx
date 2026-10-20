@@ -36,11 +36,8 @@ const CONFIG = {
   twin9_cle_perso_ouverte: false,
   packs: [{ montant_usd: 10, libelle: 'Pack découverte — 10 $' }],
   modeles: {
-    'modele-fictif-a': { prix_usd_mtok: [1, 5], etages: ['taggers', 'rapide'] },
+    'modele-fictif-a': { prix_usd_mtok: [1, 5] },
   },
-  enabled: true,
-  appels_par_minute: 30,
-  pipeline: {},
 }
 
 const COMPTES = {

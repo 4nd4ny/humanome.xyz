@@ -129,14 +129,13 @@ export function referentielTwin6(document, metaReferentiel) {
 }
 
 /**
- * Prix Twin6 (contribution +10 % déjà appliquée) par modèle + état de la promo
- * Twin9, lus dans /twin9/meta (le serveur applique la marge, jamais exposée).
+ * Prix Twin6 (contribution +10 % déjà appliquée) par modèle, lus dans
+ * /twin9/meta (le serveur applique la marge, jamais exposée).
  */
 export async function fetchTwin6Offer(options) {
   const meta = await fetchTwin9Meta(options)
   return {
     modeles: meta.modeles_twin6 ?? {},
-    twin9PromoOuverte: Boolean(meta.twin9_cle_perso_ouverte),
     referentiel: Array.isArray(meta.referentiel) ? meta.referentiel : [],
     // Solde prépayé du compte : sert de garde-fou avant un run sur crédits
     // (on ne lance pas si le solde ne couvre pas le poids du portfolio).

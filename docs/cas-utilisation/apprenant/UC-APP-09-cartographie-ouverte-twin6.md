@@ -67,7 +67,7 @@ L'apprenant ouvre `#/twin6-ouverte`, colle son portfolio et clique sur
 ## Garanties minimales (en cas d'échec)
 
 - Aucun document partiel n'est affiché ; le formulaire reste disponible.
-- Un appel **refusé** (401, 403, 413, 422, 429, 402) n'atteint pas l'amont et
+- Un appel **refusé** (401, 403, 413, 422, 402) n'atteint pas l'amont et
   n'est pas facturé ; un appel dont l'**amont échoue** (E11) est intégralement
   remboursé (réserve rendue).
 - En revanche, un appel **abouti** côté serveur est facturé au coût réel, même
@@ -112,7 +112,7 @@ L'apprenant ouvre `#/twin6-ouverte`, colle son portfolio et clique sur
 6. Pour chaque appel, le serveur : vérifie le jeton CSRF de la session (403,
    E12), exige la session (401), la clé plateforme
    (503), borne le corps à 2 Mo (413), valide modèle, prompt et `max_tokens`
-   (422), applique le rythme par utilisateur (429), **réserve** atomiquement le
+   (422), **réserve** atomiquement le
    pire-cas au tarif Twin6 (402 sinon), appelle Anthropic sur l'URL verrouillée,
    **réconcilie** la réserve au coût réel et renvoie
    `{text, usage, model, stopReason, cout_microusd}` (aucun rendu, aucun filtre :
@@ -190,8 +190,10 @@ L'apprenant ouvre `#/twin6-ouverte`, colle son portfolio et clique sur
   prompt vide ou `max_tokens` non entier → `422` ; une liste JSON ou un corps
   vide sont traités comme un objet sans champ → `422` (modèle absent) ; rien
   n'est débité.
-- **E10 — Rythme dépassé** (étape 6) : au-delà de `appels_par_minute` (30 par
-  défaut) par utilisateur et par minute → `429` + `Retry-After`.
+- ~~**E10 — Rythme dépassé**~~ : retiré le 2026-10-20 avec le réglage
+  `appels_par_minute`, qui ne bornait plus que la cartographie ouverte depuis
+  T11, à la demande de Christian ; la dépense reste bornée par le solde prépayé
+  (RG3), le débit d'un compte ne l'est plus (voir Limites).
 - **E11 — Échec du fournisseur** (étape 6) : erreur amont → `502` (ou `504` sur
   délai, `429` si saturé) au message **générique** ; la réserve est rendue
   (événement « twin6/cartographie (remboursement échec) »).
@@ -230,8 +232,9 @@ L'apprenant ouvre `#/twin6-ouverte`, colle son portfolio et clique sur
   nom », sa description, puis chaque compétence (`fichesPourTwin6`). Le moteur,
   lui, arrête le run avant l'appel d'un pôle sans fiche (UC-APP-09-U06) ; la
   vue lui en donne toujours une.
-- **RG7** — Twin6 ne dépend ni de l'interrupteur Twin9 (`enabled`) ni de la
-  promotion « Twin9 gratuit » (UC-ADM-05).
+- **RG7** — Twin6 ne dépend ni de l'import de Twin9 ni de la promotion
+  « Twin9 gratuit » (UC-ADM-05). (L'interrupteur `enabled` qu'écrivait l'import
+  est parti le 2026-10-20.)
 - **RG8** — Projection : une compétence n'est « présente » sur une feuille que si
   une de ses traces retenues renvoie à un passage de cette feuille ; le verdict
   d'une feuille n'est jamais promu au-dessus du verdict global.
@@ -285,10 +288,9 @@ L'apprenant ouvre `#/twin6-ouverte`, colle son portfolio et clique sur
 | API | `api/src/Middleware/CsrfMiddleware.php` | Jeton CSRF des mutations (E12) — logique unitaire couverte par UC-CPT-02-U07 |
 | API | `GET /api/keys/anthropic` — `api/src/routes/keys.php`, `api/src/Keys/KeyVault.php` | Révélation de la clé enregistrée (A2) — garde propriétaire et chiffrement couverts par UC-CPT-04 |
 | API | `GET /api/twin9/meta` — `api/src/routes/twin9.php` | Offre (prix Twin6, référentiel, solde) |
-| Domaine | `api/src/Twin9/Twin9Config.php` — `coutMicrousd`, `reserveMicrousd`, `publicView`, `marge`, `modeles`, `appelsParMinute` | Tarification Twin6, bornes |
+| Domaine | `api/src/Twin9/Twin9Config.php` — `coutMicrousd`, `reserveMicrousd`, `publicView`, `marge`, `modeles` | Tarification Twin6, bornes |
 | Domaine | `api/src/Twin9/CreditService.php` — `debit`, `adjust` ; `SoldeInsuffisantException` | Réserve, réconciliation, remboursement |
 | Domaine | `api/src/Twin9/AnthropicCaller.php` | Appel amont verrouillé, erreurs génériques |
-| Domaine | `api/src/Auth/RateLimiter.php` | Rythme par utilisateur |
 
 ## Jeux de tests
 
@@ -328,7 +330,6 @@ L'apprenant ouvre `#/twin6-ouverte`, colle son portfolio et clique sur
 | UC-APP-09-U25 | `CreditService::debit`, `SoldeInsuffisantException` | Aucun découvert, montants portés par l'exception | idem |
 | UC-APP-09-U26 | `AnthropicCaller::appeler` | URL verrouillée, système transmis, réflexion désactivée, usage réel | idem |
 | UC-APP-09-U27 | `AnthropicCaller::appeler` | Erreurs amont → 504/502/429 génériques | idem |
-| UC-APP-09-U30 | `RateLimiter` | Fenêtre d'une minute par compte, 31e appel → 30 s (E10) | idem |
 
 ### Tests fonctionnels
 
@@ -346,12 +347,11 @@ L'apprenant ouvre `#/twin6-ouverte`, colle son portfolio et clique sur
 | UC-APP-09-F21 | A4 | IHM | Autre référentiel publié choisi : décompte « 6 appels (5 pôles + synthèse) », 6 appels, fiches écrites depuis son document, export qui le nomme, total de ses compétences | idem |
 | UC-APP-09-F22 | A5 | IHM | Dernière version de RESPIRE à six pôles : 7 appels, document de RESPIRE aux pôles de cette version (noms du document publié), total de ses compétences | idem |
 | UC-APP-09-F10 | Nominal | API | 8 appels : contrat, `text` amont intact et `model`, coût 6 602 µUSD chacun, prompt public transmis tel quel, grand-livre réserve/réconciliation | `api/tests/UseCases/Functional/UcApp09CartographieOuverteTwin6Test.php` |
-| UC-APP-09-F11 | Nominal (étape 2), RG7 | API | `/api/twin9/meta` : prix Twin6, référentiel, solde ; Twin6 fonctionne l'interrupteur Twin9 fermé | idem |
+| UC-APP-09-F11 | Nominal (étape 2), RG7 | API | `/api/twin9/meta` : prix Twin6, référentiel, solde ; Twin6 fonctionne sans Twin9 importé | idem |
 | UC-APP-09-F12 | E7 | API | 401 sans session, aucun appel amont | idem |
 | UC-APP-09-F13 | E8 | API | 503 sans clé plateforme, rien débité | idem |
 | UC-APP-09-F14 | E9 | API | 422 / 413 / 400 (JSON scalaire ou illisible) ; liste JSON ou corps vide → 422 ; avant tout débit | idem |
 | UC-APP-09-F15 | E4 | API | 402 avec montants (réserve exacte), solde intact | idem |
-| UC-APP-09-F16 | E10 | API | 429 + `Retry-After: 30`, amont non appelé | idem |
 | UC-APP-09-F17 | E11 | API | 502 / 504 génériques, réserves rendues | idem |
 | UC-APP-09-F18 | A3, E5 | API | `max_tokens` borné (alias accepté, 8 192 par défaut), `stopReason max_tokens` relayé ; l'appel tronqué est facturé au coût réel (solde = recharge − somme des coûts) | idem |
 | UC-APP-09-F19 | RGPD | API | Sortie relayée non filtrée à l'apprenant ; grand-livre et audit sans prompt ni sortie | idem |
@@ -422,6 +422,12 @@ cd engine && npx vitest run test/usecases/unit/uc-app-09
   (`scripts/data/twin6/`, depuis le 2026-10-20). Les tests de ce cas utilisent
   un paquet fictif de même forme, sauf UC-APP-09-U33, qui lit les gabarits
   versionnés.
+- Aucun rythme ne borne plus les appels d'un compte (E10, retiré le
+  2026-10-20) : un compte crédité peut en lancer en parallèle sur la clé de la
+  plateforme, chacun occupant un processus PHP jusqu'à la réponse et les quotas
+  Anthropic de l'instance, que partagent les runs Twin9 à clé d'instance. Le
+  parcours de la vue (un appel après l'autre) n'en approche pas l'ancien seuil
+  (30 par minute). Une limite fixe dans le code reste à décider.
 - Le garde-fou de solde (RG5) est une heuristique client ; seul le refus 402
   serveur (réserve pire-cas) est opposable. Son message arrondit le solde au
   centime avec un point décimal : un solde de 1,999999 $ s'affiche « solde

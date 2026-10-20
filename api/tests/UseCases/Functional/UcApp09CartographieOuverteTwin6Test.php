@@ -114,20 +114,20 @@ final class UcApp09CartographieOuverteTwin6Test extends CartographeTestCase
         self::assertSame(8, $labels['twin6/cartographie (réconciliation)']);
     }
 
-    #[TestDox('UC-APP-09-F11 — étape 2 : l’offre lue par la vue (/api/twin9/meta) porte prix Twin6, référentiel et solde — même l’interrupteur Twin9 fermé')]
-    public function testF11OfferIsReadFromMetaAndTwin6IgnoresTheTwin9Switch(): void
+    #[TestDox('UC-APP-09-F11 — étape 2 : l’offre lue par la vue (/api/twin9/meta) porte prix Twin6, référentiel et solde — Twin9 non importé')]
+    public function testF11OfferIsReadFromMetaWithoutTwin9(): void
     {
         $config = new Twin9Config(new SettingsRepository(Db::get()));
         $config->setReferentiel(TwinSupport::referentielFictif());
         $this->crediter(2_500_000);
 
-        self::assertFalse($config->isEnabled(), 'Twin9 non importé : son interrupteur reste fermé');
+        self::assertSame(0, (int) Db::get()->query('SELECT COUNT(*) FROM twin9_protocole')->fetchColumn(), 'aucun gabarit Twin9');
         $meta = self::json($this->as_($this->apprenant, 'GET', '/api/twin9/meta'));
         self::assertSame([3.3, 16.5], $meta['modeles_twin6']['claude-sonnet-5']);
         self::assertSame('TÊTE — Penser & Comprendre', $meta['referentiel'][0]['nom']);
         self::assertSame(2_500_000, $meta['solde_microusd']);
 
-        // Twin6 est un protocole OUVERT : l'interrupteur Twin9 ne le bloque pas.
+        // Twin6 est un protocole OUVERT : il ne dépend pas de l'import de Twin9.
         TwinSupport::queueAnthropic($this->http, '{"poleNum":1}');
         self::assertSame(200, $this->appel()->getStatusCode());
     }
@@ -196,23 +196,6 @@ final class UcApp09CartographieOuverteTwin6Test extends CartographeTestCase
         self::assertSame($expected, $body['requis_estime_microusd']);
         self::assertSame([], $this->http->requests);
         self::assertSame(12_000, $this->solde());
-    }
-
-    #[TestDox('UC-APP-09-F16 — E10 : rythme dépassé (appels_par_minute) → 429 + Retry-After, amont non appelé')]
-    public function testF16RateLimit(): void
-    {
-        (new Twin9Config(new SettingsRepository(Db::get())))->update(['appels_par_minute' => 2]);
-        $this->crediter(5_000_000);
-        TwinSupport::queueAnthropic($this->http, '{}');
-        self::assertSame(200, $this->appel()->getStatusCode(), 'sous la limite');
-
-        // Les 2 appels de la minute sont consommés (fenêtre courante ET suivante).
-        TwinSupport::saturateRateLimit(Db::get(), 'twin6:appel:' . $this->apprenant['id'], 2);
-        $bloque = $this->appel();
-        self::assertSame(429, $bloque->getStatusCode());
-        self::assertSame('Rythme d’appels trop élevé, ralentissez.', self::json($bloque)['error']);
-        self::assertSame('30', $bloque->getHeaderLine('Retry-After'));
-        self::assertCount(1, $this->http->requests);
     }
 
     #[TestDox('UC-APP-09-F17 — E11 : échec amont (500 → 502, délai → 504) : message générique et réserve intégralement rendue')]

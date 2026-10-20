@@ -30,11 +30,8 @@ const CONFIG = {
     { montant_usd: 20, libelle: 'Pack standard — 20 $' },
   ],
   modeles: {
-    'claude-haiku-4-5-20251001': { prix_usd_mtok: [1, 5], etages: ['taggers', 'rapide'] },
+    'claude-haiku-4-5-20251001': { prix_usd_mtok: [1, 5] },
   },
-  enabled: true,
-  appels_par_minute: 30,
-  pipeline: {},
 }
 
 const JEUX = {
@@ -105,20 +102,19 @@ describe('UC-ADM-05 — réglages : diff envoyé au serveur (Twin9Section isolé
     expect(await screen.findByText('Réglages Twin9 enregistrés.')).toBeDefined()
   })
 
-  it('UC-ADM-05-U04 — pack supprimé, étage ajouté (ordre canonique) : seules les clés modifiées partent', async () => {
+  it('UC-ADM-05-U04 — pack supprimé, prix d’entrée modifié : seules les clés modifiées partent ; un modèle n’a plus d’étages', async () => {
     const fetchFn = monter()
     await screen.findByRole('heading', { name: 'Réglages' })
     fireEvent.click(screen.getByRole('button', { name: 'Supprimer le pack 1' }))
     const modele = screen.getByDisplayValue('claude-haiku-4-5-20251001').closest('li')
-    fireEvent.click(within(modele).getByRole('checkbox', { name: 'tribunal' }))
-    fireEvent.click(within(modele).getByRole('checkbox', { name: 'taggers' }))
-    fireEvent.click(within(modele).getByRole('checkbox', { name: 'taggers' }))
+    expect(within(modele).queryAllByRole('checkbox')).toEqual([])
+    fireEvent.change(within(modele).getByLabelText('Prix entrée (USD / Mtok)'), { target: { value: '0.8' } })
     await enregistrer()
 
     expect(puts(fetchFn)).toEqual([
       {
         packs: [{ montant_usd: 20, libelle: 'Pack standard — 20 $' }],
-        modeles: { 'claude-haiku-4-5-20251001': { prix_usd_mtok: [1, 5], etages: ['taggers', 'rapide', 'tribunal'] } },
+        modeles: { 'claude-haiku-4-5-20251001': { prix_usd_mtok: [0.8, 5] } },
       },
     ])
   })
@@ -155,13 +151,18 @@ describe('UC-ADM-05 — réglages : diff envoyé au serveur (Twin9Section isolé
 
   it('UC-ADM-05-U06 — ANOMALIE figée : une config relue de MySQL (clés réordonnées) fait repartir les packs inchangés dans le diff', async () => {
     // Après un premier enregistrement, la colonne JSON MySQL renvoie les clés
-    // triées ({libelle, montant_usd}, {etages, prix_usd_mtok}). Depuis T10, un
-    // modèle garde ce que le formulaire n'édite pas (le palier des longs
+    // triées ({libelle, montant_usd}, {palier_long, prix_usd_mtok}). Depuis T10,
+    // un modèle garde ce que le formulaire n'édite pas (le palier des longs
     // prompts), donc l'ordre de ses clés relues : seuls les packs repartent.
     const relue = {
       ...CONFIG,
       packs: CONFIG.packs.map((p) => ({ libelle: p.libelle, montant_usd: p.montant_usd })),
-      modeles: { 'claude-haiku-4-5-20251001': { etages: ['taggers', 'rapide'], prix_usd_mtok: [1, 5] } },
+      modeles: {
+        'claude-haiku-4-5-20251001': {
+          palier_long: { au_dela_de: 100000, prix_usd_mtok: [5, 25] },
+          prix_usd_mtok: [1, 5],
+        },
+      },
     }
     const fetchFn = monter(relue)
     await screen.findByRole('heading', { name: 'Réglages' })

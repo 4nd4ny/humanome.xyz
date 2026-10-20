@@ -61,7 +61,6 @@ use Humanome\Packages\SettingsRepository;
 use Humanome\Twin9\AnthropicCaller;
 use Humanome\Twin9\CreditService;
 use Humanome\Twin9\FactureService;
-use Humanome\Twin9\FicheStore;
 use Humanome\Twin9\PayPalClient;
 use Humanome\Twin9\ProtocoleRepository;
 use Humanome\Twin9\SoldeInsuffisantException;
@@ -269,7 +268,7 @@ return function (App $app): void {
     }))->add($admin);
 
     // PUT /api/twin9/admin/config {champs partiels} — 422 out of bounds
-    // (marge 1..5, prix > 0, packs 1..100 USD, étages connus).
+    // (marge 1..5, prix > 0, packs 1..500 USD) or for an unknown key.
     $app->put('/twin9/admin/config', $wrap(function (Request $request, Response $response) use ($json, $parseBody): Response {
         $body = $parseBody($request);
         if (!\is_array($body)) {
@@ -372,13 +371,6 @@ return function (App $app): void {
         }
         $maxTokens = max(256, min(16000, $maxTokens));
 
-        $limiter = new RateLimiter(Db::get(), $config->appelsParMinute(), 60);
-        $attempts = $limiter->hit('twin6:appel:' . $userId);
-        if ($attempts > $config->appelsParMinute()) {
-            return $json($response, ['error' => 'Rythme d’appels trop élevé, ralentissez.'], 429)
-                ->withHeader('Retry-After', (string) $limiter->retryAfter($attempts));
-        }
-
         // Worst-case reservation at the TWIN6 margin (+10 %), atomic (no
         // overdraft), reconciled to the real cost after (security finding A),
         // priced with the 'twin6' protocole.
@@ -421,11 +413,12 @@ return function (App $app): void {
 
     // ------------------------------------------------------------------
     // GET /api/twin9/meta — what the credit page and the open cartography
-    // (Twin6) read: the Twin6 offer (margined prices) and the promotion's
-    // state, the packs, whether PayPal is configured, the referential's
-    // structure, the own balance and whether a private key is stored. NEVER
-    // content. Since T11 it no longer lists the steps, the Twin9 offer or the
-    // pipeline's settings, which only the browser's engine read.
+    // (Twin6) read: the Twin6 offer (margined prices), the packs, whether
+    // PayPal is configured, the referential's structure, the own balance and
+    // whether a private key is stored. NEVER content. Since T11 it no longer
+    // lists the steps, the Twin9 offer or the pipeline's settings, which only
+    // the browser's engine read; since 2026-10-20, nor the promotion's state,
+    // which no view read (the configuration page has it, ProfilPolicy).
     // ------------------------------------------------------------------
     $app->get('/twin9/meta', $wrap(function (Request $request, Response $response) use ($json, $sessionUserId): Response {
         $userId = $sessionUserId();
@@ -442,8 +435,6 @@ return function (App $app): void {
 
         return $json($response, [
             'modeles_twin6' => $view['modeles_twin6'],
-            // Promo: when true, Twin9 is usable free with one's own key.
-            'twin9_cle_perso_ouverte' => $view['twin9_cle_perso_ouverte'],
             'packs' => $view['packs'],
             // The referential's non-secret structure (codes and names, accented
             // pole names), which the open cartography assembles RESPIRE's
@@ -697,16 +688,18 @@ return function (App $app): void {
     //    /api/admin/import-prompt-package in routes/packages.php)
     // ==================================================================
 
-    // POST /api/admin/twin9/import {files: {name: content}, config?: {...}}
+    // POST /api/admin/twin9/import {files: {name: content}, referentiel?: [...]}
     // -> writes each template into the v9.8's set in twin9_protocole
     // (archiving versions); a complete import — every template the contract
     // of the variables names — replaces the set: a template it does not carry
     // leaves it, archived (the pole files left it so in T16), whereas a
     // partial one takes nothing away (a set of before T16 keeps its pole
     // files, which tell it). Names compare as the table does, case aside.
-    // Stores the protocol settings under twin9_config.pipeline, flips
-    // twin9_config.enabled=true: both served the browser's engine, which T11
-    // removed, and nothing reads them since.
+    // Until 2026-10-20 it also stored the protocol settings (`config`), flipped
+    // an `enabled` switch and kept the fiches (`fiches`, setting twin9_fiches):
+    // all three served the browser's engine (T11), and no run reads them —
+    // the runs take their settings from their profile (T12) and their fiches
+    // from the referential in the base (T16). Such fields are now ignored.
     $app->post('/admin/twin9/import', function (Request $request, Response $response) use ($json): Response {
         $token = Env::get('MIGRATE_TOKEN');
         if ($token === '') {
@@ -750,24 +743,11 @@ return function (App $app): void {
                 }
             }
 
-            $config = new Twin9Config(new SettingsRepository(Db::get()));
-            $update = ['enabled' => true];
-            if (\is_array($body['config'] ?? null)) {
-                $update['pipeline'] = $body['config'];
-            }
-            $config->update($update);
             // The non-secret referentiel structure (pole/competence names) that
             // /meta serves the open cartography (Twin6) — stored apart from the
             // validated admin config.
             if (\is_array($body['referentiel'] ?? null)) {
-                $config->setReferentiel($body['referentiel']);
-            }
-            // The CONFIDENTIAL fiches (pole headers + per-competence fiche_md),
-            // stored server-only (FicheStore) — NEVER in /meta. Kept apart from
-            // the non-secret referentiel structure. The browser engine's proxy
-            // injected them at render; since T11 nothing reads them.
-            if (\is_array($body['fiches'] ?? null)) {
-                FicheStore::store(new SettingsRepository(Db::get()), $body['fiches']);
+                (new Twin9Config(new SettingsRepository(Db::get())))->setReferentiel($body['referentiel']);
             }
         } catch (Twin9Exception $e) {
             return $json($response, ['error' => $e->getMessage()], $e->getStatusCode());

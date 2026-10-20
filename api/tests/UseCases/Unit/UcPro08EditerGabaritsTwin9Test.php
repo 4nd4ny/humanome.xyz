@@ -12,7 +12,6 @@ use Humanome\MigrationRunner;
 use Humanome\Packages\SettingsRepository;
 use Humanome\Tests\TestDb;
 use Humanome\Tests\UseCases\Support\TwinSupport;
-use Humanome\Twin9\FicheStore;
 use Humanome\Twin9\ProtocoleRepository;
 use Humanome\Twin9\TemplateSets;
 use Humanome\Twin9\Twin9Config;
@@ -258,12 +257,11 @@ final class UcPro08EditerGabaritsTwin9Test extends TestCase
     {
         $repo = new ProtocoleRepository(self::$pdo);
         $repo->put('lourd/20-greffier', TwinSupport::GABARIT_GREFFIER, null);
-        FicheStore::store(new SettingsRepository(self::$pdo), TwinSupport::fichesFictives());
 
         $out = $repo->render('lourd/20-greffier', ['CODE' => '1.01', 'EXTRAIT' => '', 'PRENOM' => 'hors gabarit']);
         self::assertStringContainsString('Code 1.01 — extrait : ', $out['rendu']);
+        // Le banc n'injecte pas les fiches : leurs variables restent en place, listées.
         self::assertStringContainsString('{$COMPETENCE_FICHE}', $out['rendu']);
-        self::assertStringNotContainsString('FICHE FICTIVE', $out['rendu'], 'le banc n’injecte pas les fiches');
         self::assertSame(['COMPETENCE_FICHE', 'POLE_FICHES'], $out['non_resolues']);
 
         // Une seule passe : « {$EXTRAIT} » saisi comme VALEUR de CODE reste littéral…
@@ -274,27 +272,12 @@ final class UcPro08EditerGabaritsTwin9Test extends TestCase
         self::assertSame(['COMPETENCE_FICHE', 'POLE_FICHES', 'EXTRAIT'], $passe['non_resolues']);
     }
 
-    #[TestDox('UC-PRO-08-U11 — import (briques) : fiches et structure du référentiel NETTOYÉES (aucun fiche_md ni en-tête dans le référentiel), réglages du pipeline stockés, Twin9 activé')]
+    #[TestDox('UC-PRO-08-U11 — import (brique) : structure du référentiel NETTOYÉE (aucun fiche_md ni en-tête), seule donnée que l’import garde hors des gabarits depuis le 2026-10-20')]
     public function testU11ImportBuildingBlocks(): void
     {
         $settings = new SettingsRepository(self::$pdo);
-        self::$pdo->exec("DELETE FROM settings WHERE name IN ('twin9_config', 'twin9_fiches', 'twin9_referentiel')");
-        FicheStore::store($settings, [
-            ['num' => '1', 'header' => 'EN-TÊTE FICTIF', 'autre' => 'jeté', 'competences' => [
-                ['code' => '1.01', 'fiche_md' => 'FICHE FICTIVE', 'nom' => 'jeté'],
-                ['fiche_md' => 'sans code : jetée'],
-            ]],
-            'pas un pôle',
-        ]);
-        self::assertEquals(
-            ['poles' => [['num' => 1, 'header' => 'EN-TÊTE FICTIF', 'competences' => [['code' => '1.01', 'fiche_md' => 'FICHE FICTIVE']]]]],
-            $settings->get(FicheStore::SETTING_KEY),
-        );
-
+        self::$pdo->exec("DELETE FROM settings WHERE name IN ('twin9_config', 'twin9_referentiel')");
         $config = new Twin9Config($settings);
-        $config->update(['enabled' => true, 'pipeline' => ['seuils_consensus' => ['conf_min' => 0.4]]]);
-        self::assertTrue($config->isEnabled());
-        self::assertEquals(['seuils_consensus' => ['conf_min' => 0.4]], $config->pipeline());
 
         // Référentiel : seule la structure non secrète (num/nom, code/nom) est gardée —
         // aucun fiche_md, aucun en-tête de pôle ne peut atteindre /api/twin9/meta.

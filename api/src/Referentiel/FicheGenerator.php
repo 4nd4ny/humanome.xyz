@@ -11,20 +11,25 @@ use PDO;
  * (referentiel_poles.header + competence_versions.content.fiche), les artefacts
  * que Twin6 et Twin9 consomment — de façon DÉTERMINISTE et BYTE-EXACTE.
  *
- * Deux sorties, deux règles distinctes (toutes deux prouvées byte-identiques
- * aux fichiers d'or par scripts/extract-fiches.mjs et le gate PHP FicheParityTest) :
+ * Deux sorties, deux règles distinctes — la (b) prouvée byte-identique aux
+ * fichiers d'or par scripts/extract-fiches.mjs et le gate PHP FicheParityTest ;
+ * pour la (c), FicheParityTest prouve que le bloc du moteur porte les octets du
+ * corpus, et ReferentielMoteurTest qu'avec le vrai moteur, ce bloc se lit comme
+ * les fichiers de pôle de la v9.8 :
  *
  *  1. poleFiches() → les 7 P*.md (paquet Twin6 public). RÈGLE (b) :
  *       P*.md = header_brut + Σ competence.fiche joint par "\n\n" + "\n"
  *     (le séparateur `---` vit DÉJÀ à la fin du header et de chaque fiche sauf
  *     la dernière du pôle — d'où le join "\n\n" SEUL, ≠ règle (c) ci-dessous).
  *
- *  2. fichesStructure() → la structure du setting twin9_fiches (FicheStore),
- *     qu'écrivent l'import et le déploiement, et qu'aucun run ne lit plus depuis
- *     T11 (les runs lisent les fiches par ReferentielMoteur, T16). Son réassemblage
- *     POLE_FICHES (FicheStore::poleFiches, règle (c)) reste INCHANGÉ
- *     (rtrim+"\n\n"+join("\n\n---\n\n")+"\n", `---` doublé) : on stocke les
- *     MÊMES octets de fiche_md → COMPETENCE_FICHE et POLE_FICHES intacts.
+ *  2. fichesStructure() → par pôle, son en-tête et la fiche_md de chaque code,
+ *     les MÊMES octets : ce que lit ReferentielMoteur (T16) pour donner au moteur
+ *     Twin9 les fiches de RESPIRE que la base décrit. Le moteur les joint
+ *     lui-même, RÈGLE (c) (Pole.fiche_complete de la v9.8) :
+ *       rtrim(header) + "\n\n" + Σ trim(fiche) joint par "\n\n---\n\n" + "\n"
+ *     (`---` DOUBLÉ). (Jusqu'au 2026-10-20, le setting twin9_fiches en gardait
+ *     une copie, qu'écrivaient l'import et le déploiement et qu'aucun run ne
+ *     lisait plus : il est parti.)
  */
 final class FicheGenerator
 {
@@ -95,7 +100,7 @@ final class FicheGenerator
     }
 
     /**
-     * Structure attendue par FicheStore::store (setting twin9_fiches).
+     * Par pôle, son en-tête et ses fiches (ReferentielMoteur, T16).
      *
      * @return list<array{num:int, header:string, competences:list<array{code:string, fiche_md:string}>}>
      */

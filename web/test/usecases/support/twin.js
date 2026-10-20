@@ -232,14 +232,14 @@ export function twin6ModelText(prompt, referentiel = null) {
 }
 
 /**
- * Ce que sert /api/twin9/meta, FICTIF : offre Twin6, promotion, packs,
- * référentiel, PayPal, solde, clé privée (T11 : plus d'étapes, d'offre Twin9
- * ni de réglages du pipeline, que seul lisait le moteur du navigateur).
+ * Ce que sert /api/twin9/meta, FICTIF : offre Twin6, packs, référentiel,
+ * PayPal, solde, clé privée (T11 : plus d'étapes, d'offre Twin9 ni de réglages
+ * du pipeline, que seul lisait le moteur du navigateur ; 2026-10-20 : plus
+ * l'état de la promotion, qu'aucune vue ne lisait).
  */
 export function metaTwin9(overrides = {}) {
   return {
     modeles_twin6: { 'claude-sonnet-5': [3.3, 16.5] },
-    twin9_cle_perso_ouverte: false,
     packs: [
       { montant_usd: 10, libelle: 'Pack découverte — 10 $' },
       { montant_usd: 20, libelle: 'Pack standard — 20 $' },

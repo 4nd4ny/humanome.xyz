@@ -4,7 +4,6 @@ declare(strict_types=1);
 
 namespace Humanome\Tests\UseCases\Unit;
 
-use Humanome\Auth\RateLimiter;
 use Humanome\Auth\Users;
 use Humanome\Llm\HttpClientException;
 use Humanome\MigrationRunner;
@@ -209,22 +208,5 @@ final class UcApp09CartographieOuverteTwin6Test extends TestCase
                 self::assertStringNotContainsString('sk-ant', $e->getMessage());
             }
         }
-    }
-
-    #[TestDox('UC-APP-09-U30 — rythme par utilisateur : fenêtre fixe d’une minute à appels_par_minute (30), le 31e appel attend 30 s ; un autre compte n’est pas pénalisé')]
-    public function testU30PerUserCallRate(): void
-    {
-        self::$pdo->exec('DELETE FROM rate_limits');
-        $limit = self::config()->appelsParMinute();
-        $limiter = new RateLimiter(self::$pdo, $limit, 60);
-        $now = 1_800_000_000; // début de fenêtre
-        for ($i = 1; $i <= $limit; $i++) {
-            self::assertSame($i, $limiter->hit('twin6:appel:7', $now + $i));
-        }
-        $attempts = $limiter->hit('twin6:appel:7', $now + 59);
-        self::assertGreaterThan($limit, $attempts);
-        self::assertSame(30, $limiter->retryAfter($attempts));
-        self::assertSame(1, $limiter->hit('twin6:appel:8', $now + 59), 'seau propre à chaque compte');
-        self::assertSame(1, $limiter->hit('twin6:appel:7', $now + 60), 'nouvelle minute, compteur remis à zéro');
     }
 }

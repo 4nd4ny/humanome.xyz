@@ -14,7 +14,6 @@ afterEach(() => {
 
 const META = {
   modeles_twin6: {},
-  twin9_cle_perso_ouverte: false,
   packs: [
     { montant_usd: 10, libelle: 'Pack découverte — 10 $' },
     { montant_usd: 20, libelle: 'Pack standard — 20 $' },

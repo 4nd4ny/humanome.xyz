@@ -139,18 +139,16 @@ describe('UC-APP-09 — provider « clé perso » (gratuit, direct navigateur)',
 })
 
 describe('UC-APP-09 — offre et référentiel lus dans /api/twin9/meta', () => {
-  it('UC-APP-09-U18 — prix Twin6 (+10 %), promo, référentiel et solde ; replis sûrs si absents', async () => {
+  it('UC-APP-09-U18 — prix Twin6 (+10 %), référentiel et solde ; replis sûrs si absents', async () => {
     const complet = vi.fn(async () =>
       jsonResponse(200, {
         modeles_twin6: { 'claude-sonnet-5': [3.3, 16.5] },
-        twin9_cle_perso_ouverte: true,
         referentiel: [{ num: 1, nom: 'TÊTE', competences: [] }],
         solde_microusd: '2500000',
       }),
     )
     expect(await fetchTwin6Offer({ fetchFn: complet })).toEqual({
       modeles: { 'claude-sonnet-5': [3.3, 16.5] },
-      twin9PromoOuverte: true,
       referentiel: [{ num: 1, nom: 'TÊTE', competences: [] }],
       solde_microusd: 2_500_000,
     })
@@ -159,7 +157,6 @@ describe('UC-APP-09 — offre et référentiel lus dans /api/twin9/meta', () => 
     const vide = vi.fn(async () => jsonResponse(200, { referentiel: {} }))
     expect(await fetchTwin6Offer({ fetchFn: vide })).toEqual({
       modeles: {},
-      twin9PromoOuverte: false,
       referentiel: [],
       solde_microusd: 0,
     })

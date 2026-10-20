@@ -13,14 +13,69 @@ dans `main` (entrée du 2026-10-14 ci-dessous).
 
 Chantier en cours : le moteur Twin9 v9.8 en PHP, exécuté sur le serveur (ADR-011), planifié et
 développé dans le dépôt privé `4nd4ny/Twin_v9` (`docs/plan-twin9-php.md`, prompts T0 → T18, une
-conversation chacun ; entrées du 2026-10-17). T0 à T10 et T12 à T16 sont fusionnés : le moteur
+conversation chacun ; entrées du 2026-10-17). T0 à T10 et T12 à T17 sont fusionnés : le moteur
 passe l'oracle complet dans `Twin_v9`, le profil est ici, les runs tournent sur le serveur par
 tranches, par appels directs ou par lots, se lancent, se suivent, se lisent et se paient — la base
 commune et la stratégie A de T8 comprises —, sur des jeux de gabarits et des référentiels de toute
-structure, que le moteur lit (T16, fusionné le 2026-10-20). T17, la cartographie de tout
-référentiel, attend sa revue (entrée du 2026-10-20). Viennent ensuite T11, puis T18.
+structure, que le moteur lit (T16) et que la cartographie affiche (T17, fusionné le 2026-10-20).
+T11, le retrait du moteur du navigateur, attend sa revue (entrée du 2026-10-20). Vient ensuite
+T18.
 
 ## Fait
+
+- 2026-10-20 — **Moteur Twin9 en PHP, T11 : retirer le moteur du navigateur (branche
+  `feat/twin9-t11-retrait` ; `Twin_v9` : `feat/twin9-t11-retrait`).** L'analyse approfondie tourne
+  sur le serveur depuis T9 ; ce qui servait encore le moteur du navigateur part, et l'entrée de
+  navigation revient. T17 (#13 ; `Twin_v9` #18) a été fusionné le 2026-10-20.
+  - Dans le front : l'adaptateur d'une carte Twin9 (`mapper.js`) et le parseur des fiches de pôle
+    (`parsePole`, qu'importent `extract-fiches.mjs` et donc `generate-fiches.mjs`) passent de
+    `engine/src/twin9/` à `web/src/lib/twin9/`, avec `pyText`, `pyStr` et le `pyRound` qu'il importe,
+    et leurs tests. De `referentiel.js` ne restent que `parsePole`, la classe `Pole` qu'il rend et
+    les noms des pôles : `permutation`, `loadReferentiel`, `polesFromStructure`, `allCompetences` et
+    `ficheComplete` servaient le moteur du navigateur et partent avec lui, comme `stableHash` et
+    `md5`, que seule `permutation` appelait. Le cas réel de l'adaptateur lit la carte du scénario
+    cloud de l'oracle de `Twin_v9` au lieu du vecteur du portage JavaScript. Ces tests tournent
+    désormais dans la suite front, locale ; la CI moteur garde `parsePole` par UC-SYS-04-F10, qui
+    exécute `extract-fiches.mjs`. `check-publiable` refuse tout `engine/src/twin9/`.
+  - Retirés : `POST /api/twin9/appel`, son test (`Twin9AppelTest`), `makeServerBackend`,
+    `FicheStore::injecter` ; la route répond désormais comme une route inconnue (`Twin9MetaTest`).
+    `GET /api/twin9/meta` ne sert plus que ce que lisent la page du crédit et la cartographie
+    ouverte : offre Twin6, promotion, packs, PayPal, structure du référentiel, solde, clé privée ;
+    plus les étapes, l'offre Twin9, l'interrupteur ni le pipeline (`Twin9Config::publicView`). Le
+    reste du moteur du navigateur avait quitté ce dépôt le 2026-10-17 ; il quitte aussi `Twin_v9`
+    (code, vecteurs et leurs générateurs, `gen-oracles.sh`, `run-helpers.js`), dont les
+    spécifications `docs/twin9/` deviennent celles du moteur PHP.
+  - Rétablie : l'entrée « Analyse approfondie » (premium) de « Ma cartographie », masquée « jusqu'au
+    lot 3 » le 2026-10-17.
+  - Cas d'utilisation : UC-APP-10 réécrit pour l'analyse sur le serveur (lancement, aperçu,
+    admission, suivi, annulation, reprise, plafonds, visibilité, clé personnelle, autre
+    référentiel, mode essai), avec ses tests sur le moteur factice : 13 unitaires et 19
+    fonctionnels (7 et 15 sur l'API, 6 et 4 sur l'interface) au lieu des 45 et 28 du moteur du
+    navigateur ; ses sept anomalies quittent l'index, avec le code qu'elles décrivaient. UC-ADM-05
+    vérifie chaque réglage par son effet sur les runs (estimation, profils) au lieu du proxy ;
+    UC-PRO-08 et UC-APP-09 suivent ; UC-APP-11, UC-CPT-04, UC-APP-01, UC-APP-03, UC-APP-04,
+    UC-APP-06, UC-SYS-04 et le catalogue mis à jour. ADR-010 révisé (§1, §2) ; `docs/contrats.md`, `docs/strategie-tests.md`,
+    `docs/securite-checklist.md`, `INSTALL.md`, `CLAUDE.md`.
+  - Vestiges laissés en place, à décider (règle 6) : les réglages `enabled` et `pipeline`, que
+    l'import écrit et que plus rien ne lit ; les étages des modèles de l'offre, que la supervision
+    édite et que plus rien ne lit (un profil ne demande à un modèle qu'un prix) ; le rythme
+    `appels_par_minute`, qui ne borne plus que la cartographie ouverte ; le magasin des fiches
+    `twin9_fiches`, que l'import écrit et que le déploiement régénère, qu'aucun run ne lit (T16) ;
+    `LeakFilter::redact`, que ses seuls tests appellent ; `twin9_cle_perso_ouverte` dans `/meta`,
+    que lit `fetchTwin6Offer` sans qu'aucune vue s'en serve. Les retirer touche l'import, la
+    supervision, le déploiement et leurs cas d'utilisation (UC-PRO-08, UC-ADM-05, UC-SYS-02).
+  - Limite notée : la page de l'analyse (`#/twin9`) n'a pas de titre de niveau 1, comme
+    Configuration.
+  - Régression de T17, réparée dans un commit à part : les scénarios bout en bout de la
+    cartographie chargent `carto/core/model.js` sous Node, par leurs fixtures ; depuis T17, il
+    atteint `referential.js`, qui importait `poleColor` par l'alias `@engine` de Vite, que Node ne
+    résout pas — la suite e2e s'arrêtait avant son premier test. Il l'importe par son chemin.
+  - Vérifié : suite moteur verte (362) ; tests PHP de UC-APP-10, UC-ADM-05, UC-PRO-08, UC-APP-09,
+    UC-APP-01 et `Twin9MetaTest` verts (88) ; tests front de UC-APP-10, de `web/src/lib/twin9/`, de
+    `Twin9View` (214) et de la cartographie (556) verts ; bout en bout `twin9-run` et
+    `twin9-referentiels` verts (moteur factice) ; `generate-fiches`, `build-viewer` et `vite build`
+    passent — `npm run build` s'arrête, comme avant T11, à `build-twin6-package.mjs`, faute des
+    gabarits Twin6, non versionnés ; `check-publiable` vert.
 
 - 2026-10-20 — **Moteur Twin9 en PHP, T17 : plusieurs référentiels, la cartographie (branche
   `feat/twin9-t17-cartographie`).** La carte d'un run s'ouvre dans la cartographie avec son

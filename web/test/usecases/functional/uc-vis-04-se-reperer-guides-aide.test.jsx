@@ -379,8 +379,9 @@ describe('UC-VIS-04 — liens du panneau pour un compte multi-rôles', () => {
       ['api/admin/settings', () => jsonResponse(200, { defaultPackage: null, worker: {}, config: {} })],
       ['api/admin/demo-config', () => jsonResponse(200, { effective: {}, sources: {}, allowedModels: [], apiKeyConfigured: false })],
       ['api/prompt-packages', () => jsonResponse(200, [])],
-      // Twin9 désactivé côté serveur : la vue l'annonce (garde propre à un compte connecté).
-      ['api/twin9/meta', () => jsonResponse(200, { enabled: false })],
+      // L'analyse approfondie tourne sur cette instance ; le compte n'a ni run ni profil.
+      ['api/twin9/runs', () => jsonResponse(200, { disponible: true, runs: [] })],
+      ['api/twin9/configuration', () => jsonResponse(200, { profils: [], referentiels: [], gabarits: ['v9.8'], cle_perso_ouverte: false, cle_perso_enregistree: false })],
       ['api/twin9/admin/jeux', () => jsonResponse(200, { defaut: 'v9.8', jeux: [{ id: 'v9.8', auteur: null, mien: false, gabarits: 0, created_at: null, defaut: true }] })],
       ['api/twin9/admin/jeux/v9.8/protocole', () => jsonResponse(200, { protocole: [] })],
     ])
@@ -436,6 +437,18 @@ describe('UC-VIS-04 — liens du panneau pour un compte multi-rôles', () => {
         // Session reconnue : la page de travail (prompts AGPL téléchargeables), pas l'invite à se connecter.
         expect(await screen.findByRole('link', { name: 'Télécharger les prompts' })).toBeDefined()
         expect(screen.queryByText(/La cartographie ouverte nécessite un compte/)).toBeNull()
+      },
+    },
+    {
+      name: 'Analyse approfondie',
+      href: '#/twin9',
+      badge: 'premium',
+      hint: 'Twin9',
+      reached: async () => {
+        await h2('Analyse approfondie')
+        // Compte reconnu : le lancement d'une analyse, pas l'invite à se connecter.
+        expect(await screen.findByRole('heading', { level: 3, name: 'Lancer une analyse' })).toBeDefined()
+        expect(screen.queryByText(/pour lancer une analyse approfondie/)).toBeNull()
       },
     },
     {

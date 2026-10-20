@@ -8,8 +8,8 @@
 // run suit sa progression, lue dans son journal, et le fait avancer tant
 // qu'elle est ouverte ; on l'annule, on le reprend, on choisit qui lit ses
 // résultats, et on l'ouvre dans la cartographie, délibérations comprises.
-// L'entrée de navigation reste masquée jusqu'au lot 3 (nav.js) : la page
-// s'ouvre par son adresse.
+// Son entrée de navigation, « Analyse approfondie », est revenue avec T11,
+// qui a retiré le moteur du navigateur (nav.js).
 //
 // Avant de lancer (T10), l'accord donné, la page dit combien de journées le
 // run instruirait — un portfolio déjà évalué n'instruit que ses journées

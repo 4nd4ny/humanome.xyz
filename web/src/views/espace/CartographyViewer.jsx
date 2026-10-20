@@ -6,7 +6,7 @@
 
 import { useEffect, useMemo, useState } from 'react'
 import { loadPublishedReferentiel } from '../../data/referentiel.js'
-import { twin9ToMergeDocument } from '@engine/twin9/mapper.js'
+import { twin9ToMergeDocument } from '../../lib/twin9/mapper.js'
 import DayView from '../DayView.jsx'
 import MergeView from '../MergeView.jsx'
 

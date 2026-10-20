@@ -1,5 +1,6 @@
 // Vecteurs générés par CPython 3.14.3 (round, divmod, %) puis figés ici —
-// script : engine/test/twin9-vectors/gen_vectors.py. Comparaisons par Object.is pour
+// script : engine/test/twin9-vectors/gen_vectors.py, retiré avec le moteur du
+// navigateur (T11), dans l'historique de Twin_v9. Comparaisons par Object.is pour
 // distinguer -0.0 de 0.0 (round(-0.4, 0) == -0.0 en Python).
 import { describe, expect, it } from "vitest";
 import { formatFixed, pyDivmod, pyMod, pyRound } from "./pyRound.js";

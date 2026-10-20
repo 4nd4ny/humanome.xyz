@@ -12,9 +12,9 @@ import { dirname, resolve } from "node:path";
 import { fileURLToPath } from "node:url";
 import { parsePole } from "./referentiel.js";
 // La règle (b) de PROD, celle que generate-fiches.mjs (prebuild web) applique.
-import { reassembleFiche } from "../../../scripts/extract-fiches.mjs";
+import { reassembleFiche } from "../../../../scripts/extract-fiches.mjs";
 
-const repoRoot = resolve(dirname(fileURLToPath(import.meta.url)), "../../..");
+const repoRoot = resolve(dirname(fileURLToPath(import.meta.url)), "../../../..");
 const corpus = JSON.parse(
   readFileSync(`${repoRoot}/scripts/data/fiches-v7.json`, "utf8"),
 );
@@ -38,7 +38,7 @@ describe("fiches-corpus — round-trip corpus committé ↔ P*.md (règle b inve
         codes.map((code) => ({ fiche_md: corpus.fiches[code] })),
       );
 
-      // Inverse : le vrai parseur du moteur retrouve chaque morceau VERBATIM.
+      // Inverse : le vrai parseur (parsePole) retrouve chaque morceau VERBATIM.
       const pole = parsePole(rebuilt, n);
       expect(pole.header).toBe(header);
       expect(pole.competences.map((c) => c.code)).toEqual(codes);

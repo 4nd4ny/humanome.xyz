@@ -1,4 +1,5 @@
 import { describe, expect, it } from 'vitest'
+import { readFileSync } from 'node:fs'
 import { SUPPORTED_KINDS, validateDocument } from './validation.js'
 
 // Minimal but real-shaped "cartographie-merge" document: same field names and
@@ -190,5 +191,77 @@ describe('validateDocument', () => {
     )
     expect(enumError).toBeDefined()
     expect(enumError.message).toMatch(/equal to one of the allowed values/)
+  })
+})
+
+// Tout référentiel, pas seulement RESPIRE (T17) : un document qui nomme son
+// référentiel (« referentiel ») compte ses pôles de 1 à N, ses codes sous la
+// forme que ce référentiel déclare (schéma referentiel, $defs/code) ; sans
+// nom, ou nommé « respire », RESPIRE garde sa structure : 7 pôles, codes
+// « P.NN ». PHP twin : api/tests/ValidationTest.php.
+describe('validateDocument — tout référentiel (T17)', () => {
+  const day = () => JSON.parse(readFileSync(new URL('../../schemas/fixtures/cartographie-jour-2026-01-05.json', import.meta.url), 'utf8'))
+  /** Chaque code RESPIRE du document (« 3.04 ») récrit par `recode`. */
+  const recoded = (doc, recode) =>
+    JSON.parse(JSON.stringify(doc), (k, v) => (typeof v === 'string' && /^[1-9]\.\d{2}$/.test(v) ? recode(v) : v))
+  const lettered = (code) => `${'ABCDEFG'[Number(code[0]) - 1]}${Number(code.slice(2))}`
+  const neufJours = () => {
+    const doc = day()
+    for (const num of ['8', '9']) doc.poles.push(recoded({ ...doc.poles[6], poleNum: num }, (code) => `${num}${code.slice(1)}`))
+    return doc
+  }
+  const neufMerge = () => {
+    const doc = makeMergeDocument()
+    for (const num of [8, 9]) {
+      doc.domains.push(recoded({ ...makeDomain(7), id: `Pôle fictif ${num}`, color: '#909def' }, (code) => `${num}${code.slice(1)}`))
+      doc.profilIpsatif[String(num)] = recoded({ ...makeProfilIpsatif()['7'], pole_num: num }, (code) => `${num}${code.slice(1)}`)
+    }
+    return doc
+  }
+  const lettreMerge = () => {
+    const doc = recoded(makeMergeDocument(), lettered)
+    doc.domains = doc.domains.slice(0, 5)
+    for (const num of ['6', '7']) delete doc.profilIpsatif[num]
+    return doc
+  }
+  const paths = (kind, doc) => validateDocument(kind, doc).errors.map((e) => e.path)
+
+  it('accepts a day of nine poles, and one whose codes are lettered, when they name their referential', () => {
+    expect(validateDocument('cartographie-jour', { ...neufJours(), referentiel: 'fictif-neuf' }).errors).toEqual([])
+    const lettre = { ...recoded(day(), lettered), referentiel: 'fictif-lettre' }
+    expect(lettre.poles[0].competences[0].code).toBe('A1')
+    expect(validateDocument('cartographie-jour', lettre).errors).toEqual([])
+  })
+
+  it('accepts a merge of nine poles, and one of five lettered poles, when they name their referential', () => {
+    expect(validateDocument('cartographie-merge', { ...neufMerge(), referentiel: 'fictif-neuf' }).errors).toEqual([])
+    expect(validateDocument('cartographie-merge', { ...lettreMerge(), referentiel: 'fictif-lettre' }).errors).toEqual([])
+  })
+
+  it('keeps RESPIRE’s structure for a document that names no other referential', () => {
+    for (const referentiel of [undefined, 'respire']) {
+      const marque = (doc) => (referentiel ? { ...doc, referentiel } : doc)
+      expect(validateDocument('cartographie-jour', marque(day())).errors).toEqual([])
+      expect(paths('cartographie-jour', marque(neufJours()))).toContain('/poles')
+      expect(paths('cartographie-jour', marque(recoded(day(), lettered)))).toContain('/poles/0/competences/0/code')
+      const six = marque(day())
+      six.poles = six.poles.slice(0, 6)
+      expect(paths('cartographie-jour', six)).toContain('/poles')
+      expect(validateDocument('cartographie-merge', marque(makeMergeDocument())).errors).toEqual([])
+      expect(paths('cartographie-merge', marque(neufMerge()))).toContain('/domains')
+      expect(paths('cartographie-merge', marque(lettreMerge()))).toContain('/domains/0/competences/0/code')
+    }
+  })
+
+  it('still refuses a pole numbered 0, and a code no referential could declare', () => {
+    const zero = { ...day(), referentiel: 'fictif' }
+    zero.poles[0].poleNum = '0'
+    expect(paths('cartographie-jour', zero)).toContain('/poles/0/poleNum')
+    const espace = { ...makeMergeDocument(), referentiel: 'fictif' }
+    espace.domains[0].competences[0].code = 'A 1'
+    expect(paths('cartographie-merge', espace)).toContain('/domains/0/competences/0/code')
+    const cle = { ...makeMergeDocument(), referentiel: 'fictif' }
+    cle.profilIpsatif['0'] = cle.profilIpsatif['1']
+    expect(validateDocument('cartographie-merge', cle).valid).toBe(false)
   })
 })

@@ -18,12 +18,16 @@
       "$ref": "#/$defs/dateIso",
       "description": "Date de la feuille de portfolio cartographiée (AAAA-MM-JJ). Identique au nom du fichier jours/<date>.json."
     },
+    "referentiel": {
+      "type": "string",
+      "minLength": 1,
+      "description": "Facultatif (T17). Identifiant du référentiel dont le document cartographie les pôles (schéma referentiel, id), ex. « fictif-lettre ». Absent ou « respire » : RESPIRE, dont le document garde la structure (clause allOf)."
+    },
     "poles": {
       "type": "array",
-      "minItems": 7,
-      "maxItems": 7,
+      "minItems": 1,
       "items": { "$ref": "#/$defs/pole" },
-      "description": "Résultat de cartographie pour chacun des 7 pôles du référentiel RESPIRE, dans l'ordre 1 à 7 (TETE, COEUR, MAIN, AME, RACINES, CITE, FLAMBEAU)."
+      "description": "Résultat de cartographie pour chacun des pôles du référentiel, dans l'ordre de leurs numéros : les 7 de RESPIRE (TETE, COEUR, MAIN, AME, RACINES, CITE, FLAMBEAU), ou les N d'un autre référentiel (T17)."
     },
     "kairos": {
       "description": "Synthèse transversale de la journée (prompt kairos) : lecture cross-pôles + portrait de l'apprenant. null si le fichier kairos.json amont est absent pour cette journée (prévu par le convertisseur ; non observé dans le corpus démo où les 59 feuilles ont un kairos).",
@@ -35,6 +39,42 @@
   },
   "required": ["schemaVersion", "kind", "date", "poles", "kairos"],
   "additionalProperties": false,
+  "allOf": [
+    {
+      "description": "RESPIRE garde sa structure (T17) : un document qui ne nomme pas d'autre référentiel compte ses 7 pôles, numérotés de « 1 » à « 7 », et des codes « P.NN », dans ses verdicts comme dans son kairos.",
+      "if": {
+        "anyOf": [
+          { "not": { "required": ["referentiel"] } },
+          { "required": ["referentiel"], "properties": { "referentiel": { "const": "respire" } } }
+        ]
+      },
+      "then": {
+        "properties": {
+          "poles": {
+            "minItems": 7,
+            "maxItems": 7,
+            "items": {
+              "properties": {
+                "poleNum": { "enum": ["1", "2", "3", "4", "5", "6", "7"] },
+                "competences": { "items": { "properties": { "code": { "$ref": "#/$defs/codeRespire" } } } }
+              }
+            }
+          },
+          "kairos": {
+            "properties": {
+              "emergencesCrossPoles": {
+                "properties": {
+                  "connexionsTransversales": { "items": { "properties": { "codesRelies": { "items": { "$ref": "#/$defs/codeRespire" } } } } },
+                  "noeudsConceptuels": { "items": { "properties": { "codesRelies": { "items": { "$ref": "#/$defs/codeRespire" } } } } },
+                  "competencesOrphelines": { "items": { "properties": { "enRelationAvecCodes": { "items": { "$ref": "#/$defs/codeRespire" } } } } }
+                }
+              }
+            }
+          }
+        }
+      }
+    }
+  ],
   "$defs": {
     "dateIso": {
       "type": "string",
@@ -44,8 +84,13 @@
     },
     "codeCompetence": {
       "type": "string",
+      "pattern": "^[A-Za-z0-9][A-Za-z0-9._-]{0,7}$",
+      "description": "Code d'une compétence du référentiel, sous la forme qu'il déclare (schéma referentiel, $defs/code : 1 à 8 caractères) : « 1.01 », « 7.04 » pour RESPIRE v7 (<pôle>.<rang sur deux chiffres>), « A1 » pour un référentiel lettré (T17)."
+    },
+    "codeRespire": {
+      "type": "string",
       "pattern": "^[1-7]\\.\\d{2}$",
-      "description": "Code d'une compétence du référentiel RESPIRE v7 : <numéro de pôle 1-7>.<rang sur deux chiffres>, ex. « 1.01 », « 7.04 »."
+      "description": "Code d'une compétence de RESPIRE v7 : <numéro de pôle 1-7>.<rang sur deux chiffres>, ex. « 1.01 », « 7.04 »."
     },
     "confiance01": {
       "type": "number",
@@ -59,8 +104,8 @@
       "properties": {
         "poleNum": {
           "type": "string",
-          "enum": ["1", "2", "3", "4", "5", "6", "7"],
-          "description": "Numéro du pôle, sous forme de chaîne (« 1 » à « 7 »)."
+          "pattern": "^[1-9][0-9]*$",
+          "description": "Numéro du pôle, son rang dans le référentiel, sous forme de chaîne (« 1 » à « 7 » pour RESPIRE)."
         },
         "passagesSaillants": {
           "type": "array",

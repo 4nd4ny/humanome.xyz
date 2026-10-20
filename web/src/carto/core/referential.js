@@ -12,6 +12,13 @@
 // Chaque pôle reçoit un SYMBOLE et un MOTIF stables pour le mode
 // « distinctions renforcées » (§6.1) : l'identité ne repose jamais sur la
 // seule couleur.
+//
+// Tout référentiel, pas seulement RESPIRE (T17) : un pôle lettré (« A »)
+// reçoit son numéro d'ordre ; un pôle sans couleur déclarée, celle de son
+// rang dans la palette des pôles du moteur ; marques et couleurs vont
+// jusqu'à douze pôles, puis reprennent au début.
+
+import { poleColor } from '@engine/pipeline/merge-document.js'
 
 const POLE_MARKS = [
   { symbol: '●', pattern: 'solid' },
@@ -22,10 +29,28 @@ const POLE_MARKS = [
   { symbol: '⬢', pattern: 'vertical' },
   { symbol: '★', pattern: 'grid' },
   { symbol: '✚', pattern: 'diagonal-reverse' },
+  { symbol: '▼', pattern: 'zigzag' },
+  { symbol: '◐', pattern: 'rings' },
+  { symbol: '✦', pattern: 'triangles' },
+  { symbol: '✖', pattern: 'plus' },
 ]
 
-/** Couleur de repli d'un pôle sans couleur déclarée. */
-export const FALLBACK_POLE_COLOR = '#78716c'
+/** Le pôle porte-t-il une lettre (« A »), et non un numéro entier ? */
+const isLettered = (num) => typeof num === 'string' && num.trim() !== '' && !Number.isInteger(Number(num))
+/** Clé d'un pôle, de son numéro ou de sa lettre (« 3 » pour 3 comme pour « 03 », « A »). */
+const poleKey = (num) => (isLettered(num) ? num : String(Number(num)))
+
+/**
+ * Le numéro de chaque pôle, par sa clé dans le document : son numéro entier ;
+ * dans un référentiel dont un pôle porte une lettre, le numéro d'ordre de
+ * chacun dans le fichier (1, 2…), ses compétences le suivant par sa lettre.
+ * @param {Array<object>} poles
+ * @returns {Map<string, number>} clé (« 3 », « A ») → numéro
+ */
+function poleNumbers(poles) {
+  const lettered = poles.some((p) => isLettered(p?.num))
+  return new Map(poles.map((p, i) => [poleKey(p?.num), lettered ? i + 1 : Number(p?.num)]))
+}
 
 /**
  * Erreurs de forme d'un document de référentiel (vide si valide).
@@ -40,10 +65,10 @@ export function referentialErrors(doc) {
   if (errors.length) return errors
   const nums = new Set()
   for (const p of doc.poles) {
-    const num = Number(p?.num)
-    if (!Number.isInteger(num)) errors.push(`pôle sans numéro entier (${JSON.stringify(p?.num)})`)
-    else if (nums.has(num)) errors.push(`pôle ${num} dupliqué`)
-    nums.add(num)
+    const key = poleKey(p?.num)
+    if (!Number.isInteger(Number(p?.num)) && !isLettered(p?.num)) errors.push(`pôle sans numéro entier ni lettre (${JSON.stringify(p?.num)})`)
+    else if (nums.has(key)) errors.push(`pôle ${key} dupliqué`)
+    nums.add(key)
     if (typeof p?.nom !== 'string' || p.nom.trim() === '') errors.push(`pôle ${p?.num} sans nom`)
   }
   const codes = new Set()
@@ -54,7 +79,7 @@ export function referentialErrors(doc) {
     }
     if (codes.has(c.code)) errors.push(`compétence ${c.code} dupliquée`)
     codes.add(c.code)
-    if (!nums.has(Number(c.pole))) errors.push(`compétence ${c.code} : pôle ${c.pole} inconnu`)
+    if (!nums.has(poleKey(c.pole))) errors.push(`compétence ${c.code} : pôle ${c.pole} inconnu`)
   }
   return errors
 }
@@ -66,15 +91,16 @@ export function referentialErrors(doc) {
 export function toEmbeddedReferential(doc) {
   const errors = referentialErrors(doc)
   if (errors.length) throw new Error(`Référentiel invalide : ${errors.join(' ; ')}`)
+  const numbers = poleNumbers(doc.poles)
   return {
     id: typeof doc.id === 'string' ? doc.id : 'referentiel',
     version: typeof doc.version === 'string' ? doc.version : '0.0.0',
     label: typeof doc.label === 'string' ? doc.label : `${doc.id ?? 'référentiel'} ${doc.version ?? ''}`.trim(),
-    poles: doc.poles.map((p) => ({ num: Number(p.num), nom: p.nom, couleur: p.couleur ?? null })),
+    poles: doc.poles.map((p) => ({ num: numbers.get(poleKey(p.num)), nom: p.nom, couleur: p.couleur ?? null })),
     competences: doc.competences.map((c) => ({
       code: c.code,
       nom: typeof c.nom === 'string' ? c.nom : c.code,
-      pole: Number(c.pole),
+      pole: numbers.get(poleKey(c.pole)),
       description: typeof c.description === 'string' ? c.description : '',
     })),
   }
@@ -97,7 +123,7 @@ export function normalizeReferential(doc) {
     .map((p, i) => ({
       num: p.num,
       name: p.nom,
-      color: p.couleur ?? FALLBACK_POLE_COLOR,
+      color: p.couleur ?? poleColor(i + 1),
       symbol: POLE_MARKS[i % POLE_MARKS.length].symbol,
       pattern: POLE_MARKS[i % POLE_MARKS.length].pattern,
       order: i,

@@ -77,6 +77,42 @@ final class ValidationTest extends TestCase
      * (archive-export 1.1.0, « jeuxCartographie »). Same fixture as the JS
      * twin (engine/test/usecases/unit/uc-app-06-exporter-importer-archive.test.js).
      */
+    /**
+     * Any referential, not RESPIRE's alone (T17): a document that names its
+     * referential (« referentiel ») counts its poles 1 to N, its codes in the
+     * form that referential declares (referentiel schema, $defs/code); naming
+     * none, or « respire », it keeps RESPIRE's structure — 7 poles, « P.NN »
+     * codes. JS twin: engine/src/validation.test.js.
+     */
+    public function testAcceptsTheMergeOfAnyReferentialThatNamesItAndKeepsRespiresStructure(): void
+    {
+        $neuf = $this->makeMergeDocument();
+        foreach ([8, 9] as $num) {
+            $neuf['domains'][] = ['id' => 'Pôle fictif ' . $num, 'color' => '#909def']
+                + self::recode($this->makeDomain(7), static fn (string $code): string => $num . substr($code, 1));
+            $neuf['profilIpsatif'][(string) $num] = ['pole_num' => $num]
+                + self::recode($this->makeProfilIpsatif()['7'], static fn (string $code): string => $num . substr($code, 1));
+        }
+        $lettre = self::recode($this->makeMergeDocument(),
+            static fn (string $code): string => 'ABCDEFG'[(int) $code[0] - 1] . (int) substr($code, 2));
+        $lettre['domains'] = \array_slice($lettre['domains'], 0, 5);
+        unset($lettre['profilIpsatif']['6'], $lettre['profilIpsatif']['7']);
+        self::assertSame('A1', $lettre['domains'][0]['competences'][0]['code']);
+
+        self::assertSame([], Validation::validate('cartographie-merge', ['referentiel' => 'fictif-neuf'] + $neuf)['errors']);
+        self::assertSame([], Validation::validate('cartographie-merge', ['referentiel' => 'fictif-lettre'] + $lettre)['errors']);
+        foreach ([[], ['referentiel' => 'respire']] as $marque) {
+            self::assertSame([], Validation::validate('cartographie-merge', $marque + $this->makeMergeDocument())['errors']);
+            self::assertFalse(Validation::validate('cartographie-merge', $marque + $neuf)['valid'], 'RESPIRE : 7 pôles');
+            self::assertFalse(Validation::validate('cartographie-merge', $marque + $lettre)['valid'], 'RESPIRE : codes P.NN');
+        }
+
+        $espace = ['referentiel' => 'fictif'] + $this->makeMergeDocument();
+        $espace['domains'][0]['competences'][0]['code'] = 'A 1';
+        self::assertArrayHasKey('/domains/0/competences/0/code',
+            Validation::validate('cartographie-merge', $espace)['errors']);
+    }
+
     public function testAcceptsTheMasterV4FixtureAndAnArchiveThatEmbedsIt(): void
     {
         $master = $this->fixture('carto/competency-map-master-exemple.json');
@@ -269,5 +305,23 @@ final class ValidationTest extends TestCase
         }
 
         return $profil;
+    }
+
+    /**
+     * Every RESPIRE code of a document (« 3.04 ») rewritten.
+     *
+     * @param array<mixed> $doc
+     * @param callable(string): string $recode
+     * @return array<mixed>
+     */
+    private static function recode(array $doc, callable $recode): array
+    {
+        array_walk_recursive($doc, static function (mixed &$v) use ($recode): void {
+            if (\is_string($v) && preg_match('/^[1-9]\.\d{2}$/', $v) === 1) {
+                $v = $recode($v);
+            }
+        });
+
+        return $doc;
     }
 }

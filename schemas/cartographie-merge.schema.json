@@ -14,6 +14,11 @@
       "const": "cartographie-merge",
       "description": "Discriminant de type de document (permet de distinguer le merge évolutif d'une feuille de journée)."
     },
+    "referentiel": {
+      "type": "string",
+      "minLength": 1,
+      "description": "Facultatif (T17). Identifiant du référentiel dont le document agrège les pôles (schéma referentiel, id), ex. « fictif-lettre ». Absent ou « respire » : RESPIRE, dont le document garde la structure (clause allOf)."
+    },
     "generatedAt": {
       "type": ["string", "null"],
       "pattern": "^\\d{4}-\\d{2}-\\d{2}T\\d{2}:\\d{2}:\\d{2}$",
@@ -58,17 +63,16 @@
     },
     "domains": {
       "type": "array",
-      "minItems": 7,
-      "maxItems": 7,
+      "minItems": 1,
       "items": { "$ref": "#/$defs/domain" },
-      "description": "Les 7 pôles du référentiel RESPIRE avec leurs compétences établies agrégées sur la période (source du sunburst)."
+      "description": "Les pôles du référentiel — les 7 de RESPIRE, ou les N d'un autre (T17) — avec leurs compétences établies agrégées sur la période (source du sunburst)."
     },
     "profilMeta": { "$ref": "#/$defs/profilMeta" },
     "profilIpsatif": {
       "type": "object",
-      "description": "Profil ipsatif : répartition RELATIVE des scores entre pôles et compétences (les proportions comparent l'apprenant à lui-même, pas à autrui). Dictionnaire indexé par numéro de pôle, clés « 1 » à « 7 ».",
+      "description": "Profil ipsatif : répartition RELATIVE des scores entre pôles et compétences (les proportions comparent l'apprenant à lui-même, pas à autrui). Dictionnaire indexé par numéro de pôle, clés « 1 » à « N » (« 7 » pour RESPIRE).",
       "patternProperties": {
-        "^[1-7]$": { "$ref": "#/$defs/profilIpsatifPole" }
+        "^[1-9][0-9]*$": { "$ref": "#/$defs/profilIpsatifPole" }
       },
       "additionalProperties": false
     },
@@ -146,6 +150,35 @@
     "reserved"
   ],
   "additionalProperties": false,
+  "allOf": [
+    {
+      "description": "RESPIRE garde sa structure (T17) : un document qui ne nomme pas d'autre référentiel compte ses 7 pôles, un profil ipsatif aux clés « 1 » à « 7 », et des codes « P.NN ».",
+      "if": {
+        "anyOf": [
+          { "not": { "required": ["referentiel"] } },
+          { "required": ["referentiel"], "properties": { "referentiel": { "const": "respire" } } }
+        ]
+      },
+      "then": {
+        "properties": {
+          "domains": {
+            "minItems": 7,
+            "maxItems": 7,
+            "items": { "properties": { "competences": { "items": { "properties": { "code": { "$ref": "#/$defs/codeRespire" } } } } } }
+          },
+          "profilIpsatif": {
+            "propertyNames": { "pattern": "^[1-7]$" },
+            "additionalProperties": {
+              "properties": {
+                "pole_num": { "maximum": 7 },
+                "competences": { "items": { "properties": { "code": { "$ref": "#/$defs/codeRespire" } } } }
+              }
+            }
+          }
+        }
+      }
+    }
+  ],
   "$defs": {
     "dateIso": {
       "type": "string",
@@ -155,8 +188,13 @@
     },
     "codeCompetence": {
       "type": "string",
+      "pattern": "^[A-Za-z0-9][A-Za-z0-9._-]{0,7}$",
+      "description": "Code d'une compétence du référentiel, sous la forme qu'il déclare (schéma referentiel, $defs/code : 1 à 8 caractères) : « 1.01 », « 7.04 » pour RESPIRE v7 (<pôle>.<rang sur deux chiffres>), « A1 » pour un référentiel lettré (T17)."
+    },
+    "codeRespire": {
+      "type": "string",
       "pattern": "^[1-7]\\.\\d{2}$",
-      "description": "Code d'une compétence du référentiel RESPIRE v7 : <numéro de pôle 1-7>.<rang sur deux chiffres>, ex. « 1.01 », « 7.04 »."
+      "description": "Code d'une compétence de RESPIRE v7 : <numéro de pôle 1-7>.<rang sur deux chiffres>, ex. « 1.01 », « 7.04 »."
     },
     "statutCompetence": {
       "type": "string",
@@ -585,8 +623,7 @@
         "pole_num": {
           "type": "integer",
           "minimum": 1,
-          "maximum": 7,
-          "description": "Numéro du pôle (1 à 7), cohérent avec la clé du dictionnaire."
+          "description": "Numéro du pôle (1 à N, 1 à 7 pour RESPIRE), cohérent avec la clé du dictionnaire."
         },
         "pole_nom": {
           "type": "string",

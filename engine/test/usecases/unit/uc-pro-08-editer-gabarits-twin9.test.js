@@ -12,7 +12,8 @@
 //     secrets) sur les fichiers SUIVIS par git : lancé dans un dépôt git
 //     temporaire ;
 //   - scripts/twin9/import-protocole.mjs — acteur technique de A4 : COPIÉ dans
-//     un miroir temporaire (son repoRoot devient le miroir, sans .env.deploy :
+//     un miroir temporaire avec le parseur des fiches de pôle qu'il importe
+//     (web/src/lib/twin9/ ; son repoRoot devient le miroir, sans .env.deploy :
 //     ni vrai jeton ni SITE_URL du poste) ; il lit TWIN_V9_DIR (ici un faux
 //     Twin_v9), puis poste l'import vers un faux serveur local (127.0.0.1, port
 //     éphémère) ou s'arrête en --dry-run.
@@ -30,6 +31,7 @@ import { afterAll, describe, expect, it } from 'vitest'
 const REPO = fileURLToPath(new URL('../../../../', import.meta.url))
 const CHECK_PUBLIABLE = join(REPO, 'scripts/check-publiable.mjs')
 const IMPORT_PROTOCOLE = join(REPO, 'scripts/twin9/import-protocole.mjs')
+const PARSEUR_DES_FICHES = join(REPO, 'web/src/lib/twin9')
 
 const tempDirs = []
 afterAll(() => {
@@ -70,10 +72,11 @@ const constats = (stderr) =>
 const ENV_IMPORT = { ...process.env, MIGRATE_TOKEN: 'jeton-migration-factice' }
 
 /**
- * Copie du script d'import dans un miroir temporaire `<tmp>/scripts/twin9/` :
- * son repoRoot (tiré de son emplacement) devient le miroir, où il n'y a aucun
- * .env.deploy — le vrai fichier du poste n'est jamais lu. Créée à la demande
- * (dans un it()), une fois par fichier.
+ * Copie du script d'import dans un miroir temporaire `<tmp>/scripts/twin9/`,
+ * avec le parseur qu'il importe (`<tmp>/web/src/lib/twin9/`) : son repoRoot
+ * (tiré de son emplacement) devient le miroir, où il n'y a aucun .env.deploy —
+ * le vrai fichier du poste n'est jamais lu. Créée à la demande (dans un it()),
+ * une fois par fichier.
  */
 let scriptImport
 function importProtocole() {
@@ -82,10 +85,48 @@ function importProtocole() {
     scriptImport = join(miroir, 'scripts/twin9/import-protocole.mjs')
     mkdirSync(dirname(scriptImport), { recursive: true })
     cpSync(IMPORT_PROTOCOLE, scriptImport)
+    cpSync(PARSEUR_DES_FICHES, join(miroir, 'web/src/lib/twin9'), { recursive: true })
   }
   return scriptImport
 }
-const PYTHON = spawnSync('python3', ['--version']).status === 0
+
+/**
+ * Sept fichiers de pôle INVENTÉS, à la forme de ceux de la v9.8
+ * (`protocole/tagger/P1.md` à `P7.md`) : un préambule, puis deux sections
+ * `## N.0x — Nom` ; P2 a des fins de ligne CRLF (un fichier édité sous Windows).
+ */
+function fichesDePoleFictives() {
+  const fichiers = {}
+  for (let n = 1; n <= 7; n += 1) {
+    const texte = [
+      `En-tête fictif P${n}`,
+      '',
+      '---',
+      '',
+      `## ${n}.01 — Compétence fictive ${n}.01`,
+      '',
+      `FICHE FICTIVE ${n}.01`,
+      '',
+      '---',
+      '',
+      `## ${n}.02 — Compétence fictive ${n}.02`,
+      '',
+      `FICHE FICTIVE ${n}.02`,
+      '',
+    ].join(n === 2 ? '\r\n' : '\n')
+    fichiers[`protocole/tagger/P${n}.md`] = texte
+  }
+  return fichiers
+}
+const NOMS_DES_POLES = [
+  'TÊTE — Penser & Comprendre',
+  'CŒUR — Relier & Naviguer',
+  'MAIN — Créer & Incarner',
+  'ÂME — Discerner & Juger',
+  'RACINES — Évoluer & Résister',
+  "CITÉ — Gouverner & S'ouvrir",
+  'FLAMBEAU — Transmettre & Piloter',
+]
 
 // Deux « gabarits » INVENTÉS (aucun texte du Twin_v9 réel).
 const GREFFIER = 'GABARIT FICTIF DU GREFFIER {$TEXTE_JOURNEE} — contenu à ne jamais journaliser'
@@ -220,7 +261,7 @@ describe('UC-PRO-08 — fonctionnels (sous-processus) : import technique A4 (scr
       'referentiel absent',
       'dry-run: nothing sent',
     ])
-    // Faux Twin_v9 sans module aurora : référentiel non extrait, avertissement.
+    // Faux Twin_v9 sans fichiers de pôle : référentiel non extrait, avertissement.
     expect(r.stderr).toContain('referentiel NOT extracted')
     expect(r.stdout + r.stderr).not.toContain('GABARIT FICTIF')
     expect(r.stdout + r.stderr).not.toContain('tagging')
@@ -279,38 +320,38 @@ describe('UC-PRO-08 — fonctionnels (sous-processus) : import technique A4 (scr
     }
   })
 
-  it.skipIf(!PYTHON)('UC-PRO-08-F21 — A4 : extraction par le Twin_v9 lui-même (python3, module aurora) : référentiel NON secret réduit à num/nom et code/nom, pôles triés ; les fiches ne partent plus (2026-10-20) ; aucun texte de fiche journalisé', async () => {
-    const twin = fauxTwinV9({
-      'aurora/__init__.py': '',
-      'aurora/referentiel.py': [
-        'class _Pole:',
-        '    def __init__(self, nom, header, competences):',
-        '        self.nom, self.header, self.competences = nom, header, competences',
-        'def load_referentiel(dossier):',
-        '    return {',
-        "        2: _Pole('CŒUR', 'En-tête fictif P2', [{'code': '2.01', 'nom': 'Écoute active', 'fiche_md': 'FICHE FICTIVE 2.01'}]),",
-        "        1: _Pole('TÊTE', 'En-tête fictif P1', [{'code': '1.01', 'nom': 'Pensée critique', 'fiche_md': 'FICHE FICTIVE 1.01'},",
-        "                                               {'code': '1.02', 'nom': 'Cadrage', 'fiche_md': 'FICHE FICTIVE 1.02'}]),",
-        '    }',
-        '',
-      ].join('\n'),
-    })
+  it('UC-PRO-08-F21 — A4 : lecture des fichiers de pôle de la v9.8 (protocole/tagger/P1.md à P7.md) par le parseur de la plateforme, sans Python (2026-10-21) : référentiel NON secret réduit à num/nom accentué et code/nom, les mêmes noms d’un fichier aux fins de ligne CRLF ; les fiches ne partent pas ; aucun texte de fiche journalisé ; un fichier de pôle manquant → avertissement, référentiel non envoyé', async () => {
+    const twin = fauxTwinV9(fichesDePoleFictives())
     const srv = await fauxServeur(200, { imported: 2 })
     try {
-      const r = await importer(['--base-url', srv.url], { TWIN_V9_DIR: twin, PYTHONDONTWRITEBYTECODE: '1' })
+      const r = await importer(['--base-url', srv.url], { TWIN_V9_DIR: twin })
       expect(r.status).toBe(0)
-      expect(r.stdout).toContain('referentiel: 2 pôles')
-      expect(r.stdout + r.stderr).not.toContain('FICHE FICTIVE')
+      expect(r.stdout).toContain('referentiel: 7 pôles')
+      expect(r.stdout + r.stderr).not.toMatch(/FICHE FICTIVE|En-tête fictif/)
       const { body } = srv.requetes[0]
       expect(Object.keys(body)).toEqual(['files', 'referentiel'])
-      expect(body.referentiel).toEqual([
-        { num: 1, nom: 'TÊTE', competences: [{ code: '1.01', nom: 'Pensée critique' }, { code: '1.02', nom: 'Cadrage' }] },
-        { num: 2, nom: 'CŒUR', competences: [{ code: '2.01', nom: 'Écoute active' }] },
-      ])
+      expect(body.referentiel).toEqual(NOMS_DES_POLES.map((nom, i) => ({
+        num: i + 1,
+        nom,
+        competences: [1, 2].map((k) => ({ code: `${i + 1}.0${k}`, nom: `Compétence fictive ${i + 1}.0${k}` })),
+      })))
       // Ni en-tête ni fiche : le serveur les prend dans sa base (T16).
       expect(JSON.stringify(body)).not.toMatch(/FICHE FICTIVE|En-tête fictif/)
     } finally {
       await srv.fermer()
+    }
+
+    const incomplet = fichesDePoleFictives()
+    delete incomplet['protocole/tagger/P7.md']
+    const srv2 = await fauxServeur(200, { imported: 2 })
+    try {
+      const r = await importer(['--base-url', srv2.url], { TWIN_V9_DIR: fauxTwinV9(incomplet) })
+      expect(r.status).toBe(0)
+      expect(r.stdout).toContain('referentiel absent')
+      expect(r.stderr).toMatch(/^referentiel NOT extracted \(protocole\/tagger\): .*P7\.md.* — server keeps its current one$/m)
+      expect(Object.keys(srv2.requetes[0].body)).toEqual(['files'])
+    } finally {
+      await srv2.fermer()
     }
   })
 

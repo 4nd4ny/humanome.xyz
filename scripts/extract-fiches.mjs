@@ -9,7 +9,8 @@
 // fiches: {code: fiche_md} }. C'est la matière du champ competence.content.fiche
 // (source unique). generate-fiches.mjs et FicheGenerator (PHP) réutilisent la règle.
 //
-// Règle (b) — réassemblage BYTE-EXACT d'un P*.md (≠ ficheComplete runtime) :
+// Règle (b) — réassemblage BYTE-EXACT d'un P*.md (≠ règle (c), `---` doublé,
+// de FicheStore::poleFiches côté PHP) :
 //   P*.md = header_brut + competences.map(fiche_md).join("\n\n") + "\n"
 //
 // Usage : node scripts/extract-fiches.mjs   (échoue si la parité octet casse)

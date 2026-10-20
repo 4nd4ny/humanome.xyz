@@ -38,7 +38,7 @@ serveur »** sur une cartographie, ou change son menu **« Confidentialité »**
 
 - La cartographie existe dans le navigateur (carto-store IndexedDB
   `humanome-cartographies`) : produite par un run (UC-APP-02, UC-APP-09 ;
-  avant T11, le moteur Twin9 du navigateur) ou restaurée d'une archive
+  jusqu'au 2026-10-17, le moteur Twin9 du navigateur) ou restaurée d'une archive
   (UC-APP-06). Elle y est **privée** et
   **sans copie serveur** par défaut.
 - Pour toute action serveur : compte activé et session ouverte (UC-CPT-01,

@@ -32,8 +32,8 @@ la page Confidentialité.
 ## Préconditions
 
 - Des cartographies ont été enregistrées localement (run UC-APP-02, import
-  d'archive UC-APP-06, analyse Twin9 UC-APP-10) — sinon le tableau de bord
-  invite à en produire.
+  d'archive UC-APP-06 ; jusqu'au 2026-10-17, analyse Twin9 du moteur du
+  navigateur) — sinon le tableau de bord invite à en produire.
 - Aucune session n'est exigée.
 
 ## Garanties en cas de succès

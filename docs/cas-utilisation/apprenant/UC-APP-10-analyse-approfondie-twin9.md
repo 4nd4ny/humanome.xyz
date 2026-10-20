@@ -30,8 +30,9 @@ badge premium) ou ouvre `#/twin9`.
 
 - Compte actif et session (UC-CPT-01, UC-CPT-02).
 - Le moteur Twin9 est chargé (`TWIN_V9_DIR`, un moteur qui lit le référentiel
-  du run : T16 ou plus récent) et le jeu de gabarits v9.8 importé (UC-PRO-08
-  A4) : `GET /api/twin9/runs` dit `disponible`.
+  du run : T16 ou plus récent) : `GET /api/twin9/runs` dit `disponible`. Le
+  jeu de gabarits v9.8 est importé (UC-PRO-08 A4) : sans lui, le lancement
+  répond `503` (E2).
 - Un référentiel publié, RESPIRE par défaut, avec ses fiches en base.
 - Avec la clé de l'instance : un crédit (UC-APP-11) qui couvre au moins une
   journée et sa fusion. Avec sa clé personnelle : promotion ouverte (UC-ADM-05

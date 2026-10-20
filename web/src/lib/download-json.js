@@ -2,7 +2,7 @@
 // les surfaces qui exportent une cartographie : Essayer (cartographie-jour),
 // Twin6 ouverte (cartographie-merge) et, par `downloadBlob`, l'interface de
 // cartographie. Twin9 du navigateur (ResultatsTwin9) l'a inauguré ; il est
-// parti avec son moteur (T11).
+// parti avec son moteur le 2026-10-17.
 //
 // RGPD : purement client (Blob application/json + <a download>), rien n'est
 // envoyé au serveur ; garde jsdom/SSR (URL.createObjectURL absent -> no-op).

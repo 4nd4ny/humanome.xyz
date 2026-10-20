@@ -17,12 +17,14 @@ use PDO;
  *  1. poleFiches() → les 7 P*.md (paquet Twin6 public). RÈGLE (b) :
  *       P*.md = header_brut + Σ competence.fiche joint par "\n\n" + "\n"
  *     (le séparateur `---` vit DÉJÀ à la fin du header et de chaque fiche sauf
- *     la dernière du pôle — d'où le join "\n\n" SEUL, ≠ ficheComplete).
+ *     la dernière du pôle — d'où le join "\n\n" SEUL, ≠ règle (c) ci-dessous).
  *
- *  2. fichesStructure() → la structure du setting twin9_fiches (FicheStore).
- *     Le réassemblage runtime POLE_FICHES (FicheStore::poleFiches) reste
- *     INCHANGÉ (rtrim+"\n\n"+join("\n\n---\n\n")+"\n", `---` doublé) : on stocke
- *     les MÊMES octets de fiche_md → COMPETENCE_FICHE et POLE_FICHES intacts.
+ *  2. fichesStructure() → la structure du setting twin9_fiches (FicheStore),
+ *     qu'écrivent l'import et le déploiement, et qu'aucun run ne lit plus depuis
+ *     T11 (les runs lisent les fiches par ReferentielMoteur, T16). Son réassemblage
+ *     POLE_FICHES (FicheStore::poleFiches, règle (c)) reste INCHANGÉ
+ *     (rtrim+"\n\n"+join("\n\n---\n\n")+"\n", `---` doublé) : on stocke les
+ *     MÊMES octets de fiche_md → COMPETENCE_FICHE et POLE_FICHES intacts.
  */
 final class FicheGenerator
 {

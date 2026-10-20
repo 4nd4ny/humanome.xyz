@@ -45,8 +45,8 @@ archive ») dans la section « Mes données » du tableau de bord `#/espace`.
 
 - Pour l'export : rien d'obligatoire (une archive vide est valide) ; pour un
   contenu utile, des portfolios (UC-APP-01) et/ou des cartographies
-  (UC-APP-02 ; analyses Twin9 du moteur du navigateur, retiré par T11) dans le
-  stockage local.
+  (UC-APP-02 ; jusqu'au 2026-10-17, analyses Twin9 du moteur du navigateur)
+  dans le stockage local.
 - Pour l'import : un fichier `.json` produit par un export (de cette instance
   ou d'une autre).
 
@@ -307,7 +307,7 @@ cd engine && npx vitest run test/usecases --testNamePattern UC-APP-06
   mesurés sont perdus**. Friction de format à consigner dans
   `docs/contrats.md`. Figé par U06, U08 et F10.
 - **A-03 — Une analyse Twin9 locale bloque tout l'export.** Les résultats
-  Twin9 du moteur du navigateur (retiré par T11 ; ceux qu'il a laissés
+  Twin9 du moteur du navigateur (parti le 2026-10-17 ; ceux qu'il a laissés
   restent) sont enregistrés localement avec le type `twin9` ;
   l'export les projette en `type: 'jour'` avec leur document natif, non
   conforme à `cartographie-jour` : la validation échoue et **aucune** archive

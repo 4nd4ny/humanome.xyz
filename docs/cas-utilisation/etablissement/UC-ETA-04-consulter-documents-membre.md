@@ -46,9 +46,11 @@ ligne d'un membre (lien `#/etablissement/membre/<userId>`).
 
 1. L'établissement clique « Documents » ; le site ouvre
    `#/etablissement/membre/<userId>` (garde de rôle comme UC-ETA-01).
-2. Le site appelle `GET /api/etablissement/membres/{membreId}/documents` et,
-   en parallèle, charge le référentiel publié (fichiers statiques
-   `data/referentiel/`, repli sur la copie embarquée RESPIRE v7).
+2. Le site appelle `GET /api/etablissement/membres/{membreId}/documents` puis
+   charge, pour chaque version de référentiel que les runs des documents ont
+   figée (`referentiel{id, version}` de chaque entrée, 2026-10-20), son
+   document publié (fichiers statiques `data/referentiel/` ; repli sur la
+   copie embarquée pour RESPIRE de la même version).
 3. Le serveur sélectionne les jobs `done` du membre dont le run appartient à
    une cohorte de CET établissement **et** dont le membre est encore adhérent,
    triés par journée puis par job, et répond `200 {membre: {userId,
@@ -62,8 +64,11 @@ ligne d'un membre (lien `#/etablissement/membre/<userId>`).
    chargement (voir Limites).
 5. Le site dédoublonne les journées, fusionne les documents jour avec le moteur
    (`mergeDays` puis `buildMergeDocument` avec des narratifs **locaux**, sans
-   appel LLM), valide le résultat au schéma `cartographie-merge` et affiche la
-   vue fusionnée (`MergeView`, sunburst) ; la barre « Vues du membre » propose
+   appel LLM) et la version du référentiel du run le plus récent (identifiant
+   de run le plus haut) — un autre référentiel que RESPIRE est nommé dans la
+   fusion (`referentiel`) —, valide le résultat au schéma `cartographie-merge`
+   puis sa conformité à ce référentiel et affiche la vue fusionnée
+   (`MergeView`, sunburst) ; la barre « Vues du membre » propose
    « Vue fusionnée (N journée(s)) » et un bouton « Journée jj/mm/aaaa » par
    journée (libellé calculé par `frDate`, décalé d'un jour en fuseau UTC− —
    voir Anomalies).
@@ -71,7 +76,8 @@ ligne d'un membre (lien `#/etablissement/membre/<userId>`).
 ## Scénarios alternatifs
 
 - **A1 — Consulter une journée** (étape 5) : « Journée … » affiche le document
-  jour en `DayView` (lecture seule, sans nouvel appel réseau) ; « Vue
+  jour en `DayView`, avec la version du référentiel de son run (lecture
+  seule, sans nouvel appel réseau) ; « Vue
   fusionnée » revient à la fusion. Seule la barre « Vues du membre » reste
   dans l'espace : le calendrier de la vue fusionnée, les liens des narratifs
   et le lien « ← Retour à la cartographie » de la `DayView` mènent aux
@@ -88,13 +94,16 @@ ligne d'un membre (lien `#/etablissement/membre/<userId>`).
   documents de toutes ses cohortes sont servis (champ `cohorte`) ; s'il quitte
   l'une d'elles, les documents produits dans celle-ci sortent du champ, ceux
   de l'autre restent.
-- **A5 — Fusion non constructible** (étape 5) : le format `cartographie-merge`
-  exige au moins une compétence établie dans chacun des 7 pôles sur la
-  période ; sinon le site affiche l'explication (« La cartographie fusionnée
-  n'a pas pu être construite… Les documents journaliers restent consultables
+- **A5 — Fusion non constructible** (étape 5) : le moteur rend un domaine par
+  pôle du référentiel et le format `cartographie-merge` exige de chacun au
+  moins une compétence établie sur la période ; sinon le site affiche
+  l'explication (« La cartographie fusionnée n'a pas pu être construite : le
+  format exige au moins une compétence établie dans chacun des pôles du
+  référentiel sur la période. Les documents journaliers restent consultables
   individuellement. Détail technique : … ») et les boutons de journée restent
   actifs. Le texte est le même quelle que soit la cause (référentiel invalide,
-  exception du moteur) : seul le « détail technique » donne la cause réelle.
+  documents de référentiels différents, fusion non conforme, exception du
+  moteur) : seul le « détail technique » donne la cause réelle.
 
 ## Scénarios d'erreur
 
@@ -114,6 +123,10 @@ ligne d'un membre (lien `#/etablissement/membre/<userId>`).
   session expirée → `401` ; le site affiche le message du serveur **suivi du
   texte de E1** (« … lancez un run de masse depuis la page de la cohorte »),
   sans distinguer la panne de l'absence de document.
+- **E4 — Référentiel du run introuvable** (étape 2) : la version figée par un
+  run n'est pas dans les fichiers publiés (export statique en retard) → au
+  lieu de la vue (fusion, ou journée de ce run), le message « Le référentiel
+  « <id> » <version> n'a pas pu être chargé ».
 
 ## Règles de gestion
 
@@ -148,14 +161,14 @@ ligne d'un membre (lien `#/etablissement/membre/<userId>`).
 | Front | `web/src/views/EtablissementView.jsx` | Garde de rôle (espace réservé, E2), aiguillage `membre/<id>` vers `MembreSection` |
 | Front | `web/src/api/client.js` — `apiFetch` | Message d'erreur serveur (`data.error`) affiché (E1, E3) |
 | Front | `web/src/views/etablissement/CohorteSection.jsx` | Lien « Documents » par membre |
-| Front | `web/src/views/etablissement/MembreSection.jsx` | Chargement, rappel du consentement, navigation fusion/journée, messages |
-| Front | `web/src/views/etablissement/etablissement-api.js` — `fetchMembreDocuments`, `frDate` | Appel et normalisation de l'enveloppe |
-| Front | `web/src/views/etablissement/membre-merge.js` — `uniqueDayDocuments`, `buildMemberMerge` | Dédoublonnage, fusion moteur, validation, message d'échec |
+| Front | `web/src/views/etablissement/MembreSection.jsx` | Chargement (documents, version du référentiel de chaque run), rappel du consentement, navigation fusion/journée, messages |
+| Front | `web/src/views/etablissement/etablissement-api.js` — `fetchMembreDocuments`, `frDate` | Appel et normalisation de l'enveloppe (run et référentiel de chaque document) |
+| Front | `web/src/views/etablissement/membre-merge.js` — `uniqueDayEntries`, `uniqueDayDocuments`, `referentielDeLaFusion`, `buildMemberMerge` | Dédoublonnage, référentiel de la fusion, fusion moteur, validation (schéma puis conformité), message d'échec |
 | Front | `web/src/lib/run-launcher.js` — `buildLocalNarratives` | Narratifs locaux de la fusion, sans LLM |
-| Front | `web/src/data/referentiel.js` — `loadPublishedReferentiel` | Référentiel publié (repli embarqué) |
+| Front | `web/src/data/referentiel.js` — `loadPublishedReferentiel` | Version publiée d'un référentiel (repli embarqué pour RESPIRE) |
 | Front | `web/src/views/MergeView.jsx`, `web/src/views/DayView.jsx`, `web/src/components/ViewToolbar.jsx` | Rendu lecture seule, bouton « Imprimer » |
 | Front | `web/src/components/HeatmapCalendar.jsx` | Calendrier de la vue fusionnée — navigation par défaut vers `#/jour/<date>` (voir Anomalies) |
-| Moteur | `engine/src/pipeline/merge.js` — `mergeDays` ; `merge-document.js` — `buildMergeDocument` ; `engine/src/validation.js` | Fusion déterministe, document, schéma |
+| Moteur | `engine/src/pipeline/merge.js` — `mergeDays` ; `merge-document.js` — `buildMergeDocument` ; `engine/src/conformite.js` — `validateDocumentPourReferentiel` | Fusion déterministe, document, schéma puis conformité au référentiel |
 | API | `api/src/routes/etablissement.php` — `GET /api/etablissement/membres/{membreId}/documents` | Requête bornée (établissement + adhésion + `done`), enveloppe, 404 homogène |
 
 ## Jeux de tests
@@ -165,13 +178,14 @@ ligne d'un membre (lien `#/etablissement/membre/<userId>`).
 | ID | Cible | Vérifie | Fichier |
 |---|---|---|---|
 | UC-ETA-04-U01 | `parseHash` | `#/etablissement/membre/<id>` → section `membre/<id>` | `web/test/usecases/unit/uc-eta-04-consulter-documents-membre.test.js` |
-| UC-ETA-04-U02 | `fetchMembreDocuments` | Normalisation de l'enveloppe réelle | idem |
-| UC-ETA-04-U03 | `fetchMembreDocuments` | Replis (membre absent, date du document) et entrées inexploitables écartées | idem |
+| UC-ETA-04-U02 | `fetchMembreDocuments` | Normalisation de l'enveloppe réelle (run et version du référentiel de chaque document) | idem |
+| UC-ETA-04-U03 | `fetchMembreDocuments` | Replis (membre absent, date du document, sans run ni référentiel : RESPIRE de version inconnue) et entrées inexploitables écartées | idem |
 | UC-ETA-04-U04 | `uniqueDayDocuments` | Une journée par date (dernière reçue), ordre chronologique | idem |
 | UC-ETA-04-U05 | `buildMemberMerge` | Document valide, provenance `membre-<id>`, horodatage à la seconde ; échec expliqué ; liste vide → message dédié « Aucun document jour à fusionner. » | idem |
 | UC-ETA-04-U06 | `frDate` | Date-heure → `jj/mm/aaaa`, vide → `—`, illisible telle quelle ; date seule `2026-01-06` → `06/01/2026` à Paris mais `05/01/2026` aux Antilles et à Tahiti (anomalie figée) | idem |
-| UC-ETA-04-U07 | `MembreSection` (isolée, `fetchFn`, `getReferentiel`) | `404` → message + texte E1 ; journée à un pôle → fusion expliquée ; référentiel nu accepté ; consentement daté ou absent | idem |
-| UC-ETA-04-U08 | `loadPublishedReferentiel` | Index publié → version publiée (`origin: published`) ; index absent → copie embarquée (`bundled`, 7 pôles, 61 compétences) | idem |
+| UC-ETA-04-U07 | `MembreSection` (isolée, `fetchFn`, `getReferentiel`) | `404` → message + texte E1 ; journée à un pôle → fusion expliquée ; référentiel nu accepté, demandé à la version du run ; consentement daté ou absent | idem |
+| UC-ETA-04-U08 | `loadPublishedReferentiel` | Index publié → version publiée (`origin: published`) ; index absent → copie embarquée (`bundled`, RESPIRE v7 : 7 pôles, 61 compétences) | idem |
+| UC-ETA-04-U09 | `MembreSection` (isolée) | Documents d'un autre référentiel (cinq pôles lettrés) : sa version chargée, fusion sans erreur, journée lue avec lui ; version absente des fichiers publiés → message E4, ni fusion ni journée fausse | idem |
 
 La requête de la route (RG1-RG3) n'a pas de classe de domaine propre : elle est
 couverte par les tests fonctionnels API ci-dessous.
@@ -188,7 +202,7 @@ couverte par les tests fonctionnels API ci-dessous.
 | UC-ETA-04-F06 | E2 | API | `401` visiteur, `403` apprenant (qui garde sa propre route) | idem |
 | UC-ETA-04-F07 | Nominal, RG4 | IHM | `<App/>` : lien « Documents », consentement daté, fusion calculée localement, aucune écriture ; pas d'export, « Imprimer » présent | `web/test/usecases/functional/uc-eta-04-consulter-documents-membre.test.jsx` |
 | UC-ETA-04-F08 | A1 | IHM | Bascule `DayView` (journée du 06/01/2026 affichée, sans erreur) ↔ `MergeView`, aucun appel supplémentaire ; boutons repérés par position (indépendant du fuseau) | idem |
-| UC-ETA-04-F09 | A5 | IHM | Fusion impossible expliquée ; la journée s'ouvre malgré tout | idem |
+| UC-ETA-04-F09 | A5 | IHM | Fusion impossible expliquée (« chacun des pôles du référentiel ») ; la journée s'ouvre malgré tout | idem |
 | UC-ETA-04-F10 | A3 | IHM | Journée en double → 3 journées ; c'est le second exemplaire reçu qui s'affiche | idem |
 | UC-ETA-04-F11 | E1 | IHM | `404` → messages, aucune vue | idem |
 | UC-ETA-04-F12 | E2 | IHM | Apprenant puis visiteur → espace réservé (« Vous n'êtes pas connecté » pour le visiteur), documents jamais demandés | idem |
@@ -201,7 +215,7 @@ couverte par les tests fonctionnels API ci-dessous.
 - `api/tests/MasseRgpdPurgeTest.php` — départ du membre et cloisonnement par établissement.
 - `api/tests/MasseLearnerAccessTest.php` — accès de l'apprenant à ses propres documents (y compris après départ).
 - `api/tests/MasseDoDTest.php` — lecture des documents d'un membre après le run de 20 portfolios.
-- `web/src/views/etablissement/membre-merge.test.js`, `web/src/views/EtablissementView.test.jsx` — fusion côté client, vue membre.
+- `web/src/views/etablissement/membre-merge.test.js`, `web/src/views/EtablissementView.test.jsx` — fusion côté client (conforme à RESPIRE v7 ; un référentiel lettré nommé et conforme ; ses journées refusées par RESPIRE), référentiel de la fusion, vue membre.
 
 ### Exécuter
 
@@ -237,10 +251,12 @@ cd web && npx vitest run test/usecases/unit/uc-eta-04 test/usecases/functional/u
 
 ## Limites
 
-- La fusion utilise le référentiel **actuellement publié** (ou la copie
-  embarquée), pas la version figée du run pourtant portée par chaque document
-  (`referentiel{id, version}`, ignoré par `fetchMembreDocuments`) : une
-  évolution du référentiel peut désaligner fusion et extraction.
+- La fusion prend la version du référentiel du run le plus récent : les
+  documents d'un membre produits sur des référentiels différents (ou des
+  versions de structures différentes) ne fusionnent pas (A5, détail
+  technique) — chaque journée reste lisible avec la version de son run. Le
+  dédoublonnage par date ignore le référentiel : une même journée extraite
+  sur deux référentiels ne garde que la dernière reçue.
 - Pour un membre de plusieurs cohortes, `consentAt` est celui de la cohorte du
   premier document servi (tri par journée), pas le plus récent ni le plus
   ancien consentement.

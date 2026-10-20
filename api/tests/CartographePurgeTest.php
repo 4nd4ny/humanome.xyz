@@ -23,6 +23,8 @@ final class CartographePurgeTest extends CartographeTestCase
     protected function setUp(): void
     {
         parent::setUp();
+        // annotations and revisions are checked against a published referential version (2026-10-20)
+        self::publierRespireV7();
         $this->maya = $this->registerAs('maya@example.org', 'Maya');
         $this->carl = $this->registerAs('carl@example.org', 'Carl', ['cartographe']);
         $this->link($this->maya, $this->carl);

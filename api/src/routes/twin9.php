@@ -313,7 +313,7 @@ return function (App $app): void {
     };
 
     // Twin6 (open cartography) carries the WHOLE portfolio in every scan-pole
-    // prompt (7 calls re-read it), so its billed proxy accepts a larger body.
+    // prompt (one call per pole re-reads it), so its billed proxy accepts a larger body.
     $twin6MaxPayloadBytes = 2_000_000;
 
     // PayPal redirect targets (ADR-010 §3). No webhook at the MVP: the FRONT
@@ -446,7 +446,8 @@ return function (App $app): void {
             'twin9_cle_perso_ouverte' => $view['twin9_cle_perso_ouverte'],
             'packs' => $view['packs'],
             // The referential's non-secret structure (codes and names, accented
-            // pole names), which the open cartography assembles its documents with.
+            // pole names), which the open cartography assembles RESPIRE's
+            // documents with while it is the chosen version's (2026-10-20).
             'referentiel' => $config->referentiel(),
             'paypalConfigured' => $view['paypalConfigured'],
             'solde_microusd' => (new CreditService(Db::get()))->balance($userId),

@@ -349,12 +349,11 @@ describe('UC-VIS-01 — vues historiques et HTML narratif', () => {
   // findDayNode compare `dp.poleNum === refPole.num` (nombre) : la sélection
   // d'un PÔLE dans la vue journée ne se résout pas sur un document conforme.
   // À inverser quand la comparaison sera normalisée (String(...)).
-  it('UC-VIS-01-U17 — [comportement actuel, anomalie AN1] pôle d’une journée conforme au schéma (poleNum chaîne) : non résolu', () => {
+  it('UC-VIS-01-U17 — AN1 corrigée (2026-10-20) : le pôle d’une journée conforme au schéma (poleNum chaîne) est résolu, comme celui d’un poleNum numérique', () => {
     const day = FIXTURE_DAYS['2026-01-06']
     expect(typeof day.poles[1].poleNum).toBe('string')
     const meta = { kind: 'pole', id: 'COEUR — Relier & Naviguer', domainId: day.poles[1].poleNum }
-    expect(findDayNode(day, referentielDoc, meta)).toBeNull()
-    // Le même pôle avec un poleNum NUMÉRIQUE (hors schéma) est résolu.
+    expect(findDayNode(day, referentielDoc, meta).pole.poleNum).toBe('2')
     const numeric = { ...day, poles: day.poles.map((p) => ({ ...p, poleNum: Number(p.poleNum) })) }
     expect(findDayNode(numeric, referentielDoc, meta).pole.poleNum).toBe(2)
   })

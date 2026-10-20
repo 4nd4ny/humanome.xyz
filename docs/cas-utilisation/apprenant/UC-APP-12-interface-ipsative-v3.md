@@ -292,7 +292,7 @@ L'apprenant ouvre `#/cartographie` (menu « Découvrir » → « Cartographie
 | ID | Cible | Vérifie | Fichier |
 |---|---|---|---|
 | UC-APP-12-U01 | `listZipEntries`, `readZipEntry`, `isSafeZipPath` | Entrées lues, traversée refusée, archive tronquée | `web/test/usecases/unit/uc-app-12-interface-ipsative-v3.test.js` |
-| UC-APP-12-U02 | `inventoryZip` (corpus) | Run et date des chemins, kairos relu, JSON invalide en quarantaine, journée incomplète | idem |
+| UC-APP-12-U02 | `inventoryZip` (corpus) | Run et date des chemins, kairos relu, JSON invalide en quarantaine, journée incomplète comptée contre le référentiel donné (« 6/7 pôles présents ») | idem |
 | UC-APP-12-U03 | `inventoryZip` (journalier) | Date proposée depuis les feuilles, « à confirmer » | idem |
 | UC-APP-12-U04 | `inventoryZip` | Cause racine de l'anomalie AN1 (moteur, correct par conception) : aucune date en option, pas d'entrée sans feuille | idem |
 | UC-APP-12-U05 | `importJourDocuments`, `chooseVariant`, `correctEffectiveDate` | Journée à arbitrer, choix, retour, variante étrangère, date corrigée (RG2) ; **comportement actuel figé** — anomalie AN7 (aucune révision) | idem |
@@ -319,6 +319,7 @@ L'apprenant ouvre `#/cartographie` (menu « Découvrir » → « Cartographie
 | UC-APP-12-U26 | `availablePanels`, `defaultVisiblePanels`, `v3.css` | **Comportement actuel figé** — cause racine de l'anomalie AN17 (« Arbre » disponible en Simplifié, masqué par la feuille) | idem |
 | UC-APP-12-U27 | `v3.css` (`.v3-badge`) | **Comportement actuel figé** — anomalie AN18 (contraste 3,7:1 en surface claire, 11,1:1 en sombre) | idem |
 | UC-APP-12-U28 | `v3.css` (`.v3-tile-bar button`, `.v3-tile-size select`) | **Comportement actuel figé** — anomalie AN19 (barre de tuile à 40 px contre 44 px promis par l'en-tête de la grille) | idem |
+| UC-APP-12-U29 | `inventoryZip` (2026-10-20) | Journée incomplète comptée contre le référentiel donné, quel que soit son nombre de pôles (six pôles : complète) ; sans référentiel, rien n'est supposé ; `carto_P10.json` lu | `web/test/usecases/unit/uc-app-12-interface-ipsative-v3.test.js` |
 
 ### Tests fonctionnels
 

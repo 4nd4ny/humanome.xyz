@@ -79,9 +79,10 @@ describe('UC-VIS-02 — le visiteur consulte le référentiel', () => {
     // Shell RÉEL : aucune session injectée (la sonde GET api/auth/me répond 401).
     window.location.hash = '#/'
     render(<App lib={fakeLib} />)
-    // Plan du site de l'accueil : l'entrée porte l'indice « 7 pôles, 61 compétences ».
+    // Plan du site de l'accueil : l'entrée porte un indice sans chiffres (2026-10-20) — le
+    // référentiel publié dit lui-même ses pôles et ses compétences, plus le menu.
     const tile = within(screen.getByRole('region', { name: 'Plan du site' })).getByRole('link', { name: /^Référentiel/ })
-    expect(tile.querySelector('.route-hint').textContent).toBe('7 pôles, 61 compétences')
+    expect(tile.querySelector('.route-hint').textContent).toBe('les compétences, pôle par pôle')
     const nav = within(screen.getByRole('navigation', { name: 'Navigation principale' }))
     const menuLink = within(nav.getByRole('group', { name: 'Découvrir' })).getByRole('link', { name: 'Référentiel' })
     expect(menuLink.getAttribute('href')).toBe('#/referentiel')

@@ -196,7 +196,9 @@ test('parcours cartographe : invitation, relecture, annotation, révision, garan
     await page
       .getByRole('button', { name: 'Je confirme la copie sur le serveur' })
       .click()
-    await expect(jourItem.getByText('copie serveur')).toBeVisible()
+    // Le badge seul (texte exact) : le panneau d'accord, qui reste ouvert si la copie échoue,
+    // dit aussi « Copie serveur ».
+    await expect(jourItem.getByText('copie serveur', { exact: true })).toBeVisible()
   })
 
   let invitationCode = ''

@@ -152,7 +152,7 @@
             {
               "severity": "warning",
               "code": "journee-incomplete",
-              "message": "2 pôle(s) sur 7 pour cette journée"
+              "message": "2 pôle(s) sur 3 pour cette journée"
             }
           ]
         }
@@ -234,7 +234,7 @@
             {
               "severity": "warning",
               "code": "journee-incomplete",
-              "message": "2 pôle(s) sur 7 pour cette journée"
+              "message": "2 pôle(s) sur 3 pour cette journée"
             }
           ]
         },
@@ -273,7 +273,7 @@
             {
               "severity": "warning",
               "code": "journee-incomplete",
-              "message": "1 pôle(s) sur 7 pour cette journée"
+              "message": "1 pôle(s) sur 3 pour cette journée"
             }
           ]
         }
@@ -331,7 +331,7 @@
             {
               "severity": "warning",
               "code": "journee-incomplete",
-              "message": "1 pôle(s) sur 7 pour cette journée"
+              "message": "1 pôle(s) sur 3 pour cette journée"
             }
           ]
         }
@@ -522,19 +522,19 @@
         {
           "severity": "warning",
           "code": "journee-incomplete",
-          "message": "2 pôle(s) sur 7 pour cette journée",
+          "message": "2 pôle(s) sur 3 pour cette journée",
           "date": "2025-12-22"
         },
         {
           "severity": "warning",
           "code": "journee-incomplete",
-          "message": "2 pôle(s) sur 7 pour cette journée",
+          "message": "2 pôle(s) sur 3 pour cette journée",
           "date": "2025-12-23"
         },
         {
           "severity": "warning",
           "code": "journee-incomplete",
-          "message": "1 pôle(s) sur 7 pour cette journée",
+          "message": "1 pôle(s) sur 3 pour cette journée",
           "date": "2025-12-24"
         }
       ],
@@ -563,7 +563,7 @@
         {
           "severity": "warning",
           "code": "journee-incomplete",
-          "message": "1 pôle(s) sur 7 pour cette journée",
+          "message": "1 pôle(s) sur 3 pour cette journée",
           "date": "2025-12-23"
         },
         {

@@ -18,8 +18,9 @@ et le LLM peut être local (Ollama, vLLM, passerelle interne compatible OpenAI).
 
 - Il exécute **l'extraction LLM d'une journée** (l'unité de job M8 :
   un job = un membre × une journée) avec le moteur `engine/` (`extractDay` :
-  7 appels pôle + 1 appel kairos, `kairosOptional` — un échec de la synthèse
-  kairos dégrade le document à `kairos: null` au lieu de perdre le job).
+  un appel par pôle du référentiel que le run a figé, plus un appel kairos —
+  8 pour RESPIRE v7 —, `kairosOptional` : un échec de la synthèse kairos
+  dégrade le document à `kairos: null` au lieu de perdre le job).
 - Le **merge** (déterministe, parité oracle) reste au moteur JS côté
   affichage : navigateur de l'établissement ou runner Node de visualisation.
   Le runner ne produit que des documents `cartographie-jour`.
@@ -183,7 +184,8 @@ fournisseur (`ANTHROPIC_API_KEY`, `OPENAI_API_KEY`, `GOOGLE_API_KEY`,
 ### Prompt-package
 
 Le runner exécute les gabarits d'extraction **du moteur** (`engine/`), dont le
-paquet par défaut `aurora-v3-reconstruit@1.0.0` est généré à l'octet près :
+paquet par défaut `aurora-v3-reconstruit` (1.0.0, et 1.1.0 dont les gabarits
+lisent le référentiel) est généré à l'octet près :
 pour les runs sur le paquet par défaut, worker cron (substitution des gabarits
 en base) et runner produisent les mêmes prompts. Limite v1 assumée : pour un
 prompt-package **personnalisé**, les prompts du runner peuvent différer de ceux

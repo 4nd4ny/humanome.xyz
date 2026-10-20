@@ -11,7 +11,7 @@
 // Complète scripts/runner-node/runner.test.mjs (options, journaux, relances).
 import { readFileSync } from 'node:fs'
 import { afterEach, describe, expect, it, vi } from 'vitest'
-import { createMockProvider, validateDocument } from '../../../src/index.js'
+import { buildExtractionPrompt, buildKairosExtractionPrompt, createMockProvider, validateDocument } from '../../../src/index.js'
 import {
   createRunner,
   main,
@@ -19,6 +19,7 @@ import {
   resolveProviderConfig,
   RunnerConfigError,
 } from '../../../../scripts/runner-node/runner.mjs'
+import { extractionResponses } from '../../../../scripts/dev/runner-once-mock.mjs'
 
 const TOKEN = 'hwk_0123456789abcdef0123456789abcdef'
 const ENDPOINT = 'http://192.168.1.50:11434'
@@ -224,5 +225,33 @@ describe('UC-SYS-01 — runner Node : point d’entrée CLI (main)', () => {
     expect(
       resolveProviderConfig(platformJob, { provider: 'openai', endpoint: ENDPOINT, model: 'llama3', maxTokens: 8192 }, { LLM_API_KEY: 'local' }),
     ).toMatchObject({ provider: 'openai', baseUrl: ENDPOINT, model: 'llama3', apiKey: 'local' })
+  })
+})
+
+describe('UC-SYS-01 — fournisseur simulé du runner (outil de développement) : tout référentiel', () => {
+  it('UC-SYS-01-U28 — runner-once-mock : RESPIRE v7 → les réponses des fixtures à l’octet ; neuf pôles → les codes que le prompt demande, au-delà du septième pôle compris', () => {
+    const ask = (prompt) => extractionResponses({ prompt })
+    const respire = fixture('referentiel-respire-v7.json')
+    const day07 = fixture('cartographie-jour-2026-01-07.json')
+    expect(ask(buildExtractionPrompt({ referentiel: respire, poleNum: 3, dayText: DAY_TEXT, date: '2026-01-07' }))).toBe(JSON.stringify(day07.poles[2]))
+    expect(ask(buildKairosExtractionPrompt({ referentiel: respire, dayText: DAY_TEXT, date: '2026-01-07' }))).toBe(JSON.stringify(day07.kairos))
+
+    const neuf = {
+      id: 'fictif-neuf',
+      label: 'Fictif à neuf pôles',
+      poles: Array.from({ length: 9 }, (_, i) => ({ num: i + 1, nom: `Pôle fictif ${i + 1}` })),
+      competences: Array.from({ length: 18 }, (_, i) => ({ code: `${Math.floor(i / 2) + 1}.0${(i % 2) + 1}`, nom: `C${i}`, pole: Math.floor(i / 2) + 1 })),
+    }
+    const codesDu = (num) => neuf.competences.filter((c) => c.pole === num).map((c) => c.code)
+    for (const { num } of neuf.poles) {
+      const answer = JSON.parse(ask(buildExtractionPrompt({ referentiel: neuf, poleNum: num, dayText: DAY_TEXT, date: '2026-01-07' })))
+      expect(answer.poleNum).toBe(String(num))
+      expect(answer.competences.length).toBeGreaterThan(0)
+      expect(answer.competences.map((c) => c.code).every((code) => codesDu(num).includes(code))).toBe(true)
+    }
+    const kairos = JSON.parse(ask(buildKairosExtractionPrompt({ referentiel: neuf, dayText: DAY_TEXT, date: '2026-01-07' })))
+    const lies = Object.values(kairos.emergencesCrossPoles).flat().flatMap((e) => e.codesRelies ?? e.enRelationAvecCodes ?? [])
+    expect(lies.length).toBeGreaterThan(0)
+    expect(lies.every((code) => neuf.competences.some((c) => c.code === code))).toBe(true)
   })
 })

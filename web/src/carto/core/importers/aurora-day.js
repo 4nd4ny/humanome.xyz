@@ -1,5 +1,5 @@
 // Interface ultime — importeur d'une journée Aurora v3 (spec §3) :
-// `carto_P1..P7.json` + `kairos.json`. La même forme sert pour le
+// un `carto_Pn.json` par pôle + `kairos.json`. La même forme sert pour le
 // document-jour du site (`cartographie-jour` : {date, poles[], kairos}) et pour
 // chaque feuille de `carto_merge.json` (Merge v2) : un seul adaptateur.
 //
@@ -12,7 +12,10 @@
 // - les champs historiques `motif`/`raison` et `prescription`/
 //   `prescriptionMinimale` sont normalisés à l'entrée (§4.2) ;
 // - les compteurs sont toujours des entiers (§4.2) ;
-// - les ancres de surlignage (début, fin) sont calculées dès l'import (§8.1).
+// - les ancres de surlignage (début, fin) sont calculées dès l'import (§8.1) ;
+// - une journée à laquelle manquent des pôles est signalée contre le
+//   référentiel du jeu, quel que soit son nombre de pôles (2026-10-20) ; sans
+//   référentiel connu, rien n'est supposé.
 
 import { canonicalJson, contentHash, normalizeConfidence, normalizeRole, normalizeStatus, stableId, toCount } from '../model.js'
 import { splitExtract } from '../highlight.js'
@@ -41,10 +44,11 @@ export function auroraDayDigest(poles, kairos) {
  *   kairos?: object | null,        // kairos.json parsé
  *   provenance: {source: string, run?: string | null, files?: string[], model?: string | null, prompt?: string | null, analysedAt?: string | null},
  *   now?: string,
+ *   referential?: {poles: Array<object>} | null, // référentiel du jeu (forme publiée ou embarquée)
  * }} input
  * @returns {{summary: object, detail: object, report: Array<object>, codes: string[]}}
  */
-export function adaptAuroraDay({ date, poles, kairos = null, provenance, now = new Date().toISOString() }) {
+export function adaptAuroraDay({ date, poles, kairos = null, provenance, now = new Date().toISOString(), referential = null }) {
   const report = []
   const add = (severity, code, message) => report.push({ severity, code, message, date })
   if (!isIsoDate(date)) throw new Error(`Date de journée invalide : ${date}`)
@@ -205,8 +209,9 @@ export function adaptAuroraDay({ date, poles, kairos = null, provenance, now = n
     }
   }
 
-  if (seenPoles.size > 0 && seenPoles.size < 7) {
-    add('warning', 'journee-incomplete', `${seenPoles.size} pôle(s) sur 7 pour cette journée`)
+  const expectedPoles = Array.isArray(referential?.poles) ? referential.poles.length : null
+  if (expectedPoles !== null && seenPoles.size > 0 && seenPoles.size < expectedPoles) {
+    add('warning', 'journee-incomplete', `${seenPoles.size} pôle(s) sur ${expectedPoles} pour cette journée`)
   }
   if (unresolved > 0) {
     add('warning', 'traces-sans-extrait', `${unresolved} trace(s) sans extrait résolu : elles comptent dans les calculs mais ne peuvent pas être surlignées`)

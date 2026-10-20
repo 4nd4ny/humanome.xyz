@@ -102,7 +102,8 @@ export function queueEntry(overrides = {}) {
 
 /**
  * Détail (GET api/cartographe/cartographies/{id}) à la forme RÉELLE de l'API :
- * objet PLAT (Links::findForCartographe + annotations + revisions + garantie).
+ * objet PLAT (Links::findForCartographe + annotations + revisions + garantie
+ * + referentiel, la version que la relecture lit — 2026-10-20).
  */
 export function detailBody(overrides = {}) {
   return {
@@ -117,6 +118,7 @@ export function detailBody(overrides = {}) {
     annotations: [],
     revisions: [],
     garantie: null,
+    referentiel: { id: 'respire', version: '7.0.0' },
     ...overrides,
   }
 }

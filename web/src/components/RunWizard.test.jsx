@@ -66,6 +66,8 @@ function makeDeps(overrides = {}) {
   const keyMap = new Map()
   const deps = {
     loadReferentiel: async () => ({ doc: referentiel, origin: 'bundled' }),
+    // Pas d'index des référentiels publiés (copie statique) : aucun choix offert.
+    listReferentiels: async () => [],
     apiFetchFn: vi.fn(async () => {
       throw new ApiUnavailableError()
     }),
@@ -98,7 +100,7 @@ async function walkToExecution() {
 
   // (b) version de prompt : repli embarqué (API indisponible)
   await screen.findByTestId('packages-fallback')
-  expect(screen.getByText(/aurora-v3-reconstruit@1\.0\.0/)).toBeTruthy()
+  expect(screen.getByText(/aurora-v3-reconstruit@1\.1\.0/)).toBeTruthy()
   fireEvent.click(screen.getByRole('button', { name: 'Continuer' }))
 
   // (c) fournisseur : clé personnelle requise
@@ -167,8 +169,8 @@ describe('RunWizard — exécution', () => {
     expect(types).toEqual(['jour', 'jour', 'jour', 'merge'])
     for (const entry of carto.saved) {
       expect(entry.visibility).toBe('privee')
-      expect(entry.promptPackage).toEqual({ id: 'aurora-v3-reconstruit', version: '1.0.0' })
-      expect(entry.referentiel.id).toBe('respire')
+      expect(entry.promptPackage).toEqual({ id: 'aurora-v3-reconstruit', version: '1.1.0' })
+      expect(entry.referentiel).toEqual({ id: 'respire', version: '7.0.0' })
       expect(entry.serverId).toBeNull()
       expect(entry.runMeta.portfolioId).toBe('p-1')
       // Tokens RÉELS mesurés : compteurs conservés avec la cartographie
@@ -189,7 +191,7 @@ describe('RunWizard — exécution', () => {
 
   it('REPREND un run : la journée déjà checkpointée est sautée et annoncée', async () => {
     const storage = createMemoryStorage()
-    const runId = makeRunId('p-1', BUILTIN_PACKAGE)
+    const runId = makeRunId('p-1', BUILTIN_PACKAGE, referentiel)
     // Journée 1 déjà checkpointée (run précédent interrompu / page rechargée).
     await storage.set(`run:${runId}:checkpoint:2026-01-05`, {
       runId,

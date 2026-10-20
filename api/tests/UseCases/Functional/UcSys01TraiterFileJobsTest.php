@@ -517,10 +517,10 @@ final class UcSys01TraiterFileJobsTest extends MasseTestCase
         self::assertSame('Job plus en cours (annulé ou bail repris)', self::json($conflict)['error']);
     }
 
-    #[TestDox('UC-SYS-01-F14 — E3 : résultat invalide → 422 ; rejeu → 409 sans double comptage ; coût déclaré borné à [0, 1000] $')]
+    #[TestDox('UC-SYS-01-F14 — E3 : résultat invalide ou version figée du run illisible → 422 ; rejeu → 409 sans double comptage ; coût déclaré borné à [0, 1000] $')]
     public function testF14ResultValidationReplayAndCostBounds(): void
     {
-        [$etab, , , , $token] = $this->endpointRun([['2026-01-05', '2026-01-06', '2026-01-07']]);
+        [$etab, , $runId, , $token] = $this->endpointRun([['2026-01-05', '2026-01-06', '2026-01-07']]);
         $jobs = self::json($this->worker('GET', '/api/worker/jobs?limit=5', null, $token))['jobs'];
         $path = "/api/worker/jobs/{$jobs[0]['id']}/result";
         $document = self::dayDocument('2026-01-05');
@@ -534,6 +534,9 @@ final class UcSys01TraiterFileJobsTest extends MasseTestCase
             'document liste' => [['document' => [1, 2]], 'document doit être un objet JSON cartographie-jour'],
             'autre journée' => [['document' => self::dayDocument('2026-01-06')], 'document.date doit valoir 2026-01-05'],
             'hors schéma' => [['document' => $broken], 'Document invalide au schéma cartographie-jour'],
+            // valide au schéma, qui n'impose plus de structure : la version figée du run (RESPIRE 7.0.0) juge
+            'pôle perdu' => [['document' => ['poles' => \array_slice($document['poles'], 0, 6)] + $document], 'Document non conforme au référentiel de son run'],
+            'autre référentiel' => [['document' => ['referentiel' => 'fictif-neuf'] + $document], 'Document non conforme au référentiel de son run'],
         ];
         foreach ($invalid as $case => [$body, $message]) {
             $response = $this->worker('POST', $path, $body, $token);
@@ -541,6 +544,16 @@ final class UcSys01TraiterFileJobsTest extends MasseTestCase
             self::assertSame($message, self::json($response)['error'], $case);
         }
         self::assertLessThanOrEqual(5, \count(self::json($this->worker('POST', $path, ['document' => $broken], $token))['details']));
+        $lost = self::json($this->worker('POST', $path, ['document' => ['poles' => \array_slice($document['poles'], 0, 6)] + $document], $token));
+        self::assertSame(['/poles' => ['il manque le pôle 7 du référentiel']], $lost['details']);
+
+        // La version que le run a figée n'est plus lisible (base altérée) : rien n'est jugé, rien n'est écrit.
+        $semver = (string) Db::get()->query("SELECT referentiel_semver FROM mass_runs WHERE id = {$runId}")->fetchColumn();
+        Db::get()->prepare('UPDATE mass_runs SET referentiel_semver = ? WHERE id = ?')->execute(['9.9.9', $runId]);
+        $indisponible = $this->worker('POST', $path, ['document' => $document], $token);
+        self::assertSame(422, $indisponible->getStatusCode());
+        self::assertSame(['error' => 'Référentiel respire@9.9.9 du run indisponible'], self::json($indisponible));
+        Db::get()->prepare('UPDATE mass_runs SET referentiel_semver = ? WHERE id = ?')->execute([$semver, $runId]);
 
         self::assertSame(200, $this->worker('POST', $path, ['document' => $document, 'coutUsd' => 5000], $token)->getStatusCode());
         self::assertEqualsWithDelta(1000.0, self::spentUsd($etab['id']), 1e-9, 'coût borné à 1 000 $');
@@ -692,5 +705,40 @@ final class UcSys01TraiterFileJobsTest extends MasseTestCase
             'pôle 1 (2026-01-05) — aucun JSON valide trouvé dans la réponse (début : « Réponse simulée du fournisseur mock (aucun marqueur de pôle détecté dans le prompt). »)',
             $board['erreurs'][0]['erreur'],
         );
+    }
+
+    #[TestDox('UC-SYS-01-F25 — A2, E3 : runner sur un run d’un autre référentiel publié — la réservation sert SON document ; une journée de RESPIRE est refusée (non conforme), une journée conforme qui le nomme termine le job')]
+    public function testF25RunnerOnAnotherReferentiel(): void
+    {
+        $lettre = \Humanome\Tests\UseCases\Support\ReferentielsFictifs::lettre();
+        self::publishReferentielDocument(Db::get(), $lettre);
+        (new PromptPackageRepository(Db::get()))->importPublishedDocument(self::packageReadingTheReferentiel());
+        $etab = $this->registerEtablissement();
+        $this->configure($etab, 100.0, ['provider' => 'endpoint', 'endpointUrl' => self::ENDPOINT, 'model' => 'llama3:70b']);
+        $token = self::json($this->as_($etab, 'POST', '/api/etablissement/worker-token'))['workerToken'];
+        $cohorte = $this->createCohorte($etab);
+        $this->enrolLearner($cohorte['code'], $cohorte['id'], 1, ['2026-01-05']);
+        $launched = $this->as_($etab, 'POST', "/api/etablissement/cohortes/{$cohorte['id']}/runs", [
+            'promptPackageId' => 'aurora-lit-referentiel', 'promptPackageVersion' => '1.0.0',
+            'referentielId' => 'fictif-lettre', 'referentielVersion' => '1.0.0',
+        ]);
+        self::assertSame(201, $launched->getStatusCode(), (string) $launched->getBody());
+
+        $batch = self::json($this->worker('GET', '/api/worker/jobs', null, $token));
+        $job = $batch['jobs'][0];
+        self::assertSame(['id' => 'fictif-lettre', 'version' => '1.0.0'], $job['referentielVersion']);
+        self::assertSame('fictif-lettre', $batch['referentiel']['id']);
+        self::assertCount(5, $batch['referentiel']['poles']);
+
+        $path = "/api/worker/jobs/{$job['id']}/result";
+        $respire = $this->worker('POST', $path, ['document' => self::dayDocument('2026-01-05')], $token);
+        self::assertSame(422, $respire->getStatusCode());
+        self::assertSame('Document non conforme au référentiel de son run', self::json($respire)['error']);
+        self::assertSame(['le document cartographie le référentiel « respire », pas « fictif-lettre »'], self::json($respire)['details']['/referentiel']);
+
+        $document = self::dayDocumentFor($lettre, '2026-01-05');
+        $done = $this->worker('POST', $path, ['document' => $document, 'coutUsd' => 0.02], $token);
+        self::assertSame(200, $done->getStatusCode(), (string) $done->getBody());
+        self::assertSame('fictif-lettre', json_decode((string) Db::get()->query("SELECT document FROM mass_jobs WHERE id = {$job['id']}")->fetchColumn(), true)['referentiel']);
     }
 }

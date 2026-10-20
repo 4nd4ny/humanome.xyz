@@ -354,6 +354,32 @@ final class UcApp10AnalyseApprofondieTwin9Test extends CartographeTestCase
         self::assertSame(['A1', 'B1', 'C1', 'D1', 'E1'], array_keys($jour['verdicts']), 'la première capacité de chaque pôle');
     }
 
+    #[TestDox('UC-APP-10-F20 — A7 / RG12 : une version de RESPIRE à six pôles (2026-10-20) — l’aperçu en compte six, le run va au bout, ses résultats portent ses six pôles')]
+    public function testF20ARespireOfSixPoles(): void
+    {
+        $doc = json_decode((string) file_get_contents(\dirname(__DIR__, 4) . '/web/public/data/referentiel/respire-v7.json'),
+            true, 512, JSON_THROW_ON_ERROR);
+        unset($doc['contentHash']);
+        $doc['version'] = '8.0.0';
+        $doc['label'] = 'RESPIRE v8';
+        $doc['poles'] = array_values(array_filter($doc['poles'], static fn (array $p): bool => (int) $p['num'] !== 7));
+        $doc['competences'] = array_values(array_filter($doc['competences'], static fn (array $c): bool => (int) $c['pole'] !== 7));
+        self::publier($doc);
+        $lea = $this->registerAs('six-poles@example.org', 'Léa');
+        $this->crediter($lea, 1_000_000_000);
+        $profil = $this->profilDirect($lea, 'Six pôles', ['referentiel' => (object) ['id' => 'respire', 'version' => '8.0.0']]);
+
+        self::assertSame(6, $this->apercu($lea, $profil)['estimation']['poles']);
+        $run = $this->lancer($lea, $profil);
+        self::assertSame(['respire', '8.0.0'], [$run['attestation']['referentiel']['id'], $run['attestation']['referentiel']['version']]);
+        self::assertSame('termine', $this->jusquAuBout($lea, $run['id'])['statut']);
+
+        $ref = self::json($this->as_($lea, 'GET', '/api/twin9/runs/' . $run['id'] . '/resultats'))['referentiel'];
+        self::assertSame(['respire', '8.0.0', 6, \count($doc['competences'])],
+            [$ref['id'], $ref['version'], \count($ref['poles']), \count($ref['competences'])]);
+        self::assertSame(range(1, 6), array_column($ref['poles'], 'num'));
+    }
+
     #[TestDox('UC-APP-10-F09 — A8 : un profil en mode essai — une journée lue, un pôle estimé ; « test » dans la liste et dans l’attestation')]
     public function testF09TestMode(): void
     {

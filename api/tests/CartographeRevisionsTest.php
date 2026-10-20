@@ -4,14 +4,17 @@ declare(strict_types=1);
 
 namespace Humanome\Tests;
 
+use Humanome\Tests\UseCases\Support\ReferentielsFictifs;
 use Humanome\Validation;
 
 /**
  * P9 — revisions: the correction history. Every stored document is
  * SERVER-VALIDATED against schemas/cartographie-<type> (422 with
- * pointer-keyed errors otherwise, type mismatch included), the metadata
- * list never carries documents, and a new revision on a guaranteed
- * cartography removes the garantie (cahier §8).
+ * pointer-keyed errors otherwise, type mismatch included) then against the
+ * referential version the cartography is reviewed against (2026-10-20: a
+ * revision cannot lose a pole), the metadata list never carries documents,
+ * and a new revision on a guaranteed cartography removes the garantie
+ * (cahier §8).
  */
 final class CartographeRevisionsTest extends CartographeTestCase
 {
@@ -24,6 +27,7 @@ final class CartographeRevisionsTest extends CartographeTestCase
     protected function setUp(): void
     {
         parent::setUp();
+        self::publierRespireV7();
         $this->maya = $this->registerAs('maya@example.org', 'Maya');
         $this->carl = $this->registerAs('carl@example.org', 'Carl', ['cartographe']);
         $this->link($this->maya, $this->carl);
@@ -117,6 +121,93 @@ final class CartographeRevisionsTest extends CartographeTestCase
         self::assertSame(201, $this->as_($this->carl, 'POST', '/api/cartographies/' . $this->cartoId . '/revisions', [
             'document' => $respire,
         ])->getStatusCode());
+    }
+
+    /**
+     * 2026-10-20: the schema no longer pins RESPIRE at seven poles; the guard
+     * stays, against the version the cartography is reviewed against — here
+     * RESPIRE v7: a day that lost its seventh pole is refused, the pole named.
+     */
+    public function testARevisionThatLostAPoleOfItsVersionIsRejected422(): void
+    {
+        $sixPoles = self::jourDocument();
+        array_pop($sixPoles['poles']);
+        self::assertTrue(Validation::validate('cartographie-jour', $sixPoles)['valid'], 'the schema no longer refuses it');
+
+        $response = $this->as_($this->carl, 'POST', '/api/cartographies/' . $this->cartoId . '/revisions', [
+            'document' => $sixPoles,
+        ]);
+        self::assertSame(422, $response->getStatusCode());
+        $body = self::json($response);
+        self::assertSame('Document non conforme au référentiel « respire » 7.0.0', $body['error']);
+        self::assertSame(['/poles' => ['il manque le pôle 7 du référentiel']], $body['fields']);
+
+        $autrePole = self::jourDocument();
+        $autrePole['poles'][0]['competences'][0]['code'] = '2.01';
+        $response = $this->as_($this->carl, 'POST', '/api/cartographies/' . $this->cartoId . '/revisions', [
+            'document' => $autrePole,
+        ]);
+        self::assertSame(422, $response->getStatusCode());
+        self::assertSame(['la compétence 2.01 est du pôle 2, pas du pôle 1'],
+            self::json($response)['fields']['/poles/0/competences/0/code']);
+        self::assertSame(0, (int) self::$pdo->query('SELECT COUNT(*) FROM cartography_revisions')->fetchColumn());
+    }
+
+    /**
+     * 2026-10-20: a RESPIRE of six poles, a referential of lettered poles —
+     * each cartography is revised by a day of its own version's structure;
+     * a RESPIRE v7 cartography that stored no version stays revised against v7,
+     * the newest version its document conforms to, once v8 is the latest.
+     */
+    public function testEveryReferentialVersionIsRevisedWithItsOwnStructure(): void
+    {
+        $six = self::respireSixPoles();
+        self::publierReferentiel($six);
+        $lettre = ReferentielsFictifs::lettre();
+        self::$pdo->exec("DELETE FROM referentiel_versions WHERE referentiel_id = 'fictif-lettre'");
+        self::publierReferentiel($lettre);
+        $reviser = fn (int $cartoId, array $document): array => [
+            ($r = $this->as_($this->carl, 'POST', "/api/cartographies/$cartoId/revisions", ['document' => $document]))
+                ->getStatusCode(),
+            self::json($r),
+        ];
+
+        // RESPIRE v8, six poles: its six-pole day passes, a seven-pole day does not
+        $cartoSix = $this->createCarto($this->maya, ['document' => self::jourDocumentPour($six)]);
+        self::assertSame(201, $reviser($cartoSix, self::jourDocumentPour($six))[0]);
+        [$status, $body] = $reviser($cartoSix, self::jourDocument());
+        self::assertSame(422, $status);
+        self::assertSame('Document non conforme au référentiel « respire » 8.0.0', $body['error']);
+        self::assertSame(['le pôle 7 n\'est pas un pôle du référentiel'], $body['fields']['/poles/6/poleNum']);
+
+        // RESPIRE v7 day, no version stored: still v7 once v8 is the latest
+        $cartoSept = $this->createCarto($this->maya, ['document' => self::jourDocument()]);
+        self::assertSame(201, $reviser($cartoSept, self::jourDocument())[0]);
+        self::assertSame(422, $reviser($cartoSept, self::jourDocumentPour($six))[0]);
+
+        // five lettered poles: a lettered day, of its referential
+        $cartoLettre = $this->createCarto($this->maya, ['document' => self::jourDocumentPour($lettre)]);
+        self::assertSame(201, $reviser($cartoLettre, self::jourDocumentPour($lettre))[0]);
+        $sansE = self::jourDocumentPour($lettre);
+        array_pop($sansE['poles']);
+        [$status, $body] = $reviser($cartoLettre, $sansE);
+        self::assertSame(422, $status);
+        self::assertSame(['/poles' => ['il manque le pôle 5 du référentiel']], $body['fields']);
+    }
+
+    /** 2026-10-20: a referential with no published version leaves nothing to check a revision against. */
+    public function testAReferentialWithNoPublishedVersionRefusesTheRevision(): void
+    {
+        self::$pdo->exec("DELETE FROM referentiel_versions WHERE referentiel_id = 'fictif-neuf'");
+        $neuf = self::jourDocumentPour(ReferentielsFictifs::neufPoles());
+        $cartoNeuf = $this->createCarto($this->maya, ['document' => $neuf]);
+        $response = $this->as_($this->carl, 'POST', "/api/cartographies/$cartoNeuf/revisions", ['document' => $neuf]);
+        self::assertSame(422, $response->getStatusCode());
+        self::assertSame(
+            ['/referentiel' => ['Aucune version publiée du référentiel « fictif-neuf » : la révision ne peut pas être vérifiée']],
+            self::json($response)['fields'],
+        );
+        self::assertSame(0, (int) self::$pdo->query('SELECT COUNT(*) FROM cartography_revisions')->fetchColumn());
     }
 
     public function testTypeMismatchIsRejected422(): void

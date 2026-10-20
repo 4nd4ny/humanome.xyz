@@ -18,13 +18,20 @@ use PDO;
  * of their codes, their order, the referential's name.
  *
  * RESPIRE's preambles and fiches are those the base keeps (FicheGenerator,
- * the source unique of July 2026), the bytes of the v9.8's pole files;
- * another referential's are written from its document: a pole's preamble,
- * « # Pôle N — its name », then its description; a competence's fiche,
- * « ## CODE — its name », its description, then its finer elements, each
- * under a title one level down, with its description. A pole's competences
- * come in the natural order of their codes (A2 before A10), the order the
- * engine sorts them in; RESPIRE's is its own.
+ * the source unique of July 2026), the bytes of the v9.8's pole files, for
+ * what the base describes of the version read (2026-10-20: a version of
+ * RESPIRE may have another structure, edited as a document, UC-EPI-04): a
+ * competence's fiche, the base's when the base knows that code in the same
+ * pole; a pole's preamble, the base's when the base knows exactly the same
+ * codes in that pole — it counts them, « Référentiel des 10 compétences… ».
+ * Everything else, and another referential's, is written from the document: a
+ * pole's preamble, « # Pôle N — its name », then its description; a
+ * competence's fiche, « ## CODE — its name », its description, then its finer
+ * elements, each under a title one level down, with its description. No name
+ * is compared: the document's pole names (« TETE — … ») and the preambles'
+ * (« TÊTE : … ») already differ for RESPIRE v7, which reads as before, byte
+ * for byte. A pole's competences come in the natural order of their codes (A2
+ * before A10), the order the engine sorts them in; RESPIRE's is its own.
  */
 final class ReferentielMoteur
 {
@@ -36,8 +43,7 @@ final class ReferentielMoteur
      * @return array{id: string, version: string, label: string, motif: string,
      *               poles: list<array{num: int, nom: string, entete: string,
      *                                 competences: list<array{code: string, nom: string, fiche: string}>}>}
-     * @throws Twin9Exception 422 for a version the base does not have, or a code of RESPIRE's without its fiche;
-     *                        503 for RESPIRE without its fiches
+     * @throws Twin9Exception 422 for a version the base does not have; 503 for RESPIRE without its fiches
      */
     public function bloc(string $id, string $version): array
     {
@@ -59,16 +65,17 @@ final class ReferentielMoteur
         $bloc = [];
         foreach ($poles as $p) {
             $num = (int) $p['num'];
+            $decrit = $base['poles'][$num] ?? null; // what the base keeps of this pole: its preamble, its fiches
             $competences = [];
             foreach ($parPole[$num] ?? [] as $c) {
                 $code = (string) $c['code'];
-                // a code the base has no fiche for (a draft that renames one): the referential's, not the instance's
-                $fiche = $base === null ? self::fiche($c) : ($base['fiches'][$code]
-                    ?? throw new Twin9Exception('Le référentiel « ' . $id . ' » ne se lit pas : la compétence ' . $code
-                        . ' n’a pas de fiche dans la base', 422));
-                $competences[] = ['code' => $code, 'nom' => (string) $c['nom'], 'fiche' => $fiche];
+                $competences[] = ['code' => $code, 'nom' => (string) $c['nom'],
+                                  'fiche' => $decrit['fiches'][$code] ?? self::fiche($c)];
             }
-            $entete = $base === null ? self::entete($p) : (string) ($base['poleHeaders'][(string) $num] ?? '');
+            $codes = array_column($competences, 'code');
+            $memes = $decrit !== null && \count($codes) === \count($decrit['fiches'])
+                && array_diff($codes, array_keys($decrit['fiches'])) === [];
+            $entete = $memes ? $decrit['entete'] : self::entete($p);
             if ($entete === '') {
                 throw self::sansFiches();
             }
@@ -138,15 +145,22 @@ final class ReferentielMoteur
     }
 
     /**
-     * RESPIRE's preambles and fiches, as the base keeps them.
+     * RESPIRE's preambles and fiches, as the base keeps them, pole by pole:
+     * each pole's preamble and the fiches of the codes the base keeps in it.
      *
-     * @return array{poleHeaders: array<string, string>, fiches: array<string, string>}
+     * @return array{poles: array<int, array{entete: string, fiches: array<string, string>}>}
      */
     private function fichesDeLaBase(): array
     {
-        $corpus = (new FicheGenerator($this->pdo))->corpus();
+        $poles = [];
+        $aucune = true;
+        foreach ((new FicheGenerator($this->pdo))->fichesStructure() as $pole) {
+            $fiches = array_column($pole['competences'], 'fiche_md', 'code');
+            $aucune = $aucune && $fiches === [];
+            $poles[(int) $pole['num']] = ['entete' => (string) $pole['header'], 'fiches' => $fiches];
+        }
 
-        return $corpus['fiches'] === [] ? throw self::sansFiches() : $corpus;
+        return $aucune ? throw self::sansFiches() : ['poles' => $poles];
     }
 
     private static function sansFiches(): Twin9Exception

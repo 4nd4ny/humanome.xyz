@@ -13,6 +13,7 @@ import {
   parseExtractionResponse,
   restreindreReferentiel,
 } from './extract.js'
+import { validateDocumentPourReferentiel } from '../conformite.js'
 
 const referentiel = JSON.parse(
   readFileSync(new URL('../../../schemas/fixtures/referentiel-respire-v7.json', import.meta.url), 'utf8'),
@@ -430,6 +431,28 @@ describe('extractDay — périmètre restreint', () => {
     expect(prompt).not.toContain('1.01')
   })
 
+  it('le modèle instruit tout le pôle : les compétences hors du périmètre sont écartées ; un code inconnu fait échouer', async () => {
+    const toutLePole = createMockProvider({
+      responses: ({ prompt }) => JSON.stringify(minimalPoleResponse(Number(prompt.match(/# Pôle (\d) — /)[1]))),
+    })
+    const doc = await extractDay({
+      dayText: DAY_TEXT, date: DATE, referentiel, provider: toutLePole, perimetre: { competences: ['3.04'] },
+    })
+    expect(doc.poles[0].competences.map((c) => c.code)).toEqual(['3.04'])
+    expect(doc.poles[0].auditPole.competencesTotales).toBe(1)
+
+    const inconnu = createMockProvider({
+      responses: ({ prompt }) => {
+        const pole = minimalPoleResponse(Number(prompt.match(/# Pôle (\d) — /)[1]))
+        pole.competences.push({ ...pole.competences[0], code: '3.99' })
+        return JSON.stringify(pole)
+      },
+    })
+    await expect(extractDay({
+      dayText: DAY_TEXT, date: DATE, referentiel, provider: inconnu, perimetre: { competences: ['3.04'] },
+    })).rejects.toThrow(/pôle 3 .*non conforme au référentiel.*le code 3\.99 n'est pas une compétence du référentiel/s)
+  })
+
   it('périmètre couvrant tout le référentiel -> comportement complet inchangé', async () => {
     const provider = workingMock()
     const doc = await extractDay({
@@ -442,5 +465,186 @@ describe('extractDay — périmètre restreint', () => {
     expect(provider.callCount).toBe(8) // 7 pôles + kairos
     expect(doc.poles).toHaveLength(7)
     expect(doc.perimetre).toBeUndefined()
+  })
+})
+
+// --- Tout référentiel (2026-10-20) -------------------------------------------
+// La structure se lit dans le référentiel employé : nombre et numéros des pôles,
+// codes, nom du référentiel et codes d'exemple des prompts. Le garde-fou contre
+// un pôle perdu ou un code inconnu est la conformité au référentiel.
+
+/** Cinq pôles lettrés, quatre capacités chacun (la forme de l'Humanome V18). */
+const LETTRE = {
+  id: 'fictif-lettre',
+  label: 'Fictif lettré v1.0.0',
+  poles: ['A', 'B', 'C', 'D', 'E'].map((l, i) => ({ num: i + 1, nom: `${l} · Pôle fictif ${l}` })),
+  competences: ['A', 'B', 'C', 'D', 'E'].flatMap((l, i) =>
+    [1, 2, 3, 4].map((n) => ({ code: `${l}${n}`, nom: `Capacité fictive ${l}${n}`, pole: i + 1 })),
+  ),
+}
+
+/** Neuf pôles numérotés, deux compétences chacun. */
+const NEUF = {
+  id: 'fictif-neuf',
+  label: 'Fictif à neuf pôles',
+  poles: Array.from({ length: 9 }, (_, i) => ({ num: i + 1, nom: `Pôle fictif ${i + 1}` })),
+  competences: Array.from({ length: 9 }, (_, i) => [1, 2].map((n) => ({
+    code: `${i + 1}.0${n}`,
+    nom: `Compétence fictive ${i + 1}.0${n}`,
+    pole: i + 1,
+  }))).flat(),
+}
+
+/** RESPIRE v7 sans son pôle 7 : une version de RESPIRE en six pôles. */
+const RESPIRE_SIX = {
+  ...referentiel,
+  poles: referentiel.poles.filter((p) => p.num !== 7),
+  competences: referentiel.competences.filter((c) => c.pole !== 7),
+}
+
+/** Réponse pôle minimale pour un référentiel quelconque : tout en court-circuit. */
+function minimalPoleResponseFor(ref, num) {
+  const comps = ref.competences
+    .filter((c) => c.pole === num)
+    .sort((a, b) => (a.code < b.code ? -1 : 1))
+  const base = minimalPoleResponse(1)
+  return {
+    ...base,
+    poleNum: String(num),
+    competences: comps.map((c) => ({ ...base.competences[0], code: c.code })),
+    auditPole: { ...base.auditPole, competencesTotales: comps.length, courtCircuits: comps.length, nonEtablies: comps.length },
+  }
+}
+
+function mockFor(ref, { kairos = 'null', alterPole } = {}) {
+  return createMockProvider({
+    responses: ({ prompt }) => {
+      if (prompt.includes('SYNTHÈSE KAIROS')) return kairos
+      const num = Number(prompt.match(/# Pôle (\d+) — /)[1])
+      const pole = minimalPoleResponseFor(ref, num)
+      alterPole?.(pole, num)
+      return JSON.stringify(pole)
+    },
+  })
+}
+
+describe('extractDay — tout référentiel', () => {
+  it('cinq pôles lettrés : un appel par pôle + le kairos, le document nomme son référentiel', async () => {
+    const provider = mockFor(LETTRE)
+    const doc = await extractDay({ dayText: DAY_TEXT, date: DATE, referentiel: LETTRE, provider })
+    expect(provider.callCount).toBe(6)
+    expect(doc.referentiel).toBe('fictif-lettre')
+    expect(Object.keys(doc)).toEqual(['schemaVersion', 'kind', 'referentiel', 'date', 'poles', 'kairos'])
+    expect(doc.poles.map((p) => p.poleNum)).toEqual(['1', '2', '3', '4', '5'])
+    expect(doc.poles[3].competences.map((c) => c.code)).toEqual(['D1', 'D2', 'D3', 'D4'])
+
+    const [pole1, , , , , kairos] = provider.calls.map((c) => c.prompt)
+    expect(pole1).toContain('pour UN pôle du référentiel Fictif lettré, en jouant')
+    expect(pole1).toContain('les 4 codes\nA1, A2, A3, A4 dans cet ordre')
+    expect(kairos).toContain('Les 5 pôles de la feuille du jour ont déjà été instruits')
+    expect(kairos).toContain('# Référentiel Fictif lettré (5 pôles, 20 compétences)')
+    expect(kairos).toContain('"codesRelies": [ "A1", "D2" ]')
+    expect(kairos).toContain('"enRelationAvecCodes": [ "A1" ]')
+    expect(kairos).not.toMatch(/RESPIRE|1\.01|4\.02|7 pôles/)
+  })
+
+  it('neuf pôles : neuf appels pôle + le kairos', async () => {
+    const provider = mockFor(NEUF)
+    const doc = await extractDay({ dayText: DAY_TEXT, date: DATE, referentiel: NEUF, provider })
+    expect(provider.callCount).toBe(10)
+    expect(doc.referentiel).toBe('fictif-neuf')
+    expect(doc.poles).toHaveLength(9)
+    expect(provider.calls.at(-1).prompt).toContain('# Référentiel Fictif à neuf pôles (9 pôles, 18 compétences)')
+  })
+
+  it('une version de RESPIRE en six pôles : six appels pôle + le kairos, document de RESPIRE (non nommé)', async () => {
+    const provider = mockFor(RESPIRE_SIX)
+    const doc = await extractDay({ dayText: DAY_TEXT, date: DATE, referentiel: RESPIRE_SIX, provider })
+    expect(provider.callCount).toBe(7)
+    expect(doc).not.toHaveProperty('referentiel')
+    expect(doc.poles.map((p) => p.poleNum)).toEqual(['1', '2', '3', '4', '5', '6'])
+    expect(provider.calls.at(-1).prompt).toContain('Les 6 pôles de la feuille du jour')
+    expect(provider.calls.at(-1).prompt).toContain('# Référentiel RESPIRE (6 pôles, ')
+  })
+
+  it('refuse un pôle qui instruit un code inconnu du référentiel ou d’un autre pôle (après le retry)', async () => {
+    const inconnu = mockFor(LETTRE, { alterPole: (pole, num) => { if (num === 2) pole.competences[0].code = 'Z9' } })
+    await expect(extractDay({ dayText: DAY_TEXT, date: DATE, referentiel: LETTRE, provider: inconnu }))
+      .rejects.toThrow(/pôle 2 .*non conforme au référentiel.*le code Z9 n'est pas une compétence du référentiel/s)
+    const deplace = mockFor(LETTRE, { alterPole: (pole, num) => { if (num === 3) pole.competences[0].code = 'A1' } })
+    await expect(extractDay({ dayText: DAY_TEXT, date: DATE, referentiel: LETTRE, provider: deplace }))
+      .rejects.toThrow(/pôle 3 .*la compétence A1 est du pôle 1, pas du pôle 3/s)
+  })
+
+  it('un kairos qui relie des codes inconnus du référentiel échoue, ou dégrade en null (kairosOptional)', async () => {
+    const kairos = JSON.stringify({
+      kairos: {
+        apprenant: {
+          portrait: 'p', formeProfil: 'f', ceQuiRelieLesPoles: 'c', ceQuiEmergeEntreLesLignes: 'e',
+          invitationsPourLaSuite: ['i'], syntheseCompleteMarkdown: 's',
+        },
+      },
+      emergencesCrossPoles: {
+        connexionsTransversales: [{ titre: 't', description: 'd', codesRelies: ['A1', '4.02'], piecesCommunes: [] }],
+        noeudsConceptuels: [],
+        competencesOrphelines: [],
+      },
+    })
+    await expect(extractDay({ dayText: DAY_TEXT, date: DATE, referentiel: LETTRE, provider: mockFor(LETTRE, { kairos }) }))
+      .rejects.toThrow(/kairos .*non conforme au référentiel.*le code 4\.02 n'est pas une compétence du référentiel/s)
+    const doc = await extractDay({
+      dayText: DAY_TEXT, date: DATE, referentiel: LETTRE, provider: mockFor(LETTRE, { kairos }), kairosOptional: true,
+    })
+    expect(doc.kairos).toBeNull()
+  })
+
+  it('périmètre restreint d’un autre référentiel : le document partiel nomme son référentiel et son périmètre', async () => {
+    const provider = createMockProvider({
+      responses: ({ prompt }) => {
+        const num = Number(prompt.match(/# Pôle (\d+) — /)[1])
+        const pole = minimalPoleResponseFor(LETTRE, num)
+        pole.competences = pole.competences.filter((c) => c.code === 'C3')
+        return JSON.stringify(pole)
+      },
+    })
+    const doc = await extractDay({
+      dayText: DAY_TEXT, date: DATE, referentiel: LETTRE, provider, perimetre: { competences: ['C3'] },
+    })
+    expect(provider.callCount).toBe(1)
+    expect(doc.referentiel).toBe('fictif-lettre')
+    expect(doc.perimetre).toEqual({ partiel: true, poles: [3], competences: ['C3'] })
+    expect(validateDocumentPourReferentiel('cartographie-jour', doc, LETTRE).valid).toBe(true)
+  })
+})
+
+describe('validateDocumentPourReferentiel, journée (schéma puis conformité, marqueur de périmètre compris)', () => {
+  const jour = JSON.parse(
+    readFileSync(new URL('../../../schemas/fixtures/cartographie-jour-2026-01-07.json', import.meta.url), 'utf8'),
+  )
+
+  it('RESPIRE v7 : la journée réelle est valide et conforme', () => {
+    expect(validateDocumentPourReferentiel('cartographie-jour', jour, referentiel)).toEqual({ valid: true, errors: [] })
+  })
+
+  it('refuse une journée à qui il manque un pôle de son référentiel', () => {
+    const sansPole4 = { ...jour, poles: jour.poles.filter((p) => p.poleNum !== '4') }
+    const { valid, errors } = validateDocumentPourReferentiel('cartographie-jour', sansPole4, referentiel)
+    expect(valid).toBe(false)
+    expect(errors.map((e) => e.message)).toContain('il manque le pôle 4 du référentiel')
+  })
+
+  it('la même journée sans pôle 7 est conforme à une version de RESPIRE en six pôles', () => {
+    const sixPoles = { ...jour, poles: jour.poles.filter((p) => p.poleNum !== '7') }
+    // Le kairos du corpus relie aussi des codes du pôle 7 : la version à six pôles ne les connaît pas.
+    expect(validateDocumentPourReferentiel('cartographie-jour', { ...sixPoles, kairos: null }, RESPIRE_SIX).valid).toBe(true)
+  })
+
+  it('le marqueur de périmètre échappe au schéma mais pas à la conformité', () => {
+    const pole3 = jour.poles.find((p) => p.poleNum === '3')
+    const partiel = { ...jour, poles: [pole3], kairos: null, perimetre: { partiel: true, poles: [3] } }
+    expect(validateDocumentPourReferentiel('cartographie-jour', partiel, referentiel).valid).toBe(true)
+    const { perimetre: _marqueur, ...sansMarqueur } = partiel
+    expect(validateDocumentPourReferentiel('cartographie-jour', sansMarqueur, referentiel).errors.map((e) => e.message))
+      .toContain('il manque les pôles 1, 2, 4, 5, 6, 7 du référentiel')
   })
 })

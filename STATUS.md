@@ -13,15 +13,112 @@ dans `main` (entrée du 2026-10-14 ci-dessous).
 
 Chantier en cours : le moteur Twin9 v9.8 en PHP, exécuté sur le serveur (ADR-011), planifié et
 développé dans le dépôt privé `4nd4ny/Twin_v9` (`docs/plan-twin9-php.md`, prompts T0 → T18, une
-conversation chacun ; entrées du 2026-10-17). T0 à T10 et T12 à T17 sont fusionnés : le moteur
+conversation chacun ; entrées du 2026-10-17). T0 à T17 sont fusionnés : le moteur
 passe l'oracle complet dans `Twin_v9`, le profil est ici, les runs tournent sur le serveur par
 tranches, par appels directs ou par lots, se lancent, se suivent, se lisent et se paient — la base
 commune et la stratégie A de T8 comprises —, sur des jeux de gabarits et des référentiels de toute
-structure, que le moteur lit (T16) et que la cartographie affiche (T17, fusionné le 2026-10-20).
-T11, le retrait du moteur du navigateur, attend sa revue (entrée du 2026-10-20). Vient ensuite
-T18.
+structure, que le moteur lit (T16) et que la cartographie affiche (T17) ; le moteur du navigateur
+est retiré (T11, fusionné le 2026-10-20). Vient ensuite T18.
+
+Hors planning, à la demande de Christian (2026-10-20) : le référentiel dynamique — RESPIRE n'a
+plus de structure imposée, et tous les parcours lisent la structure du référentiel qu'ils emploient
+(branche `feat/referentiel-dynamique`, entrée du 2026-10-20 ; attend sa revue).
 
 ## Fait
+
+- 2026-10-20 — **Référentiel dynamique : RESPIRE n'a plus de structure imposée (branche
+  `feat/referentiel-dynamique`, posée sur T11).** Christian a demandé pourquoi une journée de
+  RESPIRE à six pôles était refusée, et s'il faudrait tout recoder pour un référentiel de six
+  pôles ; puis : « Corrige directement sans autre. » Le verrou venait de T15 et T17 : les schémas
+  figeaient RESPIRE à 7 pôles, 61 compétences, codes `P.NN`. Contrat : `docs/contrats.md` §11.
+  - Lecture retenue : RESPIRE redevient un référentiel comme un autre (un pôle au moins, sans
+    plafond ; 12 n'est que la limite de lisibilité de l'affichage). Le garde-fou contre un pôle
+    perdu demeure, contre la version de référentiel que le document cartographie : la
+    conformité (`engine/src/conformite.js`, `api/src/Referentiel/Conformite.php`, jumelles) — ses
+    pôles chacun une fois, ses codes dans leur pôle, son identité. Chaque parcours lit la structure
+    dans le JSON du référentiel qu'il emploie ; la cartographie standard, Twin6 et la masse offrent
+    le choix d'un référentiel publié, RESPIRE par défaut.
+  - Fondation : schémas déverrouillés (`referentiel` 2.1.0), conformité, chargement et choix d'un
+    référentiel publié, fiches Twin6 de tout référentiel, nom et codes d'exemple des prompts,
+    nombre d'appels par référentiel ; la coupe d'une release depuis le modèle atomique garde la
+    structure de la dernière version publiée (UC-EPI-04 AN1 corrigée en partie).
+  - Cartographie standard, Essayer, banc, bac à sable, rétrospective : prompts et validations lus
+    dans le référentiel (la sonde à sept clones disparaît) ; choix du référentiel dans l'assistant.
+    Paquet par défaut : 1.0.0 inchangée à l'octet (même empreinte, reconstruite depuis le commit
+    précédent), et 1.1.0 dont les gabarits d'extraction lisent le référentiel (`referentiel_nom`,
+    `nb_poles`, `code_exemple_1`, `code_exemple_2`) ; pour RESPIRE v7, ses prompts sont ceux de
+    1.0.0 à l'octet ; le paquet embarqué passe à 1.1.0.
+  - Masse : le run fige le référentiel publié choisi (`referentielId`, `referentielVersion`) ; un
+    paquet qui ne sait pas le cartographier est refusé (1.0.0 ne sert que RESPIRE à sept pôles) ;
+    le worker, le runner et la fusion d'un membre valident par la conformité.
+  - Twin6 et Twin9 : un scan par pôle du référentiel choisi ; fiches du paquet pour les pôles
+    qu'elles décrivent, sinon écrites depuis le document ; `ReferentielMoteur` écrit depuis le
+    document ce que la base ne décrit pas d'une version de RESPIRE ; un jeu de gabarits d'avant T16
+    ne sert RESPIRE que dans la structure de ses fichiers de pôle.
+  - Relecture, visionneuses, importeurs, atelier : la version relue est celle stockée, sinon la
+    plus récente version publiée du référentiel nommé à laquelle le document est conforme ; une
+    annotation nomme un code de cette version, une révision lui est conforme ; les visionneuses
+    lisent le référentiel que nomme le document ; `validate-corpus.mjs` vérifie aussi la
+    conformité du corpus à RESPIRE v7.
+  - Changements visibles, à connaître : (1) plus strict, RESPIRE compris — l'ancien schéma ne
+    vérifiait que la forme d'un code (`[1-7].NN`) ; un code inconnu de la version, ou d'un autre
+    pôle, fait désormais échouer l'appel d'extraction puis son nouvel essai, et un kairos qui en
+    relie un est refait puis ramené à `null` ; (2) l'atelier épistémiarque affiche les noms de
+    pôle du RESPIRE publié (« TETE — … », sans accent) au lieu d'une constante (« TÊTE ») ;
+    (3) l'identifiant d'un run standard porte le référentiel, et le paquet embarqué passe à
+    1.1.0 : un run commencé avant ne se reprend pas ; (4) là où aucune version par défaut du
+    paquet n'est réglée, `GET /api/prompt-packages/default` rendra 1.1.0 après l'import du
+    déploiement ; (5) une base sans RESPIRE publié refuse annotations et révisions (`422`) ;
+    (6) le détail du cartographe porte `referentiel: {id, version}` ; (7) une base qui n'a pas
+    importé 1.1.0 refuse la copie serveur d'une cartographie standard (`422` « Paquet de prompts
+    publié introuvable ») : le déploiement l'importe (`deploy.mjs`, `build/prompt-packages`), un
+    environnement de développement existant la régénère et l'importe (`docs/tests-e2e.md`) ;
+    (8) la recherche de `#/referentiel` dit « Code ou nom — ex. 1.01 » (sans « pensée
+    critique »).
+  - Anomalies corrigées en passant : UC-PRO-07 AN-2, UC-PRO-06 AN-2, UC-APP-09 AN3 (« X / 61 »
+    quel que soit le référentiel), UC-VIS-01 AN1, UC-CAR-06 AN17.
+  - Hors périmètre, noté (règle 6) : le modèle atomique des compétences reste celui de RESPIRE
+    (une version d'une autre structure s'édite comme un document, UC-EPI-04) ; les textes qui
+    décrivent RESPIRE v7 (accueil, aide, formation) ; l'outillage de corpus et de parité ;
+    `referentielCompatible` des paquets reste déclaratif ; une version de RESPIRE à dix pôles ou
+    plus déclare ses niveaux (motif par défaut `\d\.\d{2}`). **À vérifier par Christian** : les
+    gabarits scan-pôle et kairos de Twin6 ne sont pas versionnés (UC-SYS-04 AN-2) ; s'ils écrivent
+    « RESPIRE » ou « 7 pôles » en toutes lettres, un run Twin6 sur un autre référentiel garde ces
+    mots, même si la fiche jointe et le nombre d'appels suivent le référentiel.
+  - Méthode : une fondation, puis quatre lots en parallèle (standard et banc ; masse ; Twin6 et
+    Twin9 ; relecture et visionneuses), relus un par un, puis réunis en un seul commit : pris
+    seuls, les commits de lot laissaient rouges les tests d'un lot pas encore commité.
+  - Revue indépendante (un agent neuf, sur toute la branche) : aucun point bloquant ; RESPIRE v7
+    vérifié identique à l'octet (prompts, paquet 1.0.0, documents). Corrigé : (1) le bac à sable
+    se fiait au marqueur `perimetre` que le code d'un paquet pose sur sa journée — une journée
+    qui avait perdu des pôles passait en se disant partielle ; il l'ôte et valide contre le
+    référentiel qu'il a transmis (UC-PRO-07-U18) ; (2) la conformité d'une fusion admettait un
+    sous-ensemble de domaines — une révision de fusion pouvait perdre un pôle, ce que l'ancien
+    schéma interdisait pour RESPIRE : une fusion compte désormais tous les pôles de sa version
+    (UC-CAR-04-F05) ; (3) sans version connue, les visionneuses, le partage et l'archive lisaient la
+    dernière version publiée, la relecture la plus récente à laquelle le document est conforme :
+    même règle partout (une journée de RESPIRE v7 reste lue avec la v7 quand une v8 d'une autre
+    structure paraît) ; (4) parité JS ↔ PHP durcie hors schéma (numéros de pôle canoniques,
+    listes, messages), cas jumeaux ajoutés ; (5) l'empreinte de 1.0.0 est figée par un test ;
+    (6) refus non testés couverts (version non textuelle au lancement de masse, version figée
+    illisible au dépôt d'un runner, révision sans référentiel chargé) ; documentation et
+    commentaires périmés. Laissé à décider (Christian) : (a) un seul code inconnu dans le kairos
+    fait perdre toute la synthèse (après un nouvel essai) ; on pourrait plutôt écarter les codes
+    inconnus des émergences ; (b) l'assistant enregistre la version de paquet choisie (1.0.0
+    publiée comprise) alors que le moteur rend toujours les prompts de l'embarqué (limite v1
+    notée dans UC-APP-02) ; (c) l'atelier épistémiarque nomme les pôles d'après la dernière
+    version publiée de RESPIRE, non d'après le modèle atomique ; (d) la fusion d'un membre dont
+    les journées viennent de plusieurs référentiels échoue (UC-ETA-04 A5) avec un message qui
+    parle des pôles.
+  - Relecture finale, après la revue : la relecture vérifiait une révision comme une journée
+    partielle — le schéma sans le marqueur `perimetre`, puis une conformité qui s'y fiait —,
+    quand le serveur la vérifie entière et refuse ce marqueur. Elle fait désormais comme lui
+    (test de `RelectureSection`) ; rien ne passait pour autant, le serveur refusant l'envoi.
+  - Vérifié, sur l'arbre du commit : PHP `OK (1709 tests, 17986 assertions)` (Twin_v9 présent,
+    PHP 8.3 local) ; front 2731 tests verts — un fichier ne se charge pas, faute des gabarits Twin6
+    non versionnés (`twin6-prompt-package.test.js`, UC-SYS-04 AN-2), comme avant la branche ;
+    moteur 403 ; bout en bout 19/19 ; `check-publiable` OK ; `validate-corpus.mjs` 69 OK sur 69 ;
+    paquet 1.0.0 identique à l'octet (sha256 `4bd550fc…`, figé par `DefaultPackageParityTest`).
 
 - 2026-10-20 — **Moteur Twin9 en PHP, T11 : retirer le moteur du navigateur (branche
   `feat/twin9-t11-retrait` ; `Twin_v9` : `feat/twin9-t11-retrait`).** L'analyse approfondie tourne

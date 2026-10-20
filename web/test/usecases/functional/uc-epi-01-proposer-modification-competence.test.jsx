@@ -28,7 +28,7 @@ function start(backend, hash = '#/epistemiarque') {
 /** Ligne de l'atelier d'une compétence (liste par pôle). */
 async function competenceRow(code) {
   await screen.findByRole('heading', { name: /Le référentiel \(\d+ compétences\)/ })
-  const section = screen.getByRole('region', { name: 'Les 61 compétences' })
+  const section = screen.getByRole('region', { name: 'Les compétences du référentiel' })
   return within(section).getByText(code).closest('li')
 }
 
@@ -54,7 +54,8 @@ describe('UC-EPI-01 — l’épistémiarque propose l’évolution d’une comp�
 
     // 1-2. L'atelier liste les compétences par pôle.
     const row = await competenceRow('1.01')
-    expect(screen.getByRole('heading', { name: /TÊTE/ })).toBeDefined()
+    // le nom du pôle se lit dans RESPIRE publié (ici sa copie embarquée), plus dans une liste figée
+    expect(await screen.findByRole('heading', { name: 'TETE — Penser & Comprendre' })).toBeDefined()
     expect(within(row).getByText('v1.0.0')).toBeDefined()
 
     // 3-4. « Proposer une évolution » : fork en version mineure suivante.
@@ -245,7 +246,7 @@ describe('UC-EPI-01 — section inconnue de l’atelier (E14)', () => {
     expect(document.querySelector('.epi img')).toBeNull()
     const back = screen.getByRole('link', { name: 'Retour à l’atelier' })
     expect(back.getAttribute('href')).toBe('#/epistemiarque')
-    expect(screen.queryByRole('region', { name: 'Les 61 compétences' })).toBeNull()
+    expect(screen.queryByRole('region', { name: 'Les compétences du référentiel' })).toBeNull()
     await act(async () => {})
     expect(backend.calls.map((c) => `${c.method} ${c.url}`)).toEqual(['GET api/auth/me'])
 

@@ -6,6 +6,8 @@ export const ENGINE_VERSION = '0.1.0'
 
 // --- Validation (ajv, schemas/ at the repo root) ---------------------------
 export { validateDocument, SUPPORTED_KINDS } from './validation.js'
+// Conformité d'une cartographie à la version de son référentiel (docs/contrats.md §11).
+export { validateConformite, validateDocumentPourReferentiel, REFERENTIEL_PAR_DEFAUT } from './conformite.js'
 
 // --- Providers (unified LLM abstraction, mock, retry, estimate) ------------
 export {
@@ -26,7 +28,9 @@ export {
   PRICING_DISCLAIMER,
   CHARS_PER_TOKEN_FR
 } from './providers/index.js'
-export { CALLS_PER_DAY, MERGE_NARRATIVE_CALLS } from './providers/estimate.js'
+export { CALLS_PER_DAY, MERGE_NARRATIVE_CALLS, callsPerDayFor, mergeNarrativeCallsFor } from './providers/estimate.js'
+// Ce que les prompts disent du référentiel employé (nom, codes d'exemple).
+export { nomCourtReferentiel, codesExemples } from './referentiel.js'
 
 // --- Runs (checkpoints, journal, reprise, storage adapters) ----------------
 export {

@@ -1,5 +1,5 @@
 // Interface V3 — lecteur ZIP minimal pour l'import du corpus historique
-// (spec §7-8) : ZIP journalier (7 carto_Pn + kairos) et ZIP corpus
+// (spec §7-8) : ZIP journalier (un carto_Pn par pôle + kairos) et ZIP corpus
 // (runs → AAAA-MM-JJ.zip). Sans dépendance : répertoire central parsé à la
 // main, entrées « stored » lues telles quelles, « deflate » décompressées via
 // DecompressionStream('deflate-raw') (navigateur moderne et Node ≥ 18).
@@ -88,19 +88,22 @@ export async function readZipEntry(bytes, entry) {
 }
 
 const DAY_ZIP_RE = /(^|\/)(\d{4}-\d{2}-\d{2})\.zip$/
-const CARTO_RE = /(^|\/)carto_P([1-7])\.json$/
+const CARTO_RE = /(^|\/)carto_P(\d+)\.json$/
 const KAIROS_RE = /(^|\/)kairos\.json$/
 
 /**
  * Inventorie un ZIP (journalier ou corpus) en documents-jour prêts pour
  * importJourDocuments. La date canonique d'un ZIP journalier vient de son NOM
- * (§6.9) ; runId vient du dossier parent.
+ * (§6.9) ; runId vient du dossier parent. Une journée à laquelle manquent des
+ * pôles se compte contre le référentiel donné, quel que soit son nombre de
+ * pôles (2026-10-20) ; sans référentiel, rien n'est supposé.
  *
  * @param {Uint8Array} bytes
- * @param {{fallbackRun?: string}} [opts]
+ * @param {{fallbackRun?: string, referentiel?: {poles: Array<object>} | null}} [opts]
  * @returns {Promise<{entries: Array<{run: string, sourceDate: string, payload: object, rawBytes: Uint8Array}>, report: Array}>}
  */
-export async function inventoryZip(bytes, { fallbackRun = 'import' } = {}) {
+export async function inventoryZip(bytes, { fallbackRun = 'import', referentiel = null } = {}) {
+  const nbPoles = Array.isArray(referentiel?.poles) ? referentiel.poles.length : null
   const report = []
   const entries = []
   const zipEntries = listZipEntries(bytes)
@@ -114,7 +117,7 @@ export async function inventoryZip(bytes, { fallbackRun = 'import' } = {}) {
       const run = inner.name.includes('/') ? inner.name.split('/')[0] : fallbackRun
       try {
         const innerBytes = await readZipEntry(bytes, inner)
-        const day = await dayFromZip(innerBytes, { run, sourceDate, report })
+        const day = await dayFromZip(innerBytes, { run, sourceDate, report, nbPoles })
         if (day) entries.push(day)
       } catch (err) {
         report.push({ severity: 'blocking', code: 'zip-journalier-invalide', message: `${inner.name} : ${err.message}`, run, sourceDate })
@@ -125,13 +128,13 @@ export async function inventoryZip(bytes, { fallbackRun = 'import' } = {}) {
 
   // ZIP journalier direct : le nom du FICHIER n'est pas lisible ici (l'appelant
   // le passe via fallbackRun/sourceDate) — on tente les carto_Pn à la racine.
-  const day = await dayFromZip(bytes, { run: fallbackRun, sourceDate: null, report })
+  const day = await dayFromZip(bytes, { run: fallbackRun, sourceDate: null, report, nbPoles })
   if (day) entries.push(day)
   return { entries, report }
 }
 
 /** Assemble un document-jour depuis les entrées d'un ZIP journalier. */
-async function dayFromZip(bytes, { run, sourceDate, report }) {
+async function dayFromZip(bytes, { run, sourceDate, report, nbPoles }) {
   const zipEntries = listZipEntries(bytes)
   const decoder = new TextDecoder()
   const poles = []
@@ -152,8 +155,8 @@ async function dayFromZip(bytes, { run, sourceDate, report }) {
     else kairos = parsed
   }
   if (poles.length === 0 && !kairos) return null
-  if (poles.length < 7) {
-    report.push({ severity: 'warning', code: 'journee-incomplete', message: `${poles.length}/7 pôles présents${kairos ? '' : ', kairos absent'}`, run, sourceDate })
+  if (nbPoles !== null && poles.length < nbPoles) {
+    report.push({ severity: 'warning', code: 'journee-incomplete', message: `${poles.length}/${nbPoles} pôles présents${kairos ? '' : ', kairos absent'}`, run, sourceDate })
   }
   if (missingDate) {
     // §6.9 : pour un JSON isolé la date vient de l'utilisateur ; les feuilles

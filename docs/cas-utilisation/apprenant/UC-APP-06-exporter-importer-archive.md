@@ -72,7 +72,10 @@ archive ») dans la section « Mes données » du tableau de bord `#/espace`.
 3. Le navigateur rassemble en parallèle : l'identité du compte
    (`GET api/auth/me` → rôles, email, nom affiché), les portfolios et les
    cartographies locaux, le référentiel publié (fichier statique, repli sur la
-   copie embarquée), un paquet de prompts (`GET api/prompt-packages` puis
+   copie embarquée) et celui de chaque cartographie (2026-10-20 : la version
+   que l'entrée a notée, sinon le référentiel que nomme son document — un
+   document d'un autre référentiel n'est plus tracé à RESPIRE ; introuvable,
+   sa référence reste « inconnu » / 0.0.0 et l'archive part sans lui), un paquet de prompts (`GET api/prompt-packages` puis
    `GET api/prompt-packages/{id}/{version}` du premier de la liste), ses
    documents produits en cohorte (`GET api/mes-documents-masse`), ses
    analyses approfondies Twin9 (`GET api/twin9/mes-analyses`, RG9) et les jeux
@@ -245,6 +248,7 @@ archive ») dans la section « Mes données » du tableau de bord `#/espace`.
 | UC-APP-06-U17 | `validateDocument` (`competency-map-master`, `archive-export`) | Fixture du master v4 conforme ; archive 1.1.0 qui l'embarque conforme ; archive 1.0.0 toujours conforme | `engine/test/usecases/unit/uc-app-06-exporter-importer-archive.test.js` |
 | UC-APP-06-U18 | idem | Un jeu non conforme rend l'archive non conforme, à son emplacement (`/jeuxCartographie/0/…`) | idem |
 | UC-APP-06-U19 | `ExportSection` (A5) | Stockage de l'interface illisible : archive téléchargée, message qui dit ce qui manque et quoi faire ; jeu non conforme laissé de côté et nommé, le reste part | `web/test/usecases/unit/uc-app-06-exporter-importer-archive.test.js` |
+| UC-APP-06-U20 | `exportArchive` (2026-10-20) | Chaque cartographie garde son référentiel : RESPIRE 7.0.0, `fictif-lettre` 1.0.0 (chargé, emporté dans `referentiels`), référentiel introuvable → `inconnu` / `0.0.0` ; archive valide au schéma | `web/test/usecases/unit/uc-app-06-exporter-importer-archive.test.js` |
 | — | `exportArchive`, `importArchive` (jeux de l'interface) | Export : archive complète par jeu, démonstration intacte exceptée (enrichie : exportée), conforme ; jeu non conforme exclu seul ; 1.0.0 importée sans jeux ; import : jeu retrouvé à l'identique, réimport sans effet, jeu complété compté, texte local et passages sans date gardés ; stockage illisible : export abouti et signalé, import du reste | `web/src/lib/archive.test.js` |
 | — | schéma du master v4 | Fixture = sortie exacte de l'interface ; archive sans portfolio ; champ inconnu accepté ; refus localisés ; corpus réel des 59 journées publiques conforme | `web/src/carto/core/master-schema.test.js` |
 
@@ -252,7 +256,7 @@ archive ») dans la section « Mes données » du tableau de bord `#/espace`.
 
 | ID | Scénario | Niveau | Vérifie | Fichier |
 |---|---|---|---|---|
-| UC-APP-06-F01 | Nominal (export) | IHM | `<App/>` : archive validée, téléchargée, compte, référentiel publié (7.9.0), 4 cartographies, sans visibilité ni `serverId`, que des GET | `web/test/usecases/functional/uc-app-06-exporter-importer-archive.test.jsx` |
+| UC-APP-06-F01 | Nominal (export) | IHM | `<App/>` : archive validée, téléchargée, compte, référentiels publié (7.9.0) et noté par les cartographies (7.0.0, 2026-10-20 : chaque couple désigne un document de l'archive), 4 cartographies, sans visibilité ni `serverId`, que des GET | `web/test/usecases/functional/uc-app-06-exporter-importer-archive.test.jsx` |
 | UC-APP-06-F02 | Nominal (import) | IHM | Navigateur neuf sans session (bandeau anonyme) : 1 portfolio + 4 cartographies restaurés, privés, sans badge serveur | idem |
 | UC-APP-06-F03 | A1 | IHM | Hors ligne : archive anonyme, sans paquet, référentiel = copie embarquée | idem |
 | UC-APP-06-F04 | A2 | IHM | Document de masse inclus (`masse-4-11`) | idem |
@@ -295,7 +299,8 @@ cd engine && npx vitest run test/usecases --testNamePattern UC-APP-06
   embarque le **premier** élément de `GET api/prompt-packages` (ordre
   alphabétique du paquet, puis version la plus **ancienne**), quel que soit le
   paquet référencé par les cartographies (en pratique
-  `aurora-v3-reconstruit@1.0.0`). L'archive peut donc ne pas contenir le
+  `aurora-v3-reconstruit@1.0.0`, la plus ancienne, quand les cartographies
+  produites depuis le 2026-10-20 citent la 1.1.0 embarquée). L'archive peut donc ne pas contenir le
   paquet dont elle cite l'identifiant. Figé par U14 et F09.
 - **A-02 — `runMeta` : contrats divergents entre l'assistant et l'archive.**
   L'assistant (UC-APP-02) enregistre `{portfolioId, portfolioTitre, mode,

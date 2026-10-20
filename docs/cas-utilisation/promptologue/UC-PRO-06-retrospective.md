@@ -7,12 +7,13 @@
 | **Portée** | humanome.xyz — atelier promptologue, section `#/promptologue/retro` (régénération 100 % navigateur) |
 | **Niveau** | Objectif utilisateur |
 | **Cahier des charges** | §3.4 (« retrouver rétrospectivement des compétences nouvellement ajoutées au référentiel »), §8 (référentiel évolutif), §6.1 (texte du portfolio côté client) |
-| **Statut** | Implémenté à l'unité (P10.6) — **bloqué contre l'API réelle** (AN-1) et, même débloqué, **sans effet avec les versions réelles du référentiel** (AN-3) : voir « Anomalies constatées » ; régénération de masse au backlog post-v1 |
+| **Statut** | Implémenté à l'unité (P10.6) — **bloqué contre l'API réelle** (AN-1) et, même débloqué, **sans effet avec les versions réelles du référentiel** (AN-3) : voir « Anomalies constatées » ; régénération de masse au backlog post-v1. Le référentiel est celui de l'original, quel qu'il soit, et sa version stockée la base de « plus récent » (2026-10-20, AN-2 corrigée) |
 
 ## Objectif
 
 Relancer la cartographie d'une **journée** déjà cartographiée avec une version
-**plus récente** du référentiel, puis comparer au document d'origine : quelles
+**plus récente** de son référentiel (RESPIRE ou tout autre référentiel
+publié), puis comparer au document d'origine : quelles
 compétences sont **nouvellement détectées**, lesquelles **disparaissent**,
 lesquelles restent **stables** — pour ne pas perdre les compétences que
 l'évolution du référentiel permet désormais d'identifier.
@@ -29,7 +30,9 @@ Le promptologue ouvre **Rétrospective** dans la navigation de l'atelier
 - Une cartographie **de journée** stockée sur le serveur par ce compte
   (opt-in, UC-APP-04), idéalement avec la version du référentiel qui l'a
   produite.
-- Une version plus récente du référentiel publiée (UC-EPI-03/04).
+- Une version plus récente de **ce** référentiel publiée (UC-EPI-03/04 ; pour
+  un autre référentiel que RESPIRE, inscrite à l'index publié
+  `data/referentiel/index.json`).
 - Le texte de la journée disponible dans un portfolio local du navigateur
   (UC-APP-01), ou à portée de main pour être collé.
 
@@ -53,22 +56,30 @@ Le promptologue ouvre **Rétrospective** dans la navigation de l'atelier
    (`GET api/auth/me`) et le rôle `promptologue`.
 2. La section charge **ses** cartographies serveur (`GET api/cartographies` :
    métadonnées seulement, jamais les documents) et les versions publiées du
-   référentiel (`GET api/referentiel/versions` ; un échec de cette lecture est
-   avalé en silence — voir E2bis).
+   référentiel RESPIRE (`GET api/referentiel/versions` ; un échec de cette
+   lecture est avalé en silence — voir E2bis).
 3. Il choisit une cartographie d'origine : `GET api/cartographies/{id}` renvoie
-   le document (et la version du référentiel qui l'a produit). Le document est
-   une `cartographie-jour` ; la section cherche le texte de **cette date** dans
+   le document (et la version du référentiel qui l'a produit). La section en
+   retient le **référentiel de l'original** : celui stocké avec la
+   cartographie (`referentiel {id, version}`), à défaut celui que nomme le
+   document (`referentiel`, absent : RESPIRE), version alors inconnue ; pour un
+   autre référentiel que RESPIRE, ses versions publiées se lisent dans l'index
+   (`listPublishedReferentiels`). Le document est une `cartographie-jour` ; la section cherche le texte de **cette date** dans
    les portfolios locaux (`findLocalDayText`, segments de la date concaténés)
    et l'affiche : « Journée du *AAAA-MM-JJ* — texte retrouvé dans « *titre* »
    (local). »
-4. Il choisit le « Référentiel plus récent » et le fournisseur (« Service
+4. Il choisit le « Référentiel plus récent » — seules les versions de ce
+   référentiel **strictement plus récentes** que celle de l'original sont
+   proposées (toutes si elle est inconnue) — et le fournisseur (« Service
    humanome » par défaut), puis clique **Régénérer et comparer**.
 5. La section vérifie qu'une version est choisie et que le texte n'est pas
-   vide, charge le référentiel (`GET api/referentiel/versions/{semver}`),
-   construit le fournisseur (`createProviderBundle`, `prime()` en mode
-   service) et relance `extractDay` sur le texte, à la date de l'original,
-   avec le référentiel choisi (`kairosOptional` : un kairos en échec dégrade
-   le document au lieu de perdre la régénération).
+   vide, charge le référentiel (RESPIRE : `GET
+   api/referentiel/versions/{semver}` ; un autre : son fichier publié,
+   `loadPublishedReferentiel({id, version})`), construit le fournisseur
+   (`createProviderBundle`, `prime()` en mode service) et relance `extractDay`
+   sur le texte, à la date de l'original, avec le référentiel choisi — sa
+   structure pilote les appels, un par pôle puis le kairos (`kairosOptional` :
+   un kairos en échec dégrade le document au lieu de perdre la régénération).
 6. `compareRetroDocs` compare les statuts « présence établie » avant/après et
    la section affiche le tableau (nouvelles, disparues, stables).
 
@@ -101,7 +112,8 @@ Le promptologue ouvre **Rétrospective** dans la navigation de l'atelier
 - **E2bis — Versions du référentiel indisponibles** (étape 2) : l'échec de
   `GET api/referentiel/versions` est **silencieux** — la liste « Référentiel
   plus récent » reste vide, sans message ; le promptologue ne l'apprend qu'au
-  lancement, par le message de E4 (comportement actuel).
+  lancement, par le message de E4 (comportement actuel). Un index illisible a
+  le même effet pour un autre référentiel.
 - **E3 — Cartographie non journalière** (étape 3) : une fusion (`merge`) ou
   une analyse Twin9 (`twin9`, document `carto_evolutive` natif) →
   « … la régénération rétrospective (v1) opère à l'unité, jour par jour. »
@@ -110,7 +122,8 @@ Le promptologue ouvre **Rétrospective** dans la navigation de l'atelier
 - **E5 — Texte vide** (étape 5) : rappel que le texte n'est jamais stocké sur
   le serveur (RGPD §6.1), à coller.
 - **E6 — Échec de la régénération** (étape 5) : fournisseur en erreur, clé
-  manquante, document invalide → message d'erreur.
+  manquante, fichier du référentiel introuvable, document invalide au schéma
+  ou non conforme au référentiel choisi → message d'erreur.
 - **E7 — Cartographie d'autrui** (étape 3) : l'API répond le même `404`
   qu'un identifiant inconnu (la liste ne la propose d'ailleurs jamais) ; si la
   lecture échoue malgré tout (cartographie supprimée entre-temps), la section
@@ -128,16 +141,17 @@ Le promptologue ouvre **Rétrospective** dans la navigation de l'atelier
 - **RG2** — Seules **mes** cartographies sont accessibles (portée
   propriétaire, `404` sinon).
 - **RG3** — v1 : régénération **à l'unité**, une `cartographie-jour` à la
-  fois, avec le protocole du moteur embarqué (`extractDay`).
+  fois, avec le protocole du moteur embarqué (`extractDay`), sur une version
+  plus récente du référentiel de l'original.
 - **RG4** — La comparaison porte sur l'ensemble des compétences au statut
   « présence établie » avant / après.
-- **RG5** — Le référentiel compte toujours 61 compétences (schéma) : une
-  « compétence nouvellement ajoutée » est, en pratique, une compétence
-  **redéfinie** dans une version plus récente (ou une version majeure qui
-  révise aussi le schéma). Seule une évolution du **`nom`** (ou de la
-  structure) change le prompt du moteur embarqué ; une redéfinition par la
-  `description` — la forme des versions réelles, 7.1.0 comprise —
-  n'atteint pas le LLM (voir AN-3).
+- **RG5** — Le schéma n'impose plus ni 7 pôles ni 61 compétences
+  (2026-10-20) : une « compétence nouvellement ajoutée » peut être une
+  compétence **ajoutée** par une version plus récente — son code et son nom
+  entrent dans le prompt de son pôle — ou une compétence **redéfinie**. Seule
+  une évolution du **`nom`** ou de la structure change le prompt du moteur
+  embarqué ; une redéfinition par la `description` — la forme des versions
+  réelles, 7.1.0 comprise — n'atteint pas le LLM (voir AN-3).
 - **RG6** — La régénération n'est ni enregistrée ni substituée à l'original.
 
 ## Données et RGPD
@@ -154,11 +168,12 @@ Le promptologue ouvre **Rétrospective** dans la navigation de l'atelier
 | Couche | Élément | Rôle |
 |---|---|---|
 | Front | `web/src/views/PromptologueView.jsx` | Garde de rôle, section `retro` |
-| Front | `web/src/views/promptologue/RetroSection.jsx` | Sélection, texte local, lancement, tableau |
+| Front | `web/src/views/promptologue/RetroSection.jsx` | Sélection, référentiel de l'original et sa base, texte local, lancement, tableau |
 | Front | `web/src/views/promptologue/retro.js` — `compareRetroDocs`, `findLocalDayText`, `newerReferentielVersions` | Logique pure |
 | Front | `web/src/views/promptologue/api.js` — `listCartographies`, `getCartography`, `listReferentielVersions`, `getReferentielVersion` | Appels API |
+| Front | `web/src/data/referentiel.js` — `listPublishedReferentiels`, `loadPublishedReferentiel` | Versions et document d'un autre référentiel que RESPIRE (index publié) |
 | Front | `web/src/lib/run-launcher.js` — `createProviderBundle` ; `web/src/lib/portfolio-store.js` | Fournisseur ; portfolios locaux |
-| Moteur | `engine/src/pipeline/extract.js` — `extractDay`, `buildExtractionPrompt`, `buildKairosExtractionPrompt` | Régénération avec le référentiel choisi (code et nom des compétences seulement, AN-3) |
+| Moteur | `engine/src/pipeline/extract.js` — `extractDay`, `buildExtractionPrompt`, `buildKairosExtractionPrompt` | Régénération avec le référentiel choisi : sa structure (un appel par pôle), le code et le nom des compétences seulement (AN-3) |
 | API | `GET /api/cartographies`, `GET /api/cartographies/{id}` — `api/src/routes/cartographies.php` (rôle `apprenant`) | Cartographies du propriétaire |
 | API | `GET /api/referentiel/versions[/{semver}]` — `api/src/routes/referentiel.php` | Versions du référentiel |
 | Domaine | `api/src/Cartographies/CartographyRepository.php` — `listForUser`, `findForUser` (jointure `referentiel_versions` : base de l'original) | Métadonnées, document + base de référentiel |
@@ -178,7 +193,7 @@ Le promptologue ouvre **Rétrospective** dans la navigation de l'atelier
 | UC-PRO-06-U05 | `compareRetroDocs` | Nouvelle, disparue avec nouveau statut, stables (RG4) | `web/test/usecases/unit/uc-pro-06-retrospective.test.js` |
 | UC-PRO-06-U06 | `compareRetroDocs` | Compétence absente → disparue (`null`) ; identiques → aucun changement | idem |
 | UC-PRO-06-U07 | `findLocalDayText` | Premier portfolio portant la date, concaténation, titre par défaut (RG1) | idem |
-| UC-PRO-06-U08 | `newerReferentielVersions` | Strictement plus récentes (tri numérique) ; base `null` (AN-2) ; forme `{semver}` écartée (AN-1) | idem |
+| UC-PRO-06-U08 | `newerReferentielVersions` | Strictement plus récentes (tri numérique) ; base `null` (version de l'original inconnue) : toutes ; forme `{semver}` écartée (AN-1) | idem |
 | UC-PRO-06-U09 | `createPromptologueApi` | Routes cartographies et référentiel | idem |
 | UC-PRO-06-U10 | `extractDay` → `compareRetroDocs` | Référentiel 7.1.0 au **nom** révisé (cas fictif) : 1.03 nouvellement détectée ; ancien référentiel : rien | idem |
 | UC-PRO-06-U11 | `buildExtractionPrompt` | Un **nom** de compétence révisé atteint le LLM | `engine/test/usecases/unit/uc-pro-06-retrospective.test.js` |
@@ -204,17 +219,19 @@ Le promptologue ouvre **Rétrospective** dans la navigation de l'atelier
 | UC-PRO-06-F13 | E5 | IHM | Texte vide, rappel RGPD, 0 appel | idem |
 | UC-PRO-06-F14 | E6 | IHM | 429 du fournisseur → message, pas de résultat | idem |
 | UC-PRO-06-F15 | Anomalie AN-1 | IHM | Forme réelle `{semver}` : aucune version proposée, cas bloqué (comportement actuel figé) | idem |
-| UC-PRO-06-F16 | Anomalie AN-2 | IHM | Base 7.1.0 ignorée : 7.0.0 encore proposée (comportement actuel figé) | idem |
+| UC-PRO-06-F16 | AN-2 corrigée | IHM | Base 7.0.0 : seule 7.1.0 proposée ; base 7.1.0 : aucune version | idem |
 | UC-PRO-06-F17 | E1 | IHM | `<App/>` sans session : section refusée, ni cartographies ni versions lues | idem |
 | UC-PRO-06-F18 | E2 | IHM | 401 → message explicatif ; 500 → message de l'API | idem |
 | UC-PRO-06-F19 | E6 | IHM | Clé personnelle vide : message, aucune requête vers le fournisseur | idem |
 | UC-PRO-06-F20 | E2bis + A1 | IHM | Versions indisponibles : liste vide sans message, puis E4 au lancement ; magasin local en échec → collage (comportement actuel figé) | idem |
 | UC-PRO-06-F21 | A4 | IHM | Compétence absente de la régénération → « disparue » sans statut | idem |
 | UC-PRO-06-F22 | E7 | IHM | Lecture de l'original en 404 → message de l'API, rien à régénérer | idem |
+| UC-PRO-06-F23 | Nominal, autre référentiel | IHM | Original « fictif-lettre » 1.0.0 : versions lues dans l'index (seule 1.1.0, plus récente, proposée ; aucune de RESPIRE), fichier publié chargé, 6 appels (5 pôles + kairos) au nom du référentiel, aucun `api/referentiel/versions/*` ; A1 à E1 nouvellement détectées | idem |
 
 Les tests IHM F05 à F22 (sauf F15) fournissent les versions du référentiel
 sous la forme **attendue par le front** (`{version}`) afin d'exercer la
-section ; F15 et les tests API figent la forme **réelle** (`{semver}`).
+section ; F15 et les tests API figent la forme **réelle** (`{semver}`). F23
+lit celles d'un autre référentiel dans l'index publié, qui porte `semver`.
 Les tests IHM, U10 et U11 modélisent le référentiel plus récent par un
 **nom** révisé (cas fictif, le seul qui change le prompt du moteur) ; U04,
 F01 et U13 figent la forme **réelle** d'une version plus récente (définitions
@@ -245,13 +262,17 @@ cd engine && npx vitest run test/usecases/unit/uc-pro-06
   la liste « Référentiel plus récent » est vide et toute tentative aboutit à
   E4 : le cas d'utilisation ne peut pas aboutir. Figé par U08 (forme
   `{semver}` écartée), F01 (forme réelle de l'API) et F15 (IHM). Même cause
-  que UC-PRO-05 AN-1.
-- **AN-2 — « Plus récent » n'est pas filtré.** `GET api/cartographies/{id}`
-  renvoie la version du référentiel d'origine (`referentiel.version`), mais
-  `RetroSection` appelle `newerReferentielVersions(refVersions, null)` : toutes
-  les versions publiées sont proposées, y compris la version d'origine et les
-  antérieures, alors que le libellé et le message d'erreur annoncent « plus
-  récent ». Figé par U08 et F16.
+  que UC-PRO-05 AN-1. Ne touche que RESPIRE : les versions d'un autre
+  référentiel se lisent dans l'index publié (F23).
+- **AN-2 — « Plus récent » n'est pas filtré.** **Corrigée le 2026-10-20** :
+  la version stockée de l'original est la base, seules les versions
+  strictement plus récentes sont proposées (F16) ; inconnue, toutes le
+  restent (U08). Constat d'origine : `GET api/cartographies/{id}` renvoie la
+  version du référentiel d'origine (`referentiel.version`), mais
+  `RetroSection` appelait `newerReferentielVersions(refVersions, null)` :
+  toutes les versions publiées étaient proposées, y compris la version
+  d'origine et les antérieures, alors que le libellé et le message d'erreur
+  annoncent « plus récent ».
 - **AN-3 — Les définitions du référentiel n'entrent pas dans les prompts du
   moteur embarqué.** La définition d'une compétence est le champ
   `description` (`schemas/referentiel.schema.json`, rempli depuis
@@ -282,3 +303,6 @@ cd engine && npx vitest run test/usecases/unit/uc-pro-06
   entière) est au backlog post-v1 (STATUS). Le résultat n'est pas enregistré.
 - Seules les cartographies **du compte connecté** sont régénérables : celles
   d'un apprenant restent hors de portée du promptologue (RGPD).
+- La régénération emploie toujours le référentiel de l'original, dans une
+  version plus récente : régénérer une journée avec un autre référentiel
+  n'est pas proposé.

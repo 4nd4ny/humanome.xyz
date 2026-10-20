@@ -20,6 +20,7 @@ use Humanome\Cartographe\Annotations;
 use Humanome\Cartographe\Garanties;
 use Humanome\Cartographe\Invitations;
 use Humanome\Cartographe\Links;
+use Humanome\Cartographe\ReviewReferentiel;
 use Humanome\Cartographe\Revisions;
 use Humanome\Db;
 use Humanome\Middleware\RequireRole;
@@ -139,7 +140,8 @@ return function (App $app): void {
 
     // ------------------------------------------------------------------
     // GET /api/cartographe/cartographies/{id} — full review view: document
-    // + annotations + revision metadata + garantie. Linked cartographe only.
+    // + annotations + revision metadata + garantie + the referential version
+    // the review reads ({id, version}). Linked cartographe only.
     // ------------------------------------------------------------------
     $app->get('/cartographe/cartographies/{id:[0-9]+}', $wrap(function (Request $request, Response $response, array $args) use ($json): Response {
         $pdo = Db::get();
@@ -153,6 +155,9 @@ return function (App $app): void {
         $carto['annotations'] = (new Annotations($pdo))->listForCartography($cartoId);
         $carto['revisions'] = (new Revisions($pdo))->listForCartography($cartoId);
         $carto['garantie'] = (new Garanties($pdo))->findForCartography($cartoId);
+        // The referential version the review reads (2026-10-20): the view loads it to name the
+        // competences and check a revision before sending it; version null when unpublished.
+        $carto['referentiel'] = (new ReviewReferentiel($pdo))->reference($cartoId);
 
         return $json($response, $carto);
     }))->add($cartographe);

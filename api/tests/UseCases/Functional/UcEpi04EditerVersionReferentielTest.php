@@ -291,9 +291,9 @@ final class UcEpi04EditerVersionReferentielTest extends EpiSupport
         $draft = $this->fork();
         $path = '/api/referentiel/drafts/' . $draft['id'];
 
-        $short = $draft['content'];
-        array_pop($short['competences']);
-        $schema = $this->as_($this->alix, 'PUT', $path, $short);
+        $sansNom = $draft['content'];
+        unset($sansNom['competences'][0]['nom']);
+        $schema = $this->as_($this->alix, 'PUT', $path, $sansNom);
         self::assertSame([422, 'Document does not conform to the referentiel schema'], [$schema->getStatusCode(), self::json($schema)['error']]);
 
         $duplicate = $draft['content'];

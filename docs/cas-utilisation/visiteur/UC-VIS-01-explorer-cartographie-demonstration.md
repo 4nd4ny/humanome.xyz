@@ -371,7 +371,7 @@ journée (`#/jour/<iso>`, éventuellement `?focus=<code>`).
 | UC-VIS-01-U14 | `buildCalendarGrid`, `scoreLevel` | Semaines du lundi, 5 niveaux d'intensité | idem |
 | UC-VIS-01-U15 | `findDayNode`, `findMergeNode` | Résolution des secteurs compétence/pôle | idem |
 | UC-VIS-01-U16 | `parseUserDocument` | Lecture et validation locales, messages d'erreur (E4) | idem |
-| UC-VIS-01-U17 | `findDayNode` | **Comportement actuel figé** — anomalie AN1 (pôle à `poleNum` chaîne non résolu) | idem |
+| UC-VIS-01-U17 | `findDayNode` | AN1 corrigée (2026-10-20) : pôle à `poleNum` chaîne résolu, comme à `poleNum` numérique | idem |
 | UC-VIS-01-U18 | `NIVEAUX`, `GRAY_LEVELS`, `RENVOI_RADIUS_FACTOR`, `createSectorPath`, `crCos`, `crSin`, `getMaxDepth` | Niveaux radiaux et gris de fond ; les 4 coins du secteur (intérieurs et extérieurs) sur leurs cercles aux angles demandés, sens des arcs, grand arc des deux arcs au-delà de 180° ; trigonométrie correctement arrondie ; profondeur 2 (RG8) | `web/test/usecases/unit/uc-vis-01-vues-historiques-sunburst.test.jsx` |
 | UC-VIS-01-U19 | `confidenceQuintile` | Quintiles de confiance (bornes 0,2 · 0,4 · 0,6 · 0,8 incluses à gauche, 1 → 5, bornage 1..5) | idem |
 | UC-VIS-01-U20 | `buildDayTree` | Trois journées de fixtures : 7 pôles nommés/colorés par le référentiel, présences établies = celles du moteur V3, points `max(1, 2·preuves + indices)`, niveau = quintile, renvoi = -1, agrégats de pôle, exclus (non établies vs court-circuits), replis pôle/compétence inconnus | idem |
@@ -405,7 +405,7 @@ journée (`#/jour/<iso>`, éventuellement `?focus=<code>`).
 | UC-VIS-01-F14 | A7 | IHM | Merge local → badges, narratif assaini, timeline, calendrier synchronisé, ouverture d'une journée, rien d'envoyé | idem |
 | UC-VIS-01-F15 | A7 | IHM | Journée locale → vue journée servie depuis la mémoire | idem |
 | UC-VIS-01-F16 | E4 | IHM | JSON illisible, non conforme, `carto-data.js` hérité, `kind` inconnu, plus de 8 erreurs (8 premières + « … et N autres erreurs. ») → erreur locale | idem |
-| UC-VIS-01-F17 | Anomalie AN1 | IHM | **Comportement actuel figé** — clic sur un pôle (vraie lib sunburst) sans rapport | idem |
+| UC-VIS-01-F17 | AN1 corrigée | IHM | Clic sur un pôle (vraie lib sunburst, `poleNum` chaîne) : titre, rapport et passages saillants affichés (2026-10-20) | idem |
 | UC-VIS-01-F18 | Nominal (2) | IHM | Référentiel publié (index → `respire-v7.1.json`) lu et utilisé : libellé publié sur le secteur 2.01 | idem |
 | UC-VIS-01-F19 | Anomalie AN3 | IHM | **Comportement actuel figé** — journée du corpus en HTTP 500 (corps JSON) → démonstration partielle (7 secteurs, 2 journées), « 1 anomalie(s) à traiter » | idem |
 | UC-VIS-01-F20 | A7 | IHM | Glisser-déposer d'un document-jour sur la zone de dépôt → vue journée servie depuis la mémoire | idem |
@@ -452,6 +452,11 @@ cd web && npx vitest run test/usecases/unit/uc-vis-01 test/usecases/functional/u
 ## Anomalies constatées
 
 - **AN1 — Vue journée : la sélection d'un pôle n'affiche pas son rapport.**
+  **Corrigée le 2026-10-20** (référentiel dynamique) : `findDayNode` compare
+  `Number(poleNum)` au numéro du référentiel, et le pôle d'une compétence se
+  lit dans le référentiel (son champ `pole`), plus dans la forme de son code
+  (« 1.01 » ne nomme son pôle que dans RESPIRE, « A1 » ne le nomme pas).
+  UC-VIS-01-U17 et F17 vérifient désormais la résolution. Constat d'origine :
   Le schéma `cartographie-jour` impose `poleNum` en chaîne (« 1 » à « 7 ») et
   tout le corpus réel s'y conforme, mais `findDayNode`
   (`web/src/views/DayView.jsx`) cherche le pôle par `dp.poleNum === refPole.num`
@@ -495,6 +500,20 @@ cd web && npx vitest run test/usecases/unit/uc-vis-01 test/usecases/functional/u
   figé par UC-VIS-01-F22.
 
 ## Limites
+
+- Tout référentiel (2026-10-20) : l'interface de cartographie signale une
+  journée incomplète contre le nombre de pôles du référentiel du jeu (« 2
+  pôle(s) sur 3 pour cette journée »), plus contre sept ; sans référentiel
+  connu, rien n'est supposé. Un parcours du site place ses domaines dans le
+  pôle que le référentiel donne au code de leur première compétence (la forme
+  « P.NN » n'est plus qu'un repli), un `carto_P10.json` est lu. Le document
+  déposé (`parseUserDocument`) se vérifie aussi contre un référentiel quand
+  l'appelant le donne. Tests : `web/src/carto/core/import.test.js` (« journée
+  incomplète… », « parcours du site d'un autre référentiel… »),
+  `web/src/views/DayView.test.jsx` (« tout référentiel »),
+  `web/src/data/load.test.js` (conformité). La démonstration elle-même
+  (`#/jour/…`) est le corpus de RESPIRE v7 et se lit avec la copie embarquée
+  de RESPIRE v7, sa version.
 
 - Sur `file://`, l'interface V3 ne peut pas charger le corpus (E1) ; seul le
   référentiel a un repli embarqué.

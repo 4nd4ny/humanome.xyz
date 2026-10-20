@@ -1,10 +1,14 @@
 // Assistant « Nouveau run » (P8.3) — #/espace/nouveau-run.
 //
-// Cinq étapes : (a) portfolio -> (b) version de prompt -> (c) fournisseur ->
-// (d) estimation -> (e) exécution. Toute la logique non-UI vit dans
-// web/src/lib/run-launcher.js ; l'exécution s'appuie sur le moteur réel
-// (extractDay par journée, checkpoints IndexedDB, reprise réelle après
+// Cinq étapes : (a) portfolio -> (b) version de prompt et référentiel ->
+// (c) fournisseur -> (d) estimation -> (e) exécution. Toute la logique non-UI
+// vit dans web/src/lib/run-launcher.js ; l'exécution s'appuie sur le moteur
+// réel (extractDay par journée, checkpoints IndexedDB, reprise réelle après
 // rechargement : les journées déjà checkpointées sont sautées).
+//
+// Référentiel (2026-10-20) : RESPIRE par défaut, ou un autre référentiel publié
+// (ReferentielChoice) ; le run en lit la structure dans son JSON — pôles,
+// codes, nombre d'appels — et l'enregistre avec la cartographie.
 //
 // v1 assumée (documentée) : le run exécute TOUJOURS le pipeline embarqué
 // (Aurora v3 reconstruit, P5) ; la version de prompt choisie est enregistrée
@@ -17,6 +21,8 @@ import { createPortfolioStore } from '../lib/portfolio-store.js'
 import { loadPublishedReferentiel } from '../data/referentiel.js'
 import { apiFetch } from '../api/client.js'
 import { createIndexedDbStorage } from '@engine/runs/index.js'
+import { callsPerDayFor, mergeNarrativeCallsFor } from '@engine/providers/estimate.js'
+import ReferentielChoice from './ReferentielChoice.jsx'
 import { isAbortError, describeDemoError } from '../lib/demo-llm.js'
 import {
   BUILTIN_PACKAGE,
@@ -51,8 +57,9 @@ function formatInt(n) {
  * @param {object} props
  * @param {{status: string, user: object | null}} props.session
  * @param {object} [props.deps] coutures de test :
- *   {portfolioStore, loadReferentiel, apiFetchFn, fetchFn, keyStorage,
- *    providerBundleFactory, runStorageFactory, cartoStoreLoader, navigate, now}
+ *   {portfolioStore, loadReferentiel, listReferentiels, apiFetchFn, fetchFn,
+ *    keyStorage, providerBundleFactory, runStorageFactory, cartoStoreLoader,
+ *    navigate, now}
  */
 export default function RunWizard({ session, deps = {} }) {
   const connected = session.status === 'authenticated'
@@ -68,7 +75,10 @@ export default function RunWizard({ session, deps = {} }) {
   const navigate = deps.navigate ?? ((hash) => (window.location.hash = hash))
 
   const [step, setStep] = useState(0)
+  // Référentiel choisi ({id, version}) ; null : RESPIRE, dernière version publiée.
+  const [refChoix, setRefChoix] = useState(null)
   const [referentiel, setReferentiel] = useState(null)
+  const [referentielError, setReferentielError] = useState(null)
 
   // (a) portfolio
   const [portfolios, setPortfolios] = useState(null)
@@ -104,7 +114,6 @@ export default function RunWizard({ session, deps = {} }) {
 
   useEffect(() => {
     let alive = true
-    loadReferentiel().then(({ doc }) => alive && setReferentiel(doc))
     portfolioStore.list().then((records) => alive && setPortfolios(records))
     fetchPromptPackages({ apiFetchFn }).then((result) => alive && setPackages(result))
     return () => {
@@ -112,6 +121,22 @@ export default function RunWizard({ session, deps = {} }) {
     }
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [])
+
+  // Le référentiel du run : RESPIRE par défaut (repli embarqué garanti), ou
+  // celui choisi, dont le run lit la structure.
+  useEffect(() => {
+    let alive = true
+    setReferentiel(null)
+    setReferentielError(null)
+    const load = refChoix ? loadReferentiel({ id: refChoix.id, version: refChoix.version }) : loadReferentiel()
+    load
+      .then(({ doc }) => alive && setReferentiel(doc))
+      .catch((err) => alive && setReferentielError(err?.message ?? 'Référentiel indisponible.'))
+    return () => {
+      alive = false
+    }
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [refChoix])
 
   // Navigation qui démonte l'assistant -> interruption coopérative du run.
   useEffect(() => () => controllerRef.current?.abort(), [])
@@ -146,7 +171,7 @@ export default function RunWizard({ session, deps = {} }) {
 
   const canLeaveStep = {
     portfolio: dayGroups.length > 0,
-    prompt: true,
+    prompt: referentiel !== null,
     fournisseur: mode === 'humanome' || !providerDef?.requiresKey || apiKey.trim() !== '',
     estimation: estimate !== null,
   }
@@ -254,7 +279,7 @@ export default function RunWizard({ session, deps = {} }) {
       if (!storageRef.current) storageRef.current = runStorageFactory()
       let localDaysDone = 0
       const result = await executeRun({
-        runId: makeRunId(portfolio.id, selectedPackage),
+        runId: makeRunId(portfolio.id, selectedPackage, referentiel),
         dayGroups,
         referentiel,
         provider: bundle.provider,
@@ -371,6 +396,12 @@ export default function RunWizard({ session, deps = {} }) {
       {stepKey === 'prompt' ? (
         <div className="run-step" data-testid="step-prompt">
           <h3>2. Version de prompt</h3>
+          <ReferentielChoice value={refChoix} onChange={setRefChoix} list={deps.listReferentiels} />
+          {referentielError ? (
+            <p role="alert" className="load-error" data-testid="referentiel-error">
+              {referentielError}
+            </p>
+          ) : null}
           {packages === null ? (
             <p>Chargement des versions publiées…</p>
           ) : (
@@ -557,9 +588,9 @@ export default function RunWizard({ session, deps = {} }) {
               </ul>
               <p className="privacy-note">{estimate.disclaimer}</p>
               <p className="privacy-note">
-                Estimation haute : elle compte aussi les 69 appels narratifs de fusion, qui ne
-                seront exécutés qu’à partir du banc promptologue (P10) — ce run n’exécute que
-                les appels journaliers.
+                Estimation haute : elle compte aussi les {mergeNarrativeCallsFor(referentiel)} appels
+                narratifs de fusion, qui ne seront exécutés qu’à partir du banc promptologue (P10) —
+                ce run n’exécute que les appels journaliers.
               </p>
             </>
           ) : (
@@ -598,7 +629,9 @@ export default function RunWizard({ session, deps = {} }) {
               <p role="status" data-testid="run-progress">
                 Journée {Math.min(daysDone + 1, dayGroups.length)}/{dayGroups.length}
                 {dayInfo ? ` (${dayInfo.iso})` : ''} — appel{' '}
-                {callInfo ? `${Math.min(callInfo.done + 1, callInfo.total)}/${callInfo.total}` : '1/8'}
+                {callInfo
+                  ? `${Math.min(callInfo.done + 1, callInfo.total)}/${callInfo.total}`
+                  : `1/${referentiel ? callsPerDayFor(referentiel) : '…'}`}
                 {callInfo?.step === 'pole' && callInfo.poleNum ? ` (pôle ${callInfo.poleNum})` : ''}
               </p>
               <p>

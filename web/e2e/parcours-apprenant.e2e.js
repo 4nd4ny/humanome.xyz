@@ -104,7 +104,7 @@ test('parcours apprenant complet : compte, portfolio, run mock, partage depuis l
     // (b) version de prompt : le paquet par défaut reste sélectionné.
     await expect(page.getByTestId('step-prompt')).toBeVisible()
     await expect(
-      page.getByRole('radio', { name: /aurora-v3-reconstruit@1\.0\.0/ }),
+      page.getByRole('radio', { name: /aurora-v3-reconstruit@1\.1\.0/ }),
     ).toBeChecked()
     await page.getByRole('button', { name: 'Continuer' }).click()
 
@@ -156,7 +156,9 @@ test('parcours apprenant complet : compte, portfolio, run mock, partage depuis l
     await page
       .getByRole('button', { name: 'Je confirme la copie sur le serveur' })
       .click()
-    await expect(mergeItem.getByText('copie serveur')).toBeVisible()
+    // Le badge seul (texte exact) : le panneau d'accord, qui reste ouvert si la copie échoue,
+    // dit aussi « Copie serveur ».
+    await expect(mergeItem.getByText('copie serveur', { exact: true })).toBeVisible()
   })
 
   const VERSION_TITRE = 'Parcours de trois journées (e2e)'

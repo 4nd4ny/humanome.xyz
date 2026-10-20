@@ -69,7 +69,7 @@ describe('UC-PRO-06 — logique de la rétrospective (retro.js)', () => {
   it('UC-PRO-06-U08 — newerReferentielVersions : strictement plus récentes (tri semver numérique) ; entrées {semver} de l’API écartées (AN-1)', () => {
     const front = [{ version: '7.0.0' }, { version: '7.10.0' }, { version: '7.2.0' }, { version: 'brouillon' }]
     expect(newerReferentielVersions(front, '7.2.0').map((v) => v.version)).toEqual(['7.10.0'])
-    // Sans base (appel actuel de RetroSection) : toutes les versions (AN-2).
+    // Sans base (version de l'original inconnue) : toutes les versions.
     expect(newerReferentielVersions(front, null).map((v) => v.version)).toEqual(['7.10.0', '7.2.0', '7.0.0'])
     // COMPORTEMENT ACTUEL figé : la forme réelle de GET referentiel/versions
     // ({semver, …}) ne porte pas de « version » -> rien n'est proposé.

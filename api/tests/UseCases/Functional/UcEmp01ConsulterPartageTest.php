@@ -42,6 +42,8 @@ final class UcEmp01ConsulterPartageTest extends CartographeTestCase
     protected function setUp(): void
     {
         parent::setUp();
+        // annotations and revisions are checked against a published referential version (2026-10-20)
+        self::publierRespireV7();
         $this->apprenant = $this->registerAs('maya@example.org', 'Maya');
         $this->cartoId = $this->createCarto($this->apprenant, [
             'type' => 'jour',

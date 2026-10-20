@@ -76,7 +76,7 @@ export function ImportPanel({ onImport, busy = null, compact = false }) {
         }}
       >
         <p>
-          Déposez ici vos analyses Aurora (<code>carto_P1…P7.json</code> et <code>kairos.json</code>, ZIP de journées, arborescence AuroraCore), votre portfolio (<code>.md</code>, <code>.txt</code>) ou une archive.
+          Déposez ici vos analyses Aurora (un <code>carto_Pn.json</code> par pôle et <code>kairos.json</code>, ZIP de journées, arborescence AuroraCore), votre portfolio (<code>.md</code>, <code>.txt</code>) ou une archive.
         </p>
         <div className="carto-drop-actions">
           <button type="button" className="carto-btn" onClick={() => fileRef.current?.click()} disabled={Boolean(busy)}>

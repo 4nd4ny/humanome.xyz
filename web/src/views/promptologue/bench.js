@@ -7,11 +7,18 @@
 // modèle et référentiel PAR BRANCHE), comparaison contre une référence JSON
 // importée, périmètre restreint (journées choisies, pôle ou compétence unique),
 // diff de compétences avec traces de délibération du jury.
+//
+// La structure se lit dans le référentiel de la branche (2026-10-20) : pôles,
+// codes, nombre d'appels ; les documents sont validés au schéma puis à la
+// conformité à ce référentiel, périmètre compris.
 
 import { extractDay, restreindreReferentiel } from '@engine/pipeline/extract.js'
+import { validateDocumentPourReferentiel } from '@engine/conformite.js'
 import { compareRuns } from '@engine/consistency.js'
 import { getModelPricing } from '@engine/providers/index.js'
+import { callsPerDayFor } from '@engine/providers/estimate.js'
 import { executerTwin6 } from '@engine/twin6/index.js'
+import { fichesPourTwin6 } from '@engine/twin6/fiches.js'
 import { validateDocument } from '@engine/validation.js'
 import { runPackageInSandbox, usesEngineOrchestration } from '../../lib/sandbox/index.js'
 
@@ -21,8 +28,8 @@ export const STATUT_RENVOI = 'renvoi au cartographe'
 /**
  * Paquet « Cartographie ouverte Twin6 » (ou un fork) : l'orchestration porte le
  * marqueur engine://…(twin6). Son exécution n'est PAS une extraction par jour
- * (aurora) mais un run Twin6 sur le portfolio ENTIER (7 scan-pole + kairos ->
- * cartographie-merge), comme la page publique #/twin6-ouverte (D1/AD-D1).
+ * (aurora) mais un run Twin6 sur le portfolio ENTIER (un scan-pole par pôle +
+ * kairos -> cartographie-merge), comme la page publique #/twin6-ouverte (D1/AD-D1).
  * @param {object} pkg prompt-package (complet ou métadonnées)
  * @returns {boolean}
  */
@@ -32,26 +39,26 @@ export function usesTwin6Engine(pkg) {
 }
 
 /**
- * Extrait les gabarits Twin6 (scanPole, kairos, fiches{1..7}) des prompts[] d'un
- * paquet Twin6, dans la forme attendue par executerTwin6.
+ * Extrait les gabarits Twin6 (scanPole, kairos, fiches par numéro de pôle) des
+ * prompts[] d'un paquet Twin6, dans la forme attendue par executerTwin6 — une
+ * fiche par gabarit « twin6-fiche-N » du paquet, quel que soit N.
  * @param {{prompts: Array<{role: string, texte: string}>}} pkg
  * @returns {{scanPole: string, kairos: string, fiches: Record<string, string>}}
  */
 export function extractTwin6Templates(pkg) {
   const byRole = {}
+  const fiches = {}
   for (const p of pkg?.prompts ?? []) {
-    if (p && typeof p.role === 'string' && typeof p.texte === 'string') byRole[p.role] = p.texte
+    if (!p || typeof p.role !== 'string' || typeof p.texte !== 'string') continue
+    byRole[p.role] = p.texte
+    const fiche = /^twin6-fiche-([1-9][0-9]*)$/.exec(p.role)
+    if (fiche) fiches[fiche[1]] = p.texte
   }
   const scanPole = byRole['twin6-scan-pole']
   const kairos = byRole['twin6-kairos']
-  const fiches = {}
-  for (let n = 1; n <= 7; n += 1) {
-    const t = byRole[`twin6-fiche-${n}`]
-    if (typeof t === 'string') fiches[String(n)] = t
-  }
   if (!scanPole || !kairos || Object.keys(fiches).length === 0) {
     throw new Error(
-      'Paquet Twin6 incomplet : gabarits twin6-scan-pole, twin6-kairos et twin6-fiche-1..7 attendus.',
+      'Paquet Twin6 incomplet : gabarits twin6-scan-pole, twin6-kairos et twin6-fiche-N (une par pôle) attendus.',
     )
   }
   return { scanPole, kairos, fiches }
@@ -105,9 +112,10 @@ export function filterDayGroups(dayGroups, selection = { type: 'tous' }) {
  * référentiel EN DUR : le choix d'une version du référentiel sur le banc n'a
  * alors pas (ou peu) d'effet sur le contenu réellement instruit.
  *
- * Heuristiques : marqueur Twin6 (fiches P1..P7 inline), fiches de compétences
- * en toutes lettres dans les gabarits (« ## X.YY — … »), orchestration sandbox
- * qui n'utilise jamais son paramètre `referentiel`.
+ * Heuristiques : marqueur Twin6 (fiches de pôle inline), fiches de compétences
+ * en toutes lettres dans les gabarits (titres « ## CODE — … » dont le code porte
+ * un chiffre : « 1.01 », « A2 »…), orchestration sandbox qui n'utilise jamais
+ * son paramètre `referentiel`.
  *
  * @param {object} pkg prompt-package (complet)
  * @returns {{enDur: boolean, motif: string|null}}
@@ -119,18 +127,20 @@ export function detectReferentielEnDur(pkg) {
     return {
       enDur: true,
       motif:
-        'paquet Twin6 : les fiches P1..P7 (compétences en toutes lettres) sont embarquées '
-        + 'dans les gabarits — le référentiel choisi ne sert qu’à lister les pôles.',
+        'paquet Twin6 : les fiches de pôle (compétences en toutes lettres) sont embarquées '
+        + 'dans les gabarits — une fiche ne sert que si elle nomme exactement les compétences '
+        + 'de son pôle dans le référentiel choisi ; sinon elle est écrite depuis le référentiel.',
     }
   }
   const ficheInline = (pkg.prompts ?? []).some(
-    (p) => typeof p?.texte === 'string' && /^##? \d\.\d\d — /m.test(p.texte),
+    (p) => typeof p?.texte === 'string'
+      && /^##? (?=[A-Za-z0-9._-]*\d)[A-Za-z0-9][A-Za-z0-9._-]{0,7} — /m.test(p.texte),
   )
   if (ficheInline) {
     return {
       enDur: true,
       motif:
-        'des gabarits du paquet contiennent des fiches de compétences en dur (« ## X.YY — … ») : '
+        'des gabarits du paquet contiennent des fiches de compétences en dur (« ## CODE — … ») : '
         + 'la version du référentiel choisie ne pilote pas leur contenu.',
     }
   }
@@ -292,16 +302,18 @@ export function buildRunReport({ portfolioLabel, run, config = {}, now = () => n
  *   - un document cartographie-jour seul ;
  *   - un tableau de documents cartographie-jour ;
  *   - un export du banc {days: [{iso, document}]} (rapport-run-banc).
- * Chaque document complet est validé au schéma ; les documents à périmètre
- * partiel (marqueur perimetre.partiel) sont acceptés sans validation stricte
- * (le schéma exige 7 pôles).
+ * Chaque document est validé au schéma puis à la conformité au référentiel du
+ * banc : un document complet porte tous ses pôles, un document à périmètre
+ * partiel (marqueur perimetre.partiel) ceux de son périmètre (validatePartialJour).
  *
  * @param {object|Array} json contenu du fichier importé
- * @param {{validateFn?: typeof validateDocument}} [deps]
+ * @param {{referentiel?: object, validateFn?: (kind: string, doc: object) => {valid: boolean, errors: Array}}} [deps]
+ *   referentiel : celui du banc (requis sans validateFn)
  * @returns {{pkg: {id, version}, reference: true, engine: null,
  *   days: Array<{iso, document}>, llmCalls: 0, durationMs: 0, label: string}}
  */
-export function normalizeReferenceImport(json, { validateFn = validateDocument } = {}) {
+export function normalizeReferenceImport(json, { referentiel, validateFn } = {}) {
+  const valider = validateFn ?? ((kind, doc) => validatePartialJour(kind, doc, referentiel))
   if (json === null || typeof json !== 'object') {
     throw new Error('JSON de référence illisible : objet ou tableau attendu.')
   }
@@ -337,17 +349,17 @@ export function normalizeReferenceImport(json, { validateFn = validateDocument }
     }
     if (seen.has(iso)) throw new Error(`JSON de référence : date en double (${iso}).`)
     seen.add(iso)
-    // Le marqueur perimetre.partiel vient du FICHIER importé : il ne doit pas
-    // désactiver la validation (un JSON forgé y échapperait), il bascule
-    // seulement vers la sonde tolérante (< 7 pôles, marqueur retiré).
-    const { valid, errors } =
-      document.perimetre?.partiel === true
-        ? validatePartialJour('cartographie-jour', document)
-        : validateFn('cartographie-jour', document)
+    // Le marqueur perimetre.partiel vient du FICHIER importé : il ne désactive
+    // pas la validation (un JSON forgé y échapperait), il en restreint
+    // seulement les pôles et les compétences attendus — chacun du référentiel.
+    const { valid, errors } = valider('cartographie-jour', document)
     if (!valid) {
       const detail = errors.slice(0, 3).map((e) => `${e.path} ${e.message}`).join(' ; ')
+      const nature = errors.every((e) => e.keyword === 'referentiel')
+        ? 'non conforme au référentiel'
+        : 'invalide au schéma'
       throw new Error(
-        `JSON de référence : document du ${iso} invalide au schéma `
+        `JSON de référence : document du ${iso} ${nature} `
         + `(${errors.length} erreur(s) : ${detail}).`,
       )
     }
@@ -530,32 +542,26 @@ export function buildAbMultiReport({ runsA, runsB }) {
 
 /** Note affichée quand un périmètre restreint est demandé sur un paquet Twin6. */
 export const TWIN6_PERIMETRE_NOTE =
-  'Périmètre restreint indisponible pour les paquets Twin6 : leurs fiches embarquent le '
-  + 'référentiel en dur et le run produit une cartographie globale (merge) qui exige les 7 pôles.'
+  'Périmètre restreint indisponible pour les paquets Twin6 : le run produit une cartographie '
+  + 'globale (merge) qui couvre tous les pôles du référentiel.'
 
 /**
- * Validation tolérante au périmètre partiel : le schéma cartographie-jour
- * exige d'un document de RESPIRE ses 7 pôles ; un document restreint est validé via une sonde
- * (pôles dupliqués/renumérotés 1..7), comme extractDay le fait pour chaque
- * pôle. Le marqueur `perimetre` (hors schéma, additionalProperties: false)
- * est retiré avant la sonde. Au-delà de 7 pôles, la validation STRICTE
- * s'applique (un document à pôles dupliqués doit être refusé, pas tronqué).
- * @param {string} kind @param {object} doc
+ * Validation d'un document du banc, périmètre partiel compris (2026-10-20) :
+ * le schéma (sans le marqueur `perimetre`, que le schéma ignore), puis la
+ * conformité au référentiel de la branche — les pôles attendus sont ceux du
+ * référentiel, ou ceux du périmètre que déclare le marqueur, chacun une fois ;
+ * les compétences sont des codes du référentiel, de leur pôle, et du périmètre
+ * s'il les liste (engine validateDocumentPourReferentiel). Remplace la sonde à
+ * sept clones : un poleNum hors du référentiel, un pôle en double ou hors du
+ * périmètre sont refusés.
+ * @param {string} kind
+ * @param {object} doc
+ * @param {object} referentiel le référentiel de la branche (complet)
  * @returns {{valid: boolean, errors: Array}}
  */
-export function validatePartialJour(kind, doc) {
-  if (kind !== 'cartographie-jour' || !Array.isArray(doc?.poles)) {
-    return validateDocument(kind, doc)
-  }
-  const { perimetre: _marqueur, ...rest } = doc
-  if (rest.poles.length === 0 || rest.poles.length >= 7) {
-    return validateDocument(kind, rest)
-  }
-  const pad = Array.from({ length: 7 }, (_, i) => ({
-    ...rest.poles[Math.min(i, rest.poles.length - 1)],
-    poleNum: String(i + 1),
-  }))
-  return validateDocument(kind, { ...rest, poles: pad, kairos: rest.kairos ?? null })
+export function validatePartialJour(kind, doc, referentiel) {
+  if (kind !== 'cartographie-jour') return validateDocument(kind, doc)
+  return validateDocumentPourReferentiel('cartographie-jour', doc, referentiel)
 }
 
 /**
@@ -569,8 +575,8 @@ export function validatePartialJour(kind, doc) {
  * @param {string} params.model
  * @param {number} [params.maxTokens]
  * @param {{poles?: number[], competences?: string[]}} [params.perimetre]
- *   périmètre restreint (moteur : extractDay ; sandbox : référentiel filtré +
- *   validation tolérante ; Twin6 : refusé, référentiel en dur)
+ *   périmètre restreint (moteur : extractDay ; sandbox : référentiel filtré,
+ *   contre lequel la sandbox valide le document ; Twin6 : refusé)
  * @param {number} [params.temperature] température passée à chaque appel LLM
  * @param {AbortSignal} [params.signal]
  * @param {(info: {iso: string, position: number, total: number, calls: number}) => void} [params.onProgress]
@@ -625,8 +631,12 @@ export async function runVersionOnDays({
   if (usesTwin6Engine(pkg)) {
     if (restriction.partiel) throw new Error(TWIN6_PERIMETRE_NOTE)
     const startedAt = Date.now()
-    const templates = extractTwin6Templates(pkg)
+    const gabarits = extractTwin6Templates(pkg)
+    // Les fiches du paquet qui nomment exactement les compétences de leur pôle
+    // dans le référentiel de la branche ; les autres, écrites depuis lui.
+    const templates = { ...gabarits, fiches: fichesPourTwin6(referentiel, gabarits.fiches) }
     const portfolio = dayGroupsToPortfolio(dayGroups)
+    const totalCalls = callsPerDayFor(referentiel)
     let calls = 0
     const { document } = await executerTwin6Fn({
       portfolio,
@@ -642,7 +652,7 @@ export async function runVersionOnDays({
             calls = (p.done ?? 0) + 1
             // phase transmise : le run Twin6 porte sur le portfolio ENTIER,
             // l'UI ne doit pas afficher une progression « par jour ».
-            onProgress?.({ iso: '', position: calls, total: p.total ?? 8, calls, phase: p.phase })
+            onProgress?.({ iso: '', position: calls, total: p.total ?? totalCalls, calls, phase: p.phase })
           }
         },
       },
@@ -653,7 +663,7 @@ export async function runVersionOnDays({
       twin6: true,
       mergeDoc: document,
       days: [],
-      llmCalls: calls || 8,
+      llmCalls: calls || totalCalls,
       durationMs: Date.now() - startedAt,
       usage,
     }
@@ -693,20 +703,20 @@ export async function runVersionOnDays({
         date: iso,
         // Sandbox : le périmètre passe par le référentiel restreint ; les
         // paquets « propres » itèrent referentiel.poles/competences et ne
-        // produisent donc que le périmètre. Le schéma exigeant 7 pôles, la
-        // validation devient tolérante (sonde) sur périmètre partiel.
+        // produisent donc que le périmètre. La sandbox valide le document
+        // contre ce référentiel-là : ses pôles, chacun une fois, ses codes.
         referentiel: restriction.referentiel,
         provider,
         model,
         maxTokens,
         signal,
-        ...(restriction.partiel ? { validateFn: validatePartialJour } : {}),
         onLlmCall: ({ calls }) => report(llmCalls + calls),
       })
       llmCalls += result.llmCalls
       document = result.document
       // Même marqueur que le moteur (extractDay) : sans lui, l'export du run
-      // ne se réimporterait pas comme référence (validation stricte 7 pôles).
+      // ne se réimporterait pas comme référence (tous les pôles du
+      // référentiel y seraient attendus).
       if (restriction.partiel && document && typeof document === 'object') {
         document = {
           ...document,

@@ -12,8 +12,9 @@
 ## Objectif
 
 Faire aboutir, par exécutions courtes et reprenables, l'extraction LLM de
-chaque job (un membre × une journée = 7 appels « pôle » + 1 appel « kairos »)
-d'un run de masse, en respectant le budget de l'établissement, sans jamais
+chaque job (un membre × une journée = un appel « pôle » par pôle du
+référentiel figé sur le run + 1 appel « kairos » — 8 pour RESPIRE v7) d'un
+run de masse, en respectant le budget de l'établissement, sans jamais
 rappeler un pôle déjà obtenu ni écrire sur un job annulé, et en ne
 journalisant que des compteurs.
 
@@ -37,9 +38,12 @@ journalisant que des compteurs.
 ## Garanties en cas de succès
 
 - Chaque job traité se termine `done` avec un document `cartographie-jour`
-  **validé au schéma**, ses compteurs (tokens, coût) et, le cas échéant, une
-  note de dégradation ; le run passe `done`/`failed` quand plus rien n'est en
-  attente.
+  **validé au schéma et conforme à la version du référentiel figée sur le
+  run** (2026-10-20 : ses pôles, chacun une fois, ses codes dans leurs
+  pôles, un kairos qui ne relie que ses codes ; un document d'un autre
+  référentiel que RESPIRE le nomme, `referentiel`), ses compteurs (tokens,
+  coût) et, le cas échéant, une note de dégradation ; le run passe
+  `done`/`failed` quand plus rien n'est en attente.
 - `spent_usd` de l'établissement est incrémenté du coût réel (plateforme) ou
   déclaré (runner, borné).
 - Seuls des compteurs sont journalisés (sortie du CLI, journal serveur du tick
@@ -75,15 +79,20 @@ journalisant que des compteurs.
    `endpoint` voit son job reposé, jamais d'appel vers son URL depuis la
    plateforme), le texte de la journée dans le portfolio déposé, et construit
    les prompts à partir des gabarits `extraction-pole`/`kairos` du paquet
-   **figé** sur le run et du référentiel **figé** (`PromptRunner`).
+   **figé** sur le run et du référentiel **figé** (`PromptRunner`) : ses pôles,
+   quel qu'en soit le nombre, et leurs codes se lisent dans son document.
 5. Pour chaque pôle absent du checkpoint : vérification du temps et du nombre
    d'appels restants, puis du **budget** (`spent + estimation ≤ plafond`),
-   appel LLM (un nouvel essai immédiat en cas de réponse inexploitable ou
-   tronquée), réparation/validation du pôle (`PoleAssembler`), imputation du
-   coût et **écriture du checkpoint** (conditionnelle au statut `running`,
-   bail renouvelé).
-6. Appel kairos, assemblage du document jour, validation au schéma, puis
-   `complete` : job `done`, compteurs, statut du run recalculé.
+   appel LLM (un nouvel essai immédiat en cas de réponse inexploitable,
+   tronquée ou non conforme), réparation du pôle puis validation d'une
+   journée réduite à lui — schéma, puis conformité au référentiel avec ce
+   pôle pour périmètre : un pôle du référentiel, des codes de ce pôle
+   (`PoleAssembler`) —, imputation du coût et **écriture du checkpoint**
+   (conditionnelle au statut `running`, bail renouvelé).
+6. Appel kairos (ses codes reliés doivent être ceux du référentiel),
+   assemblage du document jour, validation au schéma puis conformité au
+   référentiel (tous ses pôles), puis `complete` : job `done`, compteurs,
+   statut du run recalculé.
 7. Le tick enchaîne les jobs jusqu'à épuisement du budget de temps (40 s par
    défaut) ou d'appels, libère le verrou et écrit ses compteurs sur une ligne
    JSON : `{locked, elapsedMs, jobsTouched, jobsCompleted, jobsFailed,
@@ -105,8 +114,9 @@ journalisant que des compteurs.
   (`extractDay`, `kairosOptional`) contre le LLM choisi (options CLI, sinon
   config portée par le job : `endpoint` → adaptateur OpenAI) et poste
   `POST /api/worker/jobs/{id}/result {document, tokens, coutUsd}` ; le serveur
-  **revalide** le document (date du job, schéma), borne le coût à
-  [0, 1000] $, termine le job et incrémente `spent_usd`. Un exécutant peut
+  **revalide** le document (date du job, schéma, conformité à la version du
+  référentiel figée sur le run), borne le coût à [0, 1000] $, termine le job
+  et incrémente `spent_usd`. Un exécutant peut
   aussi poster `POST /api/worker/jobs/{id}/checkpoint {checkpoint}` (objet
   JSON ≤ 2 Mo) pour sauvegarder son avancement et renouveler le bail — le
   runner Node fourni ne le fait pas (sans état).
@@ -180,9 +190,14 @@ journalisant que des compteurs.
   faute de jeton de bail (voir Limites).
 - **E3 — Résultat refusé** : ni `document` ni `erreur` (ou les deux), `erreur`
   vide, `document` non objet, date différente de celle du job, document
-  invalide au schéma (`details`, 5 erreurs au plus) → `422` ; document posté
-  pour un job qui n'est plus `running` (rejeu, annulation) → `409` sans double
-  comptage.
+  invalide au schéma (`details`, 5 erreurs au plus) → `422` ; document valide
+  au schéma mais non conforme à la version du référentiel figée sur le run —
+  pôle perdu, pôle ou code qu'elle ne connaît pas, autre référentiel nommé —
+  → `422 {error: "Document non conforme au référentiel de son run", details}`
+  (5 erreurs au plus, par pointeur JSON) ; version figée du run introuvable
+  → `422 "Référentiel <id>@<version> du run indisponible"` ; document posté
+  pour un job qui n'est plus `running` (rejeu, annulation) → `409` sans
+  double comptage.
 - **E4 — Déclenchement HTTP refusé** : `X-Migrate-Token` absent ou faux →
   `403 {error: "Forbidden"}` ; `MIGRATE_TOKEN` non configuré → `404 {error:
   "Not found"}` ; exception du tick → `500 {error: "Tick failed, see server
@@ -231,7 +246,8 @@ journalisant que des compteurs.
   limite bornée à [1, 20] ; le tick plateforme ne sert que le fournisseur
   `humanome`, le runner que son établissement.
 - **RG3** — Checkpoint par pôle après CHAQUE appel réussi ; un pôle présent
-  n'est jamais rappelé (8 appels exactement par journée hors nouvel essai).
+  n'est jamais rappelé (un appel par pôle du référentiel, plus le kairos,
+  exactement par journée hors nouvel essai : 8 pour RESPIRE v7).
 - **RG4** — Toutes les écritures des exécutants sont conditionnelles au
   statut `running` : une annulation ou un arrêt budgétaire concurrent gagne.
 - **RG5** — Coupe-circuit AVANT chaque appel plateforme : estimation =
@@ -243,8 +259,13 @@ journalisant que des compteurs.
   (`stop_reason max_tokens`) ou inexploitable = échec ; un nouvel essai
   immédiat, payé ; au-delà, tentative comptée. Une exception du fournisseur
   n'a pas de nouvel essai (voir Anomalies).
-- **RG7** — Les résultats du runner sont revalidés côté serveur ; son coût
-  déclaré est borné à [0, 1000] $ et imputé à `spent_usd`.
+- **RG7** — Les résultats du runner sont revalidés côté serveur (schéma, puis
+  conformité à la version du référentiel du run) ; son coût déclaré est borné
+  à [0, 1000] $ et imputé à `spent_usd`.
+- **RG10** — Le garde-fou contre un pôle perdu tient à la VERSION du
+  référentiel figée sur le run (2026-10-20), plus au chiffre 7 : le schéma
+  n'impose plus de structure, la conformité (`Referentiel\Conformite`, jumelle
+  de `engine/src/conformite.js`) vérifie pôles et codes contre cette version.
 - **RG8** — Journalisation minimale : compteurs du tick, identifiants,
   messages techniques (le runner masque les extraits cités « … » dans son
   journal local). Mais `mass_jobs.erreur`, lu par l'établissement, peut
@@ -279,8 +300,10 @@ journalisant que des compteurs.
 | API | `api/src/Middleware/CsrfMiddleware.php` | Routes worker hors exemption : sans cookie de session elles passent, avec un cookie il faut le jeton CSRF |
 | Domaine | `api/src/Worker/JobQueue.php` — `reserve`, `release`, `saveCheckpoint`, `complete`, `fail`, `failHard`, `markBudgetExceeded`, `jobRow`, `refreshRunStatus` | File MySQL, bail, écritures conditionnelles, statut terminal du run |
 | Domaine | `api/src/Worker/Tick.php` — `run` (verrou, boucle, `advance`, `callWithRetry`, `budgetAllows`, `mayStartCall`, fournisseurs) | Tick borné et reprenable |
-| Domaine | `api/src/Worker/PromptRunner.php` | Substitution des gabarits du paquet figé |
-| Domaine | `api/src/Worker/PoleAssembler.php` — `assemblePole`, `validateKairos`, `assembleDay`, `parse` | Réparation et validation des réponses |
+| Domaine | `api/src/Worker/PromptRunner.php` | Substitution des gabarits du paquet figé, pôles et codes du référentiel figé |
+| Domaine | `api/src/Worker/PoleAssembler.php` — `assemblePole`, `validateKairos`, `assembleDay`, `parse` | Réparation et validation des réponses : schéma, puis conformité au référentiel du job |
+| Domaine | `api/src/Referentiel/Conformite.php` — `verifier` | Conformité d'une journée à la version de son référentiel (pôles, codes, kairos, nom) |
+| Développement | `api/src/Llm/MockProvider.php` ; `scripts/dev/runner-once-mock.mjs` | Fournisseur simulé : réponses des fixtures de RESPIRE v7, aux codes du prompt pour un autre référentiel |
 | Domaine | `api/src/Worker/OpenAiCompatibleProvider.php` | Point d'accès compatible OpenAI (`/v1/chat/completions`) — branche du tick inatteignable, voir Anomalies |
 | Domaine | `api/src/Etablissement/ConfigRepository.php` — `etablissementIdForWorkerToken`, `allowsSpending`, `addSpentUsd`, `revealApiKey` ; `CohorteRepository::segmentText` | Jeton, budget, clé, texte du jour |
 | Runner | `scripts/runner-node/runner.mjs` — `parseArgs`, `resolveProviderConfig`, `createApiClient` (`reserveJobs`, `postResult` et ses 3 envois), `createRunner` (`runOnce`, `runLoop`, `requestStop`, `abort`), `computeCostUsd`, `sanitizeForLog`, `main` (codes 0 à 4, SIGINT/SIGTERM) | Exécutant machine de l'établissement : passe unique ou boucle, arrêt coopératif ou immédiat |
@@ -303,7 +326,7 @@ journalisant que des compteurs.
 | UC-SYS-01-U10 | `Tick::run` | Coupe-circuit avant appel → `budget_exceeded`, zéro appel (RG5) | idem |
 | UC-SYS-01-U11 | `Tick::run` | Pôle en échec après nouvel essai : tentative comptée, coût non imputé, message citant la réponse (anomalies figées) | idem |
 | UC-SYS-01-U12 | `PromptRunner` | Substitution exacte, tri, date FR, erreurs de gabarit, référentiel invalide | idem |
-| UC-SYS-01-U13 | `PoleAssembler` | `poleNum` incohérent refusé, champs réparés, kairos invalide refusé | idem |
+| UC-SYS-01-U13 | `PoleAssembler` | `poleNum` incohérent refusé, champs réparés ; kairos invalide au schéma, ou reliant un code hors du référentiel du job, refusé | idem |
 | UC-SYS-01-U14 | `OpenAiCompatibleProvider::complete` | URL, en-têtes (clé en `Authorization` seulement), corps, usage, `length` → `max_tokens` | idem |
 | UC-SYS-01-U15 | `OpenAiCompatibleProvider::complete` | Non 2xx / non JSON → `UpstreamException` sans la clé | idem |
 | UC-SYS-01-U16 | `resolveProviderConfig` | Job « endpoint » réel → adaptateur openai ; job « humanome » → `RunnerConfigError` (RG9) | `engine/test/usecases/unit/uc-sys-01-runner-node.test.js` |
@@ -317,6 +340,8 @@ journalisant que des compteurs.
 | UC-SYS-01-U24 | `runLoop`, `requestStop`, `abort` | `requestStop()` pendant un job : job posté, reste du lot `running`, aucune pause ; `abort()` coupe la pause réelle du moteur (30 s) ; comportement actuel : `abort()` pendant l'extraction → rien posté, journalisé « erreur API transitoire » (A11, anomalie) | idem |
 | UC-SYS-01-U25 | `runLoop` | `503`, réseau et `404` journalisés « transitoires » puis pause ; `{budget: "exceeded"}` = file vide ; résultat impossible à poster (document puis erreur, relances 2 s/4 s) → passe non comptée, job `running` ; `401` et `RunnerConfigError` arrêtent la boucle (A7, E7) | idem |
 | UC-SYS-01-U26 | `main` (runner) | `--help` → 0 ; arguments invalides → 2 ; `--once` + `503` → 1 ; `--loop` + Ctrl-C ×1 → 0, écouteurs SIGINT/SIGTERM retirés ; Ctrl-C ×2 pendant la pause → 0 immédiat ; comportement actuel : Ctrl-C ×2 pendant un appel LLM (adaptateur OpenAI réel) en `--once` → 1 (A11, E7, anomalie). « Ctrl-C » = appel direct de l'écouteur SIGINT posé par `main` (aucun signal émis) ; les vrais signaux sont envoyés par F23 | idem |
+| UC-SYS-01-U27 | `Tick::run` | Job sur un autre référentiel (neuf pôles) : réponse aux codes que sa version ne connaît pas refusée (nouvel essai, tentative, message pointant le code) ; avec ses codes, 10 appels et une journée qui le nomme (RG10) | `api/tests/UseCases/Unit/UcSys01TraiterFileJobsTest.php` |
+| UC-SYS-01-U28 | `runner-once-mock` (outil de développement) | RESPIRE v7 : réponses des fixtures à l'octet ; neuf pôles : codes demandés par le prompt, pôles au-delà du septième compris, kairos aux codes du référentiel | `engine/test/usecases/unit/uc-sys-01-runner-node.test.js` |
 
 ### Tests fonctionnels
 
@@ -335,7 +360,7 @@ journalisant que des compteurs.
 | UC-SYS-01-F11 | A9 | API | Jobs `endpoint` ignorés par le tick, servis au runner | idem |
 | UC-SYS-01-F12 | E1 | API runner | Réservation étrangère vide alors que le job est en file ; `401` sans/mauvais jeton ; job étranger `404` ; cookie de session sans CSRF → `403` | idem |
 | UC-SYS-01-F13 | E2 | API runner | Checkpoint `422` (liste, texte, > 2 Mo) ; checkpoint d'un exécutant dont le bail a été repris → `200` ; `409` hors `running` | idem |
-| UC-SYS-01-F14 | E3 | API runner | 6 résultats invalides `422` ; rejeu `409` sans double comptage ; coût borné [0, 1000] (négatif ou texte → `200 done`, coût 0) | idem |
+| UC-SYS-01-F14 | E3 | API runner | 8 résultats invalides `422`, dont un pôle perdu (« il manque le pôle 7 du référentiel ») et un autre référentiel nommé, non conformes à la version du run ; version figée du run illisible → `422` « Référentiel … du run indisponible » ; rejeu `409` sans double comptage ; coût borné [0, 1000] (négatif ou texte → `200 done`, coût 0) | idem |
 | UC-SYS-01-F15 | E6 | API runner | 3 erreurs → `failed`, tentatives et message au tableau | idem |
 | UC-SYS-01-F16 | Anomalies | API runner | Tokens au format du runner ignorés ; erreur après `done` acceptée et refacturée | idem |
 | UC-SYS-01-F17 | A7 | API runner | Coûts déclarés au-delà du plafond → `{jobs: [], budget: "exceeded"}`, file marquée | idem |
@@ -346,12 +371,14 @@ journalisant que des compteurs.
 | UC-SYS-01-F22 | A10 | CLI runner (sous-processus Node, API worker et LLM simulés sur 127.0.0.1) | `--loop 1` réel : 2 passes séparées par une pause ≥ 1 s, job mis en file pendant la pause traité ensuite, `409` posté en erreur avec le coût sans arrêter la boucle, documents valides ; SIGINT pendant la pause : pause menée à son terme, aucune réservation de plus, code 0 ; journal sans contenu | `engine/test/usecases/unit/uc-sys-01-runner-cli.test.js` |
 | UC-SYS-01-F23 | A11, anomalie | CLI runner (vrais signaux) | SIGINT ×1 pendant un job → job posté, reste du lot `running`, aucune pause ; SIGINT ×1 pendant la réservation → lot entier `running`, aucun appel LLM ; SIGTERM ×2 pendant la pause de 30 s → sortie immédiate, code 0 ; SIGINT ×2 pendant un appel LLM → rien posté, code 0 en `--loop` (« erreur API transitoire »), comportement actuel : code 1 en `--once` | idem |
 | UC-SYS-01-F24 | E7, RG9 | CLI runner | `--once` + `503` → 1 sans nouvel essai ; `--loop 1` : `503`, coupure réseau, `404` retentés après la pause, puis `401` → 3 ; job `humanome` sans `--provider` → 4, rien posté ; arguments invalides → 2 ; `--help` → 0 | idem |
+| UC-SYS-01-F25 | A2, E3, RG10 | API runner | Run sur un autre référentiel publié (cinq pôles lettrés) : la réservation sert SON document ; une journée de RESPIRE → `422` non conforme (`/referentiel`) ; une journée conforme qui le nomme → `done` | `api/tests/UseCases/Functional/UcSys01TraiterFileJobsTest.php` |
 
 ### Tests existants liés (non-régression)
 
 - `api/tests/MasseDoDTest.php` — DoD P11 : 20 portfolios par ticks simulés, interruption/reprise (480 appels exactement), plafond, bail expiré, annulation, échecs, `WORKER_TICK_MAX_CALLS`.
 - `api/tests/WorkerRouteTest.php` — API runner : jeton, charge utile, checkpoint, résultats, budget, tick HTTP.
-- `api/tests/WorkerPromptRunnerTest.php` — parité octet à octet des prompts avec le moteur (goldens `api/tests/MasseGolden/`), ports `PoleAssembler`.
+- `api/tests/WorkerPromptRunnerTest.php` — parité octet à octet des prompts avec le moteur (goldens `api/tests/MasseGolden/`), ports `PoleAssembler` (journée de RESPIRE v7 identique au corpus, pôle perdu refusé, RESPIRE en six pôles, journée d'un référentiel à neuf pôles qui le nomme).
+- `api/tests/LlmMockProviderTest.php` — fournisseur simulé : fixtures de RESPIRE v7 à l'octet, réponses aux codes du prompt pour un autre référentiel, assemblées par `PoleAssembler`.
 - `scripts/runner-node/runner.test.mjs` — options CLI, résolution du fournisseur, relances, jeton refusé, RGPD du journal (`cd scripts/runner-node && npm test` ; hors de la suite du moteur, donc hors CI) ; couvre notamment `sanitizeForLog` et `computeCostUsd` (sans test UC propre) et, sommairement, `runLoop` (403 fatal, survie à une erreur réseau) — la boucle, l'arrêt et `main` sont couverts par UC-SYS-01-U23 à U26 et, en sous-processus avec de vrais signaux, par F22 à F24.
 - Éléments du « Code sollicité » couverts ailleurs : `ConfigRepository::etablissementIdForWorkerToken`, `allowsSpending`, `addSpentUsd`, `revealApiKey` → UC-ETA-02-U02, U04, U05, U06 ; `JobQueue::refreshRunStatus` → UC-ETA-03-U06 ; `PoleAssembler::parse`, `assembleDay` → `WorkerPromptRunnerTest::testParseTolerant`, `::testAssembleDayDocumentComplet` (et indirectement U08, U11, U21).
 

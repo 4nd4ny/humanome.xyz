@@ -335,4 +335,26 @@ describe('UC-APP-06 — A5 : stockage de l’interface de cartographie illisible
       / 1 jeu\(x\) illisible\(s\) laissé\(s\) de côté \(« Lou »\) : exportez-le\(s\) depuis l’espace Export de la cartographie\.$/,
     )
   })
+
+  it('UC-APP-06-U20 — chaque cartographie garde SON référentiel (2026-10-20) : un document d’un autre référentiel n’est plus tracé à RESPIRE ; l’archive emporte ce référentiel ; introuvable, la référence reste inconnue', async () => {
+    const lettre = { ...referentiel, id: 'fictif-lettre', version: '1.0.0', label: 'Fictif lettré' }
+    const { cartoStore, portfolioStore } = stores()
+    await cartoStore.saveCartography({ type: 'jour', titre: 'RESPIRE', document: day05 })
+    await cartoStore.saveCartography({ type: 'jour', titre: 'Lettrée', document: { ...day05, referentiel: 'fictif-lettre' } })
+    await cartoStore.saveCartography({ type: 'jour', titre: 'Inconnue', document: { ...day05, date: '2026-01-06', referentiel: 'fictif-absent' } })
+    const getReferentiel = vi.fn(async (options) => {
+      if (!options?.id) return { doc: referentiel, origin: 'bundled' }
+      if (options.id === 'fictif-lettre') return { doc: lettre, origin: 'published' }
+      throw new Error(`Le référentiel « ${options.id} » n’a pas pu être chargé`)
+    })
+    const { archive } = await exportArchive({ cartoStore, portfolioStore, ...offline({ getReferentiel }) })
+    const byTitle = Object.fromEntries(archive.cartographies.map((c) => [c.document.referentiel ?? 'respire', [c.referentielId, c.referentielVersion]]))
+    expect(byTitle).toEqual({
+      respire: ['respire', '7.0.0'],
+      'fictif-lettre': ['fictif-lettre', '1.0.0'],
+      'fictif-absent': ['inconnu', '0.0.0'],
+    })
+    expect(archive.referentiels.map((r) => `${r.id}@${r.version}`)).toEqual(['respire@7.0.0', 'fictif-lettre@1.0.0'])
+    expect(validateDocument('archive-export', archive).valid).toBe(true)
+  })
 })

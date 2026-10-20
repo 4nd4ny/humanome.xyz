@@ -3,20 +3,26 @@
 // membre), puis MERGE CALCULÉ CÔTÉ CLIENT via le moteur (membre-merge.js,
 // pattern run-launcher) et visualisation LECTURE SEULE MergeView / DayView
 // (même motif que CartographyViewer, P8).
+//
+// Chaque document se lit avec la version du référentiel que son run a figée
+// (2026-10-20) ; la fusion, avec celle du run le plus récent.
 
 import { useEffect, useMemo, useState } from 'react'
 import { loadPublishedReferentiel } from '../../data/referentiel.js'
 import DayView from '../DayView.jsx'
 import MergeView from '../MergeView.jsx'
 import { fetchMembreDocuments, frDate } from './etablissement-api.js'
-import { buildMemberMerge, uniqueDayDocuments } from './membre-merge.js'
+import { buildMemberMerge, referentielDeLaFusion, uniqueDayEntries } from './membre-merge.js'
+
+/** Clé d'une version de référentiel : `id@version` (version inconnue : vide). */
+const cleDe = (ref) => `${ref.id}@${ref.version ?? ''}`
 
 /**
  * @param {object} props
  * @param {string} props.userId identifiant du membre (segment d'URL)
  * @param {object} [props.lib] module sunburst (App / tests)
  * @param {typeof fetch} [props.fetchFn] seam de test
- * @param {typeof loadPublishedReferentiel} [props.getReferentiel] seam de test
+ * @param {typeof loadPublishedReferentiel} [props.getReferentiel] seam de test, appelé avec {id, version}
  */
 export default function MembreSection({
   userId,
@@ -26,7 +32,8 @@ export default function MembreSection({
 }) {
   const [membre, setMembre] = useState(null)
   const [documents, setDocuments] = useState(null) // null = chargement
-  const [referentiel, setReferentiel] = useState(null)
+  // clé `id@version` -> {doc} ou {error} : les référentiels des runs du membre
+  const [referentiels, setReferentiels] = useState(() => new Map())
   const [loadError, setLoadError] = useState(null)
   const [selectedDay, setSelectedDay] = useState(null) // iso -> DayView, null -> merge
 
@@ -48,53 +55,77 @@ export default function MembreSection({
     }
   }, [userId, fetchFn])
 
-  // loadPublishedReferentiel ne rejette jamais (repli sur la copie embarquée).
+  // La version du référentiel de chaque run, une fois chacune.
   useEffect(() => {
     let alive = true
-    getReferentiel().then((loaded) => {
-      if (alive) setReferentiel(loaded?.doc ?? loaded ?? null)
-    })
+    const versions = new Map((documents ?? []).map((d) => [cleDe(d.referentiel), d.referentiel]))
+    for (const [cle, ref] of versions) {
+      Promise.resolve()
+        .then(() => getReferentiel({ id: ref.id, ...(ref.version ? { version: ref.version } : {}) }))
+        .then(
+          (loaded) => ({ doc: loaded?.doc ?? loaded ?? null }),
+          (error) => ({ error: error instanceof Error ? error.message : String(error) }),
+        )
+        .then((result) => {
+          if (alive) setReferentiels((current) => new Map(current).set(cle, result))
+        })
+    }
     return () => {
       alive = false
     }
-  }, [getReferentiel])
+  }, [documents, getReferentiel])
 
   // Merge déterministe côté client (décision M8) — recalculé si les documents
-  // ou le référentiel changent, jamais envoyé au serveur.
-  const dayDocs = useMemo(() => uniqueDayDocuments(documents ?? []), [documents])
+  // ou les référentiels changent, jamais envoyé au serveur.
+  const dayEntries = useMemo(() => uniqueDayEntries(documents ?? []), [documents])
+  const fusion = useMemo(() => referentielDeLaFusion(documents ?? []), [documents])
+  const referentielFusion = fusion ? referentiels.get(cleDe(fusion)) : undefined
   const merge = useMemo(() => {
-    if (!referentiel || dayDocs.length === 0) return null
-    return buildMemberMerge(dayDocs, referentiel, { journalId: `membre-${userId}` })
-  }, [dayDocs, referentiel, userId])
+    if (!referentielFusion?.doc || dayEntries.length === 0) return null
+    return buildMemberMerge(dayEntries.map((e) => e.document), referentielFusion.doc, { journalId: `membre-${userId}` })
+  }, [dayEntries, referentielFusion, userId])
 
-  const selectedDoc = selectedDay ? dayDocs.find((d) => d.date === selectedDay) : null
+  const selected = selectedDay ? dayEntries.find((e) => e.date === selectedDay) : null
+  const referentielDuJour = selected ? referentiels.get(cleDe(selected.referentiel)) : undefined
   const getDay = useMemo(
-    () => () => Promise.resolve(selectedDoc),
-    [selectedDoc],
+    () => () => Promise.resolve(selected?.document),
+    [selected],
   )
 
   let body
-  if (documents === null || referentiel === null) {
+  if (documents === null || (dayEntries.length > 0 && referentielFusion === undefined)) {
     body = <p role="status">Chargement…</p>
-  } else if (dayDocs.length === 0) {
+  } else if (dayEntries.length === 0) {
     body = (
       <p className="privacy-note">
         Aucun document produit pour ce membre dans vos cohortes pour l’instant : lancez un run
         de masse depuis la page de la cohorte.
       </p>
     )
-  } else if (selectedDoc) {
-    body = (
+  } else if (selected) {
+    body = referentielDuJour?.doc ? (
       <DayView
-        date={selectedDoc.date}
-        referentiel={referentiel}
-        days={[selectedDoc.date]}
+        date={selected.date}
+        referentiel={referentielDuJour.doc}
+        days={[selected.date]}
         getDay={getDay}
         lib={lib}
       />
+    ) : referentielDuJour?.error ? (
+      <p role="alert" className="load-error">
+        {referentielDuJour.error}
+      </p>
+    ) : (
+      <p role="status">Chargement…</p>
+    )
+  } else if (referentielFusion.error) {
+    body = (
+      <p role="alert" className="load-error">
+        {referentielFusion.error}
+      </p>
     )
   } else if (merge?.document) {
-    body = <MergeView mergeDoc={merge.document} referentiel={referentiel} lib={lib} />
+    body = <MergeView mergeDoc={merge.document} referentiel={referentielFusion.doc} lib={lib} />
   } else {
     body = (
       <p role="alert" className="load-error" data-testid="etab-merge-erreur">
@@ -122,7 +153,7 @@ export default function MembreSection({
         </p>
       ) : null}
 
-      {dayDocs.length > 0 ? (
+      {dayEntries.length > 0 ? (
         <nav className="etab-membre-nav" aria-label="Vues du membre">
           <button
             type="button"
@@ -130,17 +161,17 @@ export default function MembreSection({
             disabled={!selectedDay}
             onClick={() => setSelectedDay(null)}
           >
-            Vue fusionnée ({dayDocs.length} journée(s))
+            Vue fusionnée ({dayEntries.length} journée(s))
           </button>
-          {dayDocs.map((doc) => (
+          {dayEntries.map((entry) => (
             <button
-              key={doc.date}
+              key={entry.date}
               type="button"
               className="button"
-              disabled={selectedDay === doc.date}
-              onClick={() => setSelectedDay(doc.date)}
+              disabled={selectedDay === entry.date}
+              onClick={() => setSelectedDay(entry.date)}
             >
-              Journée {frDate(doc.date)}
+              Journée {frDate(entry.date)}
             </button>
           ))}
         </nav>

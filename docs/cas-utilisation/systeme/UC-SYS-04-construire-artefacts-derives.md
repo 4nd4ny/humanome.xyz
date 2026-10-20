@@ -51,8 +51,9 @@ et sans jamais retoucher un JSON produit à la main.
   `index.json`, `web/public/data/referentiel/respire-v7.json` (7.0.0) et
   `respire-v7.1.0.json` sont produits et conformes aux schémas (et, depuis la
   correction d'AN-1 le 2026-10-14, aux validateurs versionnés du moteur).
-- `build/prompt-packages/aurora-v3-reconstruit-1.0.0.json` et
-  `twin6-ouverte-1.0.0.json` sont validés par le moteur **avant** écriture ;
+- `build/prompt-packages/aurora-v3-reconstruit-1.0.0.json`,
+  `aurora-v3-reconstruit-1.1.0.json` et `twin6-ouverte-1.0.0.json` sont
+  validés par le moteur **avant** écriture ;
   `web/public/data/twin6/prompts/P1..P7.md` et le paquet statique
   `web/public/data/twin6/twin6-ouverte-1.0.0.json` dérivent du même corpus.
 - Rejouer un script produit des fichiers identiques octet pour octet : les
@@ -106,8 +107,10 @@ Ordre réel, reconstitué d'`INSTALL.md` §2 et §6, du `prebuild` de
    (« smoke: real referentiel validates OK (eval-free) »).
 5. **Contrôle.** `node scripts/validate-corpus.mjs` valide avec le moteur les
    59 journées, `merge.json`, `respire-v7.json` et chaque `schemas/fixtures/*.json`
-   (type lu dans le document) : une ligne `OK`/`KO` par fichier, bilan
-   « N OK, 0 KO sur N fichiers », code 0.
+   (type lu dans le document) — une journée ou une fusion de RESPIRE, au schéma
+   puis à sa conformité à RESPIRE v7 (ses 7 pôles, chacun une fois, ses codes
+   dans leur pôle : le schéma ne les fixe plus depuis le 2026-10-20) : une ligne
+   `OK`/`KO` par fichier, bilan « N OK, 0 KO sur N fichiers », code 0.
 6. **Front.** `npm run build` (dans `web/`) déclenche le `prebuild` :
    `generate-fiches.mjs` régénère `twin6/prompts/P1..P7.md` depuis
    `fiches-v7.json` (RG4), puis `build-twin6-package.mjs` assemble le paquet
@@ -119,7 +122,7 @@ Ordre réel, reconstitué d'`INSTALL.md` §2 et §6, du `prebuild` de
    schémas, lance `build-tuteur-digest.mjs` (`scripts/data/tuteur-digest.md`,
    **avant** la copie de `scripts/data` dans la release — UC-VIS-05), puis
    `build-default-prompt-package.mjs` (paquet par défaut
-   `aurora-v3-reconstruit` 1.0.0, RG5), `generate-fiches.mjs` (les P*.md du
+   `aurora-v3-reconstruit` 1.0.0 et 1.1.0, RG5), `generate-fiches.mjs` (les P*.md du
    paquet Twin6 ne dépendent donc plus d'un build du front antérieur) et
    `build-twin6-prompt-package.mjs` (paquet publié `twin6-ouverte` 1.0.0, RG6),
    et enfin `composer`.
@@ -224,7 +227,13 @@ Ordre réel, reconstitué d'`INSTALL.md` §2 et §6, du `prebuild` de
   constructeurs de prompts du moteur avec des variables sentinelles, remplacées
   ensuite par des `{{placeholders}}` ; chaque remplacement est vérifié et le
   paquet est validé par le moteur avant écriture : une dérive des gabarits casse
-  la construction au lieu de dériver silencieusement.
+  la construction au lieu de dériver silencieusement. Deux versions sont
+  écrites, toutes deux validées avant la première écriture : 1.0.0, inchangée
+  octet pour octet, dont les gabarits épellent RESPIRE v7, et 1.1.0
+  (2026-10-20), dont les gabarits d'extraction lisent le référentiel employé
+  (`{{referentiel_nom}}`, `{{nb_poles}}`, `{{code_exemple_1}}`,
+  `{{code_exemple_2}}`) ; pour RESPIRE v7, 1.1.0 rend les prompts de 1.0.0 octet
+  pour octet (`api/tests/DefaultPackageParityTest.php`).
 - **RG6** — Twin6 : un seul corpus pour les deux paquets ; textes scan-pôle,
   kairos, méga-prompt et fiches P1..P7 octet pour octet identiques entre le
   paquet statique et le prompt-package ; ce dernier est réservé
@@ -304,9 +313,9 @@ par le catalogue, comme UC-SYS-01-F22, UC-SYS-02-F19 et UC-PRO-08-F17.
 | UC-SYS-04-F04 | Nominal, étape 3 | CLI | 7.1.0 : 61 définitions exactes, même `contentHash`, déterministe (RG3) | idem |
 | UC-SYS-04-F05 | E2 (AN-3) | CLI | Définitions manquantes / surnuméraires → code 1 sans sortie ; structure modifiée → code 1 mais 7.1.0 écrit (comportement actuel) | idem |
 | UC-SYS-04-F06 | Nominal, étape 4 (AN-1, corrigée) | CLI | Validateurs recompilés identiques d'un passage à l'autre, sans `eval` ni `require`, acceptant le 7.1.0 et une archive qui l'embarque ; **fraîcheur** : identiques, octet pour octet, aux validateurs versionnés, qui acceptent donc le 7.1.0 et l'archive | idem |
-| UC-SYS-04-F07 | Nominal, étape 5, E6 | CLI | Tout OK, code 0 (fixtures de `schemas/fixtures/` et `schemas/fixtures/carto/`, dont le master v4 de l'interface de cartographie) ; journée non conforme, JSON illisible, `kind` absent, plus de 8 erreurs tronquées → code 1 ; 7.1.0 hors périmètre | idem |
+| UC-SYS-04-F07 | Nominal, étape 5, E6 | CLI | Tout OK, code 0 (fixtures de `schemas/fixtures/` et `schemas/fixtures/carto/`, dont le master v4 de l'interface de cartographie) ; journée invalide au schéma, journée sans son pôle 7 (non conforme à RESPIRE v7), JSON illisible, `kind` absent, plus de 8 erreurs tronquées → code 1 ; 7.1.0 hors périmètre | idem |
 | UC-SYS-04-F08 | E3 | CLI | Prérequis absents → `ENOENT`, code 1, rien d'écrit sauf `validation-compiled.js` | idem |
-| UC-SYS-04-F09 | Nominal, étape 7, E7 | CLI | Paquet `aurora-v3-reconstruit` conforme, placeholders, variables documentées, aucune sentinelle, déterministe ; gabarit du moteur modifié → construction refusée (RG5) | idem |
+| UC-SYS-04-F09 | Nominal, étape 7, E7 | CLI | Paquets `aurora-v3-reconstruit` 1.0.0 et 1.1.0 conformes (une ligne de sortie chacun), placeholders, variables documentées, aucune sentinelle ; 1.0.0 épelle RESPIRE, 1.1.0 lit le référentiel (variables, placeholders, ni « RESPIRE », ni « 1.01 »/« 4.02 », ni « 7 pôles » dans ses gabarits d'extraction ; changelog et dates du 2026-10-20) ; déterministe ; gabarit du moteur modifié → construction refusée, aucune version écrite (RG5) | idem |
 | UC-SYS-04-F10 | Nominal, étape 6, A3, A4, E4 | CLI | 7 P*.md, `--verify` OK, `extract-fiches` redonne le corpus versionné octet pour octet ; parité rompue, code dupliqué, en-tête manquant → code 1, corpus intact (RG4) | idem |
 | UC-SYS-04-F11 | E5 (AN-2) | CLI | Entrées versionnées seules : `generate-fiches` crée le dossier et écrit les 7 P*.md ; paquets Twin6 « prompt manquant » (comportement actuel) | idem |
 | UC-SYS-04-F12 | Nominal, étapes 6-7 | CLI | Gabarits Twin6 fournis : paquet publié conforme au schéma `prompt-package`, paquet statique (sans schéma) à la forme exacte du contrat `executerTwin6` (clés, fiches 1..7), textes identiques aux P*.md, réservé, déterministes (RG6) | idem |

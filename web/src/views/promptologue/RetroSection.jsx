@@ -7,22 +7,31 @@
 //
 // RGPD : le texte de la journée n'est PAS sur le serveur (client-first §6.1) —
 // il est retrouvé dans les portfolios locaux, ou collé manuellement.
+//
+// Le référentiel est celui de la cartographie d'origine (2026-10-20) : son
+// identifiant (le document le nomme, à défaut RESPIRE) choisit les versions
+// proposées — celles de RESPIRE par l'API, celles d'un autre référentiel par
+// l'index publié —, et sa version stockée en est la base (« plus récent »).
 
 import { useEffect, useMemo, useState } from 'react'
 import { extractDay } from '@engine/pipeline/extract.js'
+import { REFERENTIEL_PAR_DEFAUT } from '@engine/conformite.js'
 import { PROVIDERS, createProviderBundle } from '../../lib/run-launcher.js'
 import { createPortfolioStore } from '../../lib/portfolio-store.js'
+import { listPublishedReferentiels, loadPublishedReferentiel } from '../../data/referentiel.js'
 import { compareRetroDocs, findLocalDayText, newerReferentielVersions } from './retro.js'
 
 /**
  * @param {object} props
  * @param {object} props.api client createPromptologueApi
  * @param {object} [props.deps] coutures de test : {portfolioStore,
- *   extractDayFn, createBundleFn}
+ *   extractDayFn, createBundleFn, listReferentielsFn, loadReferentielFn}
  */
 export default function RetroSection({ api, deps = {} }) {
   const extractDayFn = deps.extractDayFn ?? extractDay
   const createBundleFn = deps.createBundleFn ?? createProviderBundle
+  const listReferentielsFn = deps.listReferentielsFn ?? listPublishedReferentiels
+  const loadReferentielFn = deps.loadReferentielFn ?? loadPublishedReferentiel
   const portfolioStore = useMemo(
     () => deps.portfolioStore ?? createPortfolioStore(),
     [deps.portfolioStore],
@@ -32,6 +41,10 @@ export default function RetroSection({ api, deps = {} }) {
   const [refVersions, setRefVersions] = useState([])
   const [selectedId, setSelectedId] = useState('')
   const [original, setOriginal] = useState(null) // {id, document}
+  // Référentiel de l'original : {id, version|null} (version stockée de la cartographie).
+  const [refOrigine, setRefOrigine] = useState(null)
+  // Versions publiées d'un autre référentiel que RESPIRE (index publié).
+  const [autresVersions, setAutresVersions] = useState([])
   const [dayText, setDayText] = useState('')
   const [dayTextSource, setDayTextSource] = useState(null)
   const [refChoice, setRefChoice] = useState('')
@@ -70,6 +83,9 @@ export default function RetroSection({ api, deps = {} }) {
   async function selectCarto(id) {
     setSelectedId(id)
     setOriginal(null)
+    setRefOrigine(null)
+    setAutresVersions([])
+    setRefChoice('')
     setResult(null)
     setError(null)
     setDayText('')
@@ -84,6 +100,18 @@ export default function RetroSection({ api, deps = {} }) {
         )
         return
       }
+      // Le référentiel de l'original : celui stocké avec la cartographie, à
+      // défaut celui que nomme le document (absent : RESPIRE), version inconnue.
+      const stocke = data?.referentiel
+      const origine = typeof stocke?.id === 'string' && stocke.id !== ''
+        ? { id: stocke.id, version: typeof stocke.version === 'string' ? stocke.version : null }
+        : { id: typeof document.referentiel === 'string' && document.referentiel !== '' ? document.referentiel : REFERENTIEL_PAR_DEFAUT, version: null }
+      setRefOrigine(origine)
+      if (origine.id !== REFERENTIEL_PAR_DEFAUT) {
+        const liste = await Promise.resolve().then(() => listReferentielsFn()).catch(() => [])
+        const entree = (Array.isArray(liste) ? liste : []).find((r) => r?.id === origine.id)
+        setAutresVersions((entree?.versions ?? []).map((v) => ({ version: v.semver })))
+      }
       setOriginal({ id, document })
       const local = findLocalDayText(await portfolioStore.list().catch(() => []), document.date)
       if (local) {
@@ -97,7 +125,9 @@ export default function RetroSection({ api, deps = {} }) {
     }
   }
 
-  const newerVersions = newerReferentielVersions(refVersions, null)
+  const versionsDuReferentiel =
+    refOrigine && refOrigine.id !== REFERENTIEL_PAR_DEFAUT ? autresVersions : refVersions
+  const newerVersions = newerReferentielVersions(versionsDuReferentiel, refOrigine?.version ?? null)
 
   async function execute() {
     setError(null)
@@ -115,7 +145,11 @@ export default function RetroSection({ api, deps = {} }) {
     }
     setRunning('Régénération en cours…')
     try {
-      const referentiel = await api.getReferentielVersion(refChoice)
+      // La version choisie du référentiel de l'original : sa structure (pôles,
+      // codes) pilote la régénération.
+      const referentiel = refOrigine && refOrigine.id !== REFERENTIEL_PAR_DEFAUT
+        ? (await loadReferentielFn({ id: refOrigine.id, version: refChoice })).doc
+        : await api.getReferentielVersion(refChoice)
       const bundle = createBundleFn(
         providerMode === 'humanome'
           ? { mode: 'humanome' }

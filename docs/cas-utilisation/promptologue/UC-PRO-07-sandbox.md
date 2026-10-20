@@ -7,7 +7,7 @@
 | **Portée** | humanome.xyz — navigateur : `web/src/lib/sandbox/` (iframe `srcdoc` + Web Worker blob), appelé par le banc d'essai (UC-PRO-05) |
 | **Niveau** | Sous-fonction (sécurité) |
 | **Cahier des charges** | §3.4 (texte + code JavaScript des prompts), §5 (providers), §6 (le portfolio ne quitte pas le navigateur) ; `docs/securite-prompts.md` ; formation promptologue ch. 6 ; ADR-001 |
-| **Statut** | Implémenté (P10.3), CSP de production corrigée (M9) ; isolation prouvée en navigateur réel (e2e) — voir « Anomalies constatées » |
+| **Statut** | Implémenté (P10.3), CSP de production corrigée (M9) ; isolation prouvée en navigateur réel (e2e) ; document validé aussi contre le référentiel transmis au paquet (2026-10-20, AN-2 corrigée) — voir « Anomalies constatées » |
 
 ## Objectif
 
@@ -16,7 +16,8 @@ Exécuter le module d'orchestration (`code.orchestration`) d'un prompt-package
 qu'il puisse lire la session, les clés API ou le stockage de l'utilisateur, ni
 contacter le réseau : son **seul** canal est la demande d'appel LLM, que la
 page route vers le fournisseur choisi par l'utilisateur, sous quota et délai,
-et son résultat n'est accepté que s'il est valide au schéma.
+et son résultat n'est accepté que s'il est valide au schéma et conforme au
+référentiel transmis au paquet.
 
 ## Déclencheur
 
@@ -39,19 +40,20 @@ exécuté en sandbox (voir A3 et « Limites »).
 
 ## Garanties en cas de succès
 
-- Le banc reçoit un document `cartographie-jour` **validé au schéma** (ou, en
-  périmètre restreint, validé par la sonde tolérante) et le nombre d'appels
-  LLM consommés.
+- Le banc reçoit un document `cartographie-jour` **validé au schéma et
+  conforme au référentiel transmis** — en périmètre restreint, au référentiel
+  filtré : les seuls pôles et compétences retenus — et le nombre d'appels LLM
+  consommés.
 - L'iframe et le worker sont détruits en fin de run.
 
 ## Garanties minimales (en cas d'échec)
 
 - Au-delà de 16 appels LLM ou de 5 minutes, le run est arrêté et l'hôte
   détruit (worker compris).
-- Un document d'un autre `kind` ou invalide au schéma n'atteint jamais le
-  banc — **en périmètre entier**. En périmètre restreint (A2), la validation
-  n'est qu'une sonde tolérante qui ne contrôle ni le `poleNum`, ni l'unicité
-  des pôles, ni leur appartenance au périmètre demandé (anomalie AN-2).
+- Un document d'un autre `kind`, invalide au schéma ou non conforme au
+  référentiel transmis (pôle inconnu, manquant ou en double, code hors de son
+  pôle) n'atteint jamais le banc, en périmètre entier comme restreint (AN-2
+  corrigée le 2026-10-20).
 - En toutes circonstances, le code du paquet n'a eu ni réseau, ni cookies,
   ni stockage, ni DOM de la page (garanti par le navigateur, prouvé en e2e).
 
@@ -82,8 +84,10 @@ exécuté en sandbox (voir A3 et « Limites »).
    paquet. La réponse revient en `{type:'llm-ok', id, text}` (ou
    `{type:'llm-error', id, message}`).
 6. Le paquet rend son document : `{type:'result', document}`. Le pont vérifie
-   le `kind` attendu (`cartographie-jour`), valide au schéma, détruit l'hôte
-   et rend `{document, llmCalls, durationMs}` au banc.
+   le `kind` attendu (`cartographie-jour`), valide au schéma puis la
+   conformité au référentiel transmis au paquet
+   (`validateDocumentPourReferentiel`), détruit l'hôte et rend `{document,
+   llmCalls, durationMs}` au banc.
 
 ## Scénarios alternatifs
 
@@ -91,10 +95,10 @@ exécuté en sandbox (voir A3 et « Limites »).
   passer par le moteur et l'autre par la sandbox ; le rapport les compare
   comme deux versions quelconques (UC-PRO-05).
 - **A2 — Périmètre restreint** (étape 1) : la sandbox reçoit le référentiel
-  **filtré** (pôles/compétences retenus) et une validation tolérante
-  (`validatePartialJour` : pôles dupliqués et renumérotés 1..7 pour satisfaire
-  le schéma) ; le banc marque ensuite le document `perimetre.partiel` avec le
-  périmètre **demandé**, sans vérifier que le document s'y conforme (AN-2).
+  **filtré** (pôles/compétences retenus) et valide le document contre lui :
+  exactement les pôles retenus, chacun une fois, et leurs seules compétences
+  retenues ; le banc marque ensuite le document `perimetre.partiel` avec le
+  périmètre demandé, auquel il est donc conforme (AN-2 corrigée).
 - **A3 — Mon brouillon** (déclencheur) : le brouillon de l'auteur, code
   modifié compris, s'exécute de la même façon, chez lui seulement — **sauf**
   si son code conserve (même en commentaire) le marqueur `engine://` du
@@ -114,7 +118,9 @@ exécuté en sandbox (voir A3 et « Limites »).
   dépassé — exécution interrompue (worker détruit). » (le libellé arrondit à
   la minute, 1 min au minimum).
 - **E3 — Document invalide** (étape 6) : « Sandbox : document final invalide
-  au schéma cartographie-jour (n erreur(s) : …). »
+  au schéma cartographie-jour (n erreur(s) : …). » ; valide au schéma mais non
+  conforme au référentiel transmis : « Sandbox : document final non conforme
+  au référentiel (n erreur(s) : …). »
 - **E4 — Type inattendu** (étape 6) : « Sandbox : le paquet a produit un
   document de type « X » au lieu de « cartographie-jour ». »
 - **E5 — Erreur du paquet** (étapes 4-6) : export du point d'entrée
@@ -138,8 +144,13 @@ exécuté en sandbox (voir A3 et « Limites »).
 - **RG2** — Ni URL, ni modèle, ni clé ne sont acceptés du code sandboxé : le
   fournisseur, le modèle et le budget sont ceux de l'utilisateur.
 - **RG3** — Quota de 16 appels LLM par run (une journée), délai global de
-  5 minutes, puis destruction de l'iframe (et du worker).
-- **RG4** — Le document final est validé au schéma avant remise ; seuls les
+  5 minutes, puis destruction de l'iframe (et du worker). Le quota ne dépend
+  pas du référentiel (constante de sécurité, `docs/securite-prompts.md`).
+- **RG4** — Le document final est validé au schéma puis — journée ou
+  fusion — sa conformité au référentiel transmis au paquet, avant remise : ce
+  référentiel (restreint au périmètre pour un run partiel) fixe les pôles
+  attendus ; un marqueur `perimetre` posé par le paquet sur sa journée est
+  ôté avant la validation et du document rendu (l'appelant pose le sien) ; seuls les
   messages de NOTRE iframe sont écoutés (et, côté iframe, seuls ceux du
   parent) ; les types hors protocole (et un message nul) sont ignorés. Le
   pont refuse en `llm-error` (« prompt vide ») un prompt vide ou non textuel
@@ -179,9 +190,10 @@ exécuté en sandbox (voir A3 et « Limites »).
 | Front | `web/src/lib/sandbox/sandbox.js` — `createIframeHost` | Iframe `allow-scripts`, filtrage des messages par source |
 | Front | `web/src/lib/sandbox/protocol.js` — `buildWorkerSource`, `buildPromptsMap`, `buildSrcdoc`, `SANDBOX_CSP`, `MAX_LLM_CALLS_PER_RUN`, `SANDBOX_TIMEOUT_MS` | Sources et constantes de sécurité |
 | Front | `web/src/lib/sandbox/index.js` — `usesEngineOrchestration` | Routage moteur / sandbox (sous-chaîne `engine://`) |
-| Front | `web/src/views/promptologue/bench.js` — `runVersionOnDays`, `validatePartialJour` | Appel par journée, périmètre, marquage partiel |
+| Front | `web/src/views/promptologue/bench.js` — `runVersionOnDays` | Appel par journée, référentiel filtré au périmètre, marquage partiel |
 | Front | `web/src/views/promptologue/BancEssaiSection.jsx` | Affichage « exécution sandbox », erreurs, interruption |
 | Moteur | `engine/src/validation.js` — `validateDocument` | Validation au schéma |
+| Moteur | `engine/src/conformite.js` — `validateDocumentPourReferentiel` | Schéma puis conformité au référentiel transmis |
 | Déploiement | `web/public/.htaccess` (CSP : hash du `srcdoc`, `blob:`) | CSP de production héritée par le `srcdoc` |
 
 ## Jeux de tests
@@ -203,11 +215,13 @@ exécuté en sandbox (voir A3 et « Limites »).
 | UC-PRO-07-U11 | `createIframeHost` | `allow-scripts` sans `allow-same-origin`, messages filtrés par source, retrait complet (RG4) | idem |
 | UC-PRO-07-U12 | `runPackageInSandbox` (hôte factice) | **Frontière de confiance** : message `llm` forgé (`model`, `maxTokens`, `url`, `provider`, `apiKey`) → le fournisseur reçoit exactement `{model, prompt, maxTokens, signal}` du parent (RG2) | idem |
 | UC-PRO-07-U13 | `runPackageInSandbox` | Anomalie AN-1 : signal déjà annulé ignoré — hôte créé, résultat rendu (comportement actuel figé) | idem |
-| UC-PRO-07-U14 | `validatePartialJour` | Anomalie AN-2 : `poleNum` hors énumération, pôles dupliqués, pôle hors périmètre acceptés par la sonde (comportement actuel figé) | idem |
-| UC-PRO-07-U15 | `runVersionOnDays` (branche sandbox), `usesEngineOrchestration`, `validatePartialJour` | Routage ; un hôte par journée ; référentiel filtré transmis ; `validateFn` = sonde ; document marqué `perimetre` ; progression croissante ; sonde nominale et validation stricte à 7 pôles (A2) | idem |
+| UC-PRO-07-U14 | `validatePartialJour` | AN-2 corrigée : `poleNum` hors du référentiel, pôles dupliqués, pôle hors du périmètre refusés (messages) ; partiel conforme accepté | idem |
+| UC-PRO-07-U15 | `runVersionOnDays` (branche sandbox), `usesEngineOrchestration`, `validatePartialJour` | Routage ; un hôte par journée ; référentiel filtré transmis ; aucune `validateFn` injectée (la sandbox valide contre le référentiel filtré) ; document marqué `perimetre` ; progression croissante ; `validatePartialJour` : partiel conforme, marqueur sans liste de pôles = tous ceux du référentiel (A2) | idem |
 | UC-PRO-07-U16 | `runPackageInSandbox` (hôte factice) | Types hors protocole et message nul ignorés ; prompt non textuel ou vide → `llm-error` « prompt vide », compté, sans appel (RG4) | idem |
+| UC-PRO-07-U17 | `runPackageInSandbox` | Document valide au schéma mais non conforme au référentiel transmis — pôle 7 pour un RESPIRE en six pôles, journée privée de son pôle 4 — refusé, « non conforme au référentiel » (E3, RG4) | idem |
+| UC-PRO-07-U18 | `runPackageInSandbox` | Le marqueur `perimetre` posé par le paquet ne choisit pas les pôles attendus : une journée réduite au pôle 3 qui se dit partielle est refusée contre le référentiel entier ; contre le référentiel restreint au pôle 3, acceptée, le marqueur ôté du document rendu (RG4) | idem |
 
-Les tests U01 à U07, U13 et U15 exécutent la **vraie** source du worker et le
+Les tests U01 à U07, U13, U15 et U17 exécutent la **vraie** source du worker et le
 **vrai** module du paquet grâce à un hôte simulé
 (`web/test/usecases/support/banc.js`, `simulatedSandbox`) : import dynamique
 d'une URL `data:` à la place du blob. Cet hôte n'isole rien — il prouve le
@@ -222,7 +236,7 @@ le worker est aussi peu fiable que le paquet (un paquet peut appeler
 |---|---|---|---|---|
 | UC-PRO-07-F01 | Nominal | IHM | Banc : paquet publié à code → « exécution sandbox », 8 prompts des gabarits servis par le proxy humanome, document fixture | `web/test/usecases/functional/uc-pro-07-sandbox.test.jsx` |
 | UC-PRO-07-F02 | A1 | IHM | A/B moteur vs sandbox : une seule branche en sandbox | idem |
-| UC-PRO-07-F03 | A2 | IHM | Référentiel filtré (pôle 2) transmis au worker, 2 appels, document partiel | idem |
+| UC-PRO-07-F03 | A2 | IHM | Référentiel filtré (pôle 2) transmis au worker, 2 appels, document partiel validé contre lui | idem |
 | UC-PRO-07-F04 | A3 | IHM | Brouillon au code modifié (sans kairos) : 7 appels | idem |
 | UC-PRO-07-F05 | E1 | IHM | Quota : message, 16 appels | idem |
 | UC-PRO-07-F06 | E2 | IHM | Délai (couture `timeoutMs`) : message, hôte détruit | idem |
@@ -243,7 +257,7 @@ sur l'hôte simulé. F11 garde l'hôte iframe réel : jsdom n'exécutant pas le
 
 - `web/src/lib/sandbox/sandbox.test.js` — protocole avec un faux hôte (boot/init/run, quota, délai, validation, messages hors protocole et prompts non textuels — RG4).
 - `web/src/lib/sandbox/csp-hash.test.js` — hash sha256 du script figé présent dans la CSP de `web/public/.htaccess`, `blob:`.
-- `web/src/views/promptologue/bench.test.js` — routage moteur/sandbox, périmètre restreint en sandbox (`validatePartialJour`, marquage partiel).
+- `web/src/views/promptologue/bench.test.js` — routage moteur/sandbox, périmètre restreint en sandbox (référentiel filtré transmis, marquage partiel) ; `validatePartialJour` (conformité au périmètre).
 - `engine/src/validation.test.js` — validation des documents au schéma.
 - **`web/e2e/sandbox-isolation.e2e.js`** — **preuve de l'isolation en Chromium réel** : un paquet hostile échoue sur `fetch` (y compris `no-cors`), XHR, WebSocket, EventSource, `import()` distant, `importScripts`, `sendBeacon` ; `localStorage`/`document`/`parent` indisponibles, origine `null` ; sous la CSP de production.
 - `web/e2e/parcours-promptologue.e2e.js` — sonde d'évasion exécutée au banc (aucune requête ne sort), boucle infinie terminée par le délai.
@@ -258,7 +272,7 @@ cd web && npx playwright test sandbox-isolation   # isolation réelle (local, Ch
 Prérequis : **Node ≥ 21.7**. L'hôte simulé (`simulatedSandbox`) importe le
 module du paquet via `vm.constants.USE_MAIN_CONTEXT_DEFAULT_LOADER`, absent de
 Node 20 : sous Node 20, `import()` échoue et les tests qui exécutent la vraie
-source du worker (U01-U07, U13, U15, F01-F10, F12, F13) tombent. La CI
+source du worker (U01-U07, U13, U15, U17, F01-F10, F12, F13) tombent. La CI
 GitHub ne lance que les tests moteur (Node 20) ; ces tests web sont locaux.
 
 ## Anomalies constatées
@@ -278,15 +292,17 @@ GitHub ne lance que les tests moteur (Node 20) ; ces tests web sont locaux.
   (pont) et F13 (banc). À corriger côté front (tester `signal.aborted` à
   l'entrée du pont et entre les étapes de préparation du banc).
 - **AN-2 — Sonde tolérante trop permissive en périmètre restreint.**
-  `validatePartialJour` (moins de 7 pôles) duplique les pôles et **réécrit**
-  leur `poleNum` en « 1 » à « 7 » avant la validation au schéma, et ignore le
-  périmètre demandé : un pôle au `poleNum` hors énumération (« 99 »), des
-  pôles dupliqués ou un pôle hors périmètre (pôle 5 pour un périmètre
-  « pôle 2 ») sont acceptés ; `runVersionOnDays` tamponne ensuite
-  `perimetre: {partiel: true, poles: [2], …}` sur ce document. Contredit la
-  garantie « un document invalide n'atteint jamais le banc » en A2. Figé par
-  U14. À corriger côté front (contrôler `poleNum`, unicité et appartenance au
-  périmètre avant la sonde).
+  **Corrigée le 2026-10-20** (référentiel dynamique) : la sonde a cédé la place
+  à la conformité au référentiel, périmètre compris (`validatePartialJour` →
+  `validateDocumentPourReferentiel`), et la sandbox valide elle-même le document
+  contre le référentiel filtré qu'elle transmet au paquet ; U14 vérifie
+  désormais les refus. Constat d'origine : `validatePartialJour` (moins de 7
+  pôles) dupliquait les pôles et **réécrivait** leur `poleNum` en « 1 » à
+  « 7 » avant la validation au schéma, et ignorait le périmètre demandé : un
+  pôle au `poleNum` hors énumération (« 99 »), des pôles dupliqués ou un pôle
+  hors périmètre (pôle 5 pour un périmètre « pôle 2 ») étaient acceptés, puis
+  `runVersionOnDays` tamponnait `perimetre: {partiel: true, poles: [2], …}`
+  sur ce document.
 
 ## Limites
 
@@ -297,6 +313,9 @@ GitHub ne lance que les tests moteur (Node 20) ; ces tests web sont locaux.
 - Le quota et le délai s'appliquent **par journée** (un appel
   `runPackageInSandbox` par journée, U15) : un portfolio de N journées peut
   consommer jusqu'à 16 × N appels.
+- Le quota de 16 appels ne dépend pas du référentiel : une journée d'un
+  référentiel de plus de 15 pôles (un appel par pôle, plus le kairos) ne
+  tient pas dans un run sandboxé ; le moteur embarqué n'a pas cette limite.
 - Le routage moteur / sandbox repose sur une **sous-chaîne** de
   `code.orchestration` (`engine://`, `(twin6)`) : un brouillon forké du
   paquet par défaut qui garde l'une de ses lignes (`// engine://…`,

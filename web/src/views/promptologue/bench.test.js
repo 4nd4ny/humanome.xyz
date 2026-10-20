@@ -36,6 +36,20 @@ const DAYS = [
   { iso: '2026-01-06', texte: 'Journée 2.' },
 ]
 
+/** Une version de RESPIRE en six pôles (le pôle 7 retiré). */
+const RESPIRE_SIX = {
+  ...referentielFixture,
+  poles: referentielFixture.poles.filter((p) => p.num !== 7),
+  competences: referentielFixture.competences.filter((c) => c.pole !== 7),
+}
+
+/** Le pôle 2 de la journée fixture, réduit à la compétence 2.01 (périmètre « 2.01 »). */
+function pole2Reduit() {
+  const pole = structuredClone(jourFixture.poles[1])
+  pole.competences = pole.competences.filter((c) => c.code === '2.01')
+  return pole
+}
+
 describe('summarizeDocument / compareCodes', () => {
   it('classe les codes par statut de verdict', () => {
     const resume = summarizeDocument(jourFixture)
@@ -123,6 +137,9 @@ describe('runVersionOnDays — branche Twin6 (portfolio entier -> merge)', () =>
     expect(t.kairos).toBe('KAIROS')
     expect(Object.keys(t.fiches)).toEqual(['1', '2', '3', '4', '5', '6', '7'])
     expect(t.fiches['3']).toBe('FICHE 3')
+    // Une fiche par gabarit « twin6-fiche-N », quel que soit N.
+    const neuf = { ...twin6Pkg, prompts: [...twin6Pkg.prompts, { role: 'twin6-fiche-9', texte: 'FICHE 9' }] }
+    expect(Object.keys(extractTwin6Templates(neuf).fiches)).toEqual(['1', '2', '3', '4', '5', '6', '7', '9'])
   })
 
   it('extractTwin6Templates rejette un paquet Twin6 incomplet', () => {
@@ -161,6 +178,25 @@ describe('runVersionOnDays — branche Twin6 (portfolio entier -> merge)', () =>
     expect(result.engine).toBe(true)
     expect(result.mergeDoc).toBe(mergeDoc)
     expect(result.days).toEqual([])
+  })
+
+  it('les fiches suivent le référentiel de la branche : une par pôle, écrites depuis lui quand celle du paquet ne nomme pas ses compétences', async () => {
+    const executerTwin6Fn = vi.fn(async () => ({ document: { kind: 'cartographie-merge' } }))
+    const result = await runVersionOnDays({
+      pkg: twin6Pkg,
+      dayGroups: DAYS,
+      referentiel: RESPIRE_SIX,
+      provider: { complete: async () => ({ text: '{}' }) },
+      model: 'test',
+      executerTwin6Fn,
+    })
+    const { fiches } = executerTwin6Fn.mock.calls[0][0].templates
+    expect(Object.keys(fiches)).toEqual(['1', '2', '3', '4', '5', '6'])
+    // « FICHE 1 » ne nomme aucune compétence : la fiche du pôle 1 s'écrit depuis le référentiel.
+    expect(fiches['1'].startsWith('# Pôle 1 — ')).toBe(true)
+    expect(fiches['1']).toContain('## 1.01 — ')
+    // Sans progression remontée, le compte d'appels est celui du référentiel : 6 pôles + kairos.
+    expect(result.llmCalls).toBe(7)
   })
 })
 
@@ -295,13 +331,20 @@ describe('detectReferentielEnDur', () => {
     expect(det.motif).toContain('Twin6')
   })
 
-  it('fiche de compétences en toutes lettres dans un gabarit -> alerte', () => {
-    const det = detectReferentielEnDur({
-      prompts: [{ role: 'x', nom: 'x', texte: '## 1.01 — Pensée Critique\n\nCritères…' }],
+  it('fiche de compétences en toutes lettres dans un gabarit -> alerte, quel que soit le format du code', () => {
+    for (const titre of ['## 1.01 — Pensée Critique', '## A2 — Capacité', '# D2.1 — Facette']) {
+      const det = detectReferentielEnDur({
+        prompts: [{ role: 'x', nom: 'x', texte: `${titre}\n\nCritères…` }],
+        code: { orchestration: 'export async function run({ referentiel }) {}' },
+      })
+      expect(det.enDur, titre).toBe(true)
+      expect(det.motif).toContain('en dur')
+    }
+    // Un intertitre sans code (pas de chiffre) n'est pas une fiche.
+    expect(detectReferentielEnDur({
+      prompts: [{ role: 'x', nom: 'x', texte: '## Note — consignes\n\nTexte.' }],
       code: { orchestration: 'export async function run({ referentiel }) {}' },
-    })
-    expect(det.enDur).toBe(true)
-    expect(det.motif).toContain('en dur')
+    }).enDur).toBe(false)
   })
 
   it('orchestration sandbox qui ignore son paramètre referentiel -> alerte', () => {
@@ -370,8 +413,10 @@ describe('buildCompetenceDiff — écarts avec traces des deux côtés', () => {
 })
 
 describe('normalizeReferenceImport', () => {
+  const avecRef = { referentiel: referentielFixture }
+
   it('document cartographie-jour seul', () => {
-    const run = normalizeReferenceImport(structuredClone(jourFixture))
+    const run = normalizeReferenceImport(structuredClone(jourFixture), avecRef)
     expect(run.reference).toBe(true)
     expect(run.days).toEqual([{ iso: '2026-01-05', document: expect.any(Object) }])
     expect(run.pkg.id).toBe('reference-importee')
@@ -379,7 +424,7 @@ describe('normalizeReferenceImport', () => {
   })
 
   it('tableau de documents, trié par date', () => {
-    const run = normalizeReferenceImport([structuredClone(jour2Fixture), structuredClone(jourFixture)])
+    const run = normalizeReferenceImport([structuredClone(jour2Fixture), structuredClone(jourFixture)], avecRef)
     expect(run.days.map((d) => d.iso)).toEqual(['2026-01-05', '2026-01-06'])
   })
 
@@ -396,34 +441,55 @@ describe('normalizeReferenceImport', () => {
       now: () => '2026-07-17T00:00:00.000Z',
     })
     expect(report.kind).toBe('rapport-run-banc')
-    const run = normalizeReferenceImport(structuredClone(report))
+    const run = normalizeReferenceImport(structuredClone(report), avecRef)
     expect(run.pkg).toEqual({ id: 'aurora-demo', version: '1.0.0' })
     expect(run.days.map((d) => d.iso)).toEqual(['2026-01-05'])
     expect(run.label).toContain('Maya')
   })
 
   it('documents invalides, dates en double, formes inconnues -> erreurs', () => {
-    expect(() => normalizeReferenceImport({ kind: 'cartographie-jour', date: '2026-01-05', poles: [] }))
+    expect(() => normalizeReferenceImport({ kind: 'cartographie-jour', date: '2026-01-05', poles: [] }, avecRef))
       .toThrow(/invalide au schéma/)
     expect(() =>
-      normalizeReferenceImport([structuredClone(jourFixture), structuredClone(jourFixture)]),
+      normalizeReferenceImport([structuredClone(jourFixture), structuredClone(jourFixture)], avecRef),
     ).toThrow(/en double/)
-    expect(() => normalizeReferenceImport({ nimporte: 'quoi' })).toThrow(/non reconnu/)
-    expect(() => normalizeReferenceImport('texte')).toThrow(/illisible/)
-    expect(() => normalizeReferenceImport({ days: [] })).toThrow(/vide/)
+    expect(() => normalizeReferenceImport({ nimporte: 'quoi' }, avecRef)).toThrow(/non reconnu/)
+    expect(() => normalizeReferenceImport('texte', avecRef)).toThrow(/illisible/)
+    expect(() => normalizeReferenceImport({ days: [] }, avecRef)).toThrow(/vide/)
   })
 
-  it('document à périmètre partiel VALIDE accepté (sonde tolérante, marqueur retiré)', () => {
+  it('document à périmètre partiel CONFORME accepté (ses pôles et ses compétences)', () => {
     const partiel = {
       schemaVersion: '1.0.0',
       kind: 'cartographie-jour',
       date: '2026-01-05',
-      poles: [structuredClone(jourFixture.poles[1])],
+      poles: [pole2Reduit()],
       kairos: null,
       perimetre: { partiel: true, poles: [2], competences: ['2.01'] },
     }
-    const run = normalizeReferenceImport(partiel)
+    const run = normalizeReferenceImport(partiel, avecRef)
     expect(run.days[0].document.poles).toHaveLength(1)
+  })
+
+  it('refuse un document auquel manque un pôle du référentiel, ou qui sort de son périmètre', () => {
+    const sansPole4 = structuredClone(jourFixture)
+    sansPole4.poles = sansPole4.poles.filter((p) => p.poleNum !== '4')
+    expect(() => normalizeReferenceImport(sansPole4, avecRef))
+      .toThrow(/document du 2026-01-05 non conforme au référentiel .*il manque le pôle 4 du référentiel/)
+    const horsPerimetre = {
+      schemaVersion: '1.0.0',
+      kind: 'cartographie-jour',
+      date: '2026-01-05',
+      poles: [pole2Reduit(), structuredClone(jourFixture.poles[2])],
+      kairos: null,
+      perimetre: { partiel: true, poles: [2] },
+    }
+    expect(() => normalizeReferenceImport(horsPerimetre, avecRef)).toThrow(/le pôle 3 est hors du périmètre/)
+    // La même journée sans son pôle 7 est conforme à une version de RESPIRE en six pôles.
+    const six = structuredClone(jourFixture)
+    six.poles = six.poles.filter((p) => p.poleNum !== '7')
+    six.kairos = null
+    expect(normalizeReferenceImport(six, { referentiel: RESPIRE_SIX }).days).toHaveLength(1)
   })
 
   it('le marqueur perimetre.partiel ne DÉSACTIVE PAS la validation (JSON forgé refusé)', () => {
@@ -437,44 +503,44 @@ describe('normalizeReferenceImport', () => {
       kairos: null,
       perimetre: { partiel: true },
     }
-    expect(() => normalizeReferenceImport(forge)).toThrow(/invalide au schéma/)
+    expect(() => normalizeReferenceImport(forge, avecRef)).toThrow(/invalide au schéma/)
   })
 })
 
-describe('validatePartialJour — sonde de validation à moins de 7 pôles', () => {
-  it('document partiel valide via la sonde ; document complet inchangé', () => {
-    const partiel = {
-      schemaVersion: '1.0.0',
-      kind: 'cartographie-jour',
-      date: '2026-01-05',
-      poles: [structuredClone(jourFixture.poles[1])],
-      kairos: null,
-    }
-    expect(validatePartialJour('cartographie-jour', partiel).valid).toBe(true)
-    expect(validatePartialJour('cartographie-jour', structuredClone(jourFixture)).valid).toBe(true)
-    // Un pôle structurellement invalide reste refusé.
+describe('validatePartialJour — schéma puis conformité au référentiel, périmètre compris', () => {
+  const partiel = {
+    schemaVersion: '1.0.0',
+    kind: 'cartographie-jour',
+    date: '2026-01-05',
+    poles: [pole2Reduit()],
+    kairos: null,
+    perimetre: { partiel: true, poles: [2], competences: ['2.01'] },
+  }
+
+  it('document partiel conforme à son périmètre ; document complet conforme au référentiel', () => {
+    expect(validatePartialJour('cartographie-jour', partiel, referentielFixture)).toEqual({ valid: true, errors: [] })
+    expect(validatePartialJour('cartographie-jour', structuredClone(jourFixture), referentielFixture).valid).toBe(true)
+    // Un pôle structurellement invalide reste refusé (schéma).
     const casse = { ...partiel, poles: [{ poleNum: '2' }] }
-    expect(validatePartialJour('cartographie-jour', casse).valid).toBe(false)
+    expect(validatePartialJour('cartographie-jour', casse, referentielFixture).valid).toBe(false)
   })
 
-  it('le marqueur perimetre (hors schéma) est retiré avant la sonde', () => {
-    const partiel = {
-      schemaVersion: '1.0.0',
-      kind: 'cartographie-jour',
-      date: '2026-01-05',
-      poles: [structuredClone(jourFixture.poles[1])],
-      kairos: null,
-      perimetre: { partiel: true, poles: [2], competences: ['2.01'] },
-    }
-    expect(validatePartialJour('cartographie-jour', partiel).valid).toBe(true)
-  })
-
-  it('PLUS de 7 pôles : validation stricte (refusé), jamais tronqué par la sonde', () => {
-    const huit = structuredClone(jourFixture)
-    huit.poles.push(structuredClone(huit.poles[0]))
-    const { valid, errors } = validatePartialJour('cartographie-jour', huit)
+  it('le marqueur perimetre échappe au schéma, pas à la conformité : sans lui, tous les pôles sont attendus', () => {
+    const { perimetre: _marqueur, ...sansMarqueur } = partiel
+    const { valid, errors } = validatePartialJour('cartographie-jour', sansMarqueur, referentielFixture)
     expect(valid).toBe(false)
-    expect(JSON.stringify(errors)).toContain('7')
+    expect(errors.map((e) => e.message)).toContain('il manque les pôles 1, 3, 4, 5, 6, 7 du référentiel')
+  })
+
+  it('un pôle en double, hors du référentiel ou hors du périmètre : refusé', () => {
+    const doublon = structuredClone(jourFixture)
+    doublon.poles.push(structuredClone(doublon.poles[0]))
+    const { valid, errors } = validatePartialJour('cartographie-jour', doublon, referentielFixture)
+    expect(valid).toBe(false)
+    expect(errors.map((e) => e.message)).toContain('le pôle 1 figure deux fois')
+    const horsReferentiel = { ...partiel, poles: [{ ...pole2Reduit(), poleNum: '9' }] }
+    expect(validatePartialJour('cartographie-jour', horsReferentiel, referentielFixture).errors.map((e) => e.message))
+      .toContain("le pôle 9 n'est pas un pôle du référentiel")
   })
 })
 
@@ -496,7 +562,7 @@ describe('runVersionOnDays — périmètre restreint et température', () => {
     expect(extractDayFn.mock.calls[0][0].perimetre).toEqual(perimetre)
   })
 
-  it('sandbox : référentiel restreint + validation tolérante injectés, document MARQUÉ partiel', async () => {
+  it('sandbox : référentiel restreint injecté (la sandbox valide contre lui), document MARQUÉ partiel', async () => {
     const sandboxRunner = vi.fn(async () => ({
       document: structuredClone(jourFixture),
       llmCalls: 3,
@@ -514,9 +580,11 @@ describe('runVersionOnDays — périmètre restreint et température', () => {
     const args = sandboxRunner.mock.calls[0][0]
     expect(args.referentiel.competences.map((c) => c.code)).toEqual(['2.01'])
     expect(args.referentiel.poles.map((p) => p.num)).toEqual([2])
-    expect(args.validateFn).toBe(validatePartialJour)
+    // Plus de validation injectée : la sandbox valide le document contre ce
+    // référentiel restreint (ses pôles, ses compétences).
+    expect(args.validateFn).toBeUndefined()
     // Même marqueur que le moteur : sans lui, l'export du run ne se
-    // réimporterait pas comme référence (validation stricte 7 pôles).
+    // réimporterait pas comme référence (tous les pôles y seraient attendus).
     expect(result.days[0].document.perimetre).toEqual({
       partiel: true,
       poles: [2],
@@ -529,7 +597,7 @@ describe('runVersionOnDays — périmètre restreint et température', () => {
       schemaVersion: '1.0.0',
       kind: 'cartographie-jour',
       date: '2026-01-05',
-      poles: [structuredClone(jourFixture.poles[1])],
+      poles: [pole2Reduit()],
       kairos: null,
     }
     const run = await runVersionOnDays({
@@ -547,7 +615,7 @@ describe('runVersionOnDays — périmètre restreint et température', () => {
       run,
       now: () => '2026-07-17T00:00:00.000Z',
     })
-    const reimport = normalizeReferenceImport(JSON.parse(JSON.stringify(report)))
+    const reimport = normalizeReferenceImport(JSON.parse(JSON.stringify(report)), { referentiel: referentielFixture })
     expect(reimport.days[0].document.perimetre.partiel).toBe(true)
   })
 

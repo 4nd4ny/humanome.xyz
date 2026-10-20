@@ -91,7 +91,7 @@ describe('UC-APP-12 — import des archives de l’apprenant', () => {
       { name: 'run-A/2026-01-07.zip', data: storedZip(dayZipFiles(FIXTURE_DAYS['2026-01-07'])) },
       { name: 'run-B/2026-01-06.zip', data: storedZip(broken) },
     ])
-    const { entries, report } = await inventoryZip(corpus)
+    const { entries, report } = await inventoryZip(corpus, { referentiel: referentielDoc })
 
     expect(entries.map((e) => [e.run, e.sourceDate, e.payload.poles.length])).toEqual([
       ['run-A', '2026-01-07', 7],
@@ -102,6 +102,22 @@ describe('UC-APP-12 — import des archives de l’apprenant', () => {
       ['blocking', 'json-invalide', 'run-B'],
       ['warning', 'journee-incomplete', 'run-B'],
     ])
+    expect(report[1].message).toMatch(/^6\/7 pôles présents/) // compté contre le référentiel
+  })
+
+  it('UC-APP-12-U29 — journée incomplète comptée contre le référentiel donné, quel que soit son nombre de pôles ; sans référentiel, rien n’est supposé ; carto_P10 lu', async () => {
+    const day = structuredClone(FIXTURE_DAYS['2026-01-07'])
+    day.poles = day.poles.filter((p) => p.poleNum !== '7')
+    const six = { ...referentielDoc, poles: referentielDoc.poles.filter((p) => p.num !== 7) }
+    const zip = storedZip(dayZipFiles(day))
+    expect((await inventoryZip(zip, { referentiel: six })).report.map((r) => r.code)).toEqual(['date-proposee'])
+    expect((await inventoryZip(zip, { referentiel: referentielDoc })).report.map((r) => r.code)).toEqual(['journee-incomplete', 'date-proposee'])
+    expect((await inventoryZip(zip)).report.map((r) => r.code)).toEqual(['date-proposee'])
+
+    const dix = structuredClone(FIXTURE_DAYS['2026-01-07'].poles[0])
+    dix.poleNum = '10'
+    const { entries } = await inventoryZip(storedZip([...dayZipFiles(FIXTURE_DAYS['2026-01-07']), { name: 'carto_P10.json', data: JSON.stringify(dix) }]))
+    expect(entries[0].payload.poles.map((p) => p.poleNum)).toContain('10')
   })
 
   it('UC-APP-12-U03 — ZIP journalier seul : date PROPOSÉE depuis les feuilles (à confirmer), jamais devinée ailleurs', async () => {

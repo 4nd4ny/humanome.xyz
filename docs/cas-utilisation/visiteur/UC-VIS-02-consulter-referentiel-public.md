@@ -56,8 +56,10 @@ un permalien `#/referentiel/<code>`, ou un client appelle l'API publique.
 ## Scénario nominal
 
 1. Le visiteur ouvre `#/referentiel` (menu « Découvrir » → « Référentiel » ;
-   sur l'accueil, la tuile du plan du site porte l'indice « 7 pôles, 61
-   compétences »). La page affiche « Chargement du référentiel… ».
+   sur l'accueil, la tuile du plan du site porte l'indice « les compétences,
+   pôle par pôle » — sans chiffres depuis le 2026-10-20 : c'est la version
+   publiée qui dit ses pôles et ses compétences). La page affiche
+   « Chargement du référentiel… ».
 2. Le navigateur lit `data/referentiel/index.json` (tableau
    `{referentielId, semver, label, publishedAt, fichier}`, plus récent
    d'abord), retient l'entrée du référentiel `respire` (la première sinon),
@@ -72,7 +74,9 @@ un permalien `#/referentiel/<code>`, ou un client appelle l'API publique.
    l'encart vers
    l'espace participatif Decidim, puis un bloc par pôle (couleur du pôle) listant
    ses compétences : code (permalien), nom, définition éventuelle.
-4. Le visiteur tape dans « Rechercher une compétence » : le filtre porte sur le
+4. Le visiteur tape dans « Rechercher une compétence » (exemple du champ : le
+   premier code du référentiel affiché, « Code ou nom — ex. 1.01 » pour
+   RESPIRE, 2026-10-20) : le filtre porte sur le
    code, le nom et la définition, sans tenir compte des accents ni de la casse ;
    le compteur annonce « n compétence(s) sur 61 pour « … » » et les pôles vides
    sont masqués. Effacer la recherche rétablit les 61.
@@ -196,7 +200,7 @@ contiennent pas l'auteur du brouillon.
 | UC-VIS-02-F09 | E3 | API | Base non configurée → 503 partout | idem |
 | UC-VIS-02-F10 | A4, RG4 | API | Script CLI `export-referentiel-static.php` (processus séparé, base de test) : export = contenu de l'API au moment de l'export ; nom de fichier sûr (contrat avec le front) | idem |
 | UC-VIS-02-F11 | Garantie minimale | API | Le visiteur ne peut rien écrire (401) | idem |
-| UC-VIS-02-F12 | Nominal (1-3) | IHM | Shell réel (sans session injectée) : indice de la tuile, clic sur « Référentiel » du menu, « Chargement du référentiel… », 7.1.0, 7 pôles (couleur), 61 compétences, définition, Decidim ; lecture = les 2 fichiers statiques, seule requête d'API = `api/auth/me` | `web/test/usecases/functional/uc-vis-02-consulter-referentiel-public.test.jsx` |
+| UC-VIS-02-F12 | Nominal (1-3) | IHM | Shell réel (sans session injectée) : indice de la tuile (« les compétences, pôle par pôle »), clic sur « Référentiel » du menu, « Chargement du référentiel… », 7.1.0, 7 pôles (couleur), 61 compétences, définition, Decidim ; lecture = les 2 fichiers statiques, seule requête d'API = `api/auth/me` | `web/test/usecases/functional/uc-vis-02-consulter-referentiel-public.test.jsx` |
 | UC-VIS-02-F13 | Nominal (4) | IHM | Recherche sans accents sur code, nom, définition ; aucun résultat ; retour aux 61 compétences et 7 pôles rendus (recherche blanche puis vide) | idem |
 | UC-VIS-02-F14 | A5 | IHM | Permalien : surbrillance, `aria-current`, défilement de la ligne 7.03 | idem |
 | UC-VIS-02-F15 | A6 | IHM | Hors ligne → référentiel embarqué v7 | idem |

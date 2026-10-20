@@ -4,6 +4,8 @@ declare(strict_types=1);
 
 namespace Humanome\Tests;
 
+use Humanome\Referentiel\ContentHash;
+use Humanome\Referentiel\ReferentielRepository;
 use Psr\Http\Message\ResponseInterface;
 
 /**
@@ -119,6 +121,89 @@ abstract class CartographeTestCase extends AuthTestBase
         self::assertFileExists($path);
 
         return json_decode((string) file_get_contents($path), true, 512, JSON_THROW_ON_ERROR);
+    }
+
+    /** @return array<string, mixed> RESPIRE v7, the public fixture (schemas/fixtures) */
+    protected static function respireV7(): array
+    {
+        return json_decode((string) file_get_contents(dirname(__DIR__, 2) . '/schemas/fixtures/referentiel-respire-v7.json'),
+            true, 512, JSON_THROW_ON_ERROR);
+    }
+
+    /**
+     * RESPIRE v7 as the only published RESPIRE (2026-10-20): a review reads its
+     * codes and checks its revisions against a published version — the one a
+     * cartography stored, else the newest its document conforms to, else the
+     * latest. Other test classes may leave other RESPIRE versions behind: none
+     * stays.
+     */
+    protected static function publierRespireV7(): void
+    {
+        self::$pdo->exec("DELETE FROM referentiel_versions WHERE referentiel_id = 'respire'");
+        (new ReferentielRepository(self::$pdo))->importPublishedDocument(self::respireV7(), 'Import initial');
+    }
+
+    /**
+     * Publishes a referential document as is (its contentHash computed).
+     *
+     * @param array<string, mixed> $referentiel
+     */
+    protected static function publierReferentiel(array $referentiel): void
+    {
+        unset($referentiel['contentHash']);
+        (new ReferentielRepository(self::$pdo))->importPublishedDocument(
+            ['contentHash' => ContentHash::compute($referentiel)] + $referentiel,
+            'Publié',
+        );
+    }
+
+    /**
+     * A schema-valid day of any referential, built on the real one: each pole of
+     * the referential, its first competence short-circuited; the document names
+     * its referential unless it is RESPIRE (T17).
+     *
+     * @param array<string, mixed> $referentiel
+     * @return array<string, mixed>
+     */
+    protected static function jourDocumentPour(array $referentiel): array
+    {
+        $base = self::jourDocument();
+        $modele = $base['poles'][0];
+        $competence = $modele['competences'][0]; // a short-circuit
+        $doc = $base;
+        $doc['poles'] = [];
+        foreach ($referentiel['poles'] as $pole) {
+            $codes = array_values(array_map(
+                static fn (array $c): string => (string) $c['code'],
+                array_filter($referentiel['competences'], static fn (array $c): bool => (int) $c['pole'] === (int) $pole['num']),
+            ));
+            $doc['poles'][] = ['poleNum' => (string) $pole['num']] + array_merge($modele, [
+                'competences' => [['code' => $codes[0]] + $competence],
+                'auditPole' => ['competencesTotales' => 1, 'courtCircuits' => 1, 'competencesNonCourtCircuit' => 0,
+                                'presencesEtablies' => 0, 'nonEtablies' => 1, 'renvoisCartographe' => 0],
+            ]);
+        }
+        if (($referentiel['id'] ?? 'respire') !== 'respire') {
+            $doc['referentiel'] = $referentiel['id'];
+        }
+
+        return $doc;
+    }
+
+    /**
+     * RESPIRE in a six-pole version: its seventh pole and its competences gone.
+     *
+     * @return array<string, mixed>
+     */
+    protected static function respireSixPoles(string $version = '8.0.0'): array
+    {
+        $ref = self::respireV7();
+        $ref['version'] = $version;
+        $ref['label'] = 'RESPIRE v8';
+        $ref['poles'] = array_values(array_filter($ref['poles'], static fn (array $p): bool => (int) $p['num'] !== 7));
+        $ref['competences'] = array_values(array_filter($ref['competences'], static fn (array $c): bool => (int) $c['pole'] !== 7));
+
+        return $ref;
     }
 
     /** Latest audit event of a type: [user_id, details] or null. */

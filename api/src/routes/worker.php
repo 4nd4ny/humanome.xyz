@@ -24,6 +24,7 @@ use Humanome\Env;
 use Humanome\Etablissement\CohorteRepository;
 use Humanome\Etablissement\ConfigRepository;
 use Humanome\Keys\KeyVault;
+use Humanome\Referentiel\Conformite;
 use Humanome\Referentiel\ReferentielRepository;
 use Humanome\Validation;
 use Humanome\Worker\JobQueue;
@@ -210,8 +211,10 @@ return function (App $app): void {
 
     // ------------------------------------------------------------------
     // POST /api/worker/jobs/{id}/result {document | erreur, tokens?, coutUsd?}
-    // The document is re-validated SERVER-SIDE (Validation.php); the declared
-    // cost is bounded and increments the establishment's own spent_usd.
+    // The document is re-validated SERVER-SIDE (Validation.php), then checked
+    // against the referential version its run froze (Conformite: its poles,
+    // each once, its codes, its name); the declared cost is bounded and
+    // increments the establishment's own spent_usd.
     // ------------------------------------------------------------------
     $app->post('/worker/jobs/{id:[0-9]+}/result', $wrap(function (Request $request, Response $response, array $args) use ($json, $authenticate, $maxDeclaredCostUsd): Response {
         $etablissementId = $authenticate($request);
@@ -261,12 +264,19 @@ return function (App $app): void {
                 'details' => \array_slice($result['errors'], 0, 5, true),
             ], 422);
         }
-        // the document is of its run's referential (T17): naming another cannot take it out of RESPIRE's checks
-        if (($document['referentiel'] ?? 'respire') !== (string) $job['referentiel_id']) {
+        // the document conforms to its run's referential version: naming another
+        // (T17), losing one of its poles or a code it does not know is refused
+        $referentiel = (new ReferentielRepository(Db::get()))
+            ->findPublished((string) $job['referentiel_id'], (string) $job['referentiel_semver']);
+        if (!\is_array($referentiel['content'] ?? null)) {
+            return $json($response, ['error' => sprintf('Référentiel %s@%s du run indisponible',
+                $job['referentiel_id'], $job['referentiel_semver'])], 422);
+        }
+        $conformite = Conformite::verifier('cartographie-jour', $document, $referentiel['content']);
+        if (!$conformite['valid']) {
             return $json($response, [
-                'error' => 'Document invalide au schéma cartographie-jour',
-                'details' => ['/referentiel' => [sprintf('Le document est du référentiel de son run, « %s »',
-                    $job['referentiel_id'])]],
+                'error' => 'Document non conforme au référentiel de son run',
+                'details' => \array_slice($conformite['errors'], 0, 5, true),
             ], 422);
         }
 

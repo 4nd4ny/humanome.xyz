@@ -61,10 +61,30 @@ export function getModelPricing(model) {
   return best?.pricing ?? null
 }
 
-/** Structure of one full run: 7 pole calls + 1 kairos call per day… */
+/** Structure of one full run of RESPIRE v7: 7 pole calls + 1 kairos call per day… */
 export const CALLS_PER_DAY = 8
 /** …plus the merge narratives: 61 competences + 7 poles + 1 kairos. */
 export const MERGE_NARRATIVE_CALLS = 69
+
+/**
+ * Calls of one day of a full run on a referential: one per pole, plus the
+ * kairos (RESPIRE v7: CALLS_PER_DAY).
+ *
+ * @param {{poles: Array}} referentiel
+ */
+export function callsPerDayFor(referentiel) {
+  return referentiel.poles.length + 1
+}
+
+/**
+ * Merge narratives of a run on a referential: one per competence, one per
+ * pole, plus the kairos (RESPIRE v7: MERGE_NARRATIVE_CALLS).
+ *
+ * @param {{poles: Array, competences: Array}} referentiel
+ */
+export function mergeNarrativeCallsFor(referentiel) {
+  return referentiel.competences.length + referentiel.poles.length + 1
+}
 
 /**
  * Pre-run estimate of a full cartography run (extraction of every day, then

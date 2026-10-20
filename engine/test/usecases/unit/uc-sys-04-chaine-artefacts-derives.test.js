@@ -454,7 +454,7 @@ describe('UC-SYS-04 — fonctionnels (scripts en sous-processus, miroir temporai
     expect(validateInMirror(root, 'archive-export', archiveFile)).toEqual({ valid: true, errors: [] })
   }, TIMEOUT)
 
-  it('UC-SYS-04-F07 — Nominal, étape 5, E6 : validate-corpus → tout le corpus démo, le 7.0.0 et les fixtures OK (code 0) ; document non conforme, JSON illisible ou kind absent → KO, code 1', () => {
+  it('UC-SYS-04-F07 — Nominal, étape 5, E6 : validate-corpus → tout le corpus démo, le 7.0.0 et les fixtures OK (code 0) ; document invalide au schéma ou non conforme à RESPIRE v7, JSON illisible ou kind absent → KO, code 1', () => {
     const root = mirrorWith(['web/public/data/demo', `${REF_DIR}/respire-v7.json`])
     const fixtures = readdirSync(join(root, 'schemas/fixtures')).filter((name) => name.endsWith('.json'))
     const cartoFixtures = readdirSync(join(root, 'schemas/fixtures/carto')).filter((name) => name.endsWith('.json'))
@@ -480,6 +480,11 @@ describe('UC-SYS-04 — fonctionnels (scripts en sous-processus, miroir temporai
     delete day.kairos
     writeFileSync(join(jours, '2026-01-06.json'), JSON.stringify(day))
     writeFileSync(join(jours, '2026-01-07.json'), '{')
+    // Le schéma ne fixe plus les 7 pôles de RESPIRE (2026-10-20) : la conformité les garde.
+    const sansPole7 = readJson(join(jours, '2025-12-22.json'))
+    sansPole7.poles = sansPole7.poles.filter((p) => p.poleNum !== '7')
+    sansPole7.kairos = null
+    writeFileSync(join(jours, '2025-12-22.json'), JSON.stringify(sansPole7))
     writeFileSync(join(root, 'web/public/data/demo/merge.json'), JSON.stringify({ kind: 'cartographie-merge' }))
     writeFileSync(join(root, 'schemas/fixtures/zz-sans-kind.json'), '{}')
 
@@ -489,10 +494,13 @@ describe('UC-SYS-04 — fonctionnels (scripts en sous-processus, miroir temporai
       "KO  web/public/data/demo/jours/2026-01-06.json  (cartographie-jour) — 1 erreur(s)\n    / [required] must have required property 'kairos'\n",
     )
     expect(ko.stdout).toMatch(/KO {2}web\/public\/data\/demo\/jours\/2026-01-07\.json\n {4}JSON illisible : /)
+    expect(ko.stdout).toContain(
+      'KO  web/public/data/demo/jours/2025-12-22.json  (cartographie-jour) — 1 erreur(s)\n    /poles [referentiel] il manque le pôle 7 du référentiel\n',
+    )
     expect(ko.stdout).toContain('KO  web/public/data/demo/merge.json  (cartographie-merge) — 10 erreur(s)\n')
     expect(ko.stdout).toContain('    … 2 erreur(s) supplémentaire(s)\n')
     expect(ko.stdout).toContain('KO  schemas/fixtures/zz-sans-kind.json\n    kind inconnu ou absent : undefined\n')
-    expect(ko.stdout.trimEnd().split('\n').at(-1)).toBe(`${total - 3} OK, 4 KO sur ${total + 1} fichiers`)
+    expect(ko.stdout.trimEnd().split('\n').at(-1)).toBe(`${total - 4} OK, 5 KO sur ${total + 1} fichiers`)
   }, TIMEOUT)
 
   it('UC-SYS-04-F08 — E3 : prérequis non générés → validate-corpus, build-default-prompt-package, build-twin6-prompt-package et build-validators échouent (ENOENT, code 1) ; seuls les validateurs sont déjà réécrits', () => {
@@ -524,12 +532,16 @@ describe('UC-SYS-04 — fonctionnels (scripts en sous-processus, miroir temporai
     expect(existsSync(compiled)).toBe(true)
   }, TIMEOUT)
 
-  it('UC-SYS-04-F09 — Nominal, étape 7, E7 (RG2, RG5) : paquet par défaut aurora-v3-reconstruit conforme, gabarits à placeholders, déterministe ; dérive d’un gabarit du moteur → construction refusée', () => {
+  it('UC-SYS-04-F09 — Nominal, étape 7, E7 (RG2, RG5) : paquet par défaut aurora-v3-reconstruit conforme (1.0.0, et 1.1.0 dont les gabarits d’extraction lisent le référentiel), gabarits à placeholders, déterministe ; dérive d’un gabarit du moteur → construction refusée, aucune version écrite', () => {
     const root = mirrorWith([`${REF_DIR}/respire-v7.json`])
     const out = join(root, 'build/prompt-packages/aurora-v3-reconstruit-1.0.0.json')
+    const out110 = join(root, 'build/prompt-packages/aurora-v3-reconstruit-1.1.0.json')
     const first = run(root, 'scripts/build-default-prompt-package.mjs')
     expectOk(first)
-    expect(first.stdout).toBe(`wrote build/prompt-packages/aurora-v3-reconstruit-1.0.0.json (5 prompts, engine ${ENGINE_VERSION})\n`)
+    expect(first.stdout).toBe(
+      `wrote build/prompt-packages/aurora-v3-reconstruit-1.0.0.json (5 prompts, engine ${ENGINE_VERSION})\n`
+      + `wrote build/prompt-packages/aurora-v3-reconstruit-1.1.0.json (5 prompts, engine ${ENGINE_VERSION})\n`,
+    )
     const pkg = readJson(out)
     expect(validateDocument('prompt-package', pkg)).toEqual({ valid: true, errors: [] })
     expect(pkg).toMatchObject({ kind: 'prompt-package', id: 'aurora-v3-reconstruit', version: '1.0.0' })
@@ -553,10 +565,35 @@ describe('UC-SYS-04 — fonctionnels (scripts en sous-processus, miroir temporai
     for (const prompt of pkg.prompts) {
       for (const variable of prompt.variables) expect(prompt.texte, `${prompt.role}:${variable.nom}`).toContain(`{{${variable.nom}}}`)
     }
+    // 1.0.0 écrit RESPIRE v7 en toutes lettres : ses gabarits ne lisent pas le référentiel.
+    expect(pkg.prompts[0].texte).toContain('pour UN pôle du référentiel RESPIRE, en jouant')
+    expect(pkg.prompts[1].texte).toContain('Les 7 pôles de la feuille du jour')
+    expect(all).not.toContain('{{referentiel_nom}}')
+
+    // 1.1.0 (2026-10-20) : mêmes gabarits, sauf ce que l'extraction lit du référentiel.
+    const pkg110 = readJson(out110)
+    expect(validateDocument('prompt-package', pkg110)).toEqual({ valid: true, errors: [] })
+    expect(pkg110).toMatchObject({ id: 'aurora-v3-reconstruit', version: '1.1.0', referentielCompatible: { id: 'respire', versionMin: '7.0.0' } })
+    expect(pkg110.changelog.map((c) => [c.version, c.date])).toEqual([['1.0.0', '2026-07-12'], ['1.1.0', '2026-10-20']])
+    expect(pkg110.metadata).toMatchObject({ creeLe: '2026-10-20T00:00:00Z', publieLe: '2026-10-20T00:00:00Z' })
+    const [extraction110, kairos110, ...narratifs110] = pkg110.prompts
+    expect(narratifs110).toEqual(pkg.prompts.slice(2))
+    expect(extraction110.texte).toBe(pkg.prompts[0].texte.replace('référentiel RESPIRE,', 'référentiel {{referentiel_nom}},'))
+    expect(extraction110.variables.map((v) => v.nom)).toEqual([...pkg.prompts[0].variables.map((v) => v.nom), 'referentiel_nom'])
+    expect(kairos110.variables.map((v) => v.nom)).toEqual([...pkg.prompts[1].variables.map((v) => v.nom), 'referentiel_nom', 'code_exemple_1', 'code_exemple_2'])
+    for (const placeholder of ['Les {{nb_poles}} pôles de la feuille du jour', '# Référentiel {{referentiel_nom}} ({{nb_poles}} pôles, {{nb_competences}} compétences)', '"codesRelies": [ "{{code_exemple_1}}", "{{code_exemple_2}}" ]']) {
+      expect(kairos110.texte).toContain(placeholder)
+    }
+    expect(`${extraction110.texte}${kairos110.texte}`).not.toMatch(/RESPIRE|"1\.01"|"4\.02"|7 pôles/)
+    for (const prompt of pkg110.prompts) {
+      for (const variable of prompt.variables) expect(prompt.texte, `1.1.0 ${prompt.role}:${variable.nom}`).toContain(`{{${variable.nom}}}`)
+    }
 
     const firstHash = sha(out)
+    const firstHash110 = sha(out110)
     expectOk(run(root, 'scripts/build-default-prompt-package.mjs'))
     expect(sha(out)).toBe(firstHash)
+    expect(sha(out110)).toBe(firstHash110)
 
     // RG5, E7 : un gabarit du moteur qui dérive casse la construction.
     const extractJs = join(root, 'engine/src/pipeline/extract.js')

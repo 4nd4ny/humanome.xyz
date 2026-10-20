@@ -7,13 +7,16 @@
 //     MAX_LLM_CALLS_PER_RUN, puis refus + arrêt du run) ;
 //   - timeout global SANDBOX_TIMEOUT_MS puis terminate (l'hôte est détruit,
 //     worker compris — un calcul infini ne survit pas au run) ;
-//   - valide le document final au schéma AVANT de le rendre à l'appelant.
+//   - valide le document final AVANT de le rendre à l'appelant : au schéma,
+//     puis — journée ou fusion — à sa conformité au référentiel transmis au
+//     paquet (ses pôles, chacun une fois, ses codes ; 2026-10-20).
 //
 // L'hôte est INJECTABLE (hostFactory) : les tests vitest pilotent le protocole
 // avec un faux hôte ; le vrai test d'isolation navigateur arrive en e2e.
 // Modèle de menace : docs/securite-prompts.md.
 
 import { validateDocument } from '@engine/validation.js'
+import { validateDocumentPourReferentiel } from '@engine/conformite.js'
 import {
   buildSrcdoc,
   buildWorkerSource,
@@ -69,7 +72,12 @@ export function createIframeHost({ doc = globalThis.document, win = globalThis.w
  * @param {object} params.pkg document prompt-package (code.orchestration exécuté)
  * @param {string} params.dayText texte de la journée
  * @param {string} params.date date ISO AAAA-MM-JJ
- * @param {object} params.referentiel document référentiel
+ * @param {object} params.referentiel document référentiel (transmis au paquet ;
+ *   le document final lui est conforme, ou il est refusé). Pour un run partiel,
+ *   le référentiel restreint au périmètre : c'est lui qui fixe les pôles
+ *   attendus, jamais le marqueur `perimetre` que le paquet poserait sur sa
+ *   journée — retiré avant la validation et du document rendu (l'appelant pose
+ *   le sien, comme le banc).
  * @param {{complete: Function}} params.provider abstraction providers — SEULE
  *   voie de sortie réseau du code sandboxé
  * @param {string} params.model modèle passé au provider
@@ -81,7 +89,8 @@ export function createIframeHost({ doc = globalThis.document, win = globalThis.w
  * @param {AbortSignal} [params.signal] interruption coopérative (terminate)
  * @param {() => object} [params.hostFactory=createIframeHost] couture de test
  * @param {(info: {calls: number, max: number}) => void} [params.onLlmCall]
- * @param {typeof validateDocument} [params.validateFn]
+ * @param {(kind: string, doc: object) => {valid: boolean, errors: Array}} [params.validateFn]
+ *   défaut : le schéma, puis la conformité au référentiel (journée, fusion)
  * @returns {Promise<{document: object, llmCalls: number, durationMs: number}>}
  */
 export function runPackageInSandbox({
@@ -98,7 +107,10 @@ export function runPackageInSandbox({
   signal,
   hostFactory = createIframeHost,
   onLlmCall,
-  validateFn = validateDocument,
+  validateFn = (kind, doc) =>
+    (kind === 'cartographie-jour' || kind === 'cartographie-merge') && referentiel
+      ? validateDocumentPourReferentiel(kind, doc, referentiel)
+      : validateDocument(kind, doc),
 } = {}) {
   if (typeof provider?.complete !== 'function') {
     return Promise.reject(new TypeError('runPackageInSandbox : provider avec complete() requis'))
@@ -189,15 +201,21 @@ export function runPackageInSandbox({
           break
         }
         case 'result': {
-          const doc = msg.document
-          if (!doc || typeof doc !== 'object' || doc.kind !== expectedKind) {
+          const recu = msg.document
+          if (!recu || typeof recu !== 'object' || recu.kind !== expectedKind) {
             fail(
               new Error(
-                `Sandbox : le paquet a produit un document de type « ${doc?.kind ?? 'inconnu'} » ` +
+                `Sandbox : le paquet a produit un document de type « ${recu?.kind ?? 'inconnu'} » ` +
                   `au lieu de « ${expectedKind} ».`,
               ),
             )
             return
+          }
+          // Code tiers : son marqueur de périmètre ne choisit pas les pôles attendus.
+          let doc = recu
+          if (expectedKind === 'cartographie-jour' && 'perimetre' in recu) {
+            const { perimetre: _marqueurTiers, ...sansMarqueur } = recu
+            doc = sansMarqueur
           }
           const { valid, errors } = validateFn(expectedKind, doc)
           if (!valid) {
@@ -205,9 +223,12 @@ export function runPackageInSandbox({
               .slice(0, 3)
               .map((e) => `${e.path} ${e.message}`)
               .join(' ; ')
+            const nature = errors.every((e) => e.keyword === 'referentiel')
+              ? 'non conforme au référentiel'
+              : `invalide au schéma ${expectedKind}`
             fail(
               new Error(
-                `Sandbox : document final invalide au schéma ${expectedKind} ` +
+                `Sandbox : document final ${nature} ` +
                   `(${errors.length} erreur(s) : ${detail}).`,
               ),
             )

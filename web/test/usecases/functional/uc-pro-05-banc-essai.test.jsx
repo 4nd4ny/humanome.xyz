@@ -145,11 +145,14 @@ describe('UC-PRO-05 — scénario nominal : comparaison A/B de deux versions', (
     openBanc()
     const select = await ready()
 
-    // 2. Les sources : moteur embarqué + versions publiées (+ mes brouillons).
-    expect([...select.options].map((o) => o.textContent)).toEqual([
-      'aurora-v3-reconstruit@1.0.0 (moteur embarqué)',
-      'aurora-lab@2.0.0 (publiée)',
-    ])
+    // 2. Les sources : moteur embarqué + versions publiées (+ mes brouillons),
+    // une fois la liste publiée chargée (attente : le chargement est asynchrone).
+    await waitFor(() =>
+      expect([...select.options].map((o) => o.textContent)).toEqual([
+        'aurora-v3-reconstruit@1.1.0 (moteur embarqué)',
+        'aurora-lab@2.0.0 (publiée)',
+      ]),
+    )
 
     // 3. A/B : A = étalon embarqué, B = version publiée ; fixture Maya, Service humanome.
     fireEvent.click(screen.getByRole('radio', { name: /A\/B/ }))
@@ -163,7 +166,7 @@ describe('UC-PRO-05 — scénario nominal : comparaison A/B de deux versions', (
     // 4. La version publiée est résolue via l'API ; 5. 3 journées × 8 appels × 2 branches.
     expect(net.calls('api/prompt-packages/aurora-lab/2.0.0')).toHaveLength(1)
     expect(llm.prompts).toHaveLength(48)
-    expect(ab.textContent).toContain('aurora-v3-reconstruit@1.0.0 vs aurora-lab@2.0.0')
+    expect(ab.textContent).toContain('aurora-v3-reconstruit@1.1.0 vs aurora-lab@2.0.0')
     const total = Object.values(DAY_DOCS).reduce((sum, doc) => sum + etablies(doc).length, 0)
     expect(rowCells(ab, 'Compétences établies (total)')).toEqual([String(total), String(total)])
     expect(rowCells(ab, 'Appels LLM')).toEqual(['24', '24'])
@@ -438,7 +441,7 @@ describe('UC-PRO-05 — scénarios alternatifs', () => {
     // Alerte avant run (drapeau reserved) ET alerte définitive au run (paquet chargé).
     const notes = screen.getAllByRole('note').map((n) => n.textContent)
     expect(notes.some((t) => t.includes('paquet Twin6 réservé'))).toBe(true)
-    expect(notes.some((t) => t.includes('paquet Twin6 : les fiches P1..P7'))).toBe(true)
+    expect(notes.some((t) => t.includes('paquet Twin6 : les fiches de pôle'))).toBe(true)
     // La cartographie globale est téléchargeable telle que produite.
     const lien = within(bloc).getByRole('link', { name: 'Télécharger la cartographie (JSON)' })
     expect(decodeDataUrl(lien.getAttribute('href'))).toEqual(mergeFixture)
@@ -662,7 +665,7 @@ describe('UC-PRO-05 — scénarios d’erreur', () => {
     expect(llm.prompts).toHaveLength(0)
   })
 
-  it('UC-PRO-05-F21 — E4 : référence absente puis référence invalide au schéma', async () => {
+  it('UC-PRO-05-F21 — E4 : référence absente puis référence non conforme au référentiel du banc (un pôle manque)', async () => {
     const llm = serviceHumanome()
     const net = stubNetwork({ ...bancRoutes(), ...llm.routes })
     openBanc()
@@ -684,8 +687,8 @@ describe('UC-PRO-05 — scénarios d’erreur', () => {
     await act(async () => {
       fireEvent.change(screen.getByLabelText('JSON de référence'), { target: { files: [file] } })
     })
-    expect((await screen.findByRole('alert')).textContent).toMatch(
-      /^JSON de référence : document du 2026-01-05 invalide au schéma/,
+    expect((await screen.findByRole('alert')).textContent).toBe(
+      'JSON de référence : document du 2026-01-05 non conforme au référentiel (1 erreur(s) : /poles il manque le pôle 7 du référentiel).',
     )
     expect(llm.prompts).toHaveLength(0)
   })

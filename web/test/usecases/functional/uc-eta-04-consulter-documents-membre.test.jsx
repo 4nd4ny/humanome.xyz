@@ -6,8 +6,9 @@
 // du consentement, la fusion chronologique CALCULÉE DANS LE NAVIGATEUR par le
 // moteur (aucun appel LLM, aucun envoi au serveur) puis une journée. Seule
 // l'API est simulée (enveloppe réelle {membre, documents}) ; le référentiel
-// publié est absent du réseau simulé : la copie embarquée sert de repli,
-// comme sur une copie statique ; le module sunburst est le faux module de test.
+// publié est absent du réseau simulé : pour la version figée par les runs
+// (RESPIRE 7.0.0), la copie embarquée sert de repli, comme sur une copie
+// statique ; le module sunburst est le faux module de test.
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
 import { act, cleanup, fireEvent, screen, waitFor, within } from '@testing-library/react'
 import { resetApiClient } from '../../../src/api/client.js'
@@ -126,7 +127,7 @@ describe('UC-ETA-04 — l’établissement lit les cartographies d’un membre',
     openApp('#/etablissement/membre/12')
 
     const error = await screen.findByTestId('etab-merge-erreur')
-    expect(error.textContent).toContain('au moins une compétence établie dans chacun des 7 pôles')
+    expect(error.textContent).toContain('au moins une compétence établie dans chacun des pôles du référentiel')
     expect(error.textContent).toContain('Les documents journaliers restent consultables individuellement')
     const dayButton = memberViewButtons()[1]
     expect(dayButton.disabled).toBe(false)

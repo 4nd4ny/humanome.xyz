@@ -7,10 +7,13 @@ namespace Humanome\Tests\UseCases\Functional;
 use Humanome\Db;
 use Humanome\Llm\MockProvider;
 use Humanome\Packages\PromptPackageRepository;
+use Humanome\Referentiel\Conformite;
 use Humanome\Referentiel\ReferentielRepository;
 use Humanome\Tests\MasseTestCase;
 use Humanome\Tests\UseCases\Support\EtaSupport;
 use Humanome\Tests\UseCases\Support\EtaTickSupport;
+use Humanome\Tests\UseCases\Support\ReferentielsFictifs;
+use Humanome\Worker\PromptRunner;
 use Humanome\Worker\Tick;
 use PHPUnit\Framework\Attributes\TestDox;
 
@@ -504,5 +507,139 @@ final class UcEta03PiloterRunMasseTest extends MasseTestCase
         self::assertSame(32, $this->provider->calls, '4 extractions pour 2 journées (8 appels chacune)');
         $dates = array_column(self::json($this->as_($etab, 'GET', '/api/etablissement/membres/' . $learner['id'] . '/documents'))['documents'], 'date');
         self::assertSame(['2026-01-05', '2026-01-05', '2026-01-06', '2026-01-06'], $dates);
+    }
+
+    /** Un fournisseur mock qui garde les prompts reçus. */
+    private static function recorder(): object
+    {
+        return new class () {
+            /** @var list<string> */
+            public array $prompts = [];
+            private MockProvider $inner;
+
+            public function __construct()
+            {
+                $this->inner = new MockProvider();
+            }
+
+            public function complete(string $model, ?string $system, string $prompt, int $maxTokens): array
+            {
+                $this->prompts[] = $prompt;
+
+                return $this->inner->complete($model, $system, $prompt, $maxTokens);
+            }
+        };
+    }
+
+    #[TestDox('UC-ETA-03-F26 — A8 : un run sur un autre référentiel publié (neuf pôles) avec un paquet qui lit le référentiel → 10 appels par journée, documents qui le nomment, conformes à sa version')]
+    public function testF26RunOnAnotherPublishedReferentiel(): void
+    {
+        $neuf = ReferentielsFictifs::neufPoles();
+        self::publishReferentielDocument(Db::get(), $neuf);
+        $package = self::packageReadingTheReferentiel();
+        (new PromptPackageRepository(Db::get()))->importPublishedDocument($package);
+        // Pour RESPIRE v7, ce paquet rend les prompts de 1.0.0 à l'octet.
+        $v100 = new PromptRunner(self::defaultPackage(), self::respireReferentiel());
+        $lit = new PromptRunner($package, self::respireReferentiel());
+        self::assertSame($v100->polePrompt(3, 'Feuille.', '2026-01-06'), $lit->polePrompt(3, 'Feuille.', '2026-01-06'));
+        self::assertSame($v100->kairosPrompt('Feuille.', '2026-01-06'), $lit->kairosPrompt('Feuille.', '2026-01-06'));
+
+        $etab = $this->registerEtablissement();
+        $this->configure($etab, 50.0);
+        $cohorte = $this->createCohorte($etab);
+        $learner = $this->enrolLearner($cohorte['code'], $cohorte['id'], 1, ['2026-01-05', '2026-01-06']);
+
+        // Sans version : la dernière publiée de ce référentiel.
+        $response = $this->launch($etab, $cohorte['id'], [
+            'promptPackageId' => 'aurora-lit-referentiel',
+            'promptPackageVersion' => '1.0.0',
+            'referentielId' => 'fictif-neuf',
+        ]);
+        self::assertSame(201, $response->getStatusCode(), (string) $response->getBody());
+        $run = self::json($response);
+        self::assertSame(['id' => 'fictif-neuf', 'version' => '1.0.0'], $this->board($etab, $run['runId'])['referentiel']);
+
+        $recorder = self::recorder();
+        do {
+            $counters = self::untilUnlocked((new Tick(Db::get(), ['budgetSeconds' => 3600,
+                'providerFactory' => static fn (array $c): object => $recorder]))->run(...));
+        } while ($counters['jobsTouched'] > 0);
+        self::assertSame('done', $this->board($etab, $run['runId'])['status']);
+        self::assertCount(2 * 10, $recorder->prompts, 'neuf pôles + kairos par journée');
+        self::assertStringContainsString('pour UN pôle du référentiel Fictif à neuf pôles', $recorder->prompts[0]);
+        self::assertStringContainsString('# Référentiel Fictif à neuf pôles (9 pôles, 18 compétences)', $recorder->prompts[9]);
+
+        $documents = self::json($this->as_($etab, 'GET', '/api/etablissement/membres/' . $learner['id'] . '/documents'))['documents'];
+        self::assertSame(['2026-01-05', '2026-01-06'], array_column($documents, 'date'));
+        foreach ($documents as $entry) {
+            self::assertSame(['id' => 'fictif-neuf', 'version' => '1.0.0'], $entry['referentiel']);
+            self::assertSame('fictif-neuf', $entry['document']['referentiel']);
+            self::assertSame(range(1, 9), array_map(intval(...), array_column($entry['document']['poles'], 'poleNum')));
+            self::assertTrue(Conformite::valider('cartographie-jour', $entry['document'], $neuf)['valid']);
+        }
+    }
+
+    #[TestDox('UC-ETA-03-F27 — E7 : référentiel inutilisable → 422 (version non publiée, identifiant inconnu, paquet qui ne lit pas le référentiel) ; E1 : version sans identifiant, identifiant ou version non textuels → 422 {fields}')]
+    public function testF27UnusableReferentiel(): void
+    {
+        self::publishReferentielDocument(Db::get(), ReferentielsFictifs::neufPoles());
+        $etab = $this->registerEtablissement();
+        $cohorte = $this->createCohorte($etab);
+        $this->enrolLearner($cohorte['code'], $cohorte['id'], 1, ['2026-01-05']);
+
+        $cases = [
+            'version non publiée' => [['referentielId' => 'fictif-neuf', 'referentielVersion' => '9.9.9'], 'Version publiée du référentiel introuvable : fictif-neuf@9.9.9'],
+            'identifiant inconnu' => [['referentielId' => 'inconnu'], 'Version publiée du référentiel introuvable : inconnu'],
+            // Le paquet par défaut 1.0.0 écrit « RESPIRE » et « 7 pôles » en toutes lettres.
+            'paquet 1.0.0' => [['referentielId' => 'fictif-neuf'], (string) (new PromptRunner(self::defaultPackage(), ReferentielsFictifs::neufPoles()))->referentielRefusal()],
+        ];
+        foreach ($cases as $case => [$body, $message]) {
+            $response = $this->launch($etab, $cohorte['id'], $body);
+            self::assertSame(422, $response->getStatusCode(), $case);
+            self::assertSame(['error' => $message], self::json($response), $case);
+        }
+        self::assertStringContainsString('ne cartographient que RESPIRE à sept pôles', $cases['paquet 1.0.0'][1]);
+
+        $fields = $this->launch($etab, $cohorte['id'], ['referentielVersion' => '1.0.0']);
+        self::assertSame(422, $fields->getStatusCode());
+        self::assertSame(['referentielId' => 'referentielId requis avec referentielVersion'], self::json($fields)['fields']);
+        $fields = $this->launch($etab, $cohorte['id'], ['referentielId' => 12]);
+        self::assertSame(['referentielId' => 'referentielId doit être un identifiant de référentiel'], self::json($fields)['fields']);
+        $fields = $this->launch($etab, $cohorte['id'], ['referentielId' => 'fictif-neuf', 'referentielVersion' => 1]);
+        self::assertSame(422, $fields->getStatusCode());
+        self::assertSame(['referentielVersion' => 'referentielVersion doit être une version (semver)'], self::json($fields)['fields']);
+        self::assertSame(0, (int) Db::get()->query('SELECT COUNT(*) FROM mass_runs')->fetchColumn());
+    }
+
+    #[TestDox('UC-ETA-03-F28 — A8 : une version de RESPIRE en six pôles devient la dernière publiée → refusée au paquet 1.0.0, qui garde la 7.0.0 sur demande ; un paquet qui lit le référentiel la cartographie (6 pôles, 7 appels par journée)')]
+    public function testF28RespireInSixPoles(): void
+    {
+        self::publishReferentielDocument(Db::get(), self::respireSixPoles(), 'RESPIRE v8');
+        (new PromptPackageRepository(Db::get()))->importPublishedDocument(self::packageReadingTheReferentiel());
+        $etab = $this->registerEtablissement();
+        $this->configure($etab, 50.0);
+        $cohorte = $this->createCohorte($etab);
+        $learner = $this->enrolLearner($cohorte['code'], $cohorte['id'], 1, ['2026-01-07']);
+
+        // Défaut : la dernière version publiée de RESPIRE, 8.0.0 — que 1.0.0 ne sait pas cartographier.
+        $refused = $this->launch($etab, $cohorte['id'], []);
+        self::assertSame(422, $refused->getStatusCode());
+        self::assertStringContainsString('ne cartographient que RESPIRE à sept pôles', self::json($refused)['error']);
+
+        // La 7.0.0 reste choisissable : le run la fige.
+        $v7 = $this->launch($etab, $cohorte['id'], ['referentielId' => 'respire', 'referentielVersion' => '7.0.0']);
+        self::assertSame(201, $v7->getStatusCode(), (string) $v7->getBody());
+        self::assertSame(['id' => 'respire', 'version' => '7.0.0'], $this->board($etab, self::json($v7)['runId'])['referentiel']);
+        $this->as_($etab, 'POST', '/api/etablissement/runs/' . self::json($v7)['runId'] . '/annuler');
+
+        $v8 = $this->launch($etab, $cohorte['id'], ['promptPackageId' => 'aurora-lit-referentiel', 'promptPackageVersion' => '1.0.0']);
+        self::assertSame(201, $v8->getStatusCode(), (string) $v8->getBody());
+        $this->tickUntilDrained();
+        self::assertSame('done', $this->board($etab, self::json($v8)['runId'])['status']);
+        self::assertSame(7, $this->provider->calls, 'six pôles + kairos');
+        $document = self::json($this->as_($etab, 'GET', '/api/etablissement/membres/' . $learner['id'] . '/documents'))['documents'][0]['document'];
+        self::assertArrayNotHasKey('referentiel', $document, 'un document de RESPIRE ne nomme pas son référentiel');
+        self::assertSame(['1', '2', '3', '4', '5', '6'], array_column($document['poles'], 'poleNum'));
+        self::assertTrue(Conformite::valider('cartographie-jour', $document, self::respireSixPoles())['valid']);
     }
 }

@@ -10,6 +10,7 @@
 import mergeDocDemo from '../../public/data/demo/merge.json'
 import referentielDemo from '../../public/data/referentiel/respire-v7.json'
 import { validateDocument } from '@engine/validation.js'
+import { validateConformite } from '@engine/conformite.js'
 import { isValidIsoDate } from '../router.js'
 
 /** @returns {object} demo merge document (cartographie-merge, bundled) */
@@ -86,13 +87,19 @@ const USER_KINDS = ['cartographie-merge', 'cartographie-jour']
 /**
  * Parses and validates a user-provided file (drag & drop or file input).
  * Nothing leaves the browser: the file is read and validated locally.
+ * The schemas no longer pin a structure (2026-10-20): given the referential
+ * the document is to be read with, its conformity is checked too — its poles,
+ * each once, its codes in their pole.
  *
  * @param {string} text raw file content
+ * @param {object | null} [referentiel] the referential version to read it with
  * @returns {{kind: 'cartographie-merge' | 'cartographie-jour', doc: object}}
  * @throws {Error} French message; `error.validationErrors` carries the ajv
- *   error list ({path, keyword, message}) when the JSON does not match its schema.
+ *   error list ({path, keyword, message}) when the JSON does not match its
+ *   schema, or the conformity errors (keyword 'referentiel') when it does not
+ *   conform to the referential.
  */
-export function parseUserDocument(text) {
+export function parseUserDocument(text, referentiel = null) {
   let data
   try {
     data = JSON.parse(text)
@@ -121,6 +128,17 @@ export function parseUserDocument(text) {
     )
     error.validationErrors = errors
     throw error
+  }
+  if (referentiel) {
+    const conformite = validateConformite(kind, data, referentiel)
+    if (!conformite.valid) {
+      const n = conformite.errors.length
+      const error = new Error(
+        `Document non conforme au référentiel « ${referentiel.id ?? '?'} » (${n} erreur${n > 1 ? 's' : ''}).`,
+      )
+      error.validationErrors = conformite.errors
+      throw error
+    }
   }
 
   return { kind, doc: data }

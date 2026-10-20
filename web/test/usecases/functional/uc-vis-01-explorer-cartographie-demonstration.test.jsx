@@ -161,19 +161,18 @@ describe('UC-VIS-01 — anomalie constatée (comportement actuel figé)', () => 
   // comportement attendu : avec la VRAIE bibliothèque sunburst et une journée
   // conforme au schéma (poleNum en chaîne), cliquer un pôle ne montre pas son
   // rapport (findDayNode compare poleNum à un nombre). À inverser après correction.
-  it('UC-VIS-01-F17 — [comportement actuel, anomalie AN1] vue journée : la sélection d’un pôle n’affiche pas son rapport', async () => {
+  it('UC-VIS-01-F17 — AN1 corrigée (2026-10-20) : vue journée, la sélection d’un pôle affiche son titre, son rapport et ses passages saillants', async () => {
     demoNetwork()
     window.location.hash = '#/jour/2026-01-06'
     render(<App lib={realLib} fetchMeFn={async () => ({ user: null })} />)
     await screen.findByRole('group', { name: 'Cartographie de la journée du 06/01/2026' })
 
     fireEvent.click(screen.getByRole('button', { name: 'COEUR — Relier & Naviguer' }))
-    // Attendu : titre du pôle, rapport et passages saillants. Constaté : le
-    // panneau reste sur l'invitation à toucher un secteur.
-    expect(screen.queryByRole('heading', { name: 'COEUR — Relier & Naviguer' })).toBeNull()
-    expect(screen.queryByTestId('passages')).toBeNull()
-    expect(screen.getByText(/Touchez un secteur du diagramme/)).toBeDefined()
-    // Les compétences, elles, se résolvent normalement.
+    // Le poleNum « 2 » (chaîne, comme le veut le schéma) se compare au numéro du référentiel.
+    expect(screen.getByRole('heading', { name: 'COEUR — Relier & Naviguer' })).toBeDefined()
+    expect(screen.getByTestId('passages')).toBeDefined()
+    expect(screen.queryByText(/Touchez un secteur du diagramme/)).toBeNull()
+    // Les compétences, elles, se résolvaient déjà.
     fireEvent.click(screen.getByRole('button', { name: '2.01 — Intelligence Émotionnelle & Sollicitude Active' }))
     expect(screen.getByTestId('verdict-block')).toBeDefined()
   })

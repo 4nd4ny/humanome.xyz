@@ -432,16 +432,25 @@ final class Lancement
                 . 'v9.8 : il faut en refaire une copie', 422);
         }
         // T16: a set of before T16, the pole files in it, writes RESPIRE in its templates (« 61 », « X.YY »,
-        // « référentiel RESPIRE »): another referential's readers would be asked for RESPIRE's codes. RESPIRE's
-        // versions all read as before, its schema keeping it seven poles and 61 codes « X.YY »
-        if ($profil->referentiel->id !== ReferentielRepository::DEFAULT_REFERENTIEL_ID
-            && isset($jeu['gabarits']['tagger/P1'])) {
-            // a copy of a v9.8's set itself before T16 would be refused again: the v9.8's set first
-            $remede = $profil->gabarits === TemplateSets::V98 ? 'réimporter le jeu v9.8'
-                : ((new ProtocoleRepository($this->pdo))->get('tagger/P1') !== null
-                    ? 'réimporter le jeu v9.8, puis en refaire une copie' : 'refaire une copie du jeu v9.8');
-            throw new Twin9Exception('Le jeu de gabarits « ' . $profil->gabarits . ' » précède T16 : ses gabarits '
-                . 'écrivent RESPIRE en toutes lettres. Pour un autre référentiel, il faut ' . $remede, 422);
+        // « référentiel RESPIRE »), the RESPIRE its pole files describe: another referential's readers would be
+        // asked for RESPIRE's codes. Since a version of RESPIRE may have another structure (2026-10-20), it serves
+        // RESPIRE alone, in the structure of its pole files: the same poles, the same codes in each
+        $decrite = self::structureDesFiches($jeu['gabarits']);
+        if ($decrite !== null) {
+            $respire = $profil->referentiel->id === ReferentielRepository::DEFAULT_REFERENTIEL_ID;
+            $version = $respire ? (new ReferentielRepository($this->pdo))->findVersion(
+                (string) $profil->referentiel->id, (string) $profil->referentiel->version) : null;
+            if (!$respire || ($version !== null && self::structure($version['content']) !== $decrite)) {
+                // a copy of a v9.8's set itself before T16 would be refused again: the v9.8's set first
+                $remede = $profil->gabarits === TemplateSets::V98 ? 'réimporter le jeu v9.8'
+                    : ((new ProtocoleRepository($this->pdo))->get('tagger/P1') !== null
+                        ? 'réimporter le jeu v9.8, puis en refaire une copie' : 'refaire une copie du jeu v9.8');
+                throw new Twin9Exception('Le jeu de gabarits « ' . $profil->gabarits . ' » précède T16 : ses gabarits '
+                    . 'écrivent RESPIRE en toutes lettres' . ($respire ? sprintf(', tel que le décrivent ses fiches '
+                        . '(%d pôles, %d compétences)', \count($decrite), array_sum(array_map('count', $decrite))) : '')
+                    . '. Pour ' . ($respire ? 'une autre structure de RESPIRE' : 'un autre référentiel') . ', il faut '
+                    . $remede, 422);
+            }
         }
         // T16: the run's referential, drawn from the base at its frozen version, which the engine reads
         $referentiel = (new ReferentielMoteur($this->pdo))->bloc((string) $profil->referentiel->id,
@@ -487,6 +496,57 @@ final class Lancement
         }
 
         return [ProfilRepository::validate($ligne['profil']), $ligne['nom']];
+    }
+
+    /**
+     * What the pole files of a set of before T16 describe (« tagger/P1 » to
+     * « tagger/PN », each « ## CODE — Nom » section a competence of its pole),
+     * as structure() writes it; null for a set without pole files.
+     *
+     * @param array<string, string> $gabarits
+     * @return array<int, list<string>>|null
+     */
+    private static function structureDesFiches(array $gabarits): ?array
+    {
+        $structure = [];
+        foreach ($gabarits as $nom => $contenu) {
+            if (preg_match('#^tagger/P([1-9][0-9]*)$#i', (string) $nom, $m) === 1) {
+                preg_match_all('/^##[ \t]+(\S+?)[ \t]*—/mu', (string) $contenu, $codes);
+                $structure[(int) $m[1]] = $codes[1];
+            }
+        }
+
+        return $structure === [] ? null : self::normaliser($structure);
+    }
+
+    /**
+     * A referential's structure: its poles, in order, each with its codes.
+     *
+     * @param array<string, mixed> $document
+     * @return array<int, list<string>>
+     */
+    private static function structure(array $document): array
+    {
+        $structure = array_fill_keys(array_map(static fn (array $p): int => (int) $p['num'], $document['poles']), []);
+        foreach ($document['competences'] as $c) {
+            $structure[(int) $c['pole']][] = (string) $c['code'];
+        }
+
+        return self::normaliser($structure);
+    }
+
+    /**
+     * @param array<int, list<string>> $structure
+     * @return array<int, list<string>>
+     */
+    private static function normaliser(array $structure): array
+    {
+        ksort($structure);
+        foreach ($structure as &$codes) {
+            sort($codes, SORT_STRING);
+        }
+
+        return $structure;
     }
 
     /**

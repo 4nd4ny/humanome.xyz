@@ -26,7 +26,12 @@
 export const SANDBOX_CSP =
   "default-src 'none'; script-src 'unsafe-inline' blob:; worker-src blob:"
 
-/** Quota d'appels LLM par run sandboxé (anti-DoS et anti-facture). */
+/**
+ * Quota d'appels LLM par run sandboxé (anti-DoS et anti-facture) : une journée
+ * de RESPIRE v7 (8 appels) et un nouvel essai de chacun. Constante de sécurité
+ * (docs/securite-prompts.md), indépendante du référentiel : une journée d'un
+ * référentiel de plus de 15 pôles n'y tient pas.
+ */
 export const MAX_LLM_CALLS_PER_RUN = 16
 
 /** Timeout global d'un run sandboxé : 5 minutes, puis terminate. */

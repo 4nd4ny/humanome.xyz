@@ -47,7 +47,8 @@ export const FAMILIES = [
       { href: '#/', label: 'Accueil', route: 'home' },
       { href: '#/cartographie', label: 'Cartographie', route: 'cartographie', hint: 'vos fichiers ou la démonstration' },
       { href: '#/essayer', label: 'Essayer', route: 'essayer', badge: 'gratuit', hint: 'sans compte' },
-      { href: '#/referentiel', label: 'Référentiel', route: 'referentiel', hint: '7 pôles, 61 compétences' },
+      // indice sans chiffres : le référentiel publié dit lui-même ses pôles et ses compétences (2026-10-20)
+      { href: '#/referentiel', label: 'Référentiel', route: 'referentiel', hint: 'les compétences, pôle par pôle' },
       { href: '#/guides', label: 'Guides', route: 'guides', hint: 'prise en main par profil' },
     ],
   },

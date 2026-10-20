@@ -24,6 +24,7 @@ final class AnnotationsTest extends CartographeTestCase
     protected function setUp(): void
     {
         parent::setUp();
+        self::publierRespireV7();
         $this->maya = $this->registerAs('maya@example.org', 'Maya');
         $this->carl = $this->registerAs('carl@example.org', 'Carl', ['cartographe']);
         $this->link($this->maya, $this->carl);
@@ -81,8 +82,10 @@ final class AnnotationsTest extends CartographeTestCase
     }
 
     /**
-     * T15: a cartography that names its referential takes that referential's
-     * codes, whatever its structure; one that names none keeps RESPIRE's form.
+     * T15: a cartography that names its referential version takes that
+     * version's codes, whatever its structure. 2026-10-20: one that names none
+     * takes the codes of the referential its document names — RESPIRE's when it
+     * names none —, never a code « form » any more.
      */
     public function testACartographyOfAnotherReferentialTakesItsCodes(): void
     {
@@ -117,10 +120,53 @@ final class AnnotationsTest extends CartographeTestCase
         self::assertSame([422, $inconnu], $annoter($autre, '7.99'));
         self::assertSame([422, $inconnu], $annoter($autre, 'A1'));
 
-        // a cartography that names no referential keeps RESPIRE's form
+        // a cartography that names no version: the referential its document names, RESPIRE's when none —
+        // a code of RESPIRE's form that RESPIRE does not know is refused
         $libre = $this->createCarto($this->maya);
-        self::assertSame([201, null], $annoter($libre, '7.99'));
-        self::assertSame(422, $annoter($libre, 'A1')[0]);
+        self::assertSame([201, null], $annoter($libre, '7.04'));
+        self::assertSame([422, $inconnu], $annoter($libre, '7.99'));
+        self::assertSame([422, $inconnu], $annoter($libre, 'A1'));
+        $lettree = $this->createCarto($this->maya, ['document' => self::jourDocumentPour($lettre)]);
+        self::assertSame([201, null], $annoter($lettree, 'C3'));
+        self::assertSame([422, $inconnu], $annoter($lettree, '1.01'));
+    }
+
+    /**
+     * 2026-10-20: a version of RESPIRE may count six poles. Its cartographies
+     * take its codes; a cartography of RESPIRE v7 that names no version keeps
+     * the codes of v7, the newest version its document conforms to.
+     */
+    public function testASixPoleRespireVersionAndTheVersionADocumentConformsTo(): void
+    {
+        self::publierReferentiel(self::respireSixPoles());
+        $annoter = fn (int $cartoId, string $code): int => $this->as_($this->carl, 'POST',
+            "/api/cartographies/$cartoId/annotations", self::annotation(['competenceCode' => $code]))->getStatusCode();
+
+        // no version named, a document of no version: the latest, six poles
+        self::assertSame(201, $annoter($this->cartoId, '6.01'));
+        self::assertSame(422, $annoter($this->cartoId, '7.04'));
+        // no version named, a RESPIRE v7 day: v7's codes
+        $v7 = $this->createCarto($this->maya, ['document' => self::jourDocument()]);
+        self::assertSame(201, $annoter($v7, '7.04'));
+        // a six-pole day: v8's
+        $six = $this->createCarto($this->maya, ['document' => self::jourDocumentPour(self::respireSixPoles())]);
+        self::assertSame(422, $annoter($six, '7.04'));
+        self::assertSame(201, $annoter($six, '6.01'));
+    }
+
+    /** 2026-10-20: a referential with no published version leaves nothing to check a code against: refused. */
+    public function testAReferentialWithNoPublishedVersionRefusesTheCode(): void
+    {
+        self::$pdo->exec("DELETE FROM referentiel_versions WHERE referentiel_id = 'fictif-neuf'");
+        $neuf = $this->createCarto($this->maya, ['document' => self::jourDocumentPour(ReferentielsFictifs::neufPoles())]);
+        $response = $this->as_($this->carl, 'POST', "/api/cartographies/$neuf/annotations", self::annotation(['competenceCode' => '9.01']));
+        self::assertSame(422, $response->getStatusCode());
+        self::assertSame('Aucune version publiée du référentiel « fictif-neuf » : le code ne peut pas être vérifié',
+            self::json($response)['fields']['competenceCode']);
+
+        self::publierReferentiel(ReferentielsFictifs::neufPoles());
+        self::assertSame(201, $this->as_($this->carl, 'POST', "/api/cartographies/$neuf/annotations",
+            self::annotation(['competenceCode' => '9.01']))->getStatusCode());
     }
 
     public function testAccessMatrixCollapsesInto404(): void

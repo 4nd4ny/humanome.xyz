@@ -207,6 +207,48 @@ describe('UC-PRO-07 — exécution du code d’un paquet (source réelle du work
     await expect(invalide.promise).rejects.toThrow(/^Sandbox : document final invalide au schéma cartographie-jour \(\d+ erreur\(s\)/)
   })
 
+  it('UC-PRO-07-U17 — document valide au schéma mais non conforme au référentiel transmis au paquet → refusé', async () => {
+    // Un paquet qui rend en dur la journée réelle à 7 pôles, quel que soit le
+    // référentiel ; le référentiel transmis est une version de RESPIRE en six
+    // pôles : le pôle 7 n'en est pas un.
+    const six = {
+      ...clone(referentielFixture),
+      poles: referentielFixture.poles.filter((p) => p.num !== 7),
+      competences: referentielFixture.competences.filter((c) => c.pole !== 7),
+    }
+    const rendu = launch({
+      referentiel: six,
+      pkg: withCode(`export async function run() { return ${JSON.stringify(DAY_DOCS['2026-01-05'])} }`),
+    })
+    await expect(rendu.promise).rejects.toThrow(
+      /^Sandbox : document final non conforme au référentiel \(\d+ erreur\(s\) : \/poles\/6\/poleNum le pôle 7 n'est pas un pôle du référentiel/,
+    )
+    // À l'inverse, un pôle perdu : la journée sans son pôle 4, pour RESPIRE v7.
+    const sansPole4 = launch({
+      pkg: withCode(`export async function run(ctx) { const d = ${JSON.stringify(DAY_DOCS['2026-01-05'])}; d.poles = d.poles.filter((p) => p.poleNum !== '4'); return d }`),
+    })
+    await expect(sansPole4.promise).rejects.toThrow(/il manque le pôle 4 du référentiel/)
+  })
+
+  it('UC-PRO-07-U18 — le marqueur de périmètre posé par le paquet ne choisit pas les pôles attendus : une journée réduite au pôle 3 qui se dit « partielle » est refusée, le marqueur ôté du document rendu', async () => {
+    const jour = clone(DAY_DOCS['2026-01-05'])
+    jour.poles = jour.poles.filter((p) => p.poleNum === '3')
+    jour.kairos = null
+    jour.perimetre = { partiel: true, poles: [3] }
+    const triche = launch({ pkg: withCode(`export async function run() { return ${JSON.stringify(jour)} }`) })
+    await expect(triche.promise).rejects.toThrow(/il manque les pôles 1, 2, 4, 5, 6, 7 du référentiel/)
+    // Le même document, pour un run restreint au pôle 3 (référentiel restreint) : conforme, sans marqueur.
+    const restreint = {
+      ...clone(referentielFixture),
+      poles: referentielFixture.poles.filter((p) => p.num === 3),
+      competences: referentielFixture.competences.filter((c) => c.pole === 3),
+    }
+    const honnete = launch({ referentiel: restreint, pkg: withCode(`export async function run() { return ${JSON.stringify(jour)} }`) })
+    const { document } = await honnete.promise
+    expect(document.poles.map((p) => p.poleNum)).toEqual(['3'])
+    expect('perimetre' in document).toBe(false)
+  })
+
   it('UC-PRO-07-U08 — pré-conditions : provider sans complete() ou paquet sans code → rejet AVANT toute création d’hôte', async () => {
     const hostFactory = vi.fn()
     await expect(runPackageInSandbox({ pkg: pkgFixture, provider: {}, hostFactory })).rejects.toThrow('provider avec complete() requis')
@@ -359,7 +401,7 @@ describe('UC-PRO-07 — frontière de confiance : messages FORGÉS présentés a
 })
 
 describe('UC-PRO-07 — appel par le banc (runVersionOnDays, branche sandbox)', () => {
-  it('UC-PRO-07-U15 — une exécution sandbox PAR journée, référentiel filtré, validation tolérante, document marqué partiel, progression', async () => {
+  it('UC-PRO-07-U15 — une exécution sandbox PAR journée, référentiel filtré (la sandbox valide contre lui), document marqué partiel, progression', async () => {
     // Routage : ni paquet embarqué, ni marqueur engine:// -> sandbox.
     expect(usesEngineOrchestration(BUILTIN_PACKAGE)).toBe(true)
     expect(usesEngineOrchestration({ code: { orchestration: '// engine://humanome-engine@0.1.0' } })).toBe(true)
@@ -386,7 +428,9 @@ describe('UC-PRO-07 — appel par le banc (runVersionOnDays, branche sandbox)', 
     expect(result.engine).toBe(false)
     expect(sb.hosts).toHaveLength(2) // un hôte (quota et délai propres) par journée
     expect(runner).toHaveBeenCalledTimes(2)
-    expect(runner.mock.calls.every(([p]) => p.validateFn === validatePartialJour)).toBe(true)
+    // Aucune validation injectée : la sandbox valide le document contre le
+    // référentiel filtré qu'elle transmet au paquet (schéma puis conformité).
+    expect(runner.mock.calls.every(([p]) => p.validateFn === undefined)).toBe(true)
     for (const [i, host] of sb.hosts.entries()) {
       const run = host.toWorker.find((m) => m.type === 'run')
       expect(run.date).toBe(dayGroups[i].iso)
@@ -405,13 +449,13 @@ describe('UC-PRO-07 — appel par le banc (runVersionOnDays, branche sandbox)', 
     expect(calls).toEqual([...calls].sort((a, b) => a - b))
     expect(progress.at(-1)).toMatchObject({ iso: '2026-01-06', position: 2, total: 2, calls: 4 })
 
-    // validatePartialJour : un document partiel conforme passe la sonde ; à 7
-    // pôles, c'est la validation stricte qui s'applique.
-    expect(validatePartialJour('cartographie-jour', result.days[0].document)).toEqual({ valid: true, errors: [] })
+    // validatePartialJour : le document partiel marqué est conforme à son
+    // périmètre ; un marqueur sans liste de pôles attend tous ceux du référentiel.
+    expect(validatePartialJour('cartographie-jour', result.days[0].document, referentielFixture)).toEqual({ valid: true, errors: [] })
     const septPoles = { ...clone(DAY_DOCS['2026-01-05']), perimetre: { partiel: true } }
-    expect(validatePartialJour('cartographie-jour', septPoles).valid).toBe(true)
+    expect(validatePartialJour('cartographie-jour', septPoles, referentielFixture).valid).toBe(true)
     delete septPoles.poles[3].competences
-    expect(validatePartialJour('cartographie-jour', septPoles).valid).toBe(false)
+    expect(validatePartialJour('cartographie-jour', septPoles, referentielFixture).valid).toBe(false)
   })
 })
 
@@ -436,22 +480,22 @@ describe('UC-PRO-07 — anomalies constatées (comportement ACTUEL figé)', () =
     expect(sb.hosts).toHaveLength(1) // ANOMALIE : devrait valoir 0
     expect(result).toMatchObject({ document: { kind: 'cartographie-jour', sansLlm: true }, llmCalls: 0 })
   })
+})
 
-  it('UC-PRO-07-U14 — anomalie AN-2 : en périmètre restreint, la sonde tolérante accepte un poleNum hors énumération, des pôles dupliqués ou hors périmètre', () => {
-    // COMPORTEMENT ACTUEL, documenté comme anomalie (fiche, AN-2) : la sonde
-    // duplique les pôles et RÉÉCRIT leur poleNum en 1..7 avant validation ;
-    // elle ignore le périmètre demandé. Attendu : valid === false.
+describe('UC-PRO-07 — anomalies corrigées', () => {
+  it('UC-PRO-07-U14 — AN-2 corrigée (2026-10-20) : en périmètre restreint, un poleNum hors du référentiel, des pôles dupliqués ou hors du périmètre sont refusés', () => {
+    // La sonde à sept clones (qui RÉÉCRIVAIT les poleNum avant validation) a
+    // cédé la place à la conformité au référentiel, périmètre compris.
     const base = DAY_DOCS['2026-01-05']
     const pole = (num) => clone(base.poles.find((p) => p.poleNum === num))
     const partiel = (poles) => ({ ...clone(base), poles, kairos: null, perimetre: { partiel: true, poles: [2] } })
+    const messages = (doc) => validatePartialJour('cartographie-jour', doc, referentielFixture).errors.map((e) => e.message)
 
-    const horsEnum = partiel([{ ...pole('2'), poleNum: '99' }])
-    expect(validatePartialJour('cartographie-jour', horsEnum).valid).toBe(true) // ANOMALIE
-    // La validation stricte du même pôle le refuse (poleNum hors énumération).
+    expect(validatePartialJour('cartographie-jour', partiel([pole('2')]), referentielFixture).valid).toBe(true)
+    expect(messages(partiel([{ ...pole('2'), poleNum: '99' }]))).toContain("le pôle 99 n'est pas un pôle du référentiel")
     const strict = { ...clone(base), poles: base.poles.map((p) => (p.poleNum === '2' ? { ...clone(p), poleNum: '99' } : clone(p))) }
-    expect(validatePartialJour('cartographie-jour', strict).valid).toBe(false)
-
-    expect(validatePartialJour('cartographie-jour', partiel([pole('2'), pole('2'), pole('2')])).valid).toBe(true) // ANOMALIE : doublons
-    expect(validatePartialJour('cartographie-jour', partiel([pole('5')])).valid).toBe(true) // ANOMALIE : pôle 5 pour un périmètre « pôle 2 »
+    expect(validatePartialJour('cartographie-jour', strict, referentielFixture).valid).toBe(false)
+    expect(messages(partiel([pole('2'), pole('2'), pole('2')]))).toContain('le pôle 2 figure deux fois')
+    expect(messages(partiel([pole('5')]))).toContain('le pôle 5 est hors du périmètre')
   })
 })

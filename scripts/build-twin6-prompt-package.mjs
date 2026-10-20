@@ -16,8 +16,10 @@
 // Execution is DELEGATED to the embedded engine (executerTwin6): the
 // orchestration carries the « engine://…(twin6) » marker, so the run launcher
 // and the promptologue banc d'essai recognize it and call executerTwin6 on the
-// whole test portfolio (7 scan-pole + kairos -> cartographie-merge), exactly
-// like the #/twin6-ouverte page — never the per-day aurora extractDay path.
+// whole test portfolio (one scan-pole per pole of the referential — RESPIRE v7:
+// 7 — + kairos -> cartographie-merge), exactly like the #/twin6-ouverte page —
+// never the per-day aurora extractDay path. Its texts are RESPIRE v7's (its
+// seven fiches, its variables' descriptions) and stay byte-identical.
 //
 // The package is marked metadata.reserved: true — the source-unique pipeline
 // owns « twin6-ouverte » ; a promptologue's fork must be RENAMED before it can

@@ -133,14 +133,14 @@ describe('UC-PRO-07 — scénarios alternatifs', () => {
     await lancer()
 
     const ab = await screen.findByTestId('banc-ab', {}, LONG)
-    expect(ab.textContent).toContain('aurora-v3-reconstruit@1.0.0 vs aurora-demo@1.0.0')
+    expect(ab.textContent).toContain('aurora-v3-reconstruit@1.1.0 vs aurora-demo@1.0.0')
     expect(sandboxRunner).toHaveBeenCalledTimes(1) // branche B seulement
     expect(llm.prompts.filter((p) => p.includes('# Pôle 1 — '))).toHaveLength(1) // prompt moteur (A)
     expect(llm.prompts.filter((p) => p.includes('Tu es le Greffier du protocole'))).toHaveLength(7) // gabarits du paquet (B)
     expect(screen.getByTestId('banc-diff-competences').textContent).toContain('Aucun écart')
   })
 
-  it('UC-PRO-07-F03 — A2 : périmètre restreint — la sandbox reçoit un référentiel filtré et valide avec tolérance', async () => {
+  it('UC-PRO-07-F03 — A2 : périmètre restreint — la sandbox reçoit un référentiel filtré et valide le document contre lui', async () => {
     const llm = serviceHumanome()
     stubNetwork({ ...bancRoutes(), ...llm.routes })
     const { sandbox } = openBanc()

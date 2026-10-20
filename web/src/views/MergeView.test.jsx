@@ -114,6 +114,16 @@ describe('MergeView', () => {
     expect(document.querySelectorAll('rect.heatmap-day')).toHaveLength(3)
   })
 
+  it('le total des compétences établies est celui du référentiel du document ; sans lui, le compte seul', () => {
+    render(<MergeView mergeDoc={mergeDoc} referentiel={{ poles: [], competences: Array.from({ length: 20 }, (_, i) => ({ code: String(i) })) }} lib={fakeLib} />)
+    expect(document.querySelector('.profile-summary').textContent).toContain('45 / 20')
+    expect(screen.getAllByText('45 / 20')).toHaveLength(2) // badges et résumé
+    cleanup()
+    render(<MergeView mergeDoc={mergeDoc} lib={fakeLib} />)
+    expect(document.querySelector('.profile-summary').textContent).not.toContain('/ 61')
+    expect(screen.getAllByText('45')).toHaveLength(2)
+  })
+
   it('clic sur une compétence -> feedback narratif', () => {
     const { container } = renderView()
     fireEvent.click(container.querySelector('path[data-id="1.01 — Pensée Critique"]'))

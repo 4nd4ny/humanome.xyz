@@ -131,4 +131,23 @@ describe('parseUserDocument (drag & drop)', () => {
     expect(caught.validationErrors[0]).toHaveProperty('path')
     expect(caught.validationErrors[0]).toHaveProperty('message')
   })
+
+  it('avec le référentiel où le lire, vérifie aussi sa conformité : un pôle perdu est refusé (2026-10-20)', () => {
+    const respire = getReferentiel()
+    expect(parseUserDocument(JSON.stringify(dayFixture), respire).kind).toBe('cartographie-jour')
+    const sixPoles = { ...dayFixture, poles: dayFixture.poles.slice(0, 6) }
+    // le schéma ne fige plus sept pôles : sans référentiel, il passe
+    expect(parseUserDocument(JSON.stringify(sixPoles)).kind).toBe('cartographie-jour')
+    let caught = null
+    try {
+      parseUserDocument(JSON.stringify(sixPoles), respire)
+    } catch (error) {
+      caught = error
+    }
+    expect(caught.message).toBe('Document non conforme au référentiel « respire » (1 erreur).')
+    expect(caught.validationErrors).toEqual([{ path: '/poles', keyword: 'referentiel', message: 'il manque le pôle 7 du référentiel' }])
+    // une version de RESPIRE en six pôles le lit
+    const six = { ...respire, poles: respire.poles.filter((p) => p.num !== 7), competences: respire.competences.filter((c) => c.pole !== 7) }
+    expect(parseUserDocument(JSON.stringify(sixPoles), six).kind).toBe('cartographie-jour')
+  })
 })

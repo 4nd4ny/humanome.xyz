@@ -12,7 +12,9 @@ import { segmentText } from '@engine/portfolio/segment.js'
 import { createIndexedDbStorage } from '@engine/runs/index.js'
 import { createMockProvider } from '@engine/providers/mock.js'
 import { ProviderError } from '@engine/providers/errors.js'
+import { createMemoryStorage } from '@engine/runs/memory.js'
 import referentiel from '../../../../schemas/fixtures/referentiel-respire-v7.json'
+import day05 from '../../../../schemas/fixtures/cartographie-jour-2026-01-05.json'
 import {
   BUILTIN_PACKAGE,
   KEYS_STORAGE_KEY,
@@ -61,6 +63,44 @@ function leadingZeroBitsOf(challenge, nonce) {
   return bits
 }
 
+/** Cinq pôles lettrés, deux capacités chacun (la forme de l'Humanome V18), fictifs. */
+const LETTRE = {
+  id: 'fictif-lettre',
+  version: '1.0.0',
+  label: 'Fictif lettré',
+  poles: ['A', 'B', 'C', 'D', 'E'].map((l, i) => ({ num: i + 1, nom: `${l} · Pôle fictif ${l}` })),
+  competences: ['A', 'B', 'C', 'D', 'E'].flatMap((l, i) =>
+    [1, 2].map((n) => ({ code: `${l}${n}`, nom: `Capacité fictive ${l}${n}`, pole: i + 1 })),
+  ),
+}
+
+/** RESPIRE v7 sans son pôle 7 : une version de RESPIRE en six pôles. */
+const RESPIRE_SIX = {
+  ...referentiel,
+  poles: referentiel.poles.filter((p) => p.num !== 7),
+  competences: referentiel.competences.filter((c) => c.pole !== 7),
+}
+
+/**
+ * Réponse « modèle » pour un prompt du référentiel lettré : la première capacité
+ * du pôle établie (pièces et délibération d'une compétence établie du corpus),
+ * l'autre en court-circuit ; kairos absent. `sauf` : un pôle tout en court-circuit.
+ */
+function lettreAnswer(prompt, { sauf = null } = {}) {
+  if (prompt.includes('SYNTHÈSE KAIROS')) return 'null'
+  const num = Number(/# Pôle (\d+) — /.exec(prompt)[1])
+  const codes = /les \d+ codes\n(.+) dans cet ordre/.exec(prompt)[1].split(', ')
+  const source = day05.poles[1]
+  const etablie = source.competences.find((c) => c.code === '2.01')
+  const courtCircuit = source.competences.find((c) => c.courtCircuit)
+  return JSON.stringify({
+    poleNum: String(num),
+    passagesSaillants: source.passagesSaillants,
+    competences: codes.map((code, i) => ({ ...(i === 0 && num !== sauf ? etablie : courtCircuit), code })),
+    rapport: null,
+  })
+}
+
 function memoryKeyStorage(initial = {}) {
   const map = new Map(Object.entries(initial))
   return { getItem: (k) => map.get(k) ?? null, setItem: (k, v) => map.set(k, v), map }
@@ -87,10 +127,14 @@ describe('UC-APP-02 — étape 2 : portfolio et journées', () => {
     expect(sameDay).toEqual([{ iso: '2026-01-05', texte: `${a}\n\n${b}` }])
   })
 
-  it('UC-APP-02-U13 — makeRunId : même portfolio + même version de prompt = même run (clé de reprise)', () => {
-    expect(makeRunId('p-1', BUILTIN_PACKAGE)).toBe('p-1::aurora-v3-reconstruit@1.0.0')
+  it('UC-APP-02-U13 — makeRunId : même portfolio + même version de prompt + même version du référentiel = même run (clé de reprise)', () => {
+    expect(makeRunId('p-1', BUILTIN_PACKAGE)).toBe('p-1::aurora-v3-reconstruit@1.1.0')
     expect(makeRunId('p-1', { id: 'aurora-lab', version: '2.0.0' })).toBe('p-1::aurora-lab@2.0.0')
     expect(makeRunId('p-1', BUILTIN_PACKAGE)).toBe(makeRunId('p-1', { ...BUILTIN_PACKAGE }))
+    // Le référentiel du run en fait partie : une autre structure ne reprend pas ces journées.
+    expect(makeRunId('p-1', BUILTIN_PACKAGE, referentiel)).toBe('p-1::aurora-v3-reconstruit@1.1.0::respire@7.0.0')
+    expect(makeRunId('p-1', BUILTIN_PACKAGE, { id: 'fictif-lettre', version: '1.0.0' }))
+      .toBe('p-1::aurora-v3-reconstruit@1.1.0::fictif-lettre@1.0.0')
   })
 })
 
@@ -100,7 +144,8 @@ describe('UC-APP-02 — étape 3 : versions de prompt', () => {
       path === 'prompt-packages/default'
         ? { id: 'aurora-lab', version: '2.0.0' }
         : [
-            { id: 'aurora-v3-reconstruit', version: '1.0.0', description: 'copie serveur' },
+            { id: 'aurora-v3-reconstruit', version: '1.1.0', description: 'copie serveur' },
+            { id: 'aurora-v3-reconstruit', version: '1.0.0' },
             { id: 'aurora-lab', version: '2.0.0' },
             { id: 'sans-version' },
           ],
@@ -110,12 +155,14 @@ describe('UC-APP-02 — étape 3 : versions de prompt', () => {
     expect(apiFetchFn.mock.calls.map(([path]) => path)).toEqual(['prompt-packages/default', 'prompt-packages'])
     expect(origin).toBe('api')
     expect(defaut).toEqual({ id: 'aurora-lab', version: '2.0.0' })
+    // La copie serveur de l'embarqué (1.1.0) est un doublon ; 1.0.0, version publiée antérieure, reste proposée.
     expect(packages.map((p) => `${p.id}@${p.version}`)).toEqual([
+      'aurora-v3-reconstruit@1.1.0',
       'aurora-v3-reconstruit@1.0.0',
       'aurora-lab@2.0.0',
     ])
     expect(packages[0]).toBe(BUILTIN_PACKAGE)
-    expect(packages[1].defaut).toBe(true)
+    expect(packages[2].defaut).toBe(true)
   })
 })
 
@@ -232,6 +279,49 @@ describe('UC-APP-02 — étapes 5 et 6 : estimation et exécution', () => {
 
     const banc = buildEstimate({ dayGroups, referentiel, model: SERVICE_ESTIMATION_MODEL, callsPerDay: 2, mergeCalls: 0 })
     expect(banc.totalCalls).toBe(4)
+  })
+
+  it('UC-APP-02-U41 — tout référentiel (A7) : estimation, extraction et fusion lisent sa structure ; documents nommés, fusion conforme', async () => {
+    const dayGroups = computeDayGroups(segmentText(portfolioText(), { today: '2026-07-12' }))
+    // Cinq pôles lettrés, deux capacités chacun : un appel par pôle et le kairos par journée,
+    // un récit de fusion par capacité, par pôle et le kairos.
+    expect(buildEstimate({ dayGroups, referentiel: LETTRE, model: SERVICE_ESTIMATION_MODEL }).totalCalls)
+      .toBe(3 * (5 + 1) + (10 + 5 + 1))
+    // Une version de RESPIRE en six pôles (53 compétences) : 7 appels par journée, 53 + 6 + 1 récits.
+    expect(RESPIRE_SIX.competences).toHaveLength(53)
+    expect(buildEstimate({ dayGroups, referentiel: RESPIRE_SIX, model: SERVICE_ESTIMATION_MODEL }).totalCalls)
+      .toBe(3 * 7 + (53 + 6 + 1))
+
+    const provider = createMockProvider({ responses: ({ prompt }) => lettreAnswer(prompt) })
+    const result = await executeRun({
+      runId: makeRunId('p-maya', BUILTIN_PACKAGE, LETTRE),
+      dayGroups,
+      referentiel: LETTRE,
+      provider,
+      model: 'mock',
+      storage: createMemoryStorage(),
+      now: () => '2026-07-12T10:00:00.000Z',
+    })
+    expect(provider.callCount).toBe(18)
+    expect(provider.calls[0].prompt).toContain('pour UN pôle du référentiel Fictif lettré, en jouant')
+    expect(result.dayDocuments.map((d) => [d.referentiel, d.poles.map((p) => p.poleNum).join('')]))
+      .toEqual([['fictif-lettre', '12345'], ['fictif-lettre', '12345'], ['fictif-lettre', '12345']])
+    expect(result.mergeError).toBeNull()
+    expect(result.document.referentiel).toBe('fictif-lettre')
+    expect(result.document.domains.map((d) => d.id)).toEqual(LETTRE.poles.map((p) => p.nom))
+    expect(result.document.domains.map((d) => d.competences.map((c) => c.code))).toEqual([['A1'], ['B1'], ['C1'], ['D1'], ['E1']])
+
+    // A6 pour tout référentiel : un pôle sans compétence établie rend la fusion non constructible.
+    const creux = await executeRun({
+      runId: 'creux',
+      dayGroups,
+      referentiel: LETTRE,
+      provider: createMockProvider({ responses: ({ prompt }) => lettreAnswer(prompt, { sauf: 3 }) }),
+      model: 'mock',
+      storage: createMemoryStorage(),
+    })
+    expect(creux.document).toBeNull()
+    expect(creux.mergeError).toContain('au moins une compétence établie dans chacun des pôles du référentiel')
   })
 
   it('UC-APP-02-U21 — executeRun sur IndexedDB « humanome-runs » : checkpoints persistés, reprise après rechargement', async () => {

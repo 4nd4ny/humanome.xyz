@@ -384,4 +384,36 @@ describe('UC-CAR-07 — limites et anomalies (comportement ACTUEL figé)', () =>
     await analyse()
     expect(screen.getByTestId('consistance-accord').textContent).toContain('Accord global : 100 %')
   })
+
+  it('UC-CAR-07-F16 — E1 (référentiel) : un fichier local conforme au schéma mais pas à son référentiel (un pôle perdu) → message, fichier ignoré', async () => {
+    // 2026-10-20 : le schéma ne fige plus sept pôles ; un fichier se valide aussi
+    // contre le référentiel qu'il nomme (RESPIRE, ici : sa copie embarquée).
+    network({}, [])
+    openCartographe('consistance')
+    const sixPoles = dayDoc()
+    sixPoles.poles = sixPoles.poles.filter((p) => p.poleNum !== '7')
+
+    await addFiles(localFile('six-poles.json', sixPoles))
+    expect((await screen.findByRole('alert')).textContent).toBe(
+      '« six-poles.json » n’est pas conforme à son référentiel « respire » : fichier ignoré.',
+    )
+    expect(screen.queryByTestId('consistance-locaux')).toBeNull()
+  })
+
+  it('UC-CAR-07-F17 — E8 : des runs de deux référentiels différents ne se comparent pas → message, aucun rapport', async () => {
+    const lettre = { ...dayDoc(), referentiel: 'fictif-lettre' }
+    network({ 31: dayDoc() }, QUEUE, {
+      'GET api/cartographe/cartographies/32': jsonResponse(200, detailBody({ id: 32, document: lettre, referentiel: { id: 'fictif-lettre', version: '1.0.0' } })),
+    })
+    openCartographe('consistance')
+    fireEvent.click(await screen.findByLabelText(/Run 1/))
+    fireEvent.click(screen.getByLabelText(/Run 2/))
+
+    await analyse()
+
+    expect((await screen.findByRole('alert')).textContent).toBe(
+      'Les runs comparés doivent cartographier le même référentiel (ici : respire, fictif-lettre).',
+    )
+    expect(screen.queryByTestId('consistance-rapport')).toBeNull()
+  })
 })

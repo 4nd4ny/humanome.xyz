@@ -18,7 +18,7 @@ cœur du MVP (plan-prompts P8, cahier §3.2/§3.6/§6), chaque étape étant un
    `schemas/fixtures/portfolio-3-jours.md`, segmentation automatique vérifiée
    (3 journées datées 2026-01-05..07), sauvegarde locale (IndexedDB).
 3. Assistant « Nouveau run » : portfolio → version de prompt par défaut
-   (`aurora-v3-reconstruit@1.0.0`) → fournisseur « Service humanome »
+   (`aurora-v3-reconstruit@1.1.0`, l'embarquée) → fournisseur « Service humanome »
    (proxy `/api/llm`, preuve de travail par appel) → estimation affichée.
 4. Run complet : exactement **24 appels mock** comptés sur le réseau
    (3 journées × (7 pôles + 1 synthèse kairos)).
@@ -60,7 +60,13 @@ cœur du MVP (plan-prompts P8, cahier §3.2/§3.6/§6), chaque étape étant un
    développement par le client `mysql`, qui doit être dans le `PATH`.
 
    Migrations à jour si la base est neuve : `php scripts/migrate.php`, depuis
-   la racine.
+   la racine. Le paquet de prompts que cite l'assistant (`BUILTIN_PACKAGE`,
+   `aurora-v3-reconstruit@1.1.0` depuis le 2026-10-20) doit être publié dans la
+   base, sans quoi la copie serveur d'une cartographie est refusée (`422`
+   « Paquet de prompts publié introuvable ») : `node
+   scripts/build-default-prompt-package.mjs && php
+   scripts/import-prompt-packages.php` (`INSTALL.md` §2 et §3 ; une base
+   préparée avant cette date n'a que 1.0.0).
 
 2. **Dépendances web + navigateur Playwright** (une fois) :
 

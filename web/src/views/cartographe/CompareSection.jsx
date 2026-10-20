@@ -2,10 +2,15 @@
 // cahier §3.3 — versions de prompts différentes) : sélecteurs alimentés par la
 // file, deux sunbursts, tableau des divergences par compétence (statut /
 // niveau / points / confiance) avec surlignage — modèle pur compare-model.js.
+// Chaque diagramme se dessine avec le référentiel de SA cartographie
+// (2026-10-20) : la version que le serveur relit, sinon celle que nomme son
+// document — deux cartographies d'un même apprenant peuvent ne pas partager
+// le même.
 
 import { useEffect, useMemo, useState } from 'react'
 import Sunburst from '../../components/Sunburst.jsx'
 import { loadPublishedReferentiel } from '../../data/referentiel.js'
+import { chargerReferentielDuDocument } from '../../lib/referentiel-du-document.js'
 import { useSunburstLib } from '../view-helpers.js'
 import { fetchCartographie, fetchQueue, frDate, typeLabel } from './cartographe-api.js'
 import { COMPARE_FIELDS, compareCartographies } from './compare-model.js'
@@ -52,11 +57,10 @@ export default function CompareSection({
 }) {
   const { lib, error: libError } = useSunburstLib(injectedLib)
   const [queue, setQueue] = useState(null)
-  const [referentiel, setReferentiel] = useState(null)
   const [loadError, setLoadError] = useState(null)
   const [idA, setIdA] = useState('')
   const [idB, setIdB] = useState('')
-  const [docs, setDocs] = useState({}) // id -> {document, entry} chargés à la demande
+  const [docs, setDocs] = useState({}) // id -> {document, entry, referentiel} chargés à la demande
 
   useEffect(() => {
     let alive = true
@@ -64,35 +68,34 @@ export default function CompareSection({
       (list) => alive && setQueue(list),
       (error) => alive && (setQueue([]), setLoadError(error.message)),
     )
-    getReferentiel().then((loaded) => {
-      if (alive) setReferentiel(loaded?.doc ?? loaded ?? null)
-    })
     return () => {
       alive = false
     }
-  }, [fetchFn, getReferentiel])
+  }, [fetchFn])
 
-  // Charge les documents sélectionnés (métadonnées seules dans la file).
+  // Charge les documents sélectionnés (métadonnées seules dans la file), puis
+  // le référentiel de chacun.
   useEffect(() => {
     let alive = true
     for (const id of [idA, idB]) {
       if (id === '' || docs[id]) continue
-      fetchCartographie(id, fetchFn).then(
-        ({ cartographie }) =>
-          alive &&
-          setDocs((current) => ({
-            ...current,
-            [id]: { document: cartographie?.document ?? null, entry: cartographie },
-          })),
-        (error) => alive && setLoadError(error.message),
-      )
+      fetchCartographie(id, fetchFn)
+        .then(async ({ cartographie }) => {
+          const document = cartographie?.document ?? null
+          const referentiel = await chargerReferentielDuDocument(document, {
+            connu: cartographie?.referentiel ?? null,
+            getReferentiel,
+          })
+          if (alive) setDocs((current) => ({ ...current, [id]: { document, entry: cartographie, referentiel } }))
+        })
+        .catch((error) => alive && setLoadError(error.message))
     }
     return () => {
       alive = false
     }
     // docs volontairement hors dépendances (cache en écriture seule ici).
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [idA, idB, fetchFn])
+  }, [idA, idB, fetchFn, getReferentiel])
 
   const entryA = (queue ?? []).find((e) => String(e.id) === idA) ?? null
   // Contrainte métier : deux cartographies du MÊME apprenant.
@@ -181,7 +184,7 @@ export default function CompareSection({
                   ) : (
                     <MiniSunburst
                       doc={loaded.document}
-                      referentiel={referentiel}
+                      referentiel={loaded.referentiel}
                       lib={lib}
                       size={340}
                       label={`Diagramme — ${loaded.entry?.titre ?? fallback}`}

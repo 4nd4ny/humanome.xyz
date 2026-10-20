@@ -16,9 +16,13 @@ declare(strict_types=1);
  * Every access failure (unknown id, foreign cartography, 'privee'
  * visibility, unlinked cartographe) answers the SAME 404 — no existence
  * oracle. Revisions are validated against schemas/cartographie-<type> via
- * Validation.php: nothing malformed ever lands in the history. Posting a
- * revision on a guaranteed cartography REMOVES the garantie (a modified
- * cartography is never presented as guaranteed) and audits garantie_retiree.
+ * Validation.php, then against the referential version the cartography is
+ * reviewed against (ReviewReferentiel, 2026-10-20: its poles each once, its
+ * codes in their pole — the schema no longer pins RESPIRE v7): nothing
+ * malformed, nor any day missing a pole, ever lands in the history. An
+ * annotation names a competence of that same version. Posting a revision on a
+ * guaranteed cartography REMOVES the garantie (a modified cartography is never
+ * presented as guaranteed) and audits garantie_retiree.
  */
 
 use Humanome\Auth\Audit;
@@ -26,7 +30,9 @@ use Humanome\Auth\Users;
 use Humanome\Cartographe\Annotations;
 use Humanome\Cartographe\Garanties;
 use Humanome\Cartographe\Links;
+use Humanome\Cartographe\ReviewReferentiel;
 use Humanome\Cartographe\Revisions;
+use Humanome\Referentiel\Conformite;
 use Humanome\Db;
 use Humanome\Middleware\RequireRole;
 use Humanome\Validation;
@@ -73,37 +79,22 @@ return function (App $app): void {
     $notFound = fn (Response $response): Response => $json($response, ['error' => 'Cartographie introuvable'], 404);
 
     /**
-     * The codes of the referential version a cartography names (T15: any
-     * referential, not only RESPIRE), or null when it names none.
+     * The referential version a cartography is reviewed against (2026-10-20):
+     * the one it stored, else the most recent published version of the
+     * referential its document names that the document conforms to, else its
+     * latest — {id, version, document}, version and document null when that
+     * referential has no published version.
      *
-     * @return array<string, true>|null
+     * @return array{id: string, version: string|null, document: array<string, mixed>|null}|null
      */
-    $codesDuReferentiel = static function (int $cartoId): ?array {
-        $stmt = Db::get()->prepare('SELECT rv.content FROM cartographies c
-            JOIN referentiel_versions rv ON rv.id = c.referentiel_version_id WHERE c.id = ?');
-        $stmt->execute([$cartoId]);
-        $content = $stmt->fetchColumn();
-        if ($content === false) {
-            return null;
-        }
-        $doc = json_decode((string) $content, true);
-        $codes = [];
-        foreach (\is_array($doc['competences'] ?? null) ? $doc['competences'] : [] as $c) {
-            $codes[(string) ($c['code'] ?? '')] = true;
-        }
+    $referentielDe = static fn (int $cartoId): ?array => (new ReviewReferentiel(Db::get()))->forCartography($cartoId);
 
-        return $codes;
-    };
-
-    /** The id of the referential a cartography names (T15), RESPIRE's when it names none. */
-    $referentielDe = static function (int $cartoId): string {
-        $stmt = Db::get()->prepare('SELECT rv.referentiel_id FROM cartographies c
-            JOIN referentiel_versions rv ON rv.id = c.referentiel_version_id WHERE c.id = ?');
-        $stmt->execute([$cartoId]);
-        $id = $stmt->fetchColumn();
-
-        return $id === false ? 'respire' : (string) $id;
-    };
+    /** The message of a referential with no published version: nothing to check against. */
+    $sansVersion = static fn (string $id, string $suite): string => sprintf(
+        'Aucune version publiée du référentiel « %s » : %s',
+        $id,
+        $suite,
+    );
 
     /** @return array{level: string, type: string}|null */
     $access = function (Request $request, int $cartoId): ?array {
@@ -119,7 +110,7 @@ return function (App $app): void {
     // commentaire|hallucination|oubli, texte} -> 201 (owner or linked
     // cartographe).
     // ------------------------------------------------------------------
-    $app->post('/cartographies/{id:[0-9]+}/annotations', $wrap(function (Request $request, Response $response, array $args) use ($json, $access, $notFound, $maxTexteChars, $codesDuReferentiel): Response {
+    $app->post('/cartographies/{id:[0-9]+}/annotations', $wrap(function (Request $request, Response $response, array $args) use ($json, $access, $notFound, $maxTexteChars, $referentielDe, $sansVersion): Response {
         $cartoId = (int) $args['id'];
         if ($access($request, $cartoId) === null) {
             return $notFound($response);
@@ -128,12 +119,16 @@ return function (App $app): void {
         $data = (array) ($request->getParsedBody() ?? []);
         $errors = [];
         $competenceCode = \is_string($data['competenceCode'] ?? null) ? trim($data['competenceCode']) : '';
-        // a cartography that names its referential takes its codes (T15); otherwise RESPIRE's form
-        $codes = $codesDuReferentiel($cartoId);
-        if ($codes !== null && !isset($codes[$competenceCode])) {
+        // a competence of the version the cartography is reviewed against, whatever its structure
+        $referentiel = $referentielDe($cartoId);
+        $codes = [];
+        foreach (\is_array($referentiel['document']['competences'] ?? null) ? $referentiel['document']['competences'] : [] as $c) {
+            $codes[(string) ($c['code'] ?? '')] = true;
+        }
+        if ($referentiel !== null && $referentiel['document'] === null) {
+            $errors['competenceCode'] = $sansVersion($referentiel['id'], 'le code ne peut pas être vérifié');
+        } elseif (!isset($codes[$competenceCode])) {
             $errors['competenceCode'] = 'Code de compétence inconnu du référentiel de la cartographie';
-        } elseif ($codes === null && preg_match('/^[1-7]\.\d{2}$/', $competenceCode) !== 1) {
-            $errors['competenceCode'] = 'Code de compétence invalide (attendu : "<pôle 1-7>.<rang à 2 chiffres>", ex. "1.01")';
         }
         $type = $data['type'] ?? null;
         if (!\in_array($type, Annotations::TYPES, true)) {
@@ -191,7 +186,7 @@ return function (App $app): void {
     // {revisionId}. The document is validated against the schema matching
     // the cartography type (422 with pointer-keyed errors otherwise).
     // ------------------------------------------------------------------
-    $app->post('/cartographies/{id:[0-9]+}/revisions', $wrap(function (Request $request, Response $response, array $args) use ($json, $access, $notFound, $maxDocumentBytes, $maxNoteChars, $referentielDe): Response {
+    $app->post('/cartographies/{id:[0-9]+}/revisions', $wrap(function (Request $request, Response $response, array $args) use ($json, $access, $notFound, $maxDocumentBytes, $maxNoteChars, $referentielDe, $sansVersion): Response {
         $pdo = Db::get();
         $cartoId = (int) $args['id'];
         $userId = (int) $request->getAttribute('userId');
@@ -231,14 +226,29 @@ return function (App $app): void {
                 'fields' => $result['errors'],
             ], 422);
         }
-        // the document is of its cartography's referential (T17): naming another cannot take it out of RESPIRE's
-        // checks
-        $referentiel = $referentielDe($cartoId);
-        if (($document['referentiel'] ?? 'respire') !== $referentiel) {
+        // the document is of its cartography's referential (T17): naming another cannot take it out of its
+        // version's checks
+        $referentiel = $referentielDe($cartoId) ?? ['id' => Conformite::REFERENTIEL_PAR_DEFAUT, 'version' => null, 'document' => null];
+        if (($document['referentiel'] ?? Conformite::REFERENTIEL_PAR_DEFAUT) !== $referentiel['id']) {
             return $json($response, [
                 'error' => sprintf('Document invalide au schéma %s', $kind),
                 'fields' => ['/referentiel' => [sprintf('Le document est du référentiel de la cartographie, « %s »',
-                    $referentiel)]],
+                    $referentiel['id'])]],
+            ], 422);
+        }
+        // ...and conforms to that version (2026-10-20): each of its poles once, its codes in their pole — a
+        // revision cannot lose a pole
+        if ($referentiel['document'] === null) {
+            return $json($response, [
+                'error' => $sansVersion($referentiel['id'], 'la révision ne peut pas être vérifiée'),
+                'fields' => ['/referentiel' => [$sansVersion($referentiel['id'], 'la révision ne peut pas être vérifiée')]],
+            ], 422);
+        }
+        $conformite = Conformite::verifier($kind, $document, $referentiel['document']);
+        if (!$conformite['valid']) {
+            return $json($response, [
+                'error' => sprintf('Document non conforme au référentiel « %s » %s', $referentiel['id'], $referentiel['version']),
+                'fields' => $conformite['errors'],
             ], 422);
         }
 

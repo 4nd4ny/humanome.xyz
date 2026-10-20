@@ -460,21 +460,22 @@ final class UcSys01TraiterFileJobsTest extends TestCase
         new PromptRunner($package, ['poles' => []]);
     }
 
-    #[TestDox('UC-SYS-01-U13 — PoleAssembler : poleNum incohérent refusé, champs manquants réparés, kairos invalide refusé')]
+    #[TestDox('UC-SYS-01-U13 — PoleAssembler : poleNum incohérent refusé, champs manquants réparés ; kairos invalide au schéma ou reliant un code hors du référentiel du job refusé')]
     public function testU13PoleAssemblerRepairsAndRejects(): void
     {
+        $referentiel = self::respireReferentiel();
         $fixture = self::dayDocument('2026-01-06');
         $pole = $fixture['poles'][2];
         unset($pole['poleNum'], $pole['rapport']);
         $pole['passagesSaillants'] = 'pas une liste';
 
-        $assembled = PoleAssembler::assemblePole($pole, 3, '2026-01-06');
+        $assembled = PoleAssembler::assemblePole($pole, 3, '2026-01-06', $referentiel);
         self::assertSame('3', $assembled['poleNum']);
         self::assertSame([], $assembled['passagesSaillants']);
         self::assertNull($assembled['rapport']);
 
         try {
-            PoleAssembler::assemblePole(['poleNum' => '4'] + $pole, 3, '2026-01-06');
+            PoleAssembler::assemblePole(['poleNum' => '4'] + $pole, 3, '2026-01-06', $referentiel);
             self::fail('poleNum incohérent');
         } catch (\RuntimeException $e) {
             self::assertStringContainsString('poleNum incohérent', $e->getMessage());
@@ -484,9 +485,20 @@ final class UcSys01TraiterFileJobsTest extends TestCase
         foreach ($fixture['poles'] as $p) {
             $polesByNum[(int) $p['poleNum']] = $p;
         }
+        $kairos = self::dayDocument('2026-01-07')['kairos']; // celui du 06 est null
+        $kairos['emergencesCrossPoles']['noeudsConceptuels'][0]['codesRelies'][0] = '9.99';
+        try {
+            PoleAssembler::validateKairos($kairos, $polesByNum, '2026-01-06', $referentiel);
+            self::fail('code hors du référentiel');
+        } catch (\RuntimeException $e) {
+            self::assertSame(
+                "kairos non conforme au référentiel : 1 erreur(s) : /kairos/emergencesCrossPoles/noeudsConceptuels/0/codesRelies/0 le code 9.99 n'est pas une compétence du référentiel",
+                $e->getMessage(),
+            );
+        }
         $this->expectException(\RuntimeException::class);
         $this->expectExceptionMessage('kairos invalide au schéma');
-        PoleAssembler::validateKairos(['intrus' => true], $polesByNum, '2026-01-06');
+        PoleAssembler::validateKairos(['intrus' => true], $polesByNum, '2026-01-06', $referentiel);
     }
 
     // ------------------------------------------------ OpenAiCompatibleProvider
@@ -616,5 +628,47 @@ final class UcSys01TraiterFileJobsTest extends TestCase
         self::assertNull($document['kairos']);
         self::assertCount(7, $document['poles']);
         self::assertTrue(Validation::validate('cartographie-jour', $document)['valid']);
+    }
+
+    #[TestDox('UC-SYS-01-U27 — Tick : un job sur un autre référentiel (neuf pôles) — une réponse aux codes que sa version ne connaît pas est refusée, nouvel essai puis tentative comptée ; avec ses codes, la journée le nomme')]
+    public function testU27TickChecksTheJobReferentiel(): void
+    {
+        $neuf = \Humanome\Tests\UseCases\Support\ReferentielsFictifs::neufPoles();
+        self::publishReferentielDocument(self::$pdo, $neuf);
+        (new \Humanome\Packages\PromptPackageRepository(self::$pdo))->importPublishedDocument(self::packageReadingTheReferentiel());
+        $run = self::seedRun([['2026-01-05']]);
+        self::$pdo->exec("UPDATE mass_runs SET prompt_package_slug = 'aurora-lit-referentiel', referentiel_id = 'fictif-neuf',
+            referentiel_semver = '1.0.0' WHERE id = {$run['runId']}");
+        [$jobId] = self::jobIds($run['runId']);
+
+        // Un modèle qui répond avec les codes de RESPIRE (pôle 1 : 1.01, 1.03 ; 1.03 n'existe pas ici).
+        $respire = new class () {
+            public int $calls = 0;
+
+            public function complete(string $model, ?string $system, string $prompt, int $maxTokens): array
+            {
+                $this->calls++;
+                $pole = json_decode((string) file_get_contents(\dirname(__DIR__, 4) . '/schemas/fixtures/cartographie-jour-2026-01-05.json'), true)['poles'][0];
+
+                return ['text' => json_encode($pole), 'usage' => ['inputTokens' => 100, 'outputTokens' => 50], 'model' => 'mock'];
+            }
+        };
+        self::tick($respire, ['maxCalls' => 2]);
+        self::assertSame(2, $respire->calls, 'un appel et son nouvel essai');
+        $job = self::job($jobId);
+        self::assertSame(['queued', 1], [$job['status'], (int) $job['attempts']]);
+        self::assertSame(
+            "pôle 1 (2026-01-05) — objet pôle non conforme au référentiel : 1 erreur(s) : /poles/0/competences/1/code le code 1.03 n'est pas une compétence du référentiel",
+            (string) $job['erreur'],
+        );
+
+        // Le fournisseur mock lit les codes du prompt : neuf pôles + kairos, une journée qui nomme son référentiel.
+        $mock = self::flakyProvider();
+        self::tick($mock);
+        self::assertSame(10, $mock->calls);
+        $document = json_decode((string) self::job($jobId)['document'], true);
+        self::assertSame('done', self::job($jobId)['status']);
+        self::assertSame('fictif-neuf', $document['referentiel']);
+        self::assertCount(9, $document['poles']);
     }
 }

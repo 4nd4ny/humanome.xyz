@@ -282,8 +282,9 @@ return function (App $app): void {
     ))->add($member);
 
     // Coupe de release : assemble les compétences publiées en un snapshot de
-    // référentiel immuable (semver strictement croissant + complétude 61/7,
-    // SANS second vote — les changements ont déjà été entérinés par compétence).
+    // référentiel immuable (semver strictement croissant + complétude : la
+    // structure de la dernière version publiée, 2026-10-20 ; SANS second vote
+    // — les changements ont déjà été entérinés par compétence).
     $app->post('/competences/release', $wrap(
         function (Request $request, Response $response) use ($json, $parseBody): Response {
             $body = $parseBody($request);

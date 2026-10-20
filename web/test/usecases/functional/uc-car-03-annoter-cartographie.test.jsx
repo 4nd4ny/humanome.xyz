@@ -68,10 +68,12 @@ describe('UC-CAR-03 — le cartographe annote par compétence', () => {
     })
     openCartographe('relecture/12')
 
-    // 1. La liste propose les codes du document, nommés par le référentiel.
+    // 1. La liste propose les codes du document, nommés par le référentiel de la
+    //    cartographie — chargé une fois son détail lu (2026-10-20).
     const select = await screen.findByLabelText('Compétence')
-    const labels = within(select).getAllByRole('option').map((o) => o.textContent)
-    expect(labels).toContain('1.01 — Pensée Critique & Anti-Hallucination')
+    await waitFor(() =>
+      expect(within(select).getAllByRole('option').map((o) => o.textContent)).toContain('1.01 — Pensée Critique & Anti-Hallucination'),
+    )
     await chooseCompetence('1.03')
 
     // 2. Fil de la compétence : type, texte, auteur, date.

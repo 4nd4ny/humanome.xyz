@@ -34,6 +34,8 @@ final class UcCar02ConsulterFileRelectureTest extends CartographeTestCase
     protected function setUp(): void
     {
         parent::setUp();
+        // annotations and revisions are checked against a published referential version (2026-10-20)
+        self::publierRespireV7();
         $this->maya = $this->registerAs('maya@example.org', 'Maya');
         $this->noe = $this->registerAs('noe@example.org', 'Noé');
         $this->carl = $this->registerAs('carl@example.org', 'Carl', ['cartographe']);
@@ -81,7 +83,7 @@ final class UcCar02ConsulterFileRelectureTest extends CartographeTestCase
         self::assertStringNotContainsString('document natif factice', $raw);
     }
 
-    #[TestDox('UC-CAR-02-F02 — nominal : « Relire » ouvre le détail complet (document, annotations, révisions, garantie)')]
+    #[TestDox('UC-CAR-02-F02 — nominal : « Relire » ouvre le détail complet (document, annotations, révisions, garantie, version du référentiel relue)')]
     public function testF02DetailCarriesTheFullReviewView(): void
     {
         $cartoId = $this->jourCarto($this->maya, 'Journée du 5 janvier');
@@ -95,10 +97,12 @@ final class UcCar02ConsulterFileRelectureTest extends CartographeTestCase
         self::assertSame(200, $response->getStatusCode());
         $detail = self::json($response);
         self::assertSame(
-            ['id', 'type', 'titre', 'visibility', 'document', 'createdAt', 'updatedAt', 'apprenant', 'annotations', 'revisions', 'garantie'],
+            ['id', 'type', 'titre', 'visibility', 'document', 'createdAt', 'updatedAt', 'apprenant', 'annotations', 'revisions', 'garantie', 'referentiel'],
             array_keys($detail),
-            'objet plat : la cartographie et ses trois listes',
+            'objet plat : la cartographie, ses trois listes et la version du référentiel que la relecture lit',
         );
+        // 2026-10-20 : la version du référentiel que la relecture lit — ni stockée ni nommée : RESPIRE publié
+        self::assertSame(['id' => 'respire', 'version' => '7.0.0'], $detail['referentiel']);
         self::assertSame('Journée du 5 janvier', $detail['titre']);
         self::assertSame(['id' => $this->maya['id'], 'displayName' => 'Maya'], $detail['apprenant']);
         self::assertEquals(self::jourDocument(), $detail['document']);

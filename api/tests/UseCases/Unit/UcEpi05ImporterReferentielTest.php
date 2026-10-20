@@ -75,7 +75,7 @@ final class UcEpi05ImporterReferentielTest extends TestCase
         self::fail('document accepté');
     }
 
-    #[TestDox('UC-EPI-05-U01 — RESPIRE ne change pas : son document se valide tel quel, même empreinte, même forme ; le schéma garde ses 7 pôles, ses 61 compétences « P.NN » et son seul niveau')]
+    #[TestDox('UC-EPI-05-U01 — RESPIRE ne change pas : son document se valide tel quel, même empreinte, même forme, son motif par défaut ; une de ses versions peut changer de structure, pas un code hors de son motif')]
     public function testU01RespireIsUnchanged(): void
     {
         $doc = self::respire();
@@ -86,20 +86,21 @@ final class UcEpi05ImporterReferentielTest extends TestCase
         self::assertArrayNotHasKey('niveaux', $normalized);
         self::assertSame([['nom' => 'compétence', 'motif' => '\d\.\d{2}']], ReferentielRepository::niveaux($normalized));
         self::assertTrue(Validation::validate('referentiel', $doc)['valid']);
-        // its structure is the schema's: a lettered code (sorted last), a competence less, a declared level
-        $lettre = $doc;
-        $lettre['competences'][0]['code'] = 'A1';
+        // its structure is its version's (2026-10-20): a competence less, a declared level are valid…
         $moins = $doc;
         array_pop($moins['competences']);
+        self::assertCount(60, self::repo()->validateDocument($moins)['competences']);
         $niveaux = ['niveaux' => [['nom' => 'capacité', 'motif' => '\d\.\d{2}']]] + $doc;
-        foreach ([[$lettre, '/competences/60/code'], [$moins, '/competences'], [$niveaux, '/']] as [$refuse, $pointeur]) {
-            try {
-                self::repo()->validateDocument($refuse);
-                self::fail('RESPIRE modifié accepté : ' . $pointeur);
-            } catch (InvalidDocumentException $e) {
-                self::assertSame('Document does not conform to the referentiel schema', $e->getMessage());
-                self::assertArrayHasKey($pointeur, $e->getErrors(), json_encode($e->getErrors(), JSON_UNESCAPED_UNICODE));
-            }
+        self::assertSame([['nom' => 'capacité', 'motif' => '\d\.\d{2}']], ReferentielRepository::niveaux(self::repo()->validateDocument($niveaux)));
+        // … a code that does not follow its motif (the default one, without a declared level) is not
+        $lettre = $doc;
+        $lettre['competences'][0]['code'] = 'A1';
+        try {
+            self::repo()->validateDocument($lettre);
+            self::fail('code hors motif accepté');
+        } catch (InvalidDocumentException $e) {
+            self::assertSame('Document fails referentiel integrity checks', $e->getMessage());
+            self::assertArrayHasKey('/competences/60/code', $e->getErrors(), json_encode($e->getErrors(), JSON_UNESCAPED_UNICODE));
         }
     }
 

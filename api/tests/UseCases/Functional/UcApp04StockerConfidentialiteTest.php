@@ -191,6 +191,7 @@ final class UcApp04StockerConfidentialiteTest extends CartographeTestCase
     #[TestDox('UC-APP-04-F06 — A4 : retirer du serveur → purge réelle (ligne, liens, travail du cartographe lié), le lien employeur meurt, 404 ensuite')]
     public function testF06RemoveFromServerPurgesRowLinksAndReviewWork(): void
     {
+        self::publierRespireV7(); // the review checks against a published version (2026-10-20)
         $camille = $this->registerAs('camille@example.org', 'Camille', ['cartographe']);
         $this->link($this->maya, $camille);
         $id = $this->createCarto($this->maya, ['titre' => 'Journée du 05/01/2026', 'visibility' => 'cartographe']);

@@ -1,6 +1,7 @@
 import { describe, it, expect, vi } from 'vitest'
-import { executerTwin6, buildScanPolePrompt, buildKairosPrompt, extractJson, TWIN6_CALLS } from './index.js'
+import { executerTwin6, buildScanPolePrompt, buildKairosPrompt, extractJson, TWIN6_CALLS, twin6CallsFor, fichesPourTwin6 } from './index.js'
 import { validateDocument } from '../validation.js'
+import { validateDocumentPourReferentiel } from '../conformite.js'
 
 const referentiel = {
   poles: [
@@ -104,6 +105,48 @@ describe('executerTwin6', () => {
     expect(extractJson('bla\n```json\n{"a":1}\n```\nfin')).toEqual({ a: 1 })
     expect(extractJson('{"b":2}')).toEqual({ b: 2 })
     expect(() => extractJson('aucun json ici')).toThrow(/aucun objet JSON/)
+  })
+
+  it('compte un scan par pôle et le kairos : RESPIRE v7, huit ; cinq pôles, six', () => {
+    expect(twin6CallsFor(referentiel)).toBe(TWIN6_CALLS)
+    expect(twin6CallsFor({ poles: [1, 2, 3, 4, 5].map((num) => ({ num })) })).toBe(6)
+  })
+
+  it('un autre référentiel : un scan par pôle avec la fiche écrite depuis son document, puis le kairos ; le document le nomme', async () => {
+    const lettres = ['A', 'B', 'C', 'D', 'E']
+    const lettre = {
+      id: 'fictif-lettre',
+      poles: lettres.map((l, i) => ({ num: i + 1, nom: `${l} · Pôle fictif ${l}` })),
+      competences: lettres.map((l, i) => ({ code: `${l}1`, nom: `Capacité fictive ${l}1`, pole: i + 1, description: `Définition fictive de ${l}1.` })),
+    }
+    const provider = {
+      complete: vi.fn(async ({ prompt }) => {
+        if (prompt.includes('## carto_P1')) {
+          return { text: JSON.stringify(kairosOut), usage: { inputTokens: 5, outputTokens: 2 }, model: 'mock-1', stopReason: 'end_turn' }
+        }
+        const num = Number(/Fiche des compétences du pôle (\d+)/.exec(prompt)[1])
+        const pole = { ...cartoPoleFor(num) }
+        pole.competences = [{ ...pole.competences[0], code: `${lettres[num - 1]}1` }]
+        return { text: JSON.stringify(pole), usage: { inputTokens: 10, outputTokens: 4 }, model: 'mock-1', stopReason: 'end_turn' }
+      }),
+    }
+    // Les fiches du paquet (RESPIRE) ne nomment pas ses compétences : chacune s'écrit depuis le document.
+    const fiches = fichesPourTwin6(lettre, templates.fiches)
+    const out = await executerTwin6({
+      portfolio: '### 2026-02-10\n---\nJ’ai fait quelque chose de notable.',
+      templates: { ...templates, fiches },
+      referentiel: lettre,
+      provider,
+      model: 'claude-haiku-4-5-20251001',
+      options: { meta: { journalId: 'run-twin6', sourceProtocole: 'twin6-ouverte@1.0.0', generatedAt: '2026-07-15T00:00:00' } },
+    })
+
+    expect(provider.complete).toHaveBeenCalledTimes(twin6CallsFor(lettre))
+    expect(out.calls.map((c) => c.etape)).toEqual(['scan-pole/1', 'scan-pole/2', 'scan-pole/3', 'scan-pole/4', 'scan-pole/5', 'kairos'])
+    const premier = provider.complete.mock.calls[0][0].prompt
+    expect(premier).toContain('# Pôle 1 — A · Pôle fictif A\n\n## A1 — Capacité fictive A1\n\nDéfinition fictive de A1.')
+    expect(out.document.referentiel).toBe('fictif-lettre')
+    expect(validateDocumentPourReferentiel('cartographie-merge', out.document, lettre).errors).toEqual([])
   })
 
   it('échoue explicitement sur une sortie tronquée (max_tokens)', async () => {

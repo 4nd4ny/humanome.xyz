@@ -24,4 +24,13 @@ describe('StatBadges', () => {
     render(<StatBadges mergeDoc={{}} />)
     expect(screen.getAllByText('—')).toHaveLength(3)
   })
+
+  it('sans le total du référentiel, le compte seul (jamais « / 61 » supposé)', () => {
+    render(<StatBadges mergeDoc={mergeDoc} />)
+    expect(screen.getByText('45')).toBeDefined()
+    expect(screen.queryByText(/\/ 61/)).toBeNull()
+    cleanup()
+    render(<StatBadges mergeDoc={mergeDoc} totalCompetences={20} />)
+    expect(screen.getByText('45 / 20')).toBeDefined()
+  })
 })

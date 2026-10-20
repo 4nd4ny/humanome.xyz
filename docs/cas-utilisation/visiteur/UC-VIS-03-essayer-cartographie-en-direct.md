@@ -13,9 +13,12 @@
 
 Permettre à un visiteur, sans compte et sans rien laisser derrière lui, de
 coller un texte réflexif et d'obtenir en direct la cartographie de cette
-« journée » par le vrai moteur (7 pôles instruits un par un, puis une synthèse
-transversale kairos), le modèle de langage étant fourni et payé par la
-plateforme — dans des limites qui protègent son budget.
+« journée » par le vrai moteur (les pôles du référentiel instruits un par un —
+7 pour RESPIRE v7 —, puis une synthèse transversale kairos), le modèle de
+langage étant fourni et payé par la plateforme — dans des limites qui
+protègent son budget. Le référentiel est RESPIRE, sa dernière version publiée :
+la page n'en offre pas d'autre, mais en lit le nom, les pôles et leur nombre
+(2026-10-20).
 
 ## Déclencheur
 
@@ -55,7 +58,9 @@ de l'accueil.
 1. Le visiteur ouvre `#/essayer` : page « Essayer avec votre propre texte »,
    mention « Démonstration sans compte et sans aucune conservation », zone
    « Texte à cartographier » avec compteur « n / 12 000 caractères ». Le
-   référentiel publié est chargé (repli embarqué, UC-VIS-02).
+   référentiel publié est chargé (repli embarqué, UC-VIS-02) ; le texte
+   d'introduction en donne le nom et le nombre de pôles (« sur le référentiel
+   RESPIRE (7 pôles instruits un par un, … ) »).
 2. Il colle un texte de 80 à 12 000 caractères (voir AN3 : au-delà d'environ
    11 400 caractères, le serveur refuse) et clique « Cartographier ce texte » ;
    la journée est datée du jour **local** du navigateur.
@@ -65,11 +70,12 @@ de l'accueil.
    résout la preuve de travail : trouver `nonce` tel que
    `sha256(challenge + ":" + nonce)` commence par au moins `difficultyBits` bits
    à zéro (≈ 1 s à 20 bits, fil principal découpé, annulable).
-4. Le moteur (`extractDay`) enchaîne 8 appels — un par pôle, puis la synthèse
-   kairos. Chaque appel est un `POST /api/llm` portant `{system, prompt,
-   challenge, nonce, website: ""}` (plus les indications du moteur, ignorées),
-   avec **un défi neuf résolu à la volée**. La page affiche « appel k sur 8 »,
-   les pôles terminés et la phase en cours (défi, résolution, analyse).
+4. Le moteur (`extractDay`) enchaîne un appel par pôle du référentiel, puis la
+   synthèse kairos (8 pour RESPIRE v7). Chaque appel est un `POST /api/llm`
+   portant `{system, prompt, challenge, nonce, website: ""}` (plus les
+   indications du moteur, ignorées), avec **un défi neuf résolu à la volée**. La
+   page affiche « appel k sur N » (N = pôles + 1), les pôles terminés et la phase
+   en cours (défi, résolution, analyse).
 5. Pour chaque appel, le serveur applique ses gardes, du moins coûteux au plus
    coûteux : interrupteur, champ piège vide, texte présent et ≤
    `maxInputChars`, preuve de travail valide, non expirée, suffisante et **jamais
@@ -77,7 +83,8 @@ de l'accueil.
    coupe-circuit journalier ; puis appelle le fournisseur avec **son** modèle et
    **son** plafond de tokens, compte tokens et coût estimé, et renvoie
    `{text, usage, model, stopReason}`.
-6. Le moteur valide chaque pôle et le document complet ; la page affiche le
+6. Le moteur valide chaque pôle et le document complet, au schéma puis à la
+   conformité au référentiel (ses pôles, chacun une fois ; ses codes) ; la page affiche le
    bandeau « Démo : ce résultat n'est pas conservé… » (Imprimer, Exporter le
    JSON, Cartographier un autre texte) et la vue journée du résultat.
 
@@ -93,10 +100,12 @@ de l'accueil.
   `cartographie-jour-<date>.json` sans rien envoyer ; « Cartographier un autre
   texte » revient au formulaire (le texte est encore à l'écran).
 - **A3 — Synthèse kairos inexploitable** (étape 4) : après un nouvel essai
-  interne, la journée est rendue avec ses 7 pôles et la note « La synthèse
-  transversale (kairos) n'a pas pu être produite cette fois… ». Cela vaut pour
-  **toute** défaillance du kairos, quota (429) et budget (503) compris : la
-  page affiche alors un résultat à 7 pôles, sans message de quota.
+  interne, la journée est rendue avec ses pôles et la note « La synthèse
+  transversale (kairos) n'a pas pu être produite cette fois : les N pôles
+  ci-dessous sont complets. » (7 pour RESPIRE v7). Cela vaut pour **toute**
+  défaillance du kairos — quota (429), budget (503), mais aussi un kairos qui
+  relie des codes que le référentiel ne connaît pas — : la page affiche alors
+  un résultat sans kairos, sans message de quota.
 - **A4 — Nouveaux essais automatiques** (étape 4) : deux mécanismes se
   cumulent. (1) Le fournisseur de la démo refait **une** fois un appel sur
   500/502/504/529, erreur réseau ou défi refusé dont le message contient
@@ -182,11 +191,11 @@ de l'accueil.
 
 | Couche | Élément | Rôle |
 |---|---|---|
-| Front | `web/src/views/EssayerView.jsx` | Saisie, bornes, progression, annulation, résultat, erreurs |
+| Front | `web/src/views/EssayerView.jsx` ; `engine/src/referentiel.js` — `nomCourtReferentiel` | Saisie, bornes, progression, annulation, résultat, erreurs ; nom, pôles et nombre d'appels lus dans le référentiel chargé |
 | Front | `web/src/lib/demo-llm.js` — `fetchChallenge`, `createDemoProvider`, `describeDemoError`, `localIsoToday`, `DEMO_TEXT_MIN_CHARS`/`MAX`, `UPSTREAM_RETRY_DELAY_MS` | Défi par appel, champ piège, nouvel essai unique du fournisseur (A4), messages, date locale |
 | Front | `web/src/lib/pow.js` — `solvePow`, `leadingZeroBits`, `MAX_DIFFICULTY_BITS` | Preuve de travail côté navigateur |
 | Moteur | `engine/src/providers/index.js` — `createProvider` (transport `proxy`) | Appel du proxy, sans clé, sans nouvel essai automatique **au niveau du fournisseur** (`maxAttempts: 1`) |
-| Moteur | `engine/src/pipeline/extract.js` — `extractDay`, `buildExtractionPrompt` | 7 pôles + kairos facultatif, un nouvel essai immédiat de tout appel en échec (AN2), validation (voir aussi UC-APP-02) ; gabarit du prompt (AN3) |
+| Moteur | `engine/src/pipeline/extract.js` — `extractDay`, `buildExtractionPrompt` | Un appel par pôle du référentiel + kairos facultatif, un nouvel essai immédiat de tout appel en échec (AN2), validation au schéma puis à la conformité au référentiel (voir aussi UC-APP-02) ; gabarit du prompt (AN3) |
 | API | `GET /api/llm/status`, `GET /api/llm/challenge`, `POST /api/llm` — `api/src/routes/llm.php` | Orchestration des gardes |
 | Domaine | `api/src/Llm/PowChallenge.php` — `issue`, `verify`, `secretFromEnv`, `leadingZeroBits` | Preuve de travail sans état |
 | Domaine | `api/src/Llm/UsageCounters.php` — `record`, `today`, `isExhausted` | Coupe-circuit journalier |
@@ -253,6 +262,7 @@ de l'accueil.
 | UC-VIS-03-F21 | A3 | IHM | 503 sur l'appel kairos seul → résultat à 7 pôles + note kairos, aucun message de quota ; 9 POST | idem |
 | UC-VIS-03-F22 | E7 | IHM | Pôle 2 inexploitable deux fois → « L'analyse a échoué… (détail technique : extractDay : pôle 2 … » , Réessayer, texte conservé, 3 POST | idem |
 | UC-VIS-03-F23 | Anomalie AN3 | IHM | **Comportement actuel figé** — texte de 12 000 caractères accepté par la page → 413 (règle serveur) deux fois, échec générique | idem |
+| UC-VIS-03-F24 | Nominal (référentiel publié) | IHM | La dernière version publiée de RESPIRE compte six pôles (index statique) : texte d'introduction « 6 pôles instruits un par un », progression « appel k sur 7 », 7 POST acceptés, synthèse « Les 6 pôles de la feuille du jour » | idem |
 
 ### Tests existants liés (non-régression)
 

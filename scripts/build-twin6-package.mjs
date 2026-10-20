@@ -6,6 +6,12 @@
 // downloadable, and carries no secret (unlike the confidential Twin9 Golden
 // Prompt). Deterministic: same inputs → byte-identical output.
 //
+// Its fiches are RESPIRE v7's seven, from the committed corpus: a run on
+// another referential, or on a version of RESPIRE of another structure, keeps
+// a package fiche only for a pole whose competences it names exactly and
+// writes the others from the referential's document (engine/src/twin6/fiches.js,
+// fichesPourTwin6, 2026-10-20) — this package stays RESPIRE v7's.
+//
 // Usage: node scripts/build-twin6-package.mjs
 
 import { readFileSync, writeFileSync, existsSync } from 'node:fs'

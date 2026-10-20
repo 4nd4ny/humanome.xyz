@@ -380,4 +380,25 @@ describe('UC-CAR-04 — révisions successives et historique', () => {
     expect((await within(historique).findByRole('alert')).textContent).toBe('Révision introuvable')
     expect(screen.queryByTestId('viewing-revision')).toBeNull()
   })
+
+  it('UC-CAR-04-F26 — E2 (référentiel) : un document révisé non conforme à la version du référentiel que la relecture lit (un pôle perdu) → message, erreur nommée, révision NON envoyée', async () => {
+    // 2026-10-20 : le schéma ne fige plus sept pôles ; la révision est conforme au
+    // référentiel de la cartographie (le détail le nomme : RESPIRE 7.0.0) avant l'envoi.
+    const sixPoles = dayDoc()
+    sixPoles.poles = sixPoles.poles.filter((p) => p.poleNum !== '7')
+    expect(validateDocument('cartographie-jour', sixPoles).valid).toBe(true)
+    const net = stubNetwork({
+      'GET api/cartographe/cartographies/12': jsonResponse(200, detailBody({ document: sixPoles })),
+    })
+    openCartographe('relecture/12')
+
+    await correct('1.03', { statut: 'présence établie', confiance: 0.8 })
+    await propose('Révision d’un document qui a perdu un pôle')
+
+    expect((await screen.findByRole('alert')).textContent).toBe(
+      'Le document révisé n’est pas conforme au référentiel de la cartographie : révision non envoyée.',
+    )
+    expect(screen.getByTestId('revision-schema-errors').textContent).toContain('il manque le pôle 7 du référentiel')
+    expect(net.calls.some((call) => call.key.startsWith('POST'))).toBe(false)
+  })
 })

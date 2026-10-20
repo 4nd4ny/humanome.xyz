@@ -1,5 +1,6 @@
 import { useEffect, useMemo, useRef, useState } from 'react'
 import { extractDay } from '@engine/pipeline/extract.js'
+import { nomCourtReferentiel } from '@engine/referentiel.js'
 import DayView from './DayView.jsx'
 import { loadPublishedReferentiel } from '../data/referentiel.js'
 import { downloadJson } from '../lib/download-json.js'
@@ -28,8 +29,10 @@ const PHASE_LABELS = {
 /**
  * Page publique « Essayer » (P6, cahier §3.1) : coller un texte libre,
  * le cartographier EN DIRECT comme une journée unique avec le moteur réel
- * (engine extractDay, 7 appels pôle + 1 kairos via le proxy plateforme),
- * puis afficher le résultat avec la vue journée existante.
+ * (engine extractDay : un appel par pôle du référentiel + 1 kairos, via le
+ * proxy plateforme), puis afficher le résultat avec la vue journée existante.
+ * Le référentiel est RESPIRE, sa dernière version publiée : la page en lit le
+ * nom, les pôles et leur nombre (2026-10-20).
  *
  * AUCUNE persistance d'aucune sorte (ni localStorage ni IndexedDB) : le texte
  * et le résultat ne vivent que dans l'état React — un rechargement efface tout,
@@ -102,7 +105,7 @@ export default function EssayerView({ lib, fetchFn }) {
         model: DEMO_MODEL,
         maxTokens: DEMO_MAX_TOKENS,
         signal: controller.signal,
-        // Les 7 pôles portent la valeur de la démo : un échec de la synthèse
+        // Les pôles portent la valeur de la démo : un échec de la synthèse
         // transversale dégrade le résultat au lieu de perdre le run.
         kairosOptional: true,
         onProgress: ({ done, skipped }) => {
@@ -113,7 +116,7 @@ export default function EssayerView({ lib, fetchFn }) {
       setResult(doc)
       setNotice(
         kairosSkipped
-          ? 'La synthèse transversale (kairos) n’a pas pu être produite cette fois : les 7 pôles ci-dessous sont complets.'
+          ? `La synthèse transversale (kairos) n’a pas pu être produite cette fois : les ${referentiel.poles.length} pôles ci-dessous sont complets.`
           : null,
       )
       setPhase('done')
@@ -225,9 +228,10 @@ export default function EssayerView({ lib, fetchFn }) {
       <h1>Essayer avec votre propre texte</h1>
       <p className="essayer-lead">
         Collez une page de journal de bord, un extrait de portfolio réflexif ou tout texte
-        personnel : la plateforme le cartographie en direct sur le référentiel RESPIRE
-        (7 pôles instruits un par un, puis une synthèse transversale), avec un modèle de
-        langage fourni par la plateforme.
+        personnel : la plateforme le cartographie en direct sur le référentiel{' '}
+        {referentiel ? nomCourtReferentiel(referentiel) : 'RESPIRE'} (
+        {referentiel ? `${referentiel.poles.length} pôles` : 'ses pôles'} instruits un par un, puis
+        une synthèse transversale), avec un modèle de langage fourni par la plateforme.
       </p>
       <p className="privacy-note">
         Démonstration sans compte et sans aucune conservation : votre texte et le résultat ne

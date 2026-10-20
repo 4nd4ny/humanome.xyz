@@ -2,7 +2,7 @@
   "$schema": "https://json-schema.org/draft/2020-12/schema",
   "$id": "https://humanome.xyz/schemas/referentiel.schema.json",
   "title": "Référentiel de compétences",
-  "description": "Référentiel de compétences de toute structure (T15) : des pôles numérotés de 1 à N, des compétences dont les codes suivent le motif que le référentiel déclare, et leurs éléments des niveaux plus fins. RESPIRE v7, le premier publié, compte 7 pôles et 61 compétences au format « 1.01 » ; l'Humanome V18, 5 pôles lettrés, des capacités A1 à E4 et leurs facettes. Public en lecture, modifiable par les épistémiarques, historisé : chaque version est identifiée par un semver et un hash de contenu (cahier §4.1). Version 2.0.0 du schéma ; un document 1.0.0 (RESPIRE) y reste valide tel quel.",
+  "description": "Référentiel de compétences de toute structure (T15) : des pôles numérotés de 1 à N, des compétences dont les codes suivent le motif que le référentiel déclare, et leurs éléments des niveaux plus fins. RESPIRE v7, le premier publié, compte 7 pôles et 61 compétences au format « 1.01 » ; l'Humanome V18, 5 pôles lettrés, des capacités A1 à E4 et leurs facettes. Public en lecture, modifiable par les épistémiarques, historisé : chaque version est identifiée par un semver et un hash de contenu (cahier §4.1). Version 2.1.0 du schéma : RESPIRE n'y a plus de structure imposée (2026-10-20) — une de ses versions peut compter d'autres pôles et d'autres codes, comme tout référentiel ; un document 1.0.0 (RESPIRE v7) y reste valide tel quel.",
   "type": "object",
   "additionalProperties": false,
   "required": [
@@ -77,7 +77,7 @@
     "poles": {
       "type": "array",
       "minItems": 1,
-      "description": "Les pôles du référentiel, numérotés de 1 à N sans trou : 7 pour RESPIRE, 5 pour l'Humanome V18, dont les pôles lettrés A à E portent les numéros 1 à 5.",
+      "description": "Les pôles du référentiel, numérotés de 1 à N sans trou : 7 pour RESPIRE v7, 5 pour l'Humanome V18, dont les pôles lettrés A à E portent les numéros 1 à 5.",
       "items": {
         "type": "object",
         "additionalProperties": false,
@@ -141,26 +141,6 @@
       }
     }
   },
-  "allOf": [
-    {
-      "description": "RESPIRE garde sa structure (T15) : 7 pôles, 61 compétences au format « P.NN », son seul niveau. Elle ne change qu'en révisant ce schéma.",
-      "if": {
-        "required": ["id"],
-        "properties": { "id": { "const": "respire" } }
-      },
-      "then": {
-        "not": { "required": ["niveaux"] },
-        "properties": {
-          "poles": { "minItems": 7, "maxItems": 7 },
-          "competences": {
-            "minItems": 61,
-            "maxItems": 61,
-            "items": { "properties": { "code": { "pattern": "^\\d\\.\\d{2}$" } } }
-          }
-        }
-      }
-    }
-  ],
   "$defs": {
     "code": {
       "type": "string",

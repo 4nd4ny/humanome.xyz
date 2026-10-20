@@ -4,8 +4,9 @@ import { getReferentiel } from '../data/load.js'
 import { referentielHash } from '../router.js'
 
 /**
- * Référentiel public (P4.4, cahier §4.1/§3.5) : arbre 7 pôles -> 61
- * compétences aux couleurs des pôles, recherche plein-texte client (code +
+ * Référentiel public (P4.4, cahier §4.1/§3.5) : arbre pôles -> compétences
+ * de la version publiée, tels qu'elle les déclare (RESPIRE v7 : 7 pôles, 61
+ * compétences), aux couleurs des pôles, recherche plein-texte client (code +
  * nom, insensible aux accents), permalien par compétence
  * (#/referentiel/<code> : défilement + surbrillance), et bandeau sobre vers
  * l'espace participatif Decidim — qui nourrit et critique le référentiel,
@@ -70,6 +71,8 @@ export default function ReferentielView({ focusCode = null, load = loadPublished
 
   const shown = poles.reduce((sum, pole) => sum + pole.competences.length, 0)
   const total = (doc.competences ?? []).length
+  // L'exemple de la recherche : le premier code du référentiel affiché (« 1.01 » pour RESPIRE).
+  const exemple = (doc.competences ?? [])[0]?.code ?? null
   const focusKnown =
     focusCode === null || (doc.competences ?? []).some((c) => c.code === focusCode)
 
@@ -107,7 +110,7 @@ export default function ReferentielView({ focusCode = null, load = loadPublished
           type="search"
           value={query}
           onChange={(event) => setQuery(event.target.value)}
-          placeholder="Code ou nom — ex. 1.01, pensée critique"
+          placeholder={exemple ? `Code ou nom — ex. ${exemple}` : 'Code ou nom'}
           autoComplete="off"
         />
       </p>

@@ -72,13 +72,13 @@ final class ValidationTest extends TestCase
     }
 
     /**
-     * Any referential, not RESPIRE's alone (T17): a document that names its
-     * referential (« referentiel ») counts its poles 1 to N, its codes in the
-     * form that referential declares (referentiel schema, $defs/code); naming
-     * none, or « respire », it keeps RESPIRE's structure — 7 poles, « P.NN »
-     * codes. JS twin: engine/src/validation.test.js.
+     * Any referential (T17), RESPIRE's included since 2026-10-20: the schema
+     * imposes no structure — poles 1 to N, codes in a form a referential can
+     * declare (referentiel schema, $defs/code). The number of poles and the
+     * codes are those of the referential version the document maps, which the
+     * conformity checks (ConformiteTest). JS twin: engine/src/validation.test.js.
      */
-    public function testAcceptsTheMergeOfAnyReferentialThatNamesItAndKeepsRespiresStructure(): void
+    public function testAcceptsTheMergeOfAnyReferentialRespireIncluded(): void
     {
         $neuf = $this->makeMergeDocument();
         foreach ([8, 9] as $num) {
@@ -97,8 +97,8 @@ final class ValidationTest extends TestCase
         self::assertSame([], Validation::validate('cartographie-merge', ['referentiel' => 'fictif-lettre'] + $lettre)['errors']);
         foreach ([[], ['referentiel' => 'respire']] as $marque) {
             self::assertSame([], Validation::validate('cartographie-merge', $marque + $this->makeMergeDocument())['errors']);
-            self::assertFalse(Validation::validate('cartographie-merge', $marque + $neuf)['valid'], 'RESPIRE : 7 pôles');
-            self::assertFalse(Validation::validate('cartographie-merge', $marque + $lettre)['valid'], 'RESPIRE : codes P.NN');
+            self::assertSame([], Validation::validate('cartographie-merge', $marque + $neuf)['errors'], 'RESPIRE : 9 pôles');
+            self::assertSame([], Validation::validate('cartographie-merge', $marque + $lettre)['errors'], 'RESPIRE : codes lettrés');
         }
 
         $espace = ['referentiel' => 'fictif'] + $this->makeMergeDocument();
@@ -108,12 +108,12 @@ final class ValidationTest extends TestCase
     }
 
     /**
-     * The day schema likewise (T17), on which PoleAssembler and the worker
-     * route rely: a day of nine poles, or with lettered codes, is valid when it
-     * names its referential; naming none, or « respire », it keeps RESPIRE's
-     * structure. JS twin: engine/src/validation.test.js.
+     * The day schema likewise: a day of nine poles, of six, or with lettered
+     * codes, is valid to the schema whatever referential it names; its
+     * conformity to its referential version is ConformiteTest's. JS twin:
+     * engine/src/validation.test.js.
      */
-    public function testAcceptsTheDayOfAnyReferentialThatNamesItAndKeepsRespiresStructure(): void
+    public function testAcceptsTheDayOfAnyReferentialRespireIncluded(): void
     {
         $jour = json_decode((string) file_get_contents(\dirname(__DIR__, 2)
             . '/schemas/fixtures/cartographie-jour-2026-01-05.json'), true, 512, JSON_THROW_ON_ERROR);
@@ -127,10 +127,13 @@ final class ValidationTest extends TestCase
 
         self::assertSame([], Validation::validate('cartographie-jour', ['referentiel' => 'fictif-neuf'] + $neuf)['errors']);
         self::assertSame([], Validation::validate('cartographie-jour', ['referentiel' => 'fictif-lettre'] + $lettre)['errors']);
+        $six = $jour;
+        $six['poles'] = \array_slice($jour['poles'], 0, 6);
         foreach ([[], ['referentiel' => 'respire']] as $marque) {
             self::assertSame([], Validation::validate('cartographie-jour', $marque + $jour)['errors']);
-            self::assertFalse(Validation::validate('cartographie-jour', $marque + $neuf)['valid'], 'RESPIRE : 7 pôles');
-            self::assertFalse(Validation::validate('cartographie-jour', $marque + $lettre)['valid'], 'RESPIRE : codes P.NN');
+            self::assertSame([], Validation::validate('cartographie-jour', $marque + $neuf)['errors'], 'RESPIRE : 9 pôles');
+            self::assertSame([], Validation::validate('cartographie-jour', $marque + $six)['errors'], 'RESPIRE : 6 pôles');
+            self::assertSame([], Validation::validate('cartographie-jour', $marque + $lettre)['errors'], 'RESPIRE : codes lettrés');
         }
         self::assertFalse(Validation::validate('cartographie-jour', ['referentiel' => 'RESPIRE'] + $neuf)['valid'],
             'un identifiant de référentiel s’écrit en minuscules');

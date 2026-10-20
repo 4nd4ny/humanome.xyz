@@ -22,9 +22,9 @@ est retiré (T11, fusionné le 2026-10-20). Vient ensuite T18.
 
 Hors planning, à la demande de Christian (2026-10-20) : le référentiel dynamique — RESPIRE n'a
 plus de structure imposée, et tous les parcours lisent la structure du référentiel qu'ils emploient
-(branche `feat/referentiel-dynamique`, entrée du 2026-10-20 ; attend sa revue) ; posée dessus, la
-branche `feat/gabarits-twin6-et-vestiges` : les gabarits Twin6 versionnés, et les vestiges de T11
-retirés (entrée du 2026-10-20 ; attend sa revue).
+(#15, fusionnée le 2026-10-20) ; puis les gabarits Twin6 versionnés et les vestiges de T11 retirés
+(#16, arrivée dans `main` le 2026-10-21 avec la documentation des fiches des référentiels
+importés). Entrées du 2026-10-20.
 
 ## Fait
 
@@ -95,6 +95,10 @@ retirés (entrée du 2026-10-20 ; attend sa revue).
     y sert le plus récent paquet publié, `twin6-ouverte` 1.0.0 (relevé le 2026-10-20, UC-PRO-01
     AN-2) ; le déploiement importe les paquets dans l'ordre de leurs noms, et ce serait ensuite
     `twin6-ouverte` 1.1.0.
+  - Fusion : #16 visait `feat/referentiel-dynamique`, sa base, que la fusion de #15 n'avait pas
+    supprimée ; elle y a été fusionnée. Une PR de `docs/fiches-referentiels` l'amène dans `main`,
+    avec une mise à jour d'UC-EPI-05 que Christian a demandée : un référentiel importé n'a pas de
+    fiches à rédiger ni à générer — Twin6 et Twin9 les écrivent depuis son document (RG10).
   - Vérifié, sur l'arbre du commit : PHP `OK (1703 tests, 17825 assertions)` (Twin_v9 présent,
     PHP 8.3 local) ; front 2740 tests verts, ses 258 fichiers chargés ; moteur 413 ; bout en bout
     19/19 (le scénario promptologue rejoué après la remise à zéro documentée des compteurs de la

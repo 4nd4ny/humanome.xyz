@@ -3,10 +3,10 @@
 | Champ | Valeur |
 |---|---|
 | **Acteur principal** | Épistémiarque (ou administrateur : garde « épistémiarque ou admin ») |
-| **Acteurs secondaires** | Membres épistémiarques (vote, UC-EPI-02 A5) ; chaque compte, qui choisit un référentiel publié dans son profil Twin9 (UC-APP-10, page Configuration) ; l'auteur d'un brouillon, pour ses runs d'essai |
+| **Acteurs secondaires** | Membres épistémiarques (vote, UC-EPI-02 A5) ; chaque compte, qui choisit un référentiel publié dans son profil Twin9 (UC-APP-10, page Configuration) ou au lancement d'une cartographie standard, ouverte ou de masse ; l'auteur d'un brouillon, pour ses runs d'essai |
 | **Portée** | Atelier `#/epistemiarque/referentiels` (section « Autres référentiels ») ; API `POST /api/referentiel/import`, `GET /api/referentiels`, et le cycle du grain document (`/api/referentiel/drafts…`, `/api/referentiel/proposals…`, UC-EPI-04) |
 | **Niveau** | Objectif utilisateur |
-| **Cahier des charges** | §3.5, §4.1 ; T15 (dépôt `Twin_v9`, `docs/plan-twin9-php.md`, lot 4c, première tâche) ; schéma `referentiel` 2.0.0 (`docs/contrats.md` §9) |
+| **Cahier des charges** | §3.5, §4.1 ; T15 (dépôt `Twin_v9`, `docs/plan-twin9-php.md`, lot 4c, première tâche) ; schéma `referentiel` 2.1.0 (`docs/contrats.md` §9 et §11) |
 | **Statut** | Implémenté (T15) ; le moteur lit le référentiel du run depuis T16, la cartographie depuis T17 (`docs/contrats.md` §10) |
 
 ## Objectif
@@ -20,8 +20,8 @@ sans que RESPIRE change.
 ## Déclencheur
 
 Un épistémiarque dispose du référentiel au format JSON du schéma
-`referentiel` 2.0.0 (par exemple converti depuis sa source) et veut le
-proposer aux membres.
+`referentiel` (2.1.0 ; un document écrit pour 2.0.0 y reste valide), par
+exemple converti depuis sa source, et veut le proposer aux membres.
 
 ## Préconditions
 
@@ -36,7 +36,10 @@ proposer aux membres.
   compétences, chacune sous le pôle de sa compétence d'origine, ses éléments
   plus fins dessous ; ses `niveaux` commencent au niveau choisi.
 - Après le vote et la publication, la version est servie (`GET /api/referentiels`)
-  et proposée à chaque compte dans son profil Twin9.
+  et proposée à chaque compte : dans son profil Twin9 et, depuis le 2026-10-20,
+  au choix du référentiel de la cartographie standard, de la cartographie
+  ouverte (Twin6) et des cartographies de masse. Ses fiches de scan
+  s'écrivent depuis son document, sans rien à générer (RG10).
 
 ## Garanties minimales (en cas d'échec)
 
@@ -153,6 +156,16 @@ proposer aux membres.
 - **RG9** — Une annotation d'une cartographie qui désigne une version de
   référentiel porte un code de ce référentiel ; sans référentiel désigné, la
   forme de RESPIRE (`[1-7].NN`).
+- **RG10** — Un référentiel importé n'a pas de fiches à rédiger ni à générer :
+  l'analyse approfondie (Twin9, depuis T16) et la cartographie ouverte (Twin6,
+  depuis le 2026-10-20) écrivent la fiche de chaque pôle depuis son document,
+  au moment du run — « # Pôle N — nom », puis la description du pôle ; pour
+  chaque compétence, « ## CODE — nom », sa description, puis ses éléments plus
+  fins, chacun un niveau de titre plus bas avec sa description. Ces fiches ne
+  sont donc riches que de ce que le document décrit : le schéma n'a pas
+  d'autre champ pour elles. La cartographie standard et la masse ne lisent que
+  les pôles, les codes et les noms. RESPIRE, lui, garde ses fiches rédigées,
+  dans la base (UC-EPI-01 à 03, UC-EPI-04 L3).
 
 ## Données et RGPD
 
@@ -172,9 +185,10 @@ proposer aux membres.
 | API | `api/src/routes/referentiel.php` — `POST /referentiel/import`, `GET /referentiels`, listes de tous les référentiels, fork d'un autre | Orchestration |
 | Domaine | `api/src/Referentiel/ReferentielRepository.php` — `importDraft`, `auNiveau`, `niveaux`, `regexDuMotif`, `validateDocument`, `catalogue`, `brouillonsDe`, `findVersion`, `editableVersions` | Import, contrôles, lectures |
 | Domaine | `api/src/Referentiel/ContentHash.php` | Niveaux et éléments gardés hors de l'empreinte |
-| Domaine | `api/src/Twin9/ProfilPolicy.php`, `api/src/Twin9/Lancement.php`, `api/src/Twin9/ReferentielMoteur.php` | RG7, RG8 |
+| Domaine | `api/src/Twin9/ProfilPolicy.php`, `api/src/Twin9/Lancement.php`, `api/src/Twin9/ReferentielMoteur.php` | RG7, RG8, RG10 |
+| Moteur | `engine/src/twin6/fiches.js` — `fichesDuReferentiel`, `fichesPourTwin6` | Fiches de Twin6 écrites depuis le document (RG10) |
 | API | `api/src/routes/annotations.php` | RG9 |
-| Contrat | `schemas/referentiel.schema.json` (2.0.0), `engine/src/validation-compiled.js` | Format, RESPIRE gardé |
+| Contrat | `schemas/referentiel.schema.json` (2.1.0), `engine/src/validation-compiled.js` | Format |
 
 ## Jeux de tests
 
@@ -217,7 +231,8 @@ proposer aux membres.
 
 - `api/tests/Twin9/ConfigurationDroitsTest.php` — `testADraftServesOnlyItsAuthorsTestRuns` (RG7, la ligne de la matrice), `testOnlyAPublishedReferential`.
 - `api/tests/Twin9/RunsTest.php` — `testARunReadsTheReferentialItsProfileNames` (RG8 : un run sur un autre référentiel part, ses réglages portent son référentiel ; un brouillon RESPIRE sert le run d'essai de son auteur).
-- `api/tests/Twin9/ReferentielMoteurTest.php` — le référentiel que lit le moteur (RG8) : fiches de RESPIRE prises dans la base, celles d'un autre écrites depuis son document, ordre naturel des codes ; avec le vrai moteur, un référentiel qu'il ne lit pas est refusé au lancement.
+- `engine/src/twin6/fiches.test.js` — les fiches de Twin6 d'un autre référentiel, écrites depuis son document (RG10).
+- `api/tests/Twin9/ReferentielMoteurTest.php` — le référentiel que lit le moteur (RG8, RG10) : fiches de RESPIRE prises dans la base, celles d'un autre écrites depuis son document, ordre naturel des codes ; avec le vrai moteur, un référentiel qu'il ne lit pas est refusé au lancement.
 - `api/tests/AnnotationsTest.php` — `testACartographyOfAnotherReferentialTakesItsCodes` (RG9).
 - `web/src/views/ConfigurationView.test.jsx` — les brouillons proposés en version.
 - UC-EPI-03 (coupe de release : complétude, la structure de la dernière version publiée), UC-EPI-04 (grain document), `ReferentielApiTest`, `ReferentielImportExportTest`, `CompetenceReleaseTest`, `engine/test/usecases/unit/uc-sys-04-chaine-artefacts-derives.test.js` (validateurs compilés).

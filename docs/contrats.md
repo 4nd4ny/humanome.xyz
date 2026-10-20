@@ -178,7 +178,9 @@ par `scripts/extract-referentiel.mjs`.
 
 8. **Twin6 dans l'atelier : paquet PUBLIÉ « twin6-ouverte », immuable, réservé
    (D1/AD-D1).** Le protocole open source Twin6 alimente DEUX artefacts depuis
-   un SEUL corpus (`web/public/data/twin6/prompts/*.md`) : le paquet statique
+   un SEUL corpus (ses gabarits, versionnés dans `scripts/data/twin6/` depuis
+   le 2026-10-20, et les fiches `web/public/data/twin6/prompts/P*.md`
+   régénérées du corpus des fiches) : le paquet statique
    public servi par `#/twin6-ouverte` (`scripts/build-twin6-package.mjs`) et un
    document `prompt-package` importé publié en base
    (`scripts/build-twin6-prompt-package.mjs`, `build/prompt-packages/`), forkable
@@ -200,6 +202,18 @@ par `scripts/extract-referentiel.mjs`.
      `engine://…(twin6)` : le banc d'essai et `#/twin6-ouverte` appellent
      `executerTwin6` sur le portfolio **entier** (7 scan-pôle + kairos →
      `cartographie-merge`), jamais l'extraction par jour d'aurora.
+   - **1.1.0 (2026-10-20) : les gabarits lisent le référentiel.** Ceux de 1.0.0
+     écrivent RESPIRE v7 en toutes lettres (« un des 7 pôles du référentiel
+     RESPIRE », « les 61 verdicts », la forme `X.YY`, quatre codes d'exemple).
+     Ceux de 1.1.0 portent à leur place `${REFERENTIEL}`, `${NB_POLES}`,
+     `${NB_COMPETENCES}`, `${FORMAT_CODE}`, `${PRECISION_FORMAT_CODE}` et
+     `${CODES_EXEMPLE}`, que `executerTwin6` rend depuis le référentiel employé
+     avant tout appel (`engine/src/twin6/variables.js`) ; un gabarit sans elles
+     passe inchangé. Rendus pour RESPIRE v7, ils redonnent 1.0.0 à l'octet.
+     1.1.0 se tire de 1.0.0 par des remplacements exacts, chacun vérifié
+     (`scripts/twin6-gabarits.mjs`) : un gabarit qui a dérivé arrête la
+     construction. `#/twin6-ouverte` sert la 1.1.0 ; son méga-prompt, que le
+     moteur n'exécute pas, reste le protocole manuel de RESPIRE v7.
 
 9. **Archive de compte 1.1.0 : les jeux de l'interface de cartographie
    (2026-10-14, journal de la cartographie D-25, question 10 : « tout
@@ -1422,7 +1436,7 @@ plus contre le chiffre 7. Aucun champ n'est renommé.
   | Banc d'essai, bac à sable | le référentiel de la branche ; au périmètre, celui que le paquet reçoit |
   | Rétrospective | le référentiel de l'original (celui de sa version stockée, sinon celui que nomme le document, sinon RESPIRE), à la version — la sienne ou une plus récente — que l'on choisit pour régénérer |
   | Run de masse | celle que le run fige au lancement : `referentielId` / `referentielVersion` (facultatifs) de `POST /api/etablissement/cohortes/{id}/runs`, sinon la dernière publiée de RESPIRE ; ses jobs, le dépôt d'une journée par un runner (`POST /api/worker/jobs/{id}/result`) et la fusion d'un membre la lisent |
-  | Cartographie ouverte (Twin6) | celle choisie (RESPIRE par défaut) ; pour RESPIRE, la structure de `/api/twin9/meta` (noms de pôle accentués) tant qu'elle a les pôles et les codes de la version choisie |
+  | Cartographie ouverte (Twin6) | celle choisie (RESPIRE par défaut) ; pour RESPIRE, la structure de `/api/twin9/meta` (noms de pôle accentués) tant qu'elle a les pôles et les codes de la version choisie ; ses gabarits (paquet 1.1.0) en lisent le nom, les pôles, les compétences et la forme des codes (§8) |
   | Analyse approfondie (Twin9) | celle du profil du run (§8.8) |
   | Relecture : annotations, révisions (`ReviewReferentiel`) | la version stockée ; sinon, parmi les versions publiées du référentiel que nomme le document (RESPIRE à défaut), la plus récente à laquelle il est conforme — une journée de RESPIRE v7 reste relue contre v7 quand une version d'une autre structure paraît —, sinon la dernière ; sans version publiée, refus `422` |
   | Visionneuses, partage, archive, remise à l'interface (`chargerReferentielDuDocument`) | la version notée ; sinon, parmi les versions publiées du référentiel que nomme le document (index statique), la plus récente à laquelle il est conforme — la règle de la relecture —, à défaut la dernière ; RESPIRE embarqué en repli pour un document qui n'en nomme pas ; un autre référentiel introuvable est dit, jamais lu avec RESPIRE |
@@ -1504,7 +1518,6 @@ plus contre le chiffre 7. Aucun champ n'est renommé.
   `scripts/parity`, fiches et paquet public de Twin6 tirés du corpus) ; le
   motif par défaut d'un référentiel sans `niveaux`, `\d\.\d{2}`
   (`MOTIF_PAR_DEFAUT`) — une version de RESPIRE à dix pôles ou plus déclare
-  ses niveaux. Les gabarits scan-pôle et kairos de Twin6 ne sont pas
-  versionnés (UC-SYS-04 AN-2) : s'ils écrivent « RESPIRE » ou « 7 pôles » en
-  toutes lettres, un run Twin6 sur un autre référentiel garde ces mots, même
-  si la fiche jointe et le nombre d'appels suivent le référentiel.
+  ses niveaux. Les gabarits scan-pôle et kairos de Twin6, versionnés depuis,
+  écrivent bien RESPIRE v7 en toutes lettres dans leur version 1.0.0 : la 1.1.0
+  les lit dans le référentiel (§8).

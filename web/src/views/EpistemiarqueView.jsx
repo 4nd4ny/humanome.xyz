@@ -451,10 +451,10 @@ function EditeurSection({ api, draftId }) {
     setDirty(true)
   }
   // SOURCE UNIQUE (demande 2026-07-16) : la fiche de scan (competence.content.fiche)
-  // est la source dont Twin6 (P*.md au build) et Twin9 (twin9_fiches par endpoint)
-  // dérivent. L'éditer ici est le point de départ de la chaîne : saveDraft envoie
-  // tout `doc`, donc `doc.fiche` est persisté ; l'entérinement puis dump-fiches /
-  // generate-fiches propagent aux prompts (FUTURE-ONLY, cf. STATUS.md).
+  // est la source dont Twin6 (P*.md au build) et Twin9 (lue dans la base à chaque
+  // run, T16) dérivent. L'éditer ici est le point de départ de la chaîne : saveDraft
+  // envoie tout `doc`, donc `doc.fiche` est persisté ; à l'entérinement, Twin9 la
+  // lit au run suivant, et dump-fiches la porte au corpus de Twin6 (FUTURE-ONLY).
   function setFiche(value) {
     setDoc((d) => ({ ...d, fiche: value }))
     setDirty(true)

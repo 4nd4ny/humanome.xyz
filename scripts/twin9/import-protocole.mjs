@@ -7,11 +7,14 @@
 //                         templates as the PHP engine reads them, the referential
 //                         as variables and without the pole files, whose fiches
 //                         come from the base (T16); the import replaces the set
-//   config.json        -> protocol settings ONLY (seuils_consensus, jury,
-//                         juge_leger, merge, scan_global — the Python
-//                         backends/workers knobs are NOT relevant server-side)
-// and POSTs {files, config} to {BASE_URL}/api/admin/twin9/import with the
-// X-Migrate-Token from .env.deploy (or the MIGRATE_TOKEN env var).
+//   protocole/tagger/  -> RESPIRE v7's structure (pole and competence names,
+//                         the poles' accented names), which /meta serves the
+//                         open cartography (Twin6)
+// and POSTs {files, referentiel} to {BASE_URL}/api/admin/twin9/import with the
+// X-Migrate-Token from .env.deploy (or the MIGRATE_TOKEN env var). It no
+// longer sends config.json's protocol settings nor the pole fiches
+// (2026-10-20): they served the browser's engine (T11), and the server runs
+// take theirs from their profile (T12) and from the base (T16).
 //
 // Usage:
 //   node scripts/twin9/import-protocole.mjs                       # production (SITE_URL)
@@ -26,9 +29,6 @@ import { fileURLToPath } from 'node:url'
 import { execFileSync } from 'node:child_process'
 
 const repoRoot = resolve(dirname(fileURLToPath(import.meta.url)), '../..')
-
-// Protocol settings forwarded to the server (twin9_config.pipeline).
-const CONFIG_KEYS = ['seuils_consensus', 'jury', 'juge_leger', 'merge', 'scan_global']
 
 function parseArgs(argv) {
   const args = { baseUrl: null, dryRun: false }
@@ -83,50 +83,30 @@ async function main() {
     throw new Error(`No .md template found under ${protocoleDir}`)
   }
 
-  // config.json -> protocol settings subset only (never the Python backends)
-  let config
-  const configPath = join(twinDir, 'config.json')
-  if (existsSync(configPath)) {
-    const full = JSON.parse(readFileSync(configPath, 'utf8'))
-    config = Object.fromEntries(CONFIG_KEYS.filter((k) => k in full).map((k) => [k, full[k]]))
-  }
-
-  // Non-secret referentiel STRUCTURE (pole num/nom + competence code/nom) the
-  // client engine needs to assemble artefacts. Parsed by Twin_v9's own
-  // load_referentiel (the faithful source of the accented pole names) — the
-  // importing host is a Python project, so python3 is available; best-effort
-  // with a clear warning if not (the server keeps its previous structure).
-  // Two payloads from ONE python parse: the NON-secret structure (referentiel:
-  // num/nom + code/nom, served to the client) and the CONFIDENTIAL fiches
-  // (fiches: pole header + per-competence fiche_md, stored server-only and
-  // injected at render — the render-relocation fix, ADR-010). Neither is ever
-  // put in /meta's public view.
+  // Non-secret referentiel STRUCTURE (pole num/nom + competence code/nom)
+  // that /meta serves the open cartography. Parsed by Twin_v9's own
+  // load_referentiel (the faithful source of the accented pole names);
+  // best-effort with a clear warning if python3 is missing (the server keeps
+  // its previous structure).
   let referentiel
-  let fiches
   try {
     const py = 'import json,os,sys; sys.path.insert(0, sys.argv[1]); '
       + 'from aurora.referentiel import load_referentiel; '
       + 'p=load_referentiel(os.path.join(sys.argv[1],"protocole","tagger")); '
       + 'print(json.dumps({'
       + '"referentiel":[{"num":n,"nom":x.nom,"competences":'
-      + '[{"code":c["code"],"nom":c["nom"]} for c in x.competences]} for n,x in sorted(p.items())],'
-      + '"fiches":[{"num":n,"header":x.header,"competences":'
-      + '[{"code":c["code"],"fiche_md":c["fiche_md"]} for c in x.competences]} for n,x in sorted(p.items())]'
+      + '[{"code":c["code"],"nom":c["nom"]} for c in x.competences]} for n,x in sorted(p.items())]'
       + '}, ensure_ascii=False))'
-    const out = JSON.parse(execFileSync('python3', ['-c', py, twinDir], { encoding: 'utf8' }))
-    referentiel = out.referentiel
-    fiches = out.fiches
+    referentiel = JSON.parse(execFileSync('python3', ['-c', py, twinDir], { encoding: 'utf8' })).referentiel
   } catch (e) {
-    console.warn(`referentiel/fiches NOT extracted (python3?): ${e.message} — server keeps its current ones`)
+    console.warn(`referentiel NOT extracted (python3?): ${e.message} — server keeps its current one`)
   }
 
   console.log(`Twin_v9 dir: ${twinDir}`)
   for (const [name, content] of Object.entries(files)) {
     console.log(`  ${name} (${Buffer.byteLength(content, 'utf8')} bytes)`)
   }
-  console.log(config ? `config keys: ${Object.keys(config).join(', ')}` : 'config.json absent')
   console.log(referentiel ? `referentiel: ${referentiel.length} pôles` : 'referentiel absent')
-  console.log(fiches ? `fiches: ${fiches.reduce((n, p) => n + p.competences.length, 0)} confidentielles` : 'fiches absentes')
 
   if (args.dryRun) {
     console.log('dry-run: nothing sent')
@@ -142,9 +122,7 @@ async function main() {
     headers: { 'X-Migrate-Token': token, 'Content-Type': 'application/json' },
     body: JSON.stringify({
       files,
-      ...(config ? { config } : {}),
       ...(referentiel ? { referentiel } : {}),
-      ...(fiches ? { fiches } : {}),
     }),
   })
   const body = await res.text()

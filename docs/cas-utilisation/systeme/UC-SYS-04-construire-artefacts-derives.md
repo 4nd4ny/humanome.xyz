@@ -35,11 +35,10 @@ et sans jamais retoucher un JSON produit à la main.
   (`carto-data.js`, `intermediate/carto_merge.json`,
   `extracted/<AAAA-MM-JJ>/carto_P1..P7.json` + `kairos.json` — lecture seule
   absolue), `scripts/data/fiches-v7.json`,
-  `scripts/data/referentiel-v7-definitions.json`, `schemas/` (dont
-  `schemas/fixtures/`), `content/formation/`, `docs/`.
-- Pour Twin6 : les trois gabarits publics `0-mega-prompt.md`, `1-scan-pole.md`
-  et `2-kairos-final.md` déposés à la main dans `web/public/data/twin6/prompts/` —
-  **aucune source versionnée** ne les fournit (AN-2).
+  `scripts/data/referentiel-v7-definitions.json`, les trois gabarits publics
+  de Twin6 (`scripts/data/twin6/` : `0-mega-prompt.md`, `1-scan-pole.md`,
+  `2-kairos-final.md`, versionnés depuis le 2026-10-20 — AN-2 corrigée),
+  `schemas/` (dont `schemas/fixtures/`), `content/formation/`, `docs/`.
 - Pour `dump-fiches.mjs` : API joignable et `MIGRATE_TOKEN` (UC-SYS-02).
 - Pour `stage-api.sh` : Composer local, plateforme fixée à PHP 8.2 (étape
   `composer`, hors périmètre : UC-SYS-02).
@@ -52,10 +51,11 @@ et sans jamais retoucher un JSON produit à la main.
   `respire-v7.1.0.json` sont produits et conformes aux schémas (et, depuis la
   correction d'AN-1 le 2026-10-14, aux validateurs versionnés du moteur).
 - `build/prompt-packages/aurora-v3-reconstruit-1.0.0.json`,
-  `aurora-v3-reconstruit-1.1.0.json` et `twin6-ouverte-1.0.0.json` sont
-  validés par le moteur **avant** écriture ;
-  `web/public/data/twin6/prompts/P1..P7.md` et le paquet statique
-  `web/public/data/twin6/twin6-ouverte-1.0.0.json` dérivent du même corpus.
+  `aurora-v3-reconstruit-1.1.0.json`, `twin6-ouverte-1.0.0.json` et
+  `twin6-ouverte-1.1.0.json` sont validés par le moteur **avant** écriture ;
+  `web/public/data/twin6/prompts/P1..P7.md` et les paquets statiques
+  `web/public/data/twin6/twin6-ouverte-1.0.0.json` et `-1.1.0.json` dérivent du
+  même corpus.
 - Rejouer un script produit des fichiers identiques octet pour octet : les
   imports serveur, idempotents par hash, restent sans effet (UC-SYS-02 A1).
 - Trois artefacts **versionnés** se régénèrent à la demande :
@@ -113,8 +113,8 @@ Ordre réel, reconstitué d'`INSTALL.md` §2 et §6, du `prebuild` de
    `OK`/`KO` par fichier, bilan « N OK, 0 KO sur N fichiers », code 0.
 6. **Front.** `npm run build` (dans `web/`) déclenche le `prebuild` :
    `generate-fiches.mjs` régénère `twin6/prompts/P1..P7.md` depuis
-   `fiches-v7.json` (RG4), puis `build-twin6-package.mjs` assemble le paquet
-   statique Twin6, puis `web/scripts/build-viewer.mjs` construit le modèle de
+   `fiches-v7.json` (RG4), puis `build-twin6-package.mjs` assemble les paquets
+   statiques Twin6 1.0.0 et 1.1.0 (RG6), puis `web/scripts/build-viewer.mjs` construit le modèle de
    la copie autonome de la cartographie (`public/carto/viewer-template.html`,
    un seul fichier HTML qui s'ouvre en `file://` ; journal de l'interface
    ultime, D-26) ; Vite construit ensuite le bundle (UC-SYS-02 étape 1).
@@ -124,7 +124,8 @@ Ordre réel, reconstitué d'`INSTALL.md` §2 et §6, du `prebuild` de
    `build-default-prompt-package.mjs` (paquet par défaut
    `aurora-v3-reconstruit` 1.0.0 et 1.1.0, RG5), `generate-fiches.mjs` (les P*.md du
    paquet Twin6 ne dépendent donc plus d'un build du front antérieur) et
-   `build-twin6-prompt-package.mjs` (paquet publié `twin6-ouverte` 1.0.0, RG6),
+   `build-twin6-prompt-package.mjs` (paquets publiés `twin6-ouverte` 1.0.0 et
+   1.1.0, RG6),
    et enfin `composer`.
 8. **Consommation.** `node scripts/deploy/deploy.mjs api` importe
    `respire-v7.json`, `respire-v7.1.0.json` (s'il existe) et
@@ -183,11 +184,12 @@ Ordre réel, reconstitué d'`INSTALL.md` §2 et §6, du `prebuild` de
   corpus intact. `generate-fiches.mjs --verify` : « Pn.md DIFFÈRE du corpus
   (…) » puis « ÉCHEC : k P*.md divergent du corpus. », code 1, rien d'écrit.
   Corpus sans en-tête d'un pôle → « En-tête de pôle manquant : n », code 1.
-- **E5 — Gabarits Twin6 absents** (étapes 6-7, clone neuf) :
-  `generate-fiches.mjs` crée le dossier `twin6/prompts/` et y écrit les P*.md,
-  mais `build-twin6-package.mjs` et `build-twin6-prompt-package.mjs` →
-  « prompt manquant : …/1-scan-pole.md ». Le `prebuild` du front et
-  `stage-api.sh` s'arrêtent (AN-2).
+- **E5 — Fiches Twin6 absentes** (étapes 6-7) : sans `generate-fiches.mjs`,
+  `build-twin6-package.mjs` et `build-twin6-prompt-package.mjs` → « prompt
+  manquant : …/P1.md », code 1, rien d'écrit. Le `prebuild` du front et
+  `stage-api.sh` lancent `generate-fiches.mjs` avant eux. (Jusqu'au
+  2026-10-20, un clone neuf s'arrêtait ici même après `generate-fiches.mjs`,
+  faute des gabarits : AN-2.)
 - **E6 — Document non conforme** (étape 5) : `KO <fichier> (<type>) — N
   erreur(s)` suivi des 8 premières erreurs (`chemin [mot-clé] message`) puis
   « … M erreur(s) supplémentaire(s) » ; « JSON illisible : … » ; « kind inconnu
@@ -236,9 +238,17 @@ Ordre réel, reconstitué d'`INSTALL.md` §2 et §6, du `prebuild` de
   pour octet (`api/tests/DefaultPackageParityTest.php`).
 - **RG6** — Twin6 : un seul corpus pour les deux paquets ; textes scan-pôle,
   kairos, méga-prompt et fiches P1..P7 octet pour octet identiques entre le
-  paquet statique et le prompt-package ; ce dernier est réservé
+  paquet statique et le prompt-package de même version ; ce dernier est réservé
   (`metadata.reserved`) et délègue l'exécution au moteur (`engine://…(twin6)`,
-  `executerTwin6`).
+  `executerTwin6`). Deux versions (2026-10-20) : 1.0.0, le paquet déployé à
+  l'octet, et 1.1.0, dont les gabarits scan-pôle et kairos portent, à la place
+  de RESPIRE v7 écrit en toutes lettres, les variables que le moteur rend
+  depuis le référentiel (`${REFERENTIEL}`, `${NB_POLES}`, `${NB_COMPETENCES}`,
+  `${FORMAT_CODE}`, `${PRECISION_FORMAT_CODE}`, `${CODES_EXEMPLE}`). 1.1.0 se
+  tire de 1.0.0 par des remplacements exacts, chacun vérifié
+  (`scripts/twin6-gabarits.mjs`) : un gabarit qui a dérivé arrête la
+  construction des deux paquets, sans rien écrire (comme E7). Rendus pour
+  RESPIRE v7, les gabarits 1.1.0 redonnent 1.0.0 à l'octet.
 - **RG7** — Validateurs précompilés (CSP sans `unsafe-eval`) : à régénérer à
   chaque modification de `schemas/`. Étape manuelle, mais vérifiée depuis le
   2026-10-14 : UC-SYS-04-F06 recompile les validateurs depuis les schémas du
@@ -317,8 +327,8 @@ par le catalogue, comme UC-SYS-01-F22, UC-SYS-02-F19 et UC-PRO-08-F17.
 | UC-SYS-04-F08 | E3 | CLI | Prérequis absents → `ENOENT`, code 1, rien d'écrit sauf `validation-compiled.js` | idem |
 | UC-SYS-04-F09 | Nominal, étape 7, E7 | CLI | Paquets `aurora-v3-reconstruit` 1.0.0 et 1.1.0 conformes (une ligne de sortie chacun), placeholders, variables documentées, aucune sentinelle ; 1.0.0 épelle RESPIRE, 1.1.0 lit le référentiel (variables, placeholders, ni « RESPIRE », ni « 1.01 »/« 4.02 », ni « 7 pôles » dans ses gabarits d'extraction ; changelog et dates du 2026-10-20) ; déterministe ; gabarit du moteur modifié → construction refusée, aucune version écrite (RG5) | idem |
 | UC-SYS-04-F10 | Nominal, étape 6, A3, A4, E4 | CLI | 7 P*.md, `--verify` OK, `extract-fiches` redonne le corpus versionné octet pour octet ; parité rompue, code dupliqué, en-tête manquant → code 1, corpus intact (RG4) | idem |
-| UC-SYS-04-F11 | E5 (AN-2) | CLI | Entrées versionnées seules : `generate-fiches` crée le dossier et écrit les 7 P*.md ; paquets Twin6 « prompt manquant » (comportement actuel) | idem |
-| UC-SYS-04-F12 | Nominal, étapes 6-7 | CLI | Gabarits Twin6 fournis : paquet publié conforme au schéma `prompt-package`, paquet statique (sans schéma) à la forme exacte du contrat `executerTwin6` (clés, fiches 1..7), textes identiques aux P*.md, réservé, déterministes (RG6) | idem |
+| UC-SYS-04-F11 | E5, AN-2 (corrigée) | CLI | Sans les P*.md, les deux paquets Twin6 « prompt manquant » ; depuis les seules entrées versionnées, `generate-fiches` les écrit et les paquets 1.0.0 et 1.1.0 se construisent | idem |
+| UC-SYS-04-F12 | Nominal, étapes 6-7 | CLI | Gabarits versionnés : paquets publiés 1.0.0 et 1.1.0 conformes au schéma `prompt-package`, paquets statiques (sans schéma) à la forme exacte du contrat `executerTwin6` (clés, fiches 1..7), 1.0.0 aux gabarits tels quels, 1.1.0 aux variables du référentiel, textes identiques aux P*.md, changelog cumulé, réservés, déterministes ; gabarit qui a dérivé → les deux constructions s'arrêtent sans rien écrire (RG6) | idem |
 | UC-SYS-04-F13 | A2 | CLI + HTTP simulé | `dump-fiches` : requête `GET` avec jeton, corpus identique octet pour octet au versionné ; `.env.deploy`, priorité de l'environnement, jeton par défaut | idem |
 | UC-SYS-04-F14 | E8 | CLI + HTTP simulé | 403, réponse incomplète, API injoignable → code 1, corpus intact | idem |
 | UC-SYS-04-F15 | A5 | CLI | `SUMMARY.md` : manuels, toutes les fiches UC par acteur (titre H1), tous les ADR, déterministe ; document absent → nom de fichier ; parcours absent → entrée seule | idem |
@@ -383,7 +393,11 @@ cd engine && npx vitest run test/usecases/unit/uc-sys-04-construire-artefacts-de
   la release de l'API. Corrigé en partie le 2026-09-29 : `generate-fiches.mjs`
   crée désormais son dossier de sortie, et `stage-api.sh` régénère les P*.md
   avant le paquet Twin6 au lieu de dépendre d'un build du front antérieur.
-  Reste à versionner les trois gabarits. Figé par UC-SYS-04-F11.
+  Reste à versionner les trois gabarits. **Corrigée le 2026-10-20** : les
+  trois gabarits, tirés de la sauvegarde du site déployé, sont versionnés dans
+  `scripts/data/twin6/` ; le paquet statique qu'ils rebâtissent est identique à
+  l'octet au paquet servi. UC-SYS-04-F11 vérifie qu'un clone neuf construit les
+  deux paquets, et F12 lit les vrais gabarits au lieu de gabarits synthétiques.
 - **AN-3 — `enrich-referentiel.mjs` écrit la 7.1.0 avant de contrôler le
   hash.** Quand la structure de la base a changé, le script écrit
   `respire-v7.1.0.json` (avec une empreinte différente de la 7.0.0) **puis**
@@ -402,7 +416,7 @@ cd engine && npx vitest run test/usecases/unit/uc-sys-04-construire-artefacts-de
   par exemple un dossier Dropbox ; `stage-api.sh`, dont `$repo` est calculé par
   `pwd`, donc logique, quand on le lance depuis un tel dossier), ils sortent en 0
   sans rien écrire ni afficher. `stage-api.sh` ne régénère alors pas
-  `build/prompt-packages/twin6-ouverte-1.0.0.json` — `deploy.mjs` importe le
+  les paquets `build/prompt-packages/twin6-ouverte-*.json` — `deploy.mjs` importe le
   paquet périmé d'un build antérieur, ou aucun —, sans aucune erreur. Un
   chemin relatif lancé depuis le dossier (`node scripts/…`) n'est pas touché :
   Node le résout depuis le dossier courant physique. Correctif : comparer `realpathSync(process.argv[1])` au
@@ -416,8 +430,6 @@ cd engine && npx vitest run test/usecases/unit/uc-sys-04-construire-artefacts-de
   gabarits au chargement du module), `build-default-prompt-package.mjs` et
   `build-gitbook-summary.mjs` s'exécutent dès leur chargement : ils ne sont
   testés qu'en sous-processus, pas unitairement.
-- Les tests Twin6 (F12) utilisent des gabarits **synthétiques** : les vrais
-  gabarits publics ne sont pas versionnés (AN-2).
 - `dump-fiches.mjs` est testé contre un serveur HTTP local qui simule la route ;
   la route réelle est couverte par UC-SYS-02-F05 et UC-EPI-03-F13.
 - `SUMMARY.md` versionné n'est pas comparé à sa régénération : il dépend de

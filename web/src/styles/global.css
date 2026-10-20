@@ -4500,30 +4500,6 @@ body:has([aria-modal='true'], .portfolio-editor-fullscreen)
   align-self: flex-start;
 }
 
-.twin9-admin .twin9-admin-etages {
-  display: flex;
-  flex-wrap: wrap;
-  gap: 0.8rem;
-  align-items: center;
-  margin: 0;
-  padding: 0.5rem 0.7rem;
-  border: 1px solid var(--line);
-  border-radius: 8px;
-}
-
-.twin9-admin .twin9-admin-etages legend {
-  font-size: 0.9rem;
-  color: var(--ink-soft);
-  padding: 0 0.3rem;
-}
-
-.twin9-admin .twin9-admin-etages label {
-  display: inline-flex;
-  align-items: center;
-  gap: 0.35rem;
-  font-size: 0.92rem;
-}
-
 .twin9-admin .twin9-admin-versions,
 .twin9-admin .twin9-admin-comptes {
   margin-top: 0.8rem;

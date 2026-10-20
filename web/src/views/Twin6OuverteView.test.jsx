@@ -39,7 +39,6 @@ const PKG = {
 }
 const OFFER = {
   modeles: { 'claude-sonnet-5': [3.3, 16.5] },
-  twin9PromoOuverte: false,
   referentiel: [{ num: 1, nom: 'TÊTE — Penser & Comprendre', competences: [{ code: '1.01', nom: 'Pensée' }] }],
   // Compte financé par défaut : un run sur crédits réussit (le garde-fou de
   // solde ne bloque pas). Le test « solde insuffisant » abaisse ce solde à 1 USD.

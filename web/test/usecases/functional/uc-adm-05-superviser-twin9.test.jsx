@@ -18,11 +18,8 @@ const CONFIG = {
   twin9_cle_perso_ouverte: false,
   packs: [{ montant_usd: 10, libelle: 'Pack découverte — 10 $' }],
   modeles: {
-    'claude-sonnet-5': { prix_usd_mtok: [3, 15], etages: ['taggers', 'rapide', 'tribunal'] },
+    'claude-sonnet-5': { prix_usd_mtok: [3, 15] },
   },
-  enabled: true,
-  appels_par_minute: 30,
-  pipeline: {},
 }
 const COMPTES = {
   comptes: [
@@ -128,15 +125,15 @@ describe('UC-ADM-05 — l’administrateur supervise Twin9', () => {
     })
   })
 
-  it('UC-ADM-05-F04 — A3 : restreindre l’offre de modèles (étage retiré, prix modifié)', async () => {
+  it('UC-ADM-05-F04 — A3 : changer l’offre de modèles (prix modifié) ; un modèle ne porte que ses prix', async () => {
     const { calls } = stubFetch(routes())
     openSupervision()
     const modele = (await screen.findByDisplayValue('claude-sonnet-5')).closest('li')
-    fireEvent.click(within(modele).getByRole('checkbox', { name: 'tribunal' }))
+    expect(within(modele).queryByText('Étages')).toBeNull()
     fireEvent.change(within(modele).getByLabelText('Prix sortie (USD / Mtok)'), { target: { value: '12.5' } })
     await enregistrer()
     expect(bodyOf(putsConfig(calls)[0])).toEqual({
-      modeles: { 'claude-sonnet-5': { prix_usd_mtok: [3, 12.5], etages: ['taggers', 'rapide'] } },
+      modeles: { 'claude-sonnet-5': { prix_usd_mtok: [3, 12.5] } },
     })
   })
 

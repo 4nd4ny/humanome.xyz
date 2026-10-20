@@ -5,11 +5,10 @@ declare(strict_types=1);
 namespace Humanome\Tests;
 
 use Humanome\Db;
-use Humanome\Packages\SettingsRepository;
 use Humanome\Referentiel\CompetenceSeeder;
 use Humanome\Referentiel\FicheGenerator;
 use Humanome\Referentiel\SnapshotAssembler;
-use Humanome\Twin9\FicheStore;
+use Humanome\Twin9\ReferentielMoteur;
 
 /**
  * SOURCE UNIQUE des fiches (2026-07-16) : prouve que le FicheGenerator
@@ -53,15 +52,6 @@ final class FicheParityTest extends CompetenceTestCase
         return $header . implode("\n\n", $fiches) . "\n";
     }
 
-    /** POLE_FICHES runtime (règle c, `---` DOUBLÉ) attendu — ce que Twin9 envoie au LLM. */
-    private static function goldPoleFichesRuntime(int $n): string
-    {
-        $header = self::$corpus['poleHeaders'][(string) $n];
-        $fiches = array_map(static fn (string $c): string => trim(self::$corpus['fiches'][$c]), self::codesForPole($n));
-
-        return rtrim($header) . "\n\n" . implode("\n\n---\n\n", $fiches) . "\n";
-    }
-
     /**
      * Gold P{n}.md (règle b) avec certaines fiches REMPLACÉES — l'attendu après
      * une édition gouvernée publiée.
@@ -77,22 +67,6 @@ final class FicheParityTest extends CompetenceTestCase
         );
 
         return $header . implode("\n\n", $fiches) . "\n";
-    }
-
-    /**
-     * POLE_FICHES runtime (règle c) avec certaines fiches REMPLACÉES.
-     *
-     * @param array<string, string> $overrides code => fiche_md éditée
-     */
-    private static function goldPoleFichesRuntimeWith(int $n, array $overrides): string
-    {
-        $header = self::$corpus['poleHeaders'][(string) $n];
-        $fiches = array_map(
-            static fn (string $c): string => trim($overrides[$c] ?? self::$corpus['fiches'][$c]),
-            self::codesForPole($n),
-        );
-
-        return rtrim($header) . "\n\n" . implode("\n\n---\n\n", $fiches) . "\n";
     }
 
     /** Fiche du corpus enrichie AVANT son séparateur final (édition gouvernée réaliste). */
@@ -148,26 +122,26 @@ final class FicheParityTest extends CompetenceTestCase
     }
 
     /**
-     * Aller-retour du magasin des fiches Twin9 : base → FicheGenerator → FicheStore::store
-     * → fromSettings → competenceFiche()/poleFiches(). Exerce la règle (c) (le `---`
-     * DOUBLÉ), que le gate P*.md (règle b) ne couvre pas. Depuis T11, aucun run ne lit
-     * plus ce magasin : les runs lisent les fiches dans la base (ReferentielMoteur, T16).
+     * Chemin Twin9 : base → FicheGenerator::fichesStructure → ReferentielMoteur, le
+     * bloc que lit le moteur des runs (T16). Chaque en-tête de pôle et chaque fiche y
+     * sont les octets du corpus, dans l'ordre de ses codes ; le moteur les joint
+     * lui-même (règle (c), `---` DOUBLÉ : ReferentielMoteurTest, avec le vrai moteur).
+     * Jusqu'au 2026-10-20, ce test passait par la copie du setting twin9_fiches
+     * (FicheStore), qu'aucun run ne lisait plus depuis T16 : elle est partie.
      */
-    public function testFicheStoreRoundTripPreservesCompetenceAndPoleFiches(): void
+    public function testTwin9BlockCarriesTheCorpusBytes(): void
     {
         $this->seedFromCorpus();
-        $pdo = Db::get();
-        $settings = new SettingsRepository($pdo);
-        FicheStore::store($settings, (new FicheGenerator($pdo))->fichesStructure());
-        $store = FicheStore::fromSettings($settings);
+        $bloc = (new ReferentielMoteur(Db::get()))->bloc(self::RESPIRE, '7.0.0');
 
-        // COMPETENCE_FICHE : chaque fiche_md verbatim === corpus.
-        foreach (self::$corpus['fiches'] as $code => $expected) {
-            self::assertSame($expected, $store->competenceFiche($code), "COMPETENCE_FICHE {$code}");
-        }
-        // POLE_FICHES : réassemblage runtime (règle c) byte-identique.
-        for ($n = 1; $n <= 7; $n++) {
-            self::assertSame(self::goldPoleFichesRuntime($n), $store->poleFiches($n), "POLE_FICHES pôle {$n}");
+        self::assertSame(range(1, 7), array_column($bloc['poles'], 'num'));
+        foreach ($bloc['poles'] as $pole) {
+            $n = $pole['num'];
+            self::assertSame(self::$corpus['poleHeaders'][(string) $n], $pole['entete'], "en-tête du pôle {$n}");
+            self::assertSame(self::codesForPole($n), array_column($pole['competences'], 'code'), "codes du pôle {$n}");
+            foreach ($pole['competences'] as $c) {
+                self::assertSame(self::$corpus['fiches'][$c['code']], $c['fiche'], "fiche {$c['code']}");
+            }
         }
     }
 
@@ -199,9 +173,10 @@ final class FicheParityTest extends CompetenceTestCase
     /**
      * LA preuve de la chaîne exigée : une édition GOUVERNÉE de content.fiche
      * (fork → édition CAS → vote → publication 1.1.0) aboutit aux DEUX
-     * régénérations — Twin6 (poleFiches/corpus, chemin build) ET Twin9
-     * (fichesStructure → FicheStore, chemin endpoint) — la nouvelle fiche
-     * remplaçant l'ancienne, toutes les autres restant byte-identiques.
+     * consommateurs — Twin6 (poleFiches/corpus, chemin build) ET Twin9
+     * (fichesStructure → ReferentielMoteur, le bloc que lit le moteur des runs,
+     * T16) — la nouvelle fiche remplaçant l'ancienne, toutes les autres restant
+     * byte-identiques.
      */
     public function testGovernedFicheEditFlowsToBothGenerators(): void
     {
@@ -222,21 +197,15 @@ final class FicheParityTest extends CompetenceTestCase
         $dumped = $generator->corpus();
         self::assertSame($newFiche, $dumped['fiches'][$code]);
 
-        // 2) Chemin Twin9 : le setting régénéré sert la fiche éditée (règle c),
-        //    les 60 autres COMPETENCE_FICHE restent verbatim.
-        $settings = new SettingsRepository(Db::get());
-        FicheStore::store($settings, $generator->fichesStructure());
-        $store = FicheStore::fromSettings($settings);
-        self::assertSame($newFiche, $store->competenceFiche($code), 'COMPETENCE_FICHE 1.01 = fiche 1.1.0');
-        self::assertSame(self::goldPoleFichesRuntimeWith(1, [$code => $newFiche]), $store->poleFiches(1), 'POLE_FICHES pôle 1');
-        for ($n = 2; $n <= 7; $n++) {
-            self::assertSame(self::goldPoleFichesRuntime($n), $store->poleFiches($n), "POLE_FICHES pôle {$n} inchangé");
+        // 2) Chemin Twin9 : le bloc que lit le moteur des runs sert la fiche éditée,
+        //    les 60 autres fiches et les 7 en-têtes restent verbatim.
+        $bloc = (new ReferentielMoteur(Db::get()))->bloc(self::RESPIRE, '7.0.0');
+        $fiches = [];
+        foreach ($bloc['poles'] as $pole) {
+            self::assertSame(self::$corpus['poleHeaders'][(string) $pole['num']], $pole['entete'], "en-tête du pôle {$pole['num']} inchangé");
+            $fiches += array_column($pole['competences'], 'fiche', 'code');
         }
-        foreach (self::$corpus['fiches'] as $other => $fiche) {
-            if ($other !== $code) {
-                self::assertSame($fiche, $store->competenceFiche($other), "COMPETENCE_FICHE {$other} intacte");
-            }
-        }
+        self::assertSame(array_replace(self::$corpus['fiches'], [$code => $newFiche]), $fiches, 'fiche 1.01 = fiche 1.1.0, les autres intactes');
     }
 
     /**

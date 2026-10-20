@@ -61,23 +61,23 @@ final class Twin9ProtocoleTest extends CartographeTestCase
         self::assertSame(0, (int) Db::get()->query('SELECT COUNT(*) FROM twin9_protocole')->fetchColumn());
     }
 
-    public function testImportUpsertsVersionsAndEnables(): void
+    public function testImportUpsertsVersions(): void
     {
-        $config = new Twin9Config(new SettingsRepository(Db::get()));
-        self::assertFalse($config->isEnabled(), 'disabled until imported');
-
+        // Protocol settings and fiches an older import script would still send
+        // are ignored: they served the browser's engine (T11), and no setting
+        // keeps them since 2026-10-20.
         $response = $this->request('POST', '/api/admin/twin9/import', [
             'files' => [
                 'fictif/01-essai' => self::FAKE_GABARIT,
                 'fictif/02-autre' => 'Deuxième gabarit FICTIF : {$SUJET}.',
             ],
             'config' => ['jury' => ['taille' => 5], 'seuils_consensus' => [0.5, 0.8]],
+            'fiches' => [['num' => 1, 'header' => 'PRÉAMBULE FICTIF', 'competences' => []]],
         ], ['X-Migrate-Token' => self::TOKEN]);
         self::assertSame(200, $response->getStatusCode(), (string) $response->getBody());
         self::assertSame(['imported' => 2, 'retires' => 0], self::json($response));
-
-        self::assertTrue($config->isEnabled(), 'import flips enabled=true');
-        self::assertSame(['taille' => 5], $config->pipeline()['jury']);
+        self::assertSame(0, (int) Db::get()->query(
+            "SELECT COUNT(*) FROM settings WHERE name IN ('twin9_config', 'twin9_fiches')")->fetchColumn());
 
         // Idempotent re-import: same content, no version archived.
         $deux = ['fictif/01-essai' => self::FAKE_GABARIT, 'fictif/02-autre' => 'Deuxième gabarit FICTIF : {$SUJET}.'];
@@ -590,12 +590,13 @@ final class Twin9ProtocoleTest extends CartographeTestCase
         self::assertSame(1.2, $config['marge']);
         self::assertSame(1.1, $config['marge_twin6']);
         self::assertFalse($config['twin9_cle_perso_ouverte']); // promo closed by default
-        self::assertFalse($config['enabled']);
         self::assertSame([10, 20, 50, 100, 200, 500], array_column($config['packs'], 'montant_usd'));
-        self::assertSame([1, 5], $config['modeles']['claude-haiku-4-5-20251001']['prix_usd_mtok']);
-        self::assertSame(['taggers', 'rapide'], $config['modeles']['claude-haiku-4-5-20251001']['etages']);
-        self::assertSame(['taggers', 'rapide', 'tribunal'], $config['modeles']['claude-sonnet-5']['etages']);
-        self::assertSame(['tribunal'], $config['modeles']['claude-opus-4-8']['etages']);
+        // A profile asks a model for its price only: the offer's tiers, the
+        // switch, the pipeline and the rate left on 2026-10-20.
+        self::assertSame(['prix_usd_mtok' => [1, 5]], $config['modeles']['claude-haiku-4-5-20251001']);
+        foreach (['enabled', 'pipeline', 'appels_par_minute'] as $parti) {
+            self::assertArrayNotHasKey($parti, $config);
+        }
 
         // Out-of-bounds updates: 422, nothing persisted.
         foreach ([
@@ -610,9 +611,11 @@ final class Twin9ProtocoleTest extends CartographeTestCase
             ['packs' => [['montant_usd' => 750, 'libelle' => 'trop gros']]],
             ['packs' => [['montant_usd' => 5, 'libelle' => '']]],
             ['modeles' => []],
-            ['modeles' => ['m' => ['prix_usd_mtok' => [0, 5], 'etages' => ['taggers']]]],
-            ['modeles' => ['m' => ['prix_usd_mtok' => [1, 5], 'etages' => ['penthouse']]]],
-            ['enabled' => 'oui'],
+            ['modeles' => ['m' => ['prix_usd_mtok' => [0, 5]]]],
+            ['modeles' => ['m' => ['prix_usd_mtok' => [1, 5], 'etages' => ['taggers']]]],
+            ['enabled' => true],
+            ['pipeline' => []],
+            ['appels_par_minute' => 30],
             ['inconnue' => true],
         ] as $invalid) {
             $response = $this->as_($admin, 'PUT', '/api/twin9/admin/config', $invalid);
@@ -636,8 +639,8 @@ final class Twin9ProtocoleTest extends CartographeTestCase
         TestDb::setEnv('PAYPAL_CLIENT_ID', '');
         $view = $config->publicView();
         // The Twin9 offer, the enabled flag and the pipeline's settings left it
-        // with the browser's engine (T11).
-        self::assertSame(['paypalConfigured', 'packs', 'modeles_twin6', 'twin9_cle_perso_ouverte'], array_keys($view));
+        // with the browser's engine (T11), the promotion's state on 2026-10-20.
+        self::assertSame(['paypalConfigured', 'packs', 'modeles_twin6'], array_keys($view));
         self::assertFalse($view['paypalConfigured']);
         // List price [3, 15] × the Twin6 margin 2 — the raw price and the margins are absent.
         self::assertSame([6.0, 30.0], $view['modeles_twin6']['claude-sonnet-5']);

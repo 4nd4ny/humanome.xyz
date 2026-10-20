@@ -23,7 +23,6 @@ final class WorkerTickTokenTest extends AuthTestBase
         ['POST', '/api/admin/migrate'],
         ['POST', '/api/admin/import-referentiel'],
         ['POST', '/api/admin/seed-competences'],
-        ['POST', '/api/admin/generate-fiches'],
         ['GET', '/api/admin/dump-fiches'],
         ['POST', '/api/admin/grant-role'],
         ['POST', '/api/admin/default-package'],

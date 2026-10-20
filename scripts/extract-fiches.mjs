@@ -10,7 +10,7 @@
 // (source unique). generate-fiches.mjs et FicheGenerator (PHP) réutilisent la règle.
 //
 // Règle (b) — réassemblage BYTE-EXACT d'un P*.md (≠ règle (c), `---` doublé,
-// de FicheStore::poleFiches côté PHP) :
+// du Pole::ficheComplete du moteur Twin9) :
 //   P*.md = header_brut + competences.map(fiche_md).join("\n\n") + "\n"
 //
 // Usage : node scripts/extract-fiches.mjs   (échoue si la parité octet casse)
@@ -67,7 +67,7 @@ function main() {
     JSON.stringify(
       {
         _comment:
-          'Fiches de scan par compétence + en-têtes de pôle, extraites des P*.md (Twin6 public = tagger Twin9) via le parsePole du moteur. SOURCE UNIQUE : injecté dans competence.content.fiche par le seed ; generate-fiches.mjs et FicheGenerator (PHP) reconstruisent P*.md (règle b) + le setting twin9_fiches à l’identique. Parité octet prouvée.',
+          'Fiches de scan par compétence + en-têtes de pôle, extraites des P*.md (Twin6 public = tagger Twin9) via le parsePole du moteur. SOURCE UNIQUE : injecté dans competence.content.fiche par le seed ; generate-fiches.mjs et FicheGenerator (PHP) reconstruisent P*.md (règle b) à l’identique ; le moteur Twin9 lit ces fiches dans la base. Parité octet prouvée.',
         poleHeaders,
         fiches,
       },

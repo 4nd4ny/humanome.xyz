@@ -3,8 +3,8 @@
 | Champ | Valeur |
 |---|---|
 | **Acteur principal** | Outil de déploiement (`scripts/deploy/deploy.mjs`), lancé par le mainteneur depuis son poste |
-| **Acteurs secondaires** | Mainteneur (prépare la release, choisit `FICHES_FORCE`, amorce le premier admin) ; hébergement OVH mutualisé (FTP, Apache, MySQL) ; futur administrateur (UC-ADM-01) |
-| **Portée** | Hors navigateur et hors rôles : routes à jeton `X-Migrate-Token` (`/api/admin/migrate`, `/import-referentiel`, `/seed-competences`, `/generate-fiches`, `/dump-fiches`, `/import-prompt-package`, `/grant-role`, `/default-package`), front-controller `www/api/index.php` + `app/current.txt`, scripts CLI équivalents |
+| **Acteurs secondaires** | Mainteneur (prépare la release, amorce le premier admin) ; hébergement OVH mutualisé (FTP, Apache, MySQL) ; futur administrateur (UC-ADM-01) |
+| **Portée** | Hors navigateur et hors rôles : routes à jeton `X-Migrate-Token` (`/api/admin/migrate`, `/import-referentiel`, `/seed-competences`, `/dump-fiches`, `/import-prompt-package`, `/grant-role`, `/default-package`), front-controller `www/api/index.php` + `app/current.txt`, scripts CLI équivalents |
 | **Niveau** | Sous-fonction technique (exploitation) |
 | **Cahier des charges** | §5 (hébergement mutualisé, clone déployable) ; secrets hors dépôt : `CLAUDE.md`, `docs/hebergement.md`, ADR-008 ; principe RGPD n°5 — journalisation minimale (`CLAUDE.md`, `docs/rgpd-registre.md`) ; ADR-003, ADR-008 ; `docs/deploiement.md`, `docs/administration.md` (amorçage) |
 | **Statut** | Implémenté (P13, compléments P10/P12 et source unique des fiches) |
@@ -15,7 +15,7 @@ Mettre en ligne une nouvelle version de l'API sur un hébergement **sans SSH**
 et **sans processus longs**, sans jamais servir une release à moitié copiée :
 téléverser la release, basculer un pointeur, puis piloter à distance, par des
 routes protégées par un jeton secret, les migrations de schéma et les imports
-de données de référence (référentiel, compétences atomiques, fiches Twin9,
+de données de référence (référentiel, compétences atomiques et leurs fiches,
 paquets de prompts) — de façon **idempotente** et **rejouable**. Le même
 outillage amorce le premier administrateur et fixe le paquet de prompts par
 défaut.
@@ -31,8 +31,8 @@ Le mainteneur lance `./scripts/deploy/stage-api.sh` puis
   `FTP_HOST`, `FTP_USER`, `FTP_PASSWORD` (tous trois exigés par
   `loadEnvDeploy`), `FTP_SECURE=false` (le cluster OVH ne gère pas FTPS ;
   toute autre valeur, ou son absence, demande FTPS), `MIGRATE_TOKEN` et
-  éventuellement `SITE_URL` (défaut `https://humanome.xyz`) et `FICHES_FORCE`
-  (aussi lu dans l'environnement du processus).
+  éventuellement `SITE_URL` (défaut `https://humanome.xyz`). (`FICHES_FORCE`,
+  qui forçait l'étape 7, est parti avec elle le 2026-10-20.)
 - Le même `MIGRATE_TOKEN` est configuré côté serveur dans
   `~/app/shared/.env` (hors webroot) ; sans lui, les routes « n'existent pas ».
 - La base MySQL est configurée (`DB_HOST`, `DB_NAME`, `DB_USER`,
@@ -78,12 +78,8 @@ Le mainteneur lance `./scripts/deploy/stage-api.sh` puis
 - Le jeton n'est jamais renvoyé. `migrate`, `import-referentiel`,
   `import-prompt-package`, `grant-role` et `default-package` répondent un
   `500` générique (détail dans le journal serveur seulement) ;
-  `seed-competences` et `generate-fiches` renvoient en revanche le message brut
-  de l'exception (SQLSTATE, nom de base…) au porteur du jeton (AN-2).
-- Le garde-fou des fiches refuse d'écraser un `fiche_md` divergent d'une
-  compétence **générée** (`409`, aucune écriture) ; il ne voit ni les en-têtes
-  de pôle ni les codes disparus de la génération, et réécrit le réglage à
-  chaque réponse `200` (AN-1).
+  `seed-competences` renvoie en revanche le message brut de l'exception
+  (SQLSTATE, nom de base…) au porteur du jeton (AN-2).
 
 ## Scénario nominal
 
@@ -122,13 +118,11 @@ Le mainteneur lance `./scripts/deploy/stage-api.sh` puis
    crée les pôles et les 61 compétences atomiques, vérifie le **gate de
    parité** (corps assemblé = référentiel publié) et pose le lockfile →
    `200 {poles, imported, unchanged, backfilled, fiches, parityHash, lockLinks}`.
-7. `POST /api/admin/generate-fiches {force}` : `FicheGenerator` régénère depuis
-   la base la structure des fiches ; la route compare, octet par octet, le
-   `fiche_md` de chaque compétence **générée** à celui du réglage
-   `twin9_fiches` (ni les en-têtes de pôle ni les codes absents de la
-   génération ne sont comparés) → `200 {status: "unchanged"}` quand ils
-   coïncident ; le réglage est alors **réécrit** avec la structure générée
-   (AN-1).
+7. ~~`POST /api/admin/generate-fiches {force}`~~ : retirée le 2026-10-20, à la
+   demande de Christian. Elle régénérait depuis la base une copie des fiches,
+   le réglage `twin9_fiches`, qu'aucun run ne lisait plus depuis T16 : les runs
+   Twin9 lisent les fiches dans la base (`ReferentielMoteur`), où le seed
+   (étape 6) les verse.
 8. `POST /api/admin/import-prompt-package` pour chaque
    `build/prompt-packages/*.json` → `200 {status, id, version, contentHash}`
    (étape sautée en silence si le dossier n'existe pas sur le poste).
@@ -142,7 +136,7 @@ Le mainteneur lance `./scripts/deploy/stage-api.sh` puis
 ## Scénarios alternatifs
 
 - **A1 — Redéploiement à l'identique** (étapes 4-8) : tout est idempotent —
-  `applied: []`, imports `unchanged`, seed `imported: 0`, fiches `unchanged`.
+  `applied: []`, imports `unchanged`, seed `imported: 0`.
 - **A2 — Amorcer le premier administrateur** (hors séquence ; aussi pour
   ré-amorcer une plateforme restée sans administrateur, UC-ADM-01) : après
   l'inscription normale du compte, `POST /api/admin/grant-role
@@ -155,12 +149,10 @@ Le mainteneur lance `./scripts/deploy/stage-api.sh` puis
   "default"}` ; `GET /api/prompt-packages/default` sert ce couple ; une
   proposition promptologue identique est consommée, une proposition
   différente est conservée. (Équivalent en session : UC-ADM-03.)
-- **A4 — Évolution de fiche assumée / premier déploiement** (étape 7) : le
-  garde-fou renvoie `409 {status: "diff", changed: [...]}` (au tout premier
-  déploiement, les 61 fiches) et `deploy.mjs` s'arrête ; après vérification,
-  le mainteneur relance **toute** la séquence avec `FICHES_FORCE=1` →
-  `{force: true}` → `200 {status: "applied", poles: 7, competences: 61,
-  changed}`.
+- ~~**A4 — Évolution de fiche assumée / premier déploiement**~~ : retiré le
+  2026-10-20 avec l'étape 7. Un premier déploiement passe d'une traite, et une
+  fiche entérinée atteint les runs Twin9 dès sa publication (UC-EPI-03), sans
+  relance ni `FICHES_FORCE`.
 - **A5 — Resynchroniser le corpus** : `GET /api/admin/dump-fiches` renvoie
   `{poleHeaders, fiches}` depuis la base (après une édition gouvernée dans
   l'atelier), pour mettre à jour `scripts/data/fiches-v7.json`.
@@ -196,19 +188,14 @@ Le mainteneur lance `./scripts/deploy/stage-api.sh` puis
   `import-referentiel` et `import-prompt-package` : corps non JSON → `400`,
   document non conforme au schéma → `422 {"error":"Invalid document",
   "details":{…}}` ; `grant-role` et `default-package` : corps non JSON, champs
-  requis absents ou rôle inconnu → `422` ; `generate-fiches` : tout corps
-  autre que `{"force": true}` (illisible, `force` non booléen comme `1` ou
-  `"true"`) vaut `force: false` ; `seed-competences` ignore le corps.
+  requis absents ou rôle inconnu → `422` ; `seed-competences` ignore le corps.
 - **E5 — Conflit d'immuabilité** : même `(id, version)` de paquet avec un autre
   contenu, ou `contentHash` déclaré incohérent avec le référentiel → `409`.
-- **E6 — Garde-fou des fiches** (étape 7) : `fiche_md` divergent d'une
-  compétence générée, sans `force` → `409 {status: "diff", changed: [codes]}`,
-  aucune écriture ; `deploy.mjs` s'arrête (« fiche generation blocked »).
-  (En-têtes de pôle et codes disparus ne déclenchent pas ce refus : AN-1.)
+- ~~**E6 — Garde-fou des fiches**~~ : retiré le 2026-10-20 avec l'étape 7.
 - **E7 — Échec technique** (base injoignable, migration invalide) : `500`
   générique (« Migration failed, see server log », « Import failed, see server
-  log »…), détail seulement dans le journal serveur — sauf `seed-competences`
-  et `generate-fiches`, qui renvoient le message de l'exception (AN-2). Une
+  log »…), détail seulement dans le journal serveur — sauf `seed-competences`,
+  qui renvoie le message de l'exception (AN-2). Une
   migration en échec n'est pas enregistrée, mais les instructions DDL déjà
   exécutées **persistent** (auto-validation MySQL, aucun rollback) : son rejeu
   n'est sûr que si ses instructions sont idempotentes (`IF NOT EXISTS`…) ;
@@ -303,12 +290,12 @@ Le mainteneur lance `./scripts/deploy/stage-api.sh` puis
 |---|---|---|
 | Outil | `scripts/deploy/deploy.mjs` — `main` (cibles `static`, `api`, `rollback`, `releases` ; codes 1/2), `loadEnvDeploy`, `buildLocalIndex`/`readRemoteManifest` (synchro par manifeste), `uploadTree`, `deployApi`, `listReleases`, `rollbackApi`, `releasesCommand` ; `scripts/deploy/stage-api.sh` | Upload FTP, pointeur, élagage, séquence distante, smoke, rollback — `deploy.mjs` est exécuté en sous-processus sur une copie, avec un faux module `basic-ftp` et un site local (F19 à F22) ; pas de test unitaire : il n'exporte aucune fonction et lance `main()` dès l'import ; côté serveur, la séquence HTTP est rejouée par F01/F02 ; `stage-api.sh` n'est pas exécuté (voir Limites) |
 | Serveur | `api/deploy/webroot/index.php` | Front-controller : validation du pointeur, `503`, délégation à la release (script sans fonction : couvert par le sous-processus de UC-SYS-02-F10, pas de test unitaire) |
-| API | `api/src/routes/system.php` — `/admin/migrate`, `/admin/import-referentiel`, `/admin/seed-competences`, `/admin/generate-fiches`, `/admin/dump-fiches`, `/admin/grant-role`, `/admin/default-package` | Portes 404/403/503, orchestration, lecture du corpus (seed), comparaison des fiches ; erreurs génériques sauf `seed-competences` et `generate-fiches` (AN-2) |
+| API | `api/src/routes/system.php` — `/admin/migrate`, `/admin/import-referentiel`, `/admin/seed-competences`, `/admin/dump-fiches`, `/admin/grant-role`, `/admin/default-package` | Portes 404/403/503, orchestration, lecture du corpus (seed) ; erreurs génériques sauf `seed-competences` (AN-2) |
 | API | `api/src/routes/packages.php` — `/admin/import-prompt-package` | Import de paquet publié |
 | Domaine | `api/src/MigrationRunner.php` | Ordre, verrou, transaction, `splitStatements` |
 | Domaine | `api/src/Referentiel/ReferentielRepository.php` — `importPublishedDocument` | Import idempotent, contrôle du hash |
 | Domaine | `api/src/Packages/PromptPackageRepository.php` — `importPublishedDocument`, `isPublished` | Import idempotent, immuabilité, exclusion des privés |
-| Domaine | `api/src/Referentiel/CompetenceSeeder.php`, `api/src/Referentiel/FicheGenerator.php`, `api/src/Twin9/FicheStore.php` | Seed + gate de parité, fiches depuis la base |
+| Domaine | `api/src/Referentiel/CompetenceSeeder.php`, `api/src/Referentiel/FicheGenerator.php` | Seed + gate de parité, fiches depuis la base |
 | Domaine | `api/src/Packages/SettingsRepository.php` | `default_prompt_package`, proposition |
 | Transverse | `api/src/Middleware/CsrfMiddleware.php`, `api/src/Auth/Audit.php` | Exemption de `migrate`, audit `role_granted` |
 | CLI | `scripts/migrate.php`, `scripts/import-referentiel.php`, `scripts/import-prompt-packages.php` (entrée par défaut `build/prompt-packages/*.json`, traitement fichier par fichier), `scripts/seed-competences.php` (corpus relatif au script) | Équivalents locaux ; codes de sortie 0/1 (F11, F15 à F18) |
@@ -326,7 +313,7 @@ Le mainteneur lance `./scripts/deploy/stage-api.sh` puis
 | UC-SYS-02-U05 | `ReferentielRepository::importPublishedDocument` | `imported`/`unchanged`, hash incohérent, même version autre structure (hash recalculé) → « immutable », document invalide (RG4, E5) | idem |
 | UC-SYS-02-U06 | `PromptPackageRepository::importPublishedDocument`, `isPublished` | `imported`/`unchanged`, immuabilité, schéma ; `isPublished` faux pour une version inconnue et pour un paquet privé | idem |
 | UC-SYS-02-U07 | `CompetenceSeeder::seed` | Référentiel requis, 7/61 + fiches + lockfile, idempotent (RG5) | idem |
-| UC-SYS-02-U08 | `FicheGenerator`, `FicheStore::store` | Structure 7/61, corpus identique à `fiches-v7.json`, relecture (fiche et réassemblage exact de l'en-tête de pôle) | idem |
+| UC-SYS-02-U08 | `FicheGenerator` | Structure 7/61, corpus identique à `fiches-v7.json`, en-tête et fiche du pôle 1 octet pour octet (ce que lit le moteur Twin9) | idem |
 | UC-SYS-02-U09 | `SettingsRepository` | Réglage du paquet par défaut : pose, upsert, retrait | idem |
 | UC-SYS-02-U10 | `CompetenceSeeder::seed` | « Contenu riche manquant pour … », « Gate de parité ÉCHOUÉ » ; backfill d'une 1.0.0 périmée (`backfilled: 1`, fiche rétablie) ; lockfile write-once (lien 1.0.0 conservé malgré une 1.1.0), `lockLinks` = tentatives (RG5, E11) | idem |
 | UC-SYS-02-U11 | `CsrfMiddleware::process` | Session sans `X-CSRF-Token` : `/api/admin/migrate` passe, `grant-role`, `import-prompt-package`, `seed-competences` → `403` (RG2) | idem |
@@ -335,27 +322,25 @@ Le mainteneur lance `./scripts/deploy/stage-api.sh` puis
 
 | ID | Scénario | Niveau | Vérifie | Fichier |
 |---|---|---|---|---|
-| UC-SYS-02-F01 | Nominal (4-9), A4, E6 | API | Base vide : séquence de `deploy.mjs` arrêtée au `409` des fiches (aucune écriture, ni paquet ni smoke), relance complète avec `force`, smoke health ; témoin : `/health` `200 "ok"` avec `db: "error"` | `api/tests/UseCases/Functional/UcSys02DeployerMigrerTest.php` |
+| UC-SYS-02-F01 | Nominal (4-9) | API | Base vide : séquence de `deploy.mjs` d'une traite (aucune copie des fiches écrite), smoke health ; témoin : `/health` `200 "ok"` avec `db: "error"` | `api/tests/UseCases/Functional/UcSys02DeployerMigrerTest.php` |
 | UC-SYS-02-F02 | A1 | API | Deuxième séquence entièrement sans effet | idem |
 | UC-SYS-02-F03 | A2 | API | `grant-role` : premier admin effectif sans reconnexion, audit `{targetUserId, role, status}` sans acteur ni e-mail, `unchanged` audité (RG7) | idem |
 | UC-SYS-02-F04 | A3 | API | `default-package` servi par `/prompt-packages/default` ; proposition différente conservée, identique consommée | idem |
 | UC-SYS-02-F05 | A5 | API | `dump-fiches` = corpus versionné | idem |
-| UC-SYS-02-F06 | E1, E2, E3 | API | 8 routes : `404` / `403` / `403` / `503` | idem |
+| UC-SYS-02-F06 | E1, E2, E3 | API | 7 routes : `404` / `403` / `403` / `503` | idem |
 | UC-SYS-02-F07 | E4, E5, E8 | API | `400` (imports), `422` corps non JSON (`grant-role`, `default-package`), `422` + détails, `409`, `404` (compte inconnu ou supprimé, version, paquet privé) | idem |
-| UC-SYS-02-F08 | E7, AN-2 | API | Base inexistante : `500` générique sans détail SQL (migrate, import) ; comportement actuel : `seed-competences` et `generate-fiches` renvoient `SQLSTATE…` | idem |
+| UC-SYS-02-F08 | E7, AN-2 | API | Base inexistante : `500` générique sans détail SQL (migrate, import) ; comportement actuel : `seed-competences` renvoie `SQLSTATE…` | idem |
 | UC-SYS-02-F09 | RG2 | API | Session sans CSRF : `migrate` passe, `import-prompt-package`/`grant-role` → `403` | idem |
 | UC-SYS-02-F10 | A6, E9, AN-4 | CLI (front-controller) | Release pointée servie (aucun code imposé), rollback par réécriture, code HTTP `503` (lu par un lanceur `http_response_code()`) pour pointeur invalide/absent et release manquante ; comportement actuel : `releases/..` passe le motif | idem |
 | UC-SYS-02-F11 | A7, E10 | CLI | `migrate.php`, `import-referentiel.php`, `import-prompt-packages.php`, `seed-competences.php` ; codes de sortie 1 (base absente, fichier introuvable) | idem |
-| UC-SYS-02-F12 | E6 | API | `fiche_md` retouché en production → `409 {changed: [code]}`, réglage relu identique ; `force: 1` vaut `false` | idem |
-| UC-SYS-02-F13 | AN-1 | API | Comportement actuel : en-tête de pôle retouché ou fiche disparue (1.1.0 sans `fiche`) → `200 unchanged`, réglage réécrit en silence | idem |
 | UC-SYS-02-F14 | E11, Nominal (5) | API | Seed avant tout référentiel publié → `500 « Seed failed: Aucune version publiée… »` ; 7.1.0 seule publiée (définitions hors empreinte) → structure de référence, seed `200`, 7/61, même empreinte | idem |
 | UC-SYS-02-F15 | A1, A7, E5, E10 | CLI | `import-prompt-packages.php` : relance à l'identique → code 0 « already imported … nothing to do », base inchangée ; document invalide (pointeurs) ou tableau JSON (pointeur `/`), JSON illisible ou scalaire (« Import failed »), conflit de version immuable → code 1, version publiée intacte, fichier suivant importé quand même ; sans base → code 1, stdout vide | idem |
 | UC-SYS-02-F16 | A7, E10 | CLI (disposition jetable) | `import-prompt-packages.php` sans argument : `build/prompt-packages/` absent (même sans base) ou sans `.json` → code 1 « no package file found » ; présent → chaque `.json` importé dans l'ordre des noms, relance sans effet ; autoload absent → code 1 | idem |
 | UC-SYS-02-F17 | A1, A7, E10, E11 | CLI | `seed-competences.php` : sans base → 1 ; référentiel non publié → 1 « Seed échoué : Aucune version publiée… » ; nominal 7/61/61 fiches, relance « 0 importées / 61 inchangées » (même empreinte, aucune ligne en plus) ; gate de parité (nom divergent) → 1, message avec l'empreinte publiée, stdout vide | idem |
-| UC-SYS-02-F18 | E10, E11, AN-6, AN-1 | CLI (disposition jetable) + API | `seed-competences.php` : autoload absent → 1 ; `competences-v7.json` absent → 1 ; comportement actuel : `fiches-v7.json` absent → code 0, `61 backfillées · fiches 0`, fiches et en-têtes effacés de la base, puis `generate-fiches` sans `force` → `200 unchanged`, 0 compétence, `twin9_fiches` vidé ; un seed complet rétablit la base | idem |
+| UC-SYS-02-F18 | E10, E11, AN-6 | CLI (disposition jetable) + domaine | `seed-competences.php` : autoload absent → 1 ; `competences-v7.json` absent → 1 ; comportement actuel : `fiches-v7.json` absent → code 0, `61 backfillées · fiches 0`, fiches et en-têtes effacés de la base, Twin9 refuse alors RESPIRE (`503`) ; un seed complet rétablit la base et le bloc de Twin9 | idem |
 | UC-SYS-02-F19 | E12 | CLI `deploy.mjs` (copie jetable, faux `basic-ftp`) | Cible inconnue ou absente → code 2 « Unknown target … » sans `.env.deploy` ; `.env.deploy` absent → « deploy failed: ENOENT… », code 1, pour les 4 cibles ; `FTP_HOST` (ligne commentée), `FTP_USER` (vide), `FTP_PASSWORD` manquants → code 1 ; `build/api-release` ou `web/dist` absent → code 1 ; aucun client FTP créé | `engine/test/usecases/unit/uc-sys-02-outil-deploiement.test.js` |
 | UC-SYS-02-F20 | A6, AN-5 | CLI `deploy.mjs` + site local | Comportement actuel : `rollback` avec [A, B, C] et `current.txt` = A → `current.txt` réécrit vers B sans être lu, second `rollback` identique ; santé `503` seulement affichée, code 0 ; `releases` : `*` sur la release pointée, « (none) » sans pointeur ; moins de 2 releases (ou listage en échec) → code 1, pointeur intact ; FTPS sauf `FTP_SECURE=false` | idem |
-| UC-SYS-02-F21 | Nominal (3-9), RG6, A4, E6 | CLI `deploy.mjs` + site local | Nom de release assaini (motif du front-controller), release puis front-controller puis `current.txt`, élagage à 3, fermeture FTP **avant** la première requête ; séquence migrate → référentiel (7.1.0 seule présente, 7.0.0 sautée) → seed → fiches (`FICHES_FORCE`) → paquets `.json` seulement → santé (`db: "error"` accepté) ; `409` des fiches → code 1, arrêt, pointeur déjà basculé ; sans `MIGRATE_TOKEN` → avertissement, santé seule ; santé sans `"ok"` → code 1 | idem |
+| UC-SYS-02-F21 | Nominal (3-9), RG6, E11 | CLI `deploy.mjs` + site local | Nom de release assaini (motif du front-controller), release puis front-controller puis `current.txt`, élagage à 3, fermeture FTP **avant** la première requête ; séquence migrate → référentiel (7.1.0 seule présente, 7.0.0 sautée) → seed → paquets `.json` seulement → santé (`db: "error"` accepté) ; seed en échec → code 1, arrêt, pointeur déjà basculé ; sans `MIGRATE_TOKEN` → avertissement, santé seule ; santé sans `"ok"` → code 1 | idem |
 | UC-SYS-02-F22 | Nominal (1) | CLI `deploy.mjs` | Synchro `static` : seuls les fichiers modifiés envoyés, seuls les fichiers de l'ancien manifeste disparus supprimés (échec = avertissement, fichier hors manifeste intact), manifeste écrit en dernier ; `--dry-run` sans transfert ; manifeste illisible ou absent → envoi complet sans suppression | idem |
 
 ### Tests existants liés (non-régression)
@@ -363,7 +348,7 @@ Le mainteneur lance `./scripts/deploy/stage-api.sh` puis
 - `api/tests/SystemRoutesTest.php`, `api/tests/MigrationRunnerTest.php` — migrate (portes, idempotence), runner.
 - `api/tests/AdminImportReferentielTest.php`, `api/tests/ReferentielImportExportTest.php` — import du référentiel.
 - `api/tests/PackagesTest.php` (`testAdminImportEndpoint`), `api/tests/PackagesDefaultTest.php` — paquets, défaut.
-- `api/tests/FicheAdminEndpointsTest.php`, `api/tests/CompetenceAtomicTest.php` — fiches, seed.
+- `api/tests/FicheAdminEndpointsTest.php`, `api/tests/CompetenceAtomicTest.php` — `dump-fiches` (et la route `generate-fiches` partie), seed.
 - `api/tests/AdminRolesTest.php` — `grant-role`.
 - `web/e2e/parcours-cartographe.e2e.js`, `web/e2e/parcours-promptologue.e2e.js` — `grant-role` avec le jeton de dev.
 
@@ -389,11 +374,14 @@ cd engine && npx vitest run test/usecases/unit/uc-sys-02
   en-têtes confidentiels (y compris ceux importés par `/admin/twin9/import`)
   ou suppression de fiches. Correctif suggéré : comparer la structure entière
   (en-têtes et ensemble des codes) et n'écrire que si `force` ou s'il y a un
-  changement. Figé par UC-SYS-02-F13.
-- **AN-2 — Messages d'exception renvoyés par `seed-competences` et
-  `generate-fiches`.** Contrairement aux autres routes à jeton, elles
-  répondent `500 {"error": "Seed failed: " . $e->getMessage()}` (resp.
-  « Generation failed: … ») : avec une base injoignable, le corps contient
+  changement. **Sans objet depuis le 2026-10-20** : la route et le réglage
+  sont partis, à la demande de Christian ; les fiches ne vivent plus que dans
+  la base, que le seed alimente et où les runs Twin9 les lisent. UC-SYS-02-F13,
+  qui figeait l'anomalie, est parti avec eux.
+- **AN-2 — Message d'exception renvoyé par `seed-competences`.** Contrairement
+  aux autres routes à jeton, elle répond `500 {"error": "Seed failed: " .
+  $e->getMessage()}` (comme `generate-fiches`, « Generation failed: … », jusqu'à
+  son retrait le 2026-10-20) : avec une base injoignable, le corps contient
   `SQLSTATE[HY000] [1049] Unknown database '…'`. Le destinataire est le
   porteur du jeton (outil de déploiement), mais la garantie « réponses
   génériques » n'est pas tenue. Correctif suggéré : message générique pour
@@ -434,11 +422,12 @@ cd engine && npx vitest run test/usecases/unit/uc-sys-02
   amorcée, `reconcileSeed` voit une empreinte différente et « backfille » les
   61 versions 1.0.0 encore dernières publiées **sans** leur fiche, et les 7
   en-têtes de pôle sont réécrits à `NULL` — code 0 / `200`, aucune alerte.
-  La source unique des fiches est ainsi effacée (le `generate-fiches` suivant
-  génère alors une structure vide sans la signaler : AN-1). Correctif
+  La source unique des fiches est ainsi effacée ; l'analyse approfondie le
+  signale, elle, en refusant RESPIRE (`503`, « Les fiches du référentiel
+  RESPIRE ne sont pas dans la base… ») jusqu'au seed suivant. Correctif
   suggéré : refuser le seed (ou ne pas toucher aux fiches ni aux en-têtes)
-  quand `fiches-v7.json` manque. Figé par UC-SYS-02-F18 (enchaînement avec
-  AN-1 compris).
+  quand `fiches-v7.json` manque. Figé par UC-SYS-02-F18 (refus de Twin9
+  compris).
 
 ## Limites
 

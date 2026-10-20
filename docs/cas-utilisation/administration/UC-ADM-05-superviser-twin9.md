@@ -46,10 +46,8 @@ L'administrateur ouvre « Administrer » → « Supervision Twin9 » (`#/admin/t
    session et le rôle `admin`.
 2. La section charge `GET /api/twin9/admin/config` (forme administrateur :
    contributions `marge` et `marge_twin6`, promotion, packs, modèles avec prix
-   **catalogue** et étages, interrupteur, rythme, réglages du pipeline —
-   l'interrupteur, le pipeline et les étages ne commandent plus rien depuis
-   T11, et le rythme ne borne plus que la cartographie ouverte, voir Limites)
-   et
+   **catalogue** — l'interrupteur, le rythme, les réglages du pipeline et les
+   étages de l'offre sont partis le 2026-10-20, voir Limites) et
    `GET /api/twin9/admin/comptes`.
 3. Elle affiche le formulaire des réglages, le jeu de gabarits par défaut (A5),
    la table des comptes et un renvoi vers l'atelier (`#/twin9-atelier`) pour
@@ -88,18 +86,16 @@ L'administrateur ouvre « Administrer » → « Supervision Twin9 » (`#/admin/t
   une page apprenant chargée avant un changement de grille crée un ordre pour le
   pack qui occupe désormais cet index (voir Limites).
 - **A3 — Offre de modèles** (étape 4) : ajout, suppression, prix catalogue
-  [entrée, sortie] et étages couverts (taggers, rapide, tribunal) ; un profil
-  qui nomme un modèle sans prix sur l'instance est refusé (`422`), à
-  l'enregistrement comme au lancement. Les étages de l'offre ne commandent
-  plus rien depuis T11 (voir Limites).
-- **A4 — Réglages hors formulaire** (API seulement) : l'interrupteur `enabled`,
-  le rythme `appels_par_minute` (celui de la cartographie ouverte, `429`
-  au-delà) et les réglages du `pipeline` se modifient par le même `PUT`
-  partiel ; l'interrupteur et le pipeline ne commandent plus rien depuis T11
-  (voir Limites). La fusion
-  étant de premier niveau, un `PUT {pipeline: {...}}` **remplace** tout l'objet
-  importé (seuils, jury, merge…) : les clés non renvoyées sont perdues (de même
-  pour `packs` et `modeles`).
+  [entrée, sortie] ; un profil qui nomme un modèle sans prix sur l'instance est
+  refusé (`422`), à l'enregistrement comme au lancement, et un modèle de
+  l'offre sert à tout étage d'un profil. Un modèle ne porte que ses prix (et le
+  palier des longs prompts, que le formulaire n'édite pas) : ses étages sont
+  partis le 2026-10-20 (voir Limites).
+- ~~**A4 — Réglages hors formulaire**~~ : retiré le 2026-10-20 avec
+  l'interrupteur `enabled`, le rythme `appels_par_minute` et les réglages du
+  `pipeline`, à la demande de Christian (voir Limites). La fusion de premier
+  niveau demeure (RG7) : un `PUT {packs: [...]}` **remplace** toute la grille,
+  de même pour `modeles`.
 - **A5 — Jeu de gabarits par défaut** (T14, étape 3) : la section lit `GET
   /api/twin9/admin/jeux` — le jeu v9.8 et les copies des promptologues, par
   leur nom et leur auteur, **sans contenu** — et propose le jeu par défaut ;
@@ -122,9 +118,9 @@ L'administrateur ouvre « Administrer » → « Supervision Twin9 » (`#/admin/t
   vide) est accepté sans changement (`200`), une liste non vide donne `422
   « Clé de configuration inconnue : 0 »` ; clé inconnue ou valeur hors bornes →
   `422` avec un message précis
-  (« Marge hors bornes (entre 1 et 5) », « Étages invalides … », « Rythme
-  d'appels hors bornes … ») ; rien n'est modifié ; la vue affiche le message et
-  garde la saisie.
+  (« Marge hors bornes (entre 1 et 5) », « Modèle m : clé inconnue etages »,
+  « Clé de configuration inconnue : appels_par_minute ») ; rien n'est modifié ;
+  la vue affiche le message et garde la saisie.
 - **E3 — Saisie invalide détectée dans le navigateur** (étape 4) : contribution
   Twin9 ou Twin6 non numérique, identifiant de modèle vide, prix ou montant de
   pack non numérique → message, aucun envoi.
@@ -147,20 +143,22 @@ L'administrateur ouvre « Administrer » → « Supervision Twin9 » (`#/admin/t
 - **RG3** — Packs : liste non vide ; montant entre 1 et 500 USD ; libellé non
   vide ; par défaut 10, 20, 50, 100, 200 et 500 USD.
 - **RG4** — Modèles : au moins un ; prix `[entrée, sortie]` strictement positifs
-  (USD par million de tokens) ; étages ⊂ {taggers, rapide, tribunal}, non vide.
+  (USD par million de tokens) ; palier des longs prompts facultatif ; aucune
+  autre clé (les étages sont partis le 2026-10-20).
 - **RG5** — Promotion : booléen, fermée par défaut ; elle n'ouvre que les
   profils à clé personnelle.
-- **RG6** — `enabled` booléen (faux tant que les gabarits ne sont pas importés) ;
-  `appels_par_minute` entier de 1 à 600 (30 par défaut), le rythme de la
-  cartographie ouverte ; `pipeline` objet (une liste JSON passe aussi la
-  validation, qui ne teste que `is_array`).
+- ~~**RG6**~~ — retirée le 2026-10-20 avec `enabled`, `appels_par_minute` et
+  `pipeline` : ce sont désormais des clés inconnues (`422`) ; stockées par une
+  instance plus ancienne, elles sont ignorées à la lecture et l'enregistrement
+  suivant les efface (voir Limites).
 - **RG7** — Mise à jour partielle : clés inconnues refusées, fusion de premier
   niveau, configuration complète revalidée avant écriture. Toute mise à jour
-  (y compris l'import, qui appelle `update(['enabled' => true, …])`) persiste la
-  configuration **complète**, défauts compris : les défauts du code ne
-  complètent plus ensuite que les clés ajoutées après coup (la migration 014 a
-  dû corriger une marge ainsi figée). À la lecture, les clés stockées inconnues
-  sont ignorées.
+  persiste la configuration **complète**, défauts compris : les défauts du code
+  ne complètent plus ensuite que les clés ajoutées après coup (la migration 014
+  a dû corriger une marge ainsi figée). À la lecture, les clés stockées
+  inconnues sont ignorées, comme les étages qu'un modèle portait avant le
+  2026-10-20 ; l'enregistrement suivant les efface. (Jusqu'au 2026-10-20,
+  l'import écrivait aussi la configuration, en ouvrant l'interrupteur.)
 - **RG8** — Comptes : uniquement ceux qui ont au moins un événement au
   grand-livre ; compteurs et montants seulement.
 
@@ -198,16 +196,16 @@ L'administrateur ouvre « Administrer » → « Supervision Twin9 » (`#/admin/t
 | UC-ADM-05-U01 | `parseHash`, `navGroups` | `#/admin/twin9`, entrée réservée à l'admin (RG1) | `web/test/usecases/unit/uc-adm-05-superviser-twin9.test.jsx` |
 | UC-ADM-05-U02 | client de supervision | GET config/comptes, PUT partiel avec CSRF | idem |
 | UC-ADM-05-U03 | `Twin9Section` (diff) | Rien modifié → aucun PUT ; contribution seule | idem |
-| UC-ADM-05-U04 | `Twin9Section` (diff) | Pack supprimé, étage ajouté en ordre canonique | idem |
+| UC-ADM-05-U04 | `Twin9Section` (diff) | Pack supprimé, prix d'entrée modifié ; un modèle n'a plus d'étages | idem |
 | UC-ADM-05-U05 | `Twin9Section` (validation) | Contributions Twin9 / Twin6, montant de pack, identifiant, prix invalides → aucun PUT (E3) | idem |
 | UC-ADM-05-U06 | `Twin9Section` (diff) | **Anomalie 1 figée** : config relue de MySQL → packs renvoyés (les modèles ne le sont plus depuis T10) | idem |
 | UC-ADM-05-U07 | `Twin9Section` (comptes), `formatUsd` | Montants en USD (4 décimales sous le centime) ; aucun compte → message | idem |
 | UC-ADM-05-U13 | `AdminView` | Admin → section Twin9 ; non-admin → espace réservé sans appel ; copie statique → message (RG1, E1, E4) | idem |
 | UC-ADM-05-U14 | `Twin9Section` (jeu par défaut) | Jeux par leur nom et leur auteur, sans contenu ; « Enregistrer » désactivé sur le défaut actuel, puis `PUT jeux/defaut {jeu}` (A5) | idem |
 | UC-ADM-05-U08 | `Twin9Config::update` | Fusion partielle, persistance de la configuration complète (défauts figés), clé inconnue refusée sans écriture (RG7) | `api/tests/UseCases/Unit/UcAdm05SuperviserTwin9Test.php` |
-| UC-ADM-05-U09 | `Twin9Config::update` | Bornes de chaque réglage (RG2-RG6), liste acceptée pour `pipeline` ; configuration entière inchangée après les refus | idem |
+| UC-ADM-05-U09 | `Twin9Config::update` | Bornes de chaque réglage (RG2-RG5) ; un modèle ne porte que ses prix (RG4) ; les réglages retirés le 2026-10-20 sont des clés inconnues ; configuration entière inchangée après les refus | idem |
 | UC-ADM-05-U10 | `Twin9Config::update` | **Anomalie 2 figée** : message « 1 et 100 USD » pour une borne à 500 | idem |
-| UC-ADM-05-U11 | `Twin9Config::read`, `publicView` | Défauts, clés obsolètes ignorées, vue publique sans marge ; ni offre Twin9, ni interrupteur, ni pipeline (T11) | idem |
+| UC-ADM-05-U11 | `Twin9Config::read`, `publicView` | Défauts, clés obsolètes ignorées (dont les réglages retirés et les étages d'un modèle, effacés au prochain enregistrement) ; vue publique sans marge, sans promotion, sans offre Twin9 (T11) | idem |
 | UC-ADM-05-U12 | `FactureService::comptes` | Comptes actifs, cumuls, ordre ; **anomalie 3 figée** | idem |
 
 ### Tests fonctionnels
@@ -217,18 +215,18 @@ L'administrateur ouvre « Administrer » → « Supervision Twin9 » (`#/admin/t
 | UC-ADM-05-F01 | Nominal | IHM | `<App/>` : réglages et comptes, contribution modifiée → PUT partiel avec CSRF, confirmation, resynchronisation (second enregistrement : « Aucune modification ») ; aucun appel aux gabarits | `web/test/usecases/functional/uc-adm-05-superviser-twin9.test.jsx` |
 | UC-ADM-05-F02 | A1 | IHM | Promotion ouverte → `{twin9_cle_perso_ouverte: true}` | idem |
 | UC-ADM-05-F03 | A2 | IHM | Pack ajouté → liste complète envoyée ; **anomalie 2 figée** (borne affichée) | idem |
-| UC-ADM-05-F04 | A3 | IHM | Étage retiré, prix modifié → `modeles` envoyé | idem |
+| UC-ADM-05-F04 | A3 | IHM | Prix modifié → `modeles` envoyé ; plus d'étages | idem |
 | UC-ADM-05-F05 | E1 | IHM | Promptologue : espace réservé, rien chargé | idem |
 | UC-ADM-05-F06 | E2 | IHM | 422 serveur : message affiché, saisie gardée | idem |
 | UC-ADM-05-F07 | E3 | IHM | Identifiant vide : message, aucun PUT | idem |
 | UC-ADM-05-F08 | E4 | IHM | Erreur de chargement : message, pas de formulaire ; copie statique : message, aucun appel de supervision | idem |
 | UC-ADM-05-F09 | Nominal | API | Contributions changées → l'estimation d'un run Twin9 (×1,5), les prix Twin6 de `/meta` et le coût réel de `/api/twin6/appel` (×1,25) suivent | `api/tests/UseCases/Functional/UcAdm05SuperviserTwin9Test.php` |
-| UC-ADM-05-F10 | A1 | API | Promotion fermée : profil à clé personnelle refusé ; ouverte : admis, estimé sans contribution ; refermée : son lancement refusé ; pendant la promotion, un profil à la clé de l'instance s'estime toujours avec contribution | idem |
+| UC-ADM-05-F10 | A1 | API | Promotion fermée : profil à clé personnelle refusé ; ouverte : lue par `/api/twin9/configuration` (plus par `/meta`), admis, estimé sans contribution ; refermée : son lancement refusé ; pendant la promotion, un profil à la clé de l'instance s'estime toujours avec contribution | idem |
 | UC-ADM-05-F11 | A2 | API | Packs → `/meta` et montant de l'ordre PayPal ; index hors grille 422 ; limite figée : pack désigné par sa position | idem |
-| UC-ADM-05-F12 | A3, A4 | API | Modèle retiré de l'offre : profil qui le nomme refusé (422) ; un modèle admis sur un étage que l'offre ne lui donne pas ; interrupteur fermé sans effet ; rythme de la cartographie ouverte (429) ; `pipeline` remplacé en entier | idem |
+| UC-ADM-05-F12 | A3 | API | Modèle retiré de l'offre : profil qui le nomme refusé (422) ; un modèle de l'offre à tous les étages d'un profil : admis, estimé, lancé ; des étages envoyés pour un modèle → 422 | idem |
 | UC-ADM-05-F13 | Nominal (étape 7) | API | Table des comptes : actifs seulement, ordre, montants | idem |
-| UC-ADM-05-F14 | E1 | API | 401 visiteur ; 403 apprenant, promptologue, établissement | idem |
-| UC-ADM-05-F15 | E2 | API | 400 corps scalaire ; `[1]` → 422, `[]` → 200 ; 422 par cas, configuration entière inchangée | idem |
+| UC-ADM-05-F14 | E1 | API | 401 visiteur ; 403 apprenant, promptologue, établissement ; la promotion reste fermée | idem |
+| UC-ADM-05-F15 | E2 | API | 400 corps scalaire ; `[1]` → 422, `[]` → 200 ; 422 par cas, dont les réglages retirés ; configuration entière inchangée | idem |
 | UC-ADM-05-F16 | Anomalie 1 | API | Config relue : clés réordonnées par MySQL (cause) | idem |
 | UC-ADM-05-F17 | E5 | API | Session admin sans jeton CSRF ou jeton faux → 403, configuration inchangée | idem |
 | UC-ADM-05-F18 | A5 | IHM | `<App/>` : la copie d'un promptologue choisie → PUT avec CSRF → confirmation, aucun appel aux gabarits ; jeu inconnu → message du serveur | `web/test/usecases/functional/uc-adm-05-superviser-twin9.test.jsx` |
@@ -252,14 +250,15 @@ cd web && npx vitest run test/usecases/unit/uc-adm-05 test/usecases/functional/u
 
 1. **Diff non minimal après le premier enregistrement.** La configuration est
    stockée dans une colonne JSON MySQL, qui réordonne les clés des objets
-   (`{libelle, montant_usd}`, `{etages, prix_usd_mtok}`). `Twin9Section` compare
+   (`{libelle, montant_usd}`, `{palier_long, prix_usd_mtok}`). `Twin9Section` compare
    ses packs et modèles au format `JSON.stringify` : dès que la configuration a
    été enregistrée une fois, **les packs repartent à chaque enregistrement**
    même inchangés, « Aucune modification à enregistrer » ne s'affiche plus, et
    un enregistrement peut écraser la modification concurrente d'un autre
    administrateur sur ces clés. Comme toute mise à jour persiste la
-   configuration complète (RG7), l'import (qui active Twin9) suffit à
-   déclencher l'anomalie : en production, elle est permanente. Les modèles
+   configuration complète (RG7), le premier enregistrement suffit à la
+   déclencher, et elle est ensuite permanente (jusqu'au 2026-10-20, l'import,
+   qui écrivait la configuration, la déclenchait dès le déploiement). Les modèles
    repartaient de même jusqu'à T10 : depuis, un modèle garde ce que le
    formulaire n'édite pas (le palier des longs prompts), et avec lui l'ordre
    de ses clés relues. Figé par UC-ADM-05-U06 (cause : UC-ADM-05-F16).
@@ -274,7 +273,7 @@ cd web && npx vitest run test/usecases/unit/uc-adm-05 test/usecases/functional/u
 4. **Mises à jour concurrentes perdues côté serveur.** `Twin9Config::update`
    lit la configuration, fusionne puis réécrit **tout** le document, sans verrou
    ni transaction. Deux `PUT` concurrents sur des clés **différentes** (deux
-   administrateurs, ou un import et un `PUT` admin) peuvent se perdre : A lit, B
+   administrateurs) peuvent se perdre : A lit, B
    lit, B écrit `packs`, A écrit `marge` avec les anciens packs — les packs de B
    disparaissent, même avec un diff minimal. L'anomalie 1 n'est donc pas la
    seule source d'écrasement. Non testable de façon fiable sans concurrence
@@ -282,14 +281,18 @@ cd web && npx vitest run test/usecases/unit/uc-adm-05 test/usecases/functional/u
 
 ## Limites
 
-- Depuis T11, qui a retiré le moteur du navigateur et son proxy
-  `/api/twin9/appel`, trois réglages ne commandent plus rien : l'interrupteur
-  `enabled`, que l'import ouvre encore ; le `pipeline`, que l'import écrit
-  encore (les runs prennent leurs réglages dans leur profil) ; les étages des
-  modèles de l'offre, que le formulaire édite encore (un profil ne demande à
-  un modèle qu'un prix). Le rythme `appels_par_minute` ne borne plus que la
-  cartographie ouverte. Ils restent, sans effet, jusqu'à ce qu'on les retire
-  (figé par UC-ADM-05-F12).
+- Retirés le 2026-10-20, à la demande de Christian : trois réglages que plus
+  rien ne commandait depuis T11 (qui a retiré le moteur du navigateur et son
+  proxy `/api/twin9/appel`) — l'interrupteur `enabled` et le `pipeline`
+  qu'écrivait l'import (les runs prennent leurs réglages dans leur profil), les
+  étages des modèles de l'offre qu'éditait le formulaire (un profil ne demande
+  à un modèle qu'un prix) —, et le rythme `appels_par_minute`, qui ne bornait
+  plus que la cartographie ouverte : ses appels payants ne sont plus limités
+  par minute, la dépense restant bornée par le solde prépayé (UC-APP-09).
+  Envoyés, ce sont des clés inconnues (`422`) ; stockés, ils sont ignorés à la
+  lecture et partent au prochain enregistrement. Aucune migration ne les efface
+  encore, ni le réglage `twin9_fiches` : ce serait une contraction, qui attend
+  que la release qui ne les lit plus soit stabilisée en production (ADR-008).
 - Un pack est désigné par sa **position** (`pack_index`) et non par son
   montant : si l'administrateur supprime ou réordonne des packs pendant qu'un
   apprenant a déjà chargé l'offre, le clic de l'apprenant sur « 10 $ » crée un

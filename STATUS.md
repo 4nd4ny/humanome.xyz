@@ -22,9 +22,89 @@ est retiré (T11, fusionné le 2026-10-20). Vient ensuite T18.
 
 Hors planning, à la demande de Christian (2026-10-20) : le référentiel dynamique — RESPIRE n'a
 plus de structure imposée, et tous les parcours lisent la structure du référentiel qu'ils emploient
-(branche `feat/referentiel-dynamique`, entrée du 2026-10-20 ; attend sa revue).
+(#15, fusionnée le 2026-10-20) ; puis les gabarits Twin6 versionnés et les vestiges de T11 retirés
+(#16, arrivée dans `main` le 2026-10-21 avec la documentation des fiches des référentiels
+importés). Entrées du 2026-10-20.
 
 ## Fait
+
+- 2026-10-20 — **Gabarits Twin6 versionnés, vestiges de T11 retirés (branche
+  `feat/gabarits-twin6-et-vestiges`, posée sur `feat/referentiel-dynamique`).** Christian a
+  fourni la sauvegarde de Twin6 du site déployé (« Tu pourrais également l'importer dans le dépôt
+  GitHub pour la prochaine fois ? »), puis demandé de retirer les six vestiges notés à T11 :
+  « Peux-tu les supprimer et nettoyer le code de ce qui ne sert plus ? ». Deux commits.
+  - Twin6 : les trois gabarits publics (`0-mega-prompt`, `1-scan-pole`, `2-kairos-final`) sont
+    versionnés dans `scripts/data/twin6/`, tirés de sa sauvegarde ; le paquet statique qu'ils
+    rebâtissent est identique à l'octet au paquet servi, et le paquet publié 1.0.0 inchangé
+    (UC-SYS-04 AN-2 corrigée : un clone neuf construit le front et la release). Ils répondent à la
+    question que laissait la branche précédente : ils écrivaient RESPIRE v7 en toutes lettres
+    (« un des 7 pôles du référentiel RESPIRE », « les 61 verdicts », codes `X.YY`, quatre codes
+    d'exemple). `twin6-ouverte` 1.1.0 en fait des variables que le moteur rend depuis le
+    référentiel employé (`engine/src/twin6/variables.js` : `REFERENTIEL`, `NB_POLES`,
+    `NB_COMPETENCES`, `FORMAT_CODE` comme `Referentiel::formatCode` du moteur Twin9,
+    `PRECISION_FORMAT_CODE`, `CODES_EXEMPLE`) ; rendus pour RESPIRE v7, ses prompts sont ceux de
+    1.0.0 à l'octet. `#/twin6-ouverte` sert 1.1.0 ; le méga-prompt, que le moteur n'exécute pas,
+    reste le protocole manuel de RESPIRE v7.
+  - Vestiges : retirés l'interrupteur `enabled` et le `pipeline` qu'écrivait l'import, les étages
+    des modèles de l'offre (formulaire de supervision et son style compris), le rythme
+    `appels_par_minute`, le magasin `twin9_fiches` avec `FicheStore`, la route `POST
+    /api/admin/generate-fiches`, l'étape du déploiement qui l'appelait et `FICHES_FORCE`,
+    `LeakFilter::redact`, la promotion dans `/meta` et `fetchTwin6Offer`. L'import n'envoie plus
+    que les gabarits et la structure du référentiel ; il ignore les réglages et les fiches d'un
+    ancien script. Rien n'est effacé de la base : la lecture ignore ces clés, que l'enregistrement
+    suivant de la supervision retire du réglage stocké, et plus rien ne lit `twin9_fiches`. Les
+    effacer est une contraction, qu'ADR-008 réserve à une release stabilisée (« Dettes
+    techniques »). Les runs lisent leurs réglages dans leur profil (T12) et leurs fiches dans la
+    base (T16).
+  - Conséquences à connaître : (1) les appels payants de la cartographie ouverte ne sont plus
+    limités par minute — la dépense reste bornée par le solde prépayé (UC-APP-09 E10 retiré), mais
+    plus rien ne borne le débit d'un compte crédité (voir « À décider ») ;
+    (2) un premier déploiement passe d'une traite, et une fiche entérinée atteint le run Twin9
+    suivant sans déploiement ; (3) un `deploy.mjs` d'avant ce commit s'arrêterait sur le `404` de
+    `generate-fiches` : déployer depuis le dépôt à jour ; (4) envoyées au `PUT` de supervision, ces
+    clés sont refusées (`422 « Clé de configuration inconnue : … »`, « Modèle … : clé inconnue
+    etages ») ; (5) la page Configuration lit la promotion dans `/api/twin9/configuration`, comme
+    avant.
+  - Tests : la parité des fiches passe par le bloc que lit le moteur (`ReferentielMoteur`) au lieu
+    du magasin ; UC-EPI-03-F20 vérifie qu'une fiche entérinée est celle du bloc, sans déploiement ;
+    UC-SYS-02 perd F12 et F13 avec la route, F18 montre le refus de Twin9 (`503`) après AN-6, et le
+    test de l'outil (F21) s'arrête sur un seed en échec au lieu du garde-fou ; la route partie
+    répond `404`.
+  - Documentation : UC-ADM-05, UC-SYS-02 (étape 7, A4, E6 barrés ; AN-1 sans objet, AN-2 ne vise
+    plus que le seed), UC-EPI-03, UC-PRO-08, UC-APP-09, note de révision d'ADR-010, catalogue. La
+    ligne « Total » du catalogue, en retard depuis avant `feat/referentiel-dynamique` (944, 1111,
+    205), est recalculée sur ses lignes : 956 tests unitaires, 1124 fonctionnels, 198 anomalies.
+  - Revue indépendante (un agent neuf, sur toute la branche) : un point bloquant, corrigé —
+    UC-APP-10-U08 envoyait encore des étages à la supervision, refusés désormais (`422`). Corrigé
+    aussi : la migration prévue pour effacer `twin9_fiches` et les trois clés était une
+    contraction, qu'ADR-008 interdit tant que la release précédente peut revenir par `rollback`
+    (elle lit encore l'interrupteur, les fiches et le rythme) — non livrée, notée en dette ; deux
+    références périmées (`fetchTwin9Meta`, `stage-api.sh`) ; UC-SYS-02-U08 vérifie tous les pôles,
+    comme il l'annonce ; le rendu des variables Twin6 se fait en une passe (une valeur n'est jamais
+    relue).
+  - À décider (Christian) : le rythme `appels_par_minute` bornait aussi l'abus. Sans lui, un compte
+    crédité peut lancer des appels Twin6 en parallèle sur la clé de la plateforme ; chacun garde un
+    processus PHP du mutualisé jusqu'à la réponse et consomme les quotas Anthropic de l'instance,
+    que partagent les runs Twin9 à clé d'instance. Le parcours normal (8 appels l'un après l'autre)
+    n'approchait pas les 30 par minute. S'il le veut, une limite fixe dans le code, sans réglage
+    (comme celle des routes PayPal), le remplacerait.
+  - En attente de Christian : le script d'import extrait encore la structure du référentiel par le
+    Python de `Twin_v9` (`aurora.referentiel`) ; le parseur JavaScript des fiches de pôle
+    (`parsePole`) pourrait le remplacer. **À faire avant le déploiement** : valider la version
+    par défaut du paquet (UC-ADM-03). La production n'en a pas : `GET /api/prompt-packages/default`
+    y sert le plus récent paquet publié, `twin6-ouverte` 1.0.0 (relevé le 2026-10-20, UC-PRO-01
+    AN-2) ; le déploiement importe les paquets dans l'ordre de leurs noms, et ce serait ensuite
+    `twin6-ouverte` 1.1.0.
+  - Fusion : #16 visait `feat/referentiel-dynamique`, sa base, que la fusion de #15 n'avait pas
+    supprimée ; elle y a été fusionnée. Une PR de `docs/fiches-referentiels` l'amène dans `main`,
+    avec une mise à jour d'UC-EPI-05 que Christian a demandée : un référentiel importé n'a pas de
+    fiches à rédiger ni à générer — Twin6 et Twin9 les écrivent depuis son document (RG10).
+  - Vérifié, sur l'arbre du commit : PHP `OK (1703 tests, 17825 assertions)` (Twin_v9 présent,
+    PHP 8.3 local) ; front 2740 tests verts, ses 258 fichiers chargés ; moteur 413 ; bout en bout
+    19/19 (le scénario promptologue rejoué après la remise à zéro documentée des compteurs de la
+    démo, épuisés par les runs du jour : `503 « Démo épuisée »`) ; `check-publiable` OK ; catalogue
+    recompté sur les fichiers de tests ; paquet publié `twin6-ouverte` 1.0.0 identique à l'octet
+    (sha256 `732f18d7…`).
 
 - 2026-10-20 — **Référentiel dynamique : RESPIRE n'a plus de structure imposée (branche
   `feat/referentiel-dynamique`, posée sur T11).** Christian a demandé pourquoi une journée de
@@ -84,7 +164,8 @@ plus de structure imposée, et tous les parcours lisent la structure du référe
     plus déclare ses niveaux (motif par défaut `\d\.\d{2}`). **À vérifier par Christian** : les
     gabarits scan-pôle et kairos de Twin6 ne sont pas versionnés (UC-SYS-04 AN-2) ; s'ils écrivent
     « RESPIRE » ou « 7 pôles » en toutes lettres, un run Twin6 sur un autre référentiel garde ces
-    mots, même si la fiche jointe et le nombre d'appels suivent le référentiel.
+    mots, même si la fiche jointe et le nombre d'appels suivent le référentiel. (Réglé le
+    2026-10-20 : entrée « Gabarits Twin6 versionnés… ».)
   - Méthode : une fondation, puis quatre lots en parallèle (standard et banc ; masse ; Twin6 et
     Twin9 ; relecture et visionneuses), relus un par un, puis réunis en un seul commit : pris
     seuls, les commits de lot laissaient rouges les tests d'un lot pas encore commité.
@@ -162,6 +243,7 @@ plus de structure imposée, et tous les parcours lisent la structure du référe
     `LeakFilter::redact`, que ses seuls tests appellent ; `twin9_cle_perso_ouverte` dans `/meta`,
     que lit `fetchTwin6Offer` sans qu'aucune vue s'en serve. Les retirer touche l'import, la
     supervision, le déploiement et leurs cas d'utilisation (UC-PRO-08, UC-ADM-05, UC-SYS-02).
+    (Retirés le 2026-10-20, à la demande de Christian : entrée « Gabarits Twin6 versionnés… ».)
   - Limite notée : la page de l'analyse (`#/twin9`) n'a pas de titre de niveau 1, comme
     Configuration.
   - Régression de T17, réparée dans un commit à part : les scénarios bout en bout de la
@@ -2294,6 +2376,10 @@ plus de structure imposée, et tous les parcours lisent la structure du référe
 
 ## Dettes techniques / décisions en attente
 
+- Vestiges de T11 (retirés du code le 2026-10-20) : la base garde le réglage `twin9_fiches` et,
+  dans `twin9_config`, `enabled`, `pipeline`, `appels_par_minute` (et des étages sous les modèles)
+  jusqu'au prochain enregistrement de la supervision. Les effacer est une contraction (ADR-008) :
+  une migration, une fois stabilisée en production la release qui ne les lit plus.
 - Twin9, voie directe (T7) : un appel coupé par la fin d'une tranche repart à la suivante, et
   Anthropic facture sans doute ce qu'il avait déjà produit. Idée, non codée : ne lancer un appel
   que s'il tient dans le reste de la tranche, d'après la durée des appels de la même étape au

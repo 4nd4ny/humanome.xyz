@@ -171,7 +171,7 @@ final class UcApp10AnalyseApprofondieTwin9Test extends TestCase
         }
 
         // Le profil v9.8 nomme Sonnet 5.5 à l'étage profond : une offre sans lui le refuse.
-        self::config()->update(['modeles' => ['claude-haiku-5-5' => ['prix_usd_mtok' => [0.1, 0.5], 'etages' => ['taggers']]]]);
+        self::config()->update(['modeles' => ['claude-haiku-5-5' => ['prix_usd_mtok' => [0.1, 0.5]]]]);
         self::assertSame('Profil refusé — claude-sonnet-5-5 : aucun prix pour ce modèle sur cette instance',
             self::refus(static fn () => $politique->admettre($v98, $lea)));
     }

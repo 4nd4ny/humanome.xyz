@@ -29,10 +29,10 @@ use Psr\Http\Message\ResponseInterface;
  * comptes par GET /api/twin9/admin/comptes ; chaque réglage est vérifié par
  * son EFFET côté apprenant : l'estimation d'un run du serveur et ses profils
  * (moteur factice, ADR-011), l'offre /meta, la facturation de la cartographie
- * ouverte, les packs PayPal. Depuis T11, qui a retiré le moteur du navigateur
- * et son proxy /api/twin9/appel, les étages de l'offre, l'interrupteur et le
- * pipeline ne commandent plus rien. Amonts simulés. Les tests qui lancent le
- * moteur factice tournent chacun dans un processus à lui.
+ * ouverte, les packs PayPal. Les étages de l'offre, l'interrupteur, le rythme
+ * et le pipeline, que plus rien ne commandait depuis T11, sont partis le
+ * 2026-10-20. Amonts simulés. Les tests qui lancent le moteur factice tournent
+ * chacun dans un processus à lui.
  */
 final class UcAdm05SuperviserTwin9Test extends CartographeTestCase
 {
@@ -52,7 +52,7 @@ final class UcAdm05SuperviserTwin9Test extends CartographeTestCase
         $pdo = Db::get();
         $pdo->exec('DELETE FROM twin9_protocole_versions');
         $pdo->exec('DELETE FROM twin9_protocole');
-        $pdo->exec("DELETE FROM settings WHERE name IN ('twin9_config', 'twin9_fiches', 'twin9_referentiel')");
+        $pdo->exec("DELETE FROM settings WHERE name IN ('twin9_config', 'twin9_referentiel')");
         TestDb::setEnv('ANTHROPIC_API_KEY', TwinSupport::PLATFORM_KEY);
         TestDb::setEnv('SODIUM_MASTER_KEY', TwinSupport::MASTER_KEY_HEX);
         TestDb::setEnv('PAYPAL_MODE', 'sandbox');
@@ -127,8 +127,8 @@ final class UcAdm05SuperviserTwin9Test extends CartographeTestCase
         self::assertSame('Profil refusé — /cle : les clés personnelles ne sont pas ouvertes sur cette instance', self::json($refuse)['error']);
 
         self::assertTrue(self::json($this->config(['twin9_cle_perso_ouverte' => true]))['twin9_cle_perso_ouverte']);
-        self::assertTrue(self::json($this->as_($this->apprenant, 'GET', '/api/twin9/meta'))['twin9_cle_perso_ouverte']);
         self::assertTrue(self::json($this->as_($this->apprenant, 'GET', '/api/twin9/configuration'))['cle_perso_ouverte']);
+        self::assertArrayNotHasKey('twin9_cle_perso_ouverte', self::json($this->as_($this->apprenant, 'GET', '/api/twin9/meta')), 'la promotion a quitté /meta (2026-10-20) : la page Configuration la lit dans /api/twin9/configuration');
         $perso = $this->profilDirect($this->apprenant, 'Ma clé', ['cle' => 'personnelle']);
         // Sa clé paie, sans contribution ; son crédit, nul, ne borne rien.
         $apercu = $this->apercu($this->apprenant, $perso);
@@ -168,39 +168,29 @@ final class UcAdm05SuperviserTwin9Test extends CartographeTestCase
         self::assertSame(10, Twin9Config::defaults()['packs'][0]['montant_usd']);
     }
 
-    #[TestDox('UC-ADM-05-F12 — A3 / A4 : un modèle retiré de l’offre refuse les profils qui le nomment (422), sur tout étage ; les étages de l’offre et l’interrupteur ne commandent plus rien (T11) ; le rythme borne la cartographie ouverte (429) ; pipeline remplacé en entier (fusion de premier niveau)')]
+    #[TestDox('UC-ADM-05-F12 — A3 : un modèle retiré de l’offre refuse les profils qui le nomment (422), sur tout étage ; un modèle de l’offre sert à tous les étages d’un profil, qui s’estime et part ; un modèle ne porte que ses prix (2026-10-20)')]
     #[RunInSeparateProcess]
     #[PreserveGlobalState(false)]
-    public function testF12ModelOfferSwitchAndRate(): void
+    public function testF12ModelOffer(): void
     {
         $this->moteurFactice();
         (new CreditService(Db::get()))->topup($this->apprenant['id'], 1_000_000_000, 'ORDER-ADM-05-B');
-        $this->config(['modeles' => ['claude-haiku-5-5' => ['prix_usd_mtok' => [0.1, 0.5], 'etages' => ['taggers']]]]);
+        $this->config(['modeles' => ['claude-haiku-5-5' => ['prix_usd_mtok' => [0.1, 0.5]]]]);
         // Le profil v9.8 nomme Sonnet 5.5 à l'étage profond : plus de prix, refusé.
         $sonnet = $this->creerProfil($this->apprenant, 'v9.8');
         self::assertSame(422, $sonnet->getStatusCode());
         self::assertSame('Profil refusé — claude-sonnet-5-5 : aucun prix pour ce modèle sur cette instance', self::json($sonnet)['error']);
-        // Haiku 5.5 à tous les étages, profond compris, que l'offre ne lui donne pas : admis.
+        // Haiku 5.5 à tous les étages du profil, profond compris : admis, estimé, lancé.
         $etages = json_decode((string) json_encode(\Humanome\Twin9\ProfilRepository::v98()->etages));
         $etages->profond->modele = 'claude-haiku-5-5';
         $haiku = $this->profilDirect($this->apprenant, 'Haiku', ['etages' => $etages]);
-
-        // L'interrupteur fermé, le run s'estime et part comme avant.
-        $this->config(['enabled' => false]);
         $this->apercu($this->apprenant, $haiku);
         self::assertSame(201, $this->as_($this->apprenant, 'POST', '/api/twin9/runs', $this->lancement($haiku))->getStatusCode());
 
-        $this->config(['enabled' => true, 'appels_par_minute' => 5]);
-        TwinSupport::saturateRateLimit(Db::get(), 'twin6:appel:' . $this->apprenant['id'], 5);
-        $twin6 = $this->as_($this->apprenant, 'POST', '/api/twin6/appel', ['model' => 'claude-haiku-5-5', 'prompt' => 'Scanne le pôle 1.']);
-        self::assertSame(429, $twin6->getStatusCode());
-        self::assertSame([], $this->http->requests, 'aucun appel n’est parti');
-
-        // A4 — pipeline : un PUT partiel REMPLACE l'objet entier (clé b perdue).
-        $this->config(['pipeline' => ['a' => 0, 'b' => 2]]);
-        $this->config(['pipeline' => ['a' => 1]]);
-        self::assertSame(['a' => 1], self::json($this->as_($this->admin, 'GET', '/api/twin9/admin/config'))['pipeline']);
-        self::assertArrayNotHasKey('pipeline', self::json($this->as_($this->apprenant, 'GET', '/api/twin9/meta')));
+        // Les « étages » d'un modèle de l'offre sont partis : envoyés, ils sont refusés.
+        $etagesOffre = $this->config(['modeles' => ['claude-haiku-5-5' => ['prix_usd_mtok' => [0.1, 0.5], 'etages' => ['taggers']]]]);
+        self::assertSame(422, $etagesOffre->getStatusCode());
+        self::assertSame('Modèle claude-haiku-5-5 : clé inconnue etages', self::json($etagesOffre)['error']);
     }
 
     #[TestDox('UC-ADM-05-F13 — nominal (comptes) : soldes et cumuls des seuls comptes ayant une activité, dernière activité d’abord')]
@@ -232,7 +222,7 @@ final class UcAdm05SuperviserTwin9Test extends CartographeTestCase
                 self::assertSame(403, $this->as_($user, $method, $path, $body)->getStatusCode(), $path);
             }
         }
-        self::assertFalse(self::json($this->as_($this->apprenant, 'GET', '/api/twin9/meta'))['twin9_cle_perso_ouverte']);
+        self::assertFalse(self::json($this->as_($this->apprenant, 'GET', '/api/twin9/configuration'))['cle_perso_ouverte']);
     }
 
     #[TestDox('UC-ADM-05-F15 — E2 : corps scalaire → 400 ; liste JSON → 422 (clé « 0 ») ou 200 si vide ; clé inconnue ou valeur hors bornes → 422 avec message ; rien n’est modifié')]
@@ -255,15 +245,15 @@ final class UcAdm05SuperviserTwin9Test extends CartographeTestCase
             [['marge' => 0.8], 'Marge hors bornes (entre 1 et 5)'],
             [['marge_twin6' => 'dix'], 'Marge Twin6 invalide : nombre attendu'],
             [['packs' => [['montant_usd' => 0, 'libelle' => 'gratuit']]], 'Pack hors bornes : montant entre 1 et 100 USD'],
-            [['modeles' => ['m' => ['prix_usd_mtok' => [1, 5], 'etages' => ['grenier']]]], 'Étages invalides (taggers, rapide, tribunal)'],
-            [['appels_par_minute' => 1000], 'Rythme d’appels hors bornes (1 à 600 par minute)'],
+            [['modeles' => ['m' => ['prix_usd_mtok' => [1, 5], 'etages' => ['grenier']]]], 'Modèle m : clé inconnue etages'],
+            [['appels_par_minute' => 1000], 'Clé de configuration inconnue : appels_par_minute'],
         ] as [$partial, $message]) {
             $response = $this->config($partial);
             self::assertSame(422, $response->getStatusCode(), $message);
             self::assertSame($message, self::json($response)['error']);
         }
         $apres = self::json($this->as_($this->admin, 'GET', '/api/twin9/admin/config'));
-        self::assertSame([1.2, 1.1, 30], [$apres['marge'], $apres['marge_twin6'], $apres['appels_par_minute']]);
+        self::assertSame([1.2, 1.1], [$apres['marge'], $apres['marge_twin6']]);
         // Configuration ENTIÈRE inchangée (packs, modèles compris) ; relue de la colonne JSON : assertEquals.
         self::assertEquals($avant, $apres);
     }
@@ -279,7 +269,7 @@ final class UcAdm05SuperviserTwin9Test extends CartographeTestCase
             self::assertSame(['error' => 'Jeton CSRF absent ou invalide'], self::json($response));
         }
         self::assertEquals($avant, self::json($this->as_($this->admin, 'GET', '/api/twin9/admin/config')));
-        self::assertFalse(self::json($this->as_($this->apprenant, 'GET', '/api/twin9/meta'))['twin9_cle_perso_ouverte']);
+        self::assertFalse(self::json($this->as_($this->apprenant, 'GET', '/api/twin9/configuration'))['cle_perso_ouverte']);
     }
 
     #[TestDox('UC-ADM-05-F16 — cause de l’anomalie du formulaire : une config relue après enregistrement a ses clés réordonnées par MySQL')]
@@ -288,7 +278,7 @@ final class UcAdm05SuperviserTwin9Test extends CartographeTestCase
         $this->config(['marge' => 1.25]);
         $relue = self::json($this->as_($this->admin, 'GET', '/api/twin9/admin/config'));
         self::assertSame(['libelle', 'montant_usd'], array_keys($relue['packs'][0]));
-        self::assertSame(['etages', 'prix_usd_mtok'], array_keys($relue['modeles']['claude-sonnet-5']));
+        self::assertSame(['palier_long', 'prix_usd_mtok'], array_keys($relue['modeles']['claude-haiku-5-5']));
         self::assertSame(['montant_usd', 'libelle'], array_keys(Twin9Config::defaults()['packs'][0]), 'ordre des défauts, avant tout enregistrement');
     }
 }

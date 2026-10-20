@@ -40,9 +40,9 @@ production qu'elles ont mises au jour sont figées par des tests verts
 de cas d'utilisation), Vitest **1 086** (moteur, dont **141** de cas d'utilisation ;
 17 sautés faute des oracles Twin9, gitignorés) + **1 941** (web, dont **1 051** de cas
 d'utilisation), Playwright **~9** scénarios e2e. Les données dérivées sont d'abord
-générées (`INSTALL.md` §2 et §3). Le compte web exclut
-`web/src/views/promptologue/twin6-prompt-package.test.js`, qui ne se charge qu'avec les
-gabarits Twin6 publics, non versionnés à ce jour (UC-SYS-04, AN-2).
+générées (`INSTALL.md` §2 et §3). Le compte web excluait alors
+`web/src/views/promptologue/twin6-prompt-package.test.js`, qui ne se chargeait qu'avec les
+gabarits Twin6 publics, versionnés depuis le 2026-10-20 (UC-SYS-04, AN-2 corrigée).
 
 ## Ce qui garantit la non-régression entre releases
 

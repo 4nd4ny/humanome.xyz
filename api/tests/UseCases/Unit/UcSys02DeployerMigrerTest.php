@@ -20,7 +20,6 @@ use Humanome\Referentiel\InvalidDocumentException;
 use Humanome\Referentiel\ReferentielRepository;
 use Humanome\Tests\TestDb;
 use Humanome\Tests\UseCases\Support\AdmSupport;
-use Humanome\Twin9\FicheStore;
 use PDO;
 use PHPUnit\Framework\Attributes\TestDox;
 use PHPUnit\Framework\TestCase;
@@ -40,8 +39,8 @@ use Slim\Psr7\Factory\ServerRequestFactory;
  * scripts CLI équivalents) sont exercées directement : MigrationRunner (ordre,
  * idempotence, fichier en échec, découpage SQL), imports idempotents du
  * référentiel et des paquets de prompts, seed des compétences atomiques avec
- * son gate de parité, génération des fiches Twin9 depuis la base et stockage
- * du paquet par défaut, et l'exemption CSRF propre à /api/admin/migrate
+ * son gate de parité, fiches Twin9 tirées de la base et stockage du paquet
+ * par défaut, et l'exemption CSRF propre à /api/admin/migrate
  * (CsrfMiddleware::process avec un handler factice). Seules des fixtures
  * VERSIONNÉES sont lues (schemas/fixtures/, scripts/data/).
  */
@@ -293,7 +292,7 @@ final class UcSys02DeployerMigrerTest extends TestCase
         self::assertSame($first['parityHash'], $second['parityHash']);
     }
 
-    #[TestDox('UC-SYS-02-U08 — fiches Twin9 depuis la base : structure 7 pôles / 61 fiches, forme corpus = fiches-v7.json, stockage lisible par FicheStore')]
+    #[TestDox('UC-SYS-02-U08 — fiches Twin9 depuis la base : structure 7 pôles / 61 fiches, forme corpus = fiches-v7.json, octets du corpus pôle par pôle')]
     public function testU08FichesAreGeneratedFromTheDatabase(): void
     {
         // Base semée par U07 (même classe) : si ce test tourne seul, on la sème.
@@ -312,19 +311,16 @@ final class UcSys02DeployerMigrerTest extends TestCase
             'aller-retour corpus → base → corpus sans perte (hors clé de commentaire)',
         );
 
-        $settings = new SettingsRepository(self::$pdo);
-        $settings->delete(FicheStore::SETTING_KEY);
-        self::assertTrue(FicheStore::fromSettings($settings)->isEmpty());
-        FicheStore::store($settings, $structure);
-        $store = FicheStore::fromSettings($settings);
-        $code = $structure[0]['competences'][0]['code'];
-        self::assertSame($corpus['fiches'][$code], $store->competenceFiche($code));
-        // Relecture de l'en-tête de pôle : réassemblage exact (Pole.fiche_complete).
-        self::assertSame(
-            rtrim($corpus['poleHeaders']['1']) . "\n\n"
-                . implode("\n\n---\n\n", array_map('trim', array_column($structure[0]['competences'], 'fiche_md'))) . "\n",
-            $store->poleFiches(1),
-        );
+        // Ce que lit le moteur Twin9 (ReferentielMoteur, T16), qui les joint lui-même
+        // (Pole.fiche_complete) : l'en-tête et les fiches de chaque pôle, octet pour
+        // octet. Jusqu'au 2026-10-20, le déploiement en régénérait une copie (setting
+        // twin9_fiches) qu'aucun run ne lisait plus : elle est partie.
+        foreach ($structure as $pole) {
+            self::assertSame($corpus['poleHeaders'][(string) $pole['num']], $pole['header'], 'en-tête du pôle ' . $pole['num']);
+            foreach ($pole['competences'] as $competence) {
+                self::assertSame($corpus['fiches'][$competence['code']], $competence['fiche_md'], 'fiche ' . $competence['code']);
+            }
+        }
     }
 
     #[TestDox('UC-SYS-02-U09 — paquet par défaut : le réglage default_prompt_package se pose, se relit et se retire (JSON)')]

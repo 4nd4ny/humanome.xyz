@@ -15,8 +15,9 @@ Date : 2026-07-13 · Statut : accepté, §1 révisé le 2026-10-17, §1 et §2 l
 > /api/twin9/appel` : le §1 ne décrit plus qu'une étape passée. Le résidu
 > assumé du §2 change de forme : `/api/twin9/meta` ne liste plus les gabarits
 > à tout utilisateur connecté ; il ne sert plus que ce que lisent la page du
-> crédit et la cartographie ouverte (offre Twin6, promotion, packs, solde,
-> structure du référentiel). Restent visibles, du propriétaire d'un run et du
+> crédit et la cartographie ouverte (offre Twin6, packs, solde, structure du
+> référentiel ; la promotion, qu'aucune vue n'y lisait, l'a quitté le même
+> jour). Restent visibles, du propriétaire d'un run et du
 > cartographe auquel il le montre, les noms des gabarits et leurs versions
 > (attestation du run) et la forme des sorties (résultats et export, passés au
 > filtre de fuite, ADR-011) — des noms, pas un contenu ; les variables

@@ -119,10 +119,10 @@ cd web && npm install && npm run build   # bundle statique dans web/dist
 npm run dev                              # ou : serveur de dev, proxy /api -> :8080
 ```
 
-Le `prebuild` assemble le paquet Twin6 public : il faut au préalable déposer
-ses trois gabarits (`0-mega-prompt.md`, `1-scan-pole.md`, `2-kairos-final.md`)
-dans `web/public/data/twin6/prompts/`, car ils ne sont pas encore versionnés
-(anomalie AN-2 de `docs/cas-utilisation/systeme/UC-SYS-04-construire-artefacts-derives.md`).
+Le `prebuild` assemble les paquets Twin6 publics (`twin6-ouverte` 1.0.0 et
+1.1.0) depuis leurs gabarits, versionnés dans `scripts/data/twin6/`, et les
+fiches P1..P7 qu'il régénère : un clone neuf se construit sans rien déposer à
+la main.
 
 Ouvrir http://localhost:5173. Le bundle `web/dist` est aussi ouvrable en
 `file://` (routing par hash, ADR-009) sauf les vues journée (fetch relatif).

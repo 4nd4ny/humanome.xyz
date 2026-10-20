@@ -10,8 +10,9 @@ import { apiFetch } from './client.js'
 
 /**
  * Ce que lisent la page du crédit et la cartographie ouverte (Twin6) : offre
- * Twin6, état de la promotion, packs, PayPal, structure du référentiel, solde,
- * clé privée disponible.
+ * Twin6, packs, PayPal, structure du référentiel, solde, clé privée disponible.
+ * (La promotion n'y est plus depuis le 2026-10-20 : la page Configuration la lit
+ * dans /api/twin9/configuration.)
  */
 export function fetchTwin9Meta(options) {
   return apiFetch('twin9/meta', options)

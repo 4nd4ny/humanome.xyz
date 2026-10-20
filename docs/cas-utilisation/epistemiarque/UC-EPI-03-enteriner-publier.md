@@ -3,7 +3,7 @@
 | Champ | Valeur |
 |---|---|
 | **Acteur principal** | Épistémiarque (ou administrateur : garde « épistémiarque ou admin ») |
-| **Acteurs secondaires** | Membres épistémiarques (leur vote a fait la majorité, UC-EPI-02) ; exploitation (export statique et resynchronisation du corpus des fiches, lancés à la main ; seed des compétences et régénération des fiches Twin9 par `deploy.mjs`, UC-SYS-02) ; promptologues et moteurs Twin6/Twin9 (consomment les fiches de scan) ; visiteurs (page publique du référentiel, UC-VIS-02) ; cartographies (épinglent une release) |
+| **Acteurs secondaires** | Membres épistémiarques (leur vote a fait la majorité, UC-EPI-02) ; exploitation (export statique et resynchronisation du corpus des fiches, lancés à la main ; seed des compétences par `deploy.mjs`, UC-SYS-02) ; promptologues et moteurs Twin6/Twin9 (consomment les fiches de scan) ; visiteurs (page publique du référentiel, UC-VIS-02) ; cartographies (épinglent une release) |
 | **Portée** | humanome.xyz — page de vote `#/epistemiarque/proposition/<id>` (section « Décision ») et carte « Publier une version du référentiel » de l'atelier ; API `POST /api/competences/drafts/{id}/publish`, `POST /api/competences/release` ; script `scripts/export-referentiel-static.php` |
 | **Niveau** | Objectif utilisateur |
 | **Cahier des charges** | §3.5, §4.1 (historisé, versionné : les runs référencent la version utilisée) ; migrations 016 (lockfile `referentiel_snapshot_competences`) et 017 (en-têtes de fiches de pôle) |
@@ -103,12 +103,12 @@ affiche « Majorité atteinte : la compétence peut être entérinée. »
      node scripts/dump-fiches.mjs`), qui réécrit `scripts/data/fiches-v7.json`,
      à committer puis reconstruire (prebuild web : `generate-fiches.mjs`,
      `build-twin6-package.mjs`).
-   - **Twin9** : `deploy.mjs` appelle `POST /api/admin/generate-fiches`
-     `{force}`. Après l'entérinement d'une fiche, le setting `twin9_fiches`
-     diffère de la base : sans `FICHES_FORCE=1`, le garde-fou répond `409`
-     `{status: "diff", changed: [codes]}` et le déploiement s'arrête ; il faut
-     le relancer avec `FICHES_FORCE=1` après vérification (`200`
-     `{status: "applied", changed}`).
+   - **Twin9** : rien à faire. Ses runs lisent les fiches dans la base
+     (`ReferentielMoteur`, T16) : une fiche entérinée est celle du run suivant,
+     sans déploiement. (Jusqu'au 2026-10-20, `deploy.mjs` régénérait aussi une
+     copie des fiches, le setting `twin9_fiches`, par `POST
+     /api/admin/generate-fiches`, que plus aucun run ne lisait : elle est
+     partie, avec la route et `FICHES_FORCE`.)
    - `deploy.mjs` rejoue aussi `POST /api/admin/seed-competences`, qui échoue
      après un renommage entériné (anomalie AN2).
 
@@ -206,14 +206,14 @@ affiche « Majorité atteinte : la compétence peut être entérinée. »
 | Front | `web/src/views/epistemiarque/competence-api.js` — `publishDraft`, `cutRelease` | Client fin |
 | API | `api/src/routes/competences.php` — `POST /competences/drafts/{id}/publish`, `POST /competences/release`, `GET /competences[/{code}[/versions]]` | Orchestration |
 | API | `api/src/routes/referentiel.php` — `GET /referentiel`, `/referentiel/versions`, `/referentiel/diff/{from}/{to}` | Lecture de la release (partagé avec UC-VIS-02) |
-| API | `api/src/routes/system.php` — `GET /admin/dump-fiches` (manuel), `POST /admin/generate-fiches`, `POST /admin/seed-competences` (déploiement) | Propagation des fiches, seed rejoué |
-| Exploitation | `scripts/dump-fiches.mjs` (manuel) ; `scripts/deploy/deploy.mjs` (seed-competences, generate-fiches avec `FICHES_FORCE`) | Resynchronisation du corpus Twin6 ; propagation Twin9 au déploiement |
+| API | `api/src/routes/system.php` — `GET /admin/dump-fiches` (manuel), `POST /admin/seed-competences` (déploiement) | Propagation des fiches, seed rejoué |
+| Exploitation | `scripts/dump-fiches.mjs` (manuel) ; `scripts/deploy/deploy.mjs` (seed-competences) | Resynchronisation du corpus Twin6 ; seed rejoué au déploiement |
 | Domaine | `api/src/Referentiel/CompetenceRepository.php` — `publish`, `latestPublished`, `publishedVersions`, `latestPublishedByCode` | Entérinement, version en vigueur |
 | Domaine | `api/src/Referentiel/CompetenceGovernance.php` — `tally` ; `MajorityMessage.php` | Majorité recalculée, message |
 | Domaine | `api/src/Referentiel/SnapshotAssembler.php` ; `ContentHash.php` | Assemblage de la release, hash structurel |
 | Domaine | `api/src/Referentiel/ReferentielRepository.php` — `cutReleaseFromDocument`, `validateDocument` | Gate de complétude, semver, lockfile |
 | Domaine | `api/src/Referentiel/StaticExporter.php` ; `scripts/export-referentiel-static.php` | Export statique |
-| Domaine | `api/src/Referentiel/FicheGenerator.php` ; `api/src/Twin9/FicheStore.php` | Fiches de scan régénérées depuis la base ; setting `twin9_fiches` |
+| Domaine | `api/src/Referentiel/FicheGenerator.php` ; `api/src/Twin9/ReferentielMoteur.php` — `bloc` | Fiches de scan régénérées depuis la base ; lues par le moteur Twin9 |
 | Domaine | `api/src/Referentiel/CompetenceSeeder.php` | Seed rejoué au déploiement, gate de parité (AN2) |
 
 ## Jeux de tests
@@ -261,14 +261,14 @@ affiche « Majorité atteinte : la compétence peut être entérinée. »
 | UC-EPI-03-F17 | E1, E4 | IHM | Un votant « pour » a perdu le rôle entre-temps : 409 affiché, un seul `POST`, on reste, bouton réactivé | idem |
 | UC-EPI-03-F18 | E6, E7 | IHM | Release 422 puis succès puis 409 : messages ; trois demandes identiques `{semver, label}` envoyées | idem |
 | UC-EPI-03-F19 | A4, AN2 | API | Après un renommage entériné (et une release), `POST /api/admin/seed-competences` → 500 « Gate de parité ÉCHOUÉ » (comportement figé) | `api/tests/UseCases/Functional/UcEpi03EnterinerPublierTest.php` |
-| UC-EPI-03-F20 | Nominal, étape 8 | API | `POST /api/admin/generate-fiches` : alignement, puis après entérinement d'une fiche 409 `{diff, ["1.01"]}` sans force (rien d'écrit), 200 `{applied, ["1.01"]}` avec force ; `twin9_fiches` porte la fiche entérinée | idem |
+| UC-EPI-03-F20 | Nominal, étape 8 | API + domaine | Fiche adoptée mais pas encore entérinée : le bloc du moteur Twin9 inchangé ; entérinée : le bloc porte la fiche 1.01 nouvelle, les 60 autres intactes, sans étape de déploiement | idem |
 
 ### Tests existants liés (non-régression)
 
 - `api/tests/CompetenceAtomicTest.php` — entérinement indépendant par compétence, publication sans majorité refusée, snapshot byte-identique, coupe de release.
 - `api/tests/CompetenceReleaseTest.php` — gate de complétude (domaine et HTTP), release HTTP + lockfile, oracle du hash structurel, `RESTRICT` du lockfile.
 - `api/tests/CompetenceGovernanceTest.php` — rejet et électorat vide bloquent la publication.
-- `api/tests/FicheParityTest.php`, `api/tests/FicheAdminEndpointsTest.php` — parité octet des fiches, édition gouvernée propagée à Twin6/Twin9, garde-fou de `generate-fiches`.
+- `api/tests/FicheParityTest.php`, `api/tests/FicheAdminEndpointsTest.php` — parité octet des fiches, édition gouvernée propagée à Twin6/Twin9, `dump-fiches`.
 - `api/tests/ReferentielImportExportTest.php` — export statique (un fichier par version publiée + index).
 - `web/src/views/EpistemiarqueView.test.jsx` — entérinement, coupe de release.
 
@@ -295,8 +295,7 @@ cd web && npx vitest run test/usecases/unit/uc-epi-03 test/usecases/functional/u
   **7.0.0**, prise explicitement comme référence. Après un renommage
   entériné (A4), ils diffèrent : `RuntimeException` « Gate de parité ÉCHOUÉ »,
   réponse `500` « Seed failed… », et `deploy.mjs` s'arrête — après avoir déjà
-  basculé `current.txt`, en sautant `generate-fiches` et
-  `import-prompt-package`. Chaque déploiement suivant échoue de même (voir
+  basculé `current.txt`, en sautant `import-prompt-package`. Chaque déploiement suivant échoue de même (voir
   UC-SYS-02). Figé par UC-EPI-03-U15 et F19.
 - **AN3 — Texte trompeur de la carte « Publier une version du
   référentiel ».** Elle annonce un snapshot « immédiatement épinglable par

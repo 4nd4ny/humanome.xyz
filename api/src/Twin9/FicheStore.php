@@ -8,15 +8,15 @@ use Humanome\Packages\SettingsRepository;
 
 /**
  * Secret fiche store (ADR-010, render-relocation fix) — the CONFIDENTIAL
- * competence/pole fiches the client engine must NOT hold. The client renders
- * every prompt SERVER-side and sends only run-state variables; two variables
- * are fiche-derived and injected HERE, authoritatively, from lookup keys the
- * engine provides:
- *   - COMPETENCE_FICHE  ← fiche_md of variables['CODE']
- *   - POLE_FICHES       ← pole header + the competence fiches of
- *                         variables['POLE_NUM'], reassembled in the order the
- *                         client sends in variables['POLE_FICHES_ORDRE']
- *                         (the anti-gaming permutation the engine computed).
+ * competence/pole fiches. Until T11, the proxy of the browser's engine,
+ * POST /api/twin9/appel, injected two of its variables from them at render:
+ * COMPETENCE_FICHE (the fiche of a code) and POLE_FICHES (a pole's header and
+ * fiches, in the engine's anti-gaming order). That engine and its proxy are
+ * gone: the server runs read their referential's fiches from the base (T16,
+ * ReferentielMoteur), and no run reads this store any more. The import still
+ * writes it, and the deployment regenerates it from the base
+ * (/api/admin/generate-fiches, which compares with it first): a vestige, noted
+ * in STATUS.md (T11).
  *
  * Stored under its own settings key, written by the import (X-Migrate-Token),
  * NEVER exposed by /api/twin9/meta. Assembly reproduces Python
@@ -132,36 +132,5 @@ final class FicheStore
         }
 
         return rtrim($this->poleHeaders[$num]) . "\n\n" . implode("\n\n---\n\n", $fiches) . "\n";
-    }
-
-    /**
-     * The secret vars to inject for one render, computed from the client's
-     * run-state variables. Only the two fiche vars; the caller merges these
-     * OVER the client vars (authoritative), then resolves the template.
-     *
-     * @param array<string, mixed> $vars client-provided run-state variables
-     * @return array<string, string>
-     */
-    public function injecter(array $vars): array
-    {
-        $out = [];
-        if (isset($vars['CODE'])) {
-            $fiche = $this->competenceFiche((string) $vars['CODE']);
-            if ($fiche !== null) {
-                $out['COMPETENCE_FICHE'] = $fiche;
-            }
-        }
-        if (isset($vars['POLE_NUM'])) {
-            $ordre = [];
-            foreach ((array) ($vars['POLE_FICHES_ORDRE'] ?? []) as $c) {
-                $ordre[] = (string) $c;
-            }
-            $pf = $this->poleFiches((int) $vars['POLE_NUM'], $ordre);
-            if ($pf !== null) {
-                $out['POLE_FICHES'] = $pf;
-            }
-        }
-
-        return $out;
     }
 }

@@ -5,9 +5,11 @@ declare(strict_types=1);
 namespace Humanome\Tests\Twin9;
 
 use Humanome\Keys\KeyVault;
+use Humanome\Referentiel\ContentHash;
 use Humanome\Referentiel\ReferentielRepository;
 use Humanome\Tests\CartographeTestCase;
 use Humanome\Tests\TestDb;
+use Humanome\Tests\UseCases\Support\ReferentielsFictifs;
 use Humanome\Twin9\CallJournal;
 use Humanome\Twin9\CreditService;
 use Humanome\Twin9\DirectCalls;
@@ -67,6 +69,7 @@ final class PurgeExportTest extends CartographeTestCase
         $doc = json_decode((string) file_get_contents(\dirname(__DIR__, 3) . '/web/public/data/referentiel/respire-v7.json'),
             true, 512, JSON_THROW_ON_ERROR);
         (new ReferentielRepository(self::$pdo))->importPublishedDocument($doc, 'Import initial RESPIRE v7');
+        TestDb::fichesRespire(self::$pdo); // the engine reads RESPIRE's fiches from the base (T16)
         $protocole = new ProtocoleRepository(self::$pdo);
         foreach (self::GABARITS as $nom => $contenu) {
             $protocole->put($nom, $contenu, null);
@@ -184,6 +187,34 @@ final class PurgeExportTest extends CartographeTestCase
         $deBob = json_decode((string) $this->as_($bob, 'GET', '/api/twin9/mes-analyses')->getBody(), true);
         self::assertSame(['journal-bob'], array_column($deBob['cartes'], 'journal'));
         self::assertStringNotContainsString('journal-fini', json_encode($deBob));
+    }
+
+    /**
+     * The export filters what its runs' calls answered against the fiches of
+     * the referential their engine read too (T16): a recitation of one is
+     * redacted, the redaction audited.
+     */
+    public function testTheExportRedactsARecitedFicheOfItsRunsReferential(): void
+    {
+        $fiche = 'Fiche FICTIVE confidentielle de la capacité A1 : ce que le jury y cherche, et que le modèle ne doit '
+            . 'jamais réciter.';
+        $lettre = ReferentielsFictifs::lettre();
+        $lettre['competences'][0]['description'] = $fiche;
+        (new ReferentielRepository(self::$pdo))->importPublishedDocument(
+            ['contentHash' => ContentHash::compute($lettre)] + $lettre, 'Publié');
+        $alice = $this->registerAs('fiche@example.org', 'Alice');
+        $profil = ProfilRepository::v98();
+        $profil->voie = 'directe';
+        $profil->referentiel = (object) ['id' => 'fictif-lettre', 'version' => null];
+        $cree = $this->as_($alice, 'POST', '/api/twin9/profils', ['nom' => 'Lettré', 'profil' => $profil]);
+        self::assertSame(201, $cree->getStatusCode(), (string) $cree->getBody());
+        $run = $this->lancer($alice, self::json($cree)['id'], 'journal-lettre.md');
+        $this->journal($run, 'Voici : ' . $fiche);
+
+        $texte = (string) $this->as_($alice, 'GET', '/api/twin9/mes-analyses')->getBody();
+        self::assertStringNotContainsString('que le modèle ne doit jamais réciter', $texte);
+        self::assertStringContainsString('[expurgé]', json_decode($texte, true)['runs'][0]['appels'][0]['reponse']);
+        self::assertNotNull(self::lastAudit('twin9_fuite_expurgee'));
     }
 
     /** Every account of these tests has credit: the instance's key pays from it. */

@@ -139,12 +139,16 @@ final class CallSettings
      * The fingerprint of what in a run's settings changes a response the
      * memory keeps, and that the v9.8's own fingerprints leave out (ADR-011
      * §2): the call settings of the stages, steps and readers, the
-     * truncations, the templates and fiches of the set (the merge's re-readings
-     * aside: the memory does not keep them).
+     * truncations, the templates of the set (the merge's re-readings aside:
+     * the memory does not keep them), and the referential the engine reads
+     * (T16: its fiches, preambles, names, motif, label), lest the memory take
+     * back a day judged against other fiches. A run without one — launched
+     * before T16, its fiches in its set — keeps its fingerprint.
      *
      * @param array<string, string> $gabarits the template set, by name
+     * @param mixed $referentiel the referential in the engine's settings (ReferentielMoteur::bloc()), or null
      */
-    public static function empreinte(stdClass $profil, mixed $troncatures, array $gabarits): string
+    public static function empreinte(stdClass $profil, mixed $troncatures, array $gabarits, mixed $referentiel = null): string
     {
         $lecteurs = [];
         foreach ($profil->college as $lecteur) {
@@ -158,10 +162,14 @@ final class CallSettings
             }
         }
 
-        return substr(hash('sha256', json_encode(self::canonique([
-            'etages' => $profil->etages, 'etapes' => $profil->etapes, 'lecteurs' => $lecteurs,
-            'troncatures' => $troncatures, 'gabarits' => hash_final($jeu),
-        ]), JSON_THROW_ON_ERROR | JSON_UNESCAPED_UNICODE | JSON_PRESERVE_ZERO_FRACTION)), 0, 16);
+        $champs = ['etages' => $profil->etages, 'etapes' => $profil->etapes, 'lecteurs' => $lecteurs,
+                   'troncatures' => $troncatures, 'gabarits' => hash_final($jeu)];
+        if ($referentiel !== null) {
+            $champs['referentiel'] = ReferentielMoteur::empreinte($referentiel);
+        }
+
+        return substr(hash('sha256', json_encode(self::canonique($champs),
+            JSON_THROW_ON_ERROR | JSON_UNESCAPED_UNICODE | JSON_PRESERVE_ZERO_FRACTION)), 0, 16);
     }
 
     /** The reader of a call: tags_<name>#<pass>_P<n>.json gives <name>. */

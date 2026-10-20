@@ -98,10 +98,15 @@ L'administrateur-promptologue ouvre « Faire évoluer » → « Atelier Twin9 »
   fiches confidentielles n'y sont pas injectées.
 - **A4 — Import technique** (précondition, par le script manuel
   `scripts/twin9/import-protocole.mjs`, distinct de `deploy.mjs`) : le script lit
-  les gabarits `protocole/**/*.md` de `TWIN_V9_DIR` (nommés par leur chemin
-  relatif, `/` comme séparateur, sans `.md` ; les autres fichiers sont ignorés),
-  ne retient de `config.json` que les réglages du protocole (`seuils_consensus`,
-  `jury`, `juge_leger`, `merge`, `scan_global` — jamais les backends ni les
+  les gabarits `php/protocole/**/*.md` de `TWIN_V9_DIR` (nommés par leur chemin
+  relatif, `/` comme séparateur, sans `.md` ; les autres fichiers sont ignorés)
+  — depuis T16, ceux de la v9.8 tels que les lit le moteur PHP : le référentiel
+  y est en variables (`{$NB_COMPETENCES}`, `{$FORMAT_CODE}`, `{$REFERENTIEL}`,
+  `{$LISTE_COMPETENCES}`), et les fichiers de pôle n'y sont plus, la base donnant
+  les fiches (`docs/contrats.md` §8.8) ; un Twin_v9 d'avant T16, sans
+  `php/protocole`, est refusé (sortie 1) —, ne retient de `config.json` que les
+  réglages du protocole (`seuils_consensus`, `jury`, `juge_leger`, `merge`,
+  `scan_global` — jamais les backends ni les
   workers Python), et fait extraire par le Twin_v9 lui-même (`python3`, module
   `aurora.referentiel`) la structure **non secrète** du référentiel (num/nom,
   code/nom) et, à part, les fiches **confidentielles** (en-tête de pôle,
@@ -111,11 +116,16 @@ L'administrateur-promptologue ouvre « Faire évoluer » → « Atelier Twin9 »
   config?, referentiel?, fiches?}` avec `X-Migrate-Token` (variable
   `MIGRATE_TOKEN`, sinon `.env.deploy` ; base : `--base-url`, sinon `SITE_URL`
   de `.env.deploy`, sinon `https://humanome.xyz`) ; toute réponse non 2xx fait
-  échouer le script (sortie 1). Côté serveur : chaque fichier est écrit dans le
-  **jeu v9.8** (auteur nul, versions archivées, réimport identique sans effet) ;
-  les réglages du pipeline, la structure du référentiel (nettoyée : num/nom,
-  code/nom) et les fiches confidentielles sont stockés ; Twin9 est **activé** ;
-  réponse `{imported}`. Les copies déjà faites ne changent pas.
+  échouer le script (sortie 1). Côté serveur : chaque fichier est écrit dans
+  le **jeu v9.8** (auteur nul, versions archivées, réimport identique sans
+  effet) ; un import **complet** — tous les gabarits que nomme le contrat des
+  variables, ce qu'envoie le script — **remplace** le jeu : un gabarit qu'il
+  ne porte pas en sort, son dernier contenu archivé parmi ses versions (T16 :
+  les fichiers de pôle `tagger/P1` à `P7`), les noms comparés sans la casse ;
+  un import partiel n'ôte rien ; les réglages du pipeline, la structure du référentiel (nettoyée :
+  num/nom, code/nom) et les fiches confidentielles sont stockés ; Twin9 est
+  **activé** ; réponse `{imported, retires}`. Les copies déjà faites ne changent
+  pas.
 - **A5 — Lire le jeu v9.8 ou la copie d'un autre** (étape 2, liste des jeux) :
   la vue l'ouvre en lecture seule — éditeur en lecture, ni « Enregistrer » ni
   « Restaurer », et la mention « Le jeu v9.8 est en lecture seule : copiez-le
@@ -306,7 +316,7 @@ autres tests de runs.
 | UC-PRO-08-F16 | Anomalies 3-5 | API | Clé d'import numérique refusée ; nom à saut de ligne final accepté ; gabarit « …/versions » importé mais illisible | idem |
 | UC-PRO-08-F17 | RG8 | CLI | `scripts/check-publiable.mjs` dans un dépôt git temporaire : répertoires de gabarits refusés quel que soit le contenu, `.env` réel, clé, mot de passe hors tests → sortie 1 et liste sans contenu ; gabarit rangé ailleurs, ligne à marqueur, binaire, fichier non suivi : non relevés ; dépôt propre → sortie 0 | `engine/test/usecases/unit/uc-pro-08-editer-gabarits-twin9.test.js` |
 | UC-PRO-08-F18 | RG8 (Limites) | CLI | **Limite figée** : chemins lus dans l'index mais contenu lu sur le disque — clé indexée puis effacée du disque non relevée ; répertoire de gabarits supprimé du disque mais indexé toujours refusé | idem |
-| UC-PRO-08-F19 | A4, E4 | CLI | `scripts/twin9/import-protocole.mjs --dry-run` (copie en miroir temporaire, faux `TWIN_V9_DIR`) : `.md` du protocole seuls, noms hiérarchiques sans `.md`, réglages filtrés, noms et tailles journalisés sans contenu, rien envoyé ; répertoire absent, protocole vide, option inconnue (avec `--dry-run`) → sortie 1 | idem |
+| UC-PRO-08-F19 | A4, E4 | CLI | `scripts/twin9/import-protocole.mjs --dry-run` (copie en miroir temporaire, faux `TWIN_V9_DIR`) : `.md` de `php/protocole` seuls, noms hiérarchiques sans `.md`, réglages filtrés, noms et tailles journalisés sans contenu, rien envoyé ; répertoire absent, protocole vide, Twin_v9 d'avant T16 (sans `php/protocole`), option inconnue (avec `--dry-run`) → sortie 1 | idem |
 | UC-PRO-08-F20 | A4, E4 | CLI + HTTP simulé | Faux serveur `127.0.0.1` : `POST /api/admin/twin9/import`, `X-Migrate-Token`, corps `{files, config}` sans référentiel ni fiches non extraits ; refus 403 → sortie 1 « twin9 import failed » | idem |
 | UC-PRO-08-F21 | A4 | CLI + HTTP simulé | Faux module `aurora` (`python3`, sauté sans) : référentiel non secret (num/nom, code/nom) et fiches confidentielles (en-tête, `fiche_md`) envoyés séparément, pôles triés, aucun texte de fiche journalisé | idem |
 | UC-PRO-08-F22 | E4 | CLI + HTTP simulé | Jeton introuvable (ni `MIGRATE_TOKEN`, ni `.env.deploy` dans le miroir) → sortie 1 « MIGRATE_TOKEN missing (.env.deploy or environment) », aucune requête reçue par le faux serveur | idem |
@@ -315,8 +325,8 @@ autres tests de runs.
 
 ### Tests existants liés (non-régression)
 
-- `api/tests/Twin9ProtocoleTest.php` — import, matrice de rôles complète, jeux (copie, lecture seule, variables, jeu par défaut), versions, restauration, banc d'essai, extraction.
-- `api/tests/Twin9/JeuxGabaritsTest.php` — le jeu v9.8 ne change jamais au fil d'une session d'atelier et des runs de ses copies ; le profil par défaut prend le jeu par défaut ; une copie incomplète, ou dont une fiche est mal formée (vrai moteur), est refusée au lancement, le journal ne gardant que la classe de l'erreur ; le contrat couvre les variables des gabarits du jeu v9.8 (sauté sans `TWIN_V9_DIR`).
+- `api/tests/Twin9ProtocoleTest.php` — import (complet, il remplace le jeu v9.8 et archive ce qu'il n'y porte plus ; partiel, il n'ôte rien, T16), matrice de rôles complète, jeux (copie, lecture seule, variables, jeu par défaut), versions, restauration, banc d'essai, extraction.
+- `api/tests/Twin9/JeuxGabaritsTest.php` — le jeu v9.8 ne change jamais au fil d'une session d'atelier et des runs de ses copies ; le profil par défaut prend le jeu par défaut ; une copie incomplète est refusée au lancement ; le contrat couvre les variables des gabarits du jeu v9.8, ceux de `php/protocole` (sauté sans `TWIN_V9_DIR`).
 - `api/tests/Twin9/ConfigurationDroitsTest.php` — les jeux qu'un profil choisit (RG11).
 - `web/src/views/Twin9AtelierView.test.jsx` — garde, jeux, copie, lecture seule, édition, versions, banc d'essai (noms plats).
 - `web/src/nav.test.js` — conjonction des rôles dans la navigation.
@@ -378,11 +388,14 @@ cd engine && npx vitest run test/usecases/unit/uc-pro-08
   ajoute au jeu v9.8 n'entre pas dans les copies déjà faites : un run qui
   choisit l'une d'elles est refusé au lancement (`422`, « … n’a pas tous les
   gabarits du jeu v9.8 : il faut en refaire une copie »).
-- L'atelier ne vérifie que les variables d'une fiche du référentiel
-  (`tagger/P1` à `P7`), pas sa forme : une fiche dont le moteur ne lit plus
-  les sections (« ## X.YY — Nom ») fait refuser les runs de sa copie au
-  lancement (`422`, « … ne se lit pas : un gabarit y manque, ou une fiche y
-  est mal formée ») ; la restaurer suffit.
+- Depuis T16, les fiches du référentiel viennent de la base, plus du jeu : les
+  fichiers de pôle (`tagger/P1` à `P7`) qu'une copie faite avant T16 garde
+  encore n'y sont plus lus, et les y éditer reste sans effet sur un run. Une
+  telle copie garde aussi les gabarits d'avant T16, où la v9.8 écrit RESPIRE en
+  toutes lettres (« 61 », « X.YY », « référentiel RESPIRE ») : elle sert
+  RESPIRE, ses prompts ceux de la v9.8 ; un run sur un autre référentiel est
+  refusé au lancement (`422`, « … précède T16 … il faut refaire une copie du
+  jeu v9.8 », ou d'abord le réimporter s'il précède T16 lui aussi).
 - Le contrat ne nomme, pour chaque gabarit, que les variables qu'emploient les
   gabarits du jeu v9.8 : une variable que le moteur fournit à une étape sans
   que la v9.8 s'en serve y est refusée.

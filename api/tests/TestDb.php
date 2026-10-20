@@ -6,6 +6,7 @@ namespace Humanome\Tests;
 
 use Humanome\Db;
 use Humanome\Env;
+use Humanome\Referentiel\CompetenceSeeder;
 use PDO;
 
 /**
@@ -80,6 +81,20 @@ final class TestDb
         self::setEnv('DB_USER', 'root');
         self::setEnv('DB_PASSWORD', Env::get('DB_ROOT_PASSWORD', 'root_dev'));
         Db::reset();
+    }
+
+    /**
+     * RESPIRE's fiches in the base, as the deployment seeds them
+     * (scripts/seed-competences.php, from the committed corpus): the engine
+     * reads them from there (T16). RESPIRE's version 7.0.0 must be published.
+     */
+    public static function fichesRespire(PDO $pdo): void
+    {
+        $racine = \dirname(__DIR__, 2) . '/scripts/data/';
+        (new CompetenceSeeder($pdo))->seed(
+            json_decode((string) file_get_contents($racine . 'competences-v7.json'), true, 512, JSON_THROW_ON_ERROR)['competences'],
+            json_decode((string) file_get_contents($racine . 'fiches-v7.json'), true, 512, JSON_THROW_ON_ERROR),
+        );
     }
 
     public static function setEnv(string $key, string $value): void

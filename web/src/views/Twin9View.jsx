@@ -21,6 +21,10 @@
 // run arrêté par son budget reprend sous un nouveau budget, par son crédit
 // une fois rechargé, avant sa fusion comme les autres ; sa carte, incomplète,
 // s'ouvre dans la cartographie, qui le dit. Son attestation dit son admission.
+//
+// Le moteur lit le référentiel du run (T16) ; la cartographie, le seul
+// RESPIRE : un run sur un autre ne s'y ouvre pas encore, la page le dit
+// (l'archive du compte garde ses résultats).
 
 import { useCallback, useEffect, useState } from 'react'
 import { ApiError } from '../api/client.js'
@@ -423,6 +427,9 @@ function PageDuRun({ id, deps, onOpenInInterface }) {
   const parCredit = run.statut === 'echoue' && String(run.attente ?? '').startsWith('crédit insuffisant')
   const depenseUsd = (cout?.depense_microusd ?? 0) / 1_000_000
   const budgetValide = budget === '' || Number(budget) > depenseUsd
+  // une carte à ouvrir : sa fusion faite, ou des journées finies d'un run arrêté ; un run d'avant T16 lit RESPIRE
+  const carte = p.fusion || (run.statut !== 'en_cours' && p.journees > 0)
+  const referentiel = run.attestation?.referentiel?.id ?? 'respire'
   return (
     <article className="twin9-run">
       <p>
@@ -487,12 +494,17 @@ function PageDuRun({ id, deps, onOpenInInterface }) {
           </button>
         ) : null}
         {parCredit ? <a href="#/compte/credit">Recharger mon crédit</a> : null}
-        {p.fusion || (run.statut !== 'en_cours' && p.journees > 0) ? (
+        {carte && referentiel === 'respire' ? (
           <button type="button" className="twin9-ouvrir" disabled={occupe} onClick={ouvrir}>
             Ouvrir dans la cartographie
           </button>
         ) : null}
       </div>
+      {carte && referentiel !== 'respire' ? (
+        <p className="twin9-referentiel">
+          La cartographie n’ouvre encore que les analyses du référentiel RESPIRE : celle-ci porte sur « {referentiel} ».
+        </p>
+      ) : null}
       <label className="twin9-case">
         <input
           type="checkbox"

@@ -474,10 +474,11 @@ final class RunRepository
             $compteurs = $this->compteurs($id);
             $this->pdo->exec('SAVEPOINT evaluation');
             try {
-                (new Evaluations($this->pdo))->consigner($id, (int) $run['user_id'],
-                    self::unpack((string) $run['reglages'])->profil,
+                $reglages = self::unpack((string) $run['reglages']);
+                $referentiel = $reglages->moteur->referentiel ?? null;
+                (new Evaluations($this->pdo))->consigner($id, (int) $run['user_id'], $reglages->profil,
                     Lancement::empreinte((array) self::unpack((string) $run['gabarits'])), $octets, $marge,
-                    $compteurs['duree_s']);
+                    $compteurs['duree_s'], $referentiel === null ? '' : ReferentielMoteur::empreinte($referentiel));
             } catch (\Throwable $e) {
                 try {
                     $this->pdo->exec('ROLLBACK TO SAVEPOINT evaluation');

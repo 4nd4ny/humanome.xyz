@@ -5,9 +5,11 @@ declare(strict_types=1);
 namespace Humanome\Tests\Twin9;
 
 use Humanome\Llm\LlmRuntime;
+use Humanome\Referentiel\ContentHash;
 use Humanome\Referentiel\ReferentielRepository;
 use Humanome\Tests\CartographeTestCase;
 use Humanome\Tests\TestDb;
+use Humanome\Tests\UseCases\Support\ReferentielsFictifs;
 use Humanome\Twin9\CreditService;
 use Humanome\Twin9\EngineLoader;
 use Humanome\Twin9\ProfilRepository;
@@ -57,6 +59,7 @@ final class JeuxGabaritsTest extends CartographeTestCase
         $doc = json_decode((string) file_get_contents(\dirname(__DIR__, 3) . '/web/public/data/referentiel/respire-v7.json'),
             true, 512, JSON_THROW_ON_ERROR);
         (new ReferentielRepository(self::$pdo))->importPublishedDocument($doc, 'Import initial RESPIRE v7');
+        TestDb::fichesRespire(self::$pdo); // the engine reads RESPIRE's fiches from the base (T16)
     }
 
     protected function tearDown(): void
@@ -189,7 +192,7 @@ final class JeuxGabaritsTest extends CartographeTestCase
      */
     public function testAWordChangedInACopyReachesTheRealEnginesPrompt(): void
     {
-        if (!is_file($this->reel . '/php/src/Plateforme.php') || !is_dir($this->reel . '/protocole')) {
+        if (!is_file($this->reel . '/php/src/Plateforme.php') || !is_dir($this->reel . '/php/protocole')) {
             self::markTestSkipped('Twin_v9 absent (TWIN_V9_DIR) : le vrai moteur et ses gabarits ne sont pas là');
         }
         TestDb::setEnv('TWIN_V9_DIR', $this->reel);
@@ -256,52 +259,47 @@ final class JeuxGabaritsTest extends CartographeTestCase
     }
 
     /**
-     * With the real engine (TWIN_V9_DIR): a fiche of the referential
-     * malformed in a copy makes its runs refused at launch, with a word on
-     * the set — never an error of the server.
+     * A copy of before T16 serves RESPIRE alone, and says what to do for
+     * another referential: copy the v9.8's set again — once it is imported
+     * again itself, when it is of before T16 too (review of T16).
      */
-    public function testACopyWithAMalformedFicheIsRefusedAtLaunch(): void
+    public function testACopyOfBeforeT16SaysHowToServeAnotherReferential(): void
     {
-        if (!is_file($this->reel . '/php/src/Plateforme.php') || !is_dir($this->reel . '/protocole')) {
-            self::markTestSkipped('Twin_v9 absent (TWIN_V9_DIR) : le vrai moteur et ses gabarits ne sont pas là');
-        }
-        TestDb::setEnv('TWIN_V9_DIR', $this->reel);
-        self::assertTrue(EngineLoader::load());
+        $this->importer();
         $v98 = new ProtocoleRepository(self::$pdo);
-        foreach (self::gabaritsV98($this->reel) as $nom => $contenu) {
-            $v98->put($nom, $contenu, null);
-        }
+        $v98->put('tagger/P1', "# Pôle 1 — FICTIF\n\n## 1.01 — Fiche FICTIVE\n", null);
+        $neuf = ReferentielsFictifs::neufPoles();
+        (new ReferentielRepository(self::$pdo))->importPublishedDocument(
+            ['contentHash' => ContentHash::compute($neuf)] + $neuf, 'Publié');
         $atelier = $this->registerAs('atelier@example.org', 'Atelier', ['admin', 'promptologue']);
         $this->copier($atelier, 'essai');
-        self::assertSame(200, $this->as_($atelier, 'PUT', '/api/twin9/admin/jeux/essai/protocole/tagger%2FP1',
-            ['content' => 'Fiche FICTIVE sans aucune section de compétence.'])->getStatusCode());
-        $portfolio = ['nom' => 'PLANT-01.md', 'texte' => (string) file_get_contents($this->reel . '/tests/portfolios/PLANT-01.md')];
-        $profil = $this->profil($atelier, 'essai', mode: 'test');
-        $journal = (string) tempnam(sys_get_temp_dir(), 'lancement-');
-        ini_set('error_log', $journal);
+        $profil = ProfilRepository::v98();
+        $profil->voie = 'directe';
+        $profil->gabarits = 'essai';
+        $profil->referentiel = (object) ['id' => 'fictif-neuf', 'version' => null];
+        $cree = $this->as_($atelier, 'POST', '/api/twin9/profils', ['nom' => 'Essai neuf', 'profil' => $profil]);
+        self::assertSame(201, $cree->getStatusCode(), (string) $cree->getBody());
+        $lancer = fn (): array => self::json($this->as_($atelier, 'POST', '/api/twin9/runs', ['profil' => self::json($cree)['id'],
+            'accord' => true, 'portfolio' => ['nom' => 'journal-factice.md', 'texte' => self::PORTFOLIO]]));
 
-        foreach (['/api/twin9/runs/apercu', '/api/twin9/runs'] as $route) {
-            $refus = $this->as_($atelier, 'POST', $route, ['profil' => $profil, 'accord' => true, 'portfolio' => $portfolio]);
-            self::assertSame(422, $refus->getStatusCode(), $route);
-            self::assertSame('Le jeu de gabarits « essai » ne se lit pas : un gabarit y manque, ou une fiche y est mal formée',
-                self::json($refus)['error']);
-        }
-        self::assertSame(0, (int) self::$pdo->query('SELECT COUNT(*) FROM twin9_runs')->fetchColumn());
-        // the log names the engine's error, never what it read
-        $log = (string) file_get_contents($journal);
-        unlink($journal);
-        self::assertSame(2, substr_count($log, '[twin9-lancement] ValueError'));
-        self::assertStringNotContainsString('FICTIVE', $log);
-        self::assertStringNotContainsString('tagger', $log);
+        self::assertSame('Le jeu de gabarits « essai » précède T16 : ses gabarits écrivent RESPIRE en toutes lettres. '
+            . 'Pour un autre référentiel, il faut réimporter le jeu v9.8, puis en refaire une copie', $lancer()['error']);
+        $v98->retirer('tagger/P1');   // the v9.8's set imported again
+        self::assertSame('Le jeu de gabarits « essai » précède T16 : ses gabarits écrivent RESPIRE en toutes lettres. '
+            . 'Pour un autre référentiel, il faut refaire une copie du jeu v9.8', $lancer()['error']);
+        self::assertSame(201, $this->as_($atelier, 'POST', '/api/twin9/runs', ['profil' => $this->profil($atelier, 'essai'),
+            'accord' => true, 'portfolio' => ['nom' => 'journal-factice.md', 'texte' => self::PORTFOLIO]])->getStatusCode(),
+            'elle sert RESPIRE');
     }
 
     /**
      * The contract gives each template of the v9.8's set the variables it
-     * uses (TWIN_V9_DIR/protocole): a copy of it, saved as it is, passes.
+     * uses (TWIN_V9_DIR/php/protocole, T16): a copy of it, saved as it is,
+     * passes.
      */
     public function testTheContractGivesEveryV98TemplateItsVariables(): void
     {
-        if (!is_dir($this->reel . '/protocole')) {
+        if (!is_dir($this->reel . '/php/protocole')) {
             self::markTestSkipped('Twin_v9 absent (TWIN_V9_DIR) : ses gabarits ne sont pas là');
         }
         $contrat = TemplateSets::contrat();
@@ -387,7 +385,8 @@ final class JeuxGabaritsTest extends CartographeTestCase
     /** @return array<string, string> the v9.8's templates of a Twin_v9 checkout, by name */
     private static function gabaritsV98(string $dir): array
     {
-        $racine = $dir . '/protocole';
+        // T16: the platform's v9.8's set, the templates naming their referential, without the pole files
+        $racine = $dir . '/php/protocole';
         $gabarits = [];
         foreach (new \RecursiveIteratorIterator(new \RecursiveDirectoryIterator($racine, \FilesystemIterator::SKIP_DOTS)) as $f) {
             if (str_ends_with($f->getFilename(), '.md')) {

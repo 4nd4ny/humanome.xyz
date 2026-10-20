@@ -81,6 +81,9 @@ return function (App $app): void {
     };
 
     $disponible = static fn (): bool => EngineLoader::isLoaded() && class_exists(\Twin9\Plateforme::class);
+    // a launch also needs an engine that reads the run's referential (T16, Lancement): the page offers one only then,
+    // while the runs launched before go on advancing
+    $lancable = static fn (): bool => $disponible() && class_exists(\Twin9\ReferentielInvalide::class);
 
     /** @return array<string, mixed> the body, decoded as an array, or 422 */
     $corps = static function (Request $request): array {
@@ -108,8 +111,8 @@ return function (App $app): void {
     };
 
     $app->get('/twin9/runs', $wrap(
-        function (Request $request, Response $response, array $args, int $userId) use ($json, $disponible): Response {
-            return $json($response, ['disponible' => $disponible(),
+        function (Request $request, Response $response, array $args, int $userId) use ($json, $lancable): Response {
+            return $json($response, ['disponible' => $lancable(),
                                      'runs' => (new RunRepository(Db::get()))->duProprietaire($userId)]);
         }
     ));

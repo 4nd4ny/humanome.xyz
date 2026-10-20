@@ -232,7 +232,8 @@ tours retenus le temps d'annuler puis de reprendre, puis jusqu'au bout),
 journée, la délibération de son jury. Le run fini a laissé son évaluation
 (T8, `twin9_evaluations` : la taille et le coût de chacune de ses deux
 journées, rien d'autre), et l'aperçu d'un portfolio d'une journée de plus
-s'estime d'après elle. Le compte, supprimé par `DELETE /api/auth/account`,
+s'estime d'après elle — et d'après celles, anonymes, que les passages
+précédents du scénario ont laissées dans la base : il se rejoue. Le compte, supprimé par `DELETE /api/auth/account`,
 emporte ses runs et ses cartes (T10) ; l'évaluation reste, anonyme.
 
 Le moteur est le **moteur factice** public, et Anthropic est simulé : l'API
@@ -252,7 +253,10 @@ alors « L'analyse approfondie n'est pas disponible sur cette instance »).
 (`Llm\MockMultiHttpClient`), comme il le fait pour la masse ; la clé n'est
 qu'un nom, aucune requête ne part. Le scénario verse le jeu de gabarits du
 moteur factice dans la base de développement (`twin9_protocole`, noms
-`factice/…`) et l'en retire à la fin. Migrations à jour : `php
+`factice/…`) et l'en retire à la fin. Depuis T16, le moteur lit le référentiel
+du run dans la base, RESPIRE avec ses fiches : le scénario les y sème
+(`scripts/seed-competences.php`, idempotent, comme INSTALL.md §3) ; sans
+elles, le lancement répond 503. Migrations à jour : `php
 scripts/migrate.php` (030, T8 : les évaluations et la réserve de la fusion).
 
 ### Note historique — diff UI promptologue (corrigé)

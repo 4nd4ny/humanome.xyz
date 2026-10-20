@@ -7,7 +7,7 @@
 | **Portée** | Atelier `#/epistemiarque/referentiels` (section « Autres référentiels ») ; API `POST /api/referentiel/import`, `GET /api/referentiels`, et le cycle du grain document (`/api/referentiel/drafts…`, `/api/referentiel/proposals…`, UC-EPI-04) |
 | **Niveau** | Objectif utilisateur |
 | **Cahier des charges** | §3.5, §4.1 ; T15 (dépôt `Twin_v9`, `docs/plan-twin9-php.md`, lot 4c, première tâche) ; schéma `referentiel` 2.0.0 (`docs/contrats.md` §9) |
-| **Statut** | Implémenté (T15) ; le moteur ne lit encore que RESPIRE (T16), la cartographie que ses 7 pôles (T17) |
+| **Statut** | Implémenté (T15) ; le moteur lit le référentiel du run depuis T16 ; la cartographie ne lit encore que RESPIRE et ses 7 pôles (T17) |
 
 ## Objectif
 
@@ -83,8 +83,8 @@ proposer aux membres.
 - **A5 — Run d'essai sur son brouillon** : son auteur, tant qu'il est
   épistémiarque ou administrateur, le désigne dans un profil Twin9 en mode
   essai (page Configuration : « version (brouillon, run d'essai) ») ; nul
-  autre, et pas en mode complet. Jusqu'à T16, le lancement n'accepte que
-  RESPIRE (RG8).
+  autre, et pas en mode complet. Depuis T16, le moteur lit le référentiel
+  du run, le brouillon compris (RG8).
 
 ## Scénarios d'erreur
 
@@ -142,10 +142,12 @@ proposer aux membres.
   d'essai de son auteur, tant qu'il est épistémiarque ou administrateur ;
   publié, le référentiel est à tous (`ProfilPolicy`, matrice « Configuration
   Twin9 » de `docs/autorisations.md`).
-- **RG8** — Jusqu'à T16, le moteur lit les fiches RESPIRE de son jeu de
-  gabarits, quel que soit le référentiel du profil : un run ou son aperçu sur
-  un autre référentiel est refusé (`422` « L'analyse approfondie ne lit
-  encore que le référentiel RESPIRE »).
+- **RG8** — Depuis T16, le moteur lit le référentiel du profil, tiré de la
+  base à sa version (`docs/contrats.md` §8.8) : un run ou son aperçu sur un
+  autre référentiel part ; un référentiel que le moteur ne lit pas (un code
+  fait de chiffres seulement, par exemple) est refusé au lancement (`422`
+  « Le référentiel « id » ne se lit pas : … »). De T15 à T16, le moteur lisait
+  les fiches RESPIRE de son jeu, et un autre référentiel était refusé.
 - **RG9** — Une annotation d'une cartographie qui désigne une version de
   référentiel porte un code de ce référentiel ; sans référentiel désigné, la
   forme de RESPIRE (`[1-7].NN`).
@@ -168,7 +170,7 @@ proposer aux membres.
 | API | `api/src/routes/referentiel.php` — `POST /referentiel/import`, `GET /referentiels`, listes de tous les référentiels, fork d'un autre | Orchestration |
 | Domaine | `api/src/Referentiel/ReferentielRepository.php` — `importDraft`, `auNiveau`, `niveaux`, `regexDuMotif`, `validateDocument`, `catalogue`, `brouillonsDe`, `findVersion`, `editableVersions` | Import, contrôles, lectures |
 | Domaine | `api/src/Referentiel/ContentHash.php` | Niveaux et éléments gardés hors de l'empreinte |
-| Domaine | `api/src/Twin9/ProfilPolicy.php`, `api/src/Twin9/Lancement.php` | RG7, RG8 |
+| Domaine | `api/src/Twin9/ProfilPolicy.php`, `api/src/Twin9/Lancement.php`, `api/src/Twin9/ReferentielMoteur.php` | RG7, RG8 |
 | API | `api/src/routes/annotations.php` | RG9 |
 | Contrat | `schemas/referentiel.schema.json` (2.0.0), `engine/src/validation-compiled.js` | Format, RESPIRE gardé |
 
@@ -212,7 +214,8 @@ proposer aux membres.
 ### Tests existants liés (non-régression)
 
 - `api/tests/Twin9/ConfigurationDroitsTest.php` — `testADraftServesOnlyItsAuthorsTestRuns` (RG7, la ligne de la matrice), `testOnlyAPublishedReferential`.
-- `api/tests/Twin9/RunsTest.php` — `testARunReadsRespireOnlyUntilTheEngineReceivesItsReferential` (RG8 ; un brouillon RESPIRE sert le run d'essai de son auteur).
+- `api/tests/Twin9/RunsTest.php` — `testARunReadsTheReferentialItsProfileNames` (RG8 : un run sur un autre référentiel part, ses réglages portent son référentiel ; un brouillon RESPIRE sert le run d'essai de son auteur).
+- `api/tests/Twin9/ReferentielMoteurTest.php` — le référentiel que lit le moteur (RG8) : fiches de RESPIRE prises dans la base, celles d'un autre écrites depuis son document, ordre naturel des codes ; avec le vrai moteur, un référentiel qu'il ne lit pas est refusé au lancement.
 - `api/tests/AnnotationsTest.php` — `testACartographyOfAnotherReferentialTakesItsCodes` (RG9).
 - `web/src/views/ConfigurationView.test.jsx` — les brouillons proposés en version.
 - UC-EPI-03 (coupe de release : complétude gardée par le schéma), UC-EPI-04 (grain document), `ReferentielApiTest`, `ReferentielImportExportTest`, `CompetenceReleaseTest`, `engine/test/usecases/unit/uc-sys-04-chaine-artefacts-derives.test.js` (validateurs compilés).
@@ -238,7 +241,8 @@ Aucune.
   exemple) se convertit d'abord.
 - **L3** — Le libellé et la version suivent UC-EPI-04 AN2 : trop longs, ils
   donnent un `500` au lieu d'un `422`.
-- **L4** — Le moteur (T16) et la cartographie (T17) ne lisent encore que
-  RESPIRE ; la page publique `#/referentiel` ne montre que lui.
+- **L4** — La cartographie (T17) ne lit encore que RESPIRE (le moteur lit le
+  référentiel du run depuis T16) ; la page publique `#/referentiel` ne montre
+  que lui.
 - **L5** — La comparaison de deux versions (`ReferentielDiff`) ignore les
   niveaux et les éléments.

@@ -194,6 +194,36 @@ final class ProtocoleRepository
     }
 
     /**
+     * Removes a template from the set, its last content archived among the
+     * set's versions first, attributed to its own author (T16: the import
+     * replaces the v9.8's set, which the pole files left for the base).
+     *
+     * @return bool whether the set had it
+     */
+    public function retirer(string $name): bool
+    {
+        $this->pdo->beginTransaction();
+        try {
+            $stmt = $this->pdo->prepare(
+                "SELECT content, variables, updated_by FROM {$this->gabarits} WHERE {$this->du} AND name = ? FOR UPDATE"
+            );
+            $stmt->execute([$name]);
+            $existing = $stmt->fetch();
+            if ($existing !== false) {
+                $this->archiveVersion($name, (string) $existing['content'], (string) $existing['variables'],
+                    $existing['updated_by'] === null ? null : (int) $existing['updated_by']);
+                $this->pdo->prepare("DELETE FROM {$this->gabarits} WHERE {$this->du} AND name = ?")->execute([$name]);
+            }
+            $this->pdo->commit();
+        } catch (\Throwable $e) {
+            $this->pdo->rollBack();
+            throw $e;
+        }
+
+        return $existing !== false;
+    }
+
+    /**
      * Edit history of a template, most recent first — metadata only.
      *
      * @return list<array{version: int, longueur: int, variables: list<string>, created_at: string}>

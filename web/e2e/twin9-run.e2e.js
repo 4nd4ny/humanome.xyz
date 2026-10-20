@@ -5,7 +5,9 @@
 // Moteur factice (public) et Anthropic simulé : l'API locale est lancée avec
 //   TWIN_V9_DIR=$PWD/api/tests/fixtures/twin9-factice WORKER_PROVIDER=mock ANTHROPIC_API_KEY=sk-ant-simule
 // (docs/tests-e2e.md, « T9 »). Le jeu de gabarits du moteur factice est
-// versé dans la base de développement le temps du scénario, puis retiré.
+// versé dans la base de développement le temps du scénario, puis retiré ; les
+// fiches de RESPIRE y sont semées s'il le faut (T16 : le moteur lit le
+// référentiel du run dans la base), comme le fait INSTALL.md §3.
 //
 //   APPRENANTE : compte, crédité -> un profil par la voie directe -> #/twin9 :
 //   son portfolio en fichier, son accord ; la page dit les journées à
@@ -29,6 +31,12 @@ const root = dirname(dirname(dirname(fileURLToPath(import.meta.url))))
 /** Requête SQL sur la base de DÉVELOPPEMENT, par le client mysql local (jamais ailleurs). */
 function devSql(query) {
   return execFileSync('mysql', ['-h127.0.0.1', '-uhumanome', '-phumanome_dev', 'humanome', '-N', '-e', query], { cwd: root, stdio: 'pipe' }).toString().trim()
+}
+
+/** Les fiches de RESPIRE dans la base de DÉVELOPPEMENT (scripts/seed-competences.php, idempotent). */
+function devFiches() {
+  const env = { ...process.env, DB_HOST: '127.0.0.1', DB_NAME: 'humanome', DB_USER: 'humanome', DB_PASSWORD: 'humanome_dev' }
+  execFileSync('php', ['scripts/seed-competences.php'], { cwd: root, stdio: 'pipe', env })
 }
 
 const PASSWORD = 'mot-de-passe-e2e-twin9'
@@ -79,6 +87,7 @@ async function registerAccount(page, { displayName, email }) {
 }
 
 test.beforeAll(() => {
+  devFiches()
   for (const [nom, [contenu, variables]] of Object.entries(GABARITS)) {
     devSql(
       `INSERT INTO twin9_protocole (name, content, variables) VALUES (${sqlString(nom)}, ${sqlString(contenu)}, '${JSON.stringify(variables)}') ` +
@@ -173,7 +182,8 @@ test('analyse approfondie : lancée depuis le front, suivie, reprise, ouverte da
     await page.getByRole('checkbox', { name: /J’accepte que mon portfolio/ }).check()
     const avant = page.getByRole('region', { name: 'Avant de lancer' })
     await expect(avant).toContainText('1 journée sur 3 à instruire (1 nouvelle)')
-    await expect(avant).toContainText('(d’après une évaluation passée de mêmes réglages)')
+    // la sienne, et celles qu'ont laissées, anonymes, les passages précédents du scénario sur cette base
+    await expect(avant).toContainText(/\(d’après (une évaluation passée|\d+ évaluations passées) de mêmes réglages\)/)
   })
 
   await test.step('supprimer son compte : il emporte ses runs, son évaluation reste anonyme', async () => {

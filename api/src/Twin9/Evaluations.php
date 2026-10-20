@@ -48,17 +48,20 @@ final class Evaluations
     }
 
     /**
-     * What the forecasts compare: the mode, the referential and its version,
-     * the template set and its content, the models and the performance, the
-     * algorithm's parameters — all a run's calls depend on, but its lane and
-     * its key, which a forecast converts, its caps and its parallelism.
+     * What the forecasts compare: the mode, the referential, its version and
+     * its fiches as the engine reads them, the template set and its content,
+     * the models and the performance, the algorithm's parameters — all a
+     * run's calls depend on, but its lane and its key, which a forecast
+     * converts, its caps and its parallelism.
      *
      * @param string $jeu the template set's fingerprint (Lancement::empreinte()): an edited set is another one
+     * @param string $referentiel the fingerprint of the referential the engine reads (ReferentielMoteur::empreinte(),
+     *                            T16): its fiches make its prompts' size; '' for a run that read the set's
      */
-    public static function signature(stdClass $profil, string $jeu): string
+    public static function signature(stdClass $profil, string $jeu, string $referentiel = ''): string
     {
-        return substr(hash('sha256', json_encode(CallSettings::canonique(self::comparables($profil, $jeu)), self::JSON)),
-            0, 16);
+        return substr(hash('sha256', json_encode(CallSettings::canonique(self::comparables($profil, $jeu, $referentiel)),
+            self::JSON)), 0, 16);
     }
 
     /** A size as the evaluations keep it, and as the forecasts read it: in kilobytes, to the hundredth. */
@@ -77,9 +80,10 @@ final class Evaluations
      * @param array<string, int> $octets the days of its map, in order — those the run took, then those its memory
      *        keeps —: each day's size in bytes, by its id
      * @param float $marge the instance's margin its costs include; 1.0 with its owner's own key
+     * @param string $referentiel the fingerprint of the referential its engine read (T16), as signature() takes it
      */
     public function consigner(int $runId, int $userId, stdClass $profil, string $jeu, array $octets, float $marge,
-                              int $dureeS): void
+                              int $dureeS, string $referentiel = ''): void
     {
         $stmt = $this->pdo->prepare(
             'SELECT appel, statut, COALESCE(cout_microusd, 0), pire_cas_microusd FROM twin9_appels WHERE run_id = ?'
@@ -116,7 +120,8 @@ final class Evaluations
                                             cout_fusion_microusd, pire_cas_journee_microusd, pire_cas_fusion_microusd,
                                             cout_microusd, duree_s)
              VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)'
-        )->execute([$runId, $userId, self::signature($profil, $jeu), json_encode(self::reglages($profil, $jeu, $marge), self::JSON),
+        )->execute([$runId, $userId, self::signature($profil, $jeu, $referentiel),
+                    json_encode(self::reglages($profil, $jeu, $marge, $referentiel), self::JSON),
                     json_encode($journees, self::JSON), $coutJournees, $total - $coutJournees, $pireCas['journee'],
                     $pireCas['fusion'], $total, $dureeS]);
     }
@@ -258,17 +263,18 @@ final class Evaluations
     }
 
     /** @return array<string, mixed> its lane, key and margin, with what the forecasts compare */
-    private static function reglages(stdClass $profil, string $jeu, float $marge): array
+    private static function reglages(stdClass $profil, string $jeu, float $marge, string $referentiel): array
     {
         return ['voie' => (string) $profil->voie, 'cle' => (string) $profil->cle, 'marge' => $marge]
-            + self::comparables($profil, $jeu);
+            + self::comparables($profil, $jeu, $referentiel);
     }
 
     /**
-     * @return array<string, mixed> the mode, the referential and its version, the template set and its
-     *         fingerprint, the models and the performance (stages, steps, readers), the algorithm's parameters
+     * @return array<string, mixed> the mode, the referential, its version and its fingerprint (T16), the template
+     *         set and its fingerprint, the models and the performance (stages, steps, readers), the algorithm's
+     *         parameters
      */
-    private static function comparables(stdClass $profil, string $jeu): array
+    private static function comparables(stdClass $profil, string $jeu, string $referentiel): array
     {
         $lecteurs = [];
         foreach ($profil->college ?? [] as $lecteur) {
@@ -276,6 +282,7 @@ final class Evaluations
         }
         $reglages = ['mode' => (string) $profil->mode, 'referentiel' => (string) ($profil->referentiel->id ?? ''),
                      'version_referentiel' => (string) ($profil->referentiel->version ?? ''),
+                     'empreinte_referentiel' => $referentiel,
                      'gabarits' => (string) ($profil->gabarits ?? ''), 'empreinte_gabarits' => $jeu,
                      'etages' => $profil->etages, 'etapes' => $profil->etapes ?? new stdClass(), 'lecteurs' => $lecteurs];
         foreach (self::ALGORITHME as $cle) {

@@ -14,7 +14,8 @@ use stdClass;
  * config.json names; the backends of the two stages, whose models are the
  * stages' (the platform's CallSettings decides what each call is sent with);
  * the college's readers, each pass a reader of its own, as twin9.py expands
- * them (`_charger_roster`); the options jours, rescan, test and memoire.
+ * them (`_charger_roster`); the options jours, rescan, test and memoire;
+ * and the run's referential, drawn from the base (T16, ReferentielMoteur).
  */
 final class MoteurReglages
 {
@@ -29,9 +30,11 @@ final class MoteurReglages
 
     /**
      * @param stdClass $profil a complete, valid profile (ProfilRepository::validate)
-     * @return stdClass {config, roster, jours, rescan, test, memoire}
+     * @param array<string, mixed>|null $referentiel the run's referential (ReferentielMoteur::bloc()); none: the
+     *                                                engine reads RESPIRE from the pole files of the set
+     * @return stdClass {config, roster, jours, rescan, test, memoire[, referentiel]}
      */
-    public static function depuis(stdClass $profil): stdClass
+    public static function depuis(stdClass $profil, ?array $referentiel = null): stdClass
     {
         $config = new stdClass();
         foreach (self::ALGORITHME as $cle) {
@@ -45,7 +48,7 @@ final class MoteurReglages
                                               'model_mini' => $profil->etages->rapide->modele];
         $config->backend_rapide = (object) ['kind' => self::KIND, 'model' => $profil->etages->rapide->modele];
 
-        return (object) [
+        $moteur = (object) [
             'config' => $config,
             'roster' => self::roster($profil),
             'jours' => $profil->jours,
@@ -53,6 +56,11 @@ final class MoteurReglages
             'test' => $profil->mode === 'test',
             'memoire' => $profil->memoire,
         ];
+        if ($referentiel !== null) {
+            $moteur->referentiel = $referentiel;
+        }
+
+        return $moteur;
     }
 
     /**

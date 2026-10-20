@@ -54,6 +54,7 @@ final class ApercuTest extends CartographeTestCase
         $doc = json_decode((string) file_get_contents(\dirname(__DIR__, 3) . '/web/public/data/referentiel/respire-v7.json'),
             true, 512, JSON_THROW_ON_ERROR);
         (new ReferentielRepository(self::$pdo))->importPublishedDocument($doc, 'Import initial RESPIRE v7');
+        TestDb::fichesRespire(self::$pdo); // the engine reads RESPIRE's fiches from the base (T16)
         $protocole = new ProtocoleRepository(self::$pdo);
         foreach (self::GABARITS as $nom => $contenu) {
             $protocole->put($nom, $contenu, null);

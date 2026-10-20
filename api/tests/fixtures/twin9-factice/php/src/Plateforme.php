@@ -19,9 +19,10 @@ use Twin9\Run\Store;
  * Its settings (JSON): lecteurs (readers, called together on each day),
  * etapes (steps called one after the other, each prompt quoting the previous
  * answer), modele, fusion (one call over the days, at the end), jours, test,
- * memoire. A portfolio's days start with "## <day>". The prompts come from
- * the set's templates factice/lecture, factice/etape and factice/fusion, and
- * carry their call's id.
+ * memoire; the run's referential (T16), whose poles it counts. A
+ * portfolio's days start with "## <day>". The prompts come from the set's
+ * templates factice/lecture, factice/etape and factice/fusion, and carry
+ * their call's id.
  *
  * As the real engine: a day done enters the memory at once, unless one of
  * its calls failed, and the next passes take it back; the map is additive —
@@ -79,8 +80,9 @@ final class Plateforme
      * Before a run (T10), as the real engine says it: the days it takes, each
      * new, changed or unchanged in the memory of the map, with its size in
      * bytes (T8); the days of the memory its map keeps beyond them, with the
-     * size of their text kept (T8); and the poles, one by tagger/P<n> fiche
-     * of the set, one without any.
+     * size of their text kept (T8); and the poles: those of the referential
+     * the settings give (T16), else one by tagger/P<n> fiche of the set, one
+     * without any.
      *
      * @return array{journees: list<array{id: string, date: ?string, titre: ?string, etat: string, octets: int}>,
      *               memoire: list<array{id: string, octets: int}>, poles: int}
@@ -106,8 +108,11 @@ final class Plateforme
             $gardees[] = ['id' => (string) $id, 'octets' => \strlen((string) $entree['texte'])];
         }
 
+        $referentiel = $this->reglages['referentiel'] ?? null;
+
         return ['journees' => $journees, 'memoire' => $gardees,
-                'poles' => max(1, \count(preg_grep('#^tagger/P\d+$#', array_keys($this->gabarits))))];
+                'poles' => \is_array($referentiel) ? \count($referentiel['poles'] ?? [])
+                    : max(1, \count(preg_grep('#^tagger/P\d+$#', array_keys($this->gabarits))))];
     }
 
     /**

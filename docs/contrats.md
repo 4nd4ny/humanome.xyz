@@ -825,14 +825,15 @@ une suivante le relève.
 
 - **Le jeu v9.8** est celui qu'écrit l'import (`POST /api/admin/twin9/import`,
   `twin9_protocole`, `twin9_protocole_versions`) : l'atelier le lit, ne
-  l'écrit jamais (`403`). Son identifiant est « v9.8 ». Depuis T16, l'import
-  le remplace : il y écrit les gabarits de `php/protocole` de `TWIN_V9_DIR`,
-  et un gabarit qu'il ne porte plus en sort, son dernier contenu archivé
-  parmi ses versions — les fichiers de pôle `tagger/P1` à `P7`, dont la base
-  donne désormais les fiches (§8.8) —, sauf s'il est de ceux que nomme le
-  contrat des variables : un import partiel n'ôte jamais un gabarit du
-  protocole. Les noms s'y comparent comme dans la table, sans la casse. Il
-  répond `{imported, retires}`.
+  l'écrit jamais (`403`). Son identifiant est « v9.8 ». Depuis T16, un
+  import complet — tous les gabarits que nomme le contrat des variables — le
+  remplace : il y écrit ceux de `php/protocole` de `TWIN_V9_DIR`, et un
+  gabarit qu'il ne porte pas en sort, son dernier contenu archivé parmi ses
+  versions (les fichiers de pôle `tagger/P1` à `P7`, dont la base donne
+  désormais les fiches, §8.8). Un import partiel ne fait qu'écrire les siens
+  et n'ôte rien : un jeu d'avant T16 garde ses fichiers de pôle, qui le
+  disent. Les noms s'y comparent comme dans la table, sans la casse ; le
+  contrat se lit avant toute écriture. L'import répond `{imported, retires}`.
 - **Une copie** (`TemplateSets::copier`, `POST /api/twin9/admin/jeux {id}`,
   atelier) prend chaque gabarit du jeu v9.8 tel qu'il est, sans son histoire
   (migration 029 : `twin9_jeux`, `twin9_jeux_gabarits`, `twin9_jeux_versions`).
@@ -874,12 +875,12 @@ une suivante le relève.
   mémoire d'une carte est rangée par jeu (`twin9_cartes.gabarits`) : un run
   d'un autre jeu ne reprend pas les journées d'un premier. Le lancement et
   l'aperçu refusent (`422`) une copie à qui manque un gabarit du jeu v9.8
-  (ajouté par un import après la copie). Un moteur d'avant T16, qui lit les
-  pôles dans `tagger/P1` à `P7`, fait refuser de même un jeu qu'il ne lit
-  pas (une fiche mal formée, ou absente), sans citer le gabarit, le journal
-  du serveur ne gardant que la classe de son erreur ; depuis T16, le
-  référentiel vient de la base (§8.8), et les fichiers de pôle qu'une copie
-  faite avant garde encore ne sont plus lus.
+  (ajouté par un import après la copie). Depuis T16, le référentiel vient de
+  la base (§8.8) : les fichiers de pôle qu'une copie faite avant garde encore
+  ne sont plus lus, et disent seulement qu'elle précède T16 ; un moteur
+  d'avant T16 est refusé (§8.8). Une erreur imprévue du moteur à la lecture
+  d'un lancement répond `422` « Le moteur ne lit pas ce lancement (jeu de
+  gabarits « … ») », le journal du serveur n'en gardant que la classe.
 - **`GET /api/twin9/admin/jeux`** (administrateur) rend `{defaut, jeux}`,
   chaque jeu avec `id`, `auteur` (nom affiché, nul pour le jeu v9.8 ou un
   compte supprimé), `mien`, `gabarits` (leur nombre), `created_at` et
@@ -1054,7 +1055,8 @@ T16, plan validé par Christian le 2026-10-20).
   écrivait de RESPIRE : le nom d'un pôle (le titre de son préambule, « NOM :
   sous-titre » lu « NOM — sous-titre » ; à défaut, le nom du bloc) et sa clé
   (le premier mot de ce nom en capitales, accents ôtés, sinon `P` et son
-  numéro), celle du profil ipsatif et du jury ; le nombre de compétences
+  numéro ; pour RESPIRE, celle de la v9.8, quel que soit son préambule),
+  celle du profil ipsatif et du jury ; le nombre de compétences
   (« 61 »), la forme de leurs codes (`X.YY` ; `XY` pour `A1`), le nom du
   référentiel (« RESPIRE » pour `respire`, quel que soit son libellé ; pour
   un autre, son libellé sans sa version : « Humanome V18 » donne
@@ -1068,24 +1070,31 @@ T16, plan validé par Christian le 2026-10-20).
   le jeu, quel que soit le profil : sans `Twin9\ReferentielInvalide`, sa
   marque, le lancement et l'aperçu répondent `503` « L’analyse approfondie
   n’est pas disponible sur cette instance : son moteur précède T16 et ne lit
-  pas le référentiel du run (Twin_v9 à mettre à jour) ».
+  pas le référentiel du run (Twin_v9 à mettre à jour) », et la page des
+  analyses n'en propose pas (`GET /api/twin9/runs` : `disponible` faux) ;
+  les runs lancés avant continuent d'avancer.
 - **Un jeu d'avant T16** — le jeu v9.8 pas encore réimporté, ou une copie
   faite avant — écrit RESPIRE en toutes lettres dans ses gabarits (« 61 »,
   « X.YY », « référentiel RESPIRE ») ; ses fichiers de pôle (`tagger/P1`…)
-  le disent. Il sert RESPIRE comme avant ; pour un autre référentiel, le
-  lancement et l'aperçu répondent `422` « Le jeu de gabarits « … » précède
-  T16 : ses gabarits écrivent RESPIRE en toutes lettres. Pour un autre
-  référentiel, il faut réimporter le jeu v9.8 » (« refaire une copie du jeu
-  v9.8 », pour une copie).
+  le disent. Il sert RESPIRE comme avant — le schéma garde à toute version
+  de RESPIRE ses 7 pôles et ses 61 codes « X.YY », et le moteur ses clés ;
+  pour un autre référentiel, le lancement et l'aperçu répondent `422` « Le
+  jeu de gabarits « … » précède T16 : ses gabarits écrivent RESPIRE en
+  toutes lettres. Pour un autre référentiel, il faut réimporter le jeu
+  v9.8 » (pour une copie, « refaire une copie du jeu v9.8 », ou, si le jeu
+  v9.8 lui-même précède T16, « réimporter le jeu v9.8, puis en refaire une
+  copie »).
 - **Le jury** garde ses sièges sur tout référentiel (décision de Christian du
   2026-10-20) : un pôle de RESPIRE, reconnu à sa clé, assoit le spécialiste
   et la paire de la v9.8 ; un autre, le « Spécialiste du pôle », qui lit son
   domaine, et la paire (Spécialiste du pôle, Historien) — cinq sièges en
   `socle4+1`, quatre en `socle2+2`. `jury.specialistes` du profil l'emporte.
   Sa lentille n'est pas dans la banque dont les journées gardent l'empreinte
-  (`Tribunal::infosPersonas`) : un référentiel qui l'assoit la garde avec
-  l'empreinte des réglages de ses journées (`|specialiste:…`), pour qu'une
-  journée jugée sous une autre soit relue ; celles de RESPIRE n'en ont pas.
+  (`Tribunal::infosPersonas`) : un référentiel dont un pôle n'est pas de
+  RESPIRE la garde avec l'empreinte des réglages de ses journées
+  (`|specialiste:…`, même quand le profil assoit un autre spécialiste), pour
+  qu'une journée jugée sous une autre soit relue ; celles de RESPIRE n'en
+  ont pas.
 - **Les gabarits** : le jeu v9.8 est celui de `php/protocole` (§8.6), où les
   mots de RESPIRE sont devenus des variables — `{$NB_COMPETENCES}` (« 61 »),
   `{$FORMAT_CODE}` (« X.YY »), `{$REFERENTIEL}` (« RESPIRE »),

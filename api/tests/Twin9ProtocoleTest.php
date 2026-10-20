@@ -7,6 +7,7 @@ namespace Humanome\Tests;
 use Humanome\Db;
 use Humanome\Packages\SettingsRepository;
 use Humanome\Twin9\ProtocoleRepository;
+use Humanome\Twin9\TemplateSets;
 use Humanome\Twin9\Twin9Config;
 
 /**
@@ -97,53 +98,55 @@ final class Twin9ProtocoleTest extends CartographeTestCase
     }
 
     /**
-     * A partial import never takes a template of the protocol away — one the
-     * contract of the variables names stays —, and the names compare as the
-     * table does, case aside: a template written again under another case
-     * stays (review of T16).
+     * A complete import — every template the contract of the variables
+     * names — replaces the v9.8's set (T16): a template it does not carry —
+     * the pole files, whose fiches the base now gives — leaves the set, its
+     * last content archived among its versions; carried again, it comes back
+     * with its history. Names compare as the table does, case aside: a
+     * template written again under another case stays.
      */
-    public function testAPartialImportKeepsTheProtocolsTemplates(): void
+    public function testACompleteImportReplacesTheSetAndArchivesWhatItDrops(): void
     {
-        $importer = fn (array $files): array => self::json($this->request('POST', '/api/admin/twin9/import',
-            ['files' => $files], ['X-Migrate-Token' => self::TOKEN]));
-        self::assertSame(['imported' => 3, 'retires' => 0], $importer(['lourd/20-greffier' => 'Greffier FICTIF.',
-            'tagger/1-tag-pole' => 'Lecteur FICTIF.', 'tagger/P1' => 'Fiche FICTIVE.']));
-        self::assertSame(['imported' => 1, 'retires' => 1], $importer(['lourd/20-greffier' => 'Greffier FICTIF.']));
-        $repo = new ProtocoleRepository(Db::get());
-        self::assertSame(['lourd/20-greffier', 'tagger/1-tag-pole'], array_column($repo->list(), 'name'),
-            'le contrat les nomme ; le fichier de pôle, non');
+        $fiche = '# Pôle 1 — FICTIF' . "\n\n## 1.01 — Fiche FICTIVE\n";
+        $complet = array_fill_keys(array_keys(TemplateSets::contrat()), 'Gabarit FICTIF.');
+        self::assertSame(['imported' => \count($complet) + 1, 'retires' => 0],
+            $this->importer($complet + ['tagger/P1' => $fiche]));
 
-        self::assertSame(['imported' => 1, 'retires' => 0], $importer(['Fictif/Casse' => 'Gabarit FICTIF.']));
-        self::assertSame(['imported' => 1, 'retires' => 0], $importer(['fictif/casse' => 'Gabarit FICTIF changé.']));
+        self::assertSame(['imported' => \count($complet), 'retires' => 1], $this->importer($complet));
+        $repo = new ProtocoleRepository(Db::get());
+        self::assertSame(array_keys($complet), array_column($repo->list(), 'name'));
+        self::assertNull($repo->get('tagger/P1'));
+        self::assertSame($fiche, $repo->version('tagger/P1', 1)['content'] ?? null, 'gardé parmi ses versions');
+
+        $this->importer($complet + ['tagger/P1' => $fiche]);
+        self::assertSame($fiche, $repo->get('tagger/P1')['content'] ?? null);
+        self::assertSame([1], array_column($repo->versions('tagger/P1'), 'version'));
+
+        self::assertSame(['imported' => \count($complet) + 1, 'retires' => 1],
+            $this->importer($complet + ['Fictif/Casse' => 'Gabarit FICTIF.']), 'tagger/P1 en sort');
+        self::assertSame(['imported' => \count($complet) + 1, 'retires' => 0],
+            $this->importer($complet + ['fictif/casse' => 'Gabarit FICTIF changé.']), 'à la casse près, le même');
         self::assertSame('Gabarit FICTIF changé.', $repo->get('fictif/casse')['content'] ?? null, 'la même ligne');
     }
 
     /**
-     * The import replaces the v9.8's set (T16): a template it no longer
-     * carries — the pole files, whose fiches the base now gives — leaves the
-     * set, its last content archived among its versions; carried again, it
-     * comes back with its history.
+     * A partial import only writes its templates: it takes none away — a set
+     * of before T16 keeps its pole files, which tell it (review of T16).
      */
-    public function testImportReplacesTheSetAndArchivesWhatItDrops(): void
+    public function testAPartialImportTakesNothingAway(): void
     {
-        $fiche = '# Pôle 1 — FICTIF' . "\n\n## 1.01 — Fiche FICTIVE\n";
-        $response = $this->request('POST', '/api/admin/twin9/import', [
-            'files' => ['fictif/01-essai' => self::FAKE_GABARIT, 'tagger/P1' => $fiche],
-        ], ['X-Migrate-Token' => self::TOKEN]);
-        self::assertSame(['imported' => 2, 'retires' => 0], self::json($response));
+        self::assertSame(['imported' => 3, 'retires' => 0], $this->importer(['lourd/20-greffier' => 'Greffier FICTIF.',
+            'tagger/1-tag-pole' => 'Lecteur FICTIF.', 'tagger/P1' => 'Fiche FICTIVE.']));
+        self::assertSame(['imported' => 1, 'retires' => 0], $this->importer(['merge/04-rapporteur' => 'Rapporteur FICTIF.']));
+        self::assertSame(['lourd/20-greffier', 'merge/04-rapporteur', 'tagger/1-tag-pole', 'tagger/P1'],
+            array_column((new ProtocoleRepository(Db::get()))->list(), 'name'));
+    }
 
-        $response = $this->request('POST', '/api/admin/twin9/import', ['files' => ['fictif/01-essai' => self::FAKE_GABARIT]],
-            ['X-Migrate-Token' => self::TOKEN]);
-        self::assertSame(['imported' => 1, 'retires' => 1], self::json($response));
-        $repo = new ProtocoleRepository(Db::get());
-        self::assertSame(['fictif/01-essai'], array_column($repo->list(), 'name'));
-        self::assertNull($repo->get('tagger/P1'));
-        self::assertSame($fiche, $repo->version('tagger/P1', 1)['content'] ?? null, 'gardé parmi ses versions');
-
-        $this->request('POST', '/api/admin/twin9/import', ['files' => ['fictif/01-essai' => self::FAKE_GABARIT,
-            'tagger/P1' => $fiche]], ['X-Migrate-Token' => self::TOKEN]);
-        self::assertSame($fiche, $repo->get('tagger/P1')['content'] ?? null);
-        self::assertSame([1], array_column($repo->versions('tagger/P1'), 'version'));
+    /** @param array<string, string> $files @return array<string, mixed> the import's answer */
+    private function importer(array $files): array
+    {
+        return self::json($this->request('POST', '/api/admin/twin9/import', ['files' => $files],
+            ['X-Migrate-Token' => self::TOKEN]));
     }
 
     public function testImportStoresReferentielStructureServedByMeta(): void

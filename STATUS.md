@@ -55,10 +55,11 @@ le moteur lit le référentiel du run, qui peut être un autre que RESPIRE ; il 
     ses fiches (résultats et export) ; la prévision compte le plus grand pôle. Le refus de T15 est
     levé ; un référentiel que le moteur ne lit pas est refusé au lancement (`422`, le code fautif
     nommé) ; RESPIRE sans ses fiches dans la base, `503` (INSTALL.md §3 les sème désormais).
-  - Import : il lit `php/protocole` et remplace le jeu v9.8 : un gabarit qu'il ne porte plus en
-    sort, archivé (les fichiers de pôle), sauf ceux que nomme le contrat des variables ; il répond
-    `{imported, retires}`. L'appel du navigateur reçoit les nouvelles variables aux valeurs de
-    RESPIRE ; le contrat des variables les nomme.
+  - Import : il lit `php/protocole` ; complet (tous les gabarits que nomme le contrat des
+    variables), il remplace le jeu v9.8 : un gabarit qu'il ne porte pas en sort, archivé (les
+    fichiers de pôle) ; partiel, il n'ôte rien. Il répond `{imported, retires}`. L'appel du
+    navigateur reçoit les nouvelles variables aux valeurs de RESPIRE ; le contrat des variables les
+    nomme.
   - Front : « Ouvrir dans la cartographie » reste à RESPIRE jusqu'à T17 ; pour un autre
     référentiel, la page du run le dit.
   - Revue indépendante (un agent qui n'avait pas écrit le lot), ses constats corrigés chacun avec
@@ -75,6 +76,17 @@ le moteur lit le référentiel du run, qui peut être un autre que RESPIRE ; il 
     dernier run ; la parité de la plateforme rejouait encore l'oracle avec les fichiers de pôle
     (désormais avec `php/protocole` et RESPIRE tiré de la base, l'ancien chemin gardé pour les runs
     d'avant T16). Reste documenté (§8.8) : ce que la publication accepte sans que le moteur le lise.
+  - Seconde revue indépendante, sur ces corrections, sans point bloquant ; corrigés avec leurs
+    tests : un import partiel ôtait les fichiers de pôle d'un jeu d'avant T16, qui ne se disait plus
+    tel (désormais seul un import complet remplace le jeu) ; le remède proposé pour une copie d'avant
+    T16 ne valait pas quand le jeu v9.8 lui-même précède T16 ; la page des analyses proposait de
+    lancer avec un moteur d'avant T16 (désormais non, les runs déjà lancés avançant toujours) ; le
+    contrat des variables se lisait après l'écriture des gabarits ; le message d'une erreur imprévue
+    du moteur parlait encore de fiches du jeu ; les clés des pôles de RESPIRE suivaient les titres
+    de leurs préambules, que la base garde (désormais celles de la v9.8). Sans objet, le schéma
+    gardant à toute version de RESPIRE 7 pôles et 61 codes « X.YY » : une version de RESPIRE à
+    62 compétences servie par un jeu d'avant T16, ou un pôle 8 de RESPIRE sans préambule dans la
+    base.
   - Textes : `docs/contrats.md` (§8 à §8.7, nouveau §8.8, §9), UC-PRO-08 (A4, limites), UC-EPI-05
     (RG8, L4), `docs/autorisations.md`, `docs/tests-e2e.md`, INSTALL.md, STATUS ; `Twin_v9` : le
     plan.
@@ -86,7 +98,7 @@ le moteur lit le référentiel du run, qui peut être un autre que RESPIRE ; il 
     lancement), `RunsTest` (un run sur 9 pôles, son attestation ; une fiche récitée, expurgée, même
     gardée par la mémoire sous une version ancienne ; un moteur ou un jeu d'avant T16 refusés),
     `PurgeExportTest` (de même à l'export), `AppelsDirectsTest` (l'empreinte), `Twin9ProtocoleTest`
-    et UC-PRO-08 (l'import remplace le jeu, jamais un gabarit du protocole), `JeuxGabaritsTest` (le
+    et UC-PRO-08 (complet, l'import remplace le jeu ; partiel, il n'ôte rien), `JeuxGabaritsTest` (le
     jeu de `php/protocole`), `PariteTest` (l'oracle par les tranches, comme la plateforme le lance
     depuis T16, et un run d'avant), `Twin9View.test`, bout en bout `twin9-run.e2e.js` (les fiches
     semées).

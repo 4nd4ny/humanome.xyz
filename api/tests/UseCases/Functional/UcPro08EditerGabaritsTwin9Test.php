@@ -363,9 +363,9 @@ final class UcPro08EditerGabaritsTwin9Test extends CartographeTestCase
         self::assertSame(["lourd/20-greffier\n"], self::$pdo->query('SELECT name FROM twin9_protocole')->fetchAll(\PDO::FETCH_COLUMN));
 
         // Un gabarit dont le dernier segment est « versions » est capté par la route
-        // d'historique (enregistrée d'abord) : importé, mais jamais relu. L'import
-        // remplace le jeu (T16) : celui à saut de ligne, qu'il ne porte plus, en sort.
-        self::assertSame(['imported' => 1, 'retires' => 1], self::json($this->importer(['x/versions' => 'Gabarit FICTIF masqué'])));
+        // d'historique (enregistrée d'abord) : importé, mais jamais relu. Partiel,
+        // l'import n'ôte rien (T16) : celui à saut de ligne reste.
+        self::assertSame(['imported' => 1, 'retires' => 0], self::json($this->importer(['x/versions' => 'Gabarit FICTIF masqué'])));
         $lu = $this->atelier('GET', '/v9.8/protocole/x%2Fversions');
         self::assertSame(404, $lu->getStatusCode());
         self::assertSame(['error' => 'Gabarit introuvable'], self::json($lu));

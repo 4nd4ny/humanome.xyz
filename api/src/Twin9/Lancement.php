@@ -432,13 +432,16 @@ final class Lancement
                 . 'v9.8 : il faut en refaire une copie', 422);
         }
         // T16: a set of before T16, the pole files in it, writes RESPIRE in its templates (« 61 », « X.YY »,
-        // « référentiel RESPIRE »): another referential's readers would be asked for RESPIRE's codes
+        // « référentiel RESPIRE »): another referential's readers would be asked for RESPIRE's codes. RESPIRE's
+        // versions all read as before, its schema keeping it seven poles and 61 codes « X.YY »
         if ($profil->referentiel->id !== ReferentielRepository::DEFAULT_REFERENTIEL_ID
             && isset($jeu['gabarits']['tagger/P1'])) {
+            // a copy of a v9.8's set itself before T16 would be refused again: the v9.8's set first
+            $remede = $profil->gabarits === TemplateSets::V98 ? 'réimporter le jeu v9.8'
+                : ((new ProtocoleRepository($this->pdo))->get('tagger/P1') !== null
+                    ? 'réimporter le jeu v9.8, puis en refaire une copie' : 'refaire une copie du jeu v9.8');
             throw new Twin9Exception('Le jeu de gabarits « ' . $profil->gabarits . ' » précède T16 : ses gabarits '
-                . 'écrivent RESPIRE en toutes lettres. Pour un autre référentiel, il faut '
-                . ($profil->gabarits === TemplateSets::V98 ? 'réimporter le jeu v9.8' : 'refaire une copie du jeu v9.8'),
-                422);
+                . 'écrivent RESPIRE en toutes lettres. Pour un autre référentiel, il faut ' . $remede, 422);
         }
         // T16: the run's referential, drawn from the base at its frozen version, which the engine reads
         $referentiel = (new ReferentielMoteur($this->pdo))->bloc((string) $profil->referentiel->id,
@@ -453,11 +456,11 @@ final class Lancement
             throw new Twin9Exception('Le référentiel « ' . $profil->referentiel->id . ' » ne se lit pas : '
                 . preg_replace('/^Référentiel du moteur invalide : /u', '', $e->getMessage()), 422);
         } catch (\ValueError|\RuntimeException $e) {
-            // an engine before T16 reads RESPIRE's fiches from the set (T14: a copy's may be malformed), which the
-            // import of T16 no longer carries; the class only in the log, an engine's message may quote a template
+            // unforeseen since T16 (the fiches come from the base, the set is read lazily, an engine before T16 is
+            // refused above); the class only in the log, an engine's message may quote a template
             error_log('[twin9-lancement] ' . $e::class);
-            throw new Twin9Exception('Le jeu de gabarits « ' . $profil->gabarits . ' » ne se lit pas : un gabarit y '
-                . 'manque, ou une fiche y est mal formée', 422);
+            throw new Twin9Exception('Le moteur ne lit pas ce lancement (jeu de gabarits « ' . $profil->gabarits
+                . ' »)', 422);
         } catch (\InvalidArgumentException $e) {
             error_log('[twin9-lancement] ' . $e::class);
             throw new Twin9Exception('Portfolio illisible par le moteur', 422);

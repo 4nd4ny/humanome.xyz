@@ -935,12 +935,14 @@ return function (App $app): void {
     // ==================================================================
 
     // POST /api/admin/twin9/import {files: {name: content}, config?: {...}}
-    // -> replaces the v9.8's set in twin9_protocole (archiving versions): a
-    // template the import no longer carries leaves the set, unless the
-    // contract of the variables names it — the pole files left it so in T16,
-    // and a partial import never takes a template of the protocol away —;
-    // stores the protocol settings under twin9_config.pipeline, flips
-    // twin9_config.enabled=true. Names compare as the table does, case aside.
+    // -> writes each template into the v9.8's set in twin9_protocole
+    // (archiving versions); a complete import — every template the contract
+    // of the variables names — replaces the set: a template it does not carry
+    // leaves it, archived (the pole files left it so in T16), whereas a
+    // partial one takes nothing away (a set of before T16 keeps its pole
+    // files, which tell it). Names compare as the table does, case aside.
+    // Stores the protocol settings under twin9_config.pipeline, flips
+    // twin9_config.enabled=true.
     $app->post('/admin/twin9/import', function (Request $request, Response $response) use ($json): Response {
         $token = Env::get('MIGRATE_TOKEN');
         if ($token === '') {
@@ -963,6 +965,8 @@ return function (App $app): void {
 
         try {
             $repo = new ProtocoleRepository(Db::get());
+            // read before anything is written: without it, nothing is
+            $nommes = array_change_key_case(TemplateSets::contrat());
             $imported = 0;
             foreach ($files as $name => $content) {
                 if (!\is_string($name) || !\is_string($content)) {
@@ -972,13 +976,13 @@ return function (App $app): void {
                 ++$imported;
             }
             $retires = 0;
-            $nommes = array_change_key_case(TemplateSets::contrat());
             $portes = array_fill_keys(array_map(static fn (int|string $n): string => strtolower((string) $n),
                 array_keys($files)), true);
-            foreach (array_column($repo->list(), 'name') as $name) {
-                $cle = strtolower((string) $name);
-                if (!isset($nommes[$cle]) && !isset($portes[$cle])) {
-                    $retires += $repo->retirer((string) $name) ? 1 : 0;
+            if (array_diff_key($nommes, $portes) === []) {
+                foreach (array_column($repo->list(), 'name') as $name) {
+                    if (!isset($portes[strtolower((string) $name)])) {
+                        $retires += $repo->retirer((string) $name) ? 1 : 0;
+                    }
                 }
             }
 

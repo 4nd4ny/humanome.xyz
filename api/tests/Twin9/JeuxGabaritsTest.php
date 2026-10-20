@@ -5,9 +5,11 @@ declare(strict_types=1);
 namespace Humanome\Tests\Twin9;
 
 use Humanome\Llm\LlmRuntime;
+use Humanome\Referentiel\ContentHash;
 use Humanome\Referentiel\ReferentielRepository;
 use Humanome\Tests\CartographeTestCase;
 use Humanome\Tests\TestDb;
+use Humanome\Tests\UseCases\Support\ReferentielsFictifs;
 use Humanome\Twin9\CreditService;
 use Humanome\Twin9\EngineLoader;
 use Humanome\Twin9\ProfilRepository;
@@ -254,6 +256,40 @@ final class JeuxGabaritsTest extends CartographeTestCase
                 self::json($refus)['error']);
         }
         self::assertSame(0, (int) self::$pdo->query('SELECT COUNT(*) FROM twin9_runs')->fetchColumn());
+    }
+
+    /**
+     * A copy of before T16 serves RESPIRE alone, and says what to do for
+     * another referential: copy the v9.8's set again — once it is imported
+     * again itself, when it is of before T16 too (review of T16).
+     */
+    public function testACopyOfBeforeT16SaysHowToServeAnotherReferential(): void
+    {
+        $this->importer();
+        $v98 = new ProtocoleRepository(self::$pdo);
+        $v98->put('tagger/P1', "# Pôle 1 — FICTIF\n\n## 1.01 — Fiche FICTIVE\n", null);
+        $neuf = ReferentielsFictifs::neufPoles();
+        (new ReferentielRepository(self::$pdo))->importPublishedDocument(
+            ['contentHash' => ContentHash::compute($neuf)] + $neuf, 'Publié');
+        $atelier = $this->registerAs('atelier@example.org', 'Atelier', ['admin', 'promptologue']);
+        $this->copier($atelier, 'essai');
+        $profil = ProfilRepository::v98();
+        $profil->voie = 'directe';
+        $profil->gabarits = 'essai';
+        $profil->referentiel = (object) ['id' => 'fictif-neuf', 'version' => null];
+        $cree = $this->as_($atelier, 'POST', '/api/twin9/profils', ['nom' => 'Essai neuf', 'profil' => $profil]);
+        self::assertSame(201, $cree->getStatusCode(), (string) $cree->getBody());
+        $lancer = fn (): array => self::json($this->as_($atelier, 'POST', '/api/twin9/runs', ['profil' => self::json($cree)['id'],
+            'accord' => true, 'portfolio' => ['nom' => 'journal-factice.md', 'texte' => self::PORTFOLIO]]));
+
+        self::assertSame('Le jeu de gabarits « essai » précède T16 : ses gabarits écrivent RESPIRE en toutes lettres. '
+            . 'Pour un autre référentiel, il faut réimporter le jeu v9.8, puis en refaire une copie', $lancer()['error']);
+        $v98->retirer('tagger/P1');   // the v9.8's set imported again
+        self::assertSame('Le jeu de gabarits « essai » précède T16 : ses gabarits écrivent RESPIRE en toutes lettres. '
+            . 'Pour un autre référentiel, il faut refaire une copie du jeu v9.8', $lancer()['error']);
+        self::assertSame(201, $this->as_($atelier, 'POST', '/api/twin9/runs', ['profil' => $this->profil($atelier, 'essai'),
+            'accord' => true, 'portfolio' => ['nom' => 'journal-factice.md', 'texte' => self::PORTFOLIO]])->getStatusCode(),
+            'elle sert RESPIRE');
     }
 
     /**

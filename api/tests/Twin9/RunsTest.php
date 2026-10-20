@@ -397,6 +397,8 @@ final class RunsTest extends CartographeTestCase
 
         try {
             $alice = $this->registerAs('ancien@example.org', 'Alice');
+            self::assertFalse(self::json($this->as_($alice, 'GET', '/api/twin9/runs'))['disponible'],
+                'la page ne propose pas de lancer');
             $profil = $this->profil($alice);
             foreach (['/api/twin9/runs/apercu', '/api/twin9/runs'] as $route) {
                 $refus = $this->as_($alice, 'POST', $route, $this->lancement($profil));

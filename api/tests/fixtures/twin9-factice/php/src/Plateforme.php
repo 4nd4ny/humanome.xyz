@@ -31,10 +31,12 @@ use Twin9\Run\Store;
  * enters it when the run completes; outputs are told as they are written.
  *
  * Its outputs have the v9.8's shape where the platform reads them (T9): a
- * day map names its day and judges one competence (1.01) with a jury and a
- * deliberation drawn from its calls' answers; the merge attests that
- * competence on each day, names each day ("journee"), and carries a story,
- * a pole report and a kairos. The memory keeps a day's map as « carto ».
+ * day map names its day and judges the first competence of each pole of the
+ * run's referential (T17), 1.01 alone without one, each with a jury and a
+ * deliberation drawn from its calls' answers; the merge attests those
+ * competences on each day, names each day ("journee"), and carries their
+ * stories, their poles' reports and a kairos. The memory keeps a day's map as
+ * « carto ».
  * Before a run, apercu() says which days it would instruct (T10), the size
  * of each, and the days of the memory its map keeps beyond them (T8).
  */
@@ -230,37 +232,73 @@ final class Plateforme
 
         $date = preg_match('/^\d{4}-\d{2}-\d{2}$/', $jour['id']) === 1 ? $jour['id'] : null;
         $dernier = $etapes === [] ? '' : (string) end($etapes);
+        $verdicts = [];
+        foreach ($this->jugees() as $c) {
+            $verdicts[$c['code']] = $this->verdict($c, $jour, $date, $lectures, $etapes, $dernier);
+        }
 
         return ['jour' => $jour['id'], 'lectures' => $lectures, 'etapes' => $etapes, 'panne' => $panne,
                 'horodatage' => $this->horloge->format('c'),
-                // the v9.8's day map, where the platform reads it: one competence judged by a jury of one
-                'journee' => $jour['id'], 'date' => $date, 'titre' => null,
-                'verdicts' => ['1.01' => [
-                    'code' => '1.01', 'nom' => 'Compétence factice', 'dossier_vide' => false,
-                    'statut' => 'présence établie', 'score_preuves' => 1, 'score_indices' => 0, 'confiance' => 0.8,
-                    'etage' => 'tribunal',
-                    'traces_probantes' => [['piece' => 1, 'extrait' => mb_substr($jour['texte'], 0, 80), 'date' => $date,
-                                            'type' => 'journal', 'role' => 'preuve']],
-                    'prescription' => ['pour_apprenant' => $dernier, 'pour_cartographe' => null],
-                    'jury' => ['mode' => 'factice', 'composition' => ['Lecteur'], 'positions_r1' => ['Lecteur' => 'présence'],
-                               'positions_finales' => ['Lecteur' => 'présence'], 'consensus' => true, 'dissidences' => [],
-                               'second_tour' => false],
-                    'deliberation' => [
-                        'greffier_md' => implode("\n\n", $lectures),
-                        'arene' => ['accusation_md' => $etapes[0] ?? '', 'defense_md' => $etapes[1] ?? '',
-                                    'replique_md' => null, 'briefing_md' => null],
-                        'jures' => ['Lecteur' => ['r1_md' => $lectures[0] ?? '', 'r2_md' => null, 'position_r1' => 'présence',
-                                                  'position_finale' => 'présence', 'pieces' => [1], 'piege' => null]],
-                        'relance_md' => null, 'gardiens' => ['support_md' => null, 'raisonnement_md' => null],
-                        'president_md' => $dernier,
-                    ],
-                ]],
+                // the v9.8's day map, where the platform reads it: competences judged by a jury of one
+                'journee' => $jour['id'], 'date' => $date, 'titre' => null, 'verdicts' => $verdicts];
+    }
+
+    /**
+     * The competences its tribunal judges: the first of each pole of the run's
+     * referential (T17), 1.01 alone without one.
+     *
+     * @return list<array{code: string, nom: string, pole: int}>
+     */
+    private function jugees(): array
+    {
+        $jugees = [];
+        foreach ($this->reglages['referentiel']['poles'] ?? [] as $pole) {
+            $c = $pole['competences'][0] ?? null;
+            if (\is_array($c)) {
+                $jugees[] = ['code' => (string) $c['code'], 'nom' => (string) $c['nom'], 'pole' => (int) $pole['num']];
+            }
+        }
+
+        return $jugees === [] ? [['code' => '1.01', 'nom' => 'Compétence factice', 'pole' => 1]] : $jugees;
+    }
+
+    /**
+     * A competence's verdict for a day, as the v9.8 writes it.
+     *
+     * @param array{code: string, nom: string, pole: int} $c
+     * @param list<string> $lectures
+     * @param list<string> $etapes
+     * @return array<string, mixed>
+     */
+    private function verdict(array $c, array $jour, ?string $date, array $lectures, array $etapes,
+                             string $dernier): array
+    {
+        return [
+            'code' => $c['code'], 'nom' => $c['nom'], 'dossier_vide' => false,
+            'statut' => 'présence établie', 'score_preuves' => 1, 'score_indices' => 0, 'confiance' => 0.8,
+            'etage' => 'tribunal',
+            'traces_probantes' => [['piece' => 1, 'extrait' => mb_substr($jour['texte'], 0, 80), 'date' => $date,
+                                    'type' => 'journal', 'role' => 'preuve']],
+            'prescription' => ['pour_apprenant' => $dernier, 'pour_cartographe' => null],
+            'jury' => ['mode' => 'factice', 'composition' => ['Lecteur'], 'positions_r1' => ['Lecteur' => 'présence'],
+                       'positions_finales' => ['Lecteur' => 'présence'], 'consensus' => true, 'dissidences' => [],
+                       'second_tour' => false],
+            'deliberation' => [
+                'greffier_md' => implode("\n\n", $lectures),
+                'arene' => ['accusation_md' => $etapes[0] ?? '', 'defense_md' => $etapes[1] ?? '',
+                            'replique_md' => null, 'briefing_md' => null],
+                'jures' => ['Lecteur' => ['r1_md' => $lectures[0] ?? '', 'r2_md' => null, 'position_r1' => 'présence',
+                                          'position_finale' => 'présence', 'pieces' => [1], 'piege' => null]],
+                'relance_md' => null, 'gardiens' => ['support_md' => null, 'raisonnement_md' => null],
+                'president_md' => $dernier,
+            ],
         ];
     }
 
     /**
-     * The v9.8's merge, where the platform reads it: competence 1.01 attested
-     * on each day, each day named; a story, a pole report, a kairos.
+     * The v9.8's merge, where the platform reads it: the competences judged
+     * (jugees()) attested on each day, each day named; their stories, their
+     * poles' reports, a kairos.
      *
      * @param list<array<string, mixed>> $cartes
      * @return array<string, mixed>
@@ -274,15 +312,22 @@ final class Plateforme
                                'citations' => []];
         }
         $dates = array_values(array_filter(array_column($cartes, 'date')));
+        $competences = [];
+        $histoires = [];
+        $rapports = [];
+        foreach ($this->jugees() as $c) {
+            $competences[$c['code']] = $c + ['attestations' => $attestations, 'signaux' => []];
+            $histoires[$c['code']] = $fusion;
+            $rapports[(string) $c['pole']] = $fusion;
+        }
 
         return [
             'journal_id' => $this->journal,
             'periode' => ['debut' => $dates[0] ?? null, 'fin' => $dates === [] ? null : end($dates),
                           'n_journees' => \count($cartes)],
-            'competences' => ['1.01' => ['code' => '1.01', 'nom' => 'Compétence factice', 'pole' => 1,
-                                         'attestations' => $attestations, 'signaux' => []]],
-            'histoires' => ['1.01' => $fusion],
-            'rapports_poles' => ['1' => $fusion],
+            'competences' => $competences,
+            'histoires' => $histoires,
+            'rapports_poles' => $rapports,
             'kairos_evolutif' => $fusion,
         ];
     }

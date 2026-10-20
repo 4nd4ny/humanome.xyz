@@ -145,6 +145,45 @@ describe('importTwin9Run (T9)', () => {
     expect(jour1.detail.verdicts['1.05'].runRef).toBe('twin9:7|2026-01-05|1.05')
   })
 
+  it('rend le référentiel du run, que la chaîne d’import donne au jeu (T17)', () => {
+    const r = importTwin9Run(doc())
+    expect(r.referential.poles.map((p) => p.num)).toEqual([1, 2, 3, 4, 5, 6, 7])
+    expect(r.referential.competences.map((c) => c.code)).toEqual(['1.01', '1.05'])
+    expect(recognize([{ path: 'twin9-run-7.json', text: JSON.stringify(doc()) }]).referential).toEqual(r.referential)
+  })
+
+  it('lit un référentiel aux pôles lettrés : chacun y reçoit son numéro d’ordre, et la fusion se lit (T17)', () => {
+    const d = doc()
+    d.referentiel = {
+      id: 'fictif-lettre',
+      version: '1.0.0',
+      label: 'Fictif lettré',
+      poles: [
+        { num: 'A', nom: 'A · Percevoir' },
+        { num: 'B', nom: 'B · Agir' },
+      ],
+      competences: [
+        { code: 'A1', nom: 'Capacité A1', pole: 'A' },
+        { code: 'B1', nom: 'Capacité B1', pole: 'B' },
+      ],
+    }
+    d.carto_evolutive.competences = { A1: { ...d.carto_evolutive.competences['1.01'], code: 'A1' } }
+    d.carto_evolutive.histoires = { A1: 'Une histoire.' }
+    for (const j of Object.values(d.journees)) j.verdicts = { A1: { ...j.verdicts['1.01'], code: 'A1', nom: 'Capacité A1' } }
+    const r = importTwin9Run(d)
+    expect(r.referential.poles.map((p) => [p.num, p.nom])).toEqual([
+      [1, 'A · Percevoir'],
+      [2, 'B · Agir'],
+    ])
+    expect(r.referential.competences.map((c) => [c.code, c.pole])).toEqual([
+      ['A1', 1],
+      ['B1', 2],
+    ])
+    expect(r.report.filter((x) => x.code === 'twin9-fusion-illisible')).toEqual([])
+    expect(r.narratives.filter((n) => n.kind === 'competence-evolutive').map((n) => n.scope)).toEqual([{ code: 'A1' }])
+    expect(r.variants.map((v) => v.summary.verdicts.map((x) => x.code))).toEqual([['A1'], ['A1']])
+  })
+
   it('nomme un juré sans accent ni majuscule', () => {
     expect(cleDeJure('Pédagogue')).toBe('pedagogue')
     expect(cleDeJure('Ingénieur')).toBe('ingenieur')

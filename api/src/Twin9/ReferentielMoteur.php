@@ -36,7 +36,8 @@ final class ReferentielMoteur
      * @return array{id: string, version: string, label: string, motif: string,
      *               poles: list<array{num: int, nom: string, entete: string,
      *                                 competences: list<array{code: string, nom: string, fiche: string}>}>}
-     * @throws Twin9Exception 422 for a version the base does not have; 503 for RESPIRE without its fiches
+     * @throws Twin9Exception 422 for a version the base does not have, or a code of RESPIRE's without its fiche;
+     *                        503 for RESPIRE without its fiches
      */
     public function bloc(string $id, string $version): array
     {
@@ -61,8 +62,11 @@ final class ReferentielMoteur
             $competences = [];
             foreach ($parPole[$num] ?? [] as $c) {
                 $code = (string) $c['code'];
-                $fiche = $base === null ? self::fiche($c) : ($base['fiches'][$code] ?? null);
-                $competences[] = ['code' => $code, 'nom' => (string) $c['nom'], 'fiche' => $fiche ?? throw self::sansFiches()];
+                // a code the base has no fiche for (a draft that renames one): the referential's, not the instance's
+                $fiche = $base === null ? self::fiche($c) : ($base['fiches'][$code]
+                    ?? throw new Twin9Exception('Le référentiel « ' . $id . ' » ne se lit pas : la compétence ' . $code
+                        . ' n’a pas de fiche dans la base', 422));
+                $competences[] = ['code' => $code, 'nom' => (string) $c['nom'], 'fiche' => $fiche];
             }
             $entete = $base === null ? self::entete($p) : (string) ($base['poleHeaders'][(string) $num] ?? '');
             if ($entete === '') {

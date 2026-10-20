@@ -120,7 +120,9 @@ L'administrateur-promptologue ouvre « Faire évoluer » → « Atelier Twin9 »
   v9.8** — chaque fichier y est écrit (auteur nul, versions archivées, réimport
   identique sans effet), et un gabarit qu'il ne porte plus en sort, son dernier
   contenu archivé parmi ses versions (T16 : les fichiers de pôle `tagger/P1` à
-  `P7`) ; les réglages du pipeline, la structure du référentiel (nettoyée :
+  `P7`), sauf ceux que nomme le contrat des variables — un import partiel
+  n'ôte jamais un gabarit du protocole —, les noms comparés sans la casse ;
+  les réglages du pipeline, la structure du référentiel (nettoyée :
   num/nom, code/nom) et les fiches confidentielles sont stockés ; Twin9 est
   **activé** ; réponse `{imported, retires}`. Les copies déjà faites ne changent
   pas.
@@ -323,7 +325,7 @@ autres tests de runs.
 
 ### Tests existants liés (non-régression)
 
-- `api/tests/Twin9ProtocoleTest.php` — import (qui remplace le jeu v9.8 et archive ce qu'il n'y porte plus, T16), matrice de rôles complète, jeux (copie, lecture seule, variables, jeu par défaut), versions, restauration, banc d'essai, extraction.
+- `api/tests/Twin9ProtocoleTest.php` — import (qui remplace le jeu v9.8 et archive ce qu'il n'y porte plus, sauf les gabarits que nomme le contrat, T16), matrice de rôles complète, jeux (copie, lecture seule, variables, jeu par défaut), versions, restauration, banc d'essai, extraction.
 - `api/tests/Twin9/JeuxGabaritsTest.php` — le jeu v9.8 ne change jamais au fil d'une session d'atelier et des runs de ses copies ; le profil par défaut prend le jeu par défaut ; une copie incomplète est refusée au lancement ; le contrat couvre les variables des gabarits du jeu v9.8, ceux de `php/protocole` (sauté sans `TWIN_V9_DIR`).
 - `api/tests/Twin9/ConfigurationDroitsTest.php` — les jeux qu'un profil choisit (RG11).
 - `web/src/views/Twin9AtelierView.test.jsx` — garde, jeux, copie, lecture seule, édition, versions, banc d'essai (noms plats).
@@ -390,9 +392,10 @@ cd engine && npx vitest run test/usecases/unit/uc-pro-08
   fichiers de pôle (`tagger/P1` à `P7`) qu'une copie faite avant T16 garde
   encore n'y sont plus lus, et les y éditer reste sans effet sur un run. Une
   telle copie garde aussi les gabarits d'avant T16, où la v9.8 écrit RESPIRE en
-  toutes lettres (« 61 », « X.YY », « référentiel RESPIRE ») : sur RESPIRE, ses
-  prompts sont ceux de la v9.8 ; sur un autre référentiel, ils le gardent — il
-  faut en refaire une copie.
+  toutes lettres (« 61 », « X.YY », « référentiel RESPIRE ») : elle sert
+  RESPIRE, ses prompts ceux de la v9.8 ; un run sur un autre référentiel est
+  refusé au lancement (`422`, « … précède T16 … il faut refaire une copie du
+  jeu v9.8 »).
 - Le contrat ne nomme, pour chaque gabarit, que les variables qu'emploient les
   gabarits du jeu v9.8 : une variable que le moteur fournit à une étape sans
   que la v9.8 s'en serve y est refusée.

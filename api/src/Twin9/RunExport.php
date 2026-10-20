@@ -189,19 +189,7 @@ final class RunExport
     {
         $stmt = $this->pdo->prepare('SELECT gabarits, reglages FROM twin9_runs WHERE user_id = ?');
         $stmt->execute([$userId]);
-        $tous = [];
-        foreach ($stmt->fetchAll() as $run) {
-            foreach ((array) json_decode(RunRepository::uncompress((string) $run['gabarits']), true, 512,
-                JSON_THROW_ON_ERROR) as $nom => $contenu) {
-                $tous[hash('sha256', $nom . "\0" . $contenu)] = (string) $contenu;
-            }
-            $referentiel = json_decode(RunRepository::uncompress((string) $run['reglages']), false, 512,
-                JSON_THROW_ON_ERROR)->moteur->referentiel ?? null;
-            foreach ($referentiel === null ? [] : ReferentielMoteur::textes($referentiel) as $texte) {
-                $tous[hash('sha256', "referentiel\0" . $texte)] = $texte;
-            }
-        }
 
-        return $tous;
+        return Resultats::textes($stmt->fetchAll());
     }
 }

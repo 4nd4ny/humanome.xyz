@@ -697,8 +697,9 @@ une suivante le relève.
   gabarits par défaut, T14), est revalidé (§7) et admis (`ProfilPolicy`) ;
   sa version de référentiel, nulle, devient la dernière publiée, figée dans
   la copie ; le référentiel, à cette version, est tiré de la base dans les
-  réglages du moteur (T16, §8.8). Le jeu de gabarits que choisit le profil
-  (§8.6) devient l'instantané du run. Le moteur construit une fois sa `Plateforme`
+  réglages du moteur (T16, §8.8 : un moteur ou un jeu d'avant T16 y sont
+  refusés). Le jeu de gabarits que choisit le profil (§8.6) devient
+  l'instantané du run. Le moteur construit une fois sa `Plateforme`
   pour lire le portfolio : le nom de son journal range la carte. Le run garde
   son **attestation** (`twin9_runs.attestation`) : `profil` (`id`, nul pour
   celui de la v9.8, `nom`, et `mode` depuis T10), `gabarits` (`jeu`, `versions` de chaque gabarit
@@ -724,9 +725,10 @@ une suivante le relève.
   ses sorties, et pour chaque journée que sa fusion nomme (`journee`) sans
   qu'il en ait écrit la carte, la carte que la mémoire garde (`journees/<jour>`,
   sous `test/` en mode essai), sans le texte de la journée. Chaque texte passe
-  le filtre de fuite (ADR-010 §2) contre tout le jeu de gabarits du run,
-  variables vides, et les préambules et fiches du référentiel que son moteur a
-  lus (T16, §8.8) ; les sorties rangées restent celles du moteur.
+  le filtre de fuite (ADR-010 §2) contre tous les jeux de gabarits des runs
+  de sa carte, variables vides, et les préambules et fiches des référentiels
+  que leur moteur a lus (T16, §8.8) : les journées de la mémoire ont été
+  jugées par ces runs-là. Les sorties rangées restent celles du moteur.
 - **Le document `twin9-run`** que la page remet à l'interface de cartographie
   (`twin9RunFiles`, `web/src/lib/interface-handoff.js`) : `kind: "twin9-run"`,
   `run` (`id`, `journal`, `mode`, `attestation`, dates), `referentiel` (le
@@ -827,7 +829,10 @@ une suivante le relève.
   le remplace : il y écrit les gabarits de `php/protocole` de `TWIN_V9_DIR`,
   et un gabarit qu'il ne porte plus en sort, son dernier contenu archivé
   parmi ses versions — les fichiers de pôle `tagger/P1` à `P7`, dont la base
-  donne désormais les fiches (§8.8) ; il répond `{imported, retires}`.
+  donne désormais les fiches (§8.8) —, sauf s'il est de ceux que nomme le
+  contrat des variables : un import partiel n'ôte jamais un gabarit du
+  protocole. Les noms s'y comparent comme dans la table, sans la casse. Il
+  répond `{imported, retires}`.
 - **Une copie** (`TemplateSets::copier`, `POST /api/twin9/admin/jeux {id}`,
   atelier) prend chaque gabarit du jeu v9.8 tel qu'il est, sans son histoire
   (migration 029 : `twin9_jeux`, `twin9_jeux_gabarits`, `twin9_jeux_versions`).
@@ -1037,7 +1042,9 @@ T16, plan validé par Christian le 2026-10-20).
     le lancement et l'aperçu répondent `503` « Les fiches du référentiel
     RESPIRE ne sont pas dans la base de cette instance : l’analyse
     approfondie ne peut partir (php scripts/seed-competences.php les y
-    verse) ».
+    verse) ». Une version qui nomme un code dont la base n'a pas la fiche (un
+    brouillon qui en renomme un) répond `422` « Le référentiel « respire » ne
+    se lit pas : la compétence 1.99 n’a pas de fiche dans la base ».
   - **Un autre référentiel** : préambule et fiches s'écrivent depuis son
     document — le préambule, « # Pôle N — nom », puis sa description ; la
     fiche, « ## CODE — nom », sa description, puis ses éléments plus fins,
@@ -1049,18 +1056,36 @@ T16, plan validé par Christian le 2026-10-20).
   (le premier mot de ce nom en capitales, accents ôtés, sinon `P` et son
   numéro), celle du profil ipsatif et du jury ; le nombre de compétences
   (« 61 »), la forme de leurs codes (`X.YY` ; `XY` pour `A1`), le nom du
-  référentiel (son libellé sans sa version : « RESPIRE v7 » donne
-  « RESPIRE »), l'ordre des codes. Il refuse un référentiel qu'il ne lit
+  référentiel (« RESPIRE » pour `respire`, quel que soit son libellé ; pour
+  un autre, son libellé sans sa version : « Humanome V18 » donne
+  « Humanome »), l'ordre des codes. Il refuse un référentiel qu'il ne lit
   pas — pôles qui ne se numérotent pas de 1 à N, pôle sans compétence, code
   absent, fait de chiffres seulement, hors du motif ou en double, nom ou
   fiche absent, motif illisible — : le lancement et l'aperçu répondent `422`
   « Le référentiel « id » ne se lit pas : … », le pôle ou le code fautif
   nommé, jamais une fiche ; aucun run n'est écrit.
+- **Un moteur d'avant T16** ignorerait le référentiel et lirait RESPIRE dans
+  le jeu, quel que soit le profil : sans `Twin9\ReferentielInvalide`, sa
+  marque, le lancement et l'aperçu répondent `503` « L’analyse approfondie
+  n’est pas disponible sur cette instance : son moteur précède T16 et ne lit
+  pas le référentiel du run (Twin_v9 à mettre à jour) ».
+- **Un jeu d'avant T16** — le jeu v9.8 pas encore réimporté, ou une copie
+  faite avant — écrit RESPIRE en toutes lettres dans ses gabarits (« 61 »,
+  « X.YY », « référentiel RESPIRE ») ; ses fichiers de pôle (`tagger/P1`…)
+  le disent. Il sert RESPIRE comme avant ; pour un autre référentiel, le
+  lancement et l'aperçu répondent `422` « Le jeu de gabarits « … » précède
+  T16 : ses gabarits écrivent RESPIRE en toutes lettres. Pour un autre
+  référentiel, il faut réimporter le jeu v9.8 » (« refaire une copie du jeu
+  v9.8 », pour une copie).
 - **Le jury** garde ses sièges sur tout référentiel (décision de Christian du
   2026-10-20) : un pôle de RESPIRE, reconnu à sa clé, assoit le spécialiste
   et la paire de la v9.8 ; un autre, le « Spécialiste du pôle », qui lit son
   domaine, et la paire (Spécialiste du pôle, Historien) — cinq sièges en
   `socle4+1`, quatre en `socle2+2`. `jury.specialistes` du profil l'emporte.
+  Sa lentille n'est pas dans la banque dont les journées gardent l'empreinte
+  (`Tribunal::infosPersonas`) : un référentiel qui l'assoit la garde avec
+  l'empreinte des réglages de ses journées (`|specialiste:…`), pour qu'une
+  journée jugée sous une autre soit relue ; celles de RESPIRE n'en ont pas.
 - **Les gabarits** : le jeu v9.8 est celui de `php/protocole` (§8.6), où les
   mots de RESPIRE sont devenus des variables — `{$NB_COMPETENCES}` (« 61 »),
   `{$FORMAT_CODE}` (« X.YY »), `{$REFERENTIEL}` (« RESPIRE »),
@@ -1075,7 +1100,9 @@ T16, plan validé par Christian le 2026-10-20).
   (§8.2), l'attestation (`referentiel.empreinte`, §8.4) et ce que comparent
   les prévisions (`empreinte_referentiel`, §8.7).
 - **Le filtre de fuite** indexe ses préambules et ses fiches, qui ne sont plus
-  dans le jeu, pour les résultats (§8.4) comme pour l'export (§8.5).
+  dans le jeu, pour les résultats (§8.4) comme pour l'export (§8.5) ; pour
+  les résultats, ceux de chaque run de la carte, dont la mémoire donne des
+  journées jugées sous d'autres fiches.
 - **La prévision** : le pire cas d'un appel compte le plus grand pôle que lit
   un lecteur, son préambule et ses fiches joints comme le moteur les joint
   (§8.7).
@@ -1092,16 +1119,19 @@ T16, plan validé par Christian le 2026-10-20).
     celles du run, lue sous une version ancienne, entre telle quelle dans la
     fusion, même si un de ses codes a quitté la version nouvelle (à reprendre
     avec T17).
-  - Une copie de jeu faite avant T16 garde les gabarits où la v9.8 écrit
-    RESPIRE en toutes lettres : sur un autre référentiel, ses prompts le
-    gardent ; il faut en refaire une copie.
   - L'import de T16 change l'empreinte des réglages (jeu sans fichiers de
     pôle, gabarits en variables, référentiel) : chaque journée que garde la
     mémoire d'une carte sera relue une fois.
   - Sans évaluation, la référence (§8.5) reste le run de PLANT-01 de T2, fois
     les pôles : elle ignore la taille des fiches d'un autre référentiel.
   - Le moteur ne refuse un référentiel qu'au lancement : sa publication (§9)
-    ne vérifie pas que le moteur le lit.
+    ne vérifie pas qu'il le lit. Le schéma 2.0.0 admet ainsi des codes faits
+    de chiffres seulement (« 11 »), un pôle sans compétence, un nom de pôle ou
+    de compétence fait d'espaces : publié, voté, un tel référentiel est
+    refusé à chaque aperçu et à chaque lancement.
+  - La lentille du « Spécialiste du pôle » est écrite dans le code du moteur :
+    son empreinte suit son texte, pas une version déclarée comme celle de la
+    banque (`PERSONAS_VERSION`).
 
 ## 9. Plusieurs référentiels (T15)
 

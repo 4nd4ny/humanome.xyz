@@ -145,6 +145,28 @@ final class ReferentielMoteurTest extends CartographeTestCase
     }
 
     /**
+     * A version of RESPIRE that names a code the base has no fiche for — a
+     * draft that renames one — cannot be read: 422, the code named; not the
+     * instance's 503 (review of T16).
+     */
+    public function testACodeOfRespireWithoutItsFicheIsRefused(): void
+    {
+        $doc = json_decode((string) file_get_contents(\dirname(__DIR__, 3) . '/web/public/data/referentiel/respire-v7.json'),
+            true, 512, JSON_THROW_ON_ERROR);
+        unset($doc['contentHash']);
+        $doc['version'] = '7.9.0';
+        $doc['competences'][0]['code'] = '1.99';
+        self::publier($doc);
+        try {
+            (new ReferentielMoteur(self::$pdo))->bloc('respire', '7.9.0');
+            self::fail('un code sans fiche');
+        } catch (Twin9Exception $e) {
+            self::assertSame([422, 'Le référentiel « respire » ne se lit pas : la compétence 1.99 n’a pas de fiche dans la base'],
+                [$e->getStatusCode(), $e->getMessage()]);
+        }
+    }
+
+    /**
      * The fingerprint covers what changes a prompt — a fiche, a preamble, a
      * name, the motif, the label — however the block is decoded; the leak
      * filter indexes its preambles and fiches; a reader reads a pole's

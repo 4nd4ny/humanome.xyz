@@ -182,7 +182,8 @@ test('analyse approfondie : lancée depuis le front, suivie, reprise, ouverte da
     await page.getByRole('checkbox', { name: /J’accepte que mon portfolio/ }).check()
     const avant = page.getByRole('region', { name: 'Avant de lancer' })
     await expect(avant).toContainText('1 journée sur 3 à instruire (1 nouvelle)')
-    await expect(avant).toContainText('(d’après une évaluation passée de mêmes réglages)')
+    // la sienne, et celles qu'ont laissées, anonymes, les passages précédents du scénario sur cette base
+    await expect(avant).toContainText(/\(d’après (une évaluation passée|\d+ évaluations passées) de mêmes réglages\)/)
   })
 
   await test.step('supprimer son compte : il emporte ses runs, son évaluation reste anonyme', async () => {

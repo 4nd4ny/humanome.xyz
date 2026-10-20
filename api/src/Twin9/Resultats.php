@@ -16,11 +16,12 @@ use stdClass;
  * memory, their day maps as the memory keeps them: the complete dossier.
  * Never its portfolio, nor the day texts the memory keeps beside the maps.
  *
- * Everything shown passes the leak filter (ADR-010 §2) against the run's
- * whole template set, as the run took it, and the fiches of the referential
- * its engine read (T16): a model that recited a template or a fiche sees its
- * recitation redacted. The count of redactions stays server-side, in the
- * audit, never in the answer.
+ * Everything shown passes the leak filter (ADR-010 §2) against the whole
+ * template set and the fiches of the referential (T16) of every run of its
+ * map, as each took them: the days the map's memory gives were judged by
+ * earlier runs, under their own. A model that recited a template or a fiche
+ * sees its recitation redacted. The count of redactions stays server-side,
+ * in the audit, never in the answer.
  */
 final class Resultats
 {
@@ -71,7 +72,7 @@ final class Resultats
         ksort($sorties, SORT_STRING);
         sort($memoire, SORT_STRING);
 
-        $index = self::index($run['gabarits'], json_decode($run['moteur'], false, 512, JSON_THROW_ON_ERROR)->referentiel ?? null);
+        $index = self::index($this->confidentiels($runId, (int) $run['carte_id']));
         $fuites = 0;
         foreach ($sorties as $chemin => $texte) {
             $sorties[$chemin] = self::filtrer($index, $texte, str_ends_with($chemin, '.json'), $fuites);
@@ -84,22 +85,62 @@ final class Resultats
     }
 
     /**
-     * The leak filter's index of a template set as confidential material:
-     * each template with its variables empty — the fiches (tagger/P*) among
-     * them, for a run whose engine read RESPIRE from its set —, and the
-     * preambles and fiches of the referential its engine read (T16).
+     * The leak filter's index of confidential texts: each template with its
+     * variables empty — the fiches (tagger/P*) among them, for a run whose
+     * engine read RESPIRE from its set —, each preamble and fiche of a
+     * referential an engine read (T16).
      *
-     * @param array<string, string> $gabarits
-     * @param mixed $referentiel the referential in the engine's settings (ReferentielMoteur::bloc()), or null
+     * @param array<string, string> $textes confidentiels()'s, RunExport's
      * @return array<mixed> LeakFilter::indexer()'s
      */
-    public static function index(array $gabarits, mixed $referentiel = null): array
+    public static function index(array $textes): array
     {
-        return LeakFilter::indexer(implode("\n\n", [...array_map(
+        return LeakFilter::indexer(implode("\n\n", array_map(
             static fn (string $contenu): string => (string) preg_replace(ProtocoleRepository::VARIABLE_PATTERN, '',
                 $contenu),
-            array_values($gabarits),
-        ), ...($referentiel === null ? [] : ReferentielMoteur::textes($referentiel))]));
+            array_values($textes),
+        )));
+    }
+
+    /**
+     * What the results of a run may recite: the templates every run of its
+     * map took, and the preambles and fiches of the referentials their engine
+     * read (T16), once each — the days of the map's memory were judged by
+     * those runs.
+     *
+     * @return array<string, string>
+     */
+    private function confidentiels(int $runId, int $carteId): array
+    {
+        $stmt = $this->pdo->prepare('SELECT gabarits, reglages FROM twin9_runs WHERE carte_id = ? OR id = ?');
+        $stmt->execute([$carteId, $runId]);
+
+        return self::textes($stmt->fetchAll());
+    }
+
+    /**
+     * The templates and the referential's texts of runs, once each, from
+     * their rows (twin9_runs.gabarits and reglages): RunExport's too.
+     *
+     * @param list<array{gabarits: string, reglages: string}> $runs
+     * @return array<string, string>
+     */
+    public static function textes(array $runs): array
+    {
+        $textes = [];
+        foreach ($runs as $run) {
+            foreach ((array) json_decode(RunRepository::uncompress((string) $run['gabarits']), true, 512,
+                JSON_THROW_ON_ERROR) as $nom => $contenu) {
+                $textes[hash('sha256', $nom . "\0" . $contenu)] = (string) $contenu;
+            }
+            $referentiel = json_decode(RunRepository::uncompress((string) $run['reglages']), false, 512,
+                JSON_THROW_ON_ERROR)->moteur->referentiel ?? null;
+            foreach ($referentiel === null ? [] : ReferentielMoteur::textes($referentiel) as $texte) {
+                $textes[hash('sha256', "referentiel\0" . $texte)] = $texte;
+            }
+        }
+
+        return $textes;
     }
 
     /**

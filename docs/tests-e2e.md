@@ -232,7 +232,8 @@ tours retenus le temps d'annuler puis de reprendre, puis jusqu'au bout),
 journée, la délibération de son jury. Le run fini a laissé son évaluation
 (T8, `twin9_evaluations` : la taille et le coût de chacune de ses deux
 journées, rien d'autre), et l'aperçu d'un portfolio d'une journée de plus
-s'estime d'après elle. Le compte, supprimé par `DELETE /api/auth/account`,
+s'estime d'après elle — et d'après celles, anonymes, que les passages
+précédents du scénario ont laissées dans la base : il se rejoue. Le compte, supprimé par `DELETE /api/auth/account`,
 emporte ses runs et ses cartes (T10) ; l'évaluation reste, anonyme.
 
 Le moteur est le **moteur factice** public, et Anthropic est simulé : l'API

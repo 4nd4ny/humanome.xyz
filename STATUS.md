@@ -56,10 +56,25 @@ le moteur lit le référentiel du run, qui peut être un autre que RESPIRE ; il 
     levé ; un référentiel que le moteur ne lit pas est refusé au lancement (`422`, le code fautif
     nommé) ; RESPIRE sans ses fiches dans la base, `503` (INSTALL.md §3 les sème désormais).
   - Import : il lit `php/protocole` et remplace le jeu v9.8 : un gabarit qu'il ne porte plus en
-    sort, archivé (les fichiers de pôle) ; il répond `{imported, retires}`. L'appel du navigateur
-    reçoit les nouvelles variables aux valeurs de RESPIRE ; le contrat des variables les nomme.
+    sort, archivé (les fichiers de pôle), sauf ceux que nomme le contrat des variables ; il répond
+    `{imported, retires}`. L'appel du navigateur reçoit les nouvelles variables aux valeurs de
+    RESPIRE ; le contrat des variables les nomme.
   - Front : « Ouvrir dans la cartographie » reste à RESPIRE jusqu'à T17 ; pour un autre
     référentiel, la page du run le dit.
+  - Revue indépendante (un agent qui n'avait pas écrit le lot), ses constats corrigés chacun avec
+    un test qui échouait sans lui : un moteur d'avant T16 ignorait le référentiel et, avec un jeu qui
+    garde ses fichiers de pôle, faisait payer un run de RESPIRE attesté sur un autre référentiel
+    (désormais `503`, le moteur reconnu à `ReferentielInvalide`) ; un jeu d'avant T16 — le jeu v9.8
+    pas encore réimporté, une copie faite avant — demandait les codes de RESPIRE sur un autre
+    référentiel (désormais `422`, RESPIRE seul servi) ; le nom de RESPIRE dans les prompts suivait son
+    libellé (« RESPIRE v8.0.0-rc.1 », « RESPIRE 2027 ») et l'aurait fait sortir de la v9.8 ; un import
+    partiel ôtait des gabarits du protocole, et un nom écrit à une autre casse pouvait ôter ce qu'il
+    venait d'écrire ; un code de RESPIRE sans fiche donnait le `503` de l'instance (désormais `422`,
+    le code nommé) ; la lentille du « Spécialiste du pôle » n'entrait dans aucune empreinte des
+    journées ; les journées de la mémoire d'une carte n'étaient filtrées que contre les fiches du
+    dernier run ; la parité de la plateforme rejouait encore l'oracle avec les fichiers de pôle
+    (désormais avec `php/protocole` et RESPIRE tiré de la base, l'ancien chemin gardé pour les runs
+    d'avant T16). Reste documenté (§8.8) : ce que la publication accepte sans que le moteur le lise.
   - Textes : `docs/contrats.md` (§8 à §8.7, nouveau §8.8, §9), UC-PRO-08 (A4, limites), UC-EPI-05
     (RG8, L4), `docs/autorisations.md`, `docs/tests-e2e.md`, INSTALL.md, STATUS ; `Twin_v9` : le
     plan.
@@ -67,21 +82,25 @@ le moteur lit le référentiel du run, qui peut être un autre que RESPIRE ; il 
     autres structures ; douze refus ; sièges du jury), `SimuleTest` (la DoD), `OracleTest` (la copie
     et le bloc rejouent l'oracle), `PlateformeTest` ; ici, `ReferentielMoteurTest` (RESPIRE pris dans
     la base et lu par le vrai moteur comme les fichiers de pôle, fiches écrites depuis le document,
-    ordre naturel, `503`, empreinte, et, avec le vrai moteur, le refus au lancement), `RunsTest` (un
-    run sur 9 pôles, son attestation ; une fiche du référentiel récitée, expurgée), `PurgeExportTest`
-    (de même à l'export), `AppelsDirectsTest` (l'empreinte), `Twin9ProtocoleTest` et UC-PRO-08
-    (l'import remplace le jeu), `JeuxGabaritsTest` (le jeu de `php/protocole`), `Twin9View.test`,
-    bout en bout `twin9-run.e2e.js` (les fiches semées).
-  - Déploiement (T18) : l'import du jeu de T16 suppose un `Twin_v9` d'après T16 sur le serveur — un
-    moteur d'avant ne trouverait plus les fichiers de pôle, et le lancement répondrait `422` — et
-    RESPIRE avec ses fiches dans la base (`seed-competences`).
+    ordre naturel, `503`, un code sans fiche, empreinte, et, avec le vrai moteur, le refus au
+    lancement), `RunsTest` (un run sur 9 pôles, son attestation ; une fiche récitée, expurgée, même
+    gardée par la mémoire sous une version ancienne ; un moteur ou un jeu d'avant T16 refusés),
+    `PurgeExportTest` (de même à l'export), `AppelsDirectsTest` (l'empreinte), `Twin9ProtocoleTest`
+    et UC-PRO-08 (l'import remplace le jeu, jamais un gabarit du protocole), `JeuxGabaritsTest` (le
+    jeu de `php/protocole`), `PariteTest` (l'oracle par les tranches, comme la plateforme le lance
+    depuis T16, et un run d'avant), `Twin9View.test`, bout en bout `twin9-run.e2e.js` (les fiches
+    semées).
+  - Déploiement (T18) : la plateforme de T16 demande un `Twin_v9` d'après T16 sur le serveur (sans
+    lui, le lancement répond `503`), puis l'import du jeu de T16 et RESPIRE avec ses fiches dans la
+    base (`seed-competences`).
   - Limites (§8.8) : les fiches de RESPIRE sont celles que la base publie au lancement, non celles
     de l'instantané de la version figée ; la mémoire d'une carte est rangée par référentiel, non par
-    version : une journée gardée sous une version ancienne entre telle quelle dans la fusion ; une
-    copie de jeu faite avant T16 garde « 61 », « X.YY » et « RESPIRE » en toutes lettres ; l'import
-    de T16 change l'empreinte des réglages, et la mémoire relira chaque journée une fois ; sans
-    évaluation, la référence ignore la taille des fiches d'un autre référentiel ; un référentiel que
-    le moteur ne lit pas n'est refusé qu'au lancement, pas à sa publication.
+    version : une journée gardée sous une version ancienne entre telle quelle dans la fusion ;
+    l'import de T16 change l'empreinte des réglages, et la mémoire relira chaque journée une fois ;
+    sans évaluation, la référence ignore la taille des fiches d'un autre référentiel ; un référentiel
+    que le moteur ne lit pas (codes faits de chiffres, pôle sans compétence, nom fait d'espaces) se
+    publie, et n'est refusé qu'au lancement ; la lentille du spécialiste du pôle a l'empreinte de son
+    texte, pas une version déclarée.
   - Idées, non codées (règle 6) : lire les fiches de RESPIRE dans l'instantané de la version figée
     (`referentiel_snapshot_competences`) ; vérifier à la publication qu'un référentiel se lit par le
     moteur ; ranger la mémoire d'une carte par version de référentiel, ou écarter à la fusion les

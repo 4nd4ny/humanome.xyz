@@ -378,6 +378,116 @@ final class RunsTest extends CartographeTestCase
         self::assertSame('termine', $this->jusquAuBout($epi, self::json($lance)['id'])['statut']);
     }
 
+    /**
+     * An engine before T16 would ignore the run's referential and read
+     * RESPIRE's in its set, whatever the profile names (review of T16): the
+     * platform launches nothing with it, nor previews.
+     */
+    public function testAnEngineOfBeforeT16LaunchesNothing(): void
+    {
+        $ancien = sys_get_temp_dir() . '/twin9-avant-t16-' . bin2hex(random_bytes(6));
+        $source = \dirname(__DIR__) . '/fixtures/twin9-factice';
+        foreach (new \RecursiveIteratorIterator(new \RecursiveDirectoryIterator($source, \FilesystemIterator::SKIP_DOTS),
+                     \RecursiveIteratorIterator::SELF_FIRST) as $f) {
+            $cible = $ancien . substr((string) $f->getPathname(), \strlen($source));
+            $f->isDir() ? mkdir($cible, 0777, true) : copy((string) $f->getPathname(), $cible);
+        }
+        unlink($ancien . '/php/src/ReferentielInvalide.php');
+        TestDb::setEnv('TWIN_V9_DIR', $ancien);
+
+        try {
+            $alice = $this->registerAs('ancien@example.org', 'Alice');
+            $profil = $this->profil($alice);
+            foreach (['/api/twin9/runs/apercu', '/api/twin9/runs'] as $route) {
+                $refus = $this->as_($alice, 'POST', $route, $this->lancement($profil));
+                self::assertSame(503, $refus->getStatusCode(), $route . ' : ' . $refus->getBody());
+                self::assertSame('L’analyse approfondie n’est pas disponible sur cette instance : son moteur précède '
+                    . 'T16 et ne lit pas le référentiel du run (Twin_v9 à mettre à jour)', self::json($refus)['error']);
+            }
+            self::assertSame(0, (int) self::$pdo->query('SELECT COUNT(*) FROM twin9_runs')->fetchColumn());
+        } finally {
+            foreach (new \RecursiveIteratorIterator(new \RecursiveDirectoryIterator($ancien, \FilesystemIterator::SKIP_DOTS),
+                         \RecursiveIteratorIterator::CHILD_FIRST) as $f) {
+                $f->isDir() ? rmdir((string) $f->getPathname()) : unlink((string) $f->getPathname());
+            }
+            rmdir($ancien);
+        }
+    }
+
+    /**
+     * A set of before T16 — its pole files tell it — writes RESPIRE in its
+     * templates: a run on another referential is refused, its preview too;
+     * a run of RESPIRE goes (review of T16).
+     */
+    public function testASetOfBeforeT16ServesRespireAlone(): void
+    {
+        (new ProtocoleRepository(self::$pdo))->put('tagger/P1', "# Pôle 1 — FICTIF\n\n## 1.01 — Fiche FICTIVE\n", null);
+        $neuf = ReferentielsFictifs::neufPoles();
+        (new ReferentielRepository(self::$pdo))->importPublishedDocument(
+            ['contentHash' => ContentHash::compute($neuf)] + $neuf, 'Publié');
+        $alice = $this->registerAs('ancienjeu@example.org', 'Alice');
+        $profil = ProfilRepository::v98();
+        $profil->voie = 'directe';
+        $profil->referentiel = (object) ['id' => 'fictif-neuf', 'version' => null];
+        $autre = self::json($this->as_($alice, 'POST', '/api/twin9/profils', ['nom' => 'Neuf pôles', 'profil' => $profil]))['id'];
+
+        foreach (['/api/twin9/runs/apercu', '/api/twin9/runs'] as $route) {
+            $refus = $this->as_($alice, 'POST', $route, $this->lancement($autre));
+            self::assertSame(422, $refus->getStatusCode(), $route);
+            self::assertSame('Le jeu de gabarits « v9.8 » précède T16 : ses gabarits écrivent RESPIRE en toutes lettres. '
+                . 'Pour un autre référentiel, il faut réimporter le jeu v9.8', self::json($refus)['error']);
+        }
+        self::assertSame(0, (int) self::$pdo->query('SELECT COUNT(*) FROM twin9_runs')->fetchColumn());
+        self::assertSame(201, $this->as_($alice, 'POST', '/api/twin9/runs', $this->lancement($this->profil($alice)))
+            ->getStatusCode(), 'RESPIRE');
+    }
+
+    /**
+     * The days the memory of its map gives come with a run's results; they
+     * were judged by earlier runs, under their fiches: what they recite of
+     * those is redacted, even once the referential has changed them (review
+     * of T16).
+     */
+    public function testARecitationTheMemoryOfItsMapKeepsIsRedactedAgainstTheFichesItRecited(): void
+    {
+        $ancienne = 'Fiche FICTIVE de la première version : la capacité A1 se cherche dans un geste que le modèle ne '
+            . 'doit jamais réciter.';
+        $lettre = ReferentielsFictifs::lettre();
+        $lettre['competences'][0]['description'] = $ancienne;
+        (new ReferentielRepository(self::$pdo))->importPublishedDocument(
+            ['contentHash' => ContentHash::compute($lettre)] + $lettre, 'Publié');
+        TestDb::setEnv('WORKER_PROVIDER', '');
+        $reponse = 'Voici : ' . $ancienne;
+        LlmRuntime::setMultiHttpClient(new FakeMultiHttpClient(static function () use (&$reponse): array {
+            return ['body' => FakeMultiHttpClient::message($reponse)];
+        }));
+        $alice = $this->registerAs('memoire-fiche@example.org', 'Alice');
+        $profil = ProfilRepository::v98();
+        $profil->voie = 'directe';
+        $profil->referentiel = (object) ['id' => 'fictif-lettre', 'version' => null];
+        $id = self::json($this->as_($alice, 'POST', '/api/twin9/profils', ['nom' => 'Lettré', 'profil' => $profil]))['id'];
+        $premier = self::json($this->as_($alice, 'POST', '/api/twin9/runs', $this->lancement($id)))['id'];
+        $this->jusquAuBout($alice, $premier);
+
+        // a new version rewrites the fiche; the next run, on a day of its own, takes the first two from memory
+        $nouvelle = ReferentielsFictifs::lettre('1.1.0');
+        $nouvelle['competences'][0]['description'] = 'Une description entièrement nouvelle, rédigée pour la seconde '
+            . 'version du référentiel fictif.';
+        (new ReferentielRepository(self::$pdo))->importPublishedDocument(
+            ['contentHash' => ContentHash::compute($nouvelle)] + $nouvelle, 'Publié');
+        $reponse = 'Rien à citer.';
+        $suite = $this->lancement($id);
+        $suite['portfolio']['texte'] = "## 2026-01-07\nTroisième jour : j'ai présenté.\n";
+        $second = self::json($this->as_($alice, 'POST', '/api/twin9/runs', $suite))['id'];
+        $this->jusquAuBout($alice, $second);
+
+        $r = self::json($this->as_($alice, 'GET', "/api/twin9/runs/$second/resultats"));
+        self::assertSame(['2026-01-05', '2026-01-06'], $r['memoire']);
+        $corps = json_encode($r, JSON_UNESCAPED_UNICODE);
+        self::assertStringNotContainsString('que le modèle ne doit jamais réciter', $corps);
+        self::assertStringContainsString('[expurgé]', $r['sorties']['journees/2026-01-05/carto_jour.json']);
+    }
+
     /** A profile of $user's, by the direct lane. @return int its id */
     private function profil(array $user, string $nom = 'Direct'): int
     {

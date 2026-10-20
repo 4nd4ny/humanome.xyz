@@ -97,6 +97,28 @@ final class Twin9ProtocoleTest extends CartographeTestCase
     }
 
     /**
+     * A partial import never takes a template of the protocol away — one the
+     * contract of the variables names stays —, and the names compare as the
+     * table does, case aside: a template written again under another case
+     * stays (review of T16).
+     */
+    public function testAPartialImportKeepsTheProtocolsTemplates(): void
+    {
+        $importer = fn (array $files): array => self::json($this->request('POST', '/api/admin/twin9/import',
+            ['files' => $files], ['X-Migrate-Token' => self::TOKEN]));
+        self::assertSame(['imported' => 3, 'retires' => 0], $importer(['lourd/20-greffier' => 'Greffier FICTIF.',
+            'tagger/1-tag-pole' => 'Lecteur FICTIF.', 'tagger/P1' => 'Fiche FICTIVE.']));
+        self::assertSame(['imported' => 1, 'retires' => 1], $importer(['lourd/20-greffier' => 'Greffier FICTIF.']));
+        $repo = new ProtocoleRepository(Db::get());
+        self::assertSame(['lourd/20-greffier', 'tagger/1-tag-pole'], array_column($repo->list(), 'name'),
+            'le contrat les nomme ; le fichier de pôle, non');
+
+        self::assertSame(['imported' => 1, 'retires' => 0], $importer(['Fictif/Casse' => 'Gabarit FICTIF.']));
+        self::assertSame(['imported' => 1, 'retires' => 0], $importer(['fictif/casse' => 'Gabarit FICTIF changé.']));
+        self::assertSame('Gabarit FICTIF changé.', $repo->get('fictif/casse')['content'] ?? null, 'la même ligne');
+    }
+
+    /**
      * The import replaces the v9.8's set (T16): a template it no longer
      * carries — the pole files, whose fiches the base now gives — leaves the
      * set, its last content archived among its versions; carried again, it

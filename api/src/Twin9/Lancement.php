@@ -404,6 +404,12 @@ final class Lancement
         if (!EngineLoader::isLoaded() || !class_exists(\Twin9\Plateforme::class)) {
             throw new Twin9Exception('L’analyse approfondie n’est pas disponible sur cette instance', 503);
         }
+        // T16: an engine before T16 would ignore the run's referential and read RESPIRE's in the set, whatever the
+        // profile names; its refusal of a referential is its mark
+        if (!class_exists(\Twin9\ReferentielInvalide::class)) {
+            throw new Twin9Exception('L’analyse approfondie n’est pas disponible sur cette instance : son moteur précède '
+                . 'T16 et ne lit pas le référentiel du run (Twin_v9 à mettre à jour)', 503);
+        }
 
         $politique = new ProfilPolicy($this->pdo, $this->config);
         [$profil, $nom] = $this->profil($userId, $profilId, $politique);
@@ -424,6 +430,15 @@ final class Lancement
             array_column((new ProtocoleRepository($this->pdo))->list(), 'name'), array_keys($jeu['gabarits'])) !== []) {
             throw new Twin9Exception('Le jeu de gabarits « ' . $profil->gabarits . ' » n’a pas tous les gabarits du jeu '
                 . 'v9.8 : il faut en refaire une copie', 422);
+        }
+        // T16: a set of before T16, the pole files in it, writes RESPIRE in its templates (« 61 », « X.YY »,
+        // « référentiel RESPIRE »): another referential's readers would be asked for RESPIRE's codes
+        if ($profil->referentiel->id !== ReferentielRepository::DEFAULT_REFERENTIEL_ID
+            && isset($jeu['gabarits']['tagger/P1'])) {
+            throw new Twin9Exception('Le jeu de gabarits « ' . $profil->gabarits . ' » précède T16 : ses gabarits '
+                . 'écrivent RESPIRE en toutes lettres. Pour un autre référentiel, il faut '
+                . ($profil->gabarits === TemplateSets::V98 ? 'réimporter le jeu v9.8' : 'refaire une copie du jeu v9.8'),
+                422);
         }
         // T16: the run's referential, drawn from the base at its frozen version, which the engine reads
         $referentiel = (new ReferentielMoteur($this->pdo))->bloc((string) $profil->referentiel->id,

@@ -17,8 +17,12 @@
 // reçoit son numéro d'ordre ; un pôle sans couleur déclarée, celle de son
 // rang dans la palette des pôles du moteur ; marques et couleurs vont
 // jusqu'à douze pôles, puis reprennent au début.
+//
+// Chemin relatif, et non l'alias `@engine` de Vite : les scénarios bout en
+// bout de la cartographie chargent ce module sous Node, par leurs fixtures
+// (`carto/test/fixtures.js` → `model.js`), sans Vite pour résoudre l'alias.
 
-import { poleColor } from '@engine/pipeline/merge-document.js'
+import { poleColor } from '../../../../engine/src/pipeline/merge-document.js'
 
 const POLE_MARKS = [
   { symbol: '●', pattern: 'solid' },

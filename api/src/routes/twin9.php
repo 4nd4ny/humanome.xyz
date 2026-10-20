@@ -32,11 +32,11 @@ declare(strict_types=1);
  *   PUT  /api/twin9/admin/config                    partial update, 422 on bounds
  *   POST /api/admin/twin9/import                    X-Migrate-Token (deploy script): the v9.8's set
  *
- * User routes (T3b — any logged-in user, ADR-010 §1/§3/§4; the templates are
- * rendered SERVER-SIDE and only the model output travels back, through the
- * LeakFilter):
- *   POST /api/twin9/appel                  proxied LLM call, debit or private key
- *   GET  /api/twin9/meta                   public offer + own balance (no content)
+ * User routes (T3b — any logged-in user, ADR-010 §3/§4). The proxied call of
+ * the browser's engine, POST /api/twin9/appel, left with that engine (T11):
+ * the runs execute on the server (ADR-011, routes/twin9-runs.php).
+ *   POST /api/twin6/appel                  open cartography (Twin6) on credits
+ *   GET  /api/twin9/meta                   what the credit page and Twin6 read (no content)
  *   GET  /api/twin9/credit                 balance + last ledger events
  *   GET  /api/twin9/facture?annee=&mois=   monthly recap invoice (own account)
  *   GET  /api/twin9/depenses               spend tracking per month (own account)
@@ -49,7 +49,6 @@ declare(strict_types=1);
  * FastRoute matches them before the greedy catch-all.
  */
 
-use Humanome\Auth\Audit;
 use Humanome\Auth\RateLimiter;
 use Humanome\Auth\Session;
 use Humanome\Db;
@@ -63,7 +62,6 @@ use Humanome\Twin9\AnthropicCaller;
 use Humanome\Twin9\CreditService;
 use Humanome\Twin9\FactureService;
 use Humanome\Twin9\FicheStore;
-use Humanome\Twin9\LeakFilter;
 use Humanome\Twin9\PayPalClient;
 use Humanome\Twin9\ProtocoleRepository;
 use Humanome\Twin9\SoldeInsuffisantException;
@@ -104,7 +102,7 @@ return function (App $app): void {
             try {
                 return $handler($request, $response, $args);
             } catch (SoldeInsuffisantException $e) {
-                // Safety net (the appel route pre-checks and answers its own
+                // Safety net (/twin6/appel pre-checks and answers its own
                 // 402): amounts only, never content.
                 return $json($response, [
                     'error' => 'Solde insuffisant',
@@ -314,11 +312,6 @@ return function (App $app): void {
         return Session::userId();
     };
 
-    // Total request payload bound for /api/twin9/appel (413 beyond). One
-    // Twin9 step carries at most a day's text + a few artefacts; 300 Ko is
-    // ample and keeps rendering/leak-filtering cheap on shared hosting.
-    $appelMaxPayloadBytes = 307200;
-
     // Twin6 (open cartography) carries the WHOLE portfolio in every scan-pole
     // prompt (7 calls re-read it), so its billed proxy accepts a larger body.
     $twin6MaxPayloadBytes = 2_000_000;
@@ -332,230 +325,6 @@ return function (App $app): void {
     // hash query, readable by the hash router — ADR-009).
     $paypalReturnUrl = 'https://humanome.xyz/#/compte/credit?paypal=retour';
     $paypalCancelUrl = 'https://humanome.xyz/#/compte/credit?paypal=annule';
-
-    // ------------------------------------------------------------------
-    // POST /api/twin9/appel — THE proxied LLM call (ADR-010 §1): the client
-    // sends step label + variables, the server renders the CONFIDENTIAL
-    // template, calls Anthropic (locked base_url), leak-filters the output
-    // and returns model output + real usage only. Body:
-    //   {etape, variables{VAR: string}, modele, etage, max_tokens?,
-    //    facturation: 'platform'|'cle_privee'}
-    // ------------------------------------------------------------------
-    $app->post('/twin9/appel', $wrap(function (Request $request, Response $response) use ($json, $parseBody, $sessionUserId, $appelMaxPayloadBytes): Response {
-        $config = new Twin9Config(new SettingsRepository(Db::get()));
-        if (!$config->isEnabled()) {
-            return $json($response, ['error' => 'Twin9 non disponible'], 503);
-        }
-        $userId = $sessionUserId();
-        if ($userId === null) {
-            return $json($response, ['error' => 'Authentification requise'], 401);
-        }
-
-        // Payload bound BEFORE any parsing work.
-        $raw = (string) $request->getBody();
-        if (\strlen($raw) > $appelMaxPayloadBytes) {
-            return $json($response, ['error' => 'Requête trop volumineuse (300 Ko maximum)'], 413);
-        }
-        $body = $parseBody($request);
-        if (!\is_array($body)) {
-            return $json($response, ['error' => 'Corps JSON invalide : objet attendu'], 400);
-        }
-
-        // --- Validation (422, field names only — never template content) --
-        $etape = \is_string($body['etape'] ?? null) ? $body['etape'] : '';
-        if ($etape === '') {
-            return $json($response, ['error' => 'Champ requis : etape'], 422);
-        }
-        $variables = $body['variables'] ?? [];
-        if (!\is_array($variables)) {
-            return $json($response, ['error' => 'Champ variables invalide : objet attendu'], 422);
-        }
-        foreach ($variables as $name => $value) {
-            // Run-state variables are scalars (rendered as-is) or, for the fiche
-            // lookup key POLE_FICHES_ORDRE, a flat list of scalars. Objects and
-            // nested arrays are refused.
-            if (\is_scalar($value) || $value === null) {
-                continue;
-            }
-            if (\is_array($value) && $value === array_filter($value, 'is_scalar')) {
-                continue;
-            }
-            return $json($response, ['error' => 'Variable invalide (scalaire ou liste attendu) : ' . (string) $name], 422);
-        }
-        $modele = \is_string($body['modele'] ?? null) ? $body['modele'] : '';
-        $etage = \is_string($body['etage'] ?? null) ? $body['etage'] : '';
-        if (!\in_array($etage, Twin9Config::ETAGES, true)) {
-            return $json($response, ['error' => 'Étage inconnu (taggers, rapide, tribunal)'], 422);
-        }
-        $offre = $config->modeles()[$modele] ?? null;
-        if ($modele === '' || !\is_array($offre) || !\in_array($etage, $offre['etages'], true)) {
-            return $json($response, ['error' => 'Modèle non proposé pour cet étage'], 422);
-        }
-        $maxTokens = $body['max_tokens'] ?? 4096;
-        if (!\is_int($maxTokens)) {
-            return $json($response, ['error' => 'Champ max_tokens invalide : entier attendu'], 422);
-        }
-        $maxTokens = max(256, min(16000, $maxTokens)); // bounded, defaut 4096
-        $facturation = \is_string($body['facturation'] ?? null) ? $body['facturation'] : '';
-        if (!\in_array($facturation, ['platform', 'cle_privee'], true)) {
-            return $json($response, ['error' => 'Champ facturation invalide (platform ou cle_privee)'], 422);
-        }
-        // Own-key Twin9 is refused unless the PROMO window is open (owner toggle,
-        // 2026-07-15): the proprietary Golden Prompt only travels via our
-        // metered/credited path (+20 % contribution), except during a
-        // promotional period meant to let people feel the quality before buying
-        // tokens. /appel serves ONLY Twin9, so no protocole discriminator is
-        // needed here. (Twin6, open source, has its own free/own-key path.)
-        if ($facturation === 'cle_privee' && !$config->clePersoOuverte()) {
-            return $json($response, [
-                'error' => 'Twin9 s’utilise avec nos crédits. L’usage avec votre propre clé n’est pas ouvert pour le moment.',
-            ], 403);
-        }
-
-        // --- Per-user rate limit (rate_limits table, fixed 1-min window) --
-        $limiter = new RateLimiter(Db::get(), $config->appelsParMinute(), 60);
-        $attempts = $limiter->hit('twin9:appel:' . $userId);
-        if ($attempts > $config->appelsParMinute()) {
-            return $json($response, ['error' => 'Rythme d’appels trop élevé, ralentissez.'], 429)
-                ->withHeader('Retry-After', (string) $limiter->retryAfter($attempts));
-        }
-
-        // --- Render (server-side, ADR-010 §1) ----------------------------
-        // Inject the CONFIDENTIAL fiche variables (COMPETENCE_FICHE, POLE_FICHES)
-        // the client can't hold — computed authoritatively from the run-state
-        // lookup keys (CODE ; POLE_NUM + POLE_FICHES_ORDRE) it provided. The
-        // injected values WIN over anything the client sent for those names.
-        $fiches = FicheStore::fromSettings(new SettingsRepository(Db::get()));
-        $variables = array_merge($variables, $fiches->injecter($variables));
-        // T16: the v9.8's set is now the copy whose templates name their referential (Twin_v9's php/protocole);
-        // the browser's engine reads RESPIRE alone, until T11 removes it: its prompts take RESPIRE's values, those
-        // the v9.8's original templates wrote
-        $variables += ['NB_COMPETENCES' => 61, 'FORMAT_CODE' => 'X.YY', 'REFERENTIEL' => 'RESPIRE']
-            + (isset($variables['LISTE_61']) ? ['LISTE_COMPETENCES' => $variables['LISTE_61']] : []);
-
-        $repo = new ProtocoleRepository(Db::get());
-        $rendered = $repo->render($etape, $variables); // Twin9Exception 404 if unknown
-        if ($rendered['non_resolues'] !== []) {
-            // Variable NAMES only — never the surrounding template text.
-            return $json($response, [
-                'error' => 'Variables non résolues',
-                'variables' => $rendered['non_resolues'],
-            ], 422);
-        }
-        $prompt = $rendered['rendu'];
-
-        // --- Billing path -------------------------------------------------
-        $credits = new CreditService(Db::get());
-        $reserve = 0;
-        if ($facturation === 'platform') {
-            $apiKey = Env::get('ANTHROPIC_API_KEY');
-            if ($apiKey === '') {
-                return $json($response, ['error' => 'Service indisponible'], 503);
-            }
-            // WORST-CASE RESERVATION before the call (security finding A):
-            // a single ATOMIC conditional debit (no overdraft) of the maximum
-            // this call could cost (real input + full max_tokens output). This
-            // serializes concurrent calls on the same balance (each loses the
-            // race → 402) and caps a series at what was actually reserved —
-            // no read-then-compare gap, no unbounded overdraft. The real cost
-            // (always ≤ reserve) is reconciled back after the call.
-            // BYTE length (not mb_strlen): a hard upper bound on real input
-            // tokens, so the reservation always covers the real cost and the
-            // reconciliation is a pure refund (2026-07-15 review, overdraft).
-            $reserve = max(1, (int) $config->reserveMicrousd($modele, strlen($prompt), $maxTokens));
-            try {
-                $credits->debit($userId, $reserve, $etape . ' (réserve)', $modele);
-            } catch (SoldeInsuffisantException $e) {
-                return $json($response, [
-                    'error' => 'Solde insuffisant',
-                    'solde_microusd' => $e->getBalanceMicrousd(),
-                    'requis_estime_microusd' => $reserve,
-                ], 402);
-            }
-        } else {
-            // cle_privee (ADR-010 §4): the user's own Anthropic key, stored
-            // encrypted (KeyVault), used SERVER-SIDE on the SAME locked path.
-            $masterKey = KeyVault::masterKeyFromEnv();
-            if ($masterKey === null) {
-                return $json($response, ['error' => 'Stockage de clés non configuré'], 503);
-            }
-            $apiKey = (new KeyVault(Db::get(), $masterKey))->reveal($userId, 'anthropic');
-            if ($apiKey === null) {
-                return $json($response, ['error' => 'Aucune clé Anthropic enregistrée pour votre compte'], 409);
-            }
-        }
-
-        // --- Upstream call (no retry: the client engine owns resumption) --
-        // The reserve is already committed (platform): refund it on any failure
-        // so a dropped upstream call never keeps the learner's credit.
-        try {
-            $result = (new AnthropicCaller(LlmRuntime::httpClient(), $apiKey))
-                ->appeler($modele, null, $prompt, $maxTokens);
-        } catch (\Throwable $e) {
-            if ($reserve > 0) {
-                // Carry the model so the per-model invoice split stays exact
-                // (FactureService nets reservations against their refunds).
-                $credits->adjust($userId, $reserve, $etape . ' (remboursement échec)', $modele);
-            }
-            throw $e;
-        }
-
-        // --- Reconcile the reservation to the REAL cost (platform) ---------
-        $cout = 0;
-        if ($facturation === 'platform') {
-            $cout = (int) $config->coutMicrousd($modele, $result['tokens_in'], $result['tokens_out']);
-            // Signed reconciliation: reserve - real. Positive → refund the
-            // unused reservation; negative → charge the small remainder when
-            // the real tokens exceeded the char-based estimate (bounded by the
-            // estimation error, NOT by concurrency — the reserve already gated
-            // that). One event, carrying the real token counts.
-            $delta = $reserve - $cout;
-            if ($delta !== 0) {
-                $credits->adjust(
-                    $userId,
-                    $delta,
-                    $etape . ' (réconciliation)',
-                    $modele,
-                    $result['tokens_in'],
-                    $result['tokens_out'],
-                );
-            }
-        }
-
-        // --- Leak filter (ADR-010 §2): index built from the template with the
-        // user's variables EMPTY (so quoting one's own payload stays legal) but
-        // the CONFIDENTIAL fiches INJECTED (2026-07-15 review, finding HIGH):
-        // COMPETENCE_FICHE / POLE_FICHES carry the secret fiche bodies at render
-        // time; leaving them empty in the index gave a verbatim recitation of a
-        // fiche zero backstop. Injecting them here indexes the fiche bodies so
-        // their recitation is redacted like any other template fragment.
-        $gabaritVide = $repo->render(
-            $etape,
-            array_merge(
-                array_fill_keys($repo->get($etape)['variables'] ?? [], ''),
-                $fiches->injecter($variables),
-            ),
-        )['rendu'];
-        $filtre = LeakFilter::redact($gabaritVide, $result['texte']);
-        if ($filtre['fuites'] > 0) {
-            // Audited counters only (ADR-010 §2) — never the redacted text.
-            Audit::record(Db::get(), $userId, 'twin9_fuite_expurgee', [
-                'etape' => $etape,
-                'fuites' => $filtre['fuites'],
-            ]);
-        }
-
-        // The leak COUNT is NEVER returned (finding B): exposing it lets an
-        // attacker tune a transformation until it drops to 0. The client gets
-        // the already-redacted output and nothing about what was redacted.
-        return $json($response, [
-            'sortie' => $filtre['sortie'],
-            'tokens_in' => $result['tokens_in'],
-            'tokens_out' => $result['tokens_out'],
-            'cout_microusd' => $cout,
-            'stop_reason' => $result['stop_reason'],
-        ]);
-    }));
 
     // ------------------------------------------------------------------
     // POST /api/twin6/appel — « Cartographie ouverte Twin6 » CREDITS path.
@@ -611,8 +380,8 @@ return function (App $app): void {
         }
 
         // Worst-case reservation at the TWIN6 margin (+10 %), atomic (no
-        // overdraft), reconciled to the real cost after — same discipline as
-        // /appel (security finding A), but priced with the 'twin6' protocole.
+        // overdraft), reconciled to the real cost after (security finding A),
+        // priced with the 'twin6' protocole.
         $credits = new CreditService(Db::get());
         $promptBytes = \strlen($prompt) + ($system !== null ? \strlen($system) : 0);
         $reserve = max(1, (int) $config->reserveMicrousd($modele, $promptBytes, $maxTokens, 'twin6'));
@@ -651,9 +420,12 @@ return function (App $app): void {
     }));
 
     // ------------------------------------------------------------------
-    // GET /api/twin9/meta — EVERYTHING the client ever sees of Twin9
-    // (ADR-010 §2 residual): step names, template lengths, variable names,
-    // margined prices, packs, pipeline knobs, own balance. NEVER content.
+    // GET /api/twin9/meta — what the credit page and the open cartography
+    // (Twin6) read: the Twin6 offer (margined prices) and the promotion's
+    // state, the packs, whether PayPal is configured, the referential's
+    // structure, the own balance and whether a private key is stored. NEVER
+    // content. Since T11 it no longer lists the steps, the Twin9 offer or the
+    // pipeline's settings, which only the browser's engine read.
     // ------------------------------------------------------------------
     $app->get('/twin9/meta', $wrap(function (Request $request, Response $response) use ($json, $sessionUserId): Response {
         $userId = $sessionUserId();
@@ -664,27 +436,17 @@ return function (App $app): void {
         $config = new Twin9Config(new SettingsRepository(Db::get()));
         $view = $config->publicView();
 
-        $etapes = array_map(static fn (array $entry): array => [
-            'name' => $entry['name'],
-            'longueur_gabarit' => $entry['longueur'],
-            'variables' => $entry['variables'],
-        ], (new ProtocoleRepository(Db::get()))->list());
-
         $masterKey = KeyVault::masterKeyFromEnv();
         $clePrivee = $masterKey !== null
             && (new KeyVault(Db::get(), $masterKey))->reveal($userId, 'anthropic') !== null;
 
         return $json($response, [
-            'enabled' => $view['enabled'],
-            'etapes' => $etapes,
-            'modeles' => $view['modeles'],
             'modeles_twin6' => $view['modeles_twin6'],
             // Promo: when true, Twin9 is usable free with one's own key.
             'twin9_cle_perso_ouverte' => $view['twin9_cle_perso_ouverte'],
             'packs' => $view['packs'],
-            'pipeline' => $view['pipeline'],
-            // Non-secret referentiel structure the client engine needs to
-            // assemble artefacts (codes/names + accented pole names).
+            // The referential's non-secret structure (codes and names, accented
+            // pole names), which the open cartography assembles its documents with.
             'referentiel' => $config->referentiel(),
             'paypalConfigured' => $view['paypalConfigured'],
             'solde_microusd' => (new CreditService(Db::get()))->balance($userId),
@@ -942,7 +704,8 @@ return function (App $app): void {
     // partial one takes nothing away (a set of before T16 keeps its pole
     // files, which tell it). Names compare as the table does, case aside.
     // Stores the protocol settings under twin9_config.pipeline, flips
-    // twin9_config.enabled=true.
+    // twin9_config.enabled=true: both served the browser's engine, which T11
+    // removed, and nothing reads them since.
     $app->post('/admin/twin9/import', function (Request $request, Response $response) use ($json): Response {
         $token = Env::get('MIGRATE_TOKEN');
         if ($token === '') {
@@ -992,14 +755,16 @@ return function (App $app): void {
                 $update['pipeline'] = $body['config'];
             }
             $config->update($update);
-            // The non-secret referentiel structure (pole/competence names) the
-            // client engine needs — stored apart from the validated admin config.
+            // The non-secret referentiel structure (pole/competence names) that
+            // /meta serves the open cartography (Twin6) — stored apart from the
+            // validated admin config.
             if (\is_array($body['referentiel'] ?? null)) {
                 $config->setReferentiel($body['referentiel']);
             }
             // The CONFIDENTIAL fiches (pole headers + per-competence fiche_md),
-            // stored server-only (FicheStore) and injected at render — NEVER in
-            // /meta. Kept apart from the non-secret referentiel structure.
+            // stored server-only (FicheStore) — NEVER in /meta. Kept apart from
+            // the non-secret referentiel structure. The browser engine's proxy
+            // injected them at render; since T11 nothing reads them.
             if (\is_array($body['fiches'] ?? null)) {
                 FicheStore::store(new SettingsRepository(Db::get()), $body['fiches']);
             }

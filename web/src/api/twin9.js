@@ -1,51 +1,20 @@
-// Client de l'API Twin9 (ADR-010) — le SEUL point où le front parle au
-// serveur Twin9. Les gabarits restent côté serveur : le front n'envoie que
-// {etape, variables} et ne reçoit que la sortie du modèle (déjà filtrée).
+// Client de l'API Twin9 (ADR-010, ADR-011) — le SEUL point où le front parle
+// au serveur Twin9. Les runs tournent sur le serveur ; les gabarits n'en sortent
+// que vers l'atelier (admin ∧ promptologue), et le reste du front ne reçoit que
+// des résultats filtrés.
 //
 // apiFetch (api/client.js) gère la session (cookie), le CSRF et la dégradation
 // propre en copie statique (ApiUnavailableError).
 
 import { apiFetch } from './client.js'
 
-/** Offre publique + solde + structure du référentiel + clé privée dispo. */
+/**
+ * Ce que lisent la page du crédit et la cartographie ouverte (Twin6) : offre
+ * Twin6, état de la promotion, packs, PayPal, structure du référentiel, solde,
+ * clé privée disponible.
+ */
 export function fetchTwin9Meta(options) {
   return apiFetch('twin9/meta', options)
-}
-
-/**
- * Fabrique de backend pour le moteur (engine/src/twin9) : chaque appel LLM
- * passe par POST /api/twin9/appel. Le moteur appelle backend.call(prompt, opts)
- * mais en PRODUCTION le prompt est rendu SERVEUR — le front envoie donc
- * l'étiquette d'étape + les variables (portées par opts.etape/opts.variables/
- * opts.etage), jamais le gabarit. Renvoie {text}.
- *
- * @param {{modele: string, facturation: 'platform'|'cle_privee',
- *   onDebit?: (microusd: number, soldeApres: number|null) => void,
- *   fetchFn?: typeof fetch}} params
- */
-export function makeServerBackend({ modele, facturation, onDebit, fetchFn }) {
-  const records = []
-  return {
-    records,
-    async call(_prompt, opts = {}) {
-      const body = {
-        etape: opts.etape ?? opts.label,
-        variables: opts.variables ?? {},
-        modele,
-        etage: opts.etage ?? 'rapide',
-        facturation,
-        ...(opts.maxTokens ? { max_tokens: opts.maxTokens } : {}),
-      }
-      const data = await apiFetch('twin9/appel', {
-        ...(fetchFn ? { fetchFn } : {}),
-        method: 'POST',
-        body,
-      })
-      records.push({ label: body.etape, tokensIn: data.tokens_in, tokensOut: data.tokens_out })
-      if (typeof onDebit === 'function') onDebit(data.cout_microusd ?? 0, null)
-      return { text: data.sortie ?? '' }
-    },
-  }
 }
 
 /** Solde + 50 derniers événements du grand-livre. */
@@ -269,7 +238,7 @@ export function formatUsd(microusd) {
 /**
  * Référentiel du /twin9/meta ([{num, nom, competences:[{code, nom}]}]) mis à la
  * forme moteur/adaptateurs : { poles: [{num, nom}], competences: [{code, nom,
- * pole}] }. Utilisé par les adaptateurs Twin6 ET Twin9 (mapper → sunburst).
+ * pole}] }. Utilisé par l'adaptateur Twin6 (mapper → sunburst).
  *
  * @param {Array<{num:number, nom:string, competences?:Array<{code:string, nom:string}>}>} metaReferentiel
  */

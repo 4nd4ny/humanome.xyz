@@ -47,9 +47,10 @@ final class CreditService
      *
      * $allowOverdraft = true switches to an UNCONDITIONAL debit
      * (balance = balance - X, row created if absent) that may leave a small
-     * negative balance. NOTE: /api/twin9/appel no longer uses this — it debits
-     * a WORST-CASE reservation conditionally BEFORE the call (allowOverdraft
-     * = false) and reconciles down after (security review finding A). The
+     * negative balance. NOTE: the reservations — /api/twin6/appel's and the
+     * server runs' (RunCosts) — do not use it: they debit a WORST-CASE amount
+     * conditionally BEFORE the call (allowOverdraft = false) and reconcile
+     * after (security review finding A). The
      * overdraft mode remains available for callers that must record a debit
      * whose funding is guaranteed by other means.
      *
@@ -166,8 +167,9 @@ final class CreditService
      * Signed adjustment, positive or negative (may drive the balance below
      * zero — deliberate: a correction is a statement of fact, the conditional
      * guard only protects real-time debits). Two callers: admin corrections,
-     * and the /appel reservation reconciliation (which passes the real token
-     * counts so the ledger event carries them).
+     * and the reconciliations of the reservations — /api/twin6/appel's and the
+     * server runs' (RunCosts) — which pass the real token counts so the ledger
+     * event carries them.
      *
      * @param int $microusd signed amount, != 0
      * @return int the new balance in micro-USD

@@ -164,7 +164,8 @@ describe('UC-PRO-08 — l’administrateur-promptologue édite un gabarit', () =
     expect((await screen.findByTestId('twin9-rendu')).textContent).toBe('Greffier FICTIF v2 : examine {$EXTRAIT} pour 1.01.')
     expect(screen.getByText('Variables non résolues : EXTRAIT')).toBeDefined()
     expect(bodyOf(calls.find((c) => c.key === `POST ${COPIE}/tester`))).toEqual({ name: NOM, variables: { EXTRAIT: '', CODE: '1.01' } })
-    expect(calls.some((c) => c.key === 'POST twin9/appel')).toBe(false)
+    // Aucun appel LLM : le rendu est la seule écriture.
+    expect(calls.filter((c) => c.key.startsWith('POST ')).map((c) => c.key)).toEqual([`POST ${COPIE}/tester`])
   })
 
   it('UC-PRO-08-F05 — E1 : administrateur SANS le rôle promptologue → atelier réservé, aucun appel, pas de lien dans la navigation', async () => {

@@ -114,15 +114,15 @@ final class UcApp09CartographieOuverteTwin6Test extends CartographeTestCase
         self::assertSame(8, $labels['twin6/cartographie (réconciliation)']);
     }
 
-    #[TestDox('UC-APP-09-F11 — étape 2 : l’offre lue par la vue (/api/twin9/meta) porte prix Twin6, référentiel et solde — même Twin9 désactivé')]
+    #[TestDox('UC-APP-09-F11 — étape 2 : l’offre lue par la vue (/api/twin9/meta) porte prix Twin6, référentiel et solde — même l’interrupteur Twin9 fermé')]
     public function testF11OfferIsReadFromMetaAndTwin6IgnoresTheTwin9Switch(): void
     {
         $config = new Twin9Config(new SettingsRepository(Db::get()));
         $config->setReferentiel(TwinSupport::referentielFictif());
         $this->crediter(2_500_000);
 
+        self::assertFalse($config->isEnabled(), 'Twin9 non importé : son interrupteur reste fermé');
         $meta = self::json($this->as_($this->apprenant, 'GET', '/api/twin9/meta'));
-        self::assertFalse($meta['enabled'], 'Twin9 non importé');
         self::assertSame([3.3, 16.5], $meta['modeles_twin6']['claude-sonnet-5']);
         self::assertSame('TÊTE — Penser & Comprendre', $meta['referentiel'][0]['nom']);
         self::assertSame(2_500_000, $meta['solde_microusd']);

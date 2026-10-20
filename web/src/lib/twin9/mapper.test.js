@@ -11,12 +11,11 @@ import { twin9ToMergeDocument } from './mapper.js'
 import { validateDocument } from '@engine/validation.js'
 import { POLE_PALETTE } from '@engine/pipeline/merge-document.js'
 
-// L'oracle vit dans le dépôt privé 4nd4ny/Twin_v9, cloné à côté de celui-ci
-// (../Twin_v9) : sans lui (clone neuf, CI), les cas réels se sautent.
-const ORACLE_PATH = join(
-  dirname(fileURLToPath(import.meta.url)),
-  '../../../../../Twin_v9/oracle/scenarios/02-cloud/outputs/carto_evolutive.json',
-)
+// L'oracle vit dans le dépôt privé 4nd4ny/Twin_v9 : `TWIN_V9_DIR`, par défaut
+// cloné à côté de celui-ci (../Twin_v9), comme pour la suite PHP ; sans lui
+// (clone neuf, CI), les cas réels se sautent.
+const TWIN_V9_DIR = process.env.TWIN_V9_DIR || join(dirname(fileURLToPath(import.meta.url)), '../../../../../Twin_v9')
+const ORACLE_PATH = join(TWIN_V9_DIR, 'oracle/scenarios/02-cloud/outputs/carto_evolutive.json')
 const oraclePresent = existsSync(ORACLE_PATH)
 const CARTO = oraclePresent ? JSON.parse(readFileSync(ORACLE_PATH, 'utf8')) : null
 

@@ -224,8 +224,10 @@ describe('importTwin9Run (T9)', () => {
   })
 })
 
-// Les sorties du scénario cloud de l'oracle (Twin_v9, dépôt privé, cloné à côté) : sans lui, sauté.
-const ORACLE = join(dirname(fileURLToPath(import.meta.url)), '../../../../../../Twin_v9/oracle/scenarios/02-cloud/outputs')
+// Les sorties du scénario cloud de l'oracle (Twin_v9, dépôt privé : `TWIN_V9_DIR`, par défaut cloné à côté,
+// ../Twin_v9) : sans lui, sauté.
+const TWIN_V9_DIR = process.env.TWIN_V9_DIR || join(dirname(fileURLToPath(import.meta.url)), '../../../../../../Twin_v9')
+const ORACLE = join(TWIN_V9_DIR, 'oracle/scenarios/02-cloud/outputs')
 const oraclePresent = existsSync(`${ORACLE}/carto_evolutive.json`)
 
 describe.skipIf(!oraclePresent)('importTwin9Run (sorties réelles de l’oracle)', () => {

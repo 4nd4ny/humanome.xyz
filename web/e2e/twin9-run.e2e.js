@@ -12,8 +12,10 @@
 //   instruire et le coût estimé (T10) ; « Lancer l'analyse » -> la page du
 //   run : ses tours retenus, elle l'annule, puis le reprend -> il va au bout
 //   -> « Ouvrir dans la cartographie » : le run s'ouvre dans un nouveau jeu,
-//   la compétence jugée montre son jury -> elle supprime son compte, qui
-//   emporte ses runs.
+//   la compétence jugée montre son jury -> le run fini a laissé son
+//   évaluation, sans contenu, et l'aperçu suivant s'estime d'après elle (T8)
+//   -> elle supprime son compte, qui emporte ses runs ; l'évaluation reste,
+//   anonyme.
 //
 // LOCAL UNIQUEMENT : npx playwright test e2e/twin9-run.e2e.js
 
@@ -153,11 +155,33 @@ test('analyse approfondie : lancée depuis le front, suivie, reprise, ouverte da
     await expect(jury.locator('summary').first()).toHaveText('Lecteur — présence')
   })
 
-  await test.step('supprimer son compte : il emporte ses runs', async () => {
+  let evaluation
+  await test.step('son évaluation, sans contenu, estime l’aperçu suivant (T8)', async () => {
+    const id = devSql(`SELECT id FROM users WHERE email = '${email}'`)
+    evaluation = devSql(`SELECT id FROM twin9_evaluations WHERE user_id = ${id}`)
+    expect(evaluation).toMatch(/^\d+$/)
+    // ses deux journées : leur taille et leur coût, rien d'autre
+    expect(devSql(`SELECT JSON_LENGTH(journees), JSON_KEYS(journees->'$[0]') FROM twin9_evaluations WHERE id = ${evaluation}`))
+      .toBe('2\t["ko", "cout_microusd"]')
+    await page.goto('/#/twin9')
+    await page.getByLabel('Profil', { exact: true }).selectOption({ label: 'Direct e2e' })
+    await page.getByLabel('Fichier du portfolio').setInputFiles({
+      name: 'journal-e2e.md',
+      mimeType: 'text/markdown',
+      buffer: Buffer.from(`${PORTFOLIO}## 2026-01-07\nTroisième jour : j'ai présenté les mesures.\n`),
+    })
+    await page.getByRole('checkbox', { name: /J’accepte que mon portfolio/ }).check()
+    const avant = page.getByRole('region', { name: 'Avant de lancer' })
+    await expect(avant).toContainText('1 journée sur 3 à instruire (1 nouvelle)')
+    await expect(avant).toContainText('(d’après une évaluation passée de mêmes réglages)')
+  })
+
+  await test.step('supprimer son compte : il emporte ses runs, son évaluation reste anonyme', async () => {
     const id = devSql(`SELECT id FROM users WHERE email = '${email}'`)
     expect(Number(devSql(`SELECT COUNT(*) FROM twin9_runs WHERE user_id = ${id}`))).toBe(1)
     expect((await apiCall(page, 'DELETE', 'auth/account')).status).toBe(204)
     expect(Number(devSql(`SELECT COUNT(*) FROM twin9_runs WHERE user_id = ${id}`))).toBe(0)
     expect(Number(devSql(`SELECT COUNT(*) FROM twin9_cartes WHERE user_id = ${id}`))).toBe(0)
+    expect(devSql(`SELECT user_id IS NULL FROM twin9_evaluations WHERE id = ${evaluation}`)).toBe('1')
   })
 })

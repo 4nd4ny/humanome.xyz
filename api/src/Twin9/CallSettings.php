@@ -194,8 +194,8 @@ final class CallSettings
         return $base;
     }
 
-    /** Objects' keys sorted, at every depth: the same settings, the same fingerprint. */
-    private static function canonique(mixed $valeur): mixed
+    /** Objects' keys sorted, at every depth: the same settings, the same fingerprint (Evaluations' too). */
+    public static function canonique(mixed $valeur): mixed
     {
         if ($valeur instanceof stdClass || (\is_array($valeur) && !array_is_list($valeur))) {
             $valeur = (array) $valeur;

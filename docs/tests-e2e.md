@@ -229,8 +229,11 @@ profil par la voie directe, `#/twin9` (portfolio en fichier, accord ; la page
 dit alors les journées à instruire et le coût estimé, T10), la page du run (ses
 tours retenus le temps d'annuler puis de reprendre, puis jusqu'au bout),
 « Ouvrir dans la cartographie » : la compétence jugée montre, dans sa
-journée, la délibération de son jury. Le compte, supprimé par
-`DELETE /api/auth/account`, emporte ses runs et ses cartes (T10).
+journée, la délibération de son jury. Le run fini a laissé son évaluation
+(T8, `twin9_evaluations` : la taille et le coût de chacune de ses deux
+journées, rien d'autre), et l'aperçu d'un portfolio d'une journée de plus
+s'estime d'après elle. Le compte, supprimé par `DELETE /api/auth/account`,
+emporte ses runs et ses cartes (T10) ; l'évaluation reste, anonyme.
 
 Le moteur est le **moteur factice** public, et Anthropic est simulé : l'API
 locale se lance avec
@@ -250,8 +253,7 @@ alors « L'analyse approfondie n'est pas disponible sur cette instance »).
 qu'un nom, aucune requête ne part. Le scénario verse le jeu de gabarits du
 moteur factice dans la base de développement (`twin9_protocole`, noms
 `factice/…`) et l'en retire à la fin. Migrations à jour : `php
-scripts/migrate.php` (029, T14 : un profil choisit son jeu de gabarits parmi
-ceux de `twin9_jeux`).
+scripts/migrate.php` (030, T8 : les évaluations et la réserve de la fusion).
 
 ### Note historique — diff UI promptologue (corrigé)
 

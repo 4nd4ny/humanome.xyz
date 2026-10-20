@@ -44,9 +44,13 @@ final class RunRepository
      * @param array<string, string> $gabarits its template set, each template by name
      * @param string|null $sortie the run's output as the v9.8 sees it (the layers' ids carry a hash of it);
      *                            null: one of its own
+     * @param int $reserveFusion what it keeps for its merge, in micro-USD: its days' calls never eat into it (T8)
+     * @param int $engagement what its launch granted it on its owner's credit, in micro-USD: their other runs never
+     *                        eat into what it may still spend of it (T8)
      */
     public function creer(int $userId, stdClass $profil, stdClass $moteur, string $portfolioNom, string $portfolio,
-                          string $journal, array $gabarits, \DateTimeImmutable $horloge, ?string $sortie = null): int
+                          string $journal, array $gabarits, \DateTimeImmutable $horloge, ?string $sortie = null,
+                          int $reserveFusion = 0, int $engagement = 0): int
     {
         $referentiel = (string) ($profil->referentiel->id ?? '');
         $jeu = (string) ($profil->gabarits ?? '');
@@ -60,8 +64,9 @@ final class RunRepository
         $carteId = (int) $stmt->fetchColumn();
 
         $this->pdo->prepare(
-            'INSERT INTO twin9_runs (user_id, carte_id, reglages, portfolio, gabarits, horloge, debut_at)
-             VALUES (?, ?, ?, ?, ?, ?, NOW())'
+            'INSERT INTO twin9_runs (user_id, carte_id, reglages, portfolio, gabarits, horloge, debut_at,
+                                     reserve_fusion_microusd, engagement_microusd)
+             VALUES (?, ?, ?, ?, ?, ?, NOW(), ?, ?)'
         )->execute([
             $userId,
             $carteId,
@@ -70,6 +75,8 @@ final class RunRepository
             self::pack(['nom' => $portfolioNom, 'texte' => $portfolio]),
             self::pack((object) $gabarits),
             $horloge->format('Y-m-d H:i:s'),
+            max(0, $reserveFusion),
+            max(0, $engagement),
         ]);
 
         return (int) $this->pdo->lastInsertId();
@@ -280,12 +287,19 @@ final class RunRepository
      * Its owner resumes a run cancelled or stopped: it goes on from its
      * journal, where it stopped, its duration counted again from now (T10).
      * A run its budget stopped goes on under a new one, given here: a number
-     * of dollars, or null for none. False when it was neither cancelled nor
-     * stopped.
+     * of dollars, or null for none. Admitted again (T8): what it may still
+     * spend of its owner's credit never goes beyond what their other runs in
+     * progress leave free. False when it was neither cancelled nor stopped.
      *
      * @param array{budget_usd?: float|int|null} $plafonds
      */
     public function reprendre(int $id, int $userId, array $plafonds = []): bool
+    {
+        return $this->sousVerrou($userId, fn (): bool => $this->reprendreAdmis($id, $userId, $plafonds));
+    }
+
+    /** @param array{budget_usd?: float|int|null} $plafonds */
+    private function reprendreAdmis(int $id, int $userId, array $plafonds): bool
     {
         $this->pdo->beginTransaction();
         try {
@@ -303,11 +317,18 @@ final class RunRepository
                 $reglages = self::unpack((string) $blob);
                 $reglages->profil->budget_usd = $plafonds['budget_usd'];
             }
+            // what it has committed, and what the owner's other runs in progress leave free
+            $stmt = $this->pdo->prepare(
+                'SELECT COALESCE(SUM(COALESCE(reserve_microusd, cout_microusd, 0)), 0) FROM twin9_appels WHERE run_id = ?'
+            );
+            $stmt->execute([$id]);
+            $engage = (int) $stmt->fetchColumn();
+            ['solde' => $solde, 'autres' => $autres] = $this->disponible($userId, $id);
             $this->pdo->prepare(
                 'UPDATE twin9_runs SET statut = "en_cours", attente = NULL, finished_at = NULL, debut_at = NOW(),
-                        reglages = COALESCE(?, reglages)
+                        reglages = COALESCE(?, reglages), engagement_microusd = LEAST(engagement_microusd, ?)
                   WHERE id = ?'
-            )->execute([$reglages === null ? null : self::pack($reglages), $id]);
+            )->execute([$reglages === null ? null : self::pack($reglages), $engage + max(0, $solde - $autres), $id]);
             $this->pdo->commit();
         } catch (\Throwable $e) {
             $this->pdo->rollBack();
@@ -362,6 +383,7 @@ final class RunRepository
             'gabarits' => array_map('strval', (array) self::unpack((string) $row['gabarits'])),
             'horloge' => new \DateTimeImmutable((string) $row['horloge']),
             'debut' => (float) $row['debut'],
+            'reserve_fusion' => (int) $row['reserve_fusion_microusd'],
         ];
     }
 
@@ -428,21 +450,42 @@ final class RunRepository
     }
 
     /**
-     * The run is done: its journal becomes its counters. False when it was no
-     * longer in progress (cancelled meanwhile).
+     * The run is done: its journal becomes its counters, and its evaluation,
+     * without any content, joins those that foresee the next runs (T8,
+     * Evaluations) — a failure to record it never keeps the run from ending.
+     * False when it was no longer in progress (cancelled meanwhile).
+     *
+     * @param array<string, int> $octets the days of its map, in order — those it took, then those its memory
+     *        keeps —: each day's size in bytes, by its id
+     * @param float $marge the instance's margin its costs include; 1.0 with its owner's own key
      */
-    public function terminer(int $id): bool
+    public function terminer(int $id, array $octets = [], float $marge = 1.0): bool
     {
         $this->pdo->beginTransaction();
         try {
-            $stmt = $this->pdo->prepare('SELECT statut FROM twin9_runs WHERE id = ? FOR UPDATE');
+            $stmt = $this->pdo->prepare('SELECT statut, user_id, reglages, gabarits FROM twin9_runs WHERE id = ? FOR UPDATE');
             $stmt->execute([$id]);
-            if ($stmt->fetchColumn() !== 'en_cours') {
+            $run = $stmt->fetch();
+            if ($run === false || $run['statut'] !== 'en_cours') {
                 $this->pdo->rollBack();
 
                 return false;
             }
             $compteurs = $this->compteurs($id);
+            $this->pdo->exec('SAVEPOINT evaluation');
+            try {
+                (new Evaluations($this->pdo))->consigner($id, (int) $run['user_id'],
+                    self::unpack((string) $run['reglages'])->profil,
+                    Lancement::empreinte((array) self::unpack((string) $run['gabarits'])), $octets, $marge,
+                    $compteurs['duree_s']);
+            } catch (\Throwable $e) {
+                try {
+                    $this->pdo->exec('ROLLBACK TO SAVEPOINT evaluation');
+                } catch (\Throwable) {
+                    throw $e; // the transaction itself is lost (a deadlock): the run ends at the next slice
+                }
+                error_log('[twin9] évaluation du run ' . $id . ' non consignée : ' . $e::class);
+            }
             $this->pdo->prepare('DELETE FROM twin9_appels WHERE run_id = ?')->execute([$id]);
             // its batches deleted at Anthropic go with the journal; one still there waits for the tick
             $this->pdo->prepare('DELETE FROM twin9_lots WHERE run_id = ? AND statut = "supprime"')->execute([$id]);
@@ -457,6 +500,54 @@ final class RunRepository
         }
 
         return true;
+    }
+
+    /**
+     * An owner's credit, and what their runs in progress may still spend of
+     * it (T8): for each, what its launch granted it, less what it has
+     * committed — the worst cases its calls hold, the real costs of those
+     * settled —; the run asking left out. One statement, one snapshot: a
+     * call's hold, or its settlement, moves the credit and its run's
+     * commitment together.
+     *
+     * @return array{solde: int, autres: int} in micro-USD
+     */
+    public function disponible(int $userId, int $sauf = 0): array
+    {
+        $stmt = $this->pdo->prepare(
+            'SELECT (SELECT COALESCE(MAX(balance_microusd), 0) FROM twin9_credits WHERE user_id = ?),
+                    (SELECT COALESCE(SUM(GREATEST(0, CAST(r.engagement_microusd AS SIGNED)
+                              - (SELECT COALESCE(SUM(COALESCE(a.reserve_microusd, a.cout_microusd, 0)), 0)
+                                   FROM twin9_appels a WHERE a.run_id = r.id))), 0)
+                       FROM twin9_runs r
+                      WHERE r.user_id = ? AND r.statut = "en_cours" AND r.engagement_microusd > 0 AND r.id <> ?)'
+        );
+        $stmt->execute([$userId, $userId, $sauf]);
+        [$solde, $autres] = $stmt->fetch(PDO::FETCH_NUM);
+
+        return ['solde' => (int) $solde, 'autres' => (int) $autres];
+    }
+
+    /**
+     * $f under its owner's admission lock (T8): one launch, or resumption,
+     * at a time, for the next to count what the previous was granted.
+     *
+     * @template T
+     * @param \Closure(): T $f
+     * @return T
+     * @throws Twin9Exception 503 when another one keeps the lock
+     */
+    public function sousVerrou(int $userId, \Closure $f): mixed
+    {
+        $verrou = $this->pdo->quote('twin9_admission_' . $userId);
+        if ((int) $this->pdo->query('SELECT GET_LOCK(' . $verrou . ', 10)')->fetchColumn() !== 1) {
+            throw new Twin9Exception('Un autre lancement est en cours : réessayez dans un instant', 503);
+        }
+        try {
+            return $f();
+        } finally {
+            $this->pdo->query('SELECT RELEASE_LOCK(' . $verrou . ')');
+        }
     }
 
     /**
@@ -488,8 +579,7 @@ final class RunRepository
     /**
      * The counters a run keeps of its journal: calls, attempts, failures,
      * tokens, cost and time, by step, the models served and its batches; the
-     * days it instructed and how long it was active (T10: the averages shown
-     * before a launch).
+     * days it instructed and how long it was active.
      *
      * @return array<string, mixed>
      */
@@ -543,38 +633,6 @@ final class RunRepository
 
         return $total + ['lots' => $lots, 'journees' => $journees, 'duree_s' => $dureeS, 'par_etape' => $parEtape,
                          'modeles_servis' => array_map(intval(...), $stmt->fetchAll(PDO::FETCH_KEY_PAIR))];
-    }
-
-    /**
-     * What the runs done of a profile, in a mode, cost and lasted, summed
-     * over those that instructed at least one day (T10: the averages shown
-     * before a launch). The profile is the v9.8's (null) or one of its
-     * owner's, as the attestation names it.
-     *
-     * @return array{runs: int, journees: int, cout_microusd: int, duree_s: int}|null null: none
-     */
-    public function passes(?int $profilId, string $mode): ?array
-    {
-        $stmt = $this->pdo->prepare(
-            'SELECT compteurs FROM twin9_runs
-              WHERE statut = "termine" AND compteurs IS NOT NULL AND attestation IS NOT NULL
-                AND JSON_UNQUOTE(JSON_EXTRACT(attestation, "$.profil.id")) = ?
-                AND JSON_UNQUOTE(JSON_EXTRACT(attestation, "$.profil.mode")) = ?'
-        );
-        $stmt->execute([$profilId === null ? 'null' : (string) $profilId, $mode]);
-        $somme = ['runs' => 0, 'journees' => 0, 'cout_microusd' => 0, 'duree_s' => 0];
-        foreach ($stmt->fetchAll(PDO::FETCH_COLUMN) as $json) {
-            $c = json_decode((string) $json, true, 512, JSON_THROW_ON_ERROR);
-            if ((int) ($c['journees'] ?? 0) < 1) {
-                continue;
-            }
-            $somme['runs']++;
-            $somme['journees'] += (int) $c['journees'];
-            $somme['cout_microusd'] += (int) ($c['cout_microusd'] ?? 0);
-            $somme['duree_s'] += (int) ($c['duree_s'] ?? 0);
-        }
-
-        return $somme['runs'] === 0 ? null : $somme;
     }
 
     /** The map of an owner's portfolio, referential and template set, if a run made it. */

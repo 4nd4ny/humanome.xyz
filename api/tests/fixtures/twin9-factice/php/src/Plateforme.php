@@ -24,16 +24,18 @@ use Twin9\Run\Store;
  * carry their call's id.
  *
  * As the real engine: a day done enters the memory at once, unless one of
- * its calls failed, and the next passes take it back; the rest ("faisceaux",
- * a count of the runs merged) enters it when the run completes; outputs are
- * told as they are written.
+ * its calls failed, and the next passes take it back; the map is additive —
+ * the days of the memory beyond those a run takes stay in it, and its merge
+ * reads them (T8) —; the rest ("faisceaux", a count of the runs merged)
+ * enters it when the run completes; outputs are told as they are written.
  *
  * Its outputs have the v9.8's shape where the platform reads them (T9): a
  * day map names its day and judges one competence (1.01) with a jury and a
  * deliberation drawn from its calls' answers; the merge attests that
  * competence on each day, names each day ("journee"), and carries a story,
  * a pole report and a kairos. The memory keeps a day's map as « carto ».
- * Before a run, apercu() says which days it would instruct (T10).
+ * Before a run, apercu() says which days it would instruct (T10), the size
+ * of each, and the days of the memory its map keeps beyond them (T8).
  */
 final class Plateforme
 {
@@ -75,10 +77,13 @@ final class Plateforme
 
     /**
      * Before a run (T10), as the real engine says it: the days it takes, each
-     * new, changed or unchanged in the memory of the map; and the poles, one
-     * by tagger/P<n> fiche of the set, one without any.
+     * new, changed or unchanged in the memory of the map, with its size in
+     * bytes (T8); the days of the memory its map keeps beyond them, with the
+     * size of their text kept (T8); and the poles, one by tagger/P<n> fiche
+     * of the set, one without any.
      *
-     * @return array{journees: list<array{id: string, date: ?string, titre: ?string, etat: string}>, poles: int}
+     * @return array{journees: list<array{id: string, date: ?string, titre: ?string, etat: string, octets: int}>,
+     *               memoire: list<array{id: string, octets: int}>, poles: int}
      */
     public function apercu(Store $memoire): array
     {
@@ -93,11 +98,40 @@ final class Plateforme
                 default => 'changee',
             };
             $journees[] = ['id' => $jour['id'], 'date' => preg_match('/^\d{4}-\d{2}-\d{2}$/', $jour['id']) === 1
-                ? $jour['id'] : null, 'titre' => null, 'etat' => $etat];
+                ? $jour['id'] : null, 'titre' => null, 'etat' => $etat, 'octets' => \strlen($jour['texte'])];
         }
 
-        return ['journees' => $journees,
+        $gardees = [];
+        foreach ($this->gardees($this->reglages['memoire'] ? $memoire : null) as $id => $entree) {
+            $gardees[] = ['id' => (string) $id, 'octets' => \strlen((string) $entree['texte'])];
+        }
+
+        return ['journees' => $journees, 'memoire' => $gardees,
                 'poles' => max(1, \count(preg_grep('#^tagger/P\d+$#', array_keys($this->gabarits))))];
+    }
+
+    /**
+     * The days of the memory beyond those the run takes, which its map keeps.
+     *
+     * @return array<string, array<string, mixed>> their entries, by day
+     */
+    private function gardees(?Store $memoire): array
+    {
+        if ($memoire === null) {
+            return [];
+        }
+        $prefixe = ($this->reglages['test'] ? 'test/' : '') . 'journees/';
+        $retenues = array_fill_keys(array_column($this->jours, 'id'), true);
+        $gardees = [];
+        foreach ($memoire->keys($prefixe) as $cle) {
+            $id = substr($cle, \strlen($prefixe));
+            $entree = json_decode((string) $memoire->read($cle), true);
+            if (!isset($retenues[$id]) && \is_array($entree)) {
+                $gardees[$id] = $entree;
+            }
+        }
+
+        return $gardees;
     }
 
     /**
@@ -137,6 +171,10 @@ final class Plateforme
         }
         if ($attendus !== []) {
             throw new Pending($attendus);
+        }
+        // the days of the memory beyond those it takes stay in the map
+        foreach ($this->gardees($memoire) as $entree) {
+            $cartes[] = $entree['carto'];
         }
 
         $fusion = null;

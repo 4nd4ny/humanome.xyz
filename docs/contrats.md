@@ -426,7 +426,8 @@ valide et range les profils.
 S'y ajoutent ce que la plateforme règle : `mode` (« test » : la première
 journée du portfolio et le premier pôle du référentiel ; « complet » par
 défaut), `voie` (« directe » ou « lots »), `parallelisme.journees` (journées
-menées de front), `budget_usd` et `duree_minutes` (`null` : aucun plafond),
+menées de front par appels directs ; par lots, toutes le sont, §8.7),
+`budget_usd` et `duree_minutes` (`null` : aucun plafond),
 `cle` (« instance » ou « personnelle »), `gabarits` (l'identifiant du jeu :
 « v9.8 », valeur du schéma, ou le nom d'une copie, §8.6) et `referentiel`
 (`id`, et `version`, `null` pour la dernière publiée, figée dans la copie du
@@ -643,8 +644,14 @@ Un run dont le profil dit `voie : "lots"` envoie ses appels par l'API Message
 Batches d'Anthropic, à moitié prix (ADR-011 §3). Une tranche soumet le lot,
 une suivante le relève.
 
-- **Le lot.** Les appels qu'attend une passe partent ensemble, ceux des
-  journées menées de front comme en direct. Un lot ne dépasse pas une dizaine
+- **Le lot.** Les appels qu'attend une passe partent ensemble, ceux de toutes
+  les journées du run (T8, stratégie A, §8.7 : chaque vague attend un lot
+  entier ; `parallelisme.journees` ne règle que la voie directe). Le moteur
+  lance aussi ensemble les appels de la fusion qui ne lisent pas la réponse
+  les uns des autres — faisceaux du second ressort, relectures avant le
+  rapporteur, condensés et retours aux sources de l'Arpenteur (`Twin_v9`,
+  T8) : PLANT-01 passe de 286 vagues à 27, de 310 à 30 avec l'Arpenteur.
+  Un lot ne dépasse pas une dizaine
   de mégaoctets (`Twin9Lots::OCTETS`) : au-delà, la vague se répartit en
   plusieurs lots. Chaque requête porte, en `params`, le corps qu'aurait
   l'appel direct (`AnthropicCaller::params`), et en `custom_id` les
@@ -754,7 +761,10 @@ une suivante le relève.
   (`twin9_runs.debut_at`) ; passée, aucun appel ne part. Retenu ainsi et sans
   plus rien dehors, le run s'arrête (`echoue`), sa raison dans `attente` :
   `budget atteint : carte incomplète`, `durée atteinte : carte incomplète`,
-  `crédit insuffisant : carte incomplète`. Ce qui est parti finit : un lot
+  `crédit insuffisant : carte incomplète`, et, T8 (§8.7), `crédit
+  insuffisant (fusion réservée) : …`, `budget atteint (fusion réservée) :
+  …`, `crédit insuffisant (engagé par vos autres analyses) : …`. Ce qui est
+  parti finit : un lot
   chez Anthropic est relevé avant l'arrêt. `POST /api/twin9/runs/{id}/reprendre`
   accepte `{budget_usd}`, des dollars ou `null`, le nouveau budget de la
   copie du profil. Le suivi donne `cout` : `depense_microusd` (le coût réel
@@ -765,16 +775,15 @@ une suivante le relève.
 - **L'aperçu** (`POST /api/twin9/runs/apercu`, `{profil, portfolio}`, ce que
   demande un lancement, l'accord excepté ; rien n'est gardé) rend
   `{journal, mode, voie, cle, journees: {total, nouvelles, changees},
-  estimation: {cout_usd, duree_s, par_journee: {cout_usd, duree_s}, runs |
-  reference, poles}, plafonds: {budget_usd, duree_minutes}, credit_usd}`.
-  L'estimation par journée est la moyenne des runs finis du même profil
-  (`attestation.profil.id`, nul pour celui de la v9.8) et du même mode
-  (`runs` : leur nombre), à défaut celle du vrai run de PLANT-01 de T2
-  (`reference`), en mode essai, 0,1344 $ et 94 s, fois les pôles du
-  référentiel pour un run complet, à moitié prix par lots, la marge avec la
-  clé de l'instance ; par lots, sa durée est nulle (celle d'Anthropic).
-  Multipliée par les journées nouvelles ou changées, au moins une : la
-  fusion se refait à chaque run. `credit_usd`, avec la clé de l'instance.
+  estimation: {cout_usd, min_usd, max_usd, reserve_usd, duree_s,
+  evaluations | reference, poles}, admission: {journees, total, limite,
+  instruites, en_attente, changees_en_attente, autres_usd, refus},
+  plafonds: {budget_usd, duree_minutes}, credit_usd}`. L'estimation et
+  l'admission sont au §8.7 (T8). À défaut d'évaluation, la référence est le
+  vrai run de PLANT-01 de T2, en mode essai, 0,1344 $ et 94 s, fois les
+  pôles du référentiel pour un run complet, à moitié prix par lots, la
+  marge avec la clé de l'instance ; par lots, la durée est nulle (celle
+  d'Anthropic). `credit_usd`, avec la clé de l'instance.
 - **Une carte incomplète** : la page d'un run arrêté avec des journées finies
   l'ouvre dans la cartographie. Le document `twin9-run` porte alors
   `incomplete: true`, et `carto_evolutive` peut être nul ; l'import le dit
@@ -791,7 +800,8 @@ une suivante le relève.
   {nom, texte}`, `compteurs`, `appels[]` (son journal : `appel`, `etape`,
   `modele`, `modele_envoye`, `modele_servi`, `statut`, `tentatives`,
   `reponse`, `panne`, `stop_reason`, jetons, `cout_microusd`, `duree_ms`,
-  dates ; jamais un prompt ni une clé) et `sorties` (par chemin) ; chaque
+  dates ; jamais un prompt ni une clé), `sorties` (par chemin) et
+  `evaluation` (son évaluation, §8.7 ; nulle tant qu'il n'est pas fini) ; chaque
   carte avec `journal`, `referentiel`, `gabarits`, `created_at` et `memoire`
   (le texte JSON de chaque clé). Ce que le moteur et les modèles ont écrit
   passe le filtre de fuite contre tous les jeux de gabarits des runs du
@@ -849,6 +859,136 @@ une suivante le relève.
   `defaut` ; jamais un contenu. Les routes de contenu sont celles de l'atelier,
   par jeu : `/api/twin9/admin/jeux/{jeu}/protocole{/nom}{/versions{/v}|/restore}`
   et `/api/twin9/admin/jeux/{jeu}/tester`.
+
+### 8.7 Prévoir et admettre : la stratégie A (T8)
+
+Décision de Christian du 2026-10-19 : par lots, toutes les journées d'un run
+sont de front (§8.3), et un lancement ne prend que les journées que le
+crédit, ou le budget, permet de finir avec leur fusion.
+
+- **L'évaluation** (`twin9_evaluations`, migration 030,
+  `Twin9\Evaluations`) : un run fini laisse, dans la transaction qui efface
+  son journal, une ligne sans aucun contenu — `user_id` (la personne
+  évaluée ; `NULL` une fois son compte supprimé, la ligne restant pour les
+  prévisions) ; `journees` (`[{ko, cout_microusd, panne?}]` : chaque
+  journée de sa carte, dans l'ordre — celles que le run a prises, puis
+  celles que la mémoire garde au-delà, la carte étant additive —, sa taille
+  en Ko au centième, celle que donne le moteur (`Plateforme::apercu()`,
+  `octets`), et ce que le run a payé pour elle ; `null` pour une journée
+  reprise de la mémoire, ou une taille inconnue ; `panne: true` quand un de
+  ses appels a échoué : le run suivant la refait) ; `cout_journees_microusd`,
+  `cout_fusion_microusd` et `cout_microusd` (le coût final, ce que la
+  personne a payé, la marge de l'instance comprise avec la clé de
+  l'instance) ; `pire_cas_journee_microusd` et `pire_cas_fusion_microusd`
+  (le plus grand pire cas qu'un appel d'une journée, de la fusion, a
+  réservé avant de partir, T10 ; `twin9_appels.pire_cas_microusd` le garde
+  une fois l'appel réglé) ; `duree_s` (ses secondes actives) ; `reglages`
+  (`voie`, `cle`, `marge` — le facteur que ses coûts comprennent, 1 avec la
+  clé personnelle —, et ce que les prévisions comparent : `mode`,
+  `referentiel` et `version_referentiel`, `gabarits` et
+  `empreinte_gabarits` — l'empreinte du jeu, celle de l'attestation : un jeu
+  modifié est un autre jeu —, les modèles et la performance — `etages`,
+  `etapes`, `lecteurs`, avec modèle, budget de sortie, effort, réflexion et
+  passes — et les paramètres de l'algorithme : `seuils_consensus`,
+  `juge_leger`, `jury`, `premiere_impression`, `calques`, `merge`,
+  `scan_global`, `troncatures`) ; `signature` (16 caractères hexadécimaux
+  du SHA-256 de ce que les prévisions comparent, en JSON canonique : tout ce
+  dont dépendent les appels d'un run, sauf sa voie et sa clé, que la
+  prévision convertit, ses plafonds et son parallélisme). Un échec de la
+  consignation n'empêche jamais le run de finir : il est journalisé, sans
+  contenu. L'export du compte porte l'évaluation avec son run (§8.5).
+- **La prévision** (`Evaluations::modele`, `Evaluations::selon`) lit les 200
+  dernières évaluations de même signature, chacune convertie à la voie et à
+  la marge du run prévu (moitié prix par lots ; sa marge retirée, celle du
+  run prévu appliquée). Une journée instruite coûte une part fixe — les
+  fiches de son pôle font l'essentiel de chaque prompt de lecture — et une
+  part par Ko, ni l'une ni l'autre négative : la droite des moindres carrés
+  par les journées instruites (leur taille, leur coût ; une journée en
+  panne laissée de côté) ; une fusion de même, par les Ko de la carte
+  qu'elle relit, chaque évaluation un point. Une pente négative : le coût
+  ne croît pas avec la taille, leur moyenne ; une part fixe négative : le
+  coût par Ko seul ; une seule taille, qui ne dit rien du partage : moitié
+  l'une, moitié l'autre. Entre les tailles observées, au plus bas et au
+  plus haut, la droite décalée des écarts extrêmes observés. Au-delà, ce
+  qu'un tel coût permet : sous la plus petite, au plus ce qu'elle a coûté,
+  au moins sa part au Ko ; au-dessus de la plus grande, au moins ce qu'elle
+  a coûté, au plus autant au Ko. Jamais sous zéro. Une taille se lit comme
+  elle se consigne, en Ko au centième (`Evaluations::ko`). Le pire cas
+  d'un appel : le plus grand observé, et au moins ce que les réglages
+  d'appel du run réservent sur un prompt fait des deux plus grands gabarits
+  du jeu et de la plus grande journée à instruire (de la carte, pour la
+  fusion). Par appels directs, les secondes actives d'un run par journée
+  instruite, fusion comprise, en moyenne. Sans évaluation, la référence
+  (§8.5) : par journée instruite, une journée pour la fusion, et une journée
+  pour le pire cas d'un appel de chacune, au moins ce que disent ses
+  réglages. L'estimation dit sa source : les évaluations quand elles disent
+  tout ce qu'il lui faut (la fusion, et les journées s'il y en a à
+  instruire), sinon la référence.
+- **La carte que relit la fusion** : les journées que le run prend, et
+  celles que la mémoire garde au-delà — les journées du portfolio qu'il ne
+  prend pas, comptées à la taille de leur texte actuel, et celles de runs
+  passés absentes du portfolio (`apercu()`, `memoire`), à la taille de leur
+  texte gardé. Une journée changée au-delà de la coupe y reste dans sa
+  version déjà évaluée, jusqu'à la prochaine analyse ; sa taille actuelle
+  approche celle-ci.
+- **L'admission** (`Lancement::prevoir`) : les premières journées du
+  portfolio, dans l'ordre, tant que ce qu'elles demandent tient dans la plus
+  basse des limites (`admission.limite` : `credit`, `budget`, ou `null`
+  sans limite) — le crédit de la personne avec la clé de l'instance, moins
+  ce que ses autres analyses en cours peuvent encore en dépenser
+  (`autres_usd`, lus ensemble en une requête :
+  `RunRepository::disponible`), et le budget du profil : leur coût au plus haut, la
+  fusion de leur carte au plus haut comprise, et de quoi réserver le pire
+  cas d'un appel d'une journée et d'un appel de la fusion (T10 : chacun le
+  réserve avant de partir). Les autres attendent une prochaine analyse : la
+  copie du profil du run reçoit `jours` (ses N premières journées), et la
+  mémoire garde celles finies. Un profil qui relit toutes ses journées à
+  chaque analyse (`rescan`, ou sans `memoire`) prend tout ou rien.
+  L'aperçu rend `admission` : `journees` (N), `total`, `limite`,
+  `instruites` (les journées à instruire qu'il prend), `en_attente` (celles
+  qui attendent), `changees_en_attente` (dont changées), `autres_usd`,
+  `refus`. Refusé — pas même une journée à instruire et sa fusion, ou,
+  rien à instruire, pas même la fusion, ou pas tout le portfolio pour un
+  profil qui relit tout —, `refus` dit ce qu'il faudrait, au cent
+  supérieur, et le lancement répond `422` avec ce texte : « Votre crédit ne
+  couvre pas une carte, même d'une journée : il faudrait X $[, en plus des
+  Y $ que vos analyses en cours peuvent encore dépenser] (une journée et sa
+  fusion, au coût le plus haut observé | d'après le run de référence,
+  réserves des appels comprises) », « … ne couvre pas la fusion de la
+  carte … », « Ce profil relit toutes ses journées à chaque analyse, et
+  votre crédit ne couvre pas le portfolio entier … » (« le budget du
+  profil… »). Un lancement, ou une reprise, à la fois par personne
+  (`GET_LOCK`, `RunRepository::sousVerrou`), pour que le suivant compte ce
+  que le précédent a obtenu. L'attestation garde
+  `admission`, `refus` excepté, avec `reserve_microusd` et
+  `engagement_microusd`.
+- **La réserve de la fusion** (`twin9_runs.reserve_fusion_microusd`) : la
+  fusion de la carte admise au plus haut, et le pire cas d'un de ses
+  appels. Un appel d'une journée ne l'entame jamais : ni le crédit ni le
+  budget ne descendent pour lui sous elle (`Twin9Run::retenue`) ; retenu, le
+  run s'arrête, `crédit insuffisant (fusion réservée) : carte incomplète`
+  (ou `budget atteint (fusion réservée) : …`), et se reprend comme après un
+  arrêt par le crédit (une fois rechargé) ou par le budget (sous un nouveau,
+  §8.5). Les appels de la fusion la dépensent.
+- **L'engagement** (`twin9_runs.engagement_microusd`) : avec la clé de
+  l'instance, ce que le lancement a accordé au run sur le crédit, ce que
+  demandent ses journées admises et leur fusion. Ce qu'un run en cours
+  peut encore en dépenser — son engagement, moins ce qu'il a engagé : pires
+  cas réservés, coûts réglés —, les autres runs de la même personne ne
+  l'entament jamais : chaque appel le lit avec le crédit, en une requête
+  (`RunRepository::disponible`), si bien qu'une réservation ou un règlement
+  d'un autre run, qui déplace les deux d'autant, ne compte jamais deux fois.
+  Retenu, un run s'arrête, `crédit insuffisant (engagé par vos autres
+  analyses) : carte incomplète`. Repris, un run est admis de nouveau : son
+  engagement ne dépasse plus ce qu'il a engagé et ce que les autres runs en
+  cours laissent libre.
+- **L'estimation** de l'aperçu est celle du run tel qu'il partirait, ses
+  journées admises et leur fusion (refusé, ce que dit le refus) :
+  `min_usd`, `cout_usd` (la moyenne), `max_usd`, `reserve_usd`, en dollars
+  au micro-dollar, que la page arrondit au cent ; `duree_s` (nulle par
+  lots) ; et sa source, `evaluations` (leur nombre) ou `reference` et
+  `poles`. La page dit les journées admises ou le refus, qu'elle ne laisse
+  pas lancer.
 
 ## 9. Plusieurs référentiels (T15)
 

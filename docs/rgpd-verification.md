@@ -105,6 +105,7 @@ colonne export : `archive` = dans l'archive « un clic », lu par
 | 028 | `twin9_lots_a_effacer` | non (identifiant Anthropic seul, sans propriétaire) | — (vidée par le tick) | `—` |
 | 029 | `twin9_jeux` | non (une copie des gabarits v9.8, contenu de plateforme) | SET NULL `user_id` : la copie survit, sans auteur | `—` |
 | 029 | `twin9_jeux_gabarits`, `twin9_jeux_versions` | non (gabarits et leurs versions) | SET NULL `updated_by` / `created_by` | `—` |
+| 030 | `twin9_evaluations` ; `twin9_runs.reserve_fusion_microusd`, `engagement_microusd` ; `twin9_appels.pire_cas_microusd` | évaluation : oui tant qu'elle nomme la personne (tailles, coûts, pires cas, réglages ; aucun contenu) ; colonnes : montants seuls | évaluation : SET NULL `user_id`, elle sert les prévisions sans plus appartenir à personne ; colonnes : CASCADE avec leur run | `archive` (avec son run) |
 
 **Les lots encore chez Anthropic** (`DELETE /api/auth/account`,
 `Twin9\RunPurge`) : ceux de la clé personnelle sont annulés, puis supprimés

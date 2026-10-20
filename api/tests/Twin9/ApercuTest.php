@@ -8,6 +8,7 @@ use Humanome\Referentiel\ReferentielRepository;
 use Humanome\Tests\CartographeTestCase;
 use Humanome\Tests\TestDb;
 use Humanome\Twin9\CreditService;
+use Humanome\Twin9\Evaluations;
 use Humanome\Twin9\Lancement;
 use Humanome\Twin9\ProfilRepository;
 use Humanome\Twin9\ProtocoleRepository;
@@ -18,11 +19,14 @@ use PHPUnit\Framework\Attributes\RunTestsInSeparateProcesses;
  * Before a launch (T10, Twin_v9's docs/plan-twin9-php.md, lot 2, « Coûts et
  * plafonds », « Relancer »): the launch page learns which days the run would
  * instruct — a portfolio already evaluated instructs its days new or changed
- * only —, and what it would cost and last: the average by day of the runs
- * done of the same profile in the same mode, failing those the real run of
- * PLANT-01, in test mode, times the referential's poles. The engine is the
- * fake one, the provider the local instance's simulated Anthropic. Each test
- * runs in a process of its own.
+ * only —, and what it would cost and last: at the least, on average and at
+ * the most, by the size of its days and of its map, as the evaluations of the
+ * same settings say (T8), failing those the real run of PLANT-01, in test
+ * mode, times the referential's poles. A launch takes the days its owner's
+ * credit, or its budget, lets in with its merge and room for the worst case
+ * of their calls (T8, strategy A), or is refused, saying what it would take.
+ * The engine is the fake one, the provider the local instance's simulated
+ * Anthropic. Each test runs in a process of its own.
  */
 #[RunTestsInSeparateProcesses]
 #[PreserveGlobalState(false)]
@@ -91,12 +95,15 @@ final class ApercuTest extends CartographeTestCase
     }
 
     /**
-     * The estimate: without a run done of the profile in its mode, the real
-     * run of PLANT-01 times the referential's poles, the margin with the
-     * instance's key, half price by batches whose time it cannot say; then
-     * the average by day of the runs done.
+     * The estimate: without an evaluation of the same settings, the real run
+     * of PLANT-01 times the referential's poles, for each day instructed and a
+     * day's worth for the merge, the margin with the instance's key, half
+     * price by batches whose time it cannot say; the merge's reserve, a day's
+     * worth more for the worst case of its calls. Then as the evaluations say
+     * (T8): a day instructed by its size, the merge by the size of its map,
+     * its reserve with the largest worst case observed.
      */
-    public function testTheEstimateComesFromThePastRunsElseFromTheReferenceRun(): void
+    public function testTheEstimateComesFromTheEvaluationsElseFromTheReferenceRun(): void
     {
         $alice = $this->registerAs('estimation@example.org', 'Alice');
         $profil = $this->profil($alice);
@@ -105,14 +112,19 @@ final class ApercuTest extends CartographeTestCase
         $parJour = Lancement::REFERENCE_MICROUSD * 7 * 1.2;
         self::assertSame(['reference' => 'PLANT-01', 'poles' => 7], array_intersect_key($e['estimation'],
             ['reference' => 1, 'poles' => 1]));
-        self::assertSame(round($parJour * 2 / 1_000_000, 2), $e['estimation']['cout_usd']);
+        $usd = round($parJour * 3 / 1_000_000, 6);
+        self::assertSame([$usd, $usd, $usd], [$e['estimation']['min_usd'], $e['estimation']['cout_usd'],
+                                               $e['estimation']['max_usd']], 'deux journées et la fusion');
+        self::assertSame(round(2 * $parJour / 1_000_000, 6), $e['estimation']['reserve_usd'], 'la fusion et un pire cas');
         self::assertSame(Lancement::REFERENCE_SECONDES * 7 * 2, $e['estimation']['duree_s']);
         self::assertSame(['budget_usd' => null, 'duree_minutes' => null], $e['plafonds']);
         self::assertSame(['directe', 'instance', 1000.0], [$e['voie'], $e['cle'], $e['credit_usd']]);
+        self::assertSame(['journees' => 2, 'total' => 2, 'limite' => 'credit', 'instruites' => 2, 'en_attente' => 0,
+                          'changees_en_attente' => 0, 'autres_usd' => 0.0, 'refus' => null], $e['admission']);
 
         $v98 = $this->apercu($alice, null, self::PORTFOLIO);
         self::assertSame('lots', $v98['voie']);
-        self::assertSame(round($parJour / 2 * 2 / 1_000_000, 2), $v98['estimation']['cout_usd'], 'à moitié prix');
+        self::assertSame(round($parJour / 2 * 3 / 1_000_000, 6), $v98['estimation']['cout_usd'], 'à moitié prix');
         self::assertNull($v98['estimation']['duree_s'], 'par lots, la durée est celle d’Anthropic');
 
         $essai = $this->profil($alice, 'Essai', ['mode' => 'test']);
@@ -121,14 +133,160 @@ final class ApercuTest extends CartographeTestCase
         self::assertSame(1, $t['estimation']['poles'], 'le vrai run de PLANT-01 était un essai');
 
         $run = $this->lancer($alice, $profil, self::PORTFOLIO);
-        $compteurs = $this->jusquAuBout($alice, $run)['compteurs'];
-        $apres = $this->apercu($alice, $profil, self::PORTFOLIO . "## 2026-01-07\nUn de plus.\n");
-        self::assertSame(1, $apres['estimation']['runs']);
-        self::assertSame(round(intdiv($compteurs['cout_microusd'], 2) / 1_000_000, 4),
-            $apres['estimation']['par_journee']['cout_usd']);
-        self::assertSame(intdiv($compteurs['duree_s'], 2), $apres['estimation']['par_journee']['duree_s']);
+        $this->jusquAuBout($alice, $run);
+        $ajout = "## 2026-01-07\nUn de plus.\n";
+        $apres = $this->apercu($alice, $profil, self::PORTFOLIO . $ajout);
+        self::assertSame(1, $apres['estimation']['evaluations']);
+        // as its one evaluation says: its days' line for the day added, its merge by the size of the map
+        $ev = self::$pdo->query('SELECT signature, journees, cout_fusion_microusd FROM twin9_evaluations')->fetch();
+        $modele = (new Evaluations(self::$pdo))->modele((string) $ev['signature'], false, 1.2);
+        $ko = array_sum(array_column(json_decode((string) $ev['journees'], true), 'ko')) + Evaluations::ko(\strlen('Un de plus.'));
+        $jour = Evaluations::selon($modele['journee'], Evaluations::ko(\strlen('Un de plus.')));
+        $fusion = Evaluations::selon($modele['fusion'], $ko);
+        self::assertSame(array_map(static fn (string $b): float => round(($jour[$b] + $fusion[$b]) / 1_000_000, 6),
+            ['cout_usd' => 'moyenne', 'min_usd' => 'min', 'max_usd' => 'max']),
+            array_intersect_key($apres['estimation'], ['cout_usd' => 1, 'min_usd' => 1, 'max_usd' => 1]));
+        self::assertGreaterThanOrEqual(round(($fusion['max'] + $modele['pire_cas']['fusion']) / 1_000_000, 6),
+            $apres['estimation']['reserve_usd'], 'la fusion au plus haut, et au moins le plus grand pire cas d’un de ses appels');
+        self::assertGreaterThan(0.0, $apres['estimation']['cout_usd']);
+        self::assertGreaterThan(0.0, $fusion['moyenne']);
+        self::assertGreaterThan(0.0, $modele['pire_cas']['journee']);
+
+        // a day removed stays in the map, and the merge reads it (the map is additive)
+        $retire = "## 2026-01-05\nPremier jour : j'ai monté le capteur.\n" . $ajout;
+        $sans = $this->apercu($alice, $profil, $retire);
+        self::assertSame(['total' => 2, 'nouvelles' => 1, 'changees' => 0], $sans['journees']);
+        $ko = Evaluations::ko(\strlen("Deuxième jour : j'ai lu les mesures.")) + Evaluations::ko(\strlen("Premier jour : j'ai monté le capteur."))
+            + Evaluations::ko(\strlen('Un de plus.'));
+        $fusion = Evaluations::selon($modele['fusion'], $ko);
+        self::assertSame(round(($jour['moyenne'] + $fusion['moyenne']) / 1_000_000, 6), $sans['estimation']['cout_usd'],
+            'la journée retirée, gardée par la mémoire');
+
+        // evaluations that say nothing of what a day costs: a day to instruct is the reference's, and the estimate says so
+        self::$pdo->exec("UPDATE twin9_evaluations SET journees = JSON_ARRAY(JSON_OBJECT('ko', 0.03, 'cout_microusd', NULL),
+                                                                         JSON_OBJECT('ko', 0.03, 'cout_microusd', NULL))");
+        $sansJours = $this->apercu($alice, $profil, self::PORTFOLIO . $ajout)['estimation'];
+        self::assertSame(['reference' => 'PLANT-01', 'poles' => 7], array_intersect_key($sansJours, ['reference' => 1, 'poles' => 1]));
+        self::assertArrayNotHasKey('evaluations', $sansJours);
         self::assertSame(1, $this->apercu($alice, $essai, self::PORTFOLIO)['estimation']['poles'],
             'un run complet ne sert pas l’estimation d’un essai');
+    }
+
+    /**
+     * T8, strategy A: a launch takes the first days its owner's credit lets
+     * in at the most with the merge of their map, which the run keeps in
+     * reserve, and room for the worst case of a call of a day and of the
+     * merge (without evaluations, a day's worth each); the others wait for a
+     * next run. Without room for a day and its merge, it is refused, saying
+     * what it would take; a profile's budget bounds it the same way.
+     */
+    public function testALaunchTakesTheDaysThatFitWithTheMergesReserve(): void
+    {
+        $alice = $this->registerAs('admission@example.org', 'Alice');
+        $profil = $this->profil($alice);
+        $trois = self::PORTFOLIO . "## 2026-01-07\nTroisième jour : j'ai présenté.\n";
+        $parJour = (int) round(Lancement::REFERENCE_MICROUSD * 7 * 1.2);
+
+        // not even a day and its merge, with the worst case of a call of each: refused, saying what it would take
+        $this->credit($alice, 4 * $parJour - 1);
+        self::assertSame(0, $this->apercu($alice, $profil, $trois)['admission']['journees']);
+        $refus = $this->as_($alice, 'POST', '/api/twin9/runs', ['profil' => $profil, 'accord' => true,
+            'portfolio' => ['nom' => 'journal-factice.md', 'texte' => $trois]]);
+        self::assertSame(422, $refus->getStatusCode());
+        self::assertSame('Votre crédit ne couvre pas une carte, même d’une journée : il faudrait '
+            . self::dollars(4 * $parJour) . ' (une journée et sa fusion, d’après le run de référence, réserves des appels '
+            . 'comprises)', self::json($refus)['error']);
+        self::assertSame(self::json($refus)['error'], $this->apercu($alice, $profil, $trois)['admission']['refus'],
+            'l’aperçu le dit d’avance');
+        self::assertSame(0, (int) self::$pdo->query('SELECT COUNT(*) FROM twin9_runs')->fetchColumn());
+
+        // the profile's budget, lower than the credit, bounds it the same way
+        $this->credit($alice, 1_000_000_000);
+        $budget = $this->profil($alice, 'Budget', ['budget_usd' => 5.0]);
+        self::assertSame(['journees' => 1, 'total' => 3, 'limite' => 'budget', 'instruites' => 1, 'en_attente' => 2,
+                          'changees_en_attente' => 0, 'autres_usd' => 0.0, 'refus' => null],
+            $this->apercu($alice, $budget, $trois)['admission']);
+
+        // a day and its merge fit, not two days and the merge: the first day goes, the others wait
+        $this->credit($alice, 5_000_000);
+        $e = $this->apercu($alice, $profil, $trois);
+        self::assertSame([1, 2], [$e['admission']['journees'], $e['admission']['en_attente']]);
+        self::assertSame(round(2 * $parJour / 1_000_000, 6), $e['estimation']['cout_usd'], 'la journée admise et sa fusion');
+        $run = $this->lancer($alice, $profil, $trois);
+        $ligne = self::$pdo->query("SELECT reserve_fusion_microusd, engagement_microusd, attestation FROM twin9_runs WHERE id = $run")
+            ->fetch();
+        self::assertSame([2 * $parJour, 4 * $parJour], [(int) $ligne['reserve_fusion_microusd'], (int) $ligne['engagement_microusd']],
+            'la fusion de sa carte et un pire cas ; ce qui lui est accordé');
+        self::assertEquals(['journees' => 1, 'total' => 3, 'limite' => 'credit', 'instruites' => 1, 'en_attente' => 2,
+                            'changees_en_attente' => 0, 'autres_usd' => 0.0, 'reserve_microusd' => 2 * $parJour,
+                            'engagement_microusd' => 4 * $parJour],
+            json_decode((string) $ligne['attestation'], true)['admission'], 'l’attestation le garde');
+        self::assertSame(1, $this->jusquAuBout($alice, $run)['compteurs']['journees'], 'sa première journée seule');
+    }
+
+    /**
+     * T8: the days to instruct beyond what fits wait, a changed one kept in
+     * its version already evaluated meanwhile; what the owner's other runs in
+     * progress may still spend is deducted from their credit; a profile that
+     * reads every day again takes all or none; with nothing to instruct, the
+     * merge alone must fit.
+     */
+    public function testWhatWaitsWhatOtherRunsHoldAndWhatTakesAllOrNone(): void
+    {
+        $alice = $this->registerAs('attente@example.org', 'Alice');
+        $profil = $this->profil($alice);
+        $parJour = (int) round(Lancement::REFERENCE_MICROUSD * 7 * 1.2);
+        $this->jusquAuBout($alice, $this->lancer($alice, $profil, self::PORTFOLIO));
+        $trois = self::PORTFOLIO . "## 2026-01-07\nTroisième jour : j'ai présenté.\n";
+
+        // other settings, without evaluations: its days are changed, the reference says what they cost
+        $etages = ProfilRepository::v98()->etages;
+        $etages->profond->effort = 'low';
+        $autre = $this->profil($alice, 'Autre', ['etages' => $etages]);
+        $this->credit($alice, (int) (4.5 * $parJour));
+        $e = $this->apercu($alice, $autre, $trois);
+        self::assertSame(['total' => 3, 'nouvelles' => 1, 'changees' => 2], $e['journees']);
+        self::assertSame(['journees' => 1, 'total' => 3, 'limite' => 'credit', 'instruites' => 1, 'en_attente' => 2,
+                          'changees_en_attente' => 1, 'autres_usd' => 0.0, 'refus' => null], $e['admission']);
+
+        // a run in progress holds what it was granted: another launch counts without it
+        $this->credit($alice, 6 * $parJour);
+        $en = $this->lancer($alice, $autre, self::PORTFOLIO);
+        self::assertSame(5 * $parJour, (int) self::$pdo->query("SELECT engagement_microusd FROM twin9_runs WHERE id = $en")
+            ->fetchColumn(), 'deux journées, la fusion, deux pires cas');
+        $deux = "## 2026-02-01\nUn autre journal.\n## 2026-02-02\nSa suite.\n";
+        $r = $this->as_($alice, 'POST', '/api/twin9/runs/apercu',
+            ['profil' => $autre, 'portfolio' => ['nom' => 'autre-journal.md', 'texte' => $deux]]);
+        $a = self::json($r)['admission'];
+        self::assertSame(round(5 * $parJour / 1_000_000, 6), $a['autres_usd']);
+        self::assertSame('Votre crédit ne couvre pas une carte, même d’une journée : il faudrait ' . self::dollars(4 * $parJour)
+            . ', en plus des ' . self::dollars(5 * $parJour) . ' que vos analyses en cours peuvent encore dépenser (une journée '
+            . 'et sa fusion, d’après le run de référence, réserves des appels comprises)', $a['refus']);
+        $this->as_($alice, 'POST', "/api/twin9/runs/$en/annuler");
+
+        // a profile without memory takes all or none
+        $sansMemoire = $this->profil($alice, 'Sans mémoire', ['etages' => $etages, 'memoire' => false]);
+        $this->credit($alice, (int) (4.5 * $parJour));
+        self::assertSame('Ce profil relit toutes ses journées à chaque analyse, et votre crédit ne couvre pas le portfolio '
+            . 'entier : il faudrait ' . self::dollars(5 * $parJour) . ' (ses journées et leur fusion, d’après le run de '
+            . 'référence, réserves des appels comprises)', $this->apercu($alice, $sansMemoire, self::PORTFOLIO)['admission']['refus']);
+
+        // nothing to instruct: the merge alone, which does not fit
+        $this->credit($alice, 1);
+        $refus = $this->apercu($alice, $profil, self::PORTFOLIO)['admission']['refus'];
+        self::assertStringStartsWith('Votre crédit ne couvre pas la fusion de la carte : il faudrait ', $refus);
+        self::assertStringEndsWith(' $ (au coût le plus haut observé, réserve de ses appels comprise)', $refus);
+    }
+
+    /** Micro-dollars as a refusal says them: to the cent above. */
+    private static function dollars(int $microusd): string
+    {
+        return number_format(ceil($microusd / 10_000) / 100, 2, ',', '') . ' $';
+    }
+
+    private function credit(array $user, int $microusd): void
+    {
+        self::$pdo->prepare('UPDATE twin9_credits SET balance_microusd = ? WHERE user_id = ?')->execute([$microusd, $user['id']]);
     }
 
     /** The preview keeps nothing, and asks what a launch asks, but the consent. */

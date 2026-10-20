@@ -255,7 +255,7 @@
     },
     "analysesTwin9": {
       "type": "object",
-      "description": "Analyses approfondies Twin9 du compte, depuis la version 1.2.0 de l'archive (ADR-011 §5) : telles que GET /api/twin9/mes-analyses les rend (docs/contrats.md §8.5) — chaque run, avec la copie de son profil, son portfolio, son attestation, son journal d'appels (réponses des modèles, jamais un prompt ni une clé), ses sorties et ses compteurs ; la mémoire de chacune de ses cartes. Ce que les modèles ont écrit passe le filtre anti-fuite des gabarits. Optionnel : absent quand le compte n'a aucun run. Jamais réimporté : un run se relance.",
+      "description": "Analyses approfondies Twin9 du compte, depuis la version 1.2.0 de l'archive (ADR-011 §5) : telles que GET /api/twin9/mes-analyses les rend (docs/contrats.md §8.5) — chaque run, avec la copie de son profil, son portfolio, son attestation, son journal d'appels (réponses des modèles, jamais un prompt ni une clé), ses sorties, ses compteurs et, fini, son évaluation (T8 : taille et coût de chaque journée, coût de la fusion, plus grands pires cas d'un appel, réglages du profil) ; la mémoire de chacune de ses cartes. Ce que les modèles ont écrit passe le filtre anti-fuite des gabarits. Optionnel : absent quand le compte n'a aucun run. Jamais réimporté : un run se relance.",
       "additionalProperties": false,
       "required": ["runs", "cartes"],
       "properties": {

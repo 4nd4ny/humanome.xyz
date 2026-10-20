@@ -286,6 +286,24 @@ final class LotsTest extends TestCase
         self::assertSame(0, (int) $this->pdo->query('SELECT COUNT(*) FROM twin9_lots')->fetchColumn());
     }
 
+    /**
+     * T8, strategy A: by batches, every day of the run goes abreast, whatever
+     * parallelisme.journees says (the direct lane's): each wave waits a
+     * whole batch.
+     */
+    public function testByBatchesEveryDayGoesAbreast(): void
+    {
+        $id = $this->nouveauRun(['/parallelisme/journees' => 1]);
+        $lots = new FakeBatchApi(static fn (array $r): array => FakeBatchApi::message('vu ' . FakeBatchApi::appel($r)),
+            regards: 0);
+
+        $this->tick($lots);
+        $jours = array_map(static fn (array $r): string => explode('/', FakeBatchApi::appel($r))[1], $lots->requetes);
+        self::assertSame(['J1', 'J1', 'J2', 'J2', 'J3', 'J3'], $jours, 'les lecteurs des trois journées dans le premier lot');
+        $this->jusquAuBout($lots);
+        self::assertSame(4, (new RunRepository($this->pdo))->compteursDe($id)['lots'], 'une vague, un lot');
+    }
+
     /** Batches stay within their bound; a call in a batch costs its usage at half price. */
     public function testBatchesAreBoundedAndCostHalfPrice(): void
     {

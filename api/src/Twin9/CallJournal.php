@@ -75,22 +75,24 @@ final class CallJournal implements Journal
     /**
      * Before a call leaves, directly or in a batch: its row, its attempt
      * counted, and the worst case it holds — $reserve, newly held, or the one
-     * it already holds (null).
+     * it already holds (null); a worst case newly held is kept once settled
+     * (pire_cas_microusd), for its run's evaluation (T8).
      */
     public function envoye(Call $call, string $modele, int $tentative, ?int $lotId = null, ?string $customId = null,
                            ?int $reserve = null): void
     {
         $this->pdo->prepare(
             'INSERT INTO twin9_appels (run_id, appel, etape, modele, modele_envoye, sha256, statut, lot_id, custom_id,
-                    tentatives, reprise_at, reponse, panne, reserve_microusd, envoye_at)
-             VALUES (?, ?, ?, ?, ?, ?, "envoye", ?, ?, ?, NULL, NULL, NULL, ?, NOW(3))
+                    tentatives, reprise_at, reponse, panne, reserve_microusd, pire_cas_microusd, envoye_at)
+             VALUES (?, ?, ?, ?, ?, ?, "envoye", ?, ?, ?, NULL, NULL, NULL, ?, ?, NOW(3))
              ON DUPLICATE KEY UPDATE etape = VALUES(etape), modele = VALUES(modele),
                     modele_envoye = VALUES(modele_envoye), sha256 = VALUES(sha256), statut = "envoye",
                     lot_id = VALUES(lot_id), custom_id = VALUES(custom_id), tentatives = VALUES(tentatives),
                     reprise_at = NULL, reponse = NULL, panne = NULL,
-                    reserve_microusd = COALESCE(VALUES(reserve_microusd), reserve_microusd), envoye_at = NOW(3)'
+                    reserve_microusd = COALESCE(VALUES(reserve_microusd), reserve_microusd),
+                    pire_cas_microusd = COALESCE(VALUES(pire_cas_microusd), pire_cas_microusd), envoye_at = NOW(3)'
         )->execute([$this->runId, $call->id, $call->step, $call->model, $modele, $call->sha256, $lotId, $customId,
-                    $tentative, $reserve]);
+                    $tentative, $reserve, $reserve]);
         $this->rows[$call->id] = ['statut' => 'envoye', 'sha256' => $call->sha256, 'tentatives' => $tentative,
                                   'reprise_at' => null, 'panne' => null, 'blob' => null, 'reponse' => null,
                                   'reserve' => $reserve ?? $this->rows[$call->id]['reserve'] ?? null];

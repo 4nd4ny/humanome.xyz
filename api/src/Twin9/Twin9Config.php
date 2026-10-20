@@ -308,7 +308,18 @@ final class Twin9Config
     public function coutMicrousd(string $modelId, int $tokensIn, int $tokensOut, string $protocole = 'twin9',
                                  bool $parLots = false, bool $avecMarge = true): ?int
     {
-        $config = $this->read();
+        return self::cout($this->read(), $modelId, $tokensIn, $tokensOut, $protocole, $parLots, $avecMarge);
+    }
+
+    /**
+     * coutMicrousd() on a configuration already read (read()): many costs for
+     * one query, as an admission computes them (T8).
+     *
+     * @param array<string, mixed> $config
+     */
+    public static function cout(array $config, string $modelId, int $tokensIn, int $tokensOut, string $protocole = 'twin9',
+                                bool $parLots = false, bool $avecMarge = true): ?int
+    {
         $modele = $config['modeles'][$modelId] ?? null;
         if (!\is_array($modele)) {
             return null;

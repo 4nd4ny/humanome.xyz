@@ -11,14 +11,17 @@
 // Tout référentiel publié (2026-10-20) : un run Twin6 lit le référentiel choisi
 // (RESPIRE par défaut) — un scan par pôle —, et ses fiches sont celles du
 // paquet pour un pôle dont elles nomment exactement les compétences, sinon
-// écrites depuis le document (fichesPourTwin6, moteur).
+// écrites depuis le document (fichesPourTwin6, moteur). Le paquet servi est la
+// 1.1.0, dont les gabarits lisent le référentiel (son nom, ses pôles, ses
+// compétences, la forme de ses codes) au lieu d'écrire RESPIRE v7 en toutes
+// lettres ; pour RESPIRE v7, ses prompts sont ceux de la 1.0.0 à l'octet.
 
 import { apiFetch } from './client.js'
 import { createProvider } from '@engine/providers/index.js'
 import { fetchTwin9Meta, referentielPourMoteur } from './twin9.js'
 
 /** Paquet de prompts open source (servi statiquement, téléchargeable). */
-export const TWIN6_PACKAGE_URL = 'data/twin6/twin6-ouverte-1.0.0.json'
+export const TWIN6_PACKAGE_URL = 'data/twin6/twin6-ouverte-1.1.0.json'
 
 /**
  * Charge le paquet PUBLIC de prompts Twin6 (scanPole, kairos, les fiches des

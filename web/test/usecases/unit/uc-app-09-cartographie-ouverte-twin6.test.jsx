@@ -43,7 +43,8 @@ describe('UC-APP-09 — paquet de prompts PUBLIC', () => {
     const fetchFn = vi.fn(async () => jsonResponse(200, sansDefaut))
     const pkg = await loadTwin6Package({ fetchFn })
     expect(fetchFn).toHaveBeenCalledWith(TWIN6_PACKAGE_URL)
-    expect(TWIN6_PACKAGE_URL).toBe('data/twin6/twin6-ouverte-1.0.0.json')
+    // La 1.1.0, dont les gabarits lisent le référentiel choisi (2026-10-20).
+    expect(TWIN6_PACKAGE_URL).toBe('data/twin6/twin6-ouverte-1.1.0.json')
     expect(pkg.modeleCibleDefaut).toBe('claude-sonnet-5')
     expect(pkg.licence).toBe('AGPL-3.0-only')
     expect(Object.keys(pkg.templates)).toEqual(['scanPole', 'kairos', 'fiches'])

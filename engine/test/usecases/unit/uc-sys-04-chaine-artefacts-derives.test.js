@@ -59,11 +59,13 @@ const BASE_FILES = [
   'scripts/build-default-prompt-package.mjs',
   'scripts/build-twin6-package.mjs',
   'scripts/build-twin6-prompt-package.mjs',
+  'scripts/twin6-gabarits.mjs',
   'scripts/build-validators.mjs',
   'scripts/validate-corpus.mjs',
   'scripts/build-gitbook-summary.mjs',
   'scripts/data/fiches-v7.json',
   'scripts/data/referentiel-v7-definitions.json',
+  'scripts/data/twin6',
   'engine/package.json',
   'web/package.json',
 ]
@@ -209,12 +211,10 @@ const sendJson = (res, status, body) => {
   res.end(typeof body === 'string' ? body : JSON.stringify(body))
 }
 
-/** Gabarits Twin6 SYNTHÉTIQUES (non versionnés dans le dépôt : AN-2). */
-const TWIN6_GABARITS = {
-  '0-mega-prompt.md': '# Méga-prompt Twin6 — gabarit synthétique de test\n',
-  '1-scan-pole.md': '# Scan du pôle ${POLE} — gabarit synthétique de test\n',
-  '2-kairos-final.md': '# Kairos final — gabarit synthétique de test\n',
-}
+/** Les gabarits Twin6 versionnés (scripts/data/twin6, AN-2 corrigée le 2026-10-20). */
+const TWIN6_DIR = 'scripts/data/twin6'
+const TWIN6_STATIQUES = ['1.0.0', '1.1.0'].map((v) => `web/public/data/twin6/twin6-ouverte-${v}.json`)
+const TWIN6_PUBLIES = ['1.0.0', '1.1.0'].map((v) => `build/prompt-packages/twin6-ouverte-${v}.json`)
 
 describe('UC-SYS-04 — fonctionnels (scripts en sous-processus, miroir temporaire)', () => {
   it('UC-SYS-04-F01 — Nominal, étape 1 : conversions du corpus démo → merge.json et 59 journées conformes aux schémas, index chronologique, sorties identiques octet pour octet au second passage', () => {
@@ -670,91 +670,124 @@ describe('UC-SYS-04 — fonctionnels (scripts en sous-processus, miroir temporai
     expect(readdirSync(join(root, PROMPTS_DIR)).sort()).toEqual(['P1.md', 'P2.md'])
   }, TIMEOUT)
 
-  it('UC-SYS-04-F11 — E5 (AN-2) : depuis les seules entrées versionnées, generate-fiches crée le dossier des P*.md et les écrit, mais les deux paquets Twin6 échouent (gabarits Twin6 absents) — comportement ACTUEL', () => {
+  it('UC-SYS-04-F11 — E5, AN-2 (corrigée) : sans les P*.md, les deux paquets Twin6 échouent (« prompt manquant ») ; depuis les seules entrées versionnées, generate-fiches les écrit et les paquets 1.0.0 et 1.1.0 se construisent', () => {
     const root = mirrorWith([`${REF_DIR}/respire-v7.json`])
     expect(existsSync(join(root, PROMPTS_DIR))).toBe(false)
-    expectOk(run(root, 'scripts/generate-fiches.mjs'))
-    expect(readdirSync(join(root, PROMPTS_DIR)).sort()).toEqual(['P1.md', 'P2.md', 'P3.md', 'P4.md', 'P5.md', 'P6.md', 'P7.md'])
-
     for (const script of ['scripts/build-twin6-package.mjs', 'scripts/build-twin6-prompt-package.mjs']) {
       const result = run(root, script)
       expect(result.status, script).toBe(1)
-      expect(result.stderr, script).toContain(`Error: prompt manquant : ${join(root, PROMPTS_DIR, '1-scan-pole.md')}`)
+      expect(result.stderr, script).toContain(`Error: prompt manquant : ${join(root, PROMPTS_DIR, 'P1.md')}`)
     }
-    expect(existsSync(join(root, 'web/public/data/twin6/twin6-ouverte-1.0.0.json'))).toBe(false)
     expect(existsSync(join(root, 'build'))).toBe(false)
-  }, TIMEOUT)
 
-  it('UC-SYS-04-F12 — Nominal, étapes 6-7, RG6 : gabarits Twin6 fournis → paquet statique et prompt-package « twin6-ouverte » conformes, textes octet pour octet identiques aux P*.md, réservé, déterministes', () => {
-    const root = mirrorWith([`${REF_DIR}/respire-v7.json`])
-    mkdirSync(join(root, PROMPTS_DIR), { recursive: true })
-    for (const [name, text] of Object.entries(TWIN6_GABARITS)) writeFileSync(join(root, PROMPTS_DIR, name), text)
     expectOk(run(root, 'scripts/generate-fiches.mjs'))
-
-    const staticOut = join(root, 'web/public/data/twin6/twin6-ouverte-1.0.0.json')
-    const packageOut = join(root, 'build/prompt-packages/twin6-ouverte-1.0.0.json')
-    const staticRun = run(root, 'scripts/build-twin6-package.mjs')
-    expectOk(staticRun)
-    expect(staticRun.stdout).toMatch(/^écrit .*twin6-ouverte-1\.0\.0\.json \(\d+ octets\)\n {2}scanPole \d+ car\., kairos \d+ car\., 7 fiches\n$/)
-    const packageRun = run(root, 'scripts/build-twin6-prompt-package.mjs')
-    expectOk(packageRun)
-    expect(packageRun.stdout).toBe(
-      `wrote build/prompt-packages/twin6-ouverte-1.0.0.json (10 prompts : scan-pole + kairos + mega + 7 fiches, engine ${ENGINE_VERSION})\n`,
-    )
-
-    const staticPkg = readJson(staticOut)
-    const pkg = readJson(packageOut)
-    expect(validateDocument('prompt-package', pkg)).toEqual({ valid: true, errors: [] })
-    expect(pkg).toMatchObject({ id: 'twin6-ouverte', version: '1.0.0', code: { entrypoint: 'executerTwin6' } })
-    expect(pkg.metadata.reserved).toBe(true)
-    expect(pkg.code.orchestration).toContain(`engine://humanome-engine@${ENGINE_VERSION} (twin6)`)
-    expect(pkg.changelog[0].date).toBe('2026-07-16')
-    expect(staticPkg).toMatchObject({ id: 'twin6-ouverte', version: '1.0.0', metadata: { nbAppelsParRun: 8 } })
-    expect(staticPkg.kind).toBeUndefined() // paquet statique : pas un document prompt-package
-    // Paquet statique : aucun schéma ; forme exacte du contrat executerTwin6
-    // (gabarits scanPole, kairos, megaPrompt et fiches 1..7), rien de plus.
-    expect(Object.keys(staticPkg)).toEqual([
-      'schemaVersion',
-      'id',
-      'version',
-      'nom',
-      'description',
-      'auteur',
-      'licence',
-      'referentielCompatible',
-      'modeleCibleDefaut',
-      'scanPole',
-      'kairos',
-      'megaPrompt',
-      'fiches',
-      'metadata',
-    ])
-    expect(Object.keys(staticPkg.fiches)).toEqual(['1', '2', '3', '4', '5', '6', '7'])
-    expect(staticPkg.referentielCompatible).toEqual({ id: 'respire', versionMin: '7.0.0' })
-
-    const byRole = Object.fromEntries(pkg.prompts.map((p) => [p.role, p]))
-    expect(Object.keys(byRole)).toEqual([
-      'twin6-scan-pole',
-      'twin6-kairos',
-      'twin6-mega-prompt',
-      ...[1, 2, 3, 4, 5, 6, 7].map((n) => `twin6-fiche-${n}`),
-    ])
-    expect(byRole['twin6-scan-pole'].texte).toBe(TWIN6_GABARITS['1-scan-pole.md'])
-    expect(staticPkg.scanPole).toBe(TWIN6_GABARITS['1-scan-pole.md'])
-    expect(byRole['twin6-kairos'].texte).toBe(staticPkg.kairos)
-    expect(byRole['twin6-mega-prompt'].texte).toBe(staticPkg.megaPrompt)
-    const referentiel = readJson(join(root, REF_DIR, 'respire-v7.json'))
-    for (let n = 1; n <= 7; n += 1) {
-      const pn = readFileSync(join(root, PROMPTS_DIR, `P${n}.md`), 'utf8')
-      expect(byRole[`twin6-fiche-${n}`].texte).toBe(pn)
-      expect(staticPkg.fiches[String(n)]).toBe(pn)
-      expect(byRole[`twin6-fiche-${n}`].nom).toBe(`Fiche des compétences — Pôle ${n} : ${referentiel.poles[n - 1].nom}`)
-    }
-
-    const hashes = [sha(staticOut), sha(packageOut)]
+    expect(readdirSync(join(root, PROMPTS_DIR)).sort()).toEqual(['P1.md', 'P2.md', 'P3.md', 'P4.md', 'P5.md', 'P6.md', 'P7.md'])
     expectOk(run(root, 'scripts/build-twin6-package.mjs'))
     expectOk(run(root, 'scripts/build-twin6-prompt-package.mjs'))
-    expect([sha(staticOut), sha(packageOut)]).toEqual(hashes)
+    for (const rel of [...TWIN6_STATIQUES, ...TWIN6_PUBLIES]) expect(existsSync(join(root, rel)), rel).toBe(true)
+  }, TIMEOUT)
+
+  it('UC-SYS-04-F12 — Nominal, étapes 6-7, RG6 : paquets statiques et prompt-packages « twin6-ouverte » 1.0.0 et 1.1.0 conformes, gabarits versionnés (1.0.0 à l’octet, 1.1.0 lisant le référentiel), textes octet pour octet identiques aux P*.md, réservés, déterministes ; dérive d’un gabarit → construction refusée', () => {
+    const root = mirrorWith([`${REF_DIR}/respire-v7.json`])
+    expectOk(run(root, 'scripts/generate-fiches.mjs'))
+
+    const staticRun = run(root, 'scripts/build-twin6-package.mjs')
+    expectOk(staticRun)
+    expect(staticRun.stdout).toMatch(
+      /^écrit .*twin6-ouverte-1\.0\.0\.json \(\d+ octets\)\n {2}scanPole \d+ car\., kairos \d+ car\., 7 fiches\nécrit .*twin6-ouverte-1\.1\.0\.json \(\d+ octets\)\n {2}scanPole \d+ car\., kairos \d+ car\., 7 fiches\n$/,
+    )
+    const packageRun = run(root, 'scripts/build-twin6-prompt-package.mjs')
+    expectOk(packageRun)
+    expect(packageRun.stdout).toBe(['1.0.0', '1.1.0'].map((v) =>
+      `wrote build/prompt-packages/twin6-ouverte-${v}.json (10 prompts : scan-pole + kairos + mega + 7 fiches, engine ${ENGINE_VERSION})\n`).join(''))
+
+    const gabarit = (name) => readFileSync(join(root, TWIN6_DIR, name), 'utf8')
+    const referentiel = readJson(join(root, REF_DIR, 'respire-v7.json'))
+    for (const [i, version] of ['1.0.0', '1.1.0'].entries()) {
+      const staticPkg = readJson(join(root, TWIN6_STATIQUES[i]))
+      const pkg = readJson(join(root, TWIN6_PUBLIES[i]))
+      expect(validateDocument('prompt-package', pkg)).toEqual({ valid: true, errors: [] })
+      expect(pkg).toMatchObject({ id: 'twin6-ouverte', version, code: { entrypoint: 'executerTwin6' } })
+      expect(pkg.metadata.reserved).toBe(true)
+      expect(pkg.code.orchestration).toContain(`engine://humanome-engine@${ENGINE_VERSION} (twin6)`)
+      // Chaque version liste les versions jusqu'à la sienne, la plus ancienne d'abord.
+      expect(pkg.changelog.map((c) => [c.version, c.date])).toEqual([['1.0.0', '2026-07-16'], ['1.1.0', '2026-10-20']].slice(0, i + 1))
+      expect(staticPkg).toMatchObject({ id: 'twin6-ouverte', version })
+      expect(staticPkg.kind).toBeUndefined() // paquet statique : pas un document prompt-package
+      // Paquet statique : aucun schéma ; forme exacte du contrat executerTwin6
+      // (gabarits scanPole, kairos, megaPrompt et fiches 1..7), rien de plus.
+      expect(Object.keys(staticPkg)).toEqual([
+        'schemaVersion',
+        'id',
+        'version',
+        'nom',
+        'description',
+        'auteur',
+        'licence',
+        'referentielCompatible',
+        'modeleCibleDefaut',
+        'scanPole',
+        'kairos',
+        'megaPrompt',
+        'fiches',
+        'metadata',
+      ])
+      expect(Object.keys(staticPkg.fiches)).toEqual(['1', '2', '3', '4', '5', '6', '7'])
+      expect(staticPkg.referentielCompatible).toEqual({ id: 'respire', versionMin: '7.0.0' })
+
+      const byRole = Object.fromEntries(pkg.prompts.map((p) => [p.role, p]))
+      expect(Object.keys(byRole)).toEqual([
+        'twin6-scan-pole',
+        'twin6-kairos',
+        'twin6-mega-prompt',
+        ...[1, 2, 3, 4, 5, 6, 7].map((n) => `twin6-fiche-${n}`),
+      ])
+      expect(byRole['twin6-scan-pole'].texte).toBe(staticPkg.scanPole)
+      expect(byRole['twin6-kairos'].texte).toBe(staticPkg.kairos)
+      expect(byRole['twin6-mega-prompt'].texte).toBe(staticPkg.megaPrompt)
+      expect(staticPkg.megaPrompt).toBe(gabarit('0-mega-prompt.md'))
+      for (let n = 1; n <= 7; n += 1) {
+        const pn = readFileSync(join(root, PROMPTS_DIR, `P${n}.md`), 'utf8')
+        expect(byRole[`twin6-fiche-${n}`].texte).toBe(pn)
+        expect(staticPkg.fiches[String(n)]).toBe(pn)
+        expect(byRole[`twin6-fiche-${n}`].nom).toBe(`Fiche des compétences — Pôle ${n} : ${referentiel.poles[n - 1].nom}`)
+      }
+      if (version === '1.0.0') {
+        // Les textes versionnés, tels quels.
+        expect(staticPkg.scanPole).toBe(gabarit('1-scan-pole.md'))
+        expect(staticPkg.kairos).toBe(gabarit('2-kairos-final.md'))
+        expect(staticPkg.metadata.nbAppelsParRun).toBe(8)
+        expect(byRole['twin6-scan-pole'].variables.map((v) => v.nom)).toEqual(['POLE'])
+      } else {
+        // Les variables du référentiel à la place de RESPIRE v7 écrit en toutes lettres.
+        expect(staticPkg.scanPole).toContain("Le numéro d'un des ${NB_POLES} pôles du **référentiel ${REFERENTIEL}** `${POLE}`")
+        expect(staticPkg.kairos).toContain('les ${NB_COMPETENCES} verdicts')
+        expect(staticPkg.metadata.nbAppelsParRun).toBeUndefined()
+        expect(byRole['twin6-scan-pole'].variables.map((v) => v.nom)).toEqual(
+          ['POLE', 'REFERENTIEL', 'NB_POLES', 'FORMAT_CODE', 'PRECISION_FORMAT_CODE', 'CODES_EXEMPLE'])
+        expect(byRole['twin6-kairos'].variables.map((v) => v.nom)).toEqual(
+          ['cartos_pole', 'NB_POLES', 'NB_COMPETENCES', 'FORMAT_CODE', 'PRECISION_FORMAT_CODE'])
+      }
+    }
+
+    const hashes = [...TWIN6_STATIQUES, ...TWIN6_PUBLIES].map((rel) => sha(join(root, rel)))
+    expectOk(run(root, 'scripts/build-twin6-package.mjs'))
+    expectOk(run(root, 'scripts/build-twin6-prompt-package.mjs'))
+    expect([...TWIN6_STATIQUES, ...TWIN6_PUBLIES].map((rel) => sha(join(root, rel)))).toEqual(hashes)
+
+    // Dérive : un gabarit dont un texte remplacé par 1.1.0 a changé → aucune
+    // version n'est écrite, la construction s'arrête et dit ce qui manque.
+    rmSync(join(root, 'build'), { recursive: true })
+    for (const rel of TWIN6_STATIQUES) rmSync(join(root, rel))
+    const scan = join(root, TWIN6_DIR, '1-scan-pole.md')
+    writeFileSync(scan, gabarit('1-scan-pole.md').replace('du **référentiel RESPIRE**', 'du **référentiel R.E.S.P.I.R.E**'))
+    for (const script of ['scripts/build-twin6-package.mjs', 'scripts/build-twin6-prompt-package.mjs']) {
+      const result = run(root, script)
+      expect(result.status, script).toBe(1)
+      expect(result.stderr, script).toContain("twin6-gabarits: « Le numéro d'un des 7 pôles du **référentiel RESPIRE** `${POLE}` » found 0 time(s) in 1-scan-pole.md, expected 1")
+    }
+    expect(existsSync(join(root, 'build'))).toBe(false)
+    for (const rel of TWIN6_STATIQUES) expect(existsSync(join(root, rel)), rel).toBe(false)
   }, TIMEOUT)
 
   it('UC-SYS-04-F13 — A2 : dump-fiches réécrit le corpus depuis GET /api/admin/dump-fiches (jeton en en-tête), octet pour octet identique au corpus versionné ; .env.deploy lu à défaut d’environnement', async () => {
@@ -884,11 +917,9 @@ describe('UC-SYS-04 — fonctionnels (scripts en sous-processus, miroir temporai
   }, TIMEOUT)
 
   it('UC-SYS-04-F16 — AN-4 : lancés par un chemin qui traverse un lien symbolique, les quatre scripts à garde CLI sortent en 0 sans rien faire ni rien afficher (comportement ACTUEL) ; par le chemin réel, ils travaillent', () => {
-    // Miroir complet : corpus amont, 7.0.0, gabarits Twin6 synthétiques et P*.md
+    // Miroir complet : corpus amont, 7.0.0, gabarits Twin6 (versionnés) et P*.md
     // (chaque script aurait donc de quoi travailler) ; corpus des fiches périmé.
     const root = mirrorWith([`${REF_DIR}/respire-v7.json`], { assets: true })
-    mkdirSync(join(root, PROMPTS_DIR), { recursive: true })
-    for (const [name, text] of Object.entries(TWIN6_GABARITS)) writeFileSync(join(root, PROMPTS_DIR, name), text)
     expectOk(run(root, 'scripts/generate-fiches.mjs'))
     const corpusPath = join(root, 'scripts/data/fiches-v7.json')
     const versioned = readFileSync(corpusPath, 'utf8')
@@ -920,6 +951,6 @@ describe('UC-SYS-04 — fonctionnels (scripts en sous-processus, miroir temporai
     expect(existsSync(join(root, 'web/public/data/demo/merge.json'))).toBe(true)
     expect(readdirSync(join(root, 'web/public/data/demo/jours'))).toHaveLength(60)
     expect(readFileSync(corpusPath, 'utf8')).toBe(versioned)
-    expect(existsSync(join(root, 'build/prompt-packages/twin6-ouverte-1.0.0.json'))).toBe(true)
+    for (const rel of TWIN6_PUBLIES) expect(existsSync(join(root, rel)), rel).toBe(true)
   }, TIMEOUT)
 })

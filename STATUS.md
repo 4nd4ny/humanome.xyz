@@ -54,8 +54,9 @@ T18.
     navigateur ; ses sept anomalies quittent l'index, avec le code qu'elles décrivaient. UC-ADM-05
     vérifie chaque réglage par son effet sur les runs (estimation, profils) au lieu du proxy ;
     UC-PRO-08 et UC-APP-09 suivent ; UC-APP-11, UC-CPT-04, UC-APP-01, UC-APP-03, UC-APP-04,
-    UC-APP-06, UC-SYS-04 et le catalogue mis à jour. ADR-010 révisé (§1, §2) ; `docs/contrats.md`, `docs/strategie-tests.md`,
-    `docs/securite-checklist.md`, `INSTALL.md`, `CLAUDE.md`.
+    UC-APP-06, UC-SYS-04 et le catalogue mis à jour. ADR-010 révisé (§1, §2) ;
+    `docs/contrats.md`, `docs/strategie-tests.md`, `docs/securite-checklist.md`, `INSTALL.md`,
+    `CLAUDE.md`.
   - Vestiges laissés en place, à décider (règle 6) : les réglages `enabled` et `pipeline`, que
     l'import écrit et que plus rien ne lit ; les étages des modèles de l'offre, que la supervision
     édite et que plus rien ne lit (un profil ne demande à un modèle qu'un prix) ; le rythme
@@ -67,15 +68,30 @@ T18.
   - Limite notée : la page de l'analyse (`#/twin9`) n'a pas de titre de niveau 1, comme
     Configuration.
   - Régression de T17, réparée dans un commit à part : les scénarios bout en bout de la
-    cartographie chargent `carto/core/model.js` sous Node, par leurs fixtures ; depuis T17, il
-    atteint `referential.js`, qui importait `poleColor` par l'alias `@engine` de Vite, que Node ne
-    résout pas — la suite e2e s'arrêtait avant son premier test. Il l'importe par son chemin.
-  - Vérifié : suite moteur verte (362) ; tests PHP de UC-APP-10, UC-ADM-05, UC-PRO-08, UC-APP-09,
-    UC-APP-01 et `Twin9MetaTest` verts (88) ; tests front de UC-APP-10, de `web/src/lib/twin9/`, de
-    `Twin9View` (214) et de la cartographie (556) verts ; bout en bout `twin9-run` et
-    `twin9-referentiels` verts (moteur factice) ; `generate-fiches`, `build-viewer` et `vite build`
-    passent — `npm run build` s'arrête, comme avant T11, à `build-twin6-package.mjs`, faute des
-    gabarits Twin6, non versionnés ; `check-publiable` vert.
+    cartographie chargent `carto/core/model.js` sous Node, par leurs fixtures ; il importe
+    `referential.js`, où T17 a ajouté l'import de `poleColor` par l'alias `@engine` de Vite, que
+    Node ne résout pas — la suite e2e s'arrêtait avant son premier test. Il l'importe par son
+    chemin ; seule la suite e2e, locale, le garde.
+  - Revue indépendante (un agent neuf, sur les deux branches) : aucun point bloquant ; ses
+    corrections sont faites — ADR-010 et UC-PRO-08 disaient qu'aucun nom de gabarit ne sort plus,
+    or l'attestation d'un run nomme les siens pour son propriétaire et le cartographe lié ; les
+    tests front de l'oracle lisent `TWIN_V9_DIR` ; UC-APP-10-F14 ne dépend plus de la durée d'une
+    tranche ; des commentaires et des dates.
+  - Vérifié : suites moteur (362 verts), front (2 681 verts ; `twin6-prompt-package.test.js` ne se
+    charge pas sans le paquet Twin6, comme avant T11) et PHP (1 670 verts, aucun sauté, avec
+    `TWIN_V9_DIR`) ; `check-publiable` vert ; bout en bout, les 19 scénarios passent, moteur
+    factice pour Twin9 — deux relancés seuls : `twin9-run`, que le quota local d'inscriptions
+    (dix par heure) arrêtait après des passages précédents, et `parcours-promptologue`, derrière
+    un routeur (ci-dessous). Reste à confirmer, ici impossible : `npm run build`, dont le
+    `prebuild` s'arrête, comme avant T11, à `build-twin6-package.mjs`, faute des gabarits Twin6
+    (`web/public/data/`, non versionné) ; `generate-fiches`, `build-viewer` et `vite build`
+    passent.
+  - Constaté, hors T11 (règle 6, noté) : `php -S localhost:8080 -t api/public`, la commande
+    d'INSTALL.md et de `docs/tests-e2e.md`, prend pour un fichier toute URL dont le dernier
+    segment porte un point (`…/1.0.0`, une version de paquet) et répond 404 sans passer par
+    `index.php` : `parcours-promptologue` échoue au diff. Derrière un routeur (`php -S
+    localhost:8080 -t api/public api/public/index.php`), comme derrière Apache en production, il
+    passe.
 
 - 2026-10-20 — **Moteur Twin9 en PHP, T17 : plusieurs référentiels, la cartographie (branche
   `feat/twin9-t17-cartographie`).** La carte d'un run s'ouvre dans la cartographie avec son

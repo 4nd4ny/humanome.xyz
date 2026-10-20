@@ -13,16 +13,52 @@ dans `main` (entrée du 2026-10-14 ci-dessous).
 
 Chantier en cours : le moteur Twin9 v9.8 en PHP, exécuté sur le serveur (ADR-011), planifié et
 développé dans le dépôt privé `4nd4ny/Twin_v9` (`docs/plan-twin9-php.md`, prompts T0 → T18, une
-conversation chacun ; entrées du 2026-10-17). T0 à T10 et T12 à T15 sont fusionnés : le moteur
+conversation chacun ; entrées du 2026-10-17). T0 à T10 et T12 à T16 sont fusionnés : le moteur
 passe l'oracle complet dans `Twin_v9`, le profil est ici, les runs tournent sur le serveur par
-tranches, par appels directs ou par lots, se lancent, se suivent, se lisent et se paient, sur des
-jeux de gabarits et, dans la gouvernance, des référentiels de toute structure. La base commune et
-la stratégie A de T8, que Christian a choisies le 2026-10-19 avec l'historique des évaluations,
-attendent leur revue (entrée du 2026-10-19). T16, dont Christian a validé le plan le 2026-10-20 :
-le moteur lit le référentiel du run, qui peut être un autre que RESPIRE ; il attend sa revue
-(entrée du 2026-10-20). Vient ensuite T17, la cartographie.
+tranches, par appels directs ou par lots, se lancent, se suivent, se lisent et se paient — la base
+commune et la stratégie A de T8 comprises —, sur des jeux de gabarits et des référentiels de toute
+structure, que le moteur lit (T16, fusionné le 2026-10-20). T17, la cartographie de tout
+référentiel, attend sa revue (entrée du 2026-10-20). Viennent ensuite T11, puis T18.
 
 ## Fait
+
+- 2026-10-20 — **Moteur Twin9 en PHP, T17 : plusieurs référentiels, la cartographie (branche
+  `feat/twin9-t17-cartographie`).** La carte d'un run s'ouvre dans la cartographie avec son
+  référentiel, RESPIRE ou celui d'une autre structure (`docs/contrats.md` §10). T8 (base commune et
+  stratégie A, #11) et T16 (#12 ; `Twin_v9` #17) ont été fusionnés le 2026-10-20.
+  - Formats : un document `cartographie-jour` ou `cartographie-merge` d'un autre référentiel le
+    nomme (`referentiel`, facultatif) et compte alors 1 à N pôles, aux codes de ce référentiel (le
+    `$defs/code` du schéma `referentiel`) ; sans nom, RESPIRE garde sa structure (7 pôles, codes
+    `P.NN`), comme dans le schéma `referentiel` : les validations de l'extraction, de la masse, du
+    banc et de la relecture gardent leur garantie. Le code d'une compétence (`competence`)
+    s'élargit de même. Validateurs compilés régénérés ; chaque changement est noté dans
+    `docs/contrats.md` §10. Un document de RESPIRE reste valide tel quel, et sa fusion identique à
+    l'octet (parité du document : 100 %).
+  - Couleurs et marques : `POLE_PALETTE` (moteur) prolonge les 7 couleurs de RESPIRE de 5 autres,
+    choisies et validées avec le script de la skill dataviz telles que l'interface les affiche, dans
+    ses 5 palettes et ses 2 thèmes, sur les voisins du soleil de 8 à 12 pôles (bouclage compris) ;
+    un pôle sans couleur déclarée prend celle de son rang (il prenait un gris unique : les pôles des
+    référentiels de test se confondaient). Les marques des distinctions renforcées passent de 8 à 12
+    (quatre motifs nouveaux dans `Sun.jsx`). Un pôle lettré (`num: "A"`) d'un document venu
+    d'ailleurs reçoit son numéro d'ordre ; ceux de la plateforme sont déjà numérotés (T15).
+  - Serveur : les résultats d'un run portent son référentiel (`Resultats::referentiel`) — les pôles et
+    compétences que son moteur a lus, gardés dans ses réglages, avec les couleurs de leur version ;
+    ni fiche, ni préambule, ni description.
+  - Front : « Ouvrir dans la cartographie » vaut pour tout référentiel (la restriction de T16 est
+    levée) ; le document `twin9-run` porte le référentiel du run, complété des descriptions du
+    référentiel publié de même identifiant (RESPIRE) ; le jeu neuf l'adopte ; son titre le nomme
+    (`Twin9 · <journal> · <libellé>`).
+  - Moteur factice : son tribunal juge la première compétence de chaque pôle du référentiel du run
+    (1.01 seule sans référentiel), pour que chaque pôle ait son secteur.
+  - Tests : schémas (moteur et PHP), adaptateur Twin9 (5 pôles lettrés, 9 pôles, schéma strict),
+    référentiel et importeur de l'interface, cartographie (`Referentiels.test.jsx` : la carte
+    lettrée, celle à 9 pôles, leurs couleurs et leurs motifs, les deux jeux qui coexistent), page du
+    run, résultats (`RunsTest` : le référentiel porté ; deux cartes sur un même portfolio, qui ne
+    partagent ni carte, ni mémoire, ni copie du profil). Recette de bout en bout
+    `web/e2e/twin9-referentiels.e2e.js` : RESPIRE, le référentiel lettré et celui à 9 pôles sur un
+    même portfolio — chacun ses deux journées à instruire, sa carte avec les noms de ses pôles, sa
+    mémoire, son attestation —, trois jeux qui coexistent (`docs/tests-e2e.md`, « T17 »).
+  - Reste hors T17 : la page publique `#/referentiel` ne montre que RESPIRE.
 
 - 2026-10-20 — **Moteur Twin9 en PHP, T16 : plusieurs référentiels, le moteur (branche
   `feat/twin9-t16-moteur`, sur celle de T8 ; `Twin_v9` : `feat/twin9-t16-moteur`).** Le moteur lit

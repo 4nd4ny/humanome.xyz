@@ -259,6 +259,30 @@ du run dans la base, RESPIRE avec ses fiches : le scénario les y sème
 elles, le lancement répond 503. Migrations à jour : `php
 scripts/migrate.php` (030, T8 : les évaluations et la réserve de la fusion).
 
+## T17 — plusieurs référentiels dans la cartographie
+
+### `web/e2e/twin9-referentiels.e2e.js` (recette T17)
+
+Sur un même portfolio, RESPIRE (sa version d'installation, 7.0.0) et les deux
+référentiels de test des tests PHP — cinq pôles lettrés aux capacités A1 à E4,
+neuf pôles (`api/tests/UseCases/Support/ReferentielsFictifs.php`) — traversent
+le moteur, la fusion et la cartographie sans rien partager (plan du moteur PHP
+de `Twin_v9`, lot 4c) : un compte crédité, un profil par référentiel ; pour
+chacun, l'aperçu dit ses **deux** journées à instruire (la carte d'un autre
+référentiel ne lui en donne aucune), le run va au bout et s'ouvre dans la
+cartographie avec les noms de ses pôles — le moteur factice juge la première
+compétence de chaque pôle, chacun a donc son secteur. Les trois jeux
+coexistent dans la cartographie (« Panneaux » → « Jeux de données » →
+« Ouvrir »), chacun avec son référentiel ; la base garde trois cartes
+(`twin9_cartes`), leurs mémoires à part (`twin9_memoire`) et une attestation
+par run. Le compte, supprimé, les emporte.
+
+Même API locale que pour T9 (moteur factice, Anthropic simulé). Le scénario
+publie les deux référentiels de test dans la base de développement (par
+`ReferentielRepository::importPublishedDocument`, depuis l'autoload de
+développement de `api/`) et les en retire à la fin, comme les gabarits
+`factice/…` ; un passage interrompu les retire au suivant.
+
 ### Note historique — diff UI promptologue (corrigé)
 
 Un bug d'intégration avait été signalé ici : `DiffView` (`EditeurSection.jsx`)

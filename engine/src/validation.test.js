@@ -194,11 +194,12 @@ describe('validateDocument', () => {
   })
 })
 
-// Tout référentiel, pas seulement RESPIRE (T17) : un document qui nomme son
-// référentiel (« referentiel ») compte ses pôles de 1 à N, ses codes sous la
-// forme que ce référentiel déclare (schéma referentiel, $defs/code) ; sans
-// nom, ou nommé « respire », RESPIRE garde sa structure : 7 pôles, codes
-// « P.NN ». PHP twin : api/tests/ValidationTest.php.
+// Tout référentiel (T17), RESPIRE compris depuis le 2026-10-20 : le schéma
+// n'impose aucune structure — des pôles de 1 à N, des codes sous la forme
+// qu'un référentiel déclare (schéma referentiel, $defs/code). Le nombre et les
+// numéros des pôles, les codes eux-mêmes, sont ceux de la version du
+// référentiel que le document cartographie : la conformité les vérifie
+// (conformite.test.js). PHP twin : api/tests/ValidationTest.php.
 describe('validateDocument — tout référentiel (T17)', () => {
   const day = () => JSON.parse(readFileSync(new URL('../../schemas/fixtures/cartographie-jour-2026-01-05.json', import.meta.url), 'utf8'))
   /** Chaque code RESPIRE du document (« 3.04 ») récrit par `recode`. */
@@ -238,18 +239,18 @@ describe('validateDocument — tout référentiel (T17)', () => {
     expect(validateDocument('cartographie-merge', { ...lettreMerge(), referentiel: 'fictif-lettre' }).errors).toEqual([])
   })
 
-  it('keeps RESPIRE’s structure for a document that names no other referential', () => {
+  it('imposes no structure on RESPIRE either: six, nine or lettered poles are valid to the schema', () => {
     for (const referentiel of [undefined, 'respire']) {
       const marque = (doc) => (referentiel ? { ...doc, referentiel } : doc)
       expect(validateDocument('cartographie-jour', marque(day())).errors).toEqual([])
-      expect(paths('cartographie-jour', marque(neufJours()))).toContain('/poles')
-      expect(paths('cartographie-jour', marque(recoded(day(), lettered)))).toContain('/poles/0/competences/0/code')
+      expect(validateDocument('cartographie-jour', marque(neufJours())).errors).toEqual([])
+      expect(validateDocument('cartographie-jour', marque(recoded(day(), lettered))).errors).toEqual([])
       const six = marque(day())
       six.poles = six.poles.slice(0, 6)
-      expect(paths('cartographie-jour', six)).toContain('/poles')
+      expect(validateDocument('cartographie-jour', six).errors).toEqual([])
       expect(validateDocument('cartographie-merge', marque(makeMergeDocument())).errors).toEqual([])
-      expect(paths('cartographie-merge', marque(neufMerge()))).toContain('/domains')
-      expect(paths('cartographie-merge', marque(lettreMerge()))).toContain('/domains/0/competences/0/code')
+      expect(validateDocument('cartographie-merge', marque(neufMerge())).errors).toEqual([])
+      expect(validateDocument('cartographie-merge', marque(lettreMerge())).errors).toEqual([])
     }
   })
 

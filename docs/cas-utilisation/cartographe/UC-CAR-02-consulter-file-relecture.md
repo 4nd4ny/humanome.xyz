@@ -75,9 +75,14 @@ Le cartographe ouvre `#/cartographe` (file) puis clique sur « Relire »
    numérique, voir Limites).
 5. Le serveur vérifie lien **et** visibilité (`Links::findForCartographe`),
    puis répond un objet plat `{id, type, titre, visibility, document,
-   createdAt, updatedAt, apprenant, annotations, revisions, garantie}`
-   (annotations dans l'ordre de saisie, révisions sans leur document, de la
-   plus récente à la plus ancienne).
+   createdAt, updatedAt, apprenant, annotations, revisions, garantie,
+   referentiel}` (annotations dans l'ordre de saisie, révisions sans leur
+   document, de la plus récente à la plus ancienne ; `referentiel` : la version
+   du référentiel que la relecture lit, `{id, version}` — celle que la
+   cartographie a stockée, sinon la plus récente version publiée du
+   référentiel que nomme son document à laquelle il est conforme, sinon la
+   dernière ; `version` `null` sans version publiée — 2026-10-20,
+   `ReviewReferentiel`).
 6. Le site affiche l'en-tête (titre ; « Apprenant : … · Type : … · Déposée le
    … »), l'état de garantie (« Cartographie non garantie : relisez, annotez,
    corrigez si nécessaire, puis validez. ») et la cartographie en lecture
@@ -191,7 +196,7 @@ Le cartographe ouvre `#/cartographe` (file) puis clique sur « Relire »
 | ID | Scénario | Niveau | Vérifie | Fichier |
 |---|---|---|---|---|
 | UC-CAR-02-F01 | Nominal (file) | API | Deux apprentis liés, privée et non liée exclues, ordre, clés exactes, aucun document ; une analyse `twin9` entre dans la file avec son type brut | `api/tests/UseCases/Functional/UcCar02ConsulterFileRelectureTest.php` |
-| UC-CAR-02-F02 | Nominal (relecture), RG4 | API | Objet plat complet, document identique, listes vides, garantie `null` ; aucune écriture : nombre d'audits, `updated_at` et tables de relecture inchangés | idem |
+| UC-CAR-02-F02 | Nominal (relecture), RG4 | API | Objet plat complet, document identique, listes vides, garantie `null`, version du référentiel relue (`{id: respire, version: 7.0.0}`) ; aucune écriture : nombre d'audits, `updated_at` et tables de relecture inchangés | idem |
 | UC-CAR-02-F03 | A3 | API | Compteurs et garantie dans la file ; annotations, révisions (sans document), garantie dans le détail | idem |
 | UC-CAR-02-F04 | A2 | API | Détail d'un parcours merge : document servi égal au document stocké | idem |
 | UC-CAR-02-F05 | E1 | API | Inconnue, privée, non liée, autre cartographe → même 404 | idem |

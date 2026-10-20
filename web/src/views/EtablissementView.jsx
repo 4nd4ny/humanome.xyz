@@ -88,7 +88,13 @@ export default function EtablissementView({ section, lib, deps = {} }) {
   } else if (section === null) {
     body = <AccueilSection fetchFn={deps.fetchFn} />
   } else if (section.startsWith('cohorte/')) {
-    body = <CohorteSection id={section.slice('cohorte/'.length)} fetchFn={deps.fetchFn} />
+    body = (
+      <CohorteSection
+        id={section.slice('cohorte/'.length)}
+        fetchFn={deps.fetchFn}
+        {...(deps.getReferentiel ? { getReferentiel: deps.getReferentiel } : {})}
+      />
+    )
   } else if (section.startsWith('membre/')) {
     body = (
       <MembreSection

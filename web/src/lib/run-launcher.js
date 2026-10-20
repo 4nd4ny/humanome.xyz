@@ -1,7 +1,8 @@
 // Lancement d'un run de cartographie (P8.3) — logique pure, sans React.
 //
 // Le composant web/src/components/RunWizard.jsx n'est qu'une coquille UI
-// autour de ce module : choix du paquet de prompts, gestion des clés API
+// autour de ce module : choix du référentiel (sa structure se lit dans son
+// JSON, 2026-10-20) et du paquet de prompts, gestion des clés API
 // (localStorage par défaut, opt-in serveur chiffré AD-4), estimation avant
 // lancement (engine estimateRun), exécution avec checkpoints/reprise
 // (engine createRun + createIndexedDbStorage) et construction du document
@@ -17,10 +18,11 @@ import {
   estimateRun,
   getModelPricing,
 } from '@engine/providers/index.js'
+import { callsPerDayFor, mergeNarrativeCallsFor } from '@engine/providers/estimate.js'
 import { createRun, createIndexedDbStorage } from '@engine/runs/index.js'
 import { extractDay, buildExtractionPrompt } from '@engine/pipeline/extract.js'
 import { buildMergeDocument } from '@engine/pipeline/merge-document.js'
-import { validateDocument } from '@engine/validation.js'
+import { REFERENTIEL_PAR_DEFAUT, validateDocumentPourReferentiel } from '@engine/conformite.js'
 import { apiFetch } from '../api/client.js'
 import { createDemoProvider, DEMO_MODEL, DEMO_MAX_TOKENS } from './demo-llm.js'
 
@@ -44,10 +46,12 @@ export const PROVIDERS = Object.freeze([
 /**
  * Paquet de prompts embarqué : le protocole Aurora v3 reconstruit en P5
  * (engine/src/pipeline/extract.js) — repli garanti quand l'API est absente.
+ * Version 1.1.0 (2026-10-20) : ses prompts lisent le référentiel employé (nom,
+ * pôles, codes) ; pour RESPIRE v7, ce sont ceux de 1.0.0 à l'octet.
  */
 export const BUILTIN_PACKAGE = Object.freeze({
   id: 'aurora-v3-reconstruit',
-  version: '1.0.0',
+  version: '1.1.0',
   description: 'Protocole Aurora v3 reconstruit — embarqué dans le moteur (toujours disponible).',
   builtin: true,
 })
@@ -174,7 +178,10 @@ export function computeDayGroups(segments) {
  * Estimation AVANT lancement (engine estimateRun) : jours × taille moyenne,
  * surcoût fixe de prompt mesuré sur le vrai prompt d'extraction (référentiel
  * + protocole inclus). Modèle inconnu de la table de prix -> tokens/durée
- * estimés sur le modèle de référence, coût null (affiché « inconnu »).
+ * estimés sur le modèle de référence, coût null (affiché « inconnu »). Le
+ * protocole complet se compte sur le référentiel employé : un appel par pôle
+ * et le kairos par journée, un récit de fusion par compétence, par pôle et le
+ * kairos (RESPIRE v7 : 8 et 69).
  *
  * @param {{dayGroups: Array<{iso: string, texte: string}>, referentiel: object,
  *   model: string, callsPerDay?: number, mergeCalls?: number}} params
@@ -200,8 +207,8 @@ export function buildEstimate({ dayGroups, referentiel, model, callsPerDay, merg
     avgDayChars,
     promptOverheadChars,
     model: pricing ? model : SERVICE_ESTIMATION_MODEL,
-    ...(callsPerDay !== undefined ? { callsPerDay } : {}),
-    ...(mergeCalls !== undefined ? { mergeCalls } : {}),
+    callsPerDay: callsPerDay ?? callsPerDayFor(referentiel),
+    mergeCalls: mergeCalls ?? mergeNarrativeCallsFor(referentiel),
   })
   return {
     ...estimate,
@@ -268,12 +275,20 @@ export function createProviderBundle({ mode, provider, apiKey, model, fetchFn, o
 // --- Run ---------------------------------------------------------------------
 
 /**
- * Identifiant STABLE du run : même portfolio + même paquet de prompts =
- * même runId, donc mêmes checkpoints — la reprise après rechargement est
- * automatique (les journées déjà checkpointées sont sautées).
+ * Identifiant STABLE du run : même portfolio + même paquet de prompts + même
+ * version du référentiel = même runId, donc mêmes checkpoints — la reprise
+ * après rechargement est automatique (les journées déjà checkpointées sont
+ * sautées). Le référentiel en fait partie (2026-10-20) : les journées
+ * cartographiées sur une autre structure ne se reprennent pas.
+ *
+ * @param {string} portfolioId
+ * @param {{id: string, version: string}} pkg
+ * @param {{id?: string, version?: string}} [referentiel] le référentiel du run
  */
-export function makeRunId(portfolioId, pkg) {
-  return `${portfolioId}::${pkg.id}@${pkg.version}`
+export function makeRunId(portfolioId, pkg, referentiel) {
+  const base = `${portfolioId}::${pkg.id}@${pkg.version}`
+  if (!referentiel) return base
+  return `${base}::${referentiel.id ?? REFERENTIEL_PAR_DEFAUT}@${referentiel.version ?? '?'}`
 }
 
 const NARRATIVE_NOTE =
@@ -315,11 +330,12 @@ export function buildLocalNarratives(merged) {
 }
 
 /**
- * Exécute (ou REPREND) un run complet : extractDay par journée (7 pôles +
- * kairos, kairosOptional), checkpoints par journée, puis mergeDays +
- * buildMergeDocument (narratifs locaux, v1). Les journées déjà checkpointées
- * dans `storage` sont sautées — onResume est appelé AVANT le démarrage avec
- * l'état trouvé ({done, total}), pour afficher « repris à la journée k/n ».
+ * Exécute (ou REPREND) un run complet : extractDay par journée (un appel par
+ * pôle du référentiel + kairos, kairosOptional), checkpoints par journée, puis
+ * mergeDays + buildMergeDocument (narratifs locaux, v1). Les journées déjà
+ * checkpointées dans `storage` sont sautées — onResume est appelé AVANT le
+ * démarrage avec l'état trouvé ({done, total}), pour afficher « repris à la
+ * journée k/n ».
  *
  * @param {object} params
  * @param {string} params.runId makeRunId(portfolioId, pkg)
@@ -344,11 +360,12 @@ export function buildLocalNarratives(merged) {
  *   journées reprises depuis un checkpoint n'ont pas re-consommé d'appels) —
  *   compteurs seulement, destinés à runMeta (RGPD §6.5 : jamais de contenu).
  *   `document` (cartographie-merge) n'est non-nul que si toutes les journées
- *   sont checkpointées ET que la fusion est constructible : le schéma
- *   cartographie-merge exige 7 pôles portant chacun AU MOINS une compétence
- *   établie sur la période — un portfolio court/creux peut produire des
- *   documents jour valides sans fusion possible (mergeError l'explique,
- *   les documents jour restent exploitables).
+ *   sont checkpointées ET que la fusion est constructible : la fusion rend un
+ *   domaine par pôle du référentiel, et le schéma cartographie-merge exige de
+ *   chacun AU MOINS une compétence établie sur la période — un portfolio
+ *   court/creux peut produire des documents jour valides sans fusion possible
+ *   (mergeError l'explique, les documents jour restent exploitables). La
+ *   fusion est validée au schéma puis à la conformité au référentiel du run.
  */
 export async function executeRun({
   runId,
@@ -400,7 +417,7 @@ export async function executeRun({
         model,
         maxTokens,
         signal: ctx.signal,
-        // Les 7 documents de pôle portent la valeur : un échec de la synthèse
+        // Les documents de pôle portent la valeur : un échec de la synthèse
         // transversale dégrade la journée (kairos: null) au lieu de la perdre.
         kairosOptional: true,
         onProgress: (progress) => onCall?.({ ...progress, iso: day.iso }),
@@ -410,6 +427,10 @@ export async function executeRun({
       // Schéma : AAAA-MM-JJThh:mm:ss sans millisecondes ni fuseau.
       const stamp = String(now()).slice(0, 19)
       try {
+        // Un document d'un autre référentiel que RESPIRE le nomme (T17).
+        const idReferentiel = typeof referentiel?.id === 'string' && referentiel.id !== ''
+          ? referentiel.id
+          : REFERENTIEL_PAR_DEFAUT
         const document = buildMergeDocument(
           { ...merged, date_construction: stamp },
           buildLocalNarratives(merged),
@@ -418,12 +439,14 @@ export async function executeRun({
             sourceProtocole:
               'Aurora v3 reconstruit — run local, narratifs de fusion différés (P10)',
             generatedAt: stamp,
+            ...(idReferentiel === REFERENTIEL_PAR_DEFAUT ? {} : { referentiel: idReferentiel }),
           },
         )
-        const { valid, errors } = validateDocument('cartographie-merge', document)
+        const { valid, errors } = validateDocumentPourReferentiel('cartographie-merge', document, referentiel)
         if (!valid) {
           const detail = errors.slice(0, 3).map((e) => `${e.path} ${e.message}`).join(' ; ')
-          throw new Error(`${errors.length} erreur(s) de schéma : ${detail}`)
+          const nature = errors.every((e) => e.keyword === 'referentiel') ? 'de conformité au référentiel' : 'de schéma'
+          throw new Error(`${errors.length} erreur(s) ${nature} : ${detail}`)
         }
         return document
       } catch (err) {
@@ -433,7 +456,7 @@ export async function executeRun({
         // on dégrade au lieu de perdre le run.
         mergeError =
           'La cartographie fusionnée (merge) n’a pas pu être construite : ' +
-          'le format exige au moins une compétence établie dans chacun des 7 pôles ' +
+          'le format exige au moins une compétence établie dans chacun des pôles du référentiel ' +
           'sur la période. Les documents journaliers, eux, sont complets et conservés. ' +
           `Détail technique : ${err instanceof Error ? err.message : String(err)}`
         return null

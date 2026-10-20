@@ -2,7 +2,7 @@ import { useMemo, useState } from 'react'
 import Sunburst from '../components/Sunburst.jsx'
 import DetailsPanel from '../components/DetailsPanel.jsx'
 import HeatmapCalendar from '../components/HeatmapCalendar.jsx'
-import StatBadges from '../components/StatBadges.jsx'
+import StatBadges, { sur } from '../components/StatBadges.jsx'
 import TimelinePlayer from '../components/TimelinePlayer.jsx'
 import ViewToolbar from '../components/ViewToolbar.jsx'
 import { finalThresholds, mergeDocAsOf } from '../lib/sunburst/as-of.js'
@@ -30,7 +30,7 @@ export function findMergeNode(mergeDoc, meta) {
 function ProfileSummary({ profilMeta, totalCompetences }) {
   if (!profilMeta) return null
   const lines = [
-    ['Compétences établies', `${profilMeta.competences_etablies} / ${totalCompetences}`],
+    ['Compétences établies', sur(profilMeta.competences_etablies, totalCompetences)],
     ['En renvoi (entretien)', String(profilMeta.competences_renvoyees ?? 0)],
     ['Compétences émergentes', String(profilMeta.competences_orphelines ?? 0)],
     ['Score total', String(Math.round(profilMeta.score_total ?? 0))],
@@ -59,7 +59,8 @@ function ProfileSummary({ profilMeta, totalCompetences }) {
  *
  * @param {{
  *   mergeDoc: object,
- *   referentiel?: object,
+ *   referentiel?: object,  // le référentiel du document ({poles, competences}) : le
+ *                          // total des « compétences établies » ; sans lui, le compte seul
  *   lib?: object,  // sunburst lib module (injected in tests)
  * }} props
  */
@@ -122,7 +123,7 @@ export default function MergeView({ mergeDoc, referentiel, lib: injectedLib }) {
     )
   }, [frameDocs])
 
-  const totalCompetences = referentiel?.competences?.length ?? 61
+  const totalCompetences = Array.isArray(referentiel?.competences) ? referentiel.competences.length : null
   // Quand frameIndex < dernière trame, la sélection se résout dans le document
   // de la trame courante (agrégats cumulés à cette date), sinon dans le final.
   const frameDoc = frameDocs ? frameDocs[frame] : mergeDoc

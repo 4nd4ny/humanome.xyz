@@ -26,12 +26,19 @@
 //
 // Aucune parité de contenu possible (pas d'oracle amont) : la sortie est
 // vérifiée STRUCTURELLEMENT via ajv (validation.js) — cf. plan, points de
-// non-parité assumés.
+// non-parité assumés —, puis sa conformité au référentiel employé
+// (conformite.js : ses pôles, ses codes, 2026-10-20).
+//
+// Tout se lit dans le référentiel injecté : le nombre et les numéros des
+// pôles, les codes, le nom du référentiel et les codes d'exemple des prompts
+// (referentiel.js). Pour RESPIRE v7, les prompts restent ceux d'hier, à l'octet.
 //
 // Module ESM pur : zéro DOM, zéro E/S — le texte de la journée, le référentiel
 // et le provider sont injectés par l'appelant.
 
 import { validateDocument } from '../validation.js'
+import { validateDocumentPourReferentiel, REFERENTIEL_PAR_DEFAUT } from '../conformite.js'
+import { nomCourtReferentiel, codesExemples } from '../referentiel.js'
 import { formatDateFr } from './narrative-prompts.js'
 
 // Typologie des attaques du pédagogue : module à part (sans dépendance), pour
@@ -75,8 +82,8 @@ function requireDay(dayText, date) {
 /**
  * Restreint un référentiel à un périmètre : liste de pôles et/ou de codes de
  * compétences (banc d'essai promptologue — cartographier UNE compétence ou UN
- * pôle sans payer les 7 appels). Les pôles conservés sont ceux qui portent au
- * moins une compétence retenue.
+ * pôle sans payer un appel par pôle). Les pôles conservés sont ceux qui portent
+ * au moins une compétence retenue.
  *
  * @param {object} referentiel document référentiel complet
  * @param {{poles?: Array<number|string>, competences?: string[]}} [perimetre]
@@ -138,7 +145,7 @@ function referentielBloc(referentiel, poleNum = null) {
  *
  * @param {object} params
  * @param {object} params.referentiel document `referentiel` (poles[], competences[])
- * @param {number|string} params.poleNum numéro du pôle (1..7)
+ * @param {number|string} params.poleNum numéro d'un pôle du référentiel
  * @param {string} params.dayText texte intégral de la feuille de portfolio du jour
  * @param {string} params.date date ISO AAAA-MM-JJ de la feuille
  * @returns {string} prompt français exigeant une sortie JSON stricte au schéma
@@ -158,7 +165,7 @@ export function buildExtractionPrompt({ referentiel, poleNum, dayText, date } = 
   const codes = comps.map((c) => c.code)
 
   return `Tu es le moteur de cartographie de compétences du protocole Aurora v3 (humanome.xyz).
-Tu analyses UNE feuille de portfolio réflexif pour UN pôle du référentiel RESPIRE, en jouant
+Tu analyses UNE feuille de portfolio réflexif pour UN pôle du référentiel ${nomCourtReferentiel(referentiel)}, en jouant
 successivement trois rôles : LE GREFFIER, LE PÉDAGOGUE adversarial, LE RAPPORTEUR.
 
 # Feuille de portfolio du ${formatDateFr(date)} (${date})
@@ -285,7 +292,7 @@ ${codes.join(', ')} dans cet ordre :
 
 /**
  * Construit le prompt de la synthèse kairos transversale de la journée
- * (1 appel après les 7 pôles). Recréé, comme buildExtractionPrompt.
+ * (1 appel après ceux des pôles). Recréé, comme buildExtractionPrompt.
  *
  * @param {object} params { referentiel, dayText, date }
  * @returns {string} prompt exigeant une sortie JSON stricte au schéma
@@ -294,9 +301,11 @@ ${codes.join(', ')} dans cet ordre :
 export function buildKairosExtractionPrompt({ referentiel, dayText, date } = {}) {
   requireReferentiel(referentiel)
   requireDay(dayText, date)
+  const nbPoles = referentiel.poles.length
+  const [exemple1, exemple2] = codesExemples(referentiel)
 
   return `Tu es le moteur de cartographie de compétences du protocole Aurora v3 (humanome.xyz).
-Les 7 pôles de la feuille du jour ont déjà été instruits séparément. Tu produis maintenant la
+Les ${nbPoles} pôles de la feuille du jour ont déjà été instruits séparément. Tu produis maintenant la
 SYNTHÈSE KAIROS transversale de la journée : une lecture cross-pôles adressée à l'apprenant
 (parle de « l'apprenant », jamais « vous »), attentive à ce qui relie les pôles et à ce qui
 émerge entre les lignes.
@@ -307,7 +316,7 @@ SYNTHÈSE KAIROS transversale de la journée : une lecture cross-pôles adressé
 ${dayText.trim()}
 </portfolio>
 
-# Référentiel RESPIRE (7 pôles, ${referentiel.competences.length} compétences)
+# Référentiel ${nomCourtReferentiel(referentiel)} (${nbPoles} pôles, ${referentiel.competences.length} compétences)
 
 ${referentielBloc(referentiel)}
 
@@ -354,9 +363,9 @@ exactement au gabarit :
     }
   },
   "emergencesCrossPoles": {
-    "connexionsTransversales": [ { "titre": "…", "description": "…", "codesRelies": [ "1.01", "4.02" ], "piecesCommunes": [] } ],
-    "noeudsConceptuels": [ { "nom": "…", "description": "…", "codesRelies": [ "1.01", "4.02" ] } ],
-    "competencesOrphelines": [ { "titre": "…", "description": "…", "extraitsPortfolio": [ "…" ], "enRelationAvecCodes": [ "1.01" ] } ]
+    "connexionsTransversales": [ { "titre": "…", "description": "…", "codesRelies": [ "${exemple1}", "${exemple2}" ], "piecesCommunes": [] } ],
+    "noeudsConceptuels": [ { "nom": "…", "description": "…", "codesRelies": [ "${exemple1}", "${exemple2}" ] } ],
+    "competencesOrphelines": [ { "titre": "…", "description": "…", "extraitsPortfolio": [ "…" ], "enRelationAvecCodes": [ "${exemple1}" ] } ]
   }
 }`
 }
@@ -483,6 +492,17 @@ export function parseExtractionResponse(text) {
   )
 }
 
+// --- Validation pour le référentiel ------------------------------------------
+
+/** « invalide au schéma » ou « non conforme au référentiel », et les premières erreurs. */
+function decrireErreurs(errors, max) {
+  const nature = errors.every((e) => e.keyword === 'referentiel')
+    ? 'non conforme au référentiel'
+    : 'invalide au schéma'
+  const detail = errors.slice(0, max).map((e) => `${e.path} ${e.message}`).join(' ; ')
+  return { nature, detail }
+}
+
 // --- Extraction complète d'une journée ----------------------------------------
 
 /**
@@ -549,13 +569,14 @@ export function normalizeCompetences(competences) {
 /**
  * Targeted degradation of a pole from ajv error paths (probe validation):
  * only SAFE moves the schema explicitly allows — nullable blocks go null
- * (pedagogue, rapport), malformed array items are dropped. Anything else is
+ * (pedagogue, rapport), malformed array items are dropped. Anything else
+ * (a conformity error included: a code the referential does not know) is
  * left for the caller to fail loudly on.
  *
  * @param {object} pole
  * @param {Array<{path: string}>} errors ajv errors (paths like
  *   /poles/0/competences/3/pedagogue/... — pole index is ignored, the probe
- *   clones a single pole)
+ *   holds this single pole)
  */
 function degradeInvalidBlocks(pole, errors) {
   const dropByParent = new Map() // "competences.3.tracesRetenues" -> Set(indexes)
@@ -616,8 +637,10 @@ export function computeAuditPole(competences) {
 }
 
 /**
- * Extraction complète d'une journée : 7 appels pôle + 1 appel kairos, puis
- * assemblage et validation ajv du document `cartographie-jour`.
+ * Extraction complète d'une journée : un appel par pôle du référentiel + 1
+ * appel kairos, puis assemblage et validation du document `cartographie-jour`
+ * (schéma, puis conformité au référentiel). Un document d'un autre référentiel
+ * que RESPIRE le nomme (`referentiel`, T17) ; ceux de RESPIRE ne changent pas.
  *
  * Zéro E/S propre (P5) : le texte, le référentiel et le provider viennent de
  * l'appelant ; l'interruption passe par `signal` (transmis aux appels).
@@ -635,13 +658,13 @@ export function computeAuditPole(competences) {
  * @param {boolean} [params.kairosOptional=false] quand vrai, un échec de la
  *   synthèse kairos DÉGRADE le document (kairos: null, accepté par le schéma)
  *   au lieu de faire échouer le run entier — utilisé par la démo publique où
- *   les 7 documents de pôle sont la valeur principale
+ *   les documents de pôle sont la valeur principale
  * @param {(progress: {step: 'pole'|'kairos', poleNum: number|null,
  *   done: number, total: number, skipped?: boolean}) => void} [params.onProgress]
- *   appelé après chaque appel réussi (done = appels terminés, total = 8)
+ *   appelé après chaque appel réussi (done = appels terminés, total = pôles + 1)
  * @returns {Promise<object>} document `cartographie-jour` validé
  * @throws {Error} appel/parse en échec (contexte pôle + date dans le message),
- *   ou document final invalide au schéma
+ *   ou document final invalide au schéma ou non conforme au référentiel
  */
 export async function extractDay({
   dayText,
@@ -668,6 +691,12 @@ export async function extractDay({
   const { referentiel, partiel } = perimetre
     ? restreindreReferentiel(referentielComplet, perimetre)
     : { referentiel: referentielComplet, partiel: false }
+
+  // Identité du document (T17) : RESPIRE n'est pas nommé, les autres le sont.
+  const idReferentiel = typeof referentielComplet.id === 'string' && referentielComplet.id !== ''
+    ? referentielComplet.id
+    : REFERENTIEL_PAR_DEFAUT
+  const identite = idReferentiel === REFERENTIEL_PAR_DEFAUT ? {} : { referentiel: idReferentiel }
 
   const poleNums = [...referentiel.poles].map((p) => p.num).sort((a, b) => a - b)
   const total = poleNums.length + (partiel ? 0 : 1)
@@ -703,24 +732,45 @@ export async function extractDay({
     }
     // Invariants du corpus imposés déterministiquement (les glissements
     // sémantiques du modèle sont fréquents : CC avec pédagogue, pédagogue
-    // incomplet…), puis validation structurelle DU PÔLE — avec une passe de
-    // dégradation ciblée sur les blocs OPTIONNELS incomplets (le schéma les
-    // accepte à null : pedagogue, rapport) avant de déclarer l'échec, pour
-    // que l'unique retry s'applique au bon appel.
+    // incomplet…), puis validation DU PÔLE — avec une passe de dégradation
+    // ciblée sur les blocs OPTIONNELS incomplets (le schéma les accepte à
+    // null : pedagogue, rapport) avant de déclarer l'échec, pour que l'unique
+    // retry s'applique au bon appel.
+    // Périmètre restreint : le prompt ne liste que ses compétences ; celles du
+    // MÊME pôle que le modèle instruirait en plus sont écartées (le périmètre
+    // décide, le document ne porte que lui). Un code inconnu du référentiel,
+    // ou d'un autre pôle, reste — et la conformité le refuse plus bas.
+    if (partiel) {
+      const retenus = new Set(referentiel.competences.map((c) => String(c.code)))
+      const duPole = new Set(
+        referentielComplet.competences.filter((c) => Number(c.pole) === num).map((c) => String(c.code)),
+      )
+      pole.competences = pole.competences.filter(
+        (c) => retenus.has(String(c?.code)) || !duPole.has(String(c?.code)),
+      )
+    }
     normalizeCompetences(pole.competences)
     if (!Array.isArray(pole.passagesSaillants)) pole.passagesSaillants = []
     if (pole.rapport === undefined) pole.rapport = null
 
+    // Le pôle seul, comme la journée d'un périmètre réduit à lui : le schéma
+    // en valide la forme, la conformité ses codes (du référentiel employé, et
+    // de CE pôle).
     const validatePole = () => {
       pole.auditPole = computeAuditPole(pole.competences)
-      const probe = {
-        schemaVersion: '1.0.0',
-        kind: 'cartographie-jour',
-        date,
-        poles: Array.from({ length: 7 }, (_, i) => ({ ...pole, poleNum: String(i + 1) })),
-        kairos: null,
-      }
-      return validateDocument('cartographie-jour', probe)
+      return validateDocumentPourReferentiel(
+        'cartographie-jour',
+        {
+          schemaVersion: '1.0.0',
+          kind: 'cartographie-jour',
+          ...identite,
+          date,
+          poles: [pole],
+          kairos: null,
+          perimetre: { partiel: true, poles: [num] },
+        },
+        referentiel,
+      )
     }
 
     let { valid, errors } = validatePole()
@@ -729,8 +779,8 @@ export async function extractDay({
       ;({ valid, errors } = validatePole())
     }
     if (!valid) {
-      const detail = errors.slice(0, 3).map((e) => `${e.path} ${e.message}`).join(' ; ')
-      throw new Error(`objet pôle invalide au schéma (${errors.length} erreur(s) : ${detail})`)
+      const { nature, detail } = decrireErreurs(errors, 3)
+      throw new Error(`objet pôle ${nature} (${errors.length} erreur(s) : ${detail})`)
     }
     return pole
   }
@@ -754,14 +804,14 @@ export async function extractDay({
     onProgress?.({ step: 'pole', poleNum: num, done, total })
   }
 
-  // Périmètre partiel : pas de kairos, et pas de validation du document
-  // COMPLET (le schéma cartographie-jour exige d'un document de RESPIRE ses
-  // 7 pôles) — chaque pôle a déjà été validé structurellement via la sonde de
-  // validatePole.
+  // Périmètre partiel : pas de kairos ; le document porte le marqueur de son
+  // périmètre, contre lequel il est validé (ses pôles, ses compétences, au
+  // référentiel ENTIER).
   if (partiel) {
-    return {
+    const document = {
       schemaVersion: '1.0.0',
       kind: 'cartographie-jour',
+      ...identite,
       date,
       poles,
       kairos: null,
@@ -771,6 +821,14 @@ export async function extractDay({
         competences: referentiel.competences.map((c) => c.code).sort(),
       },
     }
+    const { valid, errors } = validateDocumentPourReferentiel('cartographie-jour', document, referentielComplet)
+    if (!valid) {
+      const { nature, detail } = decrireErreurs(errors, 5)
+      throw new Error(
+        `extractDay : document partiel du ${date} ${nature} (${errors.length} erreur(s) : ${detail})`,
+      )
+    }
+    return document
   }
 
   const attemptKairos = async () => {
@@ -781,13 +839,14 @@ export async function extractDay({
     }
     const parsed = parseExtractionResponse(res.text)
     // Validation immédiate contre les pôles déjà validés : un kairos
-    // incomplet doit échouer ICI (retry puis dégradation kairosOptional),
-    // pas à la validation finale du document.
-    const probe = { schemaVersion: '1.0.0', kind: 'cartographie-jour', date, poles, kairos: parsed }
-    const { valid, errors } = validateDocument('cartographie-jour', probe)
+    // incomplet, ou qui relie des codes que le référentiel ne connaît pas,
+    // doit échouer ICI (retry puis dégradation kairosOptional), pas à la
+    // validation finale du document.
+    const probe = { schemaVersion: '1.0.0', kind: 'cartographie-jour', ...identite, date, poles, kairos: parsed }
+    const { valid, errors } = validateDocumentPourReferentiel('cartographie-jour', probe, referentiel)
     if (!valid) {
-      const detail = errors.slice(0, 3).map((e) => `${e.path} ${e.message}`).join(' ; ')
-      throw new Error(`kairos invalide au schéma (${errors.length} erreur(s) : ${detail})`)
+      const { nature, detail } = decrireErreurs(errors, 3)
+      throw new Error(`kairos ${nature} (${errors.length} erreur(s) : ${detail})`)
     }
     return parsed
   }
@@ -800,7 +859,7 @@ export async function extractDay({
       break
     } catch (err) {
       if (attempt < 2 && !signal?.aborted) continue // un seul retry stochastique
-      // Les 7 documents de pôle portent la valeur ; le schéma accepte
+      // Les documents de pôle portent la valeur ; le schéma accepte
       // kairos: null. En mode kairosOptional (démo publique), un échec de la
       // synthèse transversale dégrade le résultat au lieu de perdre le run.
       if (!kairosOptional || signal?.aborted) {
@@ -818,17 +877,16 @@ export async function extractDay({
   const document = {
     schemaVersion: '1.0.0',
     kind: 'cartographie-jour',
+    ...identite,
     date,
     poles,
     kairos,
   }
-  const { valid, errors } = validateDocument('cartographie-jour', document)
+  const { valid, errors } = validateDocumentPourReferentiel('cartographie-jour', document, referentiel)
   if (!valid) {
-    const detail = errors.slice(0, 5).map((e) => `${e.path} ${e.message}`).join(' ; ')
-    throw new Error(
-      `extractDay : document du ${date} invalide au schéma cartographie-jour `
-      + `(${errors.length} erreur(s) : ${detail})`,
-    )
+    const { nature, detail } = decrireErreurs(errors, 5)
+    const quoi = nature === 'invalide au schéma' ? 'invalide au schéma cartographie-jour' : nature
+    throw new Error(`extractDay : document du ${date} ${quoi} (${errors.length} erreur(s) : ${detail})`)
   }
   return document
 }

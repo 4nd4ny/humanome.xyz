@@ -38,7 +38,7 @@ describe('UC-EPI-01 — garde de rôle de l’atelier (vue isolée)', () => {
     const api = atelierApi()
     render(<EpistemiarqueView section={null} deps={{ fetchMeFn: session(['apprenant', 'admin']), api }} />)
 
-    const referentiel = await screen.findByRole('region', { name: 'Les 61 compétences' })
+    const referentiel = await screen.findByRole('region', { name: 'Les compétences du référentiel' })
     expect(within(referentiel).getByRole('button', { name: 'Proposer une évolution' })).toBeDefined()
     expect(screen.queryByTestId('epi-sans-role')).toBeNull()
     expect(api.list).toHaveBeenCalledTimes(1)

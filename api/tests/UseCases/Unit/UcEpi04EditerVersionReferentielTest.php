@@ -178,7 +178,7 @@ final class UcEpi04EditerVersionReferentielTest extends TestCase
         self::repo()->updateDraft($draft['id'], $doc);
     }
 
-    #[TestDox('UC-EPI-04-U04 — validateDocument : schéma (7 pôles, 61 compétences) puis intégrité (pôle dupliqué, code dupliqué, pôle inexistant) avec pointeurs')]
+    #[TestDox('UC-EPI-04-U04 — validateDocument : schéma puis intégrité (pôle dupliqué, code dupliqué, pôle inexistant) avec pointeurs ; RESPIRE n’a plus de structure imposée : 60 compétences, 6 pôles passent')]
     public function testU04ValidateDocumentIntegrity(): void
     {
         $doc = self::respire();
@@ -201,11 +201,20 @@ final class UcEpi04EditerVersionReferentielTest extends TestCase
             )))));
         }
 
+        // RESPIRE's structure is its version's (2026-10-20): a competence less, six poles, are valid
         $short = $doc;
         array_pop($short['competences']);
+        self::assertCount(60, self::repo()->validateDocument($short)['competences']);
+        $six = $doc;
+        $six['poles'] = array_values(array_filter($six['poles'], static fn (array $p): bool => $p['num'] !== 7));
+        $six['competences'] = array_values(array_filter($six['competences'], static fn (array $c): bool => $c['pole'] !== 7));
+        self::assertCount(6, self::repo()->validateDocument($six)['poles']);
+
+        $sansNom = $doc;
+        unset($sansNom['competences'][0]['nom']);
         try {
-            self::repo()->validateDocument($short);
-            self::fail('60 compétences acceptées');
+            self::repo()->validateDocument($sansNom);
+            self::fail('compétence sans nom acceptée');
         } catch (InvalidDocumentException $e) {
             self::assertSame('Document does not conform to the referentiel schema', $e->getMessage());
         }

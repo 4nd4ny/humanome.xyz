@@ -81,3 +81,55 @@ describe('CartographyViewer — type twin9 (D12)', () => {
     expect((await screen.findByRole('alert')).textContent).toContain('aucune journée datée')
   })
 })
+
+// 2026-10-20 : la visionneuse lit le référentiel de la cartographie — la
+// version que l'entrée a notée, sinon celui que nomme le document —, plus
+// RESPIRE supposé ; un autre référentiel introuvable est dit.
+describe('CartographyViewer — le référentiel de la cartographie', () => {
+  const LETTRE = {
+    id: 'fictif-lettre',
+    version: '1.0.0',
+    poles: [{ num: 1, nom: 'A · Percevoir' }, { num: 2, nom: 'B · Agir' }],
+    competences: [{ code: 'A1', nom: 'Écouter', pole: 1 }, { code: 'B1', nom: 'Faire', pole: 2 }],
+  }
+  const JOUR_LETTRE = {
+    kind: 'cartographie-jour',
+    referentiel: 'fictif-lettre',
+    date: '2026-03-02',
+    poles: [{ poleNum: '1', competences: [] }, { poleNum: '2', competences: [] }],
+  }
+
+  it('la version notée par l’entrée ; à défaut, le référentiel que nomme le document', async () => {
+    const load = vi.fn().mockResolvedValue({ doc: LETTRE })
+    const { unmount } = render(
+      <CartographyViewer
+        document={JOUR_LETTRE}
+        entry={{ type: 'jour', titre: 'Journée lettrée', referentiel: { id: 'fictif-lettre', version: '1.0.0' } }}
+        onClose={() => {}}
+        lib={fakeLib}
+        getReferentiel={load}
+      />,
+    )
+    expect(await screen.findByTestId('carto-viewer')).toBeTruthy()
+    await vi.waitFor(() => expect(load).toHaveBeenCalledWith({ id: 'fictif-lettre', version: '1.0.0' }))
+    unmount()
+
+    const latest = vi.fn().mockResolvedValue({ doc: LETTRE })
+    render(
+      <CartographyViewer document={JOUR_LETTRE} entry={{ type: 'jour', titre: 'Journée lettrée' }} onClose={() => {}} lib={fakeLib} getReferentiel={latest} />,
+    )
+    await vi.waitFor(() => expect(latest).toHaveBeenCalledWith({ id: 'fictif-lettre' }))
+    expect(latest).not.toHaveBeenCalledWith()
+  })
+
+  it('un référentiel introuvable est dit, jamais lu avec RESPIRE', async () => {
+    const load = vi.fn(async (options) => {
+      if (options?.id) throw new Error('Le référentiel « fictif-lettre » n’a pas pu être chargé')
+      return { doc: REFERENTIEL }
+    })
+    render(
+      <CartographyViewer document={JOUR_LETTRE} entry={{ type: 'jour', titre: 'Journée lettrée' }} onClose={() => {}} lib={fakeLib} getReferentiel={load} />,
+    )
+    expect((await screen.findByRole('alert')).textContent).toBe('Le référentiel « fictif-lettre » n’a pas pu être chargé')
+  })
+})

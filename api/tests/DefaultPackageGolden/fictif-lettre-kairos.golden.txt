@@ -1,0 +1,93 @@
+Tu es le moteur de cartographie de compétences du protocole Aurora v3 (humanome.xyz).
+Les 5 pôles de la feuille du jour ont déjà été instruits séparément. Tu produis maintenant la
+SYNTHÈSE KAIROS transversale de la journée : une lecture cross-pôles adressée à l'apprenant
+(parle de « l'apprenant », jamais « vous »), attentive à ce qui relie les pôles et à ce qui
+émerge entre les lignes.
+
+# Feuille de portfolio du 06/01/2026 (2026-01-06)
+
+<portfolio>
+Aujourd'hui, j'ai réparé le vélo de Léa avec l'aide de Noé.
+
+Nous avons démonté le dérailleur, comparé deux hypothèses (câble détendu vs
+patte voilée), puis testé chacune — la seconde était la bonne. J'ai noté la
+démarche dans mon carnet pour la prochaine fois. Émotions : fierté « à 80 % »,
+et un peu de frustration au début.
+</portfolio>
+
+# Référentiel Fictif lettré (5 pôles, 20 compétences)
+
+Pôle 1 — A · Pôle fictif A
+  A1 — Capacité fictive A1
+  A2 — Capacité fictive A2
+  A3 — Capacité fictive A3
+  A4 — Capacité fictive A4
+Pôle 2 — B · Pôle fictif B
+  B1 — Capacité fictive B1
+  B2 — Capacité fictive B2
+  B3 — Capacité fictive B3
+  B4 — Capacité fictive B4
+Pôle 3 — C · Pôle fictif C
+  C1 — Capacité fictive C1
+  C2 — Capacité fictive C2
+  C3 — Capacité fictive C3
+  C4 — Capacité fictive C4
+Pôle 4 — D · Pôle fictif D
+  D1 — Capacité fictive D1
+  D2 — Capacité fictive D2
+  D3 — Capacité fictive D3
+  D4 — Capacité fictive D4
+Pôle 5 — E · Pôle fictif E
+  E1 — Capacité fictive E1
+  E2 — Capacité fictive E2
+  E3 — Capacité fictive E3
+  E4 — Capacité fictive E4
+
+# Attendus
+
+1. `kairos.apprenant` : {portrait (l'apprenant tel qu'il ressort de la feuille),
+   formeProfil (relief du profil : sommets, plateaux, vallées), ceQuiRelieLesPoles
+   (fils conducteurs entre pôles), ceQuiEmergeEntreLesLignes (ce que la feuille suggère
+   sans le dire), invitationsPourLaSuite (3 à 5 invitations concrètes pour les prochaines
+   feuilles), syntheseCompleteMarkdown (synthèse complète en Markdown)}.
+2. `emergencesCrossPoles` :
+   - connexionsTransversales [{titre, description, codesRelies (≥ 2 codes de compétences de
+     pôles DIFFÉRENTS), piecesCommunes (pid des passages du jour communs, [] sinon)}] ;
+   - noeudsConceptuels [{nom, description, codesRelies (≥ 2 codes)}] ;
+   - competencesOrphelines [{titre, description, extraitsPortfolio (≥ 1 citation),
+     enRelationAvecCodes (≥ 1 code du référentiel)}] — compétences manifestées dans la
+     feuille mais ABSENTES du référentiel (matière pour les épistémiarques).
+   Tableaux vides quand rien n'émerge.
+
+# Contraintes de longueur (impératives — la réponse est coupée au-delà du budget de sortie)
+
+- portrait, formeProfil, ceQuiRelieLesPoles, ceQuiEmergeEntreLesLignes : 500 caractères
+  MAXIMUM chacun ;
+- invitationsPourLaSuite : 3 invitations d'une phrase chacune ;
+- syntheseCompleteMarkdown : 1 500 caractères maximum ;
+- émergences : 3 éléments maximum par tableau, descriptions de 300 caractères maximum.
+  Densité avant exhaustivité : une synthèse courte et juste vaut mieux qu'une synthèse
+  longue tronquée.
+
+# Format de sortie
+
+Réponds UNIQUEMENT par un objet JSON strict et COMPACT — une seule ligne, sans indentation
+ni retours à la ligne (l'indentation gaspille ton budget de sortie) ; aucun texte avant ou
+après, pas de bloc de code —,
+exactement au gabarit :
+
+{
+  "kairos": {
+    "apprenant": {
+      "portrait": "…", "formeProfil": "…", "ceQuiRelieLesPoles": "…",
+      "ceQuiEmergeEntreLesLignes": "…",
+      "invitationsPourLaSuite": [ "…", "…", "…" ],
+      "syntheseCompleteMarkdown": "…"
+    }
+  },
+  "emergencesCrossPoles": {
+    "connexionsTransversales": [ { "titre": "…", "description": "…", "codesRelies": [ "A1", "D2" ], "piecesCommunes": [] } ],
+    "noeudsConceptuels": [ { "nom": "…", "description": "…", "codesRelies": [ "A1", "D2" ] } ],
+    "competencesOrphelines": [ { "titre": "…", "description": "…", "extraitsPortfolio": [ "…" ], "enRelationAvecCodes": [ "A1" ] } ]
+  }
+}

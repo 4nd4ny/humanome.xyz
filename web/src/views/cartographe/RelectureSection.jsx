@@ -11,6 +11,13 @@
 // sélection interne pour la lecture des verdicts — le contrat P9 admet
 // « depuis le diagramme OU liste déroulante ».
 //
+// Le référentiel est celui de la cartographie (2026-10-20) : la version que
+// le serveur relit (`referentiel` du détail : celle qu'elle a stockée, sinon
+// la plus récente version publiée du référentiel de son document à laquelle
+// il est conforme), plus RESPIRE supposé. Il nomme les compétences et la
+// révision lui est conforme avant l'envoi : ses pôles, chacun une fois, ses
+// codes dans leur pôle — le serveur revérifie.
+//
 // Ancien partage retiré (journal de la cartographie D-43) : la garantie
 // d'une révision n'est plus servie par un lien vers la cartographie. « Ouvrir
 // dans l'interface de cartographie » remet le document affiché (l'origine ou
@@ -20,8 +27,10 @@
 
 import { useEffect, useMemo, useState } from 'react'
 import { validateDocument } from '@engine/validation.js'
+import { validateConformite } from '@engine/conformite.js'
 import { loadPublishedReferentiel } from '../../data/referentiel.js'
 import { interfaceFiles } from '../../lib/interface-handoff.js'
+import { chargerReferentielDuDocument } from '../../lib/referentiel-du-document.js'
 import DayView from '../DayView.jsx'
 import MergeView from '../MergeView.jsx'
 import {
@@ -77,6 +86,7 @@ export default function RelectureSection({
   const [data, setData] = useState(null) // {cartographie, annotations, revisions, garantie}
   const [loadError, setLoadError] = useState(null)
   const [referentiel, setReferentiel] = useState(null)
+  const [referentielError, setReferentielError] = useState(null)
   // Document affiché : celui de la cartographie, ou celui d'une révision.
   const [viewing, setViewing] = useState({ kind: 'base' })
   const [selectedCode, setSelectedCode] = useState('')
@@ -111,16 +121,35 @@ export default function RelectureSection({
       (loaded) => alive && setData(loaded),
       (error) => alive && setLoadError(error.message),
     )
-    getReferentiel().then((loaded) => {
-      if (alive) setReferentiel(loaded?.doc ?? loaded ?? null)
-    })
     return () => {
       alive = false
     }
-  }, [id, fetchFn, getReferentiel])
+  }, [id, fetchFn])
 
   const cartographie = data?.cartographie ?? null
   const baseDocument = cartographie?.document ?? null
+  const referenceId = cartographie?.referentiel?.id ?? null
+  const referenceVersion = cartographie?.referentiel?.version ?? null
+
+  // Le référentiel de la cartographie, une fois son détail connu.
+  useEffect(() => {
+    if (cartographie === null) return undefined
+    let alive = true
+    setReferentiel(null)
+    setReferentielError(null)
+    chargerReferentielDuDocument(baseDocument, {
+      connu: referenceId ? { id: referenceId, version: referenceVersion } : null,
+      getReferentiel,
+    }).then(
+      (loaded) => alive && setReferentiel(loaded),
+      (error) => alive && setReferentielError(error.message),
+    )
+    return () => {
+      alive = false
+    }
+    // baseDocument suit cartographie : son identité suffit.
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [cartographie, referenceId, referenceVersion, getReferentiel])
   const displayedDocument = viewing.kind === 'revision' ? viewing.document : baseDocument
   const isJour = displayedDocument?.kind === 'cartographie-jour'
 
@@ -233,10 +262,23 @@ export default function RelectureSection({
       return
     }
     // Validation engine AVANT envoi (contrat P9) : le POST ne part pas si le
-    // document révisé ne passe pas le schéma cartographie-jour.
-    const { valid, errors } = validateDocument('cartographie-jour', revised)
+    // document révisé ne passe pas le schéma cartographie-jour, puis s'il
+    // n'est pas conforme au référentiel de la cartographie (2026-10-20).
+    if (!referentiel) {
+      setRevisionError('Le référentiel de la cartographie n’est pas chargé : révision non envoyée.')
+      return
+    }
+    // Comme le serveur : le schéma sur le document entier — un marqueur
+    // `perimetre` n'en est pas, et seul l'appelant qui le pose s'y fie —, puis
+    // la conformité.
+    const schema = validateDocument('cartographie-jour', revised)
+    const { valid, errors } = schema.valid ? validateConformite('cartographie-jour', revised, referentiel) : schema
     if (!valid) {
-      setRevisionError('Le document révisé ne respecte pas le schéma : révision non envoyée.')
+      setRevisionError(
+        errors.some((e) => e.keyword === 'referentiel')
+          ? 'Le document révisé n’est pas conforme au référentiel de la cartographie : révision non envoyée.'
+          : 'Le document révisé ne respecte pas le schéma : révision non envoyée.',
+      )
       setRevisionErrors(errors.slice(0, 5))
       return
     }
@@ -291,7 +333,12 @@ export default function RelectureSection({
     let files
     try {
       files = await interfaceFiles(
-        { type: cartographie.type, document: displayedDocument, updatedAt: cartographie.updatedAt },
+        {
+          type: cartographie.type,
+          document: displayedDocument,
+          updatedAt: cartographie.updatedAt,
+          referentiel: cartographie.referentiel ?? null,
+        },
         { getReferentiel },
       )
     } catch {
@@ -358,6 +405,12 @@ export default function RelectureSection({
     viewer = (
       <p role="alert" className="load-error">
         La cartographie ne contient pas de document.
+      </p>
+    )
+  } else if (referentielError) {
+    viewer = (
+      <p role="alert" className="load-error">
+        {referentielError}
       </p>
     )
   } else if (referentiel === null) {

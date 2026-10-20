@@ -4,7 +4,8 @@
 // Code sollicité appelé directement : la route #/twin6-ouverte, le client
 // web/src/api/twin6.js (paquet PUBLIC, provider « crédits » via
 // /api/twin6/appel, provider « clé perso » direct, offre lue dans /twin9/meta),
-// l'adaptation du référentiel et le formatage des montants. Réseau simulé.
+// l'adaptation du référentiel, le référentiel que lit un run (U32) et le
+// formatage des montants. Réseau simulé.
 import { afterEach, describe, expect, it, vi } from 'vitest'
 import { act, cleanup, fireEvent, render, screen } from '@testing-library/react'
 import { parseHash } from '../../../src/router.js'
@@ -16,6 +17,7 @@ import {
   makeCreditsProvider,
   makeOwnKeyProvider,
   referentielPourMoteur,
+  referentielTwin6,
 } from '../../../src/api/twin6.js'
 import { formatUsd } from '../../../src/api/twin9.js'
 import { listKeys, revealKey } from '../../../src/api/keys.js'
@@ -178,6 +180,30 @@ describe('UC-APP-09 — offre et référentiel lus dans /api/twin9/meta', () => 
     expect(referentielPourMoteur(null)).toEqual({ poles: [], competences: [] })
   })
 
+  it('UC-APP-09-U32 — referentielTwin6 : pour RESPIRE, la structure de /meta tant qu’elle est celle de la version choisie ; sinon le document publié', () => {
+    const meta = [
+      { num: 1, nom: 'TÊTE — Penser', competences: [{ code: '1.01', nom: 'A' }, { code: '1.02', nom: 'B' }] },
+      { num: 2, nom: 'CŒUR — Relier', competences: [{ code: '2.01', nom: 'C' }] },
+    ]
+    const respire = {
+      id: 'respire', version: '7.0.0',
+      poles: [{ num: 2, nom: 'COEUR — Relier' }, { num: 1, nom: 'TETE — Penser' }],
+      competences: [{ code: '1.02', nom: 'B', pole: 1 }, { code: '2.01', nom: 'C', pole: 2 }, { code: '1.01', nom: 'A', pole: 1 }],
+    }
+    // Même structure (ordre indifférent) : la structure de /meta, ses noms accentués, sans identifiant.
+    expect(referentielTwin6(respire, meta)).toEqual(referentielPourMoteur(meta))
+    // Une version de RESPIRE où une compétence change de pôle, ou à un pôle de moins : son document.
+    const deplacee = { ...respire, competences: respire.competences.map((c) => (c.code === '1.02' ? { ...c, pole: 2 } : c)) }
+    expect(referentielTwin6(deplacee, meta)).toBe(deplacee)
+    const unPole = { ...respire, poles: [{ num: 1, nom: 'TETE — Penser' }], competences: respire.competences.filter((c) => c.pole === 1) }
+    expect(referentielTwin6(unPole, meta)).toBe(unPole)
+    // /meta vide (jamais importé) : le document de la version.
+    expect(referentielTwin6(respire, [])).toBe(respire)
+    // Un autre référentiel, même de structure semblable : toujours son document.
+    const autre = { ...respire, id: 'fictif-semblable' }
+    expect(referentielTwin6(autre, meta)).toBe(autre)
+  })
+
   it('UC-APP-09-U20 — formatUsd : micro-USD → « x,yy $ », 4 décimales sous le centime', () => {
     expect(formatUsd(6602)).toBe('0,0066 $')
     expect(formatUsd(1_234_567)).toBe('1,23 $')
@@ -221,6 +247,7 @@ describe('UC-APP-09 — clé enregistrée et garde-fou de solde', () => {
       />,
     )
     const zone = await screen.findByLabelText(/Votre portfolio/)
+    await screen.findByText(/appels au modèle/) // le référentiel est chargé : le bouton peut s'activer
     const lancer = () =>
       act(async () => {
         fireEvent.click(screen.getByRole('button', { name: 'Lancer la cartographie ouverte' }))

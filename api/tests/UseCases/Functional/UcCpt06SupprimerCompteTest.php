@@ -135,6 +135,7 @@ final class UcCpt06SupprimerCompteTest extends CartographeTestCase
     #[TestDox('UC-CPT-06-F02 — A2 : un cartographe supprime son compte → la garantie disparaît du lien de l’apprenant, qui sert de nouveau la base')]
     public function testF02CartographeDeletionAndSharedLink(): void
     {
+        self::publierRespireV7(); // the review checks against a published version (2026-10-20)
         $maya = $this->registerAs('maya@example.org', 'Maya');
         $carl = $this->registerAs('carl@example.org', 'Carl', ['cartographe']);
         $this->link($maya, $carl);

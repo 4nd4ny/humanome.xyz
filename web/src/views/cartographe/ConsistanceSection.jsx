@@ -3,12 +3,19 @@
 // locaux, validés au schéma) -> engine compareRuns -> rendu LISIBLE via
 // lib/consistency-view.js : accord global, compétences stables / divergentes
 // (badges par statut), tableau détaillé.
+//
+// Tout référentiel (2026-10-20) : un fichier local se valide au schéma puis
+// à la conformité au référentiel qu'il nomme (RESPIRE s'il n'en nomme aucun) ;
+// les runs comparés cartographient le même référentiel, qui nomme leurs
+// compétences — celui de la cartographie de la file, sinon celui du document.
 
-import { useEffect, useMemo, useState } from 'react'
+import { useEffect, useState } from 'react'
 import { compareRuns } from '@engine/consistency.js'
+import { validateConformite } from '@engine/conformite.js'
 import { validateDocument } from '@engine/validation.js'
 import { loadPublishedReferentiel } from '../../data/referentiel.js'
 import { buildConsistencyView } from '../../lib/consistency-view.js'
+import { chargerReferentielDuDocument, referenceDuDocument } from '../../lib/referentiel-du-document.js'
 import { fetchCartographie, fetchQueue, frDate } from './cartographe-api.js'
 
 /**
@@ -22,7 +29,6 @@ export default function ConsistanceSection({
   getReferentiel = loadPublishedReferentiel,
 }) {
   const [queue, setQueue] = useState(null)
-  const [referentiel, setReferentiel] = useState(null)
   const [loadError, setLoadError] = useState(null)
   const [checked, setChecked] = useState(() => new Set()) // ids de la file
   const [localDocs, setLocalDocs] = useState([]) // {name, document} fichiers locaux
@@ -37,19 +43,10 @@ export default function ConsistanceSection({
       (list) => alive && setQueue(list.filter((entry) => entry.type === 'jour')),
       (error) => alive && (setQueue([]), setLoadError(error.message)),
     )
-    getReferentiel().then((loaded) => {
-      if (alive) setReferentiel(loaded?.doc ?? loaded ?? null)
-    })
     return () => {
       alive = false
     }
-  }, [fetchFn, getReferentiel])
-
-  const competenceNames = useMemo(() => {
-    const names = {}
-    for (const c of referentiel?.competences ?? []) names[c.code] = c.nom
-    return names
-  }, [referentiel])
+  }, [fetchFn])
 
   function toggle(id, on) {
     setView(null)
@@ -82,6 +79,19 @@ export default function ConsistanceSection({
         )
         continue
       }
+      let referentiel
+      try {
+        referentiel = await chargerReferentielDuDocument(document, { getReferentiel })
+      } catch (error) {
+        setFileError(`« ${file.name} » : ${error.message} — fichier ignoré.`)
+        continue
+      }
+      if (!validateConformite('cartographie-jour', document, referentiel).valid) {
+        setFileError(
+          `« ${file.name} » n’est pas conforme à son référentiel « ${referentiel.id ?? '?'} » : fichier ignoré.`,
+        )
+        continue
+      }
       added.push({ name: file.name, document })
     }
     if (added.length > 0) setLocalDocs((current) => [...current, ...added])
@@ -108,11 +118,24 @@ export default function ConsistanceSection({
               `La cartographie ${id} n’est pas un document de journée : retirez-la de la sélection.`,
             )
           }
-          return document
+          return { document, referentiel: cartographie?.referentiel ?? null }
         }),
       )
-      const docs = [...fromQueue, ...localDocs.map((d) => d.document)]
-      const result = compareRuns(docs)
+      const runs = [...fromQueue, ...localDocs.map((d) => ({ document: d.document, referentiel: null }))]
+      const ids = new Set(runs.map((r) => referenceDuDocument(r.document, r.referentiel).id))
+      if (ids.size > 1) {
+        throw new Error(
+          `Les runs comparés doivent cartographier le même référentiel (ici : ${[...ids].join(', ')}).`,
+        )
+      }
+      const premier = runs.find((r) => r.referentiel?.id) ?? runs[0]
+      const referentiel = await chargerReferentielDuDocument(premier.document, {
+        connu: premier.referentiel,
+        getReferentiel,
+      })
+      const competenceNames = {}
+      for (const c of referentiel?.competences ?? []) competenceNames[c.code] = c.nom
+      const result = compareRuns(runs.map((r) => r.document))
       setView(buildConsistencyView(result, { competenceNames }))
     } catch (error) {
       setAnalysisError(error.message)

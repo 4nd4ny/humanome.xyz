@@ -76,7 +76,7 @@ export function meResponse(roles = ['apprenant'], extra = {}) {
   })
 }
 
-/** Les 7 pôles RESPIRE (le schéma cartographie-merge exige 7 domaines). */
+/** Les 7 pôles RESPIRE, aux noms accentués de l'import Twin9 (ceux de /api/twin9/meta). */
 export const POLES_RESPIRE = [
   { num: 1, nom: 'TÊTE — Penser & Comprendre' },
   { num: 2, nom: 'CŒUR — Relier & Naviguer' },
@@ -94,7 +94,12 @@ export const META_REFERENTIEL = POLES_RESPIRE.map((p) => ({
   competences: [{ code: `${p.num}.01`, nom: `Compétence fictive ${p.num}.01` }],
 }))
 
-/** Paquet PUBLIC Twin6 FICTIF (même forme que web/public/data/twin6/…json). */
+/**
+ * Paquet PUBLIC Twin6 FICTIF (même forme que web/public/data/twin6/…json) : la
+ * fiche de chaque pôle nomme sa compétence (« ## N.01 — »), comme celles du
+ * vrai paquet nomment les compétences de RESPIRE v7 — un run de ce RESPIRE la
+ * lit telle quelle.
+ */
 export const TWIN6_PACKAGE = {
   id: 'twin6-ouverte',
   version: '1.0.0',
@@ -103,7 +108,64 @@ export const TWIN6_PACKAGE = {
   modeleCibleDefaut: 'claude-sonnet-5',
   scanPole: 'Scanne le pôle ${POLE} du portfolio avec la fiche P${POLE}.md (gabarit public fictif).',
   kairos: 'Synthèse kairos fictive des carto_pole.',
-  fiches: Object.fromEntries(POLES_RESPIRE.map((p) => [p.num, `Fiche publique fictive du pôle ${p.num}`])),
+  fiches: Object.fromEntries(
+    POLES_RESPIRE.map((p) => [
+      p.num,
+      `# Pôle ${p.num} — ${p.nom}\n\n## ${p.num}.01 — Compétence fictive ${p.num}.01\n\nFiche publique fictive du pôle ${p.num}.\n`,
+    ]),
+  ),
+}
+
+/**
+ * La version publiée de RESPIRE, FICTIVE : la structure de /api/twin9/meta
+ * (sept pôles, une compétence N.01 chacun), aux noms de pôle sans accent comme
+ * ceux des documents publiés.
+ */
+export const REFERENTIEL_RESPIRE_FICTIF = {
+  schemaVersion: '2.0.0',
+  kind: 'referentiel',
+  id: 'respire',
+  version: '7.0.0',
+  label: 'RESPIRE v7',
+  poles: POLES_RESPIRE.map((p) => ({ num: p.num, nom: p.nom.normalize('NFD').replace(/[\u0300-\u036f]/g, ''), couleur: null })),
+  competences: POLES_RESPIRE.map((p) => ({ code: `${p.num}.01`, nom: `Compétence fictive ${p.num}.01`, pole: p.num })),
+}
+
+/** Un autre référentiel publié, FICTIF : cinq pôles lettrés, deux capacités chacun (A1 à E2). */
+export const REFERENTIEL_LETTRE_FICTIF = {
+  schemaVersion: '2.0.0',
+  kind: 'referentiel',
+  id: 'fictif-lettre',
+  version: '1.0.0',
+  label: 'Fictif lettré',
+  niveaux: [{ nom: 'capacité', motif: '[A-E][1-2]' }],
+  poles: ['A', 'B', 'C', 'D', 'E'].map((l, i) => ({ num: i + 1, nom: `${l} · Pôle fictif ${l}`, couleur: null })),
+  competences: ['A', 'B', 'C', 'D', 'E'].flatMap((l, i) =>
+    [1, 2].map((n) => ({ code: `${l}${n}`, nom: `Capacité fictive ${l}${n}`, pole: i + 1, description: `Définition fictive de ${l}${n}.` })),
+  ),
+}
+
+/**
+ * Routes de l'export statique des référentiels (data/referentiel/, UC-VIS-02) :
+ * son index et un fichier par version publiée.
+ *
+ * @param {Array<object>} referentiels documents publiés
+ */
+export function referentielsPublies(referentiels) {
+  const routes = {
+    'data/referentiel/index.json': jsonResponse(
+      200,
+      referentiels.map((r) => ({
+        referentielId: r.id,
+        semver: r.version,
+        label: r.label,
+        publishedAt: '2026-10-20T00:00:00',
+        fichier: `${r.id}-v${r.version}.json`,
+      })),
+    ),
+  }
+  for (const r of referentiels) routes[`data/referentiel/${r.id}-v${r.version}.json`] = jsonResponse(200, r)
+  return routes
 }
 
 /**
@@ -153,13 +215,20 @@ export const KAIROS_FICTIF = {
 /**
  * Texte de réponse du modèle pour un prompt Twin6 : kairos si le prompt porte
  * les carto_pole (« carto_P1 »), sinon le carto_pole du pôle nommé dans le
- * prompt (« Fiche des compétences du pôle N »).
+ * prompt (« Fiche des compétences du pôle N ») ; sa compétence attestée est
+ * N.01, ou la première du pôle dans `referentiel` s'il est donné.
+ *
+ * @param {string} prompt
+ * @param {{competences: Array<{code: string, pole: number}>}} [referentiel]
  */
-export function twin6ModelText(prompt) {
+export function twin6ModelText(prompt, referentiel = null) {
   if (String(prompt).includes('## carto_P1')) return '```json\n' + JSON.stringify(KAIROS_FICTIF) + '\n```'
-  const m = /Fiche des compétences du pôle (\d)/.exec(String(prompt))
+  const m = /Fiche des compétences du pôle (\d+)/.exec(String(prompt))
   const num = m ? Number(m[1]) : 1
-  return `Voici la cartographie.\n\n\`\`\`json\n${JSON.stringify(cartoPoleFictif(num))}\n\`\`\``
+  const pole = cartoPoleFictif(num)
+  const code = referentiel?.competences.find((c) => Number(c.pole) === num)?.code
+  if (code) pole.competences[0].code = code
+  return `Voici la cartographie.\n\n\`\`\`json\n${JSON.stringify(pole)}\n\`\`\``
 }
 
 /**

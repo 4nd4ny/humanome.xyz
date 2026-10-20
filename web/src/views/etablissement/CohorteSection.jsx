@@ -1,7 +1,7 @@
 // Détail d'une cohorte (P11) : membres (consentement, dépôt de portfolio),
-// lancement d'un run de MASSE (paquet publié + confirmation du coût estimé)
-// et suivi d'avancement EN DIRECT (polling 5 s : jobs par statut, coût cumulé,
-// erreurs par membre, annulation).
+// lancement d'un run de MASSE (paquet publié, référentiel publié — RESPIRE par
+// défaut —, confirmation du coût estimé) et suivi d'avancement EN DIRECT
+// (polling 5 s : jobs par statut, coût cumulé, erreurs par membre, annulation).
 //
 // Rappel du contrat M8 : un job = (membre, journée) ; seuls les membres ayant
 // CONSENTI et DÉPOSÉ leur portfolio dans la cohorte sont enfilés — les
@@ -9,6 +9,8 @@
 // le dépôt est leur opt-in explicite pour la masse B2B.
 
 import { useCallback, useEffect, useRef, useState } from 'react'
+import ReferentielChoice from '../../components/ReferentielChoice.jsx'
+import { listPublishedReferentiels, loadPublishedReferentiel } from '../../data/referentiel.js'
 import {
   cancelRun,
   DEFAULT_DAY_CHARS,
@@ -90,16 +92,24 @@ function RunProgress({ run, onCancel, cancelBusy }) {
  * @param {object} props
  * @param {string} props.id identifiant de la cohorte (segment d'URL)
  * @param {typeof fetch} [props.fetchFn] seam de test
+ * @param {typeof loadPublishedReferentiel} [props.getReferentiel] seam de test, appelé avec le choix ({id, version}) ou sans
+ * @param {typeof listPublishedReferentiels} [props.listReferentiels] seam de test (référentiels publiés offerts au choix)
  */
-export default function CohorteSection({ id, fetchFn }) {
+export default function CohorteSection({
+  id,
+  fetchFn,
+  getReferentiel = loadPublishedReferentiel,
+  listReferentiels = listPublishedReferentiels,
+}) {
   const [cohorte, setCohorte] = useState(null)
   const [membres, setMembres] = useState(null)
   const [config, setConfig] = useState(null)
   const [packages, setPackages] = useState([])
   const [loadError, setLoadError] = useState(null)
 
-  // Assistant de lancement : paquet + membres cochés -> estimation -> POST.
+  // Assistant de lancement : paquet + référentiel + membres cochés -> estimation -> POST.
   const [selectedPackage, setSelectedPackage] = useState('')
+  const [referentielChoice, setReferentielChoice] = useState(null) // null : RESPIRE, dernière version publiée
   const [selectedMembers, setSelectedMembers] = useState(null) // Set d'userIds, null = pas encore initialisé
   const [estimate, setEstimate] = useState(null) // {membres, journees, costUsd, ...}
   const [launchBusy, setLaunchBusy] = useState(false)
@@ -175,7 +185,7 @@ export default function CohorteSection({ id, fetchFn }) {
     setEstimate(null) // l'estimation affichée ne correspond plus à la sélection
   }
 
-  function computeEstimate() {
+  async function computeEstimate() {
     setLaunchError(null)
     if (!selectedPackage) {
       setLaunchError('Choisissez un paquet de prompts publié.')
@@ -185,6 +195,15 @@ export default function CohorteSection({ id, fetchFn }) {
       setLaunchError(
         'Aucun membre sélectionné n’a déposé son portfolio : le run n’aurait aucun job.',
       )
+      return
+    }
+    // Le nombre d'appels d'une journée se lit dans le référentiel du run : un par pôle, plus le kairos.
+    let referentiel
+    try {
+      const loaded = await getReferentiel(referentielChoice ?? undefined)
+      referentiel = loaded?.doc ?? loaded
+    } catch (error) {
+      setLaunchError(error.message)
       return
     }
     const totalJournees = chosen.reduce((sum, m) => sum + (m.portfolio?.journees ?? 0), 0)
@@ -200,7 +219,7 @@ export default function CohorteSection({ id, fetchFn }) {
       membres: chosen.length,
       journees: totalJournees,
       model,
-      ...estimateMassRun({ totalJournees, avgDayChars, model }),
+      ...estimateMassRun({ totalJournees, avgDayChars, model, referentiel }),
     })
   }
 
@@ -212,6 +231,10 @@ export default function CohorteSection({ id, fetchFn }) {
       const body = {
         promptPackageId: packageId,
         promptPackageVersion: packageVersion,
+        // Sans choix, le serveur prend la dernière version publiée de RESPIRE.
+        ...(referentielChoice
+          ? { referentielId: referentielChoice.id, referentielVersion: referentielChoice.version }
+          : {}),
       }
       // membres? est optionnel : omis quand tous les déposants sont cochés.
       if (chosen.length !== deposited.length) {
@@ -369,6 +392,14 @@ export default function CohorteSection({ id, fetchFn }) {
                 </option>
               ))}
             </select>{' '}
+            <ReferentielChoice
+              value={referentielChoice}
+              list={listReferentiels}
+              onChange={(choice) => {
+                setReferentielChoice(choice)
+                setEstimate(null)
+              }}
+            />{' '}
             <button type="button" className="button" onClick={computeEstimate}>
               Estimer le coût
             </button>

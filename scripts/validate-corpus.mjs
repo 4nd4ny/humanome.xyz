@@ -10,6 +10,11 @@
 //   5. schemas/fixtures/carto/*.json (master v4 of the cartography interface,
 //      cartography journal D-25)                             -> kind read from each doc
 //
+// A day or a merge of RESPIRE (none names another referential) is then checked
+// for conformity to RESPIRE v7 (engine/src/conformite.js, 2026-10-20): the
+// schemas no longer fix its seven poles, the conformity does — its poles, each
+// once, its codes in their pole.
+//
 // Output: one compact line per file (OK / KO + errors), summary, exit 1 on failure.
 //
 // Node quirk: engine/src/validation.js imports the schemas as plain JSON imports
@@ -45,6 +50,12 @@ register(`data:text/javascript,${encodeURIComponent(jsonAsModuleHook)}`)
 const { validateDocument, SUPPORTED_KINDS } = await import(
   pathToFileURL(join(repoRoot, 'engine/src/validation.js')).href
 )
+const { validateConformite, REFERENTIEL_PAR_DEFAUT } = await import(
+  pathToFileURL(join(repoRoot, 'engine/src/conformite.js')).href
+)
+// Read when a first document needs it: a missing corpus is reported first.
+let respireV7 = null
+const respire = () => (respireV7 ??= JSON.parse(readFileSync(join(repoRoot, 'web/public/data/referentiel/respire-v7.json'), 'utf8')))
 
 // ---------------------------------------------------------------------------
 
@@ -98,7 +109,11 @@ for (const { file, kind } of targets) {
     // unreachable by construction, kept for clarity
   }
 
-  const { valid, errors } = validateDocument(effectiveKind, doc)
+  let { valid, errors } = validateDocument(effectiveKind, doc)
+  if (valid && (effectiveKind === 'cartographie-jour' || effectiveKind === 'cartographie-merge')
+    && (doc.referentiel ?? REFERENTIEL_PAR_DEFAUT) === REFERENTIEL_PAR_DEFAUT) {
+    ;({ valid, errors } = validateConformite(effectiveKind, doc, respire()))
+  }
   if (valid) {
     okCount += 1
     console.log(`OK  ${rel}  (${effectiveKind})`)

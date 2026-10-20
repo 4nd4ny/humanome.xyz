@@ -21,12 +21,14 @@ use PHPUnit\Framework\Attributes\RunInSeparateProcess;
 /**
  * The run's referential as the engine reads it (T16, docs/contrats.md §8.8):
  * drawn from the base at its version; RESPIRE's preambles and fiches those
- * the base keeps, another referential's written from its document, its
+ * the base keeps for what it describes of the version, everything else, and
+ * another referential's, written from its document (2026-10-20), its
  * competences in the natural order of their codes; its fingerprint the same
  * however it is decoded. With the real engine of TWIN_V9_DIR — skipped
  * without it, each such test in a process of its own, for the fake engine
  * may be loaded in the others —, RESPIRE's block reads as the v9.8's pole
- * files, and a referential the engine cannot read is refused at launch.
+ * files, a six-pole RESPIRE reads too, and a referential the engine cannot
+ * read is refused at launch.
  */
 final class ReferentielMoteurTest extends CartographeTestCase
 {
@@ -146,24 +148,69 @@ final class ReferentielMoteurTest extends CartographeTestCase
 
     /**
      * A version of RESPIRE that names a code the base has no fiche for — a
-     * draft that renames one — cannot be read: 422, the code named; not the
-     * instance's 503 (review of T16).
+     * draft that renames one — reads that code's fiche from its document, and
+     * its pole's preamble too, which counts that pole's competences; the
+     * other poles as the base keeps them (2026-10-20: before, 422).
      */
-    public function testACodeOfRespireWithoutItsFicheIsRefused(): void
+    public function testACodeOfRespireTheBaseDoesNotKnowIsWrittenFromItsDocument(): void
     {
-        $doc = json_decode((string) file_get_contents(\dirname(__DIR__, 3) . '/web/public/data/referentiel/respire-v7.json'),
-            true, 512, JSON_THROW_ON_ERROR);
-        unset($doc['contentHash']);
+        $doc = self::respireDuDepot();
         $doc['version'] = '7.9.0';
         $doc['competences'][0]['code'] = '1.99';
+        $doc['competences'][0]['description'] = 'Définition FICTIVE de la compétence renommée.';
         self::publier($doc);
-        try {
-            (new ReferentielMoteur(self::$pdo))->bloc('respire', '7.9.0');
-            self::fail('un code sans fiche');
-        } catch (Twin9Exception $e) {
-            self::assertSame([422, 'Le référentiel « respire » ne se lit pas : la compétence 1.99 n’a pas de fiche dans la base'],
-                [$e->getStatusCode(), $e->getMessage()]);
+        $corpus = self::corpus();
+
+        $bloc = (new ReferentielMoteur(self::$pdo))->bloc('respire', '7.9.0');
+        $tete = $bloc['poles'][0];
+        self::assertSame("# Pôle 1 — {$doc['poles'][0]['nom']}\n", $tete['entete'], 'un pôle que la base ne décrit plus à l’identique');
+        $parCode = array_column($tete['competences'], 'fiche', 'code');
+        self::assertSame('## 1.99 — ' . $doc['competences'][0]['nom'] . "\n\nDéfinition FICTIVE de la compétence renommée.",
+            $parCode['1.99']);
+        self::assertSame($corpus['fiches']['1.02'], $parCode['1.02'], 'un code que la base connaît dans ce pôle');
+        self::assertSame($corpus['poleHeaders']['2'], $bloc['poles'][1]['entete'], 'un pôle inchangé');
+    }
+
+    /**
+     * A version of RESPIRE of another structure (six poles, a competence
+     * moved, UC-EPI-04): a competence keeps the base's fiche where the base
+     * knows it in the same pole, a pole the base's preamble where the base
+     * knows exactly its codes; a moved competence, and the two poles it
+     * changes, are written from the document.
+     */
+    public function testARespireOfAnotherStructureReadsWhatTheBaseDoesNotDescribeFromItsDocument(): void
+    {
+        $doc = self::respireDuDepot();
+        $doc['version'] = '8.0.0';
+        $doc['poles'] = array_values(array_filter($doc['poles'], static fn (array $p): bool => (int) $p['num'] !== 7));
+        $doc['competences'] = array_values(array_filter($doc['competences'], static fn (array $c): bool => (int) $c['pole'] !== 7));
+        foreach ($doc['competences'] as &$c) {
+            if ($c['code'] === '1.10') {
+                $c['pole'] = 2;
+            }
         }
+        unset($c);
+        self::publier($doc);
+        $corpus = self::corpus();
+
+        $bloc = (new ReferentielMoteur(self::$pdo))->bloc('respire', '8.0.0');
+        self::assertSame(range(1, 6), array_column($bloc['poles'], 'num'));
+        foreach ([3, 4, 5, 6] as $num) {
+            $pole = $bloc['poles'][$num - 1];
+            self::assertSame($corpus['poleHeaders'][(string) $num], $pole['entete'], "pôle $num");
+            foreach ($pole['competences'] as $c) {
+                self::assertSame($corpus['fiches'][$c['code']], $c['fiche'], $c['code']);
+            }
+        }
+        [$tete, $coeur] = $bloc['poles'];
+        self::assertStringStartsWith('# Pôle 1 — ', $tete['entete']);
+        self::assertStringStartsWith('# Pôle 2 — ', $coeur['entete']);
+        self::assertNotContains('1.10', array_column($tete['competences'], 'code'));
+        $deplacee = array_column($coeur['competences'], 'fiche', 'code')['1.10'];
+        self::assertStringStartsWith('## 1.10 — ', $deplacee);
+        self::assertNotSame($corpus['fiches']['1.10'], $deplacee, 'la base la connaît dans un autre pôle');
+        self::assertSame($corpus['fiches']['2.01'], array_column($coeur['competences'], 'fiche', 'code')['2.01']);
+        self::assertSame($corpus['fiches']['1.01'], $tete['competences'][0]['fiche']);
     }
 
     /**
@@ -229,6 +276,35 @@ final class ReferentielMoteurTest extends CartographeTestCase
     }
 
     /**
+     * With the real engine: a version of RESPIRE in six poles reads — six
+     * poles, the base's preambles and fiches, the keys of their names (the
+     * v9.8's keys are for seven) —, its name RESPIRE (2026-10-20).
+     */
+    #[RunInSeparateProcess]
+    #[PreserveGlobalState(false)]
+    public function testTheRealEngineReadsASixPoleRespire(): void
+    {
+        if (!is_file($this->reel . '/php/src/Referentiel.php')) {
+            self::markTestSkipped('Twin_v9 absent (TWIN_V9_DIR) : le vrai moteur n’est pas là');
+        }
+        TestDb::setEnv('TWIN_V9_DIR', $this->reel);
+        self::assertTrue(EngineLoader::load());
+        $doc = self::respireDuDepot();
+        $doc['version'] = '8.0.0';
+        $doc['poles'] = array_values(array_filter($doc['poles'], static fn (array $p): bool => (int) $p['num'] !== 7));
+        $doc['competences'] = array_values(array_filter($doc['competences'], static fn (array $c): bool => (int) $c['pole'] !== 7));
+        self::publier($doc);
+
+        $bloc = \Twin9\Py\Json::loads(json_encode((new ReferentielMoteur(self::$pdo))->bloc('respire', '8.0.0'),
+            JSON_THROW_ON_ERROR));
+        $lus = \Twin9\Referentiel::depuisBloc($bloc);
+        self::assertCount(6, $lus);
+        self::assertSame(['TETE', 'COEUR', 'MAIN', 'AME', 'RACINES', 'CITE'], array_map(static fn (\Twin9\Pole $p): string => $p->cle, $lus));
+        self::assertSame(\count($doc['competences']), array_sum(array_map(static fn (\Twin9\Pole $p): int => \count($p->competences), $lus)));
+        self::assertSame('RESPIRE', \Twin9\Referentiel::nomCourt($bloc));
+    }
+
+    /**
      * With the real engine: a referential the platform publishes but the
      * engine cannot read — its codes digits only — is refused at the preview
      * and at the launch, 422, the code at fault named; no run is written.
@@ -278,6 +354,23 @@ final class ReferentielMoteurTest extends CartographeTestCase
                 self::json($refus)['error']);
         }
         self::assertSame(0, (int) self::$pdo->query('SELECT COUNT(*) FROM twin9_runs')->fetchColumn());
+    }
+
+    /** @return array<string, mixed> RESPIRE v7 as the platform publishes it, without its hash */
+    private static function respireDuDepot(): array
+    {
+        $doc = json_decode((string) file_get_contents(\dirname(__DIR__, 3) . '/web/public/data/referentiel/respire-v7.json'),
+            true, 512, JSON_THROW_ON_ERROR);
+        unset($doc['contentHash']);
+
+        return $doc;
+    }
+
+    /** @return array{poleHeaders: array<string, string>, fiches: array<string, string>} the committed corpus */
+    private static function corpus(): array
+    {
+        return json_decode((string) file_get_contents(\dirname(__DIR__, 3) . '/scripts/data/fiches-v7.json'), true,
+            512, JSON_THROW_ON_ERROR);
     }
 
     /** @param array<string, mixed> $doc a referential, published */

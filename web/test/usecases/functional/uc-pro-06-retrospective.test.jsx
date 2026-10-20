@@ -394,10 +394,19 @@ describe('UC-PRO-06 — anomalies constatées (comportement ACTUEL figé)', () =
     expect(llm.prompts).toHaveLength(0)
   })
 
-  it('UC-PRO-06-F16 — anomalie AN-2 : la base de l’original (7.1.0) est ignorée — une version ANTÉRIEURE reste proposée', async () => {
-    // COMPORTEMENT ACTUEL : GET cartographies/{id} indique la version du
-    // référentiel d'origine, mais RetroSection appelle
-    // newerReferentielVersions(versions, null) : aucun filtrage « plus récent ».
+})
+
+describe('UC-PRO-06 — anomalies corrigées et référentiel de l’original (2026-10-20)', () => {
+  it('UC-PRO-06-F16 — AN-2 corrigée : la version stockée de l’original est la base — seules les versions PLUS RÉCENTES sont proposées', async () => {
+    // GET cartographies/{id} indique la version du référentiel d'origine :
+    // elle filtre désormais les versions proposées.
+    stubNetwork(retroRoutes())
+    openRetro()
+    await choisirOriginal()
+    await waitFor(() =>
+      expect([...screen.getByLabelText('Version du référentiel').options].map((o) => o.value)).toEqual(['', '7.1.0']),
+    )
+    cleanup()
     stubNetwork(
       retroRoutes({
         original: { id: 3, type: 'jour', titre: 'Journée du 5 janvier', document: clone(DAY_DOCS['2026-01-05']), referentiel: { id: 'respire', version: '7.1.0' } },
@@ -406,7 +415,78 @@ describe('UC-PRO-06 — anomalies constatées (comportement ACTUEL figé)', () =
     openRetro()
     await choisirOriginal()
     await waitFor(() =>
-      expect([...screen.getByLabelText('Version du référentiel').options].map((o) => o.value)).toEqual(['', '7.1.0', '7.0.0']),
+      expect([...screen.getByLabelText('Version du référentiel').options].map((o) => o.value)).toEqual(['']),
     )
+  })
+
+  it('UC-PRO-06-F23 — l’original d’un autre référentiel : ses versions publiées (index), sa structure pour la régénération, jamais RESPIRE', async () => {
+    const lettre = (version) => ({
+      schemaVersion: '2.0.0',
+      kind: 'referentiel',
+      id: 'fictif-lettre',
+      version,
+      label: 'Fictif lettré',
+      poles: ['A', 'B', 'C', 'D', 'E'].map((l, i) => ({ num: i + 1, nom: `${l} · Pôle fictif ${l}` })),
+      competences: ['A', 'B', 'C', 'D', 'E'].flatMap((l, i) =>
+        [1, 2].map((n) => ({ code: `${l}${n}`, nom: `Capacité fictive ${l}${n}`, pole: i + 1 })),
+      ),
+    })
+    // L'original : cinq pôles, aucune capacité établie.
+    const original = {
+      schemaVersion: '1.0.0',
+      kind: 'cartographie-jour',
+      referentiel: 'fictif-lettre',
+      date: '2026-01-05',
+      poles: lettre('1.0.0').poles.map((p) => ({
+        poleNum: String(p.num),
+        competences: lettre('1.0.0').competences
+          .filter((c) => c.pole === p.num)
+          .map((c) => ({ code: c.code, verdict: { statut: 'présence non établie' } })),
+      })),
+      kairos: null,
+    }
+    // Le modèle établit la première capacité de chaque pôle (délibération d'une compétence établie du corpus).
+    const source = DAY_DOCS['2026-01-05'].poles[1]
+    const reponse = (prompt) => {
+      if (prompt.includes('SYNTHÈSE KAIROS')) return 'null'
+      const num = Number(/# Pôle (\d+) — /.exec(prompt)[1])
+      const codes = /les \d+ codes\n(.+) dans cet ordre/.exec(prompt)[1].split(', ')
+      return JSON.stringify({
+        poleNum: String(num),
+        passagesSaillants: source.passagesSaillants,
+        competences: codes.map((code, i) => ({
+          ...(i === 0 ? source.competences.find((c) => c.code === '2.01') : source.competences.find((c) => c.courtCircuit)),
+          code,
+        })),
+        rapport: null,
+      })
+    }
+    const llm = serviceHumanome({ fail: (body) => jsonResponse(200, { text: reponse(body.prompt), usage: { inputTokens: 1, outputTokens: 1 }, model: 'claude-sonnet-5' }) })
+    const net = stubNetwork({
+      ...retroRoutes({
+        original: { id: 3, type: 'jour', titre: 'Journée du 5 janvier', document: original, referentiel: { id: 'fictif-lettre', version: '1.0.0' } },
+      }),
+      'data/referentiel/index.json': () => jsonResponse(200, [
+        { referentielId: 'respire', semver: '7.0.0', label: 'RESPIRE v7', fichier: 'respire-v7.0.0.json' },
+        { referentielId: 'fictif-lettre', semver: '1.1.0', label: 'Fictif lettré', fichier: 'fictif-lettre-v1.1.0.json' },
+        { referentielId: 'fictif-lettre', semver: '1.0.0', label: 'Fictif lettré', fichier: 'fictif-lettre-v1.0.0.json' },
+      ]),
+      'data/referentiel/fictif-lettre-v1.1.0.json': () => jsonResponse(200, lettre('1.1.0')),
+      ...llm.routes,
+    })
+    openRetro()
+    await choisirOriginal()
+    // Les versions du référentiel de l'original, plus récentes que la sienne — pas celles de RESPIRE.
+    await waitFor(() =>
+      expect([...screen.getByLabelText('Version du référentiel').options].map((o) => o.value)).toEqual(['', '1.1.0']),
+    )
+    fireEvent.change(screen.getByLabelText('Version du référentiel'), { target: { value: '1.1.0' } })
+    await regenerer()
+    const result = await screen.findByTestId('retro-result', {}, LONG)
+    expect(llm.prompts).toHaveLength(6) // 5 pôles + kairos
+    expect(llm.prompts[0]).toContain('pour UN pôle du référentiel Fictif lettré, en jouant')
+    expect(net.calls((c) => c.url.startsWith('api/referentiel/versions/'))).toHaveLength(0)
+    expect(within(result).getAllByRole('row').filter((r) => r.className === 'retro-nouvelle').map((r) => r.firstChild.textContent))
+      .toEqual(['A1', 'B1', 'C1', 'D1', 'E1'])
   })
 })

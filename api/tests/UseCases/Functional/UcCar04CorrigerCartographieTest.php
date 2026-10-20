@@ -6,6 +6,7 @@ namespace Humanome\Tests\UseCases\Functional;
 
 use Humanome\Tests\CartographeTestCase;
 use Humanome\Tests\UseCases\Support\CarSupport;
+use Humanome\Tests\UseCases\Support\ReferentielsFictifs;
 use PHPUnit\Framework\Attributes\TestDox;
 use Psr\Http\Message\ResponseInterface;
 
@@ -31,6 +32,8 @@ final class UcCar04CorrigerCartographieTest extends CartographeTestCase
     protected function setUp(): void
     {
         parent::setUp();
+        // annotations and revisions are checked against a published referential version (2026-10-20)
+        self::publierRespireV7();
         $this->maya = $this->registerAs('maya@example.org', 'Maya');
         $this->carl = $this->registerAs('carl@example.org', 'Carl', ['cartographe']);
         $this->link($this->maya, $this->carl);
@@ -166,7 +169,7 @@ final class UcCar04CorrigerCartographieTest extends CartographeTestCase
         self::assertSame(201, $this->revise($this->carl, ['document' => self::corrected(), 'note' => str_repeat('é', 500)])->getStatusCode());
     }
 
-    #[TestDox('UC-CAR-04-F05 — E4 : document hors schéma ou d’un autre type → 422 ; A6 : révision merge conforme → 201')]
+    #[TestDox('UC-CAR-04-F05 — E4 : document hors schéma ou d’un autre type → 422 ; A6 : révision merge conforme → 201, merge qui a perdu un pôle → 422')]
     public function testF05SchemaValidationAndTypeEquality(): void
     {
         $broken = self::corrected();
@@ -190,6 +193,15 @@ final class UcCar04CorrigerCartographieTest extends CartographeTestCase
         // merge conforme… à condition qu'elle ne contienne pas d'objet vide (AN3).
         $filled = CarSupport::mergeDocument();
         $filled['reserved']['piecesData'] = ['p1' => ['texte' => 'pièce agrégée']];
+        // Une fusion compte un domaine par pôle de sa version, comme la journée (2026-10-20).
+        $sansPole7 = $filled;
+        $sansPole7['domains'] = array_values(array_filter($sansPole7['domains'],
+            static fn (array $d): bool => !str_starts_with((string) $d['competences'][0]['code'], '7.')));
+        unset($sansPole7['profilIpsatif']['7']);
+        $lost = $this->revise($this->carl, ['document' => $sansPole7, 'note' => 'Merge amputé'], $merge);
+        self::assertSame(422, $lost->getStatusCode());
+        self::assertSame(['/domains' => ['il manque le pôle 7 du référentiel']], self::json($lost)['fields']);
+        self::assertSame(0, $this->revisionCount());
         self::assertSame(201, $this->revise($this->carl, ['document' => $filled, 'note' => 'Merge relu'], $merge)->getStatusCode());
     }
 
@@ -322,5 +334,52 @@ final class UcCar04CorrigerCartographieTest extends CartographeTestCase
         self::assertSame(['error' => 'Révision introuvable'], self::json($this->as_($this->carl, 'GET', '/api/revisions/' . $revisionId)));
 
         self::assertSame(1, $this->revisionCount());
+    }
+
+    #[TestDox('UC-CAR-04-F24 — E4 (référentiel) : une révision qui perd un pôle de la version relue, ou range un code dans un autre pôle → 422 nommé ; une version de RESPIRE à six pôles et un référentiel lettré se révisent avec leur propre structure ; une journée de RESPIRE v7 reste relue contre v7 quand v8 est la dernière')]
+    public function testF24RevisionConformsToTheReviewedReferentialVersion(): void
+    {
+        $sixPoles = self::corrected();
+        array_pop($sixPoles['poles']);
+        $response = $this->revise($this->carl, ['document' => $sixPoles]);
+        self::assertSame(422, $response->getStatusCode());
+        self::assertSame(['error' => 'Document non conforme au référentiel « respire » 7.0.0',
+            'fields' => ['/poles' => ['il manque le pôle 7 du référentiel']]], self::json($response));
+        $deplace = self::corrected();
+        $deplace['poles'][1]['competences'][0]['code'] = '1.02';
+        self::assertSame(['la compétence 1.02 est du pôle 1, pas du pôle 2'],
+            self::json($this->revise($this->carl, ['document' => $deplace]))['fields']['/poles/1/competences/0/code']);
+        self::assertSame(0, $this->revisionCount());
+
+        // RESPIRE v8, six pôles, publiée : la cartographie de six pôles se révise en six pôles
+        $six = self::respireSixPoles();
+        self::publierReferentiel($six);
+        $cartoSix = $this->createCarto($this->maya, ['titre' => 'Journée v8', 'document' => self::jourDocumentPour($six)]);
+        self::assertSame(201, $this->revise($this->carl, ['document' => self::jourDocumentPour($six)], $cartoSix)->getStatusCode());
+        self::assertSame(['le pôle 7 n\'est pas un pôle du référentiel'],
+            self::json($this->revise($this->carl, ['document' => self::corrected()], $cartoSix))['fields']['/poles/6/poleNum']);
+        // ... et la journée de RESPIRE v7, qui ne nomme aucune version, reste relue contre v7
+        self::assertSame(201, $this->revise($this->carl, ['document' => self::corrected()])->getStatusCode());
+
+        // un référentiel de cinq pôles lettrés
+        self::$pdo->exec("DELETE FROM referentiel_versions WHERE referentiel_id = 'fictif-lettre'");
+        $lettre = ReferentielsFictifs::lettre();
+        self::publierReferentiel($lettre);
+        $cartoLettre = $this->createCarto($this->maya, ['titre' => 'Journée lettrée', 'document' => self::jourDocumentPour($lettre)]);
+        self::assertSame(201, $this->revise($this->carl, ['document' => self::jourDocumentPour($lettre)], $cartoLettre)->getStatusCode());
+        self::assertSame(3, $this->revisionCount());
+    }
+
+    #[TestDox('UC-CAR-04-F25 — E8 : aucune version publiée du référentiel de la cartographie → 422, rien pour vérifier la révision')]
+    public function testF25NoPublishedVersionLeavesNothingToCheckAgainst(): void
+    {
+        self::$pdo->exec("DELETE FROM referentiel_versions WHERE referentiel_id = 'respire'");
+        $response = $this->revise($this->carl, ['document' => self::corrected()]);
+        self::assertSame(422, $response->getStatusCode());
+        self::assertSame([
+            'error' => 'Aucune version publiée du référentiel « respire » : la révision ne peut pas être vérifiée',
+            'fields' => ['/referentiel' => ['Aucune version publiée du référentiel « respire » : la révision ne peut pas être vérifiée']],
+        ], self::json($response));
+        self::assertSame(0, $this->revisionCount());
     }
 }

@@ -6,7 +6,7 @@
 //   #/cartographie-v3, #/merge  retired V3 pages (2026-10-14): redirect to #/cartographie
 //   #/jour/<iso>            day view, <iso> = AAAA-MM-JJ
 //   #/jour/<iso>?focus=<c>  idem with a competence code highlighted
-//   #/referentiel           public referentiel (7 pôles -> 61 compétences)
+//   #/referentiel           public referentiel (its poles -> its competences)
 //   #/referentiel/<code>    idem, permalink to one competence (scroll + highlight)
 //   #/essayer               public live demo: paste a text, map it (P6, cahier §3.1)
 //   #/portfolio             portfolio module: local-only texts, day segmentation (P7)

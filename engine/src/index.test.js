@@ -8,12 +8,14 @@ describe('engine entry point', () => {
 
   it('exposes the full public API of the engine', () => {
     const functions = [
-      // validation
-      'validateDocument',
+      // validation, conformité au référentiel
+      'validateDocument', 'validateConformite', 'validateDocumentPourReferentiel',
       // providers
       'createProvider', 'createMockProvider', 'withRetry', 'parseRetryAfter', 'sleep',
       // estimate
-      'estimateTokens', 'estimateRun', 'getModelPricing',
+      'estimateTokens', 'estimateRun', 'getModelPricing', 'callsPerDayFor', 'mergeNarrativeCallsFor',
+      // le référentiel employé : nom, codes d'exemple
+      'nomCourtReferentiel', 'codesExemples',
       // runs
       'createRun', 'createJournal', 'createMemoryStorage', 'createIndexedDbStorage',
       // pipeline — étage C

@@ -29,9 +29,10 @@ export function looksLikeSiteMerge(doc) {
 
 /**
  * @param {object} doc carto_merge.json parsé
- * @param {{fileName?: string, now?: string}} [opts]
+ * @param {{fileName?: string, now?: string, referential?: object | null}} [opts] referential : celui
+ *   du jeu, contre lequel une feuille incomplète est signalée (2026-10-20)
  */
-export function importCartoMerge(doc, { fileName = 'carto_merge.json', now = new Date().toISOString() } = {}) {
+export function importCartoMerge(doc, { fileName = 'carto_merge.json', now = new Date().toISOString(), referential = null } = {}) {
   const report = []
   const variants = []
   for (const [key, feuille] of Object.entries(doc.feuilles)) {
@@ -47,6 +48,7 @@ export function importCartoMerge(doc, { fileName = 'carto_merge.json', now = new
       kairos: feuille.kairos ?? null,
       provenance: { source: 'merge-v2', run: doc.version ?? null, files: [fileName], analysedAt: doc.date_construction ?? null },
       now,
+      referential,
     })
     report.push(...res.report)
     variants.push({ date, summary: res.summary, detail: res.detail })

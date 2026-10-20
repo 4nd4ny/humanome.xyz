@@ -123,6 +123,9 @@ describe('UC-APP-03 — visualisation et téléchargement (étapes 4-5, A4)', ()
       <CartographyViewer document={merge3} entry={{ type: 'merge', titre: 'Mon parcours' }} onClose={onClose} lib={fakeLib} getReferentiel={getReferentiel} />,
     )
     expect(screen.getByRole('status').textContent).toBe('Chargement du référentiel…')
+    // Sans version connue, la visionneuse consulte d'abord l'index des versions publiées
+    // (la plus récente à laquelle le document est conforme) : le chargeur vient ensuite.
+    await vi.waitFor(() => expect(resolveRef).toBeTypeOf('function'))
     resolveRef({ doc: referentiel, origin: 'bundled' })
     expect(await screen.findByRole('group', { name: 'Cartographie cumulée des compétences' })).toBeDefined()
     expect(screen.getByRole('heading', { name: 'Mon parcours' })).toBeDefined()

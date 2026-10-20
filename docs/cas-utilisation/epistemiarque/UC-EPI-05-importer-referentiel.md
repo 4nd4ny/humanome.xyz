@@ -134,10 +134,12 @@ proposer aux membres.
 - **RG5** — L'empreinte (`contentHash`) ne compte que les pôles et les
   compétences, comme celle de RESPIRE ; niveaux, descriptions (des pôles, des
   compétences, des éléments) et éléments sont gardés hors d'elle.
-- **RG6** — RESPIRE ne change pas : il ne s'importe pas, et le schéma garde
-  sa structure (7 pôles, 61 compétences au format `P.NN`, sans niveaux
-  déclarés) sur tout chemin vers une de ses versions, la coupe de sa release
-  comprise.
+- **RG6** — RESPIRE ne s'importe pas : il s'édite compétence par compétence
+  (UC-EPI-01 à 03) ou comme un document (UC-EPI-04). Depuis le 2026-10-20, le
+  schéma ne garde plus sa structure : une de ses versions peut compter
+  d'autres pôles et d'autres compétences, comme tout référentiel ; sans niveaux
+  déclarés, ses codes suivent le motif par défaut `\d\.\d{2}`. La coupe de
+  sa release garde la structure de sa dernière version publiée (UC-EPI-03 E6).
 - **RG7** — Un brouillon (ou une proposition au vote) ne sert qu'aux runs
   d'essai de son auteur, tant qu'il est épistémiarque ou administrateur ;
   publié, le référentiel est à tous (`ProfilPolicy`, matrice « Configuration
@@ -180,7 +182,7 @@ proposer aux membres.
 
 | ID | Cible | Vérifie | Fichier |
 |---|---|---|---|
-| UC-EPI-05-U01 | `validateDocument`, schéma | RESPIRE se valide tel quel, même empreinte ; son code lettré, sa compétence en moins, ses niveaux déclarés refusés par le schéma (RG6) | `api/tests/UseCases/Unit/UcEpi05ImporterReferentielTest.php` |
+| UC-EPI-05-U01 | `validateDocument`, schéma | RESPIRE se valide tel quel, même empreinte, motif par défaut ; une compétence en moins, un niveau déclaré passent ; un code lettré hors de son motif est refusé par l'intégrité (RG6) | `api/tests/UseCases/Unit/UcEpi05ImporterReferentielTest.php` |
 | UC-EPI-05-U02 | `validateDocument`, `ContentHash` | 5 pôles lettrés à deux niveaux, 9 pôles valides ; un pôle numéroté `1.0` est le pôle 1 ; ordre canonique ; niveaux, descriptions et éléments hors empreinte (RG5) | idem |
 | UC-EPI-05-U03 | `regexDuMotif` | Code entier, ancres, `/` dans un motif, motif illisible ; un motif qui sortirait de ses ancres (groupe fermé avant l'heure, verbe `(*…)`) n'a pas d'expression (RG2) | idem |
 | UC-EPI-05-U04 | `validateDocument` | Code hors motif, élément d'un niveau non déclaré, code en double, pôles avec un trou, motif illisible ou qui sortirait de ses ancres, motif au retour arrière catastrophique (refusé une fois, limite PCRE rétablie), code hors schéma, chacun à son pointeur (RG2, RG3) | idem |
@@ -202,7 +204,7 @@ proposer aux membres.
 | UC-EPI-05-F05 | E1 | API | Code hors motif, motif illisible, trou, niveau non déclaré, niveau inconnu, branche qui s'arrête au-dessus du niveau → 422 avec la raison ; rien d'écrit | idem |
 | UC-EPI-05-F06 | E2 | API | RESPIRE 409, version existante 409, identifiant 422, document absent 422 | idem |
 | UC-EPI-05-F07 | E3, A4 | API | 401, 403, CSRF 403 ; un admin importe et soumet, ne vote pas | idem |
-| UC-EPI-05-F08 | RG6, DoD | API | RESPIRE ne change pas : version, empreinte, versions publiées ; son brouillon refuse un code lettré | idem |
+| UC-EPI-05-F08 | RG6, DoD | API | RESPIRE ne change pas : version, empreinte, versions publiées ; son brouillon refuse un code lettré hors de son motif, accepte six pôles | idem |
 | UC-EPI-05-F09 | Nominal | IHM | Fichier à deux niveaux, niveau choisi, import, message, rechargement | `web/test/usecases/functional/uc-epi-05-importer-referentiel.test.jsx` |
 | UC-EPI-05-F10 | A3, E4 | IHM | Un seul niveau, sans choix ; fichier illisible dit | idem |
 | UC-EPI-05-F11 | E1 | IHM | Refus du serveur affiché avec ses pointeurs, sans rechargement ; le fichier écarté, choisi de nouveau, part corrigé | idem |
@@ -218,7 +220,7 @@ proposer aux membres.
 - `api/tests/Twin9/ReferentielMoteurTest.php` — le référentiel que lit le moteur (RG8) : fiches de RESPIRE prises dans la base, celles d'un autre écrites depuis son document, ordre naturel des codes ; avec le vrai moteur, un référentiel qu'il ne lit pas est refusé au lancement.
 - `api/tests/AnnotationsTest.php` — `testACartographyOfAnotherReferentialTakesItsCodes` (RG9).
 - `web/src/views/ConfigurationView.test.jsx` — les brouillons proposés en version.
-- UC-EPI-03 (coupe de release : complétude gardée par le schéma), UC-EPI-04 (grain document), `ReferentielApiTest`, `ReferentielImportExportTest`, `CompetenceReleaseTest`, `engine/test/usecases/unit/uc-sys-04-chaine-artefacts-derives.test.js` (validateurs compilés).
+- UC-EPI-03 (coupe de release : complétude, la structure de la dernière version publiée), UC-EPI-04 (grain document), `ReferentielApiTest`, `ReferentielImportExportTest`, `CompetenceReleaseTest`, `engine/test/usecases/unit/uc-sys-04-chaine-artefacts-derives.test.js` (validateurs compilés).
 
 ### Exécuter
 

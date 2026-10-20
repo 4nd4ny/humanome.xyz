@@ -486,12 +486,18 @@ final class RunsTest extends CartographeTestCase
 
     /**
      * A set of before T16 — its pole files tell it — writes RESPIRE in its
-     * templates: a run on another referential is refused, its preview too;
-     * a run of RESPIRE goes (review of T16).
+     * templates, the RESPIRE its pole files describe: a run on another
+     * referential is refused, its preview too, and a run of a version of
+     * RESPIRE of another structure (2026-10-20); a run of RESPIRE in that
+     * structure goes (review of T16).
      */
     public function testASetOfBeforeT16ServesRespireAlone(): void
     {
-        (new ProtocoleRepository(self::$pdo))->put('tagger/P1', "# Pôle 1 — FICTIF\n\n## 1.01 — Fiche FICTIVE\n", null);
+        $respire = json_decode((string) file_get_contents(\dirname(__DIR__, 3) . '/web/public/data/referentiel/respire-v7.json'),
+            true, 512, JSON_THROW_ON_ERROR);
+        foreach (JeuAvantT16::fiches($respire) as $nom => $texte) {
+            (new ProtocoleRepository(self::$pdo))->put($nom, $texte, null);
+        }
         $neuf = ReferentielsFictifs::neufPoles();
         (new ReferentielRepository(self::$pdo))->importPublishedDocument(
             ['contentHash' => ContentHash::compute($neuf)] + $neuf, 'Publié');
@@ -507,9 +513,32 @@ final class RunsTest extends CartographeTestCase
             self::assertSame('Le jeu de gabarits « v9.8 » précède T16 : ses gabarits écrivent RESPIRE en toutes lettres. '
                 . 'Pour un autre référentiel, il faut réimporter le jeu v9.8', self::json($refus)['error']);
         }
+
+        // A version of RESPIRE in six poles: the set's « 61 » would be false — refused, its structure said.
+        $six = $respire;
+        unset($six['contentHash']);
+        $six['version'] = '8.0.0';
+        $six['poles'] = array_values(array_filter($six['poles'], static fn (array $p): bool => (int) $p['num'] !== 7));
+        $six['competences'] = array_values(array_filter($six['competences'], static fn (array $c): bool => (int) $c['pole'] !== 7));
+        (new ReferentielRepository(self::$pdo))->importPublishedDocument(
+            ['contentHash' => ContentHash::compute($six)] + $six, 'Publié');
+        $profil = ProfilRepository::v98();
+        $profil->voie = 'directe';
+        $profil->referentiel = (object) ['id' => 'respire', 'version' => '8.0.0'];
+        $sixPoles = self::json($this->as_($alice, 'POST', '/api/twin9/profils', ['nom' => 'Six pôles', 'profil' => $profil]))['id'];
+        foreach (['/api/twin9/runs/apercu', '/api/twin9/runs'] as $route) {
+            $refus = $this->as_($alice, 'POST', $route, $this->lancement($sixPoles));
+            self::assertSame(422, $refus->getStatusCode(), $route);
+            self::assertSame('Le jeu de gabarits « v9.8 » précède T16 : ses gabarits écrivent RESPIRE en toutes lettres, '
+                . 'tel que le décrivent ses fiches (7 pôles, 61 compétences). Pour une autre structure de RESPIRE, il faut '
+                . 'réimporter le jeu v9.8', self::json($refus)['error']);
+        }
         self::assertSame(0, (int) self::$pdo->query('SELECT COUNT(*) FROM twin9_runs')->fetchColumn());
-        self::assertSame(201, $this->as_($alice, 'POST', '/api/twin9/runs', $this->lancement($this->profil($alice)))
-            ->getStatusCode(), 'RESPIRE');
+
+        // RESPIRE v7, the structure of its pole files: it goes.
+        $profil->referentiel = (object) ['id' => 'respire', 'version' => '7.0.0'];
+        $v7 = self::json($this->as_($alice, 'POST', '/api/twin9/profils', ['nom' => 'RESPIRE v7', 'profil' => $profil]))['id'];
+        self::assertSame(201, $this->as_($alice, 'POST', '/api/twin9/runs', $this->lancement($v7))->getStatusCode(), 'RESPIRE');
     }
 
     /**

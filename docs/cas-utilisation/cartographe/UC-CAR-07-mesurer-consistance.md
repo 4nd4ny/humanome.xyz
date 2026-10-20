@@ -55,8 +55,7 @@ si la file compte au moins deux cartographies, tous types confondus).
 1. La section charge la file (`GET /api/cartographe/cartographies`) et n'en
    garde que les entrées de type `jour` (cases à cocher « titre — apprenant ·
    date de dépôt » : `createdAt`, la projection de la file ne porte pas la
-   date de la journée) ; elle charge aussi le référentiel publié (noms des
-   compétences).
+   date de la journée).
 2. Le cartographe coche au moins deux runs ; le bouton « Analyser la
    consistance (N document(s)) » s'active à partir de deux.
 3. Il clique (bouton « Analyse… », désactivé, pendant le calcul) : la section
@@ -96,7 +95,11 @@ si la file compte au moins deux cartographies, tous types confondus).
 
 - **E1 — Fichier local illisible ou hors schéma** (A1) : « « x » n’est pas un
   fichier JSON valide. » ou « « x » ne respecte pas le schéma
-  cartographie-jour : fichier ignoré. » ; le fichier n'est pas ajouté. Dans
+  cartographie-jour : fichier ignoré. » ; conforme au schéma mais pas au
+  référentiel qu'il nomme (2026-10-20 : un pôle perdu…) : « « x » n’est pas
+  conforme à son référentiel « respire » : fichier ignoré. » ; référentiel
+  introuvable : « « x » : Le référentiel « … » n'a pas pu être chargé —
+  fichier ignoré. » ; le fichier n'est pas ajouté. Dans
   un lot de plusieurs fichiers, les fichiers valides sont ajoutés et seul le
   message du **dernier** fichier fautif reste affiché.
 - **E2 — Document de la file qui n'est pas une journée** (étape 3) : « La
@@ -107,6 +110,11 @@ si la file compte au moins deux cartographies, tous types confondus).
 - **E4 — File indisponible** (étape 1) : message d'erreur ; la file est vide,
   mais les fichiers locaux restent utilisables.
 - **E5 — Moins de deux documents** (étape 2) : bouton inactif.
+- **E8 — Runs de référentiels différents** (étape 3, 2026-10-20) : « Les runs
+  comparés doivent cartographier le même référentiel (ici : respire,
+  fictif-lettre). » ; pas de rapport. Les compétences du rapport sont nommées
+  par le référentiel commun (celui que désigne le détail d'une cartographie
+  de la file, sinon celui des documents), chargé au lancement de l'analyse.
 - **E6 — Pas le rôle cartographe** : espace réservé (UC-CAR-01 E3).
 - **E7 — Document de la file étiqueté journée mais sans pôles** (étape 3) :
   le contrôle de `kind` passe, le moteur lève une `TypeError` dont le
@@ -147,7 +155,8 @@ si la file compte au moins deux cartographies, tous types confondus).
 | Front | `web/src/views/CartographeView.jsx`, `web/src/nav.js` | Garde de rôle, section `consistance`, menus |
 | Front | `web/src/views/cartographe/AccueilSection.jsx` | Lien « Analyser la consistance multi-run → » (file ≥ 2 entrées) |
 | Front | `web/src/views/cartographe/ConsistanceSection.jsx` | Sélection (file filtrée, fichiers locaux validés), analyse, rendu du rapport, messages |
-| Front | `web/src/data/referentiel.js` — `loadPublishedReferentiel` | Noms des compétences (étape 1) |
+| Front | `web/src/lib/referentiel-du-document.js` — `chargerReferentielDuDocument`, `referenceDuDocument` ; `web/src/data/referentiel.js` | Référentiel des runs : noms des compétences, conformité d'un fichier local, garde du référentiel commun |
+| Moteur | `engine/src/conformite.js` — `validateConformite` | Conformité d'un fichier local au référentiel qu'il nomme |
 | Front | `web/src/api/client.js` — `apiFetch` | Messages d'erreur du serveur (E3, E4) |
 | Front | `web/src/lib/consistency-view.js` — `STATUT_BADGES`, `statutBadge`, `statutLabel`, `buildConsistencyView` | Modèle d'affichage du rapport |
 | Moteur | `engine/src/consistency.js` — `statutDistance`, `compareRuns` (exportés par `engine/src/index.js`) | Mesures |
@@ -199,6 +208,8 @@ couverte par F01 à F15 et par `web/src/views/cartographe/ConsistanceSection.tes
 | UC-CAR-07-F13 | AN20 | IHM | Bouton « Analyse… » désactivé ; deux runs décochés pendant l'analyse : rapport à 3 runs affiché, compteur à 1 (comportement actuel) | idem |
 | UC-CAR-07-F14 | E7 | IHM | Document de la file sans pôles : message technique du moteur (`docs[0]`), pas de rapport | idem |
 | UC-CAR-07-F15 | Limite | IHM | Même fichier ajouté deux fois : deux runs, accord 100 % (aucun dédoublonnage) | idem |
+| UC-CAR-07-F16 | E1 (référentiel) | IHM | Fichier local de six pôles conforme au schéma : « n’est pas conforme à son référentiel « respire » », non ajouté | `web/test/usecases/functional/uc-car-07-mesurer-consistance.test.jsx` |
+| UC-CAR-07-F17 | E8 | IHM | Deux runs de la file de référentiels différents (respire, fictif-lettre) → message, aucun rapport | idem |
 
 ### Tests existants liés (non-régression)
 

@@ -35,7 +35,9 @@ vérifié octet à octet contre le moteur (goldens `api/tests/MasseGolden/`).
 
 **Un job = (membre, journée)** — l'unité naturelle du protocole (découpage
 journalier, §4.3) : assez fine pour être reprenable, assez grosse pour amortir
-les requêtes. Un job = 8 appels LLM (7 pôles + 1 kairos), **checkpoint PAR
+les requêtes. Un job = 8 appels LLM (7 pôles + 1 kairos) pour RESPIRE v7 —
+un par pôle du référentiel du run, plus le kairos, depuis que la masse
+cartographie tout référentiel publié (2026-10-20) —, **checkpoint PAR
 PÔLE** dans le job : un tick peut s'arrêter au milieu d'une journée sans rien
 perdre.
 

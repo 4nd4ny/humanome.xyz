@@ -415,7 +415,9 @@ export default function BancEssaiSection({ api, user, deps = {} }) {
     if (!file) return
     try {
       const text = await readFileTextFn(file)
-      const run = normalizeReferenceImport(JSON.parse(text))
+      // Validée contre le référentiel de la branche A (schéma puis conformité,
+      // périmètre compris) ; la copie embarquée tant que la version choisie charge.
+      const run = normalizeReferenceImport(JSON.parse(text), { referentiel: refDocA ?? getReferentielFn() })
       setRefImport({ run, fileName: file.name })
       setError(null)
     } catch (err) {
@@ -1536,7 +1538,7 @@ function Twin6Result({ run, label, config }) {
       <p>
         {nbFeuilles} feuille(s), {nbCompetences} compétence(s) cartographiée(s),{' '}
         {run.llmCalls} appel(s) LLM, {Math.round(run.durationMs / 1000)} s — run sur le portfolio
-        entier (7 scan-pôle + kairos), mappé en cartographie globale.
+        entier (un scan-pôle par pôle du référentiel + kairos), mappé en cartographie globale.
       </p>
       <UsageLine usage={run.usage} model={config?.modeleTarif ?? config?.modele} />
       <p>

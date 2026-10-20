@@ -17,7 +17,7 @@
     "referentiel": {
       "type": "string",
       "pattern": "^[a-z0-9][a-z0-9._-]{0,63}$",
-      "description": "Facultatif (T17). Identifiant du référentiel dont le document agrège les pôles (schéma referentiel, id), ex. « fictif-lettre ». Absent ou « respire » : RESPIRE, dont le document garde la structure (clause allOf)."
+      "description": "Facultatif (T17). Identifiant du référentiel dont le document agrège les pôles (schéma referentiel, id), ex. « fictif-lettre ». Absent : « respire ». Le schéma n'impose aucune structure : les numéros des pôles et les codes des compétences sont ceux de la version du référentiel, que vérifie la conformité (docs/contrats.md §11)."
     },
     "generatedAt": {
       "type": ["string", "null"],
@@ -65,7 +65,7 @@
       "type": "array",
       "minItems": 1,
       "items": { "$ref": "#/$defs/domain" },
-      "description": "Les pôles du référentiel — les 7 de RESPIRE, ou les N d'un autre (T17) — avec leurs compétences établies agrégées sur la période (source du sunburst)."
+      "description": "Les pôles du référentiel — les 7 de RESPIRE v7, les N d'une autre version ou d'un autre référentiel — avec leurs compétences établies agrégées sur la période (source du sunburst)."
     },
     "profilMeta": { "$ref": "#/$defs/profilMeta" },
     "profilIpsatif": {
@@ -150,35 +150,6 @@
     "reserved"
   ],
   "additionalProperties": false,
-  "allOf": [
-    {
-      "description": "RESPIRE garde sa structure (T17) : un document qui ne nomme pas d'autre référentiel compte ses 7 pôles, un profil ipsatif aux clés « 1 » à « 7 », et des codes « P.NN ».",
-      "if": {
-        "anyOf": [
-          { "not": { "required": ["referentiel"] } },
-          { "required": ["referentiel"], "properties": { "referentiel": { "const": "respire" } } }
-        ]
-      },
-      "then": {
-        "properties": {
-          "domains": {
-            "minItems": 7,
-            "maxItems": 7,
-            "items": { "properties": { "competences": { "items": { "properties": { "code": { "$ref": "#/$defs/codeRespire" } } } } } }
-          },
-          "profilIpsatif": {
-            "propertyNames": { "pattern": "^[1-7]$" },
-            "additionalProperties": {
-              "properties": {
-                "pole_num": { "maximum": 7 },
-                "competences": { "items": { "properties": { "code": { "$ref": "#/$defs/codeRespire" } } } }
-              }
-            }
-          }
-        }
-      }
-    }
-  ],
   "$defs": {
     "dateIso": {
       "type": "string",
@@ -190,11 +161,6 @@
       "type": "string",
       "pattern": "^[A-Za-z0-9][A-Za-z0-9._-]{0,7}$",
       "description": "Code d'une compétence du référentiel, sous la forme qu'il déclare (schéma referentiel, $defs/code : 1 à 8 caractères) : « 1.01 », « 7.04 » pour RESPIRE v7 (<pôle>.<rang sur deux chiffres>), « A1 » pour un référentiel lettré (T17)."
-    },
-    "codeRespire": {
-      "type": "string",
-      "pattern": "^[1-7]\\.\\d{2}$",
-      "description": "Code d'une compétence de RESPIRE v7 : <numéro de pôle 1-7>.<rang sur deux chiffres>, ex. « 1.01 », « 7.04 »."
     },
     "statutCompetence": {
       "type": "string",
@@ -623,7 +589,7 @@
         "pole_num": {
           "type": "integer",
           "minimum": 1,
-          "description": "Numéro du pôle (1 à N, 1 à 7 pour RESPIRE), cohérent avec la clé du dictionnaire."
+          "description": "Numéro du pôle (1 à N, 1 à 7 pour RESPIRE v7), cohérent avec la clé du dictionnaire."
         },
         "pole_nom": {
           "type": "string",

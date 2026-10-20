@@ -76,8 +76,10 @@ l'apprenant.
    `{titre, type, document, garantie}`, avec `type` ∈ {`jour`, `merge`,
    `twin9`}.
 6. Le site remplace le formulaire par le titre et la mention de garantie
-   éventuelle, puis charge le référentiel (référentiel publié
-   `data/referentiel/…`, repli sur la copie embarquée — seul autre appel
+   éventuelle, puis charge le référentiel **que nomme le document**
+   (2026-10-20 : sa dernière version publiée `data/referentiel/…` ; RESPIRE
+   pour un document qui n'en nomme pas, repli sur la copie embarquée ; un autre
+   référentiel introuvable est dit, jamais lu avec RESPIRE — seul autre appel
    réseau) et rend la cartographie : `MergeView` si `type = merge`, `DayView`
    dans tous les autres cas. Le type `twin9` n'est pas traité (voir AN1).
 
@@ -187,6 +189,7 @@ l'apprenant.
 | UC-EMP-01-U15 | `Audit::record` | `share_consulted` sans compte : `user_id` NULL, identifiants seulement | `api/tests/UseCases/Unit/UcEmp01ConsulterPartageTest.php` |
 | UC-EMP-01-U16 | `ShareView` — `GarantieNotice` | Garant sans nom → « son cartographe », date tronquée à `AAAA-MM-JJ`, sans date ni garantie | `web/test/usecases/unit/uc-emp-01-consulter-cartographie-partagee.test.js` |
 | UC-EMP-01-U17 | `ShareView` — `shareErrorMessage` | 403/404/429 → messages fixes, 422 → message serveur, 403 CSRF → « Mot de passe incorrect. » (AN2) | idem |
+| UC-EMP-01-U18 | `ShareView` (2026-10-20) | Document partagé d'un autre référentiel : chargé par son identifiant (`{id: 'fictif-lettre'}`), jamais sans ; introuvable → alerte « Le référentiel « fictif-lettre » n'a pas pu être chargé » | `web/test/usecases/unit/uc-emp-01-consulter-cartographie-partagee.test.js` |
 
 ### Tests fonctionnels
 

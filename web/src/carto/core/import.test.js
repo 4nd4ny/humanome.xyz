@@ -92,6 +92,34 @@ describe('journées Aurora v3 (carto_P1..P7 + kairos)', () => {
   })
 })
 
+describe('journée incomplète : comptée contre le référentiel du jeu, quel que soit son nombre de pôles (2026-10-20)', () => {
+  it('deux pôles sur les trois du référentiel du jeu ; aucun signalement au regard d’un référentiel de deux pôles', async () => {
+    const days = louDays()
+    const res = await importFiles(dayFiles('2025-12-22', days['2025-12-22']), empty(), { now: NOW })
+    expect(res.report.filter((r) => r.code === 'journee-incomplete').map((r) => r.message)).toEqual(['2 pôle(s) sur 3 pour cette journée'])
+    expect(res.dataset.days[0].variants[0].anomalies).toContainEqual({ severity: 'warning', code: 'journee-incomplete', message: '2 pôle(s) sur 3 pour cette journée' })
+
+    const mini = miniReferential()
+    const deux = { ...mini, id: 'deux', poles: mini.poles.slice(0, 2), competences: mini.competences.filter((c) => c.pole !== 3) }
+    const complete = [cartoPole(1, [{ code: '1.01', confiance: 0.8 }], { date: '2025-12-22' }), cartoPole(2, [{ code: '2.01', confiance: 0.8 }], { date: '2025-12-22' })]
+    const ds = createDataset({ datasetId: 'ds-deux', title: 'Deux', referential: deux, now: NOW })
+    const res2 = await importFiles(dayFiles('2025-12-22', complete), ds, { now: NOW })
+    expect(res2.report.filter((r) => r.code === 'journee-incomplete')).toEqual([])
+  })
+
+  it('le référentiel qu’un lot apporte compte, s’il précède ses journées ; un dixième pôle (carto_P10) est lu et son numéro vérifié', async () => {
+    const mini = miniReferential()
+    const dix = { ...mini, id: 'dix', poles: Array.from({ length: 10 }, (_, i) => ({ num: i + 1, nom: `Pôle ${i + 1}` })), competences: [...mini.competences, { code: '10.01', nom: 'Dixième', pole: 10 }] }
+    const p10 = cartoPole(10, [{ code: '10.01', confiance: 0.8 }], { date: '2025-12-22' })
+    const res = await importFiles([json('referentiel.json', dix), json('2025-12-22/carto_P10.json', p10), json('2025-12-22/kairos.json', kairosDoc('2025-12-22'))], empty(), { now: NOW })
+    expect(res.report.filter((r) => r.code === 'pole-discordant')).toEqual([])
+    expect(res.report.filter((r) => r.code === 'journee-incomplete').map((r) => r.message)).toEqual(['1 pôle(s) sur 10 pour cette journée'])
+    const discordant = { ...p10, poleNum: 9 }
+    const res2 = await importFiles([json('2025-12-22/carto_P10.json', discordant)], empty(), { now: NOW })
+    expect(res2.report.find((r) => r.code === 'pole-discordant').message).toMatch(/poleNum 9 ≠ 10/)
+  })
+})
+
 describe('doublons, variantes et arbitrage', () => {
   it('la même analyse importée deux fois (sous deux formes) est un doublon ignoré', async () => {
     const days = louDays()
@@ -390,6 +418,32 @@ describe('formats Merge et métriques', () => {
     const res = await importFiles([json('metrics.json', { '2025-12-22': { volume: 1200, phrases: '42' }, '23.12.2025': { volume: 'n/a' } })], empty(), { now: NOW })
     expect(res.dataset.metrics.byDate).toEqual({ '2025-12-22': { volume: 1200, phrases: 42 } })
     expect(res.report.find((r) => r.code === 'metriques-ignorees').severity).toBe('warning')
+  })
+
+  it('parcours du site d’un autre référentiel : le pôle de chaque domaine se lit dans le référentiel du jeu, pas dans la forme du code (2026-10-20)', async () => {
+    const lettre = {
+      kind: 'referentiel',
+      id: 'fictif-lettre',
+      version: '1.0.0',
+      label: 'Fictif lettré',
+      poles: [{ num: 1, nom: 'A · Percevoir' }, { num: 2, nom: 'B · Agir' }],
+      competences: [{ code: 'A1', nom: 'Écouter', pole: 1 }, { code: 'B1', nom: 'Faire', pole: 2 }],
+    }
+    const doc = {
+      kind: 'cartographie-merge',
+      schemaVersion: '1.0.0',
+      referentiel: 'fictif-lettre',
+      feuilles: [{ iso: '2025-12-22' }],
+      domains: [
+        { id: 'B · Agir', rapport_html: '<p>Rapport B</p>', competences: [{ code: 'B1', parFeuille: [{ date: '2025-12-22', statut: 'présence établie', preuves: 1, indices: 0, confiance: 0.7 }] }] },
+        { id: 'A · Percevoir', rapport_html: '<p>Rapport A</p>', competences: [{ code: 'A1', parFeuille: [{ date: '2025-12-22', statut: 'présence établie', preuves: 1, indices: 0, confiance: 0.6 }] }] },
+      ],
+    }
+    const ds = createDataset({ datasetId: 'ds-lettre', title: 'Lettré', referential: lettre, now: NOW })
+    const res = await importFiles([json('merge.json', doc)], ds, { now: NOW })
+    const poles = res.dataset.narratives.filter((n) => n.kind === 'pole-evolutif').map((n) => [n.scope.pole, n.html])
+    expect(poles).toEqual([[2, '<p>Rapport B</p>'], [1, '<p>Rapport A</p>']])
+    expect(res.report.filter((r) => r.code === 'code-hors-referentiel')).toEqual([])
   })
 
   it('codes hors référentiel : conservés et signalés', async () => {

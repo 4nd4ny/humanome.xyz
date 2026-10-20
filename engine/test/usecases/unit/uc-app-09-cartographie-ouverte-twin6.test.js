@@ -2,10 +2,11 @@
 // Fiche : docs/cas-utilisation/apprenant/UC-APP-09-cartographie-ouverte-twin6.md
 //
 // Le moteur Twin6 (engine/src/twin6/) est appelé directement : construction
-// des prompts PUBLICS (scan-pole ×7, kairos), extraction JSON tolérante,
-// orchestration executerTwin6 (ordre, progression, garde de troncature),
-// projection vers cartographie-merge (twin6ToMergeDocument) et provider
-// « clé perso » (createProvider direct). Gabarits et portfolio FICTIFS.
+// des prompts PUBLICS (un scan-pole par pôle du référentiel, kairos),
+// extraction JSON tolérante, orchestration executerTwin6 (ordre, progression,
+// garde de troncature), projection vers cartographie-merge
+// (twin6ToMergeDocument), tout référentiel (U31), et provider « clé perso »
+// (createProvider direct). Gabarits, référentiels et portfolio FICTIFS.
 import { describe, expect, it, vi } from 'vitest'
 import {
   TWIN6_CALLS,
@@ -13,10 +14,13 @@ import {
   buildScanPolePrompt,
   executerTwin6,
   extractJson,
+  fichesPourTwin6,
+  twin6CallsFor,
 } from '../../../src/twin6/index.js'
 import { twin6ToMergeDocument } from '../../../src/twin6/mapper.js'
 import { createProvider } from '../../../src/providers/index.js'
 import { validateDocument } from '../../../src/validation.js'
+import { validateDocumentPourReferentiel } from '../../../src/conformite.js'
 
 const POLES = [
   { num: 1, nom: 'TÊTE — Penser & Comprendre' },
@@ -251,6 +255,63 @@ describe('UC-APP-09 — projection vers le sunburst (twin6ToMergeDocument)', () 
   it('UC-APP-09-U10 — entrées vides refusées avec un message explicite', () => {
     expect(() => twin6ToMergeDocument([], KAIROS, REFERENTIEL)).toThrow(/tableau non vide/)
     expect(() => twin6ToMergeDocument([cartoPole(1)], KAIROS, { poles: POLES })).toThrow(/referentiel/)
+  })
+})
+
+describe('UC-APP-09 — tout référentiel (2026-10-20)', () => {
+  /** Provider factice : au pôle N, la première compétence du pôle N du référentiel, attestée. */
+  function providerPour(referentiel) {
+    return {
+      name: 'fictif',
+      complete: vi.fn(async ({ prompt }) => {
+        if (prompt.includes('# Cartographies de pôle (entrée)')) {
+          return { text: JSON.stringify(KAIROS), usage: { inputTokens: 50, outputTokens: 20 }, model: 'm', stopReason: 'end_turn' }
+        }
+        const num = Number(/Fiche des compétences du pôle (\d+)/.exec(prompt)[1])
+        const pole = cartoPole(num)
+        pole.competences[0].code = referentiel.competences.find((c) => c.pole === num).code
+        return { text: JSON.stringify(pole), usage: { inputTokens: 100, outputTokens: 40 }, model: 'm', stopReason: 'end_turn' }
+      }),
+    }
+  }
+
+  it('UC-APP-09-U31 — un scan par pôle du référentiel employé puis le kairos : cinq pôles lettrés → 6 appels, fiches écrites depuis son document, document qui le nomme ; RESPIRE à six pôles → 7 appels, document de RESPIRE', async () => {
+    const lettres = ['A', 'B', 'C', 'D', 'E']
+    const lettre = {
+      id: 'fictif-lettre',
+      poles: lettres.map((l, i) => ({ num: i + 1, nom: `${l} · Pôle fictif ${l}` })),
+      competences: lettres.map((l, i) => ({ code: `${l}1`, nom: `Capacité fictive ${l}1`, pole: i + 1 })),
+    }
+    const provider = providerPour(lettre)
+    const out = await executerTwin6({
+      portfolio: PORTFOLIO,
+      templates: { ...TEMPLATES, fiches: fichesPourTwin6(lettre, TEMPLATES.fiches) },
+      referentiel: lettre,
+      provider,
+      model: 'm',
+      options: { meta: META },
+    })
+    expect(twin6CallsFor(lettre)).toBe(6)
+    expect(out.calls.map((c) => c.etape)).toEqual(['scan-pole/1', 'scan-pole/2', 'scan-pole/3', 'scan-pole/4', 'scan-pole/5', 'kairos'])
+    expect(provider.complete.mock.calls[4][0].prompt).toContain('# Pôle 5 — E · Pôle fictif E\n\n## E1 — Capacité fictive E1\n')
+    expect(out.document.referentiel).toBe('fictif-lettre')
+    expect(validateDocumentPourReferentiel('cartographie-merge', out.document, lettre).errors).toEqual([])
+
+    // Une version de RESPIRE à six pôles : un scan de moins, et c'est toujours un document de RESPIRE.
+    const six = { id: 'respire', poles: POLES.slice(0, 6), competences: REFERENTIEL.competences.filter((c) => c.pole !== 7) }
+    const outSix = await executerTwin6({
+      portfolio: PORTFOLIO,
+      templates: { ...TEMPLATES, fiches: fichesPourTwin6(six, TEMPLATES.fiches) },
+      referentiel: six,
+      provider: providerPour(six),
+      model: 'm',
+      options: { meta: META },
+    })
+    expect(twin6CallsFor(six)).toBe(7)
+    expect(outSix.calls.map((c) => c.etape).at(-2)).toBe('scan-pole/6')
+    expect(outSix.document).not.toHaveProperty('referentiel')
+    expect(outSix.document.domains).toHaveLength(6)
+    expect(validateDocumentPourReferentiel('cartographie-merge', outSix.document, six).errors).toEqual([])
   })
 })
 

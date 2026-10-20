@@ -106,7 +106,7 @@ describe('UC-PRO-01 — consommateur du paquet par défaut (lanceur de runs)', (
 })
 
 describe('UC-PRO-01 — consommateur du défaut : défaut = paquet embarqué', () => {
-  it('UC-PRO-01-U16 — anomalie AN-3 (comportement actuel figé) : quand le défaut servi est l’embarqué aurora-v3-reconstruit@1.0.0, aucune entrée ne porte defaut: true', async () => {
+  it('UC-PRO-01-U16 — anomalie AN-3 (comportement actuel figé) : quand le défaut servi est l’embarqué (aurora-v3-reconstruit, à sa version), aucune entrée ne porte defaut: true', async () => {
     const builtin = { id: BUILTIN_PACKAGE.id, version: BUILTIN_PACKAGE.version }
     const result = await fetchPromptPackages({
       apiFetchFn: vi.fn(async (path) =>
@@ -116,7 +116,7 @@ describe('UC-PRO-01 — consommateur du défaut : défaut = paquet embarqué', (
 
     expect(result.defaut).toEqual(builtin)
     // La copie publiée marquée est retirée comme doublon ; BUILTIN_PACKAGE (gelé) n'est jamais marqué.
-    expect(result.packages.map((p) => `${p.id}@${p.version}`)).toEqual(['aurora-v3-reconstruit@1.0.0', 'aurora-demo@1.0.0'])
+    expect(result.packages.map((p) => `${p.id}@${p.version}`)).toEqual([`aurora-v3-reconstruit@${BUILTIN_PACKAGE.version}`, 'aurora-demo@1.0.0'])
     expect(result.packages[0]).toBe(BUILTIN_PACKAGE)
     expect(result.packages.filter((p) => p.defaut === true)).toEqual([])
   })

@@ -20,7 +20,7 @@ export function confidenceQuintile(confiance) {
 
 /**
  * Build the sunburst tree of a `cartographie-merge` document:
- * root -> 7 poles -> established competences.
+ * root -> its domains (one per pole of its referential) -> established competences.
  * Exact port of generateData() (l.765-836) — same fields, same accumulations.
  * Returns `{ root }` (the original return shape) or null when the document
  * carries no domains (mirror of the original guard on `domainsData`).

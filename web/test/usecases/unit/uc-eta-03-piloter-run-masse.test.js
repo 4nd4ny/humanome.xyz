@@ -2,12 +2,14 @@
 // Fiche : docs/cas-utilisation/etablissement/UC-ETA-03-piloter-run-masse.md
 //
 // Code sollicité appelé directement : l'estimation de coût d'un run de masse
-// (8 appels par journée, table de prix du moteur), la normalisation du tableau
+// (un appel par pôle du référentiel du run + le kairos par journée — 8 pour
+// RESPIRE v7 —, table de prix du moteur), la normalisation du tableau
 // d'avancement réel, les appels de lancement / annulation / paquets publiés,
 // les constantes d'affichage (six statuts de jobs, polling 5 s), puis
-// CohorteSection rendue ISOLÉMENT (couture fetchFn) : calcul de l'estimation
-// (taille moyenne tirée des dépôts, modèle) et règle d'affichage du bouton
-// « Annuler le run » (RunProgress).
+// CohorteSection rendue ISOLÉMENT (coutures fetchFn, getReferentiel,
+// listReferentiels) : calcul de l'estimation (taille moyenne tirée des dépôts,
+// modèle, référentiel choisi), règle d'affichage du bouton « Annuler le run »
+// (RunProgress) et choix du référentiel publié.
 import { afterEach, describe, expect, it, vi } from 'vitest'
 import { createElement } from 'react'
 import { act, cleanup, fireEvent, render, screen } from '@testing-library/react'
@@ -17,7 +19,6 @@ import {
   cancelRun,
   DEFAULT_DAY_CHARS,
   estimateMassRun,
-  EXTRACTION_CALLS_PER_DAY,
   fetchPublishedPackages,
   fetchRun,
   JOB_STATUS_LABELS,
@@ -35,6 +36,16 @@ import {
   PUBLISHED_PACKAGES,
   runBoard,
 } from '../support/eta.js'
+import referentiel from '../../../../schemas/fixtures/referentiel-respire-v7.json'
+
+/** Neuf pôles numérotés, deux compétences chacun (comme le fictif de T15). */
+const NEUF = {
+  id: 'fictif-neuf',
+  version: '1.0.0',
+  label: 'Fictif à neuf pôles',
+  poles: Array.from({ length: 9 }, (_, i) => ({ num: i + 1, nom: `Pôle fictif ${i + 1}` })),
+  competences: Array.from({ length: 18 }, (_, i) => ({ code: `${Math.floor(i / 2) + 1}.0${(i % 2) + 1}`, nom: `C${i}`, pole: Math.floor(i / 2) + 1 })),
+}
 
 afterEach(() => {
   cleanup()
@@ -46,8 +57,8 @@ async function primeCsrf() {
 }
 
 describe('UC-ETA-03 — estimation du coût avant lancement', () => {
-  it('UC-ETA-03-U08 — estimateMassRun : 8 appels par journée, tokens et coût au prix du modèle, modèle hors table → coût null', () => {
-    const known = estimateMassRun({ totalJournees: 3, avgDayChars: DEFAULT_DAY_CHARS, model: SERVICE_MODEL })
+  it('UC-ETA-03-U08 — estimateMassRun : un appel par pôle du référentiel + kairos par journée (RESPIRE v7 : 8, neuf pôles : 10), tokens et coût au prix du modèle, modèle hors table → coût null', () => {
+    const known = estimateMassRun({ totalJournees: 3, avgDayChars: DEFAULT_DAY_CHARS, model: SERVICE_MODEL, referentiel })
     expect(known).toEqual({
       totalCalls: 24,
       tokensIn: 220000, // ceil(24 × (3 000 + 30 000) / 3,6)
@@ -56,14 +67,17 @@ describe('UC-ETA-03 — estimation du coût avant lancement', () => {
       disclaimer: PRICING_DISCLAIMER,
     })
 
+    // Un autre référentiel : un appel par pôle, plus le kairos.
+    expect(estimateMassRun({ totalJournees: 3, model: SERVICE_MODEL, referentiel: NEUF }).totalCalls).toBe(30)
+
     // Modèle absent de la table de prix → coût « inconnu » (null)…
-    const unknown = estimateMassRun({ totalJournees: 3, model: 'phi4:14b' })
+    const unknown = estimateMassRun({ totalJournees: 3, model: 'phi4:14b', referentiel })
     expect(unknown.totalCalls).toBe(24)
     expect(unknown.costUsd).toBeNull()
     // …alors que les familles locales llama/mistral/qwen sont tarifées 0.
-    expect(estimateMassRun({ totalJournees: 3, model: 'llama3.1:70b' }).costUsd).toBe(0)
+    expect(estimateMassRun({ totalJournees: 3, model: 'llama3.1:70b', referentiel }).costUsd).toBe(0)
 
-    expect(estimateMassRun({ totalJournees: 'n/a', model: SERVICE_MODEL })).toMatchObject({
+    expect(estimateMassRun({ totalJournees: 'n/a', model: SERVICE_MODEL, referentiel })).toMatchObject({
       totalCalls: 0,
       tokensIn: 0,
       tokensOut: 0,
@@ -134,7 +148,7 @@ describe('UC-ETA-03 — client API du run', () => {
 })
 
 describe('UC-ETA-03 — constantes d’affichage', () => {
-  it('UC-ETA-03-U12 — six statuts de jobs libellés, 8 appels par journée, polling toutes les 5 s', () => {
+  it('UC-ETA-03-U12 — six statuts de jobs libellés, polling toutes les 5 s, modèle de référence', () => {
     expect(JOB_STATUS_LABELS).toEqual({
       queued: 'En attente',
       running: 'En cours',
@@ -144,7 +158,6 @@ describe('UC-ETA-03 — constantes d’affichage', () => {
       cancelled: 'Annulés',
     })
     expect(Object.isFrozen(JOB_STATUS_LABELS)).toBe(true)
-    expect(EXTRACTION_CALLS_PER_DAY).toBe(8)
     expect(POLL_INTERVAL_MS).toBe(5000)
     expect(SERVICE_MODEL).toBe('claude-sonnet-5')
   })
@@ -161,7 +174,13 @@ const DEPOSANTS = [
   membre({ userId: 13, displayName: 'Noé', portfolioDepose: false, portfolio: null }),
 ]
 
-function renderCohorte({ membres = DEPOSANTS, config = configProjection(), board = runBoard() } = {}) {
+/** Référentiels publiés au format de listPublishedReferentiels : RESPIRE d'abord. */
+const PUBLIES = [
+  { id: 'respire', label: 'RESPIRE v7', versions: [{ semver: '7.0.0', label: 'RESPIRE v7', fichier: 'respire-7.0.0.json', publishedAt: null }] },
+  { id: 'fictif-neuf', label: 'Fictif à neuf pôles', versions: [{ semver: '1.0.0', label: 'Fictif à neuf pôles', fichier: 'fictif-neuf-1.0.0.json', publishedAt: null }] },
+]
+
+function renderCohorte({ membres = DEPOSANTS, config = configProjection(), board = runBoard(), getReferentiel, listReferentiels } = {}) {
   const net = fakeFetch({
     'GET api/etablissement/cohortes/7': jsonResponse(200, cohorteDetail({ membres })),
     'GET api/etablissement/config': jsonResponse(200, config),
@@ -169,7 +188,11 @@ function renderCohorte({ membres = DEPOSANTS, config = configProjection(), board
     'POST api/etablissement/cohortes/7/runs': jsonResponse(201, { runId: 42, jobs: 5 }),
     'GET api/etablissement/runs/42': jsonResponse(200, board),
   })
-  render(createElement(CohorteSection, { id: '7', fetchFn: net.fetchMock }))
+  const seams = {
+    getReferentiel: getReferentiel ?? (async () => ({ doc: referentiel })),
+    listReferentiels: listReferentiels ?? (async () => []),
+  }
+  render(createElement(CohorteSection, { id: '7', fetchFn: net.fetchMock, ...seams }))
   return net
 }
 
@@ -222,5 +245,33 @@ describe('UC-ETA-03 — CohorteSection rendue isolément', () => {
       expect(Boolean(screen.queryByRole('button', { name: 'Annuler le run' })), `${board.status} ${JSON.stringify(board.jobs)}`).toBe(shown)
       cleanup()
     }
+  })
+  it('UC-ETA-03-U15 — choix du référentiel publié : RESPIRE par défaut (sa dernière version publiée) ; un autre → estimation à ses pôles (10 appels par journée) et POST avec sa version', async () => {
+    await primeCsrf()
+    const getReferentiel = vi.fn(async (choix) => ({ doc: choix?.id === 'fictif-neuf' ? NEUF : referentiel }))
+    const net = renderCohorte({ getReferentiel, listReferentiels: async () => PUBLIES })
+
+    const select = await screen.findByRole('combobox', { name: 'Référentiel' })
+    expect(select.value).toBe('respire@7.0.0')
+    let block = await estimateCost()
+    expect(block.textContent).toContain('40 appels LLM') // 5 journées × (7 pôles + kairos)
+    expect(getReferentiel).toHaveBeenLastCalledWith(undefined) // le défaut : la dernière version publiée de RESPIRE
+
+    // Autre référentiel : l'estimation affichée ne vaut plus, puis se recalcule à ses pôles.
+    fireEvent.change(select, { target: { value: 'fictif-neuf@1.0.0' } })
+    expect(screen.queryByTestId('etab-run-estimate')).toBeNull()
+    block = await estimateCost()
+    expect(getReferentiel).toHaveBeenLastCalledWith({ id: 'fictif-neuf', version: '1.0.0' })
+    expect(block.textContent).toContain('50 appels LLM') // 5 journées × (9 pôles + kairos)
+
+    await act(async () => {
+      fireEvent.click(screen.getByRole('button', { name: 'Confirmer et lancer le run' }))
+    })
+    expect(net.callsTo('POST api/etablissement/cohortes/7/runs')[0].body).toEqual({
+      promptPackageId: 'aurora-v3-reconstruit',
+      promptPackageVersion: '1.0.0',
+      referentielId: 'fictif-neuf',
+      referentielVersion: '1.0.0',
+    })
   })
 })

@@ -8,6 +8,7 @@
 // un nouveau jeu.
 import { twin9ToMergeDocument } from './twin9/mapper.js'
 import { loadPublishedReferentiel } from '../data/referentiel.js'
+import { chargerReferentielDuDocument } from './referentiel-du-document.js'
 
 /**
  * Nom du fichier d'une cartographie du site (téléchargement, rapport d'import).
@@ -20,17 +21,22 @@ export function cartographyFileName({ type, document, updatedAt }) {
 }
 
 /**
- * Fichiers à remettre à l'interface pour une cartographie du site.
- * @param {{type: string, document: object, updatedAt?: string}} entry
- * @param {{getReferentiel?: () => Promise<object>}} [seams]
+ * Fichiers à remettre à l'interface pour une cartographie du site. Une
+ * analyse Twin9 se projette avec SON référentiel (2026-10-20) : la version
+ * que l'entrée a notée, sinon RESPIRE.
+ * @param {{type: string, document: object, updatedAt?: string, referentiel?: {id: string, version: string} | null}} entry
+ * @param {{getReferentiel?: typeof loadPublishedReferentiel}} [seams]
  * @returns {Promise<Array<{path: string, text: string}>>}
  * @throws {Error} analyse Twin9 sans journée datée (rien à placer sur la ligne de temps)
  */
 export async function interfaceFiles(entry, { getReferentiel = loadPublishedReferentiel } = {}) {
   let document = entry.document
   if (entry.type === 'twin9') {
-    const loaded = await getReferentiel()
-    document = twin9ToMergeDocument(entry.document, loaded?.doc ?? loaded ?? null, {
+    const referentiel = await chargerReferentielDuDocument(entry.document, {
+      connu: entry.referentiel ?? null,
+      getReferentiel,
+    })
+    document = twin9ToMergeDocument(entry.document, referentiel, {
       generatedAt: entry.document?.date ?? null,
     })
   }
@@ -48,11 +54,12 @@ export async function interfaceFiles(entry, { getReferentiel = loadPublishedRefe
  *
  * Le référentiel est celui du run (T17) : ses pôles et ses compétences, tels
  * que son moteur les a lus ; les résultats n'en portent aucune description
- * (les fiches en sont faites), le référentiel publié de même identifiant
- * donne les siennes. Un run d'avant T16, qui ne le dit pas, a lu RESPIRE : le
- * référentiel publié.
+ * (les fiches en sont faites), le référentiel publié de même identifiant —
+ * à sa version quand le run la dit, à sa dernière sinon (2026-10-20) —
+ * donne les siennes ; introuvable, le run passe sans elles. Un run d'avant
+ * T16, qui ne le dit pas, a lu RESPIRE : le référentiel publié.
  * @param {{run: object, sorties: Record<string, string>, memoire?: string[], referentiel?: object | null}} resultats GET /api/twin9/runs/{id}/resultats
- * @param {{getReferentiel?: () => Promise<object>}} [seams]
+ * @param {{getReferentiel?: typeof loadPublishedReferentiel}} [seams]
  * @returns {Promise<Array<{path: string, text: string}>>}
  * @throws {Error} run sans fusion ni journée finie (rien à placer sur la ligne de temps)
  */
@@ -66,8 +73,11 @@ export async function twin9RunFiles(resultats, { getReferentiel = loadPublishedR
   if (typeof fusion !== 'string' && Object.keys(journees).length === 0) {
     throw new Error('Ce run n’a encore ni fusion ni journée finie : rien à ouvrir dans la cartographie.')
   }
-  const loaded = await getReferentiel()
-  const publie = loaded?.doc ?? loaded ?? null
+  const duRun = resultats.referentiel ?? null
+  const publie = await chargerReferentielDuDocument(null, {
+    connu: typeof duRun?.id === 'string' ? { id: duRun.id, version: duRun.version ?? null } : null,
+    getReferentiel,
+  }).catch(() => null)
   const doc = {
     kind: 'twin9-run',
     run: resultats.run,

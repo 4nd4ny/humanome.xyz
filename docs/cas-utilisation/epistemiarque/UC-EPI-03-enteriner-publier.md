@@ -30,8 +30,9 @@ affiche « Majorité atteinte : la compétence peut être entérinée. »
 - Session ouverte, rôle `epistemiarque` ou `admin`.
 - La proposition est au statut `review` et son décompte, recalculé contre
   l'électorat courant, est `adopted` (UC-EPI-02).
-- Pour une release : 7 pôles en base et une version publiée pour chacune des
-  61 compétences (état du corpus RESPIRE v7 semé au déploiement).
+- Pour une release : une version publiée de RESPIRE, et en base ses pôles et
+  une version publiée pour chacune de ses compétences (état du corpus RESPIRE
+  v7 semé au déploiement : 7 pôles, 61 compétences).
 
 ## Garanties en cas de succès
 
@@ -77,9 +78,9 @@ affiche « Majorité atteinte : la compétence peut être entérinée. »
    `{semver, label: "RESPIRE v<semver>"}`.
 6. Le serveur assemble le document depuis la dernière version publiée de
    chaque compétence et les pôles (`description` = définition rognée, hors
-   hash), recalcule le `contentHash` structurel, valide le document (schéma :
-   exactement 7 pôles et 61 compétences, la clause qui garde RESPIRE depuis
-   T15, plus contrôles d'intégrité), refuse
+   hash), recalcule le `contentHash` structurel, valide le document (schéma
+   et contrôles d'intégrité, puis complétude : les pôles et les codes de la
+   dernière version publiée, chaque code dans son pôle — RG4), refuse
    une semver existante ou non strictement supérieure aux versions publiées,
    puis insère la release publiée et son lockfile dans une transaction →
    `201` `{status: "imported", id, semver, contentHash}`.
@@ -146,8 +147,12 @@ affiche « Majorité atteinte : la compétence peut être entérinée. »
 - **E5 — Release : semver absente ou invalide** (étape 6) : `422`
   (« Champ "semver" requis » ou erreur de schéma `/version`) ; corps non JSON →
   `400`.
-- **E6 — Release : corpus incomplet** (étape 6) : moins de 61 compétences
-  publiées ou de 7 pôles → `422` (gate de complétude), aucune release.
+- **E6 — Release : corpus incomplet** (étape 6) : un pôle ou une compétence de
+  la dernière version publiée manque, ou en est en trop, ou une compétence a
+  changé de pôle — ou aucune version n'est publiée → `422` (gate de
+  complétude, chaque écart nommé), aucune release. Une version de RESPIRE
+  d'une autre structure, publiée au grain document (UC-EPI-04), ne peut donc
+  être défaite par une release.
 - **E7 — Release : semver existante ou non croissante** (étape 6) : `409`.
 - **E8 — Accès** (étapes 2 et 5) : sans session `401`, sans rôle `403`, sans
   jeton CSRF `403`.
@@ -168,9 +173,12 @@ affiche « Majorité atteinte : la compétence peut être entérinée. »
   soumission et de nouveau à la publication) et par référentiel pour les
   releases ; précédence semver (1.10.0 > 1.9.0), pas ordre alphabétique.
 - **RG4** — Une release n'a pas de second vote : les évolutions ont été
-  entérinées compétence par compétence ; elle est soumise à la complétude
-  (schéma 7/61, la clause de RESPIRE depuis T15, + intégrité) et produit un
-  lockfile de provenance.
+  entérinées compétence par compétence ; elle est soumise au schéma, à
+  l'intégrité et à la complétude — la structure de la dernière version
+  publiée (mêmes pôles, mêmes codes dans les mêmes pôles) : le modèle atomique
+  modifie une compétence, il n'en ajoute, n'en retire ni n'en déplace aucune
+  (le schéma ne fixe plus 7 pôles et 61 compétences depuis le 2026-10-20) —
+  et produit un lockfile de provenance.
 - **RG5** — Le `contentHash` d'une release ne porte que le corps structurel
   `{pôles (num, nom, couleur), compétences (code, nom, pôle)}` — hash
   identique octet par octet à celui de l'extracteur Node
@@ -221,7 +229,7 @@ affiche « Majorité atteinte : la compétence peut être entérinée. »
 | UC-EPI-03-U05 | `latestPublishedByCode` | Précédence semver, tri par code, brouillons ignorés (RG6) | idem |
 | UC-EPI-03-U06 | `SnapshotAssembler::assembleDocument` | Ordre canonique, pôles, description rognée/omise, hash = `ContentHash` du corps (RG5) | idem |
 | UC-EPI-03-U07 | `SnapshotAssembler::structuralHash` | Définition entérinée : hash inchangé ; renommage : hash changé (A4) | idem |
-| UC-EPI-03-U08 | `ReferentielRepository::cutReleaseFromDocument` | Complétude 61/7 (422), release + lockfile (61 liens, provenance), 409 semver existante / non croissante (RG4) | idem |
+| UC-EPI-03-U08 | `ReferentielRepository::cutReleaseFromDocument` | Complétude (422 sans version publiée), release + lockfile (61 liens, provenance), 409 semver existante / non croissante (RG4) | idem |
 | UC-EPI-03-U09 | `StaticExporter::export` | Release exportée en dossier temporaire, valide au schéma, définition entérinée, index le plus récent d'abord | idem |
 | UC-EPI-03-U10 | `FicheGenerator` | `poleFiches` (RG7), `corpus`, `fichesStructure` complet (pôles, en-têtes, `fiche_md` par code) depuis les versions en vigueur ; fiche au vote non propagée | idem |
 | UC-EPI-03-U11 | `createCompetenceApi` | `publishDraft` et `cutRelease` : routes et corps | `web/test/usecases/unit/uc-epi-03-enteriner-publier.test.jsx` |
@@ -309,13 +317,12 @@ cd web && npx vitest run test/usecases/unit/uc-epi-03 test/usecases/functional/u
   `loadPublishedReferentiel`, UC-APP-02) lisent le même export statique : elles
   n'épinglent la release qu'après ré-export et redéploiement, contrairement à
   ce qu'annonce la carte de l'atelier (AN3).
-- **L2** — Le schéma du référentiel fige les 7 pôles et 61 compétences de
-  RESPIRE (une clause depuis T15 ; un autre référentiel a la structure qu'il
-  déclare, UC-EPI-05) : ajouter ou retirer une compétence de RESPIRE
-  (évolution « mineure » ou « majeure » décrite dans la formation
-  épistémiarque, chapitre 4) n'est pas possible — aucune route ne crée ni ne
-  retire une compétence atomique, et la release serait refusée par le gate de
-  complétude.
+- **L2** — Le modèle atomique ne connaît que RESPIRE et sa structure semée
+  (7 pôles, 61 compétences) : aucune route ne crée, ne retire ni ne déplace
+  une compétence atomique, ni un pôle. Une version de RESPIRE d'une autre
+  structure (évolution « mineure » ou « majeure » de la formation
+  épistémiarque, chapitre 4) se publie au grain document (UC-EPI-04) depuis le
+  2026-10-20 ; une release du modèle atomique est alors refusée (E6).
 - **L3** — Le diff entre releases est structurel : une évolution de
   définition ou de fiche seule donne `identical: true`.
 - **L4** — Une release peut être coupée sans aucun nouvel entérinement (même

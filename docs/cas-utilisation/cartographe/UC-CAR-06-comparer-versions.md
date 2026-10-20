@@ -36,8 +36,8 @@ Le cartographe ouvre `#/cartographe/comparer` (menu « Comparer », ou lien
   code ; les lignes et les cellules divergentes sont surlignées ; un résumé
   compte les divergences.
 - Rien n'est écrit : la comparaison est calculée dans le navigateur ; seules
-  des lectures `GET` sont émises (session `api/auth/me`, référentiel publié
-  statique `data/referentiel/…`, file et deux documents).
+  des lectures `GET` sont émises (session `api/auth/me`, référentiels publiés
+  statiques `data/referentiel/…`, file et deux documents).
 
 ## Garanties minimales (en cas d'échec)
 
@@ -46,8 +46,8 @@ Le cartographe ouvre `#/cartographe/comparer` (menu « Comparer », ou lien
 
 ## Scénario nominal
 
-1. La section charge la file (`GET /api/cartographe/cartographies`) et le
-   référentiel publié ; « Cartographie 1 » liste toute la file
+1. La section charge la file (`GET /api/cartographe/cartographies`) ;
+   « Cartographie 1 » liste toute la file
    (« apprenant · titre — type du date ») ; « Cartographie 2 (même
    apprenant) » est inactive.
 2. Le cartographe choisit la cartographie 1 ; la seconde liste s'active et ne
@@ -55,8 +55,10 @@ Le cartographe ouvre `#/cartographe/comparer` (menu « Comparer », ou lien
    par id, à défaut par nom affiché). Le document 1 est demandé dès ce choix
    (`GET /api/cartographe/cartographies/{id}`).
 3. Il choisit la cartographie 2 ; la section charge le document 2 (et le 1
-   s'il n'est pas encore arrivé) — « Chargement des documents… » — et garde
-   les documents reçus en cache.
+   s'il n'est pas encore arrivé), puis le référentiel de **chacun** (2026-10-20 :
+   la version que son détail désigne, UC-CAR-02 ; deux cartographies d'un même
+   apprenant peuvent ne pas partager le même) — « Chargement des
+   documents… » — et garde les documents reçus en cache.
 4. Elle affiche deux sunbursts (lecture seule, sans panneau) et
    « Divergences par compétence » : résumé « N compétence(s) divergente(s)
    sur M comparée(s). », puis une ligne par compétence avec, pour chaque
@@ -119,7 +121,7 @@ Le cartographe ouvre `#/cartographe/comparer` (menu « Comparer », ou lien
 | Front | `web/src/views/cartographe/CompareSection.jsx` | Sélecteurs contraints (filtre RG1), chargement à la demande (cache), sunbursts, tableau surligné (`cell` : arrondi en %, « — »), messages |
 | Front | `web/src/views/cartographe/compare-model.js` — `COMPARE_FIELDS`, `extractComparable`, `compareCartographies` | Modèle pur du tableau des divergences |
 | Front | `web/src/views/cartographe/cartographe-api.js` — `fetchQueue`, `fetchCartographie`, `typeLabel`, `frDate` | Lecture de la file et des documents (UC-CAR-02) |
-| Front | `web/src/data/referentiel.js` — `loadPublishedReferentiel` | Référentiel publié (repli sur la copie embarquée) |
+| Front | `web/src/lib/referentiel-du-document.js` — `chargerReferentielDuDocument` ; `web/src/data/referentiel.js` — `loadPublishedReferentiel` | Référentiel de chaque cartographie (repli sur la copie embarquée de RESPIRE) |
 | Front | `web/src/components/Sunburst.jsx`, module `web/src/lib/sunburst/` (`buildDayTree`, `buildMergeTree`, `layoutSunburst`) | Diagrammes |
 | API | `GET /api/cartographe/cartographies[/{id}]` | Lecture (contrôle d'accès de UC-CAR-02) |
 
@@ -138,7 +140,7 @@ Le cartographe ouvre `#/cartographe/comparer` (menu « Comparer », ou lien
 | UC-CAR-06-U07 | `compareCartographies` | Union dans les deux sens (document 1 plus petit : 15 codes) et tri réel (pôles et compétences en ordre inverse) contre une liste explicite | idem |
 | UC-CAR-06-U08 | `CompareSection` (rendu seul) | Liste 2 inactive avant choix ; filtre RG1 par nom affiché à défaut d'id d'apprenant | idem |
 | UC-CAR-06-U09 | `compareCartographies` | Égalité stricte : 0.7433 contre 0.74 diverge, alors que l'affichage arrondit les deux à 74 % (limite) | idem |
-| UC-CAR-06-U10 | `CompareSection` (rendu seul, vrai module sunburst) | Documents arrivés avant le référentiel : `TypeError` au rendu, section démontée (AN17, comportement actuel) | idem |
+| UC-CAR-06-U10 | `CompareSection` (rendu seul, vrai module sunburst) | AN17 corrigée : documents arrivés avant leur référentiel → « Chargement des documents… », aucun plantage, section montée, aucun diagramme | idem |
 
 La lecture de la file et du détail (`fetchQueue`, `fetchCartographie`) et
 `typeLabel` sont testés unitairement par UC-CAR-02 (U07 à U10) ; `frDate` par
@@ -196,6 +198,10 @@ cd web && npx vitest run test/usecases/unit/uc-car-06 test/usecases/functional/u
 ## Anomalies constatées
 
 - **AN17 — Documents arrivés avant le référentiel : plantage du rendu.**
+  **Corrigée le 2026-10-20** : chaque document n'est gardé qu'avec le
+  référentiel de sa cartographie, chargé à sa suite ; la section attend
+  (« Chargement des documents… ») au lieu de dessiner sans lui. UC-CAR-06-U10
+  vérifie désormais l'absence de plantage. Constat d'origine :
   `MiniSunburst` appelle `lib.buildDayTree(doc, referentiel)` même quand le
   référentiel publié n'est pas encore chargé (`null`) ; rien n'attend ce
   chargement (contrairement à la relecture, qui affiche « Chargement du

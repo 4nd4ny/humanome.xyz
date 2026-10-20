@@ -7,17 +7,23 @@
 //     il n'y a aucun secret à protéger (pas de LeakFilter côté serveur).
 //
 // Le paquet de prompts est PUBLIC et téléchargeable : web/public/data/twin6/.
+//
+// Tout référentiel publié (2026-10-20) : un run Twin6 lit le référentiel choisi
+// (RESPIRE par défaut) — un scan par pôle —, et ses fiches sont celles du
+// paquet pour un pôle dont elles nomment exactement les compétences, sinon
+// écrites depuis le document (fichesPourTwin6, moteur).
 
 import { apiFetch } from './client.js'
 import { createProvider } from '@engine/providers/index.js'
-import { fetchTwin9Meta } from './twin9.js'
+import { fetchTwin9Meta, referentielPourMoteur } from './twin9.js'
 
 /** Paquet de prompts open source (servi statiquement, téléchargeable). */
 export const TWIN6_PACKAGE_URL = 'data/twin6/twin6-ouverte-1.0.0.json'
 
 /**
- * Charge le paquet PUBLIC de prompts Twin6 (scanPole, kairos, fiches P1..P7)
- * dans la forme attendue par le moteur (twin6.executerTwin6).
+ * Charge le paquet PUBLIC de prompts Twin6 (scanPole, kairos, les fiches des
+ * pôles de RESPIRE v7, P1..P7) dans la forme attendue par le moteur
+ * (twin6.executerTwin6).
  *
  * @param {{fetchFn?: typeof fetch, url?: string}} [opts]
  */
@@ -90,7 +96,34 @@ export function makeOwnKeyProvider({ provider = 'anthropic', apiKey, fetchFn } =
 // referentielPourMoteur a déménagé dans api/twin9.js (D12 : il servait aussi
 // l'analyse Twin9 du navigateur, partie le 2026-10-17) — ré-exporté ici pour
 // les importeurs existants.
-export { referentielPourMoteur } from './twin9.js'
+export { referentielPourMoteur }
+
+/** Les codes de chaque pôle, dans l'ordre des numéros : la structure d'un référentiel. */
+function structure(referentiel) {
+  return JSON.stringify(
+    referentiel.poles
+      .map((p) => Number(p.num))
+      .sort((a, b) => a - b)
+      .map((num) => [num, referentiel.competences.filter((c) => Number(c.pole) === num).map((c) => String(c.code)).sort()]),
+  )
+}
+
+/**
+ * Le référentiel que lit un run Twin6 (2026-10-20) : le document publié choisi.
+ * Pour RESPIRE, la structure de /api/twin9/meta — celle de l'import, aux noms
+ * de pôle accentués, que portent les documents Twin6 d'hier — tant qu'elle
+ * compte exactement les mêmes pôles et les mêmes compétences que la version
+ * choisie ; une version d'une autre structure se lit dans son document.
+ *
+ * @param {{id?: string, poles: Array, competences: Array}} document le référentiel publié choisi
+ * @param {Array<object>} [metaReferentiel] le référentiel de /api/twin9/meta (tableau de pôles)
+ * @returns {{id?: string, poles: Array, competences: Array}} le référentiel du moteur
+ */
+export function referentielTwin6(document, metaReferentiel) {
+  const id = typeof document?.id === 'string' && document.id !== '' ? document.id : 'respire'
+  const meta = referentielPourMoteur(metaReferentiel)
+  return id === 'respire' && meta.poles.length > 0 && structure(meta) === structure(document) ? meta : document
+}
 
 /**
  * Prix Twin6 (contribution +10 % déjà appliquée) par modèle + état de la promo

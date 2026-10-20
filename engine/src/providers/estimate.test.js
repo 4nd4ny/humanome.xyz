@@ -6,7 +6,9 @@ import {
   MODEL_PRICING_USD_PER_MTOK,
   PRICING_DISCLAIMER,
   CALLS_PER_DAY,
-  MERGE_NARRATIVE_CALLS
+  MERGE_NARRATIVE_CALLS,
+  callsPerDayFor,
+  mergeNarrativeCallsFor
 } from './estimate.js'
 
 describe('estimateTokens (heuristique ~3,6 caractères/token pour le français)', () => {
@@ -84,6 +86,19 @@ describe('estimateRun (7 appels pôle + 1 kairos par jour + 69 narratifs de merg
     expect(CALLS_PER_DAY).toBe(8)
     expect(MERGE_NARRATIVE_CALLS).toBe(69)
     expect(estimateRun(base).totalCalls).toBe(59 * 8 + 69) // 541
+  })
+
+  it('compte les appels de tout référentiel : un par pôle et le kairos ; un narratif par compétence, par pôle et le kairos', () => {
+    const pole = (num) => ({ num })
+    const respireV7 = {
+      poles: [1, 2, 3, 4, 5, 6, 7].map(pole),
+      competences: Array.from({ length: 61 }, (_, i) => ({ code: String(i), pole: 1 })),
+    }
+    expect(callsPerDayFor(respireV7)).toBe(CALLS_PER_DAY)
+    expect(mergeNarrativeCallsFor(respireV7)).toBe(MERGE_NARRATIVE_CALLS)
+    const sixPoles = { poles: [1, 2, 3, 4, 5, 6].map(pole), competences: respireV7.competences.slice(0, 52) }
+    expect(callsPerDayFor(sixPoles)).toBe(7)
+    expect(mergeNarrativeCallsFor(sixPoles)).toBe(52 + 6 + 1)
   })
 
   it('tokensIn = appels jour × (jour + surcharge) + narratifs × surcharge, via l’heuristique', () => {

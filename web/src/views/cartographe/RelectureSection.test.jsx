@@ -255,6 +255,63 @@ describe('RelectureSection — correction et révision', () => {
     expect(screen.getByTestId('revision-schema-errors')).toBeTruthy()
     expect(revisionsPost).not.toHaveBeenCalled()
   })
+
+  it('marqueur de périmètre dans le document : refusé au schéma, comme au serveur, AUCUN envoi', async () => {
+    // Le marqueur `perimetre` n'est pas du schéma : seul l'appelant qui le pose
+    // (extractDay, le banc) s'y fie. Lu ici, il réduirait les pôles attendus au
+    // pôle 1 et laisserait passer une journée qui a perdu les six autres.
+    const unPole = JSON.parse(JSON.stringify(dayFixture))
+    unPole.poles = unPole.poles.filter((p) => String(p.poleNum) === '1')
+    unPole.perimetre = { partiel: true, poles: [1] }
+    const revisionsPost = vi.fn()
+    renderSection({
+      'GET api/cartographe/cartographies/12': detailResponse({
+        cartographie: { document: unPole },
+      }),
+      'POST api/cartographies/12/revisions': revisionsPost,
+    })
+
+    await screen.findByTestId('relecture-meta')
+    await selectCompetence('1.01')
+    const editor = await screen.findByTestId('correction-editor')
+    fireEvent.click(
+      within(editor).getByRole('button', { name: 'Enregistrer la correction pour 1.01' }),
+    )
+    fireEvent.click(screen.getByRole('button', { name: 'Proposer la révision' }))
+
+    await screen.findByText(/ne respecte pas le schéma/)
+    expect(revisionsPost).not.toHaveBeenCalled()
+  })
+
+  it('référentiel de la cartographie introuvable : rien à quoi confronter la révision, AUCUN envoi', async () => {
+    const revisionsPost = vi.fn()
+    const fetchFn = routedFetch({
+      'GET api/cartographe/cartographies/12': detailResponse(),
+      'POST api/cartographies/12/revisions': revisionsPost,
+    })
+    render(
+      <RelectureSection
+        id="12"
+        user={user}
+        lib={fakeLib}
+        fetchFn={fetchFn}
+        getReferentiel={async () => {
+          throw new Error('Le référentiel « respire » n’a pas pu être chargé')
+        }}
+      />,
+    )
+
+    await screen.findByTestId('relecture-meta')
+    await selectCompetence('1.01')
+    const editor = await screen.findByTestId('correction-editor')
+    fireEvent.click(
+      within(editor).getByRole('button', { name: 'Enregistrer la correction pour 1.01' }),
+    )
+    fireEvent.click(screen.getByRole('button', { name: 'Proposer la révision' }))
+
+    await screen.findByText('Le référentiel de la cartographie n’est pas chargé : révision non envoyée.')
+    expect(revisionsPost).not.toHaveBeenCalled()
+  })
 })
 
 describe('RelectureSection — garantie', () => {

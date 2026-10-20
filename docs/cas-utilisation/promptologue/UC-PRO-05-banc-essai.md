@@ -27,7 +27,7 @@ Le promptologue ouvre **Banc d'essai** dans la navigation de l'atelier
 - Session ouverte sur un compte portant le rôle `promptologue` (garde front
   `PromptologueView` ; garde serveur `RoleGuard` sur les brouillons).
 - Au moins une version exécutable : le **moteur embarqué**
-  `aurora-v3-reconstruit@1.0.0` est toujours disponible ; les versions
+  `aurora-v3-reconstruit@1.1.0` est toujours disponible ; les versions
   **publiées** et **mes brouillons** viennent de l'API (UC-PRO-01 à UC-PRO-03).
 - Un fournisseur LLM utilisable : « Service humanome » (preuve de travail +
   quotas serveur) ou une clé personnelle (Ollama : sans clé).
@@ -91,8 +91,8 @@ Le promptologue ouvre **Banc d'essai** dans la navigation de l'atelier
    api/prompt-packages/{id}/{version}` pour une version publiée).
 5. Pour chaque branche, `runVersionOnDays` exécute la version journée par
    journée : paquet « moteur » (embarqué ou marqueur `engine://`) →
-   `extractDay` (7 appels pôle + 1 kairos par journée), **avec les gabarits
-   du moteur** — les `prompts[]` d'un paquet `engine://` ne sont pas
+   `extractDay` (un appel par pôle du référentiel de la branche + 1 kairos
+   par journée), **avec les gabarits du moteur** — les `prompts[]` d'un paquet `engine://` ne sont pas
    transmis (anomalie AN-3) ; paquet à code personnalisé → sandbox
    (UC-PRO-07), avec ses propres gabarits. Le fournisseur est enveloppé une
    seule fois : température injectée et **usage réel cumulé** (`inputTokens`,
@@ -133,17 +133,24 @@ Le promptologue ouvre **Banc d'essai** dans la navigation de l'atelier
   versions du référentiel (`GET api/referentiel/versions/{semver}`).
 - **A6 — Périmètre restreint** (étape 3) : une journée ou une période ; un
   pôle ou **une** compétence. Le moteur n'instruit que les pôles retenus
-  (sans kairos), le document est marqué `perimetre.partiel` ; l'estimation
-  suit le même périmètre.
+  (sans kairos), le document est marqué `perimetre.partiel` et validé contre
+  son périmètre (ses pôles, ses compétences, du référentiel de la branche) ;
+  les compétences du même pôle que le modèle instruirait en plus sont
+  écartées, un code inconnu du référentiel fait échouer l'appel (2026-10-20) ;
+  l'estimation suit le même périmètre.
 - **A7 — Mon brouillon** (étape 3) : un brouillon s'exécute depuis le document
   déjà chargé, sans nouvel aller-retour serveur.
 - **A8 — Paquet à référentiel en dur** (étapes 3 et 5) : paquet Twin6
   (drapeau `reserved` ou nom), fiches de compétences en toutes lettres dans
-  les gabarits, orchestration qui ignore `referentiel` → alerte avant le run,
+  les gabarits (« ## CODE — », quel que soit le format du code : « 1.01 »
+  comme « A2 »), orchestration qui ignore `referentiel` → alerte avant le run,
   puis alerte définitive une fois le paquet chargé.
 - **A9 — Paquet Twin6 en run simple** (étape 5) : `executerTwin6` sur le
-  **portfolio entier** (7 scan-pôle + kairos) → cartographie globale (merge),
-  téléchargeable.
+  **portfolio entier** (un scan-pôle par pôle du référentiel de la branche +
+  kairos) → cartographie globale (merge), téléchargeable. Une fiche du paquet
+  (`twin6-fiche-N`) ne sert que si elle nomme exactement les compétences de son
+  pôle dans ce référentiel ; sinon la fiche s'écrit depuis le référentiel
+  (`fichesPourTwin6`, 2026-10-20).
 - **A10 — Interruption volontaire** (étape 5) : bouton **Interrompre** →
   statut neutre « Run interrompu » (pas une erreur) ; en multi-run (≥ 2 runs
   achevés) et en A/B (≥ 1 run par branche), rapport partiel sur les runs
@@ -165,16 +172,21 @@ Le promptologue ouvre **Banc d'essai** dans la navigation de l'atelier
   fin, ou aucune journée correspondante → message, aucun appel LLM.
 - **E3 — Température invalide** (étape 4) : hors [0 ; 2] → message.
 - **E4 — Référence absente ou invalide** (étapes 3-4) : « Importez d'abord un
-  JSON de référence (côté B). » ; JSON non reconnu, sans date, en double ou
-  invalide au schéma (le marqueur `perimetre.partiel` d'un fichier importé ne
-  désactive pas la validation) → message.
+  JSON de référence (côté B). » ; JSON non reconnu, sans date, en double,
+  invalide au schéma ou non conforme au référentiel de la branche A — un pôle
+  qui manque, un pôle en double ou hors du périmètre déclaré, un code inconnu
+  (« JSON de référence : document du <date> non conforme au référentiel
+  (…) ») ; le marqueur `perimetre.partiel` d'un fichier importé ne désactive pas
+  la validation, il en restreint seulement les pôles et compétences attendus
+  → message.
 - **E5 — Paquet Twin6 hors run simple ou avec périmètre restreint**
   (étapes 4-5) : refus explicite (modes par jour inapplicables ; référentiel
   en dur).
 - **E6 — Périmètre absent du référentiel d'une branche** (étape 4) : en A/B à
   double référentiel, refus **avant** que la branche A ne consomme d'appels.
 - **E7 — Échec d'exécution** (étape 5) : clé personnelle manquante,
-  fournisseur en erreur (quota, HTTP), quota ou document invalide en sandbox
+  fournisseur en erreur (quota, HTTP), quota en sandbox, document de la
+  sandbox invalide au schéma ou non conforme au référentiel qu'elle a reçu
   → message d'erreur ; le résultat précédent reste affiché.
 - **E8 — Portfolio local sans journée datée** (étapes 3-4) : alerte à la
   sélection, refus au lancement.
@@ -244,8 +256,8 @@ n'est pas non plus du code sollicité : c'est le double de test des unitaires.
 
 Éléments couverts hors des tests de cette fiche : `executerTwin6` (moteur
 Twin6, UC-APP-09 : `engine/test/usecases/unit/uc-app-09-*.test.js` ; ici
-remplacé par une couture en F14), `validatePartialJour` (sonde tolérante,
-UC-PRO-07), `createPortfolioStore` (IndexedDB, `web/src/lib/portfolio-store.test.js` ;
+remplacé par une couture en F14), `validatePartialJour` (conformité au
+référentiel, périmètre compris, UC-PRO-07), `createPortfolioStore` (IndexedDB, `web/src/lib/portfolio-store.test.js` ;
 couture en F17 et F25), `fetchMe` et `GET /api/auth/me` (UC-CPT-02 ; ici
 exercés par F01 côté API et par les tests IHM rendus dans `<App/>`).
 
@@ -264,9 +276,9 @@ exercés par F01 côté API et par les tests IHM rendus dans `<App/>`).
 | UC-PRO-05-U07 | `normalizeDraftEntry` | Brouillon avec document ; sans document écarté | idem |
 | UC-PRO-05-U08 | `fixtureDayGroups`, `FIXTURE_LABEL` | Fixture fictive Maya : 3 journées datées | idem |
 | UC-PRO-05-U09 | `runVersionOnDays` + `extractDay` réel | 24 appels, documents reconstruits, usage cumulé, température, progression | idem |
-| UC-PRO-05-U10 | `runVersionOnDays` (périmètre) | 1 appel, document `perimetre.partiel` | idem |
+| UC-PRO-05-U10 | `runVersionOnDays` (périmètre) | 1 appel, document `perimetre.partiel` ; le modèle rejoué instruit tout le pôle, seule la compétence du périmètre reste (A6) | idem |
 | UC-PRO-05-U11 | `createProviderBundle` | Service (`demo` / tarif `claude-sonnet-5`), clé obligatoire, fournisseur inconnu | idem |
-| UC-PRO-05-U12 | `usesEngineOrchestration`, `usesTwin6Engine`, `detectReferentielEnDur` | Routage moteur / sandbox / Twin6 ; alerte : Twin6, fiche « ## X.YY — » dans un gabarit, orchestration sans `referentiel` (A8) | idem |
+| UC-PRO-05-U12 | `usesEngineOrchestration`, `usesTwin6Engine`, `detectReferentielEnDur` | Routage moteur / sandbox / Twin6 ; alerte : Twin6, fiche « ## CODE — » dans un gabarit (« 1.01 » comme « A2 »), orchestration sans `referentiel` (A8) | idem |
 | UC-PRO-05-U13 | `buildEstimate` | Sans fusion, pôles retenus, modèle hors table (RG5) | idem |
 | UC-PRO-05-U14 | `realCostUsd`, `sumUsages` | Modèle de tarif, totaux de session (RG4) | idem |
 | UC-PRO-05-U15 | `buildAbReport` → `scoreVsReference` | P = R = F1 = 75 %, journée hors score, `codesRetenus` ; F1 = 0 en désaccord total, `null` si P ou R indéfini (RG3) | idem |
@@ -279,7 +291,7 @@ exercés par F01 côté API et par les tests IHM rendus dans `<App/>`).
 | UC-PRO-05-U22 | `createProvider` (moteur) | Transport direct : clé vers le seul fournisseur, température, usage `input_tokens` → `inputTokens` ; transport proxy : température recopiée, aucune clé (RG4) | `engine/test/usecases/unit/uc-pro-05-banc-essai.test.js` |
 | UC-PRO-05-U23 | `filterDayGroups` | Tout / journée / période ; période inversée et sélection vide refusées (E2) | `web/test/usecases/unit/uc-pro-05-banc-essai.test.js` |
 | UC-PRO-05-U24 | `buildMultiRunReport`, `buildConsistencyView` | Modèle affiché du multi-run : stables, divergente, runs groupés (A2) | idem |
-| UC-PRO-05-U25 | `buildRunReport`, `normalizeReferenceImport` (→ `validateDocument`, `validatePartialJour`) | Run exporté réimportable comme référence ; forme inconnue, journée sans date, date en double, document invalide malgré le marqueur `perimetre.partiel` refusés (A1, A4, E4) | idem |
+| UC-PRO-05-U25 | `buildRunReport`, `normalizeReferenceImport` (→ `validatePartialJour` : schéma puis conformité au référentiel du banc) | Run exporté réimportable comme référence ; forme inconnue, journée sans date, date en double, document invalide malgré le marqueur `perimetre.partiel`, journée à laquelle manque un pôle (message exact) refusés ; partiel conforme à son périmètre accepté (A1, A4, E4) | idem |
 | UC-PRO-05-U26 | `buildCompetenceDiff` | Écart avec pièces, verbatim et verdicts des deux côtés | idem |
 | UC-PRO-05-U27 | `runVersionOnDays` (branche moteur) | Anomalie AN-3 : ni le paquet ni ses `prompts[]` ne sont transmis à `extractDay` (comportement actuel figé) | idem |
 | UC-PRO-05-U28 | `restreindreReferentiel` | Pôle, compétence, périmètre entier ; périmètre absent → « périmètre vide » (A6, E6) | `engine/test/usecases/unit/uc-pro-05-banc-essai.test.js` |
@@ -312,7 +324,7 @@ exercés par F01 côté API et par les tests IHM rendus dans `<App/>`).
 | UC-PRO-05-F18 | E1 | IHM | Anonyme / sans rôle : banc absent, sources non chargées (réseau de chaque cas inspecté) | idem |
 | UC-PRO-05-F19 | E2 | IHM | Période inversée, 0 appel | idem |
 | UC-PRO-05-F20 | E3 | IHM | Température hors bornes (« 2.5 »), 0 appel | idem |
-| UC-PRO-05-F21 | E4 | IHM | Référence absente (après un défi de preuve de travail, 0 appel LLM) puis invalide au schéma | idem |
+| UC-PRO-05-F21 | E4 | IHM | Référence absente (après un défi de preuve de travail, 0 appel LLM) puis non conforme au référentiel du banc — il lui manque le pôle 7 (message exact) | idem |
 | UC-PRO-05-F22 | E5 | IHM | Twin6 en multi-run ; Twin6 + périmètre | idem |
 | UC-PRO-05-F23 | E6 | IHM | Périmètre absent du référentiel B, 0 appel | idem |
 | UC-PRO-05-F24 | E7 | IHM | 429 du fournisseur puis clé manquante ; résultat précédent conservé | idem |
@@ -372,7 +384,7 @@ cd engine && npx vitest run test/usecases/unit/uc-pro-05
   `usesEngineOrchestration`) est exécuté par `extractDay`, qui instancie
   **ses propres** gabarits : `runVersionOnDays` ne lui transmet ni le paquet
   ni ses `prompts[]`. C'est le cas du paquet par défaut publié
-  `aurora-v3-reconstruit@1.0.0` et de **tout brouillon forké de lui**
+  `aurora-v3-reconstruit` (1.0.0 et 1.1.0) et de **tout brouillon forké de lui**
   (`PromptPackageRepository::createDraft` recopie `code.orchestration`). Un
   promptologue qui édite les gabarits d'un tel fork puis compare, en A/B,
   l'ancienne et la nouvelle version compare donc deux exécutions identiques —

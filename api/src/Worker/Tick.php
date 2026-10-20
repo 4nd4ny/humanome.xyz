@@ -40,7 +40,11 @@ use PDO;
  * Engine lessons applied (M5, STATUS.md): stop_reason max_tokens fails loudly
  * (truncated JSON poisons documents); one immediate retry per call (stochastic
  * malformations); persistent kairos failure DEGRADES to null (schema-valid)
- * instead of losing the 7 pole documents.
+ * instead of losing the pole documents.
+ *
+ * Every pole, every code comes from the document of the referential VERSION
+ * the job froze (2026-10-20): its poles, whatever their number; the day it
+ * assembles conforms to that version (PoleAssembler, Conformite).
  *
  * Logging: counters only, never content (cahier §6.5).
  */
@@ -73,6 +77,8 @@ final class Tick
     private readonly CohorteRepository $cohortes;
     /** @var array<string, ?PromptRunner> cache per (package, referentiel) pair */
     private array $runners = [];
+    /** @var array<string, ?array<string, mixed>> the referential document of each cached pair */
+    private array $referentiels = [];
     /** @var array<int, object> provider cache per establishment */
     private array $providers = [];
 
@@ -272,7 +278,7 @@ final class Tick
                 return true;
             }
 
-            return $this->advance($job, $config, $runner, $dayText);
+            return $this->advance($job, $config, $runner, $this->referentiels[self::runnerKey($job)], $dayText);
         } catch (\Throwable $e) {
             // Defensive net: no exception may kill the tick loop.
             $this->queue->fail($jobId, 'erreur worker : ' . $e->getMessage());
@@ -282,8 +288,12 @@ final class Tick
         }
     }
 
-    /** Pole-by-pole progress + kairos + assembly for one job. */
-    private function advance(array $job, array $config, PromptRunner $runner, string $dayText): bool
+    /**
+     * Pole-by-pole progress + kairos + assembly for one job.
+     *
+     * @param array<string, mixed> $referentiel the document of the job's referential version
+     */
+    private function advance(array $job, array $config, PromptRunner $runner, array $referentiel, string $dayText): bool
     {
         $jobId = (int) $job['id'];
         $etablissementId = (int) $job['etablissement_id'];
@@ -319,6 +329,7 @@ final class Tick
                         $this->parseObject($text),
                         $num,
                         $date,
+                        $referentiel,
                     ),
                 );
             } catch (\Throwable $e) {
@@ -363,15 +374,15 @@ final class Tick
                 $model,
                 $prompt,
                 $config,
-                function (string $text) use ($polesByNum, $date): mixed {
+                function (string $text) use ($polesByNum, $date, $referentiel): mixed {
                     $parsed = PoleAssembler::parse($text);
-                    PoleAssembler::validateKairos($parsed, $polesByNum, $date);
+                    PoleAssembler::validateKairos($parsed, $polesByNum, $date, $referentiel);
 
                     return $parsed;
                 },
             );
         } catch (\Throwable $e) {
-            // The 7 pole documents carry the value; the schema accepts null
+            // The pole documents carry the value; the schema accepts null
             // (extractDay kairosOptional semantics — plan-masse §2).
             $kairos = null;
             $note = "kairos dégradé à null ({$date}) — " . $e->getMessage();
@@ -380,7 +391,7 @@ final class Tick
         $this->configs->addSpentUsd($etablissementId, $cost);
 
         try {
-            $document = PoleAssembler::assembleDay($polesByNum, $kairos, $date);
+            $document = PoleAssembler::assembleDay($polesByNum, $kairos, $date, $referentiel);
         } catch (\Throwable $e) {
             $this->queue->fail($jobId, "assemblage ({$date}) — " . $e->getMessage());
             $this->counters['callErrors']++;
@@ -517,15 +528,21 @@ final class Tick
         return $model !== '' ? $model : (Env::get('WORKER_MODEL', 'claude-sonnet-4-5') ?: 'claude-sonnet-4-5');
     }
 
-    /** PromptRunner for the job's FROZEN package + referentiel versions. */
-    private function runnerFor(array $job): ?PromptRunner
+    /** The cache key of a job's (package, referentiel) pair. */
+    private static function runnerKey(array $job): string
     {
-        $key = implode('|', [
+        return implode('|', [
             (string) $job['prompt_package_slug'],
             (string) $job['prompt_package_semver'],
             (string) $job['referentiel_id'],
             (string) $job['referentiel_semver'],
         ]);
+    }
+
+    /** PromptRunner for the job's FROZEN package + referentiel versions. */
+    private function runnerFor(array $job): ?PromptRunner
+    {
+        $key = self::runnerKey($job);
         if (\array_key_exists($key, $this->runners)) {
             return $this->runners[$key];
         }
@@ -544,6 +561,7 @@ final class Tick
             $candidate = new PromptRunner($package, $referentiel);
             $runner = $candidate->hasExtractionTemplates() ? $candidate : null;
         }
+        $this->referentiels[$key] = $referentiel;
 
         return $this->runners[$key] = $runner;
     }

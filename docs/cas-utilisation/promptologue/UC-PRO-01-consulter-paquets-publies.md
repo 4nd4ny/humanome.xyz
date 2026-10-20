@@ -29,9 +29,10 @@ client appelle directement une route de lecture publique.
 
 - Au moins une version a été publiée : par le promptologue (UC-PRO-03) ou par
   le script de déploiement (`POST /api/admin/import-prompt-package`, UC-SYS-02).
-  Le paquet initial `aurora-v3-reconstruit` 1.0.0 est généré depuis les
-  gabarits du moteur par `scripts/build-default-prompt-package.mjs`
-  (`build/prompt-packages/`, non versionné) puis importé au déploiement.
+  Le paquet initial `aurora-v3-reconstruit` est généré depuis les gabarits du
+  moteur par `scripts/build-default-prompt-package.mjs` (`build/prompt-packages/`,
+  non versionné) puis importé au déploiement : 1.0.0, puis 1.1.0 (2026-10-20),
+  dont les gabarits d'extraction lisent le référentiel employé.
 - Pour l'atelier : une session portant le rôle `promptologue` (les routes de
   lecture, elles, sont publiques).
 
@@ -297,7 +298,8 @@ cd web && npx vitest run test/usecases --testNamePattern UC-PRO-01
   validation administrateur (UC-ADM-03) corrige la désignation. Comportement
   figé par UC-PRO-01-F19 (API) et UC-PRO-01-F11 (IHM).
 - **AN-3 — Marque « défaut » perdue quand le défaut est le paquet embarqué.**
-  Si le défaut servi est `aurora-v3-reconstruit@1.0.0`, `fetchPromptPackages`
+  Si le défaut servi est le paquet embarqué (`aurora-v3-reconstruit`, à la
+  version de `BUILTIN_PACKAGE` : 1.1.0 depuis le 2026-10-20), `fetchPromptPackages`
   marque la copie publiée puis la retire comme doublon de `BUILTIN_PACKAGE`
   (objet gelé, jamais marqué) : aucune entrée ne porte `defaut: true`. Sans
   effet visible aujourd'hui (le marqueur n'est pas consommé, UC-APP-02 A-01).

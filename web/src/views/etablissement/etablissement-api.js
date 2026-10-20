@@ -14,6 +14,7 @@ import {
   getModelPricing,
   PRICING_DISCLAIMER,
 } from '@engine/providers/index.js'
+import { callsPerDayFor } from '@engine/providers/estimate.js'
 import { apiFetch } from '../../api/client.js'
 
 /** @param {string} iso @returns {string} date française courte ('—' si vide) */
@@ -147,9 +148,6 @@ export async function fetchPublishedPackages(fetchFn) {
 /** Modèle de référence de l'estimation quand provider = 'humanome' (prod M5). */
 export const SERVICE_MODEL = 'claude-sonnet-5'
 
-/** Extraction : 7 pôles + 1 kairos par journée (le merge est client, sans LLM). */
-export const EXTRACTION_CALLS_PER_DAY = 8
-
 /** Taille moyenne par défaut d'une journée quand le dépôt ne la fournit pas. */
 export const DEFAULT_DAY_CHARS = 3000
 
@@ -160,18 +158,20 @@ const PROMPT_OVERHEAD_CHARS = 30000
 const OUTPUT_TOKENS_PER_CALL = 1000
 
 /**
- * Estimation du coût d'un run de MASSE : extraction seule (8 appels par
- * journée) — les narratifs de fusion ne sont pas générés côté serveur
- * (le merge est déterministe, côté client). Modèle inconnu de la table de
- * prix (endpoint local, Ollama…) -> coût null, affiché « inconnu ».
+ * Estimation du coût d'un run de MASSE : extraction seule — par journée, un
+ * appel par pôle du référentiel du run, plus le kairos (RESPIRE v7 : 8) ; les
+ * narratifs de fusion ne sont pas générés côté serveur (le merge est
+ * déterministe, côté client). Modèle inconnu de la table de prix (endpoint
+ * local, Ollama…) -> coût null, affiché « inconnu ».
  *
- * @param {{totalJournees: number, avgDayChars?: number, model?: string}} params
+ * @param {{totalJournees: number, avgDayChars?: number, model?: string,
+ *   referentiel: {poles: Array}}} params referentiel : le document du référentiel du run
  * @returns {{totalCalls: number, tokensIn: number, tokensOut: number,
  *   costUsd: number|null, disclaimer: string}}
  */
-export function estimateMassRun({ totalJournees, avgDayChars = DEFAULT_DAY_CHARS, model }) {
+export function estimateMassRun({ totalJournees, avgDayChars = DEFAULT_DAY_CHARS, model, referentiel }) {
   const days = Math.max(0, Number(totalJournees) || 0)
-  const totalCalls = days * EXTRACTION_CALLS_PER_DAY
+  const totalCalls = days * callsPerDayFor(referentiel)
   const tokensIn = Math.ceil((totalCalls * (avgDayChars + PROMPT_OVERHEAD_CHARS)) / CHARS_PER_TOKEN_FR)
   const tokensOut = totalCalls * OUTPUT_TOKENS_PER_CALL
   const pricing = getModelPricing(model)
@@ -183,8 +183,10 @@ export function estimateMassRun({ totalJournees, avgDayChars = DEFAULT_DAY_CHARS
 
 /**
  * POST api/etablissement/cohortes/{id}/runs {promptPackageId,
- * promptPackageVersion, membres?} -> {runId, jobs} — un job = (membre
- * consenti AYANT DÉPOSÉ son portfolio, journée).
+ * promptPackageVersion, referentielId?, referentielVersion?, membres?} ->
+ * {runId, jobs} — un job = (membre consenti AYANT DÉPOSÉ son portfolio,
+ * journée) ; sans référentiel nommé, le serveur prend la dernière version
+ * publiée de RESPIRE.
  */
 export function launchRun(cohorteId, body, fetchFn) {
   return apiFetch(`etablissement/cohortes/${encodeURIComponent(cohorteId)}/runs`, {
@@ -245,9 +247,12 @@ export function cancelRun(runId, fetchFn) {
 /**
  * GET api/etablissement/membres/{userId}/documents — les documents JOUR
  * produits pour les cohortes de CET établissement uniquement (consentement
- * du membre). Le merge est ensuite calculé côté client (membre-merge.js).
+ * du membre), chacun avec le run qui l'a produit et la version du référentiel
+ * que ce run a figée (absente : RESPIRE, version inconnue). Le merge est
+ * ensuite calculé côté client (membre-merge.js).
  * @returns {Promise<{membre: object, documents: Array<{date: string,
- *   cohorte: string|null, document: object}>}>}
+ *   cohorte: string|null, runId: number|null, referentiel: {id: string,
+ *   version: string|null}, document: object}>}>}
  */
 export async function fetchMembreDocuments(userId, fetchFn) {
   const data = await apiFetch(`etablissement/membres/${encodeURIComponent(userId)}/documents`, {
@@ -264,6 +269,11 @@ export async function fetchMembreDocuments(userId, fetchFn) {
       .map((d) => ({
         date: d?.date ?? d?.document?.date ?? null,
         cohorte: d?.cohorte?.nom ?? d?.cohorte ?? null,
+        runId: Number.isInteger(d?.runId) ? d.runId : null,
+        referentiel: {
+          id: typeof d?.referentiel?.id === 'string' && d.referentiel.id !== '' ? d.referentiel.id : 'respire',
+          version: typeof d?.referentiel?.version === 'string' && d.referentiel.version !== '' ? d.referentiel.version : null,
+        },
         document: d?.document ?? null,
       }))
       .filter((d) => d.document && typeof d.date === 'string'),

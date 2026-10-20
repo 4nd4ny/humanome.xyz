@@ -146,4 +146,23 @@ describe('UC-EMP-01 — ShareView : mention de garantie et messages d’erreur',
     expect(screen.getByRole('alert').textContent).toBe(shown)
     expect(screen.getByLabelText('Mot de passe du lien')).toBeDefined()
   })
+
+  it('UC-EMP-01-U18 — le référentiel que nomme le document partagé (2026-10-20) : chargé par son identifiant, jamais RESPIRE supposé ; introuvable, la page le dit', async () => {
+    const shared = {
+      titre: 'Journée lettrée',
+      type: 'jour',
+      garantie: null,
+      document: { kind: 'cartographie-jour', referentiel: 'fictif-lettre', date: '2026-01-05', poles: [{ poleNum: '1', competences: [] }] },
+    }
+    const fetchFn = vi.fn(async () => jsonResponse(200, shared))
+    const getReferentiel = vi.fn(async (options) => {
+      if (options?.id === 'fictif-lettre') throw new Error('Le référentiel « fictif-lettre » n’a pas pu être chargé')
+      return { doc: { id: 'respire', poles: [], competences: [] } }
+    })
+    render(createElement(ShareView, { token: '0123456789abcdef0123456789abcdef', fetchFn, getReferentiel }))
+    await submit('mot-de-passe-solide')
+    expect((await screen.findByRole('alert')).textContent).toBe('Le référentiel « fictif-lettre » n’a pas pu être chargé')
+    expect(getReferentiel).toHaveBeenCalledWith({ id: 'fictif-lettre' })
+    expect(getReferentiel).not.toHaveBeenCalledWith()
+  })
 })

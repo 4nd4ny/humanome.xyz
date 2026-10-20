@@ -30,6 +30,8 @@ final class UcCar03AnnoterCartographieTest extends CartographeTestCase
     protected function setUp(): void
     {
         parent::setUp();
+        // annotations and revisions are checked against a published referential version (2026-10-20)
+        self::publierRespireV7();
         $this->maya = $this->registerAs('maya@example.org', 'Maya');
         $this->carl = $this->registerAs('carl@example.org', 'Carl', ['cartographe']);
         $this->link($this->maya, $this->carl);
@@ -147,12 +149,25 @@ final class UcCar03AnnoterCartographieTest extends CartographeTestCase
         self::assertSame(["\u{00A0}\u{00A0}", "\u{3000}"], \array_slice(array_column($this->trail($this->carl), 'texte'), 1));
     }
 
-    #[TestDox('UC-CAR-03-F05 — RG5 : le code n’est contrôlé que sur sa FORME (un code absent du référentiel passe)')]
-    public function testF05CompetenceCodeIsFormatCheckedOnly(): void
+    #[TestDox('UC-CAR-03-F05 — RG5 : le code est une compétence de la version du référentiel que la relecture lit (un code de la forme de RESPIRE qu’il ne connaît pas est refusé) ; sans version publiée, refus')]
+    public function testF05CompetenceCodeIsAReferentialCode(): void
     {
-        // Comportement ACTUEL figé : « <pôle 1-7>.<2 chiffres> », sans consulter le référentiel.
-        self::assertSame(201, $this->annotate($this->carl, ['competenceCode' => '7.99', 'type' => 'commentaire', 'texte' => 'Code hors référentiel.'])->getStatusCode());
-        self::assertSame(201, $this->annotate($this->carl, ['competenceCode' => '1.00', 'type' => 'commentaire', 'texte' => 'Idem.'])->getStatusCode());
+        // 2026-10-20 : plus de contrôle de FORME « <pôle 1-7>.<2 chiffres> » : la cartographie,
+        // qui ne nomme aucune version, se relit contre RESPIRE publié (v7, setUp).
+        $inconnu = 'Code de compétence inconnu du référentiel de la cartographie';
+        foreach (['7.99', '1.00'] as $code) {
+            $response = $this->annotate($this->carl, ['competenceCode' => $code, 'type' => 'commentaire', 'texte' => 'Code hors référentiel.']);
+            self::assertSame(422, $response->getStatusCode(), $code);
+            self::assertSame($inconnu, self::json($response)['fields']['competenceCode']);
+        }
+        self::assertSame(201, $this->annotate($this->carl, ['competenceCode' => '7.04', 'type' => 'commentaire', 'texte' => 'Code du référentiel.'])->getStatusCode());
+
+        // Sans aucune version publiée du référentiel, rien pour vérifier un code : refus.
+        self::$pdo->exec("DELETE FROM referentiel_versions WHERE referentiel_id = 'respire'");
+        $response = $this->annotate($this->carl, ['competenceCode' => '7.04', 'type' => 'commentaire', 'texte' => 'Idem.']);
+        self::assertSame(422, $response->getStatusCode());
+        self::assertSame('Aucune version publiée du référentiel « respire » : le code ne peut pas être vérifié',
+            self::json($response)['fields']['competenceCode']);
     }
 
     #[TestDox('UC-CAR-03-F06 — E3 : étranger, cartographe non lié, privée, inconnue → même 404 en écriture et en lecture')]

@@ -1,0 +1,392 @@
+{
+    "schemaVersion": "2.0.0",
+    "kind": "referentiel",
+    "id": "fictif-lettre",
+    "version": "1.0.0",
+    "label": "Fictif lettré",
+    "source": "Fixture de test (T15) : cinq pôles lettrés, leurs capacités et leurs facettes, fictifs",
+    "niveaux": [
+        {
+            "nom": "capacité",
+            "motif": "[A-E][1-4]"
+        },
+        {
+            "nom": "facette",
+            "motif": "[A-E][1-4]\\.[1-9]"
+        }
+    ],
+    "poles": [
+        {
+            "num": 1,
+            "nom": "A · Pôle fictif A",
+            "couleur": null,
+            "description": "Ce que cherche le pôle fictif A."
+        },
+        {
+            "num": 2,
+            "nom": "B · Pôle fictif B",
+            "couleur": null,
+            "description": "Ce que cherche le pôle fictif B."
+        },
+        {
+            "num": 3,
+            "nom": "C · Pôle fictif C",
+            "couleur": null,
+            "description": "Ce que cherche le pôle fictif C."
+        },
+        {
+            "num": 4,
+            "nom": "D · Pôle fictif D",
+            "couleur": null,
+            "description": "Ce que cherche le pôle fictif D."
+        },
+        {
+            "num": 5,
+            "nom": "E · Pôle fictif E",
+            "couleur": null,
+            "description": "Ce que cherche le pôle fictif E."
+        }
+    ],
+    "competences": [
+        {
+            "code": "A1",
+            "nom": "Capacité fictive A1",
+            "pole": 1,
+            "description": "Définition fictive de la capacité A1.\n\n**Frontière** : fictive.",
+            "elements": [
+                {
+                    "code": "A1.1",
+                    "nom": "Facette fictive A1.1",
+                    "description": "Description fictive.\n\n- Manifestation fictive.\n\n**Faux positif** : fictif."
+                },
+                {
+                    "code": "A1.2",
+                    "nom": "Facette fictive A1.2"
+                }
+            ]
+        },
+        {
+            "code": "A2",
+            "nom": "Capacité fictive A2",
+            "pole": 1,
+            "description": "Définition fictive de la capacité A2.\n\n**Frontière** : fictive.",
+            "elements": [
+                {
+                    "code": "A2.1",
+                    "nom": "Facette fictive A2.1",
+                    "description": "Description fictive.\n\n- Manifestation fictive.\n\n**Faux positif** : fictif."
+                },
+                {
+                    "code": "A2.2",
+                    "nom": "Facette fictive A2.2"
+                }
+            ]
+        },
+        {
+            "code": "A3",
+            "nom": "Capacité fictive A3",
+            "pole": 1,
+            "description": "Définition fictive de la capacité A3.\n\n**Frontière** : fictive.",
+            "elements": [
+                {
+                    "code": "A3.1",
+                    "nom": "Facette fictive A3.1",
+                    "description": "Description fictive.\n\n- Manifestation fictive.\n\n**Faux positif** : fictif."
+                },
+                {
+                    "code": "A3.2",
+                    "nom": "Facette fictive A3.2"
+                }
+            ]
+        },
+        {
+            "code": "A4",
+            "nom": "Capacité fictive A4",
+            "pole": 1,
+            "description": "Définition fictive de la capacité A4.\n\n**Frontière** : fictive.",
+            "elements": [
+                {
+                    "code": "A4.1",
+                    "nom": "Facette fictive A4.1",
+                    "description": "Description fictive.\n\n- Manifestation fictive.\n\n**Faux positif** : fictif."
+                },
+                {
+                    "code": "A4.2",
+                    "nom": "Facette fictive A4.2"
+                }
+            ]
+        },
+        {
+            "code": "B1",
+            "nom": "Capacité fictive B1",
+            "pole": 2,
+            "description": "Définition fictive de la capacité B1.\n\n**Frontière** : fictive.",
+            "elements": [
+                {
+                    "code": "B1.1",
+                    "nom": "Facette fictive B1.1",
+                    "description": "Description fictive.\n\n- Manifestation fictive.\n\n**Faux positif** : fictif."
+                },
+                {
+                    "code": "B1.2",
+                    "nom": "Facette fictive B1.2"
+                }
+            ]
+        },
+        {
+            "code": "B2",
+            "nom": "Capacité fictive B2",
+            "pole": 2,
+            "description": "Définition fictive de la capacité B2.\n\n**Frontière** : fictive.",
+            "elements": [
+                {
+                    "code": "B2.1",
+                    "nom": "Facette fictive B2.1",
+                    "description": "Description fictive.\n\n- Manifestation fictive.\n\n**Faux positif** : fictif."
+                },
+                {
+                    "code": "B2.2",
+                    "nom": "Facette fictive B2.2"
+                }
+            ]
+        },
+        {
+            "code": "B3",
+            "nom": "Capacité fictive B3",
+            "pole": 2,
+            "description": "Définition fictive de la capacité B3.\n\n**Frontière** : fictive.",
+            "elements": [
+                {
+                    "code": "B3.1",
+                    "nom": "Facette fictive B3.1",
+                    "description": "Description fictive.\n\n- Manifestation fictive.\n\n**Faux positif** : fictif."
+                },
+                {
+                    "code": "B3.2",
+                    "nom": "Facette fictive B3.2"
+                }
+            ]
+        },
+        {
+            "code": "B4",
+            "nom": "Capacité fictive B4",
+            "pole": 2,
+            "description": "Définition fictive de la capacité B4.\n\n**Frontière** : fictive.",
+            "elements": [
+                {
+                    "code": "B4.1",
+                    "nom": "Facette fictive B4.1",
+                    "description": "Description fictive.\n\n- Manifestation fictive.\n\n**Faux positif** : fictif."
+                },
+                {
+                    "code": "B4.2",
+                    "nom": "Facette fictive B4.2"
+                }
+            ]
+        },
+        {
+            "code": "C1",
+            "nom": "Capacité fictive C1",
+            "pole": 3,
+            "description": "Définition fictive de la capacité C1.\n\n**Frontière** : fictive.",
+            "elements": [
+                {
+                    "code": "C1.1",
+                    "nom": "Facette fictive C1.1",
+                    "description": "Description fictive.\n\n- Manifestation fictive.\n\n**Faux positif** : fictif."
+                },
+                {
+                    "code": "C1.2",
+                    "nom": "Facette fictive C1.2"
+                }
+            ]
+        },
+        {
+            "code": "C2",
+            "nom": "Capacité fictive C2",
+            "pole": 3,
+            "description": "Définition fictive de la capacité C2.\n\n**Frontière** : fictive.",
+            "elements": [
+                {
+                    "code": "C2.1",
+                    "nom": "Facette fictive C2.1",
+                    "description": "Description fictive.\n\n- Manifestation fictive.\n\n**Faux positif** : fictif."
+                },
+                {
+                    "code": "C2.2",
+                    "nom": "Facette fictive C2.2"
+                }
+            ]
+        },
+        {
+            "code": "C3",
+            "nom": "Capacité fictive C3",
+            "pole": 3,
+            "description": "Définition fictive de la capacité C3.\n\n**Frontière** : fictive.",
+            "elements": [
+                {
+                    "code": "C3.1",
+                    "nom": "Facette fictive C3.1",
+                    "description": "Description fictive.\n\n- Manifestation fictive.\n\n**Faux positif** : fictif."
+                },
+                {
+                    "code": "C3.2",
+                    "nom": "Facette fictive C3.2"
+                }
+            ]
+        },
+        {
+            "code": "C4",
+            "nom": "Capacité fictive C4",
+            "pole": 3,
+            "description": "Définition fictive de la capacité C4.\n\n**Frontière** : fictive.",
+            "elements": [
+                {
+                    "code": "C4.1",
+                    "nom": "Facette fictive C4.1",
+                    "description": "Description fictive.\n\n- Manifestation fictive.\n\n**Faux positif** : fictif."
+                },
+                {
+                    "code": "C4.2",
+                    "nom": "Facette fictive C4.2"
+                }
+            ]
+        },
+        {
+            "code": "D1",
+            "nom": "Capacité fictive D1",
+            "pole": 4,
+            "description": "Définition fictive de la capacité D1.\n\n**Frontière** : fictive.",
+            "elements": [
+                {
+                    "code": "D1.1",
+                    "nom": "Facette fictive D1.1",
+                    "description": "Description fictive.\n\n- Manifestation fictive.\n\n**Faux positif** : fictif."
+                },
+                {
+                    "code": "D1.2",
+                    "nom": "Facette fictive D1.2"
+                }
+            ]
+        },
+        {
+            "code": "D2",
+            "nom": "Capacité fictive D2",
+            "pole": 4,
+            "description": "Définition fictive de la capacité D2.\n\n**Frontière** : fictive.",
+            "elements": [
+                {
+                    "code": "D2.1",
+                    "nom": "Facette fictive D2.1",
+                    "description": "Description fictive.\n\n- Manifestation fictive.\n\n**Faux positif** : fictif."
+                },
+                {
+                    "code": "D2.2",
+                    "nom": "Facette fictive D2.2"
+                }
+            ]
+        },
+        {
+            "code": "D3",
+            "nom": "Capacité fictive D3",
+            "pole": 4,
+            "description": "Définition fictive de la capacité D3.\n\n**Frontière** : fictive.",
+            "elements": [
+                {
+                    "code": "D3.1",
+                    "nom": "Facette fictive D3.1",
+                    "description": "Description fictive.\n\n- Manifestation fictive.\n\n**Faux positif** : fictif."
+                },
+                {
+                    "code": "D3.2",
+                    "nom": "Facette fictive D3.2"
+                }
+            ]
+        },
+        {
+            "code": "D4",
+            "nom": "Capacité fictive D4",
+            "pole": 4,
+            "description": "Définition fictive de la capacité D4.\n\n**Frontière** : fictive.",
+            "elements": [
+                {
+                    "code": "D4.1",
+                    "nom": "Facette fictive D4.1",
+                    "description": "Description fictive.\n\n- Manifestation fictive.\n\n**Faux positif** : fictif."
+                },
+                {
+                    "code": "D4.2",
+                    "nom": "Facette fictive D4.2"
+                }
+            ]
+        },
+        {
+            "code": "E1",
+            "nom": "Capacité fictive E1",
+            "pole": 5,
+            "description": "Définition fictive de la capacité E1.\n\n**Frontière** : fictive.",
+            "elements": [
+                {
+                    "code": "E1.1",
+                    "nom": "Facette fictive E1.1",
+                    "description": "Description fictive.\n\n- Manifestation fictive.\n\n**Faux positif** : fictif."
+                },
+                {
+                    "code": "E1.2",
+                    "nom": "Facette fictive E1.2"
+                }
+            ]
+        },
+        {
+            "code": "E2",
+            "nom": "Capacité fictive E2",
+            "pole": 5,
+            "description": "Définition fictive de la capacité E2.\n\n**Frontière** : fictive.",
+            "elements": [
+                {
+                    "code": "E2.1",
+                    "nom": "Facette fictive E2.1",
+                    "description": "Description fictive.\n\n- Manifestation fictive.\n\n**Faux positif** : fictif."
+                },
+                {
+                    "code": "E2.2",
+                    "nom": "Facette fictive E2.2"
+                }
+            ]
+        },
+        {
+            "code": "E3",
+            "nom": "Capacité fictive E3",
+            "pole": 5,
+            "description": "Définition fictive de la capacité E3.\n\n**Frontière** : fictive.",
+            "elements": [
+                {
+                    "code": "E3.1",
+                    "nom": "Facette fictive E3.1",
+                    "description": "Description fictive.\n\n- Manifestation fictive.\n\n**Faux positif** : fictif."
+                },
+                {
+                    "code": "E3.2",
+                    "nom": "Facette fictive E3.2"
+                }
+            ]
+        },
+        {
+            "code": "E4",
+            "nom": "Capacité fictive E4",
+            "pole": 5,
+            "description": "Définition fictive de la capacité E4.\n\n**Frontière** : fictive.",
+            "elements": [
+                {
+                    "code": "E4.1",
+                    "nom": "Facette fictive E4.1",
+                    "description": "Description fictive.\n\n- Manifestation fictive.\n\n**Faux positif** : fictif."
+                },
+                {
+                    "code": "E4.2",
+                    "nom": "Facette fictive E4.2"
+                }
+            ]
+        }
+    ]
+}

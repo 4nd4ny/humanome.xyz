@@ -174,9 +174,14 @@ describe('UC-APP-06 — scénario nominal : exporter puis restaurer sur un navig
     expect(archive.account).toEqual({ roles: ['apprenant'], email: 'maya@example.org', displayName: 'Maya' })
     expect(archive.portfolios[0]).toMatchObject({ titre: 'Journal de Maya', source: 'colle' })
     expect(archive.portfolios[0].segmentation.map((s) => s.date)).toEqual(['2026-01-05', '2026-01-06', '2026-01-07'])
-    // Étape 3 : le référentiel PUBLIÉ (fichier statique), pas la copie embarquée.
-    expect(archive.referentiels).toHaveLength(1)
-    expect(archive.referentiels[0].version).toBe('7.9.0')
+    // Étape 3 : le référentiel PUBLIÉ (fichier statique), pas la copie embarquée,
+    // et celui que les cartographies ont noté (2026-10-20 : RESPIRE 7.0.0, absent
+    // de cet export fictif, donné par sa copie embarquée) — chaque couple
+    // (referentielId, referentielVersion) désigne un document de l'archive.
+    expect(archive.referentiels.map((r) => r.version)).toEqual(['7.9.0', '7.0.0'])
+    for (const c of archive.cartographies) {
+      expect(archive.referentiels.some((r) => r.id === c.referentielId && r.version === c.referentielVersion)).toBe(true)
+    }
     expect(archive.promptPackages.map((p) => `${p.id}@${p.version}`)).toEqual(['aurora-v3-reconstruit@1.0.0'])
     expect(archive.cartographies.map((c) => c.type).sort()).toEqual(['jour', 'jour', 'jour', 'merge'])
     expect(archive.cartographies.every((c) => c.promptPackageId === 'aurora-v3-reconstruit')).toBe(true)

@@ -48,8 +48,9 @@ compétence dans la liste « Compétence ».
 
 1. Le cartographe choisit une compétence dans « Compétence » : la liste
    propose les codes instruits dans le document affiché (triés, nommés par le
-   référentiel publié, par exemple « 1.01 — Pensée Critique &
-   Anti-Hallucination »).
+   référentiel de la cartographie — la version que le détail désigne,
+   UC-CAR-02 —, par exemple « 1.01 — Pensée Critique & Anti-Hallucination »
+   pour RESPIRE ; les noms arrivent une fois ce référentiel chargé).
 2. Le panneau « Annotations — <code> » affiche le fil de cette compétence
    (type, texte, « — auteur, date heure »), tiré du détail chargé en UC-CAR-02
    (`GET /api/cartographe/cartographies/{id}`, clé `annotations`), et le
@@ -86,8 +87,11 @@ compétence dans la liste « Compétence ».
 
 - **E1 — Texte vide** (étape 3) : « Le texte de l'annotation est vide. »,
   aucune requête (un texte fait de blancs compte comme vide).
-- **E2 — Validation serveur** (étape 4) : code hors forme
-  `<pôle 1-7>.<2 chiffres>`, type inconnu, texte vide ou de plus de 5 000
+- **E2 — Validation serveur** (étape 4) : code qui n'est pas une compétence
+  de la version du référentiel relue (« Code de compétence inconnu du
+  référentiel de la cartographie »), ou aucune version publiée de ce
+  référentiel (« Aucune version publiée du référentiel « … » : le code ne peut
+  pas être vérifié »), type inconnu, texte vide ou de plus de 5 000
   caractères → `422 {error: "Validation échouée", fields: {…}}` ; le site
   affiche « Validation échouée » (le détail par champ, `fields`, n'est pas
   affiché) et conserve la saisie. Depuis l'IHM, seul un texte de plus de
@@ -130,9 +134,16 @@ compétence dans la liste « Compétence ».
   multioctets comptés comme un) ; code nettoyé (`trim`). Le nettoyage
   serveur ne retire que les blancs ASCII : un texte fait d'espaces
   insécables est accepté par l'API (écart avec l'IHM, voir AN10).
-- **RG5** — Le code de compétence n'est contrôlé que sur sa **forme**
-  (`^[1-7]\.\d{2}$`) : un code absent du référentiel (`7.99`, `1.00`) est
-  accepté par l'API ; l'IHM, elle, ne propose que les codes du document.
+- **RG5** — Le code de compétence est une compétence de la **version du
+  référentiel que la relecture lit** (2026-10-20, `ReviewReferentiel`) :
+  celle que la cartographie a stockée ; sinon, parmi les versions publiées du
+  référentiel que nomme son document (RESPIRE s'il n'en nomme aucun), la plus
+  récente à laquelle il est conforme ; sinon la dernière publiée. Plus de
+  contrôle de **forme** (`^[1-7]\.\d{2}$`, propre à RESPIRE v7) : un code
+  de cette forme que la version ne connaît pas (`7.99`, `1.00`) est refusé, un
+  code lettré (`A1`) d'un référentiel lettré est admis. Sans aucune version
+  publiée du référentiel, aucun code ne peut être vérifié : refus. L'IHM ne
+  propose que les codes du document.
 - **RG6** — Une annotation ne modifie aucun verdict et ne notifie personne.
 
 ## Données et RGPD
@@ -184,7 +195,7 @@ compétence dans la liste « Compétence ».
 | UC-CAR-03-F02 | A1 | API | Le propriétaire annote (y compris en privée), fil commun | idem |
 | UC-CAR-03-F03 | A2 | API | Suppression par l'auteur → 204, fil à jour | idem |
 | UC-CAR-03-F04 | E2 (AN10) | API | 422 avec les trois champs ; bornes (5 000 / 5 001, code entouré d'espaces) ; texte d'espaces insécables ou idéographiques accepté (201, comportement actuel) | idem |
-| UC-CAR-03-F05 | RG5 | API | Code hors référentiel accepté (forme seulement) — comportement actuel | idem |
+| UC-CAR-03-F05 | RG5, E2 | API | Code de la forme de RESPIRE inconnu de la version relue (`7.99`, `1.00`) → 422 « Code de compétence inconnu… » ; `7.04` → 201 ; sans version publiée de RESPIRE → 422 « Aucune version publiée… » (2026-10-20) | idem |
 | UC-CAR-03-F06 | E3 | API | Étranger, non lié, privée, inconnue → corps 404 identiques (POST et GET) | idem |
 | UC-CAR-03-F07 | E4, RG3 | API | 404 sur autrui/inexistante ; retrait possible après perte d'accès | idem |
 | UC-CAR-03-F08 | E5 | API | Sans CSRF → 403 (création et suppression) | idem |

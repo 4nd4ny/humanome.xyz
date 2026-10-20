@@ -4,6 +4,7 @@ declare(strict_types=1);
 
 namespace Humanome\Worker;
 
+use Humanome\Referentiel\Conformite;
 use Humanome\Validation;
 
 /**
@@ -17,9 +18,13 @@ use Humanome\Validation;
  * - normalizeCompetences()  -> extract.js normalizeCompetences()
  *                              (+ pedagogueComplet)
  * - computeAuditPole()      -> extract.js computeAuditPole()
- * - assemblePole()/probe    -> extract.js extractDay() attemptPole()
- *                              (7-clone probe validated by Validation.php,
- *                              the Opis twin of the engine's ajv)
+ * - assemblePole()          -> extract.js extractDay() attemptPole()
+ *
+ * Every document is checked against the VERSION of the referential the job
+ * maps (2026-10-20, docs/contrats.md §11): the schema (Validation.php, the
+ * Opis twin of the engine's ajv) no longer fixes a structure, the conformity
+ * (Conformite) does — the job's poles, each once, its codes in their poles.
+ * A document of another referential than RESPIRE names it (`referentiel`, T17).
  */
 final class PoleAssembler
 {
@@ -233,13 +238,14 @@ final class PoleAssembler
     /**
      * Repairs and validates one pole answer, port of the attemptPole()
      * pipeline in extract.js extractDay(): poleNum coercion, invariants,
-     * recomputed audit, then STRUCTURAL validation of the pole through a
-     * 7-clone probe document (Validation.php, the schema validates whole
-     * cartographie-jour documents only).
+     * recomputed audit, then validation of a day reduced to this pole — the
+     * schema, then its conformity to the referential with the pole as
+     * perimeter (a pole of the referential, codes of this pole).
      *
+     * @param array<string, mixed> $referentiel the job's referential document
      * @throws \RuntimeException on any repairable-by-retry defect
      */
-    public static function assemblePole(array $pole, int $poleNum, string $date): array
+    public static function assemblePole(array $pole, int $poleNum, string $date, array $referentiel): array
     {
         if (!\is_array($pole['competences'] ?? null)) {
             $keys = implode('/', \array_slice(array_keys($pole), 0, 5));
@@ -258,46 +264,43 @@ final class PoleAssembler
         }
         $pole['auditPole'] = self::computeAuditPole($pole['competences']);
 
-        $probePoles = [];
-        for ($i = 1; $i <= 7; $i++) {
-            $clone = $pole;
-            $clone['poleNum'] = (string) $i;
-            $probePoles[] = $clone;
-        }
-        $result = Validation::validate('cartographie-jour', [
-            'schemaVersion' => '1.0.0',
-            'kind' => 'cartographie-jour',
-            'date' => $date,
-            'poles' => $probePoles,
-            'kairos' => null,
-        ]);
+        $day = self::document($date, [$pole], null, $referentiel);
+        $result = Validation::validate('cartographie-jour', $day);
         if (!$result['valid']) {
             throw new \RuntimeException('objet pôle invalide au schéma : ' . self::formatErrors($result['errors']));
+        }
+        // The perimeter is the conformity's reading, never part of the document.
+        $result = Conformite::verifier('cartographie-jour', $day + ['perimetre' => ['partiel' => true, 'poles' => [$poleNum]]], $referentiel);
+        if (!$result['valid']) {
+            throw new \RuntimeException('objet pôle non conforme au référentiel : ' . self::formatErrors($result['errors']));
         }
 
         return $pole;
     }
 
     /**
-     * Final cartographie-jour document (extract.js extractDay() assembly).
+     * Final cartographie-jour document (extract.js extractDay() assembly):
+     * valid against the schema and conform to the job's referential — every
+     * pole of it, each once.
      *
      * @param array<int, array> $polesByNum validated poles keyed by pole number
+     * @param array<string, mixed> $referentiel the job's referential document
      * @throws \RuntimeException when the final document does not validate
      */
-    public static function assembleDay(array $polesByNum, mixed $kairos, string $date): array
+    public static function assembleDay(array $polesByNum, mixed $kairos, string $date, array $referentiel): array
     {
         ksort($polesByNum);
-        $document = [
-            'schemaVersion' => '1.0.0',
-            'kind' => 'cartographie-jour',
-            'date' => $date,
-            'poles' => array_values($polesByNum),
-            'kairos' => $kairos,
-        ];
+        $document = self::document($date, array_values($polesByNum), $kairos, $referentiel);
         $result = Validation::validate('cartographie-jour', $document);
         if (!$result['valid']) {
             throw new \RuntimeException(
                 "document du {$date} invalide au schéma cartographie-jour : " . self::formatErrors($result['errors']),
+            );
+        }
+        $result = Conformite::verifier('cartographie-jour', $document, $referentiel);
+        if (!$result['valid']) {
+            throw new \RuntimeException(
+                "document du {$date} non conforme au référentiel : " . self::formatErrors($result['errors']),
             );
         }
 
@@ -306,22 +309,43 @@ final class PoleAssembler
 
     /**
      * Validates a kairos answer against already-validated poles (extract.js
-     * attemptKairos(): fail HERE, retry, then degrade to null — the 7 pole
-     * documents carry the value, the schema accepts kairos null).
+     * attemptKairos(): fail HERE, retry, then degrade to null — the pole
+     * documents carry the value, the schema accepts kairos null): the schema,
+     * then the codes it links, which must be the referential's.
+     *
+     * @param array<string, mixed> $referentiel the job's referential document
      */
-    public static function validateKairos(mixed $kairos, array $polesByNum, string $date): void
+    public static function validateKairos(mixed $kairos, array $polesByNum, string $date, array $referentiel): void
     {
         ksort($polesByNum);
-        $result = Validation::validate('cartographie-jour', [
-            'schemaVersion' => '1.0.0',
-            'kind' => 'cartographie-jour',
-            'date' => $date,
-            'poles' => array_values($polesByNum),
-            'kairos' => $kairos,
-        ]);
+        $document = self::document($date, array_values($polesByNum), $kairos, $referentiel);
+        $result = Validation::validate('cartographie-jour', $document);
         if (!$result['valid']) {
             throw new \RuntimeException('kairos invalide au schéma : ' . self::formatErrors($result['errors']));
         }
+        $result = Conformite::verifier('cartographie-jour', $document, $referentiel);
+        $kairosErrors = array_filter($result['errors'], static fn (string $pointer): bool => str_starts_with($pointer, '/kairos'),
+            ARRAY_FILTER_USE_KEY);
+        if ($kairosErrors !== []) {
+            throw new \RuntimeException('kairos non conforme au référentiel : ' . self::formatErrors($kairosErrors));
+        }
+    }
+
+    /**
+     * A day document; one of another referential than RESPIRE names it
+     * (T17) — RESPIRE's stay as they were, byte for byte.
+     *
+     * @param list<array<string, mixed>> $poles
+     * @param array<string, mixed> $referentiel
+     * @return array<string, mixed>
+     */
+    private static function document(string $date, array $poles, mixed $kairos, array $referentiel): array
+    {
+        $id = \is_string($referentiel['id'] ?? null) ? $referentiel['id'] : Conformite::REFERENTIEL_PAR_DEFAUT;
+
+        return ['schemaVersion' => '1.0.0', 'kind' => 'cartographie-jour']
+            + ($id !== Conformite::REFERENTIEL_PAR_DEFAUT ? ['referentiel' => $id] : [])
+            + ['date' => $date, 'poles' => $poles, 'kairos' => $kairos];
     }
 
     /** @param array<string, string[]> $errors Opis pointer => messages */

@@ -2,15 +2,16 @@
 // Fiche : docs/cas-utilisation/etablissement/UC-ETA-04-consulter-documents-membre.md
 //
 // Code sollicité appelé directement : la route #/etablissement/membre/<id>,
-// la normalisation de l'enveloppe {membre, documents} de l'API, le
-// dédoublonnage des journées et la fusion CÔTÉ CLIENT par le moteur
-// (mergeDays + buildMergeDocument + narratifs locaux, validée au schéma), le
+// la normalisation de l'enveloppe {membre, documents} de l'API (run et version
+// du référentiel de chaque document), le dédoublonnage des journées et la
+// fusion CÔTÉ CLIENT par le moteur (mergeDays + buildMergeDocument +
+// narratifs locaux, validée au schéma puis au référentiel du run), le
 // formatage des dates de journée (frDate, fuseau fixé par le test), la
 // section MembreSection rendue isolément (coutures fetchFn, getReferentiel)
 // et le chargement du référentiel publié avec repli embarqué.
 import { afterEach, describe, expect, it, vi } from 'vitest'
 import { createElement } from 'react'
-import { cleanup, render, screen, waitFor } from '@testing-library/react'
+import { cleanup, fireEvent, render, screen, waitFor, within } from '@testing-library/react'
 import { validateDocument } from '@engine/validation.js'
 import { parseHash } from '../../../src/router.js'
 import { resetApiClient } from '../../../src/api/client.js'
@@ -76,12 +77,12 @@ describe('UC-ETA-04 — route et appel API', () => {
     expect(fetchFn.mock.calls[0][0]).toBe('api/etablissement/membres/12/documents')
     expect(data.membre).toEqual({ userId: 12, displayName: 'Maya', consentAt: '2026-07-02T10:00:00' })
     expect(data.documents).toEqual([
-      { date: '2026-01-05', cohorte: 'BTS SIO 2026', document: day05 },
-      { date: '2026-01-06', cohorte: 'BTS SIO 2026', document: day06 },
+      { date: '2026-01-05', cohorte: 'BTS SIO 2026', runId: 42, referentiel: { id: 'respire', version: '7.0.0' }, document: day05 },
+      { date: '2026-01-06', cohorte: 'BTS SIO 2026', runId: 42, referentiel: { id: 'respire', version: '7.0.0' }, document: day06 },
     ])
   })
 
-  it('UC-ETA-04-U03 — fetchMembreDocuments : replis (membre absent, date lue dans le document) et entrées inexploitables écartées', async () => {
+  it('UC-ETA-04-U03 — fetchMembreDocuments : replis (membre absent, date lue dans le document, sans run ni référentiel : RESPIRE de version inconnue) et entrées inexploitables écartées', async () => {
     const fetchFn = vi.fn().mockResolvedValue(
       jsonResponse(200, {
         documents: [
@@ -95,7 +96,9 @@ describe('UC-ETA-04 — route et appel API', () => {
     const data = await fetchMembreDocuments(12, fetchFn)
 
     expect(data.membre).toEqual({ userId: 12, displayName: 'membre 12', consentAt: null })
-    expect(data.documents).toEqual([{ date: '2026-01-07', cohorte: 'Option théâtre', document: day07 }])
+    expect(data.documents).toEqual([
+      { date: '2026-01-07', cohorte: 'Option théâtre', runId: null, referentiel: { id: 'respire', version: null }, document: day07 },
+    ])
   })
 })
 
@@ -150,8 +153,8 @@ describe('UC-ETA-04 — dates, section membre et référentiel', () => {
     expect(inTimeZone('Pacific/Tahiti', () => frDate('2026-01-06'))).toBe('05/01/2026')
   })
 
-  it('UC-ETA-04-U07 — MembreSection isolée : 404 (message + texte E1), fusion impossible expliquée, référentiel nu accepté, consentement daté', async () => {
-    const bareReferentiel = async () => referentiel // document nu (sans {doc})
+  it('UC-ETA-04-U07 — MembreSection isolée : 404 (message + texte E1), fusion impossible expliquée, référentiel nu accepté (demandé à la version du run), consentement daté', async () => {
+    const bareReferentiel = vi.fn(async () => referentiel) // document nu (sans {doc})
     const section = (fetchFn) =>
       render(createElement(MembreSection, { userId: '12', lib: fakeLib, fetchFn, getReferentiel: bareReferentiel }))
 
@@ -188,6 +191,52 @@ describe('UC-ETA-04 — dates, section membre et référentiel', () => {
     )
     await waitFor(() => expect(document.querySelector('.merge-view')).toBeTruthy())
     expect(screen.getByTestId('etab-membre-consentement').textContent).not.toContain('donné le')
+    expect(bareReferentiel).toHaveBeenCalledWith({ id: 'respire', version: '7.0.0' }) // la version figée par le run
+  })
+
+  it('UC-ETA-04-U09 — MembreSection isolée : documents d’un autre référentiel → sa version chargée, fusion qui le nomme ; journée lue avec lui ; version introuvable → message', async () => {
+    const LETTRES = ['A', 'B', 'C', 'D', 'E']
+    const lettre = {
+      id: 'fictif-lettre',
+      version: '1.0.0',
+      label: 'Fictif lettré',
+      poles: LETTRES.map((l, i) => ({ num: i + 1, nom: `${l} · Pôle fictif ${l}` })),
+      competences: LETTRES.flatMap((l, i) => [1, 2, 3, 4].map((n) => ({ code: `${l}${n}`, nom: `Capacité fictive ${l}${n}`, pole: i + 1 }))),
+    }
+    const versLettre = (day) => ({
+      ...day,
+      referentiel: 'fictif-lettre',
+      poles: day.poles.slice(0, 5).map((p, i) => ({ ...p, competences: p.competences.map((c, j) => ({ ...c, code: `${LETTRES[i]}${j + 1}` })) })),
+      kairos: null,
+    })
+    const docs = [day05, day06, day07].map((day, i) =>
+      entry(day.date, versLettre(day), { jobId: 200 + i, runId: 43, referentiel: { id: 'fictif-lettre', version: '1.0.0' } }),
+    )
+    const getReferentiel = vi.fn(async ({ id, version }) => {
+      if (id === 'fictif-lettre' && version === '1.0.0') return { doc: lettre, origin: 'published' }
+      throw new Error(`Le référentiel « ${id} » ${version} n'a pas pu être chargé`)
+    })
+    const section = (documents) =>
+      render(createElement(MembreSection, {
+        userId: '12',
+        lib: fakeLib,
+        fetchFn: fakeFetch({ 'GET api/etablissement/membres/12/documents': jsonResponse(200, { membre: { userId: 12, displayName: 'Maya' }, documents }) }).fetchMock,
+        getReferentiel,
+      }))
+
+    section(docs)
+    await waitFor(() => expect(document.querySelector('.merge-view')).toBeTruthy())
+    expect(getReferentiel).toHaveBeenCalledWith({ id: 'fictif-lettre', version: '1.0.0' })
+    expect(screen.queryByTestId('etab-merge-erreur')).toBeNull()
+    fireEvent.click(within(screen.getByRole('navigation', { name: 'Vues du membre' })).getAllByRole('button')[1])
+    await waitFor(() => expect(document.querySelector('.day-view')).toBeTruthy())
+    expect(within(document.querySelector('.day-view')).queryByRole('alert')).toBeNull()
+    cleanup()
+
+    // Une version que les fichiers publiés ne portent pas : le message, ni fusion ni journée fausse.
+    section(docs.map((d) => ({ ...d, referentiel: { id: 'fictif-lettre', version: '9.9.9' } })))
+    expect((await screen.findByRole('alert')).textContent).toBe('Le référentiel « fictif-lettre » 9.9.9 n\'a pas pu être chargé')
+    expect(document.querySelector('.merge-view')).toBeNull()
   })
 
   it('UC-ETA-04-U08 — loadPublishedReferentiel : index publié → version publiée ; index absent → copie embarquée (jamais de rejet)', async () => {

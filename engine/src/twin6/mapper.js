@@ -1,8 +1,10 @@
-// « Cartographie ouverte Twin6 » — mappe la sortie NATIVE de Twin6 (7 `carto_pole`
-// produits par 1-scan-pole + 1 `kairos` produit par 2-kairos-final, sur le
-// portfolio ENTIER) vers le document `cartographie-merge` du viewer, en
-// RÉUTILISANT le pipeline de merge par jour (mergeDays + buildMergeDocument) —
-// aucune logique d'agrégation, de quintiles, d'archétypes ou d'ipsatif dupliquée.
+// « Cartographie ouverte Twin6 » — mappe la sortie NATIVE de Twin6 (un `carto_pole`
+// par pôle du référentiel, produit par 1-scan-pole, + 1 `kairos` produit par
+// 2-kairos-final, sur le portfolio ENTIER) vers le document `cartographie-merge`
+// du viewer, en RÉUTILISANT le pipeline de merge par jour (mergeDays +
+// buildMergeDocument) — aucune logique d'agrégation, de quintiles, d'archétypes
+// ou d'ipsatif dupliquée. Le document suit le référentiel employé : ses pôles,
+// ses compétences ; un autre que RESPIRE le nomme (`referentiel`, T17).
 //
 // Idée clé : un `carto_pole` Twin6 est structurellement un pôle de document-jour
 // (poleNum, passagesSaillants[], competences[] avec verdict/pieces/tracesRetenues),
@@ -16,7 +18,7 @@
 // (parité octet sur le corpus réel).
 //
 // Narratifs : Twin6 ne produit pas d'« histoire d'apprentissage » par compétence
-// (contrairement au moteur intégré qui fait 61 appels dédiés). On la SYNTHÉTISE
+// (contrairement au moteur intégré qui fait un appel dédié par compétence). On la SYNTHÉTISE
 // depuis la sortie Twin6 elle-même (raisonnement adversarial + prescription),
 // SANS appel LLM supplémentaire ; les rapports de pôle et le kairos viennent
 // directement de Twin6.
@@ -105,7 +107,8 @@ function synthCompetenceNarrative(comp) {
  *
  * @param {Array<object>} cartoPoles objets `carto_pole` (sortie 1-scan-pole), un par pôle.
  * @param {object|null} kairos objet `kairos` (sortie 2-kairos-final) ou null.
- * @param {{competences: Array<{code,nom,pole}>, poles: Array<{num,nom}>}} referentiel
+ * @param {{id?: string, competences: Array<{code,nom,pole}>, poles: Array<{num,nom}>}} referentiel
+ *   le référentiel employé ; un autre que RESPIRE (son `id`) est nommé par le document
  * @param {object} [meta] { generatedAt, source, journal_id, ... } passé à buildMergeDocument.
  * @returns {object} document `cartographie-merge`.
  */
@@ -153,5 +156,11 @@ export function twin6ToMergeDocument(cartoPoles, kairos, referentiel, meta = {})
   }
 
   // 5. Document merge final — mêmes niveaux/archétypes/HTML que toute autre carto.
-  return buildMergeDocument(agrege, narrativeTexts, meta)
+  //    Un document d'un autre référentiel que RESPIRE (« respire », l'identifiant
+  //    d'un document qui n'en nomme pas) le nomme (T17) ; un document de RESPIRE
+  //    reste celui d'hier, à l'octet.
+  const autre = typeof referentiel.id === 'string' && referentiel.id !== '' && referentiel.id !== 'respire'
+    ? referentiel.id
+    : null
+  return buildMergeDocument(agrege, narrativeTexts, autre ? { ...meta, referentiel: autre } : meta)
 }

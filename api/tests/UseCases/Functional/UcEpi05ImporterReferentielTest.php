@@ -210,7 +210,7 @@ final class UcEpi05ImporterReferentielTest extends EpiSupport
         self::assertSame(403, $this->as_($admin, 'POST', '/api/referentiel/proposals/' . $id . '/votes', ['vote' => 'pour'])->getStatusCode());
     }
 
-    #[TestDox('UC-EPI-05-F08 — DoD : RESPIRE ne change pas — sa version publiée, son empreinte, ses lectures ; un brouillon RESPIRE refuse toujours un code lettré (schéma)')]
+    #[TestDox('UC-EPI-05-F08 — DoD : RESPIRE ne change pas — sa version publiée, son empreinte, ses lectures ; un brouillon RESPIRE refuse un code lettré qui ne suit pas son motif, et accepte six pôles')]
     public function testF08RespireIsUnchanged(): void
     {
         $avant = self::json($this->anonymous('GET', '/api/referentiel'));
@@ -227,6 +227,15 @@ final class UcEpi05ImporterReferentielTest extends EpiSupport
         $doc['competences'][0]['code'] = 'A1';
         $refus = $this->as_($this->alix, 'PUT', '/api/referentiel/drafts/' . $fork['id'], $doc);
         self::assertSame(422, $refus->getStatusCode());
-        self::assertSame('Document does not conform to the referentiel schema', self::json($refus)['error']);
+        self::assertSame('Document fails referentiel integrity checks', self::json($refus)['error']);
+        self::assertStringContainsString('ne suit pas le motif', json_encode(self::json($refus)['errors'], JSON_UNESCAPED_UNICODE));
+
+        // RESPIRE's structure is its version's (2026-10-20): a draft in six poles is accepted
+        $six = $fork['content'];
+        $six['poles'] = array_values(array_filter($six['poles'], static fn (array $p): bool => $p['num'] !== 7));
+        $six['competences'] = array_values(array_filter($six['competences'], static fn (array $c): bool => $c['pole'] !== 7));
+        $accepte = $this->as_($this->alix, 'PUT', '/api/referentiel/drafts/' . $fork['id'], $six);
+        self::assertSame(200, $accepte->getStatusCode(), (string) $accepte->getBody());
+        self::assertCount(6, self::json($accepte)['content']['poles']);
     }
 }

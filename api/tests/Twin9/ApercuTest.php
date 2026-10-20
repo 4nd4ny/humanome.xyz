@@ -59,9 +59,10 @@ final class ApercuTest extends CartographeTestCase
         foreach (self::GABARITS as $nom => $contenu) {
             $protocole->put($nom, $contenu, null);
         }
-        // the referential's seven poles, as the set's fiches carry them
-        for ($p = 1; $p <= 7; $p++) {
-            $protocole->put('tagger/P' . $p, 'Fiche du pôle ' . $p . '.', null);
+        // the referential's seven poles, as the set's fiches carry them: a set of before T16, whose pole files
+        // describe RESPIRE v7's structure — the one it serves (2026-10-20)
+        foreach (JeuAvantT16::fiches($doc) as $nom => $contenu) {
+            $protocole->put($nom, $contenu, null);
         }
     }
 

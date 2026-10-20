@@ -18,10 +18,11 @@ use PDO;
  * motif of its codes (RESPIRE's one level, « \d\.\d{2} », when it declares
  * none) — is imported as a draft at the level that stands for competence,
  * then voted and published as RESPIRE's document versions are. RESPIRE
- * itself is not imported: its competences are edited one by one, and its
- * structure — 7 poles, 61 competences « P.NN », its one level — is the
- * schema's (allOf), so that every path to one of its versions keeps it,
- * its release cut from its competences included.
+ * itself is not imported: its competences are edited one by one. Its
+ * structure is no longer the schema's (2026-10-20, docs/contrats.md §11): a
+ * version of RESPIRE may have other poles and codes, edited as a document;
+ * a release cut from its competences keeps the structure of its latest
+ * published version (completude()).
  */
 final class ReferentielRepository
 {
@@ -279,8 +280,9 @@ final class ReferentielRepository
     /**
      * Coupe de RELEASE depuis un document assemblé (SnapshotAssembler) : les
      * changements ayant DÉJÀ été entérinés PAR COMPÉTENCE, il n'y a pas de
-     * second vote. Gate de COMPLÉTUDE (validateDocument = schéma 61/7 + intégrité
-     * inter-entités) + semver STRICTEMENT croissant. Publie la release immuable
+     * second vote. Gate de COMPLÉTUDE (validateDocument = schéma + intégrité
+     * inter-entités, puis la structure de la dernière version publiée :
+     * completude()) + semver STRICTEMENT croissant. Publie la release immuable
      * et peuple le lockfile (provenance des versions de compétence composées).
      *
      * @param array<string, mixed> $doc document assemblé (contentHash déjà calculé)
@@ -291,6 +293,7 @@ final class ReferentielRepository
         $normalized = $this->validateDocument($doc);
         $referentielId = $normalized['id'];
         $semver = $normalized['version'];
+        $this->completude($normalized);
 
         $stmt = $this->pdo->prepare('SELECT id FROM referentiel_versions WHERE referentiel_id = ? AND semver = ?');
         $stmt->execute([$referentielId, $semver]);
@@ -338,6 +341,60 @@ final class ReferentielRepository
         }
 
         return ['status' => 'imported', 'id' => $snapshotId, 'semver' => $semver, 'contentHash' => $normalized['contentHash']];
+    }
+
+    /**
+     * The completeness of a release cut from the atomic model (2026-10-20): the
+     * schema no longer fixes RESPIRE at 7 poles and 61 competences, so the gate
+     * is the structure of the referential's latest published version — the
+     * atomic model edits a competence (its name, its content), it never adds,
+     * removes or moves one, nor a pole. A version of another structure is
+     * published as a document (UC-EPI-04); the release that would undo it is
+     * refused. Without a published version, nothing to complete: refused.
+     *
+     * @param array<string, mixed> $release the normalized release
+     * @throws InvalidDocumentException
+     */
+    private function completude(array $release): void
+    {
+        $publiee = $this->latestPublished((string) $release['id']);
+        if ($publiee === null) {
+            throw new InvalidDocumentException('Release incomplete', ['/version' => [sprintf(
+                'Aucune version publiée du référentiel « %s » : une release se coupe sur un modèle atomique semé depuis elle',
+                $release['id'])]]);
+        }
+        $errors = [];
+        $poles = static fn (array $doc): array => array_map(static fn (array $p): int => (int) $p['num'], $doc['poles']);
+        $attendus = $poles($publiee['content']);
+        foreach (array_diff($attendus, $poles($release)) as $num) {
+            $errors['/poles'][] = sprintf('Le pôle %d de la version %s manque', $num, $publiee['semver']);
+        }
+        foreach (array_diff($poles($release), $attendus) as $num) {
+            $errors['/poles'][] = sprintf('Le pôle %d n’est pas dans la version %s', $num, $publiee['semver']);
+        }
+        $codes = static function (array $doc): array {
+            $codes = [];
+            foreach ($doc['competences'] as $c) {
+                $codes[(string) $c['code']] = (int) $c['pole'];
+            }
+
+            return $codes;
+        };
+        $publies = $codes($publiee['content']);
+        $coupes = $codes($release);
+        foreach ($publies as $code => $pole) {
+            if (!isset($coupes[$code])) {
+                $errors['/competences'][] = sprintf('La compétence %s de la version %s manque', $code, $publiee['semver']);
+            } elseif ($coupes[$code] !== $pole) {
+                $errors['/competences'][] = sprintf('La compétence %s passe du pôle %d au pôle %d', $code, $pole, $coupes[$code]);
+            }
+        }
+        foreach (array_diff_key($coupes, $publies) as $code => $pole) {
+            $errors['/competences'][] = sprintf('La compétence %s n’est pas dans la version %s', $code, $publiee['semver']);
+        }
+        if ($errors !== []) {
+            throw new InvalidDocumentException('Release incomplete', $errors);
+        }
     }
 
     // ----------------------------------------------------------------- drafts

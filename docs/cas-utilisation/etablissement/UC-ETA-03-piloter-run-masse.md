@@ -12,8 +12,9 @@
 ## Objectif
 
 Transformer les portfolios déposés d'une cohorte en cartographies journalières
-par un **run de masse** : l'établissement choisit les membres et un paquet de
-prompts publié, **voit le coût estimé avant de confirmer**, suit l'avancement
+par un **run de masse** : l'établissement choisit les membres, un paquet de
+prompts publié et le référentiel publié à cartographier (RESPIRE par défaut,
+2026-10-20), **voit le coût estimé avant de confirmer**, suit l'avancement
 en direct (jobs par statut, coût cumulé, erreurs) et peut arrêter le run à
 tout moment.
 
@@ -29,7 +30,11 @@ masse ») et clique « Estimer le coût ».
   segmenté par journées (UC-APP-08).
 - Un paquet de prompts publié contenant les gabarits `extraction-pole` et
   `kairos` (le paquet par défaut `aurora-v3-reconstruit@1.0.0` les contient) et
-  un référentiel `respire` publié existent.
+  le référentiel à cartographier, publié (par défaut, une version publiée de
+  `respire`), existent ; le paquet sait cartographier ce référentiel : ses
+  gabarits d'extraction lisent le référentiel (variable `referentiel_nom`),
+  ou bien c'est RESPIRE à sept pôles (`aurora-v3-reconstruit@1.0.0` écrit
+  « RESPIRE », « 7 pôles », « 1.01 » et « 4.02 » en toutes lettres).
 - Pour que le run avance : une configuration LLM/budget existe (UC-ETA-02) et
   un exécutant traite la file (cron de la plateforme pour le fournisseur
   humanome, runner de l'établissement pour un endpoint propre — UC-SYS-01).
@@ -59,22 +64,32 @@ masse ») et clique « Estimer le coût ».
    paquets publiés (`GET /api/prompt-packages`). Tous les membres ayant déposé
    sont cochés ; la case d'un membre sans dépôt est désactivée.
 2. Le premier paquet publié de la liste est présélectionné (menu « Paquet de
-   prompts »).
-3. Il clique « Estimer le coût » : le site calcule localement (moteur) le
-   nombre de membres et de journées, `8 × journées` appels LLM (7 pôles +
-   1 kairos ; la fusion est calculée plus tard côté client, sans LLM), les
+   prompts ») ; le menu « Référentiel » offre les référentiels publiés (la
+   dernière version de chacun, lue dans l'index statique
+   `data/referentiel/index.json`), RESPIRE présélectionné — sans index, le
+   menu n'apparaît pas et le run cartographie RESPIRE.
+3. Il clique « Estimer le coût » : le site charge le document du référentiel
+   choisi et calcule localement (moteur) le nombre de membres et de journées,
+   `(pôles du référentiel + 1) × journées` appels LLM (un par pôle, plus le
+   kairos — 8 pour RESPIRE v7 ; la fusion est calculée plus tard côté client,
+   sans LLM), les
    tokens (taille moyenne d'une journée tirée des dépôts + 30 000 caractères de
    prompt par appel, 1 000 tokens de sortie par appel) et le coût au prix du
    modèle configuré (à défaut `claude-sonnet-5`), avec l'avertissement « Prix
    INDICATIFS ». Rien n'est envoyé.
 4. Il clique « Confirmer et lancer le run » ; le site envoie
    `POST /api/etablissement/cohortes/{id}/runs {promptPackageId,
-   promptPackageVersion, membres?}` (`membres` omis quand tous les déposants
-   sont cochés ; `X-CSRF-Token`).
+   promptPackageVersion, referentielId?, referentielVersion?, membres?}`
+   (`referentielId`/`referentielVersion` seulement quand un référentiel a été
+   choisi dans le menu ; `membres` omis quand tous les déposants sont cochés ;
+   `X-CSRF-Token`).
 5. Le serveur vérifie la propriété de la cohorte, le corps, que le paquet est
-   **publié** et contient `extraction-pole` + `kairos`, prend la **dernière
-   version publiée** du référentiel `respire`, sélectionne les dépôts des
-   membres consentis (éventuellement restreints à `membres`).
+   **publié** et contient `extraction-pole` + `kairos`, résout le
+   référentiel — la version nommée, qui doit être publiée ; sans version, la
+   **dernière version publiée** de l'identifiant nommé ; sans identifiant,
+   celle de `respire` —, vérifie que les gabarits du paquet savent le
+   cartographier (`PromptRunner::referentielRefusal`), sélectionne les dépôts
+   des membres consentis (éventuellement restreints à `membres`).
 6. Il crée le run (statut `active`, versions figées), un job `queued` par
    (membre × journée), journalise `mass_run_created` et répond
    `201 {runId, jobs}`.
@@ -143,6 +158,15 @@ masse ») et clique « Estimer le coût ».
   (0.00 $) » alors que les jobs resteront simplement en file (A6). Pour un
   fournisseur `endpoint`, le tick ne bloque jamais sur le budget ; seul le
   runner l'est, par ses coûts déclarés (UC-ETA-02, RG3).
+- **A8 — Choix du référentiel** (étapes 2-5, 2026-10-20) : un autre
+  référentiel publié (ou une autre version de RESPIRE, d'une autre structure)
+  se cartographie comme RESPIRE : le site estime un appel par pôle du
+  référentiel choisi plus le kairos par journée ; le run fige sa version ;
+  les exécutants lisent pôles et codes dans son document et chaque journée
+  produite lui est conforme et, pour un autre référentiel que RESPIRE, le
+  nomme (`referentiel`) — UC-SYS-01. Le paquet doit savoir le cartographier
+  (E7). Une version antérieure d'un référentiel ne se choisit que par l'API
+  (`referentielVersion`).
 
 ## Scénarios d'erreur
 
@@ -151,14 +175,17 @@ masse ») et clique « Estimer le coût ».
   aucun membre coché → « Aucun membre sélectionné n'a déposé son portfolio :
   le run n'aurait aucun job. » ; aucune requête.
 - **E1 — Corps invalide** (étape 5) : `promptPackageId`/`promptPackageVersion`
-  absents ou vides, `membres` qui n'est pas une liste d'entiers →
+  absents ou vides, `membres` qui n'est pas une liste d'entiers,
+  `referentielId`/`referentielVersion` qui ne sont pas des chaînes non vides,
+  `referentielVersion` sans `referentielId` →
   `422 {error: "Validation échouée", fields}`.
 - **E2 — Paquet inutilisable** (étape 5) : paquet inconnu, version non
   publiée ou paquet privé → même `422 "Paquet de prompts publié introuvable :
   <id>@<version>"` ; paquet sans
   `extraction-pole` + `kairos` → `422 "Ce paquet ne contient pas les gabarits
   d'extraction (extraction-pole + kairos)"`.
-- **E3 — Aucun référentiel publié** (étape 5) : `409 "Aucun référentiel publié"`.
+- **E3 — Aucun référentiel publié** (étape 5, sans référentiel nommé) :
+  `409 "Aucun référentiel publié"`.
 - **E4 — Aucun déposant** (étape 5) : `422 "Aucun membre consenti n'a déposé
   de portfolio dans cette cohorte"` (aussi quand la sélection ne contient que
   des non-déposants).
@@ -166,8 +193,18 @@ masse ») et clique « Estimer le coût ».
   (lancement) ou `404 "Run introuvable"` (suivi, annulation), corps identiques.
 - **E6 — Accès refusé** : sans session `401`, sans rôle `403`, mutation sans
   jeton CSRF `403`.
+- **E7 — Référentiel inutilisable** (étape 5) : version non publiée ou
+  identifiant inconnu → `422 "Version publiée du référentiel introuvable :
+  <id>[@<version>]"` ; paquet dont les gabarits ne lisent pas le référentiel
+  face à un autre référentiel que RESPIRE à sept pôles — par exemple
+  `aurora-v3-reconstruit@1.0.0` face à une version de RESPIRE en six pôles
+  devenue la dernière publiée — → `422` « Les gabarits de ce paquet écrivent
+  en toutes lettres « RESPIRE », « 7 pôles » et les codes « 1.01 » et
+  « 4.02 » : ils ne cartographient que RESPIRE à sept pôles. Choisissez une
+  version du paquet dont les gabarits lisent le référentiel (variable
+  referentiel_nom). » ; aucun run créé.
 
-Le site affiche le message du serveur au lancement (E2 à E4 ; E1 n'est pas
+Le site affiche le message du serveur au lancement (E2 à E4, E7 ; E1 n'est pas
 atteignable depuis le site, qui envoie toujours un corps valide) et à
 l'annulation (E5 « Run introuvable ») ; une erreur du **polling** (par
 exemple `404` après suppression de la cohorte) est ignorée en silence : le
@@ -179,12 +216,12 @@ tableau reste figé sur le dernier état reçu.
 - **RG2** — Seuls les membres **consentis ayant déposé** sont enfilés (le dépôt
   est l'opt-in de fait au traitement serveur, plan-masse §6).
 - **RG3** — Versions **publiées** et **figées** sur le run : le paquet choisi
-  et la dernière version publiée du référentiel `respire` au moment du
-  lancement ; une publication ultérieure ne touche pas le run (les exécutants
-  servent les versions figées).
+  et la version du référentiel choisie (par défaut la dernière version publiée
+  de `respire` au moment du lancement) ; une publication ultérieure ne touche
+  pas le run (les exécutants servent les versions figées).
 - **RG4** — Estimation obligatoire avant le POST (deux clics : estimer, puis
-  confirmer) ; toute modification de la sélection ou du paquet efface
-  l'estimation.
+  confirmer) ; toute modification de la sélection, du paquet ou du
+  référentiel efface l'estimation.
 - **RG5** — L'annulation est définitive (`refreshRunStatus` ne touche qu'un
   run `active`) ; toutes les écritures des exécutants sont conditionnelles au
   statut `running`.
@@ -206,13 +243,15 @@ tableau reste figé sur le dernier état reçu.
 
 | Couche | Élément | Rôle |
 |---|---|---|
-| Front | `web/src/views/etablissement/CohorteSection.jsx` — sélection, `computeEstimate` (taille moyenne d'une journée = Σ tailles / Σ journées, repli 3 000 ; modèle configuré sinon `SERVICE_MODEL`), `confirmLaunch` (`membres` omis quand tous les déposants sont cochés), polling (`POLL_INTERVAL_MS`, erreurs ignorées), `RunProgress` (bouton d'annulation si run `active` ou jobs `queued`/`running`), `onCancel` | Assistant de lancement, suivi, annulation |
-| Front | `web/src/views/etablissement/etablissement-api.js` — `estimateMassRun`, `EXTRACTION_CALLS_PER_DAY`, `SERVICE_MODEL`, `fetchPublishedPackages`, `launchRun`, `fetchRun`, `cancelRun`, `JOB_STATUS_LABELS` | Estimation, appels, normalisation du tableau |
-| Moteur | `engine/src/providers/estimate.js` — `getModelPricing`, `CHARS_PER_TOKEN_FR`, `PRICING_DISCLAIMER` | Table de prix indicative |
-| API | `api/src/routes/etablissement.php` — `POST …/cohortes/{id}/runs`, `GET …/runs/{runId}`, `POST …/runs/{runId}/annuler` | Validation, versions, enfilage, audit |
+| Front | `web/src/views/etablissement/CohorteSection.jsx` — sélection, choix du référentiel, `computeEstimate` (référentiel choisi chargé ; taille moyenne d'une journée = Σ tailles / Σ journées, repli 3 000 ; modèle configuré sinon `SERVICE_MODEL`), `confirmLaunch` (`referentielId`/`referentielVersion` seulement sur choix ; `membres` omis quand tous les déposants sont cochés), polling (`POLL_INTERVAL_MS`, erreurs ignorées), `RunProgress` (bouton d'annulation si run `active` ou jobs `queued`/`running`), `onCancel` | Assistant de lancement, suivi, annulation |
+| Front | `web/src/components/ReferentielChoice.jsx` ; `web/src/data/referentiel.js` — `listPublishedReferentiels`, `loadPublishedReferentiel` | Menu « Référentiel » (dernière version de chaque référentiel publié, RESPIRE par défaut), document du référentiel choisi |
+| Front | `web/src/views/etablissement/etablissement-api.js` — `estimateMassRun`, `SERVICE_MODEL`, `fetchPublishedPackages`, `launchRun`, `fetchRun`, `cancelRun`, `JOB_STATUS_LABELS` | Estimation, appels, normalisation du tableau |
+| Moteur | `engine/src/providers/estimate.js` — `callsPerDayFor`, `getModelPricing`, `CHARS_PER_TOKEN_FR`, `PRICING_DISCLAIMER` | Appels d'une journée selon le référentiel, table de prix indicative |
+| API | `api/src/routes/etablissement.php` — `POST …/cohortes/{id}/runs`, `GET …/runs/{runId}`, `POST …/runs/{runId}/annuler` | Validation, résolution du référentiel, versions, enfilage, audit |
+| Domaine | `api/src/Worker/PromptRunner.php` — `referentielRefusal` | Le paquet sait-il cartographier ce référentiel ? |
 | Domaine | `api/src/Etablissement/CohorteRepository.php` — `findForEtablissement`, `depositsForRun` | Propriété, sélection des dépôts |
 | Domaine | `api/src/Worker/JobQueue.php` — `enqueueRun`, `runForEtablissement`, `runStats`, `cancelRun`, `refreshRunStatus` | File, tableau, annulation, statut terminal |
-| Domaine | `api/src/Packages/PromptPackageRepository.php` — `findPublished` ; `api/src/Referentiel/ReferentielRepository.php` — `latestPublished` | Versions publiées |
+| Domaine | `api/src/Packages/PromptPackageRepository.php` — `findPublished` ; `api/src/Referentiel/ReferentielRepository.php` — `latestPublished`, `findPublished` | Versions publiées |
 
 ## Jeux de tests
 
@@ -227,13 +266,14 @@ tableau reste figé sur le dernier état reçu.
 | UC-ETA-03-U05 | `JobQueue::cancelRun` | Non terminaux → `cancelled`, terminés intacts ; run fini re-marqué (anomalie figée) | idem |
 | UC-ETA-03-U06 | `JobQueue::refreshRunStatus` | `active` / `done` / `failed` ; annulation définitive (RG5) | idem |
 | UC-ETA-03-U07 | `latestPublished`, `findPublished` | Référentiel le plus haut en semver (7.1.0 malgré une 7.0.1 importée après), gabarits du paquet, version inconnue → `null` | idem |
-| UC-ETA-03-U08 | `estimateMassRun` | 8 appels/journée, tokens, coût, hors table → `null`, familles locales → 0 | `web/test/usecases/unit/uc-eta-03-piloter-run-masse.test.js` |
+| UC-ETA-03-U08 | `estimateMassRun` | Un appel par pôle du référentiel + kairos par journée (RESPIRE v7 : 8, neuf pôles : 10), tokens, coût, hors table → `null`, familles locales → 0 | `web/test/usecases/unit/uc-eta-03-piloter-run-masse.test.js` |
 | UC-ETA-03-U09 | `fetchRun` | Normalisation du tableau réel | idem |
 | UC-ETA-03-U10 | `launchRun`, `cancelRun` | POST + CSRF sur les bonnes routes (les deux) | idem |
 | UC-ETA-03-U11 | `fetchPublishedPackages` | Liste réelle filtrée | idem |
-| UC-ETA-03-U12 | `JOB_STATUS_LABELS`, `EXTRACTION_CALLS_PER_DAY`, `POLL_INTERVAL_MS`, `SERVICE_MODEL` | Six statuts libellés, 8 appels, 5 s, modèle de référence | idem |
+| UC-ETA-03-U12 | `JOB_STATUS_LABELS`, `POLL_INTERVAL_MS`, `SERVICE_MODEL` | Six statuts libellés, 5 s, modèle de référence | idem |
 | UC-ETA-03-U13 | `CohorteSection` (isolée, `fetchFn`) — `computeEstimate` | Taille moyenne tirée des dépôts (1.69 $), repli 3 000 sans taille (1.70 $), modèle configuré prioritaire | idem |
 | UC-ETA-03-U14 | `CohorteSection` (isolée) — `RunProgress` | Bouton « Annuler le run » : run `active` ou jobs en file → présent ; `done`, `cancelled`, `budget_exceeded` sans file → absent | idem |
+| UC-ETA-03-U15 | `CohorteSection` (isolée, `getReferentiel`, `listReferentiels`) — choix du référentiel | RESPIRE par défaut (référentiel chargé sans argument : sa dernière version publiée, 40 appels) ; autre choix → estimation effacée, rechargée à ses pôles (50 appels), POST avec `referentielId`/`referentielVersion` (A8, RG4) | idem |
 
 ### Tests fonctionnels
 
@@ -264,6 +304,10 @@ tableau reste figé sur le dernier état reçu.
 | UC-ETA-03-F23 | A2, Anomalies | API | Départ d'un membre en cours de run, ses jobs étaient les derniers : run `active` sans travail ni `finishedAt` (comportement actuel) | `api/tests/UseCases/Functional/UcEta03PiloterRunMasseTest.php` |
 | UC-ETA-03-F24 | A5, Anomalies | API | Réponse LLM inexploitable citant la feuille : extrait du portfolio dans `erreurs`, toujours servi après le départ du membre (comportement actuel) | idem |
 | UC-ETA-03-F25 | A3, Anomalies | API | « Relancez » après arrêt budgétaire : le nouveau run ré-enfile les journées déjà produites (32 appels, 4 documents pour 2 journées) | idem |
+| UC-ETA-03-F26 | A8 | API | Run sur un autre référentiel publié (neuf pôles, sans version : sa dernière) avec un paquet qui lit le référentiel (prompts de RESPIRE v7 identiques à ceux de 1.0.0) : tableau `fictif-neuf@1.0.0`, 10 appels par journée, nom et bloc du référentiel dans les prompts, documents qui le nomment, neuf pôles, conformes | idem |
+| UC-ETA-03-F27 | E7, E1 | API | Version non publiée, identifiant inconnu, paquet 1.0.0 face à neuf pôles → `422` explicites ; `referentielVersion` sans identifiant, identifiant ou version non textuels → `422 fields` ; aucun run | idem |
+| UC-ETA-03-F28 | A8, E7 | API | RESPIRE 8.0.0 en six pôles devenue la dernière publiée : défaut refusé au paquet 1.0.0, la 7.0.0 reste choisissable ; un paquet qui lit le référentiel la cartographie (7 appels, six pôles, document sans `referentiel`, conforme) | idem |
+| UC-ETA-03-F29 | A8 | IHM | `<App/>` avec l'index statique : menu « Référentiel » (RESPIRE présélectionné), choix d'un référentiel à neuf pôles → 50 appels estimés, POST avec sa version | `web/test/usecases/functional/uc-eta-03-piloter-run-masse.test.jsx` |
 
 ### Tests existants liés (non-régression)
 
@@ -349,5 +393,10 @@ cd web && npx vitest run test/usecases/unit/uc-eta-03 test/usecases/functional/u
   n'avance.
 - Le polling continue toutes les 5 s tant que la page reste ouverte, même
   après la fin du run.
-- Le référentiel du run n'est pas choisi par l'établissement : c'est la
-  dernière version publiée de `respire`.
+- Le menu « Référentiel » n'offre que la dernière version de chaque
+  référentiel publié, et seulement si l'index statique des référentiels est
+  servi (`data/referentiel/index.json`) ; une version antérieure se choisit
+  par l'API (`referentielVersion`).
+- L'estimation lit le référentiel dans les fichiers statiques publiés, le
+  serveur dans la base : les deux coïncident tant que l'export statique suit
+  les publications (UC-EPI-03).

@@ -84,7 +84,7 @@ function useZoomTransition(layout, zoom, reducedMotion) {
 
 /**
  * Le retour d'un pôle ouvert, dit au nombre de pôles du soleil complet (ceux
- * qui ont des points à la date t) : « revenir aux 7 pôles ».
+ * qui ont des points à la date t) : « revenir aux N pôles ».
  */
 export function returnToPoles(state) {
   const n = state?.poles?.size ?? 0

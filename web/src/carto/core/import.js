@@ -106,6 +106,9 @@ function dateAndRunFromDir(dir) {
 
 /**
  * Reconnaît et adapte un lot de fichiers TEXTE.
+ * @param {Array<{path: string, text: string}>} files
+ * @param {{now?: string, allowRemote?: boolean, referential?: object | null}} [opts] referential : celui
+ *   du jeu (2026-10-20) — une journée incomplète se compte contre lui, le pôle d'un domaine se lit en lui
  * @returns {{
  *   variants: Array<{date: string, summary: object, detail: object}>,
  *   portfolio: Array<{date: string, title: string|null, text: string, source: string}>,
@@ -114,9 +117,20 @@ function dateAndRunFromDir(dir) {
  *   unsupported: Array<{path: string, kind: string}>, report: Array<object>,
  * }}
  */
-export function recognize(files, { now = new Date().toISOString(), allowRemote = false } = {}) {
+export function recognize(files, { now = new Date().toISOString(), allowRemote = false, referential = null } = {}) {
   const report = []
   const result = { variants: [], portfolio: [], undated: [], narratives: [], metrics: null, runDetails: [], readings: [], referential: null, unsupported: [], extras: [], report }
+  // Le référentiel contre lequel une journée se lit (2026-10-20) : celui que
+  // l'import apporte s'il l'a déjà rencontré, sinon celui du jeu.
+  const currentReferential = () => result.referential ?? referential
+  // Le pôle de chaque domaine d'un parcours du site, par le référentiel (le
+  // code de sa première compétence) — non par la forme du code (« 3.01 »).
+  const domainPoles = (doc) => {
+    const ref = currentReferential()
+    if (!Array.isArray(ref?.competences)) return null
+    const poleOf = new Map(ref.competences.map((c) => [c.code, Number(c.pole)]))
+    return (doc.domains ?? []).map((d) => poleOf.get(d?.competences?.[0]?.code) ?? null)
+  }
 
   // AuroraCore d'abord : il « consomme » verdicts, délibérations, pièces et feuilles.
   const core = importAuroraCoreTrees(files, { now })
@@ -182,12 +196,12 @@ export function recognize(files, { now = new Date().toISOString(), allowRemote =
         if (r.referential) result.referential = r.referential
         report.push(...r.report.map((x) => ({ ...x, file: f.path })))
       } else if (looksLikeSiteMerge(doc)) {
-        const r = importSiteMerge(doc, { fileName: name, now })
+        const r = importSiteMerge(doc, { fileName: name, now, poleNums: domainPoles(doc) })
         result.variants.push(...r.variants)
         result.narratives.push(...r.narratives)
         report.push(...r.report.map((x) => ({ ...x, file: f.path })))
       } else if (looksLikeCartoMerge(doc)) {
-        const r = importCartoMerge(doc, { fileName: name, now })
+        const r = importCartoMerge(doc, { fileName: name, now, referential: currentReferential() })
         result.variants.push(...r.variants)
         report.push(...r.report.map((x) => ({ ...x, file: f.path })))
       } else if (looksLikeSiteDay(doc)) {
@@ -196,7 +210,7 @@ export function recognize(files, { now = new Date().toISOString(), allowRemote =
           report.push({ severity: 'blocking', code: 'date-absente', message: `${f.path} : date absente — journée en quarantaine`, file: f.path })
           continue
         }
-        const r = adaptAuroraDay({ date, poles: doc.poles ?? [], kairos: doc.kairos ?? null, provenance: { source: 'site-jour', run: doc.run ?? null, files: [name] }, now })
+        const r = adaptAuroraDay({ date, poles: doc.poles ?? [], kairos: doc.kairos ?? null, provenance: { source: 'site-jour', run: doc.run ?? null, files: [name] }, now, referential: currentReferential() })
         result.variants.push({ date, summary: r.summary, detail: r.detail })
         report.push(...r.report.map((x) => ({ ...x, file: f.path })))
       } else if (looksLikeCartoPole(doc) || (/^kairos.*\.json$/i.test(name) && looksLikeKairos(doc)) || looksLikeKairos(doc)) {
@@ -205,7 +219,7 @@ export function recognize(files, { now = new Date().toISOString(), allowRemote =
         const g = auroraGroups.get(dir)
         g.files.push(f.path)
         if (looksLikeCartoPole(doc)) {
-          const expected = /carto_P(\d)\.json$/i.exec(name)?.[1]
+          const expected = /carto_P(\d+)\.json$/i.exec(name)?.[1]
           if (expected && Number(doc.poleNum) !== Number(expected)) {
             report.push({ severity: 'warning', code: 'pole-discordant', message: `${f.path} : poleNum ${doc.poleNum} ≠ ${expected} (nom du fichier)`, file: f.path })
           }
@@ -254,7 +268,7 @@ export function recognize(files, { now = new Date().toISOString(), allowRemote =
       report.push({ severity: 'blocking', code: 'date-absente', message: `${dir || '(racine)'} : date de la journée introuvable (ni dans le chemin, ni dans les feuilles) — en quarantaine` })
       continue
     }
-    const r = adaptAuroraDay({ date, poles: g.poles, kairos: g.kairos, provenance: { source: 'aurora-v3', run, files: g.files.map(basename) }, now })
+    const r = adaptAuroraDay({ date, poles: g.poles, kairos: g.kairos, provenance: { source: 'aurora-v3', run, files: g.files.map(basename) }, now, referential: currentReferential() })
     result.variants.push({ date, summary: r.summary, detail: r.detail })
     report.push(...r.report)
   }
@@ -605,7 +619,7 @@ export function severityCounts(report) {
  */
 export async function importFiles(files, dataset, { now = new Date().toISOString(), allowRemote = false } = {}) {
   const expanded = await expandFiles(files)
-  const recognized = recognize(expanded.files, { now, allowRemote })
+  const recognized = recognize(expanded.files, { now, allowRemote, referential: dataset?.referential ?? null })
   recognized.report.unshift(...expanded.report)
   const merged = mergeIntoDataset(dataset, recognized, { now, fileNames: files.map((f) => f.path ?? f.name) })
   return { ...merged, dates: sortedDates(merged.dataset) }

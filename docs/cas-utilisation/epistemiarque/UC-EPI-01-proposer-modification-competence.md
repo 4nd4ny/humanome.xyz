@@ -61,7 +61,11 @@ L'épistémiarque ouvre l'atelier `#/epistemiarque` (menu « Faire évoluer ›
 2. L'atelier charge `GET /api/competences` (dernière version publiée de chaque
    compétence, par précédence semver) et `GET /api/competences/drafts`
    (brouillons et propositions au vote, les plus récents d'abord, avec leur
-   décompte). Il affiche les compétences par pôle ; celles qui ont déjà une
+   décompte). Il affiche les compétences par pôle — le nom de chaque pôle se
+   lit dans la dernière version publiée de RESPIRE (copie embarquée en repli ;
+   un pôle qu'elle ne nomme pas garde « Pôle N »), plus dans une liste figée à
+   sept pôles (2026-10-20) ; la région s'intitule « Les compétences du
+   référentiel » ; celles qui ont déjà une
    version éditable portent la mention « déjà en cours d'édition » au lieu du
    bouton.
 3. L'épistémiarque clique « Proposer une évolution » : le site envoie
@@ -360,5 +364,7 @@ cd web && npx vitest run test/usecases/unit/uc-epi-01 test/usecases/functional/u
 - **L4** — `If-Match` n'accepte que l'empreinte brute ou entre guillemets (pas
   la forme faible `W/"…"` des ETag HTTP).
 - **L5** — On ne peut proposer que l'évolution d'une compétence **existante** :
-  aucune route ne crée ni ne retire une compétence, et le schéma du
-  référentiel fige 61 compétences en 7 pôles (UC-EPI-03 L2).
+  aucune route ne crée ni ne retire une compétence, le modèle atomique ne
+  connaissant que la structure semée de RESPIRE (UC-EPI-03 L2 ; le schéma, lui,
+  ne fige plus 61 compétences en 7 pôles depuis le 2026-10-20). Une version
+  d'une autre structure se publie au grain document (UC-EPI-04).

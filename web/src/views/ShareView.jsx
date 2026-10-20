@@ -16,6 +16,7 @@
 import { useEffect, useMemo, useState } from 'react'
 import { ApiError, apiFetch } from '../api/client.js'
 import { loadPublishedReferentiel } from '../data/referentiel.js'
+import { chargerReferentielDuDocument } from '../lib/referentiel-du-document.js'
 import { SharedView } from '../carto/ui/SharedView.jsx'
 import { isSharedVersion } from '../carto/core/share.js'
 import DayView from './DayView.jsx'
@@ -105,6 +106,7 @@ export default function ShareView({ token, open = false, lib, fetchFn, getRefere
   const [mode, setMode] = useState(open ? 'opening' : 'password')
   const [shared, setShared] = useState(null) // {titre, type, document, garantie}
   const [referentiel, setReferentiel] = useState(null)
+  const [referentielError, setReferentielError] = useState(null)
 
   // Lien ouvert : la version est demandée dès l'ouverture. Un lien qui exige
   // finalement un mot de passe (401) retombe sur le formulaire.
@@ -130,15 +132,18 @@ export default function ShareView({ token, open = false, lib, fetchFn, getRefere
     }
   }, [open, token, fetchFn])
 
-  // Le référentiel sert aux libellés des deux vues ; loadPublishedReferentiel
-  // ne rejette jamais (repli sur la copie embarquée). Une version partagée
-  // embarque le sien.
+  // Le référentiel sert aux libellés des deux vues : celui que nomme le
+  // document (2026-10-20), à sa dernière version publiée — RESPIRE pour un
+  // document qui n'en nomme pas, repli sur la copie embarquée ; un autre
+  // introuvable est dit. Une version partagée embarque le sien.
   useEffect(() => {
     if (!shared || shared.type === 'partage') return undefined
     let active = true
-    getReferentiel().then((loaded) => {
-      if (active) setReferentiel(loaded?.doc ?? loaded ?? null)
-    })
+    setReferentielError(null)
+    chargerReferentielDuDocument(shared.document, { getReferentiel }).then(
+      (loaded) => active && setReferentiel(loaded),
+      (error) => active && setReferentielError(error.message),
+    )
     return () => {
       active = false
     }
@@ -236,7 +241,9 @@ export default function ShareView({ token, open = false, lib, fetchFn, getRefere
   }
 
   let body
-  if (referentiel === null) {
+  if (referentielError) {
+    body = <p role="alert">{referentielError}</p>
+  } else if (referentiel === null) {
     body = <p role="status">Chargement du référentiel…</p>
   } else if (shared.type === 'merge') {
     body = <MergeView mergeDoc={shared.document} referentiel={referentiel} lib={lib} />

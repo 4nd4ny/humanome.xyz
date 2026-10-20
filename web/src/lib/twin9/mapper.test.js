@@ -1,6 +1,7 @@
 // Adaptateur Twin9 → cartographie-merge (D12). Fixtures : la VRAIE sortie du
 // moteur sur un portfolio (carto_evolutive du scénario cloud de l'oracle de
-// Twin_v9, tirée de la v9.8) + un référentiel minimal 7 pôles, et des cas
+// Twin_v9, tirée de la v9.8) + un référentiel minimal aux 7 pôles de RESPIRE v7,
+// des référentiels d'autres structures (T17, 2026-10-20), et des cas
 // construits pour les règles fines (renvoi daté, signal non daté ignoré,
 // priorité attestation > renvoi, absence d'attestation datée → erreur).
 import { describe, it, expect } from 'vitest'
@@ -9,6 +10,7 @@ import { dirname, join } from 'node:path'
 import { fileURLToPath } from 'node:url'
 import { twin9ToMergeDocument } from './mapper.js'
 import { validateDocument } from '@engine/validation.js'
+import { validateDocumentPourReferentiel } from '@engine/conformite.js'
 import { POLE_PALETTE } from '@engine/pipeline/merge-document.js'
 
 // L'oracle vit dans le dépôt privé 4nd4ny/Twin_v9 : `TWIN_V9_DIR`, par défaut
@@ -184,7 +186,7 @@ describe('twin9ToMergeDocument (tout référentiel, T17)', () => {
     return { journal_id: 'test', histoires: {}, rapports_poles: { 1: 'Rapport du premier pôle.' }, competences }
   }
 
-  it('cinq pôles lettrés : un domaine par pôle, à son nom et à la couleur de son rang ; le schéma l’accepte', () => {
+  it('cinq pôles lettrés : un domaine par pôle, à son nom et à la couleur de son rang ; le schéma l’accepte, et la conformité à son référentiel', () => {
     const lettres = ['A', 'B', 'C', 'D', 'E']
     const referentiel = {
       id: 'fictif-lettre',
@@ -197,11 +199,15 @@ describe('twin9ToMergeDocument (tout référentiel, T17)', () => {
     )
     expect(Object.keys(doc.profilIpsatif)).toEqual(['1', '2', '3', '4', '5'])
     expect(doc.domains[0].rapport_html).toContain('Rapport du premier pôle.')
-    // il nomme son référentiel, sans quoi il se lirait comme RESPIRE (7 pôles, codes P.NN)
+    // il nomme son référentiel, sans quoi il se lirait comme un document de RESPIRE
     expect(doc.referentiel).toBe('fictif-lettre')
     expect(validateDocument('cartographie-merge', doc).errors).toEqual([])
+    expect(validateDocumentPourReferentiel('cartographie-merge', doc, referentiel).errors).toEqual([])
+    // Sans son nom, le schéma l'accepte (il n'impose plus de structure, 2026-10-20) ;
+    // c'est la conformité à son référentiel qui le refuse : il se dirait de RESPIRE.
     const { referentiel: _nom, ...sansNom } = doc
-    expect(validateDocument('cartographie-merge', sansNom).valid).toBe(false)
+    expect(validateDocument('cartographie-merge', sansNom).valid).toBe(true)
+    expect(validateDocumentPourReferentiel('cartographie-merge', sansNom, referentiel).errors.map((e) => e.path)).toEqual(['/referentiel'])
   })
 
   it('neuf pôles : neuf domaines, les deux derniers aux couleurs qui prolongent celles de RESPIRE ; le schéma l’accepte', () => {
@@ -228,6 +234,19 @@ describe('twin9ToMergeDocument (tout référentiel, T17)', () => {
     expect('referentiel' in doc).toBe(false)
     expect(doc.domains.map((d) => d.color)).toEqual(POLE_PALETTE.slice(0, 7))
     expect(validateDocument('cartographie-merge', doc).errors).toEqual([])
+  })
+
+  it('une version de RESPIRE à six pôles : six domaines, aucun nom de référentiel, conforme à sa version (2026-10-20)', () => {
+    const six = {
+      id: 'respire',
+      poles: REFERENTIEL.poles.filter((p) => p.num !== 7),
+      competences: REFERENTIEL.poles.filter((p) => p.num !== 7).map((p) => ({ code: `${p.num}.01`, nom: `Compétence ${p.num}.01`, pole: p.num })),
+    }
+    const doc = twin9ToMergeDocument(fusion(six), six, { generatedAt: '2026-01-07T12:00:00' })
+    expect('referentiel' in doc).toBe(false)
+    expect(doc.domains).toHaveLength(6)
+    expect(Object.keys(doc.profilIpsatif)).toEqual(['1', '2', '3', '4', '5', '6'])
+    expect(validateDocumentPourReferentiel('cartographie-merge', doc, six).errors).toEqual([])
   })
 })
 

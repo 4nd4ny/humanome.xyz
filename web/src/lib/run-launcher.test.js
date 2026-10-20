@@ -232,8 +232,9 @@ describe('executeRun — moteur réel, stockage mémoire', () => {
 
   it('portfolio trop creux : documents jour conservés, fusion expliquée (mergeError)', async () => {
     // Avec 2 journées seulement, certains pôles n'ont AUCUNE compétence
-    // établie sur la période : le schéma cartographie-merge (7 pôles, chacun
-    // >= 1 compétence) rend la fusion non constructible — dégradation propre.
+    // établie sur la période : la fusion rend un domaine par pôle du
+    // référentiel, et le schéma cartographie-merge en exige au moins une
+    // compétence — fusion non constructible, dégradation propre.
     const result = await executeRun({
       runId: makeRunId('p-2', BUILTIN_PACKAGE),
       dayGroups: GROUPS.slice(0, 2),
@@ -246,7 +247,7 @@ describe('executeRun — moteur réel, stockage mémoire', () => {
     expect(result.status.remaining).toBe(0)
     expect(result.dayDocuments).toHaveLength(2)
     expect(result.document).toBeNull()
-    expect(result.mergeError).toContain('7 pôles')
+    expect(result.mergeError).toContain('au moins une compétence établie dans chacun des pôles du référentiel')
   })
 })
 

@@ -85,6 +85,117 @@ trait EtaSupport
         }
     }
 
+    /**
+     * Paquet dont les gabarits d'extraction LISENT le référentiel (2026-10-20),
+     * dérivé en mémoire du paquet par défaut 1.0.0 : « RESPIRE », « 7 pôles »,
+     * « 1.01 » et « 4.02 », qu'il écrit en toutes lettres, deviennent
+     * {{referentiel_nom}}, {{nb_poles}}, {{code_exemple_1}}, {{code_exemple_2}},
+     * déclarées — ce que fait la 1.1.0 du paquet par défaut. Pour RESPIRE v7,
+     * ses prompts sont ceux de 1.0.0, à l'octet.
+     *
+     * @return array<string, mixed>
+     */
+    protected static function packageReadingTheReferentiel(string $id = 'aurora-lit-referentiel'): array
+    {
+        $replace = static function (string $texte, array $pairs): string {
+            foreach ($pairs as $from => $to) {
+                self::assertStringContainsString($from, $texte, 'gabarit 1.0.0 inattendu');
+                $texte = str_replace($from, $to, $texte);
+            }
+
+            return $texte;
+        };
+        $declare = static fn (array $noms): array => array_map(
+            static fn (string $nom): array => ['nom' => $nom, 'description' => "Valeur lue dans le référentiel ({$nom})."],
+            $noms,
+        );
+        $doc = self::defaultPackage();
+        $doc['id'] = $id;
+        $doc['version'] = '1.0.0';
+        $doc['changelog'] = [['version' => '1.0.0', 'description' => 'Paquet de test : les gabarits d’extraction lisent le référentiel.']];
+        foreach ($doc['prompts'] as &$prompt) {
+            if ($prompt['role'] === 'extraction-pole') {
+                $prompt['texte'] = $replace($prompt['texte'], ['du référentiel RESPIRE' => 'du référentiel {{referentiel_nom}}']);
+                $prompt['variables'] = [...$prompt['variables'], ...$declare(['referentiel_nom'])];
+            } elseif ($prompt['role'] === 'kairos') {
+                $prompt['texte'] = $replace($prompt['texte'], [
+                    'Les 7 pôles de la feuille' => 'Les {{nb_poles}} pôles de la feuille',
+                    '# Référentiel RESPIRE (' => '# Référentiel {{referentiel_nom}} (',
+                    '"1.01"' => '"{{code_exemple_1}}"',
+                    '"4.02"' => '"{{code_exemple_2}}"',
+                ]);
+                $prompt['variables'] = [...$prompt['variables'], ...$declare(['referentiel_nom', 'code_exemple_1', 'code_exemple_2'])];
+            }
+        }
+        unset($prompt);
+
+        return $doc;
+    }
+
+    /**
+     * Une journée conforme à un autre référentiel, tirée de la fixture du
+     * corpus : son pôle k emprunte le pôle de rang k de la fixture (en
+     * boucle), ses compétences prennent les premiers codes du pôle k ; pas de
+     * kairos ; le document nomme son référentiel (T17).
+     *
+     * @param array<string, mixed> $referentiel
+     * @return array<string, mixed>
+     */
+    protected static function dayDocumentFor(array $referentiel, string $date = '2026-01-05'): array
+    {
+        $fixture = self::dayDocument($date);
+        $nums = array_map(static fn (array $p): int => (int) $p['num'], $referentiel['poles']);
+        sort($nums);
+        $poles = [];
+        foreach ($nums as $rang => $num) {
+            $codes = [];
+            foreach ($referentiel['competences'] as $c) {
+                if ((int) $c['pole'] === $num) {
+                    $codes[] = (string) $c['code'];
+                }
+            }
+            sort($codes, SORT_STRING);
+            $pole = $fixture['poles'][$rang % \count($fixture['poles'])];
+            $pole['poleNum'] = (string) $num;
+            $pole['competences'] = array_map(
+                static fn (array $c, string $code): array => ['code' => $code] + $c,
+                \array_slice($pole['competences'], 0, \count($codes)),
+                \array_slice($codes, 0, \count($pole['competences'])),
+            );
+            $poles[] = $pole;
+        }
+
+        return ['schemaVersion' => '1.0.0', 'kind' => 'cartographie-jour', 'referentiel' => (string) $referentiel['id'],
+            'date' => $date, 'poles' => $poles, 'kairos' => null];
+    }
+
+    /** Publie un document de référentiel (empreinte calculée), une version de RESPIRE ou un autre. */
+    protected static function publishReferentielDocument(PDO $pdo, array $doc, string $note = 'Import UC-ETA'): void
+    {
+        $repo = new ReferentielRepository($pdo);
+        $doc['contentHash'] = $repo->validateDocument($doc)['contentHash'];
+        $repo->importPublishedDocument($doc, $note);
+    }
+
+    /**
+     * Une version de RESPIRE en six pôles (sans son pôle 7 : les pôles se
+     * numérotent de 1 à N, T15), publiable — RESPIRE n'a plus de structure
+     * imposée (2026-10-20).
+     *
+     * @return array<string, mixed>
+     */
+    protected static function respireSixPoles(string $version = '8.0.0'): array
+    {
+        $doc = self::respireReferentiel();
+        unset($doc['contentHash']);
+        $doc['version'] = $version;
+        $doc['label'] = 'RESPIRE v8 (six pôles)';
+        $doc['poles'] = array_values(array_filter($doc['poles'], static fn (array $p): bool => (int) $p['num'] !== 7));
+        $doc['competences'] = array_values(array_filter($doc['competences'], static fn (array $c): bool => (int) $c['pole'] !== 7));
+
+        return $doc;
+    }
+
     /** Référentiel v7 + paquet par défaut publiés en base (préconditions d'un run). */
     protected static function seedPublishedVersions(PDO $pdo): void
     {

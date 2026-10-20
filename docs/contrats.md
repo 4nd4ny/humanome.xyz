@@ -1049,9 +1049,12 @@ T16, plan validé par Christian le 2026-10-20).
     le lancement et l'aperçu répondent `503` « Les fiches du référentiel
     RESPIRE ne sont pas dans la base de cette instance : l’analyse
     approfondie ne peut partir (php scripts/seed-competences.php les y
-    verse) ». Une version qui nomme un code dont la base n'a pas la fiche (un
-    brouillon qui en renomme un) répond `422` « Le référentiel « respire » ne
-    se lit pas : la compétence 1.99 n’a pas de fiche dans la base ».
+    verse) ». Depuis le 2026-10-20 (§11), une version de RESPIRE peut avoir
+    une autre structure : la base fournit la fiche d'un code qu'elle connaît
+    dans le même pôle, et le préambule d'un pôle dont elle connaît exactement
+    les mêmes codes ; le reste s'écrit depuis le document, comme pour un autre
+    référentiel (un code que la base ne connaît pas ne répond plus `422`).
+    RESPIRE v7 se lit comme avant, à l'octet.
   - **Un autre référentiel** : préambule et fiches s'écrivent depuis son
     document — le préambule, « # Pôle N — nom », puis sa description ; la
     fiche, « ## CODE — nom », sa description, puis ses éléments plus fins,
@@ -1082,9 +1085,12 @@ T16, plan validé par Christian le 2026-10-20).
 - **Un jeu d'avant T16** — le jeu v9.8 pas encore réimporté, ou une copie
   faite avant — écrit RESPIRE en toutes lettres dans ses gabarits (« 61 »,
   « X.YY », « référentiel RESPIRE ») ; ses fichiers de pôle (`tagger/P1`…)
-  le disent. Il sert RESPIRE comme avant — le schéma garde à toute version
-  de RESPIRE ses 7 pôles et ses 61 codes « X.YY », et le moteur ses clés ;
-  pour un autre référentiel, le lancement et l'aperçu répondent `422` « Le
+  le disent. Il sert RESPIRE dans la structure que décrivent ses fichiers de
+  pôle — mêmes pôles, mêmes codes (« ## CODE — » de `tagger/PN`) ; une
+  version de RESPIRE d'une autre structure (§11) est refusée, `422` « … ses
+  gabarits écrivent RESPIRE en toutes lettres, tel que le décrivent ses
+  fiches (7 pôles, 61 compétences). Pour une autre structure de RESPIRE, il
+  faut … » ; pour un autre référentiel, le lancement et l'aperçu répondent `422` « Le
   jeu de gabarits « … » précède T16 : ses gabarits écrivent RESPIRE en
   toutes lettres. Pour un autre référentiel, il faut réimporter le jeu
   v9.8 » (pour une copie, « refaire une copie du jeu v9.8 », ou, si le jeu
@@ -1187,12 +1193,16 @@ Le schéma `referentiel` passe en **2.0.0** (`docs/plan-twin9-php.md` de
   et compétences `{code, nom, pole}` ; niveaux, descriptions et éléments sont
   gardés dans le document, hors d'elle (`ContentHash::normalize` les range
   dans un ordre fixe, éléments compris, quoi qu'en fasse le JSON de MySQL).
-- **RESPIRE garde sa structure** : une clause du schéma (`allOf` : si
-  `id` vaut `respire`) lui impose 7 pôles, 61 compétences au format `P.NN` et
-  aucun niveau déclaré. Tout chemin vers une de ses versions passe par elle :
-  fork et édition au grain document, publication, coupe de release depuis
-  ses compétences (UC-EPI-03, dont c'était déjà le contrôle de complétude),
-  import initial. Il ne s'importe pas par l'atelier (`409`).
+- **RESPIRE n'a plus de structure imposée** (depuis le 2026-10-20, §11) :
+  une clause du schéma (`allOf` : si `id` vaut `respire`) lui imposait 7
+  pôles, 61 compétences au format `P.NN` et aucun niveau déclaré, sur tout
+  chemin vers une de ses versions (fork et édition au grain document,
+  publication, coupe de release, import initial). Elle est retirée (schéma
+  2.1.0) : une version de RESPIRE peut compter six pôles, ou neuf, comme tout
+  référentiel ; sans `niveaux`, ses codes suivent toujours le motif par
+  défaut. La coupe de release depuis ses compétences (UC-EPI-03) garde la
+  structure de sa dernière version publiée (§11). Il ne s'importe pas par
+  l'atelier (`409`).
 - **L'import** (`POST /api/referentiel/import {document, niveau?}`,
   épistémiarque ou administrateur) valide le document tel quel, le lit au
   niveau choisi (`ReferentielRepository::auNiveau` : les éléments de ce
@@ -1229,7 +1239,8 @@ Le schéma `referentiel` passe en **2.0.0** (`docs/plan-twin9-php.md` de
 - **Les annotations** (`POST /api/cartographies/{id}/annotations`) : une
   cartographie qui désigne une version de référentiel
   (`referentiel_version_id`) n'accepte que ses codes ; sans référentiel
-  désigné, la forme de RESPIRE (`[1-7].NN`), comme avant.
+  désigné, la forme de RESPIRE (`[1-7].NN`) jusqu'au 2026-10-20 — depuis,
+  les codes de la version que lit sa relecture (§11).
 - **Hors T15** : la page publique `#/referentiel` ne montre que RESPIRE ;
   `ReferentielDiff` ignore niveaux et éléments. (La cartographie, qui ne
   lisait que RESPIRE et ses 7 pôles, lit le référentiel de chaque run depuis
@@ -1253,21 +1264,21 @@ capacités `A1` à `E4`, 9 pôles… Les changements de format, un par un :
 | réponse de `GET /api/twin9/runs/{id}/resultats` | `run`, `lecteur`, `sorties`, `memoire` | et `referentiel` (§8.4) |
 | document `twin9-run` : `referentiel` | le référentiel publié | celui du run |
 
-Aucun champ n'est renommé. **RESPIRE garde sa structure**, comme dans le
-schéma `referentiel` (§9) : une clause des deux schémas (`allOf` : si
-`referentiel` est absent ou vaut `respire`) impose à son document 7 pôles et
-des codes `P.NN`. Ses documents ne nomment pas de référentiel : ils restent
-valides tels quels, et les validations qui supposent sa structure — les sondes
-de l'extraction (`extract.js`, `PoleAssembler`), le dépôt d'une journée par un
-navigateur de la masse, la référence et la sonde du banc, la relecture —
-gardent leur garantie (un document de 6 pôles, un pôle « 99 » ou un code
-« 1.1 » y sont refusés comme avant). Les deux routes qui valident un document
-venu d'un client refusent qu'il nomme un autre référentiel que le sien, ce qui
-le sortirait de ces contrôles (`422`, pointeur `/referentiel`) : le dépôt d'une
-journée par la masse (`POST /api/worker/jobs/{id}/result`, le référentiel de son
-run) et la révision d'une cartographie (`POST
+Aucun champ n'est renommé. De T17 au 2026-10-20, **RESPIRE gardait sa
+structure**, comme dans le schéma `referentiel` (§9) : une clause des deux
+schémas (`allOf` : si `referentiel` est absent ou vaut `respire`) imposait à
+son document 7 pôles et des codes `P.NN` — les lignes « RESPIRE : de même » du
+tableau. Elle est retirée : les schémas ne fixent plus de structure, et la
+garantie que ces lignes donnaient (un document de 6 pôles, un pôle « 99 » ou
+un code « 1.1 » refusés) vient désormais de la conformité du document à la
+version de son référentiel (§11), pour RESPIRE comme pour tout autre. Ses
+documents ne nomment toujours pas de référentiel et restent valides tels
+quels. Les deux routes qui valident un document venu d'un client refusent
+qu'il nomme un autre référentiel que le sien (`422`, pointeur `/referentiel`) :
+le dépôt d'une journée par la masse (`POST /api/worker/jobs/{id}/result`, le
+référentiel de son run) et la révision d'une cartographie (`POST
 /api/cartographies/{id}/revisions`, le référentiel qu'elle désigne, RESPIRE à
-défaut). Un document d'un autre référentiel le
+défaut) — c'est la règle d'identité de la conformité. Un document d'un autre référentiel le
 nomme : l'adaptateur Twin9 (`twin9ToMergeDocument`) le fait pour ses
 documents-jour et sa fusion (`buildMergeDocument`, `meta.referentiel`), dès
 que le référentiel qu'il reçoit a un autre identifiant que `respire`. La
@@ -1340,3 +1351,160 @@ verrou.
   juge la première compétence de chaque pôle du référentiel du run (1.01
   seule sans référentiel), avec le nom qu'il lui donne ; sa fusion porte
   leurs histoires et les rapports de leurs pôles.
+
+## 11. La conformité au référentiel (2026-10-20)
+
+Christian a demandé pourquoi une journée de RESPIRE à six pôles était refusée,
+et s'il faudrait tout recoder le jour où promptologues et épistémiarques
+définiraient un référentiel de six pôles. Il l'aurait fallu : depuis T15 et T17,
+les schémas figeaient RESPIRE à 7 pôles, 61 compétences et des codes `P.NN`
+(§9, §10). RESPIRE redevient un référentiel comme un autre : une de ses
+versions peut compter six pôles, ou neuf. Le garde-fou contre un pôle perdu
+demeure, mais contre la **version** de référentiel que le document cartographie,
+plus contre le chiffre 7. Aucun champ n'est renommé.
+
+- **Les schémas** ne fixent plus de structure. `referentiel` passe en 2.1.0 :
+  sa clause RESPIRE (7 pôles, 61 compétences, codes `P.NN`, aucun niveau) part ;
+  un document 1.0.0 ou 2.0.0 y reste valide tel quel, avec la même empreinte.
+  `cartographie-jour` et `cartographie-merge` perdent la leur (et `codeRespire`) :
+  ils exigent au moins un pôle (un domaine), des numéros de pôle `^[1-9][0-9]*$`,
+  des codes `codeCompetence` ; c'est tout ce qu'un schéma peut savoir d'un
+  document sans son référentiel.
+- **La conformité** (`engine/src/conformite.js`,
+  `api/src/Referentiel/Conformite.php`, implémentations jumelles, mêmes
+  messages, mêmes pointeurs JSON) confronte un document à la version de
+  référentiel qu'il cartographie, après le schéma
+  (`validateDocumentPourReferentiel`, `Conformite::valider` ; `validateConformite`,
+  `Conformite::verifier` pour elle seule) :
+  - identité : `referentiel` du document (absent : `respire`) = `id` du
+    référentiel (`/referentiel`) ;
+  - journée : chaque pôle attendu — ceux du référentiel, ou ceux de
+    `perimetre.poles` quand `perimetre.partiel` est vrai, chacun pôle du
+    référentiel — figure une fois et une seule (`/poles`, « il manque le pôle
+    7 du référentiel », `/poles/i/poleNum`) ; chaque compétence est un code du
+    référentiel, du pôle où elle figure, et du périmètre s'il nomme ses
+    compétences ; les codes du kairos (connexions, nœuds, orphelines) sont des
+    codes du référentiel. Le marqueur `perimetre` d'une journée partielle
+    (`extractDay`, banc d'essai) n'est pas du schéma (`additionalProperties`
+    faux) : le schéma se vérifie sans lui, la conformité le lit. Seul un
+    appelant qui pose lui-même ce marqueur peut s'y fier (`extractDay`,
+    `PoleAssembler`, le banc — qui lit aussi celui d'une référence importée,
+    où il ne restreint que la comparaison) : le bac à sable ôte celui que
+    poserait le code d'un paquet, et valide sa journée contre le référentiel
+    qu'il lui a transmis, restreint au périmètre pour un run partiel ;
+    ailleurs — dépôt d'un runner, révision (au serveur comme dans la
+    relecture), importeurs —, le schéma se vérifie sur le document entier, et
+    un marqueur le fait échouer ;
+  - fusion : un domaine par pôle du référentiel (son pôle se déduit de ses
+    compétences), chacun une fois (`/domains`, « il manque le pôle 7 du
+    référentiel »), ses compétences de ce pôle ; pas plus de domaines que de
+    pôles ; les clés du profil ipsatif sont des numéros de pôle canoniques du
+    référentiel, et ses codes, des compétences de ce pôle. C'est la règle des
+    7 domaines de RESPIRE, rapportée à la version (T17 admettait un
+    sous-ensemble pour les autres référentiels : aucun producteur n'en rend,
+    `buildMergeDocument` rendant un domaine par pôle). Un domaine sans
+    compétence établie reste refusé par le schéma : « Fusion non
+    constructible » (UC-APP-02 A6, UC-ETA-04 A5) demeure, pour tout
+    référentiel.
+
+  C'est plus strict que l'ancien schéma, RESPIRE compris : il ne vérifiait que
+  la forme d'un code (`[1-7].NN`) ; un code que la version ne connaît pas, ou
+  d'un autre pôle, est désormais refusé — à l'extraction, l'appel échoue puis
+  son nouvel essai ; un kairos qui en relie un est refait, puis ramené à
+  `null` quand le kairos est facultatif.
+- **Quelle version.** Elle n'est pas dans le document (T17) : le contexte la
+  connaît.
+
+  | Parcours | Version lue |
+  |---|---|
+  | Cartographie standard (assistant) | celle choisie (« Référentiel » ; RESPIRE à sa dernière version publiée par défaut), enregistrée avec la cartographie (`referentielId`, `referentielVersion`) |
+  | Essayer | RESPIRE, sa dernière version publiée (la copie embarquée en repli) |
+  | Banc d'essai, bac à sable | le référentiel de la branche ; au périmètre, celui que le paquet reçoit |
+  | Rétrospective | le référentiel de l'original (celui de sa version stockée, sinon celui que nomme le document, sinon RESPIRE), à la version — la sienne ou une plus récente — que l'on choisit pour régénérer |
+  | Run de masse | celle que le run fige au lancement : `referentielId` / `referentielVersion` (facultatifs) de `POST /api/etablissement/cohortes/{id}/runs`, sinon la dernière publiée de RESPIRE ; ses jobs, le dépôt d'une journée par un runner (`POST /api/worker/jobs/{id}/result`) et la fusion d'un membre la lisent |
+  | Cartographie ouverte (Twin6) | celle choisie (RESPIRE par défaut) ; pour RESPIRE, la structure de `/api/twin9/meta` (noms de pôle accentués) tant qu'elle a les pôles et les codes de la version choisie |
+  | Analyse approfondie (Twin9) | celle du profil du run (§8.8) |
+  | Relecture : annotations, révisions (`ReviewReferentiel`) | la version stockée ; sinon, parmi les versions publiées du référentiel que nomme le document (RESPIRE à défaut), la plus récente à laquelle il est conforme — une journée de RESPIRE v7 reste relue contre v7 quand une version d'une autre structure paraît —, sinon la dernière ; sans version publiée, refus `422` |
+  | Visionneuses, partage, archive, remise à l'interface (`chargerReferentielDuDocument`) | la version notée ; sinon, parmi les versions publiées du référentiel que nomme le document (index statique), la plus récente à laquelle il est conforme — la règle de la relecture —, à défaut la dernière ; RESPIRE embarqué en repli pour un document qui n'en nomme pas ; un autre référentiel introuvable est dit, jamais lu avec RESPIRE |
+  | Corpus de démonstration (`#/jour`, `validate-corpus.mjs`) | RESPIRE v7 |
+
+  Le choix d'un référentiel publié (`ReferentielChoice`) lit l'index statique
+  `data/referentiel/index.json` : la dernière version de chacun, RESPIRE
+  d'abord ; sans index (copie hors ligne), aucun choix n'est offert.
+- **Les routes**, ce qui change :
+  - `POST /api/etablissement/cohortes/{id}/runs` : `referentielId`,
+    `referentielVersion` facultatifs ; version non publiée ou identifiant
+    inconnu → `422` « Version publiée du référentiel introuvable : … » ;
+    version sans identifiant → `422` ; un paquet qui ne sait pas
+    cartographier ce référentiel (ci-dessous) → `422` avec la raison ;
+  - `POST /api/worker/jobs/{id}/result` : le contrôle d'identité de T17
+    devient la conformité à la version du run → `422` « Document non
+    conforme au référentiel de son run » (`details`) ;
+  - `POST /api/cartographies/{id}/annotations` : le code est une compétence
+    de la version que lit la relecture (plus de repli sur la forme
+    `[1-7].NN`) ; sans version publiée → `422` ;
+  - `POST /api/cartographies/{id}/revisions` : schéma, identité, puis
+    conformité → `422` « Document non conforme au référentiel « id »
+    version » (`fields`) ; sans version publiée → `422` ;
+  - `GET /api/cartographe/cartographies/{id}` : un champ de plus,
+    `referentiel: {id, version}`, la version que lit la relecture (version
+    `null` sans version publiée).
+- **Les prompts** lisent le référentiel. Nom : « RESPIRE » pour l'id
+  `respire`, quel que soit son libellé ; sinon le libellé sans sa version
+  finale, à défaut l'id (`nomCourtReferentiel`, `PromptRunner::referentielName`,
+  comme `Referentiel::nomCourt` du moteur Twin9). Codes d'exemple : le premier
+  code du référentiel, et le deuxième de son quatrième pôle s'il existe, sinon
+  son dernier code (`codesExemples`, `PromptRunner::exampleCodes` ; RESPIRE
+  v7 : `1.01`, `4.02`). Pour RESPIRE v7, les prompts sont ceux d'hier, à
+  l'octet.
+  - Variables offertes aux gabarits d'extraction d'un paquet, en plus des
+    anciennes : `referentiel_nom` (les deux gabarits), `code_exemple_1`,
+    `code_exemple_2` (kairos). Un paquet dont les deux gabarits déclarent
+    `referentiel_nom` cartographie tout référentiel ; un autre — comme
+    `aurora-v3-reconstruit` 1.0.0, qui écrit « RESPIRE », « 7 pôles », « 1.01 »
+    et « 4.02 » en toutes lettres — seulement RESPIRE à sept pôles où ces
+    deux codes existent, dans deux pôles distincts
+    (`PromptRunner::referentielRefusal`, appliqué au lancement d'un run de
+    masse). Dans le navigateur, le site ne rend lui-même aucun gabarit de
+    paquet : le paquet embarqué exécute les constructeurs du moteur, qui
+    lisent le référentiel, et un paquet du bac à sable rend les siens dans son
+    propre code (le banc avertit quand ce code écrit un référentiel en dur).
+  - `scripts/build-default-prompt-package.mjs` écrit deux versions :
+    1.0.0, inchangée à l'octet (publiée, immuable), et 1.1.0, dont les
+    gabarits d'extraction déclarent ces variables (et « Les {{nb_poles}}
+    pôles de la feuille du jour »). Rendue pour RESPIRE v7 par
+    `PromptRunner`, 1.1.0 donne les prompts de 1.0.0 à l'octet (goldens de
+    masse inchangés) ; pour un référentiel lettré, ceux du moteur
+    (`DefaultPackageParityTest`). Le paquet embarqué du navigateur passe à
+    1.1.0 ; l'identifiant d'un run standard porte désormais aussi `id@version`
+    du référentiel. `referentielCompatible` reste déclaratif.
+- **Les comptes** : un run complet fait un appel par pôle et un kairos par
+  journée (`callsPerDayFor`), et un récit par compétence, par pôle et un
+  kairos à la fusion (`mergeNarrativeCallsFor`) ; Twin6, un scan par pôle et
+  le kairos (`twin6CallsFor`). RESPIRE v7 : 8, 69 et 8, les constantes
+  d'hier, qui restent.
+- **Les fiches de Twin6** (`fichesPourTwin6`) : celle du paquet public pour
+  un pôle dont elle nomme exactement les codes (RESPIRE v7 : P1 à P7, à
+  l'identique), sinon écrite depuis le document comme le fait
+  `ReferentielMoteur` (« # Pôle N — nom », puis « ## CODE — nom », sa
+  description, ses éléments un niveau plus bas, compétences dans l'ordre
+  naturel de leurs codes, jointes par « --- »).
+- **La release depuis le modèle atomique** (UC-EPI-03) : son contrôle de
+  complétude n'était plus « 61 compétences, 7 pôles » que par le schéma ; c'est
+  désormais la structure de la dernière version publiée de RESPIRE — mêmes
+  pôles, mêmes codes dans les mêmes pôles (`/poles`, `/competences`). Le modèle
+  atomique ne peut donc pas défaire une version publiée d'une autre structure
+  (UC-EPI-04 AN1, corrigé en partie) ; sans version publiée, la coupe est
+  refusée (`/version`).
+- **Ce qui reste propre à RESPIRE** : le modèle atomique des compétences
+  (`competence_versions`, `referentiel_poles`, l'atelier compétence par
+  compétence) — une version de RESPIRE d'une autre structure s'édite comme un
+  document (UC-EPI-04) ; les textes qui décrivent RESPIRE v7 (accueil, aide,
+  formation) ; l'outillage de corpus et de parité (`scripts/convert`,
+  `scripts/parity`, fiches et paquet public de Twin6 tirés du corpus) ; le
+  motif par défaut d'un référentiel sans `niveaux`, `\d\.\d{2}`
+  (`MOTIF_PAR_DEFAUT`) — une version de RESPIRE à dix pôles ou plus déclare
+  ses niveaux. Les gabarits scan-pôle et kairos de Twin6 ne sont pas
+  versionnés (UC-SYS-04 AN-2) : s'ils écrivent « RESPIRE » ou « 7 pôles » en
+  toutes lettres, un run Twin6 sur un autre référentiel garde ces mots, même
+  si la fiche jointe et le nombre d'appels suivent le référentiel.

@@ -120,6 +120,33 @@ describe('findDayNode', () => {
     expect(node.kind).toBe('pole')
     expect(node.pole.poleNum).toBe(1)
   })
+
+  // 2026-10-20 : tout référentiel — le pôle d'une compétence se lit dans le
+  // référentiel, plus dans la forme de son code (« A1 » ne nomme aucun pôle).
+  it('résout le pôle d’une compétence lettrée par le référentiel', () => {
+    const lettre = {
+      id: 'fictif-lettre',
+      poles: [{ num: 1, nom: 'A · Percevoir' }, { num: 2, nom: 'B · Agir' }],
+      competences: [{ code: 'A1', nom: 'Écouter', pole: 1 }, { code: 'B1', nom: 'Faire', pole: 2 }],
+    }
+    const doc = {
+      kind: 'cartographie-jour',
+      referentiel: 'fictif-lettre',
+      date: '2026-01-01',
+      poles: [{ poleNum: '2', competences: [{ code: 'B1', verdict: { statut: 'présence établie', confiance: 0.8 } }] }],
+    }
+    const node = findDayNode(doc, lettre, { kind: 'competence', code: 'B1' })
+    expect(node.ref.nom).toBe('Faire')
+    expect(node.refPole.nom).toBe('B · Agir')
+    expect(findDayNode(doc, lettre, { kind: 'pole', id: 'B · Agir' }).pole.poleNum).toBe('2')
+  })
+
+  it('retrouve le pôle d’un document réel, dont le poleNum est une chaîne (« 1 »)', () => {
+    const doc = { ...dayDoc, poles: dayDoc.poles.map((p) => ({ ...p, poleNum: String(p.poleNum) })) }
+    const node = findDayNode(doc, referentiel, { kind: 'pole', id: 'TETE — Penser & Comprendre' })
+    expect(node.pole.poleNum).toBe('1')
+    expect(findDayNode(doc, referentiel, { kind: 'competence', code: '1.01' }).refPole.num).toBe(1)
+  })
 })
 
 describe('DayView', () => {

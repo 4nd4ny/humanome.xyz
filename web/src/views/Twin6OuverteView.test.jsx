@@ -35,7 +35,7 @@ const MERGE_DOC = {
 
 const PKG = {
   id: 'twin6-ouverte', version: '1.0.0', modeleCibleDefaut: 'claude-sonnet-5',
-  templates: { scanPole: 'SCAN ${POLE}', kairos: 'KAIROS', fiches: { 1: 'F1' } },
+  templates: { scanPole: 'SCAN ${POLE}', kairos: 'KAIROS', fiches: { 1: '# Pôle 1 — TÊTE\n\n## 1.01 — Pensée\n' } },
 }
 const OFFER = {
   modeles: { 'claude-sonnet-5': [3.3, 16.5] },
@@ -45,6 +45,23 @@ const OFFER = {
   // solde ne bloque pas). Le test « solde insuffisant » abaisse ce solde à 1 USD.
   solde_microusd: 100_000_000,
 }
+
+// La version publiée de RESPIRE, FICTIVE : la même structure que /meta (un pôle, une compétence).
+const RESPIRE = {
+  id: 'respire', version: '7.0.0', label: 'RESPIRE v7',
+  poles: [{ num: 1, nom: 'TETE — Penser & Comprendre' }],
+  competences: [{ code: '1.01', nom: 'Pensée', pole: 1, description: 'Douter avec méthode.' }],
+}
+// Un autre référentiel publié, FICTIF : deux pôles lettrés.
+const LETTRE = {
+  id: 'fictif-lettre', version: '1.0.0', label: 'Fictif lettré',
+  poles: [{ num: 1, nom: 'A · Percevoir' }, { num: 2, nom: 'B · Agir' }],
+  competences: [{ code: 'A1', nom: 'Voir', pole: 1, description: 'Ce que voir veut dire.' }, { code: 'B1', nom: 'Faire', pole: 2 }],
+}
+const LISTE = [
+  { id: 'respire', label: 'RESPIRE v7', versions: [{ semver: '7.0.0', label: 'RESPIRE v7' }] },
+  { id: 'fictif-lettre', label: 'Fictif lettré', versions: [{ semver: '1.0.0', label: 'Fictif lettré' }] },
+]
 
 function baseDeps(over = {}) {
   return {
@@ -56,6 +73,9 @@ function baseDeps(over = {}) {
     listKeys: async () => [], // par défaut : aucune clé enregistrée
     revealKey: vi.fn(async () => ({ apiKey: 'sk-ant-stored-key' })),
     runEngine: vi.fn(async () => ({ document: MERGE_DOC, calls: new Array(8).fill(0) })),
+    // Sans index des référentiels : aucun choix, RESPIRE (sa version publiée).
+    listReferentiels: async () => [],
+    loadReferentiel: vi.fn(async ({ id } = {}) => ({ doc: id === 'fictif-lettre' ? LETTRE : RESPIRE, origin: 'published' })),
     now: () => new Date('2026-07-15T00:00:00Z'),
     lib: fakeLib,
     ...over,
@@ -123,6 +143,75 @@ describe('Twin6OuverteView', () => {
       URL.createObjectURL = origCreate
       URL.revokeObjectURL = origRevoke
     }
+  })
+
+  it('RESPIRE par défaut : le moteur lit la structure de /meta, celle de sa version publiée, et la fiche du paquet', async () => {
+    const deps = baseDeps()
+    render(<Twin6OuverteView deps={deps} />)
+    fireEvent.change(await screen.findByLabelText(/Votre portfolio/), {
+      target: { value: 'Un portfolio suffisamment long pour être analysé, avec du contenu réflexif réel.' },
+    })
+    expect(await screen.findByText(/2 appels au modèle \(1 pôle \+ synthèse\)/)).toBeDefined()
+    expect(screen.queryByRole('combobox', { name: 'Référentiel' })).toBeNull() // sans index, pas de choix
+    fireEvent.click(screen.getByRole('button', { name: 'Lancer la cartographie ouverte' }))
+    await waitFor(() => expect(deps.runEngine).toHaveBeenCalledTimes(1))
+    const arg = deps.runEngine.mock.calls[0][0]
+    expect(arg.referentiel.poles).toEqual([{ num: 1, nom: 'TÊTE — Penser & Comprendre' }]) // les noms de /meta
+    expect(arg.templates.fiches).toEqual({ 1: PKG.templates.fiches[1] }) // la fiche du paquet, telle quelle
+    expect(deps.loadReferentiel.mock.calls[0][0]).toEqual({}) // la dernière version publiée de RESPIRE
+    // Le total des compétences établies est celui de ce référentiel.
+    expect(await screen.findAllByText('1 / 1')).toHaveLength(2)
+  })
+
+  it('un autre référentiel choisi : le moteur lit son document, une fiche écrite par pôle, et le décompte suit ses pôles', async () => {
+    const deps = baseDeps({ listReferentiels: async () => LISTE })
+    render(<Twin6OuverteView deps={deps} />)
+    fireEvent.change(await screen.findByLabelText(/Votre portfolio/), {
+      target: { value: 'Un portfolio suffisamment long pour être analysé, avec du contenu réflexif réel.' },
+    })
+    const choix = await screen.findByRole('combobox', { name: 'Référentiel' })
+    expect(choix.value).toBe('respire@7.0.0')
+    fireEvent.change(choix, { target: { value: 'fictif-lettre@1.0.0' } })
+    expect(await screen.findByText(/3 appels au modèle \(2 pôles \+ synthèse\)/)).toBeDefined()
+    expect(deps.loadReferentiel).toHaveBeenLastCalledWith({ id: 'fictif-lettre', version: '1.0.0' })
+
+    fireEvent.click(screen.getByRole('button', { name: 'Lancer la cartographie ouverte' }))
+    await waitFor(() => expect(deps.runEngine).toHaveBeenCalledTimes(1))
+    const arg = deps.runEngine.mock.calls[0][0]
+    expect(arg.referentiel).toBe(LETTRE)
+    expect(Object.keys(arg.templates.fiches)).toEqual(['1', '2'])
+    expect(arg.templates.fiches[1]).toBe('# Pôle 1 — A · Percevoir\n\n## A1 — Voir\n\nCe que voir veut dire.\n')
+  })
+
+  it('une version de RESPIRE d’une autre structure que /meta : le moteur lit son document', async () => {
+    const six = { ...RESPIRE, version: '8.0.0', poles: [...RESPIRE.poles, { num: 2, nom: 'COEUR — Relier' }],
+      competences: [...RESPIRE.competences, { code: '2.01', nom: 'Écouter', pole: 2 }] }
+    const deps = baseDeps({ loadReferentiel: vi.fn(async () => ({ doc: six, origin: 'published' })) })
+    render(<Twin6OuverteView deps={deps} />)
+    fireEvent.change(await screen.findByLabelText(/Votre portfolio/), {
+      target: { value: 'Un portfolio suffisamment long pour être analysé, avec du contenu réflexif réel.' },
+    })
+    expect(await screen.findByText(/3 appels au modèle/)).toBeDefined()
+    fireEvent.click(screen.getByRole('button', { name: 'Lancer la cartographie ouverte' }))
+    await waitFor(() => expect(deps.runEngine).toHaveBeenCalledTimes(1))
+    expect(deps.runEngine.mock.calls[0][0].referentiel).toBe(six)
+  })
+
+  it('un référentiel choisi qui ne se charge pas : message, lancement impossible', async () => {
+    const deps = baseDeps({
+      listReferentiels: async () => LISTE,
+      loadReferentiel: vi.fn(async ({ id } = {}) => {
+        if (id === 'fictif-lettre') throw new Error('Le référentiel « fictif-lettre » 1.0.0 n\'a pas pu être chargé')
+        return { doc: RESPIRE, origin: 'published' }
+      }),
+    })
+    render(<Twin6OuverteView deps={deps} />)
+    fireEvent.change(await screen.findByLabelText(/Votre portfolio/), {
+      target: { value: 'Un portfolio suffisamment long pour être analysé, avec du contenu réflexif réel.' },
+    })
+    fireEvent.change(await screen.findByRole('combobox', { name: 'Référentiel' }), { target: { value: 'fictif-lettre@1.0.0' } })
+    expect((await screen.findByRole('alert')).textContent).toContain('« fictif-lettre » 1.0.0 n\'a pas pu être chargé')
+    expect(screen.getByRole('button', { name: 'Lancer la cartographie ouverte' })).toHaveProperty('disabled', true)
   })
 
   it('exige une clé API quand la voie « clé perso » est choisie', async () => {

@@ -67,7 +67,11 @@ la page Confidentialité.
    confidentialité courante (« Privée », « Partagée avec mon cartographe »,
    « Partager » — libellé « Publique (partageable) » jusqu'au 2026-10-14).
 4. Il clique « Voir » sur la fusion : la visionneuse remplace le tableau de
-   bord, charge le référentiel publié (repli sur la copie embarquée) et rend
+   bord, charge le référentiel **de la cartographie** (2026-10-20 : la version
+   que l'entrée a notée, sinon le référentiel que nomme le document à sa
+   dernière version publiée, RESPIRE s'il n'en nomme aucun, repli sur la copie
+   embarquée de RESPIRE ; un autre référentiel introuvable est dit — « Le
+   référentiel « … » n'a pas pu être chargé » —, jamais lu avec RESPIRE) et rend
    la **vue chronologique** (sunburst cumulé, frise, calendrier) sous le
    titre de la cartographie.
 5. « ← Retour au tableau de bord » restaure les quatre blocs.
@@ -160,7 +164,7 @@ la page Confidentialité.
 | Front | `web/src/views/espace/CartographiesPanel.jsx` | Liste, libellés, badge, « Voir », « Télécharger le JSON » |
 | Front | `web/src/lib/carto-store.js` — `createCartoStore`, `createIndexedDbAdapter`, singleton | Lecture locale, base `humanome-cartographies` |
 | Front | `web/src/lib/archive.js` — `downloadJson` | Téléchargement d'un document |
-| Front | `web/src/views/espace/CartographyViewer.jsx`, `web/src/views/DayView.jsx`, `MergeView.jsx` ; `web/src/data/referentiel.js` | Visualisation en lecture seule, référentiel publié ou embarqué |
+| Front | `web/src/views/espace/CartographyViewer.jsx`, `web/src/views/DayView.jsx`, `MergeView.jsx` ; `web/src/lib/referentiel-du-document.js`, `web/src/data/referentiel.js` | Visualisation en lecture seule, référentiel publié ou embarqué |
 | Front | `web/src/lib/twin9/mapper.js` — `twin9ToMergeDocument` | Projection d'une analyse Twin9 vers la vue chronologique (A3, RG5 ; couvert aussi par `web/src/lib/twin9/mapper.test.js`) |
 | API | `GET /api/cartographies`, `GET /api/cartographies/{id}` — `api/src/routes/cartographies.php` | Consultation des copies serveur |
 | API | `api/src/Middleware/RequireRole.php` — `any('apprenant')` | 401 sans session, 403 sans rôle `apprenant` (E4) |
@@ -191,7 +195,7 @@ la page Confidentialité.
 
 | ID | Scénario | Niveau | Vérifie | Fichier |
 |---|---|---|---|---|
-| UC-APP-03-F01 | Nominal | IHM | `<App/>` : blocs, liste triée, libellés, badge, « Voir » la fusion (feuilles de merge3 au calendrier, secteurs), référentiel publié chargé, retour, aucune requête `cartographies` | `web/test/usecases/functional/uc-app-03-consulter-ses-cartographies.test.jsx` |
+| UC-APP-03-F01 | Nominal | IHM | `<App/>` : blocs, liste triée, libellés, badge, « Voir » la fusion (feuilles de merge3 au calendrier, secteurs), référentiel de la cartographie chargé (version notée 7.0.0 : index lu, copie embarquée de cette version, la dernière 7.9.0 n'est plus lue à sa place — 2026-10-20), retour, aucune requête `cartographies` | `web/test/usecases/functional/uc-app-03-consulter-ses-cartographies.test.jsx` |
 | UC-APP-03-F02 | A1 | IHM | Sans session : bandeau, liste et visionneuse identiques | idem |
 | UC-APP-03-F03 | A1 | IHM | Hors ligne : bandeau copie statique, référentiel publié tenté puis embarqué | idem |
 | UC-APP-03-F04 | A2 (anomalie A-02) | IHM | Vue du jour « Journée du 05/01/2026 » ; **comportement actuel** : lien « ← Retour à la cartographie » vers `#/merge` | idem |
@@ -214,6 +218,8 @@ la page Confidentialité.
 - `web/src/views/espace/CartographyViewer.test.jsx` — type Twin9.
 - `web/src/lib/carto-store.test.js` — CRUD sur l'adaptateur mémoire.
 - `web/src/data/referentiel.test.js` — référentiel publié, cache, repli embarqué.
+- `web/src/views/espace/CartographyViewer.test.jsx` — « le référentiel de la cartographie » : version notée par l'entrée, sinon celui du document ; introuvable, dit (2026-10-20).
+- `web/src/lib/referentiel-du-document.test.js` — choix et chargement du référentiel d'une cartographie.
 - `api/tests/CartographiesTest.php` — routes cartographies (création, liste, lecture, portée).
 - `web/e2e/parcours-apprenant.e2e.js` — étapes « tableau de bord » et « visualisation ».
 

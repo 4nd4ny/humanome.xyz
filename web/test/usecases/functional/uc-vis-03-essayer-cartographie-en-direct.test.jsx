@@ -16,6 +16,7 @@ import { resetApiClient } from '../../../src/api/client.js'
 import { clearReferentielCache } from '../../../src/data/referentiel.js'
 import * as fakeLib from '../../../src/test/fake-sunburst-lib.js'
 import { FIXTURE_DAYS, fakeDemoServer, jsonResponse } from '../support/vis.js'
+import referentielV7 from '../../../../schemas/fixtures/referentiel-respire-v7.json'
 
 const TEXT =
   'Aujourd’hui j’ai animé la réunion de l’atelier vélo : j’ai préparé l’ordre du jour, ' +
@@ -348,5 +349,40 @@ describe('UC-VIS-03 — refus et limites vus par le visiteur', () => {
     expect(alert.textContent).toContain('413')
     expect(server.rejected).toEqual(['too_long', 'too_long']) // essai + nouvel essai du moteur
     expect(server.posts).toHaveLength(0)
+  })
+})
+
+describe('UC-VIS-03 — le référentiel publié pilote la démo (2026-10-20)', () => {
+  it('UC-VIS-03-F24 — la dernière version publiée de RESPIRE compte six pôles : la page le dit, progression sur 7, 7 appels', async () => {
+    // Une version de RESPIRE en six pôles (le pôle 7 retiré), publiée.
+    const six = {
+      ...structuredClone(referentielV7),
+      version: '8.0.0',
+      label: 'RESPIRE v8',
+      poles: referentielV7.poles.filter((p) => p.num !== 7),
+      competences: referentielV7.competences.filter((c) => c.pole !== 7),
+    }
+    const server = fakeDemoServer({
+      createHash,
+      difficultyBits: 2,
+      answer: modelAnswer,
+      extra: (url) => {
+        if (url === 'data/referentiel/index.json') {
+          return jsonResponse(200, [{ referentielId: 'respire', semver: '8.0.0', label: 'RESPIRE v8', fichier: 'respire-v8.0.0.json' }])
+        }
+        if (url === 'data/referentiel/respire-v8.0.0.json') return jsonResponse(200, six)
+        return undefined
+      },
+    })
+    openApp()
+    await waitFor(() =>
+      expect(screen.getByText(/sur le référentiel RESPIRE \(6 pôles instruits un par un/)).toBeDefined(),
+    )
+    await pasteAndRun()
+    expect((await screen.findByTestId('essayer-progress')).textContent).toMatch(/appel \d sur 7/)
+    await screen.findByTestId('demo-banner', undefined, { timeout: 10_000 })
+    expect(server.rejected).toEqual([])
+    expect(server.posts).toHaveLength(7)
+    expect(server.posts.at(-1).prompt).toContain('Les 6 pôles de la feuille du jour')
   })
 })

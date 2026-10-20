@@ -3,12 +3,14 @@
 //
 // Le scénario est joué sur l'application ENTIÈRE (<App/>) ouverte sur la page
 // d'une cohorte (#/etablissement/cohorte/7) : sélection des membres, choix du
-// paquet publié, estimation OBLIGATOIRE du coût, confirmation, puis suivi par
-// polling (horloge simulée pour l'intervalle de 5 s) et annulation. Seule
-// l'API est simulée, aux formes réelles des réponses.
+// paquet publié (et du référentiel publié, RESPIRE par défaut), estimation
+// OBLIGATOIRE du coût, confirmation, puis suivi par polling (horloge simulée
+// pour l'intervalle de 5 s) et annulation. Seuls l'API et les fichiers
+// statiques du référentiel sont simulés, aux formes réelles des réponses.
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
 import { act, cleanup, fireEvent, screen, within } from '@testing-library/react'
 import { resetApiClient } from '../../../src/api/client.js'
+import { clearReferentielCache } from '../../../src/data/referentiel.js'
 import {
   CSRF,
   cohorteDetail,
@@ -29,6 +31,7 @@ afterEach(() => {
   vi.unstubAllGlobals()
   window.location.hash = ''
   resetApiClient()
+  clearReferentielCache()
 })
 
 const THREE_MEMBERS = cohorteDetail({
@@ -306,5 +309,42 @@ describe('UC-ETA-03 — l’établissement lance et suit un run de masse', () =>
     expect(screen.getByTestId('etab-run-progress').textContent).toContain('statut : budget_exceeded')
     // Voir « Anomalies constatées » : ce run ne peut pas être annulé depuis le site.
     expect(screen.queryByRole('button', { name: 'Annuler le run' })).toBeNull()
+  })
+  it('UC-ETA-03-F29 — A8 : choix d’un autre référentiel publié → estimation à ses pôles, POST avec sa version', async () => {
+    const neuf = {
+      schemaVersion: '2.0.0',
+      kind: 'referentiel',
+      id: 'fictif-neuf',
+      version: '1.0.0',
+      label: 'Fictif à neuf pôles',
+      poles: Array.from({ length: 9 }, (_, i) => ({ num: i + 1, nom: `Pôle fictif ${i + 1}` })),
+      competences: Array.from({ length: 18 }, (_, i) => ({ code: `${Math.floor(i / 2) + 1}.0${(i % 2) + 1}`, nom: `C${i}`, pole: Math.floor(i / 2) + 1 })),
+    }
+    const api = cohorteApi({
+      'GET data/referentiel/index.json': jsonResponse(200, [
+        { referentielId: 'respire', semver: '7.0.0', label: 'RESPIRE v7', fichier: 'respire-7.0.0.json', publishedAt: '2026-06-01T09:00:00' },
+        { referentielId: 'fictif-neuf', semver: '1.0.0', label: 'Fictif à neuf pôles', fichier: 'fictif-neuf-1.0.0.json', publishedAt: '2026-10-20T09:00:00' },
+      ]),
+      'GET data/referentiel/fictif-neuf-1.0.0.json': jsonResponse(200, neuf),
+      'POST api/etablissement/cohortes/7/runs': jsonResponse(201, { runId: 42, jobs: 5 }),
+      'GET api/etablissement/runs/42': jsonResponse(200, runBoard({ referentiel: { id: 'fictif-neuf', version: '1.0.0' } })),
+    })
+    openApp('#/etablissement/cohorte/7')
+
+    const select = await screen.findByRole('combobox', { name: 'Référentiel' })
+    expect([...select.options].map((o) => o.textContent)).toEqual(['RESPIRE v7', 'Fictif à neuf pôles'])
+    expect(select.value).toBe('respire@7.0.0')
+
+    fireEvent.change(select, { target: { value: 'fictif-neuf@1.0.0' } })
+    const block = await estimate()
+    expect(block.textContent).toContain('2 membre(s) sélectionné(s), 5 journée(s) au total, soit 50 appels LLM')
+    await confirm()
+    expect(api.callsTo('POST api/etablissement/cohortes/7/runs')[0].body).toEqual({
+      promptPackageId: 'aurora-v3-reconstruit',
+      promptPackageVersion: '1.0.0',
+      referentielId: 'fictif-neuf',
+      referentielVersion: '1.0.0',
+    })
+    expect(await screen.findByTestId('etab-run-progress')).toBeDefined()
   })
 })

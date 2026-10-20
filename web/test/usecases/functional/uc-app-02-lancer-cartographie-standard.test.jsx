@@ -21,7 +21,7 @@ import { buildExtractionPrompt } from '@engine/pipeline/extract.js'
 import * as fakeLib from '../../../src/test/fake-sunburst-lib.js'
 import { FakeIDBKeyRange, createFakeIndexedDb } from '../support/appl-fake-indexeddb.js'
 import { bodyOf, jsonResponse, routedFetch } from '../support/appl-http.js'
-import { anthropicAnswer, portfolioText, proxyAnswer } from '../support/appl-llm.js'
+import { FIXTURE_DAYS, anthropicAnswer, portfolioText, proxyAnswer } from '../support/appl-llm.js'
 
 const idb = createFakeIndexedDb()
 const CARTOS = ['humanome-cartographies', 'cartographies']
@@ -97,6 +97,42 @@ function hangUntilAbort(init) {
   })
 }
 
+/** Cinq pôles lettrés, deux capacités chacun (la forme de l'Humanome V18), fictifs. */
+const LETTRE = {
+  schemaVersion: '2.0.0',
+  kind: 'referentiel',
+  id: 'fictif-lettre',
+  version: '1.0.0',
+  label: 'Fictif lettré',
+  poles: ['A', 'B', 'C', 'D', 'E'].map((l, i) => ({ num: i + 1, nom: `${l} · Pôle fictif ${l}` })),
+  competences: ['A', 'B', 'C', 'D', 'E'].flatMap((l, i) =>
+    [1, 2].map((n) => ({ code: `${l}${n}`, nom: `Capacité fictive ${l}${n}`, pole: i + 1 })),
+  ),
+}
+
+/**
+ * Réponse du proxy pour un prompt du référentiel lettré : la première capacité
+ * du pôle établie (pièces et délibération d'une compétence établie du corpus),
+ * l'autre en court-circuit ; kairos absent.
+ */
+function lettreProxy(prompt) {
+  let text = 'null'
+  if (!prompt.includes('SYNTHÈSE KAIROS')) {
+    const num = Number(/# Pôle (\d+) — /.exec(prompt)[1])
+    const codes = /les \d+ codes\n(.+) dans cet ordre/.exec(prompt)[1].split(', ')
+    const source = FIXTURE_DAYS['2026-01-05'].poles[1]
+    const etablie = source.competences.find((c) => c.code === '2.01')
+    const courtCircuit = source.competences.find((c) => c.courtCircuit)
+    text = JSON.stringify({
+      poleNum: String(num),
+      passagesSaillants: source.passagesSaillants,
+      competences: codes.map((code, i) => ({ ...(i === 0 ? etablie : courtCircuit), code })),
+      rapport: null,
+    })
+  }
+  return jsonResponse(200, { text, usage: { inputTokens: 100, outputTokens: 100 }, model: 'mock', stopReason: 'end_turn' })
+}
+
 /** Réponse RÉELLE de PUT /api/keys : 204 sans corps. */
 const noContent = () => ({ ok: true, status: 204, headers: { get: () => null }, json: async () => null, text: async () => '' })
 
@@ -129,7 +165,7 @@ describe('UC-APP-02 — scénario nominal : Service humanome', () => {
     fireEvent.click(await screen.findByRole('radio', { name: /Journal de Maya — 3 journée\(s\)/ }))
     next()
     await screen.findByTestId('step-prompt')
-    expect(screen.getByRole('radio', { name: /aurora-v3-reconstruit@1\.0\.0/ }).checked).toBe(true)
+    expect(screen.getByRole('radio', { name: /aurora-v3-reconstruit@1\.1\.0/ }).checked).toBe(true)
     next()
     fireEvent.click(await screen.findByRole('radio', { name: /Service humanome/ }))
     next()
@@ -159,7 +195,8 @@ describe('UC-APP-02 — scénario nominal : Service humanome', () => {
     expect(saved.every((c) => c.visibility === 'privee' && c.serverId === null)).toBe(true)
     const merge = saved.find((c) => c.type === 'merge')
     expect(merge.titre).toBe('Cartographie — Journal de Maya')
-    expect(merge.promptPackage).toEqual({ id: 'aurora-v3-reconstruit', version: '1.0.0' })
+    expect(merge.promptPackage).toEqual({ id: 'aurora-v3-reconstruit', version: '1.1.0' })
+    expect(merge.referentiel).toEqual({ id: 'respire', version: '7.0.0' })
     expect(merge.runMeta).toMatchObject({
       portfolioTitre: 'Journal de Maya',
       mode: 'humanome',
@@ -212,7 +249,7 @@ describe('UC-APP-02 — scénarios alternatifs', () => {
     next()
     expect((await screen.findByTestId('packages-fallback')).textContent).toContain('version embarquée proposée')
     expect(screen.getAllByRole('radio').map((r) => r.closest('label').textContent)).toEqual([
-      expect.stringContaining('aurora-v3-reconstruit@1.0.0 (embarqué)'),
+      expect.stringContaining('aurora-v3-reconstruit@1.1.0 (embarqué)'),
     ])
     next()
     await screen.findByTestId('step-fournisseur')
@@ -232,7 +269,7 @@ describe('UC-APP-02 — scénarios alternatifs', () => {
     await screen.findByRole('radio', { name: /aurora-lab@2\.0\.0/ })
     // [comportement ACTUEL, anomalie A-01] : le défaut désigné par le serveur
     // n'est ni présélectionné ni signalé — l'embarqué reste coché.
-    expect(screen.getByRole('radio', { name: /aurora-v3-reconstruit@1\.0\.0/ }).checked).toBe(true)
+    expect(screen.getByRole('radio', { name: /aurora-v3-reconstruit@1\.1\.0/ }).checked).toBe(true)
     expect(screen.getByRole('radio', { name: /aurora-lab@2\.0\.0/ }).checked).toBe(false)
     expect(screen.getByRole('radio', { name: /aurora-lab@2\.0\.0/ }).closest('label').textContent).not.toMatch(/défaut/i)
     fireEvent.click(screen.getByRole('radio', { name: /aurora-lab@2\.0\.0/ }))
@@ -247,7 +284,7 @@ describe('UC-APP-02 — scénarios alternatifs', () => {
     const saved = idb.values(...CARTOS)
     expect(saved.every((c) => c.promptPackage.id === 'aurora-lab' && c.promptPackage.version === '2.0.0')).toBe(true)
     expect(idb.values(...RUNS).length).toBeGreaterThan(0)
-    expect(idb.entries(...RUNS).some(([k]) => k.includes('::aurora-lab@2.0.0:checkpoint:'))).toBe(true)
+    expect(idb.entries(...RUNS).some(([k]) => k.includes('::aurora-lab@2.0.0::respire@7.0.0:checkpoint:'))).toBe(true)
     // v1 : le prompt exécuté reste celui du pipeline embarqué (Aurora v3) —
     // le document du paquet publié n'est même jamais téléchargé…
     expect(fetchMock.calls.some((c) => c.url.startsWith('api/prompt-packages/aurora-lab/'))).toBe(false)
@@ -348,8 +385,59 @@ describe('UC-APP-02 — scénarios alternatifs', () => {
     expect((await screen.findByTestId('run-success', {}, { timeout: 15000 })).textContent).toBe(
       'Run terminé : 2 document(s) jour enregistrés (visibilité « privée »).',
     )
-    expect(screen.getByTestId('run-merge-notice').textContent).toContain('au moins une compétence établie dans chacun des 7 pôles')
+    expect(screen.getByTestId('run-merge-notice').textContent).toContain('au moins une compétence établie dans chacun des pôles du référentiel')
     expect(idb.values(...CARTOS).map((c) => c.type)).toEqual(['jour', 'jour'])
+  })
+
+  it('UC-APP-02-F26 — A7 : un autre référentiel publié choisi : le run en lit la structure (5 pôles lettrés), documents nommés, tracés avec sa version', async () => {
+    await seedPortfolio()
+    const index = [
+      { referentielId: 'respire', semver: '7.0.0', label: 'RESPIRE v7', publishedAt: '2026-10-18T11:23:39', fichier: 'respire-v7.0.0.json' },
+      { referentielId: 'fictif-lettre', semver: '1.0.0', label: 'Fictif lettré', publishedAt: '2026-10-20T09:00:00', fichier: 'fictif-lettre-v1.0.0.json' },
+    ]
+    const fetchMock = stubNetwork({
+      llm: (prompt) => lettreProxy(prompt),
+      extra: [
+        ['data/referentiel/index.json', () => jsonResponse(200, index)],
+        ['data/referentiel/respire-v7.0.0.json', () => jsonResponse(200, getReferentiel())],
+        ['data/referentiel/fictif-lettre-v1.0.0.json', () => jsonResponse(200, LETTRE)],
+      ],
+    })
+    openWizard()
+    fireEvent.click(await screen.findByRole('radio', { name: /Journal de Maya — 3 journée\(s\)/ }))
+    next()
+    // Étape 2 : les référentiels publiés, RESPIRE par défaut.
+    const choix = await screen.findByRole('combobox', { name: 'Référentiel' })
+    expect([...choix.options].map((o) => o.textContent)).toEqual(['RESPIRE v7', 'Fictif lettré'])
+    expect(choix.value).toBe('respire@7.0.0')
+    fireEvent.change(choix, { target: { value: 'fictif-lettre@1.0.0' } })
+    await waitFor(() => expect(fetchMock.calls.some((c) => c.url === 'data/referentiel/fictif-lettre-v1.0.0.json')).toBe(true))
+    await waitFor(() => expect(screen.getByRole('button', { name: 'Continuer' }).disabled).toBe(false))
+    next()
+    fireEvent.click(await screen.findByRole('radio', { name: /Service humanome/ }))
+    next()
+    // Estimation sur sa structure : 3 × (5 pôles + kairos) + (10 capacités + 5 pôles + kairos) récits.
+    const estimate = await screen.findByTestId('run-estimate')
+    expect(estimate.textContent).toContain('34 appels au modèle')
+    expect(screen.getByText(/compte aussi les 16 appels/)).toBeDefined()
+    next()
+    await screen.findByTestId('step-execution')
+    await launch()
+    await screen.findByTestId('run-success', {}, { timeout: 15000 })
+
+    const posts = llmPosts(fetchMock).map(bodyOf)
+    expect(posts).toHaveLength(18)
+    expect(posts[0].prompt).toContain('pour UN pôle du référentiel Fictif lettré, en jouant')
+    expect(posts.at(-1).prompt).toContain('# Référentiel Fictif lettré (5 pôles, 10 compétences)')
+    const saved = idb.values(...CARTOS)
+    expect(saved.map((c) => c.type).sort()).toEqual(['jour', 'jour', 'jour', 'merge'])
+    expect(saved.every((c) => c.referentiel.id === 'fictif-lettre' && c.referentiel.version === '1.0.0')).toBe(true)
+    expect(saved.every((c) => c.document.referentiel === 'fictif-lettre')).toBe(true)
+    expect(saved.filter((c) => c.type === 'jour').every((c) => c.document.poles.length === 5)).toBe(true)
+    const merge = saved.find((c) => c.type === 'merge')
+    expect(merge.document.domains.map((d) => d.id)).toEqual(LETTRE.poles.map((p) => p.nom))
+    // Les checkpoints de ce run sont les siens : ni ceux d'un run de RESPIRE ni l'inverse.
+    expect(idb.entries(...RUNS).some(([k]) => k.includes('::aurora-v3-reconstruit@1.1.0::fictif-lettre@1.0.0:checkpoint:'))).toBe(true)
   })
 })
 

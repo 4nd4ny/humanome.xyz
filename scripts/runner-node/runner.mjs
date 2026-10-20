@@ -9,9 +9,10 @@
 // Chaque job = (membre, journée) : le runner exécute l'extraction de la journée
 // avec LE MOTEUR JS (engine extractDay, kairosOptional) contre le LLM choisi —
 // options CLI (--provider/--endpoint/--model) ou configuration portée par le
-// job. Le MERGE (déterministe, parité oracle) reste au moteur côté
-// navigateur/Node à l'affichage : le runner ne produit que des documents
-// `cartographie-jour`.
+// job —, sur le référentiel COMPLET que le job a figé (ses pôles, ses codes :
+// un appel par pôle, plus le kairos). Le MERGE (déterministe, parité oracle)
+// reste au moteur côté navigateur/Node à l'affichage : le runner ne produit
+// que des documents `cartographie-jour`.
 //
 // SANS ÉTAT : aucun fichier local, aucune reprise propre — un job interrompu
 // est rendu à la file par l'expiration du lease serveur. RGPD : le journal
@@ -23,6 +24,7 @@
 import { pathToFileURL } from 'node:url'
 
 import {
+  callsPerDayFor,
   createProvider,
   extractDay,
   getModelPricing,
@@ -481,7 +483,7 @@ export function createRunner({
       },
     }
 
-    log(`job ${job.id} (journée ${job.date}) : extraction via ${cfg.provider}/${cfg.model} (8 appels LLM)`)
+    log(`job ${job.id} (journée ${job.date}) : extraction via ${cfg.provider}/${cfg.model} (${callsPerDayFor(referentiel)} appels LLM)`)
     try {
       const document = await extractDay({
         dayText: job.dayText,

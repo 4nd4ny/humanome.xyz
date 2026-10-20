@@ -8,16 +8,18 @@
 | **Niveau** | Objectif utilisateur |
 | **Cahier des charges** | §3.2 (déclencher une cartographie), §4.3 (découpage journalier, fusion obligatoire, traçabilité prompt/référentiel), §5 (clé API personnelle, LLM peu coûteux pour l'usage gratuit), §6.1 ; principe RGPD n°5 de `CLAUDE.md` (journalisation minimale) |
 | **Décisions** | ADR-001 (exécution client-first), ADR-004 (clés API personnelles), ADR-005 (la masse passe par la file serveur — hors de ce cas) |
-| **Statut** | Implémenté (P8.3) ; version par défaut exposée par le serveur (M7) mais non exploitée par l'assistant (anomalie A-01) |
+| **Statut** | Implémenté (P8.3) ; version par défaut exposée par le serveur (M7) mais non exploitée par l'assistant (anomalie A-01) ; choix du référentiel publié, dont le run lit la structure (2026-10-20, A7) |
 
 ## Objectif
 
 Produire, à partir d'un portfolio local (UC-APP-01), une **cartographie de
 compétences** : un document `cartographie-jour` par journée puis leur
 **fusion chronologique** `cartographie-merge`, en choisissant la version de
-prompt et le fournisseur du modèle, après une estimation de coût, avec des
-**checkpoints** qui permettent d'interrompre et de reprendre — le tout
-exécuté dans le navigateur, résultats conservés localement.
+prompt, le référentiel publié (RESPIRE par défaut) et le fournisseur du
+modèle, après une estimation de coût, avec des **checkpoints** qui permettent
+d'interrompre et de reprendre — le tout exécuté dans le navigateur, résultats
+conservés localement. Le run lit la structure du référentiel dans son JSON :
+nombre et numéros des pôles, codes, nombre d'appels.
 
 ## Déclencheur
 
@@ -65,41 +67,53 @@ Cartographier mes écrits », ou le bouton du tableau de bord `#/espace`).
 ## Scénario nominal
 
 1. L'apprenant ouvre l'assistant. L'espace vérifie la session
-   (`GET api/auth/me`) ; l'assistant charge le référentiel publié (repli sur
-   la copie embarquée), les portfolios locaux et les versions de prompt
+   (`GET api/auth/me`) ; l'assistant charge RESPIRE, sa dernière version
+   publiée (`data/referentiel/index.json` puis le fichier de la version ; repli
+   sur la copie embarquée), les portfolios locaux et les versions de prompt
    (`GET api/prompt-packages/default` puis `GET api/prompt-packages`).
 2. **Portfolio** : il choisit un portfolio ; chaque entrée affiche son nombre
    de journées (segments datés regroupés par date, textes d'une même date
    concaténés, tri chronologique ; segments non datés ignorés). « Continuer »
    n'est actif qu'avec au moins une journée.
-3. **Version de prompt** : le paquet embarqué `aurora-v3-reconstruit@1.0.0`
+3. **Version de prompt** : le sélecteur « Référentiel » propose les
+   référentiels publiés (index statique), RESPIRE à sa dernière version par
+   défaut (un autre : A7) ; le paquet embarqué `aurora-v3-reconstruit@1.1.0`
    est proposé en tête et présélectionné, suivi des versions publiées ;
-   l'apprenant garde ou change la version.
+   l'apprenant garde ou change la version. « Continuer » attend que le
+   référentiel soit chargé.
 4. **Fournisseur** : il choisit « Service humanome » (modèle et plafonds
    imposés par la plateforme, preuve de travail à chaque appel).
 5. **Estimation** : l'assistant affiche le nombre de journées × la taille
-   moyenne, le nombre d'appels (8 par journée + 69 récits de fusion), les
-   tokens d'entrée/sortie, le coût estimé (ou « inconnu » hors table de prix)
-   et la durée, avec l'avertissement de prix indicatifs.
+   moyenne, le nombre d'appels (un par pôle du référentiel et un kairos par
+   journée, plus un récit de fusion par compétence, par pôle et un kairos —
+   RESPIRE v7 : 8 par journée + 69), les tokens d'entrée/sortie, le coût estimé
+   (ou « inconnu » hors table de prix) et la durée, avec l'avertissement de prix
+   indicatifs.
 6. **Exécution** : « Lancer le run ». Une première preuve de travail est
-   pré-résolue, puis, journée par journée, le moteur appelle 7 fois le modèle
-   (un appel par pôle) et une fois pour la synthèse kairos ; chacun de ces
-   8 prompts porte, après un préambule de rôle, l'en-tête « # Feuille de
-   portfolio du JJ/MM/AAAA (AAAA-MM-JJ) » (`formatDateFr`,
-   `narrative-prompts.js`) suivi du texte de la journée entre balises
-   `<portfolio>` ;
+   pré-résolue, puis, journée par journée, le moteur appelle le modèle une fois
+   par pôle du référentiel (7 pour RESPIRE v7) et une fois pour la synthèse
+   kairos ; ces prompts nomment le référentiel (« RESPIRE », ou le libellé
+   d'un autre sans sa version) et chacun porte, après un préambule de rôle,
+   l'en-tête « # Feuille de portfolio du JJ/MM/AAAA (AAAA-MM-JJ) »
+   (`formatDateFr`, `narrative-prompts.js`) suivi du texte de la journée entre
+   balises `<portfolio>` ;
    pour chaque appel du service humanome, le navigateur obtient un défi
    (`GET api/llm/challenge`), le résout et envoie
    `POST api/llm {provider, model, system, prompt, maxTokens, challenge, nonce, website: ''}`.
+   Chaque pôle rendu est validé au schéma puis à la conformité au référentiel
+   (ses codes, de ce pôle), la journée entière de même (tous les pôles du
+   référentiel, chacun une fois ; un kairos qui ne relie que ses codes).
    Chaque journée validée est **checkpointée** ; la progression affiche
-   « Journée k/n (date) — appel x/8 (pôle p) ».
+   « Journée k/n (date) — appel x/N (pôle p) », N = pôles + 1.
 7. Toutes les journées terminées, le moteur fusionne les documents
    (`mergeDays`) et construit le document `cartographie-merge` avec des
    **résumés locaux** à la place des récits narratifs, puis le valide au
-   schéma. Les 69 prompts de récits de fusion que le moteur sait produire sur
-   ces agrégats (`buildNarrativePrompts` : 61 compétences, 7 pôles, 1 kairos
-   — exactement les 69 appels que compte l'estimation, RG6) ne sont ni
-   construits ni envoyés par l'assistant v1 (voir Limites).
+   schéma et à la conformité au référentiel du run. Les prompts de récits de
+   fusion que le moteur sait produire sur ces agrégats (`buildNarrativePrompts` :
+   un par compétence, par pôle et un kairos — 69 pour RESPIRE v7, exactement les
+   appels que compte l'estimation, RG6) ne sont ni construits ni envoyés par
+   l'assistant v1 (voir Limites). Les documents d'un autre référentiel que
+   RESPIRE le nomment (`referentiel`) ; ceux de RESPIRE ne changent pas.
 8. Les documents sont enregistrés dans le carto-store (« Journée <date> —
    <titre> », « Cartographie — <titre> ») ; message « Cartographie terminée et
    enregistrée (n document(s) jour + le document merge, visibilité
@@ -139,7 +153,9 @@ Cartographier mes écrits », ou le bouton du tableau de bord `#/espace`).
 - **A3 — Version publiée choisie** (étape 3) : la version choisie est
   enregistrée avec chaque cartographie (`promptPackage`) et entre dans
   l'identifiant du run ; en v1 le moteur exécute **toujours** le protocole
-  embarqué (annoncé à l'écran).
+  embarqué (annoncé à l'écran), qui lit le référentiel choisi — y compris si la
+  version enregistrée est une version publiée dont les gabarits ne le lisent
+  pas (Limites).
 - **A4 — Interrompre puis reprendre** (étape 6) : « Interrompre » arrête le run
   (l'appel en cours est abandonné, la journée entamée sera refaite) ;
   « Reprendre le run » saute les journées checkpointées : « Repris à la
@@ -149,10 +165,22 @@ Cartographier mes écrits », ou le bouton du tableau de bord `#/espace`).
   le run ; relancé avec le même portfolio et la même version (même
   identifiant de run `portfolioId::paquet@version`), il reprend depuis les
   checkpoints IndexedDB.
-- **A6 — Fusion non constructible** (étape 7) : si un pôle n'a aucune
-  compétence établie sur la période (portfolio court), les documents jour sont
-  enregistrés seuls : « Run terminé : n document(s) jour enregistrés… » et une
-  note explique pourquoi la fusion manque.
+- **A6 — Fusion non constructible** (étape 7) : la fusion rend un domaine par
+  pôle du référentiel ; si un pôle n'a aucune compétence établie sur la période
+  (portfolio court), les documents jour sont enregistrés seuls : « Run
+  terminé : n document(s) jour enregistrés… » et une note explique pourquoi la
+  fusion manque (« … le format exige au moins une compétence établie dans
+  chacun des pôles du référentiel sur la période… »), pour tout référentiel.
+- **A7 — Autre référentiel publié** (étape 3, 2026-10-20) : l'apprenant choisit
+  dans « Référentiel » un autre référentiel publié (ou une autre structure de
+  RESPIRE). L'assistant le charge (`data/referentiel/index.json` puis son
+  fichier) ; l'estimation, les appels (un par pôle + kairos), les prompts (nom,
+  pôles, codes, codes d'exemple), la validation et la fusion suivent sa
+  structure ; ses documents le nomment (`referentiel`) et sont enregistrés avec
+  sa version (`referentiel: {id, version}`) ; l'identifiant du run l'inclut
+  (RG3). Sans index lisible (copie statique), aucun choix n'est offert : RESPIRE
+  embarqué. Un référentiel qui ne se charge pas : message, « Continuer »
+  inactif.
 
 ## Scénarios d'erreur
 
@@ -199,14 +227,18 @@ Cartographier mes écrits », ou le bouton du tableau de bord `#/espace`).
 - **RG1** — Exécution dans le navigateur (ADR-001) : le serveur ne voit le
   texte d'une journée qu'en mode Service humanome, le temps de l'appel, sans
   le conserver (compteurs seulement, principe RGPD n°5).
-- **RG2** — Une journée = 7 appels de pôle + 1 synthèse kairos ; un appel en
-  échec (réponse illisible ou erreur du fournisseur) est réessayé **une**
+- **RG2** — Une journée = un appel par pôle du référentiel + 1 synthèse kairos
+  (RESPIRE v7 : 7 + 1) ; un appel en échec (réponse illisible, erreur du
+  fournisseur, pôle invalide au schéma ou non conforme au référentiel — un code
+  qu'il ne connaît pas ou d'un autre pôle) est réessayé **une**
   fois par `extractDay` ; une synthèse kairos en échec — pour **toute**
   cause, erreur HTTP ou réseau comprise — est dégradée en `kairos: null` : la
   journée reste valable et est checkpointée **définitivement** (jamais
   retentée, cf. A-03), sans signalement à l'écran.
-- **RG3** — Identifiant de run stable `portfolioId::paquet@version` : même
-  portfolio et même version ⇒ mêmes checkpoints (reprise automatique).
+- **RG3** — Identifiant de run stable
+  `portfolioId::paquet@version::référentiel@version` : même portfolio, même
+  version de prompt et même version du référentiel ⇒ mêmes checkpoints
+  (reprise automatique) ; une autre structure ne reprend pas ces journées.
 - **RG4** — Checkpoint atomique par journée (`run:<id>:checkpoint:<date>`),
   échec persistant (`run:<id>:failed:<date>`), journal horodaté
   (`run_started`, `run_resumed`, `day_started`, `day_completed`, `day_failed`,
@@ -221,15 +253,18 @@ Cartographier mes écrits », ou le bouton du tableau de bord `#/espace`).
   sur quota (`429` hors défi) ni sur `503` ; **une seule**, après 2,5 s et
   avec un défi neuf, sur `500`/`502`/`504`/`529`, erreur réseau ou défi refusé
   (`pow_reused`, `pow_expired`, `pow_required`).
-- **RG6** — Estimation : 8 appels par journée + 69 récits de fusion (61
-  compétences + 7 pôles + 1 kairos : le nombre de prompts que
-  `buildNarrativePrompts` produit sur une fusion, U38) ; tokens
+- **RG6** — Estimation sur la structure du référentiel (`callsPerDayFor`,
+  `mergeNarrativeCallsFor`) : un appel par pôle et le kairos par journée, un
+  récit de fusion par compétence, par pôle et le kairos — RESPIRE v7 : 8 appels
+  par journée + 69 récits (61 compétences + 7 pôles + 1 kairos : le nombre de
+  prompts que `buildNarrativePrompts` produit sur une fusion, U38) ; tokens
   ≈ caractères / 3,6 ; 1 000 tokens de sortie et 20 s par appel ; le service
   humanome est estimé sur le modèle de référence `claude-sonnet-5` ; un
   modèle hors table de prix donne un coût « inconnu ».
 - **RG7** — Le document merge n'est produit que si **toutes** les journées
-  sont checkpointées et s'il valide le schéma (7 pôles portant chacun au moins
-  une compétence établie) ; sinon seuls les documents jour sont gardés.
+  sont checkpointées, s'il valide le schéma (un domaine par pôle du référentiel,
+  portant chacun au moins une compétence établie) et s'il est conforme au
+  référentiel du run ; sinon seuls les documents jour sont gardés.
 - **RG8** — Les cartographies produites sont **privées et locales** ; toute
   copie serveur est un opt-in ultérieur (UC-APP-04).
 - **RG9** — Voie clé personnelle (A1) : `createProvider` choisit l'adaptateur
@@ -273,14 +308,16 @@ Cartographier mes écrits », ou le bouton du tableau de bord `#/espace`).
 | Couche | Élément | Rôle |
 |---|---|---|
 | Front | `web/src/views/EspaceView.jsx` | Session, dispatch de `#/espace/nouveau-run` |
-| Front | `web/src/components/RunWizard.jsx` | Assistant en 5 étapes, exécution, enregistrement |
-| Front | `web/src/lib/run-launcher.js` — `computeDayGroups`, `fetchPromptPackages`, `buildEstimate`, `createProviderBundle`, `makeRunId`, `executeRun`, `buildLocalNarratives`, clés locales et synchronisation | Logique non-UI du lancement, résumés locaux du merge |
+| Front | `web/src/components/RunWizard.jsx` ; `web/src/components/ReferentielChoice.jsx` | Assistant en 5 étapes, choix du référentiel publié (A7), exécution, enregistrement |
+| Front | `web/src/data/referentiel.js` — `loadPublishedReferentiel`, `listPublishedReferentiels` | RESPIRE publié (repli embarqué) ou le référentiel choisi, liste des référentiels publiés |
+| Front | `web/src/lib/run-launcher.js` — `computeDayGroups`, `fetchPromptPackages`, `buildEstimate`, `createProviderBundle`, `makeRunId`, `executeRun`, `buildLocalNarratives`, clés locales et synchronisation | Logique non-UI du lancement, résumés locaux du merge, validation de la fusion (schéma puis conformité) |
 | Front | `web/src/lib/demo-llm.js` — `createDemoProvider`, `describeDemoError` ; `web/src/lib/pow.js` | Service humanome : défi, preuve de travail, messages |
 | Front | `web/src/lib/carto-store.js` (via `carto-store-bridge.js`) | Enregistrement local des résultats |
-| Moteur | `engine/src/pipeline/extract.js` — `extractDay` | 7 pôles + kairos, validation, nouvel essai |
+| Moteur | `engine/src/pipeline/extract.js` — `extractDay` ; `engine/src/conformite.js` — `validateDocumentPourReferentiel` | Un appel par pôle du référentiel + kairos, validation (schéma puis conformité), nouvel essai |
+| Moteur | `engine/src/conformite.js` ; `engine/src/referentiel.js` — `nomCourtReferentiel`, `codesExemples` ; `engine/src/providers/estimate.js` — `callsPerDayFor`, `mergeNarrativeCallsFor` | Conformité au référentiel ; nom et codes d'exemple des prompts ; nombre d'appels par référentiel |
 | Moteur | `engine/src/runs/run.js`, `journal.js`, `memory.js`, `indexeddb.js` | Checkpoints, échec, interruption, reprise, journal |
 | Moteur | `engine/src/pipeline/merge.js`, `merge-document.js` ; `engine/src/validation.js` | Fusion chronologique, document merge, schémas |
-| Moteur | `engine/src/pipeline/narrative-prompts.js` — `formatDateFr` ; `buildNarrativePrompts` (`buildCompetencePrompt`, `buildPolePrompt`, `buildKairosPrompt`, `formatFixed2`) | Date « JJ/MM/AAAA » de l'en-tête des 8 prompts d'extraction (importé par `extract.js`, étape 6) ; les 69 prompts de récits de fusion, comptés par l'estimation (RG6) mais non envoyés en v1 (étape 7, Limites) |
+| Moteur | `engine/src/pipeline/narrative-prompts.js` — `formatDateFr` ; `buildNarrativePrompts` (`buildCompetencePrompt`, `buildPolePrompt`, `buildKairosPrompt`, `formatFixed2`) | Date « JJ/MM/AAAA » de l'en-tête des prompts d'extraction (importé par `extract.js`, étape 6) ; les prompts de récits de fusion (69 pour RESPIRE v7), comptés par l'estimation (RG6) mais non envoyés en v1 (étape 7, Limites) |
 | Moteur | `engine/src/providers/index.js` — `createProvider`, `SUPPORTED_PROVIDERS` ; `retry.js`, `errors.js` — `ProviderError` ; `mock.js`, `estimate.js` | Sélection de l'adaptateur, transports direct/proxy, erreurs typées, reprises, estimation |
 | Moteur | `engine/src/providers/anthropic.js`, `openai.js` (+ `xai.js`, `openrouter.js`, compatibles OpenAI), `google.js`, `ollama.js` | Adaptateurs de la voie clé personnelle : URL, en-tête de clé, corps, extraction du texte et de l'usage (A1, RG9) |
 | API | `GET /api/prompt-packages`, `/default`, `/{id}/{version}` — `api/src/routes/packages.php` | Versions de prompt proposées |
@@ -307,8 +344,8 @@ Cartographier mes écrits », ou le bouton du tableau de bord `#/espace`).
 | UC-APP-02-U10 | `createProvider` (direct) | Appel direct, clé en en-tête seulement (A1) | idem |
 | UC-APP-02-U11 | `createProvider` (proxy) | Transport proxy générique du moteur (politique par défaut, non utilisée par le Service humanome) : pas de clé, 429 réessayé après `Retry-After`, 413 jamais | idem |
 | UC-APP-02-U12 | `computeDayGroups` | Vrai découpage : préambule non daté ignoré, tri ; textes d'une même date concaténés | `web/test/usecases/unit/uc-app-02-lancer-cartographie-standard.test.js` |
-| UC-APP-02-U13 | `makeRunId` | Identifiant stable portfolio + version (RG3) | idem |
-| UC-APP-02-U14 | `fetchPromptPackages` | Ordre des appels, embarqué en tête sans doublon, défaut marqué | idem |
+| UC-APP-02-U13 | `makeRunId` | Identifiant stable portfolio + version de prompt + version du référentiel (RG3) | idem |
+| UC-APP-02-U14 | `fetchPromptPackages` | Ordre des appels, embarqué (1.1.0) en tête sans doublon de sa copie publiée, 1.0.0 publiée proposée, défaut marqué | idem |
 | UC-APP-02-U15 | `createProviderBundle` | Service humanome (modèle imposé), clé requise sauf Ollama | idem |
 | UC-APP-02-U16 | `setLocalKey`, `readLocalKeys` | `humanome-keys` : mémoriser, effacer, JSON corrompu toléré | idem |
 | UC-APP-02-U17 | `syncKeyToServer`, `fetchKeyFromServer` | `PUT api/keys`, `GET api/keys/{fournisseur}` ; clé absente = 404 du serveur, message propagé ; garde défensive `{apiKey: ''}` | idem |
@@ -335,6 +372,7 @@ Cartographier mes écrits », ou le bouton du tableau de bord `#/espace`).
 | UC-APP-02-U38 | `buildNarrativePrompts` sur `mergeDays` | 3 journées → 69 prompts = `MERGE_NARRATIVE_CALLS` de l'estimation ; ordre compétences → pôles → kairos ; période, court-circuit, trace verbatim jointe, moyennes `formatFixed2` à deux décimales (égalité exacte au demi arrondie au demi pair : 0.625 → 0.62), rapports de pôle et synthèse kairos des journées (étape 7, RG6) | idem |
 | UC-APP-02-U39 | `createProviderBundle` (mode clé) | Liste de l'écran = `SUPPORTED_PROVIDERS` ; pour chacun des 6 fournisseurs : modèle par défaut et budget 8 192 au bon endpoint, dans le champ de l'API, clé dans l'en-tête attendu, rien vers humanome (A1, RG9) | `web/test/usecases/unit/uc-app-02-fournisseurs-cle-personnelle.test.js` |
 | UC-APP-02-U40 | `anthropic.js` | `api.anthropic.com/v1/messages`, en-têtes exacts (`x-api-key`, `anthropic-version: 2023-06-01`, `anthropic-dangerous-direct-browser-access: true`), `max_tokens`, `system` seulement s'il est fourni ; seuls les blocs de type `text` concaténés, usage et modèle ; réponse vide → `''` et 0 (A1, RG9) | `engine/test/usecases/unit/uc-app-02-fournisseurs-cle-personnelle.test.js` |
+| UC-APP-02-U41 | `buildEstimate`, `executeRun` (A7, A6, RG6, RG7) | Tout référentiel : estimation sur sa structure (5 pôles lettrés : 34 appels ; RESPIRE à six pôles : 7 par journée) ; 18 appels pour 3 journées, prompts qui le nomment, documents jour et fusion qui le nomment, un domaine par pôle ; un pôle sans compétence établie → fusion non constructible, message « chacun des pôles du référentiel » | `web/test/usecases/unit/uc-app-02-lancer-cartographie-standard.test.js` |
 
 ### Tests fonctionnels
 
@@ -365,6 +403,7 @@ Cartographier mes écrits », ou le bouton du tableau de bord `#/espace`).
 | UC-APP-02-F23 | A2 | IHM | API en erreur 5xx JSON : bandeau « non connecté », version embarquée seule, synchronisation et récupération indisponibles | idem |
 | UC-APP-02-F24 | E5 (anomalie A-05) | API | **Comportement actuel** : quota par défaut (20/h) → un run de 3 journées bloqué au 21e appel, `Retry-After` 30/60/120/240 | `api/tests/UseCases/Functional/UcApp02LancerCartographieStandardTest.php` |
 | UC-APP-02-F25 | E7 | IHM | Clé personnelle refusée (`401` d'Anthropic) : 2 requêtes par journée (aucune reprise du transport, nouvel essai d'`extractDay`), 6 au total ; les 3 journées listées en échec « extractDay : pôle 1 (…) — anthropic: HTTP 401 — invalid x-api-key » ; aucun appel à `api/llm`, rien d'enregistré | `web/test/usecases/functional/uc-app-02-lancer-cartographie-standard.test.jsx` |
+| UC-APP-02-F26 | A7 | IHM | Index des référentiels publiés : « Référentiel » propose RESPIRE (défaut) et un référentiel lettré ; choisi, il est chargé ; estimation 34 appels ; 18 POST dont les prompts le nomment ; 3 jours + fusion enregistrés avec `referentiel: {id, version}`, documents nommés, 5 domaines ; checkpoints sous l'identifiant qui l'inclut | `web/test/usecases/functional/uc-app-02-lancer-cartographie-standard.test.jsx` |
 
 ### Tests existants liés (non-régression)
 
@@ -392,7 +431,7 @@ cd engine && npx vitest run test/usecases --testNamePattern UC-APP-02
 - **A-01 — Version par défaut du serveur ignorée par l'assistant.**
   `fetchPromptPackages` interroge `GET api/prompt-packages/default` et marque
   la version correspondante (`defaut: true`), mais `RunWizard` ne lit jamais
-  ce marqueur : l'embarqué `aurora-v3-reconstruit@1.0.0` reste présélectionné
+  ce marqueur : l'embarqué `aurora-v3-reconstruit@1.1.0` reste présélectionné
   et la version validée par l'administrateur n'est ni cochée ni signalée.
   Figé par F04.
 - **A-02 — Quota ou épuisement du service en cours de run.** Un `429`/`503`
@@ -451,7 +490,11 @@ cd engine && npx vitest run test/usecases --testNamePattern UC-APP-02
 
 - v1 : la version de prompt choisie est enregistrée mais **non exécutée** ;
   le protocole embarqué (Aurora v3 reconstruit) tourne toujours (annoncé à
-  l'étape 3). Les récits narratifs de fusion sont remplacés par des résumés
+  l'étape 3). Avec un autre référentiel que RESPIRE à sept pôles, la version
+  enregistrée peut donc être une version publiée dont les gabarits ne le lisent
+  pas (`aurora-v3-reconstruit@1.0.0`, qui écrit RESPIRE en toutes lettres et que
+  le serveur refuse pour un autre référentiel, `PromptRunner::referentielRefusal`) :
+  ce qui a tourné est le moteur embarqué, qui le lit. Les récits narratifs de fusion sont remplacés par des résumés
   locaux, alors que l'estimation compte les 69 appels correspondants
   (« estimation haute », annoncée). Le moteur sait pourtant produire ces
   69 prompts (`buildNarrativePrompts`, vérifié par U38, et exercé de bout en

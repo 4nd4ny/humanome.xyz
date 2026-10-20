@@ -27,6 +27,7 @@ use Humanome\Middleware\RequireRole;
 use Humanome\Packages\PromptPackageRepository;
 use Humanome\Referentiel\ReferentielRepository;
 use Humanome\Worker\JobQueue;
+use Humanome\Worker\PromptRunner;
 use Psr\Http\Message\ResponseInterface as Response;
 use Psr\Http\Message\ServerRequestInterface as Request;
 use Slim\App;
@@ -355,8 +356,12 @@ return function (App $app): void {
     // ==================================================================
 
     // POST /api/etablissement/cohortes/{id}/runs {promptPackageId,
-    // promptPackageVersion, membres?} -> 201 {runId, jobs}. Versions are
-    // frozen on the run; only consented members WHO DEPOSITED are enqueued.
+    // promptPackageVersion, referentielId?, referentielVersion?, membres?}
+    // -> 201 {runId, jobs}. The referential is a PUBLISHED version — RESPIRE's
+    // latest when none is named, the id's latest when no version is — and the
+    // package must be able to map it (PromptRunner::referentielRefusal).
+    // Versions are frozen on the run; only consented members WHO DEPOSITED are
+    // enqueued.
     $app->post('/etablissement/cohortes/{id:[0-9]+}/runs', $wrap(function (Request $request, Response $response, array $args) use ($json, $cohortes, $queue): Response {
         $userId = (int) $request->getAttribute('userId');
         $cohorte = $cohortes()->findForEtablissement((int) $args['id'], $userId);
@@ -370,6 +375,15 @@ return function (App $app): void {
         $packageVersion = \is_string($data['promptPackageVersion'] ?? null) ? trim($data['promptPackageVersion']) : '';
         if ($packageId === '' || $packageVersion === '') {
             $errors['promptPackageId'] = 'promptPackageId et promptPackageVersion requis';
+        }
+        $refId = $data['referentielId'] ?? null;
+        $refVersion = $data['referentielVersion'] ?? null;
+        if ($refId !== null && (!\is_string($refId) || trim($refId) === '')) {
+            $errors['referentielId'] = 'referentielId doit être un identifiant de référentiel';
+        } elseif ($refVersion !== null && (!\is_string($refVersion) || trim($refVersion) === '')) {
+            $errors['referentielVersion'] = 'referentielVersion doit être une version (semver)';
+        } elseif ($refVersion !== null && $refId === null) {
+            $errors['referentielId'] = 'referentielId requis avec referentielVersion';
         }
         $membres = $data['membres'] ?? null;
         if ($membres !== null) {
@@ -394,9 +408,25 @@ return function (App $app): void {
             return $json($response, ['error' => 'Ce paquet ne contient pas les gabarits d\'extraction (extraction-pole + kairos)'], 422);
         }
 
-        $referentiel = (new ReferentielRepository(Db::get()))->latestPublished('respire');
-        if ($referentiel === null) {
-            return $json($response, ['error' => 'Aucun référentiel publié'], 409);
+        $referentiels = new ReferentielRepository(Db::get());
+        if ($refId === null) {
+            $referentiel = $referentiels->latestPublished('respire');
+            if ($referentiel === null) {
+                return $json($response, ['error' => 'Aucun référentiel publié'], 409);
+            }
+        } else {
+            $refId = trim($refId);
+            $referentiel = $refVersion === null
+                ? $referentiels->latestPublished($refId)
+                : $referentiels->findPublished($refId, trim($refVersion));
+            if ($referentiel === null) {
+                return $json($response, ['error' => sprintf('Version publiée du référentiel introuvable : %s%s',
+                    $refId, $refVersion === null ? '' : '@' . trim($refVersion))], 422);
+            }
+        }
+        $refus = (new PromptRunner($package, (array) $referentiel['content']))->referentielRefusal();
+        if ($refus !== null) {
+            return $json($response, ['error' => $refus], 422);
         }
 
         $deposits = $cohortes()->depositsForRun((int) $cohorte['id'], $membres);

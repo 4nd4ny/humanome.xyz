@@ -1,10 +1,16 @@
 // Vue « Cartographie ouverte Twin6 » — #/twin6-ouverte.
 //
 // Le pendant GRATUIT et OPEN SOURCE de l'analyse approfondie Twin9 : un scan par
-// pôle RESPIRE (Greffier / Pédagogue adversarial / Rapporteur) puis une synthèse
-// Kairos, sur le portfolio ENTIER (8 appels), rendus dans le MÊME sunburst
-// évolutif que toutes les cartographies (le moteur mappe la sortie Twin6 vers
-// cartographie-merge).
+// pôle du référentiel choisi (Greffier / Pédagogue adversarial / Rapporteur) puis
+// une synthèse Kairos, sur le portfolio ENTIER (RESPIRE v7 : 8 appels), rendus
+// dans le MÊME sunburst évolutif que toutes les cartographies (le moteur mappe
+// la sortie Twin6 vers cartographie-merge).
+//
+// Le référentiel (2026-10-20) : un référentiel publié au choix, RESPIRE par
+// défaut ; le run en lit la structure dans son document, et chaque pôle sa
+// fiche — celle du paquet quand elle en nomme exactement les compétences,
+// sinon écrite depuis le document (api/twin6.js, referentielTwin6 ; moteur,
+// fichesPourTwin6).
 //
 // Deux voies, comme convenu :
 //   - CLÉ PERSO : le moteur (executerTwin6) tourne DANS le navigateur, appel
@@ -15,7 +21,7 @@
 //
 // Le paquet de prompts est PUBLIC et téléchargeable (bandeau open source).
 
-import { useEffect, useRef, useState } from 'react'
+import { useEffect, useMemo, useRef, useState } from 'react'
 import { ApiUnavailableError, fetchMe } from '../api/client.js'
 import { listKeys as listKeysApi, revealKey as revealKeyApi } from '../api/keys.js'
 import { formatUsd } from '../api/twin9.js'
@@ -25,9 +31,11 @@ import {
   makeCreditsProvider,
   makeOwnKeyProvider,
   fetchTwin6Offer,
-  referentielPourMoteur,
+  referentielTwin6,
 } from '../api/twin6.js'
-import { executerTwin6 } from '@engine/twin6/index.js'
+import { executerTwin6, fichesPourTwin6, twin6CallsFor } from '@engine/twin6/index.js'
+import { listPublishedReferentiels, loadPublishedReferentiel } from '../data/referentiel.js'
+import ReferentielChoice from '../components/ReferentielChoice.jsx'
 import MergeView from './MergeView.jsx'
 import { useSunburstLib } from './view-helpers.js'
 import { downloadJson } from '../lib/download-json.js'
@@ -64,6 +72,13 @@ export default function Twin6OuverteView({ lib: injectedLib, deps = {} }) {
   const revealKey = deps.revealKey ?? revealKeyApi
   const now = deps.now ?? (() => new Date())
   const callOpts = deps.fetchFn ? { fetchFn: deps.fetchFn } : {}
+  const loadReferentiel = deps.loadReferentiel ?? loadPublishedReferentiel
+  // Stable : ReferentielChoice relit la liste quand cette fonction change.
+  const listReferentiels = useMemo(
+    () => deps.listReferentiels ?? (() => listPublishedReferentiels(callOpts)),
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+    [],
+  )
 
   const OWN_KEY_PROVIDER = 'anthropic'
   const [session, setSession] = useState({ status: 'loading', user: null })
@@ -74,7 +89,10 @@ export default function Twin6OuverteView({ lib: injectedLib, deps = {} }) {
   const [apiKey, setApiKey] = useState('')
   const [savedProviders, setSavedProviders] = useState([]) // clés perso enregistrées au profil
   const [useSavedKey, setUseSavedKey] = useState(false)
-  const [run, setRun] = useState({ status: 'idle', done: 0, total: 8, phase: '', doc: null, cout: 0, error: '' })
+  // Le référentiel choisi : null, RESPIRE (sa dernière version publiée) ; son document une fois chargé.
+  const [choix, setChoix] = useState(null)
+  const [ref, setRef] = useState({ status: 'loading', doc: null, message: '' })
+  const [run, setRun] = useState({ status: 'idle', done: 0, total: 0, phase: '', doc: null, referentiel: null, cout: 0, error: '' })
   const { lib } = useSunburstLib(deps.lib ?? injectedLib)
   const running = useRef(false)
 
@@ -107,6 +125,19 @@ export default function Twin6OuverteView({ lib: injectedLib, deps = {} }) {
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [session.status])
 
+  useEffect(() => {
+    if (session.status !== 'authenticated') return undefined
+    let alive = true
+    setRef({ status: 'loading', doc: null, message: '' })
+    loadReferentiel(choix ? { id: choix.id, version: choix.version, ...callOpts } : callOpts)
+      .then(({ doc }) => alive && setRef({ status: 'ready', doc, message: '' }))
+      .catch((e) => alive && setRef({ status: 'error', doc: null, message: messageErreur(e) }))
+    return () => {
+      alive = false
+    }
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [session.status, choix?.id, choix?.version])
+
   // Clés perso enregistrées au profil : si l'utilisateur en a une pour le
   // fournisseur, on lui propose de lancer dessus sans la ressaisir.
   useEffect(() => {
@@ -130,8 +161,17 @@ export default function Twin6OuverteView({ lib: injectedLib, deps = {} }) {
   const modeles = res.offer?.modeles ?? {}
   const portfolioPret = portfolio.trim().length > 40
   const clePersoPrete = (useSavedKey && hasSavedKey) || apiKey.trim() !== ''
+  // Le référentiel que lit le moteur : le document choisi ; pour RESPIRE, la
+  // structure de /meta tant qu'elle est celle de la version choisie.
+  const moteurRef = useMemo(
+    () => (res.status === 'ready' && ref.status === 'ready' ? referentielTwin6(ref.doc, res.offer.referentiel) : null),
+    [res.status, res.offer, ref.status, ref.doc],
+  )
+  const nbPoles = moteurRef?.poles.length ?? 0
   const peutLancer =
     res.status === 'ready' &&
+    moteurRef !== null &&
+    nbPoles > 0 &&
     !!model &&
     portfolioPret &&
     (voie === 'credits' || clePersoPrete) &&
@@ -158,7 +198,8 @@ export default function Twin6OuverteView({ lib: injectedLib, deps = {} }) {
       }
     }
     running.current = true
-    setRun({ status: 'running', done: 0, total: 8, phase: 'scan-pole', doc: null, cout: 0, error: '' })
+    const referentiel = moteurRef
+    setRun({ status: 'running', done: 0, total: twin6CallsFor(referentiel), phase: 'scan-pole', doc: null, referentiel, cout: 0, error: '' })
     try {
       let provider
       if (voie === 'cle_perso') {
@@ -177,8 +218,9 @@ export default function Twin6OuverteView({ lib: injectedLib, deps = {} }) {
 
       const out = await runEngine({
         portfolio,
-        templates: res.pkg.templates,
-        referentiel: referentielPourMoteur(res.offer.referentiel),
+        // Les fiches du paquet pour les pôles qu'elles décrivent, sinon écrites depuis le document choisi.
+        templates: { ...res.pkg.templates, fiches: fichesPourTwin6(ref.doc, res.pkg.templates.fiches) },
+        referentiel,
         provider,
         model,
         options: {
@@ -229,8 +271,9 @@ export default function Twin6OuverteView({ lib: injectedLib, deps = {} }) {
     <section className="twin6-ouverte">
       <h1>Cartographie ouverte Twin6</h1>
       <p className="twin6-intro">
-        Une cartographie de vos compétences <strong>open source</strong> : un scan par pôle RESPIRE puis une
-        synthèse Kairos, sur votre portfolio entier. Gratuite avec votre propre clé API, ou avec nos crédits
+        Une cartographie de vos compétences <strong>open source</strong> : un scan par pôle du référentiel choisi
+        (RESPIRE par défaut) puis une synthèse Kairos, sur votre portfolio entier. Gratuite avec votre propre clé
+        API, ou avec nos crédits
         (+10 % de contribution au fonctionnement du site).{' '}
         <a href={TWIN6_PACKAGE_URL} download>
           Télécharger les prompts
@@ -240,6 +283,9 @@ export default function Twin6OuverteView({ lib: injectedLib, deps = {} }) {
 
       {res.status === 'loading' ? <p role="status">Chargement du protocole…</p> : null}
       {res.status === 'error' ? <p role="alert" className="twin6-erreur">{res.message}</p> : null}
+      {res.status === 'ready' && ref.status === 'error' ? (
+        <p role="alert" className="twin6-erreur">{ref.message}</p>
+      ) : null}
 
       {res.status === 'ready' && !resultatPret ? (
         <div className="twin6-formulaire">
@@ -254,6 +300,12 @@ export default function Twin6OuverteView({ lib: injectedLib, deps = {} }) {
           />
 
           <div className="twin6-options">
+            <ReferentielChoice
+              value={choix}
+              onChange={setChoix}
+              disabled={run.status === 'running'}
+              list={listReferentiels}
+            />
             <label htmlFor="twin6-modele">Modèle</label>
             <select
               id="twin6-modele"
@@ -320,10 +372,14 @@ export default function Twin6OuverteView({ lib: injectedLib, deps = {} }) {
             ) : null}
           </fieldset>
 
-          <p className="twin6-note">
-            8 appels au modèle (7 pôles + synthèse). Le coût réel dépend de la taille de votre portfolio et du
-            modèle. En crédits, seul le coût réel (+10 %) est débité.
-          </p>
+          {moteurRef !== null ? (
+            <p className="twin6-note">
+              {nbPoles + 1} appels au modèle ({nbPoles} pôle{nbPoles > 1 ? 's' : ''} + synthèse). Le coût réel dépend de
+              la taille de votre portfolio et du modèle. En crédits, seul le coût réel (+10 %) est débité.
+            </p>
+          ) : ref.status === 'loading' ? (
+            <p role="status" className="twin6-note">Chargement du référentiel…</p>
+          ) : null}
 
           <button type="button" className="twin6-lancer" disabled={!peutLancer} onClick={lancer}>
             {run.status === 'running' ? 'Analyse en cours…' : 'Lancer la cartographie ouverte'}
@@ -358,7 +414,7 @@ export default function Twin6OuverteView({ lib: injectedLib, deps = {} }) {
               Exporter le JSON
             </button>
           </p>
-          <MergeView mergeDoc={run.doc} referentiel={res.offer.referentiel} lib={lib} />
+          <MergeView mergeDoc={run.doc} referentiel={run.referentiel} lib={lib} />
         </div>
       ) : null}
     </section>

@@ -139,7 +139,7 @@ const ITEM = {
   accueil: { href: '#/', label: 'Accueil', route: 'home' },
   demo: { href: '#/cartographie', label: 'Cartographie', route: 'cartographie', hint: 'vos fichiers ou la démonstration' },
   essayer: { href: '#/essayer', label: 'Essayer', route: 'essayer', badge: 'gratuit', hint: 'sans compte' },
-  referentiel: { href: '#/referentiel', label: 'Référentiel', route: 'referentiel', hint: '7 pôles, 61 compétences' },
+  referentiel: { href: '#/referentiel', label: 'Référentiel', route: 'referentiel', hint: 'les compétences, pôle par pôle' },
   guides: { href: '#/guides', label: 'Guides', route: 'guides', hint: 'prise en main par profil' },
   tableau: { href: '#/espace', label: 'Tableau de bord', route: 'espace', hint: 'portfolios, cartographies, formation' },
   portfolio: { href: '#/portfolio', label: 'Mon portfolio', route: 'portfolio', hint: 'local, matière première d’un run' },

@@ -118,7 +118,7 @@ describe('BancEssaiSection — exécution', () => {
     const bloc = await screen.findByTestId('banc-ab')
     expect(runFn).toHaveBeenCalledTimes(2)
     expect(api.getPackage).toHaveBeenCalledWith('aurora-lab', '2.0.0')
-    expect(bloc.textContent).toContain('aurora-v3-reconstruit@1.0.0')
+    expect(bloc.textContent).toContain('aurora-v3-reconstruit@1.1.0')
     expect(bloc.textContent).toContain('aurora-lab@2.0.0')
     const link = screen.getByRole('link', { name: 'Télécharger le rapport JSON' })
     expect(link.getAttribute('href')).toMatch(/^data:application\/json/)

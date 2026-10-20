@@ -141,7 +141,10 @@ badge premium) ou ouvre `#/twin9`.
   sur le serveur.
 - **A7 — Autre référentiel** (étape 2, T16-T17) : un profil qui nomme un autre
   référentiel publié, ou un brouillon de son auteur en mode essai : le moteur
-  le lit, et la carte s'ouvre avec ses pôles, que le titre du jeu nomme.
+  le lit, et la carte s'ouvre avec ses pôles, que le titre du jeu nomme. De même
+  une version de RESPIRE d'une autre structure (2026-10-20, UC-EPI-04 : six
+  pôles, une compétence déplacée) : le moteur en lit les pôles (numérotés de 1
+  à N, la règle du moteur), et ses fiches suivent RG12.
 - **A8 — Mode essai** (étape 2) : un profil en mode essai ne lit que la
   première journée et le premier pôle ; « essai » dans « Mes analyses » et
   dans l'attestation.
@@ -160,8 +163,9 @@ badge premium) ou ouvre `#/twin9`.
 - **E4 — Portfolio ou profil refusé** (étapes 4-5) : nom ou texte invalide
   (`422`), profil d'un autre (`404`), profil refusé — clé personnelle fermée
   ou absente, jeu de gabarits non proposé ou incomplet, modèle sans prix sur
-  l'instance, référentiel non publié ou illisible — `422` qui nomme le choix
-  refusé ; la vue affiche le message.
+  l'instance, référentiel non publié ou illisible, jeu de gabarits d'avant T16
+  hors de la structure que décrivent ses fiches (RG12) — `422` qui nomme le
+  choix refusé ; la vue affiche le message.
 - **E5 — Refus d'admission** (étapes 4-5) : le crédit ou le budget ne couvre
   pas même une journée et sa fusion : l'aperçu dit ce qu'il faudrait (« Votre
   crédit ne couvre pas une carte, même d'une journée : il faudrait … ») avec
@@ -211,6 +215,20 @@ badge premium) ou ouvre `#/twin9`.
   seuls runs de son compte, jamais avec le jeton du tick.
 - **RG11 — Référentiel** : celui du profil ; les résultats en portent les pôles
   et les compétences, jamais une fiche ni une description.
+- **RG12 — Fiches du référentiel lu** (T16, 2026-10-20, `ReferentielMoteur`) :
+  celles d'un autre référentiel s'écrivent depuis son document (« # Pôle N —
+  nom », sa description ; « ## CODE — nom », sa description, ses éléments) ;
+  celles de RESPIRE viennent de la base (le modèle atomique) pour ce qu'elle
+  décrit de la version lue — la fiche d'une compétence qu'elle connaît dans le
+  même pôle, l'en-tête d'un pôle dont elle connaît exactement les compétences
+  (il les compte) —, le reste s'écrit depuis le document ; sans aucune fiche en
+  base, `503`. RESPIRE v7 se lit donc comme avant, à l'octet. Un jeu de
+  gabarits d'avant T16 (ses fichiers de pôle `tagger/P1`…) écrit RESPIRE en
+  toutes lettres, dans la structure que décrivent ses fichiers de pôle : il
+  n'admet que RESPIRE, et dans cette structure (mêmes pôles, mêmes codes) ;
+  sinon `422` (« … précède T16 … Pour un autre référentiel » ou « … tel que le
+  décrivent ses fiches (7 pôles, 61 compétences). Pour une autre structure de
+  RESPIRE, il faut … »).
 
 ## Données et RGPD
 
@@ -234,7 +252,8 @@ badge premium) ou ouvre `#/twin9`.
 | Front | `web/src/carto/core/importers/twin9-run.js` — `importTwin9Run` ; `web/src/lib/twin9/mapper.js` — `twin9Dossier`, `twin9ToMergeDocument` | Jeu de cartographie d'un run, dossier de chaque verdict |
 | API | `GET/POST /api/twin9/runs`, `POST …/apercu`, `POST …/avancer`, `GET …/{id}`, `POST …/{id}/annuler`, `POST …/{id}/reprendre`, `PUT …/{id}/visibilite`, `GET …/{id}/resultats`, `GET /api/twin9/admin/runs` — `api/src/routes/twin9-runs.php` | Runs du serveur |
 | API | `api/src/Middleware/CsrfMiddleware.php` | Jeton CSRF des écritures (E1) — logique unitaire couverte par UC-CPT-02-U07 |
-| Domaine | `api/src/Twin9/Lancement.php` — `lancer`, `apercu`, `empreinte` | Lancement, aperçu, estimation, admission |
+| Domaine | `api/src/Twin9/Lancement.php` — `lancer`, `apercu`, `empreinte` | Lancement, aperçu, estimation, admission ; jeu d'avant T16 (RG12) |
+| Domaine | `api/src/Twin9/ReferentielMoteur.php` — `bloc` | Le référentiel du run tel que le moteur le lit, ses fiches (RG12) |
 | Domaine | `api/src/Twin9/ProfilPolicy.php` — `admettre` | Ce qu'un profil peut choisir sur l'instance |
 | Domaine | `api/src/Twin9/RunRepository.php` — `duProprietaire`, `suivi`, `annuler`, `reprendre`, `rendreVisible`, `acces` | Liste, suivi, actions du propriétaire |
 | Domaine | `api/src/Twin9/RunCosts.php`, `api/src/Twin9/CreditService.php` | Réserves, réconciliation, remboursements |
@@ -274,6 +293,7 @@ badge premium) ou ouvre `#/twin9`.
 | UC-APP-10-F06 | A5 | API | Privé : le cartographe lié ne lit rien ; visible : lui seul lit les résultats, sans suivre le run | idem |
 | UC-APP-10-F07 | A6 | API | Clé personnelle : run au bout, crédit intact, aucun événement au grand-livre | idem |
 | UC-APP-10-F08 | A7 | API | Un autre référentiel : run au bout, résultats portant ses pôles et ses compétences | idem |
+| UC-APP-10-F20 | A7, RG12 | API | Une version de RESPIRE à six pôles : l'aperçu en compte six, run au bout, résultats portant ses six pôles et ses compétences | idem |
 | UC-APP-10-F09 | A8 | API | Mode essai : une journée lue, « test » dans la liste et l'attestation | idem |
 | UC-APP-10-F10 | E1 | API | `401` sans session sur chaque route ; `403` sans jeton CSRF | idem |
 | UC-APP-10-F11 | E2 | API | Sans moteur : `disponible` faux, aperçu et lancement `503` ; sans gabarit : `503` | idem |
@@ -288,7 +308,9 @@ badge premium) ou ouvre `#/twin9`.
 
 ### Tests existants liés (non-régression)
 
-- `api/tests/Twin9/RunsTest.php` — lancement, suivi, annulation, reprise, visibilité, avance par la page, filtre de fuite des résultats, référentiel du run, moteur ou jeu d'avant T16.
+- `api/tests/Twin9/RunsTest.php` — lancement, suivi, annulation, reprise, visibilité, avance par la page, filtre de fuite des résultats, référentiel du run, moteur ou jeu d'avant T16 (un autre référentiel, une version de RESPIRE à six pôles refusés ; RESPIRE dans la structure de ses fiches lancé).
+- `api/tests/Twin9/ReferentielMoteurTest.php` — le bloc du référentiel (RG12) : RESPIRE v7 tel que la base le garde, un autre référentiel écrit depuis son document, un code que la base ne connaît pas, une version de RESPIRE à six pôles (compétence déplacée), et, avec le vrai moteur, RESPIRE v7 lu comme les fichiers de pôle de la v9.8 et RESPIRE à six pôles lu.
+- `api/tests/Twin9/JeuxGabaritsTest.php` — copie d'un jeu d'avant T16 : ce qu'il faut refaire pour un autre référentiel.
 - `api/tests/Twin9/ApercuTest.php` — journées nouvelles ou changées, estimation, admission (T8), refus.
 - `api/tests/Twin9/CoutsTest.php` — réserves, réconciliation, plafonds (budget, durée, crédit), clé personnelle.
 - `api/tests/Twin9/PurgeExportTest.php` — purge du compte, lots chez Anthropic, export.

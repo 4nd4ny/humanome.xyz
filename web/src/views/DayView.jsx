@@ -10,9 +10,14 @@ function refCompetence(referentiel, code) {
   return (referentiel?.competences ?? []).find((c) => c.code === code) ?? null
 }
 
-function refPoleOfCode(referentiel, code) {
-  const num = Number.parseInt(String(code).split('.')[0], 10)
-  return (referentiel?.poles ?? []).find((p) => p.num === num) ?? null
+/**
+ * The referential pole of a competence: the one the referential gives it, else
+ * the day pole that carries it — never read from the code's form (« 1.01 »
+ * names its pole in RESPIRE only, « A1 » does not, 2026-10-20).
+ */
+function refPoleOfCode(referentiel, code, dayPole) {
+  const num = Number(refCompetence(referentiel, code)?.pole ?? dayPole?.poleNum)
+  return (referentiel?.poles ?? []).find((p) => Number(p.num) === num) ?? null
 }
 
 /** Resolves a sector meta against the day document + referentiel. */
@@ -28,7 +33,7 @@ export function findDayNode(dayDoc, referentiel, meta) {
           pole,
           competence,
           ref: refCompetence(referentiel, code),
-          refPole: refPoleOfCode(referentiel, code),
+          refPole: refPoleOfCode(referentiel, code, pole),
         }
       }
     }
@@ -42,8 +47,9 @@ export function findDayNode(dayDoc, referentiel, meta) {
         p.num === meta.domainId ||
         String(p.num) === String(meta.domainId ?? meta.id),
     )
+    // poleNum is a string in a document (« 1 »), num a number in the referential
     const pole = refPole
-      ? (dayDoc.poles ?? []).find((dp) => dp.poleNum === refPole.num)
+      ? (dayDoc.poles ?? []).find((dp) => Number(dp.poleNum) === Number(refPole.num))
       : null
     return pole ? { kind: 'pole', pole, refPole } : null
   }

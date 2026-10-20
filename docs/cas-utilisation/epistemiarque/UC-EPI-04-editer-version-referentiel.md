@@ -11,8 +11,8 @@
 
 ## Objectif
 
-Faire évoluer le référentiel **en un seul document** (7 pôles, 61 compétences,
-libellé, couleurs, descriptions) : forker une version, l'éditer, la soumettre
+Faire évoluer le référentiel **en un seul document** (pôles, compétences,
+libellé, couleurs, descriptions — RESPIRE v7 : 7 pôles, 61 compétences) : forker une version, l'éditer, la soumettre
 au vote des membres et, à la majorité, la publier comme nouvelle version
 immuable — tout en gardant l'historique complet consultable et comparable.
 
@@ -133,9 +133,11 @@ nom d'un pôle, renommages groupés).
   d'un référentiel : `respire`, ou celui que nomme `referentiel` (T15,
   UC-EPI-05 A2) ; semver 2.0.0 valide et unique.
 - **RG2** — Chaque écriture porte le document **complet**, normalisé puis
-  validé : schéma `referentiel` 2.0.0 (RESPIRE : exactement 7 pôles et 61
-  compétences « P.NN », sans niveaux déclarés ; un autre référentiel : la
-  structure qu'il déclare, UC-EPI-05) et intégrité (numéros de pôle uniques,
+  validé : schéma `referentiel` 2.1.0 (tout référentiel a la structure qu'il
+  déclare, UC-EPI-05 ; RESPIRE aussi depuis le 2026-10-20 : une de ses
+  versions peut compter d'autres pôles et d'autres compétences — avant,
+  exactement 7 pôles et 61 compétences « P.NN » ; sans niveaux déclarés, ses
+  codes suivent le motif par défaut `\d\.\d{2}`) et intégrité (numéros de pôle uniques,
   de 1 à N sans trou, codes uniques et au motif de leur niveau, rattachement
   à un pôle existant) ; `id` invariant ; le `contentHash` fourni par le client est
   ignoré et recalculé ; les clés de premier niveau inconnues sont écartées.
@@ -189,7 +191,7 @@ nom d'un pôle, renommages groupés).
 | UC-EPI-04-U01 | `ReferentielRepository::createDraft` | Fork (version/libellé remplacés, hash, auteur), fork d'un brouillon, libellé conservé (RG1, A1, A5) | `api/tests/UseCases/Unit/UcEpi04EditerVersionReferentielTest.php` |
 | UC-EPI-04-U02 | `createDraft` | 422 `/semver`, source inconnue → null, doublon → 409 | idem |
 | UC-EPI-04-U03 | `updateDraft` | Hash recalculé, renumérotation, collision 409, `/id` 422, inconnu null, publiée 409, au vote 409 (RG2) | idem |
-| UC-EPI-04-U04 | `validateDocument` | Intégrité (pôle dupliqué, code dupliqué, pôle inexistant) avec pointeurs ; 60 compétences → schéma ; document non hachable | idem |
+| UC-EPI-04-U04 | `validateDocument` | Intégrité (pôle dupliqué, code dupliqué, pôle inexistant) avec pointeurs ; RESPIRE sans structure imposée : 60 compétences, 6 pôles passent ; compétence sans nom → schéma ; document non hachable | idem |
 | UC-EPI-04-U05 | `ContentHash::normalize`, `compute` | Ordre canonique, hash recalculé, description hors hash, clé inconnue écartée (RG2, RG3) | idem |
 | UC-EPI-04-U06 | `ReferentielGovernance::submit`, `withdraw` | Semver non croissante 409, soumission (auteur, Decidim), retrait (bulletins effacés), Decidim invalide 422, retrait d'un brouillon 409 | idem |
 | UC-EPI-04-U07 | `ReferentielRepository::publish` | Brouillon 409, sans majorité 409 (message), publication, semver dépassée 409, inconnue null, déjà publiée 409 (RG5) | idem |
@@ -250,7 +252,10 @@ cd web && npx vitest run test/usecases/unit/uc-epi-04
   lockfile). La coupe de
   release suivante (UC-EPI-03), qui repart des compétences atomiques, **annule
   silencieusement** les changements structurels entérinés ici (le diff montre
-  le renommage inversé). Figé par UC-EPI-04-F16. À trancher : désactiver les
+  le renommage inversé). Figé par UC-EPI-04-F16. Corrigé en partie le
+  2026-10-20 : une release dont les pôles ou les codes diffèrent de la
+  dernière version publiée est refusée (UC-EPI-03 E6, `CompetenceReleaseTest`) ;
+  un renommage ou une description entérinés ici restent annulés. À trancher : désactiver les
   écritures du grain document, ou répercuter la publication sur les
   compétences atomiques.
 
@@ -274,10 +279,13 @@ cd web && npx vitest run test/usecases/unit/uc-epi-04
   concurrents du même brouillon se succèdent, le dernier écrase le premier
   sans avertissement (contrairement au `If-Match` du grain compétence). Figé
   par UC-EPI-04-F15.
-- **L3** — Le schéma fige les 7 pôles et 61 compétences de RESPIRE (une
-  clause depuis T15) : ajout, retrait, fusion ou scission de ses compétences
-  sont impossibles à ce grain aussi (UC-EPI-03 L2). Un autre référentiel a la
-  structure qu'il déclare (UC-EPI-05).
+- **L3** — Depuis le 2026-10-20, ce grain est le seul où RESPIRE change de
+  structure (ajout, retrait, fusion ou scission de pôles et de compétences) :
+  le modèle atomique ne le peut pas (UC-EPI-03 L2), et refuse ensuite une
+  release qui défairait cette structure (UC-EPI-03 E6). Les fiches de
+  RESPIRE (en-têtes de pôle, fiches de compétence) restent celles du modèle
+  atomique : un pôle ou une compétence qu'il ne décrit pas reçoit la fiche
+  écrite depuis le document (Twin9, Twin6).
 - **L4** — Aucune route ne supprime un brouillon abandonné.
 - **L5** — La publication ne régénère pas l'export statique lu par la page
   publique `#/referentiel` (UC-VIS-02 RG4) : `StaticExporter::export` n'est

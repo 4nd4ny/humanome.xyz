@@ -76,7 +76,7 @@ describe('UC-EPI-03 — entériner une compétence puis couper une release', () 
     expect(publish.headers['X-CSRF-Token']).toBe(CSRF)
 
     // 4. Retour à l'atelier : 1.01 est en vigueur en 1.1.0, plus rien au vote.
-    const referentiel = await screen.findByRole('region', { name: 'Les 61 compétences' })
+    const referentiel = await screen.findByRole('region', { name: 'Les compétences du référentiel' })
     expect(window.location.hash).toBe('#/epistemiarque')
     const row = within(referentiel).getByText('1.01').closest('li')
     expect(within(row).getByText('v1.1.0')).toBeDefined()
@@ -101,7 +101,7 @@ describe('UC-EPI-03 — entériner une compétence puis couper une release', () 
     expect(publishes[0].url).toBe(`api/competences/drafts/${id}/publish`)
     expect(publishes[0].body).toEqual({ releaseNote: 'Entérinée par le vote des membres.' })
     // Retour à l'atelier (étape 4), qui recharge les compétences.
-    expect(await screen.findByRole('region', { name: 'Les 61 compétences' })).toBeDefined()
+    expect(await screen.findByRole('region', { name: 'Les compétences du référentiel' })).toBeDefined()
     expect(window.location.hash).toBe('#/epistemiarque')
   })
 

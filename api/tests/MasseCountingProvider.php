@@ -8,8 +8,9 @@ use Humanome\Llm\MockProvider;
 
 /**
  * Counting wrapper around the fixture MockProvider — the referee of the P11
- * DoD: after interruption/resume, `calls` must equal EXACTLY 8 × jobs (7
- * poles + 1 kairos), proving that no checkpointed pole is ever re-called.
+ * DoD: after interruption/resume, `calls` must equal EXACTLY (poles + 1) ×
+ * jobs — 8 for RESPIRE v7, the DoD's referential —, proving that no
+ * checkpointed pole is ever re-called.
  * Failure injection covers the attempts/retry paths.
  */
 final class MasseCountingProvider

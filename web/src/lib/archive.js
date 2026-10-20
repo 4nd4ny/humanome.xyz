@@ -1,7 +1,8 @@
 // Archive export / import (P8.6, chantier C) — the RGPD portability pivot
 // (ADR-006, cahier §6.1/§6.3): assembles a SELF-CONTAINED document conforming
 // to schemas/archive-export.schema.json from the LOCAL stores (portfolios,
-// cartographies) plus the current referentiel, validates it through the
+// cartographies) plus the current referentiel and those of the cartographies
+// (2026-10-20: any referential, each cartography noting its own), validates it through the
 // engine BEFORE any download, and restores an archive into the local stores
 // (ids regenerated, duplicates skipped by content).
 //
@@ -30,6 +31,7 @@ import { validateDocument } from '@engine/validation.js'
 import { apiFetch, fetchMe } from '../api/client.js'
 import { frenchDate } from '../data/load.js'
 import { loadPublishedReferentiel } from '../data/referentiel.js'
+import { chargerReferentielDuDocument, referenceDuDocument } from './referentiel-du-document.js'
 import { createPortfolioStore } from './portfolio-store.js'
 import { createCartoStore } from './carto-store.js'
 import { createCartoStore as createInterfaceStore } from '../carto/core/store.js'
@@ -251,18 +253,65 @@ function toArchiveRunMeta(runMeta, fallbackDate) {
   return meta
 }
 
-/** Maps a carto-store entry to the archive `cartographies[]` shape. */
-function toArchiveCartography(entry, referentielDoc, fallbackDate) {
+/**
+ * Maps a carto-store entry to the archive `cartographies[]` shape. Its
+ * referential is the one the entry noted; else the one its document names
+ * (2026-10-20), at the most recent published version its document conforms
+ * to (chargerReferentielDuDocument, the review's rule) — never RESPIRE's for a
+ * document of another referential; unknown when none could be loaded.
+ */
+function toArchiveCartography(entry, referentiels, fallbackDate) {
+  const noted = typeof entry.referentiel?.id === 'string' ? entry.referentiel : null
+  const loaded = noted ? null : referentiels.get(entry.id) ?? null
   return {
     id: entry.id,
     type: entry.type === 'merge' ? 'merge' : 'jour',
     document: entry.document,
     promptPackageId: entry.promptPackage?.id ?? UNKNOWN_ID,
     promptPackageVersion: entry.promptPackage?.version ?? UNKNOWN_VERSION,
-    referentielId: entry.referentiel?.id ?? referentielDoc?.id ?? UNKNOWN_ID,
-    referentielVersion: entry.referentiel?.version ?? referentielDoc?.version ?? UNKNOWN_VERSION,
+    referentielId: noted?.id ?? loaded?.id ?? UNKNOWN_ID,
+    referentielVersion: noted ? (noted.version ?? UNKNOWN_VERSION) : (loaded?.version ?? UNKNOWN_VERSION),
     runMeta: toArchiveRunMeta(entry.runMeta, entry.updatedAt ?? fallbackDate),
   }
+}
+
+/**
+ * The referentials the archive carries (self-contained, 2026-10-20): the
+ * current RESPIRE, as before, and the one of each exported cartography that
+ * can be loaded — a read-only lookup that degrades to leaving it out.
+ *
+ * @returns {Promise<{docs: object[], byEntry: Map<string, object>}>} byEntry:
+ *   for an entry without a noted version, the document its own document reads
+ */
+async function archiveReferentiels(entries, respire, getReferentiel) {
+  const docs = []
+  const keys = new Set()
+  const byEntry = new Map()
+  const keep = (doc) => {
+    if (!doc) return
+    const key = `${doc.id}@${doc.version}`
+    if (!keys.has(key)) {
+      keys.add(key)
+      docs.push(doc)
+    }
+  }
+  keep(respire)
+  const noted = new Map()
+  for (const entry of entries) {
+    const ref = referenceDuDocument(entry.document, entry.referentiel ?? null)
+    if (ref.version !== null) {
+      noted.set(`${ref.id}@${ref.version}`, ref)
+    } else {
+      // No noted version: the most recent published one its document conforms to.
+      const doc = await chargerReferentielDuDocument(entry.document, { getReferentiel }).catch(() => null)
+      keep(doc)
+      if (doc) byEntry.set(entry.id, doc)
+    }
+  }
+  for (const ref of noted.values()) {
+    keep(await chargerReferentielDuDocument(null, { connu: ref, getReferentiel }).catch(() => null))
+  }
+  return { docs, byEntry }
 }
 
 /**
@@ -321,6 +370,8 @@ export async function exportArchive(options = {}) {
       ),
     ])
   const referentielDoc = referentiel?.doc ?? referentiel ?? null
+  const exported = entries.filter((entry) => entry.document != null)
+  const referentiels = await archiveReferentiels(exported, referentielDoc, getReferentiel)
 
   const archive = {
     schemaVersion: ARCHIVE_SCHEMA_VERSION,
@@ -328,12 +379,10 @@ export async function exportArchive(options = {}) {
     exportedAt,
     account,
     portfolios: portfolios.map(toArchivePortfolio),
-    referentiels: referentielDoc ? [referentielDoc] : [],
+    referentiels: referentiels.docs,
     promptPackages,
     cartographies: [
-      ...entries
-        .filter((entry) => entry.document != null)
-        .map((entry) => toArchiveCartography(entry, referentielDoc, exportedAt)),
+      ...exported.map((entry) => toArchiveCartography(entry, referentiels.byEntry, exportedAt)),
       // Cartographies de masse produites par un établissement (art. 15/20).
       ...massDocuments
         .filter((entry) => entry.document != null)

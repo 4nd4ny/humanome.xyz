@@ -1,11 +1,12 @@
 import { describe, it, expect } from 'vitest'
 import { twin6ToMergeDocument } from './mapper.js'
 import { validateDocument } from '../validation.js'
+import { validateDocumentPourReferentiel } from '../conformite.js'
 
-// Référentiel minimal : 2 pôles, 3 compétences.
-// Le schéma cartographie-merge exige d'un document de RESPIRE ses 7 pôles ;
-// en production Twin6 tourne toujours sur le référentiel complet. Les pôles 3–7
-// sans compétence attestée deviennent des domaines vides (légitimes).
+// Référentiel à la forme de RESPIRE (sept pôles, une ou deux compétences
+// chacun), sans identifiant, comme le sert /api/twin9/meta. Chaque pôle porte
+// une compétence attestée : un pôle sans aucune présence donnerait un domaine
+// vide, que le schéma refuse (UC-APP-09, anomalie 2).
 const referentiel = {
   poles: [
     { num: 1, nom: 'TÊTE — Penser & Comprendre' },
@@ -161,8 +162,53 @@ describe('twin6ToMergeDocument', () => {
     expect(c101.feedback).toContain('La double lecture tient') // raisonnement adversarial Twin6
   })
 
+  it('un document de RESPIRE ne nomme pas son référentiel, qu’on lui donne son identifiant ou non (T17)', () => {
+    expect(doc).not.toHaveProperty('referentiel')
+    expect(twin6ToMergeDocument(cartoPoles, kairos, { id: 'respire', ...referentiel }, meta)).toEqual(doc)
+  })
+
   it('refuse une entrée sans feuille datée', () => {
     const sansFeuille = { poleNum: 1, passagesSaillants: [{ pid: 1, extraitVerbatim: 'x', auteur: 'apprenant' }], competences: [] }
     expect(() => twin6ToMergeDocument([sansFeuille], null, referentiel, meta)).toThrow(/feuille datée/)
+  })
+})
+
+describe('twin6ToMergeDocument — tout référentiel (2026-10-20)', () => {
+  const meta = { journalId: 'demo-twin6', sourceProtocole: 'twin6-ouverte@1.0.0', generatedAt: '2026-07-15T00:00:00' }
+
+  it('cinq pôles lettrés : un domaine par pôle, ses codes, et le document nomme son référentiel ; conforme à lui seul', () => {
+    const lettres = ['A', 'B', 'C', 'D', 'E']
+    const lettre = {
+      id: 'fictif-lettre',
+      poles: lettres.map((l, i) => ({ num: i + 1, nom: `${l} · Pôle fictif ${l}` })),
+      competences: lettres.flatMap((l, i) => [1, 2].map((k) => ({ code: `${l}${k}`, nom: `Capacité fictive ${l}${k}`, pole: i + 1 }))),
+    }
+    const poles = lettres.map((l, i) => ({ ...poleFixture(i + 1, `${l}1`) }))
+    const doc = twin6ToMergeDocument(poles, kairos, lettre, meta)
+
+    expect(doc.referentiel).toBe('fictif-lettre')
+    expect(doc.domains.map((d) => [d.id, d.competences.map((c) => c.code)])).toEqual(
+      lettres.map((l) => [`${l} · Pôle fictif ${l}`, [`${l}1`]]),
+    )
+    expect(Object.keys(doc.profilIpsatif)).toEqual(['1', '2', '3', '4', '5'])
+    expect(validateDocumentPourReferentiel('cartographie-merge', doc, lettre).errors).toEqual([])
+    // Sans son nom, il se lirait comme un document de RESPIRE : la conformité le refuse.
+    const { referentiel: _nom, ...sansNom } = doc
+    expect(validateDocumentPourReferentiel('cartographie-merge', sansNom, lettre).valid).toBe(false)
+  })
+
+  it('une version de RESPIRE à six pôles : six domaines, aucun nom de référentiel, conforme à sa version', () => {
+    const six = {
+      id: 'respire',
+      poles: referentiel.poles.filter((p) => p.num !== 7),
+      competences: referentiel.competences.filter((c) => c.pole !== 7),
+    }
+    const poles = [cartoPole1, cartoPole2, ...[3, 4, 5, 6].map((n) => poleFixture(n, `${n}.01`))]
+    const doc = twin6ToMergeDocument(poles, kairos, six, meta)
+
+    expect(doc).not.toHaveProperty('referentiel')
+    expect(doc.domains).toHaveLength(6)
+    expect(doc.domains.map((d) => d.id)).not.toContain('FLAMBEAU — Transmettre & Piloter')
+    expect(validateDocumentPourReferentiel('cartographie-merge', doc, six).errors).toEqual([])
   })
 })

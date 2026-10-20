@@ -267,7 +267,12 @@ final class JeuxGabaritsTest extends CartographeTestCase
     {
         $this->importer();
         $v98 = new ProtocoleRepository(self::$pdo);
-        $v98->put('tagger/P1', "# Pôle 1 — FICTIF\n\n## 1.01 — Fiche FICTIVE\n", null);
+        $respire = json_decode((string) file_get_contents(\dirname(__DIR__, 3) . '/web/public/data/referentiel/respire-v7.json'),
+            true, 512, JSON_THROW_ON_ERROR);
+        $poles = JeuAvantT16::fiches($respire); // the pole files of RESPIRE v7's structure
+        foreach ($poles as $nom => $texte) {
+            $v98->put($nom, $texte, null);
+        }
         $neuf = ReferentielsFictifs::neufPoles();
         (new ReferentielRepository(self::$pdo))->importPublishedDocument(
             ['contentHash' => ContentHash::compute($neuf)] + $neuf, 'Publié');
@@ -284,7 +289,9 @@ final class JeuxGabaritsTest extends CartographeTestCase
 
         self::assertSame('Le jeu de gabarits « essai » précède T16 : ses gabarits écrivent RESPIRE en toutes lettres. '
             . 'Pour un autre référentiel, il faut réimporter le jeu v9.8, puis en refaire une copie', $lancer()['error']);
-        $v98->retirer('tagger/P1');   // the v9.8's set imported again
+        foreach (array_keys($poles) as $nom) {
+            $v98->retirer($nom);      // the v9.8's set imported again
+        }
         self::assertSame('Le jeu de gabarits « essai » précède T16 : ses gabarits écrivent RESPIRE en toutes lettres. '
             . 'Pour un autre référentiel, il faut refaire une copie du jeu v9.8', $lancer()['error']);
         self::assertSame(201, $this->as_($atelier, 'POST', '/api/twin9/runs', ['profil' => $this->profil($atelier, 'essai'),

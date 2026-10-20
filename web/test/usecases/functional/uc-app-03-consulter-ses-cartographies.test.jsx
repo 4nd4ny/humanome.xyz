@@ -148,10 +148,13 @@ describe('UC-APP-03 — scénario nominal', () => {
     }
     expect(viewer.querySelectorAll('[data-kind="competence"]').length).toBeGreaterThan(0)
     expect(screen.queryByRole('region', { name: 'Ma formation' })).toBeNull()
-    // Référentiel PUBLIÉ chargé (fichier statique), pas la copie embarquée.
-    expect(fetchMock.calls.map((c) => c.url)).toEqual(
-      expect.arrayContaining(['data/referentiel/index.json', 'data/referentiel/respire-7.9.0.json']),
-    )
+    // Référentiel de la cartographie (2026-10-20) : la version que l'entrée a notée,
+    // RESPIRE 7.0.0, cherchée dans l'export statique (index lu) ; absente de cet
+    // index fictif, sa copie embarquée — même version — la donne. La dernière
+    // version publiée (7.9.0) n'est plus lue à sa place.
+    const urls = fetchMock.calls.map((c) => c.url)
+    expect(urls).toContain('data/referentiel/index.json')
+    expect(urls).not.toContain('data/referentiel/respire-7.9.0.json')
 
     // 5. Retour au tableau de bord.
     fireEvent.click(screen.getByRole('button', { name: '← Retour au tableau de bord' }))

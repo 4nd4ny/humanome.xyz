@@ -1,5 +1,5 @@
 // Atelier épistémiarque au grain COMPÉTENCE ATOMIQUE : garde de rôle, atelier
-// (61 compétences par pôle + brouillons + votes), éditeur riche d'une compétence
+// (les compétences par pôle + brouillons + votes), éditeur riche d'une compétence
 // avec concurrence optimiste (If-Match), page de vote par compétence, coupe de release.
 import { afterEach, describe, expect, it, vi } from 'vitest'
 import { cleanup, fireEvent, render, screen, waitFor } from '@testing-library/react'
@@ -98,11 +98,18 @@ describe('EpistemiarqueView — garde de rôle', () => {
 })
 
 describe('EpistemiarqueView — atelier (grain compétence)', () => {
-  it('liste les compétences par pôle, les brouillons et les votes', async () => {
-    render(<EpistemiarqueView section={null} deps={{ fetchMeFn: epistemiarque, api: fakeApi() }} />)
+  it('liste les compétences par pôle (noms lus dans le référentiel publié), les brouillons et les votes', async () => {
+    // Les noms des pôles viennent de RESPIRE publié, plus d'une liste figée à sept
+    // pôles (2026-10-20) : un pôle qu'il ne nomme pas garde son numéro.
+    const getReferentiel = vi.fn(async () => ({
+      doc: { id: 'respire', poles: [{ num: 1, nom: 'TETE — Penser & Comprendre' }, { num: 2, nom: 'COEUR — Relier & Naviguer' }], competences: [] },
+    }))
+    render(<EpistemiarqueView section={null} deps={{ fetchMeFn: epistemiarque, api: fakeApi(), getReferentiel }} />)
     await screen.findByText('Le référentiel (3 compétences)')
-    expect(screen.getByText(/TÊTE/)).toBeTruthy()
-    expect(screen.getByText(/CŒUR/)).toBeTruthy()
+    expect(await screen.findByText('TETE — Penser & Comprendre')).toBeTruthy()
+    expect(screen.getByText('COEUR — Relier & Naviguer')).toBeTruthy()
+    expect(screen.getByText('Pôle 3')).toBeTruthy()
+    expect(screen.getByRole('region', { name: 'Les compétences du référentiel' })).toBeTruthy()
     // Compétence 1.01 est au vote -> apparaît dans « Compétences au vote » + chip.
     expect(screen.getByText(/1\/2 pour/)).toBeTruthy()
     // 2.01 a un brouillon -> lien Éditer.

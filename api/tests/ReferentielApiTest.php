@@ -257,9 +257,9 @@ final class ReferentielApiTest extends ReferentielTestCase
         ]));
         $draftId = $created['id'];
 
-        // 60 competences instead of 61: schema violation.
+        // A competence without its name: schema violation.
         $invalid = $created['content'];
-        array_pop($invalid['competences']);
+        unset($invalid['competences'][0]['nom']);
         $response = $this->request('PUT', "/referentiel/drafts/{$draftId}", $invalid);
         self::assertSame(422, $response->getStatusCode());
         self::assertNotEmpty(self::body($response)['errors']);

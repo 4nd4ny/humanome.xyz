@@ -112,7 +112,7 @@ describe('UC-PRO-05 — exécution d’une version (étape 5)', () => {
     })
 
     expect(result.engine).toBe(true)
-    expect(result.pkg).toEqual({ id: 'aurora-v3-reconstruit', version: '1.0.0' })
+    expect(result.pkg).toEqual({ id: 'aurora-v3-reconstruit', version: '1.1.0' })
     expect(result.llmCalls).toBe(24)
     for (const { iso, document } of result.days) expect(document).toEqual(DAY_DOCS[iso])
     // Mesure autoritaire : la somme des compteurs renvoyés par le fournisseur.
@@ -134,6 +134,8 @@ describe('UC-PRO-05 — exécution d’une version (étape 5)', () => {
     expect(provider.callCount).toBe(1)
     expect(result.days[0].document.perimetre).toEqual({ partiel: true, poles: [2], competences: ['2.01'] })
     expect(result.days[0].document.poles.map((p) => p.poleNum)).toEqual(['2'])
+    // Le modèle rejoué instruit tout le pôle 2 : seules les compétences du périmètre restent (RG2).
+    expect(result.days[0].document.poles[0].competences.map((c) => c.code)).toEqual(['2.01'])
   })
 
   it('UC-PRO-05-U11 — createProviderBundle : Service humanome (modèle « demo », tarif de référence) ou clé personnelle obligatoire', () => {
@@ -160,11 +162,14 @@ describe('UC-PRO-05 — exécution d’une version (étape 5)', () => {
     expect(detectReferentielEnDur(twin6).enDur).toBe(true)
     // Le paquet fixture itère referentiel.poles/competences : pas d'alerte.
     expect(detectReferentielEnDur(pkgFixture)).toEqual({ enDur: false, motif: null })
-    // Fiche de compétence en toutes lettres dans un gabarit (« ## X.YY — ») (A8).
+    // Fiche de compétence en toutes lettres dans un gabarit (« ## CODE — »), quel que soit le format du code (A8).
     const fiche = clone(pkgFixture)
     fiche.prompts[0].texte += '\n## 1.01 — Pensée critique\nDéfinition figée dans le gabarit.'
     expect(detectReferentielEnDur(fiche)).toMatchObject({ enDur: true })
-    expect(detectReferentielEnDur(fiche).motif).toContain('fiches de compétences en dur (« ## X.YY — … »)')
+    expect(detectReferentielEnDur(fiche).motif).toContain('fiches de compétences en dur (« ## CODE — … »)')
+    const lettre = clone(pkgFixture)
+    lettre.prompts[0].texte += '\n## A2 — Capacité\nDéfinition figée dans le gabarit.'
+    expect(detectReferentielEnDur(lettre)).toMatchObject({ enDur: true })
     // Orchestration sandbox qui n'utilise jamais son paramètre `referentiel` (A8).
     const ignore = { ...clone(pkgFixture), code: { ...pkgFixture.code, orchestration: 'export function run(){}' } }
     expect(detectReferentielEnDur(ignore)).toMatchObject({ enDur: true })
@@ -304,29 +309,36 @@ describe('UC-PRO-05 — préparation, rapports et réimport', () => {
       run: { pkg: { id: 'aurora-lab', version: '2.0.0' }, llmCalls: 8, durationMs: 10, days: [{ iso: '2026-01-06', document: DAY_DOCS['2026-01-06'] }] },
       now: () => '2026-09-28T00:00:00.000Z',
     })
-    const reference = normalizeReferenceImport(JSON.parse(JSON.stringify(exported)))
+    const avecRef = { referentiel: referentielFixture }
+    const reference = normalizeReferenceImport(JSON.parse(JSON.stringify(exported)), avecRef)
     expect(reference).toMatchObject({ pkg: { id: 'aurora-lab', version: '2.0.0' }, reference: true, llmCalls: 0, label: 'Référence : Fixture embarquée : Maya, 3 journées' })
     expect(reference.days).toEqual([{ iso: '2026-01-06', document: DAY_DOCS['2026-01-06'] }])
-    expect(() => normalizeReferenceImport({ kind: 'autre' })).toThrow('JSON de référence non reconnu')
-    // E4 : sans date, date en double, invalide au schéma.
-    expect(() => normalizeReferenceImport([{ kind: 'cartographie-jour' }])).toThrow('doit porter une date')
-    expect(() => normalizeReferenceImport([clone(DAY_DOCS['2026-01-05']), clone(DAY_DOCS['2026-01-05'])])).toThrow(
+    expect(() => normalizeReferenceImport({ kind: 'autre' }, avecRef)).toThrow('JSON de référence non reconnu')
+    // E4 : sans date, date en double, invalide au schéma ou non conforme au référentiel du banc.
+    expect(() => normalizeReferenceImport([{ kind: 'cartographie-jour' }], avecRef)).toThrow('doit porter une date')
+    expect(() => normalizeReferenceImport([clone(DAY_DOCS['2026-01-05']), clone(DAY_DOCS['2026-01-05'])], avecRef)).toThrow(
       'date en double (2026-01-05)',
     )
     // Le marqueur perimetre.partiel d'un fichier importé ne désactive PAS la
-    // validation : 7 pôles -> validation stricte ; < 7 pôles -> sonde tolérante,
-    // qui refuse encore un pôle sans compétences.
+    // validation : il restreint seulement les pôles et compétences attendus ;
+    // un pôle sans compétences reste refusé au schéma.
     const forge = clone(DAY_DOCS['2026-01-05'])
     forge.perimetre = { partiel: true }
     delete forge.poles[0].competences
-    expect(() => normalizeReferenceImport(forge)).toThrow('document du 2026-01-05 invalide au schéma')
+    expect(() => normalizeReferenceImport(forge, avecRef)).toThrow('document du 2026-01-05 invalide au schéma')
     const partiel = clone(DAY_DOCS['2026-01-05'])
     partiel.poles = partiel.poles.filter((p) => p.poleNum === '2')
+    partiel.poles[0].competences = partiel.poles[0].competences.filter((c) => c.code === '2.01')
     partiel.kairos = null
     partiel.perimetre = { partiel: true, poles: [2], competences: ['2.01'] }
-    expect(normalizeReferenceImport(clone(partiel)).days).toHaveLength(1) // partiel valide : accepté
+    expect(normalizeReferenceImport(clone(partiel), avecRef).days).toHaveLength(1) // partiel conforme : accepté
+    const sansPole = clone(DAY_DOCS['2026-01-05'])
+    sansPole.poles = sansPole.poles.filter((p) => p.poleNum !== '7')
+    expect(() => normalizeReferenceImport(sansPole, avecRef)).toThrow(
+      'document du 2026-01-05 non conforme au référentiel (1 erreur(s) : /poles il manque le pôle 7 du référentiel)',
+    )
     delete partiel.poles[0].competences
-    expect(() => normalizeReferenceImport(partiel)).toThrow('invalide au schéma')
+    expect(() => normalizeReferenceImport(partiel, avecRef)).toThrow('invalide au schéma')
   })
 
   it('UC-PRO-05-U26 — buildCompetenceDiff : écart avec la délibération du jury des DEUX côtés (pièces, verbatim, verdict)', () => {

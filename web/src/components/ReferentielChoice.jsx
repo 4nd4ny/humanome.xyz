@@ -1,0 +1,55 @@
+// Choix du référentiel d'un parcours (2026-10-20) : la cartographie standard,
+// Twin6 et la masse cartographient le référentiel publié qu'on choisit,
+// RESPIRE par défaut — le parcours en lit la structure dans son JSON
+// (data/referentiel.js). Sans index des référentiels (copie statique, hors
+// ligne), aucun choix n'est offert : le parcours garde RESPIRE.
+import { useEffect, useState } from 'react'
+import { listPublishedReferentiels } from '../data/referentiel.js'
+
+/** La valeur d'une option : un référentiel à sa dernière version. */
+const valeur = (r) => `${r.id}@${r.versions[0].semver}`
+
+/**
+ * @param {object} props
+ * @param {{id: string, version: string}|null} props.value le choix, null : le défaut (RESPIRE)
+ * @param {(choix: {id: string, version: string}) => void} props.onChange
+ * @param {boolean} [props.disabled]
+ * @param {typeof listPublishedReferentiels} [props.list] seam de test
+ */
+export default function ReferentielChoice({ value, onChange, disabled = false, list = listPublishedReferentiels }) {
+  const [referentiels, setReferentiels] = useState([])
+
+  useEffect(() => {
+    let vivant = true
+    list().then((liste) => vivant && setReferentiels(liste)).catch(() => {})
+    return () => {
+      vivant = false
+    }
+  }, [list])
+
+  if (referentiels.length === 0) return null
+  const choisi = value
+    ? `${value.id}@${value.version}`
+    : valeur(referentiels.find((r) => r.id === 'respire') ?? referentiels[0])
+
+  return (
+    <label className="referentiel-choice">
+      Référentiel{' '}
+      <select
+        value={choisi}
+        disabled={disabled}
+        aria-label="Référentiel"
+        onChange={(event) => {
+          const r = referentiels.find((x) => valeur(x) === event.target.value)
+          if (r) onChange({ id: r.id, version: r.versions[0].semver })
+        }}
+      >
+        {referentiels.map((r) => (
+          <option key={r.id} value={valeur(r)}>
+            {r.label}
+          </option>
+        ))}
+      </select>
+    </label>
+  )
+}

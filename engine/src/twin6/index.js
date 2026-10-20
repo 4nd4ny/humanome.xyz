@@ -1,22 +1,39 @@
 // « Cartographie ouverte Twin6 » — orchestrateur du pipeline open source.
 //
-// 8 appels sur le portfolio ENTIER : 7× `1-scan-pole` (un par pôle RESPIRE) +
-// 1× `2-kairos-final`, puis mapping vers `cartographie-merge` (voir mapper.js).
-// C'est le pendant GRATUIT/ouvert de Twin9 (milliers d'appels, confidentiel).
+// Un appel `1-scan-pole` par pôle du référentiel employé, sur le portfolio
+// ENTIER, puis 1 appel `2-kairos-final`, et le mapping vers
+// `cartographie-merge` (voir mapper.js) — RESPIRE v7 : 7 + 1 = 8 appels. C'est
+// le pendant GRATUIT/ouvert de Twin9 (milliers d'appels, confidentiel).
 //
 // Contrat des prompts (vérifié sur les .md source) : `${POLE}` = le NUMÉRO du
-// pôle (1..7) ; la fiche `P${POLE}.md` et le portfolio sont des ENTRÉES attachées
-// (pas de placeholder dédié), injectées ici sous des titres explicites. Le kairos
-// reçoit les 7 `carto_pole` + le portfolio original.
+// pôle ; la fiche de ce pôle et le portfolio sont des ENTRÉES attachées (pas de
+// placeholder dédié), injectées ici sous des titres explicites. Le kairos
+// reçoit les `carto_pole` de tous les pôles + le portfolio original.
 //
 // Aucune E/S ni secret ici (convention moteur, P5) : les gabarits (scan-pole,
-// kairos, fiches P1..P7 — tous PUBLICS) sont injectés par l'appelant. La sortie
-// LLM est du JSON ; on l'extrait de façon tolérante (fences ```json, préambule).
+// kairos, une fiche par pôle — tous PUBLICS) sont injectés par l'appelant, qui
+// choisit le référentiel et ses fiches (fichesPourTwin6, ./fiches.js : celles
+// du paquet pour RESPIRE v7, écrites depuis le document pour tout autre
+// pôle). La sortie LLM est du JSON ; on l'extrait de façon tolérante (fences
+// ```json, préambule).
 
 import { twin6ToMergeDocument } from './mapper.js'
 
-/** Nombre d'appels d'un run Twin6 (7 pôles + kairos) — utile pour le devis. */
+// Les fiches d'un pôle pour tout référentiel (WP1, 2026-10-20), exposées avec le pipeline.
+export { fichesDuReferentiel, fichesPourTwin6 } from './fiches.js'
+
+/** Nombre d'appels d'un run Twin6 sur RESPIRE v7 (7 pôles + kairos). */
 export const TWIN6_CALLS = 8
+
+/**
+ * Nombre d'appels d'un run Twin6 sur un référentiel : un scan par pôle, plus
+ * le kairos (RESPIRE v7 : TWIN6_CALLS).
+ *
+ * @param {{poles: Array}} referentiel
+ */
+export function twin6CallsFor(referentiel) {
+  return referentiel.poles.length + 1
+}
 
 /** Prompt scan-pole : `${POLE}` → numéro, puis fiche du pôle + portfolio attachés. */
 export function buildScanPolePrompt(scanPoleTemplate, poleNum, ficheMd, portfolio) {
@@ -27,7 +44,7 @@ export function buildScanPolePrompt(scanPoleTemplate, poleNum, ficheMd, portfoli
   )
 }
 
-/** Prompt kairos : les 7 `carto_pole` (étiquetés carto_P1..P7) + portfolio original. */
+/** Prompt kairos : les `carto_pole` (étiquetés carto_P<n>) + portfolio original. */
 export function buildKairosPrompt(kairosTemplate, cartoPoles, portfolio) {
   const blocks = cartoPoles
     .map((cp) => `## carto_P${cp.poleNum}\n\n\`\`\`json\n${JSON.stringify(cp)}\n\`\`\``)
@@ -61,7 +78,8 @@ export function extractJson(text) {
  * @param {string} args.portfolio portfolio markdown (feuilles `### YYYY-MM-DD`).
  * @param {{scanPole: string, kairos: string, fiches: Record<string|number,string>}} args.templates
  *   gabarits PUBLICS (scan-pole, kairos, fiche par pôle).
- * @param {{competences: Array, poles: Array<{num,nom}>}} args.referentiel structure RESPIRE.
+ * @param {{id?: string, competences: Array, poles: Array<{num,nom}>}} args.referentiel structure du
+ *   référentiel employé (un scan par pôle ; un autre que RESPIRE nomme le document, T17).
  * @param {{complete: Function, name?: string}} args.provider handle de createProvider().
  * @param {string} args.model identifiant de modèle.
  * @param {object} [args.options] { maxTokens=8192, temperature, signal, onProgress, meta }.
@@ -98,7 +116,7 @@ export async function executerTwin6({ portfolio, templates, referentiel, provide
     calls.push({ etape, usage: res.usage ?? null, model: res.model ?? model })
   }
 
-  // Phase 1 — 7 scan-pole.
+  // Phase 1 — un scan-pole par pôle du référentiel, dans l'ordre de leurs numéros.
   const cartoPoles = []
   for (const num of poleNums) {
     const fiche = templates.fiches[num] ?? templates.fiches[String(num)]

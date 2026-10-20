@@ -46,7 +46,12 @@ final class Twin9Config
      * public RESPIRE referentiel; only the accented pole names differ from the
      * static respire-v7.json, which is why we serve the exact structure the
      * imported templates were parsed from). Stored under its own settings key,
-     * written by the import (X-Migrate-Token), never by the admin PUT.
+     * written by the import (X-Migrate-Token), never by the admin PUT. It is
+     * RESPIRE's as the import knows it: the open cartography (Twin6) reads it
+     * for RESPIRE only, and only while it has the poles and codes of the
+     * version chosen (2026-10-20, web/src/api/twin6.js referentielTwin6) —
+     * another referential, or another structure of RESPIRE, it reads from
+     * its published document.
      */
     public const REFERENTIEL_KEY = 'twin9_referentiel';
 
@@ -167,7 +172,7 @@ final class Twin9Config
     /**
      * The stored referentiel structure /meta serves the open cartography
      * (Twin6), or [] if none imported yet. Shape: [{num:int, nom:string,
-     * competences:[{code, nom}]}].
+     * competences:[{code, nom}]}], as many poles as the import gave.
      *
      * @return list<array<string, mixed>>
      */

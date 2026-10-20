@@ -203,10 +203,11 @@ describe('UC-CAR-06 — CompareSection (rendu seul)', () => {
     ])
   })
 
-  it('UC-CAR-06-U10 — AN17 : documents arrivés avant le référentiel → le VRAI module sunburst lève une TypeError au rendu (comportement actuel)', async () => {
-    // ANOMALIE AN17 (fiche) — comportement ACTUEL figé : MiniSunburst appelle
-    // buildDayTree(doc, null) tant que le référentiel publié n'est pas chargé ;
-    // rien ne l'intercepte dans l'application (page blanche en production).
+  it('UC-CAR-06-U10 — AN17 corrigée (2026-10-20) : documents arrivés avant leur référentiel → la section attend, sans planter le VRAI module sunburst', async () => {
+    // AN17 (fiche) : MiniSunburst appelait buildDayTree(doc, null) tant que le
+    // référentiel publié n'était pas chargé. Chaque document attend désormais
+    // le référentiel de SA cartographie avant d'être dessiné : sans lui, la
+    // section reste en attente, entière.
     const crashes = []
     vi.spyOn(console, 'error').mockImplementation(() => {})
     const swallow = (event) => event.preventDefault()
@@ -230,11 +231,12 @@ describe('UC-CAR-06 — CompareSection (rendu seul)', () => {
       fireEvent.change(await screen.findByLabelText('Cartographie 1'), { target: { value: '21' } })
       fireEvent.change(screen.getByLabelText('Cartographie 2 (même apprenant)'), { target: { value: '22' } })
 
-      await waitFor(() => expect(crashes.length).toBeGreaterThan(0))
-      expect(crashes[0].name).toBe('TypeError')
-      expect(crashes[0].message).toContain('poles')
-      expect(screen.getByTestId('crash-probe')).toBeTruthy()
-      expect(screen.queryByLabelText('Cartographie 1')).toBeNull() // toute la section démontée
+      expect(await screen.findByText('Chargement des documents…')).toBeTruthy()
+      await new Promise((resolve) => setTimeout(resolve, 50))
+      expect(crashes).toEqual([])
+      expect(screen.queryByTestId('crash-probe')).toBeNull()
+      expect(screen.getByLabelText('Cartographie 1')).toBeTruthy() // la section reste montée
+      expect(screen.queryByTestId('compare-diagrams')).toBeNull()
     } finally {
       window.removeEventListener('error', swallow)
       vi.restoreAllMocks()

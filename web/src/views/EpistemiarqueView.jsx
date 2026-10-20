@@ -8,27 +8,23 @@
 // lost update. Une compétence est entérinée à la MAJORITÉ des membres, pendant
 // qu'une autre peut rester en débat. Les débats Decidim étayent la discussion.
 //
-// Sections : atelier (61 compétences par pôle + brouillons + votes + coupe de
+// Sections : atelier (les compétences par pôle + brouillons + votes + coupe de
 // release) | editer/<id> (éditeur riche d'une compétence) | proposition/<id> (vote)
 // | referentiels (T15 : les autres référentiels, importés, votés, publiés).
+//
+// Le modèle atomique est celui de RESPIRE ; les noms de ses pôles se lisent
+// dans la dernière version publiée de RESPIRE (2026-10-20), plus dans une
+// liste figée à sept pôles : une version d'une autre structure s'y lit telle
+// qu'elle est.
 
 import { useCallback, useEffect, useMemo, useState } from 'react'
 import { ApiError, ApiUnavailableError, fetchMe } from '../api/client.js'
+import { loadPublishedReferentiel } from '../data/referentiel.js'
 import { createEpistemiarqueApi } from './epistemiarque/api.js'
 import { createCompetenceApi, nextCompetenceVersion } from './epistemiarque/competence-api.js'
 import ReferentielsSection from './epistemiarque/ReferentielsSection.jsx'
 
 const DECIDIM_URL = 'https://participer.harmonia.education'
-
-const POLES = {
-  1: 'TÊTE — Penser & Comprendre',
-  2: 'CŒUR — Relier & Naviguer',
-  3: 'MAIN — Créer & Incarner',
-  4: 'ÂME — Discerner & Juger',
-  5: 'RACINES — Évoluer & Résister',
-  6: 'CITÉ — Gouverner & S’ouvrir',
-  7: 'FLAMBEAU — Transmettre & Piloter',
-}
 
 function go(hash) {
   if (typeof window !== 'undefined') window.location.hash = hash
@@ -42,10 +38,11 @@ function errorMessage(error) {
 
 /**
  * @param {{section?: string|null, lib?: object, deps?: object}} props
- *   deps : coutures de test {fetchMeFn, api, docApi}
+ *   deps : coutures de test {fetchMeFn, api, docApi, getReferentiel}
  */
 export default function EpistemiarqueView({ section = null, deps = {} }) {
   const fetchMeFn = deps.fetchMeFn ?? fetchMe
+  const getReferentiel = deps.getReferentiel ?? loadPublishedReferentiel
   const api = useMemo(() => deps.api ?? createCompetenceApi(), [deps.api])
   const docApi = useMemo(() => deps.docApi ?? createEpistemiarqueApi(), [deps.docApi])
   const [sessionState, setSessionState] = useState({ status: 'loading', user: null })
@@ -100,7 +97,7 @@ export default function EpistemiarqueView({ section = null, deps = {} }) {
     const editMatch = /^editer\/(.+)$/.exec(section ?? '')
     const propMatch = /^proposition\/(.+)$/.exec(section ?? '')
     if (section === null || section === '') {
-      body = <AtelierSection api={api} canVote={isMember} />
+      body = <AtelierSection api={api} canVote={isMember} getReferentiel={getReferentiel} />
     } else if (section === 'referentiels') {
       body = <ReferentielsSection api={docApi} canVote={isMember} />
     } else if (editMatch) {
@@ -150,9 +147,24 @@ export default function EpistemiarqueView({ section = null, deps = {} }) {
 
 // ─────────────────────────────────────────────────────────────── atelier
 
-function AtelierSection({ api, canVote }) {
+function AtelierSection({ api, canVote, getReferentiel }) {
   const [state, setState] = useState({ status: 'loading' })
   const [reloadKey, setReloadKey] = useState(0)
+  // Noms des pôles : la dernière version publiée de RESPIRE (copie embarquée en repli).
+  const [poleNames, setPoleNames] = useState(() => new Map())
+
+  useEffect(() => {
+    let alive = true
+    getReferentiel()
+      .then((loaded) => {
+        const doc = loaded?.doc ?? loaded ?? null
+        if (alive) setPoleNames(new Map((doc?.poles ?? []).map((p) => [Number(p.num), p.nom])))
+      })
+      .catch(() => {})
+    return () => {
+      alive = false
+    }
+  }, [getReferentiel])
 
   useEffect(() => {
     let alive = true
@@ -234,7 +246,7 @@ function AtelierSection({ api, canVote }) {
         </section>
       ) : null}
 
-      <section className="epi-block" aria-label="Les 61 compétences">
+      <section className="epi-block" aria-label="Les compétences du référentiel">
         <h2>Le référentiel ({competences.length} compétences)</h2>
         <p className="epi-hint">
           Chaque compétence est atomique : proposez-en l’évolution indépendamment. La proposition
@@ -245,7 +257,7 @@ function AtelierSection({ api, canVote }) {
           .sort((a, b) => a - b)
           .map((pole) => (
             <div key={pole} className="epi-comp-group">
-              <h3>{POLES[pole] ?? `Pôle ${pole}`}</h3>
+              <h3>{poleNames.get(Number(pole)) ?? `Pôle ${pole}`}</h3>
               <ul className="epi-list">
                 {byPole[pole]
                   .slice()

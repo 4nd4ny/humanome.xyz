@@ -98,9 +98,9 @@ rejouant les fixtures : aucun appel réseau réel).
 
 | ID | Cas d'utilisation | Tests unitaires | Tests fonctionnels | Anomalies |
 |---|---|---:|---:|---:|
-| [UC-VIS-01](visiteur/UC-VIS-01-explorer-cartographie-demonstration.md) | Explorer la cartographie de démonstration | 29 | 16 | 5 |
+| [UC-VIS-01](visiteur/UC-VIS-01-explorer-cartographie-demonstration.md) | Explorer la cartographie de démonstration | 29 | 16 | 4 |
 | [UC-VIS-02](visiteur/UC-VIS-02-consulter-referentiel-public.md) | Consulter le référentiel public de compétences | 11 | 17 | 1 |
-| [UC-VIS-03](visiteur/UC-VIS-03-essayer-cartographie-en-direct.md) | Essayer la cartographie en direct, sans compte | 24 | 23 | 4 |
+| [UC-VIS-03](visiteur/UC-VIS-03-essayer-cartographie-en-direct.md) | Essayer la cartographie en direct, sans compte | 24 | 24 | 4 |
 | [UC-VIS-04](visiteur/UC-VIS-04-se-reperer-guides-aide.md) | Se repérer : accueil, navigation, guides, aide, confidentialité | 13 | 20 | 3 |
 | [UC-VIS-05](visiteur/UC-VIS-05-interroger-assistant-tuteur.md) | Interroger l'assistant tuteur | 7 | 19 | 1 |
 
@@ -120,17 +120,17 @@ rejouant les fixtures : aucun appel réseau réel).
 | ID | Cas d'utilisation | Tests unitaires | Tests fonctionnels | Anomalies |
 |---|---|---:|---:|---:|
 | [UC-APP-01](apprenant/UC-APP-01-constituer-portfolio.md) | Constituer son portfolio local | 21 | 29 | 5 |
-| [UC-APP-02](apprenant/UC-APP-02-lancer-cartographie-standard.md) | Lancer une cartographie standard | 40 | 25 | 6 |
+| [UC-APP-02](apprenant/UC-APP-02-lancer-cartographie-standard.md) | Lancer une cartographie standard | 41 | 26 | 6 |
 | [UC-APP-03](apprenant/UC-APP-03-consulter-ses-cartographies.md) | Consulter ses cartographies | 13 | 15 | 2 |
 | [UC-APP-04](apprenant/UC-APP-04-stocker-regler-confidentialite.md) | Stocker une cartographie sur le serveur et régler sa confidentialité | 21 | 27 | 4 |
 | [UC-APP-05](apprenant/UC-APP-05-partager-avec-employeur.md) | Partager une cartographie avec un employeur (par l'interface ; liens déjà créés) | 14 | 15 | 0 |
-| [UC-APP-06](apprenant/UC-APP-06-exporter-importer-archive.md) | Exporter et importer son archive complète | 19 | 17 | 6 |
+| [UC-APP-06](apprenant/UC-APP-06-exporter-importer-archive.md) | Exporter et importer son archive complète | 20 | 17 | 6 |
 | [UC-APP-07](apprenant/UC-APP-07-inviter-cartographe.md) | Inviter un cartographe | 9 | 10 | 1 |
 | [UC-APP-08](apprenant/UC-APP-08-rejoindre-cohorte.md) | Rejoindre une cohorte, déposer son portfolio, quitter | 12 | 25 | 4 |
-| [UC-APP-09](apprenant/UC-APP-09-cartographie-ouverte-twin6.md) | Lancer une cartographie ouverte (Twin6) | 30 | 20 | 3 |
-| [UC-APP-10](apprenant/UC-APP-10-analyse-approfondie-twin9.md) | Lancer une analyse approfondie (Twin9) | 13 | 19 | 0 |
+| [UC-APP-09](apprenant/UC-APP-09-cartographie-ouverte-twin6.md) | Lancer une cartographie ouverte (Twin6) | 32 | 22 | 2 |
+| [UC-APP-10](apprenant/UC-APP-10-analyse-approfondie-twin9.md) | Lancer une analyse approfondie (Twin9) | 13 | 20 | 0 |
 | [UC-APP-11](apprenant/UC-APP-11-gerer-credit-twin9.md) | Gérer son crédit Twin9 (achat, factures, remboursement) | 17 | 29 | 3 |
-| [UC-APP-12](apprenant/UC-APP-12-interface-ipsative-v3.md) | Explorer sa cartographie dans l'interface ipsative V3 (retirée le 2026-10-14) | 28 | 0 | 19 |
+| [UC-APP-12](apprenant/UC-APP-12-interface-ipsative-v3.md) | Explorer sa cartographie dans l'interface ipsative V3 (retirée le 2026-10-14) | 29 | 0 | 19 |
 
 ### Cartographe
 
@@ -139,16 +139,16 @@ rejouant les fixtures : aucun appel réseau réel).
 | [UC-CAR-01](cartographe/UC-CAR-01-accepter-invitation.md) | Accepter l'invitation d'un apprenant | 17 | 14 | 1 |
 | [UC-CAR-02](cartographe/UC-CAR-02-consulter-file-relecture.md) | Consulter sa file de relecture | 14 | 20 | 2 |
 | [UC-CAR-03](cartographe/UC-CAR-03-annoter-cartographie.md) | Annoter une cartographie | 11 | 16 | 2 |
-| [UC-CAR-04](cartographe/UC-CAR-04-corriger-cartographie.md) | Corriger une cartographie (révision) | 15 | 23 | 7 |
+| [UC-CAR-04](cartographe/UC-CAR-04-corriger-cartographie.md) | Corriger une cartographie (révision) | 15 | 26 | 7 |
 | [UC-CAR-05](cartographe/UC-CAR-05-garantir-cartographie.md) | Garantir une cartographie ou retirer sa garantie | 13 | 19 | 4 |
-| [UC-CAR-06](cartographe/UC-CAR-06-comparer-versions.md) | Comparer des versions de cartographie | 10 | 12 | 2 |
-| [UC-CAR-07](cartographe/UC-CAR-07-mesurer-consistance.md) | Mesurer la consistance multi-run | 13 | 15 | 3 |
+| [UC-CAR-06](cartographe/UC-CAR-06-comparer-versions.md) | Comparer des versions de cartographie | 10 | 12 | 1 |
+| [UC-CAR-07](cartographe/UC-CAR-07-mesurer-consistance.md) | Mesurer la consistance multi-run | 13 | 17 | 3 |
 
 ### Employeur
 
 | ID | Cas d'utilisation | Tests unitaires | Tests fonctionnels | Anomalies |
 |---|---|---:|---:|---:|
-| [UC-EMP-01](employeur/UC-EMP-01-consulter-cartographie-partagee.md) | Consulter une cartographie partagée | 17 | 25 | 3 |
+| [UC-EMP-01](employeur/UC-EMP-01-consulter-cartographie-partagee.md) | Consulter une cartographie partagée | 18 | 25 | 3 |
 
 ### Promptologue
 
@@ -159,8 +159,8 @@ rejouant les fixtures : aucun appel réseau réel).
 | [UC-PRO-03](promptologue/UC-PRO-03-publier-version-paquet.md) | Publier une version de paquet | 12 | 17 | 4 |
 | [UC-PRO-04](promptologue/UC-PRO-04-proposer-version-defaut.md) | Proposer une version par défaut | 6 | 8 | — |
 | [UC-PRO-05](promptologue/UC-PRO-05-banc-essai.md) | Évaluer un paquet au banc d'essai | 32 | 29 | 3 |
-| [UC-PRO-06](promptologue/UC-PRO-06-retrospective.md) | Régénérer rétrospectivement des cartographies | 13 | 22 | 3 |
-| [UC-PRO-07](promptologue/UC-PRO-07-sandbox.md) | Exécuter le code d'un paquet en sandbox | 16 | 13 | 2 |
+| [UC-PRO-06](promptologue/UC-PRO-06-retrospective.md) | Régénérer rétrospectivement des cartographies | 13 | 23 | 2 |
+| [UC-PRO-07](promptologue/UC-PRO-07-sandbox.md) | Exécuter le code d'un paquet en sandbox | 18 | 13 | 1 |
 | [UC-PRO-08](promptologue/UC-PRO-08-editer-gabarits-twin9.md) | Éditer les gabarits du Golden Prompt Twin9 | 14 | 24 | 5 |
 
 ### Épistémiarque
@@ -179,8 +179,8 @@ rejouant les fixtures : aucun appel réseau réel).
 |---|---|---:|---:|---:|
 | [UC-ETA-01](etablissement/UC-ETA-01-gerer-cohorte.md) | Créer et gérer une cohorte | 15 | 15 | 3 |
 | [UC-ETA-02](etablissement/UC-ETA-02-configurer-llm-budget.md) | Configurer le moteur LLM, le budget et le jeton worker | 12 | 14 | 2 |
-| [UC-ETA-03](etablissement/UC-ETA-03-piloter-run-masse.md) | Lancer, suivre et annuler un run de masse | 14 | 25 | 6 |
-| [UC-ETA-04](etablissement/UC-ETA-04-consulter-documents-membre.md) | Consulter les documents produits pour un membre | 8 | 14 | 2 |
+| [UC-ETA-03](etablissement/UC-ETA-03-piloter-run-masse.md) | Lancer, suivre et annuler un run de masse | 15 | 29 | 6 |
+| [UC-ETA-04](etablissement/UC-ETA-04-consulter-documents-membre.md) | Consulter les documents produits pour un membre | 9 | 14 | 2 |
 
 ### Administration
 
@@ -197,7 +197,7 @@ rejouant les fixtures : aucun appel réseau réel).
 
 | ID | Cas d'utilisation | Tests unitaires | Tests fonctionnels | Anomalies |
 |---|---|---:|---:|---:|
-| [UC-SYS-01](systeme/UC-SYS-01-traiter-file-jobs.md) | Traiter la file de jobs de masse | 26 | 24 | 9 |
+| [UC-SYS-01](systeme/UC-SYS-01-traiter-file-jobs.md) | Traiter la file de jobs de masse | 28 | 25 | 9 |
 | [UC-SYS-02](systeme/UC-SYS-02-deployer-migrer.md) | Déployer, migrer et importer | 11 | 22 | 6 |
 | [UC-SYS-03](systeme/UC-SYS-03-maintenance-supervision.md) | Maintenance et supervision technique | 8 | 10 | 2 |
 | [UC-SYS-04](systeme/UC-SYS-04-construire-artefacts-derives.md) | Construire les données et artefacts dérivés | 6 | 16 | 4 |
@@ -220,7 +220,6 @@ une anomalie entièrement corrigée quitte cet index.
 
 <!-- anomalies:start -->
 - **[UC-VIS-01](visiteur/UC-VIS-01-explorer-cartographie-demonstration.md#anomalies-constatées)** — Explorer la cartographie de démonstration
-  - AN1 — Vue journée : la sélection d'un pôle n'affiche pas son rapport
   - AN2 — Test e2e obsolète
   - AN3 — Statut HTTP du corpus de démonstration ignoré
   - AN4 — Lecteur de construction : « mouvement réduit » activé pendant une lecture (mineure)
@@ -303,7 +302,6 @@ une anomalie entièrement corrigée quitte cet index.
 - **[UC-APP-09](apprenant/UC-APP-09-cartographie-ouverte-twin6.md#anomalies-constatées)** — Lancer une cartographie ouverte (Twin6)
   - Voie clé perso : troncature non détectée explicitement
   - Pôle sans aucune présence établie → document non conforme au schéma
-  - Dénominateur « Compétences établies » figé à 61
 - **[UC-APP-11](apprenant/UC-APP-11-gerer-credit-twin9.md#anomalies-constatées)** — Gérer son crédit Twin9 (achat, factures, remboursement)
   - Les remboursements comptent comme consommation dans le suivi
   - Disponibilité PayPal annoncée à tort
@@ -350,7 +348,6 @@ une anomalie entièrement corrigée quitte cet index.
   - AN16 — Deux premières signatures simultanées : 500 au lieu de 409
   - Écart avec la formation
 - **[UC-CAR-06](cartographe/UC-CAR-06-comparer-versions.md#anomalies-constatées)** — Comparer des versions de cartographie
-  - AN17 — Documents arrivés avant le référentiel : plantage du rendu
   - AN18 — Message d'erreur périmé
 - **[UC-CAR-07](cartographe/UC-CAR-07-mesurer-consistance.md#anomalies-constatées)** — Mesurer la consistance multi-run
   - AN6 — « Aucune divergence de statut » affiché à tort
@@ -382,11 +379,9 @@ une anomalie entièrement corrigée quitte cet index.
   - AN-3 — Gabarits d'un paquet `engine://` ignorés au banc
 - **[UC-PRO-06](promptologue/UC-PRO-06-retrospective.md#anomalies-constatées)** — Régénérer rétrospectivement des cartographies
   - AN-1 — Aucune version du référentiel n'est jamais proposée (cas bloqué en production)
-  - AN-2 — « Plus récent » n'est pas filtré
   - AN-3 — Les définitions du référentiel n'entrent pas dans les prompts du moteur embarqué
 - **[UC-PRO-07](promptologue/UC-PRO-07-sandbox.md#anomalies-constatées)** — Exécuter le code d'un paquet en sandbox
   - AN-1 — Un signal déjà annulé est ignoré par le pont
-  - AN-2 — Sonde tolérante trop permissive en périmètre restreint
 - **[UC-PRO-08](promptologue/UC-PRO-08-editer-gabarits-twin9.md#anomalies-constatées)** — Éditer les gabarits du Golden Prompt Twin9
   - Import non atomique
   - Variables « non résolues » calculées sur le rendu

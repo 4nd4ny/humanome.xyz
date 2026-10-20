@@ -115,7 +115,13 @@ compétence et modifie son verdict dans « Corriger le verdict ».
   attente : corrigez au moins un verdict. », aucune requête).
 - **E2 — Document révisé non conforme** (étape 4) : « Le document révisé ne
   respecte pas le schéma : révision non envoyée. » et jusqu'à 5 erreurs
-  (`chemin — message`) ; aucune requête.
+  (`chemin — message`) ; aucune requête. Conforme au schéma mais pas au
+  référentiel de la cartographie (2026-10-20 : un pôle perdu, un code d'un
+  autre pôle — la base elle-même abîmée, `buildRevision` ne touchant qu'aux
+  verdicts) : « Le document révisé n'est pas conforme au référentiel de la
+  cartographie : révision non envoyée. », erreurs nommées (« il manque le
+  pôle 7 du référentiel »), aucune requête ; référentiel non chargé : « Le
+  référentiel de la cartographie n'est pas chargé : révision non envoyée. ».
 - **E3 — Correction invalide** (étape 4) : confiance hors `0..1` → message de
   `buildRevision` (« Confiance hors bornes (0..1) pour 1.03 »), aucune
   requête. `buildRevision` refuse aussi une confiance non numérique, un
@@ -127,7 +133,17 @@ compétence et modifie son verdict dans « Corriger le verdict ».
   {error: "Validation échouée", fields: {document | note}}` ; document non
   conforme ou d'un autre type que la cartographie → `422 {error: "Document
   invalide au schéma cartographie-<type>", fields: {<pointeur JSON>: […]}}` ;
-  le site affiche le message, les corrections restent en attente.
+  document qui nomme un autre référentiel que celui de la cartographie →
+  `422 {…, fields: {"/referentiel": ["Le document est du référentiel de la
+  cartographie, « respire »"]}}` ; document non conforme à la version relue
+  (2026-10-20 : pôle manquant — d'une journée ou d'une fusion —, pôle hors du
+  référentiel, pôle en double, code inconnu ou d'un autre pôle) → `422 {error: "Document non conforme au
+  référentiel « <id> » <version>", fields: {<pointeur JSON>: […]}}` ; le site
+  affiche le message, les corrections restent en attente.
+- **E8 — Aucune version publiée du référentiel de la cartographie** (étape 6,
+  2026-10-20) : rien pour vérifier la révision → `422 {error: "Aucune version
+  publiée du référentiel « <id> » : la révision ne peut pas être vérifiée",
+  fields: {"/referentiel": [même message]}}`, rien n'est stocké.
 - **E5 — Accès refusé** (étapes 6 et A1) : apprenant étranger, cartographe
   non lié, cartographie repassée en `privee`, id inconnu → `404
   {error: "Cartographie introuvable"}` (POST, historique) ou `404 {error:
@@ -148,7 +164,17 @@ compétence et modifie son verdict dans « Corriger le verdict ».
   chaque révision est un document complet, daté, attribué, avec sa note.
 - **RG2** — Double validation : engine côté navigateur avant envoi, schéma
   serveur ensuite ; le type de la révision est celui de la cartographie (le
-  `kind` du schéma l'épingle).
+  `kind` du schéma l'épingle). Depuis le 2026-10-20, le schéma ne fige plus
+  RESPIRE à sept pôles : les deux validations passent ensuite par la
+  **conformité à la version du référentiel que la relecture lit** (celle que
+  la cartographie a stockée ; sinon la plus récente version publiée du
+  référentiel de son document à laquelle il est conforme — une journée de
+  RESPIRE v7 reste relue contre v7 quand une version de RESPIRE d'une autre
+  structure est publiée — ; sinon la dernière) : chacun de ses pôles une
+  fois, ses codes dans leur pôle, ceux du kairos connus
+  (`validateDocumentPourReferentiel` côté navigateur, `Conformite::verifier`
+  côté serveur). Une version de RESPIRE à six pôles, un référentiel lettré se
+  révisent avec leur propre structure.
 - **RG3** — Une nouvelle révision retire la garantie en place, dans la même
   transaction (§8) : une cartographie modifiée n'est jamais présentée comme
   garantie.
@@ -175,7 +201,10 @@ compétence et modifie son verdict dans « Corriger le verdict ».
 |---|---|---|
 | Front | `web/src/views/cartographe/RelectureSection.jsx` | Éditeur de verdict, corrections en attente, envoi, historique, bascule sur une révision |
 | Front | `web/src/views/cartographe/revision.js` — `VERDICT_STATUTS`, `verdictFields`, `buildRevision` | Construction pure du document révisé |
-| Moteur | `engine/src/validation.js` — `validateDocument` | Validation avant envoi |
+| Moteur | `engine/src/conformite.js` — `validateDocumentPourReferentiel` | Validation avant envoi : schéma puis conformité au référentiel de la cartographie |
+| Front | `web/src/lib/referentiel-du-document.js` — `chargerReferentielDuDocument` | Référentiel de la cartographie (version du détail, sinon celui du document) |
+| Domaine | `api/src/Cartographe/ReviewReferentiel.php` — `forCartography` | Version du référentiel relue (stockée, sinon conforme, sinon dernière) |
+| Domaine | `api/src/Referentiel/Conformite.php` — `verifier` | Conformité serveur de la révision à cette version |
 | Front | `web/src/views/cartographe/cartographe-api.js` — `postRevision`, `fetchRevisions`, `fetchRevisionDocument` | Appels HTTP |
 | API | `api/src/Middleware/CsrfMiddleware.php` | CSRF global (E6) |
 | API | `api/src/Middleware/RequireRole.php` | 401 sans session, 403 sans rôle `apprenant`/`cartographe` (E7) |
@@ -217,7 +246,7 @@ UC-CAR-03-U04.
 | UC-CAR-04-F02 | A2 | API | Garantie retirée (détail, file et lien de partage employeur : `garantie` null, document de base), audit `garantie_retiree` complet | idem |
 | UC-CAR-04-F03 | A3 | API | Propriétaire, note absente ou `null` → `null` | idem |
 | UC-CAR-04-F04 | E4 (forme) | API | Document absent/texte/liste/vide ou de plus de 8 Mo, note de 501 ou non textuelle → 422 ; 500 admis | idem |
-| UC-CAR-04-F05 | E4 (schéma), A6 | API | Non conforme (pointeurs), type différent → 422 ; merge conforme → 201 | idem |
+| UC-CAR-04-F05 | E4 (schéma), A6 | API | Non conforme (pointeurs), type différent → 422 ; merge conforme → 201 ; merge privé de son pôle 7 → 422 `/domains` « il manque le pôle 7 du référentiel » | idem |
 | UC-CAR-04-F06 | E5 | API | 404 écriture/historique/document ; privée : le propriétaire lit le document et l'historique et révise encore (201) | idem |
 | UC-CAR-04-F07 | AN2 | API | Note `""` ou blanche → 422 (comportement actuel) | idem |
 | UC-CAR-04-F08 | AN1 | API | Révision d'une cartographie `twin9` (accès vérifié par l'historique, 200) → 500 (comportement actuel) | idem |
@@ -236,10 +265,14 @@ UC-CAR-03-U04.
 | UC-CAR-04-F21 | AN12 | IHM | POST 201 puis historique en 500 : alerte, corrections gardées, pas de bascule ; un nouvel essai reposte (comportement actuel) | idem |
 | UC-CAR-04-F22 | AN13 | IHM | « Voir » efface une correction en attente ; une correction saisie sur la révision puis « Revenir » s'applique à la base (comportement actuel) | idem |
 | UC-CAR-04-F23 | A1, E5 | IHM | « Voir » en 404 : « Révision introuvable » dans l'historique, affichage inchangé | idem |
+| UC-CAR-04-F24 | E4 (référentiel), RG2 | API | Pôle perdu → 422 « Document non conforme au référentiel « respire » 7.0.0 » `/poles` « il manque le pôle 7 du référentiel » ; code d'un autre pôle nommé ; RESPIRE v8 à six pôles : révision en six pôles 201, en sept refusée ; journée de RESPIRE v7 relue contre v7 malgré v8 ; référentiel lettré 201 | `api/tests/UseCases/Functional/UcCar04CorrigerCartographieTest.php` |
+| UC-CAR-04-F25 | E8 | API | Aucune version publiée de RESPIRE → 422 « Aucune version publiée… », rien de stocké | idem |
+| UC-CAR-04-F26 | E2 (référentiel) | IHM | Base de six pôles relue contre RESPIRE 7.0.0 : message de non-conformité, « il manque le pôle 7 du référentiel » listé, aucun POST | `web/test/usecases/functional/uc-car-04-corriger-cartographie.test.jsx` |
 
 ### Tests existants liés (non-régression)
 
-- `api/tests/CartographeRevisionsTest.php` — révision valide, propriétaire, 422 schéma et type, matrice 404, retrait de garantie.
+- `api/tests/CartographeRevisionsTest.php` — révision valide, propriétaire, 422 schéma et type, matrice 404, retrait de garantie ; conformité à la version relue (pôle perdu, code d'un autre pôle), chaque version avec sa structure (RESPIRE v8 à six pôles, référentiel lettré, v7 gardée), sans version publiée (2026-10-20).
+- `web/src/lib/referentiel-du-document.test.js` — référentiel d'une cartographie : version connue, sinon celui du document, RESPIRE sinon ; jamais RESPIRE supposé pour un autre.
 - `api/tests/CartographePurgeTest.php` — révision anonymisée à la purge du cartographe.
 - `web/src/views/cartographe/revision.test.js` — `listCompetences`, `verdictFields`, `buildRevision`.
 - `web/src/views/cartographe/RelectureSection.test.jsx` — « correction et révision » (forme enveloppée).

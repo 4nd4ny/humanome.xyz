@@ -253,6 +253,11 @@ describe('validateDocument — tout référentiel (T17)', () => {
     }
   })
 
+  it('takes a referential’s id in lower case, as the platform writes it: « RESPIRE » names none', () => {
+    expect(validateDocument('cartographie-jour', { ...neufJours(), referentiel: 'RESPIRE' }).valid).toBe(false)
+    expect(paths('cartographie-merge', { ...neufMerge(), referentiel: 'Fictif' })).toContain('/referentiel')
+  })
+
   it('still refuses a pole numbered 0, and a code no referential could declare', () => {
     const zero = { ...day(), referentiel: 'fictif' }
     zero.poles[0].poleNum = '0'

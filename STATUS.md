@@ -58,6 +58,17 @@ référentiel, attend sa revue (entrée du 2026-10-20). Viennent ensuite T11, pu
     `web/e2e/twin9-referentiels.e2e.js` : RESPIRE, le référentiel lettré et celui à 9 pôles sur un
     même portfolio — chacun ses deux journées à instruire, sa carte avec les noms de ses pôles, sa
     mémoire, son attestation —, trois jeux qui coexistent (`docs/tests-e2e.md`, « T17 »).
+  - Revue indépendante (un agent qui n'avait pas écrit le lot), sans point bloquant ; corrigés avec
+    leurs tests : le dépôt d'une journée par la masse et la révision d'une cartographie acceptaient
+    un document qui nommait un autre référentiel que le leur, ce qui le sortait des contrôles de
+    RESPIRE (désormais `422`) ; un identifiant de référentiel s'écrit en minuscules (« RESPIRE »
+    n'en nomme aucun) ; la synthèse évolutive d'un pôle se rangeait sous le début du code de sa
+    première compétence (« 21 » au pôle 2 donnait le pôle 21 : désormais les numéros du
+    référentiel du run) ; les radars comptaient « sept pôles » ; un numéro de pôle « 3.5 » ou nul
+    passait pour une lettre ou le pôle 0 ; un référentiel du run illisible était ignoré sans le
+    dire ; le nom court d'un pôle lettré est sa lettre. Documentés : la couleur d'un pôle est celle
+    que sa version a dans la base (un brouillon retouché donne la sienne) ; en deçà de 8 pôles, le
+    bouclage des couleurs n'est validé qu'à 3, 5 et 7 (`docs/contrats.md` §10).
   - Reste hors T17 : la page publique `#/referentiel` ne montre que RESPIRE.
 
 - 2026-10-20 — **Moteur Twin9 en PHP, T16 : plusieurs référentiels, le moteur (branche

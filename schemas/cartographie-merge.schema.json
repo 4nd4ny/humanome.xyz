@@ -16,7 +16,7 @@
     },
     "referentiel": {
       "type": "string",
-      "minLength": 1,
+      "pattern": "^[a-z0-9][a-z0-9._-]{0,63}$",
       "description": "Facultatif (T17). Identifiant du référentiel dont le document agrège les pôles (schéma referentiel, id), ex. « fictif-lettre ». Absent ou « respire » : RESPIRE, dont le document garde la structure (clause allOf)."
     },
     "generatedAt": {

@@ -3,7 +3,7 @@
 // marques vont jusqu'à douze pôles, puis reprennent au début.
 import { describe, expect, it } from 'vitest'
 import { POLE_PALETTE } from '@engine/pipeline/merge-document.js'
-import { normalizeReferential, referentialErrors, toEmbeddedReferential } from './referential.js'
+import { normalizeReferential, poleShortName, referentialErrors, toEmbeddedReferential } from './referential.js'
 
 const RESPIRE_COLORS = ['#2563eb', '#10b981', '#ec4899', '#8b5cf6', '#f59e0b', '#06b6d4', '#f97316']
 
@@ -42,6 +42,12 @@ describe('le référentiel de la cartographie, quel qu’il soit (T17)', () => {
     expect(ref.poleByNum.get(1).name).toBe('Pôle fictif A')
   })
 
+  it('nomme un pôle lettré, en court, par sa lettre, comme RESPIRE par son mot-clé', () => {
+    expect(poleShortName({ num: 1, name: 'A · Percevoir et éprouver' })).toBe('A')
+    expect(poleShortName({ num: 1, name: 'TETE — Penser & Comprendre' })).toBe('TETE')
+    expect(poleShortName({ num: 9, name: 'Pôle fictif 9' })).toBe('Pôle fictif 9')
+  })
+
   it('garde ses numéros à un référentiel numéroté, et ses couleurs à RESPIRE', () => {
     const respire = numerote(7)
     respire.poles.forEach((p, i) => (p.couleur = RESPIRE_COLORS[i]))
@@ -53,6 +59,11 @@ describe('le référentiel de la cartographie, quel qu’il soit (T17)', () => {
     const sansNumero = lettre()
     delete sansNumero.poles[0].num
     expect(referentialErrors(sansNumero)).toContain('pôle sans numéro entier ni lettre (undefined)')
+    for (const num of ['3.5', 'A1', '']) {
+      const autre = lettre()
+      autre.poles[0].num = num
+      expect(referentialErrors(autre)).toContain(`pôle sans numéro entier ni lettre (${JSON.stringify(num)})`)
+    }
     const double = lettre()
     double.poles[1].num = 'A'
     expect(referentialErrors(double)).toContain('pôle A dupliqué')

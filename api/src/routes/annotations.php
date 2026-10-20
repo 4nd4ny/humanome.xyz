@@ -95,6 +95,16 @@ return function (App $app): void {
         return $codes;
     };
 
+    /** The id of the referential a cartography names (T15), RESPIRE's when it names none. */
+    $referentielDe = static function (int $cartoId): string {
+        $stmt = Db::get()->prepare('SELECT rv.referentiel_id FROM cartographies c
+            JOIN referentiel_versions rv ON rv.id = c.referentiel_version_id WHERE c.id = ?');
+        $stmt->execute([$cartoId]);
+        $id = $stmt->fetchColumn();
+
+        return $id === false ? 'respire' : (string) $id;
+    };
+
     /** @return array{level: string, type: string}|null */
     $access = function (Request $request, int $cartoId): ?array {
         return (new Links(Db::get()))->access(
@@ -181,7 +191,7 @@ return function (App $app): void {
     // {revisionId}. The document is validated against the schema matching
     // the cartography type (422 with pointer-keyed errors otherwise).
     // ------------------------------------------------------------------
-    $app->post('/cartographies/{id:[0-9]+}/revisions', $wrap(function (Request $request, Response $response, array $args) use ($json, $access, $notFound, $maxDocumentBytes, $maxNoteChars): Response {
+    $app->post('/cartographies/{id:[0-9]+}/revisions', $wrap(function (Request $request, Response $response, array $args) use ($json, $access, $notFound, $maxDocumentBytes, $maxNoteChars, $referentielDe): Response {
         $pdo = Db::get();
         $cartoId = (int) $args['id'];
         $userId = (int) $request->getAttribute('userId');
@@ -219,6 +229,16 @@ return function (App $app): void {
             return $json($response, [
                 'error' => sprintf('Document invalide au schéma %s', $kind),
                 'fields' => $result['errors'],
+            ], 422);
+        }
+        // the document is of its cartography's referential (T17): naming another cannot take it out of RESPIRE's
+        // checks
+        $referentiel = $referentielDe($cartoId);
+        if (($document['referentiel'] ?? 'respire') !== $referentiel) {
+            return $json($response, [
+                'error' => sprintf('Document invalide au schéma %s', $kind),
+                'fields' => ['/referentiel' => [sprintf('Le document est du référentiel de la cartographie, « %s »',
+                    $referentiel)]],
             ], 422);
         }
 

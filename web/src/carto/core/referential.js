@@ -35,8 +35,10 @@ const POLE_MARKS = [
   { symbol: '✖', pattern: 'plus' },
 ]
 
-/** Le pôle porte-t-il une lettre (« A »), et non un numéro entier ? */
-const isLettered = (num) => typeof num === 'string' && num.trim() !== '' && !Number.isInteger(Number(num))
+/** Le pôle porte-t-il un numéro entier (3, « 3 ») ? */
+const isNumbered = (num) => (typeof num === 'number' ? Number.isInteger(num) : typeof num === 'string' && /^\s*\d+\s*$/.test(num))
+/** Le pôle porte-t-il une lettre (« A », 8 au plus), et non un numéro ? */
+const isLettered = (num) => typeof num === 'string' && /^[A-Za-z]{1,8}$/.test(num)
 /** Clé d'un pôle, de son numéro ou de sa lettre (« 3 » pour 3 comme pour « 03 », « A »). */
 const poleKey = (num) => (isLettered(num) ? num : String(Number(num)))
 
@@ -66,7 +68,7 @@ export function referentialErrors(doc) {
   const nums = new Set()
   for (const p of doc.poles) {
     const key = poleKey(p?.num)
-    if (!Number.isInteger(Number(p?.num)) && !isLettered(p?.num)) errors.push(`pôle sans numéro entier ni lettre (${JSON.stringify(p?.num)})`)
+    if (!isNumbered(p?.num) && !isLettered(p?.num)) errors.push(`pôle sans numéro entier ni lettre (${JSON.stringify(p?.num)})`)
     else if (nums.has(key)) errors.push(`pôle ${key} dupliqué`)
     nums.add(key)
     if (typeof p?.nom !== 'string' || p.nom.trim() === '') errors.push(`pôle ${p?.num} sans nom`)
@@ -155,8 +157,9 @@ export function competencyLabel(ref, code) {
 }
 
 /**
- * Nom court d'un pôle : la partie avant « — » (« TETE — Penser… » → « TETE »).
+ * Nom court d'un pôle : la partie avant « — » (« TETE — Penser… » → « TETE »),
+ * ou avant « · » pour un pôle lettré (« A · Percevoir… » → « A », T17).
  */
 export function poleShortName(pole) {
-  return String(pole?.name ?? '').split('—')[0].trim() || String(pole?.num ?? '')
+  return String(pole?.name ?? '').split(/—| · /)[0].trim() || String(pole?.num ?? '')
 }

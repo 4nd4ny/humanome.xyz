@@ -184,6 +184,40 @@ describe('importTwin9Run (T9)', () => {
     expect(r.variants.map((v) => v.summary.verdicts.map((x) => x.code))).toEqual([['A1'], ['A1']])
   })
 
+  it('range la synthèse d’un pôle sous son numéro, pas sous le début d’un code (T17)', () => {
+    // des codes que rien ne relie au numéro de leur pôle : « 21 » est au pôle 2
+    const d = doc()
+    d.referentiel = {
+      id: 'fictif-codes',
+      version: '1.0.0',
+      label: 'Codes sans pôle',
+      poles: [
+        { num: 1, nom: 'Pôle un' },
+        { num: 2, nom: 'Pôle deux' },
+      ],
+      competences: [
+        { code: '11', nom: 'Compétence 11', pole: 1 },
+        { code: '21', nom: 'Compétence 21', pole: 2 },
+      ],
+    }
+    d.carto_evolutive.competences = { 21: { ...d.carto_evolutive.competences['1.01'], code: '21' } }
+    d.carto_evolutive.histoires = { 21: 'Une histoire.' }
+    d.carto_evolutive.rapports_poles = { 2: 'Le rapport du pôle deux.' }
+    for (const j of Object.values(d.journees)) j.verdicts = { 21: { ...j.verdicts['1.01'], code: '21', nom: 'Compétence 21' } }
+    const r = importTwin9Run(d)
+    const poles = r.narratives.filter((n) => n.kind === 'pole-evolutif')
+    expect(poles.map((n) => n.scope)).toEqual([{ pole: 1 }, { pole: 2 }])
+    expect(poles[1].html).toContain('Le rapport du pôle deux.')
+  })
+
+  it('dit un référentiel du run illisible, et le jeu garde le sien', () => {
+    const d = doc()
+    d.referentiel = { poles: [{ num: 1, nom: 'Pôle un' }], competences: [{ code: 'A1', nom: 'Capacité', pole: 9 }] }
+    const r = importTwin9Run(d)
+    expect(r.referential).toBe(null)
+    expect(r.report.find((x) => x.code === 'twin9-referentiel-illisible')).toMatchObject({ severity: 'warning' })
+  })
+
   it('nomme un juré sans accent ni majuscule', () => {
     expect(cleDeJure('Pédagogue')).toBe('pedagogue')
     expect(cleDeJure('Ingénieur')).toBe('ingenieur')

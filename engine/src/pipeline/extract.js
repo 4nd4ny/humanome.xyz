@@ -755,8 +755,9 @@ export async function extractDay({
   }
 
   // Périmètre partiel : pas de kairos, et pas de validation du document
-  // COMPLET (le schéma cartographie-jour exige exactement 7 pôles) — chaque
-  // pôle a déjà été validé structurellement via la sonde de validatePole.
+  // COMPLET (le schéma cartographie-jour exige d'un document de RESPIRE ses
+  // 7 pôles) — chaque pôle a déjà été validé structurellement via la sonde de
+  // validatePole.
   if (partiel) {
     return {
       schemaVersion: '1.0.0',

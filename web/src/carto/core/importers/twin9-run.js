@@ -53,7 +53,11 @@ const md = (texte) => (typeof texte === 'string' && texte.trim() !== '' ? { mark
  */
 export function importTwin9Run(doc, { fileName = 'twin9-run.json', now = new Date().toISOString() } = {}) {
   const report = []
-  const referential = doc.referentiel && referentialErrors(doc.referentiel).length === 0 ? toEmbeddedReferential(doc.referentiel) : null
+  const erreurs = doc.referentiel ? referentialErrors(doc.referentiel) : []
+  const referential = doc.referentiel && erreurs.length === 0 ? toEmbeddedReferential(doc.referentiel) : null
+  if (erreurs.length > 0) {
+    report.push({ severity: 'warning', code: 'twin9-referentiel-illisible', message: `Référentiel du run illisible (${erreurs.slice(0, 3).join(' ; ')}) : le jeu garde le sien` })
+  }
   const runId = `twin9:${doc.run?.id ?? doc.carto_evolutive?.journal_id ?? 'run'}`
   const provenance = { source: 'twin9', run: runId, files: [fileName], model: null, prompt: null, analysedAt: doc.run?.finished_at ?? null, importedAt: now }
 
@@ -73,7 +77,9 @@ export function importTwin9Run(doc, { fileName = 'twin9-run.json', now = new Dat
         journalId: doc.run?.journal ?? doc.carto_evolutive?.journal_id ?? null,
         sourceProtocole: 'Twin9 — run du serveur',
       })
-      fusion = importSiteMerge(merge, { fileName, now })
+      // les domaines de la fusion sont les pôles du référentiel, dans l'ordre de leurs numéros
+      const poleNums = referential ? referential.poles.map((p) => p.num).sort((a, b) => a - b) : null
+      fusion = importSiteMerge(merge, { fileName, now, poleNums })
     } catch (err) {
       report.push({ severity: 'warning', code: 'twin9-fusion-illisible', message: `${fileName} : ${err.message}` })
     }

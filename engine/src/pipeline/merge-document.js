@@ -43,7 +43,8 @@
  * par le script de la skill dataviz telles que l'interface les affiche, dans
  * chaque palette et chaque thème, sur les voisins du soleil de 8 à 12 pôles,
  * bouclage du dernier au premier compris. Au-delà de douze, elles reprennent
- * au début : les noms et les marques des pôles les distinguent.
+ * au début, comme les marques : les noms des pôles les distinguent. En deçà de
+ * huit, ce sont celles de RESPIRE, dont le bouclage n'est validé qu'à sept.
  */
 export const POLE_PALETTE = Object.freeze([
   '#2563eb',

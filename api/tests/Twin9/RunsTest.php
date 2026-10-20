@@ -413,7 +413,11 @@ final class RunsTest extends CartographeTestCase
         self::assertCount(5, $ref['poles']);
         self::assertCount(20, $ref['competences']);
         self::assertSame(['code' => 'A1', 'nom' => 'Capacité fictive A1', 'pole' => 1], $ref['competences'][0]);
-        self::assertStringNotContainsString('fictive', json_encode(array_column($ref['competences'], 'description')));
+        // never a fiche, a preamble nor a description
+        self::assertSame([['num', 'nom', 'couleur']], array_values(array_unique(array_map('array_keys', $ref['poles']),
+            SORT_REGULAR)));
+        self::assertSame([['code', 'nom', 'pole']], array_values(array_unique(array_map('array_keys', $ref['competences']),
+            SORT_REGULAR)));
         self::assertStringNotContainsString('Définition fictive', json_encode($ref, JSON_UNESCAPED_UNICODE));
         self::assertStringNotContainsString('Ce que cherche le pôle', json_encode($ref, JSON_UNESCAPED_UNICODE));
         // the fake engine judged the first capacity of each pole, every day

@@ -261,6 +261,14 @@ return function (App $app): void {
                 'details' => \array_slice($result['errors'], 0, 5, true),
             ], 422);
         }
+        // the document is of its run's referential (T17): naming another cannot take it out of RESPIRE's checks
+        if (($document['referentiel'] ?? 'respire') !== (string) $job['referentiel_id']) {
+            return $json($response, [
+                'error' => 'Document invalide au schéma cartographie-jour',
+                'details' => ['/referentiel' => [sprintf('Le document est du référentiel de son run, « %s »',
+                    $job['referentiel_id'])]],
+            ], 422);
+        }
 
         $completed = $queue->complete((int) $job['id'], $document, $tokensIn, $tokensOut, $cost);
         if (!$completed) {

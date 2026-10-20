@@ -72,12 +72,6 @@ final class ValidationTest extends TestCase
     }
 
     /**
-     * Question 10 (cartography journal, 2026-10-14): the cartography interface's
-     * master v4 archive has a written contract, embedded by the account archive
-     * (archive-export 1.1.0, « jeuxCartographie »). Same fixture as the JS
-     * twin (engine/test/usecases/unit/uc-app-06-exporter-importer-archive.test.js).
-     */
-    /**
      * Any referential, not RESPIRE's alone (T17): a document that names its
      * referential (« referentiel ») counts its poles 1 to N, its codes in the
      * form that referential declares (referentiel schema, $defs/code); naming
@@ -113,6 +107,41 @@ final class ValidationTest extends TestCase
             Validation::validate('cartographie-merge', $espace)['errors']);
     }
 
+    /**
+     * The day schema likewise (T17), on which PoleAssembler and the worker
+     * route rely: a day of nine poles, or with lettered codes, is valid when it
+     * names its referential; naming none, or « respire », it keeps RESPIRE's
+     * structure. JS twin: engine/src/validation.test.js.
+     */
+    public function testAcceptsTheDayOfAnyReferentialThatNamesItAndKeepsRespiresStructure(): void
+    {
+        $jour = json_decode((string) file_get_contents(\dirname(__DIR__, 2)
+            . '/schemas/fixtures/cartographie-jour-2026-01-05.json'), true, 512, JSON_THROW_ON_ERROR);
+        $neuf = $jour;
+        foreach (['8', '9'] as $num) {
+            $neuf['poles'][] = ['poleNum' => $num]
+                + self::recode($jour['poles'][6], static fn (string $code): string => $num . substr($code, 1));
+        }
+        $lettre = self::recode($jour, static fn (string $code): string => 'ABCDEFG'[(int) $code[0] - 1] . (int) substr($code, 2));
+        self::assertSame('A1', $lettre['poles'][0]['competences'][0]['code']);
+
+        self::assertSame([], Validation::validate('cartographie-jour', ['referentiel' => 'fictif-neuf'] + $neuf)['errors']);
+        self::assertSame([], Validation::validate('cartographie-jour', ['referentiel' => 'fictif-lettre'] + $lettre)['errors']);
+        foreach ([[], ['referentiel' => 'respire']] as $marque) {
+            self::assertSame([], Validation::validate('cartographie-jour', $marque + $jour)['errors']);
+            self::assertFalse(Validation::validate('cartographie-jour', $marque + $neuf)['valid'], 'RESPIRE : 7 pôles');
+            self::assertFalse(Validation::validate('cartographie-jour', $marque + $lettre)['valid'], 'RESPIRE : codes P.NN');
+        }
+        self::assertFalse(Validation::validate('cartographie-jour', ['referentiel' => 'RESPIRE'] + $neuf)['valid'],
+            'un identifiant de référentiel s’écrit en minuscules');
+    }
+
+    /**
+     * Question 10 (cartography journal, 2026-10-14): the cartography interface's
+     * master v4 archive has a written contract, embedded by the account archive
+     * (archive-export 1.1.0, « jeuxCartographie »). Same fixture as the JS
+     * twin (engine/test/usecases/unit/uc-app-06-exporter-importer-archive.test.js).
+     */
     public function testAcceptsTheMasterV4FixtureAndAnArchiveThatEmbedsIt(): void
     {
         $master = $this->fixture('carto/competency-map-master-exemple.json');

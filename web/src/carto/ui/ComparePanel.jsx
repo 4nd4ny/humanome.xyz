@@ -189,7 +189,7 @@ function SunOverlay({ refl, layoutA, layoutB, geometry, nameA, nameB }) {
   )
 }
 
-/** Vue 3 : radar des 7 pôles ou des compétences d'un pôle (parts ipsatives), échelle commune. */
+/** Vue 3 : radar des pôles ou des compétences d'un pôle (parts ipsatives), échelle commune. */
 function Radar({ refl, cmp, nameA, nameB }) {
   const [focus, setFocus] = useState('poles')
   const axes = useMemo(() => {
@@ -218,7 +218,7 @@ function Radar({ refl, cmp, nameA, nameB }) {
       <label className="carto-field carto-field--inline">
         <span>Axes</span>
         <select value={focus} onChange={(e) => setFocus(e.target.value)}>
-          <option value="poles">Les 7 pôles</option>
+          <option value="poles">Les {refl.poles.length} pôles</option>
           {refl.poles.map((p) => (
             <option key={p.num} value={String(p.num)}>
               Compétences de {p.name}

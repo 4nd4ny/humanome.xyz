@@ -74,7 +74,7 @@ function ProfileCard({ data, refl }) {
   return (
     <div className="carto-card-body carto-profile">
       <RadarChart
-        label="Radar des sept pôles : part de chaque pôle dans votre soleil"
+        label={`Radar des ${refl.poles.length} pôles : part de chaque pôle dans votre soleil`}
         axes={refl.poles.map((p) => ({ key: String(p.num), label: `${p.symbol} ${poleShortName(p)}` }))}
         series={[{ key: 'profil', label: 'profil', className: 'carto-radar-a', values: Object.fromEntries(data.poles.map((p) => [String(p.num), p.share])) }]}
         max={max}

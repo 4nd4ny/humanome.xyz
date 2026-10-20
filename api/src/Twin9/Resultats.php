@@ -95,9 +95,10 @@ final class Resultats
     /**
      * The referential a run's map is read with (T17): the poles and the
      * competences its engine read — its settings keep them, in its order,
-     * whatever its version became since —, each pole with its colour in that
-     * version; never a fiche, a preamble nor a description. Null for a run of
-     * before T16, which read RESPIRE: the cartography takes the published one.
+     * whatever its version became since —, each pole with the colour its
+     * version has in the base (a draft retouched since, its current one);
+     * never a fiche, a preamble nor a description. Null for a run of before
+     * T16, which read RESPIRE: the cartography takes the published one.
      *
      * @return array{id: string, version: string, label: string,
      *               poles: list<array{num: int, nom: string, couleur: string|null}>,

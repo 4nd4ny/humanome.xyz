@@ -188,9 +188,11 @@ L'administrateur-promptologue ouvre « Faire évoluer » → « Atelier Twin9 »
   restauration, le banc d'essai et la copie exigent `admin` ∧ `promptologue`
   (`RequireRole::all`, `TemplateSets::ATELIER`) ; la liste des jeux (noms,
   auteurs, sans contenu) est à l'administrateur, comme la supervision
-  (UC-ADM-05). Depuis T11, aucune métadonnée des gabarits n'est plus servie à
-  un autre utilisateur : `GET /api/twin9/meta` ne liste plus les étapes, que
-  seul lisait le moteur du navigateur (ADR-010 §2).
+  (UC-ADM-05). Depuis T11, `GET /api/twin9/meta` ne liste plus les gabarits
+  du jeu v9.8 (noms, longueurs, variables) à tout utilisateur connecté : seul
+  le moteur du navigateur les lisait. Restent visibles, du propriétaire d'un
+  run et du cartographe lié, les noms des gabarits et leurs versions dans
+  l'attestation du run (UC-APP-10) — résidu assumé, sans contenu (ADR-010 §2).
 - **RG2 — Nom** : segments `[a-z0-9][a-z0-9_-]*` séparés par `/` (insensible à la
   casse), 190 caractères au plus (un saut de ligne final passe : anomalie 3).
 - **RG3 — Contenu** : non vide (hors blancs), strictement inférieur à 256 Ko ;
@@ -239,7 +241,7 @@ L'administrateur-promptologue ouvre « Faire évoluer » → « Atelier Twin9 »
 
 | Donnée | Traitement |
 |---|---|
-| Gabarits (secret industriel) | En base : le jeu v9.8 dans `twin9_protocole`, les copies dans `twin9_jeux_gabarits` ; jamais dans le dépôt ; ni le **contenu** ni les **métadonnées** (noms, longueurs, variables) ne sont envoyés à un client sans les deux rôles (depuis T11, `/api/twin9/meta` ne les liste plus) ; la liste des jeux, sans contenu, est à l'administrateur |
+| Gabarits (secret industriel) | En base : le jeu v9.8 dans `twin9_protocole`, les copies dans `twin9_jeux_gabarits` ; jamais dans le dépôt ; le **contenu** n'est jamais envoyé à un client sans les deux rôles ; depuis T11, `/api/twin9/meta` ne liste plus les **métadonnées** (noms, longueurs, variables) ; seuls les noms des gabarits d'un run, avec leurs versions, figurent dans son attestation, que lisent son propriétaire et le cartographe lié ; la liste des jeux, sans contenu, est à l'administrateur |
 | Historique | `twin9_protocole_versions`, `twin9_jeux_versions` ; auteur mis à `NULL` si son compte est supprimé (le gabarit appartient à la plateforme) |
 | Copies | `twin9_jeux` (nom, auteur, date) ; son auteur mis à `NULL` si son compte est supprimé : la copie survit, que personne ne modifie plus |
 | Auteur d'une édition | `updated_by` / `created_by` (identifiant de compte) |
@@ -310,7 +312,7 @@ autres tests de runs.
 | UC-PRO-08-F07 | E5 | IHM | API indisponible : message ; liste des jeux refusée (403) : « Chargement impossible. » ; aucun contenu | idem |
 | UC-PRO-08-F08 | Nominal, A1, A2, A3, A6 | API | Jeux → jeu v9.8 lu → copie → liste → lecture `%2F` → édition → PUT identique « unchanged » → versions → restauration → restauration identique « unchanged » → banc d'essai sans appel au modèle ni débit ; le jeu v9.8 intact | `api/tests/UseCases/Functional/UcPro08EditerGabaritsTwin9Test.php` |
 | UC-PRO-08-F09 | Nominal (étape 6) | API | Un mot changé dans une copie se retrouve dans le prompt de chaque lecture d'un run dont le profil la choisit ; un run du jeu v9.8, sur sa propre carte, garde les mots du jeu v9.8 (moteur factice) ; avec le vrai moteur de `TWIN_V9_DIR`, sauté sans lui, dans le prompt du tagger | `api/tests/Twin9/JeuxGabaritsTest.php` |
-| UC-PRO-08-F10 | A4 | API | Import : gabarits, réglages, référentiel servi par `/meta`, fiches gardées sur le serveur (jamais servies, pas plus que les noms des gabarits), activation, idempotence | `api/tests/UseCases/Functional/UcPro08EditerGabaritsTwin9Test.php` |
+| UC-PRO-08-F10 | A4 | API | Import : gabarits, réglages, référentiel servi par `/meta`, fiches gardées sur le serveur (jamais servies) ; `/meta` ne nomme plus les gabarits ; activation, idempotence | `api/tests/UseCases/Functional/UcPro08EditerGabaritsTwin9Test.php` |
 | UC-PRO-08-F11 | E1 | API | 401 visiteur ; 403 promptologue seul et admin seul, sans fragment, copie comprise | idem |
 | UC-PRO-08-F12 | E2, E7 | API | 404 (statut et message) jeu, gabarit, version inconnus, nom hors format, PUT sur un nom que la copie n'a pas ; 403 sur le jeu v9.8 et la copie d'un autre | idem |
 | UC-PRO-08-F13 | E3 | API | 422 sur chaque saisie invalide, variable refusée et nom de copie compris, rien d'écrit | idem |

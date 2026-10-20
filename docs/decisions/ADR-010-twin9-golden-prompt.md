@@ -13,11 +13,14 @@ Date : 2026-07-13 · Statut : accepté, §1 révisé le 2026-10-17, §1 et §2 l
 > depuis T9 (ADR-011), et l'analyse approfondie a retrouvé son entrée de
 > navigation. T11 a retiré le moteur du navigateur et son proxy `POST
 > /api/twin9/appel` : le §1 ne décrit plus qu'une étape passée. Le résidu
-> assumé du §2 — noms d'étapes, variables et forme des sorties visibles du
-> client — est parti avec eux : `/api/twin9/meta` ne sert plus que ce que
-> lisent la page du crédit et la cartographie ouverte (offre Twin6, promotion,
-> packs, solde, structure du référentiel), et les résultats d'un run passent
-> le filtre de fuite (ADR-011).
+> assumé du §2 change de forme : `/api/twin9/meta` ne liste plus les gabarits
+> à tout utilisateur connecté ; il ne sert plus que ce que lisent la page du
+> crédit et la cartographie ouverte (offre Twin6, promotion, packs, solde,
+> structure du référentiel). Restent visibles, du propriétaire d'un run et du
+> cartographe auquel il le montre, les noms des gabarits et leurs versions
+> (attestation du run) et la forme des sorties (résultats et export, passés au
+> filtre de fuite, ADR-011) — des noms, pas un contenu ; les variables
+> attendues sont publiques (`schemas/twin9-protocole-contrat.json`).
 
 ## Contexte
 

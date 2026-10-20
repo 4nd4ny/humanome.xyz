@@ -87,8 +87,9 @@ export function makeOwnKeyProvider({ provider = 'anthropic', apiKey, fetchFn } =
   })
 }
 
-// referentielPourMoteur a déménagé dans api/twin9.js (D12 : il sert les DEUX
-// adaptateurs, Twin6 et Twin9) — ré-exporté ici pour les importeurs existants.
+// referentielPourMoteur a déménagé dans api/twin9.js (D12 : il servait aussi
+// l'analyse Twin9 du navigateur, partie le 2026-10-17) — ré-exporté ici pour
+// les importeurs existants.
 export { referentielPourMoteur } from './twin9.js'
 
 /**

@@ -141,7 +141,9 @@ cd ../Twin_v9/php && composer install && composer test   # moteur Twin9 (dépôt
 Les suites front et moteur lisent les données dérivées du §2 ; la suite front
 lit aussi l'export statique du référentiel (§3) et le paquet Twin6 construit
 par `npm run build` (§4). La suite PHP lit l'environnement exporté (§2) ; ses
-tests du moteur Twin9 sautent sans `../Twin_v9`.
+tests du moteur Twin9 sautent sans `Twin_v9` (`TWIN_V9_DIR`, par défaut
+`../Twin_v9`), comme ceux de la suite front qui lisent une vraie carte de son
+oracle (adaptateur et importeur Twin9).
 
 ## 6. Déploiement (OVH mutualisé, sans SSH — ADR-008)
 

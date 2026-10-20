@@ -19,10 +19,12 @@ namespace Humanome\Twin9;
  *     combining-mark tricks no longer break the run.
  * Any shared run of >= MIN_CARS normalized characters between the CONFIDENTIAL
  * material and the output is redacted. The caller builds the index from the
- * template rendered with the learner's variables EMPTY but the confidential
- * FICHES INJECTED (routes/twin9.php, 2026-07-15 review) — so the fiche bodies
- * are backstopped, while the learner's own payload (journal text the model
- * legitimately quotes back) never enters the index and is never redacted.
+ * confidential material only: Resultats (T9, T16) from a run's whole template
+ * set, variables EMPTY, and the preambles and fiches of the referentials its
+ * engine read — so the fiche bodies are backstopped, while the learner's own
+ * payload (journal text the model legitimately quotes back) never enters the
+ * index and is never redacted. (Until T11, the proxy of the browser's engine
+ * built it the same way from each template it rendered.)
  *
  * Residuals (documented, ADR-010 §2 — this is a backstop, NOT the control):
  *   - cross-SCRIPT homoglyphs (e.g. Cyrillic « а » for Latin « a ») are not

@@ -1,7 +1,8 @@
 // Téléchargement « un clic » d'un résultat JSON (D4) — util UNIQUE partagé par
-// les trois surfaces qui exportent une cartographie : Twin9 (ResultatsTwin9),
-// Essayer (cartographie-jour) et Twin6 ouverte (cartographie-merge). Avant, seul
-// Twin9 avait ce bouton et son code de téléchargement était dupliqué.
+// les surfaces qui exportent une cartographie : Essayer (cartographie-jour),
+// Twin6 ouverte (cartographie-merge) et, par `downloadBlob`, l'interface de
+// cartographie. Twin9 du navigateur (ResultatsTwin9) l'a inauguré ; il est
+// parti avec son moteur le 2026-10-17.
 //
 // RGPD : purement client (Blob application/json + <a download>), rien n'est
 // envoyé au serveur ; garde jsdom/SSR (URL.createObjectURL absent -> no-op).

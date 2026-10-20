@@ -1,0 +1,140 @@
+<?php
+
+declare(strict_types=1);
+
+namespace Humanome\Tests;
+
+use Humanome\Db;
+use Humanome\Keys\KeyVault;
+use Humanome\Llm\LlmRuntime;
+use Humanome\Packages\SettingsRepository;
+use Humanome\Twin9\CreditService;
+use Humanome\Twin9\FicheStore;
+use Humanome\Twin9\ProtocoleRepository;
+use Humanome\Twin9\Twin9Config;
+
+/**
+ * GET /api/twin9/meta (ADR-010 §2/§3) — what the credit page and the open
+ * cartography (Twin6) read: the Twin6 offer, the promotion's state, the
+ * packs, PayPal's availability, the referential's structure, the own balance
+ * and whether a private key is stored. Never a template, never a fiche.
+ *
+ * T11 removed the browser's engine and its proxy, POST /api/twin9/appel: the
+ * meta no longer lists the steps, the Twin9 offer or the pipeline's settings,
+ * which only that engine read, and the proxy answers as an unknown route.
+ *
+ * SECRECY IMPERATIVE (ADR-010): every template here is a MADE-UP fixture —
+ * no real Twin9 content in tests, ever.
+ */
+final class Twin9MetaTest extends CartographeTestCase
+{
+    private const MASTER_KEY_HEX = 'aa11bb22cc33dd44ee55ff6600112233445566778899aabbccddeeff00112233';
+
+    /** Entirely fictional template with a distinctive phrase. */
+    private const FAKE_GABARIT = "Consigne FICTIVE : le perroquet bleu compte les nuages violets au-dessus du volcan endormi chaque matin.\nAnalyse {\$TEXTE_JOURNEE} pour {\$PRENOM}.";
+
+    private LlmFakeHttpClient $http;
+
+    /** @var array{id: int, csrf: string, sid: string} */
+    private array $user;
+
+    protected function setUp(): void
+    {
+        parent::setUp(); // wipes users (credits cascade) and rate_limits
+        $pdo = Db::get();
+        $pdo->exec('DELETE FROM twin9_protocole_versions');
+        $pdo->exec('DELETE FROM twin9_protocole');
+        $pdo->exec("DELETE FROM settings WHERE name IN ('twin9_config', 'twin9_fiches', 'twin9_referentiel')");
+
+        TestDb::setEnv('ANTHROPIC_API_KEY', 'sk-ant-platform-test-key');
+        TestDb::setEnv('SODIUM_MASTER_KEY', self::MASTER_KEY_HEX);
+        TestDb::setEnv('PAYPAL_CLIENT_ID', '');
+
+        $this->http = new LlmFakeHttpClient();
+        LlmRuntime::setHttpClient($this->http);
+
+        (new ProtocoleRepository($pdo))->put('fictif/01-essai', self::FAKE_GABARIT, null);
+        (new Twin9Config(new SettingsRepository($pdo)))->update(['enabled' => true]);
+
+        $this->user = $this->registerAs('ada@example.org', 'Ada', ['apprenant']);
+    }
+
+    protected function tearDown(): void
+    {
+        LlmRuntime::setHttpClient(null);
+        parent::tearDown();
+    }
+
+    public function testRequiresSession(): void
+    {
+        $this->cookieSid = null;
+        self::assertSame(401, $this->request('GET', '/api/twin9/meta')->getStatusCode());
+    }
+
+    public function testServesWhatTheCreditPageAndTwin6ReadButNeverContent(): void
+    {
+        (new CreditService(Db::get()))->topup($this->user['id'], 2_500_000, 'PAYPAL-TEST-5');
+
+        $response = $this->as_($this->user, 'GET', '/api/twin9/meta');
+        self::assertSame(200, $response->getStatusCode(), (string) $response->getBody());
+        $body = self::json($response);
+
+        // Exactly these fields: the steps, the Twin9 offer, the pipeline's
+        // settings and the enabled flag left with the browser's engine (T11).
+        self::assertSame(['modeles_twin6', 'twin9_cle_perso_ouverte', 'packs', 'referentiel', 'paypalConfigured',
+            'solde_microusd', 'cle_privee_disponible'], array_keys($body));
+        // Twin6 (open) prices at its own +10 % contribution (list [3, 15] × 1.1), margin itself absent.
+        self::assertSame([3.3, 16.5], $body['modeles_twin6']['claude-sonnet-5']);
+        self::assertFalse($body['twin9_cle_perso_ouverte']); // promo closed by default
+        self::assertSame([10, 20, 50, 100, 200, 500], array_column($body['packs'], 'montant_usd'));
+        self::assertSame([], $body['referentiel']); // none imported
+        self::assertFalse($body['paypalConfigured']);
+        self::assertSame(2_500_000, $body['solde_microusd']);
+        self::assertFalse($body['cle_privee_disponible']);
+
+        // THE secrecy assertion: nothing of the template leaves, not even its name.
+        self::assertStringNotContainsString('perroquet', (string) $response->getBody());
+        self::assertStringNotContainsString('fictif/01-essai', (string) $response->getBody());
+
+        $masterKey = KeyVault::masterKeyFromEnv();
+        self::assertNotNull($masterKey);
+        (new KeyVault(Db::get(), $masterKey))->store($this->user['id'], 'anthropic', 'sk-ant-user-private-key');
+        self::assertTrue(self::json($this->as_($this->user, 'GET', '/api/twin9/meta'))['cle_privee_disponible']);
+    }
+
+    public function testFichesAreNeverExposed(): void
+    {
+        FicheStore::store(new SettingsRepository(Db::get()), [
+            ['num' => 1, 'header' => 'PRÉAMBULE SECRET', 'competences' => [
+                ['code' => '1.01', 'fiche_md' => 'FICHE ULTRA CONFIDENTIELLE'],
+            ]],
+        ]);
+        $raw = (string) $this->as_($this->user, 'GET', '/api/twin9/meta')->getBody();
+        self::assertStringNotContainsString('CONFIDENTIELLE', $raw);
+        self::assertStringNotContainsString('PRÉAMBULE SECRET', $raw);
+        self::assertStringNotContainsString('fiche_md', $raw);
+    }
+
+    public function testTheBrowserEnginesProxyIsGone(): void
+    {
+        (new CreditService(Db::get()))->topup($this->user['id'], 5_000_000, 'PAYPAL-TEST-6');
+
+        $previousLog = ini_set('error_log', '/dev/null'); // the error middleware logs the HttpNotFoundException
+        try {
+            $response = $this->as_($this->user, 'POST', '/api/twin9/appel', [
+                'etape' => 'fictif/01-essai',
+                'variables' => ['TEXTE_JOURNEE' => 'Journal du jour.', 'PRENOM' => 'Ada'],
+                'modele' => 'claude-sonnet-5',
+                'etage' => 'rapide',
+                'facturation' => 'platform',
+            ]);
+        } finally {
+            ini_set('error_log', $previousLog === false ? '' : $previousLog);
+        }
+
+        self::assertSame(404, $response->getStatusCode(), (string) $response->getBody());
+        self::assertStringNotContainsString('perroquet', (string) $response->getBody());
+        self::assertSame([], $this->http->requests, 'nothing reaches the provider');
+        self::assertSame(5_000_000, (new CreditService(Db::get()))->balance($this->user['id']), 'nothing is debited');
+    }
+}

@@ -211,7 +211,7 @@ L'apprenant ouvre `#/twin6-ouverte`, colle son portfolio et clique sur
 | Front | `web/src/api/twin6.js` — `loadTwin6Package`, `makeCreditsProvider`, `makeOwnKeyProvider`, `fetchTwin6Offer` | Paquet public, provider proxy facturé, provider direct, offre |
 | Front | `web/src/api/twin9.js` — `referentielPourMoteur`, `formatUsd` | Adaptation du référentiel, montants |
 | Front | `web/src/api/keys.js` — `listKeys`, `revealKey` | Clé enregistrée au profil |
-| Front | `web/src/api/client.js` — `fetchMe`, `apiFetch`, `ApiError`, `ApiUnavailableError` | Session et amorçage du jeton CSRF (étape 1), jeton sur chaque mutation, erreurs typées (E1, E2, E4) — unitaires : UC-APP-09-U15, U16 ; copie statique : UC-APP-10-U31 |
+| Front | `web/src/api/client.js` — `fetchMe`, `apiFetch`, `ApiError`, `ApiUnavailableError` | Session et amorçage du jeton CSRF (étape 1), jeton sur chaque mutation, erreurs typées (E1, E2, E4) — unitaires : UC-APP-09-U15, U16 ; copie statique : UC-CPT-02-U12 |
 | Build | `scripts/build-twin6-package.mjs` (après `scripts/generate-fiches.mjs`, `prebuild` du front) | Construit le paquet public servi à l'étape 2 (précondition) — relève de UC-SYS-04 : rejoué en sous-processus dans un miroir temporaire par UC-SYS-04-F11 (gabarits absents) et F12 (gabarits fournis) |
 | Build | `scripts/build-twin6-prompt-package.mjs` — `buildTwin6PromptPackageDoc` | Paquet publié forkable `twin6-ouverte` (même corpus) — relève de UC-SYS-04 : rejoué en sous-processus dans un miroir temporaire par UC-SYS-04-F11 et F12 ; test historique `web/src/views/promptologue/twin6-prompt-package.test.js` |
 | Front | `web/src/views/MergeView.jsx`, `web/src/lib/download-json.js` | Rendu sunburst commun et export JSON (étape 8) — composants partagés (unitaires relevant de UC-APP-03 et UC-APP-12), rendus ici fonctionnellement (UC-APP-09-F01) |
@@ -278,7 +278,7 @@ L'apprenant ouvre `#/twin6-ouverte`, colle son portfolio et clique sur
 | UC-APP-09-F08 | E5 | IHM | Sortie tronquée : échec explicite, pas d'export | idem |
 | UC-APP-09-F09 | E6 | IHM | Paquet public introuvable, ou offre `/meta` en erreur : erreur de chargement, formulaire absent | idem |
 | UC-APP-09-F10 | Nominal | API | 8 appels : contrat, `text` amont intact et `model`, coût 6 602 µUSD chacun, prompt public transmis tel quel, grand-livre réserve/réconciliation | `api/tests/UseCases/Functional/UcApp09CartographieOuverteTwin6Test.php` |
-| UC-APP-09-F11 | Nominal (étape 2), RG7 | API | `/api/twin9/meta` : prix Twin6, référentiel, solde ; Twin6 fonctionne Twin9 désactivé | idem |
+| UC-APP-09-F11 | Nominal (étape 2), RG7 | API | `/api/twin9/meta` : prix Twin6, référentiel, solde ; Twin6 fonctionne l'interrupteur Twin9 fermé | idem |
 | UC-APP-09-F12 | E7 | API | 401 sans session, aucun appel amont | idem |
 | UC-APP-09-F13 | E8 | API | 503 sans clé plateforme, rien débité | idem |
 | UC-APP-09-F14 | E9 | API | 422 / 413 / 400 (JSON scalaire ou illisible) ; liste JSON ou corps vide → 422 ; avant tout débit | idem |
@@ -317,8 +317,7 @@ cd engine && npx vitest run test/usecases/unit/uc-app-09
 2. **Pôle sans aucune présence établie → document non conforme au schéma.**
    `twin6ToMergeDocument` émet alors un domaine sans compétence, ce que le schéma
    `cartographie-merge` refuse (`domains[].competences` : `minItems 1`). Le viewer
-   le tolère (c'est assumé pour Twin9 dans `engine/src/twin9/mapper.test.js`),
-   mais le JSON exporté ne se revalide pas : le rechargement d'un fichier
+   le tolère, mais le JSON exporté ne se revalide pas : le rechargement d'un fichier
    utilisateur (`web/src/data/load.js`, validation ajv) le refuse. Le test
    historique du mapper Twin6 qualifie ces domaines vides de « légitimes » sans
    en produire aucun (figé par UC-APP-09-U09).

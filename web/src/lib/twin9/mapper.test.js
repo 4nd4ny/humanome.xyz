@@ -1,24 +1,23 @@
-// Adaptateur Twin9 → cartographie-merge (D12). Fixtures : le VRAI
-// carto_evolutive du vecteur figé (chain.carto_evolutive_json, généré par le
-// Python de référence) + un référentiel minimal 7 pôles, et des cas construits
-// pour les règles fines (renvoi daté, signal non daté ignoré, priorité
-// attestation > renvoi, absence d'attestation datée → erreur).
+// Adaptateur Twin9 → cartographie-merge (D12). Fixtures : la VRAIE sortie du
+// moteur sur un portfolio (carto_evolutive du scénario cloud de l'oracle de
+// Twin_v9, tirée de la v9.8) + un référentiel minimal 7 pôles, et des cas
+// construits pour les règles fines (renvoi daté, signal non daté ignoré,
+// priorité attestation > renvoi, absence d'attestation datée → erreur).
 import { describe, it, expect } from 'vitest'
 import { existsSync, readFileSync } from 'node:fs'
+import { dirname, join } from 'node:path'
 import { fileURLToPath } from 'node:url'
 import { twin9ToMergeDocument } from './mapper.js'
-import { validateDocument } from '../validation.js'
-import { POLE_PALETTE } from '../pipeline/merge-document.js'
+import { validateDocument } from '@engine/validation.js'
+import { POLE_PALETTE } from '@engine/pipeline/merge-document.js'
 
-// Le vecteur figé vit dans le dépôt privé 4nd4ny/Twin_v9, cloné à côté de
-// celui-ci (../Twin_v9) : sans lui (clone neuf, CI), les cas réels se sautent.
-const VEC_PATH = fileURLToPath(
-  new URL('../../../../Twin_v9/engine/test/twin9-vectors/merge.vec.json', import.meta.url),
-)
-const vecPresent = existsSync(VEC_PATH)
-const CARTO = vecPresent
-  ? JSON.parse(JSON.parse(readFileSync(VEC_PATH, 'utf8')).chain.carto_evolutive_json)
-  : null
+// L'oracle vit dans le dépôt privé 4nd4ny/Twin_v9 : `TWIN_V9_DIR`, par défaut
+// cloné à côté de celui-ci (../Twin_v9), comme pour la suite PHP ; sans lui
+// (clone neuf, CI), les cas réels se sautent.
+const TWIN_V9_DIR = process.env.TWIN_V9_DIR || join(dirname(fileURLToPath(import.meta.url)), '../../../../../Twin_v9')
+const ORACLE_PATH = join(TWIN_V9_DIR, 'oracle/scenarios/02-cloud/outputs/carto_evolutive.json')
+const oraclePresent = existsSync(ORACLE_PATH)
+const CARTO = oraclePresent ? JSON.parse(readFileSync(ORACLE_PATH, 'utf8')) : null
 
 // Un référentiel minimal aux 7 pôles de RESPIRE.
 const REFERENTIEL = {
@@ -40,61 +39,25 @@ const REFERENTIEL = {
   ],
 }
 
-describe.skipIf(!vecPresent)('twin9ToMergeDocument (vecteur réel)', () => {
+describe.skipIf(!oraclePresent)('twin9ToMergeDocument (sortie réelle du moteur)', () => {
   // Le corps d'un describe sauté est tout de même évalué à la collecte.
-  const doc = vecPresent
-    ? twin9ToMergeDocument(CARTO, REFERENTIEL, { generatedAt: '2026-02-01T12:00:00' })
-    : null
-
-  it('est conforme au schéma, aux pôles VIDES près (portfolio épars — le viewer les tolère)', () => {
-    // Le schéma (écrit depuis le corpus complet : « 5 à 10 par pôle observées »)
-    // exige ≥ 1 compétence par domaine. Le vecteur réel n'active que 2 pôles :
-    // les 5 autres restent vides — SEULE déviation tolérée ici (build-tree
-    // itère sur un tableau vide sans broncher). Tout autre écart est un bug.
-    const res = validateDocument('cartographie-merge', doc)
-    const inattendus = (res.errors ?? []).filter(
-      (e) =>
-        !(
-          e.keyword === 'minItems' &&
-          /^\/(domains|profilIpsatif)\/\d+\/competences$/.test(e.path)
-        ),
-    )
-    expect(inattendus).toEqual([])
-  })
-
-  it('est STRICTEMENT valide quand chaque pôle a une attestation', () => {
-    // Même vecteur, complété d'une attestation par pôle vide (données de test
-    // marquées, pas de réutilisation du corpus) : plus aucune déviation.
-    const complet = JSON.parse(JSON.stringify(CARTO))
-    const refComplet = {
-      poles: REFERENTIEL.poles,
-      competences: [
-        ...REFERENTIEL.competences,
-        { code: '2.01', nom: 'Empathie (test)', pole: 2 },
-        { code: '3.01', nom: 'Prototypage (test)', pole: 3 },
-        { code: '4.01', nom: 'Éthique (test)', pole: 4 }, // 4.03/4.07 du vecteur = renvois seuls
-        { code: '5.01', nom: 'Résilience (test)', pole: 5 },
-        { code: '6.01', nom: 'Coopération (test)', pole: 6 },
-        { code: '7.01', nom: 'Transmission (test)', pole: 7 },
-      ],
-    }
-    for (const code of ['2.01', '3.01', '4.01', '5.01', '6.01', '7.01']) {
-      complet.competences[code] = {
-        attestations: [
-          { jour_index: 0, journee: 'J01', date: '2026-01-05', confiance: 0.7, score_preuves: 1, score_indices: 1, citations: [] },
-        ],
-        signaux: [],
+  // Le référentiel du run : les compétences que porte sa carte, aux 7 pôles de RESPIRE.
+  const referentiel = oraclePresent
+    ? {
+        poles: REFERENTIEL.poles,
+        competences: Object.values(CARTO.competences).map((c) => ({ code: c.code, nom: c.nom, pole: Number(c.pole) })),
       }
-      complet.histoires[code] = `Histoire de test pour ${code}.`
-    }
-    const docComplet = twin9ToMergeDocument(complet, refComplet, { generatedAt: '2026-02-01T12:00:00' })
-    const res = validateDocument('cartographie-merge', docComplet)
+    : null
+  const doc = oraclePresent ? twin9ToMergeDocument(CARTO, referentiel, { generatedAt: '2026-04-01T12:00:00' }) : null
+
+  it('est strictement conforme au schéma', () => {
+    const res = validateDocument('cartographie-merge', doc)
     expect(res.errors ?? []).toEqual([])
     expect(res.valid).toBe(true)
   })
 
   it('projette les attestations datées en feuilles chronologiques', () => {
-    // Les dates viennent des attestations du vecteur (aucune inventée).
+    // Les dates viennent des attestations de la carte (aucune inventée).
     const datesAttendues = new Set()
     for (const c of Object.values(CARTO.competences)) {
       for (const a of c.attestations ?? []) if (a.date) datesAttendues.add(a.date)
@@ -104,7 +67,7 @@ describe.skipIf(!vecPresent)('twin9ToMergeDocument (vecteur réel)', () => {
   })
 
   it('reporte les scores d’attestation tels quels sur la feuille', () => {
-    // 1.01 : attestation J01 (2026-01-05) avec 3 preuves / 2 indices.
+    // 1.01 : sa première attestation.
     const att = CARTO.competences['1.01'].attestations[0]
     const tete = doc.domains.find((d) => d.id.startsWith('TÊTE'))
     const c101 = tete.competences.find((c) => c.code === '1.01')
@@ -117,7 +80,7 @@ describe.skipIf(!vecPresent)('twin9ToMergeDocument (vecteur réel)', () => {
   it('injecte les narratifs de carto_evolutive (histoires, rapports de pôle, kairos)', () => {
     const tete = doc.domains.find((d) => d.id.startsWith('TÊTE'))
     const c101 = tete.competences.find((c) => c.code === '1.01')
-    // L'histoire d'apprentissage du vecteur se retrouve dans le feedback HTML
+    // L'histoire d'apprentissage de la carte se retrouve dans le feedback HTML
     // (fragments sans apostrophe : le HTML échappe ' en &#x27;).
     expect(c101.feedback).toContain('de façon isolée')
     expect(tete.rapport_html).toContain('Évolution du pôle 1')

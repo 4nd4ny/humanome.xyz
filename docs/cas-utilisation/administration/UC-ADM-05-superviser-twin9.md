@@ -3,7 +3,7 @@
 | Champ | Valeur |
 |---|---|
 | **Acteur principal** | Administrateur (rôle `admin`) |
-| **Acteurs secondaires** | Apprenants et établissements (offre, prix et promotion appliqués à leurs analyses, UC-APP-09/10/11) ; PayPal (montants des packs) |
+| **Acteurs secondaires** | Apprenants et établissements (offre, prix et promotion appliqués à leurs analyses et à leurs profils, UC-APP-09/10/11) ; PayPal (montants des packs) |
 | **Portée** | humanome.xyz — vue `#/admin/twin9` (section « Supervision Twin9 » de l'administration), routes `GET/PUT /api/twin9/admin/config`, `GET /api/twin9/admin/comptes`, `GET /api/twin9/admin/jeux`, `PUT /api/twin9/admin/jeux/defaut` |
 | **Niveau** | Objectif utilisateur |
 | **Cahier des charges** | §3.8 et §4.10 (administration), §7 (modèle économique : coût API + marge) ; ADR-010 §3 et §6 ; décision AD-D2 (`docs/autorisations.md`) |
@@ -12,8 +12,8 @@
 ## Objectif
 
 Permettre à l'administrateur de piloter l'offre commerciale de Twin9 et de la
-cartographie ouverte Twin6 — contributions (marges), promotion « Twin9 gratuit
-avec sa propre clé », packs de recharge, offre de modèles par étage —, de
+cartographie ouverte Twin6 — contributions (marges), promotion « Twin9 avec sa
+propre clé », packs de recharge, modèles et leurs prix —, de
 fixer le jeu de gabarits par défaut (T14) et de suivre les soldes et cumuls de
 tous les comptes qui utilisent le crédit prépayé, **sans jamais voir le
 contenu des gabarits** (réservé à l'atelier, UC-PRO-08).
@@ -29,8 +29,9 @@ L'administrateur ouvre « Administrer » → « Supervision Twin9 » (`#/admin/t
 ## Garanties en cas de succès
 
 - La configuration enregistrée est complète et valide ; elle s'applique
-  immédiatement à l'offre publique (`/api/twin9/meta`), à la facturation des
-  appels et aux ordres PayPal.
+  immédiatement à l'offre publique (`/api/twin9/meta`), aux profils et à
+  l'estimation des runs Twin9, à la facturation de leurs appels et de ceux de
+  la cartographie ouverte, et aux ordres PayPal.
 - L'administrateur voit, pour chaque compte ayant une activité, le solde, les
   cumuls et la date de dernière activité.
 
@@ -45,7 +46,10 @@ L'administrateur ouvre « Administrer » → « Supervision Twin9 » (`#/admin/t
    session et le rôle `admin`.
 2. La section charge `GET /api/twin9/admin/config` (forme administrateur :
    contributions `marge` et `marge_twin6`, promotion, packs, modèles avec prix
-   **catalogue** et étages, interrupteur, rythme, réglages du pipeline) et
+   **catalogue** et étages, interrupteur, rythme, réglages du pipeline —
+   l'interrupteur, le pipeline et les étages ne commandent plus rien depuis
+   T11, et le rythme ne borne plus que la cartographie ouverte, voir Limites)
+   et
    `GET /api/twin9/admin/comptes`.
 3. Elle affiche le formulaire des réglages, le jeu de gabarits par défaut (A5),
    la table des comptes et un renvoi vers l'atelier (`#/twin9-atelier`) pour
@@ -62,30 +66,37 @@ L'administrateur ouvre « Administrer » → « Supervision Twin9 » (`#/admin/t
    configuration ; la vue affiche « Réglages Twin9 enregistrés. » et se
    resynchronise : la configuration renvoyée devient la référence du diff
    suivant.
-6. L'effet est immédiat : `/api/twin9/meta` publie les nouveaux prix margés ; les
-   appels Twin9 (et Twin6 pour `marge_twin6`) sont facturés au nouveau taux.
+6. L'effet est immédiat : un run Twin9 s'estime (aperçu, UC-APP-10) et ses
+   appels se paient au nouveau taux ; `/api/twin9/meta` publie les nouveaux
+   prix de la cartographie ouverte, dont les appels sont facturés au taux de
+   `marge_twin6`.
 7. La table des comptes liste les comptes ayant au moins un mouvement au
    grand-livre, du plus récemment actif au moins récent, avec solde, recharges
    cumulées, consommé cumulé et dernière activité.
 
 ## Scénarios alternatifs
 
-- **A1 — Promotion « Twin9 gratuit avec sa propre clé »** (étape 4) : la case
-  ouvre ou ferme la fenêtre promotionnelle ; ouverte, un apprenant ayant
-  enregistré sa clé peut lancer Twin9 sans débit (UC-APP-10 A2) ; fermée, la voie
-  clé privée est refusée (403). La voie plateforme reste facturée dans les deux
-  cas.
+- **A1 — Promotion « Twin9 avec sa propre clé »** (étape 4) : la case ouvre ou
+  ferme la fenêtre promotionnelle ; ouverte, un apprenant ayant enregistré sa
+  clé peut régler un profil à clé personnelle et lancer Twin9 sans débit ni
+  contribution (UC-APP-10 A6) ; fermée, un tel profil est refusé (`422`), à
+  l'enregistrement comme au lancement. La clé de l'instance reste facturée
+  dans les deux cas.
 - **A2 — Grille de packs** (étape 4) : ajout, modification ou suppression de
   packs (montant + libellé) ; l'offre publique et le montant des ordres PayPal
   suivent (UC-APP-11). Un pack est désigné par sa **position** (`pack_index`) :
   une page apprenant chargée avant un changement de grille crée un ordre pour le
   pack qui occupe désormais cet index (voir Limites).
 - **A3 — Offre de modèles** (étape 4) : ajout, suppression, prix catalogue
-  [entrée, sortie] et étages couverts (taggers, rapide, tribunal) ; un modèle
-  hors offre, ou proposé pour un autre étage, est refusé par `/api/twin9/appel`.
-- **A4 — Réglages hors formulaire** (API seulement) : l'interrupteur `enabled`
-  (Twin9 indisponible → `503` côté apprenant), le rythme `appels_par_minute` et
-  les réglages du `pipeline` se modifient par le même `PUT` partiel. La fusion
+  [entrée, sortie] et étages couverts (taggers, rapide, tribunal) ; un profil
+  qui nomme un modèle sans prix sur l'instance est refusé (`422`), à
+  l'enregistrement comme au lancement. Les étages de l'offre ne commandent
+  plus rien depuis T11 (voir Limites).
+- **A4 — Réglages hors formulaire** (API seulement) : l'interrupteur `enabled`,
+  le rythme `appels_par_minute` (celui de la cartographie ouverte, `429`
+  au-delà) et les réglages du `pipeline` se modifient par le même `PUT`
+  partiel ; l'interrupteur et le pipeline ne commandent plus rien depuis T11
+  (voir Limites). La fusion
   étant de premier niveau, un `PUT {pipeline: {...}}` **remplace** tout l'objet
   importé (seuils, jury, merge…) : les clés non renvoyées sont perdues (de même
   pour `packs` et `modeles`).
@@ -131,16 +142,18 @@ L'administrateur ouvre « Administrer » → « Supervision Twin9 » (`#/admin/t
   `promptologue` et vit dans l'atelier (AD-D2).
 - **RG2** — Contributions : `marge` (Twin9, 1,20 par défaut) et `marge_twin6`
   (1,10 par défaut), nombres entre 1 et 5. Les apprenants ne voient que les prix
-  margés (arrondis à 4 décimales), jamais la marge ni le prix catalogue.
+  margés de la cartographie ouverte (arrondis à 4 décimales) et les coûts
+  estimés de leurs runs Twin9, jamais la marge ni le prix catalogue.
 - **RG3** — Packs : liste non vide ; montant entre 1 et 500 USD ; libellé non
   vide ; par défaut 10, 20, 50, 100, 200 et 500 USD.
 - **RG4** — Modèles : au moins un ; prix `[entrée, sortie]` strictement positifs
   (USD par million de tokens) ; étages ⊂ {taggers, rapide, tribunal}, non vide.
-- **RG5** — Promotion : booléen, fermée par défaut ; elle n'ouvre que la voie
-  clé privée.
+- **RG5** — Promotion : booléen, fermée par défaut ; elle n'ouvre que les
+  profils à clé personnelle.
 - **RG6** — `enabled` booléen (faux tant que les gabarits ne sont pas importés) ;
-  `appels_par_minute` entier de 1 à 600 (30 par défaut) ; `pipeline` objet (une
-  liste JSON passe aussi la validation, qui ne teste que `is_array`).
+  `appels_par_minute` entier de 1 à 600 (30 par défaut), le rythme de la
+  cartographie ouverte ; `pipeline` objet (une liste JSON passe aussi la
+  validation, qui ne teste que `is_array`).
 - **RG7** — Mise à jour partielle : clés inconnues refusées, fusion de premier
   niveau, configuration complète revalidée avant écriture. Toute mise à jour
   (y compris l'import, qui appelle `update(['enabled' => true, …])`) persiste la
@@ -194,7 +207,7 @@ L'administrateur ouvre « Administrer » → « Supervision Twin9 » (`#/admin/t
 | UC-ADM-05-U08 | `Twin9Config::update` | Fusion partielle, persistance de la configuration complète (défauts figés), clé inconnue refusée sans écriture (RG7) | `api/tests/UseCases/Unit/UcAdm05SuperviserTwin9Test.php` |
 | UC-ADM-05-U09 | `Twin9Config::update` | Bornes de chaque réglage (RG2-RG6), liste acceptée pour `pipeline` ; configuration entière inchangée après les refus | idem |
 | UC-ADM-05-U10 | `Twin9Config::update` | **Anomalie 2 figée** : message « 1 et 100 USD » pour une borne à 500 | idem |
-| UC-ADM-05-U11 | `Twin9Config::read`, `publicView` | Défauts, clés obsolètes ignorées, vue publique sans marge | idem |
+| UC-ADM-05-U11 | `Twin9Config::read`, `publicView` | Défauts, clés obsolètes ignorées, vue publique sans marge ; ni offre Twin9, ni interrupteur, ni pipeline (T11) | idem |
 | UC-ADM-05-U12 | `FactureService::comptes` | Comptes actifs, cumuls, ordre ; **anomalie 3 figée** | idem |
 
 ### Tests fonctionnels
@@ -209,10 +222,10 @@ L'administrateur ouvre « Administrer » → « Supervision Twin9 » (`#/admin/t
 | UC-ADM-05-F06 | E2 | IHM | 422 serveur : message affiché, saisie gardée | idem |
 | UC-ADM-05-F07 | E3 | IHM | Identifiant vide : message, aucun PUT | idem |
 | UC-ADM-05-F08 | E4 | IHM | Erreur de chargement : message, pas de formulaire ; copie statique : message, aucun appel de supervision | idem |
-| UC-ADM-05-F09 | Nominal | API | Contributions changées → prix `/meta`, coût réel de `/api/twin9/appel` (×1,5) et de `/api/twin6/appel` (×1,25) suivent | `api/tests/UseCases/Functional/UcAdm05SuperviserTwin9Test.php` |
-| UC-ADM-05-F10 | A1 | API | Promotion ouverte puis fermée : voie clé privée 200 puis 403 ; voie plateforme facturée pendant la promotion | idem |
+| UC-ADM-05-F09 | Nominal | API | Contributions changées → l'estimation d'un run Twin9 (×1,5), les prix Twin6 de `/meta` et le coût réel de `/api/twin6/appel` (×1,25) suivent | `api/tests/UseCases/Functional/UcAdm05SuperviserTwin9Test.php` |
+| UC-ADM-05-F10 | A1 | API | Promotion fermée : profil à clé personnelle refusé ; ouverte : admis, estimé sans contribution ; refermée : son lancement refusé ; pendant la promotion, un profil à la clé de l'instance s'estime toujours avec contribution | idem |
 | UC-ADM-05-F11 | A2 | API | Packs → `/meta` et montant de l'ordre PayPal ; index hors grille 422 ; limite figée : pack désigné par sa position | idem |
-| UC-ADM-05-F12 | A3, A4 | API | Modèle hors offre et modèle proposé pour un autre étage (422), même modèle sur son étage (200), interrupteur (503), rythme (429) ; `pipeline` remplacé en entier | idem |
+| UC-ADM-05-F12 | A3, A4 | API | Modèle retiré de l'offre : profil qui le nomme refusé (422) ; un modèle admis sur un étage que l'offre ne lui donne pas ; interrupteur fermé sans effet ; rythme de la cartographie ouverte (429) ; `pipeline` remplacé en entier | idem |
 | UC-ADM-05-F13 | Nominal (étape 7) | API | Table des comptes : actifs seulement, ordre, montants | idem |
 | UC-ADM-05-F14 | E1 | API | 401 visiteur ; 403 apprenant, promptologue, établissement | idem |
 | UC-ADM-05-F15 | E2 | API | 400 corps scalaire ; `[1]` → 422, `[]` → 200 ; 422 par cas, configuration entière inchangée | idem |
@@ -269,6 +282,14 @@ cd web && npx vitest run test/usecases/unit/uc-adm-05 test/usecases/functional/u
 
 ## Limites
 
+- Depuis T11, qui a retiré le moteur du navigateur et son proxy
+  `/api/twin9/appel`, trois réglages ne commandent plus rien : l'interrupteur
+  `enabled`, que l'import ouvre encore ; le `pipeline`, que l'import écrit
+  encore (les runs prennent leurs réglages dans leur profil) ; les étages des
+  modèles de l'offre, que le formulaire édite encore (un profil ne demande à
+  un modèle qu'un prix). Le rythme `appels_par_minute` ne borne plus que la
+  cartographie ouverte. Ils restent, sans effet, jusqu'à ce qu'on les retire
+  (figé par UC-ADM-05-F12).
 - Un pack est désigné par sa **position** (`pack_index`) et non par son
   montant : si l'administrateur supprime ou réordonne des packs pendant qu'un
   apprenant a déjà chargé l'offre, le clic de l'apprenant sur « 10 $ » crée un

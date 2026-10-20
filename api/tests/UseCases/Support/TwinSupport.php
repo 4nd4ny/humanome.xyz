@@ -29,19 +29,13 @@ final class TwinSupport
     /** Clé maître libsodium factice (64 hex) pour KeyVault. */
     public const MASTER_KEY_HEX = 'bb11cc22dd33ee44ff5500661122334455667788990011aabbccddeeff001122';
 
-    /**
-     * Gabarit FICTIF porteur d'une phrase distinctive (>= 48 caractères
-     * normalisés) : sa récitation par le modèle doit être expurgée.
-     */
+    /** Gabarit FICTIF porteur d'une phrase distinctive (>= 48 caractères normalisés). */
     public const GABARIT_TAG = "Consigne FICTIVE du lot twin : la loutre argentée range les galets turquoise au bord du lac gelé chaque soir.\nPôle {\$POLE_NUM} — journée : {\$TEXTE_JOURNEE}";
 
-    /** Gabarit FICTIF qui consomme les fiches confidentielles injectées serveur. */
+    /** Gabarit FICTIF qui nomme les fiches confidentielles (le banc d'essai de l'atelier ne les injecte pas). */
     public const GABARIT_GREFFIER = "Greffier FICTIF.\nFiche : {\$COMPETENCE_FICHE}\nPôle : {\$POLE_FICHES}\nCode {\$CODE} — extrait : {\$EXTRAIT}";
 
-    /** Gabarit FICTIF de l'étage tribunal. */
-    public const GABARIT_TRIBUNAL = "Arène FICTIVE : le héron cendré compte les roseaux penchés sous la pluie fine d'automne.\nPièces : {\$PIECES}";
-
-    /** Fiche FICTIVE longue (sa récitation doit être expurgée elle aussi). */
+    /** Fiche FICTIVE longue, que l'import garde sur le serveur. */
     public const FICHE_SECRETE = 'FICHE FICTIVE 1.01 : le cartographe observe la manière dont la personne confronte deux sources contradictoires avant de conclure.';
 
     /** Poles/fiches FICTIFS pour FicheStore::store. */

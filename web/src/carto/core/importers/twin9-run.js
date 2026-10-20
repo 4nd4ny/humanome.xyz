@@ -20,7 +20,7 @@
 // Son référentiel est celui du run (T17) : RESPIRE ou celui d'une autre
 // structure, 5 pôles lettrés, 9 pôles… Le jeu neuf qui le reçoit l'adopte.
 
-import { twin9Dossier, twin9ToMergeDocument } from '@engine/twin9/mapper.js'
+import { twin9Dossier, twin9ToMergeDocument } from '../../../lib/twin9/mapper.js'
 import { importSiteMerge } from './merge.js'
 import { referentialErrors, toEmbeddedReferential } from '../referential.js'
 import { canonicalJson, contentHash, normalizeConfidence, normalizeRole, normalizeStatus, stableId } from '../model.js'

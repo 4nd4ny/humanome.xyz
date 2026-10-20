@@ -259,7 +259,7 @@ Ordre réel, reconstitué d'`INSTALL.md` §2 et §6, du `prebuild` de
 | Moteur | `engine/src/validation.js` — `validateDocument` | Validation utilisée par les scripts et les tests |
 | Script | `scripts/validate-corpus.mjs` | Contrôle du corpus et des fixtures |
 | Script | `scripts/generate-fiches.mjs`, `scripts/extract-fiches.mjs` — `reassembleFiche` | Règle (b), aller-retour corpus ↔ P*.md |
-| Moteur | `engine/src/twin9/referentiel.js` — `parsePole` | Découpage des P*.md (A3) |
+| Front | `web/src/lib/twin9/referentiel.js` — `parsePole` | Découpage des P*.md (A3) ; le moteur du navigateur parti (T11), il vit dans le front |
 | Script | `scripts/dump-fiches.mjs` | Resynchronisation du corpus depuis l'API (A2) |
 | Script | `scripts/build-twin6-package.mjs`, `scripts/build-twin6-prompt-package.mjs` | Paquets Twin6 statique et publié (RG6) |
 | Script | `scripts/build-default-prompt-package.mjs` | Paquet par défaut `aurora-v3-reconstruit` (RG5) |
@@ -317,8 +317,9 @@ par le catalogue, comme UC-SYS-01-F22, UC-SYS-02-F19 et UC-PRO-08-F17.
 
 ### Tests existants liés (non-régression)
 
-- `engine/src/twin9/fiches-corpus.test.js` — aller-retour corpus ↔ P*.md avec
-  `reassembleFiche` et `parsePole` (CI moteur).
+- `web/src/lib/twin9/fiches-corpus.test.js` — aller-retour corpus ↔ P*.md avec
+  `reassembleFiche` et `parsePole` (suite du front, locale depuis T11 ; la CI
+  moteur garde UC-SYS-04-F10, qui exécute `extract-fiches.mjs`).
 - `engine/src/validation.test.js` — les cinq types de documents, `$ref` croisés.
 - `web/src/data/referentiel-v710.test.js` — invariants du 7.1.0 publié (local :
   lit `web/public/data`).

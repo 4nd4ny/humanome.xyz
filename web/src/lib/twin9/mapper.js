@@ -1,7 +1,7 @@
 // Twin9 → viewer (D12) — mappe `carto_evolutive.json` (sortie de l'analyse
 // approfondie Twin9) vers le document `cartographie-merge` du viewer sunburst,
 // en RÉUTILISANT le pipeline de merge par jour (mergeDays + buildMergeDocument),
-// exactement comme l'adaptateur Twin6 (twin6/mapper.js) — aucune logique
+// exactement comme l'adaptateur Twin6 (engine/src/twin6/mapper.js) — aucune logique
 // d'agrégation, de quintiles, d'archétypes ou d'ipsatif dupliquée.
 //
 // Idée clé : chaque compétence de carto_evolutive porte des `attestations`
@@ -31,13 +31,14 @@
 // d'apprentissage par compétence), `rapports_poles[num]` (rapport de pôle),
 // kairos (synthèse). Aucun appel LLM supplémentaire.
 //
-// Ce fichier est NOUVEAU (D12) : il ne fait pas partie du périmètre de parité
-// CPython (contrairement à merge.js/scan.js), il CONSOMME leur sortie.
+// Ce fichier (D12) ne fait pas partie du périmètre de parité avec le Python :
+// il CONSOMME la sortie du moteur Twin9, qui tourne sur le serveur (ADR-011) ;
+// il a quitté le moteur du navigateur pour le front avec T11.
 //
-// Aucune E/S ici (convention moteur, P5) : entrées pures → document pur.
+// Aucune E/S ici (convention du moteur, P5) : entrées pures → document pur.
 
-import { mergeDays } from '../pipeline/merge.js'
-import { buildMergeDocument } from '../pipeline/merge-document.js'
+import { mergeDays } from '@engine/pipeline/merge.js'
+import { buildMergeDocument } from '@engine/pipeline/merge-document.js'
 
 const STATUT_ETABLIE = 'présence établie'
 const STATUT_RENVOI = 'renvoi au cartographe'
@@ -51,7 +52,7 @@ function competenceEntry(code, verdict) {
  * Mappe un `carto_evolutive.json` Twin9 vers un document `cartographie-merge`.
  *
  * @param {object} carto carto_evolutive.json déjà aplani en objet JSON
- *   (Maps/PyFloat sérialisés — même forme que ce que rend ResultatsTwin9).
+ *   (tel que le portent les résultats d'un run, GET /api/twin9/runs/{id}/resultats).
  * @param {{id?: string, competences: Array<{code:string, nom:string, pole:number}>,
  *   poles: Array<{num:number, nom:string}>}} referentiel même forme que pour
  *   l'adaptateur Twin6 (referentielPourMoteur / référentiel publié) ; un

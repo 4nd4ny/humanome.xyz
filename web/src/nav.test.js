@@ -25,6 +25,7 @@ describe('navGroups (sept familles d’intention)', () => {
       'Mon portfolio',
       'Cartographier mes écrits',
       'Cartographie ouverte',
+      'Analyse approfondie',
       'Partager ma cartographie',
     ])
     // Échelle de valeur lisible depuis les libellés (friction n°1).
@@ -32,6 +33,7 @@ describe('navGroups (sept familles d’intention)', () => {
     expect(badges).toEqual({
       'Cartographier mes écrits': 'standard',
       'Cartographie ouverte': 'gratuit',
+      'Analyse approfondie': 'premium',
     })
   })
 

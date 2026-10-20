@@ -3,11 +3,11 @@
 | Champ | Valeur |
 |---|---|
 | **Acteur principal** | Apprenant (tout compte connecté) |
-| **Acteurs secondaires** | Fournisseur LLM (Anthropic) ; plateforme (gabarits confidentiels en base, clé plateforme, crédit prépayé — UC-APP-11) ; administrateur (offre, contribution, promotion — UC-ADM-05) ; atelier (gabarits — UC-PRO-08) |
-| **Portée** | humanome.xyz — vue `#/twin9`, moteur navigateur `engine/src/twin9/`, proxy `POST /api/twin9/appel`, offre `GET /api/twin9/meta` |
+| **Acteurs secondaires** | Moteur Twin9 (dépôt privé `4nd4ny/Twin_v9`, chargé depuis `TWIN_V9_DIR`, ADR-011) ; fournisseur LLM (Anthropic : appels directs ou API Message Batches) ; tick du serveur (`POST /api/admin/worker-tick`) ; cartographe lié (lecture des résultats, s'il y est autorisé) ; administrateur (offre, contribution, promotion — UC-ADM-05 ; compteurs des runs) ; atelier (jeux de gabarits — UC-PRO-08) |
+| **Portée** | humanome.xyz — vues `#/twin9` et `#/twin9/<id>`, routes `/api/twin9/runs…` (`api/src/routes/twin9-runs.php`), profils de `#/configuration` (`/api/twin9/configuration`, `/api/twin9/profils`), ouverture dans l'interface de cartographie (`#/cartographie`) |
 | **Niveau** | Objectif utilisateur |
-| **Cahier des charges** | §3.2, §4.3 (découpage journalier + fusion), §4.4, §6 (RGPD), §7 (Golden Prompt payant) ; ADR-001, ADR-004, ADR-007, ADR-010 |
-| **Statut** | Implémenté, **parcours réel bloqué** par une anomalie, et d'autres défauts latents derrière elle (voir « Anomalies constatées ») ; démonstration opérationnelle |
+| **Cahier des charges** | §3.2, §4.3 (découpage journalier + fusion), §4.4, §6 (RGPD), §7 (Golden Prompt payant) ; ADR-004, ADR-007, ADR-010, ADR-011 ; `docs/contrats.md` §8 |
+| **Statut** | Implémenté (T9, T10, T8 stratégie A, T16, T17) ; le moteur du navigateur et son proxy `POST /api/twin9/appel` sont retirés depuis T11 |
 
 ## Objectif
 
@@ -15,271 +15,232 @@ Permettre à un apprenant d'obtenir l'analyse **approfondie** de son portfolio
 par Twin9, le Golden Prompt de la plateforme : collège de lecteurs, ancrage
 verbatim des citations, consensus mécanique, instruction rapide, tribunal
 adversarial à résolution calculée, fusion chronologique et relectures. Le
-moteur tourne dans le navigateur mais chaque appel LLM passe par le serveur,
-qui seul détient les **gabarits confidentiels**. L'usage est **prépayé**
-(contribution +20 %) ou, pendant une promotion, gratuit avec la clé de
-l'apprenant.
+moteur tourne **sur le serveur**, par tranches (ADR-011) : avec l'accord de
+l'apprenant, son portfolio et l'état du run y restent jusqu'à ce qu'il les
+efface. Le run se paie sur son crédit prépayé (contribution +20 %) ou, pendant
+une promotion, avec sa propre clé. Sa carte s'ouvre dans l'interface de
+cartographie, délibérations comprises.
 
 ## Déclencheur
 
-L'apprenant ouvre `#/twin9` (ou `#/twin9/demo` pour la démonstration).
+L'apprenant choisit « Analyse approfondie » (famille « Ma cartographie »,
+badge premium) ou ouvre `#/twin9`.
 
 ## Préconditions
 
 - Compte actif et session (UC-CPT-01, UC-CPT-02).
-- Les gabarits, les fiches confidentielles et le référentiel ont été importés
-  (`POST /api/admin/twin9/import`, UC-PRO-08 A4) : Twin9 est **activé**.
-- Voie plateforme : la clé `ANTHROPIC_API_KEY` est configurée et le solde couvre
-  la réserve de chaque appel (UC-APP-11). Voie clé privée : promotion ouverte
-  (UC-ADM-05) et clé Anthropic enregistrée au profil (UC-CPT-04).
+- Le moteur Twin9 est chargé (`TWIN_V9_DIR`, un moteur qui lit le référentiel
+  du run : T16 ou plus récent) : `GET /api/twin9/runs` dit `disponible`. Le
+  jeu de gabarits v9.8 est importé (UC-PRO-08 A4) : sans lui, le lancement
+  répond `503` (E2).
+- Un référentiel publié, RESPIRE par défaut, avec ses fiches en base.
+- Avec la clé de l'instance : un crédit (UC-APP-11) qui couvre au moins une
+  journée et sa fusion. Avec sa clé personnelle : promotion ouverte (UC-ADM-05
+  A1) et clé Anthropic enregistrée (UC-CPT-04).
 
 ## Garanties en cas de succès
 
-- Un `carto_evolutive.json` (sortie native Twin9) est produit dans le navigateur
-  et rendu : sunburst évolutif commun au site, synthèse kairos, rapport du
-  Rapporteur, profil ipsatif, renvois au cartographe, journées analysées ;
-  exportable et enregistrable localement (type `twin9`).
-- Le solde n'est débité que du **coût réel** des appels (réserve réconciliée).
-- Aucun gabarit, aucune fiche confidentielle n'a atteint le navigateur.
+- Un run, gardé sur le serveur avec l'accord daté et son **attestation**
+  (profil et mode, journées admises, jeu de gabarits et ses versions,
+  référentiel, sa version et son empreinte, commit du moteur), va au bout :
+  ses journées instruites, puis la fusion de sa carte.
+- Ses résultats — carte évolutive, cartes du jour avec leurs délibérations,
+  rapports — se lisent filtrés et s'ouvrent dans l'interface de cartographie,
+  dans un jeu « Twin9 · <journal> · <référentiel> ».
+- Le crédit n'est débité que du coût réel des appels (réserves réconciliées),
+  dans la limite de l'admission et des plafonds du profil.
+- Aucun gabarit ni aucune fiche n'atteint le navigateur ; ce qui s'affiche
+  passe le filtre de fuite.
 
 ## Garanties minimales (en cas d'échec)
 
-- Un appel refusé n'atteint jamais le fournisseur ; un appel en échec est
-  intégralement remboursé ; aucun découvert possible.
-- Les messages d'erreur sont génériques : jamais un fragment de gabarit.
-- Rien du portfolio n'est conservé côté serveur (compteurs seulement).
+- Rien ne part sans l'accord ; un lancement refusé ne crée rien ; l'aperçu ne
+  garde rien.
+- Personne d'autre que son propriétaire, et le cartographe lié qu'il autorise,
+  ne lit un run ; l'administrateur n'en voit que des compteurs.
+- Un appel qui ne part pas, ou un run arrêté, rend ce qu'il tenait en
+  réserve ; les messages d'erreur ne citent jamais un gabarit.
 
 ## Scénario nominal
 
-1. L'apprenant ouvre `#/twin9`. La vue interroge `GET /api/auth/me`, puis
-   `GET /api/twin9/meta` — **tout** ce que le client voit de Twin9 : noms des
-   étapes, longueurs et variables des gabarits (jamais leur contenu), modèles et
-   prix **déjà margés**, promotion, packs, réglages non secrets du pipeline,
-   structure du référentiel, solde, disponibilité d'une clé privée. Elle cherche
-   aussi un run interrompu dans IndexedDB (A3).
-2. L'apprenant coche le **consentement** : le texte du portfolio transitera par
-   le serveur et le fournisseur, sans être conservé.
-3. Il colle son portfolio en journées datées (plus de 20 caractères, sinon
-   l'estimation reste désactivée ; le moteur le découpera en journées selon
-   RG13), choisit le modèle (présélection : le
-   **premier** modèle de l'offre ; étages couverts affichés, voir l'anomalie 4)
-   et garde « Crédit plateforme » (solde affiché).
-4. « Estimer le coût » : le moteur tourne en **mode mock** (0 appel LLM, 0 appel
-   réseau) avec le sel fixe `twin9-devis`, le même roster mono-famille (3 passes)
-   et les mêmes réglages que le run réel. Le sel n'est repris qu'en
-   **démonstration**, où le nombre d'appels annoncé est exact ; en réel, le run
-   part sans sel et son graphe (escalades au tribunal, second ressort) dépend des
-   réponses du modèle : le nombre d'appels est une **estimation**. Le devis
-   affiche ce nombre et une fourchette de coût par étage (taggers, rapide,
-   tribunal). Solde sous l'estimation basse : lancement bloqué (E4) ; sous
-   l'estimation haute : avertissement « couvre l'estimation basse mais pas la
-   haute », lancement permis.
-5. « Lancer l'analyse » : le moteur est lancé en mode réel avec un état
-   persistant **en mémoire** ; la progression (journées puis fusion) et le nombre
-   d'appels s'affichent ; les paramètres du run sont sauvegardés localement.
-6. Chaque appel LLM devient `POST /api/twin9/appel {etape, variables, modele,
-   etage, facturation, max_tokens?}` avec le jeton CSRF : `etape` = chemin du
-   gabarit (sans `.md`), `variables` = état de run **sans** les fiches
-   confidentielles, `modele` = le modèle choisi à l'étape 3 pour **tous** les
-   appels, `etage` déduit de l'étiquette d'appel ; `max_tokens` est facultatif et
-   **jamais envoyé par le moteur actuel** (défaut serveur 4 096). Avant la route,
-   `CsrfMiddleware` refuse une session sans jeton valide (403). Le serveur :
-   vérifie l'activation (503) et la session
-   (401), borne le corps (300 Ko, 413), valide le JSON (400) puis les champs
-   (422), refuse la clé privée hors promotion (403), applique le rythme (429),
-   **injecte les fiches** à partir des clés de lookup, **rend** le gabarit
-   (404 / 422 « Variables non résolues » avec les seuls noms), **réserve** le
-   pire-cas (402), appelle Anthropic sur l'URL verrouillée (remboursement en cas
-   d'échec), **réconcilie** au coût réel, **expurge** toute récitation (A6) et
-   renvoie `{sortie, tokens_in, tokens_out, cout_microusd, stop_reason}`.
-7. En fin de run, le `carto_evolutive` est sérialisé (JSON à la Python), le run
-   sauvegardé localement est effacé et les résultats s'affichent : sunburst
-   (projection `twin9ToMergeDocument`), synthèse, rapport, profil ipsatif,
-   renvois, journées reconstituées ; tout narratif du modèle est assaini
-   (ADR-007).
-8. L'apprenant exporte le JSON (`carto_evolutive_<journal>.json`, octets
-   canoniques) ou clique « Enregistrer dans mes cartographies »
-   (enregistrement **local** IndexedDB, type `twin9`, privé, titre daté) ; le
-   bouton devient « Enregistrée dans mes cartographies ✓ ».
+1. L'apprenant ouvre `#/twin9`. La vue lit `GET /api/twin9/runs` (`disponible`
+   et ses runs, sans portfolio ni résultat), `GET /api/twin9/configuration`
+   (ses profils) et sa bibliothèque locale de portfolios (IndexedDB,
+   UC-APP-01).
+2. Il choisit un profil (« Profil v9.8 », par défaut, ou un des siens ; « Régler
+   mes profils » mène à `#/configuration`), un portfolio de sa bibliothèque ou
+   un fichier (`.md`, `.txt`) et, s'il le veut, « Mon cartographe peut lire les
+   résultats » (A5).
+3. Il coche l'**accord** : son portfolio et l'état de l'analyse restent sur le
+   serveur jusqu'à ce qu'il les efface ; le texte part chez Anthropic ; par
+   lots, Anthropic garde le lot jusqu'à sa suppression, 29 jours au plus.
+4. L'accord donné, la vue demande l'**aperçu** (`POST /api/twin9/runs/apercu
+   {profil, portfolio}`, rien n'est gardé) et l'affiche : les journées à
+   instruire (« 2 journées à instruire. » au premier run), le coût estimé — en
+   moyenne, au plus bas, au plus haut — et la durée, d'après les évaluations
+   passées de mêmes réglages ou, à défaut, d'après le vrai run de PLANT-01 ×
+   les pôles du référentiel (RG4) ; les plafonds du profil ; ce que le crédit
+   ou le budget admet (A2, E5).
+5. « Lancer l'analyse » envoie `POST /api/twin9/runs {profil, portfolio,
+   accord: true, visibilite}` avec le jeton CSRF. Le serveur revalide et admet
+   le profil, fige la version de son référentiel, prend l'instantané du jeu de
+   gabarits, admet les journées (RG5), crée le run `en_cours` et son
+   attestation, et renvoie son suivi (`201`) ; la vue ouvre `#/twin9/<id>`.
+6. La page du run lit `GET /api/twin9/runs/<id>` : son statut et ce qui le
+   retient (« En attente de son premier tour »…), ses journées finies, sa
+   fusion, ses appels par état, ses lots chez Anthropic, son coût et son
+   budget. Tant qu'elle est ouverte et le run en cours, elle le fait avancer
+   (`POST /api/twin9/runs/avancer` : une tranche, pour les seuls runs du
+   compte) puis relit son suivi ; page fermée, le tick du serveur le fait
+   avancer (RG10).
+7. Le run fini (`termine`), « Ouvrir dans la cartographie » lit `GET
+   /api/twin9/runs/<id>/resultats` — ses sorties filtrées (RG9), les cartes du
+   jour reprises de la mémoire, le référentiel du run — et en fait le document
+   `twin9-run` (`twin9RunFiles`), que l'interface de cartographie ouvre
+   (`#/cartographie`) : une journée par carte du jour, chaque verdict avec son
+   dossier (traces probantes, jury, délibération), dans un jeu « Twin9 ·
+   <journal> · <référentiel> » (« Twin9 · <journal> » pour un run d'avant
+   T16, qui n'a pas gardé de référentiel).
+8. La page garde l'attestation du run (profil, référentiel et version, jeu de
+   gabarits et empreinte, moteur, admission, date de l'accord) ; « Mes
+   analyses » liste ses runs.
 
 ## Scénarios alternatifs
 
-- **A1 — Démonstration** (étape 1) : via `#/twin9/demo` ou le bouton « Voir une
-  démonstration (données fictives) », même sans compte : portfolio et
-  référentiel fictifs, moteur mock en local ; devis, run et résultats complets,
-  **aucun appel d'analyse ni débit** (seules les lectures de session et d'offre
-  partent au montage de la vue) ; bandeau « données fictives », pas de bouton
-  d'enregistrement. La démonstration écrit pourtant, puis efface, le « run
-  courant » local de reprise (anomalie 6).
-- **A2 — Clé privée pendant la promotion** (étape 3) : l'option « Ma clé privée
-  Anthropic » n'apparaît que si la promotion est ouverte **et** qu'une clé est
-  enregistrée ; le devis indique « aucun débit plateforme » et le lancement est
-  permis quel que soit le solde. Côté serveur, la clé de l'apprenant est
-  déchiffrée et utilisée sur le **même** chemin verrouillé ; `cout_microusd = 0`,
-  aucun événement au grand-livre.
-- **A3 — Reprise d'une analyse interrompue** (étape 1) : un run sauvegardé est
-  proposé : « Restaurer les saisies » remet portfolio, modèle, facturation et
-  **recoche le consentement** donné au run interrompu (exception à RG11) ;
-  « Ignorer » l'efface. Seuls les **paramètres** sont conservés (jamais l'état
-  du moteur).
-- **A4 — Annulation** (étape 5) : « Annuler » lève un drapeau lu seulement à la
-  fin de la journée ou de l'étape de fusion en cours (`onProgress`) : les appels
-  déjà partis d'ici là sont facturés ; l'analyse passe alors en pause, et
-  « Reprendre l'analyse » relance avec le **même** état en mémoire (journées
-  déjà analysées non rejouées).
-- **A5 — Copie serveur** (étape 8) : depuis « Mes cartographies », l'apprenant
-  peut copier le résultat sur le serveur (`POST /api/cartographies`, type
-  `twin9`, opt-in daté, UC-APP-04) ; la liste ne renvoie jamais le document, la
-  suppression est une purge réelle.
-- **A6 — Sortie qui récite le gabarit ou une fiche** (étape 6) : le filtre
-  anti-fuite remplace toute séquence commune d'au moins 48 caractères normalisés
-  par `[expurgé]` ; la citation du portfolio de l'apprenant reste intacte ;
-  l'audit `twin9_fuite_expurgee` n'enregistre que `{etape, fuites}` ; le nombre
-  de fuites n'est jamais renvoyé au client.
-- **A7 — Segment de route autre que « demo »** (étape 1) : `#/twin9/<segment>`
-  transmet le segment décodé à la vue, qui ne reconnaît que `demo` **exact** :
-  `#/twin9/inconnue`, `#/twin9/DEMO` ou `#/twin9/demo/` ouvrent le parcours
-  ordinaire de `#/twin9` (garde de session comprise), `#/twin9/%64emo` ouvre la
-  démonstration ; `#/twin9/` (barre finale sans segment) affiche « Page
-  introuvable : #/twin9/ » ; un segment au pourcentage mal formé
-  (`#/twin9/%E9`) fait lever une `URIError` au routeur (anomalie AN1 de
-  UC-VIS-02). La démonstration une fois ouverte, revenir à `#/twin9` la laisse
-  affichée (voir Limites).
+- **A1 — Portfolio déjà évalué** (étape 4) : la carte d'un même journal, sous
+  le même référentiel et le même jeu de gabarits, se souvient de ses journées
+  (RG3) : l'aperçu ne compte que les journées nouvelles ou changées (« Ce
+  portfolio a déjà été évalué : 1 journée sur 3 à instruire (1 nouvelle), les
+  autres reprises telles quelles. ») ; le run n'instruit qu'elles et refait la
+  fusion ; rien de neuf : seule la fusion se refait. Les résultats donnent
+  aussi les cartes du jour reprises de la mémoire (`memoire`).
+- **A2 — Admission partielle** (étapes 4-5, T8, stratégie A) : le crédit,
+  déduit ce que ses autres analyses en cours peuvent encore dépenser, ou le
+  budget du profil couvre les premières journées avec leur fusion, pas toutes :
+  l'aperçu le dit, le run prend celles-là, les autres attendent une prochaine
+  analyse ; l'attestation le garde.
+- **A3 — Annuler, reprendre** (étape 6) : « Annuler » (`POST
+  /api/twin9/runs/<id>/annuler`) arrête le run en cours, rend ses réserves,
+  annule ses lots chez Anthropic ; « Reprendre » (`POST …/reprendre`) relance
+  un run annulé ou arrêté depuis son journal : ce qui est fait n'est pas
+  refait.
+- **A4 — Arrêt par un plafond** (étape 6) : le budget, la durée du profil ou le
+  crédit atteint, le run s'arrête (`echoue`) en le disant (« Budget atteint :
+  carte incomplète »…). Arrêté par son budget, il reprend sous un nouveau
+  budget (champ « Nouveau budget (USD) », vide pour aucun : `{budget_usd}`) ;
+  par le crédit, une fois rechargé (« Recharger mon crédit », UC-APP-11). Ses
+  journées finies s'ouvrent dans la cartographie, qui le dit (« Twin9 · … —
+  carte incomplète »).
+- **A5 — Résultats au cartographe** (étapes 2 et 6) : la case, au lancement ou
+  sur la page du run (`PUT /api/twin9/runs/<id>/visibilite`), rend les
+  résultats lisibles du cartographe auquel l'apprenant est lié (UC-APP-07),
+  et de lui seul ; il ne suit ni ne commande le run.
+- **A6 — Clé personnelle** (étape 2) : un profil à clé personnelle (promotion
+  ouverte, clé enregistrée) : l'estimation est sans contribution, le crédit ne
+  borne rien, et rien n'est débité ; la clé, chiffrée (ADR-004), ne sert que
+  sur le serveur.
+- **A7 — Autre référentiel** (étape 2, T16-T17) : un profil qui nomme un autre
+  référentiel publié, ou un brouillon de son auteur en mode essai : le moteur
+  le lit, et la carte s'ouvre avec ses pôles, que le titre du jeu nomme.
+- **A8 — Mode essai** (étape 2) : un profil en mode essai ne lit que la
+  première journée et le premier pôle ; « essai » dans « Mes analyses » et
+  dans l'attestation.
 
 ## Scénarios d'erreur
 
-- **E1 — Visiteur sans session** (étape 1) : garde « L'analyse Twin9 nécessite un
-  compte » et démonstration proposée ; l'API répond `401` sur `/appel` et `/meta`.
-- **E2 — Twin9 non activé** (étape 1) : « L'analyse Twin9 est momentanément
-  indisponible » ; `/appel` répond `503 Twin9 non disponible`.
-- **E3 — Copie statique** (étape 1) : garde de session et démonstration ; si
-  seule la méta manque, « Les fonctions serveur sont indisponibles sur cette
-  copie du site ».
-- **E4 — Solde insuffisant** (étape 4) : alerte « Solde insuffisant pour lancer
-  l'analyse » avec lien `#/compte/credit`, bouton désactivé ; côté serveur, une
-  réserve non couverte donne `402 {solde_microusd, requis_estime_microusd}`.
-- **E5 — Solde épuisé en cours d'analyse** (étape 6) : le serveur répond `402`.
-  La vue prévoit une pause « Rechargez votre crédit, puis reprenez : les journées
-  déjà analysées ne seront pas refacturées » si le moteur lui **rejette** une
-  `ApiError 402` (UC-APP-10-U35). Cette pause n'est aujourd'hui **pas
-  atteignable** : le moteur avale l'erreur et termine le run sur une analyse
-  dégradée, dont les journées sont mémorisées comme faites (anomalie 3,
-  UC-APP-10-F11, UC-APP-10-U34).
-- **E6 — Clé privée refusée** (étape 6) : hors promotion `403` (« Twin9 s'utilise
-  avec nos crédits… ») ; promotion ouverte sans clé enregistrée `409`.
-- **E7 — Requête invalide** (étape 6) : jeton CSRF absent ou invalide avec une
-  session `403` (« Jeton CSRF absent ou invalide », avant la route) ; corps non
-  JSON `400`, corps > 300 Ko `413`, champ manquant ou invalide `422` (étape,
-  variables : objets ou listes **imbriqués** refusés — un objet **plat** de
-  scalaires est accepté et rendu en JSON, voir l'anomalie 5 —, étage inconnu,
-  modèle non proposé pour l'étage, `max_tokens` non entier, facturation),
-  gabarit inconnu `404` générique ; rien n'est débité ni appelé.
-- **E8 — Échec du fournisseur** (étape 6) : `502` (ou `504` délai, `429`
-  saturation) au message générique ; la réserve est rendue (étiquette
-  « … (remboursement échec) », modèle conservé pour la facture).
-- **E9 — Échec du run** (étapes 5-7) : une erreur levée par le moteur lui-même
-  est affichée telle quelle avec « Réessayer » (voir l'anomalie 1 : c'est
-  aujourd'hui le cas de tout lancement réel). Les erreurs des appels serveur
-  (E5-E8, E10-E11) n'y arrivent **pas** : le moteur les avale (anomalie 3).
-- **E10 — Rythme dépassé** (étape 6) : au-delà de `appels_par_minute` (30 par
-  défaut) → `429` + `Retry-After`. Côté client, **aucun réessai** (ni ici ni sur
-  E8) : la fabrique de la vue ne dérive pas de `Backend`, dont les trois
-  tentatives ne servent qu'au mock ; un refus = un seul `POST`, l'`ApiError`
-  remonte au moteur, qui l'avale (anomalie 3).
-- **E11 — Service non configuré** (étape 6) : clé plateforme absente → `503
-  Service indisponible` ; clé maître absente en voie clé privée → `503
-  Stockage de clés non configuré`.
+- **E1 — Sans session** (étape 1) : « Connectez-vous pour lancer une analyse
+  approfondie » ; l'API répond `401` sur toutes ses routes, `403` à une
+  écriture sans jeton CSRF.
+- **E2 — Analyse indisponible** (étapes 1, 5) : sans moteur (ou avec un moteur
+  d'avant T16), « L'analyse approfondie n'est pas disponible sur cette
+  instance » au lieu du formulaire ; un lancement ou un aperçu → `503` ; sans
+  gabarit → `503` « Aucun gabarit sur cette instance… ».
+- **E3 — Accord absent** (étape 5) : le bouton reste désactivé ; l'API répond
+  `422` « Accord requis… », sans rien créer.
+- **E4 — Portfolio ou profil refusé** (étapes 4-5) : nom ou texte invalide
+  (`422`), profil d'un autre (`404`), profil refusé — clé personnelle fermée
+  ou absente, jeu de gabarits non proposé ou incomplet, modèle sans prix sur
+  l'instance, référentiel non publié ou illisible — `422` qui nomme le choix
+  refusé ; la vue affiche le message.
+- **E5 — Refus d'admission** (étapes 4-5) : le crédit ou le budget ne couvre
+  pas même une journée et sa fusion : l'aperçu dit ce qu'il faudrait (« Votre
+  crédit ne couvre pas une carte, même d'une journée : il faudrait … ») avec
+  « Recharger », le bouton reste désactivé ; un lancement → `422`, même
+  message.
+- **E6 — Run d'un autre** (étapes 6-7) : `404` pour tout autre compte,
+  l'administrateur compris ; l'administrateur lit les compteurs de tous les
+  runs (`GET /api/twin9/admin/runs`), jamais un portfolio ni un résultat.
+- **E7 — Récitation d'un gabarit ou d'une fiche** (étape 7) : expurgée à la
+  lecture (« [expurgé] ») ; l'audit `twin9_fuite_expurgee` n'en garde que
+  `{run, fuites}` — le run et le nombre de fuites —, jamais renvoyé.
+- **E8 — Action impossible** (étape 6) : annuler un run qui n'est pas en cours,
+  reprendre un run ni annulé ni arrêté → `409` ; budget invalide ou visibilité
+  inconnue → `422`.
 
 ## Règles de gestion
 
-- **RG1 — Secret des gabarits** : le client n'envoie que `{etape, variables}` et
-  ne reçoit que la sortie filtrée ; `/meta` n'expose que noms, longueurs et
-  variables ; aucun message d'erreur ne cite un gabarit.
-- **RG2 — Fiches confidentielles** : `COMPETENCE_FICHE` et `POLE_FICHES` ne sont
-  jamais envoyées par le moteur (`varsClient`) ; le serveur les injecte depuis
-  `CODE` et `POLE_NUM` + `POLE_FICHES_ORDRE` (ordre anti-gaming du moteur), et
-  elles priment sur toute valeur cliente.
-- **RG3 — Rendu** : substitution en une passe, non stricte ; toute variable non
-  résolue bloque l'appel (`422`, noms seulement).
-- **RG4 — Réserve pire-cas** : entrée = octets du prompt rendu, sortie =
-  `max_tokens` ; débit conditionnel atomique (pas de découvert) ; réconciliation
-  au coût réel ; remboursement intégral en cas d'échec.
-- **RG5 — Tarif** : coût = ⌈tokens_in × prix_in × marge⌉ + ⌈tokens_out ×
-  prix_out × marge⌉ µUSD, marge Twin9 ×1,20 par défaut ; l'apprenant ne voit que
-  les prix margés.
-- **RG6 — Offre par étage** : un modèle n'est accepté que pour les étages qu'il
-  couvre (par défaut : Haiku taggers/rapide, Sonnet les trois, Opus tribunal).
-- **RG7 — Clé privée** : seulement pendant la promotion ; même chemin serveur
-  (URL verrouillée, rendu, filtre) ; aucun débit.
-- **RG8 — Anti-fuite** : index = gabarit rendu avec les variables de l'apprenant
-  **vides** et les fiches **injectées** ; séquences ≥ 48 caractères normalisés
-  (NFKC, casse, lettres et chiffres) expurgées ; compteur jamais renvoyé.
-- **RG9 — Bornes** : corps ≤ 300 Ko ; `max_tokens` entier ramené dans
-  [256, 16 000] (4 096 par défaut) ; variables scalaires ou tableaux de
-  scalaires — objets et listes imbriqués refusés, mais un objet **plat** de
-  scalaires passe (tableau associatif PHP) et est rendu en JSON.
-- **RG10 — Devis** : exécution mock déterministe (même roster et mêmes réglages
-  que le run ; le sel `twin9-devis` n'est repris qu'en démonstration, où le
-  nombre d'appels annoncé est exact ; en réel, c'est une estimation) ;
-  fourchettes de tokens par étage × prix margé ; indicatif.
-- **RG11 — Consentement** : explicite avant tout devis ou lancement — sauf
-  après « Restaurer les saisies » (A3), qui recoche le consentement donné au run
-  interrompu.
-- **RG12 — Reprise** : IndexedDB ne garde que les paramètres ; la reprise fidèle
-  (pause, 402) réutilise l'état vivant en mémoire.
-- **RG13 — Découpage en journées** (`splitPortfolio`, parité avec
-  `aurora/portfolio.py`) : les séparateurs sont les titres `##` / `###` portant
-  une date `JJ.MM.AA`, `JJ.MM.AAAA` ou `AAAA-MM-JJ` — **deux au moins** ; les
-  journées sont triées par date, un même jour répété reçoit `_b`, `_c`… ; une
-  année à deux ou trois chiffres vaut 2000 + n, sans contrôle calendaire. À
-  défaut, tout titre `##` / `###` sépare des feuilles non datées `F01`, `F02`… ;
-  à défaut encore, le document entier est une feuille unique `F01` non datée
-  (anomalie 7). Dès qu'il y a au moins deux séparateurs, tout texte précédant le
-  premier (titre daté ou, à défaut, titre `##` / `###`) est ignoré : ni feuille,
-  ni analyse, sans avertissement — un préambule ou un titre `#` placé avant la
-  première journée disparaît (UC-APP-10-U42 ; test historique
-  `engine/src/twin9/portfolio.test.js`). Les titres `#` et `####` ne séparent
-  jamais ; les fins de ligne CRLF sont normalisées. Le nom de journal (`twin9`) vient du nom logique
-  `twin9.md`.
+- **RG1 — Accord** : demandé à chaque lancement, daté (`accord_at`) ; sans lui
+  rien ne part. Le portfolio et l'état restent sur le serveur jusqu'à la
+  suppression du compte, qui les purge (UC-CPT-06, lots chez Anthropic
+  compris) ; l'archive du compte les exporte (UC-APP-06).
+- **RG2 — Profil** : revalidé et admis à chaque aperçu et à chaque lancement
+  (`ProfilPolicy`) ; copié dans le run, la version de son référentiel figée ;
+  le moteur ne lit que cette copie.
+- **RG3 — Mémoire** : une carte par compte, journal, référentiel et jeu de
+  gabarits ; ses journées inchangées sont reprises sans appel.
+- **RG4 — Estimation** : d'après les évaluations des mêmes réglages (taille des
+  journées et de la carte), sinon le vrai run de PLANT-01 (0,1344 $ et 94 s par
+  pôle) × les pôles du référentiel ; à moitié prix par lots ; contribution
+  comprise avec la clé de l'instance.
+- **RG5 — Admission** (T8, stratégie A) : les premières journées, tant qu'elles
+  tiennent avec leur fusion et la place du pire cas de leurs appels dans le
+  crédit (moins ce que ses autres runs en cours peuvent dépenser) et dans le
+  budget ; sinon refus, qui dit ce qu'il faudrait, au centime supérieur.
+- **RG6 — Coût** : chaque appel réserve son pire cas avant de partir (débité
+  avec la clé de l'instance), réconcilié au coût réel ; un run arrêté, annulé
+  ou fini rend ce que ses appels tiennent encore.
+- **RG7 — Plafonds** : budget et durée du profil ; atteints, aucun appel ne
+  part plus et le run s'arrête, carte incomplète.
+- **RG8 — Lecture** : le propriétaire suit, annule, reprend et lit ; le
+  cartographe lié lit les résultats quand le run lui est visible ; tout autre
+  reçoit `404` ; l'administrateur, des compteurs.
+- **RG9 — Filtre de fuite** : tout ce qui s'affiche passe le filtre contre les
+  jeux de gabarits et les fiches de référentiel de tous les runs de sa carte ;
+  le compteur reste à l'audit.
+- **RG10 — Avance** : le tick fait avancer tous les runs ; la page d'un run, les
+  seuls runs de son compte, jamais avec le jeton du tick.
+- **RG11 — Référentiel** : celui du profil ; les résultats en portent les pôles
+  et les compétences, jamais une fiche ni une description.
 
 ## Données et RGPD
 
 | Donnée | Traitement |
 |---|---|
-| Texte du portfolio | Transite par le serveur et le fournisseur le temps de chaque appel ; jamais stocké (endpoint sans état) ; consentement explicite par run (recoché automatiquement par la restauration d'une reprise, A3) |
-| Gabarits et fiches | En base (`twin9_protocole`, réglage `twin9_fiches`), jamais transmis au navigateur |
-| Clé privée | Chiffrée (ADR-004), utilisée côté serveur uniquement |
-| Grand-livre | Montants, modèle, tokens, libellé d'étape — jamais de contenu |
-| Audit anti-fuite | `{etape, fuites}` seulement |
-| Run en cours | Paramètres dans IndexedDB (navigateur) ; état du moteur en mémoire ; la démonstration y écrit aussi (anomalie 6) |
-| Résultat | Local par défaut ; copie serveur = opt-in explicite (A5) |
+| Portfolio | Envoyé au lancement avec l'accord ; gardé sur le serveur, compressé, avec l'état du run, jusqu'à la suppression du compte ; jamais renvoyé par le suivi ni les résultats ; part chez Anthropic, qui garde un lot 29 jours au plus |
+| Gabarits et fiches | En base ; jamais transmis au navigateur ; le filtre de fuite protège les résultats |
+| Clé personnelle | Chiffrée (ADR-004), utilisée sur le serveur seulement |
+| Grand-livre | Montants, modèle, jetons, libellé du run et de l'étape — jamais de contenu |
+| Évaluation d'un run fini | Tailles et coûts de ses journées et de sa fusion, rien d'autre ; anonyme une fois le compte supprimé (T8) |
+| Audit anti-fuite | `{run, fuites}` seulement |
 
 ## Code sollicité
 
 | Couche | Élément | Rôle |
 |---|---|---|
-| Front | `web/src/router.js` — `parseHash` | Routes `#/twin9`, `#/twin9/demo` ; tout autre segment transmis tel quel, décodé (A7) |
-| Front | `web/src/views/Twin9View.jsx` — vue, `makeServerFactory`, `etageDeLabel` | Garde, consentement, devis, lancement, pause/reprise, adaptation au moteur |
-| Front | `web/src/api/twin9.js` — `fetchTwin9Meta`, `makeServerBackend`, `referentielPourMoteur`, `formatUsd` | Offre, appels serveur |
-| Front | `web/src/views/twin9/run-helpers.js` — `calculerDevis`, `rosterFromModele`, `etapeToEtage`, `journeesDepuisCarto` | Logique pure du parcours |
-| Front | `web/src/views/twin9/twin9-store.js` | Reprise locale (paramètres) |
-| Front | `web/src/views/twin9/ResultatsTwin9.jsx`, `web/src/lib/carto-store.js` | Résultats, export, enregistrement local `twin9` |
-| Front | `web/src/views/twin9/demo-fixture.js` | Démonstration fictive |
-| Moteur | `engine/src/twin9/index.js` — `executerTwin9` | Orchestration (devis mock, run, état persistant) |
-| Moteur | `engine/src/twin9/templates.js` — `varsClient` | Variables transmises sans fiches |
-| Moteur | `engine/src/twin9/portfolio.js` — `splitPortfolio`, `feuillesBlock`, `sentencesOf` | Découpage du portfolio collé en journées (RG13, anomalie 7), phrases candidates du mock (devis, démonstration) |
-| Moteur | `engine/src/twin9/backends.js` — `makeBackend`, `KINDS`, `MockBackend`, `Backend.call`, `fetchBackend` | Fabrique par défaut : `mock` seul (cause de l'anomalie 1) ; mock déterministe du devis et de la démonstration, indépendant du texte des gabarits ; `fetchBackend` non branché (voir Limites) |
-| Moteur | `engine/src/twin9/heatmap.js` (`ancrer`), `journee.js` (`empreinteJournee`), `tribunal.js` (`resoudre`, `calculerConfiance`), `merge.js` (`statutTemporel`, `trajectoire`), `scan.js` (`resoudreJournees`, `cleObs`) | Briques déterministes du protocole (journée, tribunal, fusion, scan global) |
-| Moteur | `engine/src/twin9/mapper.js` — `twin9ToMergeDocument` | Projection sunburst |
-| API | `POST /api/twin9/appel`, `GET /api/twin9/meta` — `api/src/routes/twin9.php` | Proxy confidentiel, offre |
-| API | `api/src/Middleware/CsrfMiddleware.php` | Jeton CSRF des mutations (E7) — logique unitaire couverte par UC-CPT-02-U07 |
-| API | `POST/GET/DELETE /api/cartographies` — `api/src/routes/cartographies.php` | Copie serveur opt-in (type `twin9`) |
-| Domaine | `api/src/Twin9/ProtocoleRepository.php` — `render`, `list`, `get` | Gabarits confidentiels |
-| Domaine | `api/src/Twin9/FicheStore.php` — `injecter` | Fiches confidentielles |
-| Domaine | `api/src/Twin9/LeakFilter.php` — `redact` | Filtre anti-fuite |
-| Domaine | `api/src/Twin9/Twin9Config.php` — `isEnabled`, `modeles`, `reserveMicrousd`, `coutMicrousd`, `clePersoOuverte`, `publicView`, `referentiel` | Offre, tarif, interrupteurs |
-| Domaine | `api/src/Twin9/CreditService.php`, `AnthropicCaller.php`, `api/src/Keys/KeyVault.php`, `api/src/Auth/Audit.php` | Débit, amont, clé privée, audit |
-| Domaine | `api/src/Cartographies/CartographyRepository.php` | Stockage opt-in (migration 021) |
+| Front | `web/src/router.js` — `parseHash` ; `web/src/nav.js` — `navGroups` | Routes `#/twin9` et `#/twin9/<id>` ; entrée « Analyse approfondie » (premium) |
+| Front | `web/src/views/Twin9View.jsx` — `Lancer`, `Apercu`, `PageDuRun` | Choix, accord, aperçu, lancement ; suivi, avance, annulation, reprise sous un nouveau budget, visibilité, ouverture dans la cartographie, attestation |
+| Front | `web/src/api/twin9.js` — `fetchRuns`, `fetchConfiguration`, `apercuRun`, `lancerRun`, `fetchRun`, `avancerRuns`, `annulerRun`, `reprendreRun`, `rendreRunVisible`, `fetchResultats`, `formatUsd` | Client des runs |
+| Front | `web/src/lib/interface-handoff.js` — `twin9RunFiles` | Document `twin9-run` remis à l'interface de cartographie |
+| Front | `web/src/carto/core/importers/twin9-run.js` — `importTwin9Run` ; `web/src/lib/twin9/mapper.js` — `twin9Dossier`, `twin9ToMergeDocument` | Jeu de cartographie d'un run, dossier de chaque verdict |
+| API | `GET/POST /api/twin9/runs`, `POST …/apercu`, `POST …/avancer`, `GET …/{id}`, `POST …/{id}/annuler`, `POST …/{id}/reprendre`, `PUT …/{id}/visibilite`, `GET …/{id}/resultats`, `GET /api/twin9/admin/runs` — `api/src/routes/twin9-runs.php` | Runs du serveur |
+| API | `api/src/Middleware/CsrfMiddleware.php` | Jeton CSRF des écritures (E1) — logique unitaire couverte par UC-CPT-02-U07 |
+| Domaine | `api/src/Twin9/Lancement.php` — `lancer`, `apercu`, `empreinte` | Lancement, aperçu, estimation, admission |
+| Domaine | `api/src/Twin9/ProfilPolicy.php` — `admettre` | Ce qu'un profil peut choisir sur l'instance |
+| Domaine | `api/src/Twin9/RunRepository.php` — `duProprietaire`, `suivi`, `annuler`, `reprendre`, `rendreVisible`, `acces` | Liste, suivi, actions du propriétaire |
+| Domaine | `api/src/Twin9/RunCosts.php`, `api/src/Twin9/CreditService.php` | Réserves, réconciliation, remboursements |
+| Domaine | `api/src/Twin9/Resultats.php` — `lire` ; `api/src/Twin9/LeakFilter.php` | Résultats filtrés, mémoire, référentiel du run |
+| Domaine | `api/src/Twin9/EngineLoader.php`, `api/src/Worker/Tick.php` | Chargement du moteur, tranches (tick et page) |
+| Moteur | `Twin_v9/php/src` (dépôt privé), `api/tests/fixtures/twin9-factice` (moteur factice des tests) | Exécution du protocole |
 
 ## Jeux de tests
 
@@ -287,198 +248,73 @@ L'apprenant ouvre `#/twin9` (ou `#/twin9/demo` pour la démonstration).
 
 | ID | Cible | Vérifie | Fichier |
 |---|---|---|---|
-| UC-APP-10-U01 | `executerTwin9` (mock) | Devis reproductible : même graphe d'appels et même carto ; métriques | `engine/test/usecases/unit/uc-app-10-analyse-approfondie-twin9.test.js` |
-| UC-APP-10-U02 | `executerTwin9` + `protocole-contrat.json` | Contrat des appels : gabarit + variables, jamais de fiche, tout `{$VAR}` fourni ou injectable (RG1-RG2) ; variables sérialisées scalaires ou listes plates, **anomalie 5 figée** (RG9) | idem |
-| UC-APP-10-U03 | `executerTwin9` (réel) | Tous les backends passent par la fabrique injectée | idem |
-| UC-APP-10-U04 | `executerTwin9` (réel) | **Cause de l'anomalie 1** : sans fabrique → « Backend inconnu » | idem |
-| UC-APP-10-U05 | `executerTwin9` (état) | Journées déjà analysées non rejouées (A4, RG12) | idem |
-| UC-APP-10-U06 | `varsClient` | Fiches jamais transmises, clés de lookup ajoutées | idem |
-| UC-APP-10-U07 | `ancrer` | Citation introuvable rejetée, jamais inventée | idem |
-| UC-APP-10-U08 | `resoudre`, `calculerConfiance` | Résolution calculée sans vote, confiance mécanique | idem |
-| UC-APP-10-U09 | `statutTemporel`, `trajectoire` | Persistance et trajectoire | idem |
-| UC-APP-10-U10 | `empreinteJournee` | Clé de reprise stable / sensible au texte et au collège | idem |
-| UC-APP-10-U11 | `twin9ToMergeDocument` | Feuilles = journées attestées, points = attestations | idem |
-| UC-APP-10-U30 | `resoudreJournees`, `cleObs` | Scan global : références résolues par id ou date, clé d'observation | idem |
-| UC-APP-10-U34 | `executerTwin9` (réel) | **Anomalie 3 figée** : erreurs 402 de la fabrique avalées, run résolu et vidé, journées dégradées mémorisées puis reprises sans relecture | idem |
-| UC-APP-10-U42 | `splitPortfolio`, `feuillesBlock`, `sentencesOf` | Vecteurs synthétiques versionnés (`portfolio_synth.vec.json`) : journées datées triées, `_b`, CRLF, journal hebdomadaire, feuille unique, phrases du mock ; texte précédant le premier séparateur (daté ou non) ignoré (RG13) | idem |
-| UC-APP-10-U43 | `splitPortfolio`, `executerTwin9`, `twin9ToMergeDocument` | **Anomalie 7 figée** : une seule journée datée → feuille `F01` non datée, période « F01 », attestations sans date, projection refusée | idem |
-| UC-APP-10-U44 | `makeBackend`, `KINDS`, `MockBackend` | Fabrique par défaut `mock` seul : `anthropic` et `claude-cli` refusés (cause de l'anomalie 1) ; 196 vecteurs (`backends.vec.json`) rejoués à l'identique avec un prompt vide ou un faux gabarit, un record par appel (RG10) | idem |
-| UC-APP-10-U45 | `fetchBackend` | Transport non branché : URL absolue, ni jeton CSRF ni `max_tokens`, refus réduit à « HTTP n » sans statut | idem |
-| UC-APP-10-U12 | `parseHash` | `#/twin9`, `#/twin9/demo` | `web/test/usecases/unit/uc-app-10-analyse-approfondie-twin9.test.jsx` |
-| UC-APP-10-U41 | `parseHash` | A7 : segment décodé transmis tel quel (casse, barre finale, sous-chemin, query retirée) ; `#/twin9/` introuvable ; `#/twin9-atelier` distinct ; pourcentage mal formé → `URIError` (AN1 de UC-VIS-02) | idem |
-| UC-APP-10-U13 | `makeServerBackend` | Corps de l'appel, replis, tokens réels enregistrés | idem |
-| UC-APP-10-U14 | `makeServerBackend` | 402 → `ApiError`, rien d'enregistré | idem |
-| UC-APP-10-U15 | `makeServerFactory` | Gabarit sans `.md`, variables, étage ; jamais le prompt ni les méta | idem |
-| UC-APP-10-U36 | `makeServerFactory` | **Anomalie 4 figée** : le même modèle (Haiku) part sur tous les étages, tribunal compris | idem |
-| UC-APP-10-U16 | `etageDeLabel` | Étiquette → étage de facturation | idem |
-| UC-APP-10-U17 | `calculerDevis` | Fourchettes par étage, étape inconnue = rapide (RG10) | idem |
-| UC-APP-10-U18 | `rosterFromModele`, `SALT_DEVIS` | Roster mono-famille 3 passes, sel fixe | idem |
-| UC-APP-10-U19 | `journeesDepuisCarto` | Établies / renvois par journée | idem |
-| UC-APP-10-U20 | `createMemoryTwin9Store` | Un seul run courant, paramètres seulement | idem |
-| UC-APP-10-U21 | `createCartoStore` | Enregistrement local type `twin9`, natif conservé | idem |
-| UC-APP-10-U22 | `ResultatsTwin9` | Narratif assaini (ADR-007) ; échec d'enregistrement signalé | idem |
-| UC-APP-10-U37 | `ResultatsTwin9` | Étape 8 : export (octets canoniques, nom de fichier) ; enregistrement {type `twin9`, privé, titre daté, document natif}, confirmation, bouton désactivé | idem |
-| UC-APP-10-U35 | `Twin9View` (moteur injecté) | Branche 402 de la vue : pause « Rechargez… » et reprise sur le même état (inatteignable avec le vrai moteur, anomalie 3) | idem |
-| UC-APP-10-U31 | `fetchTwin9Meta` | GET de l'offre ; copie statique → `ApiUnavailableError` (E3) ; 401 → `ApiError` (E1) | idem |
-| UC-APP-10-U38 | `formatUsd`, `referentielPourMoteur` | Virgule, 4 décimales sous le centime ; pôles et compétences aplaties portant leur pôle | idem |
-| UC-APP-10-U40 | `makeServerFactory` + `makeServerBackend` + `executerTwin9` (réel) | Couture de l'anomalie 1 : fabrique transmise, serveur rejouant les sorties du mock → chaque appel du vrai moteur = un `POST api/twin9/appel` (jeton CSRF, gabarit sans `.md` au format de nom serveur, modèle unique, trois étages, jamais `max_tokens`), un débit par appel, `carto_evolutive` identique au mock ; aucun réessai (429 → un seul POST) ; métriques du moteur vides (comportement actuel) | idem |
-| UC-APP-10-U23 | `ProtocoleRepository::render` | Une passe, typage, non résolues ; 404 ; **anomalie 2 figée** | `api/tests/UseCases/Unit/UcApp10AnalyseApprofondieTwin9Test.php` |
-| UC-APP-10-U39 | `ProtocoleRepository::list` | Métadonnées seulement (nom, longueur en caractères, variables), triées par nom, jamais le contenu | idem |
-| UC-APP-10-U24 | `FicheStore::injecter` | Injection depuis les clés de lookup, ordre du client (RG2) | idem |
-| UC-APP-10-U25 | `LeakFilter::redact` | Sur un index de même forme que celui de la route : gabarit et fiche expurgés, charge utile intacte (RG8) — la construction de l'index par la route est vérifiée par F20 | idem |
-| UC-APP-10-U26 | `Twin9Config` | Offre par étage, coûts par modèle, réserve ≥ coût (RG4-RG6) | idem |
-| UC-APP-10-U27 | `Twin9Config` | Interrupteurs par défaut, référentiel sans texte de fiche, vue publique | idem |
-| UC-APP-10-U28 | `AnthropicCaller::appeler` | Sans système, arrêt `max_tokens` relayé, compteurs absents → 0 | idem |
-| UC-APP-10-U29 | `CartographyRepository::create` | Type `twin9` (migration 021), document natif, opt-in daté | idem |
-| UC-APP-10-U32 | `KeyVault` | Clé privée chiffrée, relue par son seul propriétaire ; clé maître invalide → null (A2, E11) | idem |
-| UC-APP-10-U33 | `CreditService::debit`/`adjust`, `Audit::record` | Remboursement d'échec portant le modèle (E8) ; `Audit::record` persiste les détails tels quels (le contenu `{etape, fuites}` relève de la route, F20) | idem |
+| UC-APP-10-U01 | `parseHash`, `navGroups` | `#/twin9` et `#/twin9/<id>` ; l'entrée « Analyse approfondie », premium, pour un apprenant | `web/test/usecases/unit/uc-app-10-analyse-approfondie-twin9.test.jsx` |
+| UC-APP-10-U02 | client des runs | Méthode, chemin et corps de chaque route (aperçu, lancement, avance, annulation, reprise avec ou sans budget, visibilité, résultats) | idem |
+| UC-APP-10-U03 | `twin9RunFiles` | Document `twin9-run` : fusion et cartes du jour lues, mémoire, référentiel du run complété des descriptions du publié de même identifiant, `incomplete` ; rien à ouvrir → erreur | idem |
+| UC-APP-10-U04 | `Twin9View` (`Lancer`) | Journées à instruire : premier run, portfolio déjà évalué (A1), rien de neuf | idem |
+| UC-APP-10-U05 | `Twin9View` (`Apercu`) | Admission partielle (A2) ; refus (E5) : message, « Recharger », bouton désactivé | idem |
+| UC-APP-10-U06 | `Twin9View` (`PageDuRun`) | Arrêt par le budget : nouveau budget, reprise `{budget_usd}` ; par le crédit : « Recharger mon crédit » (A4) | idem |
+| UC-APP-10-U07 | `Lancement::lancer` | Accord absent, visibilité inconnue → `422`, rien n'est créé (RG1, E3) | `api/tests/UseCases/Unit/UcApp10AnalyseApprofondieTwin9Test.php` |
+| UC-APP-10-U08 | `ProfilPolicy::admettre` | Profil v9.8 admis ; clé personnelle fermée, jeu non proposé, modèle sans prix, référentiel non publié → `422` qui nomme le choix (RG2, E4) | idem |
+| UC-APP-10-U09 | `Lancement::apercu` | Estimation sans évaluation : référence × pôles × contribution, la moitié par lots ; clé personnelle sans contribution ; rien n'est gardé (RG4) | idem |
+| UC-APP-10-U10 | `RunRepository::annuler`, `reprendre`, `rendreVisible` | Seul le propriétaire agit, et seulement depuis le bon statut ; un nouveau budget remplace celui de la copie (A3, A4, A5, E8) | idem |
+| UC-APP-10-U11 | `RunRepository::suivi` | Ce qui retient un run en mots (premier tour, run précédent de la même carte) ; ni portfolio ni sortie | idem |
+| UC-APP-10-U12 | `Resultats::lire` | Seules les sorties publiques ; récitation expurgée, audit en compteur ; référentiel sans fiche ni description (RG9, RG11) | idem |
+| UC-APP-10-U13 | `Lancement::empreinte` | Empreinte d'un jeu de gabarits stable, indépendante de l'ordre, sensible au contenu | idem |
 
 ### Tests fonctionnels
 
 | ID | Scénario | Niveau | Vérifie | Fichier |
 |---|---|---|---|---|
-| UC-APP-10-F01 | Nominal (étapes 1-5) | IHM | `<App/>` : portfolio ≤ 20 caractères ou consentement absent → estimation impossible ; devis = appels exacts du mock, aucun réseau | `web/test/usecases/functional/uc-app-10-analyse-approfondie-twin9.test.jsx` |
-| UC-APP-10-F02 | Nominal (étape 6), E9 | IHM | **Anomalie 1 figée** : « Backend inconnu », « Réessayer », aucun appel serveur | idem |
-| UC-APP-10-F03 | A1 | IHM | Démonstration sans compte : devis, run mock, sunburst, aucun appel ni enregistrement | idem |
-| UC-APP-10-F04 | E1 | IHM | Garde de session, bascule en démonstration | idem |
-| UC-APP-10-F05 | E2 | IHM | « momentanément indisponible » | idem |
-| UC-APP-10-F06 | E3 | IHM | Copie statique complète / méta seule absente | idem |
-| UC-APP-10-F07 | E4, étape 4 | IHM | Solde < estimation basse : alerte, lien de recharge, bouton désactivé ; solde entre basse et haute : avertissement, lancement permis | idem |
-| UC-APP-10-F08 | A2 | IHM | Promotion + clé : option visible, devis sans débit, lancement permis à solde nul ; promo fermée ou sans clé : option absente | idem |
-| UC-APP-10-F09 | A3 | IHM | Reprise détectée ; « Restaurer » remet portfolio, modèle, facturation et recoche le consentement ; « Ignorer » efface la reprise | idem |
-| UC-APP-10-F10 | A4, étape 8 | IHM | Annulation → pause → reprise avec le même état ; « Enregistrer » range le résultat (type `twin9`, privé) dans IndexedDB (simulé) | idem |
-| UC-APP-10-F11 | E5 | IHM | **Anomalie 3 figée**, vrai moteur branché sur la fabrique serveur : 402 en cours avalé, ni pause ni « Réessayer », résultats affichés, reprise locale effacée | idem |
-| UC-APP-10-F25 | A1, A4 | IHM | Démonstration sur le vrai moteur : annulation puis reprise sur le même état (journées reprises) ; **anomalie 6 figée** (la démo écrase puis efface le run courant local) | idem |
-| UC-APP-10-F26 | Étape 3, RG6 | IHM | **Anomalie 4 figée** : Haiku (taggers, rapide) présélectionné, devis avec tribunal, lancement permis sans avertissement | idem |
-| UC-APP-10-F27 | A7 | IHM | `<App/>` : segment inconnu → parcours ordinaire ; `DEMO` et `demo/` → garde de session ; `%64emo` → démo ; `#/twin9/` → page introuvable ; retour de `#/twin9/demo` à `#/twin9` : démo toujours affichée, « Quitter la démonstration » ou un passage par l'accueil en sort | idem |
-| UC-APP-10-F28 | Étapes 3-7, RG13 | IHM | **Anomalie 7 figée**, vrai moteur (réponses du mock) : une journée datée → « 1 journée(s) · du F01 au F01 », journée « F01 », aucun sunburst ; deux journées → dates et sunburst | idem |
-| UC-APP-10-F12 | Nominal | API | `/meta` sans contenu ; appel greffier : fiches injectées, sortie seule, coût réel, grand-livre | `api/tests/UseCases/Functional/UcApp10AnalyseApprofondieTwin9Test.php` |
-| UC-APP-10-F13 | Nominal | API | Trois étages, trois modèles, débit = somme des coûts — scénario d'API seulement : l'IHM envoie un seul modèle (anomalie 4) | idem |
-| UC-APP-10-F14 | A2, E6 | API | 403 hors promo ; 409 sans clé ; 200 sans débit avec la clé de l'apprenant | idem |
-| UC-APP-10-F15 | E1 | API | 401 sur `/appel` et `/meta` | idem |
-| UC-APP-10-F16 | E2 | API | 503 « Twin9 non disponible », `enabled=false` | idem |
-| UC-APP-10-F17 | E7 | API | 400/413/422/404, 403 sans jeton CSRF, sans fragment de gabarit ni débit | idem |
-| UC-APP-10-F18 | E4, E5 | API | 402 avec montants, solde intact (côté serveur ; côté client, voir F11) | idem |
-| UC-APP-10-F19 | E8 | API | 502/504/429 génériques, réserves rendues avec le modèle | idem |
-| UC-APP-10-F20 | A6 | API | Récitation expurgée, audit en compteurs, citation de l'apprenant intacte | idem |
-| UC-APP-10-F21 | E10 | API | 429 + `Retry-After: 30` | idem |
-| UC-APP-10-F22 | A5 | API | Copie serveur `twin9` : création, liste sans document, relecture, purge réelle (ligne absente de la base) | idem |
-| UC-APP-10-F23 | E11 | API | 503 (statut et message) clé plateforme / clé maître absentes | idem |
-| UC-APP-10-F24 | Anomalie 2 | API | Journal contenant « {$PRENOM} » → 422, aucun appel | idem |
+| UC-APP-10-F01 | Nominal | API | Liste vide et `disponible` ; aperçu ; lancement `201` avec attestation ; la page fait avancer le run jusqu'au bout ; résultats du propriétaire, référentiel du run ; liste | `api/tests/UseCases/Functional/UcApp10AnalyseApprofondieTwin9Test.php` |
+| UC-APP-10-F02 | A1 | API | Une journée ajoutée : l'aperçu ne compte qu'elle, le run n'instruit qu'elle, les autres viennent de la mémoire | idem |
+| UC-APP-10-F03 | A2 | API | Crédit pour une journée : le run la prend, l'autre attend ; l'attestation le dit | idem |
+| UC-APP-10-F04 | A3, E8 | API | Annuler puis reprendre jusqu'au bout ; `409` pour une action hors de son statut | idem |
+| UC-APP-10-F05 | A4, E8 | API | Reprise sous un nouveau budget, puis sans budget ; budget invalide → `422` | idem |
+| UC-APP-10-F06 | A5 | API | Privé : le cartographe lié ne lit rien ; visible : lui seul lit les résultats, sans suivre le run | idem |
+| UC-APP-10-F07 | A6 | API | Clé personnelle : run au bout, crédit intact, aucun événement au grand-livre | idem |
+| UC-APP-10-F08 | A7 | API | Un autre référentiel : run au bout, résultats portant ses pôles et ses compétences | idem |
+| UC-APP-10-F09 | A8 | API | Mode essai : une journée lue, « test » dans la liste et l'attestation | idem |
+| UC-APP-10-F10 | E1 | API | `401` sans session sur chaque route ; `403` sans jeton CSRF | idem |
+| UC-APP-10-F11 | E2 | API | Sans moteur : `disponible` faux, aperçu et lancement `503` ; sans gabarit : `503` | idem |
+| UC-APP-10-F12 | E3, E4 | API | Accord absent, portfolio invalide, profil d'un autre, profil refusé : `422` ou `404`, aucun run | idem |
+| UC-APP-10-F13 | E5 | API | Crédit nul : l'aperçu dit ce qu'il faudrait ; le lancement est refusé du même message | idem |
+| UC-APP-10-F14 | E6, RG10 | API | Le run d'un autre : `404` pour tous, l'administrateur compris, qui ne lit que des compteurs ; la page n'avance que les runs de son compte | idem |
+| UC-APP-10-F15 | E7 | API | Un gabarit récité est expurgé des résultats ; l'audit garde le nombre, la réponse ne le dit pas | idem |
+| UC-APP-10-F16 | Nominal | IHM | `<App/>` : profil, portfolio, accord, aperçu, lancement ; la page du run avance jusqu'au bout, puis s'ouvre dans la cartographie | `web/test/usecases/functional/uc-app-10-analyse-approfondie-twin9.test.jsx` |
+| UC-APP-10-F17 | E1, E2 | IHM | Visiteur : invite à se connecter ; instance sans moteur : message, sans formulaire | idem |
+| UC-APP-10-F18 | A2, E5 | IHM | Admission partielle dite ; refus : message, « Recharger », aucun lancement possible | idem |
+| UC-APP-10-F19 | A3, A4, A5 | IHM | Annuler, reprendre ; arrêté par le budget, reprise sous un nouveau budget ; case du cartographe | idem |
 
 ### Tests existants liés (non-régression)
 
-- `api/tests/Twin9AppelTest.php` — garde, validation, 402, réserve, clé privée, promo, filtre, fiches, rythme, `/meta`.
-- `api/tests/Twin9LeakFilterTest.php`, `api/tests/Twin9SecurityAuditTest.php` — contournements du filtre, découvert, IDOR.
-- `api/tests/Twin9ProtocoleTest.php` — référentiel servi par `/meta`.
-- `api/tests/CartographiesTest.php` — stockage du type `twin9`.
-- `web/src/views/Twin9View.test.jsx` — garde, devis, 402, garde-fou de solde, promotion, `ResultatsTwin9`.
-- `web/src/views/twin9/run-helpers.test.js`, `web/src/views/espace/CartographyViewer.test.jsx` (type `twin9`).
-- `engine/src/twin9/*.test.js` — parité octet avec le Python (vecteurs versionnés), dont `portfolio.test.js` (découpage, phrases) et `backends.test.js` (mock, réessais de `Backend.call`, `fetchBackend`, fabrique) ; `contrat-appels.test.js` se saute sans les oracles (UC-APP-10-U02 le rejoue sur données fictives versionnées).
+- `api/tests/Twin9/RunsTest.php` — lancement, suivi, annulation, reprise, visibilité, avance par la page, filtre de fuite des résultats, référentiel du run, moteur ou jeu d'avant T16.
+- `api/tests/Twin9/ApercuTest.php` — journées nouvelles ou changées, estimation, admission (T8), refus.
+- `api/tests/Twin9/CoutsTest.php` — réserves, réconciliation, plafonds (budget, durée, crédit), clé personnelle.
+- `api/tests/Twin9/PurgeExportTest.php` — purge du compte, lots chez Anthropic, export.
+- `api/tests/Twin9MetaTest.php` — le proxy du moteur du navigateur est parti (T11).
+- `web/src/views/Twin9View.test.jsx` — lancement, aperçu, admission, page du run, carte incomplète, référentiels (T17).
+- `web/src/carto/core/importers/twin9-run.test.js`, `web/src/lib/twin9/mapper.test.js` — jeu de cartographie d'un run, dossiers.
+- `web/e2e/twin9-run.e2e.js`, `web/e2e/twin9-referentiels.e2e.js` — de bout en bout, en local (`docs/tests-e2e.md`).
 
 ### Exécuter
 
 ```sh
 (cd api && vendor/bin/phpunit --filter UcApp10 --testdox)
 cd web && npx vitest run test/usecases/unit/uc-app-10 test/usecases/functional/uc-app-10
-cd engine && npx vitest run test/usecases/unit/uc-app-10
 ```
 
 ## Anomalies constatées
 
-1. **Le lancement réel est impossible.** `Twin9View.lancer()` construit la
-   fabrique de backends serveur (`makeServerFactory`) mais ne la transmet pas à
-   `executerTwin9` (paramètre `backends`). Hors démonstration (`mock: false`), le
-   moteur instancie donc ses backends par défaut, dont seul `mock` existe, et
-   lève « Backend inconnu : anthropic (choix : mock) » avant le moindre appel :
-   aucun `POST /api/twin9/appel` n'est émis, rien n'est débité, la vue affiche
-   l'erreur avec « Réessayer ». Les tests historiques injectent le moteur
-   (`deps.runEngine`) et ne voient pas le défaut. Avec la fabrique injectée, tout
-   le run passe bien par elle (UC-APP-10-U03, fabrique qui ne lève jamais) ; avec
-   la **vraie** fabrique serveur (`makeServerFactory` → `makeServerBackend`) et
-   un serveur qui renvoie, pour chaque appel, la sortie qu'aurait produite le
-   mock, le run va au bout : chaque appel devient un `POST /api/twin9/appel`
-   porteur du jeton CSRF et la cartographie obtenue est identique à celle du
-   mock, preuve que l'adaptation rend bien au moteur la chaîne attendue
-   (UC-APP-10-U40). Corriger ce seul défaut exposerait toutefois les
-   anomalies 3, 4 et 7. Figé par UC-APP-10-F02 et UC-APP-10-U04 ; la cause, au
-   niveau de la fabrique par défaut (`KINDS = {mock}` : `anthropic` comme
-   `claude-cli` refusés), par UC-APP-10-U44.
-2. **Un motif `{$X}` dans le texte de l'apprenant bloque l'appel.**
-   `ProtocoleRepository::render` recherche les variables non résolues dans le
-   **rendu** : un journal qui contient littéralement « {$PRENOM} » (atelier de
-   prompts, par exemple) est pris pour une variable manquante et `/appel`
-   répond `422 Variables non résolues`. Figé par UC-APP-10-U23 et UC-APP-10-F24.
-3. **Les erreurs de `/api/twin9/appel` sont avalées par le moteur.** Chaque appel
-   du moteur Twin9 est entouré d'une capture qui traite toute exception comme
-   une « panne technique » (`journee.js` : tagging → « 0 tag pour ce passage »,
-   première impression, greffier, juge léger, contre-lecture ; `tribunal.js` :
-   « panne technique → renvoi » ; `merge.js` : relectures ; `scan.js`). Un `402`,
-   `403`, `409`, `422` (dont l'anomalie 2 et l'anomalie 4), `429`, `502`/`504` ou
-   `503` n'atteint donc jamais la vue : la pause de E5 et le message de E9 sont
-   inatteignables, le run se termine en « terminé » et affiche comme une vraie
-   analyse une cartographie **dégradée** (0 tag, verdicts « renvoi »), déjà
-   facturée pour les appels réussis. Pire : les journées dégradées sont
-   mémorisées dans l'état avec leur empreinte ; une reprise ne les rejoue pas,
-   contrairement à la promesse « les journées déjà analysées ne seront pas
-   refacturées ». Latent tant que l'anomalie 1 bloque tout lancement réel. Figé
-   par UC-APP-10-U34 et UC-APP-10-F11.
-4. **Un seul modèle pour tous les étages.** `makeServerFactory` envoie le modèle
-   choisi à l'étape 3 pour **chaque** appel, alors que `etage` varie selon
-   l'étiquette et que le serveur refuse (`422 Modèle non proposé pour cet étage`)
-   tout modèle hors de ses étages (RG6). Dans l'offre par défaut, seul Sonnet
-   couvre les trois étages ; or la vue présélectionne le **premier** modèle de
-   l'offre (Haiku, taggers et rapide seulement, dans les défauts — ou ce que
-   donne l'ordre des clés relues de la colonne JSON), sans blocage ni
-   avertissement au devis. Avec Haiku, tout le tribunal partirait en 422 ; avec
-   Opus, tout le tagging — erreurs ensuite avalées (anomalie 3). UC-APP-10-F13
-   (trois modèles sur trois étages) ne correspond à aucun parcours de l'IHM.
-   Latent derrière l'anomalie 1. Figé par UC-APP-10-U36 et UC-APP-10-F26.
-5. **Deux variables partent en objets.** Pour `merge/03-competence-evolution`,
-   le moteur transmet `CONFIANCE_MOY` et `SCORE_CUMULE` comme objets `PyFloat`,
-   que `JSON.stringify` sérialise en `{"value": 0.75}`. Le serveur accepte ce
-   tableau associatif « plat » (RG9) et le rend par `json_encode` : le prompt
-   contient `{"value":0.75}` au lieu de `0.75`. Figé par UC-APP-10-U02.
-6. **La démonstration écrit dans la reprise locale.** En démonstration,
-   `onProgress` sauvegarde quand même le « run courant » (portfolio **fictif**)
-   dans IndexedDB, et la fin du run l'efface. Une démo annulée laisse donc une
-   reprise fictive (sur `#/twin9`, « Restaurer les saisies » injecte le
-   portfolio de démonstration et coche le consentement) ; une démo menée à terme
-   efface les paramètres d'une vraie analyse interrompue. Figé par
-   UC-APP-10-F25.
-7. **Un portfolio d'une seule journée datée perd sa date.** `splitPortfolio`
-   (parité avec `aurora/portfolio.py`) n'utilise les titres datés comme
-   séparateurs qu'à partir de **deux** ; avec un seul (« ### 2026-04-06 »), il
-   retombe sur les titres quelconques, puis sur une feuille unique `F01` **non
-   datée** titrée `twin9` (RG13). L'analyse aboutit (et, en voie plateforme,
-   est facturée) mais ses attestations n'ont pas de date : la période affichée
-   est « du F01 au F01 », la journée analysée s'appelle « F01 », le titre
-   enregistré « Twin9 — twin9 (F01 → F01) », et `twin9ToMergeDocument` refuse la
-   projection (« aucune attestation datée ») — `ResultatsTwin9` masque alors le
-   **sunburst** sans message, contrairement aux garanties de succès. Latent
-   derrière l'anomalie 1. Figé par UC-APP-10-U43 et UC-APP-10-F28.
+Aucune.
 
 ## Limites
 
-- Copie statique complète : la garde affiche « nécessite un compte » (session
-  indéterminable) plutôt qu'un message d'indisponibilité (UC-APP-10-F06).
-- Le filtre anti-fuite est un filet de sécurité : une transformation du texte
-  (encodage, traduction) ou des homoglyphes inter-écritures y échappent ; la
-  protection première reste dans les gabarits (ADR-010 §2).
-- Le devis est indicatif (fourchettes de tokens) ; seule la réserve serveur fait
-  foi.
-- La vue Twin9 reste montée d'une route `#/twin9…` à l'autre : ouverte par
-  `#/twin9/demo`, la démonstration reste affichée après un retour à `#/twin9`
-  (la méta est relue, le mode n'est pas remis à zéro) ; seuls « Quitter la
-  démonstration », proposé quand la méta est servie (compte connecté), ou le
-  passage par une autre page, qui démonte la vue, en sortent (UC-APP-10-F27).
-- Avec la fabrique serveur, les métriques rendues par le moteur restent vides
-  (`appels_llm = 0`, `par_etape = {}`) : ses backends ne tiennent pas de
-  `records`. Sans effet visible aujourd'hui — la vue compte les appels par
-  `onDebit` et n'utilise les métriques que pour le devis, calculé en mock
-  (UC-APP-10-U40).
-- `fetchBackend` (`engine/src/twin9/backends.js`) est un transport **non
-  branché** : la vue passe par `makeServerBackend`. Il poste sur l'URL absolue
-  `/api/twin9/appel` sans jeton CSRF ni `max_tokens` — un appel avec session
-  serait refusé `403` par `CsrfMiddleware` (E7) — et réduit tout refus à
-  « twin9/appel : HTTP n », sans statut exploitable (UC-APP-10-U45).
+- Le moteur est le dépôt privé `Twin_v9` : sans lui, l'analyse est indisponible
+  (E2) et ses tests PHP sur le vrai moteur se sautent ; les tests de ce cas
+  tournent sur le moteur factice, public, et l'Anthropic simulé de l'instance.
+- La page du run n'a pas de titre de niveau 1 (« Analyse approfondie » est un
+  titre de niveau 2), comme la page Configuration.
+- L'arrêt par un plafond se vérifie de bout en bout par `CoutsTest`, qui pilote
+  le coût des appels ; avec le moteur factice, le coût réel reste loin des
+  plafonds, et UC-APP-10-F05 ne vérifie que la reprise sous un nouveau budget.

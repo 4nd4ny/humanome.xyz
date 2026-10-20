@@ -142,16 +142,20 @@ final class UcAdm05SuperviserTwin9Test extends TestCase
     #[TestDox('UC-ADM-05-U11 — lecture effective : défauts complétés, clés stockées inconnues ignorées ; vue publique sans marge ni prix catalogue')]
     public function testU11EffectiveReadAndPublicView(): void
     {
-        (new SettingsRepository(self::$pdo))->set(Twin9Config::SETTING_KEY, ['marge' => 1.3, 'cle_obsolete' => 'x']);
+        (new SettingsRepository(self::$pdo))->set(Twin9Config::SETTING_KEY, ['marge_twin6' => 1.3, 'cle_obsolete' => 'x']);
         $read = self::config()->read();
-        self::assertSame(1.3, $read['marge']);
+        self::assertSame(1.3, $read['marge_twin6']);
         self::assertArrayNotHasKey('cle_obsolete', $read);
         self::assertSame(array_keys(Twin9Config::defaults()), array_keys($read));
 
         $public = self::config()->publicView();
-        self::assertSame([3.9, 19.5], $public['modeles']['claude-sonnet-5']['prix_usd_mtok']);
+        self::assertSame([3.9, 19.5], $public['modeles_twin6']['claude-sonnet-5']);
         foreach (['marge', 'marge_twin6', 'appels_par_minute'] as $cleAdmin) {
             self::assertArrayNotHasKey($cleAdmin, $public);
+        }
+        // l'offre Twin9, l'interrupteur et le pipeline ont quitté la vue publique avec le moteur du navigateur (T11)
+        foreach (['modeles', 'enabled', 'pipeline'] as $cleMoteur) {
+            self::assertArrayNotHasKey($cleMoteur, $public);
         }
     }
 

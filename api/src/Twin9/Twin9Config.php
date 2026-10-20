@@ -18,20 +18,23 @@ use Humanome\Packages\SettingsRepository;
  *             of {taggers, rapide, tribunal}, palier_long?: {au_dela_de:
  *             prompt tokens (>0), prix_usd_mtok: [in, out] (>0)}} — the long
  *             prompt tier some models bill above a prompt size (Haiku 5.5, T10)
- *   enabled   bool — false until the templates have been imported
- *   appels_par_minute  int, per-user rate limit of POST /api/twin9/appel
+ *   enabled   bool — false until the templates have been imported; it gated
+ *             the browser engine's proxy, POST /api/twin9/appel, and nothing
+ *             reads it since T11 removed them
+ *   appels_par_minute  int, per-user rate limit of POST /api/twin6/appel
  *             (1..600, default 30 — T3b)
  *   pipeline  free-form Twin9 protocol settings imported from config.json
  *             (seuils_consensus, jury, juge_leger, merge, scan_global) — the
- *             ALGORITHM's knobs, not secret (ADR-010 §2 residual), consumed
- *             by the JS engine.
+ *             ALGORITHM's knobs, not secret (ADR-010 §2 residual), which the
+ *             browser's engine read until T11; the server runs take theirs
+ *             from their profile (T12).
  *   runs_par_tick         int, the Twin9 runs a tick advances at most (1..20,
  *                         default 3 — ADR-011 §2)
  *   secondes_par_tranche  int, the length of a tick's slice in seconds
  *                         (5..45, default 40 — OVH: 45 s at most)
  *
- * publicView() is the ONLY shape the front ever sees: prices WITH margin
- * applied (the raw list price and the margin stay admin-only).
+ * publicView() is the ONLY shape the front ever sees of it: the Twin6 prices
+ * WITH margin applied (the raw list price and the margin stay admin-only).
  */
 final class Twin9Config
 {
@@ -65,7 +68,7 @@ final class Twin9Config
             // Owner decision (2026-07-15): CONTRIBUTION per protocole. Twin9 is
             // the proprietary Golden Prompt (R&D) → +20 %; Twin6 is open source
             // → +10 % (operational cost recovery: PayPal fee + OVH/domain +
-            // Haiku demo). `marge` is the Twin9 rate (the /appel path is Twin9);
+            // Haiku demo). `marge` is the Twin9 rate (the server runs');
             // `marge_twin6` the open-cartography rate. Both « contribution »,
             // never « surtaxe ». The PayPal FIXED fee (≈ 0.30-0.49 USD/capture)
             // is why packs start at 10 USD (see 'packs').
@@ -162,8 +165,9 @@ final class Twin9Config
     }
 
     /**
-     * The stored referentiel structure the client engine consumes, or [] if
-     * none imported yet. Shape: [{num:int, nom:string, competences:[{code, nom}]}].
+     * The stored referentiel structure /meta serves the open cartography
+     * (Twin6), or [] if none imported yet. Shape: [{num:int, nom:string,
+     * competences:[{code, nom}]}].
      *
      * @return list<array<string, mixed>>
      */
@@ -375,39 +379,32 @@ final class Twin9Config
     }
 
     /**
-     * The PUBLIC shape for the front (ADR-010 §3): model offer and prices
-     * WITH margin applied, packs, enabled flag, PayPal availability. Neither
-     * the raw list prices nor the margin itself ever leave the admin view.
+     * The PUBLIC shape for the front (ADR-010 §3), as /meta serves it to the
+     * credit page and the open cartography: the Twin6 prices WITH margin
+     * applied, packs, the promotion's state, PayPal availability. Neither the
+     * raw list prices nor the margin itself ever leave the admin view. The
+     * Twin9 offer, the enabled flag and the pipeline's settings left it with
+     * the browser's engine (T11).
      *
      * @return array<string, mixed>
      */
     public function publicView(): array
     {
         $config = $this->read();
-        $marge = (float) $config['marge'];
-
         $margeTwin6 = (float) $config['marge_twin6'];
-        $modeles = [];
         $modelesTwin6 = [];
         foreach ($config['modeles'] as $modelId => $modele) {
             [$in, $out] = $modele['prix_usd_mtok'];
-            $modeles[$modelId] = [
-                'etages' => $modele['etages'],
-                'prix_usd_mtok' => [round((float) $in * $marge, 4), round((float) $out * $marge, 4)],
-            ];
             // Twin6 (open cartography) prices at its own +10 % contribution.
             $modelesTwin6[$modelId] = [round((float) $in * $margeTwin6, 4), round((float) $out * $margeTwin6, 4)];
         }
 
         return [
-            'enabled' => (bool) $config['enabled'],
             'paypalConfigured' => Env::get('PAYPAL_CLIENT_ID') !== '',
             'packs' => $config['packs'],
-            'modeles' => $modeles,
             'modeles_twin6' => $modelesTwin6,
             // Promo state: when true, Twin9 is usable free with one's own key.
             'twin9_cle_perso_ouverte' => (bool) $config['twin9_cle_perso_ouverte'],
-            'pipeline' => $config['pipeline'],
         ];
     }
 

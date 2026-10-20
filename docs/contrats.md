@@ -383,7 +383,8 @@ valide et range les profils.
   UC-CAR-04). MySQL réordonne les clés d'un profil rangé (§6, UC-ADM-05) ;
   rien n'en dépend.
 - **Validation** : PHP seulement. Le profil n'est pas un document que le
-  moteur du navigateur produit ou lit ; `scripts/build-validators.mjs` ne le
+  moteur de cartographie du navigateur (`engine/`) produit ou lit ;
+  `scripts/build-validators.mjs` ne le
   compile pas. La page `#/configuration` (T13) se construit depuis le schéma
   et laisse au serveur la validation, dont elle affiche le message.
 - **Nombres** : un réglage que le schéma type `number` garde la forme d'un
@@ -740,7 +741,7 @@ une suivante le relève.
   du run depuis T17, §10 ; le publié avant), `carto_evolutive` (la fusion), `journees` (chaque carte du jour,
   par journée) et `memoire` (les journées reprises). L'interface en fait une
   journée par carte du jour, ses verdicts établis, renvoyés ou jugés, chacun
-  avec son dossier (`twin9Dossier`, `engine/src/twin9/mapper.js`) ; la
+  avec son dossier (`twin9Dossier`, `web/src/lib/twin9/mapper.js` depuis T11) ; la
   délibération d'un verdict jugé se lit dans sa journée (`runScope:
   "journee"`), et les synthèses viennent de la fusion
   (`carto/core/importers/twin9-run.js`). Depuis T17, la page le remet pour
@@ -853,8 +854,8 @@ une suivante le relève.
   nomme pour ce gabarit, et celles que son original du jeu v9.8 emploie —,
   sinon `422` « Variable qu’aucune étape ne fournit à ce gabarit : {$X} ». Un
   gabarit que ni l'un ni l'autre ne nomme (les fiches `tagger/P1` à `P7`) n'en
-  reçoit aucune. Le contrat reprend celui de `Twin_v9`
-  (`engine/src/twin9/protocole-contrat.json`), complété de `MA_POSITION_R1`
+  reçoit aucune. Le contrat reprend celui du portage JavaScript
+  (`engine/src/twin9/protocole-contrat.json`, retiré au T11), complété de `MA_POSITION_R1`
   (relance, second tour) et `LISTE_61` (Arpenteur), que le moteur fournit et
   que les gabarits v9.8 emploient, et, depuis T16, des variables du
   référentiel (§8.8) : `REFERENTIEL` et `FORMAT_CODE` (lecture d'un pôle),
@@ -1106,8 +1107,9 @@ T16, plan validé par Christian le 2026-10-20).
   `{$LISTE_COMPETENCES}` (`{$LISTE_61}`) —, sans les fichiers de pôle. Pour
   RESPIRE, ils rendent le texte de la v9.8 : un run de RESPIRE donné par ce
   bloc rejoue les dix-sept scénarios de l'oracle octet pour octet (`Twin_v9`,
-  `OracleTest`). L'appel du navigateur (`POST /api/twin9/appel`) les reçoit
-  aux valeurs de RESPIRE.
+  `OracleTest`). Jusqu'à T11, l'appel du moteur du navigateur (`POST
+  /api/twin9/appel`) les recevait aux valeurs de RESPIRE ; il est parti avec
+  ce moteur.
 - **Les empreintes** : celle du référentiel (`ReferentielMoteur::empreinte`,
   16 caractères hexadécimaux du SHA-256 de son JSON canonique, la même qu'il
   soit relu en tableaux ou en objets) entre dans l'empreinte des réglages

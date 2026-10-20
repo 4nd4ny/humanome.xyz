@@ -45,7 +45,8 @@ archive ») dans la section « Mes données » du tableau de bord `#/espace`.
 
 - Pour l'export : rien d'obligatoire (une archive vide est valide) ; pour un
   contenu utile, des portfolios (UC-APP-01) et/ou des cartographies
-  (UC-APP-02, UC-APP-10) dans le stockage local.
+  (UC-APP-02 ; jusqu'au 2026-10-17, analyses Twin9 du moteur du navigateur)
+  dans le stockage local.
 - Pour l'import : un fichier `.json` produit par un export (de cette instance
   ou d'une autre).
 
@@ -306,11 +307,12 @@ cd engine && npx vitest run test/usecases --testNamePattern UC-APP-06
   mesurés sont perdus**. Friction de format à consigner dans
   `docs/contrats.md`. Figé par U06, U08 et F10.
 - **A-03 — Une analyse Twin9 locale bloque tout l'export.** Les résultats
-  Twin9 sont enregistrés localement avec le type `twin9` (UC-APP-10) ;
+  Twin9 du moteur du navigateur (parti le 2026-10-17 ; ceux qu'il a laissés
+  restent) sont enregistrés localement avec le type `twin9` ;
   l'export les projette en `type: 'jour'` avec leur document natif, non
   conforme à `cartographie-jour` : la validation échoue et **aucune** archive
   n'est téléchargée (« export annulé »). L'export RGPD « en un clic » devient
-  impossible pour tout apprenant ayant une analyse Twin9. Figé par U10 et F08.
+  impossible pour tout apprenant qui en garde une. Figé par U10 et F08.
 - **A-04 — « Mes portfolios » non rafraîchi après import.** L'import rafraîchit
   la liste des cartographies, pas le bloc « Mes portfolios » du tableau de
   bord, qui n'affiche les portfolios restaurés qu'au rechargement. Figé par
@@ -346,8 +348,8 @@ cd engine && npx vitest run test/usecases --testNamePattern UC-APP-06
 - Les copies serveur des cartographies ne sont pas relues (voir UC-APP-03,
   A-01) : l'archive reflète le stockage local du navigateur.
 - `web/src/lib/download-json.js` n'est **pas** sollicité : ce module sert le
-  téléchargement « un clic » des résultats Essayer, Twin6, Twin9 et de
-  l'interface V3. L'archive utilise `browserDownload`, interne à `archive.js`
+  téléchargement « un clic » des résultats Essayer et Twin6, et de
+  l'interface de cartographie. L'archive utilise `browserDownload`, interne à `archive.js`
   (via la couture `download`) ; `downloadJson(filename, data)` d'`archive.js`
   (homonyme de celui de `download-json.js`, arguments dans l'ordre inverse)
   ne sert qu'à « Télécharger le JSON » (UC-APP-03).

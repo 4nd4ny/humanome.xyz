@@ -1,14 +1,16 @@
 #!/usr/bin/env node
 // SOURCE UNIQUE du référentiel — extrait les fiches de scan PAR COMPÉTENCE
 // depuis les P1..P7.md (Twin6 public = tagger Twin9, octet-à-octet) en
-// RÉUTILISANT le vrai parsePole du moteur (garantie de parité prod), puis
+// RÉUTILISANT le parsePole porté du moteur Twin9 (web/src/lib/twin9/referentiel.js,
+// garantie de parité prod), puis
 // PROUVE qu'on les régénère octet pour octet (règle de réassemblage (b)).
 //
 // Sortie : scripts/data/fiches-v7.json = { poleHeaders: {num: header_brut},
 // fiches: {code: fiche_md} }. C'est la matière du champ competence.content.fiche
 // (source unique). generate-fiches.mjs et FicheGenerator (PHP) réutilisent la règle.
 //
-// Règle (b) — réassemblage BYTE-EXACT d'un P*.md (≠ ficheComplete runtime) :
+// Règle (b) — réassemblage BYTE-EXACT d'un P*.md (≠ règle (c), `---` doublé,
+// de FicheStore::poleFiches côté PHP) :
 //   P*.md = header_brut + competences.map(fiche_md).join("\n\n") + "\n"
 //
 // Usage : node scripts/extract-fiches.mjs   (échoue si la parité octet casse)
@@ -16,7 +18,7 @@ import { readFileSync, writeFileSync } from 'node:fs'
 import { argv } from 'node:process'
 import { dirname, resolve } from 'node:path'
 import { fileURLToPath, pathToFileURL } from 'node:url'
-import { parsePole } from '../engine/src/twin9/referentiel.js'
+import { parsePole } from '../web/src/lib/twin9/referentiel.js'
 
 /** Réassemblage BYTE-EXACT d'un pôle en P*.md (règle b). Importé par generate-fiches.mjs. */
 export function reassembleFiche(header, competences) {

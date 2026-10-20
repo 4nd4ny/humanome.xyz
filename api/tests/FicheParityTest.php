@@ -148,9 +148,10 @@ final class FicheParityTest extends CompetenceTestCase
     }
 
     /**
-     * Round-trip du chemin RUNTIME Twin9 : base → FicheGenerator → FicheStore::store
+     * Aller-retour du magasin des fiches Twin9 : base → FicheGenerator → FicheStore::store
      * → fromSettings → competenceFiche()/poleFiches(). Exerce la règle (c) (le `---`
-     * DOUBLÉ) réellement envoyée au LLM — que le gate P*.md (règle b) ne couvre pas.
+     * DOUBLÉ), que le gate P*.md (règle b) ne couvre pas. Depuis T11, aucun run ne lit
+     * plus ce magasin : les runs lisent les fiches dans la base (ReferentielMoteur, T16).
      */
     public function testFicheStoreRoundTripPreservesCompetenceAndPoleFiches(): void
     {

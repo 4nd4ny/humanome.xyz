@@ -11,7 +11,7 @@ use Humanome\Tests\CartographeTestCase;
 use Humanome\Tests\LlmFakeHttpClient;
 use Humanome\Tests\TestDb;
 use Humanome\Tests\UseCases\Support\TwinSupport;
-use Humanome\Twin9\CreditService;
+use Humanome\Twin9\FicheStore;
 use Humanome\Twin9\Twin9Config;
 use PHPUnit\Framework\Attributes\TestDox;
 use Psr\Http\Message\ResponseInterface;
@@ -131,7 +131,7 @@ final class UcPro08EditerGabaritsTwin9Test extends CartographeTestCase
         self::assertSame(0, (int) self::$pdo->query('SELECT COUNT(*) FROM twin9_protocole_versions')->fetchColumn());
     }
 
-    #[TestDox('UC-PRO-08-F10 — A4 : import technique (X-Migrate-Token) — gabarits, réglages, référentiel, fiches (injectées ensuite dans les appels) ; active Twin9 ; réimport identique sans nouvelle version')]
+    #[TestDox('UC-PRO-08-F10 — A4 : import technique (X-Migrate-Token) — gabarits, réglages, référentiel, fiches (gardées sur le serveur, jamais servies) ; active Twin9 ; réimport identique sans nouvelle version')]
     public function testF10TechnicalImport(): void
     {
         $response = $this->importer(
@@ -143,30 +143,19 @@ final class UcPro08EditerGabaritsTwin9Test extends CartographeTestCase
         $config = new Twin9Config(new SettingsRepository(Db::get()));
         self::assertTrue($config->isEnabled());
         self::assertEquals(['jury' => ['taille_aleatoire' => 5]], $config->pipeline(), 'colonne JSON : même contenu');
+        self::assertSame(['lourd/20-greffier', 'tagger/1-tag-pole'],
+            self::$pdo->query('SELECT name FROM twin9_protocole ORDER BY name')->fetchAll(\PDO::FETCH_COLUMN));
         $apprenant = $this->registerAs('lea@example.org', 'Léa', ['apprenant']);
         $metaRaw = (string) $this->as_($apprenant, 'GET', '/api/twin9/meta')->getBody();
         $meta = json_decode($metaRaw, true);
-        self::assertSame(['lourd/20-greffier', 'tagger/1-tag-pole'], array_column($meta['etapes'], 'name'));
         self::assertSame('CŒUR — Relier & Naviguer', $meta['referentiel'][1]['nom']);
         self::assertStringNotContainsString('FICHE FICTIVE', $metaRaw, 'les fiches restent serveur');
+        self::assertStringNotContainsString('lourd/20-greffier', $metaRaw, 'les noms des gabarits aussi, depuis T11');
 
-        // Les fiches importées sont bien STOCKÉES : le serveur les injecte dans l'appel d'un apprenant.
-        $http = new LlmFakeHttpClient();
-        LlmRuntime::setHttpClient($http);
-        TestDb::setEnv('ANTHROPIC_API_KEY', TwinSupport::PLATFORM_KEY);
-        (new CreditService(Db::get()))->topup($apprenant['id'], 5_000_000, 'ORDER-PRO-08-F10');
-        TwinSupport::queueAnthropic($http, 'Dossier fictif.');
-        $appel = $this->as_($apprenant, 'POST', '/api/twin9/appel', [
-            'etape' => 'lourd/20-greffier',
-            'variables' => ['CODE' => '1.01', 'EXTRAIT' => 'x', 'POLE_NUM' => 1],
-            'modele' => 'claude-sonnet-5',
-            'etage' => 'rapide',
-            'facturation' => 'platform',
-        ]);
-        self::assertSame(200, $appel->getStatusCode(), (string) $appel->getBody());
-        $prompt = json_decode((string) $http->requests[0]['body'], true)['messages'][0]['content'];
-        self::assertStringContainsString('Fiche : ' . TwinSupport::FICHE_SECRETE, $prompt);
-        self::assertStringContainsString('PRÉAMBULE FICTIF DU PÔLE 1', $prompt);
+        // Les fiches importées sont STOCKÉES, sur le serveur seul ; depuis T11, aucun appel ne les lit plus.
+        $fiches = FicheStore::fromSettings(new SettingsRepository(Db::get()));
+        self::assertSame(TwinSupport::FICHE_SECRETE, $fiches->competenceFiche('1.01'));
+        self::assertStringStartsWith('PRÉAMBULE FICTIF DU PÔLE 1', (string) $fiches->poleFiches(1));
 
         self::assertSame(['imported' => 2, 'retires' => 0], self::json($this->importer(['lourd/20-greffier' => TwinSupport::GABARIT_GREFFIER, 'tagger/1-tag-pole' => TwinSupport::GABARIT_TAG])));
         self::assertSame(0, (int) self::$pdo->query('SELECT COUNT(*) FROM twin9_protocole_versions')->fetchColumn());

@@ -56,12 +56,12 @@ const PATH_RULES = [
   {
     id: 'moteur-twin9',
     // Le moteur vit dans le dépôt privé 4nd4ny/Twin_v9 (décision du
-    // 2026-10-17). Restent publics l'adaptateur d'affichage (mapper), le
-    // parseur de pôles (referentiel) et les utilitaires py/ qu'ils importent.
+    // 2026-10-17) et tourne sur le serveur (ADR-011) ; le moteur du navigateur
+    // est retiré (T11). L'adaptateur d'affichage (mapper), le parseur de pôles
+    // (referentiel) et les utilitaires py/ qu'il importe vivent dans le front,
+    // sous web/src/lib/twin9/.
     test: (p) =>
-      (/^engine\/src\/twin9\//.test(p) &&
-        !/^engine\/src\/twin9\/(mapper|referentiel|fiches-corpus|py\/(pyText|pyStr|stableHash|pyRound|md5))(\.test)?\.js$/.test(p)) ||
-      /^(engine\/test\/twin9-vectors|docs\/twin9)\//.test(p) ||
+      /^(engine\/src\/twin9|engine\/test\/twin9-vectors|docs\/twin9)\//.test(p) ||
       /^(docs\/plan-twin9-php\.md|web\/src\/views\/twin9\/run-helpers(\.test)?\.js|scripts\/twin9\/gen-oracles\.sh)$/.test(p),
     why: 'moteur Twin9 (dépôt privé Twin_v9, jamais public)',
   },

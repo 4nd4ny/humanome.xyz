@@ -32,8 +32,8 @@ la page Confidentialité.
 ## Préconditions
 
 - Des cartographies ont été enregistrées localement (run UC-APP-02, import
-  d'archive UC-APP-06, analyse Twin9 UC-APP-10) — sinon le tableau de bord
-  invite à en produire.
+  d'archive UC-APP-06 ; jusqu'au 2026-10-17, analyse Twin9 du moteur du
+  navigateur) — sinon le tableau de bord invite à en produire.
 - Aucune session n'est exigée.
 
 ## Garanties en cas de succès
@@ -161,7 +161,7 @@ la page Confidentialité.
 | Front | `web/src/lib/carto-store.js` — `createCartoStore`, `createIndexedDbAdapter`, singleton | Lecture locale, base `humanome-cartographies` |
 | Front | `web/src/lib/archive.js` — `downloadJson` | Téléchargement d'un document |
 | Front | `web/src/views/espace/CartographyViewer.jsx`, `web/src/views/DayView.jsx`, `MergeView.jsx` ; `web/src/data/referentiel.js` | Visualisation en lecture seule, référentiel publié ou embarqué |
-| Moteur | `engine/src/twin9/mapper.js` — `twin9ToMergeDocument` | Projection d'une analyse Twin9 vers la vue chronologique (A3, RG5 ; couvert aussi par les tests UC-APP-10) |
+| Front | `web/src/lib/twin9/mapper.js` — `twin9ToMergeDocument` | Projection d'une analyse Twin9 vers la vue chronologique (A3, RG5 ; couvert aussi par `web/src/lib/twin9/mapper.test.js`) |
 | API | `GET /api/cartographies`, `GET /api/cartographies/{id}` — `api/src/routes/cartographies.php` | Consultation des copies serveur |
 | API | `api/src/Middleware/RequireRole.php` — `any('apprenant')` | 401 sans session, 403 sans rôle `apprenant` (E4) |
 | Domaine | `api/src/Cartographies/CartographyRepository.php` — `listForUser`, `findForUser` | Projection sans document, portée propriétaire |

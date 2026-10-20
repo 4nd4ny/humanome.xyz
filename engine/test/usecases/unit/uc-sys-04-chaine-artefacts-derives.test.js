@@ -65,6 +65,7 @@ const BASE_FILES = [
   'scripts/data/fiches-v7.json',
   'scripts/data/referentiel-v7-definitions.json',
   'engine/package.json',
+  'web/package.json',
 ]
 const ASSET_FILES = [
   'assets-existants/merge-prototype/carto-data.js',
@@ -91,6 +92,8 @@ function makeMirror({ assets = false, docs = false } = {}) {
   tempDirs.push(root)
   for (const rel of BASE_FILES) copyInto(root, rel)
   copyInto(root, 'engine/src', (src) => !src.endsWith('.test.js') && !src.includes('__pycache__'))
+  // parsePole, qu'extract-fiches.mjs importe, vit dans le front depuis T11.
+  copyInto(root, 'web/src/lib/twin9', (src) => !src.endsWith('.test.js'))
   copyInto(root, 'schemas')
   symlinkSync(join(REPO, 'engine/node_modules'), join(root, 'engine/node_modules'), 'dir')
   if (assets) for (const rel of ASSET_FILES) copyInto(root, rel)

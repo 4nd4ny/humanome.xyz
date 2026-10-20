@@ -1,6 +1,7 @@
 // Vecteurs générés par CPython 3.14.3 (str.strip/lstrip/rstrip/splitlines)
-// puis figés ici — script : engine/test/twin9-vectors/gen_noyau_vectors.py ;
-// jamais de python à l'exécution.
+// puis figés ici — script : engine/test/twin9-vectors/gen_noyau_vectors.py, retiré
+// avec le moteur du navigateur (T11), dans l'historique de Twin_v9 ; jamais de
+// python à l'exécution.
 import { describe, expect, it } from "vitest";
 import {
   PY_WS_CLASS,

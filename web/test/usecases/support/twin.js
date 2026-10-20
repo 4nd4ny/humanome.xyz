@@ -37,7 +37,7 @@ export function htmlResponse(status = 200) {
   }
 }
 
-/** Clé de route d'une requête : « POST twin9/appel » (sans « api/ » ni query). */
+/** Clé de route d'une requête : « POST twin6/appel » (sans « api/ » ni query). */
 export function routeKey(url, init = {}) {
   const method = String(init?.method ?? 'GET').toUpperCase()
   const path = String(url).replace(/^api\//, '').split('?')[0]
@@ -46,7 +46,7 @@ export function routeKey(url, init = {}) {
 
 /**
  * Installe un `fetch` global routé. `routes` : { 'GET auth/me': réponse,
- * 'POST twin9/appel': (url, init) => réponse, 'data/twin6/x.json': … }.
+ * 'POST twin6/appel': (url, init) => réponse, 'data/twin6/x.json': … }.
  * @returns {{fetchMock: import('vitest').Mock, calls: Array<{url: string, key: string, init: object}>}}
  */
 export function stubFetch(routes) {
@@ -162,21 +162,19 @@ export function twin6ModelText(prompt) {
   return `Voici la cartographie.\n\n\`\`\`json\n${JSON.stringify(cartoPoleFictif(num))}\n\`\`\``
 }
 
-/** Offre Twin9 (/api/twin9/meta) FICTIVE, service activé. */
+/**
+ * Ce que sert /api/twin9/meta, FICTIF : offre Twin6, promotion, packs,
+ * référentiel, PayPal, solde, clé privée (T11 : plus d'étapes, d'offre Twin9
+ * ni de réglages du pipeline, que seul lisait le moteur du navigateur).
+ */
 export function metaTwin9(overrides = {}) {
   return {
-    enabled: true,
-    etapes: [{ name: 'fictif/01-essai', longueur_gabarit: 120, variables: ['TEXTE_JOURNEE'] }],
-    modeles: {
-      'claude-sonnet-5': { etages: ['taggers', 'rapide', 'tribunal'], prix_usd_mtok: [3.6, 18] },
-    },
     modeles_twin6: { 'claude-sonnet-5': [3.3, 16.5] },
     twin9_cle_perso_ouverte: false,
     packs: [
       { montant_usd: 10, libelle: 'Pack découverte — 10 $' },
       { montant_usd: 20, libelle: 'Pack standard — 20 $' },
     ],
-    pipeline: {},
     referentiel: META_REFERENTIEL,
     paypalConfigured: true,
     solde_microusd: 50_000_000,

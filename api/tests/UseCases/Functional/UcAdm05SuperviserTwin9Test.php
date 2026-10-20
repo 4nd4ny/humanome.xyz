@@ -10,10 +10,13 @@ use Humanome\Llm\LlmRuntime;
 use Humanome\Tests\CartographeTestCase;
 use Humanome\Tests\LlmFakeHttpClient;
 use Humanome\Tests\TestDb;
+use Humanome\Tests\UseCases\Support\RunsTwin9Factices;
 use Humanome\Tests\UseCases\Support\TwinSupport;
 use Humanome\Twin9\CreditService;
-use Humanome\Twin9\ProtocoleRepository;
+use Humanome\Twin9\Lancement;
 use Humanome\Twin9\Twin9Config;
+use PHPUnit\Framework\Attributes\PreserveGlobalState;
+use PHPUnit\Framework\Attributes\RunInSeparateProcess;
 use PHPUnit\Framework\Attributes\TestDox;
 use Psr\Http\Message\ResponseInterface;
 
@@ -24,11 +27,17 @@ use Psr\Http\Message\ResponseInterface;
  *
  * L'administrateur règle Twin9 par GET/PUT /api/twin9/admin/config et suit les
  * comptes par GET /api/twin9/admin/comptes ; chaque réglage est vérifié par
- * son EFFET côté apprenant (offre /meta, facturation /appel, promotion clé
- * privée, packs PayPal, offre par étage, interrupteur). Amonts simulés.
+ * son EFFET côté apprenant : l'estimation d'un run du serveur et ses profils
+ * (moteur factice, ADR-011), l'offre /meta, la facturation de la cartographie
+ * ouverte, les packs PayPal. Depuis T11, qui a retiré le moteur du navigateur
+ * et son proxy /api/twin9/appel, les étages de l'offre, l'interrupteur et le
+ * pipeline ne commandent plus rien. Amonts simulés. Les tests qui lancent le
+ * moteur factice tournent chacun dans un processus à lui.
  */
 final class UcAdm05SuperviserTwin9Test extends CartographeTestCase
 {
+    use RunsTwin9Factices;
+
     private LlmFakeHttpClient $http;
 
     /** @var array{id: int, csrf: string, sid: string} */
@@ -51,11 +60,9 @@ final class UcAdm05SuperviserTwin9Test extends CartographeTestCase
         TestDb::setEnv('PAYPAL_SECRET', 'secret-fictif');
         $this->http = new LlmFakeHttpClient();
         LlmRuntime::setHttpClient($this->http);
-        (new ProtocoleRepository($pdo))->put('tagger/1-tag-pole', TwinSupport::GABARIT_TAG, null);
 
         $this->admin = $this->registerAs('admin@example.org', 'Root Admin', ['admin']);
         $this->apprenant = $this->registerAs('lea@example.org', 'Léa', ['apprenant']);
-        $this->config(['enabled' => true]);
     }
 
     protected function tearDown(): void
@@ -69,65 +76,75 @@ final class UcAdm05SuperviserTwin9Test extends CartographeTestCase
         return $this->as_($this->admin, 'PUT', '/api/twin9/admin/config', $partial);
     }
 
-    private function appel(array $overrides = []): ResponseInterface
+    /** Le coût estimé, en dollars, d'un run de deux journées et de sa fusion sans évaluation passée (T10). */
+    private static function estimation(float $marge): float
     {
-        return $this->as_($this->apprenant, 'POST', '/api/twin9/appel', array_merge([
-            'etape' => 'tagger/1-tag-pole',
-            'variables' => ['POLE_NUM' => 1, 'TEXTE_JOURNEE' => 'journal'],
-            'modele' => 'claude-sonnet-5',
-            'etage' => 'taggers',
-            'facturation' => 'platform',
-        ], $overrides));
+        return round(Lancement::REFERENCE_MICROUSD * 7 * $marge * 3 / 1_000_000, 6);
     }
 
-    #[TestDox('UC-ADM-05-F09 — nominal : l’admin lit la config (prix catalogue + contributions), change les contributions Twin9 et Twin6 → nouveaux prix pour les apprenants et nouveau coût réel des appels Twin9 ET Twin6')]
+    #[TestDox('UC-ADM-05-F09 — nominal : l’admin lit la config (prix catalogue + contributions), change les contributions Twin9 et Twin6 → l’estimation d’un run Twin9, les prix Twin6 de /meta et le coût réel de la cartographie ouverte suivent')]
+    #[RunInSeparateProcess]
+    #[PreserveGlobalState(false)]
     public function testF09ContributionChangeReachesLearners(): void
     {
+        $this->moteurFactice();
         $config = self::json($this->as_($this->admin, 'GET', '/api/twin9/admin/config'));
         self::assertSame(1.2, $config['marge']);
         self::assertSame([3, 15], $config['modeles']['claude-sonnet-5']['prix_usd_mtok'], 'prix catalogue visibles de l’admin seul');
+        $profil = $this->profilDirect($this->apprenant);
+        // un crédit large : il admet toutes les journées, et l'estimation les compte toutes
+        (new CreditService(Db::get()))->topup($this->apprenant['id'], 1_000_000_000, 'ORDER-ADM-05');
+        self::assertSame(self::estimation(1.2), $this->apercu($this->apprenant, $profil)['estimation']['cout_usd']);
 
         $maj = self::json($this->config(['marge' => 1.5, 'marge_twin6' => 1.25]));
         self::assertSame([1.5, 1.25], [$maj['marge'], $maj['marge_twin6']]);
 
+        // Étape 6 : un run Twin9 s'estime à la nouvelle contribution (ses appels se règlent à la contribution
+        // du moment : api/tests/Twin9/CoutsTest.php).
+        self::assertSame(self::estimation(1.5), $this->apercu($this->apprenant, $profil)['estimation']['cout_usd']);
         $meta = self::json($this->as_($this->apprenant, 'GET', '/api/twin9/meta'));
-        self::assertSame([4.5, 22.5], $meta['modeles']['claude-sonnet-5']['prix_usd_mtok']);
         self::assertSame([3.75, 18.75], $meta['modeles_twin6']['claude-sonnet-5']);
         self::assertArrayNotHasKey('marge', $meta);
+        self::assertArrayNotHasKey('modeles', $meta, 'l’offre Twin9 a quitté /meta avec le moteur du navigateur (T11)');
 
-        (new CreditService(Db::get()))->topup($this->apprenant['id'], 5_000_000, 'ORDER-ADM-05');
-        TwinSupport::queueAnthropic($this->http, 'tags', 1000, 200);
-        self::assertSame(9000, self::json($this->appel())['cout_microusd'], '(1000×3 + 200×15) × 1,5');
-
-        // Étape 6 : la cartographie ouverte Twin6 est facturée au nouveau taux marge_twin6.
+        // La cartographie ouverte Twin6 est facturée au nouveau taux marge_twin6.
         TwinSupport::queueAnthropic($this->http, '{"poleNum":1}', 1000, 200);
         $twin6 = $this->as_($this->apprenant, 'POST', '/api/twin6/appel', ['model' => 'claude-sonnet-5', 'prompt' => 'Scanne le pôle 1.', 'max_tokens' => 1024]);
         self::assertSame(200, $twin6->getStatusCode(), (string) $twin6->getBody());
         self::assertSame(7500, self::json($twin6)['cout_microusd'], '(1000×3 + 200×15) × 1,25');
-        self::assertSame(5_000_000 - 9000 - 7500, (new CreditService(Db::get()))->balance($this->apprenant['id']));
+        self::assertSame(1_000_000_000 - 7500, (new CreditService(Db::get()))->balance($this->apprenant['id']));
     }
 
-    #[TestDox('UC-ADM-05-F10 — A1 : promotion « Twin9 gratuit avec sa clé » ouverte puis refermée → la voie clé privée suit immédiatement ; la voie plateforme reste facturée pendant la promotion')]
+    #[TestDox('UC-ADM-05-F10 — A1 : promotion « Twin9 avec sa clé » ouverte puis refermée → un profil à clé personnelle est refusé, admis et estimé sans contribution, puis refusé au lancement ; pendant la promotion, un profil à la clé de l’instance s’estime toujours avec contribution')]
+    #[RunInSeparateProcess]
+    #[PreserveGlobalState(false)]
     public function testF10PromoWindow(): void
     {
+        $this->moteurFactice();
         (new KeyVault(Db::get(), (string) KeyVault::masterKeyFromEnv()))->store($this->apprenant['id'], 'anthropic', 'sk-ant-perso-fictive');
-        self::assertSame(403, $this->appel(['facturation' => 'cle_privee'])->getStatusCode());
+        $refuse = $this->creerProfil($this->apprenant, 'Ma clé', ['cle' => 'personnelle']);
+        self::assertSame(422, $refuse->getStatusCode());
+        self::assertSame('Profil refusé — /cle : les clés personnelles ne sont pas ouvertes sur cette instance', self::json($refuse)['error']);
 
         self::assertTrue(self::json($this->config(['twin9_cle_perso_ouverte' => true]))['twin9_cle_perso_ouverte']);
         self::assertTrue(self::json($this->as_($this->apprenant, 'GET', '/api/twin9/meta'))['twin9_cle_perso_ouverte']);
-        TwinSupport::queueAnthropic($this->http, 'tags');
-        self::assertSame(0, self::json($this->appel(['facturation' => 'cle_privee']))['cout_microusd']);
+        self::assertTrue(self::json($this->as_($this->apprenant, 'GET', '/api/twin9/configuration'))['cle_perso_ouverte']);
+        $perso = $this->profilDirect($this->apprenant, 'Ma clé', ['cle' => 'personnelle']);
+        // Sa clé paie, sans contribution ; son crédit, nul, ne borne rien.
+        $apercu = $this->apercu($this->apprenant, $perso);
+        self::assertSame(self::estimation(1.0), $apercu['estimation']['cout_usd']);
+        self::assertNull($apercu['admission']['refus']);
 
-        // Promotion ouverte : la voie plateforme, elle, reste facturée.
-        (new CreditService(Db::get()))->topup($this->apprenant['id'], 1_000_000, 'ORDER-ADM-05-PROMO');
-        TwinSupport::queueAnthropic($this->http, 'tags', 1000, 200);
-        $plateforme = self::json($this->appel());
-        self::assertSame(7200, $plateforme['cout_microusd'], '(1000×3 + 200×15) × 1,2');
-        self::assertSame(1_000_000 - 7200, (new CreditService(Db::get()))->balance($this->apprenant['id']));
+        // Promotion ouverte : un profil à la clé de l'instance, lui, s'estime toujours avec contribution.
+        (new CreditService(Db::get()))->topup($this->apprenant['id'], 1_000_000_000, 'ORDER-ADM-05-PROMO');
+        $instance = $this->profilDirect($this->apprenant, 'Instance');
+        self::assertSame(self::estimation(1.2), $this->apercu($this->apprenant, $instance)['estimation']['cout_usd']);
 
         $this->config(['twin9_cle_perso_ouverte' => false]);
-        self::assertSame(403, $this->appel(['facturation' => 'cle_privee'])->getStatusCode());
-        self::assertCount(2, $this->http->requests);
+        $lance = $this->as_($this->apprenant, 'POST', '/api/twin9/runs', $this->lancement($perso));
+        self::assertSame(422, $lance->getStatusCode());
+        self::assertSame('Profil refusé — /cle : les clés personnelles ne sont pas ouvertes sur cette instance', self::json($lance)['error']);
+        self::assertSame([], self::json($this->as_($this->apprenant, 'GET', '/api/twin9/runs'))['runs']);
     }
 
     #[TestDox('UC-ADM-05-F11 — A2 : grille de packs remplacée → offre /meta et montant de l’ordre PayPal suivent ; limite figée : un pack est désigné par sa POSITION')]
@@ -151,38 +168,39 @@ final class UcAdm05SuperviserTwin9Test extends CartographeTestCase
         self::assertSame(10, Twin9Config::defaults()['packs'][0]['montant_usd']);
     }
 
-    #[TestDox('UC-ADM-05-F12 — A3 / A4 : offre de modèles PAR ÉTAGE (hors offre et autre étage → 422), interrupteur de service (503), rythme réglable ; pipeline remplacé en entier (fusion de premier niveau)')]
+    #[TestDox('UC-ADM-05-F12 — A3 / A4 : un modèle retiré de l’offre refuse les profils qui le nomment (422), sur tout étage ; les étages de l’offre et l’interrupteur ne commandent plus rien (T11) ; le rythme borne la cartographie ouverte (429) ; pipeline remplacé en entier (fusion de premier niveau)')]
+    #[RunInSeparateProcess]
+    #[PreserveGlobalState(false)]
     public function testF12ModelOfferSwitchAndRate(): void
     {
-        (new CreditService(Db::get()))->topup($this->apprenant['id'], 5_000_000, 'ORDER-ADM-05-B');
-        $this->config(['modeles' => ['claude-haiku-4-5-20251001' => ['prix_usd_mtok' => [1, 5], 'etages' => ['taggers']]]]);
-        // Modèle retiré de l'offre.
-        $horsOffre = $this->appel();
-        self::assertSame(422, $horsOffre->getStatusCode());
-        self::assertSame(['error' => 'Modèle non proposé pour cet étage'], self::json($horsOffre));
-        // Modèle proposé, mais pour un AUTRE étage.
-        $autreEtage = $this->appel(['modele' => 'claude-haiku-4-5-20251001', 'etage' => 'tribunal']);
-        self::assertSame(422, $autreEtage->getStatusCode());
-        self::assertSame(['error' => 'Modèle non proposé pour cet étage'], self::json($autreEtage));
-        // Sur SON étage, le même modèle passe.
-        TwinSupport::queueAnthropic($this->http, 'tags', 100, 50, 'end_turn', 'claude-haiku-4-5-20251001');
-        self::assertSame(200, $this->appel(['modele' => 'claude-haiku-4-5-20251001'])->getStatusCode());
-        self::assertSame(['claude-haiku-4-5-20251001'], array_keys(self::json($this->as_($this->apprenant, 'GET', '/api/twin9/meta'))['modeles']));
+        $this->moteurFactice();
+        (new CreditService(Db::get()))->topup($this->apprenant['id'], 1_000_000_000, 'ORDER-ADM-05-B');
+        $this->config(['modeles' => ['claude-haiku-5-5' => ['prix_usd_mtok' => [0.1, 0.5], 'etages' => ['taggers']]]]);
+        // Le profil v9.8 nomme Sonnet 5.5 à l'étage profond : plus de prix, refusé.
+        $sonnet = $this->creerProfil($this->apprenant, 'v9.8');
+        self::assertSame(422, $sonnet->getStatusCode());
+        self::assertSame('Profil refusé — claude-sonnet-5-5 : aucun prix pour ce modèle sur cette instance', self::json($sonnet)['error']);
+        // Haiku 5.5 à tous les étages, profond compris, que l'offre ne lui donne pas : admis.
+        $etages = json_decode((string) json_encode(\Humanome\Twin9\ProfilRepository::v98()->etages));
+        $etages->profond->modele = 'claude-haiku-5-5';
+        $haiku = $this->profilDirect($this->apprenant, 'Haiku', ['etages' => $etages]);
 
+        // L'interrupteur fermé, le run s'estime et part comme avant.
         $this->config(['enabled' => false]);
-        $coupe = $this->appel(['modele' => 'claude-haiku-4-5-20251001']);
-        self::assertSame(503, $coupe->getStatusCode());
-        self::assertSame(['error' => 'Twin9 non disponible'], self::json($coupe));
+        $this->apercu($this->apprenant, $haiku);
+        self::assertSame(201, $this->as_($this->apprenant, 'POST', '/api/twin9/runs', $this->lancement($haiku))->getStatusCode());
 
         $this->config(['enabled' => true, 'appels_par_minute' => 5]);
-        TwinSupport::saturateRateLimit(Db::get(), 'twin9:appel:' . $this->apprenant['id'], 5);
-        self::assertSame(429, $this->appel(['modele' => 'claude-haiku-4-5-20251001'])->getStatusCode());
-        self::assertCount(1, $this->http->requests, 'seul l’appel sur le bon étage est parti');
+        TwinSupport::saturateRateLimit(Db::get(), 'twin6:appel:' . $this->apprenant['id'], 5);
+        $twin6 = $this->as_($this->apprenant, 'POST', '/api/twin6/appel', ['model' => 'claude-haiku-5-5', 'prompt' => 'Scanne le pôle 1.']);
+        self::assertSame(429, $twin6->getStatusCode());
+        self::assertSame([], $this->http->requests, 'aucun appel n’est parti');
 
         // A4 — pipeline : un PUT partiel REMPLACE l'objet entier (clé b perdue).
         $this->config(['pipeline' => ['a' => 0, 'b' => 2]]);
         $this->config(['pipeline' => ['a' => 1]]);
-        self::assertSame(['a' => 1], self::json($this->as_($this->apprenant, 'GET', '/api/twin9/meta'))['pipeline']);
+        self::assertSame(['a' => 1], self::json($this->as_($this->admin, 'GET', '/api/twin9/admin/config'))['pipeline']);
+        self::assertArrayNotHasKey('pipeline', self::json($this->as_($this->apprenant, 'GET', '/api/twin9/meta')));
     }
 
     #[TestDox('UC-ADM-05-F13 — nominal (comptes) : soldes et cumuls des seuls comptes ayant une activité, dernière activité d’abord')]

@@ -1,5 +1,6 @@
 // Vecteurs générés par CPython 3.14.3 (repr(float), format %, str, repr) puis
-// figés ici — script : engine/test/twin9-vectors/gen_vectors.py.
+// figés ici — script : engine/test/twin9-vectors/gen_vectors.py, retiré avec le
+// moteur du navigateur (T11), dans l'historique de Twin_v9.
 import { describe, expect, it } from "vitest";
 import { PyFloat, pyFloatRepr, pyFormat, pyRepr, pyReprTuple, pyStr } from "./pyStr.js";
 

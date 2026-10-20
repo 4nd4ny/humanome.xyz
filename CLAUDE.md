@@ -49,11 +49,12 @@ Spécification complète : `docs/cahier-des-charges.md` ; plan de construction :
 - Documentation et UI en **français** ; code, commits et identifiants en **anglais**.
 - Un commit par lot cohérent ; tests verts avant commit ; `STATUS.md` mis à jour en fin de session.
 - `assets-existants/` est en **lecture seule absolue** (données réelles + prototypes de référence).
-- Le moteur Twin9 (code, vecteurs, specs, plan, moteur PHP) vit dans le dépôt **privé**
+- Le moteur Twin9 (moteur PHP, gabarits, oracle, specs, plan) vit dans le dépôt **privé**
   `4nd4ny/Twin_v9`, cloné à côté (`../Twin_v9`) : rien de ce moteur n'entre ici. La plateforme en
   charge `php/src` depuis `TWIN_V9_DIR` (par défaut `../Twin_v9`) ; sans lui, Twin9 côté serveur
-  reste désactivé et ses tests sautent (ADR-011). Restent publics `engine/src/twin9/mapper.js`,
-  `referentiel.js` et leurs utilitaires `py/` ; `check-publiable` refuse le reste.
+  reste désactivé et ses tests sautent (ADR-011). Le front garde l'adaptateur d'affichage d'une
+  carte Twin9 et le parseur des fiches de pôle (`web/src/lib/twin9/`) ; `check-publiable` refuse
+  les chemins de l'ancien moteur du navigateur, retiré par T11.
 - Les schémas JSON (`schemas/`) sont le contrat entre modules : toute friction de format
   se documente dans `docs/contrats.md`, on ne renomme pas un champ pour contourner.
 - Répertoires de build (`node_modules/`, `vendor/`, `dist/`) exclus de Dropbox, où vit le dépôt

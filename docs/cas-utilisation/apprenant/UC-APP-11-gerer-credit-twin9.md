@@ -19,8 +19,9 @@ plateforme ne voie ni ne stocke aucune donnée bancaire.
 
 ## Déclencheur
 
-L'apprenant ouvre `#/compte/credit` (lien « Recharger mon crédit » du devis
-Twin9, menu du compte) ou y revient depuis PayPal.
+L'apprenant ouvre `#/compte/credit` (lien « Recharger » de l'aperçu d'une
+analyse Twin9, « Recharger mon crédit » de la page d'un run arrêté faute de
+crédit, menu du compte) ou y revient depuis PayPal.
 
 ## Préconditions
 
@@ -195,7 +196,7 @@ Twin9, menu du compte) ou y revient depuis PayPal.
 | Front | `web/src/App.jsx` — aiguillage de la route `account` | `section === 'credit'` → `CreditView`, sinon `AccountView` (A4) — couvert fonctionnellement seulement (UC-APP-11-F29) : l'aiguillage est interne au composant `App`, non isolable |
 | Front | `web/src/views/CreditView.jsx` | Solde, packs, redirection, capture unique au retour, suivi, grand-livre, factures, remboursement |
 | Front | `web/src/views/twin9/FactureTwin9.jsx` | Facture imprimable |
-| Front | `web/src/api/twin9.js` — `fetchTwin9Meta`, `fetchCredit`, `fetchDepenses`, `fetchFacture`, `creerRecharge`, `capturerRecharge`, `rembourserSolde`, `formatUsd` | Client API du crédit (offre et packs via `fetchTwin9Meta`, unitaire en UC-APP-10-U31) |
+| Front | `web/src/api/twin9.js` — `fetchTwin9Meta`, `fetchCredit`, `fetchDepenses`, `fetchFacture`, `creerRecharge`, `capturerRecharge`, `rembourserSolde`, `formatUsd` | Client API du crédit (offre et packs via `fetchTwin9Meta`, que lit aussi la cartographie ouverte : unitaire en UC-APP-09-U18) |
 | API | `GET /api/twin9/meta`, `GET /api/twin9/credit`, `GET /api/twin9/depenses`, `GET /api/twin9/facture`, `POST /api/twin9/credit/paypal/creer`, `POST /api/twin9/credit/paypal/capturer`, `POST /api/twin9/credit/rembourser` — `api/src/routes/twin9.php` | Offre, orchestration (répartition des remboursements, bornes) |
 | API | `api/src/Middleware/CsrfMiddleware.php` | Jeton CSRF des mutations (E10) — logique unitaire couverte par UC-CPT-02-U07 |
 | Domaine | `api/src/Twin9/PayPalClient.php` — `fromEnv`, `createOrder`, `captureOrder`, `getOrder`, `refundCapture` | Dialogue serveur-à-serveur avec PayPal |
@@ -297,7 +298,8 @@ cd web && npx vitest run test/usecases/unit/uc-app-11 test/usecases/functional/u
    concurrente.** La route calcule le solde remboursable une fois, fait
    **réellement** rembourser la portion par PayPal, puis débite le solde de façon
    conditionnelle (`appliquerRemboursement`). Si une réserve concurrente
-   (`/api/twin9/appel` ou `/api/twin6/appel`, analyse dans un autre onglet) a
+   (un appel de la cartographie ouverte, `/api/twin6/appel`, ou d'un run Twin9
+   qui avance sur le serveur) a
    fait baisser le solde entre-temps, le débit lève `SoldeInsuffisantException`
    et la route répond `402 Solde insuffisant` alors que l'argent est déjà parti :
    le grand-livre n'est pas débité et la capture garde toute sa marge.

@@ -2,12 +2,25 @@
 
 > **Amendé par [ADR-011](ADR-011-moteur-twin9-php.md)** : le moteur PHP s'exécute sur le serveur et appelle Anthropic en direct ou par lots (§1) ; le coût moyen par journée remplace le devis par run simulé (§3) ; l'accord de l'apprenant garde son portfolio et l'état du run sur le serveur, à la place de la garde `--donnees-reelles` (§5).
 
-Date : 2026-07-13 · Statut : accepté, §1 révisé le 2026-10-17
+Date : 2026-07-13 · Statut : accepté, §1 révisé le 2026-10-17, §1 et §2 le 2026-10-20
 
 > **Révision du 2026-10-17 (§1).** L'algorithme ne voyage plus : le moteur
 > Twin9 devient privé (dépôt `4nd4ny/Twin_v9`) et s'exécutera sur le serveur
 > (plan du moteur PHP, lot 3). D'ici là, l'analyse approfondie est coupée.
 > Le secret des gabarits (§2), la facturation (§3) et le reste sont inchangés.
+
+> **Révision du 2026-10-20 (§1, §2).** Le moteur s'exécute sur le serveur
+> depuis T9 (ADR-011), et l'analyse approfondie a retrouvé son entrée de
+> navigation. T11 a retiré le moteur du navigateur et son proxy `POST
+> /api/twin9/appel` : le §1 ne décrit plus qu'une étape passée. Le résidu
+> assumé du §2 change de forme : `/api/twin9/meta` ne liste plus les gabarits
+> à tout utilisateur connecté ; il ne sert plus que ce que lisent la page du
+> crédit et la cartographie ouverte (offre Twin6, promotion, packs, solde,
+> structure du référentiel). Restent visibles, du propriétaire d'un run et du
+> cartographe auquel il le montre, les noms des gabarits et leurs versions
+> (attestation du run) et la forme des sorties (résultats et export, passés au
+> filtre de fuite, ADR-011) — des noms, pas un contenu ; les variables
+> attendues sont publiques (`schemas/twin9-protocole-contrat.json`).
 
 ## Contexte
 

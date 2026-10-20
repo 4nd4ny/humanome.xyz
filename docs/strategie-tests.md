@@ -54,8 +54,10 @@ non-régression ne repose pas sur un seul outil e2e mais sur la **combinaison** 
   (ex. le diff promptologue partage une **fixture** entre le PHP qui la produit
   et le front qui la consomme : renommer une clé casse les deux côtés — voir
   `schemas/fixtures/diff/`).
-- La **parité octet** du moteur Twin9 est verrouillée par 6 oracles CPython
-  (`engine/src/twin9/parite.test.js`) : toute dérive du portage JS est rouge.
+- La **parité octet** du moteur Twin9 est verrouillée dans le dépôt privé
+  `Twin_v9` : son moteur PHP rejoue les dix-sept scénarios de l'oracle tiré de
+  la v9.8 (`OracleTest`), et ses vecteurs CPython (`php/tests/vectors`) ; ici,
+  le moteur factice public fait traverser à un run la plateforme entière.
 - Les **invariants de sécurité** (garde de rôle 401/403, CSRF, IDOR, purge
   RGPD, isolation sandbox réseau) ont chacun leur test.
 - Les **parcours critiques** (inscription → run → partage → export → suppression)

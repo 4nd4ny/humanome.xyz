@@ -6,7 +6,7 @@
 // l'adaptateur du moteur, comme dans la visionneuse « Voir ». Rien ne quitte
 // le navigateur : les fichiers sont remis à l'interface, qui les importe dans
 // un nouveau jeu.
-import { twin9ToMergeDocument } from '@engine/twin9/mapper.js'
+import { twin9ToMergeDocument } from './twin9/mapper.js'
 import { loadPublishedReferentiel } from '../data/referentiel.js'
 
 /**

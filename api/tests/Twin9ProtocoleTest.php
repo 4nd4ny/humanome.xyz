@@ -152,8 +152,8 @@ final class Twin9ProtocoleTest extends CartographeTestCase
     public function testImportStoresReferentielStructureServedByMeta(): void
     {
         // The import carries the non-secret referentiel structure (accented
-        // pole names + codes/names) the client engine needs; only the clean
-        // structure is kept and it surfaces through /api/twin9/meta.
+        // pole names + codes/names) the open cartography (Twin6) reads; only
+        // the clean structure is kept and it surfaces through /api/twin9/meta.
         $response = $this->request('POST', '/api/admin/twin9/import', [
             'files' => ['fictif/01-essai' => self::FAKE_GABARIT],
             'referentiel' => [
@@ -170,7 +170,7 @@ final class Twin9ProtocoleTest extends CartographeTestCase
         self::assertSame('1.01', $stored[0]['competences'][0]['code']);
         self::assertArrayNotHasKey('fiche', $stored[0]['competences'][0], 'only code/nom kept, never fiche text');
 
-        // Served to the client engine via meta.
+        // Served through meta.
         $admin = $this->registerAs('admin@example.org', 'Root Admin', ['admin']);
         $meta = self::json($this->as_($admin, 'GET', '/api/twin9/meta'));
         self::assertSame('CŒUR — Relier & Naviguer', $meta['referentiel'][1]['nom']);
@@ -631,15 +631,18 @@ final class Twin9ProtocoleTest extends CartographeTestCase
     public function testPublicViewAppliesMarginAndPaypalFlag(): void
     {
         $config = new Twin9Config(new SettingsRepository(Db::get()));
-        $config->update(['marge' => 2.0]);
+        $config->update(['marge' => 2.0, 'marge_twin6' => 2.0]);
 
         TestDb::setEnv('PAYPAL_CLIENT_ID', '');
         $view = $config->publicView();
-        self::assertFalse($view['enabled']);
+        // The Twin9 offer, the enabled flag and the pipeline's settings left it
+        // with the browser's engine (T11).
+        self::assertSame(['paypalConfigured', 'packs', 'modeles_twin6', 'twin9_cle_perso_ouverte'], array_keys($view));
         self::assertFalse($view['paypalConfigured']);
-        // List price [3, 15] × margin 2 — the raw price and the margin are absent.
-        self::assertSame([6.0, 30.0], $view['modeles']['claude-sonnet-5']['prix_usd_mtok']);
+        // List price [3, 15] × the Twin6 margin 2 — the raw price and the margins are absent.
+        self::assertSame([6.0, 30.0], $view['modeles_twin6']['claude-sonnet-5']);
         self::assertArrayNotHasKey('marge', $view);
+        self::assertArrayNotHasKey('marge_twin6', $view);
 
         TestDb::setEnv('PAYPAL_CLIENT_ID', 'sandbox-client-id');
         self::assertTrue($config->publicView()['paypalConfigured']);

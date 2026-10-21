@@ -18,8 +18,9 @@ L'administration se présente sous deux formes complémentaires :
 > `routes/packages.php`, `routes/worker.php`) protégé par le jeton
 > `X-Migrate-Token` (ADR-008, script de déploiement uniquement) :
 > `POST /api/admin/migrate`, `/api/admin/grant-role`, `/api/admin/default-package`,
-> `/api/admin/import-*`, `/api/admin/worker-tick` (qui accepte aussi son propre
-> jeton, `WORKER_TICK_TOKEN`, celui du déclencheur externe). Ces routes existent pour le
+> `/api/admin/import-*`, `/api/admin/worker-tick` et `/api/admin/maintenance` (qui
+> acceptent aussi le jeton du déclencheur externe, `WORKER_TICK_TOKEN` ; la
+> maintenance depuis le 2026-10-22). Ces routes existent pour le
 > pilotage hors-navigateur d'un hébergement sans SSH ; l'UI d'administration,
 > elle, s'appuie sur une **vraie session** avec le rôle `admin` et le CSRF.
 

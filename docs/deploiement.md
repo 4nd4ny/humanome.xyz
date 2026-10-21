@@ -117,16 +117,18 @@ Aucun cron n'est requis pour la **correction** : les compteurs de démo sont
 indexés par jour UTC (rollover automatique) et l'expiration des liens est
 appliquée à la lecture. Pour les runs Twin9 et la cartographie de masse,
 déclencher le tick depuis un planificateur externe (« Le déclencheur des runs »,
-ci-dessous) ; la maintenance se lance à la main, avec le jeton des migrations :
+ci-dessous) ; la maintenance, une fois par jour, avec le même jeton depuis le
+2026-10-22 (ou à la main, avec celui des migrations) :
 
 ```bash
 curl -X POST https://humanome.xyz/api/admin/worker-tick  -H "X-Worker-Tick-Token: $WORKER_TICK_TOKEN"
-curl -X POST https://humanome.xyz/api/admin/maintenance   -H "X-Migrate-Token: $TOKEN"
+curl -X POST https://humanome.xyz/api/admin/maintenance   -H "X-Worker-Tick-Token: $WORKER_TICK_TOKEN"
 ```
 
-Le jeton du tick (`WORKER_TICK_TOKEN`, ADR-011) n'ouvre que cette route : le
-planificateur ne tient pas celui des migrations, qui donne aussi les rôles et
-l'import des gabarits. Un tick avance d'abord au plus N runs Twin9, puis la
+Le jeton du tick (`WORKER_TICK_TOKEN`, ADR-011) n'ouvre que cette route et,
+depuis le 2026-10-22, la maintenance (UC-SYS-03 A4), qui ne fait que purger ce
+qui a expiré : le planificateur ne tient pas celui des migrations, qui donne
+aussi les rôles et l'import des gabarits. Un tick avance d'abord au plus N runs Twin9, puis la
 masse, dans une tranche de 45 s au plus ; N et la durée de la tranche se
 règlent dans la configuration Twin9 (`runs_par_tick`, `secondes_par_tranche`).
 Un déclencheur qui raccroche n'interrompt pas la tranche.
@@ -193,8 +195,8 @@ résidu noté (STATUS, dettes techniques).
 
 1. **Le jeton.** Sur son poste : `openssl rand -hex 32`. Ajouter la ligne
    `WORKER_TICK_TOKEN=<valeur>` à `~/app/shared/.env`, par le client FTP. Ce
-   jeton n'ouvre que le tick : ne jamais confier au service celui des
-   migrations, qui ouvre aussi les rôles et les imports.
+   jeton n'ouvre que le tick et la maintenance : ne jamais confier au service
+   celui des migrations, qui ouvre aussi les rôles et les imports.
 2. **La tâche**, sur cron-job.org (compte gratuit), « Create cronjob » :
    - URL : `https://humanome.xyz/api/admin/worker-tick` ;
    - planification : toutes les minutes ;
@@ -214,8 +216,42 @@ résidu noté (STATUS, dettes techniques).
 
 Toutes les minutes : un tick sans travail ne coûte que quelques millisecondes,
 et un run par lots avance d'autant plus vite. La réponse ne porte que des
-compteurs, jamais de contenu. La maintenance n'y passe pas : sa route demande
-le jeton des migrations, qu'aucun service tiers ne doit tenir.
+compteurs, jamais de contenu. La maintenance n'y passe pas : une tâche à part
+l'appelle une fois par jour, avec le même jeton (`POST /api/admin/maintenance`,
+en-tête `X-Worker-Tick-Token`).
+
+### Depuis un autre hébergement OVH (deux tâches planifiées, 2026-10-22)
+
+Un hébergement OVH payant (Perso, Pro) a des tâches planifiées, que l'offre
+gratuite d'humanome.xyz n'a pas. Elles ne lancent qu'un fichier de **leur**
+hébergement — `scripts/worker.php` ne peut pas y tourner, il lui faut le code,
+le `.env`, la base et le moteur d'humanome.xyz — et ont trois règles
+([documentation d'OVH](https://docs.ovhcloud.com/fr/guides/web-cloud/web-hosting/cron-tasks),
+relevée le 2026-10-22) : une tâche part **au plus une fois par heure** ; elle
+s'arrête au bout de **60 minutes** ; elle est désactivée après **10 échecs**.
+Deux relais, dans `scripts/deploy/cron-ovh/`, appellent donc les routes
+d'humanome.xyz, comme cron-job.org le ferait :
+
+- `humanome-tick.php`, **chaque heure** : appelle le tick chaque minute pendant
+  55 minutes, puis s'arrête avant la limite d'OVH ; la tâche suivante prend le
+  relais (une pause de 5 minutes par heure). Il n'envoie pas de
+  `budgetSeconds` : sans service qui raccroche à 30 s, la tranche garde sa
+  durée réglée (40 s par défaut), qui tient mieux les runs en appels directs.
+  Il sort en 1 si le jeton manque ou est refusé (une tâche à désactiver), en 0
+  sur une panne passagère (un serveur lent, une coupure). Deux relais qui se
+  chevauchent ne se gênent pas : le serveur tient un verrou.
+- `humanome-maintenance.php`, **une fois par jour** : appelle la maintenance une
+  fois, et sort en 0 sur sa réponse `200`, en 1 sinon.
+
+Installation, sur l'autre hébergement : un dossier `cron/` hors de `www/`, avec
+les deux relais et `humanome-tick.jeton`, qui contient la valeur de
+`WORKER_TICK_TOKEN` seule sur sa ligne (droits `600`) ; si le panel exige un
+chemin sous `www/`, un `.htaccess` `Require all denied` dans le dossier. Dans le
+panel, « Tâches planifiées – Cron » : `cron/humanome-tick.php`, PHP 8, chaque
+heure ; `cron/humanome-maintenance.php`, PHP 8, chaque jour. Vérification dans
+les journaux « CRON » : une ligne `bilan : … ticks` par heure, une ligne
+`maintenance : {…}` par jour. Ces tâches remplacent cron-job.org ; garder les
+deux ne gêne pas.
 
 ## Santé
 

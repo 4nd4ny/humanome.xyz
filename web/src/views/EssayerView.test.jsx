@@ -88,8 +88,10 @@ describe('EssayerView — saisie', () => {
   it('affiche le plafond, le compteur, et bloque un texte trop court', async () => {
     render(<EssayerView lib={fakeLib} fetchFn={makeFetch().fetchFn} />)
 
-    expect(screen.getByTestId('char-counter').textContent).toBe('0 / 12 000 caractères')
+    expect(screen.getByTestId('char-counter').textContent).toBe('0 / 5 000 caractères')
     expect(screen.getByText(/il faudra recoller le texte/)).toBeDefined()
+    // L'essai gratuit de la cartographie ouverte, que les visiteurs ne trouvent pas dans leur menu.
+    expect(screen.getByRole('link', { name: 'cartographie ouverte' }).getAttribute('href')).toBe('#/twin6-ouverte')
 
     fireEvent.change(screen.getByLabelText('Texte à cartographier'), {
       target: { value: 'Trop court.' },

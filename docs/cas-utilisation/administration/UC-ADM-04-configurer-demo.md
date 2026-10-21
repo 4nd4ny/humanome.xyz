@@ -3,7 +3,7 @@
 | Champ | Valeur |
 |---|---|
 | **Acteur principal** | Administrateur (rôle `admin`, session ouverte — typiquement depuis un smartphone) |
-| **Acteurs secondaires** | Visiteur de la démo (subit l'effet : UC-VIS-03, UC-VIS-05) ; exploitant qui règle l'environnement serveur (`~/app/shared/.env`) |
+| **Acteurs secondaires** | Visiteur de la démo et compte qui fait l'essai gratuit de la cartographie ouverte (subissent l'effet : UC-VIS-03, UC-VIS-05, UC-APP-09 A6) ; exploitant qui règle l'environnement serveur (`~/app/shared/.env`) |
 | **Portée** | humanome.xyz — `#/admin/reglages` (bloc « Démo publique »), `#/admin/config` ; API de session `/api/admin/demo-config` |
 | **Niveau** | Objectif utilisateur |
 | **Cahier des charges** | §3.1 (démo sans compte, garde-fous anti-abus), §3.8 et §4.10 (configuration simple) ; principe RGPD n°5 — journalisation minimale (`CLAUDE.md`, `docs/rgpd-registre.md`) ; `docs/administration.md` §3-4, `api/config/demo.php` |
@@ -38,8 +38,12 @@ par exemple juste avant ou juste après une présentation.
   champ sa valeur **effective** et son **origine** (`base`, `env`, `fichier`,
   `defaut`).
 - La requête suivante d'un visiteur applique les nouvelles valeurs :
-  `POST /api/llm`, `GET /api/llm/challenge` et `GET /api/llm/status` (tous les
-  champs) ; `GET /api/gdoc-text` (quota `perIpPerHour` partagé) ;
+  `POST /api/llm` — l'Essayer, l'essai gratuit de la cartographie ouverte
+  (UC-APP-09 A6), le Service humanome (UC-APP-02), le banc et la
+  rétro-ingénierie du promptologue, qui partagent le budget du jour —,
+  `GET /api/llm/challenge`
+  et `GET /api/llm/status` (tous les champs) ; `GET /api/gdoc-text` (quota
+  `perIpPerHour` partagé) ;
   `POST /api/tuteur`, qui n'applique que `enabled`, `powDifficultyBits` et
   `perIpPerHour` (dans son propre seau `tuteur:`), ses modèle, `maxTokens`,
   taille de question et budget venant de ses constantes `TUTEUR_*` ;
@@ -167,7 +171,7 @@ par exemple juste avant ou juste après une présentation.
   ignorée **champ par champ** ; un entier est accepté pour le budget (réel).
 - **RG2** — Bornes, contrôlées par `DemoConfigService::update` (couche
   « base ») **uniquement** : `maxTokensPerRequest` 256–16000 ; `maxInputChars`
-  1000–200000 ; `perIpPerHour` 1–1000 ; `dailyGlobalTokens` 10000–50000000 ;
+  1000–500000 ; `perIpPerHour` 1–1000 ; `dailyGlobalTokens` 10000–50000000 ;
   `powDifficultyBits` 8–24 ; `upstreamTimeoutSeconds` 10–300 (entiers stricts) ;
   `dailyBudgetUsd` 0–1000 (réel) ; `model` rogné, motif
   `[A-Za-z0-9][A-Za-z0-9._-]{0,99}`. Les valeurs env/fichier ne sont pas
@@ -189,6 +193,22 @@ par exemple juste avant ou juste après une présentation.
   champs envoyés dans le patch (même inchangés) ; un champ renvoyé à
   l'identique devient pourtant une surcharge « base » (qui masquera une
   future variable `DEMO_*`).
+- **RG8** — Valeurs du fichier (2026-10-21, à la demande de Christian : « 1 USD
+  par jour pour tous les utilisateurs anonymes ou connectés, mais pas plus de
+  dépense journalière ») : `dailyBudgetUsd` 1, que partage tout ce qui passe
+  par `POST /api/llm`, et que le pire cas de chaque appel, réservé avant qu'il
+  parte, ne laisse jamais dépasser (UC-VIS-03 RG4) ; `model` `claude-haiku-5-5`
+  (Pricing : 0,10 $ / 0,50 $ le million de jetons, 0,50 $ / 2,50 $ au-delà de
+  100 000 jetons d'entrée) ; `maxTokensPerRequest` 16 000, car un scan de Twin6
+  rend couramment plus de 8 192 jetons ; `maxInputChars` 420 000 — l'appel
+  entier, gabarit compris : la synthèse de Twin6 porte les sorties des sept
+  scans, jusqu'à 415 000 caractères quand chacun rend ses 16 000 jetons
+  (UC-APP-09-U35) —, le texte du visiteur étant borné à 5 000 caractères par les
+  deux pages ; `perIpPerHour` 20 ; `dailyGlobalTokens` 6 000 000, un garde-fou
+  qui ne dépend pas des tarifs ; `powDifficultyBits` 20 ;
+  `upstreamTimeoutSeconds` 150. Une variable `DEMO_*` ou une surcharge « base »
+  les remplace (RG1) : en juillet, la production réglait la démo par son
+  environnement (Sonnet 5, 8 $ par jour).
 
 ## Données et RGPD
 

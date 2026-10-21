@@ -188,9 +188,25 @@ return function (App $app): void {
                 ->withHeader('Retry-After', (string) $limiter->retryAfter($attempts));
         }
 
-        // 6. Global daily circuit breaker (tokens AND estimated budget).
+        $apiKey = Env::get('ANTHROPIC_API_KEY');
+        if ($config->provider !== 'mock' && $apiKey === '') {
+            return $json($response, ['error' => 'Service indisponible'], 503);
+        }
+
+        // 6. Global daily circuit breaker (tokens AND estimated budget). The
+        // call's WORST CASE is reserved against both caps, atomically, before
+        // it leaves, then settled to its real usage: concurrent calls never
+        // spend more than the day's budget together (2026-10-21, « pas plus de
+        // dépense journalière »). Worst case: one token per byte of the prompt
+        // — a BPE tokenizer never emits more (Twin9Config::reserveMicrousd) —
+        // plus the request's own overhead, and the whole output ceiling.
         $counters = new UsageCounters($pdo);
-        if ($counters->isExhausted($config->dailyGlobalTokens, $config->dailyBudgetUsd)) {
+        $now = time();
+        $reservedInput = \strlen(($system ?? '') . $prompt) + AnthropicProvider::REQUEST_OVERHEAD_TOKENS;
+        $reservedOutput = $config->maxTokensPerRequest;
+        $reservedUsd = Pricing::estimateUsd($config->model, $reservedInput, $reservedOutput);
+        if (!$counters->reserve($reservedInput, $reservedOutput, $reservedUsd,
+            $config->dailyGlobalTokens, $config->dailyBudgetUsd, $now)) {
             return $json($response, ['error' => 'Démo épuisée pour aujourd’hui, revenez demain.'], 503);
         }
 
@@ -201,14 +217,16 @@ return function (App $app): void {
                 $result = (new MockProvider())
                     ->complete($config->model, $system, $prompt, $config->maxTokensPerRequest);
             } else {
-                $apiKey = Env::get('ANTHROPIC_API_KEY');
-                if ($apiKey === '') {
-                    return $json($response, ['error' => 'Service indisponible'], 503);
-                }
                 $result = (new AnthropicProvider(LlmRuntime::httpClient(), $apiKey, $config->upstreamTimeoutSeconds))
                     ->complete($config->model, $system, $prompt, $config->maxTokensPerRequest);
             }
         } catch (UpstreamException $e) {
+            // An error status is a call the provider refused, and does not
+            // bill: the reservation goes back. A 2xx answer it could not read
+            // was billed: the reservation stays.
+            if ($e->status >= 400) {
+                $counters->release($reservedInput, $reservedOutput, $reservedUsd, $now);
+            }
             if ($e->status === 429) {
                 return $json($response, ['error' => 'Le fournisseur LLM est saturé, réessayez plus tard.'], 429)
                     ->withHeader('Retry-After', $e->retryAfter ?? '30');
@@ -216,14 +234,20 @@ return function (App $app): void {
 
             return $json($response, ['error' => 'Erreur du fournisseur LLM : ' . $e->getMessage()], 502);
         } catch (HttpClientException $e) {
+            // The reservation stays: the provider may have billed a call whose
+            // answer was lost, a timed-out one above all.
             return $json($response, ['error' => 'Le fournisseur LLM est injoignable, réessayez plus tard.'], $e->timedOut ? 504 : 502);
         }
 
         // 8. Counters only (§6): tokens in/out + estimated cost, never content.
-        $counters->record(
+        $counters->settle(
+            $reservedInput,
+            $reservedOutput,
+            $reservedUsd,
             $result['usage']['inputTokens'],
             $result['usage']['outputTokens'],
             Pricing::estimateUsd($result['model'], $result['usage']['inputTokens'], $result['usage']['outputTokens']),
+            $now,
         );
 
         return $json($response, [

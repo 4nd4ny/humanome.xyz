@@ -39,7 +39,7 @@ Le mode d'emploi est simple :
 2. **Respectez les bornes de longueur.** Un texte trop court ne donne pas assez
    de matière : en dessous d'un certain seuil (de l'ordre de quelques dizaines de
    caractères), la page vous invite à ajouter quelques phrases. Un texte trop long
-   est refusé pour la démo : au-delà de **12 000 caractères**, la page vous
+   est refusé pour la démo : au-delà de **5 000 caractères**, la page vous
    indique combien de caractères retirer.
 3. **Cliquez sur « Cartographier ce texte »** (le bouton bleu). Il ne s'active que
    lorsque le texte est de longueur valable.
@@ -93,7 +93,7 @@ s'appuie sur deux garde-fous, visibles pendant l'analyse :
   résout avant le premier appel au modèle), pour éviter l'usage automatisé en
   masse ;
 - les **bornes de longueur** évoquées plus haut (texte ni trop court, ni au-delà
-  de 12 000 caractères), qui bornent le coût de chaque analyse.
+  de 5 000 caractères), qui bornent le coût de chaque analyse.
 
 Ces limites existent pour que la démo reste ouverte à tous, gratuitement, sans
 être détournée.
@@ -108,6 +108,16 @@ vous propose deux actions :
   trace** de ce résultat, puisque rien n'est stocké côté plateforme ;
 - **« Cartographier un autre texte »** vous ramène à la zone de saisie pour
   recommencer avec un nouveau texte.
+
+## Plusieurs journées : l'essai de la cartographie ouverte
+
+Sous le bouton « Cartographier ce texte », un lien mène à la **cartographie ouverte** (Twin6, `#/twin6-ouverte`),
+gratuite elle aussi sans compte : un scan par pôle puis une synthèse, sur un
+portfolio de plusieurs journées, et le résultat dans le diagramme évolutif. Deux
+conditions : **5 000 caractères** au plus, et des journées **datées** — chacune
+ouverte par une ligne `### AAAA-MM-JJ` (par exemple `### 2026-01-05`) ; sans date,
+le bouton reste inactif. L'Essayer et cet essai puisent dans le même budget
+quotidien de la démonstration : quand il est épuisé, revenez le lendemain.
 
 ## Aller plus loin : pourquoi créer un compte
 

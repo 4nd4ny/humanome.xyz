@@ -59,13 +59,13 @@ final class AdminDemoConfigTest extends AdminTestCase
         // Effective values come from config/demo.php (env cleared in setUp).
         self::assertTrue($data['effective']['enabled']);
         self::assertSame('anthropic', $data['effective']['provider']);
-        self::assertSame('claude-haiku-4-5-20251001', $data['effective']['model']);
-        self::assertSame(2048, $data['effective']['maxTokensPerRequest']);
+        self::assertSame('claude-haiku-5-5', $data['effective']['model']);
+        self::assertSame(16000, $data['effective']['maxTokensPerRequest']);
         self::assertSame('fichier', $data['sources']['model']);
         self::assertSame('fichier', $data['sources']['enabled']);
 
         // Model whitelist for the UI dropdown + free-text option.
-        self::assertContains('claude-haiku-4-5-20251001', $data['allowedModels']);
+        self::assertContains('claude-haiku-5-5', $data['allowedModels']);
 
         // The API key is a boolean, never a value.
         self::assertTrue($data['apiKeyConfigured']);
@@ -167,8 +167,8 @@ final class AdminDemoConfigTest extends AdminTestCase
         }
 
         // Nothing was stored: the demo still runs on the file values.
-        self::assertSame('claude-haiku-4-5-20251001', DemoConfig::load()->model);
-        self::assertSame(2048, DemoConfig::load()->maxTokensPerRequest);
+        self::assertSame('claude-haiku-5-5', DemoConfig::load()->model);
+        self::assertSame(16000, DemoConfig::load()->maxTokensPerRequest);
     }
 
     public function testFreeTextModelIsAcceptedBeyondTheWhitelist(): void
@@ -235,7 +235,7 @@ final class AdminDemoConfigTest extends AdminTestCase
         //    retour aux valeurs fichier (env DEMO_* vidé dans setUp).
         TestDb::setEnv('DB_HOST', '');
         $config = DemoConfig::load(); // ne doit lever aucune exception
-        self::assertSame('claude-haiku-4-5-20251001', $config->model);
+        self::assertSame('claude-haiku-5-5', $config->model);
         self::assertSame('fichier', $config->sources['model']);
         self::assertNotContains('base', $config->sources);
 
@@ -244,7 +244,7 @@ final class AdminDemoConfigTest extends AdminTestCase
         TestDb::setEnv('DB_HOST', 'mysql-injoignable.invalid');
         Db::reset(); // force une vraie tentative de connexion au prochain get()
         $config = DemoConfig::load(); // ne doit lever aucune exception
-        self::assertSame('claude-haiku-4-5-20251001', $config->model);
+        self::assertSame('claude-haiku-5-5', $config->model);
         self::assertSame('fichier', $config->sources['model']);
         self::assertNotContains('base', $config->sources);
 

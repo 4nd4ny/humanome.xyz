@@ -32,7 +32,11 @@ de l'accueil.
 - Un secret de preuve de travail existe (`POW_SECRET`, sinon dérivé de
   `MIGRATE_TOKEN`) et, en fournisseur `anthropic`, la clé plateforme est en
   environnement.
-- Le budget journalier (tokens et dollars, jour UTC) n'est pas épuisé.
+- Le budget journalier (tokens et dollars, jour UTC) n'est pas épuisé : 1 $ par
+  défaut depuis le 2026-10-21, partagé par tout ce qui passe par `POST /api/llm`
+  — l'essai gratuit de la cartographie ouverte (UC-APP-09 A6), le Service
+  humanome (UC-APP-02), le banc et la rétro-ingénierie du promptologue
+  (UC-ADM-04 RG8).
 
 ## Garanties en cas de succès
 
@@ -57,13 +61,14 @@ de l'accueil.
 
 1. Le visiteur ouvre `#/essayer` : page « Essayer avec votre propre texte »,
    mention « Démonstration sans compte et sans aucune conservation », zone
-   « Texte à cartographier » avec compteur « n / 12 000 caractères ». Le
+   « Texte à cartographier » avec compteur « n / 5 000 caractères ». Le
    référentiel publié est chargé (repli embarqué, UC-VIS-02) ; le texte
    d'introduction en donne le nom et le nombre de pôles (« sur le référentiel
-   RESPIRE (7 pôles instruits un par un, … ) »).
-2. Il colle un texte de 80 à 12 000 caractères (voir AN3 : au-delà d'environ
-   11 400 caractères, le serveur refuse) et clique « Cartographier ce texte » ;
-   la journée est datée du jour **local** du navigateur.
+   RESPIRE (7 pôles instruits un par un, … ) »). Sous le bouton, un lien mène à
+   l'essai gratuit de la cartographie ouverte, pour plusieurs journées datées
+   (UC-APP-09 A6), que le menu d'un visiteur ne propose pas.
+2. Il colle un texte de 80 à 5 000 caractères et clique « Cartographier ce
+   texte » ; la journée est datée du jour **local** du navigateur.
 3. Le navigateur obtient un défi `GET /api/llm/challenge` →
    `{challenge: "v1.<expiration>.<aléa>.<hmac>", difficultyBits, expiresAt}`
    (signé HMAC-SHA256, valable 5 minutes, rien n'est stocké à l'émission), puis
@@ -80,8 +85,9 @@ de l'accueil.
    coûteux : interrupteur, champ piège vide, texte présent et ≤
    `maxInputChars`, preuve de travail valide, non expirée, suffisante et **jamais
    utilisée** (empreinte insérée, clé primaire), quota par IP et par heure,
-   coupe-circuit journalier ; puis appelle le fournisseur avec **son** modèle et
-   **son** plafond de tokens, compte tokens et coût estimé, et renvoie
+   coupe-circuit journalier — le **pire cas** de l'appel y est réservé (RG4) ;
+   puis appelle le fournisseur avec **son** modèle et **son** plafond de tokens,
+   remplace la réservation par les tokens et le coût estimé réels, et renvoie
    `{text, usage, model, stopReason}`.
 6. Le moteur valide chaque pôle et le document complet, au schéma puis à la
    conformité au référentiel (ses pôles, chacun une fois ; ses codes) ; la page affiche le
@@ -130,20 +136,22 @@ de l'accueil.
   falsifiée ou insuffisante → `400` `pow_invalid` ; expirée → `400`
   `pow_expired` ; rejouée → `429` `pow_reused` avec `Retry-After: 1`.
 - **E3 — Texte invalide** : côté page, moins de 80 caractères **utiles**
-  (espaces de bord exclus) ou plus de 12 000 caractères **bruts** → bouton
+  (espaces de bord exclus) ou plus de 5 000 caractères **bruts** → bouton
   inactif, avec une indication sauf si la zone est vide ; côté API, prompt
   vide → `422`, `system` non textuel → `422`, entrée (`system` + `prompt`) >
-  `maxInputChars` (20 000) → `413`, avant toute preuve. Le gabarit du prompt
-  d'extraction ajoutant ≈ 8 600 caractères, un texte accepté par la page
-  au-delà d'environ 11 428 caractères reçoit ce `413` (anomalie AN3).
+  `maxInputChars` (200 000 par défaut) → `413`, avant toute preuve. Le gabarit
+  du prompt d'extraction ajoute ≈ 8 600 caractères : au maximum de la page, un
+  appel en compte environ 13 600, sous l'ancien plafond de 20 000 lui-même
+  (AN3, corrigée).
 - **E4 — Quota horaire par IP** (étape 5) : au-delà de `perIpPerHour` (20 par
   défaut, IPv6 regroupées par /64, quota partagé avec `GET /api/gdoc-text`) →
   `429` « Quota horaire atteint… » avec `Retry-After` progressif ; la page
   affiche « La démo est très demandée en ce moment : réessayez dans N minutes. »
   et « Réessayer ». `extractDay` a déjà refait l'appel une fois, aussitôt,
   sans attendre le `Retry-After` : 2 POST (anomalie AN2).
-- **E5 — Budget du jour épuisé** (étape 5) : tokens ou dollars du jour UTC
-  atteints → `503` « Démo épuisée pour aujourd'hui, revenez demain. » au
+- **E5 — Budget du jour épuisé** (étape 5) : le pire cas de l'appel ne tient plus
+  dans les tokens ou les dollars qui restent au jour UTC (RG4) → `503` « Démo
+  épuisée pour aujourd'hui, revenez demain. » au
   **POST** (le défi, lui, ne consulte jamais le budget : il est émis, puis
   résolu) ; la page affiche « La démo est épuisée pour aujourd'hui ou
   momentanément désactivée… », sans bouton « Réessayer » — après 2 POST
@@ -155,10 +163,12 @@ de l'accueil.
   avant la preuve ; sans clé : après la preuve et le quota).
 - **E7 — Fournisseur en échec** (étape 5) : `429` amont relayé avec son
   `Retry-After` ; autre erreur → `502` « Erreur du fournisseur LLM : … » ;
-  injoignable → `504` (délai) ou `502`. Aucun de ces échecs n'est compté comme
-  un usage. Réponse inexploitable d'un pôle après le nouvel essai du moteur →
-  « L'analyse a échoué en cours de route (détail technique : extractDay :
-  pôle n …) », « Réessayer », texte conservé.
+  injoignable → `504` (délai) ou `502`. Un refus du fournisseur (statut d'erreur)
+  rend la réservation : rien n'est compté. Un délai dépassé, une erreur réseau ou
+  une réponse 2xx illisible la gardent entière, sans compter de requête : le
+  fournisseur a pu facturer l'appel (RG4). Réponse inexploitable d'un pôle après
+  le nouvel essai du moteur → « L'analyse a échoué en cours de route (détail
+  technique : extractDay : pôle n …) », « Réessayer », texte conservé.
 
 ## Règles de gestion
 
@@ -171,7 +181,17 @@ de l'accueil.
   `DEMO_*` > `api/config/demo.php` > défauts ; le fournisseur ne vient jamais de
   la base ; base indisponible → couche ignorée en silence.
 - **RG4** — Coupe-circuit journalier global sur les tokens **ou** le coût
-  estimé ; budgets de la démo et du tuteur séparés.
+  estimé ; budgets de la démo et du tuteur séparés. Celui de la démo est
+  commun à tout ce qui passe par `POST /api/llm` (l'Essayer, l'essai gratuit de
+  la cartographie ouverte, UC-APP-09 A6, le Service humanome, UC-APP-02, le banc
+  et la rétro-ingénierie du promptologue), visiteurs et comptes confondus.
+  Depuis le 2026-10-21, le **pire cas** de chaque appel est réservé avant qu'il
+  parte, par un seul `UPDATE` conditionnel sur la ligne du jour : un token par
+  octet de `system` + `prompt`, plus le surcoût de la requête (1 024), plus tout
+  le plafond de sortie, au tarif du modèle (palier long de Haiku 5.5 compris,
+  au-delà de 100 000 tokens d'entrée). Sans la place, `503` ; avec, la
+  réservation devient l'usage réel. Ensemble, des appels concurrents ne passent
+  jamais le budget.
 - **RG5** — Intention : pas de réessai automatique contre un quota (429) ni un
   budget (503), un seul pour un incident transitoire. Réalité : le
   fournisseur de la démo respecte cette intention (sauf `429` `pow_reused`),
@@ -198,8 +218,8 @@ de l'accueil.
 | Moteur | `engine/src/pipeline/extract.js` — `extractDay`, `buildExtractionPrompt` | Un appel par pôle du référentiel + kairos facultatif, un nouvel essai immédiat de tout appel en échec (AN2), validation au schéma puis à la conformité au référentiel (voir aussi UC-APP-02) ; gabarit du prompt (AN3) |
 | API | `GET /api/llm/status`, `GET /api/llm/challenge`, `POST /api/llm` — `api/src/routes/llm.php` | Orchestration des gardes |
 | Domaine | `api/src/Llm/PowChallenge.php` — `issue`, `verify`, `secretFromEnv`, `leadingZeroBits` | Preuve de travail sans état |
-| Domaine | `api/src/Llm/UsageCounters.php` — `record`, `today`, `isExhausted` | Coupe-circuit journalier |
-| Domaine | `api/src/Llm/Pricing.php` — `estimateUsd` | Coût estimé |
+| Domaine | `api/src/Llm/UsageCounters.php` — `reserve`, `settle`, `release`, `today`, `isExhausted` | Coupe-circuit journalier : réservation du pire cas, règlement au réel |
+| Domaine | `api/src/Llm/Pricing.php` — `estimateUsd` | Coût estimé, palier long de Haiku 5.5 compris |
 | Domaine | `api/src/Llm/DemoConfig.php` — `load` | Précédence de configuration |
 | Domaine | `api/src/Llm/MockProvider.php`, `api/src/Llm/AnthropicProvider.php`, `api/src/Llm/LlmRuntime.php` | Fournisseurs, client HTTP injectable |
 | Domaine | `api/src/Auth/RateLimiter.php`, `api/src/ClientIp.php` | Quota par IP (voir UC-EMP-01) |
@@ -214,7 +234,7 @@ de l'accueil.
 | UC-VIS-03-U02 | `PowChallenge::verify` | OK, falsifié, autre secret, expiré, trop faible (E2) | idem |
 | UC-VIS-03-U03 | `PowChallenge::secretFromEnv`, `leadingZeroBits` | Précédence du secret, bits à zéro | idem |
 | UC-VIS-03-U04 | `UsageCounters` | Jour UTC même sous un fuseau serveur à UTC+14, tokens OU budget, budgets séparés, table sur liste blanche (RG4) | idem |
-| UC-VIS-03-U05 | `Pricing::estimateUsd` | Préfixe le plus long, mock gratuit, défaut prudent | idem |
+| UC-VIS-03-U05 | `Pricing::estimateUsd` | Préfixe le plus long, Haiku 5.5 et son palier long (au-delà de 100 000 tokens d'entrée), mock gratuit, défaut prudent | idem |
 | UC-VIS-03-U06 | `DemoConfig::load` | Base > env > fichier ; fournisseur hors base ; fail-safe base injoignable (branche `catch`) et base non configurée (RG3) | idem |
 | UC-VIS-03-U07 | `MockProvider::complete` | Pôle et kairos des fixtures, texte générique, tokens estimés | idem |
 | UC-VIS-03-U08 | `AnthropicProvider::complete` | Modèle, `thinking` désactivé, plafond, clé en en-tête, 429 typé, délai | idem |
@@ -223,7 +243,7 @@ de l'accueil.
 | UC-VIS-03-U11 | `fetchChallenge` | URL relative, `ProviderError` typée, réponse invalide | idem |
 | UC-VIS-03-U12 | `createDemoProvider` | Un défi neuf par appel, preuve valide, champ piège vide, phases | idem |
 | UC-VIS-03-U13 | `describeDemoError` | 429 → minutes + réessai ; 503 → sans réessai ; autre → détail technique repris | idem |
-| UC-VIS-03-U14 | `DEMO_TEXT_MIN_CHARS`, `DEMO_TEXT_MAX_CHARS` | Bornes de la page (80 / 12 000) — le plafond serveur est traité par U23 | idem |
+| UC-VIS-03-U14 | `DEMO_TEXT_MIN_CHARS`, `DEMO_TEXT_MAX_CHARS` | Bornes de la page (80 / 5 000) — le plafond serveur est traité par U23 | idem |
 | UC-VIS-03-U15 | `solvePow`, `MAX_DIFFICULTY_BITS` | **Comportement actuel figé** — anomalie AN1 | idem |
 | UC-VIS-03-U16 | `createProvider` (transport `proxy`) | Corps exact vers `api/llm`, aucune clé, réponse relue | `engine/test/usecases/unit/uc-vis-03-essayer-cartographie-en-direct.test.js` |
 | UC-VIS-03-U17 | `createProvider` (`maxAttempts: 1`) | Couche fournisseur seule : 429 sans nouvel essai, `Retry-After` porté (ne couvre pas RG5 de bout en bout, voir U22) | idem |
@@ -232,8 +252,9 @@ de l'accueil.
 | UC-VIS-03-U20 | `extractDay` | `stopReason: max_tokens` → échec explicite après un nouvel essai | idem |
 | UC-VIS-03-U21 | `createDemoProvider` | Nouvel essai unique après 2,5 s (phase `retry`, défi neuf) sur 504, erreur réseau, défi expiré ; aucun sur 429, 503, preuve invalide, annulation (A4) | `web/test/usecases/unit/uc-vis-03-essayer-cartographie-en-direct.test.js` |
 | UC-VIS-03-U22 | `createDemoProvider` + `extractDay` | **Comportement actuel figé** — anomalie AN2 : 429 ou 503 au POST → 2 POST, 504 persistant → 4 POST | idem |
-| UC-VIS-03-U23 | `buildExtractionPrompt`, `DEMO_TEXT_MAX_CHARS` | **Comportement actuel figé** — anomalie AN3 : prompt > 20 000 à 12 000 caractères de texte | idem |
+| UC-VIS-03-U23 | `buildExtractionPrompt`, `buildKairosExtractionPrompt`, `DEMO_TEXT_MAX_CHARS` | Anomalie AN3 **corrigée** : au maximum de la page, chaque appel — les 7 pôles et le kairos — tient sous l'ancien plafond serveur de 20 000 | idem |
 | UC-VIS-03-U24 | `localIsoToday` | Jour LOCAL (fuseau UTC+14) et non UTC (étape 2) | idem |
+| UC-VIS-03-U25 | `UsageCounters::reserve`, `settle`, `release` | Deux appels en vol réservent sous un budget qu'un troisième dépasserait : refusé, rien de réservé ; plafond de tokens de même ; pile aux deux plafonds : accepté ; réglée, une réservation fait place à l'usage réel et compte la requête ; rendue, elle ne laisse rien (RG4) | `api/tests/UseCases/Unit/UcVis03EssayerCartographieTest.php` |
 
 ### Tests fonctionnels
 
@@ -248,7 +269,7 @@ de l'accueil.
 | UC-VIS-03-F07 | E4 | API | Quota par IP → 429 + `Retry-After`, autre IP épargnée | idem |
 | UC-VIS-03-F08 | E5, A6 | API | Budget épuisé → 503, `remainingToday` faux | idem |
 | UC-VIS-03-F09 | E6 | API | Démo désactivée ou sans secret → 503 | idem |
-| UC-VIS-03-F10 | E7 | API | 429 relayé, 502, 504, clé absente → 503 ; rien compté | idem |
+| UC-VIS-03-F10 | E7 | API | 429 relayé, 502, 504, clé absente → 503 ; les refus du fournisseur ne comptent rien, le délai dépassé garde son pire cas, la clé absente refuse avant toute réservation | idem |
 | UC-VIS-03-F11 | Nominal | IHM | Menu → run complet accepté par un faux serveur aux règles PHP ; journée datée du jour local ; rien conservé ; verdict lisible | `web/test/usecases/functional/uc-vis-03-essayer-cartographie-en-direct.test.jsx` |
 | UC-VIS-03-F12 | A2 | IHM | Export JSON local (nom daté du jour local) ; retour au formulaire | idem |
 | UC-VIS-03-F13 | A3 | IHM | Kairos inexploitable → 7 pôles + note | idem |
@@ -261,8 +282,9 @@ de l'accueil.
 | UC-VIS-03-F20 | E5, anomalie AN2 | IHM | Défi émis, POST en 503 « Démo épuisée… » → message « épuisée », sans Réessayer, texte conservé ; 2 défis, 2 POST (**comportement actuel figé**) | idem |
 | UC-VIS-03-F21 | A3 | IHM | 503 sur l'appel kairos seul → résultat à 7 pôles + note kairos, aucun message de quota ; 9 POST | idem |
 | UC-VIS-03-F22 | E7 | IHM | Pôle 2 inexploitable deux fois → « L'analyse a échoué… (détail technique : extractDay : pôle 2 … » , Réessayer, texte conservé, 3 POST | idem |
-| UC-VIS-03-F23 | Anomalie AN3 | IHM | **Comportement actuel figé** — texte de 12 000 caractères accepté par la page → 413 (règle serveur) deux fois, échec générique | idem |
+| UC-VIS-03-F23 | Anomalie AN3 (corrigée) | IHM | Texte de 5 000 caractères, le maximum de la page → 8 appels acceptés par un faux serveur au plafond de 20 000, cartographie produite | idem |
 | UC-VIS-03-F24 | Nominal (référentiel publié) | IHM | La dernière version publiée de RESPIRE compte six pôles (index statique) : texte d'introduction « 6 pôles instruits un par un », progression « appel k sur 7 », 7 POST acceptés, synthèse « Les 6 pôles de la feuille du jour » | idem |
+| UC-VIS-03-F25 | E5, E7, RG4 | API | Un appel en vol tient 0,007 $ d'un budget de 0,01 $ : le pire cas d'un nouvel appel (≈ 0,0037 $) n'a pas la place → 503, rien n'est envoyé ; la place rendue, l'appel passe et son usage réel remplace sa réservation ; réponse 2xx illisible et délai dépassé gardent leur pire cas ; l'appel suivant n'a plus la place, la dépense reste sous 0,01 $ | `api/tests/UseCases/Functional/UcVis03EssayerCartographieTest.php` |
 
 ### Tests existants liés (non-régression)
 
@@ -300,15 +322,17 @@ cd engine && npx vitest run test/usecases/unit/uc-vis-03
   persistant, 4 POST par pôle (≈ 5 s de pauses). Le `429` `pow_reused` est,
   lui, réessayé par la démo (message « Défi déjà utilisé »). Comportement
   actuel figé par UC-VIS-03-U22, F17 et F20.
-- **AN3 — Borne de saisie incompatible avec le plafond serveur.** La page
-  accepte 12 000 caractères (`DEMO_TEXT_MAX_CHARS`), mais
-  `buildExtractionPrompt` ajoute ≈ 8 300 à 8 600 caractères de gabarit et le
-  serveur plafonne `system` + `prompt` à `maxInputChars` = 20 000 : au-delà
-  d'environ 11 428 caractères de texte, les appels pôle reçoivent un `413`
-  « Texte trop long : 20000 caractères maximum… » et le visiteur voit
-  « L'analyse a échoué en cours de route (… HTTP 413 …) » alors que le
-  compteur affiche par exemple « 11 800 / 12 000 ». Comportement actuel figé
-  par UC-VIS-03-U23 et F23.
+- ~~**AN3 — Borne de saisie incompatible avec le plafond serveur.**~~
+  Corrigée le 2026-10-21. La page acceptait 12 000 caractères
+  (`DEMO_TEXT_MAX_CHARS`), mais `buildExtractionPrompt` ajoute ≈ 8 300 à
+  8 600 caractères de gabarit et le serveur plafonnait `system` + `prompt` à
+  `maxInputChars` = 20 000 : au-delà d'environ 11 428 caractères de texte, les
+  appels pôle recevaient un `413`. La page borne désormais le texte à 5 000
+  caractères (Christian : « 5000 caractères pour les démo "Essayer" sans
+  compte, c'est suffisant ») : un appel en compte au plus environ 13 600, sous
+  ces 20 000 — que garde une production qui les règle dans son environnement —
+  et sous le plafond par défaut, 420 000 (UC-ADM-04 RG8). Vérifié par
+  UC-VIS-03-U23 et F23.
 - **AN4 — Phase « retry » sans libellé** (cosmétique). Pendant la pause de
   2,5 s du nouvel essai (A4), `onPhase('retry')` positionne la phase courante,
   mais `PHASE_LABELS` (`web/src/views/EssayerView.jsx`) n'a pas d'entrée
@@ -324,3 +348,8 @@ cd engine && npx vitest run test/usecases/unit/uc-vis-03
   secret sont refusées dès le défi (E6).
 - Le quota par IP est consommé après la preuve de travail, y compris pour une
   requête refusée ensuite par le coupe-circuit journalier.
+- `GET /api/llm/status` dit qu'il reste du budget tant que les compteurs du jour
+  sont sous les plafonds ; un appel dont le pire cas ne tient plus dans ce reste
+  est pourtant refusé (RG4). La réservation compte un token par octet, trois à
+  quatre fois l'usage réel d'un texte français : en fin de journée, un appel peut
+  être refusé alors que son coût réel tiendrait.

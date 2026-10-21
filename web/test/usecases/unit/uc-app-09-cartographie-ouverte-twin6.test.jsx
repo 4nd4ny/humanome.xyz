@@ -265,5 +265,54 @@ describe('UC-APP-09 — clé enregistrée et garde-fou de solde', () => {
     expect(runEngine).toHaveBeenCalledTimes(1)
     expect(screen.getByRole('alert').textContent).toBe('moteur non exercé dans ce test unitaire')
   })
+
+  it('UC-APP-09-U34 — Twin6OuverteView isolée, essai gratuit (A6) : un visiteur n’a que cette voie, ni offre ni clés lues ; 5 000 caractères au plus, une feuille datée au moins ; la première preuve résolue avant le moteur, qui reçoit le fournisseur de la démo et le modèle indicatif « demo »', async () => {
+    const ordre = []
+    const demo = { provider: { name: 'anthropic', transport: 'proxy' }, prime: vi.fn(async () => ordre.push('preuve')) }
+    const makeDemoProvider = vi.fn(() => demo)
+    const fetchOffer = vi.fn()
+    const listKeys = vi.fn()
+    const runEngine = vi.fn(async () => {
+      ordre.push('moteur')
+      throw new Error('moteur non exercé dans ce test unitaire')
+    })
+    render(
+      <Twin6OuverteView
+        deps={{
+          fetchMeFn: async () => ({ user: null }),
+          loadPackage: async () => ({ ...TWIN6_PACKAGE, templates: {} }),
+          fetchOffer,
+          listKeys,
+          makeDemoProvider,
+          runEngine,
+          lib: fakeLib,
+        }}
+      />,
+    )
+    const zone = await screen.findByLabelText(/Votre portfolio/)
+    await screen.findByText(/appels au modèle/)
+    expect(screen.getAllByRole('radio').map((r) => [r.value, r.checked])).toEqual([['demo', true]])
+    expect(fetchOffer).not.toHaveBeenCalled()
+    expect(listKeys).not.toHaveBeenCalled()
+    const bouton = screen.getByRole('button', { name: 'Lancer la cartographie ouverte' })
+
+    // 5 001 caractères : bloqué, aucun fournisseur construit.
+    const feuille = '### 2026-01-05\n'
+    fireEvent.change(zone, { target: { value: feuille + 'x'.repeat(5001 - feuille.length) } })
+    expect(bouton.disabled).toBe(true)
+    // 5 000 sans feuille datée : bloqué, et la page dit pourquoi.
+    fireEvent.change(zone, { target: { value: 'x'.repeat(5000) } })
+    expect(bouton.disabled).toBe(true)
+    expect(screen.getByText(/demande au moins une feuille datée/).textContent).toContain('### AAAA-MM-JJ')
+    // 5 000 avec une feuille datée : lancé.
+    fireEvent.change(zone, { target: { value: feuille + 'x'.repeat(5000 - feuille.length) } })
+    expect(screen.queryByText(/demande au moins une feuille datée/)).toBeNull()
+    await act(async () => {
+      fireEvent.click(bouton)
+    })
+    expect(makeDemoProvider).toHaveBeenCalledTimes(1)
+    expect(ordre).toEqual(['preuve', 'moteur'])
+    expect(runEngine.mock.calls[0][0]).toMatchObject({ provider: demo.provider, model: 'demo' })
+  })
 })
 

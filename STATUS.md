@@ -18,17 +18,77 @@ passe l'oracle complet dans `Twin_v9`, le profil est ici, les runs tournent sur 
 tranches, par appels directs ou par lots, se lancent, se suivent, se lisent et se paient — la base
 commune et la stratégie A de T8 comprises —, sur des jeux de gabarits et des référentiels de toute
 structure, que le moteur lit (T16) et que la cartographie affiche (T17) ; le moteur du navigateur
-est retiré (T11, fusionné le 2026-10-20). T18, la démonstration sur l'OVH, est préparé
-(2026-10-21) : restent les gestes de Christian, son feu vert au déploiement et la recette
-(`docs/recette-twin9.md`).
+est retiré (T11, fusionné le 2026-10-20). T18, la démonstration sur l'OVH, est préparé et
+fusionné (#19, le 2026-10-21, après l'import des gabarits sans Python, #18) : restent les gestes de
+Christian, son feu vert au déploiement et la recette (`docs/recette-twin9.md`).
 
 Hors planning, à la demande de Christian (2026-10-20) : le référentiel dynamique — RESPIRE n'a
 plus de structure imposée, et tous les parcours lisent la structure du référentiel qu'ils emploient
 (#15, fusionnée le 2026-10-20) ; puis les gabarits Twin6 versionnés et les vestiges de T11 retirés
 (#16, arrivée dans `main` le 2026-10-21 avec la documentation des fiches des référentiels
-importés). Entrées du 2026-10-20.
+importés). Entrées du 2026-10-20. Puis, le 2026-10-21 : la démo à 1 $ par jour, qui tient, et
+l'essai gratuit de la cartographie ouverte (#20).
 
 ## Fait
+
+- 2026-10-21 — **Démo à 1 $ par jour, essai gratuit de la cartographie ouverte (branche
+  `feat/demo-un-dollar`).** Christian : « Twin6 : en version gratuite, mettre une limite de 1 USD de
+  démo par jour pour des tests anonymes. », puis « 1 USD par jour pour tous les utilisateurs anonymes
+  ou connectés, mais pas plus de dépense journalière car je ne peux pas me le permettre. 5000
+  caractères pour les démo "Essayer" sans compte, c'est suffisant. Ajuste toi-même les settings par
+  défaut. »
+  - **Un plafond qui tient.** Le pire cas de chaque appel à `POST /api/llm` est réservé avant qu'il
+    parte, par un seul `UPDATE` conditionnel sur la ligne du jour (`UsageCounters::reserve`) — un
+    token par octet du prompt, plus le surcoût de la requête (1 024), plus tout le plafond de
+    sortie —, puis réglé au réel (`settle`) ou rendu sur un refus du fournisseur (`release`) ; un
+    délai dépassé le garde, le fournisseur ayant pu facturer. Avant, le plafond était lu avant
+    l'appel et écrit après : des appels concurrents le passaient tous. Et `Pricing` compte le palier
+    long de Haiku 5.5 (0,50 $ / 2,50 $ au-delà de 100 000 tokens d'entrée, tout l'appel), sans quoi
+    une entrée dense (CJK, emoji) ne comptait qu'un cinquième de son coût et laissait dépenser trois
+    fois le dollar (revue du 2026-10-21). UC-VIS-03 RG4, U25, F25, F10 ; `docs/securite-demo.md`.
+  - **Réglages du fichier** (`api/config/demo.php`, défauts codés de `DemoConfig`) : 1 $ par jour,
+    que partage tout ce qui passe par la démo — l'Essayer, l'essai gratuit de Twin6, le Service
+    humanome de l'assistant (UC-APP-02), le banc et la rétro-ingénierie du promptologue, qui le
+    choisissent par défaut —, visiteurs et comptes confondus ; Haiku 5.5, avec lequel ce dollar paie
+    de quarante à soixante Essayer ou de huit à vingt essais de Twin6 (0,05 à 0,13 $ chacun) ; 16 000
+    jetons de sortie (les sorties du même schéma, dans le prototype de fusion, font 30 500 caractères
+    compacts par pôle en médiane, plus de 8 192 jetons) ; 420 000 caractères par appel, pour la
+    synthèse de Twin6, qui porte les sorties des sept scans (415 000 caractères quand chacun rend ses
+    16 000 jetons, UC-APP-09-U35 ; à 200 000, elle recevait un `413`) ; borne de l'administration
+    portée à 500 000 ; 6 millions de jetons par jour ; 150 s par appel. La liste de l'administration
+    propose Haiku 5.5 ; `api/.env.example` ne surcharge plus la démo (UC-ADM-04 RG8). L'estimation
+    du Service humanome et du banc garde Sonnet 5 pour tarif de référence
+    (`SERVICE_ESTIMATION_MODEL`), trente fois plus cher : à aligner quand l'essai réel aura arrêté le
+    modèle de la démo.
+  - Essayer : 5 000 caractères au plus (AN3 de UC-VIS-03 corrigée) ; un lien sous le bouton mène à
+    l'essai de la cartographie ouverte, que le menu d'un visiteur ne propose pas.
+  - Twin6 : troisième voie, « Essai gratuit », par le proxy de la démo (`createDemoProvider`),
+    seule voie d'un visiteur, au choix d'un compte ; 5 000 caractères au plus et une feuille datée
+    au moins, sans quoi les huit appels finiraient sur « aucune feuille datée » ; modèle imposé ;
+    pour un compte, un budget épuisé renvoie à ses deux autres voies (UC-APP-09 A6, E14, RG11, U34,
+    F23 à F27). `extractJson` lit tel quel un document JSON pur : un bloc ``` cité dans une chaîne
+    (portfolio d'informatique) le faisait échouer, sur toutes les voies (U36).
+  - **En production, ces valeurs n'arrivent pas seules** : une variable `DEMO_*` de
+    `~/app/shared/.env` (en juillet : Sonnet 5, 8 192 jetons, 40 requêtes par heure et par IP, preuve
+    à 16 bits, 8 $ par jour) et une surcharge de `#/admin/reglages` passent avant le fichier.
+    Christian règle dans cette page, champ par champ : budget 1 $ (dès maintenant, avant même le
+    déploiement), puis, après lui, modèle `claude-haiku-5-5`, sortie 16 000, entrée 420 000 (la
+    borne de 200 000 n'est levée qu'avec ce code), 6 000 000 de jetons. Mieux que de retirer les
+    lignes `DEMO_*` : on perdrait aussi le quota de 40 et la preuve à 16 bits de juillet, au profit
+    des 20 requêtes et 20 bits du fichier — la moitié du débit du Service humanome, une preuve seize
+    fois plus longue.
+  - **À vérifier au premier essai réel (recette de T18, 5.3)** : Haiku 5.5 n'a jamais tourné sur ces
+    prompts (en juillet, Haiku 4.5 ne tenait pas la structure de l'Essayer), ni Twin6 sur un vrai
+    modèle à 16 000 jetons. À défaut, Sonnet 5 dans la même page. Sonnet 5.5 ne convient pas : il
+    refuse la réflexion désactivée qu'envoie la démo. Les voies payantes de Twin6 gardent les 8 192
+    jetons d'`executerTwin6` : si l'essai montre des scans plus longs, elles en tronqueront la moitié
+    (UC-APP-09, Limites).
+  - **Décisions pour Christian** : le tuteur garde son propre budget de 1 $ par jour
+    (`TUTEUR_BUDGET`, question 3), la dépense gratuite du site peut donc atteindre 2 $ ; et
+    `TUTEUR_BUDGET=0` retombe sur 1 $ (`?: '1'`). La page des prix (2026-10-21) donne Sonnet 5 et
+    5.5 à 2 $ / 10 $ : la grille des crédits (`Twin9Config`, réglable dans `#/admin/twin9`) compte
+    Sonnet 5 à 3 $ / 15 $, la moitié de trop pour un apprenant qui paie ; `Pricing` aussi, mais il ne
+    fait que borner la démo et la masse, prudemment.
 
 - 2026-10-21 — **T18 préparé : Twin9 sur l'OVH (branche `feat/twin9-t18-demonstration`, empilée
   sur `feat/import-sans-python`).** Christian : « Feu vert pour la T18. » Le prompt prépare ;

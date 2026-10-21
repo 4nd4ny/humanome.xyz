@@ -30,12 +30,15 @@ Cartographier mes écrits », ou le bouton du tableau de bord `#/espace`).
 
 - Un portfolio local comportant au moins une journée **datée** (UC-APP-01).
 - Mode « Service humanome » : API joignable, démonstration activée et budget
-  du jour non épuisé. Avec la configuration par défaut, au plus
+  du jour non épuisé — 1 $ par défaut depuis le 2026-10-21, que le Service
+  partage avec l'Essayer, l'essai gratuit de la cartographie ouverte et le banc
+  du promptologue (UC-ADM-04 RG8) : un run de plusieurs dizaines de journées
+  peut l'épuiser seul. Avec la configuration par défaut, au plus
   ⌊`perIpPerHour` / 8⌋ journées par heure et par IP (20/h dans
-  `api/config/demo.php` ⇒ 2 journées ; 40/h dans `api/.env.example` ⇒ 5) et
+  `api/config/demo.php` ⇒ 2 journées ; 40/h, la production de juillet, ⇒ 5) et
   des journées d'au plus `maxInputChars` − ~8,5 k caractères de gabarit
-  (≈ 11,5 k caractères avec 20 000) ; au-delà, voir E5 et les anomalies A-02
-  et A-05.
+  (≈ 411 k caractères avec les 420 000 par défaut, ≈ 11,5 k avec les 20 000
+  d'avant le 2026-10-21) ; au-delà, voir E5 et les anomalies A-02 et A-05.
 - Mode « Clé personnelle » : une clé du fournisseur choisi (sauf Ollama,
   local et sans clé, attendu sur `http://localhost:11434` : l'assistant ne
   permet pas de changer cette adresse).
@@ -462,9 +465,9 @@ cd engine && npx vitest run test/usecases --testNamePattern UC-APP-02
   Figé par F11.
 - **A-05 — Quota par défaut incompatible avec un run standard, sans
   avertissement.** Avec la configuration livrée (`perIpPerHour` = 20 dans
-  `api/config/demo.php`, 40 dans `api/.env.example`) et 8 `POST /api/llm` par
-  journée, le Service humanome ne peut pas mener au bout un run de plus de 2
-  journées (5 avec 40/h) dans l'heure : le 21e appel reçoit un `429`, la
+  `api/config/demo.php` ; 40 dans l'environnement de la production en juillet)
+  et 8 `POST /api/llm` par journée, le Service humanome ne peut pas mener au
+  bout un run de plus de 2 journées (5 avec 40/h) dans l'heure : le 21e appel reçoit un `429`, la
   journée échoue et le run continue d'appeler le proxy (A-02), chaque refus
   allongeant le délai. L'assistant n'en tient pas compte (l'estimation
   annonce 93 appels pour 3 journées sans avertissement) ; seul
@@ -523,6 +526,7 @@ cd engine && npx vitest run test/usecases --testNamePattern UC-APP-02
   livrée, non testé.
 - Service humanome : une journée dont le texte dépasse `maxInputChars` moins
   le gabarit du prompt d'extraction (8 300 à 8 600 caractères selon le pôle,
-  soit ≈ 11,5 k caractères de texte avec 20 000) échoue en `413` à chaque
+  soit ≈ 411 k caractères de texte avec les 420 000 par défaut, ≈ 11,5 k avec
+  20 000) échoue en `413` à chaque
   pôle ; l'assistant ne le vérifie pas avant le lancement (le `413` lui-même
   est testé par F18).

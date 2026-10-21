@@ -98,14 +98,14 @@ final class UcAdm04ConfigurerDemoTest extends TestCase
         self::assertSame([
             'enabled' => true,
             'provider' => 'anthropic',
-            'model' => 'claude-haiku-4-5-20251001',
-            'maxTokensPerRequest' => 2048,
-            'maxInputChars' => 20000,
+            'model' => 'claude-haiku-5-5',
+            'maxTokensPerRequest' => 16000,
+            'maxInputChars' => 420000,
             'perIpPerHour' => 20,
-            'dailyGlobalTokens' => 2000000,
-            'dailyBudgetUsd' => 5.0,
+            'dailyGlobalTokens' => 6000000,
+            'dailyBudgetUsd' => 1.0,
             'powDifficultyBits' => 20,
-            'upstreamTimeoutSeconds' => 60,
+            'upstreamTimeoutSeconds' => 150,
         ], $data['effective']);
         self::assertSame(array_fill_keys(array_keys($data['effective']), 'fichier'), $data['sources']);
         self::assertSame(DemoConfigService::ALLOWED_MODELS, $data['allowedModels']);
@@ -146,7 +146,7 @@ final class UcAdm04ConfigurerDemoTest extends TestCase
     {
         $bounds = [
             'maxTokensPerRequest' => [256, 16000],
-            'maxInputChars' => [1000, 200000],
+            'maxInputChars' => [1000, 500000],
             'perIpPerHour' => [1, 1000],
             'dailyGlobalTokens' => [10000, 50000000],
             'powDifficultyBits' => [8, 24],
@@ -247,7 +247,7 @@ final class UcAdm04ConfigurerDemoTest extends TestCase
         self::assertSame(7, $config->perIpPerHour);
         self::assertSame('env', $config->sources['perIpPerHour'], 'l’env gagne sur le fichier');
         self::assertSame(1.25, $config->dailyBudgetUsd);
-        self::assertSame(2048, $config->maxTokensPerRequest);
+        self::assertSame(16000, $config->maxTokensPerRequest);
         self::assertSame('fichier', $config->sources['maxTokensPerRequest']);
     }
 
@@ -266,7 +266,7 @@ final class UcAdm04ConfigurerDemoTest extends TestCase
 
         TestDb::setEnv('DEMO_MAX_TOKENS_PER_REQUEST', 'beaucoup');
         $config = DemoConfig::load();
-        self::assertSame(2048, $config->maxTokensPerRequest);
+        self::assertSame(16000, $config->maxTokensPerRequest);
         self::assertSame('fichier', $config->sources['maxTokensPerRequest']);
 
         TestDb::setEnv('DEMO_PROVIDER', 'mock');
@@ -292,8 +292,8 @@ final class UcAdm04ConfigurerDemoTest extends TestCase
         self::assertSame('fichier', $config->sources['provider']);
         self::assertTrue($config->enabled, 'chaîne "false" ≠ booléen');
         self::assertSame('fichier', $config->sources['enabled']);
-        self::assertSame('claude-haiku-4-5-20251001', $config->model, 'modèle vide ignoré');
-        self::assertSame(2048, $config->maxTokensPerRequest, 'chaîne ≠ entier');
+        self::assertSame('claude-haiku-5-5', $config->model, 'modèle vide ignoré');
+        self::assertSame(16000, $config->maxTokensPerRequest, 'chaîne ≠ entier');
         self::assertSame(3.0, $config->dailyBudgetUsd, 'entier accepté pour un réel');
         self::assertSame('base', $config->sources['dailyBudgetUsd']);
         self::assertSame(9, $config->perIpPerHour);

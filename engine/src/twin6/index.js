@@ -68,6 +68,15 @@ export function buildKairosPrompt(kairosTemplate, cartoPoles, portfolio) {
  */
 export function extractJson(text) {
   if (typeof text !== 'string') throw new Error('extractJson: réponse non textuelle')
+  // Un document JSON pur — la sortie à outil forcé de la démo et des crédits —
+  // se lit tel quel : un bloc ``` qu'une de ses chaînes cite (un portfolio
+  // d'informatique) n'est pas une clôture (revue du 2026-10-21).
+  try {
+    const direct = JSON.parse(text)
+    if (direct !== null && typeof direct === 'object' && !Array.isArray(direct)) return direct
+  } catch {
+    // De la prose autour, ou un bloc ```json : l'extraction tolérante ci-dessous.
+  }
   const fence = text.match(/```(?:json)?\s*([\s\S]*?)```/i)
   const candidate = fence ? fence[1] : text
   const start = candidate.indexOf('{')

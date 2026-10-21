@@ -6,9 +6,10 @@
 // (défi à usage unique, champ piège, une preuve par appel, nouvel essai unique
 // sur incident transitoire), traduction des refus serveur en messages, bornes
 // de saisie, date locale. Les anomalies AN1 (difficulté admissible côté admin
-// > difficulté soluble côté client), AN2 (le moteur réessaie contre le quota et
-// le budget) et AN3 (borne de 12 000 caractères + gabarit > plafond serveur)
-// sont figées ici.
+// > difficulté soluble côté client) et AN2 (le moteur réessaie contre le quota
+// et le budget) sont figées ici ; AN3 (borne de 12 000 caractères + gabarit >
+// plafond serveur), corrigée le 2026-10-21 par la borne de 5 000 caractères,
+// y est vérifiée.
 import { createHash } from 'node:crypto'
 import { afterEach, describe, expect, it, vi } from 'vitest'
 import { leadingZeroBits, MAX_DIFFICULTY_BITS, solvePow } from '../../../src/lib/pow.js'
@@ -24,7 +25,7 @@ import {
   UPSTREAM_RETRY_DELAY_MS,
 } from '../../../src/lib/demo-llm.js'
 import { ProviderError } from '../../../../engine/src/providers/errors.js'
-import { buildExtractionPrompt, extractDay } from '../../../../engine/src/pipeline/extract.js'
+import { buildExtractionPrompt, buildKairosExtractionPrompt, extractDay } from '../../../../engine/src/pipeline/extract.js'
 import referentiel from '../../../../schemas/fixtures/referentiel-respire-v7.json'
 import { fakeDemoServer, jsonResponse } from '../support/vis.js'
 
@@ -113,9 +114,9 @@ describe('UC-VIS-03 — client de la démo', () => {
     expect(describeDemoError(new Error('JSON illisible')).message).toContain('(détail technique : JSON illisible)')
   })
 
-  it('UC-VIS-03-U14 — bornes de saisie de la page : 80 caractères utiles au moins, 12 000 caractères bruts au plus (voir AN3 pour le plafond serveur)', () => {
+  it('UC-VIS-03-U14 — bornes de saisie de la page : 80 caractères utiles au moins, 5 000 caractères bruts au plus (le plafond serveur est traité par U23)', () => {
     expect(DEMO_TEXT_MIN_CHARS).toBe(80)
-    expect(DEMO_TEXT_MAX_CHARS).toBe(12000)
+    expect(DEMO_TEXT_MAX_CHARS).toBe(5000)
   })
 
   // ANOMALIE AN1 de la fiche — test qui FIGE le comportement ACTUEL : l'admin
@@ -218,17 +219,21 @@ describe('UC-VIS-03 — client de la démo', () => {
     expect(gateway.failure.message).toContain('extractDay : pôle 1')
   })
 
-  // ANOMALIE AN3 de la fiche — comportement ACTUEL figé : la page accepte
-  // 12 000 caractères, mais le gabarit du prompt d'extraction ajoute ≈ 8 600
-  // caractères au texte ; le serveur plafonne system + prompt à 20 000
-  // (maxInputChars) et répond 413 au-delà d'environ 11 428 caractères de texte.
-  it('UC-VIS-03-U23 — [comportement actuel, anomalie AN3] au maximum de la page (12 000 caractères), le prompt d’un pôle dépasse le plafond serveur de 20 000', () => {
-    const lengths = [1, 2, 3, 4, 5, 6, 7].map(
-      (poleNum) => buildExtractionPrompt({ referentiel, poleNum, dayText: 'x'.repeat(DEMO_TEXT_MAX_CHARS), date: '2026-01-01' }).length,
-    )
-    expect(Math.max(...lengths)).toBeGreaterThan(20000) // attendu : ≤ 20 000
-    const template = Math.max(...lengths) - DEMO_TEXT_MAX_CHARS
-    expect(20000 - template).toBeLessThan(DEMO_TEXT_MAX_CHARS) // texte réellement admissible < borne affichée
+  // ANOMALIE AN3 de la fiche, CORRIGÉE le 2026-10-21 : la page acceptait
+  // 12 000 caractères quand le gabarit du prompt d'extraction en ajoute ≈ 8 600
+  // et que le serveur plafonnait system + prompt à 20 000 (maxInputChars). À
+  // 5 000 caractères, chaque appel de la journée tient sous ces 20 000 — que
+  // garde encore une production qui les règle dans son environnement —, et
+  // a fortiori sous le plafond par défaut, 200 000.
+  it('UC-VIS-03-U23 — [anomalie AN3 corrigée] au maximum de la page (5 000 caractères), chaque appel — les 7 pôles et le kairos — tient sous l’ancien plafond serveur de 20 000', () => {
+    const dayText = 'x'.repeat(DEMO_TEXT_MAX_CHARS)
+    const lengths = [
+      ...[1, 2, 3, 4, 5, 6, 7].map((poleNum) => buildExtractionPrompt({ referentiel, poleNum, dayText, date: '2026-01-01' }).length),
+      buildKairosExtractionPrompt({ referentiel, dayText, date: '2026-01-01' }).length,
+    ]
+    expect(Math.max(...lengths)).toBeLessThanOrEqual(20000)
+    // la marge : ce que le gabarit le plus long laisse au texte, au-delà de la borne affichée
+    expect(20000 - (Math.max(...lengths) - DEMO_TEXT_MAX_CHARS)).toBeGreaterThan(DEMO_TEXT_MAX_CHARS)
   })
 
   it('UC-VIS-03-U24 — localIsoToday : la journée est datée du jour LOCAL du navigateur (pas du jour UTC)', () => {

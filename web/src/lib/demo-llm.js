@@ -33,9 +33,14 @@ export const DEMO_MODEL = 'demo'
 /** Output budget per call; the server caps with its own ceiling anyway. */
 export const DEMO_MAX_TOKENS = 8192
 
-/** Displayed input bounds (the server enforces its own maximum too). */
+/**
+ * Bounds of the visitor's text (the server bounds the whole call, template
+ * included: maxInputChars). 5 000 characters at most since 2026-10-21, for the
+ * « Essayer » page and the open cartography's free trial alike (Christian:
+ * « 5000 caractères pour les démo "Essayer" sans compte, c'est suffisant »).
+ */
 export const DEMO_TEXT_MIN_CHARS = 80
-export const DEMO_TEXT_MAX_CHARS = 12000
+export const DEMO_TEXT_MAX_CHARS = 5000
 
 /** Safety margin before a challenge's expiresAt to avoid racing the server. */
 const EXPIRY_MARGIN_MS = 2000

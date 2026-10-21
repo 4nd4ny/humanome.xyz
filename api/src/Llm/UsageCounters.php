@@ -60,6 +60,68 @@ final class UsageCounters
         )->execute([self::day($now), $inputTokens, $outputTokens, $estimatedCostUsd]);
     }
 
+    /**
+     * Reserves a call's WORST-CASE usage against both daily caps, atomically,
+     * BEFORE the call leaves (2026-10-21, Christian : « pas plus de dépense
+     * journalière ») : false, and nothing reserved, when it would cross either.
+     * One conditional UPDATE on the day's row, which InnoDB locks: concurrent
+     * calls reserve one after the other, so together they never pass the caps
+     * — where checking the spent amount first let every call in flight through.
+     * The reservation then becomes the real usage (settle) or is given back
+     * (release), on the same day ($now).
+     */
+    public function reserve(int $inputTokens, int $outputTokens, float $costUsd, int $dailyGlobalTokens,
+                            float $dailyBudgetUsd, ?int $now = null): bool
+    {
+        $day = self::day($now);
+        $this->pdo->prepare(
+            "INSERT INTO {$this->table} (usage_date, requests, input_tokens, output_tokens, estimated_cost_usd)
+             VALUES (?, 0, 0, 0, 0)
+             ON DUPLICATE KEY UPDATE requests = requests"
+        )->execute([$day]);
+        // The reservation always adds tokens (a prompt is never empty), so a
+        // matched row is a changed row: rowCount() tells whether it fit.
+        $stmt = $this->pdo->prepare(
+            "UPDATE {$this->table}
+             SET input_tokens = input_tokens + ?, output_tokens = output_tokens + ?,
+                 estimated_cost_usd = estimated_cost_usd + ?
+             WHERE usage_date = ? AND input_tokens + output_tokens + ? <= ? AND estimated_cost_usd + ? <= ?"
+        );
+        $stmt->execute([$inputTokens, $outputTokens, $costUsd, $day,
+            $inputTokens + $outputTokens, $dailyGlobalTokens, $costUsd, $dailyBudgetUsd]);
+
+        return $stmt->rowCount() === 1;
+    }
+
+    /** Replaces a reservation with the call's real usage, and counts the request. */
+    public function settle(int $reservedInput, int $reservedOutput, float $reservedUsd, int $inputTokens,
+                           int $outputTokens, float $costUsd, ?int $now = null): void
+    {
+        $this->giveBack($reservedInput, $reservedOutput, $reservedUsd, $inputTokens, $outputTokens, $costUsd, 1, $now);
+    }
+
+    /** Gives a reservation back: the provider refused the call, which it does not bill. */
+    public function release(int $reservedInput, int $reservedOutput, float $reservedUsd, ?int $now = null): void
+    {
+        $this->giveBack($reservedInput, $reservedOutput, $reservedUsd, 0, 0, 0.0, 0, $now);
+    }
+
+    private function giveBack(int $reservedInput, int $reservedOutput, float $reservedUsd, int $inputTokens,
+                              int $outputTokens, float $costUsd, int $requests, ?int $now): void
+    {
+        // GREATEST keeps the unsigned token columns from underflowing should
+        // the day's row no longer hold the reservation.
+        $this->pdo->prepare(
+            "UPDATE {$this->table}
+             SET requests = requests + ?,
+                 input_tokens = GREATEST(input_tokens + ?, ?) - ?,
+                 output_tokens = GREATEST(output_tokens + ?, ?) - ?,
+                 estimated_cost_usd = estimated_cost_usd + ? - ?
+             WHERE usage_date = ?"
+        )->execute([$requests, $inputTokens, $reservedInput, $reservedInput, $outputTokens, $reservedOutput,
+            $reservedOutput, $costUsd, $reservedUsd, self::day($now)]);
+    }
+
     /** True when a daily cap (tokens or budget) is already reached. */
     public function isExhausted(int $dailyGlobalTokens, float $dailyBudgetUsd, ?int $now = null): bool
     {

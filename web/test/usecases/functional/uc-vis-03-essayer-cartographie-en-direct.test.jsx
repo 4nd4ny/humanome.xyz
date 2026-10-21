@@ -228,7 +228,7 @@ describe('UC-VIS-03 — refus et limites vus par le visiteur', () => {
     fireEvent.change(screen.getByLabelText('Texte à cartographier'), { target: { value: 'Trop court.' } })
     expect(screen.getByTestId('text-too-short')).toBeDefined()
     expect(screen.getByRole('button', { name: 'Cartographier ce texte' }).disabled).toBe(true)
-    fireEvent.change(screen.getByLabelText('Texte à cartographier'), { target: { value: 'x'.repeat(12001) } })
+    fireEvent.change(screen.getByLabelText('Texte à cartographier'), { target: { value: 'x'.repeat(5001) } })
     expect(screen.getByTestId('text-too-long').textContent).toContain('retirez 1 caractères')
     expect(screen.getByRole('button', { name: 'Cartographier ce texte' }).disabled).toBe(true)
     expect(server.issuedCount()).toBe(0)
@@ -334,21 +334,21 @@ describe('UC-VIS-03 — refus et limites vus par le visiteur', () => {
     expect(server.posts).toHaveLength(3) // pôle 1 + 2 essais du pôle 2
   })
 
-  // ANOMALIE AN3 — comportement ACTUEL figé : 12 000 caractères sont acceptés
-  // par la page, mais le prompt d'un pôle (texte + gabarit ≈ 8 600) dépasse le
-  // plafond serveur de 20 000 : le serveur répond 413 avant toute preuve.
-  it('UC-VIS-03-F23 — [comportement actuel, anomalie AN3] texte de 12 000 caractères accepté par la page → 413 du serveur sur le pôle 1, échec générique', async () => {
+  // ANOMALIE AN3, CORRIGÉE le 2026-10-21 : la page acceptait 12 000
+  // caractères, et le prompt d'un pôle (texte + gabarit ≈ 8 600) dépassait le
+  // plafond serveur de 20 000 (413). Au maximum de la page, 5 000 caractères,
+  // les 8 appels passent sous ce plafond, que le faux serveur garde : celui
+  // d'une production qui le règle encore dans son environnement.
+  it('UC-VIS-03-F23 — [anomalie AN3 corrigée] texte de 5 000 caractères, le maximum de la page → 8 appels acceptés sous le plafond serveur de 20 000, cartographie produite', async () => {
     const server = fakeDemoServer({ createHash, difficultyBits: 2, answer: modelAnswer })
     openApp()
-    const long = `${TEXT} ${'x'.repeat(12000 - TEXT.length - 1)}`
-    expect(long).toHaveLength(12000)
+    const long = `${TEXT} ${'x'.repeat(5000 - TEXT.length - 1)}`
+    expect(long).toHaveLength(5000)
     await pasteAndRun(long)
 
-    const alert = await screen.findByRole('alert', undefined, { timeout: 5000 })
-    expect(alert.textContent).toContain('L’analyse a échoué en cours de route') // attendu : cartographie produite
-    expect(alert.textContent).toContain('413')
-    expect(server.rejected).toEqual(['too_long', 'too_long']) // essai + nouvel essai du moteur
-    expect(server.posts).toHaveLength(0)
+    expect(await screen.findByText(/ce résultat n’est pas conservé/, undefined, { timeout: 5000 })).toBeDefined()
+    expect(server.rejected).toEqual([])
+    expect(server.posts).toHaveLength(8)
   })
 })
 

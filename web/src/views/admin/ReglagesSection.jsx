@@ -34,7 +34,7 @@ const DEMO_NUMERIC_FIELDS = [
   { name: 'dailyBudgetUsd', label: 'Budget quotidien (USD)', min: 0, max: 1000, float: true },
   { name: 'perIpPerHour', label: 'Requêtes / IP / heure', min: 1, max: 1000 },
   { name: 'powDifficultyBits', label: 'Preuve de travail (bits)', min: 8, max: 24 },
-  { name: 'maxInputChars', label: 'Entrée max (caractères)', min: 1000, max: 200000 },
+  { name: 'maxInputChars', label: 'Entrée max (caractères)', min: 1000, max: 500000 },
   { name: 'upstreamTimeoutSeconds', label: 'Délai amont (secondes)', min: 10, max: 300 },
   { name: 'dailyGlobalTokens', label: 'Tokens globaux / jour', min: 10000, max: 50000000 },
 ]

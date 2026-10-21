@@ -11,7 +11,9 @@ use Humanome\Env;
  * Loads the private Twin9 engine (ADR-011). Its PHP sources live in the
  * private repository 4nd4ny/Twin_v9, folder php/src (PSR-4, prefix Twin9\),
  * cloned next to this one: TWIN_V9_DIR, by default ../Twin_v9 from the
- * repository root. Nothing of the engine is ever copied into this repository.
+ * repository root. Nothing of the engine is ever copied into this repository;
+ * a release (ADR-008) embeds its sources and its commit in its own Twin_v9/
+ * folder, outside the webroot (scripts/deploy/stage-twin9.mjs, T18).
  *
  * Without php/src the platform starts and runs as before: server-side Twin9
  * stays disabled (isLoaded() is false) and the tests that need the engine
@@ -25,12 +27,21 @@ final class EngineLoader
     /** @var array<string, ClassLoader> registered autoloaders, by source directory */
     private static array $loaders = [];
 
-    /** The Twin_v9 checkout: TWIN_V9_DIR, else Twin_v9 next to the repository. */
-    public static function directory(): string
+    /**
+     * The Twin_v9 checkout: TWIN_V9_DIR; else the copy a release embeds,
+     * <release>/Twin_v9 (T18); else Twin_v9 next to the repository.
+     *
+     * @param string|null $racine the root of the code, the release's in production (tests)
+     */
+    public static function directory(?string $racine = null): string
     {
         $directory = Env::get('TWIN_V9_DIR');
+        if ($directory !== '') {
+            return $directory;
+        }
+        $embarque = ($racine ?? \dirname(__DIR__, 2)) . '/Twin_v9';
 
-        return $directory !== '' ? $directory : \dirname(__DIR__, 4) . '/Twin_v9';
+        return is_dir($embarque . '/php/src') ? $embarque : \dirname(__DIR__, 4) . '/Twin_v9';
     }
 
     /**

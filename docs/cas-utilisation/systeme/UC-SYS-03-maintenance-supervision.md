@@ -69,9 +69,12 @@ couverture RGPD de l'effacement de compte.
 ## Scénario nominal
 
 1. La sonde appelle `GET /api/health` : l'API renvoie `200 {"status":"ok",
-   "version":…, "db":"ok"}` — la version vient de `APP_VERSION`, sinon du
-   fichier `VERSION` de la release, sinon `dev` ; la base est testée par
-   `SELECT 1`.
+   "version":…, "db":"ok", "twin9":{"moteur":…, "zlib":…}}` — la version vient
+   de `APP_VERSION`, sinon du fichier `VERSION` de la release, sinon `dev` ; la
+   base est testée par `SELECT 1` ; `twin9` (T18) dit si le moteur Twin9 est
+   chargé et si l'extension zlib, qui compresse l'état des runs, est présente
+   (deux booléens, que le smoke de déploiement exige d'une release qui embarque
+   le moteur, UC-SYS-02 A8).
 2. Une sonde ou un tableau de bord externe appelle `GET /api/status` (aucune
    page du front ne l'utilise à ce jour) : `200 {status, version, db,
    demo: {enabled, remainingToday}, worker: {lastActivityAt, queued}}`, avec
@@ -204,7 +207,7 @@ couverture RGPD de l'effacement de compte.
 
 | ID | Scénario | Niveau | Vérifie | Fichier |
 |---|---|---|---|---|
-| UC-SYS-03-F01 | Nominal (1-2) | API | `/health` et `/status` exacts (version, base, démo, file du worker, cache) | `api/tests/UseCases/Functional/UcSys03MaintenanceSupervisionTest.php` |
+| UC-SYS-03-F01 | Nominal (1-2) | API | `/health` et `/status` exacts (version, base, démo, file du worker, cache) ; `/health.twin9` : `moteur` booléen (selon le moteur que tient l'environnement du test), `zlib` vrai | `api/tests/UseCases/Functional/UcSys03MaintenanceSupervisionTest.php` |
 | UC-SYS-03-F02 | A1 | API | Démo épuisée → `remainingToday` faux ; éteinte → `enabled` faux | idem |
 | UC-SYS-03-F03 | E1 | API | Base absente / injoignable (127.0.0.1:1, sans DNS) : `200`, corps complet, aucun détail SQL ; échec partiel (table renommée) : `db: "error"`, démo déjà renseignée | idem |
 | UC-SYS-03-F04 | Nominal (3-4) | API | Purge par la route à jeton sur la fixture J-29 / J-31 / cas mixte / futur / sans expiration : survivants exacts, `shareLinksPurged: 3`, second appel nul | idem |

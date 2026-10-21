@@ -112,8 +112,14 @@ L'administrateur-promptologue ouvre « Faire évoluer » → « Atelier Twin9 »
   manque ou ne se lit pas, il avertit et l'omet (le serveur conserve alors
   celle qu'il détient). Il ne
   lit plus `config.json` et n'envoie plus les fiches (2026-10-20 : ils
-  servaient le moteur du navigateur, T11). Il ne journalise que des noms et
-  des tailles, jamais un contenu ;
+  servaient le moteur du navigateur, T11). **En version figée** (T18) : il
+  refuse, sortie 1 et rien d'envoyé, un `TWIN_V9_DIR` qui n'est pas la racine
+  d'un dépôt git, un changement non commité — fichiers non suivis compris —
+  dans `php/protocole` ou `protocole/tagger`, et une release préparée
+  (`build/api-release/Twin_v9/COMMIT`) d'un autre commit que le sien : les
+  gabarits sont ceux du moteur de la release (UC-SYS-02 A8). Il journalise ce
+  commit ; sans release préparée, il avertit que le commit n'est pas comparé.
+  Il ne journalise que des noms, des tailles et ce commit, jamais un contenu ;
   `--dry-run` s'arrête là. Sinon, `POST {base}/api/admin/twin9/import {files,
   referentiel?}` avec `X-Migrate-Token` (variable
   `MIGRATE_TOKEN`, sinon `.env.deploy` ; base : `--base-url`, sinon `SITE_URL`
@@ -126,7 +132,10 @@ L'administrateur-promptologue ouvre « Faire évoluer » → « Atelier Twin9 »
   les fichiers de pôle `tagger/P1` à `P7`), les noms comparés sans la casse ;
   un import partiel n'ôte rien ; la structure du référentiel (nettoyée :
   num/nom, code/nom) est stockée, que `/api/twin9/meta` sert à la cartographie
-  ouverte ; réponse `{imported, retires}`. Les copies déjà faites ne changent
+  ouverte ; réponse `{imported, inchanges, retires}` — `inchanges` compte
+  depuis T18 les gabarits déjà en base à l'octet : un réimport qui les trouve
+  tous prouve que le jeu égale les fichiers envoyés, ceux du commit qu'embarque
+  la release (UC-SYS-02 A8). Les copies déjà faites ne changent
   pas. Des réglages ou des fiches qu'enverrait un ancien script sont ignorés :
   jusqu'au 2026-10-20, l'import stockait les réglages du pipeline et les
   fiches, et activait Twin9 — ce que plus aucun run ne lisait depuis T11 ;
@@ -268,7 +277,7 @@ L'administrateur-promptologue ouvre « Faire évoluer » → « Atelier Twin9 »
 | Domaine | `api/src/Middleware/RequireRole.php` — `all` | Garde conjonctive |
 | Domaine | `api/src/Twin9/Twin9Config.php` — `setReferentiel` | Structure du référentiel (import) |
 | Contrat | `schemas/twin9-protocole-contrat.json` (livré avec la release, `scripts/deploy/stage-api.sh`) | Variables fournies à chaque gabarit (RG10) |
-| Script | `scripts/twin9/import-protocole.mjs` | Acteur technique de A4 : lecture de `TWIN_V9_DIR`, structure du référentiel lue par `parsePole` (`web/src/lib/twin9/referentiel.js`), envoi avec `X-Migrate-Token` — script sans export, exécuté dès son chargement : couvert fonctionnellement seulement, en sous-processus (UC-PRO-08-F19 à F22) |
+| Script | `scripts/twin9/import-protocole.mjs` ; `scripts/deploy/twin9-checkout.mjs` — `cleanCommit` | Acteur technique de A4 : lecture de `TWIN_V9_DIR`, structure du référentiel lue par `parsePole` (`web/src/lib/twin9/referentiel.js`), commit d'un dépôt propre comparé à la release préparée, envoi avec `X-Migrate-Token` — script sans export, exécuté dès son chargement : couvert fonctionnellement seulement, en sous-processus (UC-PRO-08-F19 à F22, F25) |
 | Script | `scripts/check-publiable.mjs` (+ `.githooks/pre-commit`, `.github/workflows/publiable.yml`) | Garde anti-fuite : aucun gabarit Twin9 ni secret dans les fichiers suivis (RG8) — script sans export, exécuté dès son chargement : couvert fonctionnellement seulement, en sous-processus (UC-PRO-08-F17, F18) |
 
 ## Jeux de tests
@@ -277,7 +286,7 @@ Les deux scripts techniques (`check-publiable.mjs`, `import-protocole.mjs`)
 s'exécutent dès leur chargement et n'exportent rien : ils sont rejoués par leur
 interface en ligne de commande, en **sous-processus**, sur des dossiers
 temporaires fictifs (`os.tmpdir()`) — tests fonctionnels de niveau « CLI »
-(UC-PRO-08-F17 à F22), rangés avec les tests du moteur
+(UC-PRO-08-F17 à F22, F25), rangés avec les tests du moteur
 (`engine/test/usecases/unit/`, exécutés par la CI de publication) comme ceux
 de UC-SYS-04. L'effet d'une copie sur le prompt d'un run (UC-PRO-08-F09) se
 rejoue avec le moteur factice, chargé dans un processus à part, comme les
@@ -315,14 +324,14 @@ autres tests de runs.
 | UC-PRO-08-F07 | E5 | IHM | API indisponible : message ; liste des jeux refusée (403) : « Chargement impossible. » ; aucun contenu | idem |
 | UC-PRO-08-F08 | Nominal, A1, A2, A3, A6 | API | Jeux → jeu v9.8 lu → copie → liste → lecture `%2F` → édition → PUT identique « unchanged » → versions → restauration → restauration identique « unchanged » → banc d'essai sans appel au modèle ni débit ; le jeu v9.8 intact | `api/tests/UseCases/Functional/UcPro08EditerGabaritsTwin9Test.php` |
 | UC-PRO-08-F09 | Nominal (étape 6) | API | Un mot changé dans une copie se retrouve dans le prompt de chaque lecture d'un run dont le profil la choisit ; un run du jeu v9.8, sur sa propre carte, garde les mots du jeu v9.8 (moteur factice) ; avec le vrai moteur de `TWIN_V9_DIR`, sauté sans lui, dans le prompt du tagger | `api/tests/Twin9/JeuxGabaritsTest.php` |
-| UC-PRO-08-F10 | A4 | API | Import : gabarits, référentiel servi par `/meta` ; réglages et fiches d'un ancien script ignorés, rien n'en est gardé ; `/meta` ne nomme plus les gabarits ; idempotence | `api/tests/UseCases/Functional/UcPro08EditerGabaritsTwin9Test.php` |
+| UC-PRO-08-F10 | A4 | API | Import : gabarits, référentiel servi par `/meta` ; réglages et fiches d'un ancien script ignorés, rien n'en est gardé ; `/meta` ne nomme plus les gabarits ; idempotence, chaque gabarit du réimport compté `inchanges` | `api/tests/UseCases/Functional/UcPro08EditerGabaritsTwin9Test.php` |
 | UC-PRO-08-F11 | E1 | API | 401 visiteur ; 403 promptologue seul et admin seul, sans fragment, copie comprise | idem |
 | UC-PRO-08-F12 | E2, E7 | API | 404 (statut et message) jeu, gabarit, version inconnus, nom hors format, PUT sur un nom que la copie n'a pas ; 403 sur le jeu v9.8 et la copie d'un autre | idem |
 | UC-PRO-08-F13 | E3 | API | 422 sur chaque saisie invalide, variable refusée et nom de copie compris, rien d'écrit | idem |
 | UC-PRO-08-F14 | E4 | API | 404 / 403 / 400 (statuts et messages) à l'import ; **anomalie 1 figée** : import partiel, au premier import comme au réimport (gabarits mélangés, référentiel inchangé) | idem |
 | UC-PRO-08-F15 | E6 | API | Sans jeton CSRF ou jeton faux → 403 sur la copie, le PUT, la restauration, le banc d'essai ; rien d'écrit | idem |
 | UC-PRO-08-F16 | Anomalies 3-5 | API | Clé d'import numérique refusée ; nom à saut de ligne final accepté ; gabarit « …/versions » importé mais illisible | idem |
-| UC-PRO-08-F17 | RG8 | CLI | `scripts/check-publiable.mjs` dans un dépôt git temporaire : répertoires de gabarits refusés quel que soit le contenu, `.env` réel, clé, mot de passe hors tests → sortie 1 et liste sans contenu ; gabarit rangé ailleurs, ligne à marqueur, binaire, fichier non suivi : non relevés ; dépôt propre → sortie 0 | `engine/test/usecases/unit/uc-pro-08-editer-gabarits-twin9.test.js` |
+| UC-PRO-08-F17 | RG8 | CLI | `scripts/check-publiable.mjs` dans un dépôt git temporaire : répertoires de gabarits refusés quel que soit le contenu, moteur copié sous un dossier `Twin_v9/` (T18), `.env` réel, clé, mot de passe hors tests → sortie 1 et liste sans contenu ; gabarit rangé ailleurs, ligne à marqueur, binaire, fichier non suivi : non relevés ; dépôt propre → sortie 0 | `engine/test/usecases/unit/uc-pro-08-editer-gabarits-twin9.test.js` |
 | UC-PRO-08-F18 | RG8 (Limites) | CLI | **Limite figée** : chemins lus dans l'index mais contenu lu sur le disque — clé indexée puis effacée du disque non relevée ; répertoire de gabarits supprimé du disque mais indexé toujours refusé | idem |
 | UC-PRO-08-F19 | A4, E4 | CLI | `scripts/twin9/import-protocole.mjs --dry-run` (copie en miroir temporaire, faux `TWIN_V9_DIR`) : `.md` de `php/protocole` seuls, noms hiérarchiques sans `.md`, `config.json` plus lu, noms et tailles journalisés sans contenu, rien envoyé ; répertoire absent, protocole vide, Twin_v9 d'avant T16 (sans `php/protocole`), option inconnue (avec `--dry-run`) → sortie 1 | idem |
 | UC-PRO-08-F20 | A4, E4 | CLI + HTTP simulé | Faux serveur `127.0.0.1` : `POST /api/admin/twin9/import`, `X-Migrate-Token`, corps `{files}` (ni référentiel non extrait, ni réglages) ; refus 403 → sortie 1 « twin9 import failed » | idem |
@@ -330,6 +339,7 @@ autres tests de runs.
 | UC-PRO-08-F22 | E4 | CLI + HTTP simulé | Jeton introuvable (ni `MIGRATE_TOKEN`, ni `.env.deploy` dans le miroir) → sortie 1 « MIGRATE_TOKEN missing (.env.deploy or environment) », aucune requête reçue par le faux serveur | idem |
 | UC-PRO-08-F23 | A6 | IHM | Sans copie, le jeu v9.8 ouvert en lecture ; « Copier » → POST avec CSRF → la copie ouverte, éditable | `web/test/usecases/functional/uc-pro-08-editer-gabarits-twin9.test.jsx` |
 | UC-PRO-08-F24 | A5, E7 | IHM | Liste des jeux (lecture seule, la sienne, le défaut) ; la copie d'un autre ouverte en lecture : ni « Enregistrer » ni « Restaurer », aucune écriture | idem |
+| UC-PRO-08-F25 | A4 (T18) | CLI + HTTP simulé | Import en version figée, faux `Twin_v9` en dépôt git : sans release préparée, envoyé, commit journalisé, avertissement « not compared » ; release préparée du même commit : envoyé sans avertissement ; d'un autre commit : sortie 1 ; gabarit modifié, gabarit non suivi, fichier de pôle non suivi, dossier hors git, dossier imbriqué dans un dépôt : sortie 1 ; aucun envoi sur un refus | `engine/test/usecases/unit/uc-pro-08-editer-gabarits-twin9.test.js` |
 
 ### Tests existants liés (non-régression)
 
@@ -408,8 +418,9 @@ cd engine && npx vitest run test/usecases/unit/uc-pro-08
 - Le script d'import `scripts/twin9/import-protocole.mjs` s'exécute dès son
   chargement et n'exporte aucune fonction : il est testé en sous-processus,
   copié dans un miroir temporaire (sans `.env.deploy` : le fichier du poste
-  n'est jamais lu), sur un faux `TWIN_V9_DIR` et contre un faux serveur local
-  (UC-PRO-08-F19 à F22) ; la route qu'il appelle l'est par ailleurs
+  n'est jamais lu), sur un faux `TWIN_V9_DIR` — un dépôt git temporaire depuis
+  T18 — et contre un faux serveur local (UC-PRO-08-F19 à F22, F25) ; la route
+  qu'il appelle l'est par ailleurs
   (UC-PRO-08-F10, F14, F16).
 - Le garde-fou de publication (RG8) ne reconnaît les gabarits Twin9 qu'à leur
   **répertoire** : un gabarit versionné sous un autre chemin (par exemple

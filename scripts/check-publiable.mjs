@@ -59,8 +59,10 @@ const PATH_RULES = [
     // 2026-10-17) et tourne sur le serveur (ADR-011) ; le moteur du navigateur
     // est retiré (T11). L'adaptateur d'affichage (mapper), le parseur de pôles
     // (referentiel) et les utilitaires py/ qu'il importe vivent dans le front,
-    // sous web/src/lib/twin9/.
+    // sous web/src/lib/twin9/. Un dossier Twin_v9/ est la copie qu'embarque une
+    // release (<release>/Twin_v9, T18), qu'EngineLoader chargerait sous api/.
     test: (p) =>
+      /(^|\/)Twin_v9\//.test(p) ||
       /^(engine\/src\/twin9|engine\/test\/twin9-vectors|docs\/twin9)\//.test(p) ||
       /^(docs\/plan-twin9-php\.md|web\/src\/views\/twin9\/run-helpers(\.test)?\.js|scripts\/twin9\/gen-oracles\.sh)$/.test(p),
     why: 'moteur Twin9 (dépôt privé Twin_v9, jamais public)',

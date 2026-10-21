@@ -75,14 +75,16 @@ final class Twin9ProtocoleTest extends CartographeTestCase
             'fiches' => [['num' => 1, 'header' => 'PRÉAMBULE FICTIF', 'competences' => []]],
         ], ['X-Migrate-Token' => self::TOKEN]);
         self::assertSame(200, $response->getStatusCode(), (string) $response->getBody());
-        self::assertSame(['imported' => 2, 'retires' => 0], self::json($response));
+        self::assertSame(['imported' => 2, 'inchanges' => 0, 'retires' => 0], self::json($response));
         self::assertSame(0, (int) Db::get()->query(
             "SELECT COUNT(*) FROM settings WHERE name IN ('twin9_config', 'twin9_fiches')")->fetchColumn());
 
-        // Idempotent re-import: same content, no version archived.
+        // Idempotent re-import: same content, no version archived; the answer says
+        // every template was already there to the byte (T18).
         $deux = ['fictif/01-essai' => self::FAKE_GABARIT, 'fictif/02-autre' => 'Deuxième gabarit FICTIF : {$SUJET}.'];
         $response = $this->request('POST', '/api/admin/twin9/import', ['files' => $deux], ['X-Migrate-Token' => self::TOKEN]);
         self::assertSame(200, $response->getStatusCode());
+        self::assertSame(['imported' => 2, 'inchanges' => 2, 'retires' => 0], self::json($response));
         self::assertSame(0, (int) Db::get()->query('SELECT COUNT(*) FROM twin9_protocole_versions')->fetchColumn());
 
         // Changed content: previous content archived as version 1.
@@ -109,10 +111,11 @@ final class Twin9ProtocoleTest extends CartographeTestCase
     {
         $fiche = '# Pôle 1 — FICTIF' . "\n\n## 1.01 — Fiche FICTIVE\n";
         $complet = array_fill_keys(array_keys(TemplateSets::contrat()), 'Gabarit FICTIF.');
-        self::assertSame(['imported' => \count($complet) + 1, 'retires' => 0],
+        self::assertSame(['imported' => \count($complet) + 1, 'inchanges' => 0, 'retires' => 0],
             $this->importer($complet + ['tagger/P1' => $fiche]));
 
-        self::assertSame(['imported' => \count($complet), 'retires' => 1], $this->importer($complet));
+        self::assertSame(['imported' => \count($complet), 'inchanges' => \count($complet), 'retires' => 1],
+            $this->importer($complet));
         $repo = new ProtocoleRepository(Db::get());
         self::assertSame(array_keys($complet), array_column($repo->list(), 'name'));
         self::assertNull($repo->get('tagger/P1'));
@@ -122,9 +125,9 @@ final class Twin9ProtocoleTest extends CartographeTestCase
         self::assertSame($fiche, $repo->get('tagger/P1')['content'] ?? null);
         self::assertSame([1], array_column($repo->versions('tagger/P1'), 'version'));
 
-        self::assertSame(['imported' => \count($complet) + 1, 'retires' => 1],
+        self::assertSame(['imported' => \count($complet) + 1, 'inchanges' => \count($complet), 'retires' => 1],
             $this->importer($complet + ['Fictif/Casse' => 'Gabarit FICTIF.']), 'tagger/P1 en sort');
-        self::assertSame(['imported' => \count($complet) + 1, 'retires' => 0],
+        self::assertSame(['imported' => \count($complet) + 1, 'inchanges' => \count($complet), 'retires' => 0],
             $this->importer($complet + ['fictif/casse' => 'Gabarit FICTIF changé.']), 'à la casse près, le même');
         self::assertSame('Gabarit FICTIF changé.', $repo->get('fictif/casse')['content'] ?? null, 'la même ligne');
     }
@@ -135,9 +138,10 @@ final class Twin9ProtocoleTest extends CartographeTestCase
      */
     public function testAPartialImportTakesNothingAway(): void
     {
-        self::assertSame(['imported' => 3, 'retires' => 0], $this->importer(['lourd/20-greffier' => 'Greffier FICTIF.',
+        self::assertSame(['imported' => 3, 'inchanges' => 0, 'retires' => 0], $this->importer(['lourd/20-greffier' => 'Greffier FICTIF.',
             'tagger/1-tag-pole' => 'Lecteur FICTIF.', 'tagger/P1' => 'Fiche FICTIVE.']));
-        self::assertSame(['imported' => 1, 'retires' => 0], $this->importer(['merge/04-rapporteur' => 'Rapporteur FICTIF.']));
+        self::assertSame(['imported' => 1, 'inchanges' => 0, 'retires' => 0],
+            $this->importer(['merge/04-rapporteur' => 'Rapporteur FICTIF.']));
         self::assertSame(['lourd/20-greffier', 'merge/04-rapporteur', 'tagger/1-tag-pole', 'tagger/P1'],
             array_column((new ProtocoleRepository(Db::get()))->list(), 'name'));
     }

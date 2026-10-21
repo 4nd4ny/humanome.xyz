@@ -130,14 +130,14 @@ final class UcPro08EditerGabaritsTwin9Test extends CartographeTestCase
         self::assertSame(0, (int) self::$pdo->query('SELECT COUNT(*) FROM twin9_protocole_versions')->fetchColumn());
     }
 
-    #[TestDox('UC-PRO-08-F10 — A4 : import technique (X-Migrate-Token) — gabarits et structure du référentiel ; les réglages et les fiches qu’enverrait un ancien script sont ignorés, rien n’est gardé d’eux ; réimport identique sans nouvelle version')]
+    #[TestDox('UC-PRO-08-F10 — A4 : import technique (X-Migrate-Token) — gabarits et structure du référentiel ; les réglages et les fiches qu’enverrait un ancien script sont ignorés, rien n’est gardé d’eux ; réimport identique sans nouvelle version, chaque gabarit déjà là à l’octet (inchanges)')]
     public function testF10TechnicalImport(): void
     {
         $response = $this->importer(
             ['lourd/20-greffier' => TwinSupport::GABARIT_GREFFIER, 'tagger/1-tag-pole' => TwinSupport::GABARIT_TAG],
             ['config' => ['jury' => ['taille_aleatoire' => 5]], 'referentiel' => TwinSupport::referentielFictif(), 'fiches' => TwinSupport::fichesFictives()],
         );
-        self::assertSame(['imported' => 2, 'retires' => 0], self::json($response));
+        self::assertSame(['imported' => 2, 'inchanges' => 0, 'retires' => 0], self::json($response));
 
         // Depuis le 2026-10-20, ni réglages du pipeline, ni interrupteur, ni fiches :
         // les runs prennent les leurs dans leur profil (T12) et dans la base (T16).
@@ -152,7 +152,7 @@ final class UcPro08EditerGabaritsTwin9Test extends CartographeTestCase
         self::assertStringNotContainsString('FICHE FICTIVE', $metaRaw, 'aucune fiche servie');
         self::assertStringNotContainsString('lourd/20-greffier', $metaRaw, 'les noms des gabarits non plus, depuis T11');
 
-        self::assertSame(['imported' => 2, 'retires' => 0], self::json($this->importer(['lourd/20-greffier' => TwinSupport::GABARIT_GREFFIER, 'tagger/1-tag-pole' => TwinSupport::GABARIT_TAG])));
+        self::assertSame(['imported' => 2, 'inchanges' => 2, 'retires' => 0], self::json($this->importer(['lourd/20-greffier' => TwinSupport::GABARIT_GREFFIER, 'tagger/1-tag-pole' => TwinSupport::GABARIT_TAG])));
         self::assertSame(0, (int) self::$pdo->query('SELECT COUNT(*) FROM twin9_protocole_versions')->fetchColumn());
     }
 
@@ -341,13 +341,13 @@ final class UcPro08EditerGabaritsTwin9Test extends CartographeTestCase
         self::assertSame(['error' => 'Fichier invalide : 20'], self::json($numerique));
 
         // NAME_PATTERN se termine par « $ » sans /D : un saut de ligne final passe.
-        self::assertSame(['imported' => 1, 'retires' => 0], self::json($this->importer(["lourd/20-greffier\n" => 'Gabarit FICTIF à saut de ligne'])));
+        self::assertSame(['imported' => 1, 'inchanges' => 0, 'retires' => 0], self::json($this->importer(["lourd/20-greffier\n" => 'Gabarit FICTIF à saut de ligne'])));
         self::assertSame(["lourd/20-greffier\n"], self::$pdo->query('SELECT name FROM twin9_protocole')->fetchAll(\PDO::FETCH_COLUMN));
 
         // Un gabarit dont le dernier segment est « versions » est capté par la route
         // d'historique (enregistrée d'abord) : importé, mais jamais relu. Partiel,
         // l'import n'ôte rien (T16) : celui à saut de ligne reste.
-        self::assertSame(['imported' => 1, 'retires' => 0], self::json($this->importer(['x/versions' => 'Gabarit FICTIF masqué'])));
+        self::assertSame(['imported' => 1, 'inchanges' => 0, 'retires' => 0], self::json($this->importer(['x/versions' => 'Gabarit FICTIF masqué'])));
         $lu = $this->atelier('GET', '/v9.8/protocole/x%2Fversions');
         self::assertSame(404, $lu->getStatusCode());
         self::assertSame(['error' => 'Gabarit introuvable'], self::json($lu));

@@ -26,6 +26,9 @@ assets-existants/golden-prompt/
 # gabarits et les oracles qu'y générait le moteur du navigateur (retiré par T11).
 golden-twin9/
 engine/test/twin9-oracles/
+# La copie du moteur qu'embarque une release (<release>/Twin_v9, T18) : sous
+# api/, EngineLoader la chargerait en développement ; aucun clone ne la porte.
+Twin_v9/
 
 # OS / editor noise
 .DS_Store

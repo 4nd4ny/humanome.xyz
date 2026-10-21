@@ -40,8 +40,11 @@ Le mainteneur lance `./scripts/deploy/stage-api.sh` puis
 - La release a été préparée par `stage-api.sh` : `build/api-release/` (sources,
   `public/`, `config/`, `schemas/*.schema.json`, `scripts/migrations` et
   `scripts/migrate.php`, `scripts/data`, `composer.json`/`composer.lock`,
-  `vendor/` sans dépendances de dev, fichier `VERSION` = `git describe`) et
-  `build/prompt-packages/*.json` régénérés. Les autres scripts CLI
+  `vendor/` sans dépendances de dev, fichier `VERSION` = `git describe`, et
+  depuis T18 le moteur Twin9 privé : `Twin_v9/php/src` et `Twin_v9/COMMIT`) et
+  `build/prompt-packages/*.json` régénérés. Pour le moteur, `Twin_v9` est cloné
+  à côté du dépôt ou nommé par `TWIN_V9_DIR` — la racine de son clone —, sans
+  changement non commité dans `php/src` ni `php/protocole` (A8). Les autres scripts CLI
   (`import-*.php`, `seed-competences.php`) ne sont **pas** copiés dans la
   release : ils ne servent qu'au poste de développement (A7).
 - Le référentiel à importer est lu **sur le poste** du mainteneur, dans
@@ -61,7 +64,9 @@ Le mainteneur lance `./scripts/deploy/stage-api.sh` puis
   ne vérifie ni la valeur de `db` ni l'application des migrations : `/health`
   répond `200 {"status":"ok"}` même avec `db: "error"` ; et sans
   `MIGRATE_TOKEN` dans `.env.deploy`, `deploy.mjs` saute les étapes 4 à 8
-  (simple avertissement) et termine par « api deploy done ».
+  (simple avertissement) et termine par « api deploy done ». Une release qui
+  embarque le moteur Twin9 n'est en revanche acceptée que s'il y est chargé,
+  zlib compris (étape 9, A8).
 
 ## Garanties minimales (en cas d'échec)
 
@@ -90,7 +95,8 @@ Le mainteneur lance `./scripts/deploy/stage-api.sh` puis
    et disparus localement (échec de suppression = simple avertissement) ; le
    manifeste est écrit **en dernier** ; manifeste absent ou illisible → envoi
    complet sans suppression ; `--dry-run` liste sans rien transférer).
-2. `stage-api.sh` prépare `build/api-release/` et les paquets de prompts publiés.
+2. `stage-api.sh` prépare `build/api-release/` et les paquets de prompts publiés ;
+   il y embarque le moteur Twin9 par `stage-twin9.mjs` (A8).
 3. `deploy.mjs api` téléverse la release dans
    `app/releases/<AAAAMMJJ-HHMMSS UTC>-<version>/` (version = contenu de
    `VERSION`, caractères hors `[A-Za-z0-9._-]` remplacés par `_` : le nom
@@ -126,9 +132,10 @@ Le mainteneur lance `./scripts/deploy/stage-api.sh` puis
 8. `POST /api/admin/import-prompt-package` pour chaque
    `build/prompt-packages/*.json` → `200 {status, id, version, contentHash}`
    (étape sautée en silence si le dossier n'existe pas sur le poste).
-9. `GET /api/health` → `200 {"status":"ok","version":…,"db":"ok"}` ; le script
-   exige un `200` et la chaîne `"ok"` — critère qui ne détecte pas une base en
-   panne (`"status":"ok"` est inconditionnel). Chaque étape en échec (réponse
+9. `GET /api/health` → `200 {"status":"ok","version":…,"db":"ok","twin9":…}` ;
+   le script exige un `200` et la chaîne `"ok"` — critère qui ne détecte pas une
+   base en panne (`"status":"ok"` est inconditionnel) — et, si la release
+   embarque le moteur Twin9, `"twin9":{"moteur":true,"zlib":true}` (A8). Chaque étape en échec (réponse
    non 2xx) lève une exception : les étapes suivantes ne sont pas jouées,
    `main` affiche « deploy failed: <message> » et sort avec le code 1. Chaque
    réponse est journalisée sur la console, tronquée (160 à 300 caractères).
@@ -165,6 +172,32 @@ Le mainteneur lance `./scripts/deploy/stage-api.sh` puis
   `/api/health` et affiche la réponse **sans** en vérifier le statut.
   `deploy.mjs releases` liste les releases et marque d'un `*` celle que pointe
   `current.txt` (« (none) » si illisible).
+- **A8 — Le moteur Twin9 dans la release** (T18 ; étapes 2 et 9) :
+  `scripts/deploy/stage-twin9.mjs`, appelé par `stage-api.sh`, copie le
+  `php/src` du commit de `TWIN_V9_DIR` (défaut `../Twin_v9`) — les fichiers que
+  donne git (`ls-tree`, `show`), non ceux de la copie de travail — dans
+  `build/api-release/Twin_v9/php/src`, et ce commit dans `Twin_v9/COMMIT` ; ni
+  les tests du moteur, ni le reste de `Twin_v9`, ni les gabarits, que l'import
+  met en base (ADR-010), ni un fichier ignoré. Il refuse, code 1 et rien de
+  copié : moteur ou gabarits absents (`php/src/Plateforme.php`,
+  `php/protocole`) ; un dossier hors de git, ou dans un dépôt sans en être la
+  racine — le faux moteur des tests de la plateforme, dont git donnerait le
+  commit de humanome (`scripts/deploy/twin9-checkout.mjs`, `cleanCommit`) ; un
+  changement non commité ou un fichier non suivi dans `php/src` ou
+  `php/protocole`, quelle que soit la configuration git du poste ; un
+  changement ailleurs dans `Twin_v9` passe. La release part avec lui sous
+  `app/releases/<nom>/`, hors du webroot, et `EngineLoader` l'y trouve sans
+  `TWIN_V9_DIR` (qui, défini, passe avant). À l'étape 9, `/api/health` doit
+  dire `"twin9":{"moteur":true,"zlib":true}`. Sinon `deploy.mjs` échoue, code 1,
+  en disant que la release est en ligne — pointeur basculé, migrations et
+  imports faits —, Twin9 éteint : il nomme le commit embarqué, les causes à
+  vérifier (`TWIN_V9_DIR` dans `~/app/shared/.env`, zlib), et le retour arrière
+  comme facultatif, puisqu'il ne les corrige pas. Sinon il affiche « Twin9
+  engine loaded, zlib present; the release embeds Twin_v9 <commit> », puis la
+  suite : importer les gabarits du même commit
+  (`scripts/twin9/import-protocole.mjs`, UC-PRO-08 A4), qui refuse tout autre
+  commit que celui de la release préparée et dont la réponse compte les
+  gabarits déjà là à l'octet.
 - **A7 — Poste de développement (CLI)** : `php scripts/migrate.php`,
   `php scripts/import-referentiel.php [fichier]`,
   `php scripts/import-prompt-packages.php [fichiers…]`,
@@ -288,7 +321,10 @@ Le mainteneur lance `./scripts/deploy/stage-api.sh` puis
 
 | Couche | Élément | Rôle |
 |---|---|---|
-| Outil | `scripts/deploy/deploy.mjs` — `main` (cibles `static`, `api`, `rollback`, `releases` ; codes 1/2), `loadEnvDeploy`, `buildLocalIndex`/`readRemoteManifest` (synchro par manifeste), `uploadTree`, `deployApi`, `listReleases`, `rollbackApi`, `releasesCommand` ; `scripts/deploy/stage-api.sh` | Upload FTP, pointeur, élagage, séquence distante, smoke, rollback — `deploy.mjs` est exécuté en sous-processus sur une copie, avec un faux module `basic-ftp` et un site local (F19 à F22) ; pas de test unitaire : il n'exporte aucune fonction et lance `main()` dès l'import ; côté serveur, la séquence HTTP est rejouée par F01/F02 ; `stage-api.sh` n'est pas exécuté (voir Limites) |
+| Outil | `scripts/deploy/deploy.mjs` — `main` (cibles `static`, `api`, `rollback`, `releases` ; codes 1/2), `loadEnvDeploy`, `buildLocalIndex`/`readRemoteManifest` (synchro par manifeste), `uploadTree`, `deployApi`, `listReleases`, `rollbackApi`, `releasesCommand` ; `scripts/deploy/stage-api.sh` | Upload FTP, pointeur, élagage, séquence distante, smoke (moteur Twin9 compris, F24), rollback — `deploy.mjs` est exécuté en sous-processus sur une copie, avec un faux module `basic-ftp` et un site local (F19 à F22, F24) ; pas de test unitaire : il n'exporte aucune fonction et lance `main()` dès l'import ; côté serveur, la séquence HTTP est rejouée par F01/F02 ; `stage-api.sh` n'est pas exécuté (voir Limites) |
+| Outil | `scripts/deploy/stage-twin9.mjs` | Le moteur Twin9 dans la release, et ses refus (A8) — exécuté en sous-processus sur un faux dépôt `Twin_v9` (F25) |
+| Domaine | `api/src/Twin9/EngineLoader.php` — `directory`, `load`, `commit` | Le moteur de la release, trouvé sans `TWIN_V9_DIR` (U12, F23) |
+| API | `GET /api/health` — `api/src/routes/system.php` | `twin9: {moteur, zlib}` (F23) |
 | Serveur | `api/deploy/webroot/index.php` | Front-controller : validation du pointeur, `503`, délégation à la release (script sans fonction : couvert par le sous-processus de UC-SYS-02-F10, pas de test unitaire) |
 | API | `api/src/routes/system.php` — `/admin/migrate`, `/admin/import-referentiel`, `/admin/seed-competences`, `/admin/dump-fiches`, `/admin/grant-role`, `/admin/default-package` | Portes 404/403/503, orchestration, lecture du corpus (seed) ; erreurs génériques sauf `seed-competences` (AN-2) |
 | API | `api/src/routes/packages.php` — `/admin/import-prompt-package` | Import de paquet publié |
@@ -317,6 +353,7 @@ Le mainteneur lance `./scripts/deploy/stage-api.sh` puis
 | UC-SYS-02-U09 | `SettingsRepository` | Réglage du paquet par défaut : pose, upsert, retrait | idem |
 | UC-SYS-02-U10 | `CompetenceSeeder::seed` | « Contenu riche manquant pour … », « Gate de parité ÉCHOUÉ » ; backfill d'une 1.0.0 périmée (`backfilled: 1`, fiche rétablie) ; lockfile write-once (lien 1.0.0 conservé malgré une 1.1.0), `lockLinks` = tentatives (RG5, E11) | idem |
 | UC-SYS-02-U11 | `CsrfMiddleware::process` | Session sans `X-CSRF-Token` : `/api/admin/migrate` passe, `grant-role`, `import-prompt-package`, `seed-competences` → `403` (RG2) | idem |
+| UC-SYS-02-U12 | `EngineLoader::directory`, `load`, `commit` | `TWIN_V9_DIR` d'abord ; sinon `<release>/Twin_v9`, chargé avec son `COMMIT` ; sinon `Twin_v9` à côté du dépôt (A8) | idem |
 
 ### Tests fonctionnels
 
@@ -342,6 +379,9 @@ Le mainteneur lance `./scripts/deploy/stage-api.sh` puis
 | UC-SYS-02-F20 | A6, AN-5 | CLI `deploy.mjs` + site local | Comportement actuel : `rollback` avec [A, B, C] et `current.txt` = A → `current.txt` réécrit vers B sans être lu, second `rollback` identique ; santé `503` seulement affichée, code 0 ; `releases` : `*` sur la release pointée, « (none) » sans pointeur ; moins de 2 releases (ou listage en échec) → code 1, pointeur intact ; FTPS sauf `FTP_SECURE=false` | idem |
 | UC-SYS-02-F21 | Nominal (3-9), RG6, E11 | CLI `deploy.mjs` + site local | Nom de release assaini (motif du front-controller), release puis front-controller puis `current.txt`, élagage à 3, fermeture FTP **avant** la première requête ; séquence migrate → référentiel (7.1.0 seule présente, 7.0.0 sautée) → seed → paquets `.json` seulement → santé (`db: "error"` accepté) ; seed en échec → code 1, arrêt, pointeur déjà basculé ; sans `MIGRATE_TOKEN` → avertissement, santé seule ; santé sans `"ok"` → code 1 | idem |
 | UC-SYS-02-F22 | Nominal (1) | CLI `deploy.mjs` | Synchro `static` : seuls les fichiers modifiés envoyés, seuls les fichiers de l'ancien manifeste disparus supprimés (échec = avertissement, fichier hors manifeste intact), manifeste écrit en dernier ; `--dry-run` sans transfert ; manifeste illisible ou absent → envoi complet sans suppression | idem |
+| UC-SYS-02-F23 | A8 | CLI (front-controller, disposition jetable) | Release qui embarque un moteur (le moteur factice des tests) : servie par `www/api/index.php`, sans `TWIN_V9_DIR`, `/api/health` → `"twin9":{"moteur":true,"zlib":true}` ; moteur retiré → `moteur: false` | `api/tests/UseCases/Functional/UcSys02DeployerMigrerTest.php` |
+| UC-SYS-02-F24 | A8, étape 9 | CLI `deploy.mjs` + site local | Release avec `Twin_v9/COMMIT` : le moteur part sous `app/releases/<nom>/`, rien sous `www/` que le front-controller ; santé sans `twin9`, sans zlib ou sans moteur → code 1 : la release en ligne (celle de `current.txt`), le commit, les causes à vérifier, le retour arrière facultatif ; chargé → commit embarqué, suite (gabarits du même commit), « api deploy done » | `engine/test/usecases/unit/uc-sys-02-outil-deploiement.test.js` |
+| UC-SYS-02-F25 | A8, étape 2 | CLI `stage-twin9.mjs` + faux dépôt git | `php/src` du commit (sous-dossiers compris) et `COMMIT` copiés, rien d'autre — ni un fichier ignoré de la copie de travail ; refus sans rien copier : moteur ou gabarits absents, dossier hors git ou imbriqué dans un dépôt, moteur modifié, gabarit non suivi même masqué par `status.showUntrackedFiles=no` ; changement hors de `php/` accepté ; argument manquant | idem |
 
 ### Tests existants liés (non-régression)
 
@@ -442,7 +482,8 @@ cd engine && npx vitest run test/usecases/unit/uc-sys-02
   des étapes 4 à 9 est rejouée par UC-SYS-02-F01/F02, le front-controller par
   F10 et les scripts CLI par F11 et F15 à F18. `stage-api.sh` (Composer, Node,
   réécriture de `build/`) n'est pas exécuté : l'étape 2 est décrite d'après
-  le script.
+  le script, sauf le moteur Twin9, que `stage-twin9.mjs` embarque et que F25
+  exécute.
 - Fenêtre de déploiement : entre l'écriture de `current.txt` (étape 3) et la
   fin des migrations (étape 4), la nouvelle release sert des requêtes sur
   l'ancien schéma ; les migrations expand/contract (RG3) sont conçues pour la

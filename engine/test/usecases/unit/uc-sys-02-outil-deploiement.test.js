@@ -11,9 +11,11 @@
 // dans un fichier d'état JSON. Aucun site distant : SITE_URL pointe sur un
 // serveur HTTP local (127.0.0.1, port éphémère) qui journalise les requêtes
 // et répond ce que le test a scripté. Identifiants et jetons factices.
-import { spawn } from 'node:child_process'
+// stage-twin9.mjs (T18) est exécuté de même, sur un FAUX dépôt Twin_v9 (git
+// local, sources fictives) : aucun moteur réel n'est lu.
+import { execFileSync, spawn, spawnSync } from 'node:child_process'
 import { createHash } from 'node:crypto'
-import { cpSync, existsSync, mkdirSync, mkdtempSync, readFileSync, rmSync, writeFileSync } from 'node:fs'
+import { cpSync, existsSync, mkdirSync, mkdtempSync, readFileSync, readdirSync, rmSync, writeFileSync } from 'node:fs'
 import { createServer } from 'node:http'
 import { tmpdir } from 'node:os'
 import { dirname, join } from 'node:path'
@@ -460,5 +462,159 @@ describe('UC-SYS-02 — outil de déploiement deploy.mjs (sous-processus, faux F
       expect(uploads(fresh).map((u) => u.path)).toEqual(['www/assets/app-123.js', 'www/index.html', 'www/.deploy-manifest.json'])
       expect(ftpCalls(fresh).some((c) => c.op === 'remove')).toBe(false)
     }
+  }, TIMEOUT)
+})
+
+describe('UC-SYS-02 — le moteur Twin9 dans la release (T18)', () => {
+  it('UC-SYS-02-F24 — T18 : une release qui embarque le moteur (Twin_v9/COMMIT) part sous app/releases, hors du webroot ; la santé doit le dire chargé, zlib compris — sinon code 1 : la release en ligne, le commit, les causes à vérifier (TWIN_V9_DIR, zlib), le retour arrière facultatif ; chargé : le commit embarqué, la suite (ses gabarits, du même commit), puis « api deploy done »', async () => {
+    const commit = 'ab12'.repeat(10)
+    const checkout = makeCheckout({
+      webroot: true,
+      files: {
+        'build/api-release/VERSION': 'v1.5.0\n',
+        'build/api-release/public/index.php': '<?php // release factice (test)\n',
+        'build/api-release/Twin_v9/COMMIT': `${commit}\n`,
+        'build/api-release/Twin_v9/php/src/Plateforme.php': '<?php // moteur FICTIF (test)\n',
+      },
+    })
+    const replies = { 'GET /api/health': [200, '{"status":"ok","version":"test","db":"ok"}'] }
+    await withSite(checkout, (r) => replies[`${r.method} ${r.url}`] ?? [404, '{}'], async (base) => {
+      // Sans MIGRATE_TOKEN : la santé seule, ce qui suffit à ce contrôle.
+      writeFileSync(join(checkout.root, '.env.deploy'), envDeploy({ SITE_URL: base }))
+      const avertissement = 'MIGRATE_TOKEN not set in .env.deploy — skipping remote migrations\n'
+      // La release en ligne : celle vers laquelle current.txt vient de pointer.
+      const refus = (run, twin9) =>
+        `deploy failed: Twin9 off on the server (health twin9: ${twin9}): ` +
+        `release ${/current\.txt -> releases\/(\S+)/.exec(run.stdout)[1]} is live, ` +
+        `migrations and imports done, without the engine it embeds (${commit}). Check ~/app/shared/.env ` +
+        "(TWIN_V9_DIR must not be set: it would win over that engine) and PHP's zlib extension; " +
+        'the previous release, if need be: node scripts/deploy/deploy.mjs rollback\n'
+
+      // Une santé d'avant T18 ne dit rien de Twin9 : refusé.
+      const muette = await deploy(checkout, ['api'])
+      expect(muette.status).toBe(1)
+      expect(muette.stderr).toBe(avertissement + refus(muette, 'null'))
+      const release = uploads(checkout)[0].path.split('/')[2]
+      const envoyes = uploads(checkout).map((u) => u.path)
+      expect(envoyes).toContain(`app/releases/${release}/Twin_v9/COMMIT`)
+      expect(envoyes).toContain(`app/releases/${release}/Twin_v9/php/src/Plateforme.php`)
+      expect(envoyes.filter((path) => path.startsWith('www/'))).toEqual(['www/api/.htaccess', 'www/api/index.php'])
+
+      // Le moteur chargé, mais sans zlib : refusé ; zlib sans le moteur : refusé.
+      for (const twin9 of ['{"moteur":true,"zlib":false}', '{"moteur":false,"zlib":true}']) {
+        replies['GET /api/health'] = [200, `{"status":"ok","version":"test","db":"ok","twin9":${twin9}}`]
+        const refuse = await deploy(checkout, ['api'])
+        expect(refuse.status).toBe(1)
+        expect(refuse.stderr).toBe(avertissement + refus(refuse, twin9))
+      }
+
+      replies['GET /api/health'] = [200, '{"status":"ok","version":"test","db":"ok","twin9":{"moteur":true,"zlib":true}}']
+      const charge = await deploy(checkout, ['api'])
+      expect(charge.status).toBe(0)
+      expect(charge.stdout.trimEnd().split('\n').slice(-3)).toEqual([
+        `Twin9 engine loaded, zlib present; the release embeds Twin_v9 ${commit}`,
+        `next: its templates, from Twin_v9 at ${commit} — node scripts/twin9/import-protocole.mjs (TWIN_V9_DIR)`,
+        'api deploy done',
+      ])
+    })
+  }, TIMEOUT)
+
+  it('UC-SYS-02-F25 — T18 : stage-twin9.mjs copie le php/src du commit d’un dépôt Twin_v9 propre, et ce commit, dans <release>/Twin_v9 — ni tests, ni gabarits, ni fichier ignoré ; refuse, sans rien copier : moteur ou gabarits absents, dossier hors git ou DANS un dépôt sans en être la racine, changement non commité ou fichier non suivi dans php/src ou php/protocole (quel que soit status.showUntrackedFiles) ; un changement ailleurs passe', () => {
+    const twin = mkdtempSync(join(tmpdir(), 'uc-sys-02-twin-'))
+    tempDirs.push(twin)
+    const ecrire = (rel, texte) => {
+      mkdirSync(dirname(join(twin, rel)), { recursive: true })
+      writeFileSync(join(twin, rel), texte)
+    }
+    // Un faux Twin_v9 : moteur, gabarits, tests et le reste — tous FICTIFS ; et,
+    // pour le cas imbriqué, un sous-dossier qui a lui aussi php/src et php/protocole.
+    ecrire('php/src/Plateforme.php', '<?php // moteur FICTIF (test)\n')
+    ecrire('php/src/Run/Passe.php', '<?php // sous-dossier FICTIF (test)\n')
+    ecrire('php/protocole/lourd/20-greffier.md', 'Gabarit FICTIF.\n')
+    ecrire('php/tests/PlateformeTest.php', '<?php // test FICTIF\n')
+    ecrire('oracle/README.md', 'Oracle FICTIF.\n')
+    ecrire('imbrique/php/src/Plateforme.php', '<?php // moteur FICTIF imbriqué\n')
+    ecrire('imbrique/php/protocole/x.md', 'Gabarit FICTIF imbriqué.\n')
+    ecrire('.gitignore', '.DS_Store\n')
+    // La configuration git du poste (signature, hooks) n'a pas voix ici.
+    const git = (...args) =>
+      execFileSync('git', ['-C', twin, '-c', 'user.name=Test', '-c', 'user.email=test@example.test', '-c', 'commit.gpgsign=false', '-c', 'core.hooksPath=/dev/null', ...args], {
+        encoding: 'utf8',
+        env: { PATH: process.env.PATH ?? '', GIT_CONFIG_GLOBAL: '/dev/null', GIT_CONFIG_NOSYSTEM: '1' },
+      }).trim()
+    git('init', '-q')
+    git('add', '-A')
+    git('commit', '-q', '-m', 'Moteur FICTIF')
+    const sha = git('rev-parse', 'HEAD')
+
+    const stage = (twinDir, args) => {
+      const dir = mkdtempSync(join(tmpdir(), 'uc-sys-02-stage-'))
+      tempDirs.push(dir)
+      const run = spawnSync(process.execPath, [join(REPO, 'scripts/deploy/stage-twin9.mjs'), ...(args ?? [dir])], {
+        encoding: 'utf8',
+        env: { PATH: process.env.PATH ?? '', TWIN_V9_DIR: twinDir },
+      })
+      return { dir, status: run.status, stdout: run.stdout, stderr: run.stderr }
+    }
+    const fichiers = (dir) => (existsSync(dir) ? readdirSync(dir, { recursive: true }).map(String).sort() : [])
+    const releaseAttendue = [
+      'Twin_v9',
+      'Twin_v9/COMMIT',
+      'Twin_v9/php',
+      'Twin_v9/php/src',
+      'Twin_v9/php/src/Plateforme.php',
+      'Twin_v9/php/src/Run',
+      'Twin_v9/php/src/Run/Passe.php',
+    ]
+
+    const ok = stage(twin)
+    expect(ok.stderr).toBe('')
+    expect(ok.status).toBe(0)
+    expect(ok.stdout).toBe(`Twin9 engine ${sha} staged in ${join(ok.dir, 'Twin_v9')} (2 files, 0 KB)\n`)
+    expect(fichiers(ok.dir)).toEqual(releaseAttendue)
+    expect(readFileSync(join(ok.dir, 'Twin_v9/COMMIT'), 'utf8')).toBe(`${sha}\n`)
+    expect(readFileSync(join(ok.dir, 'Twin_v9/php/src/Run/Passe.php'), 'utf8')).toBe('<?php // sous-dossier FICTIF (test)\n')
+
+    // Un changement hors de php/src et de php/protocole ne change rien au moteur : il passe.
+    ecrire('oracle/README.md', 'Oracle FICTIF modifié.\n')
+    expect(stage(twin).status).toBe(0)
+    // Un fichier ignoré dans php/src (git ne le signale pas) ne part pas : la copie est celle du commit.
+    ecrire('php/src/.DS_Store', 'bruit du Finder')
+    const ignore = stage(twin)
+    expect(ignore.status).toBe(0)
+    expect(fichiers(ignore.dir)).toEqual(releaseAttendue)
+
+    const refuse = (run, debut) => {
+      expect(run.status).toBe(1)
+      expect(run.stdout).toBe('')
+      expect(run.stderr.startsWith(`stage-twin9: ${debut}`), run.stderr).toBe(true)
+      expect(fichiers(run.dir)).toEqual([]) // rien de copié
+    }
+    // Moteur modifié sans commit : le commit ne décrirait pas ce que la release embarque.
+    ecrire('php/src/Plateforme.php', '<?php // moteur FICTIF modifié\n')
+    refuse(stage(twin), `uncommitted changes in ${twin} (php/src, php/protocole)`)
+    git('checkout', '--', 'php/src/Plateforme.php')
+    // Gabarit non suivi : l'import l'enverrait, le commit ne le dit pas — même quand
+    // la configuration du dépôt masque les fichiers non suivis.
+    git('config', 'status.showUntrackedFiles', 'no')
+    ecrire('php/protocole/lourd/99-nouveau.md', 'Gabarit FICTIF non suivi.\n')
+    refuse(stage(twin), `uncommitted changes in ${twin} (php/src, php/protocole)`)
+    rmSync(join(twin, 'php/protocole/lourd/99-nouveau.md'))
+    expect(stage(twin).status).toBe(0)
+    // Un dossier DANS un dépôt git sans en être la racine (le faux moteur de la
+    // plateforme, api/tests/fixtures/twin9-factice) : git y répondrait le commit d'un autre.
+    refuse(stage(join(twin, 'imbrique')), `${join(twin, 'imbrique')} is not the root of its git checkout`)
+
+    // Moteur absent (dossier vide) ; gabarits absents ; dossier hors git ; argument manquant.
+    const vide = mkdtempSync(join(tmpdir(), 'uc-sys-02-vide-'))
+    tempDirs.push(vide)
+    refuse(stage(vide), `Twin9 engine not found in ${join(vide, 'php/src')} (set TWIN_V9_DIR)`)
+    cpSync(join(twin, 'php/src'), join(vide, 'php/src'), { recursive: true })
+    refuse(stage(vide), `Twin9 templates not found in ${join(vide, 'php/protocole')}`)
+    cpSync(join(twin, 'php/protocole'), join(vide, 'php/protocole'), { recursive: true })
+    refuse(stage(vide), `${vide} is not a git checkout`)
+    const sansArgument = stage(twin, [])
+    expect(sansArgument.status).toBe(1)
+    expect(sansArgument.stderr).toBe('stage-twin9: usage: node scripts/deploy/stage-twin9.mjs <stage dir>\n')
   }, TIMEOUT)
 })

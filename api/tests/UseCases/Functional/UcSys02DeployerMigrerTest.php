@@ -416,6 +416,50 @@ final class UcSys02DeployerMigrerTest extends AuthTestBase
         self::assertSame($missing, $serve('releases/.'));
     }
 
+    #[TestDox('UC-SYS-02-F23 — T18 : une release qui embarque le moteur Twin9 (Twin_v9/php/src et COMMIT, hors du webroot) le charge sans TWIN_V9_DIR, servie par le front-controller — /api/health le dit, zlib compris ; sans lui, Twin9 est éteint')]
+    public function testF23TheReleaseLoadsTheEngineItEmbeds(): void
+    {
+        $repo = AdmSupport::repoRoot();
+        $this->tmpDir = sys_get_temp_dir() . '/uc-sys02-moteur-' . bin2hex(random_bytes(4));
+        $release = $this->tmpDir . '/app/releases/20261021-120000-t18';
+        mkdir($this->tmpDir . '/www/api', 0777, true);
+        mkdir($this->tmpDir . '/app/shared', 0777, true);
+        mkdir($release . '/vendor', 0777, true);
+        copy($repo . '/api/deploy/webroot/index.php', $this->tmpDir . '/www/api/index.php');
+        file_put_contents($this->tmpDir . '/app/current.txt', "releases/20261021-120000-t18\n");
+        // la release de stage-api.sh : sources, front, configuration…
+        foreach (['src', 'public', 'config'] as $dossier) {
+            exec('cp -R ' . escapeshellarg($repo . '/api/' . $dossier) . ' ' . escapeshellarg($release . '/' . $dossier));
+        }
+        // … et ses dépendances : celles du dépôt, ses sources à elle d'abord
+        file_put_contents($release . '/vendor/autoload.php', "<?php\n\$loader = require "
+            . var_export($repo . '/api/vendor/autoload.php', true) . ";\n"
+            . "\$loader->addPsr4('Humanome\\\\', __DIR__ . '/../src/', true);\nreturn \$loader;\n");
+        // le moteur, tel que stage-twin9.mjs le laisse : ici, le moteur factice et public des tests
+        mkdir($release . '/Twin_v9/php', 0777, true);
+        exec('cp -R ' . escapeshellarg($repo . '/api/tests/fixtures/twin9-factice/php/src') . ' '
+            . escapeshellarg($release . '/Twin_v9/php/src'));
+        file_put_contents($release . '/Twin_v9/COMMIT', str_repeat('ab12', 10) . "\n");
+        // GET /api/health par www/api/index.php, sans TWIN_V9_DIR (cliEnv ne le transmet pas)
+        file_put_contents($this->tmpDir . '/probe.php',
+            "<?php\n\$_SERVER['REQUEST_METHOD'] = 'GET';\n\$_SERVER['REQUEST_URI'] = '/api/health';\nrequire \$argv[1];\n");
+        $health = function (): array {
+            $run = AdmSupport::runPhp($this->tmpDir . '/probe.php', [$this->tmpDir . '/www/api/index.php'],
+                AdmSupport::cliEnv(['APP_VERSION' => 'v-t18']), $this->tmpDir);
+            $body = json_decode($run['stdout'], true);
+            self::assertIsArray($body, $run['stdout'] . $run['stderr']);
+
+            return $body;
+        };
+
+        $avec = $health();
+        self::assertSame(['ok', 'v-t18'], [$avec['status'], $avec['version']]);
+        self::assertSame(['moteur' => true, 'zlib' => true], $avec['twin9'], 'le moteur embarqué est chargé');
+
+        exec('rm -rf ' . escapeshellarg($release . '/Twin_v9'));
+        self::assertSame(['moteur' => false, 'zlib' => true], $health()['twin9'], 'sans lui, Twin9 éteint');
+    }
+
     #[TestDox('UC-SYS-02-F11 — A7/E10 : équivalents CLI (migrate, import-referentiel, import-prompt-packages, seed-competences) ; base non configurée → code 1')]
     public function testF11CommandLineEquivalents(): void
     {

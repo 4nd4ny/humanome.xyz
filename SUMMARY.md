@@ -67,6 +67,7 @@
   * [Administration (P12.1)](docs/administration.md)
   * [Hébergement — OVH mutualisé (état vérifié le 2026-07-12)](docs/hebergement.md)
   * [Déploiement (OVH mutualisé, sans SSH)](docs/deploiement.md)
+  * [Recette de Twin9 sur humanome.xyz (T18)](docs/recette-twin9.md)
   * [Sauvegarde et restauration](docs/backup-restore.md)
   * [Runner Node — cartographie de masse côté établissement (ADR-005, AD-5)](docs/runner-node.md)
 * RGPD & autorisations

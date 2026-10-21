@@ -23,8 +23,9 @@ final class Bootstrap
             \Dotenv\Dotenv::createImmutable($envDir)->safeLoad();
         }
 
-        // Private Twin9 engine (ADR-011), when TWIN_V9_DIR holds it; without
-        // it, server-side Twin9 stays disabled and the rest runs as usual.
+        // Private Twin9 engine (ADR-011), when TWIN_V9_DIR or the release (T18)
+        // holds it; without it, server-side Twin9 stays disabled and the rest
+        // runs as usual.
         Twin9\EngineLoader::load();
 
         $app = AppFactory::create();

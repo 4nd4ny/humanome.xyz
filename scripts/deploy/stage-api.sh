@@ -1,6 +1,7 @@
 #!/usr/bin/env bash
-# Stages a PHP release for deployment (ADR-008): copies api/ sources, installs
-# production dependencies with the local Composer, stamps VERSION.
+# Stages a PHP release for deployment (ADR-008): copies api/ sources, embeds the
+# private Twin9 engine, installs production dependencies with the local
+# Composer, stamps VERSION.
 # Output: build/api-release/ (flat, ready to upload as app/releases/<ts>/).
 set -euo pipefail
 
@@ -13,6 +14,12 @@ mkdir -p "$stage"
 cp -R "$repo/api/src" "$stage/src"
 cp -R "$repo/api/public" "$stage/public"
 cp "$repo/api/composer.json" "$repo/api/composer.lock" "$stage/"
+
+# The private Twin9 engine (ADR-011 §4, T18): its sources and its commit in
+# Twin_v9/, outside the webroot, where the release's EngineLoader finds them.
+# TWIN_V9_DIR, else ../Twin_v9, at the root of its git clone; the files of its
+# commit; refuses a missing engine or templates, and uncommitted changes.
+node "$repo/scripts/deploy/stage-twin9.mjs" "$stage"
 
 # JSON Schemas: the dual-runtime validation contract (P1) ships with the release
 mkdir -p "$stage/schemas"

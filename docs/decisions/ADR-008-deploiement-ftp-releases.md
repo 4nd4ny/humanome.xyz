@@ -1,6 +1,6 @@
 # ADR-008 — Déploiement FTP par releases sur OVH mutualisé (sans SSH)
 
-> **Amendé par [ADR-011](ADR-011-moteur-twin9-php.md)** : la release embarque aussi le moteur Twin9 privé (le `php/` de `TWIN_V9_DIR`), hors du webroot, et le FTP non chiffré du cluster le fait transiter en clair.
+> **Amendé par [ADR-011](ADR-011-moteur-twin9-php.md)** : la release embarque aussi le moteur Twin9 privé (le `php/` de `TWIN_V9_DIR` : depuis T18, ses sources et son commit, dans `<release>/Twin_v9`), hors du webroot, et le FTP non chiffré du cluster le fait transiter en clair.
 
 ## Statut
 

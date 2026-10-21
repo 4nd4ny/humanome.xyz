@@ -147,7 +147,9 @@ L'attestation d'un run garde le commit du moteur : la tête du dépôt
 `COMMIT` posé à la racine de la copie de `Twin_v9`.
 
 Sur une offre avec cron (perso/pro), planifier plutôt `php scripts/worker.php`
-et `php scripts/maintenance.php`.
+et `php scripts/maintenance.php` — le premier relève aussi les prix d'Anthropic
+une fois par jour (2026-10-22). Ni l'un ni l'autre n'est dans la release :
+`stage-api.sh` ne les embarque pas, il faudrait les y ajouter.
 
 ### Le déclencheur des runs (T18)
 
@@ -173,7 +175,8 @@ doit avancer seul passe donc par lots, la voie du profil v9.8 par défaut ; en
 appels directs, il lui faut sa page ouverte, qui donne des tranches de 40 s.
 
 Le tick relève aussi les prix d'Anthropic, une fois par jour UTC, après sa
-tranche (UC-ADM-05 A6, 2026-10-21) — là où `ANTHROPIC_API_KEY` est posée : sa
+tranche (UC-ADM-05 A6, 2026-10-21 ; par la route comme par `php scripts/worker.php`
+depuis le 2026-10-22) — là où `ANTHROPIC_API_KEY` est posée : sa
 réponse porte alors `"tarifs": "ok"` ou `"echec"`, et `#/admin/twin9` affiche le
 relevé. La page se lit d'ordinaire en moins d'une seconde, en 10 s au plus : le
 tick du relevé peut, une fois par jour, dépasser les 30 s du service, qui

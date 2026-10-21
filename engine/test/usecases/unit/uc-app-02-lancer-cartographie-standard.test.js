@@ -111,7 +111,8 @@ describe('UC-APP-02 — estimation avant lancement (étape 5)', () => {
     expect(estimate.totalCalls).toBe(93)
     expect(estimate.tokensIn).toBe(24 * Math.ceil(39600 / 3.6) + 69 * Math.ceil(36000 / 3.6))
     expect(estimate.tokensOut).toBe(93 * 1000)
-    expect(estimate.costUsd).toBe(Math.round(((estimate.tokensIn * 3) / 1e6 + (93000 * 15) / 1e6) * 100) / 100)
+    // Sonnet 5 à 2 $ / 10 $ le million (page des prix d'Anthropic, 2026-10-21).
+    expect(estimate.costUsd).toBe(Math.round(((estimate.tokensIn * 2) / 1e6 + (93000 * 10) / 1e6) * 100) / 100)
     expect(estimate.durationMin).toBe(Math.ceil((93 * 20) / 60))
     expect(estimate.disclaimer).toContain('INDICATIFS')
     expect(() => estimateRun({ days: 3, avgDayChars: 10, model: 'mon-modele-maison' })).toThrow(

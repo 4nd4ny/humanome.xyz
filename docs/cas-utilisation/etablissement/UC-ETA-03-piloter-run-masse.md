@@ -271,7 +271,7 @@ tableau reste figé sur le dernier état reçu.
 | UC-ETA-03-U10 | `launchRun`, `cancelRun` | POST + CSRF sur les bonnes routes (les deux) | idem |
 | UC-ETA-03-U11 | `fetchPublishedPackages` | Liste réelle filtrée | idem |
 | UC-ETA-03-U12 | `JOB_STATUS_LABELS`, `POLL_INTERVAL_MS`, `SERVICE_MODEL` | Six statuts libellés, 5 s, modèle de référence | idem |
-| UC-ETA-03-U13 | `CohorteSection` (isolée, `fetchFn`) — `computeEstimate` | Taille moyenne tirée des dépôts (1.69 $), repli 3 000 sans taille (1.70 $), modèle configuré prioritaire | idem |
+| UC-ETA-03-U13 | `CohorteSection` (isolée, `fetchFn`) — `computeEstimate` | Taille moyenne tirée des dépôts (1.12 $), repli 3 000 sans taille (1.13 $), modèle configuré prioritaire | idem |
 | UC-ETA-03-U14 | `CohorteSection` (isolée) — `RunProgress` | Bouton « Annuler le run » : run `active` ou jobs en file → présent ; `done`, `cancelled`, `budget_exceeded` sans file → absent | idem |
 | UC-ETA-03-U15 | `CohorteSection` (isolée, `getReferentiel`, `listReferentiels`) — choix du référentiel | RESPIRE par défaut (référentiel chargé sans argument : sa dernière version publiée, 40 appels) ; autre choix → estimation effacée, rechargée à ses pôles (50 appels), POST avec `referentielId`/`referentielVersion` (A8, RG4) | idem |
 
@@ -294,7 +294,7 @@ tableau reste figé sur le dernier état reçu.
 | UC-ETA-03-F13 | E6 | API | `401`/`403`, CSRF absent → `403` | idem |
 | UC-ETA-03-F14 | RG3 | API | Nouveau référentiel publié (libellé modifié) : ancien run figé en 7.0.0 et servi avec l'ancien libellé, nouveau en 7.1.0 avec le nouveau | idem |
 | UC-ETA-03-F15 | Anomalies | API | `membres: []` = tous ; annuler un run `done` le marque `cancelled` et journalise `mass_run_cancelled` (comportement actuel) | idem |
-| UC-ETA-03-F16 | Nominal | IHM | `<App/>` : cases par défaut, estimation (40 appels, 1.69 $), POST (CSRF), polling 5 s jusqu'à `done` | `web/test/usecases/functional/uc-eta-03-piloter-run-masse.test.jsx` |
+| UC-ETA-03-F16 | Nominal | IHM | `<App/>` : cases par défaut, estimation (40 appels, 1.12 $), POST (CSRF), polling 5 s jusqu'à `done` | `web/test/usecases/functional/uc-eta-03-piloter-run-masse.test.jsx` |
 | UC-ETA-03-F17 | A1, RG4 | IHM | Changer de paquet ou décocher → estimation effacée ; POST avec la version choisie et `membres` | idem |
 | UC-ETA-03-F18 | A4, A5 | IHM | Run actif : erreurs par membre (« userId — message »), annulation (CSRF) puis tableau `cancelled` | idem |
 | UC-ETA-03-F19 | E0 | IHM | Pas de paquet ; aucun membre coché → refus local | idem |
@@ -384,8 +384,14 @@ cd web && npx vitest run test/usecases/unit/uc-eta-03 test/usecases/functional/u
   mener qu'à E2.
 - Le modèle de l'estimation (`claude-sonnet-5` à défaut de modèle configuré)
   peut différer du modèle facturé par le worker (`WORKER_MODEL`, défaut
-  `claude-sonnet-4-5`) — même famille tarifaire ; les modèles locaux `llama`,
-  `mistral`, `qwen` sont estimés à `0.00 $`, pas « inconnu ».
+  `claude-sonnet-4-5`) — et leurs prix diffèrent depuis que la grille suit
+  ceux d'Anthropic (2026-10-21) : Sonnet 5 à 2 $ / 10 $ le million, Sonnet 4.5
+  à 3 $ / 15 $ ; l'estimation sous-évalue alors d'un tiers un run facturé sur
+  Sonnet 4.5, qu'Anthropic retire le 2026-11-30. La table de l'estimation
+  (`engine/src/providers/estimate.js`) est indicative et corrigée à la main ;
+  seule la grille du serveur suit le relevé quotidien (UC-ADM-05 A6). Les
+  modèles locaux `llama`, `mistral`, `qwen` sont estimés à `0.00 $`, pas
+  « inconnu ».
 - Un run lancé sans configuration (A6) attend sans explication : avant le
   lancement, le seul message est l'avertissement trompeur « l'estimation
   dépasse le budget restant (0.00 $) — les jobs excédentaires passeront en

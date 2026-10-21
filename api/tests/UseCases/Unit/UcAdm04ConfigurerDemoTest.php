@@ -89,26 +89,30 @@ final class UcAdm04ConfigurerDemoTest extends TestCase
         }
     }
 
-    #[TestDox('UC-ADM-04-U01 — read : 10 valeurs effectives, origine par champ, liste de modèles, clé API en booléen seulement')]
+    #[TestDox('UC-ADM-04-U01 — read : 10 valeurs effectives (dont la sortie, le maximum du modèle, en lecture seule), origine par champ, modèles refusés, liste de Haiku, clé API en booléen seulement')]
     public function testU01ReadExposesEffectiveValuesAndNeverTheKey(): void
     {
         $data = self::service()->read();
 
-        self::assertSame(['effective', 'sources', 'allowedModels', 'apiKeyConfigured'], array_keys($data));
+        self::assertSame(['effective', 'sources', 'modelRefuse', 'allowedModels', 'apiKeyConfigured'], array_keys($data));
         self::assertSame([
             'enabled' => true,
             'provider' => 'anthropic',
             'model' => 'claude-haiku-5-5',
-            'maxTokensPerRequest' => 16000,
-            'maxInputChars' => 420000,
+            'sortieMax' => 128000,
+            'maxInputChars' => 2000000,
             'perIpPerHour' => 20,
             'dailyGlobalTokens' => 6000000,
             'dailyBudgetUsd' => 1.0,
             'powDifficultyBits' => 20,
             'upstreamTimeoutSeconds' => 150,
         ], $data['effective']);
-        self::assertSame(array_fill_keys(array_keys($data['effective']), 'fichier'), $data['sources']);
+        // La sortie n'est pas un réglage : elle n'a pas d'origine.
+        self::assertSame(array_fill_keys(array_keys(array_diff_key($data['effective'], ['sortieMax' => true])), 'fichier'),
+            $data['sources']);
+        self::assertSame([], $data['modelRefuse']);
         self::assertSame(DemoConfigService::ALLOWED_MODELS, $data['allowedModels']);
+        self::assertSame(['claude-haiku-5-5', 'claude-haiku-4-5-20251001', 'claude-haiku-4-5'], $data['allowedModels']);
         self::assertTrue($data['apiKeyConfigured']);
         self::assertStringNotContainsString(self::API_KEY, json_encode($data, JSON_THROW_ON_ERROR));
 
@@ -119,34 +123,33 @@ final class UcAdm04ConfigurerDemoTest extends TestCase
     #[TestDox('UC-ADM-04-U02 — update : fusion des patchs partiels dans demo_overrides, origine « base », audit des NOMS de champs')]
     public function testU02UpdateMergesPartialPatchesAndAuditsFieldNames(): void
     {
-        $first = self::service()->update($this->adminId, ['model' => '  claude-opus-4-8 ', 'maxTokensPerRequest' => 4096]);
-        self::assertSame('claude-opus-4-8', $first['effective']['model'], 'modèle rogné');
+        $first = self::service()->update($this->adminId, ['model' => '  claude-haiku-4-5 ', 'maxInputChars' => 40960]);
+        self::assertSame('claude-haiku-4-5', $first['effective']['model'], 'modèle rogné');
         self::assertSame('base', $first['sources']['model']);
         self::assertSame('fichier', $first['sources']['perIpPerHour']);
 
         $second = self::service()->update($this->adminId, ['perIpPerHour' => 5, 'enabled' => false]);
-        self::assertSame('claude-opus-4-8', $second['effective']['model'], 'le 2e patch ne remplace pas le 1er');
-        self::assertSame(4096, $second['effective']['maxTokensPerRequest']);
+        self::assertSame('claude-haiku-4-5', $second['effective']['model'], 'le 2e patch ne remplace pas le 1er');
+        self::assertSame(40960, $second['effective']['maxInputChars']);
         self::assertSame(5, $second['effective']['perIpPerHour']);
         self::assertFalse($second['effective']['enabled']);
 
         self::assertEquals(
-            ['model' => 'claude-opus-4-8', 'maxTokensPerRequest' => 4096, 'perIpPerHour' => 5, 'enabled' => false],
+            ['model' => 'claude-haiku-4-5', 'maxInputChars' => 40960, 'perIpPerHour' => 5, 'enabled' => false],
             (new SettingsRepository(Db::get()))->get(DemoConfig::OVERRIDES_KEY),
         );
         self::assertSame(2, AdmSupport::countAudit(self::$pdo, 'demo_config_updated'));
         $audit = AdmSupport::lastAudit(self::$pdo, 'demo_config_updated');
         self::assertSame($this->adminId, $audit['userId']);
         self::assertEquals(['fields' => ['perIpPerHour', 'enabled']], $audit['details']);
-        self::assertStringNotContainsString('claude-opus', $audit['raw']);
+        self::assertStringNotContainsString('claude-haiku', $audit['raw']);
     }
 
     #[TestDox('UC-ADM-04-U03 — update : bornes entières inclusives, hors bornes et non-entiers refusés (422, message français)')]
     public function testU03IntegerBounds(): void
     {
         $bounds = [
-            'maxTokensPerRequest' => [256, 16000],
-            'maxInputChars' => [1000, 500000],
+            'maxInputChars' => [1000, 4000000],
             'perIpPerHour' => [1, 1000],
             'dailyGlobalTokens' => [10000, 50000000],
             'powDifficultyBits' => [8, 24],
@@ -177,12 +180,19 @@ final class UcAdm04ConfigurerDemoTest extends TestCase
         $this->assertRejected(['dailyBudgetUsd' => true], 'dailyBudgetUsd doit être un nombre.');
     }
 
-    #[TestDox('UC-ADM-04-U05 — update : modèle libre au-delà de la liste, motif [A-Za-z0-9][A-Za-z0-9._-]{0,99}, jamais vide')]
+    #[TestDox('UC-ADM-04-U05 — update : modèle libre au-delà de la liste s’il est un Haiku, motif [A-Za-z0-9][A-Za-z0-9._-]{0,99}, jamais vide ; un Sonnet, un Opus ou un Fable refusé (422)')]
     public function testU05ModelIsFreeTextWithASaneShape(): void
     {
-        self::assertSame('claude-fable-5', self::service()->update($this->adminId, ['model' => 'claude-fable-5'])['effective']['model']);
-        $hundred = 'a' . str_repeat('b', 99);
+        self::assertSame('claude-haiku-6', self::service()->update($this->adminId, ['model' => 'claude-haiku-6'])['effective']['model']);
+        $hundred = 'claude-haiku-' . str_repeat('b', 87);
+        self::assertSame(100, \strlen($hundred));
         self::assertSame($hundred, self::service()->update($this->adminId, ['model' => $hundred])['effective']['model']);
+
+        $haiku = 'La démo reste sur Haiku : Sonnet et Opus sont réservés aux comptes qui ont acheté des crédits '
+            . 'ou qui utilisent leur propre clé.';
+        foreach (['claude-sonnet-5', 'claude-opus-4-8', 'claude-fable-5', 'haiku-claude'] as $refuse) {
+            $this->assertRejected(['model' => $refuse], $haiku);
+        }
 
         $invalid = 'Identifiant de modèle invalide (lettres, chiffres, points et tirets).';
         $this->assertRejected(['model' => $hundred . 'c'], $invalid);
@@ -202,8 +212,12 @@ final class UcAdm04ConfigurerDemoTest extends TestCase
         $this->assertRejected(['provider' => 'mock'], 'Le fournisseur n’est pas modifiable : la démo utilise la clé plateforme Anthropic.');
         $this->assertRejected([], 'Aucun champ à modifier.');
 
+        // La sortie n'est plus un réglage (2026-10-21).
+        $this->assertRejected(['maxTokensPerRequest' => 4096], 'La sortie n’est plus plafonnée : chaque appel peut rendre le '
+            . 'maximum du modèle (128 000 jetons pour Haiku 5.5), et le budget du jour le borne.');
+
         // Un champ valide + un champ invalide : tout est refusé, rien n'est stocké.
-        $this->assertRejected(['enabled' => false, 'maxTokensPerRequest' => 1], 'maxTokensPerRequest doit être compris entre 256 et 16000.');
+        $this->assertRejected(['enabled' => false, 'maxInputChars' => 1], 'maxInputChars doit être compris entre 1000 et 4000000.');
         self::assertNull((new SettingsRepository(Db::get()))->get(DemoConfig::OVERRIDES_KEY));
         self::assertTrue(DemoConfig::load()->enabled);
         self::assertSame(0, AdmSupport::countAudit(self::$pdo, 'demo_config_updated'));
@@ -212,12 +226,12 @@ final class UcAdm04ConfigurerDemoTest extends TestCase
     #[TestDox('UC-ADM-04-U07 — reset : supprime toutes les surcharges (retour env/fichier) et journalise demo_config_reset')]
     public function testU07ResetDropsEveryOverride(): void
     {
-        TestDb::setEnv('DEMO_MODEL', 'claude-sonnet-5');
-        self::service()->update($this->adminId, ['model' => 'claude-opus-4-8', 'enabled' => false]);
+        TestDb::setEnv('DEMO_MODEL', 'claude-haiku-4-5');
+        self::service()->update($this->adminId, ['model' => 'claude-haiku-4-5-20251001', 'enabled' => false]);
 
         $data = self::service()->reset($this->adminId);
 
-        self::assertSame('claude-sonnet-5', $data['effective']['model']);
+        self::assertSame('claude-haiku-4-5', $data['effective']['model']);
         self::assertSame('env', $data['sources']['model']);
         self::assertTrue($data['effective']['enabled']);
         self::assertSame('fichier', $data['sources']['enabled']);
@@ -235,20 +249,20 @@ final class UcAdm04ConfigurerDemoTest extends TestCase
     #[TestDox('UC-ADM-04-U08 — DemoConfig::load : précédence base > env > fichier, champ par champ')]
     public function testU08LoadPrecedence(): void
     {
-        TestDb::setEnv('DEMO_MODEL', 'claude-sonnet-5');
+        TestDb::setEnv('DEMO_MODEL', 'claude-haiku-4-5');
         TestDb::setEnv('DEMO_PER_IP_PER_HOUR', '7');
         TestDb::setEnv('DEMO_DAILY_BUDGET_USD', '1.25');
-        (new SettingsRepository(Db::get()))->set(DemoConfig::OVERRIDES_KEY, ['model' => 'claude-opus-4-8']);
+        (new SettingsRepository(Db::get()))->set(DemoConfig::OVERRIDES_KEY, ['model' => 'claude-haiku-4-5-20251001']);
 
         $config = DemoConfig::load();
 
-        self::assertSame('claude-opus-4-8', $config->model);
+        self::assertSame('claude-haiku-4-5-20251001', $config->model);
         self::assertSame('base', $config->sources['model'], 'la base gagne sur l’env');
         self::assertSame(7, $config->perIpPerHour);
         self::assertSame('env', $config->sources['perIpPerHour'], 'l’env gagne sur le fichier');
         self::assertSame(1.25, $config->dailyBudgetUsd);
-        self::assertSame(16000, $config->maxTokensPerRequest);
-        self::assertSame('fichier', $config->sources['maxTokensPerRequest']);
+        self::assertSame(2000000, $config->maxInputChars);
+        self::assertSame('fichier', $config->sources['maxInputChars']);
     }
 
     #[TestDox('UC-ADM-04-U09 — DemoConfig::load : DEMO_ENABLED 0/false/off/no = éteint, toute autre valeur = allumé ; entier non numérique ignoré')]
@@ -264,10 +278,10 @@ final class UcAdm04ConfigurerDemoTest extends TestCase
             self::assertSame('env', DemoConfig::load()->sources['enabled']);
         }
 
-        TestDb::setEnv('DEMO_MAX_TOKENS_PER_REQUEST', 'beaucoup');
+        TestDb::setEnv('DEMO_MAX_INPUT_CHARS', 'beaucoup');
         $config = DemoConfig::load();
-        self::assertSame(16000, $config->maxTokensPerRequest);
-        self::assertSame('fichier', $config->sources['maxTokensPerRequest']);
+        self::assertSame(2000000, $config->maxInputChars);
+        self::assertSame('fichier', $config->sources['maxInputChars']);
 
         TestDb::setEnv('DEMO_PROVIDER', 'mock');
         self::assertSame('mock', DemoConfig::load()->provider);
@@ -281,7 +295,7 @@ final class UcAdm04ConfigurerDemoTest extends TestCase
             'provider' => 'mock',
             'enabled' => 'false',
             'model' => '',
-            'maxTokensPerRequest' => '4096',
+            'maxInputChars' => '4096',
             'dailyBudgetUsd' => 3,
             'perIpPerHour' => 9,
         ]);
@@ -293,7 +307,7 @@ final class UcAdm04ConfigurerDemoTest extends TestCase
         self::assertTrue($config->enabled, 'chaîne "false" ≠ booléen');
         self::assertSame('fichier', $config->sources['enabled']);
         self::assertSame('claude-haiku-5-5', $config->model, 'modèle vide ignoré');
-        self::assertSame(16000, $config->maxTokensPerRequest, 'chaîne ≠ entier');
+        self::assertSame(2000000, $config->maxInputChars, 'chaîne ≠ entier');
         self::assertSame(3.0, $config->dailyBudgetUsd, 'entier accepté pour un réel');
         self::assertSame('base', $config->sources['dailyBudgetUsd']);
         self::assertSame(9, $config->perIpPerHour);
@@ -322,11 +336,12 @@ final class UcAdm04ConfigurerDemoTest extends TestCase
     #[TestDox('UC-ADM-04-U12 — (anomalie AN-1, comportement actuel) PlatformStatus::snapshot annonce demo.editableInUi = false malgré l’édition possible')]
     public function testU12SnapshotStillSaysNotEditableCurrentBehaviour(): void
     {
-        self::service()->update($this->adminId, ['model' => 'claude-opus-4-8']);
+        self::service()->update($this->adminId, ['model' => 'claude-haiku-4-5']);
 
         $demo = (new PlatformStatus(Db::get()))->snapshot()['demo'];
 
-        self::assertSame('claude-opus-4-8', $demo['model'], 'valeur effective, surcharge comprise');
+        self::assertSame('claude-haiku-4-5', $demo['model'], 'valeur effective, surcharge comprise');
+        self::assertSame(64000, $demo['sortieMax'], 'la sortie suit le modèle');
         self::assertFalse($demo['editableInUi']);
         self::assertArrayNotHasKey('upstreamTimeoutSeconds', $demo, 'instantané incomplet par rapport à /demo-config');
     }
@@ -390,13 +405,13 @@ final class UcAdm04ConfigurerDemoTest extends TestCase
     {
         TestDb::setEnv('DEMO_POW_DIFFICULTY_BITS', '0');
         TestDb::setEnv('DEMO_PER_IP_PER_HOUR', '12.7');
-        TestDb::setEnv('DEMO_MAX_TOKENS_PER_REQUEST', '-1');
+        TestDb::setEnv('DEMO_MAX_INPUT_CHARS', '-1');
 
         $config = DemoConfig::load();
 
         self::assertSame(0, $config->powDifficultyBits, 'hors de 8–24, accepté');
         self::assertSame(12, $config->perIpPerHour, '12.7 tronqué');
-        self::assertSame(-1, $config->maxTokensPerRequest, 'hors de 256–16000, accepté');
+        self::assertSame(-1, $config->maxInputChars, 'hors de 1000–4000000, accepté');
         self::assertSame('env', $config->sources['powDifficultyBits']);
         // Par l'API, les mêmes valeurs sont refusées (RG2).
         $this->assertRejected(['powDifficultyBits' => 0], 'powDifficultyBits doit être compris entre 8 et 24.');
@@ -418,5 +433,56 @@ final class UcAdm04ConfigurerDemoTest extends TestCase
         self::assertEquals(['fields' => ['enabled']], AdmSupport::lastAudit(self::$pdo, 'demo_config_updated')['details']);
         TestDb::setEnv('DEMO_ENABLED', 'off');
         self::assertTrue(DemoConfig::load()->enabled, 'la surcharge identique fige la valeur face à DEMO_ENABLED');
+    }
+
+    #[TestDox('UC-ADM-04-U28 — DemoConfig::load : un Haiku seulement (2026-10-21) — le premier Haiku des couches, sinon Haiku 5.5 ; un Sonnet ou un Opus d’une couche refusé et signalé')]
+    public function testU28OnlyAHaikuRunsTheDemo(): void
+    {
+        // Le .env de production de juillet : Sonnet 5.
+        TestDb::setEnv('DEMO_MODEL', 'claude-sonnet-5');
+        $config = DemoConfig::load();
+        self::assertSame('claude-haiku-5-5', $config->model, 'le fichier, sous le Sonnet refusé');
+        self::assertSame('fichier', $config->sources['model']);
+        self::assertSame([['valeur' => 'claude-sonnet-5', 'source' => 'env']], $config->modelRefuse);
+
+        // Une surcharge Opus en base, stockée avant la règle : refusée aussi, l'env Haiku sert.
+        TestDb::setEnv('DEMO_MODEL', 'claude-haiku-4-5');
+        (new SettingsRepository(Db::get()))->set(DemoConfig::OVERRIDES_KEY, ['model' => 'claude-opus-4-8']);
+        $config = DemoConfig::load();
+        self::assertSame('claude-haiku-4-5', $config->model);
+        self::assertSame('env', $config->sources['model']);
+        self::assertSame([['valeur' => 'claude-opus-4-8', 'source' => 'base']], $config->modelRefuse);
+
+        // Ni la base ni l'env : le fichier, qui nomme Haiku 5.5.
+        $file = \dirname(__DIR__, 3) . '/config/demo.php';
+        self::assertSame('claude-haiku-5-5', (require $file)['model'], 'le fichier nomme Haiku 5.5');
+        TestDb::setEnv('DEMO_MODEL', 'claude-sonnet-5-5');
+        $data = self::service()->read();
+        self::assertSame('claude-haiku-5-5', $data['effective']['model']);
+        self::assertSame('fichier', $data['sources']['model']);
+        self::assertSame([
+            ['valeur' => 'claude-opus-4-8', 'source' => 'base'],
+            ['valeur' => 'claude-sonnet-5-5', 'source' => 'env'],
+        ], $data['modelRefuse'], 'la page d’administration les nomme');
+    }
+
+    #[TestDox('UC-ADM-04-U29 — la sortie d’un appel est le maximum du modèle (128 000 pour Haiku 5.5, 64 000 pour Haiku 4.5) ; maxTokensPerRequest, en base ou en env, n’est plus lu, et quitte la base au prochain enregistrement')]
+    public function testU29OutputIsTheModelsMaximum(): void
+    {
+        TestDb::setEnv('DEMO_MAX_TOKENS_PER_REQUEST', '8192');
+        (new SettingsRepository(Db::get()))->set(DemoConfig::OVERRIDES_KEY, ['maxTokensPerRequest' => 4096]);
+
+        $config = DemoConfig::load();
+        self::assertSame(128000, $config->sortieMax());
+        self::assertArrayNotHasKey('maxTokensPerRequest', $config->sources);
+        self::assertNotContains('maxTokensPerRequest', DemoConfig::OVERRIDABLE_FIELDS);
+
+        $data = self::service()->update($this->adminId, ['model' => 'claude-haiku-4-5-20251001']);
+        self::assertSame(64000, $data['effective']['sortieMax']);
+        self::assertSame(
+            ['model' => 'claude-haiku-4-5-20251001'],
+            (new SettingsRepository(Db::get()))->get(DemoConfig::OVERRIDES_KEY),
+            'le champ que plus rien ne lit est parti',
+        );
     }
 }

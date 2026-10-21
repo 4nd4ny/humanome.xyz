@@ -334,7 +334,7 @@ export function createPromptologueBackend({
       const denied = adminGuard()
       if (denied) return denied
       return jsonResponse(200, {
-        effective: { enabled: true, provider: 'anthropic', model: 'claude-haiku-4-5', maxTokensPerRequest: 2048, maxInputChars: 20000, perIpPerHour: 20, dailyGlobalTokens: 2000000, dailyBudgetUsd: 5, powDifficultyBits: 20, upstreamTimeoutSeconds: 60 },
+        effective: { enabled: true, provider: 'anthropic', model: 'claude-haiku-4-5', sortieMax: 64000, maxInputChars: 20000, perIpPerHour: 20, dailyGlobalTokens: 2000000, dailyBudgetUsd: 5, powDifficultyBits: 20, upstreamTimeoutSeconds: 60 },
         sources: {},
         allowedModels: ['claude-haiku-4-5'],
         apiKeyConfigured: true,

@@ -27,6 +27,7 @@ import { isAbortError, describeDemoError } from '../lib/demo-llm.js'
 import {
   BUILTIN_PACKAGE,
   PROVIDERS,
+  SERVICE_ESTIMATION_MODEL,
   buildEstimate,
   computeDayGroups,
   createProviderBundle,
@@ -159,7 +160,8 @@ export default function RunWizard({ session, deps = {} }) {
   }, [packages, packageKey])
 
   const providerDef = PROVIDERS.find((p) => p.id === providerId)
-  const estimationModel = mode === 'humanome' ? 'claude-sonnet-5' : model
+  // Le Service humanome s'estime au modèle de la démo qui le sert, un Haiku (2026-10-21).
+  const estimationModel = mode === 'humanome' ? SERVICE_ESTIMATION_MODEL : model
   const estimate = useMemo(() => {
     if (!referentiel || dayGroups.length === 0) return null
     try {

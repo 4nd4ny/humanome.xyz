@@ -140,7 +140,8 @@ describe('UC-PRO-05 — exécution d’une version (étape 5)', () => {
 
   it('UC-PRO-05-U11 — createProviderBundle : Service humanome (modèle « demo », tarif de référence) ou clé personnelle obligatoire', () => {
     const service = createProviderBundle({ mode: 'humanome', fetchFn: vi.fn() })
-    expect(service).toMatchObject({ model: 'demo', estimationModel: 'claude-sonnet-5' })
+    // Le tarif de référence est celui de la démo, qui sert le Service humanome : Haiku 5.5 (2026-10-21).
+    expect(service).toMatchObject({ model: 'demo', estimationModel: 'claude-haiku-5-5' })
     expect(typeof service.prime).toBe('function')
 
     expect(() => createProviderBundle({ mode: 'cle', provider: 'anthropic', apiKey: '' })).toThrow(
@@ -198,11 +199,12 @@ describe('UC-PRO-05 — mesures et rapports (étape 6)', () => {
   it('UC-PRO-05-U14 — coût réel : chiffré sur le modèle de TARIF (service humanome), totaux de session additionnés', () => {
     const usage = { inputTokens: 8000, outputTokens: 1600, mesures: 8 }
     expect(realCostUsd(usage, 'demo')).toBeNull() // l'indice de modèle du service n'est pas tarifé
-    expect(realCostUsd(usage, 'claude-sonnet-5')).toBe(0.048)
+    // Sonnet 5 à 2 $ / 10 $ par Mtok (page des prix d'Anthropic, 2026-10-21).
+    expect(realCostUsd(usage, 'claude-sonnet-5')).toBe(0.032)
     expect(realCostUsd({ inputTokens: 0, outputTokens: 0, mesures: 0 }, 'claude-sonnet-5')).toBeNull()
     const session = sumUsages([usage, usage, null])
     expect(session).toEqual({ inputTokens: 16000, outputTokens: 3200, mesures: 16 })
-    expect(realCostUsd(session, 'claude-sonnet-5')).toBe(0.096)
+    expect(realCostUsd(session, 'claude-sonnet-5')).toBe(0.064)
   })
 
   it('UC-PRO-05-U15 — buildAbReport → scoreVsReference sur les fixtures : P = R = F1 = 75 %, journée hors score', () => {

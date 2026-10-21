@@ -63,7 +63,7 @@ describe('UC-ETA-03 — estimation du coût avant lancement', () => {
       totalCalls: 24,
       tokensIn: 220000, // ceil(24 × (3 000 + 30 000) / 3,6)
       tokensOut: 24000,
-      costUsd: 1.02, // 0,22 Mtok × 3 $ + 0,024 Mtok × 15 $
+      costUsd: 0.68, // 0,22 Mtok × 2 $ + 0,024 Mtok × 10 $ (Sonnet 5, page des prix du 2026-10-21)
       disclaimer: PRICING_DISCLAIMER,
     })
 
@@ -203,19 +203,19 @@ async function estimateCost() {
 
 describe('UC-ETA-03 — CohorteSection rendue isolément', () => {
   it('UC-ETA-03-U13 — computeEstimate : taille moyenne d’une journée = Σ tailles / Σ journées (repli 3 000), modèle configuré sinon claude-sonnet-5', async () => {
-    // (9 000 + 4 000) / 5 = 2 600 car. → ceil(40 × 32 600 / 3,6) = 362 223 tokens → 1.69 $.
+    // (9 000 + 4 000) / 5 = 2 600 car. → ceil(40 × 32 600 / 3,6) = 362 223 tokens → 1.12 $ (Sonnet 5 à 2 / 10).
     renderCohorte()
     let block = await estimateCost()
     expect(block.textContent).toContain('40 appels LLM (modèle claude-sonnet-5)')
-    expect(screen.getByTestId('etab-cout-estime').textContent).toBe('1.69 $')
+    expect(screen.getByTestId('etab-cout-estime').textContent).toBe('1.12 $')
     cleanup()
 
-    // Tailles absentes : repli DEFAULT_DAY_CHARS (3 000) → 366 667 tokens → 1.70 $.
+    // Tailles absentes : repli DEFAULT_DAY_CHARS (3 000) → 366 667 tokens → 1.13 $.
     renderCohorte({
       membres: DEPOSANTS.map((m) => (m.portfolio ? { ...m, portfolio: { ...m.portfolio, taille: undefined } } : m)),
     })
     await estimateCost()
-    expect(screen.getByTestId('etab-cout-estime').textContent).toBe('1.70 $')
+    expect(screen.getByTestId('etab-cout-estime').textContent).toBe('1.13 $')
     cleanup()
 
     // Modèle configuré : il prime sur le modèle de référence.

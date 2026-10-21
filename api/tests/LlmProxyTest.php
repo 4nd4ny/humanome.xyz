@@ -87,7 +87,8 @@ final class LlmProxyTest extends LlmTestCase
         self::assertSame('https://api.anthropic.com/v1/messages', $upstream['url']);
         $payload = json_decode((string) $upstream['body'], true);
         self::assertSame('claude-haiku-4-5-20251001', $payload['model']);
-        self::assertSame(512, $payload['max_tokens']);
+        // The model's whole output: DEMO_MAX_TOKENS_PER_REQUEST=512 is read nowhere (2026-10-21).
+        self::assertSame(64000, $payload['max_tokens']);
         self::assertSame('Tu es un assistant.', $payload['system']);
         self::assertSame(self::API_KEY, $upstream['headers']['x-api-key']);
 
@@ -290,22 +291,23 @@ final class LlmProxyTest extends LlmTestCase
     {
         $settings = new SettingsRepository(self::$pdo);
         try {
-            // L'env impose haiku + 512 tokens ; la base doit gagner.
+            // L'env impose Haiku 4.5 ; la base (Haiku 5.5) doit gagner. Un
+            // plafond de sortie stocké avant 2026-10-21 n'est plus lu.
             TestDb::setEnv('DEMO_PROVIDER', 'anthropic');
             $settings->set(DemoConfig::OVERRIDES_KEY, [
-                'model' => 'claude-opus-4-8',
+                'model' => 'claude-haiku-5-5',
                 'maxTokensPerRequest' => 4096,
             ]);
-            $this->http->queueResponse(['status' => 200, 'body' => self::anthropicBody(model: 'claude-opus-4-8')]);
+            $this->http->queueResponse(['status' => 200, 'body' => self::anthropicBody(model: 'claude-haiku-5-5')]);
 
             $response = $this->postLlm();
 
             self::assertSame(200, $response->getStatusCode(), (string) $response->getBody());
             self::assertCount(1, $this->http->requests);
             $payload = json_decode((string) $this->http->requests[0]['body'], true, 512, JSON_THROW_ON_ERROR);
-            self::assertSame('claude-opus-4-8', $payload['model']); // base > env (haiku)
-            self::assertSame(4096, $payload['max_tokens']); // base > env (512)
-            self::assertSame('claude-opus-4-8', self::json($response)['model']);
+            self::assertSame('claude-haiku-5-5', $payload['model']); // base > env (Haiku 4.5)
+            self::assertSame(128000, $payload['max_tokens']); // the model's maximum
+            self::assertSame('claude-haiku-5-5', self::json($response)['model']);
         } finally {
             $settings->delete(DemoConfig::OVERRIDES_KEY);
         }

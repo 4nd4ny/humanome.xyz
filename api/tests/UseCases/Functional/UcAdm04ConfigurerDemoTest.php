@@ -111,7 +111,7 @@ final class UcAdm04ConfigurerDemoTest extends AdminTestCase
         return $response;
     }
 
-    #[TestDox('UC-ADM-04-F01 — nominal : lecture, PUT partiel (modèle + plafond), origine « base », audit des seuls noms de champs')]
+    #[TestDox('UC-ADM-04-F01 — nominal : lecture, PUT partiel (modèle + entrée max), origine « base », audit des seuls noms de champs')]
     public function testF01NominalReadThenPartialUpdate(): void
     {
         $read = $this->as_($this->admin, 'GET', '/api/admin/demo-config');
@@ -121,18 +121,18 @@ final class UcAdm04ConfigurerDemoTest extends AdminTestCase
         self::assertSame('env', $before['sources']['provider'], 'DEMO_PROVIDER posé par l’environnement');
         self::assertFalse($before['apiKeyConfigured']);
 
-        $put = $this->put(['model' => 'claude-fable-5', 'maxTokensPerRequest' => 1024]);
+        $put = $this->put(['model' => 'claude-haiku-6', 'maxInputChars' => 30000]);
         self::assertSame(200, $put->getStatusCode(), (string) $put->getBody());
         $after = self::json($put);
-        self::assertSame('claude-fable-5', $after['effective']['model'], 'modèle libre hors liste');
+        self::assertSame('claude-haiku-6', $after['effective']['model'], 'un Haiku libre, hors liste');
         self::assertSame('base', $after['sources']['model']);
-        self::assertSame(1024, $after['effective']['maxTokensPerRequest']);
+        self::assertSame(30000, $after['effective']['maxInputChars']);
         self::assertSame('fichier', $after['sources']['perIpPerHour'], 'champs non envoyés inchangés');
 
         self::assertEquals($after, self::json($this->as_($this->admin, 'GET', '/api/admin/demo-config')));
         $audit = self::lastAudit('demo_config_updated');
         self::assertSame($this->admin['id'], $audit['userId']);
-        self::assertEquals(['fields' => ['model', 'maxTokensPerRequest']], $audit['details']);
+        self::assertEquals(['fields' => ['model', 'maxInputChars']], $audit['details']);
     }
 
     #[TestDox('UC-ADM-04-F02 — nominal (interrupteur) : démo éteinte d’un geste → 503 immédiat (démo et tuteur) côté visiteur ; rallumée → défi servi')]
@@ -200,16 +200,16 @@ final class UcAdm04ConfigurerDemoTest extends AdminTestCase
     #[TestDox('UC-ADM-04-F05 — A2 : la base gagne sur l’environnement ; « Réinitialiser » rend la main à env/fichier (audit demo_config_reset)')]
     public function testF05BaseWinsThenResetFallsBack(): void
     {
-        TestDb::setEnv('DEMO_MODEL', 'claude-sonnet-5');
+        TestDb::setEnv('DEMO_MODEL', 'claude-haiku-4-5');
         self::assertSame('env', self::json($this->as_($this->admin, 'GET', '/api/admin/demo-config'))['sources']['model']);
 
-        $this->put(['model' => 'claude-opus-4-8', 'enabled' => false]);
-        self::assertSame('claude-opus-4-8', DemoConfig::load()->model);
+        $this->put(['model' => 'claude-haiku-4-5-20251001', 'enabled' => false]);
+        self::assertSame('claude-haiku-4-5-20251001', DemoConfig::load()->model);
 
         $reset = $this->as_($this->admin, 'DELETE', '/api/admin/demo-config');
         self::assertSame(200, $reset->getStatusCode());
         $data = self::json($reset);
-        self::assertSame('claude-sonnet-5', $data['effective']['model']);
+        self::assertSame('claude-haiku-4-5', $data['effective']['model']);
         self::assertSame('env', $data['sources']['model']);
         self::assertSame('fichier', $data['sources']['enabled']);
         self::assertTrue(self::json($this->visitor('GET', '/api/llm/status'))['enabled'], 'démo rallumée par le retour au fichier');
@@ -272,7 +272,7 @@ final class UcAdm04ConfigurerDemoTest extends AdminTestCase
     {
         $maya = $this->registerAs('maya@example.org', 'Maya', ['apprenant', 'promptologue', 'etablissement']);
 
-        $this->put(['model' => 'claude-opus-4-8']); // une surcharge à préserver du DELETE
+        $this->put(['model' => 'claude-haiku-4-5']); // une surcharge à préserver du DELETE
         $calls = [['GET', null], ['PUT', ['enabled' => false]], ['DELETE', null]];
         foreach ($calls as [$method, $body]) {
             $this->cookieSid = null;
@@ -288,7 +288,7 @@ final class UcAdm04ConfigurerDemoTest extends AdminTestCase
         }
 
         self::assertTrue(DemoConfig::load()->enabled);
-        self::assertSame('claude-opus-4-8', DemoConfig::load()->model, 'surcharge intacte');
+        self::assertSame('claude-haiku-4-5', DemoConfig::load()->model, 'surcharge intacte');
         self::assertSame(1, AdmSupport::countAudit(self::$pdo, 'demo_config_updated'));
         self::assertSame(0, AdmSupport::countAudit(self::$pdo, 'demo_config_reset'));
     }
@@ -297,7 +297,11 @@ final class UcAdm04ConfigurerDemoTest extends AdminTestCase
     public function testF08InvalidPatchIsRejectedWithAFrenchMessage(): void
     {
         $cases = [
-            'maxTokensPerRequest doit être compris entre 256 et 16000.' => ['maxTokensPerRequest' => 99999],
+            'La sortie n’est plus plafonnée : chaque appel peut rendre le maximum du modèle (128 000 jetons pour '
+                . 'Haiku 5.5), et le budget du jour le borne.' => ['maxTokensPerRequest' => 99999],
+            'La démo reste sur Haiku : Sonnet et Opus sont réservés aux comptes qui ont acheté des crédits ou qui '
+                . 'utilisent leur propre clé.' => ['model' => 'claude-opus-4-8'],
+            'maxInputChars doit être compris entre 1000 et 4000000.' => ['maxInputChars' => 4000001],
             'dailyBudgetUsd doit être compris entre 0 et 1000.' => ['dailyBudgetUsd' => 5000],
             'enabled doit être un booléen.' => ['enabled' => 'off'],
             'perIpPerHour doit être un entier.' => ['perIpPerHour' => '20'],
@@ -329,7 +333,7 @@ final class UcAdm04ConfigurerDemoTest extends AdminTestCase
     #[TestDox('UC-ADM-04-F10 — E5 : session admin sans jeton CSRF ou avec un jeton faux → 403 « Jeton CSRF absent ou invalide » sur PUT et DELETE, configuration intacte')]
     public function testF10CsrfIsRequired(): void
     {
-        $this->put(['model' => 'claude-opus-4-8']);
+        $this->put(['model' => 'claude-haiku-4-5']);
 
         $attempts = [
             ['PUT', ['enabled' => false], []],
@@ -345,12 +349,12 @@ final class UcAdm04ConfigurerDemoTest extends AdminTestCase
         }
 
         self::assertTrue(DemoConfig::load()->enabled);
-        self::assertSame('claude-opus-4-8', DemoConfig::load()->model);
+        self::assertSame('claude-haiku-4-5', DemoConfig::load()->model);
         self::assertSame(1, AdmSupport::countAudit(self::$pdo, 'demo_config_updated'));
         self::assertSame(0, AdmSupport::countAudit(self::$pdo, 'demo_config_reset'));
     }
 
-    #[TestDox('UC-ADM-04-F20 — nominal (étape 6) : modèle, maxTokens et délai réglés par l’admin sont imposés au fournisseur Anthropic (client HTTP simulé)')]
+    #[TestDox('UC-ADM-04-F20 — nominal (étape 6) : le modèle et le délai réglés par l’admin, et toute la sortie du modèle, sont imposés au fournisseur Anthropic (client HTTP simulé)')]
     public function testF20SettingsAreImposedOnTheUpstreamProvider(): void
     {
         TestDb::setEnv('DEMO_PROVIDER', 'anthropic');
@@ -359,14 +363,14 @@ final class UcAdm04ConfigurerDemoTest extends AdminTestCase
         $fake->queueResponse(['status' => 200, 'body' => json_encode([
             'id' => 'msg_uc_adm_04',
             'type' => 'message',
-            'model' => 'claude-sonnet-5',
+            'model' => 'claude-haiku-4-5-20251001',
             'content' => [['type' => 'text', 'text' => 'Réponse simulée.']],
             'usage' => ['input_tokens' => 12, 'output_tokens' => 8],
             'stop_reason' => 'end_turn',
         ], JSON_THROW_ON_ERROR)]);
         LlmRuntime::setHttpClient($fake);
         try {
-            $put = $this->put(['model' => 'claude-sonnet-5', 'maxTokensPerRequest' => 512, 'upstreamTimeoutSeconds' => 15, 'powDifficultyBits' => 8]);
+            $put = $this->put(['model' => 'claude-haiku-4-5-20251001', 'upstreamTimeoutSeconds' => 15, 'powDifficultyBits' => 8]);
             self::assertSame(200, $put->getStatusCode(), (string) $put->getBody());
 
             $answer = $this->askDemo('Question relayée au fournisseur.');
@@ -378,8 +382,8 @@ final class UcAdm04ConfigurerDemoTest extends AdminTestCase
         self::assertCount(1, $fake->requests);
         $upstream = $fake->requests[0];
         $payload = json_decode((string) $upstream['body'], true, 512, JSON_THROW_ON_ERROR);
-        self::assertSame('claude-sonnet-5', $payload['model']);
-        self::assertSame(512, $payload['max_tokens']);
+        self::assertSame('claude-haiku-4-5-20251001', $payload['model']);
+        self::assertSame(64000, $payload['max_tokens'], 'le maximum de Haiku 4.5');
         self::assertSame(15, $upstream['timeout']);
         self::assertSame('Réponse simulée.', self::json($answer)['text']);
         self::assertStringNotContainsString('sk-ant-uc-adm-04', (string) $answer->getBody());
@@ -420,5 +424,49 @@ final class UcAdm04ConfigurerDemoTest extends AdminTestCase
         $refused = $this->as_($maya, 'GET', '/api/admin/settings');
         self::assertSame(403, $refused->getStatusCode());
         self::assertSame(['error' => 'Rôle insuffisant'], self::json($refused));
+    }
+
+    #[TestDox('UC-ADM-04-F23 — RG9 : la démo reste sur Haiku — le Sonnet 5 du .env de juillet est refusé et nommé, la démo appelle Haiku 5.5 avec toute sa sortie ; un PUT Sonnet ou Opus → 422, rien d’écrit')]
+    public function testF23TheDemoStaysOnHaiku(): void
+    {
+        TestDb::setEnv('DEMO_MODEL', 'claude-sonnet-5');
+        TestDb::setEnv('DEMO_MAX_TOKENS_PER_REQUEST', '8192');
+        TestDb::setEnv('DEMO_PROVIDER', 'anthropic');
+        TestDb::setEnv('ANTHROPIC_API_KEY', 'sk-ant-uc-adm-04-f23');
+
+        $read = self::json($this->as_($this->admin, 'GET', '/api/admin/demo-config'));
+        self::assertSame('claude-haiku-5-5', $read['effective']['model']);
+        self::assertSame('fichier', $read['sources']['model']);
+        self::assertSame([['valeur' => 'claude-sonnet-5', 'source' => 'env']], $read['modelRefuse']);
+        self::assertSame(128000, $read['effective']['sortieMax'], 'DEMO_MAX_TOKENS_PER_REQUEST n’est plus lue');
+
+        foreach (['claude-sonnet-5', 'claude-opus-5-5'] as $model) {
+            $refused = $this->put(['model' => $model]);
+            self::assertSame(422, $refused->getStatusCode(), $model);
+            self::assertStringStartsWith('La démo reste sur Haiku', self::json($refused)['error']);
+        }
+        self::assertSame(0, AdmSupport::countAudit(self::$pdo, 'demo_config_updated'));
+
+        $fake = new LlmFakeHttpClient();
+        $fake->queueResponse(['status' => 200, 'body' => json_encode([
+            'id' => 'msg_uc_adm_04_f23',
+            'type' => 'message',
+            'model' => 'claude-haiku-5-5',
+            'content' => [['type' => 'text', 'text' => 'Réponse de Haiku.']],
+            'usage' => ['input_tokens' => 20, 'output_tokens' => 10],
+            'stop_reason' => 'end_turn',
+        ], JSON_THROW_ON_ERROR)]);
+        LlmRuntime::setHttpClient($fake);
+        try {
+            $this->put(['powDifficultyBits' => 8]);
+            $answer = $this->askDemo('Question servie par Haiku.');
+        } finally {
+            LlmRuntime::setHttpClient(null);
+        }
+
+        self::assertSame(200, $answer->getStatusCode(), (string) $answer->getBody());
+        $payload = json_decode((string) $fake->requests[0]['body'], true, 512, JSON_THROW_ON_ERROR);
+        self::assertSame('claude-haiku-5-5', $payload['model']);
+        self::assertSame(128000, $payload['max_tokens']);
     }
 }

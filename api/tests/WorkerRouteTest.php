@@ -237,6 +237,8 @@ final class WorkerRouteTest extends MasseTestCase
 
     public function testAdminWorkerTick(): void
     {
+        // No network: without the platform's key the tick reads no prices (UC-ADM-05-F19, F20 test that).
+        TestDb::setEnv('ANTHROPIC_API_KEY', '');
         $this->cookieSid = null;
         self::assertSame(403, $this->request('POST', '/api/admin/worker-tick', [], ['X-Migrate-Token' => 'mauvais'])->getStatusCode());
 

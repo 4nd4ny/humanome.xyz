@@ -46,4 +46,28 @@ final class Db
     {
         self::$pdo = null;
     }
+
+    /**
+     * Runs $travail on the connection, and once more on a fresh one when the
+     * server had dropped it while it sat idle (MySQL 2006, « server has gone
+     * away » — after a long upstream call, 2026-10-21). A query that fails so
+     * never ran: running it again cannot apply it twice.
+     *
+     * @template T
+     * @param callable(PDO): T $travail
+     * @return T
+     */
+    public static function avecReconnexion(callable $travail): mixed
+    {
+        try {
+            return $travail(self::get());
+        } catch (\PDOException $e) {
+            if ((int) ($e->errorInfo[1] ?? 0) !== 2006) {
+                throw $e;
+            }
+            self::reset();
+
+            return $travail(self::get());
+        }
+    }
 }

@@ -11,6 +11,7 @@ import { act, cleanup, fireEvent, render, screen } from '@testing-library/react'
 import { parseHash } from '../../../src/router.js'
 import { ApiError, fetchMe, resetApiClient } from '../../../src/api/client.js'
 import {
+  RELAIS_INTERROMPU_CREDITS,
   TWIN6_PACKAGE_URL,
   fetchTwin6Offer,
   loadTwin6Package,
@@ -19,6 +20,8 @@ import {
   referentielPourMoteur,
   referentielTwin6,
 } from '../../../src/api/twin6.js'
+import { RELAIS_INTERROMPU } from '../../../src/api/client.js'
+import { evenementRelais, relaisPilote, reponseRelais } from '../../../src/test/relais-response.js'
 import { formatUsd } from '../../../src/api/twin9.js'
 import { listKeys, revealKey } from '../../../src/api/keys.js'
 import Twin6OuverteView from '../../../src/views/Twin6OuverteView.jsx'
@@ -142,13 +145,13 @@ describe('UC-APP-09 — offre et référentiel lus dans /api/twin9/meta', () => 
   it('UC-APP-09-U18 — prix Twin6 (+10 %), référentiel et solde ; replis sûrs si absents', async () => {
     const complet = vi.fn(async () =>
       jsonResponse(200, {
-        modeles_twin6: { 'claude-sonnet-5': [3.3, 16.5] },
+        modeles_twin6: { 'claude-sonnet-5': [2.2, 11] },
         referentiel: [{ num: 1, nom: 'TÊTE', competences: [] }],
         solde_microusd: '2500000',
       }),
     )
     expect(await fetchTwin6Offer({ fetchFn: complet })).toEqual({
-      modeles: { 'claude-sonnet-5': [3.3, 16.5] },
+      modeles: { 'claude-sonnet-5': [2.2, 11] },
       referentiel: [{ num: 1, nom: 'TÊTE', competences: [] }],
       solde_microusd: 2_500_000,
     })
@@ -226,7 +229,7 @@ describe('UC-APP-09 — clé enregistrée et garde-fou de solde', () => {
     ])
   })
 
-  it('UC-APP-09-U29 — Twin6OuverteView isolée : poids du portfolio = ⌈octets / 1024⌉ $ (1 $ minimum) comparé au solde, AVANT toute construction du provider', async () => {
+  it('UC-APP-09-U29 — Twin6OuverteView isolée : poids du portfolio = ⌈octets / 1024⌉ $ (1 $ minimum), plus la réserve d’un appel — toute la sortie du modèle à son prix, 2026-10-21 —, comparés au solde, AVANT toute construction du provider', async () => {
     const creditsFactory = vi.fn(() => ({ name: 'twin6-credits' }))
     const runEngine = vi.fn(async () => {
       throw new Error('moteur non exercé dans ce test unitaire')
@@ -236,7 +239,8 @@ describe('UC-APP-09 — clé enregistrée et garde-fou de solde', () => {
         deps={{
           fetchMeFn: async () => ({ user: { id: 1 } }),
           loadPackage: async () => ({ ...TWIN6_PACKAGE, templates: {} }),
-          fetchOffer: async () => ({ modeles: { 'claude-sonnet-5': [3.3, 16.5] }, referentiel: [], solde_microusd: 1_999_999 }),
+          // Réserve d'un appel : 128 000 tokens × 11 $ / Mtok (Sonnet 5 à 2 / 10, contribution comprise) = 1,408 $.
+          fetchOffer: async () => ({ modeles: { 'claude-sonnet-5': [2.2, 11] }, referentiel: [], solde_microusd: 3_399_999 }),
           listKeys: async () => [],
           makeCreditsProvider: creditsFactory,
           runEngine,
@@ -251,14 +255,15 @@ describe('UC-APP-09 — clé enregistrée et garde-fou de solde', () => {
         fireEvent.click(screen.getByRole('button', { name: 'Lancer la cartographie ouverte' }))
       })
 
-    // 1 025 octets → 2 $ requis > 1,999999 $ de solde : bloqué.
+    // 1 025 octets → 2 $ + 1,408 $ requis > 3,399999 $ de solde : bloqué.
     fireEvent.change(zone, { target: { value: 'é'.repeat(512) + 'x' } })
     await lancer()
-    expect(screen.getByRole('alert').textContent).toContain('~2 $ estimés, solde 2.00 $')
+    expect(screen.getByRole('alert').textContent).toContain('~3.41 $ : 2 $ estimés, et 1.41 $ réservés')
+    expect(screen.getByRole('alert').textContent).toContain('solde 3.40 $')
     expect(creditsFactory).not.toHaveBeenCalled()
     expect(runEngine).not.toHaveBeenCalled()
 
-    // 1 024 octets → 1 $ requis ≤ solde : lancé.
+    // 1 024 octets → 1 $ + 1,408 $ requis ≤ solde : lancé.
     fireEvent.change(zone, { target: { value: 'é'.repeat(512) } })
     await lancer()
     expect(creditsFactory).toHaveBeenCalledTimes(1)
@@ -316,3 +321,125 @@ describe('UC-APP-09 — clé enregistrée et garde-fou de solde', () => {
   })
 })
 
+describe('UC-APP-09 — la réponse en flux (relais, 2026-10-21)', () => {
+  const RESULTAT = {
+    text: 'Pôle 1 : trois sources recoupées.',
+    usage: { inputTokens: 700, outputTokens: 90 },
+    model: 'claude-sonnet-5',
+    stopReason: 'end_turn',
+    cout_microusd: 2629,
+  }
+  const COUPE = {
+    status: 504,
+    error: 'La réponse a dépassé le délai de 150 s : coupée, elle est facturée pour ce qu’elle a produit.',
+    code: 'coupe',
+    cout_microusd: 8448,
+  }
+
+  it('UC-APP-09-U38 — provider « crédits » : demande le relais ; la progression remonte en caractères, le résultat relayé rend le contrat moteur et sa contribution ; coupé, l’appel remonte ce qu’il a coûté puis échoue avec le message du serveur ; la connexion perdue dit que l’appel a pu être facturé ; l’annulation reste une annulation', async () => {
+    const couts = []
+    const progression = []
+    const relais = vi.fn(async () =>
+      reponseRelais(evenementRelais('progression', { caracteres: 10 }) + evenementRelais('resultat', RESULTAT)),
+    )
+    const provider = makeCreditsProvider({ onCout: (c) => couts.push(c), onProgression: (n) => progression.push(n), fetchFn: relais })
+    expect(await provider.complete({ model: 'claude-sonnet-5', prompt: 'p', maxTokens: 8192 })).toEqual({
+      text: RESULTAT.text,
+      usage: RESULTAT.usage,
+      model: 'claude-sonnet-5',
+      stopReason: 'end_turn',
+    })
+    expect(relais.mock.calls[0][1].headers.Accept).toBe('text/event-stream, application/json')
+    expect(progression).toEqual([10])
+    expect(couts).toEqual([2629])
+
+    // Coupé en route : son coût d'abord, puis l'erreur, typée, au message du serveur.
+    const coupe = makeCreditsProvider({
+      onCout: (c) => couts.push(c),
+      fetchFn: async () => reponseRelais(evenementRelais('progression', { caracteres: 40 }) + evenementRelais('erreur', COUPE)),
+    })
+    const erreur = await coupe.complete({ model: 'claude-sonnet-5', prompt: 'p', maxTokens: 8192 }).catch((e) => e)
+    expect(erreur).toBeInstanceOf(ApiError)
+    expect([erreur.status, erreur.code, erreur.message]).toEqual([504, 'coupe', COUPE.error])
+    expect(couts).toEqual([2629, 8448])
+
+    // Le flux s'arrête sans issue (l'hébergement a pu arrêter le script) : rien de compté ici, le solde fait foi.
+    const perdu = makeCreditsProvider({
+      onCout: (c) => couts.push(c),
+      fetchFn: async () => reponseRelais(evenementRelais('progression', { caracteres: 40 })),
+    })
+    const interrompu = await perdu.complete({ model: 'claude-sonnet-5', prompt: 'p', maxTokens: 8192 }).catch((e) => e)
+    expect(interrompu).toBeInstanceOf(ApiError)
+    expect([interrompu.status, interrompu.code]).toEqual([502, 'interrompu'])
+    expect(interrompu.message).toBe(RELAIS_INTERROMPU + RELAIS_INTERROMPU_CREDITS)
+    expect(couts).toEqual([2629, 8448])
+
+    // L'annulation passe au fetch, et revient en AbortError — pas en « serveur indisponible ».
+    const controleur = new AbortController()
+    const pilote = relaisPilote()
+    const annule = makeCreditsProvider({
+      fetchFn: async (url, init) => {
+        // Le navigateur fait échouer la lecture du corps d'une requête annulée.
+        init.signal.addEventListener('abort', () => pilote.echouer(new DOMException('annulée', 'AbortError')))
+        return pilote.response
+      },
+    })
+    const enCours = annule.complete({ model: 'claude-sonnet-5', prompt: 'p', maxTokens: 8192, signal: controleur.signal }).catch((e) => e)
+    pilote.pousser(evenementRelais('progression', { caracteres: 5 }))
+    controleur.abort()
+    expect((await enCours).name).toBe('AbortError')
+    const refuse = makeCreditsProvider({
+      fetchFn: async () => {
+        throw new DOMException('annulée', 'AbortError')
+      },
+    })
+    expect((await refuse.complete({ model: 'm', prompt: 'p', maxTokens: 10 }).catch((e) => e)).name).toBe('AbortError')
+  })
+
+  it('UC-APP-09-U39 — Twin6OuverteView, voie crédits : les caractères reçus de l’appel en cours, remis à zéro à chaque étape ; un appel coupé laisse son message et ce que le run a débité', async () => {
+    let opts = null
+    const creditsFactory = vi.fn((o) => {
+      opts = o
+      return { name: 'twin6-credits' }
+    })
+    let relacher
+    const runEngine = vi.fn(async ({ options }) => {
+      options.onProgress({ phase: 'scan-pole', pole: 1, done: 0, total: 8 })
+      opts.onCout(1500)
+      opts.onProgression(1234)
+      await new Promise((resolve) => {
+        relacher = resolve
+      })
+      opts.onCout(8448)
+      throw new ApiError(COUPE.error, 504, 'coupe')
+    })
+    render(
+      <Twin6OuverteView
+        deps={{
+          fetchMeFn: async () => ({ user: { id: 1 } }),
+          loadPackage: async () => ({ ...TWIN6_PACKAGE, templates: {} }),
+          fetchOffer: async () => ({ modeles: { 'claude-sonnet-5': [2.2, 11] }, referentiel: [], solde_microusd: 50_000_000 }),
+          listKeys: async () => [],
+          makeCreditsProvider: creditsFactory,
+          runEngine,
+          lib: fakeLib,
+        }}
+      />,
+    )
+    const zone = await screen.findByLabelText(/Votre portfolio/)
+    await screen.findByText(/appels au modèle/)
+    fireEvent.change(zone, { target: { value: '### 2026-01-05\n---\nUne journée de travail, réfléchie et datée.' } })
+    await act(async () => {
+      fireEvent.click(screen.getByRole('button', { name: 'Lancer la cartographie ouverte' }))
+    })
+    expect(creditsFactory.mock.calls[0][0]).toHaveProperty('onProgression')
+    expect((await screen.findByTestId('twin6-caracteres')).textContent).toBe(' — 1 234 caractères reçus')
+    expect(screen.getByRole('status').textContent).toContain(`${formatUsd(1500)} débités jusqu’ici`)
+    // Une nouvelle étape : ses caractères repartent de zéro.
+    act(() => runEngine.mock.calls[0][0].options.onProgress({ phase: 'scan-pole', pole: 2, done: 1, total: 8 }))
+    expect(screen.queryByTestId('twin6-caracteres')).toBeNull()
+
+    await act(async () => relacher())
+    expect(screen.getByRole('alert').textContent).toBe(`${COUPE.error} (${formatUsd(1500 + 8448)} débités pour ce run.)`)
+  })
+})

@@ -27,9 +27,130 @@ plus de structure imposée, et tous les parcours lisent la structure du référe
 (#15, fusionnée le 2026-10-20) ; puis les gabarits Twin6 versionnés et les vestiges de T11 retirés
 (#16, arrivée dans `main` le 2026-10-21 avec la documentation des fiches des référentiels
 importés). Entrées du 2026-10-20. Puis, le 2026-10-21 : la démo à 1 $ par jour, qui tient, et
-l'essai gratuit de la cartographie ouverte (#20).
+l'essai gratuit de la cartographie ouverte (#20) ; les prix d'Anthropic relevés chaque jour (Sonnet 5
+n'est plus surfacturé), la sortie des appels sans plafond, Haiku seul pour la démo et les appels en
+flux — la réponse arrive à mesure, un appel coupé est facturé pour ce qu'il a produit (#21,
+empilée sur #20). Suite annoncée par Christian : basculer le site sur l'OVH pour la démonstration, à son feu
+vert.
 
 ## Fait
+
+- 2026-10-21 — **Prix d'Anthropic relevés chaque jour, sortie sans plafond, Haiku seul pour la
+  démo (branche `feat/tarifs-et-sorties`, empilée sur `feat/demo-un-dollar`).** Christian :
+  « Corrige la surfacturation de Sonnet et prévois une mise à jour quotidienne de la grille de
+  tarification. Ok pour lever le plafond des tokens de sortie. Du moment qu'un utilisateur ne
+  dépense pas plus que le budget global alloué au site. Mais si le prompt est déjà passé et les
+  tokens déjà dépensés, ne pas limiter sur la longueur de la sortie qui aurait déjà été facturée
+  […]. On garde Haiku pour les démos. Sonnet et Opus disponibles uniquement pour les comptes ayant
+  acheté suffisamment de crédits API ou bien utilisant leur propre clé. »
+  - **Sonnet 5 au juste prix.** La page des prix d'Anthropic (2026-10-21) donne Sonnet 5 et 5.5 à
+    2 $ / 10 $ le million — la hausse à 3 / 15 annoncée pour le 1er septembre n'a pas eu lieu —,
+    Opus 5.5 à 4 / 20, Fable et Mythos à 10 / 50 : la grille par défaut (`Twin9Config`), `Pricing`
+    et la table indicative du moteur (`estimate.js`) les suivent. Un apprenant payait Sonnet 5 une
+    fois et demie son prix, avant la contribution.
+  - **Le relevé quotidien** (`Twin9\TarifsAnthropic`). Après sa tranche, le déclencheur du worker
+    lit la page des prix (sa version markdown), une fois par jour UTC — une heure entre deux
+    tentatives après un échec, sous verrou MySQL, là où `ANTHROPIC_API_KEY` est posée —, et récrit
+    prix et palier long des modèles de l'offre que son tableau « Model pricing » donne ; il nomme
+    ceux qu'il ne donne pas et ne change rien d'une page qu'il ne sait pas lire — ni d'une page
+    où un modèle figure deux fois, ni d'une page qui perd un palier long de la grille, deux
+    lectures qui seraient fausses en silence. Audit `twin9_tarifs_mis_a_jour` ; état dans le
+    réglage `twin9_tarifs`, affiché sous l'offre de modèles de `#/admin/twin9`. La démo, le tuteur
+    et la masse tarifent au plus haut de la grille et de la table de `Pricing` : une grille trop
+    basse, ou qui a perdu le palier de Haiku 5.5, ne fait pas réserver moins. La grille stockée en production (Sonnet 5 à
+    3 / 15) se corrige au premier tick du déclencheur de T18, sans autre geste — à la main dans
+    `#/admin/twin9` d'ici là. UC-ADM-05 A6, RG9, U15 à U19, F19, F20 ; `docs/deploiement.md`.
+  - **La sortie sans plafond.** Chaque appel demande tout ce que le modèle peut rendre
+    (`Llm\ModelLimits`, `engine/src/providers/limits.js` : 128 000 tokens pour les modèles à un
+    million de contexte — Haiku 5.5, Sonnet 5.x et 4.6, Opus 5.x et 4.6 à 4.8, Fable, Mythos —, 64 000
+    pour Haiku 4.5 et les autres 4.5) : la démo, la voie crédits de Twin6 (défaut et borne : 8 192
+    et 16 000 avant), le moteur Twin6 et la clé personnelle Anthropic de l'assistant. Le réglage
+    `maxTokensPerRequest` et `DEMO_MAX_TOKENS_PER_REQUEST` disparaissent (422 ; une valeur stockée
+    part au prochain enregistrement). Le budget tient par la réservation du pire cas, sortie
+    entière comprise, **avant** l'appel : un appel qu'il ne couvre pas ne part pas (démo : 503 ;
+    crédits : 402), une réponse n'est jamais coupée pour le tenir. Au-delà de 100 000 octets,
+    l'entrée réservée par la démo est le compte d'Anthropic (`POST /v1/messages/count_tokens`,
+    gratuit, +10 % et 64 tokens ; les octets s'il ne répond pas ou d'une valeur douteuse) : sans
+    lui, une synthèse de Twin6 sous les 100 000 tokens aurait été réservée au palier long de
+    Haiku 5.5 — 0,42 $ au lieu de 0,07 $ pour 200 000 caractères (≈ 80 000 tokens au tokenizer
+    actuel, ≈ 2,5 caractères par token selon Anthropic) ; avec 10 %, un appel compté à plus de
+    ≈ 90 850 tokens réserve au palier long, qu'un compte un peu court ne fasse pas passer le
+    budget.
+    `maxInputChars` passe à 2 000 000 (borne 4 000 000), pour cette synthèse, dont les scans n'ont
+    plus de plafond. Le garde-fou de Twin6 compte aussi la réserve d'un appel (≈ 1,41 $ pour
+    Sonnet 5) : sans elle, un solde qui couvre le poids du portfolio finissait sur un 402 après
+    les premiers scans payés. Avec Haiku 5.5, un appel de la démo réserve ≈ 0,07 $ : une quinzaine
+    au plus sont en vol à la fois sous le dollar du jour, et ses derniers ≈ 0,07 $ ne servent pas.
+    UC-ADM-04 RG8, U29 ; UC-VIS-03 RG4, U26, F26 ; UC-APP-09 A3, RG3 à RG5, RG11, U37 ; UC-APP-02 ;
+    `docs/securite-demo.md`, angle 3.
+  - **Haiku seul pour la démo et le tuteur.** `DemoConfig` prend le premier Haiku de base > env >
+    fichier, sinon Haiku 5.5, et nomme les autres (`modelRefuse`, alerte de `#/admin/reglages`) ;
+    un `PUT` Sonnet ou Opus reçoit un 422. Le `DEMO_MODEL=claude-sonnet-5` du `.env` de production
+    est donc ignoré, sans geste. `TUTEUR_MODEL` hors Haiku retombe sur Haiku 4.5. Sonnet et Opus
+    restent aux voies payantes : crédits, clé personnelle, Twin9. L'estimation du Service humanome
+    et du banc prend Haiku 5.5 (`SERVICE_ESTIMATION_MODEL`). UC-ADM-04 RG9, A7, U28, F23 ;
+    UC-VIS-05 RG6, F20.
+  - **Revue indépendante** : l'assistant estimait encore le Service humanome au prix de Sonnet 5
+    (`RunWizard`, vingt fois Haiku 5.5 : corrigé, avec son test) ; le relevé refuse désormais les
+    deux lectures fausses en silence, et `Pricing` prend le plus haut de la grille et de sa table ;
+    la marge du compte passe de 2 à 10 % ; les tests du worker-tick ne relèvent rien, même si le
+    poste exporte une clé ; les fixtures du front tarifent Sonnet 5 à 2 / 10. Elle a vérifié sur
+    les pages d'Anthropic les prix et les sorties maximales retenus, et lu la vraie page des prix
+    avec le parseur (vingt lignes, aucun changement sur la grille par défaut). Restent les
+    décisions ci-dessous.
+  - Remplace, dans l'entrée de la démo ci-dessous : les 16 000 jetons de sortie et les 420 000
+    caractères ; le geste « sortie 16 000, entrée 420 000 » (plus de champ de sortie, l'entrée se
+    laisse au fichier ou se règle à 2 000 000) ; « à aligner » pour `SERVICE_ESTIMATION_MODEL` ;
+    la décision sur la grille ; la sortie de 8 192 des voies payantes de Twin6.
+  - **Gestes en production**, au déploiement (feu vert de Christian) : aucun pour les prix ni pour
+    le modèle. Dans `#/admin/reglages`, `maxInputChars` à 2 000 000 si une surcharge ou le `.env`
+    le fixe plus bas, et retirer la surcharge de sortie si la page en garde une (elle ne sert
+    plus).
+  - **Les appels en flux** (Christian, à la question ouverte ci-dessous : « Si on passe en appel en
+    flux, alors on voit la réponse arriver au fur et à mesure ? C'est bien ça ? Si oui, alors
+    c'est mon choix. Mais augmente également le timeout si OVH le permet. Je ne peux pas prendre à
+    charge les coûts extra, car le site est prévu pour me coûter de l'argent, pas pour m'en
+    rapporter. »). La démo (`POST /api/llm`) et la voie crédits (`POST /api/twin6/appel`)
+    demandent à Anthropic une réponse diffusée (`Llm\AnthropicFlux`, sur `CurlHttpStream`,
+    curl_multi) et la relaient au navigateur qui le demande (`RelaisAppel`, `RelaisSse` :
+    `progression` {caracteres}, `: attente` après 10 s de silence, puis `resultat` ou `erreur`) ;
+    tout autre client reçoit le même JSON qu'avant, à la fin. L'Essayer, l'essai gratuit et la voie
+    crédits de la cartographie ouverte affichent « N caractères reçus » pour l'appel en cours
+    (`web/src/api/relais.js`). **Facturation** : un appel qu'Anthropic refuse (statut d'erreur) ou
+    ne reçoit jamais (connexion impossible ; une requête partie entière avant la panne compte comme
+    reçue) rend sa réserve ; un appel **coupé** après réception — délai dépassé, erreur en cours de
+    flux, navigateur parti — est facturé pour ce qu'il a produit, jamais remboursé : l'entrée que
+    donne Anthropic au début du flux (sinon la borne), la sortie bornée par les octets reçus plus
+    1 024 tokens, au plus `max_tokens` ; toute la sortie quand ces octets ne bornent rien (bloc de
+    réflexion, réponse qui n'est pas un flux). La démo compte de même sur son budget, au lieu de
+    garder le pire cas, et son client ne refait plus un appel coupé (le moteur garde son nouvel
+    essai). L'Essayer annulé, un onglet fermé, coupent désormais l'appel (`apiFetch` passe aussi le
+    signal qu'on lui donne ; la cartographie ouverte n'a pas de bouton d'annulation). **Le
+    délai** : OVH borne un script à 165 s sur le mutualisé, sans réglage possible (documentation
+    d'OVH) ; il reste donc à 150 s, réglable — `TWIN6_UPSTREAM_TIMEOUT` (10 à 900) pour les
+    crédits, `upstreamTimeoutSeconds` pour la démo —, à relever si la recette montre plus, ce que
+    le flux rend plausible (dettes techniques). Vérifié en local avec un vrai navigateur, un faux Anthropic en TLS et le vrai client
+    curl : la progression arrive à mesure (12, 36, 60, 84 caractères en 3 s), le délai coupe à
+    10 s et facture 36 octets + 1 024, le navigateur parti fait couper l'appel en amont.
+    `AnthropicCaller::appeler`, sans appelant, est retiré. UC-VIS-03 RG4, RG6, A4, E7, U27 à U30,
+    F10, F25 à F27 ; UC-APP-09 RG12, E11, U26, U27, U38, U39, F17, F28, F29 ; `docs/securite-demo.md`.
+  - **Revue indépendante du flux** : sans `eager_input_streaming`, l'API retient chaque valeur
+    du JSON de l'outil forcé de la démo jusqu'à ce qu'elle soit complète (sa documentation le
+    dit) — rien ne s'affichait avant, et un appel coupé n'aurait compté qu'une marge pour une
+    sortie déjà générée : l'outil le demande désormais. Corrigés aussi : un texte de formulaire
+    hors UTF-8 refusé (422) avant toute réservation, qui sinon restait réservée ; un règlement qui
+    échoue (connexion à la base lâchée pendant un long appel — rouverte une fois,
+    `Db::avecReconnexion`) ne perd plus la réponse, la réserve restant débitée ; la voie crédits
+    facture au prix de la grille lue avant l'appel (un modèle retiré pendant l'appel était
+    remboursé en entier) ; une erreur d'Anthropic avant que la réponse commence est un refus,
+    rendu ; le type de la réponse, et non son premier caractère, dit si c'est un flux ; un
+    événement inconnu compte ses données ; un statut 1xx est passé ; un `curl_multi` en échec ou
+    bloqué s'arrête à son délai ; le compte d'Anthropic avant un long appel de la démo est borné
+    à 5 s. UC-VIS-03 E3, U27, F06, F27 ; UC-APP-09 E11, U40, F29, F30.
+  - **Points ouverts**, aux « Dettes techniques » : le relais à mesure et le délai réel d'OVH, à
+    mesurer en recette ; le tuteur et la masse gardent leurs plafonds ; la masse tourne par défaut
+    sur Sonnet 4.5, retiré le 2026-11-30 ; Opus 5.5, Fable et Mythos refusent la réflexion coupée de
+    la voie crédits.
 
 - 2026-10-21 — **Démo à 1 $ par jour, essai gratuit de la cartographie ouverte (branche
   `feat/demo-un-dollar`).** Christian : « Twin6 : en version gratuite, mettre une limite de 1 USD de
@@ -2510,6 +2631,41 @@ l'essai gratuit de la cartographie ouverte (#20).
 - **i18n** (internationalisation de l'UI, aujourd'hui français uniquement).
 
 ## Dettes techniques / décisions en attente
+
+- **À mesurer en recette, appels en flux** (décidés le 2026-10-21, entrée « Prix d'Anthropic
+  relevés chaque jour… ») : qu'OVH relaie la réponse à mesure (Apache, PHP-FPM, compression ;
+  sinon tout arrive à la fin, sans progression, ce qui marche aussi), et le délai réel qu'il
+  laisse à un script (165 s documentées ; un forum rapporte un 504 vers 3 min) — un délai réglé
+  au-delà fait arrêter le script avant l'issue, et l'appel garde sa réserve entière (l'apprenant
+  paie le pire cas, la démo le compte). Le compte d'un appel coupé suppose qu'Anthropic cesse de
+  générer quand le flux est fermé, ce que sa documentation ne dit pas (OpenRouter, claudelab.net
+  et TrueFoundry le décrivent, UC-VIS-03 Limites) ; le serveur ne voit un navigateur parti qu'à
+  une écriture qui échoue, puis à la suivante (une vingtaine de secondes au plus, et seulement à la
+  fin si l'hébergement retient le flux). Le temps que borne OVH est sans doute celui de
+  `max_execution_time`, qui, hors Windows, ne compte pas l'attente du réseau (documentation de
+  PHP) : avec le flux, un appel pourrait tenir bien plus que 165 s — ligne 5.3c de
+  `docs/recette-twin9.md`, avant de relever le délai (utile pour Sonnet, dont un scan Twin6
+  peut approcher les 150 s).
+- **Idée, non codée (à Christian)** : facturer un appel coupé au plus près. Un token par octet reçu
+  est sûr pour le site (le JSON de l'outil de la démo venant à mesure, `eager_input_streaming`),
+  mais compte jusqu'à trois ou quatre fois la sortie d'un texte français ;
+  `count_tokens` (gratuit, déjà employé par la démo) sur ce qui est arrivé la ramènerait à la
+  sortie réelle, plus la marge, au prix d'un appel de plus à la coupure.
+- Opus 5.5, Fable et Mythos refusent `thinking: disabled` (400) ; la voie crédits l'envoie à tout
+  modèle sauf Sonnet 5.5 (`between_tools`) : les ajouter à l'offre ferait échouer leurs appels.
+  La grille par défaut ne les offre pas, et le relevé n'ajoute aucun modèle.
+- La masse (flux établissement) appelle sur la clé de la plateforme le modèle que l'établissement
+  choisit, Sonnet 4.5 par défaut, payé après coup sous un plafond qu'il fixe : pas des crédits
+  achetés d'avance, au sens de la règle du 2026-10-21 (« Sonnet et Opus disponibles uniquement
+  pour les comptes ayant acheté suffisamment de crédits »). Antérieur, à trancher.
+- Plafonds de sortie gardés, à décider : le tuteur (600 tokens, la longueur d'une réponse, et son
+  propre budget de 1 $ — la dépense gratuite du site peut donc atteindre 2 $ par jour) ; la masse
+  (`WORKER_MAX_TOKENS`, 8 192, au budget de l'établissement), qui tourne par défaut sur Sonnet 4.5
+  (`WORKER_MODEL`), retiré par Anthropic le 2026-11-30 ; les fournisseurs autres qu'Anthropic de
+  la clé personnelle (8 192) ; les étapes de Twin9, réglées par son profil.
+- Le relevé des prix lit une page de documentation : une mise en forme nouvelle le fait échouer
+  (affiché, la grille garde ses prix) jusqu'à ce que `TarifsAnthropic::lire` suive. La table
+  indicative du moteur (`engine/src/providers/estimate.js`) ne suit pas le relevé.
 
 - Vestiges de T11 (retirés du code le 2026-10-20) : la base garde le réglage `twin9_fiches` et,
   dans `twin9_config`, `enabled`, `pipeline`, `appels_par_minute` (et des étages sous les modèles)

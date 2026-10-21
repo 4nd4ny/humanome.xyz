@@ -31,6 +31,7 @@ export {
   PRICING_DISCLAIMER,
   CHARS_PER_TOKEN_FR
 } from './estimate.js'
+export { sortieMaxAnthropic, SORTIE_MAX_ANTHROPIC, SORTIE_PAR_DEFAUT } from './limits.js'
 
 export const DEFAULT_MAX_TOKENS = 4096
 export const DEFAULT_PROXY_URL = '/api/llm'

@@ -171,10 +171,11 @@ describe('UC-PRO-05 — scénario nominal : comparaison A/B de deux versions', (
     expect(rowCells(ab, 'Compétences établies (total)')).toEqual([String(total), String(total)])
     expect(rowCells(ab, 'Appels LLM')).toEqual(['24', '24'])
     // Usage RÉEL mesuré (24 appels × 1 000 / 200 tokens) et coût réel sur le
-    // modèle de référence du service (claude-sonnet-5 : 3 $ / 15 $ par Mtok).
+    // modèle de référence du service, celui de la démo (claude-haiku-5-5 :
+    // 0,10 $ / 0,50 $ par Mtok, 2026-10-21).
     const tokens = `${fr(24000)} / ${fr(4800)}`
     expect(rowCells(ab, 'Tokens réels (entrée / sortie)')).toEqual([tokens, tokens])
-    expect(rowCells(ab, 'Coût réel (table de prix)')).toEqual(['0.144 $', '0.144 $'])
+    expect(rowCells(ab, 'Coût réel (table de prix)')).toEqual(['0.0048 $', '0.0048 $'])
     // Par journée : B est un paquet engine:// — ses gabarits sont IGNORÉS
     // (anomalie AN-3) : mêmes prompts moteur, mêmes réponses -> tout en commun.
     const jours = within(ab).getAllByRole('row').filter((r) => /^2026-01-0\d/.test(r.textContent))
@@ -185,13 +186,13 @@ describe('UC-PRO-05 — scénario nominal : comparaison A/B de deux versions', (
     const report = decodeDataUrl(screen.getByRole('link', { name: 'Télécharger le rapport JSON' }).getAttribute('href'))
     expect(report.kind).toBe('rapport-ab-prompt-packages')
     expect(report.versions.b.version).toBe('aurora-lab@2.0.0')
-    expect(report.configurations.a).toMatchObject({ fournisseur: 'service humanome', modeleTarif: 'claude-sonnet-5' })
+    expect(report.configurations.a).toMatchObject({ fournisseur: 'service humanome', modeleTarif: 'claude-haiku-5-5' })
     expect(report.parJour).toHaveLength(3)
     // Estimation (RG5) : ce que le banc exécute — 3 journées × (7 pôles +
     // kairos), AUCUN récit de fusion —, chiffrée sur le modèle de référence du
     // service ; la cellule affichée est celle du rapport.
     for (const cote of ['a', 'b']) {
-      expect(report.estimations[cote]).toMatchObject({ totalCalls: 24, model: 'claude-sonnet-5' })
+      expect(report.estimations[cote]).toMatchObject({ totalCalls: 24, model: 'claude-haiku-5-5' })
       expect(typeof report.estimations[cote].costUsd).toBe('number')
     }
     const { costUsd, durationMin } = report.estimations.a
@@ -224,7 +225,7 @@ describe('UC-PRO-05 — scénarios alternatifs', () => {
     expect(bloc.textContent).toContain('1 journée(s), 8 appel(s) LLM')
     expect(bloc.textContent).toContain('exécution moteur embarqué')
     expect(screen.getByTestId('banc-usage').textContent).toBe(
-      `Tokens réels : ${fr(8000)} entrée / ${fr(1600)} sortie — coût réel 0.048 $ (table de prix indicative)`,
+      `Tokens réels : ${fr(8000)} entrée / ${fr(1600)} sortie — coût réel 0.0016 $ (table de prix indicative)`,
     )
     const exported = decodeDataUrl(screen.getByRole('link', { name: /Télécharger le run/ }).getAttribute('href'))
     expect(exported.kind).toBe('rapport-run-banc')
@@ -301,11 +302,11 @@ describe('UC-PRO-05 — scénarios alternatifs', () => {
     const versHumanome = net.calls((c) => c.url.startsWith('api/'))
     expect(versHumanome.some((c) => String(c.init.body ?? '').includes('sk-ant-test-banc'))).toBe(false)
 
-    // Coûts réels par branche : service (sonnet-5) vs haiku (1 $ / 5 $ par Mtok),
-    // run 1 puis total de SESSION (2 runs).
+    // Coûts réels par branche : service (Haiku 5.5, 0,10 $ / 0,50 $ par Mtok) vs
+    // Haiku 4.5 (1 $ / 5 $ par Mtok), run 1 puis total de SESSION (2 runs).
     const ab = screen.getByTestId('banc-ab')
-    expect(rowCells(ab, 'Coût réel (table de prix) — run 1')).toEqual(['0.048 $', '0.036 $'])
-    expect(rowCells(ab, 'Coût réel session')).toEqual(['0.096 $', '0.072 $'])
+    expect(rowCells(ab, 'Coût réel (table de prix) — run 1')).toEqual(['0.0016 $', '0.036 $'])
+    expect(rowCells(ab, 'Coût réel session')).toEqual(['0.0032 $', '0.072 $'])
   })
 
   it('UC-PRO-05-F10 — A4 : comparaison à une référence importée — score précision/rappel/F1, journée hors score', async () => {
@@ -566,8 +567,8 @@ describe('UC-PRO-05 — scénarios alternatifs (compléments)', () => {
     expect(rowCells(ab, 'Appels LLM')).toEqual(['1', '1'])
     const report = decodeDataUrl(within(ab).getByRole('link', { name: 'Télécharger le rapport JSON' }).getAttribute('href'))
     // Le banc estime ce qu'il exécute : 1 journée × 1 pôle, sans kairos ni fusion.
-    expect(report.estimations.a).toMatchObject({ totalCalls: 1, model: 'claude-sonnet-5' })
-    expect(report.estimations.b).toMatchObject({ totalCalls: 1, model: 'claude-sonnet-5' })
+    expect(report.estimations.a).toMatchObject({ totalCalls: 1, model: 'claude-haiku-5-5' })
+    expect(report.estimations.b).toMatchObject({ totalCalls: 1, model: 'claude-haiku-5-5' })
   })
 
   it('UC-PRO-05-F29 — A10 en A/B croisé puis en run simple : rapport partiel (≥ 1 run par branche), sinon « Run interrompu. » sans rapport', async () => {

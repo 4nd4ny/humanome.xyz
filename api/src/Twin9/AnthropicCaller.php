@@ -4,9 +4,6 @@ declare(strict_types=1);
 
 namespace Humanome\Twin9;
 
-use Humanome\Llm\HttpClient;
-use Humanome\Llm\HttpClientException;
-
 /**
  * Server-side Anthropic Messages API call for Twin9 (T3b, ADR-010 §1/§2;
  * T7, ADR-011 §3).
@@ -27,10 +24,11 @@ use Humanome\Llm\HttpClientException;
  *     which refuses disabled; adaptive otherwise. Never a temperature: the
  *     5.5 models refuse it.
  *
- * appeler() serves the routes of the browser engine: no automatic retry (the
- * client engine owns resumption, a server-side retry would double-bill).
  * Twin9 runs on the server send through DirectCalls, which reads responses
- * with lire() and retries within the slice.
+ * with lire() and retries within the slice. The open cartography's credits
+ * route (/twin6/appel) sends the same request streamed (Llm\AnthropicFlux,
+ * 2026-10-21) and never retries: the client engine owns resumption, a
+ * server-side retry would bill twice.
  *
  * Errors carry a GENERIC French message: never the prompt, never the
  * rendered template, never upstream error text (which could quote request
@@ -44,13 +42,6 @@ final class AnthropicCaller
 
     /** The models whose thinking is cut by between_tools: Sonnet 5.5 refuses disabled. */
     private const ENTRE_OUTILS = ['claude-sonnet-5-5'];
-
-    public function __construct(
-        private readonly HttpClient $http,
-        private readonly string $apiKey,
-        private readonly int $timeoutSeconds = 150,
-    ) {
-    }
 
     /**
      * The Messages API request of one call: headers and JSON body.
@@ -189,66 +180,5 @@ final class AnthropicCaller
         }
 
         return ['ok' => true, 'texte' => $texte] + $lu;
-    }
-
-    /**
-     * One Messages API completion, thinking cut.
-     *
-     * @return array{texte: string, tokens_in: int, tokens_out: int, stop_reason: string}
-     *               tokens_* are the REAL usage counters returned by the API
-     *               (the billing basis, ADR-010 §3), never an estimate.
-     *
-     * @throws Twin9Exception generic French message + HTTP status for the route
-     */
-    public function appeler(string $model, ?string $system, string $prompt, int $maxTokens): array
-    {
-        // Thinking tokens count against max_tokens without reaching the text
-        // blocks (observed live on the P6 demo): cut, the steps keep the whole
-        // budget as parseable text.
-        $requete = self::requete($this->apiKey, $model, $prompt, $maxTokens, 'coupee', null, $system);
-        try {
-            $response = $this->http->request(
-                'POST',
-                self::BASE_URL . '/v1/messages',
-                $requete['headers'],
-                $requete['body'],
-                $this->timeoutSeconds,
-            );
-        } catch (HttpClientException $e) {
-            throw new Twin9Exception(
-                $e->timedOut
-                    ? 'Le fournisseur LLM ne répond pas, réessayez plus tard.'
-                    : 'Le fournisseur LLM est injoignable, réessayez plus tard.',
-                $e->timedOut ? 504 : 502,
-            );
-        }
-
-        $status = $response['status'];
-        if ($status === 429) {
-            throw new Twin9Exception('Le fournisseur LLM est saturé, réessayez plus tard.', 429);
-        }
-        if ($status === 401 || $status === 403) {
-            // Useful signal in cle_privee mode (revoked/typo'd key) — still
-            // generic, nothing from the request is echoed.
-            throw new Twin9Exception('Clé API refusée par le fournisseur LLM.', 502);
-        }
-        if ($status < 200 || $status >= 300) {
-            // Upstream error text is NOT relayed: it may quote request
-            // content, and the request contains the rendered template.
-            throw new Twin9Exception('Erreur du fournisseur LLM, réessayez plus tard.', 502);
-        }
-        $lu = self::lire($status, $response['headers'], $response['body']);
-        if (!$lu['ok'] && !isset($lu['refus'])) {
-            throw new Twin9Exception('Réponse du fournisseur LLM illisible.', 502);
-        }
-
-        return [
-            'texte' => $lu['texte'] ?? '',
-            'tokens_in' => $lu['tokens_in'] ?? 0,
-            'tokens_out' => $lu['tokens_out'] ?? 0,
-            // 'max_tokens' = truncated generation: the client engine fails
-            // loudly instead of parsing a fragmentary document (P6 lesson).
-            'stop_reason' => $lu['stop_reason'] ?? '',
-        ];
     }
 }

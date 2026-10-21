@@ -646,8 +646,8 @@ final class Twin9ProtocoleTest extends CartographeTestCase
         // with the browser's engine (T11), the promotion's state on 2026-10-20.
         self::assertSame(['paypalConfigured', 'packs', 'modeles_twin6'], array_keys($view));
         self::assertFalse($view['paypalConfigured']);
-        // List price [3, 15] × the Twin6 margin 2 — the raw price and the margins are absent.
-        self::assertSame([6.0, 30.0], $view['modeles_twin6']['claude-sonnet-5']);
+        // List price [2, 10] × the Twin6 margin 2 — the raw price and the margins are absent.
+        self::assertSame([4.0, 20.0], $view['modeles_twin6']['claude-sonnet-5']);
         self::assertArrayNotHasKey('marge', $view);
         self::assertArrayNotHasKey('marge_twin6', $view);
 
@@ -655,7 +655,7 @@ final class Twin9ProtocoleTest extends CartographeTestCase
         self::assertTrue($config->publicView()['paypalConfigured']);
 
         // Per-token charged price for the debit path: micro-USD, ceil.
-        self::assertSame([6, 30], $config->prixMicrousdParToken('claude-sonnet-5'));
+        self::assertSame([4, 20], $config->prixMicrousdParToken('claude-sonnet-5'));
         self::assertNull($config->prixMicrousdParToken('modele-inconnu'));
     }
 }

@@ -41,7 +41,7 @@ const DEMO = {
     enabled: true,
     provider: 'anthropic',
     model: 'claude-haiku-4-5-20251001',
-    maxTokensPerRequest: 2048,
+    sortieMax: 64000,
     maxInputChars: 20000,
     perIpPerHour: 20,
     dailyGlobalTokens: 2000000,
@@ -53,7 +53,6 @@ const DEMO = {
     enabled: 'fichier',
     provider: 'fichier',
     model: 'env',
-    maxTokensPerRequest: 'fichier',
     maxInputChars: 'fichier',
     perIpPerHour: 'fichier',
     dailyGlobalTokens: 'fichier',
@@ -61,7 +60,8 @@ const DEMO = {
     powDifficultyBits: 'fichier',
     upstreamTimeoutSeconds: 'defaut',
   },
-  allowedModels: ['claude-haiku-4-5-20251001', 'claude-sonnet-5', 'claude-opus-4-8'],
+  modelRefuse: [],
+  allowedModels: ['claude-haiku-5-5', 'claude-haiku-4-5-20251001', 'claude-haiku-4-5'],
   apiKeyConfigured: true,
 }
 
@@ -88,8 +88,13 @@ describe('ReglagesSection — démo publique éditable', () => {
     expect(toggle.textContent).toMatch(/activée/i)
 
     // Valeurs effectives dans les champs, avec bornes indiquées.
-    expect(screen.getByLabelText('Tokens max par requête').value).toBe('2048')
-    expect(screen.getByText('256 – 16000')).toBeTruthy()
+    expect(screen.getByLabelText('Entrée max (caractères)').value).toBe('20000')
+    expect(screen.getByText('1000 – 4000000')).toBeTruthy()
+    // La sortie n'est plus un réglage (2026-10-21) : le maximum du modèle, affiché.
+    expect(screen.queryByLabelText('Tokens max par requête')).toBeNull()
+    expect(screen.getByTestId('demo-sortie').textContent).toMatch(/le maximum du modèle,\s+64\s000 jetons, sans plafond/)
+    expect(screen.getByText(/La démo reste sur Haiku/)).toBeTruthy()
+    expect(screen.queryByTestId('demo-model-refuse')).toBeNull()
 
     // Badges d'origine : base / env / fichier / défaut.
     expect(screen.getByText('réglage base')).toBeTruthy() // dailyBudgetUsd
@@ -134,19 +139,20 @@ describe('ReglagesSection — démo publique éditable', () => {
         putBody = JSON.parse(init.body)
         return jsonResponse(200, {
           ...DEMO,
-          effective: { ...DEMO.effective, model: 'claude-opus-4-8' },
+          effective: { ...DEMO.effective, model: 'claude-haiku-5-5', sortieMax: 128000 },
           sources: { ...DEMO.sources, model: 'base' },
         })
       },
     })
     await renderReady(fetchFn)
 
-    fireEvent.change(screen.getByLabelText('Modèle'), { target: { value: 'claude-opus-4-8' } })
+    fireEvent.change(screen.getByLabelText('Modèle'), { target: { value: 'claude-haiku-5-5' } })
     fireEvent.click(screen.getByRole('button', { name: 'Enregistrer' }))
 
     await screen.findByText(/Réglages de la démo enregistrés/i)
     // PUT partiel : seul le champ modifié est envoyé.
-    expect(putBody).toEqual({ model: 'claude-opus-4-8' })
+    expect(putBody).toEqual({ model: 'claude-haiku-5-5' })
+    expect(screen.getByTestId('demo-sortie').textContent).toMatch(/128\s000 jetons/)
   })
 
   it('accepte un modèle libre via « autre… »', async () => {
@@ -157,7 +163,7 @@ describe('ReglagesSection — démo publique éditable', () => {
         putBody = JSON.parse(init.body)
         return jsonResponse(200, {
           ...DEMO,
-          effective: { ...DEMO.effective, model: 'claude-fable-5' },
+          effective: { ...DEMO.effective, model: 'claude-haiku-6' },
           sources: { ...DEMO.sources, model: 'base' },
         })
       },
@@ -166,27 +172,27 @@ describe('ReglagesSection — démo publique éditable', () => {
 
     fireEvent.change(screen.getByLabelText('Modèle'), { target: { value: '__autre__' } })
     const libre = await screen.findByLabelText('Identifiant de modèle libre')
-    fireEvent.change(libre, { target: { value: 'claude-fable-5' } })
+    fireEvent.change(libre, { target: { value: 'claude-haiku-6' } })
     fireEvent.click(screen.getByRole('button', { name: 'Enregistrer' }))
 
     await screen.findByText(/Réglages de la démo enregistrés/i)
-    expect(putBody).toEqual({ model: 'claude-fable-5' })
+    expect(putBody).toEqual({ model: 'claude-haiku-6' })
   })
 
   it('affiche le message d’erreur du serveur sur un 422 (hors bornes)', async () => {
     const fetchFn = routedFetch({
       ...baseRoutes,
       'PUT api/admin/demo-config': jsonResponse(422, {
-        error: 'maxTokensPerRequest doit être compris entre 256 et 16000.',
+        error: 'maxInputChars doit être compris entre 1000 et 4000000.',
       }),
     })
     await renderReady(fetchFn)
 
-    fireEvent.change(screen.getByLabelText('Tokens max par requête'), { target: { value: '99999' } })
+    fireEvent.change(screen.getByLabelText('Entrée max (caractères)'), { target: { value: '9999999' } })
     fireEvent.click(screen.getByRole('button', { name: 'Enregistrer' }))
 
     const alert = await screen.findByRole('alert')
-    expect(alert.textContent).toMatch(/compris entre 256 et 16000/)
+    expect(alert.textContent).toMatch(/compris entre 1000 et 4000000/)
   })
 
   it('signale quand il n’y a rien à enregistrer (aucun PUT)', async () => {
@@ -196,6 +202,23 @@ describe('ReglagesSection — démo publique éditable', () => {
     fireEvent.click(screen.getByRole('button', { name: 'Enregistrer' }))
 
     await screen.findByText('Aucune modification à enregistrer.')
+  })
+
+  it('nomme le modèle refusé d’une couche (un Sonnet du .env) : la démo reste sur Haiku (2026-10-21)', async () => {
+    const fetchFn = routedFetch({
+      ...baseRoutes,
+      'GET api/admin/demo-config': jsonResponse(200, {
+        ...DEMO,
+        effective: { ...DEMO.effective, model: 'claude-haiku-5-5', sortieMax: 128000 },
+        sources: { ...DEMO.sources, model: 'fichier' },
+        modelRefuse: [{ valeur: 'claude-sonnet-5', source: 'env' }],
+      }),
+    })
+    await renderReady(fetchFn)
+
+    expect(screen.getByTestId('demo-model-refuse').textContent).toBe(
+      'Modèle refusé : claude-sonnet-5 (env) — la démo emploie claude-haiku-5-5.',
+    )
   })
 
   it('affiche « absente » quand la clé API n’est pas configurée (jamais de valeur)', async () => {
@@ -214,11 +237,11 @@ describe('ReglagesSection — démo publique éditable', () => {
     const fetchFn = routedFetch(baseRoutes) // aucun PUT mocké : il ne doit pas partir
     await renderReady(fetchFn)
 
-    fireEvent.change(screen.getByLabelText('Tokens max par requête'), { target: { value: '' } })
+    fireEvent.change(screen.getByLabelText('Entrée max (caractères)'), { target: { value: '' } })
     fireEvent.click(screen.getByRole('button', { name: 'Enregistrer' }))
 
     const alert = await screen.findByRole('alert')
-    expect(alert.textContent).toMatch(/Champ vide : Tokens max par requête/)
+    expect(alert.textContent).toMatch(/Champ vide : Entrée max \(caractères\)/)
     // Aucune mutation n'est partie vers l'API.
     expect(fetchFn.mock.calls.some(([, init]) => (init?.method ?? 'GET') === 'PUT')).toBe(false)
   })

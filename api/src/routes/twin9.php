@@ -54,8 +54,11 @@ use Humanome\Auth\Session;
 use Humanome\Db;
 use Humanome\Env;
 use Humanome\Keys\KeyVault;
+use Humanome\Llm\AnthropicFlux;
 use Humanome\Llm\HttpClientException;
 use Humanome\Llm\LlmRuntime;
+use Humanome\Llm\ModelLimits;
+use Humanome\Llm\RelaisAppel;
 use Humanome\Middleware\RequireRole;
 use Humanome\Packages\SettingsRepository;
 use Humanome\Twin9\AnthropicCaller;
@@ -64,6 +67,7 @@ use Humanome\Twin9\FactureService;
 use Humanome\Twin9\PayPalClient;
 use Humanome\Twin9\ProtocoleRepository;
 use Humanome\Twin9\SoldeInsuffisantException;
+use Humanome\Twin9\TarifsAnthropic;
 use Humanome\Twin9\TemplateSets;
 use Humanome\Twin9\Twin9Config;
 use Humanome\Twin9\Twin9Exception;
@@ -262,9 +266,15 @@ return function (App $app): void {
     // ==================================================================
 
     // GET /api/twin9/admin/config — effective config (admin shape: raw list
-    // prices + margin; the front only ever sees Twin9Config::publicView()).
+    // prices + margin; the front only ever sees Twin9Config::publicView()),
+    // and the state of the daily reading of Anthropic's prices
+    // (releve_tarifs, TarifsAnthropic; null before the first), which no PUT
+    // takes.
     $app->get('/twin9/admin/config', $wrap(function (Request $request, Response $response) use ($json): Response {
-        return $json($response, (new Twin9Config(new SettingsRepository(Db::get())))->read());
+        $settings = new SettingsRepository(Db::get());
+
+        return $json($response, (new Twin9Config($settings))->read()
+            + ['releve_tarifs' => TarifsAnthropic::etat($settings)]);
     }))->add($admin);
 
     // PUT /api/twin9/admin/config {champs partiels} — 422 out of bounds
@@ -274,8 +284,10 @@ return function (App $app): void {
         if (!\is_array($body)) {
             return $json($response, ['error' => 'Corps JSON invalide : objet attendu'], 400);
         }
+        $settings = new SettingsRepository(Db::get());
 
-        return $json($response, (new Twin9Config(new SettingsRepository(Db::get())))->update($body));
+        return $json($response, (new Twin9Config($settings))->update($body)
+            + ['releve_tarifs' => TarifsAnthropic::etat($settings)]);
     }))->add($admin);
 
     // ==================================================================
@@ -355,9 +367,11 @@ return function (App $app): void {
             return $json($response, ['error' => 'Corps JSON invalide : objet attendu'], 400);
         }
 
-        $config = new Twin9Config(new SettingsRepository(Db::get()));
+        // The grid read once: the reservation and the bill price the call the
+        // same way, even if the grid changes while it runs (2026-10-21).
+        $grille = (new Twin9Config(new SettingsRepository(Db::get())))->read();
         $modele = \is_string($body['model'] ?? null) ? $body['model'] : '';
-        if (($config->modeles()[$modele] ?? null) === null) {
+        if (!\is_array($grille['modeles'][$modele] ?? null)) {
             return $json($response, ['error' => 'Modèle non proposé'], 422);
         }
         $prompt = \is_string($body['prompt'] ?? null) ? $body['prompt'] : '';
@@ -365,18 +379,24 @@ return function (App $app): void {
             return $json($response, ['error' => 'Champ requis : prompt'], 422);
         }
         $system = \is_string($body['system'] ?? null) ? $body['system'] : null;
-        $maxTokens = $body['max_tokens'] ?? $body['maxTokens'] ?? 8192;
+        // The model's whole output by default, its maximum at most (2026-10-21,
+        // « Ok pour lever le plafond des tokens de sortie ») — 16,000 before:
+        // a cut answer is billed and lost. The reservation below holds its
+        // worst case on the credits: an account that cannot cover it gets its
+        // 402 before anything is spent.
+        $sortieMax = ModelLimits::sortieMax($modele);
+        $maxTokens = $body['max_tokens'] ?? $body['maxTokens'] ?? $sortieMax;
         if (!\is_int($maxTokens)) {
             return $json($response, ['error' => 'Champ max_tokens invalide : entier attendu'], 422);
         }
-        $maxTokens = max(256, min(16000, $maxTokens));
+        $maxTokens = max(256, min($sortieMax, $maxTokens));
 
         // Worst-case reservation at the TWIN6 margin (+10 %), atomic (no
         // overdraft), reconciled to the real cost after (security finding A),
         // priced with the 'twin6' protocole.
         $credits = new CreditService(Db::get());
         $promptBytes = \strlen($prompt) + ($system !== null ? \strlen($system) : 0);
-        $reserve = max(1, (int) $config->reserveMicrousd($modele, $promptBytes, $maxTokens, 'twin6'));
+        $reserve = max(1, (int) Twin9Config::cout($grille, $modele, $promptBytes, $maxTokens, 'twin6'));
         try {
             $credits->debit($userId, $reserve, 'twin6/cartographie (réserve)', $modele);
         } catch (SoldeInsuffisantException $e) {
@@ -387,28 +407,115 @@ return function (App $app): void {
             ], 402);
         }
 
+        // The call, streamed (2026-10-21, Christian: « Si on passe en appel en
+        // flux, alors on voit la réponse arriver au fur et à mesure ? […] Si
+        // oui, alors c'est mon choix » and « Je ne peux pas prendre à charge
+        // les coûts extra »): a browser that asks for it sees the answer come
+        // (RelaisAppel), and a call cut short — the delay, the network, an
+        // error event — is billed for what it produced (AnthropicFlux), never
+        // refunded on a guess: the platform pays for none of it. Only a call
+        // Anthropic refused (an error status) or never received gives the
+        // reservation back: it billed nothing.
+        $delai = max(10, min(900, (int) (Env::get('TWIN6_UPSTREAM_TIMEOUT', '150') ?: 150)));
+        RelaisAppel::libererSession();
         try {
-            $result = (new AnthropicCaller(LlmRuntime::httpClient(), $apiKey))
-                ->appeler($modele, $system, $prompt, $maxTokens);
+            $appel = AnthropicFlux::ouvrir(LlmRuntime::httpClient(), AnthropicCaller::BASE_URL . '/v1/messages',
+                AnthropicCaller::entetes($apiKey),
+                AnthropicCaller::params($modele, $prompt, $maxTokens, 'coupee', null, $system), $delai);
+        } catch (HttpClientException) {
+            $credits->adjust($userId, $reserve, 'twin6/cartographie (remboursement échec)', $modele);
+
+            return $json($response, ['error' => 'Le fournisseur LLM est injoignable, réessayez plus tard.'], 502);
         } catch (\Throwable $e) {
+            // Nothing left: the reservation goes back before the error.
             $credits->adjust($userId, $reserve, 'twin6/cartographie (remboursement échec)', $modele);
             throw $e;
         }
+        if (!$appel->parvenu()) {
+            $credits->adjust($userId, $reserve, 'twin6/cartographie (remboursement échec)', $modele);
+            // Upstream error text is NOT relayed: generic messages (AnthropicCaller).
+            $statut = $appel->statut();
+            if ($statut === 429) {
+                return $json($response, ['error' => 'Le fournisseur LLM est saturé, réessayez plus tard.'], 429);
+            }
+            if ($statut === 401 || $statut === 403) {
+                return $json($response, ['error' => 'Clé API refusée par le fournisseur LLM.'], 502);
+            }
+            if ($statut !== 0) {
+                return $json($response, ['error' => 'Erreur du fournisseur LLM, réessayez plus tard.'], 502);
+            }
+            $sansReponse = $appel->erreurReseau()?->timedOut ?? false;
 
-        $cout = (int) $config->coutMicrousd($modele, $result['tokens_in'], $result['tokens_out'], 'twin6');
-        $delta = $reserve - $cout;
-        if ($delta !== 0) {
-            $credits->adjust($userId, $delta, 'twin6/cartographie (réconciliation)', $modele, $result['tokens_in'], $result['tokens_out']);
+            return $json($response, ['error' => $sansReponse
+                ? 'Le fournisseur LLM ne répond pas, réessayez plus tard.'
+                : 'Le fournisseur LLM est injoignable, réessayez plus tard.'], $sansReponse ? 504 : 502);
         }
 
-        // Engine proxy-provider contract. No leak filter: nothing is secret.
-        return $json($response, [
-            'text' => $result['texte'],
-            'usage' => ['inputTokens' => $result['tokens_in'], 'outputTokens' => $result['tokens_out']],
-            'model' => $modele,
-            'stopReason' => $result['stop_reason'],
-            'cout_microusd' => $cout,
-        ]);
+        // The credits move after a call that may have lasted minutes: on a
+        // fresh connection if the server dropped the idle one. Failing even
+        // so, the reservation stays debited — the worst case, never the site
+        // — and the answer is still given, with what was really debited.
+        $crediter = static function (int $montant, string $libelle, ?int $entree = null, ?int $sortie = null)
+                                     use ($userId, $modele): bool {
+            if ($montant === 0) {
+                return true;
+            }
+            try {
+                Db::avecReconnexion(static fn (\PDO $pdo) => (new CreditService($pdo))
+                    ->adjust($userId, $montant, $libelle, $modele, $entree, $sortie));
+
+                return true;
+            } catch (\Throwable $e) {
+                error_log('[twin6] crédits : ' . $e::class); // never content
+
+                return false;
+            }
+        };
+        $conclure = static function () use ($appel, $crediter, $grille, $reserve, $modele, $promptBytes, $maxTokens,
+                                            $delai): array {
+            if ($appel->refuseEnFlux()) {
+                // An error before the answer began: a refusal, billed nothing (AnthropicFlux).
+                $crediter($reserve, 'twin6/cartographie (remboursement échec)');
+
+                return [502, ['error' => 'Erreur du fournisseur LLM, réessayez plus tard.']];
+            }
+            [$entree, $sortie] = $appel->usageAFacturer($promptBytes, $maxTokens);
+            $cout = (int) Twin9Config::cout($grille, $modele, $entree, $sortie, 'twin6');
+            if ($appel->complet()) {
+                if (!$crediter($reserve - $cout, 'twin6/cartographie (réconciliation)', $entree, $sortie)) {
+                    $cout = $reserve;
+                }
+
+                // Engine proxy-provider contract. No leak filter: nothing is secret.
+                return [200, [
+                    'text' => $appel->texte(),
+                    'usage' => ['inputTokens' => $entree, 'outputTokens' => $sortie],
+                    'model' => $modele,
+                    'stopReason' => $appel->raisonArret(),
+                    'cout_microusd' => $cout,
+                ]];
+            }
+            // Cut short: billed for what it produced, the rest of the reservation given back.
+            if (!$crediter($reserve - $cout, 'twin6/cartographie (appel coupé)', $entree, $sortie)) {
+                $cout = $reserve;
+            }
+            $delaiDepasse = ($appel->erreurReseau()?->timedOut ?? false) || $appel->arrete();
+
+            return [$delaiDepasse ? 504 : 502, [
+                'error' => ($delaiDepasse
+                    ? 'La réponse a dépassé le délai de ' . $delai . ' s : coupée, elle est facturée pour ce qu’elle a produit.'
+                    : 'Le fournisseur LLM a interrompu sa réponse : elle est facturée pour ce qu’elle a produit.'),
+                'code' => 'coupe',
+                'cout_microusd' => $cout,
+            ]];
+        };
+
+        if (RelaisAppel::demande($request)) {
+            return RelaisAppel::reponse($response, $appel, $conclure);
+        }
+        [$statut, $donnees] = RelaisAppel::jusquauBout($appel, $conclure);
+
+        return $json($response, $donnees, $statut);
     }));
 
     // ------------------------------------------------------------------

@@ -767,7 +767,9 @@ une suivante le relève.
 - **Le coût d'un appel** est ce qu'il coûte à son auteur
   (`twin9_appels.cout_microusd`, `Twin9Config::coutMicrousd`) : l'usage que
   rend Anthropic, au prix de son modèle dans la grille de l'administrateur
-  (`modeles`), au palier des longs prompts au-delà de son seuil
+  (`modeles`) — que le déclencheur du worker récrit chaque jour aux prix de la
+  page d'Anthropic (`Twin9\TarifsAnthropic`, 2026-10-21, UC-ADM-05 A6) —, au
+  palier des longs prompts au-delà de son seuil
   (`palier_long {au_dela_de, prix_usd_mtok}` : Haiku 5.5, 0,50 $ et 2,50 $
   le million au-delà de 100 000 jetons de prompt), à moitié prix par lots,
   la marge comprise avec la clé de l'instance, sans elle avec la clé de

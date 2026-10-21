@@ -30,7 +30,7 @@ const DEMO = {
     enabled: true,
     provider: 'anthropic',
     model: 'claude-haiku-4-5-20251001',
-    maxTokensPerRequest: 2048,
+    sortieMax: 64000,
     maxInputChars: 20000,
     perIpPerHour: 20,
     dailyGlobalTokens: 2000000,
@@ -39,7 +39,8 @@ const DEMO = {
     upstreamTimeoutSeconds: 60,
   },
   sources: { model: 'fichier', enabled: 'fichier' },
-  allowedModels: ['claude-haiku-4-5-20251001', 'claude-sonnet-5'],
+  modelRefuse: [],
+  allowedModels: ['claude-haiku-5-5', 'claude-haiku-4-5-20251001', 'claude-haiku-4-5'],
   apiKeyConfigured: true,
 }
 
@@ -63,7 +64,11 @@ function reglagesFetch(demo = DEMO, onPut = () => jsonResponse(200, demo)) {
 
 async function renderReglages(fetchFn) {
   render(<ReglagesSection fetchFn={fetchFn} />)
-  return screen.findByRole('switch')
+  const toggle = await screen.findByRole('switch')
+  // L'effet qui recopie la configuration dans le brouillon (AN-2) doit avoir joué
+  // avant la première saisie : sous charge, il passait après et l'effaçait.
+  await act(async () => {})
+  return toggle
 }
 
 const puts = (fetchFn) => fetchFn.mock.calls.filter(([, init]) => init?.method === 'PUT')
@@ -105,23 +110,23 @@ describe('UC-ADM-04 — formulaire de la démo (ReglagesSection isolé)', () => 
     const fetchFn = reglagesFetch()
     await renderReglages(fetchFn)
 
-    fireEvent.change(screen.getByLabelText('Tokens max par requête'), { target: { value: '4096' } })
+    fireEvent.change(screen.getByLabelText('Entrée max (caractères)'), { target: { value: '40960' } })
     fireEvent.change(screen.getByLabelText('Budget quotidien (USD)'), { target: { value: '2.5' } })
     await act(async () => {
       fireEvent.click(screen.getByRole('button', { name: 'Enregistrer' }))
     })
 
     expect(puts(fetchFn)).toHaveLength(1)
-    expect(JSON.parse(puts(fetchFn)[0][1].body)).toEqual({ maxTokensPerRequest: 4096, dailyBudgetUsd: 2.5 })
+    expect(JSON.parse(puts(fetchFn)[0][1].body)).toEqual({ maxInputChars: 40960, dailyBudgetUsd: 2.5 })
     expect(await screen.findByText('Réglages de la démo enregistrés (effet immédiat).')).toBeTruthy()
   })
 
   it('UC-ADM-04-U16 — modèle hors liste : « autre… » présélectionné avec la valeur ; sans modification, aucun PUT', async () => {
-    const fetchFn = reglagesFetch({ ...DEMO, effective: { ...DEMO.effective, model: 'claude-fable-5' } })
+    const fetchFn = reglagesFetch({ ...DEMO, effective: { ...DEMO.effective, model: 'claude-haiku-6' } })
     await renderReglages(fetchFn)
 
     expect(screen.getByLabelText('Modèle').value).toBe('__autre__')
-    expect(screen.getByLabelText('Identifiant de modèle libre').value).toBe('claude-fable-5')
+    expect(screen.getByLabelText('Identifiant de modèle libre').value).toBe('claude-haiku-6')
     fireEvent.click(screen.getByRole('button', { name: 'Enregistrer' }))
 
     expect(await screen.findByText('Aucune modification à enregistrer.')).toBeTruthy()
@@ -203,8 +208,8 @@ describe('UC-ADM-04 — formulaire de la démo (ReglagesSection isolé)', () => 
     const fetchFn = reglagesFetch(DEMO, () => jsonResponse(200, { ...DEMO, effective: { ...DEMO.effective, enabled: false } }))
     const toggle = await renderReglages(fetchFn)
 
-    fireEvent.change(screen.getByLabelText('Tokens max par requête'), { target: { value: '4096' } })
-    expect(screen.getByLabelText('Tokens max par requête').value).toBe('4096')
+    fireEvent.change(screen.getByLabelText('Entrée max (caractères)'), { target: { value: '40960' } })
+    expect(screen.getByLabelText('Entrée max (caractères)').value).toBe('40960')
     await act(async () => {
       fireEvent.click(toggle)
     })
@@ -213,7 +218,7 @@ describe('UC-ADM-04 — formulaire de la démo (ReglagesSection isolé)', () => 
     // Le geste n'envoie que {enabled} : la saisie en cours n'est pas enregistrée.
     expect(JSON.parse(puts(fetchFn)[0][1].body)).toEqual({ enabled: false })
     // La réponse remplace la config, l'effet draftFrom(config) écrase le brouillon.
-    expect(screen.getByLabelText('Tokens max par requête').value).toBe('2048')
+    expect(screen.getByLabelText('Entrée max (caractères)').value).toBe('20000')
   })
 })
 

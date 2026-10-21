@@ -270,7 +270,8 @@ describe('UC-APP-02 — étapes 5 et 6 : estimation et exécution', () => {
       { iso: '2026-01-06', texte: 'b'.repeat(3000) },
     ]
     const service = buildEstimate({ dayGroups, referentiel, model: SERVICE_ESTIMATION_MODEL })
-    expect(service).toMatchObject({ days: 2, avgDayChars: 2000, totalCalls: 2 * 8 + 69, model: 'claude-sonnet-5' })
+    // Le Service humanome passe par la démo, sur Haiku 5.5 (2026-10-21) : il s'estime à son prix.
+    expect(service).toMatchObject({ days: 2, avgDayChars: 2000, totalCalls: 2 * 8 + 69, model: 'claude-haiku-5-5' })
     expect(service.costUsd).toBeGreaterThan(0)
 
     const maison = buildEstimate({ dayGroups, referentiel, model: 'modele-maison' })

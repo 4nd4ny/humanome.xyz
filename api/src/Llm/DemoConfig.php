@@ -28,6 +28,15 @@ use Humanome\Packages\SettingsRepository;
  * platform Anthropic key (ANTHROPIC_API_KEY, env only — never stored in the
  * database, never exposed), and 'mock' is a dev-only mode that must not be
  * switchable from a web UI. The API key itself follows the same rule.
+ *
+ * Since 2026-10-21 (Christian: « On garde Haiku pour les démos »), the model
+ * is a Haiku whatever the layers say: the first Haiku of base > env > fichier,
+ * else Haiku 5.5; a Sonnet or an Opus met on the way is refused and reported
+ * (modelRefuse) — the production .env of July still names Sonnet 5. And a
+ * call's output is no longer capped: it is the model's maximum (sortieMax(),
+ * ModelLimits), its worst case reserved on the day's budget before the call
+ * (routes/llm.php). The former maxTokensPerRequest, DEMO_MAX_TOKENS_PER_REQUEST
+ * included, is read nowhere.
  */
 final class DemoConfig
 {
@@ -38,7 +47,6 @@ final class DemoConfig
     public const OVERRIDABLE_FIELDS = [
         'enabled',
         'model',
-        'maxTokensPerRequest',
         'maxInputChars',
         'perIpPerHour',
         'dailyGlobalTokens',
@@ -50,12 +58,13 @@ final class DemoConfig
     /**
      * @param array<string, string> $sources per-field origin of the
      *   effective value: 'base' | 'env' | 'fichier' | 'defaut'
+     * @param list<array{valeur: string, source: string}> $modelRefuse the
+     *   models of the layers that are not a Haiku, refused
      */
     private function __construct(
         public readonly bool $enabled,
         public readonly string $provider,
         public readonly string $model,
-        public readonly int $maxTokensPerRequest,
         public readonly int $maxInputChars,
         public readonly int $perIpPerHour,
         public readonly int $dailyGlobalTokens,
@@ -63,7 +72,14 @@ final class DemoConfig
         public readonly int $powDifficultyBits,
         public readonly int $upstreamTimeoutSeconds,
         public readonly array $sources = [],
+        public readonly array $modelRefuse = [],
     ) {
+    }
+
+    /** The output a call may ask for: the model's maximum, never capped (2026-10-21). */
+    public function sortieMax(): int
+    {
+        return ModelLimits::sortieMax($this->model);
     }
 
     public static function load(): self
@@ -82,15 +98,6 @@ final class DemoConfig
             }
 
             return self::envBool($env, $raw, $field, $default, $sources);
-        };
-        $string = function (string $field, string $env, string $default) use ($raw, $base, &$sources): string {
-            if (\array_key_exists($field, $base) && \is_string($base[$field]) && $base[$field] !== '') {
-                $sources[$field] = 'base';
-
-                return $base[$field];
-            }
-
-            return self::envString($env, $raw, $field, $default, $sources);
         };
         $int = function (string $field, string $env, int $default) use ($raw, $base, &$sources): int {
             if (\array_key_exists($field, $base) && \is_int($base[$field])) {
@@ -111,19 +118,40 @@ final class DemoConfig
             return self::envFloat($env, $raw, $field, $default, $sources);
         };
 
+        // The model: the first Haiku of the layers, a Sonnet or an Opus refused.
+        $modelRefuse = [];
+        $model = function () use ($raw, $base, &$sources, &$modelRefuse): string {
+            foreach (['base' => $base['model'] ?? null, 'env' => Env::get('DEMO_MODEL'), 'fichier' => $raw['model'] ?? null]
+                as $source => $valeur) {
+                if (!\is_string($valeur) || trim($valeur) === '') {
+                    continue;
+                }
+                if (!ModelLimits::estHaiku($valeur)) {
+                    $modelRefuse[] = ['valeur' => $valeur, 'source' => $source];
+                    continue;
+                }
+                $sources['model'] = $source;
+
+                return $valeur;
+            }
+            $sources['model'] = 'defaut';
+
+            return ModelLimits::HAIKU_PAR_DEFAUT;
+        };
+
         return new self(
             enabled: $bool('enabled', 'DEMO_ENABLED', true),
             // provider: env > fichier > defaut ONLY (never from the database).
             provider: self::envString('DEMO_PROVIDER', $raw, 'provider', 'anthropic', $sources),
-            model: $string('model', 'DEMO_MODEL', 'claude-haiku-5-5'),
-            maxTokensPerRequest: $int('maxTokensPerRequest', 'DEMO_MAX_TOKENS_PER_REQUEST', 16000),
-            maxInputChars: $int('maxInputChars', 'DEMO_MAX_INPUT_CHARS', 420000),
+            model: $model(),
+            maxInputChars: $int('maxInputChars', 'DEMO_MAX_INPUT_CHARS', 2000000),
             perIpPerHour: $int('perIpPerHour', 'DEMO_PER_IP_PER_HOUR', 20),
             dailyGlobalTokens: $int('dailyGlobalTokens', 'DEMO_DAILY_GLOBAL_TOKENS', 6000000),
             dailyBudgetUsd: $float('dailyBudgetUsd', 'DEMO_DAILY_BUDGET_USD', 1.0),
             powDifficultyBits: $int('powDifficultyBits', 'DEMO_POW_DIFFICULTY_BITS', 20),
             upstreamTimeoutSeconds: $int('upstreamTimeoutSeconds', 'DEMO_UPSTREAM_TIMEOUT', 150),
             sources: $sources,
+            modelRefuse: $modelRefuse,
         );
     }
 

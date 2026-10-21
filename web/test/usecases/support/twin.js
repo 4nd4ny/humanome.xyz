@@ -239,7 +239,7 @@ export function twin6ModelText(prompt, referentiel = null) {
  */
 export function metaTwin9(overrides = {}) {
   return {
-    modeles_twin6: { 'claude-sonnet-5': [3.3, 16.5] },
+    modeles_twin6: { 'claude-sonnet-5': [2.2, 11] }, // 2 / 10 × 1,10 (Anthropic, 2026-10-21)
     packs: [
       { montant_usd: 10, libelle: 'Pack découverte — 10 $' },
       { montant_usd: 20, libelle: 'Pack standard — 20 $' },

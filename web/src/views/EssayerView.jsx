@@ -48,6 +48,8 @@ export default function EssayerView({ lib, fetchFn }) {
   const [notice, setNotice] = useState(null)
   const [doneCalls, setDoneCalls] = useState(0)
   const [callPhase, setCallPhase] = useState(null) // 'challenge'|'pow'|'llm'|null
+  // Les caractères de la réponse reçus jusqu'ici, pour l'appel en cours (relais en flux).
+  const [caracteres, setCaracteres] = useState(0)
   const [result, setResult] = useState(null)
   const [runDate, setRunDate] = useState(null)
   const [referentiel, setReferentiel] = useState(null)
@@ -93,7 +95,14 @@ export default function EssayerView({ lib, fetchFn }) {
     setCallPhase(null)
     setRunDate(date)
     try {
-      const { provider, prime } = createDemoProvider({ fetchFn, onPhase: setCallPhase })
+      const { provider, prime } = createDemoProvider({
+        fetchFn,
+        onPhase: (callPhaseNow) => {
+          setCallPhase(callPhaseNow)
+          if (callPhaseNow === 'llm') setCaracteres(0)
+        },
+        onProgression: setCaracteres,
+      })
       // La première preuve de travail est résolue AVANT le premier appel LLM.
       await prime(controller.signal)
       let kairosSkipped = false
@@ -204,7 +213,13 @@ export default function EssayerView({ lib, fetchFn }) {
                 <span className="essayer-step-label">{step.label}</span>
                 {state === 'done' ? <span aria-label="terminé"> ✓</span> : null}
                 {state === 'active' && callPhase ? (
-                  <span className="essayer-step-phase"> — {PHASE_LABELS[callPhase]}</span>
+                  <span className="essayer-step-phase">
+                    {' '}
+                    — {PHASE_LABELS[callPhase]}
+                    {callPhase === 'llm' && caracteres > 0 ? (
+                      <span data-testid="essayer-caracteres"> {formatInt(caracteres)} caractères reçus</span>
+                    ) : null}
+                  </span>
                 ) : null}
               </li>
             )

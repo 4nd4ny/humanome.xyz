@@ -60,7 +60,8 @@ final class AdminDemoConfigTest extends AdminTestCase
         self::assertTrue($data['effective']['enabled']);
         self::assertSame('anthropic', $data['effective']['provider']);
         self::assertSame('claude-haiku-5-5', $data['effective']['model']);
-        self::assertSame(16000, $data['effective']['maxTokensPerRequest']);
+        self::assertSame(128000, $data['effective']['sortieMax']);
+        self::assertSame(2000000, $data['effective']['maxInputChars']);
         self::assertSame('fichier', $data['sources']['model']);
         self::assertSame('fichier', $data['sources']['enabled']);
 
@@ -75,11 +76,11 @@ final class AdminDemoConfigTest extends AdminTestCase
     public function testEnvironmentWinsOverFileWhenNoOverride(): void
     {
         $admin = $this->registerAdmin();
-        TestDb::setEnv('DEMO_MODEL', 'claude-sonnet-5');
+        TestDb::setEnv('DEMO_MODEL', 'claude-haiku-4-5');
         TestDb::setEnv('DEMO_ENABLED', '0');
 
         $data = self::json($this->as_($admin, 'GET', '/api/admin/demo-config'));
-        self::assertSame('claude-sonnet-5', $data['effective']['model']);
+        self::assertSame('claude-haiku-4-5', $data['effective']['model']);
         self::assertSame('env', $data['sources']['model']);
         self::assertFalse($data['effective']['enabled']);
         self::assertSame('env', $data['sources']['enabled']);
@@ -91,30 +92,30 @@ final class AdminDemoConfigTest extends AdminTestCase
     public function testPutMergesOverridesAndBaseWinsOverEnv(): void
     {
         $admin = $this->registerAdmin();
-        TestDb::setEnv('DEMO_MODEL', 'claude-sonnet-5'); // env says sonnet…
+        TestDb::setEnv('DEMO_MODEL', 'claude-haiku-4-5'); // env says Haiku 4.5…
 
         $put = $this->as_($admin, 'PUT', '/api/admin/demo-config', [
-            'model' => 'claude-opus-4-8',
-            'maxTokensPerRequest' => 4096,
+            'model' => 'claude-haiku-4-5-20251001',
+            'maxInputChars' => 40960,
         ]);
         self::assertSame(200, $put->getStatusCode(), (string) $put->getBody());
         $data = self::json($put);
 
         // …but the database override wins (base > env > fichier > defaut).
-        self::assertSame('claude-opus-4-8', $data['effective']['model']);
+        self::assertSame('claude-haiku-4-5-20251001', $data['effective']['model']);
         self::assertSame('base', $data['sources']['model']);
-        self::assertSame(4096, $data['effective']['maxTokensPerRequest']);
-        self::assertSame('base', $data['sources']['maxTokensPerRequest']);
+        self::assertSame(40960, $data['effective']['maxInputChars']);
+        self::assertSame('base', $data['sources']['maxInputChars']);
 
         // Immediate effect on what the demo proxy actually loads.
         $config = DemoConfig::load();
-        self::assertSame('claude-opus-4-8', $config->model);
-        self::assertSame(4096, $config->maxTokensPerRequest);
+        self::assertSame('claude-haiku-4-5-20251001', $config->model);
+        self::assertSame(40960, $config->maxInputChars);
 
         // Partial PUT: a second call merges, it does not erase prior fields.
         $this->as_($admin, 'PUT', '/api/admin/demo-config', ['perIpPerHour' => 5]);
         $config = DemoConfig::load();
-        self::assertSame('claude-opus-4-8', $config->model);
+        self::assertSame('claude-haiku-4-5-20251001', $config->model);
         self::assertSame(5, $config->perIpPerHour);
 
         // Audit trail (§6.5): field names only, never values.
@@ -145,8 +146,10 @@ final class AdminDemoConfigTest extends AdminTestCase
         $admin = $this->registerAdmin();
 
         $invalid = [
-            'out-of-bounds maxTokens (low)' => ['maxTokensPerRequest' => 100],
-            'out-of-bounds maxTokens (high)' => ['maxTokensPerRequest' => 32000],
+            'output no longer a setting' => ['maxTokensPerRequest' => 4096],
+            'out-of-bounds input (low)' => ['maxInputChars' => 999],
+            'out-of-bounds input (high)' => ['maxInputChars' => 4000001],
+            'not a Haiku' => ['model' => 'claude-sonnet-5'],
             'out-of-bounds budget' => ['dailyBudgetUsd' => 5000],
             'negative budget' => ['dailyBudgetUsd' => -1],
             'out-of-bounds powBits' => ['powDifficultyBits' => 30],
@@ -156,7 +159,7 @@ final class AdminDemoConfigTest extends AdminTestCase
             'empty model' => ['model' => '  '],
             'weird model' => ['model' => 'pas un modèle !'],
             'wrong type enabled' => ['enabled' => 'oui'],
-            'wrong type int' => ['maxTokensPerRequest' => '2048'],
+            'wrong type int' => ['maxInputChars' => '20480'],
             'unknown field' => ['budget' => 3],
             'provider not editable' => ['provider' => 'mock'],
             'empty body' => [],
@@ -168,39 +171,39 @@ final class AdminDemoConfigTest extends AdminTestCase
 
         // Nothing was stored: the demo still runs on the file values.
         self::assertSame('claude-haiku-5-5', DemoConfig::load()->model);
-        self::assertSame(16000, DemoConfig::load()->maxTokensPerRequest);
+        self::assertSame(2000000, DemoConfig::load()->maxInputChars);
     }
 
     public function testFreeTextModelIsAcceptedBeyondTheWhitelist(): void
     {
         $admin = $this->registerAdmin();
 
-        // A model id that is NOT in allowedModels must pass (« autre… »).
+        // A Haiku that is NOT in allowedModels must pass (« autre… »).
         $response = $this->as_($admin, 'PUT', '/api/admin/demo-config', [
-            'model' => 'claude-fable-5',
+            'model' => 'claude-haiku-6',
         ]);
         self::assertSame(200, $response->getStatusCode(), (string) $response->getBody());
-        self::assertSame('claude-fable-5', DemoConfig::load()->model);
+        self::assertSame('claude-haiku-6', DemoConfig::load()->model);
     }
 
     public function testDeleteResetsToEnvAndFile(): void
     {
         $admin = $this->registerAdmin();
-        TestDb::setEnv('DEMO_MODEL', 'claude-sonnet-5');
+        TestDb::setEnv('DEMO_MODEL', 'claude-haiku-4-5');
 
-        $this->as_($admin, 'PUT', '/api/admin/demo-config', ['model' => 'claude-opus-4-8', 'enabled' => false]);
-        self::assertSame('claude-opus-4-8', DemoConfig::load()->model);
+        $this->as_($admin, 'PUT', '/api/admin/demo-config', ['model' => 'claude-haiku-4-5-20251001', 'enabled' => false]);
+        self::assertSame('claude-haiku-4-5-20251001', DemoConfig::load()->model);
 
         $reset = $this->as_($admin, 'DELETE', '/api/admin/demo-config');
         self::assertSame(200, $reset->getStatusCode(), (string) $reset->getBody());
         $data = self::json($reset);
 
         // Back to env for model, file for the rest.
-        self::assertSame('claude-sonnet-5', $data['effective']['model']);
+        self::assertSame('claude-haiku-4-5', $data['effective']['model']);
         self::assertSame('env', $data['sources']['model']);
         self::assertTrue($data['effective']['enabled']);
         self::assertSame('fichier', $data['sources']['enabled']);
-        self::assertSame('claude-sonnet-5', DemoConfig::load()->model);
+        self::assertSame('claude-haiku-4-5', DemoConfig::load()->model);
 
         self::assertNotNull(self::lastAudit('demo_config_reset'));
     }
@@ -226,7 +229,7 @@ final class AdminDemoConfigTest extends AdminTestCase
     public function testLoadFailsSafeWhenDatabaseIsGone(): void
     {
         $admin = $this->registerAdmin();
-        $this->as_($admin, 'PUT', '/api/admin/demo-config', ['model' => 'claude-opus-4-8']);
+        $this->as_($admin, 'PUT', '/api/admin/demo-config', ['model' => 'claude-haiku-4-5']);
         self::assertSame('base', DemoConfig::load()->sources['model']);
 
         $originalHost = Env::get('DB_HOST');
@@ -252,7 +255,7 @@ final class AdminDemoConfigTest extends AdminTestCase
         TestDb::setEnv('DB_HOST', $originalHost);
         TestDb::overrideEnv();
         $config = DemoConfig::load();
-        self::assertSame('claude-opus-4-8', $config->model);
+        self::assertSame('claude-haiku-4-5', $config->model);
         self::assertSame('base', $config->sources['model']);
     }
 
@@ -266,8 +269,8 @@ final class AdminDemoConfigTest extends AdminTestCase
         $admin = $this->registerAdmin();
 
         // Un override légitime posé avec le jeton, comme état préalable.
-        $this->as_($admin, 'PUT', '/api/admin/demo-config', ['model' => 'claude-opus-4-8']);
-        self::assertSame('claude-opus-4-8', DemoConfig::load()->model);
+        $this->as_($admin, 'PUT', '/api/admin/demo-config', ['model' => 'claude-haiku-4-5']);
+        self::assertSame('claude-haiku-4-5', DemoConfig::load()->model);
 
         // PUT avec le cookie de session admin mais SANS X-CSRF-Token.
         $this->cookieSid = $admin['sid'];
@@ -283,7 +286,7 @@ final class AdminDemoConfigTest extends AdminTestCase
         $this->cookieSid = $admin['sid'];
         $delete = $this->request('DELETE', '/api/admin/demo-config');
         self::assertSame(403, $delete->getStatusCode());
-        self::assertSame('claude-opus-4-8', DemoConfig::load()->model);
+        self::assertSame('claude-haiku-4-5', DemoConfig::load()->model);
     }
 
     /**
@@ -323,8 +326,8 @@ final class AdminDemoConfigTest extends AdminTestCase
         $admin = $this->registerAdmin();
 
         $put = $this->as_($admin, 'PUT', '/api/admin/demo-config', [
-            'model' => 'claude-opus-4-8',
-            'maxTokensPerRequest' => 4096,
+            'model' => 'claude-haiku-4-5',
+            'maxInputChars' => 40960,
         ]);
         self::assertSame(200, $put->getStatusCode(), (string) $put->getBody());
 
@@ -337,9 +340,9 @@ final class AdminDemoConfigTest extends AdminTestCase
 
         // Les noms de champs, oui…
         self::assertStringContainsString('model', $raw);
-        self::assertStringContainsString('maxTokensPerRequest', $raw);
+        self::assertStringContainsString('maxInputChars', $raw);
         // …les valeurs soumises, jamais.
-        self::assertStringNotContainsString('claude-opus-4-8', $raw);
-        self::assertStringNotContainsString('4096', $raw);
+        self::assertStringNotContainsString('claude-haiku-4-5', $raw);
+        self::assertStringNotContainsString('40960', $raw);
     }
 }

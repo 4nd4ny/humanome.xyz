@@ -15,6 +15,7 @@ import { act, cleanup, fireEvent, render, screen, waitFor } from '@testing-libra
 import App from '../../../src/App.jsx'
 import { resetApiClient } from '../../../src/api/client.js'
 import { TWIN6_PACKAGE_URL } from '../../../src/api/twin6.js'
+import { formatUsd } from '../../../src/api/twin9.js'
 import { clearReferentielCache } from '../../../src/data/referentiel.js'
 import { downloadJson } from '../../../src/lib/download-json.js'
 import * as fakeLib from '../../../src/test/fake-sunburst-lib.js'
@@ -106,7 +107,7 @@ function serveurDeLaDemo(routesDuLot, answer) {
   const calls = []
   const server = fakeDemoServer({
     createHash,
-    maxInputChars: 420000, // le plafond par défaut d'api/config/demo.php (2026-10-21)
+    maxInputChars: 2000000, // le plafond par défaut d'api/config/demo.php (2026-10-21, sortie sans plafond)
     answer:
       answer ??
       ((body) =>
@@ -217,7 +218,8 @@ describe('UC-APP-09 — l’apprenant lance une cartographie ouverte', () => {
     expect(bodyOf(appels[7]).prompt).toContain('## carto_P7')
     for (const c of appels) {
       expect(c.init.headers['X-CSRF-Token']).toBe('csrf-twin-lot')
-      expect(bodyOf(c)).toMatchObject({ model: 'claude-sonnet-5', max_tokens: 8192 })
+      // Toute la sortie du modèle (2026-10-21, 8 192 avant) : 128 000 pour Sonnet 5.
+      expect(bodyOf(c)).toMatchObject({ model: 'claude-sonnet-5', max_tokens: 128000 })
     }
     // RGPD : le portfolio ne part QUE vers le proxy de l'appel, jamais ailleurs.
     const autres = calls.filter((c) => c.key !== 'POST twin6/appel')
@@ -437,19 +439,22 @@ describe('UC-APP-09 — l’apprenant lance une cartographie ouverte', () => {
     expect((await screen.findByText(/nécessite le serveur/)).textContent).toContain('copie statique')
   })
 
-  it('UC-APP-09-F06 — E3 : solde prépayé trop bas pour le poids du portfolio → lancement bloqué AVANT tout appel', async () => {
+  it('UC-APP-09-F06 — E3 : solde prépayé trop bas pour le poids du portfolio et la réserve d’un appel → lancement bloqué AVANT tout appel', async () => {
     const { calls } = stubFetch(routes({ 'GET twin9/meta': jsonResponse(200, metaTwin9({ solde_microusd: 500_000 })) }))
     openTwin6()
     await saisirPortfolio()
     await lancer()
 
     const alerte = await screen.findByRole('alert')
-    expect(alerte.textContent).toContain('Solde insuffisant pour ce portfolio (~1 $ estimés, solde 0.50 $)')
+    // 1 $ de poids, plus la réserve d'un appel : 128 000 tokens de sortie de Sonnet 5 à 11 $ / Mtok (2 / 10, contribution comprise).
+    expect(alerte.textContent).toContain(
+      'Solde insuffisant pour ce portfolio avec ce modèle (~2.41 $ : 1 $ estimés, et 1.41 $ réservés le temps de chaque appel puis rendus ; solde 0.50 $)',
+    )
     expect(alerte.textContent).toContain('propre clé API')
     expect(appelsTwin6(calls)).toHaveLength(0)
   })
 
-  it('UC-APP-09-F07 — E4 : le serveur refuse un appel (402, réserve non couverte) → run arrêté, message affiché, bouton réutilisable', async () => {
+  it('UC-APP-09-F07 — E4 : le serveur refuse un appel (402, réserve non couverte) → run arrêté, message affiché avec ce que le run a débité (le premier appel abouti), bouton réutilisable', async () => {
     let n = 0
     const { calls } = stubFetch(
       routes({
@@ -465,7 +470,7 @@ describe('UC-APP-09 — l’apprenant lance une cartographie ouverte', () => {
     await saisirPortfolio()
     await lancer()
 
-    expect((await screen.findByRole('alert')).textContent).toBe('Solde insuffisant')
+    expect((await screen.findByRole('alert')).textContent).toBe(`Solde insuffisant (${formatUsd(6602)} débités pour ce run.)`)
     expect(appelsTwin6(calls)).toHaveLength(2)
     expect(screen.queryByText(/Cartographie ouverte terminée/)).toBeNull()
     expect(screen.getByRole('button', { name: 'Lancer la cartographie ouverte' }).disabled).toBe(false)

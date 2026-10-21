@@ -109,24 +109,24 @@ final class UcApp11GererCreditTwin9Test extends CartographeTestCase
         // 4. Dépense réelle : un appel facturé (Twin6, +10 %).
         TwinSupport::queueAnthropic($this->http, '{"poleNum":1}', 1000, 200);
         $appel = $this->post('/api/twin6/appel', ['model' => 'claude-sonnet-5', 'prompt' => 'Scanne le pôle 1.', 'max_tokens' => 1024]);
-        self::assertSame(6602, self::json($appel)['cout_microusd']);
+        self::assertSame(4400, self::json($appel)['cout_microusd']);
 
         // 5. Grand-livre, suivi mensuel et facture : même source, compteurs seulement.
         $credit = self::json($this->get('/api/twin9/credit'));
-        self::assertSame(20_000_000 - 6602, $credit['solde_microusd']);
+        self::assertSame(20_000_000 - 4400, $credit['solde_microusd']);
         self::assertSame(['adjust', 'debit', 'topup'], array_column($credit['evenements'], 'kind'));
         self::assertSame('Recharge PayPal', $credit['evenements'][2]['label']);
 
         [$mois, $annee, $m] = self::moisCourant();
         $depenses = self::json($this->get('/api/twin9/depenses'));
-        self::assertSame([['mois' => $mois, 'recharges_microusd' => 20_000_000, 'consomme_microusd' => 6602, 'appels' => 1]], $depenses['mois']);
+        self::assertSame([['mois' => $mois, 'recharges_microusd' => 20_000_000, 'consomme_microusd' => 4400, 'appels' => 1]], $depenses['mois']);
 
         $facture = self::json($this->get('/api/twin9/facture?annee=' . $annee . '&mois=' . $m));
         self::assertSame(sprintf('HUM-TW9-%04d%02d-%d', $annee, $m, $this->apprenant['id']), $facture['numero']);
         self::assertSame(['nom' => 'Léa', 'email' => 'lea@example.org'], $facture['client']);
-        self::assertSame([['model' => 'claude-sonnet-5', 'appels' => 1, 'tokens_in' => 1000, 'tokens_out' => 200, 'consomme_microusd' => 6602]], $facture['lignes']);
+        self::assertSame([['model' => 'claude-sonnet-5', 'appels' => 1, 'tokens_in' => 1000, 'tokens_out' => 200, 'consomme_microusd' => 4400]], $facture['lignes']);
         self::assertSame('ORDER-F11', $facture['recharges'][0]['paypal_order_id']);
-        self::assertSame(20_000_000 - 6602, $facture['solde_fin_periode_microusd']);
+        self::assertSame(20_000_000 - 4400, $facture['solde_fin_periode_microusd']);
     }
 
     #[TestDox('UC-APP-11-F12 — A2 : retour PayPal rejoué (double clic, lien rechargé) → même solde, UNE seule recharge ; RG2 : le crédit est le montant CAPTURÉ, pas celui du pack')]

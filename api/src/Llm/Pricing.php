@@ -5,24 +5,38 @@ declare(strict_types=1);
 namespace Humanome\Llm;
 
 /**
- * Rough USD cost estimation for the daily budget circuit breaker
- * (api/config/demo.php: dailyBudgetUsd). Prices in USD per million tokens,
- * longest model-id prefix wins; unknown models fall back to a conservative
- * (expensive) default so the breaker errs on the safe side.
+ * USD cost of a call, for the daily budgets (the demo's, the tutor's) and the
+ * mass worker's spending (api/config/demo.php: dailyBudgetUsd; Worker\Tick).
+ *
+ * Two sources, the higher wins (2026-10-21): the price grid the credits are
+ * billed with (Twin9Config 'modeles', list prices without margin), which
+ * follows Anthropic's pricing page day by day (Twin9\TarifsAnthropic), and the
+ * table below — longest model-id prefix wins. The grid catches a price rise
+ * the table does not know; the table, with its long prompt tier, holds when
+ * the grid is lower or lost a tier (an entry added by hand, a misread page:
+ * independent review of 2026-10-21). A model of the grid alone gets its grid
+ * price; a model of neither, the most expensive known rate. A budget errs on
+ * the safe side.
  *
  * Mirrors engine/src/providers/estimate.js (MODEL_PRICING_USD_PER_MTOK).
  */
 final class Pricing
 {
     /**
-     * @var array<string, array{0: float, 1: float}> [input, output] USD/MTok.
-     * Haiku 5.5 is the demo's model since 2026-10-21 (Twin9Config's grid, T10).
+     * @var array<string, array{0: float, 1: float}> [input, output] USD/MTok,
+     * Anthropic's list prices read on 2026-10-21. Sonnet 5 and 5.5 cost 2 / 10
+     * (the rise to 3 / 15 announced for 2026-09-01 did not happen); the Sonnet
+     * and Opus of the 4 line keep 3 / 15 and 5 / 25.
      */
     private const USD_PER_MTOK = [
         'claude-haiku-4-5' => [1.0, 5.0],
         'claude-haiku-5-5' => [0.1, 0.5],
         'claude-sonnet' => [3.0, 15.0],
+        'claude-sonnet-5' => [2.0, 10.0],
         'claude-opus' => [5.0, 25.0],
+        'claude-opus-5-5' => [4.0, 20.0],
+        'claude-fable' => [10.0, 50.0],
+        'claude-mythos' => [10.0, 50.0],
         'mock' => [0.0, 0.0],
     ];
 
@@ -31,31 +45,77 @@ final class Pricing
      * past `threshold` prompt tokens, the whole call is billed at the tier's
      * rates. Haiku 5.5 is the only model priced by prompt length (Anthropic's
      * pricing page, read on 2026-10-21; Twin9Config's palier_long). A demo call
-     * reaches it: the Twin6 trial's synthesis can carry 100 000 tokens of French
-     * (420 000 characters at most), and a dense script (CJK, emoji) crosses it
-     * in far fewer characters.
+     * reaches it: the Twin6 trial's synthesis carries the seven scans' outputs,
+     * and a dense script (CJK, emoji) crosses it in far fewer characters.
      */
     private const LONG_PROMPT_TIER = [
         'claude-haiku-5-5' => [100_000, 0.5, 2.5],
     ];
 
-    private const DEFAULT_USD_PER_MTOK = [5.0, 25.0];
+    /** The most expensive known rate (Fable, Mythos): an unknown model errs on the safe side. */
+    private const DEFAULT_USD_PER_MTOK = [10.0, 50.0];
 
-    public static function estimateUsd(string $model, int $inputTokens, int $outputTokens): float
+    /**
+     * @param array<string, mixed> $grille the price grid (Twin9Config::modeles()):
+     *   model id => {prix_usd_mtok: [in, out], palier_long?: {au_dela_de, prix_usd_mtok}};
+     *   empty: the table alone
+     */
+    public static function estimateUsd(string $model, int $inputTokens, int $outputTokens, array $grille = []): float
     {
-        [$in, $out] = self::rates($model);
-        $tier = self::longest(self::LONG_PROMPT_TIER, $model);
-        if ($tier !== null && $inputTokens > $tier[0]) {
-            [, $in, $out] = $tier;
+        $couts = [];
+        $tarif = self::tarifDeLaGrille($grille, $model);
+        if ($tarif !== null) {
+            [$in, $out] = $tarif['prix_usd_mtok'];
+            $palier = $tarif['palier_long'] ?? null;
+            if (\is_array($palier) && \is_array($palier['prix_usd_mtok'] ?? null)
+                && $inputTokens > (int) ($palier['au_dela_de'] ?? PHP_INT_MAX)) {
+                [$in, $out] = $palier['prix_usd_mtok'];
+            }
+            $couts[] = ($inputTokens * (float) $in + $outputTokens * (float) $out) / 1_000_000;
         }
 
-        return ($inputTokens * $in + $outputTokens * $out) / 1_000_000;
+        $rates = self::longest(self::USD_PER_MTOK, $model);
+        if ($rates !== null || $couts === []) {
+            [$in, $out] = $rates ?? self::DEFAULT_USD_PER_MTOK;
+            $tier = self::longest(self::LONG_PROMPT_TIER, $model);
+            if ($tier !== null && $inputTokens > $tier[0]) {
+                [, $in, $out] = $tier;
+            }
+            $couts[] = ($inputTokens * $in + $outputTokens * $out) / 1_000_000;
+        }
+
+        return max($couts);
     }
 
-    /** @return array{0: float, 1: float} */
-    private static function rates(string $model): array
+    /**
+     * The grid's entry for $model: its own id, or the same id without its date
+     * (claude-haiku-4-5-20251001 and claude-haiku-4-5 are one model). Null:
+     * not offered, or not readable as a price.
+     *
+     * @param array<string, mixed> $grille
+     * @return array{prix_usd_mtok: array{0: float|int, 1: float|int}, palier_long?: mixed}|null
+     */
+    private static function tarifDeLaGrille(array $grille, string $model): ?array
     {
-        return self::longest(self::USD_PER_MTOK, $model) ?? self::DEFAULT_USD_PER_MTOK;
+        $tarif = $grille[$model] ?? null;
+        if ($tarif === null) {
+            $sansDate = self::sansDate($model);
+            foreach ($grille as $id => $entree) {
+                if (self::sansDate((string) $id) === $sansDate) {
+                    $tarif = $entree;
+                    break;
+                }
+            }
+        }
+        $prix = \is_array($tarif) ? ($tarif['prix_usd_mtok'] ?? null) : null;
+
+        return \is_array($prix) && \count($prix) === 2 ? $tarif : null;
+    }
+
+    /** A model id without its snapshot date: claude-haiku-4-5-20251001 -> claude-haiku-4-5. */
+    public static function sansDate(string $model): string
+    {
+        return (string) preg_replace('/-\d{8}$/', '', $model);
     }
 
     /**

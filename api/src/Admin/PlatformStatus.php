@@ -108,7 +108,7 @@ final class PlatformStatus
             'enabled' => $c->enabled,
             'provider' => $c->provider,
             'model' => $c->model,
-            'maxTokensPerRequest' => $c->maxTokensPerRequest,
+            'sortieMax' => $c->sortieMax(),
             'maxInputChars' => $c->maxInputChars,
             'perIpPerHour' => $c->perIpPerHour,
             'dailyGlobalTokens' => $c->dailyGlobalTokens,

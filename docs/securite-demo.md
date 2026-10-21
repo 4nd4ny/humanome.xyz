@@ -9,7 +9,13 @@ gardes et le même budget du jour (1 $ par défaut depuis le 2026-10-21, visiteu
 comptes confondus) : l'Essayer (UC-VIS-03), l'essai gratuit de la cartographie
 ouverte (Twin6, UC-APP-09 A6), le « Service humanome » de l'assistant de
 cartographie (UC-APP-02), le banc d'essai et la rétro-ingénierie du promptologue,
-qui le choisissent par défaut. Le tuteur (UC-VIS-05) a son propre budget.
+qui le choisissent par défaut. Le tuteur (UC-VIS-05) a son propre budget. Depuis le
+2026-10-21, l'un et l'autre restent sur Haiku (Christian : « On garde Haiku pour les
+démos. Sonnet et Opus disponibles uniquement pour les comptes ayant acheté
+suffisamment de crédits API ou bien utilisant leur propre clé »), et la sortie d'un
+appel de la démo n'est plus plafonnée (« Ok pour lever le plafond des tokens de
+sortie. Du moment qu'un utilisateur ne dépense pas plus que le budget global alloué
+au site »).
 
 **Ce que veut l'abuseur :** vider le budget API de la plateforme, exfiltrer la
 clé `ANTHROPIC_API_KEY`, contourner les quotas, ou faire tomber le service.
@@ -27,18 +33,28 @@ un abus avant de dépenser quoi que ce soit :
 1. **Interrupteur** `DEMO_ENABLED` (503 immédiat).
 2. **Honeypot** : champ caché `website` rempli → 400 banal, indistinguable d'une
    erreur de validation (aucun indice que c'est un piège).
-3. **Taille d'entrée** : `system + prompt` ≤ `maxInputChars` (420 000 car. depuis
-   le 2026-10-21, 20 000 avant : la synthèse de Twin6 porte les sorties des sept
-   scans, 415 000 caractères quand chacun rend ses 16 000 tokens) → 413.
+3. **Taille d'entrée** : `system + prompt` ≤ `maxInputChars` (2 000 000 car. depuis
+   le 2026-10-21, 420 000 le matin même, 20 000 avant : la synthèse de Twin6 porte les
+   sorties des sept scans, qu'aucun plafond ne borne plus — des scans de 64 000 tokens
+   y tiennent, UC-APP-09-U35) → 413. Ce n'est plus une garde du budget, que la
+   réservation tient seule, mais une borne d'abus.
 4. **Preuve de travail** (PoW) : défi signé HMAC, à usage unique, expirant.
 5. **Quota par IP et par heure** (`perIpPerHour`, partagé avec gdoc-text).
 6. **Coupe-circuit journalier global** : plafond de tokens ET de budget USD. Le
    **pire cas** de l'appel y est réservé, atomiquement, avant qu'il parte
-   (2026-10-21, voir l'angle 6) ; sans la place, 503.
-7. **Appel amont** avec fournisseur / modèle / plafond de tokens **imposés serveur**.
+   (2026-10-21, voir l'angle 6) — son entrée et toute la sortie que le modèle peut
+   rendre — ; sans la place, 503, et rien n'est parti.
+7. **Appel amont** avec fournisseur, modèle (un Haiku) et sortie (le maximum du
+   modèle) **imposés serveur**, en flux (2026-10-21) : relayé à mesure au
+   navigateur qui le demande (UC-VIS-03 RG6), le JSON de l'outil forcé à mesure
+   qu'il s'écrit (`eager_input_streaming`). Un texte hors UTF-8 est refusé
+   (422) avant la preuve et la réservation.
 8. **Compteurs seulement** (RGPD §6) : la réservation devient l'usage réel (tokens
-   in/out + coût estimé), jamais le contenu ; un refus du fournisseur la rend, un
-   délai dépassé la garde (le fournisseur a pu facturer l'appel).
+   in/out + coût estimé), jamais le contenu ; un refus du fournisseur, ou une
+   requête qui ne lui est jamais parvenue, la rend ; un appel coupé en route
+   (délai dépassé, erreur en cours de flux, navigateur parti) compte ce qu'il a
+   pu produire — l'entrée annoncée par le fournisseur, les octets reçus plus
+   1 024 tokens, toute la sortie quand ces octets ne bornent rien.
 
 ---
 
@@ -143,39 +159,65 @@ entre IP ; rejouer un défi résolu ; profiter d'une difficulté trop basse.
 géant, un prompt système énorme, une entrée massive.
 
 **Défense :**
-- **Fournisseur, modèle et plafond de tokens imposés serveur.** `provider`,
-  `model`, `maxTokens` envoyés par le client sont **acceptés puis ignorés** —
-  `routes/llm.php` passe toujours `$config->provider/model/maxTokensPerRequest`
-  à l'appel amont (`AnthropicProvider::complete`). Couvert par
+- **Fournisseur, modèle et sortie imposés serveur.** `provider`, `model`,
+  `maxTokens` envoyés par le client sont **acceptés puis ignorés** —
+  `routes/llm.php` passe toujours le fournisseur et le modèle de la configuration,
+  et le maximum de ce modèle (`DemoConfig::sortieMax()`, `Llm\ModelLimits`), à
+  l'appel amont (`AnthropicProvider::complete`). Couvert par
   `LlmProxyTest::testServerImposesProviderModelAndMaxTokens` (le client demande
-  `gpt-4o` / `maxTokens: 999999` → le payload amont reste haiku / 512).
+  `gpt-4o` / `maxTokens: 999999` → le payload amont reste Haiku 4.5 / 64 000).
+- **Un Haiku seulement** (2026-10-21) : un Sonnet ou un Opus, en base, en
+  environnement ou dans le fichier, est refusé — la démo prend le premier Haiku des
+  couches, sinon Haiku 5.5, et la page d'administration nomme le modèle refusé ; un
+  PUT qui en propose un reçoit un 422 (UC-ADM-04-U28, F23). Le `.env` de production
+  de juillet, qui nomme Sonnet 5, ne s'applique donc plus. Même règle pour le tuteur
+  (`TUTEUR_MODEL`, UC-VIS-05-F20).
 - **Taille d'entrée plafonnée AVANT l'appel amont** : `mb_strlen(system . prompt)
   > maxInputChars` → 413, avant toute dépense
   (`LlmProxyTest::testOversizedInputAnswers413`).
-- **Plafond de sortie** : `maxTokensPerRequest` (16 000 depuis le 2026-10-21 : les
-  sorties d'un scan de Twin6 dépassent couramment 8 192 tokens ; 8 192 de juillet à
-  octobre, 2 048 avant) imposé au fournisseur.
-- **Le pire cas réservé avant l'appel** (angle 6) : un token par octet de l'entrée —
-  un tokenizer BPE n'en produit jamais plus —, plus le surcoût de la requête
+- **Plus de plafond de sortie** (2026-10-21) : chaque appel demande tout ce que le
+  modèle peut rendre — 128 000 tokens pour Haiku 5.5, 64 000 pour Haiku 4.5. Une
+  réponse coupée serait payée et perdue ; ce qui borne la dépense est la réservation,
+  jamais la longueur de la réponse. Le réglage `maxTokensPerRequest` (16 000 le
+  matin du 2026-10-21, 8 192 de juillet à octobre, 2 048 avant) n'existe plus, ni
+  `DEMO_MAX_TOKENS_PER_REQUEST` ; une valeur stockée en base n'est plus lue et part
+  au prochain enregistrement (UC-ADM-04-U29).
+- **Le pire cas réservé avant l'appel** (angle 6) : son entrée — un token par octet,
+  qu'un tokenizer BPE ne dépasse jamais, plus le surcoût de la requête
   (`AnthropicProvider::REQUEST_OVERHEAD_TOKENS`, 1 024 : le prompt système que le
-  fournisseur ajoute pour l'outil forcé, 406 tokens avec Haiku 5.5), plus tout le
-  plafond de sortie ; au tarif du modèle, palier long compris (`Pricing`).
+  fournisseur ajoute pour l'outil forcé, 406 tokens avec Haiku 5.5) ; au-delà de
+  100 000 octets, le compte d'Anthropic (`POST /v1/messages/count_tokens`, gratuit,
+  augmenté de 10 % et de 64 tokens, jamais au-dessus des octets ; sans réponse ou
+  d'une valeur douteuse, les octets, UC-VIS-03-F26) : dès ≈ 90 850 tokens comptés,
+  la réserve prend le palier long, et un compte un peu court près du seuil ne fait
+  pas passer le budget — et toute la sortie du modèle ; au plus haut du tarif de la
+  grille des crédits, que le relevé quotidien tient aux prix d'Anthropic, et de la
+  table de `Pricing`, palier long compris : une grille trop basse ou qui a perdu son
+  palier ne fait pas réserver moins (UC-VIS-03-U26).
 
-Coût par requête ainsi borné. Avec Haiku 5.5, le modèle par défaut depuis le
-2026-10-21 — 0,10 $ / 0,50 $ le million jusqu'à 100 000 tokens d'entrée, 0,50 $ /
-2,50 $ au-delà, pour tout l'appel (page des prix, 2026-10-21) — un scan de Twin6
-(≈ 56 000 caractères) coûte ≈ 0,006 $ et en réserve ≈ 0,014 $ ; une synthèse au
-plafond (420 000 caractères de français) coûte jusqu'à ≈ 0,1 $ et en réserve
-≈ 0,26 $ ; 420 000 caractères d'une écriture dense (jusqu'à 4 octets par
-caractère) en réservent ≈ 0,9 $, et le fournisseur refuse au-delà d'un million de
-tokens. Un modèle plus cher, posé par l'administrateur, coûte et réserve d'autant
-plus ; le budget, lui, tient.
+Coût par requête ainsi borné. Avec Haiku 5.5 — 0,10 $ / 0,50 $ le million jusqu'à
+100 000 tokens d'entrée, 0,50 $ / 2,50 $ au-delà, pour tout l'appel (page des prix,
+2026-10-21) — et son tokenizer, celui des modèles depuis Opus 4.7 (≈ 2,5 caractères
+par token selon Anthropic, un tiers de tokens de plus que l'ancien ; à mesurer en
+français), un scan de Twin6 (≈ 56 000 caractères, ≈ 22 000 tokens) coûte ≈ 0,008 $
+et en réserve ≈ 0,07 $, dont 0,064 $ pour ses 128 000 tokens de sortie ; une
+synthèse de 200 000 caractères (≈ 80 000 tokens, comptés par Anthropic) coûte
+≈ 0,01 $ et en réserve ≈ 0,07 $ — sans le compte, ses octets l'auraient mise au
+palier long et lui auraient fait réserver ≈ 0,42 $ ; une synthèse de plus de
+≈ 90 850 tokens comptés en réserve ≈ 0,37 $ ; une entrée au plafond (2 000 000 de
+caractères, ≈ 800 000 tokens) réserve ≈ 0,76 $. Au-delà d'un million de tokens, le
+fournisseur refuse l'appel, sans le facturer.
 
-**Résidu accepté :** la réservation compte un token par octet, trois à quatre fois
-l'usage réel d'un texte français. En fin de journée, un appel dont le pire cas ne
-tient plus dans le reste du budget est refusé (503) alors que son coût réel y
-tiendrait ; la synthèse de Twin6, qui réserve le plus, peut l'être après sept scans
-payés. C'est le prix d'un plafond qui tient sous concurrence.
+**Résidu accepté :** la réservation compte toute la sortie du modèle, 0,064 $ par
+appel au tarif de base de Haiku 5.5, et les octets d'une entrée de moins de 100 000
+octets, trois à quatre fois ses tokens. En fin de journée, un appel que le reste du
+budget ne couvre plus est refusé (503) alors que son coût réel y tiendrait : les
+derniers ≈ 0,07 $ du jour ne servent pas, et un essai (Essayer, Twin6) commencé tout
+près de la fin peut s'arrêter après ses premiers appels payés. Et lever le plafond
+ne lève pas le délai : une sortie plus longue que ce que le modèle écrit en
+`upstreamTimeoutSeconds` (150 s, sous les 165 s qu'OVH laisse à un script) est
+coupée par lui, et comptée pour ce qu'elle a produit. C'est le prix d'un plafond
+qui tient sous concurrence sans couper une réponse payée.
 
 ---
 
@@ -257,9 +299,21 @@ compteurs (atomicité) ; un fichier gdoc de 10 Go pour saturer la mémoire.
   écrit **après** (`isExhausted` puis `record`), si bien que N requêtes concurrentes
   passaient toutes le contrôle avant que l'une n'écrive — et, Haiku 5.5 compté sans
   son palier long, une entrée dense ne comptait qu'un cinquième de son coût.
-- **Délai dépassé : la réservation reste entière.** Le fournisseur a pu facturer un
-  appel dont la réponse s'est perdue ; on compte donc son pire cas. La démo s'épuise
-  plus tôt, sans dépenser plus.
+- **Appel coupé : compté pour ce qu'il a pu produire** (2026-10-21 ; avant, le délai
+  dépassé gardait la réservation entière, toute la sortie du modèle comprise). Avec
+  l'appel en flux, ce qui est arrivé borne ce qui a été généré — à condition que
+  le JSON de l'outil forcé vienne à mesure qu'il s'écrit : sans
+  `eager_input_streaming`, l'API retient chaque valeur jusqu'à ce qu'elle soit
+  complète, et un appel coupé n'aurait rien reçu de ce qu'il a généré —
+  : l'entrée que le fournisseur annonce au début du flux, un token par octet
+  reçu, plus 1 024 tokens encore en vol. Le compte suppose que le fournisseur cesse de générer quand le
+  flux est fermé, ce que sa documentation ne dit pas et que d'autres décrivent
+  (UC-VIS-03, Limites) ; une requête partie entière avant une panne du réseau
+  compte son entrée et ces 1 024 tokens. Un script arrêté par l'hébergement avant
+  l'issue garde sa réservation entière.
+- **Le plafond de tokens doit laisser passer un appel entier.** La réservation y
+  compte l'entrée et les 128 000 tokens de sortie de Haiku 5.5 : `dailyGlobalTokens`
+  réglé en dessous (la borne de l'administration descend à 10 000) éteint la démo.
 - **Rafale au changement de fenêtre horaire (fixed-window).** `RateLimiter` est à
   fenêtre fixe : un abuseur peut placer `perIpPerHour` requêtes à `10:59:59` puis
   `perIpPerHour` de plus à `11:00:00`, soit un pic de **2×** à la frontière. Résidu
@@ -275,21 +329,24 @@ compteurs (atomicité) ; un fichier gdoc de 10 Go pour saturer la mémoire.
 | 1 | PoW | Difficulté ~gratuite pour un attaquant natif | Quota /64 + coupe-circuit journalier |
 | 1 | PoW | Émission de défis non limitée (sans état) | TTL 2 min + rédemption sous quota |
 | 2 | Quota IP | Un /48 = 65 536 buckets /64 | LLM : coupe-circuit 1 $/jour ; gdoc : résidu bande passante |
-| 3 | Coût | Pire cas réservé à un token par octet : un appel refusé en fin de journée alors que son coût réel tiendrait | Le budget tient |
+| 3 | Coût | Pire cas réservé avec toute la sortie du modèle (et un token par octet sous 100 000 octets) : un appel refusé en fin de journée alors que son coût réel tiendrait | Le budget tient, aucune réponse payée n'est coupée |
+| 3 | Coût | Une sortie plus longue que ce que le modèle écrit en 150 s est coupée par le délai | Comptée pour ce qu'elle a produit, le budget tient |
 | 4 | Clé | Texte d'erreur amont relayé (sans secret) | 502 générique, clé jamais dans le corps |
-| 6 | DoS | Délai dépassé : réservation gardée au pire cas | La démo s'épuise plus tôt, le budget tient |
+| 6 | DoS | Appel coupé compté par les octets reçus : suppose que le fournisseur cesse de générer à la coupure | Marge de 1 024 tokens ; un script arrêté avant l'issue garde son pire cas |
 | 6 | DoS | Rafale 2× à la frontière de fenêtre horaire (fixed-window) | Borné, coupe-circuit journalier au-dessus |
 
 ## Références
 
 - **Code :** `api/src/routes/llm.php`, `api/src/routes/auth.php`,
   `api/src/ClientIp.php`, `api/src/Llm/{PowChallenge,UsageCounters,DemoConfig,`
-  `AnthropicProvider,CurlHttpClient,Pricing}.php`, `api/config/demo.php`,
+  `AnthropicProvider,CurlHttpClient,Pricing,ModelLimits}.php`, `api/config/demo.php`,
   `scripts/migrations/006_llm_usage.sql`.
 - **Tests :** `api/tests/{ClientIpTest,LlmProxyTest,LlmPowTest,LlmGdocTextTest,`
   `LlmMockProviderTest,AuthRateLimitTest}.php`, `api/tests/UseCases/*/UcVis03EssayerCartographieTest.php`
-  (réservation : U25, F25 ; tarifs : U05), `web/src/lib/pow.test.js`,
+  (réservation : U25, F25, F26 ; tarifs : U05, U26), `UcAdm04ConfigurerDemoTest`
+  (Haiku seul, sortie du modèle : U28, U29, F23), `web/src/lib/pow.test.js`,
   `web/src/lib/gdoc.test.js`.
 - **Config d'abus :** `perIpPerHour`, `dailyGlobalTokens`, `dailyBudgetUsd`,
-  `powDifficultyBits`, `maxInputChars`, `maxTokensPerRequest` — tous
-  surchargeables par variable d'environnement `DEMO_*` (`api/config/demo.php`).
+  `powDifficultyBits`, `maxInputChars` — tous surchargeables par variable
+  d'environnement `DEMO_*` (`api/config/demo.php`) ; le modèle aussi, s'il est un
+  Haiku.

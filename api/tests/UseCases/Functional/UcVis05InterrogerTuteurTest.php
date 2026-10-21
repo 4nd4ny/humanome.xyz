@@ -295,4 +295,20 @@ final class UcVis05InterrogerTuteurTest extends LlmTestCase
         self::assertStringContainsString("Elle consulte actuellement : essayer\nProfil de la personne : administrateur.", $system);
         self::assertSame(2, substr_count($system, 'Profil de la personne :'), 'attendu : 1 (la rubrique ne devrait pas pouvoir ajouter de ligne)');
     }
+
+    #[TestDox('UC-VIS-05-F20 — RG : l’assistant, gratuit, reste sur Haiku (2026-10-21) — un Sonnet ou un Opus dans TUTEUR_MODEL est ignoré au profit de Haiku 4.5 ; un autre Haiku est servi tel quel')]
+    public function testF20TheTutorStaysOnHaiku(): void
+    {
+        TestDb::setEnv('DEMO_PROVIDER', 'anthropic');
+        $modeles = [];
+        foreach (['claude-sonnet-5' => 'claude-haiku-4-5-20251001', 'claude-opus-4-8' => 'claude-haiku-4-5-20251001',
+            'claude-haiku-5-5' => 'claude-haiku-5-5'] as $demande => $servi) {
+            TestDb::setEnv('TUTEUR_MODEL', $demande);
+            $this->http->queueResponse(['status' => 200, 'body' => self::anthropicBody('Ouvrez #/essayer.', 100, 10, $servi)]);
+            self::assertSame(200, $this->ask('Par où commencer ?')->getStatusCode(), $demande);
+            $modeles[] = json_decode((string) end($this->http->requests)['body'], true)['model'];
+        }
+
+        self::assertSame(['claude-haiku-4-5-20251001', 'claude-haiku-4-5-20251001', 'claude-haiku-5-5'], $modeles);
+    }
 }

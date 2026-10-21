@@ -60,7 +60,7 @@ const EXPECTED = {
 const KEYS = { anthropic: 'sk-ant-test', openai: 'sk-test-openai', google: 'goog-test', xai: 'xai-test', openrouter: 'or-test' }
 
 describe('UC-APP-02 — clé personnelle : de l’assistant au fournisseur (A1, RG9)', () => {
-  it('UC-APP-02-U39 — createProviderBundle × 6 fournisseurs : liste de l’écran = fournisseurs du moteur ; modèle par défaut et budget 8 192 envoyés en direct, clé dans l’en-tête du fournisseur, rien vers humanome', async () => {
+  it('UC-APP-02-U39 — createProviderBundle × 6 fournisseurs : liste de l’écran = fournisseurs du moteur ; modèle par défaut envoyé en direct, avec toute la sortie du modèle pour Anthropic (2026-10-21) et 8 192 pour les autres, clé dans l’en-tête du fournisseur, rien vers humanome', async () => {
     vi.stubGlobal('fetch', () => {
       throw new Error('appel réseau réel interdit dans ce test')
     })
@@ -75,12 +75,15 @@ describe('UC-APP-02 — clé personnelle : de l’assistant au fournisseur (A1, 
       // L'appel tel que le fait extractDay pour un pôle.
       await bundle.provider.complete({ model: bundle.model, prompt: '# Pôle 1 — (2026-01-05)', maxTokens: bundle.maxTokens })
 
-      expect(bundle).toMatchObject({ model: def.defaultModel, maxTokens: 8192, estimationModel: def.defaultModel, prime: null })
+      // Anthropic : le maximum du modèle (128 000 pour Sonnet 4.6) ; un autre fournisseur, dont
+      // la plateforme ne connaît pas les maxima, garde 8 192.
+      const budget = def.id === 'anthropic' ? 128000 : 8192
+      expect(bundle).toMatchObject({ model: def.defaultModel, maxTokens: budget, estimationModel: def.defaultModel, prime: null })
       expect(fetchFn.calls).toHaveLength(1)
       const [call] = fetchFn.calls
       expect(call.url).toBe(expected.url)
       expect(expected.model(call)).toBe(def.defaultModel)
-      expect(expected.maxTokens(call)).toBe(8192)
+      expect(expected.maxTokens(call)).toBe(budget)
       const headers = call.init.headers
       if (expected.keyHeader) {
         expect(headers[expected.keyHeader[0]]).toBe(expected.keyHeader[1])

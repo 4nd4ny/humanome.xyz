@@ -29,10 +29,13 @@ use Humanome\Llm\DemoConfig;
 use Humanome\Llm\HttpClientException;
 use Humanome\Llm\LlmRuntime;
 use Humanome\Llm\MockProvider;
+use Humanome\Llm\ModelLimits;
 use Humanome\Llm\PowChallenge;
 use Humanome\Llm\Pricing;
 use Humanome\Llm\UpstreamException;
 use Humanome\Llm\UsageCounters;
+use Humanome\Packages\SettingsRepository;
+use Humanome\Twin9\Twin9Config;
 use Psr\Http\Message\ResponseInterface as Response;
 use Psr\Http\Message\ServerRequestInterface as Request;
 use Slim\App;
@@ -47,8 +50,14 @@ return function (App $app): void {
     $clientIp = fn (Request $request): string => (string) ($request->getServerParams()['REMOTE_ADDR']
         ?? $_SERVER['REMOTE_ADDR'] ?? '');
 
-    // Bornes propres au tuteur : réponses COURTES, question brève.
+    // Bornes propres au tuteur : réponses COURTES, question brève. Un Haiku,
+    // comme la démo (2026-10-21, « Sonnet et Opus disponibles uniquement pour
+    // les comptes ayant acheté suffisamment de crédits API ou bien utilisant
+    // leur propre clé ») : un autre modèle dans TUTEUR_MODEL est ignoré.
     $TUTEUR_MODEL = Env::get('TUTEUR_MODEL', 'claude-haiku-4-5-20251001');
+    if (!ModelLimits::estHaiku($TUTEUR_MODEL)) {
+        $TUTEUR_MODEL = 'claude-haiku-4-5-20251001';
+    }
     $TUTEUR_MAX_TOKENS = 600;     // réponse courte
     $TUTEUR_MAX_QUESTION = 1500;  // question courte (le portfolio n'est jamais envoyé)
     $TUTEUR_BUDGET = (float) (Env::get('TUTEUR_BUDGET', '1') ?: '1'); // 1 $/jour par défaut (Q3)
@@ -196,7 +205,8 @@ return function (App $app): void {
         $counters->record(
             $result['usage']['inputTokens'],
             $result['usage']['outputTokens'],
-            Pricing::estimateUsd($result['model'], $result['usage']['inputTokens'], $result['usage']['outputTokens']),
+            Pricing::estimateUsd($result['model'], $result['usage']['inputTokens'], $result['usage']['outputTokens'],
+                (new Twin9Config(new SettingsRepository($pdo)))->modeles()),
         );
 
         return $json($response, [

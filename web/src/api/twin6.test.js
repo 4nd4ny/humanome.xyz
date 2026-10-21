@@ -89,13 +89,13 @@ describe('fetchTwin6Offer', () => {
   it('lit les prix Twin6 (+10 %) depuis /twin9/meta', async () => {
     const fetchFn = vi.fn(async () =>
       jsonResponse({
-        modeles: { 'claude-sonnet-5': { prix_usd_mtok: [3.6, 18] } },
-        modeles_twin6: { 'claude-sonnet-5': [3.3, 16.5] },
+        modeles: { 'claude-sonnet-5': { prix_usd_mtok: [2.4, 12] } },
+        modeles_twin6: { 'claude-sonnet-5': [2.2, 11] },
         referentiel: [{ num: 1, nom: 'TÊTE' }],
       }),
     )
     const offer = await fetchTwin6Offer({ fetchFn })
-    expect(offer.modeles['claude-sonnet-5']).toEqual([3.3, 16.5])
+    expect(offer.modeles['claude-sonnet-5']).toEqual([2.2, 11])
     expect(offer).not.toHaveProperty('twin9PromoOuverte')
     expect(offer.referentiel).toHaveLength(1)
   })

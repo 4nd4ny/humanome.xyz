@@ -80,15 +80,18 @@ de l'accueil.
    portant `{system, prompt, challenge, nonce, website: ""}` (plus les
    indications du moteur, ignorées), avec **un défi neuf résolu à la volée**. La
    page affiche « appel k sur N » (N = pôles + 1), les pôles terminés et la phase
-   en cours (défi, résolution, analyse).
+   en cours (défi, résolution, analyse) ; pendant l'analyse, les caractères de
+   la réponse reçus jusqu'ici (« 1 234 caractères reçus », relais en flux, RG6).
 5. Pour chaque appel, le serveur applique ses gardes, du moins coûteux au plus
    coûteux : interrupteur, champ piège vide, texte présent et ≤
    `maxInputChars`, preuve de travail valide, non expirée, suffisante et **jamais
    utilisée** (empreinte insérée, clé primaire), quota par IP et par heure,
    coupe-circuit journalier — le **pire cas** de l'appel y est réservé (RG4) ;
-   puis appelle le fournisseur avec **son** modèle et **son** plafond de tokens,
-   remplace la réservation par les tokens et le coût estimé réels, et renvoie
-   `{text, usage, model, stopReason}`.
+   puis appelle le fournisseur **en flux** avec **son** modèle (un Haiku) et
+   toute la sortie de ce modèle, remplace la réservation par les tokens et le
+   coût estimé réels, et renvoie `{text, usage, model, stopReason}` — à mesure
+   qu'il arrive au navigateur qui le demande (RG6), d'un bloc à tout autre
+   client.
 6. Le moteur valide chaque pôle et le document complet, au schéma puis à la
    conformité au référentiel (ses pôles, chacun une fois ; ses codes) ; la page affiche le
    bandeau « Démo : ce résultat n'est pas conservé… » (Imprimer, Exporter le
@@ -118,10 +121,12 @@ de l'accueil.
   « défi » (« Défi expiré », mais aussi le `429` `pow_reused` « Défi déjà
   utilisé »), après une pause de 2,5 s et avec un défi neuf ; pas sur les
   autres `429`, ni sur `503`, ni sur « Preuve de travail invalide. », ni après
-  annulation. (2) `extractDay` refait **une** fois, aussitôt, chaque appel pôle
-  ou kairos en échec, **quel que soit le statut**. Un `429` ou un `503` au POST
-  coûte donc 2 POST (2 défis, 2 unités de quota) ; un 5xx persistant jusqu'à
-  4 POST par pôle (anomalie AN2).
+  annulation, ni sur un appel **coupé** (`code: "coupe"`, E7), déjà compté pour
+  ce qu'il a produit et qui le serait à nouveau (2026-10-21). (2) `extractDay`
+  refait **une** fois, aussitôt, chaque appel pôle ou kairos en échec, **quel
+  que soit le statut**. Un `429` ou un `503` au POST coûte donc 2 POST (2 défis,
+  2 unités de quota) ; un 5xx persistant jusqu'à 4 POST par pôle (anomalie
+  AN2) ; un appel coupé à chaque essai, 2 (UC-VIS-03-U29).
 - **A5 — Annulation** (étape 4) : « Annuler l'analyse » interrompt l'appel en
   cours ; « Analyse annulée. Votre texte est toujours là, rien n'a été
   conservé. »
@@ -138,8 +143,10 @@ de l'accueil.
 - **E3 — Texte invalide** : côté page, moins de 80 caractères **utiles**
   (espaces de bord exclus) ou plus de 5 000 caractères **bruts** → bouton
   inactif, avec une indication sauf si la zone est vide ; côté API, prompt
-  vide → `422`, `system` non textuel → `422`, entrée (`system` + `prompt`) >
-  `maxInputChars` (200 000 par défaut) → `413`, avant toute preuve. Le gabarit
+  vide → `422`, `system` non textuel → `422`, texte hors UTF-8 (un corps de
+  formulaire porte des octets bruts) → `422` « Texte illisible : UTF-8
+  attendu. », entrée (`system` + `prompt`) > `maxInputChars` (2 000 000 par
+  défaut) → `413`, avant toute preuve et toute réservation. Le gabarit
   du prompt d'extraction ajoute ≈ 8 600 caractères : au maximum de la page, un
   appel en compte environ 13 600, sous l'ancien plafond de 20 000 lui-même
   (AN3, corrigée).
@@ -162,21 +169,32 @@ de l'accueil.
   émis et `POST /api/llm` répond `503` « Service indisponible » (sans base :
   avant la preuve ; sans clé : après la preuve et le quota).
 - **E7 — Fournisseur en échec** (étape 5) : `429` amont relayé avec son
-  `Retry-After` ; autre erreur → `502` « Erreur du fournisseur LLM : … » ;
-  injoignable → `504` (délai) ou `502`. Un refus du fournisseur (statut d'erreur)
-  rend la réservation : rien n'est compté. Un délai dépassé, une erreur réseau ou
-  une réponse 2xx illisible la gardent entière, sans compter de requête : le
-  fournisseur a pu facturer l'appel (RG4). Réponse inexploitable d'un pôle après
-  le nouvel essai du moteur → « L'analyse a échoué en cours de route (détail
-  technique : extractDay : pôle n …) », « Réessayer », texte conservé.
+  `Retry-After` ; autre statut d'erreur → `502` « Erreur du fournisseur LLM :
+  … » ; jamais reçu (connexion impossible) → `502` « Le fournisseur LLM est
+  injoignable… », ou `504` « Le fournisseur LLM ne répond pas… » quand la
+  connexion n'aboutit pas à temps ; une erreur du fournisseur dans le flux
+  avant que la réponse commence (ni `message_start`, ni rien de produit — une
+  surcharge, qu'Anthropic donne pour l'équivalent d'un `529`) → `502` « Erreur
+  du fournisseur LLM : … ». Ces appels rendent la réservation : le
+  fournisseur n'a rien facturé, rien n'est compté. Un appel **coupé** après que
+  le fournisseur l'a reçu (2026-10-21) compte une requête et ce qu'il a pu
+  produire (RG4) : délai dépassé (`upstreamTimeoutSeconds`, 150 s par défaut) →
+  `504` « La réponse a dépassé le délai de N s : elle est coupée. » ; erreur du
+  fournisseur en cours de flux, réponse illisible → `502` « Le fournisseur LLM
+  a interrompu sa réponse, réessayez plus tard. » ; les deux portent
+  `code: "coupe"`, et arrivent en événement `erreur` au navigateur qui suit le
+  flux. Réponse inexploitable d'un pôle après le nouvel essai du moteur →
+  « L'analyse a échoué en cours de route (détail technique : extractDay :
+  pôle n …) », « Réessayer », texte conservé.
 
 ## Règles de gestion
 
 - **RG1** — Défi sans état, à usage unique : l'unicité est garantie à la
   **consommation** (empreinte en clé primaire), l'émission ne stocke rien.
 - **RG2** — Gardes ordonnés du moins coûteux au plus coûteux ; le fournisseur,
-  le modèle et le plafond de sortie sont imposés par le serveur (indications du
-  client ignorées).
+  le modèle (un Haiku, UC-ADM-04 RG9) et la sortie (le maximum du modèle,
+  128 000 tokens pour Haiku 5.5, sans plafond depuis le 2026-10-21) sont
+  imposés par le serveur (indications du client ignorées).
 - **RG3** — Configuration : base (`settings.demo_overrides`, admin) > variables
   `DEMO_*` > `api/config/demo.php` > défauts ; le fournisseur ne vient jamais de
   la base ; base indisponible → couche ignorée en silence.
@@ -186,16 +204,52 @@ de l'accueil.
   la cartographie ouverte, UC-APP-09 A6, le Service humanome, UC-APP-02, le banc
   et la rétro-ingénierie du promptologue), visiteurs et comptes confondus.
   Depuis le 2026-10-21, le **pire cas** de chaque appel est réservé avant qu'il
-  parte, par un seul `UPDATE` conditionnel sur la ligne du jour : un token par
-  octet de `system` + `prompt`, plus le surcoût de la requête (1 024), plus tout
-  le plafond de sortie, au tarif du modèle (palier long de Haiku 5.5 compris,
-  au-delà de 100 000 tokens d'entrée). Sans la place, `503` ; avec, la
-  réservation devient l'usage réel. Ensemble, des appels concurrents ne passent
-  jamais le budget.
+  parte, par un seul `UPDATE` conditionnel sur la ligne du jour : son entrée —
+  un token par octet de `system` + `prompt`, plus le surcoût de la requête
+  (1 024) ; au-delà de 100 000 octets, le compte d'Anthropic
+  (`POST /v1/messages/count_tokens`, gratuit, sur la requête même, augmenté de
+  10 % et de 64 tokens, jamais au-dessus des octets ; sans réponse ou d'une
+  valeur nulle, négative ou illisible, les octets) —, plus toute la sortie du
+  modèle, au plus haut du tarif de la grille des crédits (relevée chaque jour,
+  UC-ADM-05 A6) et de la table de `Pricing`, palier long de Haiku 5.5 compris
+  (au-delà de 100 000 tokens d'entrée) : une grille trop basse ou sans palier
+  ne fait pas réserver moins. Avec 10 %, un appel compté à plus de ≈ 90 850
+  tokens réserve au palier long : un compte un peu court près du seuil ne fait
+  pas passer le budget. Sans la place, `503`, et rien n'est parti ; avec, la réservation devient
+  l'usage réel. Ensemble, des appels concurrents ne passent jamais le budget,
+  et aucune réponse n'est coupée pour le tenir. Un appel coupé en route (E7)
+  compte ce qu'il a pu produire, et non plus son pire cas (2026-10-21) :
+  l'entrée que le fournisseur annonce au début du flux (sinon la borne
+  réservée), la sortie bornée par les octets reçus plus 1 024 tokens encore en
+  vol, au plus la sortie du modèle — toute sa sortie quand ces octets ne
+  bornent rien (un bloc de réflexion, dont le texte peut venir résumé ; une
+  réponse 2xx dont le type n'est pas `text/event-stream`). Les octets ne
+  bornent le JSON de l'outil forcé que parce qu'il vient à mesure qu'il
+  s'écrit (RG6). Un script arrêté par l'hébergement avant l'issue laisse sa
+  réservation entière ; des compteurs qui ne s'écrivent pas au règlement — la
+  base a lâché la connexion pendant l'appel, rouverte une fois sans succès —
+  aussi, et la réponse est rendue quand même.
 - **RG5** — Intention : pas de réessai automatique contre un quota (429) ni un
   budget (503), un seul pour un incident transitoire. Réalité : le
   fournisseur de la démo respecte cette intention (sauf `429` `pow_reused`),
   mais `extractDay` refait une fois tout appel en échec (anomalie AN2).
+- **RG6** — Réponse en flux (2026-10-21, Christian : « Si on passe en appel en
+  flux, alors on voit la réponse arriver au fur et à mesure ? […] Si oui,
+  alors c'est mon choix ») : l'appel au fournisseur est diffusé (`stream`), le
+  JSON de l'outil forcé à mesure qu'il s'écrit (`eager_input_streaming` : sans
+  lui, l'API retient chaque valeur jusqu'à ce qu'elle soit complète — « nothing
+  prints for a large parameter until Claude has finished generating it » —, et
+  ne la valide plus avant de l'envoyer : le moteur la valide, et refait l'appel
+  une fois) ; au
+  navigateur qui le demande (`Accept: text/event-stream`, ce que fait
+  `createDemoProvider`), `POST /api/llm` relaie la réponse à mesure qu'elle
+  arrive — `progression` {caracteres} au plus toutes les 0,5 s, un commentaire
+  `: attente` après 10 s de silence, puis `resultat` (le JSON du nominal) ou
+  `erreur` {status, error, code} ; tout autre client reçoit ce JSON à la fin.
+  Les refus d'avant l'appel (gardes de l'étape 5) restent des réponses JSON.
+  Le navigateur qui part (annulation, page quittée) coupe l'appel, compté pour
+  ce qu'il a produit. Un hébergement qui retient le flux le livre d'un bloc à
+  la fin : la lecture est la même, sans progression.
 
 ## Données et RGPD
 
@@ -219,7 +273,12 @@ de l'accueil.
 | API | `GET /api/llm/status`, `GET /api/llm/challenge`, `POST /api/llm` — `api/src/routes/llm.php` | Orchestration des gardes |
 | Domaine | `api/src/Llm/PowChallenge.php` — `issue`, `verify`, `secretFromEnv`, `leadingZeroBits` | Preuve de travail sans état |
 | Domaine | `api/src/Llm/UsageCounters.php` — `reserve`, `settle`, `release`, `today`, `isExhausted` | Coupe-circuit journalier : réservation du pire cas, règlement au réel |
-| Domaine | `api/src/Llm/Pricing.php` — `estimateUsd` | Coût estimé, palier long de Haiku 5.5 compris |
+| Domaine | `api/src/Llm/Pricing.php` — `estimateUsd` | Coût estimé : le plus haut de la grille des crédits et de la table, palier long de Haiku 5.5 compris |
+| Domaine | `api/src/Llm/AnthropicProvider.php` — `countTokens`, `ouvrirFlux` | Compte d'Anthropic d'une entrée de plus de 100 000 octets (RG4) ; l'appel en flux (RG6) |
+| Domaine | `api/src/Llm/AnthropicFlux.php` — `ouvrir`, `pomper`, `fermer`, `parvenu`, `complet`, `usageAFacturer` | Lecture du flux d'Anthropic ; ce qu'un appel coupé a pu produire (RG4, E7) |
+| Domaine | `api/src/Llm/RelaisAppel.php`, `RelaisSse.php` ; `CurlHttpStream.php` | Le relais au navigateur (RG6), l'issue calculée une fois, le départ du navigateur ; le transfert curl lu à mesure |
+| Front | `web/src/api/relais.js` — `lireRelais`, `estRelais`, `ACCEPT_RELAIS` | Lecture du relais : progression, issue (RG6) |
+| Domaine | `api/src/Llm/ModelLimits.php` — `sortieMax` | La sortie de chaque appel, le maximum du modèle (RG2) |
 | Domaine | `api/src/Llm/DemoConfig.php` — `load` | Précédence de configuration |
 | Domaine | `api/src/Llm/MockProvider.php`, `api/src/Llm/AnthropicProvider.php`, `api/src/Llm/LlmRuntime.php` | Fournisseurs, client HTTP injectable |
 | Domaine | `api/src/Auth/RateLimiter.php`, `api/src/ClientIp.php` | Quota par IP (voir UC-EMP-01) |
@@ -255,6 +314,11 @@ de l'accueil.
 | UC-VIS-03-U23 | `buildExtractionPrompt`, `buildKairosExtractionPrompt`, `DEMO_TEXT_MAX_CHARS` | Anomalie AN3 **corrigée** : au maximum de la page, chaque appel — les 7 pôles et le kairos — tient sous l'ancien plafond serveur de 20 000 | idem |
 | UC-VIS-03-U24 | `localIsoToday` | Jour LOCAL (fuseau UTC+14) et non UTC (étape 2) | idem |
 | UC-VIS-03-U25 | `UsageCounters::reserve`, `settle`, `release` | Deux appels en vol réservent sous un budget qu'un troisième dépasserait : refusé, rien de réservé ; plafond de tokens de même ; pile aux deux plafonds : accepté ; réglée, une réservation fait place à l'usage réel et compte la requête ; rendue, elle ne laisse rien (RG4) | `api/tests/UseCases/Unit/UcVis03EssayerCartographieTest.php` |
+| UC-VIS-03-U26 | `Pricing::estimateUsd` | Le plus haut de la grille des crédits et de la table : la grille plus chère (son prix, son palier long, un identifiant daté ou non), la table et son palier quand la grille est moins chère ou l'a perdu ; un modèle de la grille seule à son prix, d'aucune au plus cher (RG4) | idem |
+| UC-VIS-03-U27 | `AnthropicFlux` | Flux lu en morceaux coupés n'importe où (CRLF, un caractère coupé, commentaires, `ping`, événements inconnus) : texte ou JSON de l'outil forcé (compact), entrée au `message_start`, sortie cumulée ; un message JSON entier lu tel quel ; coupé ou en erreur : entrée comptée (sinon la borne), octets reçus + 1 024, au plus `max_tokens` ; un delta inconnu compte tout son encodage ; réflexion, ou réponse 2xx dont le type n'est pas `text/event-stream` : toute la sortie ; un événement inconnu compte ses données ; une erreur avant tout début est un refus (RG4, E7) | idem |
+| UC-VIS-03-U28 | `createDemoProvider` | Demande le relais ; progression en caractères ; le résultat relayé devient la réponse du moteur ; un appel coupé (délai, fournisseur, connexion perdue) échoue avec le message du serveur, sans nouvel essai de la démo (RG6, A4, E7) | `web/test/usecases/unit/uc-vis-03-essayer-cartographie-en-direct.test.js` |
+| UC-VIS-03-U29 | `createDemoProvider` + `extractDay` | Un appel coupé à chaque essai : 2 POST sur le pôle 1 (le nouvel essai du moteur seul), contre 4 pour un 504 sans flux (U22) ; le message dit la coupure (A4) | idem |
+| UC-VIS-03-U30 | `RelaisAppel::reponse` | En-têtes du flux (ni cache, ni transformation, ni tampon de proxy) ; la première progression tout de suite ; l'issue calculée une fois ; une issue qui échoue → `erreur` 500 générique ; le navigateur parti, l'appel coupé, son issue calculée une fois (RG6) | `api/tests/UseCases/Unit/UcVis03EssayerCartographieTest.php` |
 
 ### Tests fonctionnels
 
@@ -262,14 +326,14 @@ de l'accueil.
 |---|---|---|---|---|
 | UC-VIS-03-F01 | Nominal, A6 | API | Statut, 8 appels (7 pôles + kairos) avec défis distincts, défis hachés, compteurs, aucune session | `api/tests/UseCases/Functional/UcVis03EssayerCartographieTest.php` |
 | UC-VIS-03-F02 | Garanties (RGPD) | API | Ni texte, ni extrait de la réponse, ni IP dans **aucune** table ; seau haché | idem |
-| UC-VIS-03-F03 | A1 | API | Anthropic simulé : modèle et plafond imposés, clé en en-tête, coût compté | idem |
+| UC-VIS-03-F03 | A1 | API | Anthropic simulé : modèle et sortie (le maximum du modèle, 64 000 pour Haiku 4.5) imposés, clé en en-tête, coût compté | idem |
 | UC-VIS-03-F04 | E1 | API | Champ piège → 400 banal, rien de compté ni consommé | idem |
 | UC-VIS-03-F05 | E2 | API | Preuve absente, falsifiée, faible, expirée (non consommée), rejouée | idem |
-| UC-VIS-03-F06 | E3 | API | 422 / 413 avant toute preuve | idem |
+| UC-VIS-03-F06 | E3 | API | 422 (texte absent, hors UTF-8 d'un corps de formulaire) / 413, avant toute preuve et toute réservation | idem |
 | UC-VIS-03-F07 | E4 | API | Quota par IP → 429 + `Retry-After`, autre IP épargnée | idem |
 | UC-VIS-03-F08 | E5, A6 | API | Budget épuisé → 503, `remainingToday` faux | idem |
 | UC-VIS-03-F09 | E6 | API | Démo désactivée ou sans secret → 503 | idem |
-| UC-VIS-03-F10 | E7 | API | 429 relayé, 502, 504, clé absente → 503 ; les refus du fournisseur ne comptent rien, le délai dépassé garde son pire cas, la clé absente refuse avant toute réservation | idem |
+| UC-VIS-03-F10 | E7 | API | 429 relayé, 502, connexion refusée → 502, son délai → 504 : rien de compté ; délai dépassé après l'envoi → 504 `coupe`, une requête, l'entrée et 1 024 tokens comptés ; clé absente → 503 avant toute réservation | idem |
 | UC-VIS-03-F11 | Nominal | IHM | Menu → run complet accepté par un faux serveur aux règles PHP ; journée datée du jour local ; rien conservé ; verdict lisible | `web/test/usecases/functional/uc-vis-03-essayer-cartographie-en-direct.test.jsx` |
 | UC-VIS-03-F12 | A2 | IHM | Export JSON local (nom daté du jour local) ; retour au formulaire | idem |
 | UC-VIS-03-F13 | A3 | IHM | Kairos inexploitable → 7 pôles + note | idem |
@@ -284,14 +348,16 @@ de l'accueil.
 | UC-VIS-03-F22 | E7 | IHM | Pôle 2 inexploitable deux fois → « L'analyse a échoué… (détail technique : extractDay : pôle 2 … » , Réessayer, texte conservé, 3 POST | idem |
 | UC-VIS-03-F23 | Anomalie AN3 (corrigée) | IHM | Texte de 5 000 caractères, le maximum de la page → 8 appels acceptés par un faux serveur au plafond de 20 000, cartographie produite | idem |
 | UC-VIS-03-F24 | Nominal (référentiel publié) | IHM | La dernière version publiée de RESPIRE compte six pôles (index statique) : texte d'introduction « 6 pôles instruits un par un », progression « appel k sur 7 », 7 POST acceptés, synthèse « Les 6 pôles de la feuille du jour » | idem |
-| UC-VIS-03-F25 | E5, E7, RG4 | API | Un appel en vol tient 0,007 $ d'un budget de 0,01 $ : le pire cas d'un nouvel appel (≈ 0,0037 $) n'a pas la place → 503, rien n'est envoyé ; la place rendue, l'appel passe et son usage réel remplace sa réservation ; réponse 2xx illisible et délai dépassé gardent leur pire cas ; l'appel suivant n'a plus la place, la dépense reste sous 0,01 $ | `api/tests/UseCases/Functional/UcVis03EssayerCartographieTest.php` |
+| UC-VIS-03-F25 | E5, E7, RG4 | API | Un appel en vol tient 0,50 $ d'un budget de 0,80 $ : le pire cas d'un nouvel appel (toute la sortie de Haiku 4.5, ≈ 0,32 $) n'a pas la place → 503, rien n'est envoyé ; la place rendue, l'appel passe et son usage réel remplace sa réservation ; une réponse 2xx qui n'est pas un flux, illisible, compte son pire cas, un délai dépassé après l'envoi ce qu'il a pu produire ; un second pire cas, et l'appel suivant n'a plus la place, la dépense reste sous 0,80 $ | `api/tests/UseCases/Functional/UcVis03EssayerCartographieTest.php` |
+| UC-VIS-03-F26 | RG4 | API | Au-delà de 100 000 octets, la réserve prend le compte d'Anthropic (`count_tokens` sur la requête même, sans `max_tokens`) avec sa marge au jeton près (+10 % et 64 : 41 000 comptés ne tiennent pas dans 0,0685 $, 40 000 si) ; 156 000 octets comptés 40 000 tokens restent au tarif de base de Haiku 5.5 et passent sous un budget que leurs octets dépasseraient ; un compte refusé, nul, négatif, en texte, au-dessus des octets ou sans réponse → les octets, `503`, rien d'autre n'est parti ; sous 100 000 octets, aucun compte | idem |
+| UC-VIS-03-F27 | RG6, RG4, E7 | API | La réponse arrive en flux (`Accept: text/event-stream`), l'outil avec `eager_input_streaming` : progressions bornées par le document, puis le résultat du nominal, un usage réel compté ; une erreur avant que la réponse commence → `erreur` 502, rien de compté ; délai dépassé en route → événement `erreur` 504 `coupe`, l'entrée annoncée et les octets reçus + 1 024 comptés ; erreur du fournisseur en route → 502 de même ; le navigateur parti après la première progression → l'appel coupé, compté une fois pour le premier morceau reçu | idem |
 
 ### Tests existants liés (non-régression)
 
 - `api/tests/LlmPowTest.php`, `api/tests/LlmProxyTest.php`, `api/tests/LlmMockProviderTest.php` — gardes, quotas IPv6, surcharges admin.
 - `api/tests/LlmGdocTextTest.php` (`testQuotaIsSharedWithTheLlmProxy`) — quota par IP partagé avec `GET /api/gdoc-text` (E4).
 - `api/tests/CartographiesCsrfTest.php` — exemption CSRF de `/api/llm`.
-- `web/src/views/EssayerView.test.jsx`, `web/src/lib/demo-llm.test.js`, `web/src/lib/pow.test.js`.
+- `web/src/views/EssayerView.test.jsx` (dont les caractères reçus de l'appel en cours, RG6), `web/src/lib/demo-llm.test.js`, `web/src/lib/pow.test.js`, `web/src/api/relais.test.js` (lecture du relais).
 - `docs/securite-demo.md` — modèle de l'abuseur et résidus acceptés.
 
 ### Exécuter
@@ -331,7 +397,7 @@ cd engine && npx vitest run test/usecases/unit/uc-vis-03
   caractères (Christian : « 5000 caractères pour les démo "Essayer" sans
   compte, c'est suffisant ») : un appel en compte au plus environ 13 600, sous
   ces 20 000 — que garde une production qui les règle dans son environnement —
-  et sous le plafond par défaut, 420 000 (UC-ADM-04 RG8). Vérifié par
+  et sous le plafond par défaut, 2 000 000 (UC-ADM-04 RG8). Vérifié par
   UC-VIS-03-U23 et F23.
 - **AN4 — Phase « retry » sans libellé** (cosmétique). Pendant la pause de
   2,5 s du nouvel essai (A4), `onPhase('retry')` positionne la phase courante,
@@ -350,6 +416,37 @@ cd engine && npx vitest run test/usecases/unit/uc-vis-03
   requête refusée ensuite par le coupe-circuit journalier.
 - `GET /api/llm/status` dit qu'il reste du budget tant que les compteurs du jour
   sont sous les plafonds ; un appel dont le pire cas ne tient plus dans ce reste
-  est pourtant refusé (RG4). La réservation compte un token par octet, trois à
-  quatre fois l'usage réel d'un texte français : en fin de journée, un appel peut
-  être refusé alors que son coût réel tiendrait.
+  est pourtant refusé (RG4). La réservation compte toute la sortie du modèle
+  (≈ 0,064 $ au tarif de base de Haiku 5.5, quand un appel pôle en rend
+  quelques milliers de tokens) et, sous 100 000 octets, un token par octet,
+  trois à quatre fois l'usage réel d'un texte français : en fin de journée, un
+  appel peut être refusé alors que son coût réel tiendrait, et un Essayer
+  commencé peut s'arrêter après ses premiers pôles payés. Sous le budget de
+  1 $, une quinzaine d'appels au plus sont en vol à la fois ; au-delà, `503`
+  jusqu'à ce que les premiers soient réglés.
+- Le compte d'un appel coupé (RG4, E7) suppose que le fournisseur cesse de
+  générer quand le flux est fermé et facture ce qu'il a généré : la
+  documentation d'Anthropic ne le dit pas ; d'autres le disent, lus le
+  2026-10-21 — la référence du flux d'OpenRouter (« For supported providers,
+  this immediately stops model processing and billing », Anthropic dans la
+  liste), claudelab.net (5 à 34 tokens générés au-delà de la coupure, mesurés),
+  la passerelle de TrueFoundry (qui coupe les flux d'Anthropic et facture la
+  sortie partielle, à 3,5 caractères par token environ). Un token par octet
+  reçu, plus 1 024, couvre chacune de ces mesures ; si le fournisseur générait
+  bien au-delà, la dépense réelle passerait le compte du jour, de la sortie
+  d'un appel au plus.
+- Le relais (RG6) traverse l'hébergement : rien n'assure qu'OVH livre le flux
+  à mesure (Apache, PHP-FPM, compression) ; s'il le retient, le résultat
+  arrive d'un bloc à la fin, sans progression — à mesurer en recette
+  (`docs/recette-twin9.md`). OVH borne un script à 165 s sur l'hébergement
+  mutualisé, sans réglage — sans doute `max_execution_time`, qui, hors Windows,
+  ne compte pas l'attente du réseau (documentation de PHP) : un appel en flux,
+  qui attend presque tout le temps, tiendrait peut-être plus, à mesurer en
+  recette. Un script arrêté avant son issue laisse l'appel avec sa réservation
+  entière. Le délai de la démo (`upstreamTimeoutSeconds`, 150 s par défaut, 300
+  au plus) reste sous cette borne tant que la mesure ne dit pas mieux.
+- Le navigateur qui part n'est vu qu'à une écriture du serveur qui échoue (une
+  progression, ou un commentaire après 10 s de silence), puis à la suivante :
+  une vingtaine de secondes au plus — et seulement à la fin si l'hébergement
+  retient le flux. L'appel court jusque-là, et ce qu'il produit entre-temps
+  est compté.

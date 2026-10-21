@@ -71,13 +71,16 @@ describe('UC-PRO-05 — estimation et coût', () => {
     expect(complet.totalCalls).toBe(3 * 8 + 69)
     expect(banc.totalCalls).toBe(24)
     expect(uneCompetence.totalCalls).toBe(1)
-    // 1 appel : (3600+7200)/3,6 = 3000 tokens entrée, 1000 sortie -> 0,009 + 0,015 $.
+    // 1 appel : (3600+7200)/3,6 = 3000 tokens entrée, 1000 sortie -> 0,006 + 0,010 $ (Sonnet 5 à 2 / 10).
     expect(uneCompetence).toMatchObject({ tokensIn: 3000, tokensOut: 1000, costUsd: 0.02, durationMin: 1 })
     expect(banc.costUsd).toBeLessThan(complet.costUsd)
   })
 
   it('UC-PRO-05-U21 — getModelPricing : modèles tarifés du coût réel, indice « demo » du service non tarifé', () => {
-    expect(getModelPricing('claude-sonnet-5')).toEqual({ input: 3, output: 15 })
+    // Sonnet 5 et 5.5 à 2 / 10, Opus 5.5 à 4 / 20 (page des prix d'Anthropic, 2026-10-21).
+    expect(getModelPricing('claude-sonnet-5')).toEqual({ input: 2, output: 10 })
+    expect(getModelPricing('claude-sonnet-5-5')).toEqual({ input: 2, output: 10 })
+    expect(getModelPricing('claude-opus-5-5')).toEqual({ input: 4, output: 20 })
     expect(getModelPricing('claude-haiku-4-5')).toEqual({ input: 1, output: 5 })
     expect(getModelPricing('claude-sonnet-4-5-20250929')).toEqual({ input: 3, output: 15 }) // famille
     expect(getModelPricing('llama3.1')).toEqual({ input: 0, output: 0 }) // local : coût marginal nul

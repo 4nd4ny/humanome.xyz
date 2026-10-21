@@ -28,6 +28,8 @@ import { ProviderError } from '../../../../engine/src/providers/errors.js'
 import { buildExtractionPrompt, buildKairosExtractionPrompt, extractDay } from '../../../../engine/src/pipeline/extract.js'
 import referentiel from '../../../../schemas/fixtures/referentiel-respire-v7.json'
 import { fakeDemoServer, jsonResponse } from '../support/vis.js'
+import { RELAIS_INTERROMPU } from '../../../src/api/client.js'
+import { evenementRelais, reponseRelais } from '../../../src/test/relais-response.js'
 
 afterEach(() => {
   vi.useRealTimers()
@@ -247,5 +249,61 @@ describe('UC-VIS-03 — client de la démo', () => {
       if (previous === undefined) delete process.env.TZ
       else process.env.TZ = previous
     }
+  })
+})
+
+describe('UC-VIS-03 — la réponse en flux (relais, 2026-10-21)', () => {
+  const COUPE = { status: 504, error: 'La réponse a dépassé le délai de 150 s : elle est coupée.', code: 'coupe' }
+
+  it('UC-VIS-03-U28 — createDemoProvider demande le relais (Accept: text/event-stream) ; la progression remonte en caractères et le résultat relayé devient la réponse du moteur ; un appel coupé — délai, erreur du fournisseur, connexion perdue — échoue avec le message du serveur, sans nouvel essai de la démo : il a été compté', async () => {
+    const resultat = { text: '{"poleNum":"1"}', usage: { inputTokens: 900, outputTokens: 40 }, model: 'claude-haiku-5-5', stopReason: 'tool_use' }
+    const progression = []
+    const server = fakeDemoServer({
+      createHash,
+      difficultyBits: 2,
+      answer: () =>
+        reponseRelais(
+          evenementRelais('progression', { caracteres: 12 }) +
+            evenementRelais('progression', { caracteres: 15 }) +
+            evenementRelais('resultat', resultat),
+        ),
+    })
+    const { provider } = createDemoProvider({ fetchFn: server.mock, onProgression: (n) => progression.push(n) })
+    expect(await provider.complete({ model: 'demo', prompt: 'P' })).toMatchObject(resultat)
+    expect(progression).toEqual([12, 15])
+    const [, init] = server.mock.mock.calls.find(([url]) => url === 'api/llm')
+    expect(init.headers.Accept).toBe('text/event-stream, application/json')
+    expect(JSON.parse(init.body)).toMatchObject({ prompt: 'P', website: '' })
+
+    for (const [label, texte, statut, message] of [
+      ['délai', evenementRelais('progression', { caracteres: 30 }) + evenementRelais('erreur', COUPE), 504, COUPE.error],
+      [
+        'fournisseur',
+        evenementRelais('erreur', { status: 502, error: 'Le fournisseur LLM a interrompu sa réponse, réessayez plus tard.', code: 'coupe' }),
+        502,
+        'Le fournisseur LLM a interrompu sa réponse',
+      ],
+      ['connexion perdue', evenementRelais('progression', { caracteres: 30 }), 502, RELAIS_INTERROMPU],
+    ]) {
+      const coupe = fakeDemoServer({ createHash, difficultyBits: 2, answer: () => reponseRelais(texte) })
+      const phases = []
+      const { provider: demo } = createDemoProvider({ fetchFn: coupe.mock, onPhase: (phase) => phases.push(phase) })
+      const error = await demo.complete({ model: 'demo', prompt: 'P' }).catch((e) => e)
+      expect(error, label).toBeInstanceOf(ProviderError)
+      expect(error.status, label).toBe(statut)
+      expect(error.message, label).toContain(message)
+      expect(coupe.posts, label).toHaveLength(1)
+      expect(phases, label).not.toContain('retry')
+    }
+  })
+
+  it('UC-VIS-03-U29 — pile de la page : un appel coupé à chaque essai coûte 2 POST sur le pôle 1 — le nouvel essai du moteur seul —, quand un 504 sans flux en coûte 4 (U22) ; le message dit la coupure', async () => {
+    const server = fakeDemoServer({ createHash, difficultyBits: 2, answer: () => reponseRelais(evenementRelais('erreur', COUPE)) })
+    const { provider } = createDemoProvider({ fetchFn: server.mock })
+    const failure = await extractDay({ dayText: DAY_TEXT, date: '2026-09-28', referentiel, provider, model: 'demo', kairosOptional: true }).catch((e) => e)
+    expect(server.posts).toHaveLength(2)
+    expect(failure.message).toContain('extractDay : pôle 1')
+    expect(describeDemoError(failure)).toMatchObject({ kind: 'llm', canRetry: true })
+    expect(describeDemoError(failure).message).toContain(COUPE.error)
   })
 })

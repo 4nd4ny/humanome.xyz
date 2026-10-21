@@ -39,6 +39,7 @@ import {
   referentielTwin6,
 } from '../api/twin6.js'
 import { executerTwin6, fichesPourTwin6, twin6CallsFor } from '@engine/twin6/index.js'
+import { sortieMaxAnthropic } from '@engine/providers/limits.js'
 import { listPublishedReferentiels, loadPublishedReferentiel } from '../data/referentiel.js'
 import ReferentielChoice from '../components/ReferentielChoice.jsx'
 import MergeView from './MergeView.jsx'
@@ -83,6 +84,20 @@ function poidsEstimeUsd(texte) {
   return Math.max(1, Math.ceil(octets / 1024))
 }
 
+/**
+ * Ce que le serveur réserve sur le crédit le temps d'UN appel, au-delà de son
+ * entrée : toute la sortie que le modèle peut rendre, à son prix contribution
+ * comprise (2026-10-21 — la sortie n'est plus plafonnée). Rendu après l'appel,
+ * mais il doit tenir dans le solde à chaque appel du run.
+ *
+ * @param {string} model
+ * @param {Record<string, [number, number]>} modeles prix [entrée, sortie] en USD / Mtok (offre)
+ */
+function reserveSortieUsd(model, modeles) {
+  const prixSortie = Number(modeles?.[model]?.[1] ?? 0)
+  return (sortieMaxAnthropic(model) * prixSortie) / 1_000_000
+}
+
 export default function Twin6OuverteView({ lib: injectedLib, deps = {} }) {
   const fetchMeFn = deps.fetchMeFn ?? fetchMe
   const runEngine = deps.runEngine ?? executerTwin6
@@ -115,7 +130,7 @@ export default function Twin6OuverteView({ lib: injectedLib, deps = {} }) {
   // Le référentiel choisi : null, RESPIRE (sa dernière version publiée) ; son document une fois chargé.
   const [choix, setChoix] = useState(null)
   const [ref, setRef] = useState({ status: 'loading', doc: null, message: '' })
-  const [run, setRun] = useState({ status: 'idle', done: 0, total: 0, phase: '', doc: null, referentiel: null, cout: 0, error: '', voie: null })
+  const [run, setRun] = useState({ status: 'idle', done: 0, total: 0, phase: '', doc: null, referentiel: null, cout: 0, error: '', voie: null, caracteres: 0 })
   const { lib } = useSunburstLib(deps.lib ?? injectedLib)
   const running = useRef(false)
 
@@ -221,30 +236,45 @@ export default function Twin6OuverteView({ lib: injectedLib, deps = {} }) {
     if (!peutLancer || running.current) return
     // Garde-fou crédits (demande utilisateur) : ne lancer sur NOTRE clé que si le
     // solde prépayé couvre le poids du portfolio. Heuristique ~1 ko = 1 USD (le
-    // coût réel est réconcilié après le run). Sur clé perso, aucun débit → pas de
-    // garde. Bloque AVANT tout appel facturable, avec un message vers la recharge.
+    // coût réel est réconcilié après le run). Plus la réserve d'un appel, toute
+    // la sortie du modèle (2026-10-21) : sans elle, un solde qui couvre le poids
+    // mais pas la réserve finirait sur un refus au milieu du run, ses premiers
+    // scans payés. Sur clé perso, aucun débit → pas de garde. Bloque AVANT tout
+    // appel facturable, avec un message vers la recharge.
     if (voie === 'credits') {
-      const requisMicro = poidsEstimeUsd(portfolio) * 1_000_000
+      const poids = poidsEstimeUsd(portfolio)
+      const reserve = reserveSortieUsd(model, modeles)
+      const requisMicro = Math.ceil((poids + reserve) * 1_000_000)
       const solde = Number(res.offer?.solde_microusd ?? 0)
       if (solde < requisMicro) {
+        // Arrondis au centime supérieur : le montant affiché ne passe jamais sous le solde qui manque.
+        const auCentime = (usd) => (Math.ceil(usd * 100 - 1e-9) / 100).toFixed(2)
         setRun((r) => ({
           ...r,
           status: 'error',
           error:
-            `Solde insuffisant pour ce portfolio (~${poidsEstimeUsd(portfolio)} $ estimés, ` +
-            `solde ${(solde / 1_000_000).toFixed(2)} $). Rechargez votre crédit ou utilisez votre propre clé API.`,
+            `Solde insuffisant pour ce portfolio avec ce modèle (~${auCentime(poids + reserve)} $ : ` +
+            `${poids} $ estimés, et ${auCentime(reserve)} $ réservés le temps de chaque appel puis rendus ; ` +
+            `solde ${(solde / 1_000_000).toFixed(2)} $). Rechargez votre crédit, choisissez un modèle moins cher ` +
+            `ou utilisez votre propre clé API.`,
         }))
         return
       }
     }
     running.current = true
     const referentiel = moteurRef
-    setRun({ status: 'running', done: 0, total: twin6CallsFor(referentiel), phase: 'scan-pole', doc: null, referentiel, cout: 0, error: '', voie })
+    setRun({ status: 'running', done: 0, total: twin6CallsFor(referentiel), phase: 'scan-pole', doc: null, referentiel, cout: 0, error: '', voie, caracteres: 0 })
+    // La réponse de chaque appel arrive en flux (relais, 2026-10-21) : ses caractères reçus.
+    const onProgression = (caracteres) => setRun((r) => ({ ...r, caracteres }))
     try {
       let provider
       if (essai) {
         // Une preuve de travail par appel ; la première est résolue avant le premier scan.
-        const demo = demoFactory(callOpts)
+        const demo = demoFactory({
+          ...callOpts,
+          onPhase: (phase) => phase === 'llm' && setRun((r) => ({ ...r, caracteres: 0 })),
+          onProgression,
+        })
         await demo.prime()
         provider = demo.provider
       } else if (voie === 'cle_perso') {
@@ -257,6 +287,7 @@ export default function Twin6OuverteView({ lib: injectedLib, deps = {} }) {
       } else {
         provider = creditsFactory({
           onCout: (c) => setRun((r) => ({ ...r, cout: r.cout + (Number(c) || 0) })),
+          onProgression,
           ...callOpts,
         })
       }
@@ -270,8 +301,9 @@ export default function Twin6OuverteView({ lib: injectedLib, deps = {} }) {
         // Le proxy de la démo impose son modèle : celui-ci n'est qu'une indication.
         model: essai ? DEMO_MODEL : model,
         options: {
+          // Chaque étape ouvre un appel : ses caractères repartent de zéro.
           onProgress: (p) =>
-            setRun((r) => ({ ...r, done: p.done ?? r.done, total: p.total ?? r.total, phase: p.phase ?? r.phase })),
+            setRun((r) => ({ ...r, done: p.done ?? r.done, total: p.total ?? r.total, phase: p.phase ?? r.phase, caracteres: 0 })),
           meta: {
             journalId: 'twin6-ouverte',
             sourceProtocole: `${res.pkg.id}@${res.pkg.version}`,
@@ -285,7 +317,12 @@ export default function Twin6OuverteView({ lib: injectedLib, deps = {} }) {
       // pour un compte, l'invitation à en créer un.
       const demo = essai ? describeDemoError(e) : null
       const error = !essai ? messageErreur(e) : demo.kind === 'unavailable' && !visiteur ? ESSAI_EPUISE_COMPTE : demo.message
-      setRun((r) => ({ ...r, status: 'error', error }))
+      // Sur crédits, ce que le run a coûté jusqu'à l'erreur — un appel coupé compris, facturé pour ce qu'il a produit.
+      setRun((r) => ({
+        ...r,
+        status: 'error',
+        error: voie === 'credits' && r.cout > 0 ? `${error} (${formatUsd(r.cout)} débités pour ce run.)` : error,
+      }))
     } finally {
       running.current = false
     }
@@ -469,6 +506,9 @@ export default function Twin6OuverteView({ lib: injectedLib, deps = {} }) {
         <div className="twin6-progress" role="status">
           <p>
             Analyse en cours — étape {run.done}/{run.total} ({run.phase})
+            {run.caracteres > 0 ? (
+              <span data-testid="twin6-caracteres"> — {formatInt(run.caracteres)} caractères reçus</span>
+            ) : null}
             {run.cout > 0 ? ` — ${formatUsd(run.cout)} débités jusqu’ici` : ''}
           </p>
           <progress value={run.done} max={run.total} />

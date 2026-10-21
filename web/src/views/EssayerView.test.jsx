@@ -4,6 +4,7 @@ import EssayerView from './EssayerView.jsx'
 import * as fakeLib from '../test/fake-sunburst-lib.js'
 import dayFixture from '../../../schemas/fixtures/cartographie-jour-2026-01-05.json'
 import { DEMO_TEXT_MAX_CHARS, localIsoToday } from '../lib/demo-llm.js'
+import { evenementRelais, relaisPilote } from '../test/relais-response.js'
 
 // Texte de démo plausible, au-dessus du minimum de 80 caractères.
 const SAMPLE_TEXT =
@@ -209,6 +210,32 @@ describe('EssayerView — orchestration du moteur réel', () => {
     )
     expect(screen.getByLabelText('Texte à cartographier').value).toBe(SAMPLE_TEXT)
     expect(posts.length).toBeLessThanOrEqual(4)
+  })
+
+  it('montre les caractères reçus de l’appel en cours, à mesure que la réponse arrive (relais en flux), puis termine le run', async () => {
+    const pilote = relaisPilote()
+    const { fetchFn, posts } = makeFetch({ llm: (body, n) => (n === 1 ? pilote.response : null) })
+    render(<EssayerView lib={fakeLib} fetchFn={fetchFn} />)
+    await pasteAndStart()
+    await waitFor(() => expect(posts).toHaveLength(1))
+    expect(fetchFn.mock.calls.find(([url]) => url === 'api/llm')[1].headers.Accept).toContain('text/event-stream')
+
+    pilote.pousser(evenementRelais('progression', { caracteres: 1234 }))
+    const recus = await screen.findByTestId('essayer-caracteres')
+    expect(recus.textContent).toBe(' 1 234 caractères reçus')
+    expect(screen.getByText(/appel 1 sur 8/)).toBeDefined()
+
+    pilote.pousser(
+      evenementRelais('resultat', {
+        text: JSON.stringify(dayFixture.poles[0]),
+        usage: { inputTokens: 9, outputTokens: 9 },
+        model: 'demo',
+        stopReason: 'tool_use',
+      }),
+    )
+    pilote.fermer()
+    expect(await screen.findByTestId('demo-banner')).toBeDefined()
+    expect(posts).toHaveLength(8)
   })
 })
 

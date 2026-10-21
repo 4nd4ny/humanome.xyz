@@ -14,7 +14,10 @@ declare(strict_types=1);
  *   trigger without SSH. Its own token, WORKER_TICK_TOKEN (X-Worker-Tick-Token),
  *   opens no other route: the trigger never holds the migration token, which
  *   also grants roles and imports templates (ADR-011 §2). X-Migrate-Token
- *   still opens it (ADR-008 trust model).
+ *   still opens it (ADR-008 trust model). After its slice, once a UTC day,
+ *   it reads Anthropic's prices into the grid (Twin9\TarifsAnthropic) where
+ *   the platform's key is set: the trigger's minute brings the daily update
+ *   (2026-10-21), with no gesture of its own.
  *
  * Logging: counters only, never portfolio or document content (§6.5).
  */
@@ -24,8 +27,10 @@ use Humanome\Env;
 use Humanome\Etablissement\CohorteRepository;
 use Humanome\Etablissement\ConfigRepository;
 use Humanome\Keys\KeyVault;
+use Humanome\Llm\LlmRuntime;
 use Humanome\Referentiel\Conformite;
 use Humanome\Referentiel\ReferentielRepository;
+use Humanome\Twin9\TarifsAnthropic;
 use Humanome\Validation;
 use Humanome\Worker\JobQueue;
 use Humanome\Worker\Tick;
@@ -334,6 +339,19 @@ return function (App $app): void {
             error_log('[worker-tick] ' . $e->getMessage());
 
             return $json($response, ['error' => 'Tick failed, see server log'], 500);
+        }
+        // Anthropic's prices, after the slice, once a UTC day (TarifsAnthropic):
+        // where the platform's key is set — an instance that bills no call on
+        // it has nothing to price. Its failure never fails the tick.
+        if (Env::get('ANTHROPIC_API_KEY') !== '') {
+            try {
+                $tarifs = TarifsAnthropic::releverSiDu(Db::get(), LlmRuntime::httpClient());
+                if ($tarifs !== null) {
+                    $counters['tarifs'] = (string) $tarifs['statut'];
+                }
+            } catch (\Throwable $e) {
+                error_log('[worker-tick] tarifs: ' . $e->getMessage());
+            }
         }
         error_log('[worker-tick] ' . json_encode($counters)); // counters only
 

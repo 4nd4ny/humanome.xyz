@@ -72,15 +72,19 @@ final class LlmFakeHttpClient implements HttpClient, StreamingHttpClient
         if ($next instanceof HttpClientException) {
             return new FakeHttpStream(0, [], [], $next);
         }
+        // The content-type Anthropic gives: an event stream, or a whole JSON body.
+        $flux = ['content-type' => 'text/event-stream; charset=utf-8'];
         if (isset($next['stream'])) {
-            return new FakeHttpStream($next['status'], [], $next['stream'], $next['fin']);
+            return new FakeHttpStream($next['status'], $flux, $next['stream'], $next['fin']);
         }
-        $chunks = str_starts_with(ltrim($next['body']), '{') || $next['status'] !== 200
+        $json = str_starts_with(ltrim($next['body']), '{') || $next['status'] !== 200;
+        $chunks = $json
             ? [$next['body']]
             : array_map(static fn (string $e): string => $e . "\n\n",
                 array_values(array_filter(explode("\n\n", $next['body']), static fn (string $e): bool => trim($e) !== '')));
 
-        return new FakeHttpStream($next['status'], $next['headers'], $chunks, null);
+        return new FakeHttpStream($next['status'], $next['headers'] + ($json ? ['content-type' => 'application/json'] : $flux),
+            $chunks, null);
     }
 
     public function request(

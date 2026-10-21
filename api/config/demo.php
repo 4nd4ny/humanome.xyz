@@ -67,8 +67,9 @@ declare(strict_types=1);
  *                                                ~2^N hachages côté client (20 bits
  *                                                ≈ 1 s sur un navigateur moderne).
  *   upstreamTimeoutSeconds DEMO_UPSTREAM_TIMEOUT Délai maximal (s) d'un appel au
- *                                                fournisseur amont (pas de streaming
- *                                                sur mutualisé : appel bufferisé).
+ *                                                fournisseur amont, reçu en flux et
+ *                                                relayé à mesure (2026-10-21) ; coupé,
+ *                                                il compte ce qu'il a produit.
  *
  * Secret de la preuve de travail : POW_SECRET (env). S'il est absent, un
  * secret est dérivé de MIGRATE_TOKEN (sha256) — voir Llm/PowChallenge. Si ni

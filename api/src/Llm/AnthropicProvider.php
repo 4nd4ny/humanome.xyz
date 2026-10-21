@@ -36,8 +36,12 @@ final class AnthropicProvider
      */
     public const COMPTE_AU_DELA = 100_000;
 
-    /** A count is quick: the call it precedes keeps its own timeout. */
-    private const COUNT_TIMEOUT = 15;
+    /**
+     * A count is quick: the call it precedes keeps its own timeout, and the
+     * two together stay under what the hosting gives a script (165 s on
+     * OVH, the call's 150 s by default).
+     */
+    private const COUNT_TIMEOUT = 5;
 
     public function __construct(
         private readonly HttpClient $http,
@@ -133,7 +137,7 @@ final class AnthropicProvider
             $this->http,
             rtrim($this->baseUrl, '/') . '/v1/messages',
             $this->headers(),
-            ['model' => $model, 'max_tokens' => $maxTokens] + self::requestBody($system, $prompt, $forceJsonDocument),
+            ['model' => $model, 'max_tokens' => $maxTokens] + self::requestBody($system, $prompt, $forceJsonDocument, true),
             $this->timeoutSeconds,
         );
     }
@@ -177,11 +181,13 @@ final class AnthropicProvider
     /**
      * What a call sends besides its model and output: thinking, the forced
      * tool, the system prompt, the message — the same for the call and for
-     * its count.
+     * its count, but for how a streamed call delivers the tool's JSON
+     * ($flux: eager_input_streaming), which changes no token.
      *
      * @return array<string, mixed>
      */
-    private static function requestBody(?string $system, string $prompt, bool $forceJsonDocument): array
+    private static function requestBody(?string $system, string $prompt, bool $forceJsonDocument,
+                                        bool $flux = false): array
     {
         $body = [
             // Some models reason by default; thinking tokens count against
@@ -194,15 +200,22 @@ final class AnthropicProvider
             'messages' => [['role' => 'user', 'content' => $prompt]],
         ];
         if ($forceJsonDocument) {
-            // Forced generic tool use: the API's constrained decoding
-            // GUARANTEES syntactically valid JSON — free-text generations
-            // showed a high malformation rate live (key emitted without its
-            // value, twice on the same pole). The tool input becomes `text`.
+            // Forced generic tool use: free-text generations showed a high
+            // malformation rate live (key emitted without its value, twice on
+            // the same pole). The tool input becomes `text`. Its JSON streams
+            // as Claude writes it (eager_input_streaming, 2026-10-21): without
+            // it, the API buffers each parameter value until it is complete —
+            // « nothing prints for a large parameter until Claude has finished
+            // generating it » (Anthropic, fine-grained tool streaming) —, the
+            // page would see nothing come, and the bytes a cut call received
+            // would not bound what it generated (AnthropicFlux). The JSON is
+            // then not validated before it streams: the engine validates it,
+            // and tries once more.
             $body['tools'] = [[
                 'name' => 'emettre_document',
                 'description' => 'Émet le document JSON strict demandé par la consigne.',
                 'input_schema' => ['type' => 'object'],
-            ]];
+            ] + ($flux ? ['eager_input_streaming' => true] : [])];
             $body['tool_choice'] = ['type' => 'tool', 'name' => 'emettre_document'];
         }
         if ($system !== null && $system !== '') {

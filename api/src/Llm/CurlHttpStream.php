@@ -8,7 +8,8 @@ namespace Humanome\Llm;
  * HttpStream over curl_multi (ext-curl, on OVH as in development): the
  * transfer advances each time read() is called, so the caller can relay what
  * arrives while it arrives. HTTPS only, no redirect, the whole transfer
- * bounded by its timeout (CURLOPT_TIMEOUT).
+ * bounded by its timeout (CURLOPT_TIMEOUT) — and by a deadline of our own a
+ * little later, should curl_multi itself stall or fail.
  */
 final class CurlHttpStream implements HttpStream
 {
@@ -28,6 +29,8 @@ final class CurlHttpStream implements HttpStream
     private ?HttpClientException $error = null;
 
     private readonly int $bodyLength;
+
+    private readonly float $deadline;
 
     /**
      * @param array<string, string> $headers
@@ -70,6 +73,7 @@ final class CurlHttpStream implements HttpStream
             curl_setopt($handle, CURLOPT_POSTFIELDS, $body);
         }
         $this->bodyLength = \strlen($body ?? '');
+        $this->deadline = microtime(true) + $timeoutSeconds + 5;
         $this->multi = curl_multi_init();
         curl_multi_add_handle($this->multi, $handle);
         $this->handle = $handle;
@@ -133,6 +137,14 @@ final class CurlHttpStream implements HttpStream
         $this->close();
     }
 
+    /** A generic message only: never the URL, a header or the body. */
+    private function failure(string $what, bool $timedOut): HttpClientException
+    {
+        return new HttpClientException('network error (' . $what . ')', timedOut: $timedOut,
+            requestSent: $this->bodyLength > 0 && $this->handle !== null
+                && (int) curl_getinfo($this->handle, CURLINFO_SIZE_UPLOAD_T) >= $this->bodyLength);
+    }
+
     private function advance(): void
     {
         if ($this->multi === null || $this->handle === null) {
@@ -144,13 +156,14 @@ final class CurlHttpStream implements HttpStream
         $this->status = (int) curl_getinfo($this->handle, CURLINFO_RESPONSE_CODE);
         while (($info = curl_multi_info_read($this->multi)) !== false) {
             if ($info['result'] !== CURLE_OK) {
-                // generic message only: never the URL, a header or the body
-                $this->error = new HttpClientException('network error (curl ' . $info['result'] . ')',
-                    timedOut: $info['result'] === CURLE_OPERATION_TIMEDOUT,
-                    requestSent: $this->bodyLength > 0
-                        && (int) curl_getinfo($this->handle, CURLINFO_SIZE_UPLOAD_T) >= $this->bodyLength);
+                $this->error = $this->failure('curl ' . $info['result'], $info['result'] === CURLE_OPERATION_TIMEDOUT);
             }
             $this->status = (int) curl_getinfo($this->handle, CURLINFO_RESPONSE_CODE);
+            $this->done = true;
+        }
+        if (!$this->done && ($code !== CURLM_OK || microtime(true) > $this->deadline)) {
+            // curl_multi failed, or stalled past the transfer's own timeout.
+            $this->error = $this->failure($code !== CURLM_OK ? 'curl multi ' . $code : 'curl 28', $code === CURLM_OK);
             $this->done = true;
         }
         if ($this->done) {

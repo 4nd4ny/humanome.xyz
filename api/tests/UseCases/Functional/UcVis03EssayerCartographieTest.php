@@ -4,6 +4,7 @@ declare(strict_types=1);
 
 namespace Humanome\Tests\UseCases\Functional;
 
+use Humanome\Bootstrap;
 use Humanome\Llm\AnthropicFlux;
 use Humanome\Llm\AnthropicProvider;
 use Humanome\Llm\HttpClientException;
@@ -15,6 +16,7 @@ use Humanome\Tests\LlmTestCase;
 use Humanome\Tests\TestDb;
 use PHPUnit\Framework\Attributes\TestDox;
 use Psr\Http\Message\ResponseInterface;
+use Slim\Psr7\Factory\ServerRequestFactory;
 
 /**
  * UC-VIS-03 — Essayer la cartographie en direct, sans compte : tests FONCTIONNELS (API).
@@ -218,7 +220,7 @@ final class UcVis03EssayerCartographieTest extends LlmTestCase
         self::assertSame('1', $replay->getHeaderLine('Retry-After'));
     }
 
-    #[TestDox('UC-VIS-03-F06 — E3 : texte absent (422) ou trop long (413), refusé avant toute preuve de travail')]
+    #[TestDox('UC-VIS-03-F06 — E3 : texte absent (422), hors UTF-8 (422) ou trop long (413), refusé avant toute preuve de travail et toute réservation')]
     public function testF06InputValidation(): void
     {
         TestDb::setEnv('DEMO_MAX_INPUT_CHARS', '50');
@@ -227,6 +229,15 @@ final class UcVis03EssayerCartographieTest extends LlmTestCase
         self::assertSame(413, $long->getStatusCode());
         self::assertStringContainsString('50 caractères maximum', self::json($long)['error']);
         self::assertSame(422, $this->request('POST', '/api/llm', ['prompt' => 'ok', 'system' => ['pas une chaîne']])->getStatusCode());
+
+        // Un corps de formulaire porte des octets bruts : hors UTF-8, la requête
+        // amont ne pourrait pas les porter — 422, avant la preuve et toute réservation.
+        $formulaire = (new ServerRequestFactory())->createServerRequest('POST', '/api/llm', ['REMOTE_ADDR' => $this->clientIp])
+            ->withParsedBody(['prompt' => "Journée du 6 janvier \xFF\xFE"]);
+        $illisible = Bootstrap::createApp()->handle($formulaire);
+        self::assertSame([422, ['error' => 'Texte illisible : UTF-8 attendu.']], [$illisible->getStatusCode(), self::json($illisible)]);
+        self::assertSame(0, (int) self::$pdo->query('SELECT COUNT(*) FROM llm_pow_challenges')->fetchColumn());
+        self::assertSame(0, self::usage()['inputTokens']);
     }
 
     #[TestDox('UC-VIS-03-F07 — E4 : quota horaire par IP dépassé → 429 + Retry-After ; une autre IP n’est pas pénalisée')]
@@ -396,7 +407,8 @@ final class UcVis03EssayerCartographieTest extends LlmTestCase
         self::assertArrayNotHasKey('max_tokens', $corpsCompte);
         self::assertSame(128000, $corpsAppel['max_tokens']);
         self::assertTrue($corpsAppel['stream'], 'l’appel arrive en flux ; le compte, non');
-        unset($corpsAppel['max_tokens'], $corpsAppel['stream']);
+        self::assertTrue($corpsAppel['tools'][0]['eager_input_streaming'], 'qui ne change aucun token : le compte ne le porte pas');
+        unset($corpsAppel['max_tokens'], $corpsAppel['stream'], $corpsAppel['tools'][0]['eager_input_streaming']);
         self::assertSame($corpsAppel, $corpsCompte, 'le compte porte la requête même : outil forcé, réflexion, système');
         self::assertSame(self::API_KEY, $compte['headers']['x-api-key']);
         $reel = self::usage();
@@ -429,7 +441,7 @@ final class UcVis03EssayerCartographieTest extends LlmTestCase
         self::assertSame('https://api.anthropic.com/v1/messages', $this->http->requests[$avant]['url']);
     }
 
-    #[TestDox('UC-VIS-03-F27 — RG4, E7 : la réponse arrive en flux (Accept: text/event-stream) — progression en caractères, puis le résultat que donnerait la route ; coupée en route (délai, erreur du fournisseur, navigateur parti), elle est comptée pour ce qu’elle a produit : l’entrée annoncée, les octets reçus et 1 024 tokens')]
+    #[TestDox('UC-VIS-03-F27 — RG4, RG6, E7 : la réponse arrive en flux (Accept: text/event-stream), le JSON de l’outil à mesure qu’il s’écrit — progression en caractères, puis le résultat que donnerait la route ; une erreur avant que la réponse commence est un refus, rien de compté ; coupée en route (délai, erreur du fournisseur, navigateur parti), elle est comptée pour ce qu’elle a produit : l’entrée annoncée, les octets reçus et 1 024 tokens')]
     public function testF27AnswerStreamsAndACutCallCountsWhatItProduced(): void
     {
         TestDb::setEnv('DEMO_PROVIDER', 'anthropic');
@@ -448,9 +460,19 @@ final class UcVis03EssayerCartographieTest extends LlmTestCase
             self::assertGreaterThan(0, $donnees['caracteres']);
             self::assertLessThanOrEqual(mb_strlen($document), $donnees['caracteres']);
         }
-        self::assertTrue(json_decode((string) $this->http->requests[0]['body'], true, 512, JSON_THROW_ON_ERROR)['stream']);
+        $corps = json_decode((string) $this->http->requests[0]['body'], true, 512, JSON_THROW_ON_ERROR);
+        self::assertTrue($corps['stream']);
+        // Le JSON de l'outil vient à mesure qu'il s'écrit, sans quoi rien ne viendrait avant
+        // chaque valeur entière, et les octets reçus d'un appel coupé ne borneraient rien.
+        self::assertTrue($corps['tools'][0]['eager_input_streaming']);
         $usage = self::usage();
         self::assertSame([1, 900, 40], [$usage['requests'], $usage['inputTokens'], $usage['outputTokens']]);
+
+        // Une erreur avant que la réponse commence : un refus, rien de compté.
+        $this->http->queueStream([AnthropicSse::evenement('error', ['error' => ['type' => 'overloaded_error', 'message' => 'Overloaded']])]);
+        $refus = self::evenements((string) $this->relais(1)->getBody());
+        self::assertSame(['erreur', ['status' => 502, 'error' => 'Erreur du fournisseur LLM : Overloaded']], end($refus));
+        self::assertSame($usage, self::usage());
 
         // Délai dépassé en route : l'erreur arrive par le flux, l'appel compte l'entrée
         // annoncée et les octets reçus, plus la marge — pas son pire cas.

@@ -124,7 +124,8 @@ vert.
     1 024 tokens, au plus `max_tokens` ; toute la sortie quand ces octets ne bornent rien (bloc de
     réflexion, réponse qui n'est pas un flux). La démo compte de même sur son budget, au lieu de
     garder le pire cas, et son client ne refait plus un appel coupé (le moteur garde son nouvel
-    essai). Le navigateur qui annule coupe désormais l'appel (`apiFetch` passe le signal). **Le
+    essai). L'Essayer annulé, un onglet fermé, coupent désormais l'appel (`apiFetch` passe aussi le
+    signal qu'on lui donne ; la cartographie ouverte n'a pas de bouton d'annulation). **Le
     délai** : OVH borne un script à 165 s sur le mutualisé, sans réglage possible (documentation
     d'OVH) ; il reste donc à 150 s, réglable — `TWIN6_UPSTREAM_TIMEOUT` (10 à 900) pour les
     crédits, `upstreamTimeoutSeconds` pour la démo —, à relever si la recette montre plus, ce que
@@ -133,6 +134,19 @@ vert.
     10 s et facture 36 octets + 1 024, le navigateur parti fait couper l'appel en amont.
     `AnthropicCaller::appeler`, sans appelant, est retiré. UC-VIS-03 RG4, RG6, A4, E7, U27 à U30,
     F10, F25 à F27 ; UC-APP-09 RG12, E11, U26, U27, U38, U39, F17, F28, F29 ; `docs/securite-demo.md`.
+  - **Revue indépendante du flux** : sans `eager_input_streaming`, l'API retient chaque valeur
+    du JSON de l'outil forcé de la démo jusqu'à ce qu'elle soit complète (sa documentation le
+    dit) — rien ne s'affichait avant, et un appel coupé n'aurait compté qu'une marge pour une
+    sortie déjà générée : l'outil le demande désormais. Corrigés aussi : un texte de formulaire
+    hors UTF-8 refusé (422) avant toute réservation, qui sinon restait réservée ; un règlement qui
+    échoue (connexion à la base lâchée pendant un long appel — rouverte une fois,
+    `Db::avecReconnexion`) ne perd plus la réponse, la réserve restant débitée ; la voie crédits
+    facture au prix de la grille lue avant l'appel (un modèle retiré pendant l'appel était
+    remboursé en entier) ; une erreur d'Anthropic avant que la réponse commence est un refus,
+    rendu ; le type de la réponse, et non son premier caractère, dit si c'est un flux ; un
+    événement inconnu compte ses données ; un statut 1xx est passé ; un `curl_multi` en échec ou
+    bloqué s'arrête à son délai ; le compte d'Anthropic avant un long appel de la démo est borné
+    à 5 s. UC-VIS-03 E3, U27, F06, F27 ; UC-APP-09 E11, U40, F29, F30.
   - **Points ouverts**, aux « Dettes techniques » : le relais à mesure et le délai réel d'OVH, à
     mesurer en recette ; le tuteur et la masse gardent leurs plafonds ; la masse tourne par défaut
     sur Sonnet 4.5, retiré le 2026-11-30 ; Opus 5.5, Fable et Mythos refusent la réflexion coupée de
@@ -2626,13 +2640,15 @@ vert.
   paie le pire cas, la démo le compte). Le compte d'un appel coupé suppose qu'Anthropic cesse de
   générer quand le flux est fermé, ce que sa documentation ne dit pas (OpenRouter, claudelab.net
   et TrueFoundry le décrivent, UC-VIS-03 Limites) ; le serveur ne voit un navigateur parti qu'à
-  sa prochaine écriture (10 s au plus de silence). Le temps que borne OVH est sans doute celui de
+  une écriture qui échoue, puis à la suivante (une vingtaine de secondes au plus, et seulement à la
+  fin si l'hébergement retient le flux). Le temps que borne OVH est sans doute celui de
   `max_execution_time`, qui, hors Windows, ne compte pas l'attente du réseau (documentation de
   PHP) : avec le flux, un appel pourrait tenir bien plus que 165 s — ligne 5.3c de
   `docs/recette-twin9.md`, avant de relever le délai (utile pour Sonnet, dont un scan Twin6
   peut approcher les 150 s).
 - **Idée, non codée (à Christian)** : facturer un appel coupé au plus près. Un token par octet reçu
-  est sûr pour le site, mais compte jusqu'à trois ou quatre fois la sortie d'un texte français ;
+  est sûr pour le site (le JSON de l'outil de la démo venant à mesure, `eager_input_streaming`),
+  mais compte jusqu'à trois ou quatre fois la sortie d'un texte français ;
   `count_tokens` (gratuit, déjà employé par la démo) sur ce qui est arrivé la ramènerait à la
   sortie réelle, plus la marge, au prix d'un appel de plus à la coupure.
 - Opus 5.5, Fable et Mythos refusent `thinking: disabled` (400) ; la voie crédits l'envoie à tout

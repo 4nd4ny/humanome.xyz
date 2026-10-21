@@ -5,6 +5,7 @@ declare(strict_types=1);
 namespace Humanome\Tests\UseCases\Unit;
 
 use Humanome\Auth\Users;
+use Humanome\Db;
 use Humanome\Llm\AnthropicFlux;
 use Humanome\Llm\HttpClientException;
 use Humanome\MigrationRunner;
@@ -190,6 +191,40 @@ final class UcApp09CartographieOuverteTwin6Test extends TestCase
         self::assertSame(8192, $payload['max_tokens']);
         self::assertTrue($payload['stream']);
         self::assertSame([['role' => 'user', 'content' => 'Analyse le pôle 1.']], $payload['messages']);
+    }
+
+    #[TestDox('UC-APP-09-U40 — Db::avecReconnexion : après un long appel, une connexion que le serveur a lâchée (MySQL 2006) est rouverte et l’écriture refaite une fois ; toute autre erreur remonte telle quelle, sans nouvel essai')]
+    public function testU40ACreditWriteSurvivesADroppedConnection(): void
+    {
+        $essais = 0;
+        $lachee = null;
+        $valeur = Db::avecReconnexion(static function (PDO $pdo) use (&$essais, &$lachee): string {
+            $essais += 1;
+            if ($essais === 1) {
+                $lachee = $pdo;
+                $e = new \PDOException('SQLSTATE[HY000]: General error: 2006 MySQL server has gone away');
+                $e->errorInfo = ['HY000', 2006, 'MySQL server has gone away'];
+                throw $e;
+            }
+            self::assertNotSame($lachee, $pdo, 'une connexion neuve');
+
+            return (string) $pdo->query('SELECT 1')->fetchColumn();
+        });
+        self::assertSame(['1', 2], [$valeur, $essais]);
+
+        $essais = 0;
+        try {
+            Db::avecReconnexion(static function () use (&$essais): void {
+                $essais += 1;
+                $e = new \PDOException('SQLSTATE[42S02]: Base table or view not found');
+                $e->errorInfo = ['42S02', 1146, 'Table doesn’t exist'];
+                throw $e;
+            });
+            self::fail('l’erreur doit remonter');
+        } catch (\PDOException $e) {
+            self::assertSame(1146, $e->errorInfo[1]);
+        }
+        self::assertSame(1, $essais);
     }
 
     #[TestDox('UC-APP-09-U27 — AnthropicFlux::parvenu : un refus d’Anthropic (statut d’erreur, son corps lu entier) ou une requête qui n’est jamais partie ne se facture pas ; une réponse commencée (2xx), ou une requête partie entière avant la panne du réseau, oui')]

@@ -46,7 +46,9 @@ un abus avant de dépenser quoi que ce soit :
    rendre — ; sans la place, 503, et rien n'est parti.
 7. **Appel amont** avec fournisseur, modèle (un Haiku) et sortie (le maximum du
    modèle) **imposés serveur**, en flux (2026-10-21) : relayé à mesure au
-   navigateur qui le demande (UC-VIS-03 RG6).
+   navigateur qui le demande (UC-VIS-03 RG6), le JSON de l'outil forcé à mesure
+   qu'il s'écrit (`eager_input_streaming`). Un texte hors UTF-8 est refusé
+   (422) avant la preuve et la réservation.
 8. **Compteurs seulement** (RGPD §6) : la réservation devient l'usage réel (tokens
    in/out + coût estimé), jamais le contenu ; un refus du fournisseur, ou une
    requête qui ne lui est jamais parvenue, la rend ; un appel coupé en route
@@ -299,9 +301,12 @@ compteurs (atomicité) ; un fichier gdoc de 10 Go pour saturer la mémoire.
   son palier long, une entrée dense ne comptait qu'un cinquième de son coût.
 - **Appel coupé : compté pour ce qu'il a pu produire** (2026-10-21 ; avant, le délai
   dépassé gardait la réservation entière, toute la sortie du modèle comprise). Avec
-  l'appel en flux, ce qui est arrivé borne ce qui a été généré : l'entrée que le
-  fournisseur annonce au début du flux, un token par octet reçu, plus 1 024 tokens
-  encore en vol. Le compte suppose que le fournisseur cesse de générer quand le
+  l'appel en flux, ce qui est arrivé borne ce qui a été généré — à condition que
+  le JSON de l'outil forcé vienne à mesure qu'il s'écrit : sans
+  `eager_input_streaming`, l'API retient chaque valeur jusqu'à ce qu'elle soit
+  complète, et un appel coupé n'aurait rien reçu de ce qu'il a généré —
+  : l'entrée que le fournisseur annonce au début du flux, un token par octet
+  reçu, plus 1 024 tokens encore en vol. Le compte suppose que le fournisseur cesse de générer quand le
   flux est fermé, ce que sa documentation ne dit pas et que d'autres décrivent
   (UC-VIS-03, Limites) ; une requête partie entière avant une panne du réseau
   compte son entrée et ces 1 024 tokens. Un script arrêté par l'hébergement avant

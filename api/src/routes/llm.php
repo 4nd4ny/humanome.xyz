@@ -138,7 +138,11 @@ return function (App $app): void {
             return $json($response, ['error' => 'Le champ « system » doit être une chaîne'], 422);
         }
 
-        // 3. Input size cap.
+        // 3. Input: UTF-8 (a form-encoded body is raw bytes, which the
+        // upstream request could not carry), then its size cap.
+        if (!mb_check_encoding(($system ?? '') . $prompt, 'UTF-8')) {
+            return $json($response, ['error' => 'Texte illisible : UTF-8 attendu.'], 422);
+        }
         if (mb_strlen(($system ?? '') . $prompt) > $config->maxInputChars) {
             return $json($response, [
                 'error' => sprintf('Texte trop long : %d caractères maximum pour la démonstration.', $config->maxInputChars),
@@ -263,6 +267,10 @@ return function (App $app): void {
             $counters->release($reservedInput, $reservedOutput, $reservedUsd, $now);
 
             return $json($response, ['error' => 'Le fournisseur LLM est injoignable, réessayez plus tard.'], 502);
+        } catch (\Throwable $e) {
+            // Nothing left: the reservation goes back before the error.
+            $counters->release($reservedInput, $reservedOutput, $reservedUsd, $now);
+            throw $e;
         }
         if (!$appel->parvenu()) {
             $counters->release($reservedInput, $reservedOutput, $reservedUsd, $now);
@@ -282,13 +290,32 @@ return function (App $app): void {
                 : 'Le fournisseur LLM est injoignable, réessayez plus tard.'], $delai ? 504 : 502);
         }
 
-        $conclure = static function () use ($appel, $counters, $config, $grille, $reservedInput, $reservedOutput,
+        // 8. Counters only (§6): tokens in/out + estimated cost, never content.
+        // Written after a call that may have lasted minutes: on a fresh
+        // connection if the server dropped the idle one; failing even so, the
+        // reservation stays — the worst case counted — and the answer is
+        // still given.
+        $compter = static function (callable $ecriture): void {
+            try {
+                Db::avecReconnexion(static fn (\PDO $pdo) => $ecriture(new UsageCounters($pdo)));
+            } catch (\Throwable $e) {
+                error_log('[demo] compteurs : ' . $e::class); // never content
+            }
+        };
+        $conclure = static function () use ($appel, $compter, $config, $grille, $reservedInput, $reservedOutput,
                                             $reservedUsd, $sortie, $now): array {
-            // 8. Counters only (§6): tokens in/out + estimated cost, never content.
+            if ($appel->refuseEnFlux()) {
+                // An error before the answer began: a refusal, billed nothing (AnthropicFlux).
+                $compter(static fn (UsageCounters $c) => $c->release($reservedInput, $reservedOutput, $reservedUsd, $now));
+
+                return [502, ['error' => 'Erreur du fournisseur LLM : '
+                    . AnthropicProvider::detailErreur((string) json_encode(['error' => $appel->evenementErreur()]))]];
+            }
             [$entree, $sortieFacturee] = $appel->usageAFacturer($reservedInput, $sortie);
             $modele = $appel->modele($config->model);
-            $counters->settle($reservedInput, $reservedOutput, $reservedUsd, $entree, $sortieFacturee,
-                Pricing::estimateUsd($modele, $entree, $sortieFacturee, $grille), $now);
+            $cout = Pricing::estimateUsd($modele, $entree, $sortieFacturee, $grille);
+            $compter(static fn (UsageCounters $c) => $c->settle($reservedInput, $reservedOutput, $reservedUsd, $entree,
+                $sortieFacturee, $cout, $now));
             if ($appel->complet()) {
                 return [200, [
                     'text' => $appel->document() ?? $appel->texte(),

@@ -103,7 +103,8 @@ final class AnthropicFlux
             json_encode($corps + ['stream' => true], JSON_THROW_ON_ERROR | JSON_UNESCAPED_UNICODE), $delai);
         $appel = new self($flux);
         $avant = '';
-        while ($flux->status() === 0 && !$flux->finished()) {
+        // The final status, past any informational one (1xx).
+        while ($flux->status() < 200 && !$flux->finished()) {
             $avant .= $flux->read(0.5);
         }
         if ($appel->accepte()) {
@@ -126,7 +127,22 @@ final class AnthropicFlux
     /** For the tests of the parser: a stream already received, in the pieces given. */
     public static function depuis(string ...$morceaux): self
     {
-        $appel = new self(new class implements HttpStream {
+        return self::depuisReponse([], ...$morceaux);
+    }
+
+    /**
+     * The same, with the answer's headers (its content-type decides a stream).
+     *
+     * @param array<string, string> $entetes lower-case names
+     */
+    public static function depuisReponse(array $entetes, string ...$morceaux): self
+    {
+        $appel = new self(new class ($entetes) implements HttpStream {
+            /** @param array<string, string> $entetes */
+            public function __construct(private readonly array $entetes)
+            {
+            }
+
             public function read(float $waitSeconds): string
             {
                 return '';
@@ -144,7 +160,7 @@ final class AnthropicFlux
 
             public function headers(): array
             {
-                return [];
+                return $this->entetes;
             }
 
             public function error(): ?HttpClientException
@@ -230,6 +246,18 @@ final class AnthropicFlux
     public function complet(): bool
     {
         return $this->fini && $this->sse !== null && $this->evenementErreur === null && $this->stop;
+    }
+
+    /**
+     * An error event came before the answer began — no message_start, nothing
+     * generated —: a refusal, like the error status it would be without the
+     * stream (Anthropic: an overloaded_error « would normally correspond to
+     * an HTTP 529 in a non-streaming context »). Nothing is billed.
+     */
+    public function refuseEnFlux(): bool
+    {
+        return $this->fini && $this->evenementErreur !== null && $this->tokensEntree === null
+            && $this->octetsSortie === 0;
     }
 
     /** The network failure that ended the stream (a timeout included), if any. */
@@ -337,7 +365,10 @@ final class AnthropicFlux
             if ($debut === '') {
                 return;
             }
-            $this->sse = $debut[0] !== '{';
+            // The answer's type decides; without one (a test's canned answer),
+            // its first character: a whole JSON message opens with « { ».
+            $type = strtolower($this->flux->headers()['content-type'] ?? '');
+            $this->sse = $type !== '' ? str_contains($type, 'text/event-stream') : $debut[0] !== '{';
             $octets = $this->tampon;
             $this->tampon = '';
         }
@@ -424,8 +455,13 @@ final class AnthropicFlux
             case 'error':
                 $this->evenementErreur = \is_array($evenement['error'] ?? null) ? $evenement['error'] : ['type' => 'error'];
                 break;
+            case 'ping':
+            case 'content_block_stop':
+                break;
             default:
-                break; // ping, content_block_stop, and the events to come
+                // An event to come may carry output: its whole data, an upper bound of its tokens.
+                $this->octetsSortie += \strlen($donnees);
+                break;
         }
     }
 

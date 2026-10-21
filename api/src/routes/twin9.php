@@ -367,9 +367,11 @@ return function (App $app): void {
             return $json($response, ['error' => 'Corps JSON invalide : objet attendu'], 400);
         }
 
-        $config = new Twin9Config(new SettingsRepository(Db::get()));
+        // The grid read once: the reservation and the bill price the call the
+        // same way, even if the grid changes while it runs (2026-10-21).
+        $grille = (new Twin9Config(new SettingsRepository(Db::get())))->read();
         $modele = \is_string($body['model'] ?? null) ? $body['model'] : '';
-        if (($config->modeles()[$modele] ?? null) === null) {
+        if (!\is_array($grille['modeles'][$modele] ?? null)) {
             return $json($response, ['error' => 'Modèle non proposé'], 422);
         }
         $prompt = \is_string($body['prompt'] ?? null) ? $body['prompt'] : '';
@@ -394,7 +396,7 @@ return function (App $app): void {
         // priced with the 'twin6' protocole.
         $credits = new CreditService(Db::get());
         $promptBytes = \strlen($prompt) + ($system !== null ? \strlen($system) : 0);
-        $reserve = max(1, (int) $config->reserveMicrousd($modele, $promptBytes, $maxTokens, 'twin6'));
+        $reserve = max(1, (int) Twin9Config::cout($grille, $modele, $promptBytes, $maxTokens, 'twin6'));
         try {
             $credits->debit($userId, $reserve, 'twin6/cartographie (réserve)', $modele);
         } catch (SoldeInsuffisantException $e) {
@@ -424,6 +426,10 @@ return function (App $app): void {
             $credits->adjust($userId, $reserve, 'twin6/cartographie (remboursement échec)', $modele);
 
             return $json($response, ['error' => 'Le fournisseur LLM est injoignable, réessayez plus tard.'], 502);
+        } catch (\Throwable $e) {
+            // Nothing left: the reservation goes back before the error.
+            $credits->adjust($userId, $reserve, 'twin6/cartographie (remboursement échec)', $modele);
+            throw $e;
         }
         if (!$appel->parvenu()) {
             $credits->adjust($userId, $reserve, 'twin6/cartographie (remboursement échec)', $modele);
@@ -445,14 +451,39 @@ return function (App $app): void {
                 : 'Le fournisseur LLM est injoignable, réessayez plus tard.'], $sansReponse ? 504 : 502);
         }
 
-        $conclure = static function () use ($appel, $credits, $config, $userId, $reserve, $modele, $promptBytes,
-                                            $maxTokens, $delai): array {
+        // The credits move after a call that may have lasted minutes: on a
+        // fresh connection if the server dropped the idle one. Failing even
+        // so, the reservation stays debited — the worst case, never the site
+        // — and the answer is still given, with what was really debited.
+        $crediter = static function (int $montant, string $libelle, ?int $entree = null, ?int $sortie = null)
+                                     use ($userId, $modele): bool {
+            if ($montant === 0) {
+                return true;
+            }
+            try {
+                Db::avecReconnexion(static fn (\PDO $pdo) => (new CreditService($pdo))
+                    ->adjust($userId, $montant, $libelle, $modele, $entree, $sortie));
+
+                return true;
+            } catch (\Throwable $e) {
+                error_log('[twin6] crédits : ' . $e::class); // never content
+
+                return false;
+            }
+        };
+        $conclure = static function () use ($appel, $crediter, $grille, $reserve, $modele, $promptBytes, $maxTokens,
+                                            $delai): array {
+            if ($appel->refuseEnFlux()) {
+                // An error before the answer began: a refusal, billed nothing (AnthropicFlux).
+                $crediter($reserve, 'twin6/cartographie (remboursement échec)');
+
+                return [502, ['error' => 'Erreur du fournisseur LLM, réessayez plus tard.']];
+            }
             [$entree, $sortie] = $appel->usageAFacturer($promptBytes, $maxTokens);
-            $cout = (int) $config->coutMicrousd($modele, $entree, $sortie, 'twin6');
-            $delta = $reserve - $cout;
+            $cout = (int) Twin9Config::cout($grille, $modele, $entree, $sortie, 'twin6');
             if ($appel->complet()) {
-                if ($delta !== 0) {
-                    $credits->adjust($userId, $delta, 'twin6/cartographie (réconciliation)', $modele, $entree, $sortie);
+                if (!$crediter($reserve - $cout, 'twin6/cartographie (réconciliation)', $entree, $sortie)) {
+                    $cout = $reserve;
                 }
 
                 // Engine proxy-provider contract. No leak filter: nothing is secret.
@@ -465,8 +496,8 @@ return function (App $app): void {
                 ]];
             }
             // Cut short: billed for what it produced, the rest of the reservation given back.
-            if ($delta !== 0) {
-                $credits->adjust($userId, $delta, 'twin6/cartographie (appel coupé)', $modele, $entree, $sortie);
+            if (!$crediter($reserve - $cout, 'twin6/cartographie (appel coupé)', $entree, $sortie)) {
+                $cout = $reserve;
             }
             $delaiDepasse = ($appel->erreurReseau()?->timedOut ?? false) || $appel->arrete();
 

@@ -408,5 +408,54 @@ final class UcApp09CartographieOuverteTwin6Test extends CartographeTestCase
         $labels = array_column((new CreditService(Db::get()))->events($this->apprenant['id']), 'label');
         self::assertSame(2, \count(array_keys($labels, 'twin6/cartographie (appel coupé)', true)));
         self::assertNotContains('twin6/cartographie (remboursement échec)', $labels);
+        $solde = $this->solde();
+
+        // Une erreur avant que la réponse commence : un refus, comme un statut d'erreur — rendu.
+        $this->http->queueStream([AnthropicSse::evenement('error', ['error' => ['type' => 'overloaded_error', 'message' => 'Overloaded']])]);
+        $refus = $this->appel();
+        self::assertSame([502, ['error' => 'Erreur du fournisseur LLM, réessayez plus tard.']], [$refus->getStatusCode(), self::json($refus)]);
+        self::assertSame($solde, $this->solde());
+    }
+
+    #[TestDox('UC-APP-09-F30 — E11 : l’appel se facture au prix de la grille lue avant lui, même si elle change pendant qu’il court ; les crédits ne s’écrivent pas — la réponse est rendue quand même, avec ce qui a été réellement débité, la réserve')]
+    public function testF30BillingNeverLosesAnAnswer(): void
+    {
+        $this->crediter(5_000_000);
+        $config = new Twin9Config(new SettingsRepository(Db::get()));
+        $texte = 'Pôle 1 : trois sources recoupées avant de conclure.';
+
+        // La grille change en cours d'appel (Sonnet 5 retiré de l'offre) : le prix lu avant tient.
+        $this->http->queueStream(AnthropicSse::complet($texte, 700, 90));
+        $corps = $this->relais()->getBody();
+        $corps->read(8192);
+        $modeles = $config->modeles();
+        unset($modeles['claude-sonnet-5']);
+        $config->update(['modeles' => $modeles]);
+        $resultat = self::evenements((string) $corps);
+        $cout = (int) Twin9Config::cout(['modeles' => ['claude-sonnet-5' => ['prix_usd_mtok' => [2, 10]]], 'marge_twin6' => 1.1,
+            'marge' => 1.2], 'claude-sonnet-5', 700, 90, 'twin6');
+        self::assertSame(['resultat', ['text' => $texte, 'usage' => ['inputTokens' => 700, 'outputTokens' => 90],
+            'model' => 'claude-sonnet-5', 'stopReason' => 'end_turn', 'cout_microusd' => $cout]], end($resultat));
+        self::assertSame(5_000_000 - $cout, $this->solde());
+        Db::get()->exec("DELETE FROM settings WHERE name = 'twin9_config'");
+
+        // Le grand-livre est indisponible quand l'appel se règle : la réponse est rendue, et le
+        // coût qu'elle annonce est la réserve, restée débitée — jamais un appel perdu, jamais au site.
+        $solde = $this->solde();
+        $this->http->queueStream(AnthropicSse::complet($texte, 700, 90));
+        $corps = $this->relais()->getBody();
+        $corps->read(8192);
+        $journal = ini_set('error_log', '/dev/null');
+        Db::get()->exec('RENAME TABLE twin9_credit_events TO twin9_credit_events_hors_service');
+        try {
+            $resultat = self::evenements((string) $corps);
+        } finally {
+            Db::get()->exec('RENAME TABLE twin9_credit_events_hors_service TO twin9_credit_events');
+            ini_set('error_log', (string) $journal);
+        }
+        $reserve = $solde - $this->solde();
+        self::assertGreaterThan($cout, $reserve);
+        [$nom, $donnees] = end($resultat);
+        self::assertSame(['resultat', $texte, $reserve], [$nom, $donnees['text'], $donnees['cout_microusd']]);
     }
 }

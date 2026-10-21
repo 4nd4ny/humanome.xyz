@@ -143,8 +143,10 @@ de l'accueil.
 - **E3 — Texte invalide** : côté page, moins de 80 caractères **utiles**
   (espaces de bord exclus) ou plus de 5 000 caractères **bruts** → bouton
   inactif, avec une indication sauf si la zone est vide ; côté API, prompt
-  vide → `422`, `system` non textuel → `422`, entrée (`system` + `prompt`) >
-  `maxInputChars` (2 000 000 par défaut) → `413`, avant toute preuve. Le gabarit
+  vide → `422`, `system` non textuel → `422`, texte hors UTF-8 (un corps de
+  formulaire porte des octets bruts) → `422` « Texte illisible : UTF-8
+  attendu. », entrée (`system` + `prompt`) > `maxInputChars` (2 000 000 par
+  défaut) → `413`, avant toute preuve et toute réservation. Le gabarit
   du prompt d'extraction ajoute ≈ 8 600 caractères : au maximum de la page, un
   appel en compte environ 13 600, sous l'ancien plafond de 20 000 lui-même
   (AN3, corrigée).
@@ -170,7 +172,10 @@ de l'accueil.
   `Retry-After` ; autre statut d'erreur → `502` « Erreur du fournisseur LLM :
   … » ; jamais reçu (connexion impossible) → `502` « Le fournisseur LLM est
   injoignable… », ou `504` « Le fournisseur LLM ne répond pas… » quand la
-  connexion n'aboutit pas à temps. Ces appels rendent la réservation : le
+  connexion n'aboutit pas à temps ; une erreur du fournisseur dans le flux
+  avant que la réponse commence (ni `message_start`, ni rien de produit — une
+  surcharge, qu'Anthropic donne pour l'équivalent d'un `529`) → `502` « Erreur
+  du fournisseur LLM : … ». Ces appels rendent la réservation : le
   fournisseur n'a rien facturé, rien n'est compté. Un appel **coupé** après que
   le fournisseur l'a reçu (2026-10-21) compte une requête et ce qu'il a pu
   produire (RG4) : délai dépassé (`upstreamTimeoutSeconds`, 150 s par défaut) →
@@ -213,20 +218,29 @@ de l'accueil.
   pas passer le budget. Sans la place, `503`, et rien n'est parti ; avec, la réservation devient
   l'usage réel. Ensemble, des appels concurrents ne passent jamais le budget,
   et aucune réponse n'est coupée pour le tenir. Un appel coupé en route (E7)
-  compte ce qu'il a pu produire, plus son pire cas (2026-10-21) : l'entrée que
-  le fournisseur annonce au début du flux (sinon la borne réservée), la sortie
-  bornée par les octets reçus plus 1 024 tokens encore en vol, au plus la
-  sortie du modèle — toute sa sortie quand ces octets ne bornent rien (un bloc
-  de réflexion, dont le texte peut venir résumé ; une réponse qui n'est pas un
-  flux d'événements). Un script arrêté par l'hébergement avant l'issue laisse
-  sa réservation entière.
+  compte ce qu'il a pu produire, et non plus son pire cas (2026-10-21) :
+  l'entrée que le fournisseur annonce au début du flux (sinon la borne
+  réservée), la sortie bornée par les octets reçus plus 1 024 tokens encore en
+  vol, au plus la sortie du modèle — toute sa sortie quand ces octets ne
+  bornent rien (un bloc de réflexion, dont le texte peut venir résumé ; une
+  réponse 2xx dont le type n'est pas `text/event-stream`). Les octets ne
+  bornent le JSON de l'outil forcé que parce qu'il vient à mesure qu'il
+  s'écrit (RG6). Un script arrêté par l'hébergement avant l'issue laisse sa
+  réservation entière ; des compteurs qui ne s'écrivent pas au règlement — la
+  base a lâché la connexion pendant l'appel, rouverte une fois sans succès —
+  aussi, et la réponse est rendue quand même.
 - **RG5** — Intention : pas de réessai automatique contre un quota (429) ni un
   budget (503), un seul pour un incident transitoire. Réalité : le
   fournisseur de la démo respecte cette intention (sauf `429` `pow_reused`),
   mais `extractDay` refait une fois tout appel en échec (anomalie AN2).
 - **RG6** — Réponse en flux (2026-10-21, Christian : « Si on passe en appel en
   flux, alors on voit la réponse arriver au fur et à mesure ? […] Si oui,
-  alors c'est mon choix ») : l'appel au fournisseur est diffusé (`stream`) ; au
+  alors c'est mon choix ») : l'appel au fournisseur est diffusé (`stream`), le
+  JSON de l'outil forcé à mesure qu'il s'écrit (`eager_input_streaming` : sans
+  lui, l'API retient chaque valeur jusqu'à ce qu'elle soit complète — « nothing
+  prints for a large parameter until Claude has finished generating it » —, et
+  ne la valide plus avant de l'envoyer : le moteur la valide, et refait l'appel
+  une fois) ; au
   navigateur qui le demande (`Accept: text/event-stream`, ce que fait
   `createDemoProvider`), `POST /api/llm` relaie la réponse à mesure qu'elle
   arrive — `progression` {caracteres} au plus toutes les 0,5 s, un commentaire
@@ -301,7 +315,7 @@ de l'accueil.
 | UC-VIS-03-U24 | `localIsoToday` | Jour LOCAL (fuseau UTC+14) et non UTC (étape 2) | idem |
 | UC-VIS-03-U25 | `UsageCounters::reserve`, `settle`, `release` | Deux appels en vol réservent sous un budget qu'un troisième dépasserait : refusé, rien de réservé ; plafond de tokens de même ; pile aux deux plafonds : accepté ; réglée, une réservation fait place à l'usage réel et compte la requête ; rendue, elle ne laisse rien (RG4) | `api/tests/UseCases/Unit/UcVis03EssayerCartographieTest.php` |
 | UC-VIS-03-U26 | `Pricing::estimateUsd` | Le plus haut de la grille des crédits et de la table : la grille plus chère (son prix, son palier long, un identifiant daté ou non), la table et son palier quand la grille est moins chère ou l'a perdu ; un modèle de la grille seule à son prix, d'aucune au plus cher (RG4) | idem |
-| UC-VIS-03-U27 | `AnthropicFlux` | Flux lu en morceaux coupés n'importe où (CRLF, un caractère coupé, commentaires, `ping`, événements inconnus) : texte ou JSON de l'outil forcé (compact), entrée au `message_start`, sortie cumulée ; un message JSON entier lu tel quel ; coupé ou en erreur : entrée comptée (sinon la borne), octets reçus + 1 024, au plus `max_tokens` ; un delta inconnu compte tout son encodage ; réflexion ou réponse qui n'est pas un flux : toute la sortie (RG4, E7) | idem |
+| UC-VIS-03-U27 | `AnthropicFlux` | Flux lu en morceaux coupés n'importe où (CRLF, un caractère coupé, commentaires, `ping`, événements inconnus) : texte ou JSON de l'outil forcé (compact), entrée au `message_start`, sortie cumulée ; un message JSON entier lu tel quel ; coupé ou en erreur : entrée comptée (sinon la borne), octets reçus + 1 024, au plus `max_tokens` ; un delta inconnu compte tout son encodage ; réflexion, ou réponse 2xx dont le type n'est pas `text/event-stream` : toute la sortie ; un événement inconnu compte ses données ; une erreur avant tout début est un refus (RG4, E7) | idem |
 | UC-VIS-03-U28 | `createDemoProvider` | Demande le relais ; progression en caractères ; le résultat relayé devient la réponse du moteur ; un appel coupé (délai, fournisseur, connexion perdue) échoue avec le message du serveur, sans nouvel essai de la démo (RG6, A4, E7) | `web/test/usecases/unit/uc-vis-03-essayer-cartographie-en-direct.test.js` |
 | UC-VIS-03-U29 | `createDemoProvider` + `extractDay` | Un appel coupé à chaque essai : 2 POST sur le pôle 1 (le nouvel essai du moteur seul), contre 4 pour un 504 sans flux (U22) ; le message dit la coupure (A4) | idem |
 | UC-VIS-03-U30 | `RelaisAppel::reponse` | En-têtes du flux (ni cache, ni transformation, ni tampon de proxy) ; la première progression tout de suite ; l'issue calculée une fois ; une issue qui échoue → `erreur` 500 générique ; le navigateur parti, l'appel coupé, son issue calculée une fois (RG6) | `api/tests/UseCases/Unit/UcVis03EssayerCartographieTest.php` |
@@ -315,7 +329,7 @@ de l'accueil.
 | UC-VIS-03-F03 | A1 | API | Anthropic simulé : modèle et sortie (le maximum du modèle, 64 000 pour Haiku 4.5) imposés, clé en en-tête, coût compté | idem |
 | UC-VIS-03-F04 | E1 | API | Champ piège → 400 banal, rien de compté ni consommé | idem |
 | UC-VIS-03-F05 | E2 | API | Preuve absente, falsifiée, faible, expirée (non consommée), rejouée | idem |
-| UC-VIS-03-F06 | E3 | API | 422 / 413 avant toute preuve | idem |
+| UC-VIS-03-F06 | E3 | API | 422 (texte absent, hors UTF-8 d'un corps de formulaire) / 413, avant toute preuve et toute réservation | idem |
 | UC-VIS-03-F07 | E4 | API | Quota par IP → 429 + `Retry-After`, autre IP épargnée | idem |
 | UC-VIS-03-F08 | E5, A6 | API | Budget épuisé → 503, `remainingToday` faux | idem |
 | UC-VIS-03-F09 | E6 | API | Démo désactivée ou sans secret → 503 | idem |
@@ -336,7 +350,7 @@ de l'accueil.
 | UC-VIS-03-F24 | Nominal (référentiel publié) | IHM | La dernière version publiée de RESPIRE compte six pôles (index statique) : texte d'introduction « 6 pôles instruits un par un », progression « appel k sur 7 », 7 POST acceptés, synthèse « Les 6 pôles de la feuille du jour » | idem |
 | UC-VIS-03-F25 | E5, E7, RG4 | API | Un appel en vol tient 0,50 $ d'un budget de 0,80 $ : le pire cas d'un nouvel appel (toute la sortie de Haiku 4.5, ≈ 0,32 $) n'a pas la place → 503, rien n'est envoyé ; la place rendue, l'appel passe et son usage réel remplace sa réservation ; une réponse 2xx qui n'est pas un flux, illisible, compte son pire cas, un délai dépassé après l'envoi ce qu'il a pu produire ; un second pire cas, et l'appel suivant n'a plus la place, la dépense reste sous 0,80 $ | `api/tests/UseCases/Functional/UcVis03EssayerCartographieTest.php` |
 | UC-VIS-03-F26 | RG4 | API | Au-delà de 100 000 octets, la réserve prend le compte d'Anthropic (`count_tokens` sur la requête même, sans `max_tokens`) avec sa marge au jeton près (+10 % et 64 : 41 000 comptés ne tiennent pas dans 0,0685 $, 40 000 si) ; 156 000 octets comptés 40 000 tokens restent au tarif de base de Haiku 5.5 et passent sous un budget que leurs octets dépasseraient ; un compte refusé, nul, négatif, en texte, au-dessus des octets ou sans réponse → les octets, `503`, rien d'autre n'est parti ; sous 100 000 octets, aucun compte | idem |
-| UC-VIS-03-F27 | RG6, RG4, E7 | API | La réponse arrive en flux (`Accept: text/event-stream`) : progressions bornées par le document, puis le résultat du nominal, un usage réel compté ; délai dépassé en route → événement `erreur` 504 `coupe`, l'entrée annoncée et les octets reçus + 1 024 comptés ; erreur du fournisseur en route → 502 de même ; le navigateur parti après la première progression → l'appel coupé, compté une fois pour le premier morceau reçu | idem |
+| UC-VIS-03-F27 | RG6, RG4, E7 | API | La réponse arrive en flux (`Accept: text/event-stream`), l'outil avec `eager_input_streaming` : progressions bornées par le document, puis le résultat du nominal, un usage réel compté ; une erreur avant que la réponse commence → `erreur` 502, rien de compté ; délai dépassé en route → événement `erreur` 504 `coupe`, l'entrée annoncée et les octets reçus + 1 024 comptés ; erreur du fournisseur en route → 502 de même ; le navigateur parti après la première progression → l'appel coupé, compté une fois pour le premier morceau reçu | idem |
 
 ### Tests existants liés (non-régression)
 
@@ -431,6 +445,8 @@ cd engine && npx vitest run test/usecases/unit/uc-vis-03
   recette. Un script arrêté avant son issue laisse l'appel avec sa réservation
   entière. Le délai de la démo (`upstreamTimeoutSeconds`, 150 s par défaut, 300
   au plus) reste sous cette borne tant que la mesure ne dit pas mieux.
-- Le navigateur qui part n'est vu qu'à la prochaine écriture du serveur (une
-  progression, ou un commentaire après 10 s de silence) : l'appel court
-  jusque-là, et ce qu'il produit entre-temps est compté.
+- Le navigateur qui part n'est vu qu'à une écriture du serveur qui échoue (une
+  progression, ou un commentaire après 10 s de silence), puis à la suivante :
+  une vingtaine de secondes au plus — et seulement à la fin si l'hébergement
+  retient le flux. L'appel court jusque-là, et ce qu'il produit entre-temps
+  est compté.

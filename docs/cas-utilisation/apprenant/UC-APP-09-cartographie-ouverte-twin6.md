@@ -246,9 +246,10 @@ page Essayer (UC-VIS-03), ou par l'adresse.
   - refusé par Anthropic (statut d'erreur, avant toute réponse) → `502`
     (« Clé API refusée par le fournisseur LLM. » sur 401/403), `429` si saturé ;
     jamais reçu (connexion impossible) → `502`, ou `504` « Le fournisseur LLM ne
-    répond pas… » quand la connexion n'aboutit pas à temps. Anthropic n'a rien
-    facturé : la réserve est rendue (« twin6/cartographie (remboursement
-    échec) ») ;
+    répond pas… » quand la connexion n'aboutit pas à temps ; une erreur
+    d'Anthropic dans le flux avant que la réponse commence (ni `message_start`,
+    ni rien de produit) → `502`. Anthropic n'a rien facturé : la réserve est
+    rendue (« twin6/cartographie (remboursement échec) ») ;
   - **coupé** après qu'Anthropic l'a reçu (2026-10-21, RG12) : délai dépassé
     (`TWIN6_UPSTREAM_TIMEOUT`, 150 s par défaut) → `504` « La réponse a dépassé
     le délai de N s : coupée, elle est facturée pour ce qu'elle a produit. » ;
@@ -266,6 +267,12 @@ page Essayer (UC-VIS-03), ou par l'adresse.
     arrêté le script — laisse la réserve débitée : la page dit « La connexion
     au serveur a été coupée avant la fin de la réponse. L'appel a pu être
     facturé, au plus le montant réservé pour lui : votre solde fait foi. »
+  - **le règlement** (2026-10-21) : l'appel se facture au prix de la grille lue
+    avant lui, même si elle change pendant qu'il court ; les crédits s'écrivent
+    après un appel qui a pu durer des minutes, sur une connexion rouverte si la
+    base a lâché la sienne. S'ils ne s'écrivent pas même ainsi, la réponse est
+    rendue quand même, et le coût qu'elle annonce est la réserve, restée
+    débitée — jamais un appel perdu, jamais au site.
 - **E12 — Jeton CSRF absent ou invalide** (étape 6) : avec un cookie de session
   mais sans `X-CSRF-Token` valide → `403 {error: "Jeton CSRF absent ou
   invalide"}` (`CsrfMiddleware`, avant la route) ; rien n'est appelé ni débité.
@@ -461,6 +468,7 @@ page Essayer (UC-VIS-03), ou par l'adresse.
 | UC-APP-09-U24 | `CreditService::debit`, `adjust` | Réserve + réconciliation = coût réel ; remboursement d'échec | idem |
 | UC-APP-09-U25 | `CreditService::debit`, `SoldeInsuffisantException` | Aucun découvert, montants portés par l'exception | idem |
 | UC-APP-09-U26 | `AnthropicCaller::params`, `AnthropicFlux` | URL verrouillée, système transmis, réflexion coupée, flux demandé ; texte et usage réels relus du flux, la réflexion jamais dans le texte (RG12) | idem |
+| UC-APP-09-U40 | `Db::avecReconnexion` | Une connexion que le serveur a lâchée (MySQL 2006) est rouverte, l'écriture refaite une fois ; toute autre erreur remonte, sans nouvel essai (E11) | `api/tests/UseCases/Unit/UcApp09CartographieOuverteTwin6Test.php` |
 | UC-APP-09-U27 | `AnthropicFlux::parvenu` | Refus d'Anthropic (son corps lu entier) ou requête jamais partie : rien à facturer ; réponse commencée, ou requête partie entière avant la panne du réseau : facturable (E11) | idem |
 
 ### Tests fonctionnels
@@ -491,7 +499,8 @@ page Essayer (UC-VIS-03), ou par l'adresse.
 | UC-APP-09-F15 | E4 | API | 402 avec montants (réserve exacte), solde intact | idem |
 | UC-APP-09-F17 | E11 | API | Refus d'Anthropic (500, 529, 401 « Clé API refusée », 429 relayé) ou requête jamais reçue (502, 504 à son délai) : messages génériques, jamais le texte amont, réserves rendues | idem |
 | UC-APP-09-F28 | RG12 | API | La réponse arrive en flux : progressions, puis le résultat du nominal, coût compris ; débit net = coût réel ; le navigateur parti après la première progression → l'appel coupé, facturé pour l'entrée annoncée et le premier morceau reçu, « appel coupé » au grand-livre | idem |
-| UC-APP-09-F29 | E11, RG12 | API | Délai dépassé en route (504, délai réglé à 40 s par `TWIN6_UPSTREAM_TIMEOUT`, celui de la requête amont), erreur d'Anthropic en cours de flux relayée (502), délai dépassé après l'envoi sans réponse (504, au plus `max_tokens`) : facturés pour ce qu'ils ont produit, jamais remboursés | idem |
+| UC-APP-09-F29 | E11, RG12 | API | Délai dépassé en route (504, délai réglé à 40 s par `TWIN6_UPSTREAM_TIMEOUT`, celui de la requête amont), erreur d'Anthropic en cours de flux relayée (502), délai dépassé après l'envoi sans réponse (504, au plus `max_tokens`) : facturés pour ce qu'ils ont produit, jamais remboursés ; une erreur avant que la réponse commence : rendue | idem |
+| UC-APP-09-F30 | E11 | API | La grille change pendant l'appel (Sonnet 5 retiré) : facturé au prix lu avant lui ; le grand-livre indisponible au règlement : la réponse est rendue, son coût annoncé est la réserve, restée débitée | idem |
 | UC-APP-09-F18 | A3, E5 | API | `max_tokens` borné à [256, maximum du modèle] (alias accepté ; par défaut toute la sortie, 128 000 pour Sonnet 5), `stopReason max_tokens` relayé ; l'appel tronqué est facturé au coût réel (Sonnet 5 à 2 / 10 ; solde = recharge − somme des coûts) | idem |
 | UC-APP-09-F19 | RGPD | API | Sortie relayée non filtrée à l'apprenant ; grand-livre et audit sans prompt ni sortie | idem |
 | UC-APP-09-F20 | E12 | API | Session sans jeton CSRF ou avec un jeton faux → 403, amont non appelé, solde intact | idem |

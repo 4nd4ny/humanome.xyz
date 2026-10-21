@@ -247,7 +247,7 @@ final class UcVis03EssayerCartographieTest extends TestCase
             ['claude-haiku-5-5' => ['prix_usd_mtok' => [0.1, 0.5], 'palier_long' => ['au_dela_de' => 10]]]), 1e-12);
     }
 
-    #[TestDox('UC-VIS-03-U27 — AnthropicFlux : une réponse en flux lue par morceaux coupés n’importe où — texte ou JSON de l’outil forcé (compact, comme la réponse entière), entrée au message_start, sortie cumulée au message_delta, commentaires, ping et événements inconnus ignorés, un message JSON entier lu tel quel ; un appel coupé ou en erreur se facture à son entrée comptée (sinon la borne) et aux octets reçus plus 1 024, jamais au-delà de max_tokens ; à toute sa sortie quand ces octets ne bornent rien (réflexion, réponse qui n’est pas un flux)')]
+    #[TestDox('UC-VIS-03-U27 — AnthropicFlux : une réponse en flux lue par morceaux coupés n’importe où — texte ou JSON de l’outil forcé (compact, comme la réponse entière), entrée au message_start, sortie cumulée au message_delta, commentaires, ping et événements inconnus ignorés, un message JSON entier lu tel quel ; un appel coupé ou en erreur se facture à son entrée comptée (sinon la borne) et aux octets reçus plus 1 024, jamais au-delà de max_tokens ; à toute sa sortie quand ces octets ne bornent rien (réflexion, réponse dont le type n’est pas un flux) ; un événement inconnu compte ses données ; une erreur avant tout début est un refus')]
     public function testU27StreamedAnswerIsReadAsItComes(): void
     {
         // Une réponse complète, en CRLF, entourée d'un commentaire, d'un ping et
@@ -306,6 +306,26 @@ final class UcVis03EssayerCartographieTest extends TestCase
         $tronque = AnthropicFlux::depuis('{"type":"message","content":[{"type":"text","text":"tronq');
         self::assertFalse($tronque->complet());
         self::assertSame([5000, 64000], $tronque->usageAFacturer(5000, 64000));
+
+        // Le type de la réponse décide d'un flux : un corps 2xx qui n'en est pas un ne borne rien.
+        $page = AnthropicFlux::depuisReponse(['content-type' => 'text/html; charset=utf-8'], '<html>une page</html>');
+        self::assertFalse($page->complet());
+        self::assertSame([5000, 64000], $page->usageAFacturer(5000, 64000));
+        self::assertTrue(AnthropicFlux::depuisReponse(['content-type' => 'text/event-stream'],
+            ...AnthropicSse::complet('ok', 10, 2))->complet());
+
+        // Un événement d'un genre à venir compte pour toutes ses données.
+        $evenementAVenir = AnthropicSse::evenement('content_block_extra', ['index' => 0, 'bloc' => 'du texte à venir']);
+        $aVenir = AnthropicFlux::depuis(...[...$debut, $evenementAVenir]);
+        $donnees = substr(trim($evenementAVenir), \strlen("event: content_block_extra\ndata: "));
+        self::assertSame([800, \strlen('Une réponse longue, coupée') + \strlen($donnees) + AnthropicFlux::MARGE_SORTIE],
+            $aVenir->usageAFacturer(5000, 64000));
+
+        // Une erreur avant que la réponse commence est un refus — rien à facturer ; après, un appel coupé.
+        $refus = AnthropicFlux::depuis(AnthropicSse::evenement('error', ['error' => ['type' => 'overloaded_error', 'message' => 'Overloaded']]));
+        self::assertTrue($refus->refuseEnFlux());
+        self::assertFalse($erreur->refuseEnFlux());
+        self::assertFalse($coupe->refuseEnFlux());
 
         // Un message JSON entier (un client qui ne diffuse pas) se lit comme la réponse entière.
         $entier = AnthropicFlux::depuis(json_encode(['type' => 'message', 'model' => 'claude-sonnet-5',

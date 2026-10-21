@@ -32,6 +32,7 @@ abstract class LlmTestCase extends AuthTestBase
         TestDb::setEnv('DEMO_ENABLED', '1');
         TestDb::setEnv('DEMO_PROVIDER', 'mock');
         TestDb::setEnv('DEMO_MODEL', 'claude-haiku-4-5-20251001');
+        // Read nowhere since 2026-10-21: the output is the model's maximum.
         TestDb::setEnv('DEMO_MAX_TOKENS_PER_REQUEST', '512');
         TestDb::setEnv('DEMO_MAX_INPUT_CHARS', '20000');
         TestDb::setEnv('DEMO_PER_IP_PER_HOUR', '50');

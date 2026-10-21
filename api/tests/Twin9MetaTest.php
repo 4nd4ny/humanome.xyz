@@ -83,8 +83,8 @@ final class Twin9MetaTest extends CartographeTestCase
         // the promotion's state, which no view read, on 2026-10-20.
         self::assertSame(['modeles_twin6', 'packs', 'referentiel', 'paypalConfigured',
             'solde_microusd', 'cle_privee_disponible'], array_keys($body));
-        // Twin6 (open) prices at its own +10 % contribution (list [3, 15] × 1.1), margin itself absent.
-        self::assertSame([3.3, 16.5], $body['modeles_twin6']['claude-sonnet-5']);
+        // Twin6 (open) prices at its own +10 % contribution (list [2, 10] × 1.1), margin itself absent.
+        self::assertSame([2.2, 11.0], $body['modeles_twin6']['claude-sonnet-5']);
         self::assertSame([10, 20, 50, 100, 200, 500], array_column($body['packs'], 'montant_usd'));
         self::assertSame([], $body['referentiel']); // none imported
         self::assertFalse($body['paypalConfigured']);

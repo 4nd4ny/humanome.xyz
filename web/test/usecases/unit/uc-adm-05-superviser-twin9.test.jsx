@@ -256,3 +256,45 @@ describe('UC-ADM-05 — jeu de gabarits par défaut (T14, Twin9Section isolée)'
     expect(fetchFn.mock.calls.some(([url]) => url.includes('/protocole'))).toBe(false)
   })
 })
+
+describe('UC-ADM-05 — relevé quotidien des prix (Twin9Section isolée, 2026-10-21)', () => {
+  it('UC-ADM-05-U19 — l’état du relevé des prix d’Anthropic sous l’offre de modèles : aucun relevé, puis ses changements et les modèles absents de la page, ou l’échec et sa raison ; jamais renvoyé dans le PUT', async () => {
+    const releve = (bloc) => within(bloc).getByTestId('twin9-releve-tarifs').textContent
+
+    monter({ ...CONFIG, releve_tarifs: null })
+    let bloc = (await screen.findByText('Offre de modèles')).closest('.twin9-admin-bloc')
+    expect(releve(bloc)).toContain('la page des prix d’Anthropic')
+    expect(releve(bloc)).toContain('Aucun relevé encore.')
+    cleanup()
+
+    const ok = {
+      source: 'https://platform.claude.com/docs/en/about-claude/pricing.md',
+      statut: 'ok',
+      erreur: null,
+      jour: '2026-10-21',
+      releve_at: 1792562460,
+      tentative_at: 1792562460,
+      changements: [{ modele: 'claude-sonnet-5', avant: { prix_usd_mtok: [3, 15] }, apres: { prix_usd_mtok: [2, 10] } }],
+      absents: ['claude-maison-1'],
+    }
+    const fetchFn = monter({ ...CONFIG, releve_tarifs: ok })
+    bloc = (await screen.findByText('Offre de modèles')).closest('.twin9-admin-bloc')
+    expect(releve(bloc)).toContain('Dernier relevé réussi :')
+    expect(releve(bloc)).toContain('claude-sonnet-5 : 3 / 15 → 2 / 10 $ par million de jetons')
+    expect(releve(bloc)).toContain('Absents de la page, prix inchangés : claude-maison-1.')
+    expect(within(bloc).queryByRole('alert')).toBeNull()
+    // L'état du relevé n'est pas un réglage : il ne repart jamais.
+    fireEvent.change(screen.getByLabelText(/Contribution Twin9/), { target: { value: '1.5' } })
+    await enregistrer()
+    expect(puts(fetchFn)).toEqual([{ marge: 1.5 }])
+    cleanup()
+
+    monter({
+      ...CONFIG,
+      releve_tarifs: { ...ok, statut: 'echec', erreur: 'page des prix : HTTP 503', tentative_at: 1792648860, changements: [], absents: [] },
+    })
+    bloc = (await screen.findByText('Offre de modèles')).closest('.twin9-admin-bloc')
+    expect(releve(bloc)).toContain('aucun prix changé.')
+    expect(within(bloc).getByRole('alert').textContent).toContain('échec (page des prix : HTTP 503). La grille garde ses prix')
+  })
+})

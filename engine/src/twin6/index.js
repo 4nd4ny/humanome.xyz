@@ -23,6 +23,7 @@
 
 import { twin6ToMergeDocument } from './mapper.js'
 import { rendreGabaritTwin6, variablesTwin6 } from './variables.js'
+import { sortieMaxAnthropic } from '../providers/limits.js'
 
 // Les fiches d'un pôle pour tout référentiel (WP1, 2026-10-20), exposées avec le pipeline.
 export { fichesDuReferentiel, fichesPourTwin6 } from './fiches.js'
@@ -98,7 +99,9 @@ export function extractJson(text) {
  *   référentiel employé (un scan par pôle ; un autre que RESPIRE nomme le document, T17).
  * @param {{complete: Function, name?: string}} args.provider handle de createProvider().
  * @param {string} args.model identifiant de modèle.
- * @param {object} [args.options] { maxTokens=8192, temperature, signal, onProgress, meta }.
+ * @param {object} [args.options] { maxTokens, temperature, signal, onProgress, meta } — maxTokens :
+ *   par défaut tout ce que le modèle peut rendre (sortieMaxAnthropic, 2026-10-21 : une réponse
+ *   coupée est payée et perdue ; le proxy de la démo impose de toute façon le sien).
  * @returns {Promise<{document: object, cartoPoles: Array, kairos: object,
  *   usage: {inputTokens:number, outputTokens:number}, calls: Array}>}
  */
@@ -116,7 +119,7 @@ export async function executerTwin6({ portfolio, templates, referentiel, provide
     throw new Error('executerTwin6: provider (createProvider) et model requis')
   }
 
-  const { maxTokens = 8192, temperature, signal, onProgress, meta = {} } = options
+  const { maxTokens = sortieMaxAnthropic(model), temperature, signal, onProgress, meta = {} } = options
   const poleNums = referentiel.poles.map((p) => p.num).sort((a, b) => a - b)
   // Les variables du référentiel (gabarits 1.1.0) ; sans elles (1.0.0), rien ne change.
   const variables = variablesTwin6(referentiel)

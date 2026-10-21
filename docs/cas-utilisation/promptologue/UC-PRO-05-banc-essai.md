@@ -206,8 +206,10 @@ Le promptologue ouvre **Banc d'essai** dans la navigation de l'atelier
   est indéfini — y compris quand l'autre côté porte des données (par exemple
   1 faux positif, 0 faux négatif).
 - **RG4** — Le coût réel se calcule sur les tokens **mesurés** ; en mode
-  service, sur le modèle de tarification de référence (`claude-sonnet-5`),
-  arrondi au dix-millième (un micro-run payant n'affiche jamais « 0 $ »).
+  service, sur le modèle de tarification de référence, celui de la démo qui
+  sert le Service humanome (`claude-haiku-5-5` depuis le 2026-10-21,
+  `claude-sonnet-5` avant), arrondi au dix-millième (un micro-run payant
+  n'affiche jamais « 0 $ »).
 - **RG5** — L'estimation reflète ce que le banc exécute : pôles retenus
   (+ kairos seulement en périmètre entier) et **zéro** récit de fusion.
 - **RG6** — Seuils de stabilité du multi-run croisé : p ≤ 0,25 ou p ≥ 0,75
@@ -277,7 +279,7 @@ exercés par F01 côté API et par les tests IHM rendus dans `<App/>`).
 | UC-PRO-05-U08 | `fixtureDayGroups`, `FIXTURE_LABEL` | Fixture fictive Maya : 3 journées datées | idem |
 | UC-PRO-05-U09 | `runVersionOnDays` + `extractDay` réel | 24 appels, documents reconstruits, usage cumulé, température, progression | idem |
 | UC-PRO-05-U10 | `runVersionOnDays` (périmètre) | 1 appel, document `perimetre.partiel` ; le modèle rejoué instruit tout le pôle, seule la compétence du périmètre reste (A6) | idem |
-| UC-PRO-05-U11 | `createProviderBundle` | Service (`demo` / tarif `claude-sonnet-5`), clé obligatoire, fournisseur inconnu | idem |
+| UC-PRO-05-U11 | `createProviderBundle` | Service (`demo` / tarif `claude-haiku-5-5`), clé obligatoire, fournisseur inconnu | idem |
 | UC-PRO-05-U12 | `usesEngineOrchestration`, `usesTwin6Engine`, `detectReferentielEnDur` | Routage moteur / sandbox / Twin6 ; alerte : Twin6, fiche « ## CODE — » dans un gabarit (« 1.01 » comme « A2 »), orchestration sans `referentiel` (A8) | idem |
 | UC-PRO-05-U13 | `buildEstimate` | Sans fusion, pôles retenus, modèle hors table (RG5) | idem |
 | UC-PRO-05-U14 | `realCostUsd`, `sumUsages` | Modèle de tarif, totaux de session (RG4) | idem |
@@ -309,7 +311,7 @@ exercés par F01 côté API et par les tests IHM rendus dans `<App/>`).
 | UC-PRO-05-F03 | RG1 | API | Brouillon d'autrui ni listé ni lisible, 404 identique ; contre-épreuve : l'auteur le voit (identité = cookie de chaque requête) | idem |
 | UC-PRO-05-F04 | E1 | API | Brouillons : 401 sans session, 403 sans rôle — y compris juste après une session promptologue | idem |
 | UC-PRO-05-F05 | A5 | API | Versions du référentiel (`semver`), document d'une version | idem |
-| UC-PRO-05-F06 | Nominal | IHM | `<App/>` : A/B embarqué vs publiée, 48 appels, tokens et coûts réels, estimation du rapport (24 appels, `claude-sonnet-5`, RG5) = cellule affichée, diff, rapport JSON | `web/test/usecases/functional/uc-pro-05-banc-essai.test.jsx` |
+| UC-PRO-05-F06 | Nominal | IHM | `<App/>` : A/B embarqué vs publiée, 48 appels, tokens et coûts réels, estimation du rapport (24 appels, `claude-haiku-5-5`, RG5) = cellule affichée, diff, rapport JSON | `web/test/usecases/functional/uc-pro-05-banc-essai.test.jsx` |
 | UC-PRO-05-F07 | A1 (+ étape 4) | IHM | Run simple, usage/coût, export réimportable = document fixture ; température « 0,7 » transmise 0.7 ; double-clic = un seul run | idem |
 | UC-PRO-05-F08 | A2 | IHM | 3 runs, divergence au run 2, distance affichée = 2 / (3 × n) ; ni usage, ni estimation, ni lien de téléchargement | idem |
 | UC-PRO-05-F09 | A3 + A5 | IHM | 2×2 runs, B sur Anthropic direct : 1 écart franc (100 % / 0 %), 1 bruit ; clé jamais envoyée à humanome ; coûts de session | idem |

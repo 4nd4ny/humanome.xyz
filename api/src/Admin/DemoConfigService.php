@@ -7,6 +7,7 @@ namespace Humanome\Admin;
 use Humanome\Auth\Audit;
 use Humanome\Env;
 use Humanome\Llm\DemoConfig;
+use Humanome\Llm\ModelLimits;
 use Humanome\Packages\SettingsRepository;
 use PDO;
 
@@ -24,29 +25,28 @@ use PDO;
  *     budget/security foot-gun.
  *   - ANTHROPIC_API_KEY: env only, never stored in the database, never
  *     returned by any endpoint (read() only exposes a boolean).
+ *   - a model that is not a Haiku (2026-10-21, « On garde Haiku pour les
+ *     démos. Sonnet et Opus disponibles uniquement pour les comptes ayant
+ *     acheté suffisamment de crédits API ou bien utilisant leur propre clé »).
+ *   - the output of a call: the model's maximum, no longer capped
+ *     (maxTokensPerRequest is gone; read() shows sortieMax).
  */
 final class DemoConfigService
 {
     /**
-     * Known Anthropic model ids proposed by the UI (a dropdown). The UI also
-     * offers a free-text "autre…" entry, so this list is a convenience, not
-     * a hard whitelist — a new model id can be used the day it ships.
+     * The Haiku models proposed by the UI (a dropdown). The UI also offers a
+     * free-text "autre…" entry — a new Haiku can be used the day it ships —,
+     * which must name a Haiku too (ModelLimits::estHaiku).
      */
     public const ALLOWED_MODELS = [
         'claude-haiku-5-5',
         'claude-haiku-4-5-20251001',
         'claude-haiku-4-5',
-        'claude-sonnet-4-6',
-        'claude-sonnet-5',
-        'claude-opus-4-6',
-        'claude-opus-4-7',
-        'claude-opus-4-8',
     ];
 
     /** Integer fields: [min, max]. */
     private const INT_BOUNDS = [
-        'maxTokensPerRequest' => [256, 16000],
-        'maxInputChars' => [1000, 500000],
+        'maxInputChars' => [1000, 4000000],
         'perIpPerHour' => [1, 1000],
         'dailyGlobalTokens' => [10000, 50000000],
         'powDifficultyBits' => [8, 24],
@@ -80,7 +80,8 @@ final class DemoConfigService
                 'enabled' => $c->enabled,
                 'provider' => $c->provider,
                 'model' => $c->model,
-                'maxTokensPerRequest' => $c->maxTokensPerRequest,
+                // Not a setting: the model's maximum (read-only).
+                'sortieMax' => $c->sortieMax(),
                 'maxInputChars' => $c->maxInputChars,
                 'perIpPerHour' => $c->perIpPerHour,
                 'dailyGlobalTokens' => $c->dailyGlobalTokens,
@@ -89,6 +90,8 @@ final class DemoConfigService
                 'upstreamTimeoutSeconds' => $c->upstreamTimeoutSeconds,
             ],
             'sources' => $c->sources,
+            // The layers' models that are not a Haiku, refused: the page says so.
+            'modelRefuse' => $c->modelRefuse,
             'allowedModels' => self::ALLOWED_MODELS,
             // Boolean only — the key value NEVER leaves the environment.
             'apiKeyConfigured' => Env::get('ANTHROPIC_API_KEY') !== '',
@@ -114,6 +117,8 @@ final class DemoConfigService
 
         $settings = new SettingsRepository($this->pdo);
         $current = $settings->get(DemoConfig::OVERRIDES_KEY) ?? [];
+        // A field no longer read (maxTokensPerRequest, 2026-10-21) leaves at the next save.
+        $current = array_intersect_key(\is_array($current) ? $current : [], array_flip(DemoConfig::OVERRIDABLE_FIELDS));
         $settings->set(DemoConfig::OVERRIDES_KEY, array_merge($current, $clean));
 
         Audit::record($this->pdo, $adminId, 'demo_config_updated', ['fields' => array_keys($clean)]);
@@ -138,6 +143,13 @@ final class DemoConfigService
     /** @return bool|int|float|string the normalised value */
     private function validateField(string $field, mixed $value): bool|int|float|string
     {
+        if ($field === 'maxTokensPerRequest') {
+            throw new AdminException(
+                'La sortie n’est plus plafonnée : chaque appel peut rendre le maximum du modèle '
+                . '(128 000 jetons pour Haiku 5.5), et le budget du jour le borne.',
+                422,
+            );
+        }
         if (!\in_array($field, DemoConfig::OVERRIDABLE_FIELDS, true)) {
             throw new AdminException(
                 $field === 'provider'
@@ -162,6 +174,13 @@ final class DemoConfigService
             $model = trim($value);
             if (preg_match(self::MODEL_PATTERN, $model) !== 1) {
                 throw new AdminException('Identifiant de modèle invalide (lettres, chiffres, points et tirets).', 422);
+            }
+            if (!ModelLimits::estHaiku($model)) {
+                throw new AdminException(
+                    'La démo reste sur Haiku : Sonnet et Opus sont réservés aux comptes qui ont acheté des crédits '
+                    . 'ou qui utilisent leur propre clé.',
+                    422,
+                );
             }
 
             return $model;

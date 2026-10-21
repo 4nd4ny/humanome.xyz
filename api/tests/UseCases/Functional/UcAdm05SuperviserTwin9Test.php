@@ -13,7 +13,9 @@ use Humanome\Tests\TestDb;
 use Humanome\Tests\UseCases\Support\RunsTwin9Factices;
 use Humanome\Tests\UseCases\Support\TwinSupport;
 use Humanome\Twin9\CreditService;
+use Humanome\Env;
 use Humanome\Twin9\Lancement;
+use Humanome\Twin9\TarifsAnthropic;
 use Humanome\Twin9\Twin9Config;
 use PHPUnit\Framework\Attributes\PreserveGlobalState;
 use PHPUnit\Framework\Attributes\RunInSeparateProcess;
@@ -52,7 +54,7 @@ final class UcAdm05SuperviserTwin9Test extends CartographeTestCase
         $pdo = Db::get();
         $pdo->exec('DELETE FROM twin9_protocole_versions');
         $pdo->exec('DELETE FROM twin9_protocole');
-        $pdo->exec("DELETE FROM settings WHERE name IN ('twin9_config', 'twin9_referentiel')");
+        $pdo->exec("DELETE FROM settings WHERE name IN ('twin9_config', 'twin9_referentiel', 'twin9_tarifs')");
         TestDb::setEnv('ANTHROPIC_API_KEY', TwinSupport::PLATFORM_KEY);
         TestDb::setEnv('SODIUM_MASTER_KEY', TwinSupport::MASTER_KEY_HEX);
         TestDb::setEnv('PAYPAL_MODE', 'sandbox');
@@ -90,7 +92,7 @@ final class UcAdm05SuperviserTwin9Test extends CartographeTestCase
         $this->moteurFactice();
         $config = self::json($this->as_($this->admin, 'GET', '/api/twin9/admin/config'));
         self::assertSame(1.2, $config['marge']);
-        self::assertSame([3, 15], $config['modeles']['claude-sonnet-5']['prix_usd_mtok'], 'prix catalogue visibles de l’admin seul');
+        self::assertSame([2, 10], $config['modeles']['claude-sonnet-5']['prix_usd_mtok'], 'prix catalogue visibles de l’admin seul');
         $profil = $this->profilDirect($this->apprenant);
         // un crédit large : il admet toutes les journées, et l'estimation les compte toutes
         (new CreditService(Db::get()))->topup($this->apprenant['id'], 1_000_000_000, 'ORDER-ADM-05');
@@ -103,7 +105,7 @@ final class UcAdm05SuperviserTwin9Test extends CartographeTestCase
         // du moment : api/tests/Twin9/CoutsTest.php).
         self::assertSame(self::estimation(1.5), $this->apercu($this->apprenant, $profil)['estimation']['cout_usd']);
         $meta = self::json($this->as_($this->apprenant, 'GET', '/api/twin9/meta'));
-        self::assertSame([3.75, 18.75], $meta['modeles_twin6']['claude-sonnet-5']);
+        self::assertSame([2.5, 12.5], $meta['modeles_twin6']['claude-sonnet-5']);
         self::assertArrayNotHasKey('marge', $meta);
         self::assertArrayNotHasKey('modeles', $meta, 'l’offre Twin9 a quitté /meta avec le moteur du navigateur (T11)');
 
@@ -111,8 +113,8 @@ final class UcAdm05SuperviserTwin9Test extends CartographeTestCase
         TwinSupport::queueAnthropic($this->http, '{"poleNum":1}', 1000, 200);
         $twin6 = $this->as_($this->apprenant, 'POST', '/api/twin6/appel', ['model' => 'claude-sonnet-5', 'prompt' => 'Scanne le pôle 1.', 'max_tokens' => 1024]);
         self::assertSame(200, $twin6->getStatusCode(), (string) $twin6->getBody());
-        self::assertSame(7500, self::json($twin6)['cout_microusd'], '(1000×3 + 200×15) × 1,25');
-        self::assertSame(1_000_000_000 - 7500, (new CreditService(Db::get()))->balance($this->apprenant['id']));
+        self::assertSame(5000, self::json($twin6)['cout_microusd'], '(1000×2 + 200×10) × 1,25 : Sonnet 5 à 2 / 10');
+        self::assertSame(1_000_000_000 - 5000, (new CreditService(Db::get()))->balance($this->apprenant['id']));
     }
 
     #[TestDox('UC-ADM-05-F10 — A1 : promotion « Twin9 avec sa clé » ouverte puis refermée → un profil à clé personnelle est refusé, admis et estimé sans contribution, puis refusé au lancement ; pendant la promotion, un profil à la clé de l’instance s’estime toujours avec contribution')]
@@ -280,5 +282,71 @@ final class UcAdm05SuperviserTwin9Test extends CartographeTestCase
         self::assertSame(['libelle', 'montant_usd'], array_keys($relue['packs'][0]));
         self::assertSame(['palier_long', 'prix_usd_mtok'], array_keys($relue['modeles']['claude-haiku-5-5']));
         self::assertSame(['montant_usd', 'libelle'], array_keys(Twin9Config::defaults()['packs'][0]), 'ordre des défauts, avant tout enregistrement');
+    }
+
+    /** Le déclencheur externe : un tick d'une seconde, jeton des migrations. */
+    private function tick(): ResponseInterface
+    {
+        $this->cookieSid = null;
+
+        return $this->request('POST', '/api/admin/worker-tick', ['budgetSeconds' => 1],
+            ['X-Migrate-Token' => Env::get('MIGRATE_TOKEN')]);
+    }
+
+    #[TestDox('UC-ADM-05-F19 — RG9 : le déclencheur relève les prix d’Anthropic une fois par jour — la grille stockée de juillet (Sonnet 5 à 3 / 15) passe à 2 / 10, l’apprenant le voit sur /meta, l’administrateur lit le relevé ; le tick suivant du jour ne relit rien')]
+    public function testF19DailyReadingFixesTheGrid(): void
+    {
+        self::assertSame(200, $this->config(['modeles' => [
+            'claude-sonnet-5' => ['prix_usd_mtok' => [3, 15]],
+            'claude-haiku-5-5' => ['prix_usd_mtok' => [0.1, 0.5],
+                'palier_long' => ['au_dela_de' => 100000, 'prix_usd_mtok' => [0.5, 2.5]]],
+        ]])->getStatusCode());
+        self::assertEquals([3.3, 16.5], self::json($this->as_($this->apprenant, 'GET', '/api/twin9/meta'))['modeles_twin6']['claude-sonnet-5']);
+        self::assertNull(self::json($this->as_($this->admin, 'GET', '/api/twin9/admin/config'))['releve_tarifs'], 'jamais relevé');
+
+        $this->http->queueResponse(['status' => 200,
+            'body' => (string) file_get_contents(\dirname(__DIR__, 2) . '/fixtures/tarifs-anthropic.md')]);
+        $tick = $this->tick();
+
+        self::assertSame(200, $tick->getStatusCode(), (string) $tick->getBody());
+        self::assertSame('ok', self::json($tick)['tarifs']);
+        self::assertSame([['GET', TarifsAnthropic::SOURCE]], array_map(
+            static fn (array $r): array => [$r['method'], $r['url']], $this->http->requests));
+        self::assertEquals([2.2, 11], self::json($this->as_($this->apprenant, 'GET', '/api/twin9/meta'))['modeles_twin6']['claude-sonnet-5'],
+            'l’apprenant paie 2 / 10, contribution comprise');
+        $admin = self::json($this->as_($this->admin, 'GET', '/api/twin9/admin/config'));
+        self::assertEquals([2, 10], $admin['modeles']['claude-sonnet-5']['prix_usd_mtok']);
+        self::assertSame('ok', $admin['releve_tarifs']['statut']);
+        self::assertSame(gmdate('Y-m-d'), $admin['releve_tarifs']['jour']);
+        self::assertSame(['claude-sonnet-5'], array_column($admin['releve_tarifs']['changements'], 'modele'));
+        self::assertSame([], $admin['releve_tarifs']['absents']);
+        self::assertSame(403, $this->as_($this->apprenant, 'GET', '/api/twin9/admin/config')->getStatusCode());
+
+        $again = $this->tick();
+        self::assertSame(200, $again->getStatusCode());
+        self::assertArrayNotHasKey('tarifs', self::json($again), 'relevé aujourd’hui : rien à relire');
+        self::assertCount(1, $this->http->requests);
+    }
+
+    #[TestDox('UC-ADM-05-F20 — RG9 : une page des prix illisible ne change rien — le tick répond, la grille garde ses prix, l’administrateur lit l’échec et sa raison ; sans clé de la plateforme, aucun relevé')]
+    public function testF20UnreadablePageChangesNothing(): void
+    {
+        $avant = self::json($this->as_($this->admin, 'GET', '/api/twin9/admin/config'))['modeles'];
+        $this->http->queueResponse(['status' => 200, 'body' => "# Pricing\n\nNo table today.\n"]);
+        $tick = $this->tick();
+
+        self::assertSame(200, $tick->getStatusCode(), (string) $tick->getBody());
+        self::assertSame('echec', self::json($tick)['tarifs']);
+        $admin = self::json($this->as_($this->admin, 'GET', '/api/twin9/admin/config'));
+        self::assertSame($avant, $admin['modeles']);
+        self::assertSame('echec', $admin['releve_tarifs']['statut']);
+        self::assertSame('page des prix illisible : section « Model pricing » introuvable', $admin['releve_tarifs']['erreur']);
+        self::assertArrayNotHasKey('jour', $admin['releve_tarifs'], 'aucun relevé réussi');
+
+        // Sans la clé de la plateforme, l'instance ne facture rien : rien à relever.
+        Db::get()->exec("DELETE FROM settings WHERE name = 'twin9_tarifs'");
+        TestDb::setEnv('ANTHROPIC_API_KEY', '');
+        self::assertArrayNotHasKey('tarifs', self::json($this->tick()));
+        self::assertCount(1, $this->http->requests);
     }
 }

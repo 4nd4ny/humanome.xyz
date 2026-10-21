@@ -37,8 +37,10 @@ Cartographier mes écrits », ou le bouton du tableau de bord `#/espace`).
   ⌊`perIpPerHour` / 8⌋ journées par heure et par IP (20/h dans
   `api/config/demo.php` ⇒ 2 journées ; 40/h, la production de juillet, ⇒ 5) et
   des journées d'au plus `maxInputChars` − ~8,5 k caractères de gabarit
-  (≈ 411 k caractères avec les 420 000 par défaut, ≈ 11,5 k avec les 20 000
-  d'avant le 2026-10-21) ; au-delà, voir E5 et les anomalies A-02 et A-05.
+  (≈ 1,99 million de caractères avec les 2 000 000 par défaut, ≈ 11,5 k avec
+  les 20 000 d'avant le 2026-10-21) ; au-delà, voir E5 et les anomalies A-02
+  et A-05. Le modèle est celui de la démo, un Haiku (UC-ADM-04 RG9) : Sonnet et
+  Opus passent par une clé personnelle.
 - Mode « Clé personnelle » : une clé du fournisseur choisi (sauf Ollama,
   local et sans clé, attendu sur `http://localhost:11434` : l'assistant ne
   permet pas de changer cette adresse).
@@ -135,8 +137,11 @@ Cartographier mes écrits », ou le bouton du tableau de bord `#/espace`).
   serveur, « Aucune clé enregistrée pour ce fournisseur »). L'assistant
   construit un transport `direct` du moteur (`createProviderBundle` →
   `createProvider`, modèle saisi — pré-rempli avec le défaut du fournisseur,
-  défaut si le champ est vide —, budget de sortie 8 192 tokens, ni consigne
-  système ni température). Les appels partent
+  défaut si le champ est vide —, budget de sortie : tout ce que le modèle peut
+  rendre pour Anthropic (`sortieMaxAnthropic`, 128 000 tokens pour Sonnet 5,
+  64 000 pour Haiku 4.5, depuis le 2026-10-21 : une réponse coupée est payée et
+  perdue), 8 192 tokens pour les autres fournisseurs, dont la plateforme ne
+  connaît pas le maximum ; ni consigne système ni température). Les appels partent
   **directement** vers l'API du fournisseur, jamais vers humanome, la clé
   dans l'en-tête propre à chaque API — jamais dans l'URL ni dans le corps ;
   Ollama ne reçoit aucun en-tête d'authentification (RG9). Le moteur fait
@@ -251,8 +256,9 @@ Cartographier mes écrits », ou le bouton du tableau de bord `#/espace`).
   refaite à la reprise.
 - **RG5** — Service humanome : une preuve de travail **par appel** (défi signé
   HMAC, 5 minutes, usage unique), pot de miel `website` vide ; le serveur
-  impose modèle, `maxTokens` et plafonds (`api/config/demo.php`, surcharges
-  admin). Reprises (`demo-llm.js`, transport à `maxAttempts: 1`) : **aucune**
+  impose modèle (un Haiku), sortie (le maximum du modèle, sans plafond depuis
+  le 2026-10-21 ; le `maxTokens` envoyé est ignoré) et plafonds
+  (`api/config/demo.php`, surcharges admin). Reprises (`demo-llm.js`, transport à `maxAttempts: 1`) : **aucune**
   sur quota (`429` hors défi) ni sur `503` ; **une seule**, après 2,5 s et
   avec un défi neuf, sur `500`/`502`/`504`/`529`, erreur réseau ou défi refusé
   (`pow_reused`, `pow_expired`, `pow_required`).
@@ -262,8 +268,9 @@ Cartographier mes écrits », ou le bouton du tableau de bord `#/espace`).
   par journée + 69 récits (61 compétences + 7 pôles + 1 kairos : le nombre de
   prompts que `buildNarrativePrompts` produit sur une fusion, U38) ; tokens
   ≈ caractères / 3,6 ; 1 000 tokens de sortie et 20 s par appel ; le service
-  humanome est estimé sur le modèle de référence `claude-sonnet-5` ; un
-  modèle hors table de prix donne un coût « inconnu ».
+  humanome est estimé sur le modèle de référence `claude-haiku-5-5`, celui de
+  la démo qui le sert (`claude-sonnet-5` jusqu'au 2026-10-21) ; un modèle hors
+  table de prix donne un coût « inconnu ».
 - **RG7** — Le document merge n'est produit que si **toutes** les journées
   sont checkpointées, s'il valide le schéma (un domaine par pôle du référentiel,
   portant chacun au moins une compétence établie) et s'il est conforme au
@@ -373,7 +380,7 @@ Cartographier mes écrits », ou le bouton du tableau de bord `#/espace`).
 | UC-APP-02-U36 | Adaptateurs directs, `extractDay` (anomalie A-06) | **Comportement actuel** : fin par budget de sortie (`max_tokens`, `length`, `MAX_TOKENS`) non remontée (`stopReason` absent, alors que le proxy la relaie) ; journée tronquée → « réponse sans tableau competences » au lieu de « réponse tronquée » | idem |
 | UC-APP-02-U37 | `formatDateFr` via `extractDay` | Les 8 prompts d'une journée portent « # Feuille de portfolio du 07/01/2026 (2026-01-07) » une seule fois (étape 6) | `engine/test/usecases/unit/uc-app-02-prompts-narratifs.test.js` |
 | UC-APP-02-U38 | `buildNarrativePrompts` sur `mergeDays` | 3 journées → 69 prompts = `MERGE_NARRATIVE_CALLS` de l'estimation ; ordre compétences → pôles → kairos ; période, court-circuit, trace verbatim jointe, moyennes `formatFixed2` à deux décimales (égalité exacte au demi arrondie au demi pair : 0.625 → 0.62), rapports de pôle et synthèse kairos des journées (étape 7, RG6) | idem |
-| UC-APP-02-U39 | `createProviderBundle` (mode clé) | Liste de l'écran = `SUPPORTED_PROVIDERS` ; pour chacun des 6 fournisseurs : modèle par défaut et budget 8 192 au bon endpoint, dans le champ de l'API, clé dans l'en-tête attendu, rien vers humanome (A1, RG9) | `web/test/usecases/unit/uc-app-02-fournisseurs-cle-personnelle.test.js` |
+| UC-APP-02-U39 | `createProviderBundle` (mode clé) | Liste de l'écran = `SUPPORTED_PROVIDERS` ; pour chacun des 6 fournisseurs : modèle par défaut et budget de sortie (toute la sortie du modèle pour Anthropic, 8 192 pour les autres) au bon endpoint, dans le champ de l'API, clé dans l'en-tête attendu, rien vers humanome (A1, RG9) | `web/test/usecases/unit/uc-app-02-fournisseurs-cle-personnelle.test.js` |
 | UC-APP-02-U40 | `anthropic.js` | `api.anthropic.com/v1/messages`, en-têtes exacts (`x-api-key`, `anthropic-version: 2023-06-01`, `anthropic-dangerous-direct-browser-access: true`), `max_tokens`, `system` seulement s'il est fourni ; seuls les blocs de type `text` concaténés, usage et modèle ; réponse vide → `''` et 0 (A1, RG9) | `engine/test/usecases/unit/uc-app-02-fournisseurs-cle-personnelle.test.js` |
 | UC-APP-02-U41 | `buildEstimate`, `executeRun` (A7, A6, RG6, RG7) | Tout référentiel : estimation sur sa structure (5 pôles lettrés : 34 appels ; RESPIRE à six pôles : 7 par journée) ; 18 appels pour 3 journées, prompts qui le nomment, documents jour et fusion qui le nomment, un domaine par pôle ; un pôle sans compétence établie → fusion non constructible, message « chacun des pôles du référentiel » | `web/test/usecases/unit/uc-app-02-lancer-cartographie-standard.test.js` |
 
@@ -526,7 +533,7 @@ cd engine && npx vitest run test/usecases --testNamePattern UC-APP-02
   livrée, non testé.
 - Service humanome : une journée dont le texte dépasse `maxInputChars` moins
   le gabarit du prompt d'extraction (8 300 à 8 600 caractères selon le pôle,
-  soit ≈ 411 k caractères de texte avec les 420 000 par défaut, ≈ 11,5 k avec
-  20 000) échoue en `413` à chaque
+  soit ≈ 1,99 million de caractères de texte avec les 2 000 000 par défaut,
+  ≈ 11,5 k avec 20 000) échoue en `413` à chaque
   pôle ; l'assistant ne le vérifie pas avant le lancement (le `413` lui-même
   est testé par F18).

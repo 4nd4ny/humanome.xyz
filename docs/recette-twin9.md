@@ -76,9 +76,9 @@ Sur un compte d'essai, créé pour la recette et supprimé à la fin (4.8).
 
 | # | Geste | Attendu | Relevé |
 |---|---|---|---|
-| 5.0 | `#/admin/twin9` : les packs, les prix de la grille et la promotion « Twin9 avec sa clé » | Les prix voulus — la page des prix d'Anthropic donne Sonnet 5 et 5.5 à 2 $ / 10 $ (2026-10-21), la grille par défaut compte Sonnet 5 à 3 $ / 15 $ — ; la promotion dans l'état voulu | |
+| 5.0 | `#/admin/twin9` : les packs, les prix de la grille, leur relevé et la promotion « Twin9 avec sa clé » | Sous l'offre de modèles, un relevé réussi du jour (le déclencheur relève les prix d'Anthropic une fois par jour, UC-ADM-05 A6) : Sonnet 5 à 2 $ / 10 $, comme la page des prix d'Anthropic depuis le 2026-10-21 ; un échec affiché dit sa raison, et la grille garde ses prix — les corriger à la main en attendant ; la promotion dans l'état voulu | |
 | 5.1 | `#/admin/reglages` : la version de prompt par défaut validée (UC-ADM-03) | `GET /api/prompt-packages/default` sert le paquet choisi | |
-| 5.2 | `#/admin/reglages`, démo : budget, modèle et plafonds voulus | Les valeurs et leur origine (« réglage base ») | |
+| 5.2 | `#/admin/reglages`, démo : budget, modèle (un Haiku) et plafonds voulus | Les valeurs et leur origine (« réglage base ») ; « Sortie par appel : le maximum du modèle, 128 000 jetons » ; aucune alerte « Modèle refusé » — sinon le `DEMO_MODEL` du `.env` (Sonnet 5 en juillet) est ignoré, à retirer | |
 | 5.3 | Un essai de l'Essayer et un essai gratuit de la cartographie ouverte | Deux cartes ; le compteur de la démo du jour avance | |
 | 5.4 | Christian annonce l'ouverture | — | |
 

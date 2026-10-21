@@ -18,7 +18,6 @@ const FILE = {
   enabled: true,
   provider: 'anthropic',
   model: 'claude-haiku-4-5-20251001',
-  maxTokensPerRequest: 2048,
   maxInputChars: 20000,
   perIpPerHour: 20,
   dailyGlobalTokens: 2000000,
@@ -27,13 +26,17 @@ const FILE = {
   upstreamTimeoutSeconds: 60,
 }
 
-/** Faux /api/admin/demo-config : base > fichier, bornes de maxTokensPerRequest. */
+/** La sortie d'un appel : le maximum du modèle (2026-10-21), un affichage, pas un réglage. */
+const sortieMax = (model) => (model.startsWith('claude-haiku-4-5') ? 64000 : 128000)
+
+/** Faux /api/admin/demo-config : base > fichier, bornes de maxInputChars, un Haiku seulement. */
 function demoRoutes({ apiKeyConfigured = true } = {}) {
   let overrides = {}
   const view = () => ({
-    effective: { ...FILE, ...overrides },
+    effective: { ...FILE, ...overrides, sortieMax: sortieMax(overrides.model ?? FILE.model) },
     sources: Object.fromEntries(Object.keys(FILE).map((k) => [k, k in overrides ? 'base' : 'fichier'])),
-    allowedModels: ['claude-haiku-4-5-20251001', 'claude-sonnet-5', 'claude-opus-4-8'],
+    modelRefuse: [],
+    allowedModels: ['claude-haiku-5-5', 'claude-haiku-4-5-20251001', 'claude-haiku-4-5'],
     apiKeyConfigured,
   })
   const guard = (init) => init.headers?.['X-CSRF-Token'] === CSRF
@@ -54,9 +57,9 @@ function demoRoutes({ apiKeyConfigured = true } = {}) {
     'PUT api/admin/demo-config': (init) => {
       if (!guard(init)) return jsonResponse(403, { error: 'Jeton CSRF absent ou invalide' })
       const patch = JSON.parse(init.body)
-      const tokens = patch.maxTokensPerRequest
-      if (tokens !== undefined && (tokens < 256 || tokens > 16000)) {
-        return jsonResponse(422, { error: 'maxTokensPerRequest doit être compris entre 256 et 16000.' })
+      const chars = patch.maxInputChars
+      if (chars !== undefined && (chars < 1000 || chars > 4000000)) {
+        return jsonResponse(422, { error: 'maxInputChars doit être compris entre 1000 et 4000000.' })
       }
       overrides = { ...overrides, ...patch }
       return jsonResponse(200, view())
@@ -111,20 +114,22 @@ describe('UC-ADM-04 — l’administrateur configure la démo publique', () => {
     expect(screen.getAllByText('réglage base')).toHaveLength(1)
   })
 
-  it('UC-ADM-04-F12 — nominal (réglages) : modèle et plafond modifiés → PUT partiel, message, badges « réglage base »', async () => {
+  it('UC-ADM-04-F12 — nominal (réglages) : modèle (un Haiku) et entrée max modifiés → PUT partiel, message, badges « réglage base », sortie du modèle affichée', async () => {
     const backend = createAdminBackend({ routes: demoRoutes() })
     openAdmin(backend)
     await screen.findByRole('switch')
+    expect(screen.getByTestId('demo-sortie').textContent).toMatch(/64\s000 jetons/)
 
-    fireEvent.change(screen.getByLabelText('Modèle'), { target: { value: 'claude-sonnet-5' } })
-    fireEvent.change(screen.getByLabelText('Tokens max par requête'), { target: { value: '4096' } })
+    fireEvent.change(screen.getByLabelText('Modèle'), { target: { value: 'claude-haiku-5-5' } })
+    fireEvent.change(screen.getByLabelText('Entrée max (caractères)'), { target: { value: '40960' } })
     await click(screen.getByRole('button', { name: 'Enregistrer' }))
 
     expect(await screen.findByText('Réglages de la démo enregistrés (effet immédiat).')).toBeTruthy()
     const [put] = callsTo(backend.calls, 'PUT', 'api/admin/demo-config')
-    expect(JSON.parse(put.init.body)).toEqual({ model: 'claude-sonnet-5', maxTokensPerRequest: 4096 })
+    expect(JSON.parse(put.init.body)).toEqual({ model: 'claude-haiku-5-5', maxInputChars: 40960 })
     await waitFor(() => expect(screen.getAllByText('réglage base')).toHaveLength(2))
-    expect(screen.getByLabelText('Tokens max par requête').value).toBe('4096')
+    expect(screen.getByLabelText('Entrée max (caractères)').value).toBe('40960')
+    expect(screen.getByTestId('demo-sortie').textContent).toMatch(/128\s000 jetons/)
   })
 
   it('UC-ADM-04-F13 — A2 : « Réinitialiser » supprime les surcharges (DELETE) et rend la main au fichier', async () => {
@@ -146,10 +151,10 @@ describe('UC-ADM-04 — l’administrateur configure la démo publique', () => {
     openAdmin(backend)
     await screen.findByRole('switch')
 
-    fireEvent.change(screen.getByLabelText('Tokens max par requête'), { target: { value: '99999' } })
+    fireEvent.change(screen.getByLabelText('Entrée max (caractères)'), { target: { value: '9999999' } })
     await click(screen.getByRole('button', { name: 'Enregistrer' }))
 
-    expect((await screen.findByRole('alert')).textContent).toBe('maxTokensPerRequest doit être compris entre 256 et 16000.')
+    expect((await screen.findByRole('alert')).textContent).toBe('maxInputChars doit être compris entre 1000 et 4000000.')
     expect(screen.queryByText('réglage base')).toBeNull()
   })
 
@@ -216,9 +221,10 @@ describe('UC-ADM-04 — l’administrateur configure la démo publique', () => {
   it('UC-ADM-04-F19 — A6 puis A5 : modèle effectif hors liste → « autre… » présélectionné ; Enregistrer sans modification → « Aucune modification à enregistrer. », aucun PUT', async () => {
     const routes = demoRoutes()
     routes['GET api/admin/demo-config'] = jsonResponse(200, {
-      effective: { ...FILE, model: 'claude-fable-5' },
+      effective: { ...FILE, model: 'claude-haiku-6', sortieMax: 64000 },
       sources: Object.fromEntries(Object.keys(FILE).map((k) => [k, 'fichier'])),
-      allowedModels: ['claude-haiku-4-5-20251001', 'claude-sonnet-5', 'claude-opus-4-8'],
+      modelRefuse: [],
+      allowedModels: ['claude-haiku-5-5', 'claude-haiku-4-5-20251001', 'claude-haiku-4-5'],
       apiKeyConfigured: true,
     })
     const backend = createAdminBackend({ routes })
@@ -226,7 +232,7 @@ describe('UC-ADM-04 — l’administrateur configure la démo publique', () => {
     await screen.findByRole('switch')
 
     expect(screen.getByLabelText('Modèle').value).toBe('__autre__')
-    expect(screen.getByLabelText('Identifiant de modèle libre').value).toBe('claude-fable-5')
+    expect(screen.getByLabelText('Identifiant de modèle libre').value).toBe('claude-haiku-6')
     await click(screen.getByRole('button', { name: 'Enregistrer' }))
 
     expect(await screen.findByText('Aucune modification à enregistrer.')).toBeTruthy()

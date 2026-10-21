@@ -17,7 +17,8 @@ declare(strict_types=1);
  * Contract of POST /api/llm — compatible with the engine 'proxy' transport
  * (engine/src/providers/index.js): client provider/model/maxTokens are
  * accepted but IGNORED (the server imposes api/config/demo.php — budget
- * safety); the answer mirrors the engine provider result shape.
+ * safety: a Haiku, and the model's whole output, 2026-10-21); the answer
+ * mirrors the engine provider result shape.
  */
 
 use Humanome\Auth\RateLimiter;
@@ -33,6 +34,8 @@ use Humanome\Llm\PowChallenge;
 use Humanome\Llm\Pricing;
 use Humanome\Llm\UpstreamException;
 use Humanome\Llm\UsageCounters;
+use Humanome\Packages\SettingsRepository;
+use Humanome\Twin9\Twin9Config;
 use Psr\Http\Message\ResponseInterface as Response;
 use Psr\Http\Message\ServerRequestInterface as Request;
 use Slim\App;
@@ -197,29 +200,42 @@ return function (App $app): void {
         // call's WORST CASE is reserved against both caps, atomically, before
         // it leaves, then settled to its real usage: concurrent calls never
         // spend more than the day's budget together (2026-10-21, « pas plus de
-        // dépense journalière »). Worst case: one token per byte of the prompt
-        // — a BPE tokenizer never emits more (Twin9Config::reserveMicrousd) —
-        // plus the request's own overhead, and the whole output ceiling.
+        // dépense journalière »). Worst case: the prompt's input — one token
+        // per byte, which a BPE tokenizer never exceeds (Twin9Config::
+        // reserveMicrousd), plus the request's own overhead; past 100,000
+        // bytes, Anthropic's count, with a margin, when it answers — and the
+        // model's whole output: no answer is cut to hold the budget, a call it
+        // no longer covers does not leave (« si le prompt est déjà passé et
+        // les tokens déjà dépensés, ne pas limiter sur la longueur de la
+        // sortie »). Priced on the grid, which follows Anthropic's prices.
         $counters = new UsageCounters($pdo);
         $now = time();
+        $sortie = $config->sortieMax();
+        $provider = $config->provider === 'mock'
+            ? null
+            : new AnthropicProvider(LlmRuntime::httpClient(), $apiKey, $config->upstreamTimeoutSeconds);
         $reservedInput = \strlen(($system ?? '') . $prompt) + AnthropicProvider::REQUEST_OVERHEAD_TOKENS;
-        $reservedOutput = $config->maxTokensPerRequest;
-        $reservedUsd = Pricing::estimateUsd($config->model, $reservedInput, $reservedOutput);
+        if ($provider !== null && $reservedInput > AnthropicProvider::COMPTE_AU_DELA) {
+            $compte = $provider->countTokens($config->model, $system, $prompt);
+            if ($compte !== null) {
+                // An estimate: 2 % and 64 tokens more, never past the bytes' bound.
+                $reservedInput = min($reservedInput, (int) ceil($compte * 1.02) + 64);
+            }
+        }
+        $reservedOutput = $sortie;
+        $grille = (new Twin9Config(new SettingsRepository($pdo)))->modeles();
+        $reservedUsd = Pricing::estimateUsd($config->model, $reservedInput, $reservedOutput, $grille);
         if (!$counters->reserve($reservedInput, $reservedOutput, $reservedUsd,
             $config->dailyGlobalTokens, $config->dailyBudgetUsd, $now)) {
             return $json($response, ['error' => 'Démo épuisée pour aujourd’hui, revenez demain.'], 503);
         }
 
-        // 7. Upstream call. The server IMPOSES provider/model/maxTokens from
+        // 7. Upstream call. The server IMPOSES provider, model and output from
         // the config — whatever the client sent is ignored (budget safety).
         try {
-            if ($config->provider === 'mock') {
-                $result = (new MockProvider())
-                    ->complete($config->model, $system, $prompt, $config->maxTokensPerRequest);
-            } else {
-                $result = (new AnthropicProvider(LlmRuntime::httpClient(), $apiKey, $config->upstreamTimeoutSeconds))
-                    ->complete($config->model, $system, $prompt, $config->maxTokensPerRequest);
-            }
+            $result = $provider === null
+                ? (new MockProvider())->complete($config->model, $system, $prompt, $sortie)
+                : $provider->complete($config->model, $system, $prompt, $sortie);
         } catch (UpstreamException $e) {
             // An error status is a call the provider refused, and does not
             // bill: the reservation goes back. A 2xx answer it could not read
@@ -246,7 +262,8 @@ return function (App $app): void {
             $reservedUsd,
             $result['usage']['inputTokens'],
             $result['usage']['outputTokens'],
-            Pricing::estimateUsd($result['model'], $result['usage']['inputTokens'], $result['usage']['outputTokens']),
+            Pricing::estimateUsd($result['model'], $result['usage']['inputTokens'], $result['usage']['outputTokens'],
+                $grille),
             $now,
         );
 

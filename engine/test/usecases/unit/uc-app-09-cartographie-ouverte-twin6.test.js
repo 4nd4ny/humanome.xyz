@@ -24,6 +24,7 @@ import {
   variablesTwin6,
 } from '../../../src/twin6/index.js'
 import { CHARS_PER_TOKEN_FR } from '../../../src/providers/estimate.js'
+import { sortieMaxAnthropic } from '../../../src/providers/limits.js'
 import { twin6ToMergeDocument } from '../../../src/twin6/mapper.js'
 import { createProvider } from '../../../src/providers/index.js'
 import { validateDocument } from '../../../src/validation.js'
@@ -135,6 +136,19 @@ describe('UC-APP-09 — prompts publics Twin6', () => {
 })
 
 describe('UC-APP-09 — orchestration executerTwin6', () => {
+  it('UC-APP-09-U37 — sans maxTokens, chaque appel demande toute la sortie du modèle (2026-10-21) : 128 000 pour Sonnet 5, 64 000 pour Haiku 4.5, 64 000 pour un Claude que la table ne connaît pas', async () => {
+    for (const [model, attendu] of [['claude-sonnet-5', 128000], ['claude-haiku-4-5-20251001', 64000], ['claude-haiku-6', 64000]]) {
+      const provider = fakeProvider()
+      await executerTwin6({ portfolio: PORTFOLIO, templates: TEMPLATES, referentiel: REFERENTIEL, provider, model })
+      expect(provider.complete.mock.calls.map(([p]) => p.maxTokens)).toEqual(Array(8).fill(attendu))
+    }
+    expect(sortieMaxAnthropic('claude-opus-5-5')).toBe(128000)
+    expect(sortieMaxAnthropic('claude-opus-4-8')).toBe(128000)
+    expect(sortieMaxAnthropic('claude-sonnet-5-5')).toBe(128000)
+    expect(sortieMaxAnthropic('claude-haiku-5-5')).toBe(128000)
+    expect(sortieMaxAnthropic('claude-sonnet-4-5-20250929')).toBe(64000)
+  })
+
   it('UC-APP-09-U04 — entrées invalides refusées AVANT tout appel au modèle', async () => {
     const provider = fakeProvider()
     const base = { portfolio: PORTFOLIO, templates: TEMPLATES, referentiel: REFERENTIEL, provider, model: 'm' }
@@ -369,12 +383,14 @@ describe('UC-APP-09 — tout référentiel (2026-10-20)', () => {
     }
   })
 
-  it('UC-APP-09-U35 — essai gratuit (A6) : sur les gabarits servis, chaque appel tient sous le plafond d’entrée par défaut de la démo — scans d’un portfolio de 5 000 caractères, kairos dont les scans ont rendu tout leur plafond de sortie (RG11)', () => {
-    // Défauts d'api/config/demo.php (2026-10-21) : 420 000 caractères par appel,
-    // 16 000 tokens de sortie ; l'essai borne le portfolio à 5 000 caractères
-    // (web/src/lib/demo-llm.js, DEMO_TEXT_MAX_CHARS).
-    const MAX_INPUT_CHARS = 420_000
-    const MAX_OUTPUT_TOKENS = 16_000
+  it('UC-APP-09-U35 — essai gratuit (A6) : sur les gabarits servis, chaque appel tient sous le plafond d’entrée par défaut de la démo — scans d’un portfolio de 5 000 caractères, kairos dont les scans, sans plafond de sortie, ont rendu chacun 64 000 tokens, la moitié du maximum de Haiku 5.5 (RG11)', () => {
+    // Défauts d'api/config/demo.php (2026-10-21) : 2 000 000 de caractères par
+    // appel ; plus de plafond de sortie, chaque appel demande tout ce que le
+    // modèle peut rendre (128 000 tokens pour Haiku 5.5). L'essai borne le
+    // portfolio à 5 000 caractères (web/src/lib/demo-llm.js, DEMO_TEXT_MAX_CHARS).
+    const MAX_INPUT_CHARS = 2_000_000
+    expect(sortieMaxAnthropic('claude-haiku-5-5')).toBe(128_000)
+    const MAX_OUTPUT_TOKENS = sortieMaxAnthropic('claude-haiku-5-5') / 2
     const portfolio = 'x'.repeat(5000)
     const repo = fileURLToPath(new URL('../../../../', import.meta.url))
     const respire = JSON.parse(readFileSync(`${repo}schemas/fixtures/referentiel-respire-v7.json`, 'utf8'))
@@ -386,8 +402,8 @@ describe('UC-APP-09 — tout référentiel (2026-10-20)', () => {
       buildScanPolePrompt(rendreGabaritTwin6(scanPole, variables), p.num, fiches[String(p.num)], portfolio).length)
     expect(Math.max(...scans)).toBeLessThanOrEqual(MAX_INPUT_CHARS)
 
-    // Chaque scan rend au plus 16 000 tokens, soit 57 600 caractères au rythme du
-    // moteur (3,6 par token) ; un scan tronqué arrête le run avant le kairos.
+    // Chaque scan rend ici 64 000 tokens, soit 230 400 caractères au rythme du
+    // moteur (3,6 par token) — sept fois et demie la médiane du prototype.
     const sortieMax = Math.ceil(MAX_OUTPUT_TOKENS * CHARS_PER_TOKEN_FR)
     const cartoPoles = respire.poles.map((p) => ({
       poleNum: p.num,
@@ -396,8 +412,10 @@ describe('UC-APP-09 — tout référentiel (2026-10-20)', () => {
     expect(JSON.stringify(cartoPoles[6])).toHaveLength(sortieMax)
     const kairosPrompt = buildKairosPrompt(rendreGabaritTwin6(kairos, variables), cartoPoles, portfolio)
     expect(kairosPrompt.length).toBeLessThanOrEqual(MAX_INPUT_CHARS)
-    // Sous l'ancien défaut de 200 000, ce kairos recevait un 413 (revue du 2026-10-21).
-    expect(kairosPrompt.length).toBeGreaterThan(200_000)
+    // Sous l'ancien défaut de 420 000, ce kairos, fait de sorties déjà payées, recevait un 413.
+    expect(kairosPrompt.length).toBeGreaterThan(420_000)
+    // Et le plafond tient dans la fenêtre d'un million de tokens de Haiku 5.5.
+    expect(Math.ceil(MAX_INPUT_CHARS / CHARS_PER_TOKEN_FR)).toBeLessThan(1_000_000)
   })
 })
 

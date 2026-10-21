@@ -39,11 +39,16 @@ export const MODEL_PRICING_USD_PER_MTOK = Object.freeze({
   'claude-haiku-5-5': { input: 0.1, output: 0.5 },
   // Family prefixes mirror api/src/Llm/Pricing.php (billing basis of the
   // mass worker, M8): intermediate variants (claude-sonnet-4-5…) resolve
-  // to their family rates instead of falling out of the table.
+  // to their family rates instead of falling out of the table. Anthropic's
+  // list prices read on 2026-10-21: Sonnet 5 and 5.5 cost 2 / 10 (the rise to
+  // 3 / 15 announced for 2026-09-01 did not happen), Opus 5.5 4 / 20.
   'claude-sonnet': { input: 3, output: 15 },
   'claude-sonnet-4-6': { input: 3, output: 15 },
-  'claude-sonnet-5': { input: 3, output: 15 },
+  'claude-sonnet-5': { input: 2, output: 10 },
   'claude-opus': { input: 5, output: 25 },
+  'claude-opus-5-5': { input: 4, output: 20 },
+  'claude-fable': { input: 10, output: 50 },
+  'claude-mythos': { input: 10, output: 50 },
   'gpt-4o-mini': { input: 0.15, output: 0.6 },
   'gpt-4o': { input: 2.5, output: 10 },
   'gemini-2.5-flash': { input: 0.3, output: 2.5 },

@@ -226,7 +226,7 @@ describe('UC-APP-09 — clé enregistrée et garde-fou de solde', () => {
     ])
   })
 
-  it('UC-APP-09-U29 — Twin6OuverteView isolée : poids du portfolio = ⌈octets / 1024⌉ $ (1 $ minimum) comparé au solde, AVANT toute construction du provider', async () => {
+  it('UC-APP-09-U29 — Twin6OuverteView isolée : poids du portfolio = ⌈octets / 1024⌉ $ (1 $ minimum), plus la réserve d’un appel — toute la sortie du modèle à son prix, 2026-10-21 —, comparés au solde, AVANT toute construction du provider', async () => {
     const creditsFactory = vi.fn(() => ({ name: 'twin6-credits' }))
     const runEngine = vi.fn(async () => {
       throw new Error('moteur non exercé dans ce test unitaire')
@@ -236,7 +236,8 @@ describe('UC-APP-09 — clé enregistrée et garde-fou de solde', () => {
         deps={{
           fetchMeFn: async () => ({ user: { id: 1 } }),
           loadPackage: async () => ({ ...TWIN6_PACKAGE, templates: {} }),
-          fetchOffer: async () => ({ modeles: { 'claude-sonnet-5': [3.3, 16.5] }, referentiel: [], solde_microusd: 1_999_999 }),
+          // Réserve d'un appel : 128 000 tokens × 16,50 $ / Mtok = 2,112 $.
+          fetchOffer: async () => ({ modeles: { 'claude-sonnet-5': [3.3, 16.5] }, referentiel: [], solde_microusd: 4_111_999 }),
           listKeys: async () => [],
           makeCreditsProvider: creditsFactory,
           runEngine,
@@ -251,14 +252,15 @@ describe('UC-APP-09 — clé enregistrée et garde-fou de solde', () => {
         fireEvent.click(screen.getByRole('button', { name: 'Lancer la cartographie ouverte' }))
       })
 
-    // 1 025 octets → 2 $ requis > 1,999999 $ de solde : bloqué.
+    // 1 025 octets → 2 $ + 2,112 $ requis > 4,111999 $ de solde : bloqué.
     fireEvent.change(zone, { target: { value: 'é'.repeat(512) + 'x' } })
     await lancer()
-    expect(screen.getByRole('alert').textContent).toContain('~2 $ estimés, solde 2.00 $')
+    expect(screen.getByRole('alert').textContent).toContain('~4.12 $ : 2 $ estimés, et 2.12 $ réservés')
+    expect(screen.getByRole('alert').textContent).toContain('solde 4.11 $')
     expect(creditsFactory).not.toHaveBeenCalled()
     expect(runEngine).not.toHaveBeenCalled()
 
-    // 1 024 octets → 1 $ requis ≤ solde : lancé.
+    // 1 024 octets → 1 $ + 2,112 $ requis ≤ solde : lancé.
     fireEvent.change(zone, { target: { value: 'é'.repeat(512) } })
     await lancer()
     expect(creditsFactory).toHaveBeenCalledTimes(1)

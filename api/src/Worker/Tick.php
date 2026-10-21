@@ -87,6 +87,8 @@ final class Tick
     private array $counters = [];
     /** Twin9 runs had the slice: the mass gets no guaranteed call past its end. */
     private bool $twin9Ran = false;
+    /** @var array<string, mixed>|null the price grid, read once (grille()) */
+    private ?array $grille = null;
 
     /**
      * @param array{budgetSeconds?: int, maxCalls?: int, maxTokens?: int,
@@ -470,7 +472,7 @@ final class Tick
             return true;
         }
         $inputTokens = (int) ceil(mb_strlen($prompt) / self::CHARS_PER_TOKEN);
-        $estimate = Pricing::estimateUsd($this->modelFor($config), $inputTokens, $this->maxTokens);
+        $estimate = Pricing::estimateUsd($this->modelFor($config), $inputTokens, $this->maxTokens, $this->grille());
 
         return $this->configs->allowsSpending((int) $config['user_id'], $estimate + $alreadySpentInCall);
     }
@@ -486,7 +488,20 @@ final class Tick
             $model,
             (int) ($res['usage']['inputTokens'] ?? 0),
             (int) ($res['usage']['outputTokens'] ?? 0),
+            $this->grille(),
         );
+    }
+
+    /**
+     * The price grid, read once a tick: the prices the mass is billed with
+     * follow Anthropic's (Twin9\TarifsAnthropic, 2026-10-21) for the models it
+     * offers; the others keep Pricing's table.
+     *
+     * @return array<string, mixed>
+     */
+    private function grille(): array
+    {
+        return $this->grille ??= (new Twin9Config(new SettingsRepository($this->pdo)))->modeles();
     }
 
     /**

@@ -172,6 +172,14 @@ carte — chaque appel coupé ayant pu être facturé par le fournisseur. Un run
 doit avancer seul passe donc par lots, la voie du profil v9.8 par défaut ; en
 appels directs, il lui faut sa page ouverte, qui donne des tranches de 40 s.
 
+Le tick relève aussi les prix d'Anthropic, une fois par jour UTC, après sa
+tranche (UC-ADM-05 A6, 2026-10-21) — là où `ANTHROPIC_API_KEY` est posée : sa
+réponse porte alors `"tarifs": "ok"` ou `"echec"`, et `#/admin/twin9` affiche le
+relevé. La page se lit d'ordinaire en moins d'une seconde, en 10 s au plus : le
+tick du relevé peut, une fois par jour, dépasser les 30 s du service, qui
+compte alors un échec isolé ; le relevé, lui, se termine (`ignore_user_abort`).
+Sans déclencheur, aucun relevé : la grille garde ses prix, à corriger à la main.
+
 Des runs de **masse** en file allongent le tick : un appel de masse peut partir
 jusqu'à la fin du budget, avec un délai de fournisseur de budget + 8 s
 (`Tick::defaultProviderFactory`) ; le tick peut alors durer près d'une minute,
@@ -192,7 +200,8 @@ résidu noté (STATUS, dettes techniques).
    - notifications : sur échec, et quand la tâche est désactivée.
 3. **La vérification**, dans l'historique de la tâche :
    - `200` et des compteurs : une clé `twin9Runs` dit le moteur chargé (sans
-     elle, Twin9 est éteint sur le serveur) — sauf `{"locked": true}` : un autre
+     elle, Twin9 est éteint sur le serveur), une clé `tarifs` le relevé du jour
+     (au premier tick de la journée UTC) — sauf `{"locked": true}` : un autre
      tick tenait le verrou (la page d'un run ouverte), rien d'anormal de temps en
      temps ;
    - `403` : le jeton diffère de celui du `.env`, ou `WORKER_TICK_TOKEN` manque

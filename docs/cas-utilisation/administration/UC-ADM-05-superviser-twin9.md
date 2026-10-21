@@ -3,7 +3,7 @@
 | Champ | Valeur |
 |---|---|
 | **Acteur principal** | Administrateur (rôle `admin`) |
-| **Acteurs secondaires** | Apprenants et établissements (offre, prix et promotion appliqués à leurs analyses et à leurs profils, UC-APP-09/10/11) ; PayPal (montants des packs) |
+| **Acteurs secondaires** | Apprenants et établissements (offre, prix et promotion appliqués à leurs analyses et à leurs profils, UC-APP-09/10/11) ; PayPal (montants des packs) ; Anthropic (page des prix, relevée chaque jour, A6) ; le déclencheur externe du worker (T18), qui fait le relevé |
 | **Portée** | humanome.xyz — vue `#/admin/twin9` (section « Supervision Twin9 » de l'administration), routes `GET/PUT /api/twin9/admin/config`, `GET /api/twin9/admin/comptes`, `GET /api/twin9/admin/jeux`, `PUT /api/twin9/admin/jeux/defaut` |
 | **Niveau** | Objectif utilisateur |
 | **Cahier des charges** | §3.8 et §4.10 (administration), §7 (modèle économique : coût API + marge) ; ADR-010 §3 et §6 ; décision AD-D2 (`docs/autorisations.md`) |
@@ -13,7 +13,8 @@
 
 Permettre à l'administrateur de piloter l'offre commerciale de Twin9 et de la
 cartographie ouverte Twin6 — contributions (marges), promotion « Twin9 avec sa
-propre clé », packs de recharge, modèles et leurs prix —, de
+propre clé », packs de recharge, modèles et leurs prix, que la plateforme
+relève chaque jour sur la page d'Anthropic (A6) —, de
 fixer le jeu de gabarits par défaut (T14) et de suivre les soldes et cumuls de
 tous les comptes qui utilisent le crédit prépayé, **sans jamais voir le
 contenu des gabarits** (réservé à l'atelier, UC-PRO-08).
@@ -90,7 +91,10 @@ L'administrateur ouvre « Administrer » → « Supervision Twin9 » (`#/admin/t
   refusé (`422`), à l'enregistrement comme au lancement, et un modèle de
   l'offre sert à tout étage d'un profil. Un modèle ne porte que ses prix (et le
   palier des longs prompts, que le formulaire n'édite pas) : ses étages sont
-  partis le 2026-10-20 (voir Limites).
+  partis le 2026-10-20 (voir Limites). Un prix saisi ici tient jusqu'au relevé
+  suivant (A6), qui récrit ceux d'un modèle que la page d'Anthropic donne : la
+  contribution de la plateforme se règle par la marge (RG2), pas par le prix
+  catalogue.
 - ~~**A4 — Réglages hors formulaire**~~ : retiré le 2026-10-20 avec
   l'interrupteur `enabled`, le rythme `appels_par_minute` et les réglages du
   `pipeline`, à la demande de Christian (voir Limites). La fusion de premier
@@ -106,6 +110,21 @@ L'administrateur ouvre « Administrer » → « Supervision Twin9 » (`#/admin/t
   nommait l'ancien jeu par défaut, que son propriétaire ne peut plus choisir,
   il est refusé au lancement jusqu'à ce qu'il en choisisse un autre. Un jeu
   inconnu → `404` « Jeu de gabarits introuvable », affiché.
+- **A6 — Relevé quotidien des prix** (2026-10-21, sans geste de
+  l'administrateur ; Christian : « Corrige la surfacturation de Sonnet et
+  prévois une mise à jour quotidienne de la grille de tarification ») : après sa
+  tranche, le déclencheur du worker (`POST /api/admin/worker-tick`) lit la page
+  des prix d'Anthropic (sa version markdown), une fois par jour UTC, et récrit
+  les prix et le palier long des modèles de l'offre que son tableau « Model
+  pricing » donne (RG9). La grille de juillet, qui facturait Sonnet 5 à 3 $ /
+  15 $ le million quand Anthropic le vend 2 $ / 10 $, est ainsi corrigée au
+  premier tick, sans geste de production. Sous l'offre de modèles, la section
+  affiche le dernier relevé : sa date, les prix changés (avant → après), les
+  modèles absents de la page (prix inchangés), ou l'échec de la dernière
+  tentative et sa raison (« La grille garde ses prix ; le déclencheur réessaie
+  dans l'heure. »). `GET` et `PUT /api/twin9/admin/config` le renvoient
+  (`releve_tarifs`), jamais l'offre publique ; la vue ne le renvoie jamais dans
+  un `PUT`.
 
 ## Scénarios d'erreur
 
@@ -161,12 +180,31 @@ L'administrateur ouvre « Administrer » → « Supervision Twin9 » (`#/admin/t
   l'import écrivait aussi la configuration, en ouvrant l'interrupteur.)
 - **RG8** — Comptes : uniquement ceux qui ont au moins un événement au
   grand-livre ; compteurs et montants seulement.
+- **RG9** — Relevé des prix (A6, `Twin9\TarifsAnthropic`) : dû quand aucun
+  relevé n'a réussi ce jour UTC, et qu'une heure a passé depuis une tentative
+  échouée ; fait sous verrou MySQL (`GET_LOCK`), un seul processus à la fois ;
+  seulement si `ANTHROPIC_API_KEY` est posée (une instance qui ne paie aucun
+  appel Anthropic n'a rien à tarifer). Les colonnes du tableau « Model pricing »
+  sont trouvées par leurs titres (« Model », « Base input tokens », « Output
+  tokens »), l'identifiant d'un modèle par son nom (« Claude Haiku 4.5 » →
+  `claude-haiku-4-5`, qu'un identifiant daté de la grille retrouve sans sa
+  date), les deux lignes de Haiku 5.5 (« up to / over 100,000 tokens ») en un
+  prix de base et un palier long ; aucun autre tableau n'est lu (lots,
+  cache…). Seuls les modèles de l'offre sont récrits — l'offre reste le choix
+  de l'administrateur — ; un modèle absent de la page garde ses prix et est
+  nommé. Une page illisible (réseau, statut HTTP, section, tableau ou colonnes
+  introuvables, prix illisible ou hors de ]0 ; 1000], palier sans prix de base,
+  moins de trois modèles) ne change rien : l'état dit pourquoi, et le dernier
+  relevé réussi reste affiché. Un prix changé laisse l'événement d'audit
+  `twin9_tarifs_mis_a_jour` (modèle, avant, après) ; l'état vit dans le réglage
+  `twin9_tarifs`. Des prix seulement, jamais une donnée personnelle.
 
 ## Données et RGPD
 
 | Donnée | Traitement |
 |---|---|
 | Configuration Twin9 | Réglage `twin9_config` (table `settings`) ; aucune donnée personnelle |
+| Relevé des prix (A6) | Réglage `twin9_tarifs` : source, date, statut, changements, modèles absents ; événement `twin9_tarifs_mis_a_jour` ; aucune donnée personnelle, la page d'Anthropic lue sans rien lui envoyer |
 | Jeu de gabarits par défaut | Réglage `twin9_gabarits_defaut` (son identifiant seul) ; la liste des jeux montre le nom affiché de l'auteur d'une copie, jamais un gabarit |
 | Table des comptes | Nom affiché et email des comptes actifs, solde, cumuls, dernière activité — visibles de l'administrateur seul, jamais de contenu |
 | Prix catalogue et marges | Vue administrateur seulement |
@@ -177,13 +215,15 @@ L'administrateur ouvre « Administrer » → « Supervision Twin9 » (`#/admin/t
 |---|---|---|
 | Front | `web/src/router.js` — `parseHash` ; `web/src/nav.js` — `navGroups` | Route `#/admin/twin9`, entrée réservée à l'admin |
 | Front | `web/src/views/AdminView.jsx` | Garde de session et de rôle, dépêche de la section |
-| Front | `web/src/views/admin/Twin9Section.jsx` | Réglages (diff, validation cliente), jeu de gabarits par défaut, table des comptes |
+| Front | `web/src/views/admin/Twin9Section.jsx` | Réglages (diff, validation cliente), état du relevé des prix (`ReleveTarifs`, A6), jeu de gabarits par défaut, table des comptes |
 | Front | `web/src/api/twin9.js` — `fetchTwin9Config`, `saveTwin9Config`, `fetchComptes`, `fetchJeux`, `fixerJeuDefaut`, `formatUsd` | Client de supervision |
 | API | `GET/PUT /api/twin9/admin/config`, `GET /api/twin9/admin/comptes`, `GET /api/twin9/admin/jeux`, `PUT /api/twin9/admin/jeux/defaut` — `api/src/routes/twin9.php` | Routes de supervision (admin) |
 | API | `api/src/Middleware/RequireRole.php` — `any('admin')` | Garde admin (401 / 403, RG1, E1) — logique unitaire couverte par UC-ADM-01-U10 |
 | API | `api/src/Middleware/CsrfMiddleware.php` | Jeton CSRF des mutations (E5) — logique unitaire couverte par UC-CPT-02-U07 |
 | Domaine | `api/src/Twin9/Twin9Config.php` — `read`, `update`, `defaults`, `publicView` | Configuration effective, validation, vue publique |
 | Domaine | `api/src/Twin9/FactureService.php` — `comptes` | Table de supervision |
+| Domaine | `api/src/Twin9/TarifsAnthropic.php` — `releverSiDu`, `du`, `relever`, `lire`, `appliquer`, `etat` | Relevé quotidien des prix (A6, RG9) |
+| API | `POST /api/admin/worker-tick` — `api/src/routes/worker.php` | Fait le relevé après sa tranche, quand il est dû (compteur `tarifs`) |
 | Domaine | `api/src/Twin9/TemplateSets.php` — `lister`, `defaut`, `fixerDefaut` | Jeux de gabarits, jeu par défaut (A5) |
 | Domaine | `api/src/Packages/SettingsRepository.php` | Persistance |
 
@@ -202,11 +242,16 @@ L'administrateur ouvre « Administrer » → « Supervision Twin9 » (`#/admin/t
 | UC-ADM-05-U07 | `Twin9Section` (comptes), `formatUsd` | Montants en USD (4 décimales sous le centime) ; aucun compte → message | idem |
 | UC-ADM-05-U13 | `AdminView` | Admin → section Twin9 ; non-admin → espace réservé sans appel ; copie statique → message (RG1, E1, E4) | idem |
 | UC-ADM-05-U14 | `Twin9Section` (jeu par défaut) | Jeux par leur nom et leur auteur, sans contenu ; « Enregistrer » désactivé sur le défaut actuel, puis `PUT jeux/defaut {jeu}` (A5) | idem |
+| UC-ADM-05-U19 | `Twin9Section` (`ReleveTarifs`) | L'état du relevé sous l'offre de modèles : aucun relevé, puis ses changements et les modèles absents de la page, ou l'échec et sa raison ; jamais renvoyé dans le `PUT` (A6) | idem |
 | UC-ADM-05-U08 | `Twin9Config::update` | Fusion partielle, persistance de la configuration complète (défauts figés), clé inconnue refusée sans écriture (RG7) | `api/tests/UseCases/Unit/UcAdm05SuperviserTwin9Test.php` |
 | UC-ADM-05-U09 | `Twin9Config::update` | Bornes de chaque réglage (RG2-RG5) ; un modèle ne porte que ses prix (RG4) ; les réglages retirés le 2026-10-20 sont des clés inconnues ; configuration entière inchangée après les refus | idem |
 | UC-ADM-05-U10 | `Twin9Config::update` | **Anomalie 2 figée** : message « 1 et 100 USD » pour une borne à 500 | idem |
 | UC-ADM-05-U11 | `Twin9Config::read`, `publicView` | Défauts, clés obsolètes ignorées (dont les réglages retirés et les étages d'un modèle, effacés au prochain enregistrement) ; vue publique sans marge, sans promotion, sans offre Twin9 (T11) | idem |
 | UC-ADM-05-U12 | `FactureService::comptes` | Comptes actifs, cumuls, ordre ; **anomalie 3 figée** | idem |
+| UC-ADM-05-U15 | `TarifsAnthropic::lire` | Le tableau « Model pricing », colonnes trouvées par leurs titres : un identifiant par nom, liens et notes ôtés, le palier long de Haiku 5.5 ; le tableau d'une autre section jamais lu (RG9) | idem |
+| UC-ADM-05-U16 | `TarifsAnthropic::lire` | Une page qu'on ne sait pas lire est refusée en entier : section, tableau ou colonnes absents, prix illisible ou hors bornes, palier sans prix de base, trop peu de modèles (RG9) | idem |
+| UC-ADM-05-U17 | `TarifsAnthropic::appliquer` | Seuls les modèles de la grille sont récrits, prix et palier long tels que la page les donne (un identifiant daté retrouve son modèle) ; un modèle absent garde ses prix et est nommé ; 2 et 2,0 sont un même prix (RG9) | idem |
+| UC-ADM-05-U18 | `TarifsAnthropic::du`, `relever` | Dû une fois par jour UTC, une heure entre deux tentatives après un échec ; un échec garde le dernier relevé réussi et ne touche pas la grille (RG9) | idem |
 
 ### Tests fonctionnels
 
@@ -230,6 +275,8 @@ L'administrateur ouvre « Administrer » → « Supervision Twin9 » (`#/admin/t
 | UC-ADM-05-F16 | Anomalie 1 | API | Config relue : clés réordonnées par MySQL (cause) | idem |
 | UC-ADM-05-F17 | E5 | API | Session admin sans jeton CSRF ou jeton faux → 403, configuration inchangée | idem |
 | UC-ADM-05-F18 | A5 | IHM | `<App/>` : la copie d'un promptologue choisie → PUT avec CSRF → confirmation, aucun appel aux gabarits ; jeu inconnu → message du serveur | `web/test/usecases/functional/uc-adm-05-superviser-twin9.test.jsx` |
+| UC-ADM-05-F19 | A6 | API | Le déclencheur relève les prix une fois par jour : la grille stockée de juillet (Sonnet 5 à 3 / 15) passe à 2 / 10, l'apprenant le voit sur `/meta`, l'administrateur lit le relevé ; le tick suivant du jour ne relit rien | `api/tests/UseCases/Functional/UcAdm05SuperviserTwin9Test.php` |
+| UC-ADM-05-F20 | A6 | API | Une page des prix illisible ne change rien : le tick répond, la grille garde ses prix, l'administrateur lit l'échec et sa raison ; sans clé de la plateforme, aucun relevé | idem |
 
 ### Tests existants liés (non-régression)
 
@@ -293,6 +340,16 @@ cd web && npx vitest run test/usecases/unit/uc-adm-05 test/usecases/functional/u
   lecture et partent au prochain enregistrement. Aucune migration ne les efface
   encore, ni le réglage `twin9_fiches` : ce serait une contraction, qui attend
   que la release qui ne les lit plus soit stabilisée en production (ADR-008).
+- Le relevé des prix (A6) lit une page de documentation, pas une API : une
+  mise en forme nouvelle de son tableau le fait échouer — la grille garde
+  alors ses derniers prix, et l'échec s'affiche — jusqu'à ce que le code suive.
+  Il ne relit que les modèles de l'offre : ajouter un modèle reste un geste de
+  l'administrateur, et un modèle qu'Anthropic ne liste plus garde son dernier
+  prix (il est nommé parmi les absents). Il n'a lieu que si le
+  déclencheur appelle le worker-tick (T18) et que la clé de la plateforme est
+  posée. Il écrit la grille comme un `PUT` : un enregistrement de
+  l'administrateur au même instant peut perdre ses prix, ou les siens
+  (anomalie 4).
 - Un pack est désigné par sa **position** (`pack_index`) et non par son
   montant : si l'administrateur supprime ou réordonne des packs pendant qu'un
   apprenant a déjà chargé l'offre, le clic de l'apprenant sur « 10 $ » crée un

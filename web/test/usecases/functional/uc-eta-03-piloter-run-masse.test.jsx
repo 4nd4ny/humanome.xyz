@@ -97,8 +97,9 @@ describe('UC-ETA-03 — l’établissement lance et suit un run de masse', () =>
     const block = await estimate()
     expect(block.textContent).toContain('2 membre(s) sélectionné(s), 5 journée(s) au total, soit 40 appels LLM')
     expect(block.textContent).toContain('claude-sonnet-5')
-    // Taille moyenne tirée des dépôts : (9 000 + 4 000) / 5 journées (1.70 $ avec le repli 3 000).
-    expect(screen.getByTestId('etab-cout-estime').textContent).toBe('1.69 $')
+    // Taille moyenne tirée des dépôts : (9 000 + 4 000) / 5 journées (1.13 $ avec le repli 3 000) ;
+    // Sonnet 5 à 2 / 10 (page des prix d'Anthropic, 2026-10-21).
+    expect(screen.getByTestId('etab-cout-estime').textContent).toBe('1.12 $')
     expect(api.callsTo('POST api/etablissement/cohortes/7/runs')).toHaveLength(0)
 
     // 4-6. Confirmation : POST sans liste de membres (tous les déposants), CSRF.

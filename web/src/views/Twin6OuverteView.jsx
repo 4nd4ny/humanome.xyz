@@ -39,6 +39,7 @@ import {
   referentielTwin6,
 } from '../api/twin6.js'
 import { executerTwin6, fichesPourTwin6, twin6CallsFor } from '@engine/twin6/index.js'
+import { sortieMaxAnthropic } from '@engine/providers/limits.js'
 import { listPublishedReferentiels, loadPublishedReferentiel } from '../data/referentiel.js'
 import ReferentielChoice from '../components/ReferentielChoice.jsx'
 import MergeView from './MergeView.jsx'
@@ -81,6 +82,20 @@ function poidsEstimeUsd(texte) {
   const octets =
     typeof TextEncoder !== 'undefined' ? new TextEncoder().encode(texte).length : texte.length
   return Math.max(1, Math.ceil(octets / 1024))
+}
+
+/**
+ * Ce que le serveur réserve sur le crédit le temps d'UN appel, au-delà de son
+ * entrée : toute la sortie que le modèle peut rendre, à son prix contribution
+ * comprise (2026-10-21 — la sortie n'est plus plafonnée). Rendu après l'appel,
+ * mais il doit tenir dans le solde à chaque appel du run.
+ *
+ * @param {string} model
+ * @param {Record<string, [number, number]>} modeles prix [entrée, sortie] en USD / Mtok (offre)
+ */
+function reserveSortieUsd(model, modeles) {
+  const prixSortie = Number(modeles?.[model]?.[1] ?? 0)
+  return (sortieMaxAnthropic(model) * prixSortie) / 1_000_000
 }
 
 export default function Twin6OuverteView({ lib: injectedLib, deps = {} }) {
@@ -221,18 +236,27 @@ export default function Twin6OuverteView({ lib: injectedLib, deps = {} }) {
     if (!peutLancer || running.current) return
     // Garde-fou crédits (demande utilisateur) : ne lancer sur NOTRE clé que si le
     // solde prépayé couvre le poids du portfolio. Heuristique ~1 ko = 1 USD (le
-    // coût réel est réconcilié après le run). Sur clé perso, aucun débit → pas de
-    // garde. Bloque AVANT tout appel facturable, avec un message vers la recharge.
+    // coût réel est réconcilié après le run). Plus la réserve d'un appel, toute
+    // la sortie du modèle (2026-10-21) : sans elle, un solde qui couvre le poids
+    // mais pas la réserve finirait sur un refus au milieu du run, ses premiers
+    // scans payés. Sur clé perso, aucun débit → pas de garde. Bloque AVANT tout
+    // appel facturable, avec un message vers la recharge.
     if (voie === 'credits') {
-      const requisMicro = poidsEstimeUsd(portfolio) * 1_000_000
+      const poids = poidsEstimeUsd(portfolio)
+      const reserve = reserveSortieUsd(model, modeles)
+      const requisMicro = Math.ceil((poids + reserve) * 1_000_000)
       const solde = Number(res.offer?.solde_microusd ?? 0)
       if (solde < requisMicro) {
+        // Arrondis au centime supérieur : le montant affiché ne passe jamais sous le solde qui manque.
+        const auCentime = (usd) => (Math.ceil(usd * 100 - 1e-9) / 100).toFixed(2)
         setRun((r) => ({
           ...r,
           status: 'error',
           error:
-            `Solde insuffisant pour ce portfolio (~${poidsEstimeUsd(portfolio)} $ estimés, ` +
-            `solde ${(solde / 1_000_000).toFixed(2)} $). Rechargez votre crédit ou utilisez votre propre clé API.`,
+            `Solde insuffisant pour ce portfolio avec ce modèle (~${auCentime(poids + reserve)} $ : ` +
+            `${poids} $ estimés, et ${auCentime(reserve)} $ réservés le temps de chaque appel puis rendus ; ` +
+            `solde ${(solde / 1_000_000).toFixed(2)} $). Rechargez votre crédit, choisissez un modèle moins cher ` +
+            `ou utilisez votre propre clé API.`,
         }))
         return
       }

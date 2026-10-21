@@ -754,8 +754,8 @@ describe('runVersionOnDays — usage réel cumulé (D16)', () => {
 describe('realCostUsd — coût réel depuis la table de prix (D16)', () => {
   it('calcule depuis les tokens mesurés, null si modèle hors table ou sans mesure', () => {
     const usage = { inputTokens: 1_000_000, outputTokens: 1_000_000, mesures: 8 }
-    // claude-sonnet : 3 $/M entrée + 15 $/M sortie.
-    expect(realCostUsd(usage, 'claude-sonnet-5')).toBe(18)
+    // claude-sonnet-5 : 2 $/M entrée + 10 $/M sortie (page des prix d'Anthropic, 2026-10-21).
+    expect(realCostUsd(usage, 'claude-sonnet-5')).toBe(12)
     expect(realCostUsd(usage, 'modele-inconnu-de-la-table')).toBeNull()
     expect(realCostUsd({ inputTokens: 0, outputTokens: 0, mesures: 0 }, 'claude-sonnet-5')).toBeNull()
     expect(realCostUsd(null, 'claude-sonnet-5')).toBeNull()

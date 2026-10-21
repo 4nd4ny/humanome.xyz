@@ -27,6 +27,17 @@ final class AnthropicProvider
      */
     public const REQUEST_OVERHEAD_TOKENS = 1024;
 
+    /**
+     * Past this many bytes, a prompt's bound in bytes (one token per byte at
+     * worst) overshoots its tokens by four or so, and decides Haiku 5.5's long
+     * prompt tier wrongly: the demo asks Anthropic for the count instead
+     * (countTokens(), 2026-10-21). Under it, the bound costs a cent at most.
+     */
+    public const COMPTE_AU_DELA = 100_000;
+
+    /** A count is quick: the call it precedes keeps its own timeout. */
+    private const COUNT_TIMEOUT = 15;
+
     public function __construct(
         private readonly HttpClient $http,
         private readonly string $apiKey,
@@ -51,42 +62,13 @@ final class AnthropicProvider
      */
     public function complete(string $model, ?string $system, string $prompt, int $maxTokens, bool $forceJsonDocument = true): array
     {
-        $payload = [
-            'model' => $model,
-            'max_tokens' => $maxTokens,
-            // Some models reason by default; thinking tokens count against
-            // max_tokens while never reaching the text blocks we extract —
-            // observed live: 6144 output tokens for 5444 chars of truncated
-            // text. The demo needs the whole budget as text.
-            'thinking' => ['type' => 'disabled'],
-            // No temperature: rejected as deprecated by current models
-            // (« `temperature` is deprecated for this model », observed live).
-            'messages' => [['role' => 'user', 'content' => $prompt]],
-        ];
-        if ($forceJsonDocument) {
-            // Forced generic tool use: the API's constrained decoding
-            // GUARANTEES syntactically valid JSON — free-text generations
-            // showed a high malformation rate live (key emitted without its
-            // value, twice on the same pole). The tool input becomes `text`.
-            $payload['tools'] = [[
-                'name' => 'emettre_document',
-                'description' => 'Émet le document JSON strict demandé par la consigne.',
-                'input_schema' => ['type' => 'object'],
-            ]];
-            $payload['tool_choice'] = ['type' => 'tool', 'name' => 'emettre_document'];
-        }
-        if ($system !== null && $system !== '') {
-            $payload['system'] = $system;
-        }
+        $payload = ['model' => $model, 'max_tokens' => $maxTokens]
+            + self::requestBody($system, $prompt, $forceJsonDocument);
 
         $response = $this->http->request(
             'POST',
             rtrim($this->baseUrl, '/') . '/v1/messages',
-            [
-                'x-api-key' => $this->apiKey,
-                'anthropic-version' => self::API_VERSION,
-                'content-type' => 'application/json',
-            ],
+            $this->headers(),
             json_encode($payload, JSON_THROW_ON_ERROR | JSON_UNESCAPED_UNICODE),
             $this->timeoutSeconds,
         );
@@ -134,6 +116,84 @@ final class AnthropicProvider
             // ('max_tokens') from a natural stop — silent truncation produced
             // unparseable or fragmentary JSON downstream.
             'stopReason' => (string) ($data['stop_reason'] ?? ''),
+        ];
+    }
+
+    /**
+     * The input tokens of the call complete() would make, as Anthropic counts
+     * them (POST /v1/messages/count_tokens: free, its own rate limit). An
+     * estimate, which may include tokens Anthropic adds and does not bill.
+     * Null when it cannot be had — network, status, body —: the caller then
+     * bounds the prompt by its bytes.
+     */
+    public function countTokens(string $model, ?string $system, string $prompt, bool $forceJsonDocument = true): ?int
+    {
+        try {
+            $response = $this->http->request(
+                'POST',
+                rtrim($this->baseUrl, '/') . '/v1/messages/count_tokens',
+                $this->headers(),
+                json_encode(['model' => $model] + self::requestBody($system, $prompt, $forceJsonDocument),
+                    JSON_THROW_ON_ERROR | JSON_UNESCAPED_UNICODE),
+                min($this->timeoutSeconds, self::COUNT_TIMEOUT),
+            );
+        } catch (HttpClientException) {
+            return null;
+        }
+        if ($response['status'] !== 200) {
+            return null;
+        }
+        $data = json_decode($response['body'], true);
+        $tokens = \is_array($data) ? ($data['input_tokens'] ?? null) : null;
+
+        return \is_int($tokens) && $tokens > 0 ? $tokens : null;
+    }
+
+    /**
+     * What a call sends besides its model and output: thinking, the forced
+     * tool, the system prompt, the message — the same for the call and for
+     * its count.
+     *
+     * @return array<string, mixed>
+     */
+    private static function requestBody(?string $system, string $prompt, bool $forceJsonDocument): array
+    {
+        $body = [
+            // Some models reason by default; thinking tokens count against
+            // max_tokens while never reaching the text blocks we extract —
+            // observed live: 6144 output tokens for 5444 chars of truncated
+            // text. The demo needs the whole budget as text.
+            'thinking' => ['type' => 'disabled'],
+            // No temperature: rejected as deprecated by current models
+            // (« `temperature` is deprecated for this model », observed live).
+            'messages' => [['role' => 'user', 'content' => $prompt]],
+        ];
+        if ($forceJsonDocument) {
+            // Forced generic tool use: the API's constrained decoding
+            // GUARANTEES syntactically valid JSON — free-text generations
+            // showed a high malformation rate live (key emitted without its
+            // value, twice on the same pole). The tool input becomes `text`.
+            $body['tools'] = [[
+                'name' => 'emettre_document',
+                'description' => 'Émet le document JSON strict demandé par la consigne.',
+                'input_schema' => ['type' => 'object'],
+            ]];
+            $body['tool_choice'] = ['type' => 'tool', 'name' => 'emettre_document'];
+        }
+        if ($system !== null && $system !== '') {
+            $body['system'] = $system;
+        }
+
+        return $body;
+    }
+
+    /** @return array<string, string> the key travels here only */
+    private function headers(): array
+    {
+        return [
+            'x-api-key' => $this->apiKey,
+            'anthropic-version' => self::API_VERSION,
+            'content-type' => 'application/json',
         ];
     }
 

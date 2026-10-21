@@ -80,9 +80,10 @@ dans l'en-tête, à côté du bouton d'aide « ? ».
    d'accès aux données personnelles, ne rien révéler), **profil lu dans la
    session** (« visiteur (aucun compte) » sinon), rubrique consultée, digest de
    la documentation.
-6. Il appelle le modèle du tuteur (`TUTEUR_MODEL`, Haiku par défaut) en mode
+6. Il appelle le modèle du tuteur (`TUTEUR_MODEL`, un Haiku, RG6) en mode
    **prose** (aucun outil JSON forcé), 600 tokens de sortie au plus ; il compte
-   tokens et coût estimé sur les compteurs du tuteur et renvoie `{text, usage,
+   tokens et coût estimé (au tarif de la grille des crédits, relevée chaque
+   jour, UC-ADM-05 A6) sur les compteurs du tuteur et renvoie `{text, usage,
    model}` (sans `stopReason` : une réponse tronquée l'est en silence).
 7. Le panneau affiche la réponse, débarrassée du Markdown léger (`**gras**`,
    `__gras__`, `` `code` ``) — jamais interprétée comme HTML.
@@ -137,6 +138,14 @@ dans l'en-tête, à côté du bouton d'aide « ? ».
   les **titres** des chapitres des guides — jamais leur contenu ni d'élément
   confidentiel ; il est déterministe.
 - **RG5** — Rendu en texte simple (pas de parseur Markdown, surface XSS nulle).
+- **RG6** — Un Haiku seulement (2026-10-21, comme la démo, UC-ADM-04 RG9 :
+  « Sonnet et Opus disponibles uniquement pour les comptes ayant acheté
+  suffisamment de crédits API ou bien utilisant leur propre clé ») :
+  `TUTEUR_MODEL` qui nomme un Sonnet ou un Opus est ignoré au profit de
+  Haiku 4.5, le défaut ; un autre Haiku est servi tel quel. Les 600 tokens de
+  sortie restent : c'est la longueur d'une réponse de l'assistant (2 à 5
+  phrases), pas une garde du budget — la sortie de la démo, elle, n'est plus
+  plafonnée.
 
 ## Données et RGPD
 
@@ -203,6 +212,7 @@ dans l'en-tête, à côté du bouton d'aide « ? ».
 | UC-VIS-05-F17 | Anomalie AN1 | API | **Comportement actuel figé** — rubrique libre injectée telle quelle dans la consigne système | idem |
 | UC-VIS-05-F18 | RG5 | IHM | Réponse contenant du HTML affichée comme texte, aucun élément créé | `web/test/usecases/functional/uc-vis-05-interroger-assistant-tuteur.test.jsx` |
 | UC-VIS-05-F19 | Garanties | IHM | Historique de session borné aux 40 derniers messages | idem |
+| UC-VIS-05-F20 | RG6 | API | Un Sonnet ou un Opus dans `TUTEUR_MODEL` → Haiku 4.5 appelé ; un autre Haiku (5.5) servi tel quel | `api/tests/UseCases/Functional/UcVis05InterrogerTuteurTest.php` |
 
 ### Tests existants liés (non-régression)
 

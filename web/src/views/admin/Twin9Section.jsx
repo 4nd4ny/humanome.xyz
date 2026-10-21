@@ -48,6 +48,73 @@ function draftFromConfig(config) {
   }
 }
 
+/** « 2 / 10 » : les prix [entrée, sortie] d'un modèle, en USD par million de jetons. */
+function prixLisibles(tarif) {
+  const p = tarif?.prix_usd_mtok
+  if (!Array.isArray(p)) return '—'
+  const palier = tarif.palier_long
+  return `${p[0]} / ${p[1]}` + (palier ? ` (au-delà de ${palier.au_dela_de} jetons : ${palier.prix_usd_mtok?.[0]} / ${palier.prix_usd_mtok?.[1]})` : '')
+}
+
+/** Horodatage unix (s) -> date/heure française ('—' si absent). */
+function frUnix(t) {
+  return typeof t === 'number' ? new Date(t * 1000).toLocaleString('fr-FR') : '—'
+}
+
+/**
+ * Le relevé quotidien des prix d'Anthropic (2026-10-21) : le déclencheur lit leur
+ * page une fois par jour et récrit les prix des modèles de l'offre ; son dernier
+ * état, tel que le serveur le garde (releve_tarifs, null avant le premier).
+ */
+function ReleveTarifs({ releve }) {
+  const intro = (
+    <>
+      Prix relevés chaque jour sur{' '}
+      <a href="https://platform.claude.com/docs/en/about-claude/pricing" target="_blank" rel="noreferrer">
+        la page des prix d’Anthropic
+      </a>{' '}
+      par le déclencheur, pour les modèles de l’offre : une correction à la main tient jusqu’au relevé suivant.
+    </>
+  )
+  if (!releve) {
+    return (
+      <div className="privacy-note" data-testid="twin9-releve-tarifs">
+        <p>{intro} Aucun relevé encore.</p>
+      </div>
+    )
+  }
+  const changements = Array.isArray(releve.changements) ? releve.changements : []
+  const absents = Array.isArray(releve.absents) ? releve.absents : []
+  return (
+    <div className="privacy-note" data-testid="twin9-releve-tarifs">
+      <p>
+        {intro}{' '}
+        {releve.releve_at
+          ? `Dernier relevé réussi : ${frUnix(releve.releve_at)}${changements.length === 0 ? ', aucun prix changé.' : ' :'}`
+          : 'Aucun relevé réussi encore.'}
+      </p>
+      {changements.length > 0 ? (
+        <ul>
+          {changements.map((c) => (
+            <li key={c.modele}>
+              {c.modele} : {prixLisibles(c.avant)} → {prixLisibles(c.apres)} $ par million de jetons
+            </li>
+          ))}
+        </ul>
+      ) : null}
+      {absents.length > 0 ? (
+        <p>Absents de la page, prix inchangés : {absents.join(', ')}.</p>
+      ) : null}
+      {releve.statut === 'echec' ? (
+        <p role="alert" className="admin-message">
+          Dernière tentative, {frUnix(releve.tentative_at)} : échec ({releve.erreur}). La grille garde ses prix ;
+          le déclencheur réessaie dans l’heure.
+        </p>
+      ) : null}
+    </div>
+  )
+}
+
 /**
  * Réglages Twin9 : marge (1..5), packs (montant + libellé, ajout/suppression),
  * offre de modèles (id, prix [in, out] ; un profil ne demande à un modèle que
@@ -279,6 +346,7 @@ function ReglagesBloc({ config, fetchFn, onSaved }) {
       </button>
 
       <h4>Offre de modèles</h4>
+      <ReleveTarifs releve={config?.releve_tarifs ?? null} />
       <ul className="twin9-admin-modeles">
         {draft.modeles.map((m, i) => (
           <li key={i} className="twin9-admin-modele">

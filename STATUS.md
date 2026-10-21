@@ -27,9 +27,74 @@ plus de structure imposée, et tous les parcours lisent la structure du référe
 (#15, fusionnée le 2026-10-20) ; puis les gabarits Twin6 versionnés et les vestiges de T11 retirés
 (#16, arrivée dans `main` le 2026-10-21 avec la documentation des fiches des référentiels
 importés). Entrées du 2026-10-20. Puis, le 2026-10-21 : la démo à 1 $ par jour, qui tient, et
-l'essai gratuit de la cartographie ouverte (#20).
+l'essai gratuit de la cartographie ouverte (#20) ; les prix d'Anthropic relevés chaque jour (Sonnet 5
+n'est plus surfacturé), la sortie des appels sans plafond et Haiku seul pour la démo (#21, empilée
+sur #20). Suite annoncée par Christian : basculer le site sur l'OVH pour la démonstration, à son feu
+vert.
 
 ## Fait
+
+- 2026-10-21 — **Prix d'Anthropic relevés chaque jour, sortie sans plafond, Haiku seul pour la
+  démo (branche `feat/tarifs-et-sorties`, empilée sur `feat/demo-un-dollar`).** Christian :
+  « Corrige la surfacturation de Sonnet et prévois une mise à jour quotidienne de la grille de
+  tarification. Ok pour lever le plafond des tokens de sortie. Du moment qu'un utilisateur ne
+  dépense pas plus que le budget global alloué au site. Mais si le prompt est déjà passé et les
+  tokens déjà dépensés, ne pas limiter sur la longueur de la sortie qui aurait déjà été facturée
+  […]. On garde Haiku pour les démos. Sonnet et Opus disponibles uniquement pour les comptes ayant
+  acheté suffisamment de crédits API ou bien utilisant leur propre clé. »
+  - **Sonnet 5 au juste prix.** La page des prix d'Anthropic (2026-10-21) donne Sonnet 5 et 5.5 à
+    2 $ / 10 $ le million — la hausse à 3 / 15 annoncée pour le 1er septembre n'a pas eu lieu —,
+    Opus 5.5 à 4 / 20, Fable et Mythos à 10 / 50 : la grille par défaut (`Twin9Config`), `Pricing`
+    et la table indicative du moteur (`estimate.js`) les suivent. Un apprenant payait Sonnet 5 une
+    fois et demie son prix, avant la contribution.
+  - **Le relevé quotidien** (`Twin9\TarifsAnthropic`). Après sa tranche, le déclencheur du worker
+    lit la page des prix (sa version markdown), une fois par jour UTC — une heure entre deux
+    tentatives après un échec, sous verrou MySQL, là où `ANTHROPIC_API_KEY` est posée —, et récrit
+    prix et palier long des modèles de l'offre que son tableau « Model pricing » donne ; il nomme
+    ceux qu'il ne donne pas et ne change rien d'une page qu'il ne sait pas lire. Audit
+    `twin9_tarifs_mis_a_jour` ; état dans le réglage `twin9_tarifs`, affiché sous l'offre de
+    modèles de `#/admin/twin9`. La démo, le tuteur et la masse tarifent aussi sur la grille (puis
+    sur `Pricing` pour un modèle qu'elle n'offre pas). La grille stockée en production (Sonnet 5 à
+    3 / 15) se corrige au premier tick du déclencheur de T18, sans autre geste — à la main dans
+    `#/admin/twin9` d'ici là. UC-ADM-05 A6, RG9, U15 à U19, F19, F20 ; `docs/deploiement.md`.
+  - **La sortie sans plafond.** Chaque appel demande tout ce que le modèle peut rendre
+    (`Llm\ModelLimits`, `engine/src/providers/limits.js` : 128 000 tokens pour les modèles à un
+    million de contexte — Haiku 5.5, Sonnet 5.x et 4.6, Opus 5.x et 4.6 à 4.8, Fable, Mythos —, 64 000
+    pour Haiku 4.5 et les autres 4.5) : la démo, la voie crédits de Twin6 (défaut et borne : 8 192
+    et 16 000 avant), le moteur Twin6 et la clé personnelle Anthropic de l'assistant. Le réglage
+    `maxTokensPerRequest` et `DEMO_MAX_TOKENS_PER_REQUEST` disparaissent (422 ; une valeur stockée
+    part au prochain enregistrement). Le budget tient par la réservation du pire cas, sortie
+    entière comprise, **avant** l'appel : un appel qu'il ne couvre pas ne part pas (démo : 503 ;
+    crédits : 402), une réponse n'est jamais coupée pour le tenir. Au-delà de 100 000 octets,
+    l'entrée réservée par la démo est le compte d'Anthropic (`POST /v1/messages/count_tokens`,
+    gratuit, +2 % et 64 tokens ; les octets s'il ne répond pas) : sans lui, une synthèse de Twin6
+    sous les 100 000 tokens aurait été réservée au palier long de Haiku 5.5 — 0,48 $ au lieu de
+    0,07 $ pour 300 000 caractères de français.
+    `maxInputChars` passe à 2 000 000 (borne 4 000 000), pour cette synthèse, dont les scans n'ont
+    plus de plafond. Le garde-fou de Twin6 compte aussi la réserve d'un appel (≈ 1,41 $ pour
+    Sonnet 5) : sans elle, un solde qui couvre le poids du portfolio finissait sur un 402 après
+    les premiers scans payés. Avec Haiku 5.5, un appel de la démo réserve ≈ 0,07 $ : une quinzaine
+    au plus sont en vol à la fois sous le dollar du jour, et ses derniers ≈ 0,07 $ ne servent pas.
+    UC-ADM-04 RG8, U29 ; UC-VIS-03 RG4, U26, F26 ; UC-APP-09 A3, RG3 à RG5, RG11, U37 ; UC-APP-02 ;
+    `docs/securite-demo.md`, angle 3.
+  - **Haiku seul pour la démo et le tuteur.** `DemoConfig` prend le premier Haiku de base > env >
+    fichier, sinon Haiku 5.5, et nomme les autres (`modelRefuse`, alerte de `#/admin/reglages`) ;
+    un `PUT` Sonnet ou Opus reçoit un 422. Le `DEMO_MODEL=claude-sonnet-5` du `.env` de production
+    est donc ignoré, sans geste. `TUTEUR_MODEL` hors Haiku retombe sur Haiku 4.5. Sonnet et Opus
+    restent aux voies payantes : crédits, clé personnelle, Twin9. L'estimation du Service humanome
+    et du banc prend Haiku 5.5 (`SERVICE_ESTIMATION_MODEL`). UC-ADM-04 RG9, A7, U28, F23 ;
+    UC-VIS-05 RG6, F20.
+  - Remplace, dans l'entrée de la démo ci-dessous : les 16 000 jetons de sortie et les 420 000
+    caractères ; le geste « sortie 16 000, entrée 420 000 » (plus de champ de sortie, l'entrée se
+    laisse au fichier ou se règle à 2 000 000) ; « à aligner » pour `SERVICE_ESTIMATION_MODEL` ;
+    la décision sur la grille ; la sortie de 8 192 des voies payantes de Twin6.
+  - **Gestes en production**, au déploiement (feu vert de Christian) : aucun pour les prix ni pour
+    le modèle. Dans `#/admin/reglages`, `maxInputChars` à 2 000 000 si une surcharge ou le `.env`
+    le fixe plus bas, et retirer la surcharge de sortie si la page en garde une (elle ne sert
+    plus).
+  - **Points ouverts**, aux « Dettes techniques » : le délai de 150 s borne encore ce qu'un appel
+    peut rendre ; le tuteur et la masse gardent leurs plafonds ; la masse tourne par défaut sur
+    Sonnet 4.5, retiré le 2026-11-30.
 
 - 2026-10-21 — **Démo à 1 $ par jour, essai gratuit de la cartographie ouverte (branche
   `feat/demo-un-dollar`).** Christian : « Twin6 : en version gratuite, mettre une limite de 1 USD de
@@ -2510,6 +2575,22 @@ l'essai gratuit de la cartographie ouverte (#20).
 - **i18n** (internationalisation de l'UI, aujourd'hui français uniquement).
 
 ## Dettes techniques / décisions en attente
+
+- Sortie sans plafond (2026-10-21) : le délai amont borne encore ce qu'un appel peut rendre —
+  150 s pour la démo (`upstreamTimeoutSeconds`) comme pour la voie crédits (`AnthropicCaller`).
+  Une sortie plus longue que ce que le modèle écrit dans ce délai est perdue : la démo garde la
+  réservation (son budget paie ce qu'Anthropic a pu facturer), la voie crédits la rend (la
+  plateforme le paie, sans plafond : un compte crédité peut le provoquer à la chaîne, sur un
+  prompt libre). Remède noté, non codé : l'appel en flux (`stream`), qui garde la connexion,
+  donne l'usage même coupé et permet de le facturer.
+- Plafonds de sortie gardés, à décider : le tuteur (600 tokens, la longueur d'une réponse, et son
+  propre budget de 1 $ — la dépense gratuite du site peut donc atteindre 2 $ par jour) ; la masse
+  (`WORKER_MAX_TOKENS`, 8 192, au budget de l'établissement), qui tourne par défaut sur Sonnet 4.5
+  (`WORKER_MODEL`), retiré par Anthropic le 2026-11-30 ; les fournisseurs autres qu'Anthropic de
+  la clé personnelle (8 192) ; les étapes de Twin9, réglées par son profil.
+- Le relevé des prix lit une page de documentation : une mise en forme nouvelle le fait échouer
+  (affiché, la grille garde ses prix) jusqu'à ce que `TarifsAnthropic::lire` suive. La table
+  indicative du moteur (`engine/src/providers/estimate.js`) ne suit pas le relevé.
 
 - Vestiges de T11 (retirés du code le 2026-10-20) : la base garde le réglage `twin9_fiches` et,
   dans `twin9_config`, `enabled`, `pipeline`, `appels_par_minute` (et des étages sous les modèles)

@@ -152,9 +152,12 @@ page Essayer (UC-VIS-03), ou par l'adresse.
   `anthropic`, l'option « Utiliser ma clé Anthropic enregistrée » est cochée par
   défaut ; au lancement la clé est révélée une fois (`GET /api/keys/anthropic`,
   propriétaire seul) puis utilisée comme en A1, sans ressaisie.
-- **A3 — Plafond de sortie hors bornes** (étape 6) : `max_tokens` (ou l'alias
-  `maxTokens`) est ramené dans [256, 16 000] ; un arrêt `max_tokens` est relayé
-  tel quel (`stopReason`) pour que le moteur échoue explicitement (E5).
+- **A3 — Sortie demandée hors bornes** (étape 6) : `max_tokens` (ou l'alias
+  `maxTokens`) est ramené dans [256, maximum du modèle] — 128 000 pour Sonnet 5,
+  Opus 5.5 ou Haiku 5.5, 64 000 pour Haiku 4.5 (`Llm\ModelLimits`) ; absent,
+  c'est ce maximum : le moteur ne l'envoie plus (2026-10-21, 16 000 au plus et
+  8 192 par défaut avant). Un arrêt `max_tokens` est relayé tel quel
+  (`stopReason`) pour que le moteur échoue explicitement (E5).
 - **A4 — Autre référentiel publié** (étapes 2-3, 2026-10-20) : l'apprenant
   choisit un autre référentiel dans « Référentiel » ; la vue charge sa dernière
   version et le décompte suit ses pôles (« 6 appels au modèle (5 pôles +
@@ -179,8 +182,9 @@ page Essayer (UC-VIS-03), ou par l'adresse.
   pour les deux autres (« Connectez-vous ») ; ni l'offre (`/api/twin9/meta`)
   ni les clés ne sont lues, et le run lit le document publié du référentiel
   choisi (RG9). Un compte la choisit parmi les trois. Le choix du modèle
-  disparaît : le serveur de la démo impose le sien (`claude-haiku-5-5` par
-  défaut, UC-ADM-04 RG8). Un compteur « n / 5 000 caractères (essai gratuit) »
+  disparaît : le serveur de la démo impose le sien, un Haiku
+  (`claude-haiku-5-5` par défaut, UC-ADM-04 RG8 et RG9) — Sonnet et Opus sont
+  réservés aux voies crédits et clé perso. Un compteur « n / 5 000 caractères (essai gratuit) »
   s'affiche ; au-delà, le bouton reste inactif et la page dit combien retirer
   (RG11). Sans feuille datée — aucune ligne `### AAAA-MM-JJ` —, le bouton reste
   inactif aussi, et la page le dit : les huit appels, payés sur le budget du
@@ -199,9 +203,11 @@ page Essayer (UC-VIS-03), ou par l'adresse.
   503…) produit le même écran, y compris pour un utilisateur connecté.
 - **E2 — Copie statique sans API** (étape 1) : « Cette fonctionnalité nécessite le
   serveur (indisponible sur cette copie statique) ».
-- **E3 — Solde trop bas pour le poids du portfolio** (étape 4, voie crédits) :
-  alerte « Solde insuffisant pour ce portfolio (~N $ estimés, solde S $).
-  Rechargez votre crédit ou utilisez votre propre clé API. » — aucun appel.
+- **E3 — Solde trop bas pour le portfolio et le modèle** (étape 4, voie
+  crédits) : alerte « Solde insuffisant pour ce portfolio avec ce modèle (~T $ :
+  P $ estimés, et R $ réservés le temps de chaque appel puis rendus ; solde
+  S $). Rechargez votre crédit, choisissez un modèle moins cher ou utilisez
+  votre propre clé API. » — aucun appel (RG5).
 - **E4 — Réserve non couverte** (étape 6) : `402 {error: "Solde insuffisant",
   solde_microusd, requis_estime_microusd}` ; l'amont n'est pas appelé ; la vue
   arrête le run et affiche le message ; le bouton redevient cliquable. Les
@@ -210,6 +216,8 @@ page Essayer (UC-VIS-03), ou par l'adresse.
   `stopReason = max_tokens` → le moteur lève « sortie tronquée (max_tokens) à
   l'étape … » ; aucun document partiel. L'appel tronqué est un `200` côté
   serveur : il est facturé au coût réel, comme les appels aboutis avant lui.
+  Depuis le 2026-10-21, chaque appel demande tout ce que le modèle peut rendre :
+  une sortie n'est plus coupée que si elle atteint ce maximum.
 - **E6 — Paquet public introuvable ou invalide, offre illisible** (étape 2) :
   « Paquet Twin6 introuvable (404) » ou « Paquet Twin6 invalide
   (scanPole/kairos/fiches attendus) » ; idem si l'offre `/api/twin9/meta` ne
@@ -259,15 +267,24 @@ page Essayer (UC-VIS-03), ou par l'adresse.
   (jamais arrondi en faveur de l'apprenant, au plus 2 µUSD au-dessus du montant
   exact).
 - **RG3** — Réserve pire-cas **atomique** avant l'appel : entrée = octets du
-  prompt (+ système), sortie = `max_tokens` ; débit conditionnel sans découvert
-  (402 sinon) ; réconciliation au coût réel après l'appel ; remboursement
-  intégral si l'appel échoue.
+  prompt (+ système), sortie = `max_tokens` (par défaut toute la sortie du
+  modèle, RG4), au prix de la grille (relevée chaque jour, UC-ADM-05 A6) ;
+  débit conditionnel sans découvert (402 sinon, avant toute dépense) ;
+  réconciliation au coût réel après l'appel ; remboursement intégral si l'appel
+  échoue. Une sortie sans plafond (2026-10-21) ne fait donc jamais dépenser plus
+  que le solde : un compte qui ne couvre pas le pire cas d'un appel reçoit son
+  402 avant que l'appel parte, jamais une réponse coupée.
 - **RG4** — Bornes serveur : corps ≤ 2 Mo ; `max_tokens` (ou `maxTokens`)
-  entier ramené dans [256, 16 000] (8 192 si les deux sont absents) ; modèle ∈
-  offre ; prompt non vide.
+  entier ramené dans [256, maximum du modèle] (ce maximum si les deux sont
+  absents, `ModelLimits::sortieMax`) ; modèle ∈ offre ; prompt non vide.
 - **RG5** — Garde-fou client avant un run sur crédits : solde ≥ max(1,
-  ⌈octets du portfolio / 1 024⌉) USD (heuristique « ~1 ko = 1 $ ») ; aucune garde
-  sur la voie clé perso.
+  ⌈octets du portfolio / 1 024⌉) USD (heuristique « ~1 ko = 1 $ »), plus la
+  réserve d'un appel — toute la sortie du modèle à son prix Twin6 (≈ 1,41 $
+  pour Sonnet 5 : 128 000 tokens à 11 $ le million, contribution comprise ;
+  ≈ 0,07 $ pour Haiku 5.5), rendue après chaque appel mais qui doit tenir à
+  chacun ; sans elle,
+  un solde qui couvre le poids finirait sur un 402 au milieu du run, ses
+  premiers scans payés (2026-10-21). Aucune garde sur la voie clé perso.
 - **RG6** — Un run = un appel scan-pole par pôle du référentiel du run (pôles
   triés par numéro) + 1 kairos — 8 pour RESPIRE v7 (`twin6CallsFor`). La fiche
   d'un pôle est celle du paquet public quand ses titres « ## CODE — »
@@ -300,13 +317,16 @@ page Essayer (UC-VIS-03), ou par l'adresse.
   (preuve de travail à usage unique, quota par IP, coupe-circuit journalier qui
   réserve le pire cas de chaque appel, UC-VIS-03 RG4) et le budget du jour que
   partage tout ce qui passe par `POST /api/llm` — 1 $ par défaut —, visiteurs et
-  comptes confondus ; le serveur impose modèle, plafond de sortie (16 000 jetons
-  par défaut) et délai (UC-ADM-04). La page borne le portfolio à 5 000
-  caractères (`DEMO_TEXT_MAX_CHARS`) et exige une feuille datée ; le serveur
-  borne l'appel entier (`maxInputChars`, 420 000 par défaut : un scan porte
-  ≈ 56 000 caractères, gabarit public, fiche du pôle et portfolio, et la
-  synthèse les sorties des sept scans, jusqu'à 415 000 caractères quand chacun
-  rend ses 16 000 jetons — UC-APP-09-U35).
+  comptes confondus ; le serveur impose modèle (un Haiku), sortie (le maximum
+  du modèle, 128 000 jetons pour Haiku 5.5, sans plafond depuis le 2026-10-21)
+  et délai (UC-ADM-04). La page borne le portfolio à 5 000 caractères
+  (`DEMO_TEXT_MAX_CHARS`) et exige une feuille datée ; le serveur borne l'appel
+  entier (`maxInputChars`, 2 000 000 par défaut : un scan porte ≈ 56 000
+  caractères, gabarit public, fiche du pôle et portfolio, et la synthèse les
+  sorties des sept scans, qu'aucun plafond ne borne plus — des scans de 64 000
+  jetons chacun y tiennent, UC-APP-09-U35). Chaque appel réserve son pire cas,
+  ≈ 0,07 $ avec Haiku 5.5 : un essai commencé près de la fin du budget du jour
+  peut s'arrêter après ses premiers scans (E14).
 
 ## Données et RGPD
 
@@ -342,6 +362,7 @@ page Essayer (UC-VIS-03), ou par l'adresse.
 | Moteur | `engine/src/twin6/mapper.js` — `twin6ToMergeDocument` | Projection vers `cartographie-merge` |
 | Moteur | `engine/src/providers/index.js` — `createProvider` (direct) | Voie clé perso |
 | API | `POST /api/twin6/appel` — `api/src/routes/twin9.php` | Proxy facturé (voie crédits) |
+| Domaine | `api/src/Llm/ModelLimits.php` — `sortieMax` ; `engine/src/providers/limits.js` — `sortieMaxAnthropic` | La sortie maximale de chaque modèle Claude : défaut et borne du serveur (RG4), défaut du moteur, réserve du garde-fou client (RG5) |
 | API | `GET /api/llm/challenge`, `POST /api/llm` — `api/src/routes/llm.php` ; `api/src/Llm/DemoConfig.php`, `api/src/Llm/Pricing.php` | Proxy de la démo (essai gratuit), ses réglages et son tarif — relèvent de UC-VIS-03 et UC-ADM-04 |
 | API | `api/src/Middleware/CsrfMiddleware.php` | Jeton CSRF des mutations (E12) — logique unitaire couverte par UC-CPT-02-U07 |
 | API | `GET /api/keys/anthropic` — `api/src/routes/keys.php`, `api/src/Keys/KeyVault.php` | Révélation de la clé enregistrée (A2) — garde propriétaire et chiffrement couverts par UC-CPT-04 |
@@ -371,7 +392,8 @@ page Essayer (UC-VIS-03), ou par l'adresse.
 | UC-APP-09-U12 | `executerTwin6` | **Limite figée** : référentiel vide → 1 appel kairos puis échec | idem |
 | UC-APP-09-U31 | `executerTwin6`, `twin6CallsFor`, `fichesPourTwin6`, `twin6ToMergeDocument` | Tout référentiel : cinq pôles lettrés → 6 appels, fiches écrites depuis le document, document qui le nomme et lui est conforme ; RESPIRE à six pôles → 7 appels, document de RESPIRE conforme à sa version (A4, A5, RG6, RG9) | idem |
 | UC-APP-09-U33 | `executerTwin6`, `gabaritsTwin6`, `variablesTwin6` | Paquet servi (1.1.0) : pour RESPIRE v7, les huit prompts de 1.0.0 à l'octet ; pour cinq pôles lettrés, son nom, ses pôles, ses compétences et la forme de ses codes, sans variable restante (RG10) | idem |
-| UC-APP-09-U35 | `buildScanPolePrompt`, `buildKairosPrompt`, `gabaritsTwin6` | Essai gratuit : sur les gabarits servis et RESPIRE v7, les scans d'un portfolio de 5 000 caractères et la synthèse dont les sept scans ont rendu leurs 16 000 jetons (57 600 caractères chacun) tiennent sous les 420 000 caractères par défaut ; cette synthèse dépassait les 200 000 d'avant (RG11) | idem |
+| UC-APP-09-U35 | `buildScanPolePrompt`, `buildKairosPrompt`, `gabaritsTwin6` | Essai gratuit : sur les gabarits servis et RESPIRE v7, les scans d'un portfolio de 5 000 caractères et la synthèse dont les sept scans, sans plafond de sortie, ont rendu chacun 64 000 jetons, la moitié du maximum de Haiku 5.5, tiennent sous les 2 000 000 de caractères par défaut (RG11) | idem |
+| UC-APP-09-U37 | `executerTwin6` | Sans `maxTokens`, chaque appel demande toute la sortie du modèle : 128 000 pour Sonnet 5, 64 000 pour Haiku 4.5, 64 000 pour un Claude que la table ne connaît pas (RG4, 2026-10-21) | idem |
 | UC-APP-09-U13 | `parseHash` | `#/twin6-ouverte` → vue `twin6ouverte` | `web/test/usecases/unit/uc-app-09-cartographie-ouverte-twin6.test.jsx` |
 | UC-APP-09-U14 | `loadTwin6Package` | URL publique, modèle par défaut, HTTP en échec ou paquet incomplet → message (E6) | idem |
 | UC-APP-09-U15 | `makeCreditsProvider` | Corps, jeton CSRF de session, contrat moteur, contribution remontée | idem |
@@ -382,7 +404,7 @@ page Essayer (UC-VIS-03), ou par l'adresse.
 | UC-APP-09-U20 | `formatUsd` | µUSD → « x,yy $ », 4 décimales sous le centime | idem |
 | UC-APP-09-U32 | `referentielTwin6` | RESPIRE : la structure de `/meta` tant qu'elle est celle de la version (ordre indifférent) ; compétence déplacée, pôle en moins, `/meta` vide, autre référentiel → le document (RG9) | idem |
 | UC-APP-09-U28 | `listKeys`, `revealKey` | Liste sans la clé, révélation `GET api/keys/anthropic` (A2) ; la garde propriétaire relève de UC-CPT-04 | idem |
-| UC-APP-09-U29 | `Twin6OuverteView` (isolée) | Garde-fou : ⌈octets / 1024⌉ $ comparé au solde avant tout provider (RG5, E3) | idem |
+| UC-APP-09-U29 | `Twin6OuverteView` (isolée) | Garde-fou : ⌈octets / 1024⌉ $, plus la réserve d'un appel (toute la sortie du modèle à son prix), comparés au solde avant tout provider ; montant requis arrondi au centime supérieur (RG5, E3) | idem |
 | UC-APP-09-U34 | `Twin6OuverteView` (isolée) | Essai gratuit : un visiteur n'a que cette voie, ni offre ni clés lues ; 5 000 caractères au plus, une feuille datée au moins (sinon bouton inactif et la page dit pourquoi) ; la première preuve avant le moteur, qui reçoit le fournisseur de la démo et le modèle indicatif « demo » (A6, RG11) | idem |
 | UC-APP-09-U21 | `Twin9Config::coutMicrousd` | Coût Twin6 ×1,10 arrondi au-dessus, < Twin9 ×1,20 (RG2) | `api/tests/UseCases/Unit/UcApp09CartographieOuverteTwin6Test.php` |
 | UC-APP-09-U22 | `Twin9Config::reserveMicrousd` | Réserve ≥ tout coût réel possible (RG3) | idem |
@@ -401,7 +423,7 @@ page Essayer (UC-VIS-03), ou par l'adresse.
 | UC-APP-09-F03 | A2 | IHM | Clé du profil révélée une fois, 8 appels directs avec elle, aucun appel à `/api/twin6/appel` (voie crédits câblée en échec), « (avec votre clé) » | idem |
 | UC-APP-09-F04 | E1 | IHM | Anonyme : l'essai gratuit seul, invitation à se connecter pour les autres voies ; ni offre ni clés lues | idem |
 | UC-APP-09-F05 | E2 | IHM | Copie statique : fonctionnalité indisponible | idem |
-| UC-APP-09-F06 | E3 | IHM | Solde < poids du portfolio : blocage avant tout appel | idem |
+| UC-APP-09-F06 | E3 | IHM | Solde < poids du portfolio et réserve d'un appel (« ~3.12 $ : 1 $ estimés, et 2.12 $ réservés… ») : blocage avant tout appel | idem |
 | UC-APP-09-F07 | E4 | IHM | 402 en cours de run : arrêt, message, bouton réutilisable | idem |
 | UC-APP-09-F08 | E5 | IHM | Sortie tronquée : échec explicite, pas d'export | idem |
 | UC-APP-09-F09 | E6 | IHM | Paquet public introuvable, ou offre `/meta` en erreur : erreur de chargement, formulaire absent | idem |
@@ -419,7 +441,7 @@ page Essayer (UC-VIS-03), ou par l'adresse.
 | UC-APP-09-F14 | E9 | API | 422 / 413 / 400 (JSON scalaire ou illisible) ; liste JSON ou corps vide → 422 ; avant tout débit | idem |
 | UC-APP-09-F15 | E4 | API | 402 avec montants (réserve exacte), solde intact | idem |
 | UC-APP-09-F17 | E11 | API | 502 / 504 génériques, réserves rendues | idem |
-| UC-APP-09-F18 | A3, E5 | API | `max_tokens` borné (alias accepté, 8 192 par défaut), `stopReason max_tokens` relayé ; l'appel tronqué est facturé au coût réel (solde = recharge − somme des coûts) | idem |
+| UC-APP-09-F18 | A3, E5 | API | `max_tokens` borné à [256, maximum du modèle] (alias accepté ; par défaut toute la sortie, 128 000 pour Sonnet 5), `stopReason max_tokens` relayé ; l'appel tronqué est facturé au coût réel (Sonnet 5 à 2 / 10 ; solde = recharge − somme des coûts) | idem |
 | UC-APP-09-F19 | RGPD | API | Sortie relayée non filtrée à l'apprenant ; grand-livre et audit sans prompt ni sortie | idem |
 | UC-APP-09-F20 | E12 | API | Session sans jeton CSRF ou avec un jeton faux → 403, amont non appelé, solde intact | idem |
 
@@ -451,7 +473,8 @@ cd engine && npx vitest run test/usecases/unit/uc-app-09
    `stop_reason` ; la garde « sortie tronquée (max_tokens) » d'`executerTwin6` ne
    se déclenche donc que sur la voie crédits. Sur la voie clé perso, une sortie
    tronquée échoue plus loin, au parsing JSON, avec un message moins explicite
-   (figé par UC-APP-09-U11).
+   (figé par UC-APP-09-U11). Le cas est devenu rare le 2026-10-21 : chaque
+   appel demande tout ce que le modèle peut rendre.
 2. **Pôle sans aucune présence établie → document non conforme au schéma.**
    `twin6ToMergeDocument` émet alors un domaine sans compétence, ce que le schéma
    `cartographie-merge` refuse (`domains[].competences` : `minItems 1`). Le viewer
@@ -501,15 +524,19 @@ cd engine && npx vitest run test/usecases/unit/uc-app-09
   caractères est celle de la page : un client qui appelle `POST /api/llm`
   lui-même n'est borné que par `maxInputChars`, son quota horaire et le budget
   du jour.
-- **À vérifier au premier run réel : le plafond de sortie des voies payantes.**
-  Le serveur de la démo impose 16 000 jetons par appel à l'essai gratuit ; les
-  voies « crédits » et « clé perso » gardent les 8 192 que `executerTwin6`
-  demande par défaut. Or les sorties du même schéma du prototype de fusion
-  (`assets-existants/merge-prototype/extracted`, 59 journées) font
-  30 500 caractères compacts par pôle en médiane, plus de 8 192 jetons : si un
-  run réel le confirme, ces deux voies tronqueront la moitié des scans
-  (« sortie tronquée (max_tokens) »), et leur plafond devra passer à 16 000.
+- ~~**À vérifier au premier run réel : le plafond de sortie des voies
+  payantes.**~~ Levé le 2026-10-21 (Christian : « Ok pour lever le plafond des
+  tokens de sortie ») : les sorties du même schéma du prototype de fusion
+  (`assets-existants/merge-prototype/extracted`, 59 journées) font 30 500
+  caractères compacts par pôle en médiane, plus que les 8 192 jetons que les
+  voies « crédits » et « clé perso » demandaient ; chaque appel demande
+  désormais tout ce que le modèle peut rendre, sur les trois voies (A3, RG11).
+  Une sortie plus longue prend plus de temps : la voie crédits attend
+  l'amont 150 s au plus (`AnthropicCaller`), et un délai dépassé rend la
+  réserve (E11) alors qu'Anthropic a pu facturer l'appel — c'est la plateforme
+  qui le paie.
 - Le garde-fou de solde (RG5) est une heuristique client ; seul le refus 402
-  serveur (réserve pire-cas) est opposable. Son message arrondit le solde au
-  centime avec un point décimal : un solde de 1,999999 $ s'affiche « solde
-  2.00 $ » face à « ~2 $ estimés » (UC-APP-09-U29).
+  serveur (réserve pire-cas) est opposable. Son message arrondit le montant
+  requis au centime supérieur et le solde au centime le plus proche, avec un
+  point décimal : à moins d'un centime d'écart, les deux peuvent s'afficher
+  égaux (UC-APP-09-U29).

@@ -85,7 +85,7 @@ describe('AdminView — garde de rôle', () => {
           enabled: true,
           provider: 'anthropic',
           model: 'claude-haiku-4-5-20251001',
-          maxTokensPerRequest: 2048,
+          sortieMax: 64000,
           maxInputChars: 20000,
           perIpPerHour: 20,
           dailyGlobalTokens: 2000000,

@@ -215,7 +215,7 @@ final class UcApp09CartographieOuverteTwin6Test extends CartographeTestCase
         self::assertSame(2, \count(array_keys($labels, 'twin6/cartographie (remboursement échec)', true)));
     }
 
-    #[TestDox('UC-APP-09-F18 — A3, E5 : max_tokens borné à [256, 16000] (alias maxTokens, 8 192 par défaut) ; stop « max_tokens » relayé ET facturé au coût réel')]
+    #[TestDox('UC-APP-09-F18 — A3, E5 : max_tokens borné à [256, maximum du modèle] (alias maxTokens ; par défaut toute la sortie du modèle, 128 000 pour Sonnet 5, 2026-10-21) ; stop « max_tokens » relayé ET facturé au coût réel')]
     public function testF18MaxTokensBoundsAndTruncationSignal(): void
     {
         $this->crediter(50_000_000);
@@ -226,8 +226,8 @@ final class UcApp09CartographieOuverteTwin6Test extends CartographeTestCase
 
         $couts = [];
         $couts[] = self::json($this->appel(['max_tokens' => 10]))['cout_microusd'];
-        $couts[] = self::json($this->appel(['max_tokens' => null, 'maxTokens' => 99_999]))['cout_microusd'];
-        // Ni max_tokens ni maxTokens : défaut serveur 8 192.
+        $couts[] = self::json($this->appel(['max_tokens' => null, 'maxTokens' => 999_999]))['cout_microusd'];
+        // Ni max_tokens ni maxTokens : toute la sortie du modèle (2026-10-21, 8 192 avant).
         $couts[] = self::json($this->as_($this->apprenant, 'POST', '/api/twin6/appel', [
             'model' => 'claude-sonnet-5',
             'prompt' => 'Scanne le pôle 2.',
@@ -236,13 +236,13 @@ final class UcApp09CartographieOuverteTwin6Test extends CartographeTestCase
         $couts[] = $tronque['cout_microusd'];
 
         self::assertSame(256, json_decode((string) $this->http->requests[0]['body'], true)['max_tokens']);
-        self::assertSame(16000, json_decode((string) $this->http->requests[1]['body'], true)['max_tokens']);
-        self::assertSame(8192, json_decode((string) $this->http->requests[2]['body'], true)['max_tokens']);
+        self::assertSame(128000, json_decode((string) $this->http->requests[1]['body'], true)['max_tokens'], 'le maximum de Sonnet 5');
+        self::assertSame(128000, json_decode((string) $this->http->requests[2]['body'], true)['max_tokens']);
         self::assertSame('max_tokens', $tronque['stopReason'], 'le moteur échoue explicitement sur ce signal');
         self::assertSame('{"tronq', $tronque['text']);
         // E5 : l'appel tronqué est un 200 côté serveur — facturé au coût réel
-        // ((10×3 + 256×15) × 1,10 = 4 257 µUSD), comme les appels aboutis avant lui.
-        self::assertSame(4257, $tronque['cout_microusd']);
+        // ((10×2 + 256×10) × 1,10 = 2 838 µUSD, Sonnet 5 à 2 / 10), comme les appels aboutis avant lui.
+        self::assertSame(2838, $tronque['cout_microusd']);
         self::assertSame(50_000_000 - array_sum($couts), $this->solde());
     }
 

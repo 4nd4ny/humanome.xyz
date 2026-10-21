@@ -56,6 +56,7 @@ use Humanome\Env;
 use Humanome\Keys\KeyVault;
 use Humanome\Llm\HttpClientException;
 use Humanome\Llm\LlmRuntime;
+use Humanome\Llm\ModelLimits;
 use Humanome\Middleware\RequireRole;
 use Humanome\Packages\SettingsRepository;
 use Humanome\Twin9\AnthropicCaller;
@@ -64,6 +65,7 @@ use Humanome\Twin9\FactureService;
 use Humanome\Twin9\PayPalClient;
 use Humanome\Twin9\ProtocoleRepository;
 use Humanome\Twin9\SoldeInsuffisantException;
+use Humanome\Twin9\TarifsAnthropic;
 use Humanome\Twin9\TemplateSets;
 use Humanome\Twin9\Twin9Config;
 use Humanome\Twin9\Twin9Exception;
@@ -262,9 +264,15 @@ return function (App $app): void {
     // ==================================================================
 
     // GET /api/twin9/admin/config — effective config (admin shape: raw list
-    // prices + margin; the front only ever sees Twin9Config::publicView()).
+    // prices + margin; the front only ever sees Twin9Config::publicView()),
+    // and the state of the daily reading of Anthropic's prices
+    // (releve_tarifs, TarifsAnthropic; null before the first), which no PUT
+    // takes.
     $app->get('/twin9/admin/config', $wrap(function (Request $request, Response $response) use ($json): Response {
-        return $json($response, (new Twin9Config(new SettingsRepository(Db::get())))->read());
+        $settings = new SettingsRepository(Db::get());
+
+        return $json($response, (new Twin9Config($settings))->read()
+            + ['releve_tarifs' => TarifsAnthropic::etat($settings)]);
     }))->add($admin);
 
     // PUT /api/twin9/admin/config {champs partiels} — 422 out of bounds
@@ -274,8 +282,10 @@ return function (App $app): void {
         if (!\is_array($body)) {
             return $json($response, ['error' => 'Corps JSON invalide : objet attendu'], 400);
         }
+        $settings = new SettingsRepository(Db::get());
 
-        return $json($response, (new Twin9Config(new SettingsRepository(Db::get())))->update($body));
+        return $json($response, (new Twin9Config($settings))->update($body)
+            + ['releve_tarifs' => TarifsAnthropic::etat($settings)]);
     }))->add($admin);
 
     // ==================================================================
@@ -365,11 +375,17 @@ return function (App $app): void {
             return $json($response, ['error' => 'Champ requis : prompt'], 422);
         }
         $system = \is_string($body['system'] ?? null) ? $body['system'] : null;
-        $maxTokens = $body['max_tokens'] ?? $body['maxTokens'] ?? 8192;
+        // The model's whole output by default, its maximum at most (2026-10-21,
+        // « Ok pour lever le plafond des tokens de sortie ») — 16,000 before:
+        // a cut answer is billed and lost. The reservation below holds its
+        // worst case on the credits: an account that cannot cover it gets its
+        // 402 before anything is spent.
+        $sortieMax = ModelLimits::sortieMax($modele);
+        $maxTokens = $body['max_tokens'] ?? $body['maxTokens'] ?? $sortieMax;
         if (!\is_int($maxTokens)) {
             return $json($response, ['error' => 'Champ max_tokens invalide : entier attendu'], 422);
         }
-        $maxTokens = max(256, min(16000, $maxTokens));
+        $maxTokens = max(256, min($sortieMax, $maxTokens));
 
         // Worst-case reservation at the TWIN6 margin (+10 %), atomic (no
         // overdraft), reconciled to the real cost after (security finding A),

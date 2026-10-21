@@ -17,7 +17,9 @@ use Humanome\Packages\SettingsRepository;
  *   modeles   map model_id => {prix_usd_mtok: [in, out] (>0), palier_long?:
  *             {au_dela_de: prompt tokens (>0), prix_usd_mtok: [in, out] (>0)}}
  *             — the long prompt tier some models bill above a prompt size
- *             (Haiku 5.5, T10); a profile asks a model for its price only
+ *             (Haiku 5.5, T10); a profile asks a model for its price only.
+ *             Anthropic's list prices: TarifsAnthropic reads them again once
+ *             a day and writes them over the grid's models (2026-10-21)
  *   runs_par_tick         int, the Twin9 runs a tick advances at most (1..20,
  *                         default 3 — ADR-011 §2)
  *   secondes_par_tranche  int, the length of a tick's slice in seconds
@@ -93,17 +95,21 @@ final class Twin9Config
                 ['montant_usd' => 200, 'libelle' => 'Pack cohorte — 200 $'],
                 ['montant_usd' => 500, 'libelle' => 'Pack établissement — 500 $'],
             ],
+            // Anthropic's list prices, which TarifsAnthropic reads again every
+            // day and writes over these (2026-10-21). Sonnet 5 costs 2 / 10 since
+            // its launch: the rise to 3 / 15 announced for 2026-09-01 did not
+            // happen, and the grid billed it half again too much until then.
             'modeles' => [
                 'claude-haiku-4-5-20251001' => [
                     'prix_usd_mtok' => [1, 5],
                 ],
                 'claude-sonnet-5' => [
-                    'prix_usd_mtok' => [3, 15],
+                    'prix_usd_mtok' => [2, 10],
                 ],
                 'claude-opus-4-8' => [
                     'prix_usd_mtok' => [5, 25],
                 ],
-                // The v9.8 profile's models (T10), at Anthropic's list prices read on 2026-10-18
+                // The v9.8 profile's models (T10), at Anthropic's list prices read on 2026-10-21
                 // (platform.claude.com/docs/en/about-claude/pricing): Haiku 5.5 bills a prompt
                 // over 100,000 tokens at its long prompt tier.
                 'claude-haiku-5-5' => [

@@ -17,6 +17,7 @@ import {
   createProvider,
   estimateRun,
   getModelPricing,
+  sortieMaxAnthropic,
 } from '@engine/providers/index.js'
 import { callsPerDayFor, mergeNarrativeCallsFor } from '@engine/providers/estimate.js'
 import { createRun, createIndexedDbStorage } from '@engine/runs/index.js'
@@ -30,7 +31,12 @@ import { createDemoProvider, DEMO_MODEL, DEMO_MAX_TOKENS } from './demo-llm.js'
 
 export const KEYS_STORAGE_KEY = 'humanome-keys'
 
-/** Budget de sortie par appel — leçon M5 : 8192 tokens en production. */
+/**
+ * Budget de sortie par appel d'un fournisseur autre qu'Anthropic (leçon M5 :
+ * 8192 tokens), dont la plateforme ne connaît pas le maximum de chaque modèle.
+ * Un modèle Anthropic demande tout ce qu'il peut rendre (sortieMaxAnthropic,
+ * 2026-10-21 : une réponse coupée est payée et perdue).
+ */
 export const RUN_MAX_TOKENS = 8192
 
 /** Fournisseurs proposés pour « Clé personnelle » (engine SUPPORTED_PROVIDERS). */
@@ -56,8 +62,11 @@ export const BUILTIN_PACKAGE = Object.freeze({
   builtin: true,
 })
 
-/** Modèle de référence pour ESTIMER un run « Service humanome » (prod M5). */
-export const SERVICE_ESTIMATION_MODEL = 'claude-sonnet-5'
+/**
+ * Modèle de référence pour ESTIMER un run « Service humanome » : celui de la
+ * démo, qui le sert (2026-10-21, « On garde Haiku pour les démos »).
+ */
+export const SERVICE_ESTIMATION_MODEL = 'claude-haiku-5-5'
 
 // --- Clés API locales (localStorage 'humanome-keys') ------------------------
 
@@ -267,7 +276,7 @@ export function createProviderBundle({ mode, provider, apiKey, model, fetchFn, o
     }),
     prime: null,
     model: resolvedModel,
-    maxTokens: RUN_MAX_TOKENS,
+    maxTokens: def.id === 'anthropic' ? sortieMaxAnthropic(resolvedModel) : RUN_MAX_TOKENS,
     estimationModel: resolvedModel,
   }
 }

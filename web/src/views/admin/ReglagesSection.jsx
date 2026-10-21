@@ -7,7 +7,10 @@
 //   api/admin/demo-config (effet immédiat, sans redéploiement) ;
 //   Réinitialiser = DELETE (retour env/fichier). La clé API n'est jamais
 //   affichée (seulement « configurée » / « absente ») et le fournisseur
-//   n'est pas éditable (clé plateforme Anthropic).
+//   n'est pas éditable (clé plateforme Anthropic). Depuis le 2026-10-21, le
+//   modèle est un Haiku (un Sonnet ou un Opus d'une couche est refusé, et la
+//   page le dit), et la sortie d'un appel n'est plus un réglage : le maximum
+//   du modèle, affiché.
 // - version de prompt par défaut (settings default_prompt_package, P10) ;
 // - état du worker de masse : jobs en file, par statut, dernière activité.
 
@@ -30,11 +33,10 @@ function money(usd) {
 
 /** Champs numériques éditables de la démo, dans l'ordre d'affichage. */
 const DEMO_NUMERIC_FIELDS = [
-  { name: 'maxTokensPerRequest', label: 'Tokens max par requête', min: 256, max: 16000 },
   { name: 'dailyBudgetUsd', label: 'Budget quotidien (USD)', min: 0, max: 1000, float: true },
   { name: 'perIpPerHour', label: 'Requêtes / IP / heure', min: 1, max: 1000 },
   { name: 'powDifficultyBits', label: 'Preuve de travail (bits)', min: 8, max: 24 },
-  { name: 'maxInputChars', label: 'Entrée max (caractères)', min: 1000, max: 500000 },
+  { name: 'maxInputChars', label: 'Entrée max (caractères)', min: 1000, max: 4000000 },
   { name: 'upstreamTimeoutSeconds', label: 'Délai amont (secondes)', min: 10, max: 300 },
   { name: 'dailyGlobalTokens', label: 'Tokens globaux / jour', min: 10000, max: 50000000 },
 ]
@@ -83,6 +85,7 @@ function DemoSettings({ config, busy, onToggle, onSave, onReset }) {
   const effective = config?.effective ?? {}
   const sources = config?.sources ?? {}
   const allowed = Array.isArray(config?.allowedModels) ? config.allowedModels : []
+  const refuses = Array.isArray(config?.modelRefuse) ? config.modelRefuse : []
   const enabled = Boolean(effective.enabled)
 
   function set(name, value) {
@@ -178,7 +181,7 @@ function DemoSettings({ config, busy, onToggle, onSave, onReset }) {
               <input
                 type="text"
                 aria-label="Identifiant de modèle libre"
-                placeholder="ex. claude-fable-5"
+                placeholder="un Haiku, ex. claude-haiku-4-5"
                 value={draft.model}
                 disabled={busy}
                 onChange={(event) => set('model', event.target.value)}
@@ -187,6 +190,22 @@ function DemoSettings({ config, busy, onToggle, onSave, onReset }) {
             <SourceBadge sources={sources} field="model" />
           </div>
         </div>
+        <p className="privacy-note">
+          La démo reste sur Haiku : Sonnet et Opus sont réservés aux comptes qui ont acheté des crédits ou
+          utilisent leur propre clé.
+        </p>
+        {refuses.length > 0 ? (
+          <p role="alert" className="admin-message" data-testid="demo-model-refuse">
+            Modèle refusé :{' '}
+            {refuses.map((r) => `${r.valeur} (${SOURCE_LABELS[r.source] ?? r.source})`).join(', ')} — la démo
+            emploie {effective.model}.
+          </p>
+        ) : null}
+        <p className="privacy-note" data-testid="demo-sortie">
+          Sortie par appel : le maximum du modèle,{' '}
+          <strong>{Number(effective.sortieMax ?? 0).toLocaleString('fr-FR')} jetons</strong>, sans plafond — son
+          pire cas est réservé sur le budget du jour avant l’appel.
+        </p>
 
         {DEMO_NUMERIC_FIELDS.map((field) => (
           <div className="admin-field" key={field.name}>

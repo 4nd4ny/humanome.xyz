@@ -9,7 +9,9 @@ use Humanome\MigrationRunner;
 use Humanome\Packages\SettingsRepository;
 use Humanome\Tests\TestDb;
 use Humanome\Twin9\CreditService;
+use Humanome\Tests\LlmFakeHttpClient;
 use Humanome\Twin9\FactureService;
+use Humanome\Twin9\TarifsAnthropic;
 use Humanome\Twin9\Twin9Config;
 use Humanome\Twin9\Twin9Exception;
 use PDO;
@@ -38,7 +40,14 @@ final class UcAdm05SuperviserTwin9Test extends TestCase
     protected function setUp(): void
     {
         self::$pdo->exec('DELETE FROM users');
-        self::$pdo->exec("DELETE FROM settings WHERE name = 'twin9_config'");
+        self::$pdo->exec("DELETE FROM settings WHERE name IN ('twin9_config', 'twin9_tarifs')");
+        self::$pdo->exec('DELETE FROM audit_events');
+    }
+
+    /** La page des prix d'Anthropic, réduite (fixture). */
+    private static function page(): string
+    {
+        return (string) file_get_contents(\dirname(__DIR__, 2) . '/fixtures/tarifs-anthropic.md');
     }
 
     private static function config(): Twin9Config
@@ -189,5 +198,126 @@ final class UcAdm05SuperviserTwin9Test extends TestCase
             ['user_id' => $ids['Léa'], 'email' => 'lea@example.org', 'nom' => 'Léa', 'solde_microusd' => 6_000_000, 'recharges_microusd' => 10_000_000, 'consomme_microusd' => 4_000_000, 'derniere_activite' => '2026-07-05 10:00:00'],
             ['user_id' => $ids['École fictive'], 'email' => 'ecole@example.org', 'nom' => 'École fictive', 'solde_microusd' => 150_000_000, 'recharges_microusd' => 200_000_000, 'consomme_microusd' => 50_000_000, 'derniere_activite' => '2026-07-01 10:00:00'],
         ], (new FactureService(self::$pdo))->comptes());
+    }
+
+    #[TestDox('UC-ADM-05-U15 — relevé des prix (RG9) : le tableau « Model pricing » de la page d’Anthropic, colonnes trouvées par leurs titres — un identifiant par nom, les liens et notes ôtés, le palier long de Haiku 5.5 ; le tableau d’une autre section jamais lu')]
+    public function testU15PricingPageIsRead(): void
+    {
+        $tarifs = TarifsAnthropic::lire(self::page());
+
+        self::assertSame([
+            'claude-fable-5-1', 'claude-mythos-5-1', 'claude-opus-5-5', 'claude-opus-4-8', 'claude-opus-4-1',
+            'claude-sonnet-5-5', 'claude-sonnet-5', 'claude-haiku-5-5', 'claude-haiku-4-5',
+        ], array_keys($tarifs));
+        self::assertSame(['prix_usd_mtok' => [2.0, 10.0]], $tarifs['claude-sonnet-5'], 'la note 3 ôtée, pas la colonne des lots');
+        self::assertSame(['prix_usd_mtok' => [10.0, 50.0]], $tarifs['claude-mythos-5-1'], 'son lien « limited availability » ôté');
+        self::assertSame([
+            'prix_usd_mtok' => [0.1, 0.5],
+            'palier_long' => ['au_dela_de' => 100000, 'prix_usd_mtok' => [0.5, 2.5]],
+        ], $tarifs['claude-haiku-5-5']);
+        self::assertSame(['prix_usd_mtok' => [1.0, 5.0]], $tarifs['claude-haiku-4-5'], 'pas le prix par lots de la section suivante');
+    }
+
+    #[TestDox('UC-ADM-05-U16 — relevé des prix (RG9) : une page qu’on ne sait pas lire est refusée en entier — section, tableau ou colonnes absents, prix illisible ou hors bornes, palier sans prix de base, trop peu de modèles')]
+    public function testU16UnreadablePageIsRefused(): void
+    {
+        $page = self::page();
+        $cas = [
+            'section « Model pricing » introuvable' => str_replace('## Model pricing', '## Prices', $page),
+            'colonnes « Model », « Base input tokens » ou « Output tokens » introuvables'
+                => str_replace('| Output tokens          |', '| Sortie                 |', $page),
+            'prix introuvable pour Claude Opus 4.8' => str_replace('| $5 / MTok             | $6.25', '| cinq dollars          | $6.25', $page),
+            'prix hors bornes pour Claude Fable 5.1' => str_replace('| $50 / MTok             |', '| $5000 / MTok           |', $page),
+            'palier long sans prix de base pour claude-haiku-5-5'
+                => preg_replace('/^\| Claude Haiku 5\.5 \(for prompts up to.*\R/m', '', $page),
+            '2 modèle(s) lu(s)' => preg_replace('/^\| Claude (Fable|Mythos|Opus|Sonnet).*\R/m', '', $page),
+        ];
+        foreach ($cas as $raison => $texte) {
+            try {
+                TarifsAnthropic::lire((string) $texte);
+                self::fail('page acceptée : ' . $raison);
+            } catch (\UnexpectedValueException $e) {
+                self::assertSame('page des prix illisible : ' . $raison, $e->getMessage());
+            }
+        }
+    }
+
+    #[TestDox('UC-ADM-05-U17 — relevé des prix (RG9) : seuls les modèles de la grille sont récrits, prix et palier long tels que la page les donne (un identifiant daté retrouve son modèle) ; un modèle absent de la page garde ses prix et est nommé ; 2 et 2,0 sont un même prix')]
+    public function testU17OnlyTheGridsModelsAreUpdated(): void
+    {
+        $grille = [
+            'claude-haiku-4-5-20251001' => ['prix_usd_mtok' => [1, 5]],
+            'claude-sonnet-5' => ['prix_usd_mtok' => [3, 15]],
+            'claude-haiku-5-5' => ['prix_usd_mtok' => [0.1, 0.5]],
+            'claude-opus-4-8' => ['prix_usd_mtok' => [5, 25], 'palier_long' => ['au_dela_de' => 200000, 'prix_usd_mtok' => [10, 37.5]]],
+            'claude-maison-1' => ['prix_usd_mtok' => [7, 8]],
+        ];
+
+        $lecture = TarifsAnthropic::appliquer($grille, TarifsAnthropic::lire(self::page()));
+
+        self::assertSame([
+            'claude-haiku-4-5-20251001' => ['prix_usd_mtok' => [1, 5]],
+            'claude-sonnet-5' => ['prix_usd_mtok' => [2.0, 10.0]],
+            'claude-haiku-5-5' => [
+                'prix_usd_mtok' => [0.1, 0.5],
+                'palier_long' => ['au_dela_de' => 100000, 'prix_usd_mtok' => [0.5, 2.5]],
+            ],
+            'claude-opus-4-8' => ['prix_usd_mtok' => [5.0, 25.0]],
+            'claude-maison-1' => ['prix_usd_mtok' => [7, 8]],
+        ], $lecture['modeles'], 'Haiku 4.5 inchangé : 1 et 1,0 sont un même prix');
+        self::assertSame(['claude-sonnet-5', 'claude-haiku-5-5', 'claude-opus-4-8'],
+            array_column($lecture['changements'], 'modele'));
+        self::assertSame([
+            'modele' => 'claude-sonnet-5',
+            'avant' => ['prix_usd_mtok' => [3, 15]],
+            'apres' => ['prix_usd_mtok' => [2.0, 10.0]],
+        ], $lecture['changements'][0]);
+        self::assertSame(['claude-maison-1'], $lecture['absents']);
+        self::assertArrayNotHasKey('claude-fable-5-1', $lecture['modeles'], 'l’offre reste celle de l’administrateur');
+    }
+
+    #[TestDox('UC-ADM-05-U18 — relevé des prix (RG9) : dû une fois par jour UTC, une heure entre deux tentatives après un échec ; un échec garde le dernier relevé réussi et ne touche pas la grille')]
+    public function testU18ReadingIsDueOncePerUtcDay(): void
+    {
+        $lundi = gmmktime(6, 0, 0, 10, 19, 2026);
+        self::assertTrue(TarifsAnthropic::du(null, $lundi), 'jamais relevé');
+
+        $http = new LlmFakeHttpClient();
+        $http->queueResponse(['status' => 200, 'body' => self::page()]);
+        $etat = TarifsAnthropic::relever(self::$pdo, $http, $lundi);
+        self::assertSame('ok', $etat['statut']);
+        self::assertSame('2026-10-19', $etat['jour']);
+        self::assertSame(TarifsAnthropic::SOURCE, $http->requests[0]['url']);
+        self::assertSame([2, 10], self::config()->modeles()['claude-sonnet-5']['prix_usd_mtok'], 'le défaut est déjà 2 / 10');
+        self::assertSame([], $etat['changements']);
+        self::assertNull(self::stored(), 'rien à changer : la grille n’est pas récrite');
+
+        self::assertFalse(TarifsAnthropic::du($etat, gmmktime(23, 59, 59, 10, 19, 2026)), 'même jour UTC');
+        $mardi = gmmktime(0, 0, 1, 10, 20, 2026);
+        self::assertTrue(TarifsAnthropic::du($etat, $mardi), 'le jour suivant');
+
+        // La page ne répond pas : la grille garde ses prix, l'état garde lundi.
+        self::config()->update(['modeles' => ['claude-sonnet-5' => ['prix_usd_mtok' => [3, 15]]]]);
+        $http->queueResponse(['status' => 503, 'body' => 'indisponible']);
+        $echec = TarifsAnthropic::relever(self::$pdo, $http, $mardi);
+        self::assertSame(['echec', 'page des prix : HTTP 503', '2026-10-19', $mardi],
+            [$echec['statut'], $echec['erreur'], $echec['jour'], $echec['tentative_at']]);
+        self::assertSame([3, 15], self::config()->modeles()['claude-sonnet-5']['prix_usd_mtok']);
+        self::assertSame($echec, (new SettingsRepository(self::$pdo))->get(TarifsAnthropic::SETTING_KEY));
+        self::assertFalse(TarifsAnthropic::du($echec, $mardi + TarifsAnthropic::REESSAI - 1), 'moins d’une heure après');
+        self::assertTrue(TarifsAnthropic::du($echec, $mardi + TarifsAnthropic::REESSAI));
+
+        // Une heure plus tard : relevé, 3 / 15 redevient 2 / 10, l'audit le dit.
+        $http->queueResponse(['status' => 200, 'body' => self::page()]);
+        $repris = TarifsAnthropic::releverSiDu(self::$pdo, $http, $mardi + TarifsAnthropic::REESSAI);
+        self::assertSame(['ok', null, '2026-10-20'], [$repris['statut'], $repris['erreur'], $repris['jour']]);
+        self::assertEquals([2, 10], self::config()->modeles()['claude-sonnet-5']['prix_usd_mtok']);
+        self::assertSame(['claude-sonnet-5'], array_column($repris['changements'], 'modele'));
+        $audit = self::$pdo->query("SELECT user_id, details FROM audit_events WHERE type = 'twin9_tarifs_mis_a_jour'")->fetchAll();
+        self::assertCount(1, $audit);
+        self::assertNull($audit[0]['user_id']);
+        self::assertSame('claude-sonnet-5', json_decode((string) $audit[0]['details'], true)['changements'][0]['modele']);
+        self::assertNull(TarifsAnthropic::releverSiDu(self::$pdo, $http, $mardi + TarifsAnthropic::REESSAI + 60), 'plus dû ce jour');
+        self::assertCount(3, $http->requests);
     }
 }

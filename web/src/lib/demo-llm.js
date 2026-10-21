@@ -30,7 +30,10 @@ export const DEMO_CHALLENGE_URL = 'api/llm/challenge'
 export const DEMO_PROXY_URL = 'api/llm'
 /** Model HINT sent to the proxy — the server imposes its own (config/demo.php). */
 export const DEMO_MODEL = 'demo'
-/** Output budget per call; the server caps with its own ceiling anyway. */
+/**
+ * Output budget HINT sent to the proxy, which ignores it: the server sends
+ * the model's whole output (2026-10-21, api/src/Llm/ModelLimits.php).
+ */
 export const DEMO_MAX_TOKENS = 8192
 
 /**

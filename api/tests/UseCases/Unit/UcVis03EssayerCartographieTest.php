@@ -184,7 +184,7 @@ final class UcVis03EssayerCartographieTest extends TestCase
         self::assertSame(0, $counters->today($day + 86400)['requests'], 'jour UTC suivant intact');
     }
 
-    #[TestDox('UC-VIS-03-U05 — Pricing : tarif du préfixe le plus long, Haiku 5.5 au sien et à son palier long, mock gratuit, modèle inconnu au tarif prudent')]
+    #[TestDox('UC-VIS-03-U05 — Pricing : tarif du préfixe le plus long, Haiku 5.5 au sien et à son palier long, Sonnet 5 et 5.5 à 2 / 10, mock gratuit, modèle inconnu au tarif le plus cher connu')]
     public function testU05PricingEstimate(): void
     {
         self::assertEqualsWithDelta(0.0006, Pricing::estimateUsd('claude-haiku-4-5-20251001', 100, 100), 1e-12);
@@ -195,8 +195,37 @@ final class UcVis03EssayerCartographieTest extends TestCase
         self::assertEqualsWithDelta(0.0525005, Pricing::estimateUsd('claude-haiku-5-5-20261001', 100_001, 1000), 1e-12);
         self::assertEqualsWithDelta(1.0, Pricing::estimateUsd('claude-haiku-4-5', 1_000_000, 0), 1e-12, 'Haiku 4.5 : pas de palier');
         self::assertEqualsWithDelta(0.018, Pricing::estimateUsd('claude-sonnet-4-5', 1000, 1000), 1e-12);
+        // Sonnet 5 et 5.5 : 2 $ / 10 $ (la hausse à 3 / 15 du 2026-09-01 n'a pas eu lieu), Opus 5.5 : 4 / 20.
+        self::assertEqualsWithDelta(0.012, Pricing::estimateUsd('claude-sonnet-5', 1000, 1000), 1e-12);
+        self::assertEqualsWithDelta(0.012, Pricing::estimateUsd('claude-sonnet-5-5', 1000, 1000), 1e-12);
+        self::assertEqualsWithDelta(0.024, Pricing::estimateUsd('claude-opus-5-5', 1000, 1000), 1e-12);
+        self::assertEqualsWithDelta(0.03, Pricing::estimateUsd('claude-opus-4-8', 1000, 1000), 1e-12);
+        self::assertEqualsWithDelta(0.06, Pricing::estimateUsd('claude-fable-5-1', 1000, 1000), 1e-12);
         self::assertSame(0.0, Pricing::estimateUsd('mock', 5000, 5000));
-        self::assertEqualsWithDelta(0.03, Pricing::estimateUsd('modele-inconnu', 1000, 1000), 1e-12);
+        self::assertEqualsWithDelta(0.06, Pricing::estimateUsd('modele-inconnu', 1000, 1000), 1e-12, 'au prix de Fable');
+    }
+
+    #[TestDox('UC-VIS-03-U26 — Pricing : la grille des crédits passe avant la table — son prix, son palier long, un identifiant daté ou non ; un modèle qu’elle n’offre pas garde la table')]
+    public function testU26PricingReadsTheGridFirst(): void
+    {
+        $grille = [
+            'claude-haiku-4-5-20251001' => ['prix_usd_mtok' => [2, 6]],
+            'claude-haiku-5-5' => [
+                'prix_usd_mtok' => [0.2, 1],
+                'palier_long' => ['au_dela_de' => 1000, 'prix_usd_mtok' => [1, 3]],
+            ],
+            'illisible' => ['prix_usd_mtok' => 'gratuit'],
+        ];
+        self::assertEqualsWithDelta(0.008, Pricing::estimateUsd('claude-haiku-4-5-20251001', 1000, 1000, $grille), 1e-12);
+        self::assertEqualsWithDelta(0.008, Pricing::estimateUsd('claude-haiku-4-5', 1000, 1000, $grille), 1e-12,
+            'l’identifiant sans date est le même modèle');
+        self::assertEqualsWithDelta(0.0012, Pricing::estimateUsd('claude-haiku-5-5', 1000, 1000, $grille), 1e-12);
+        self::assertEqualsWithDelta(0.004001, Pricing::estimateUsd('claude-haiku-5-5', 1001, 1000, $grille), 1e-12,
+            'au-delà du palier de la grille, tout l’appel à son prix');
+        self::assertEqualsWithDelta(0.012, Pricing::estimateUsd('claude-sonnet-5', 1000, 1000, $grille), 1e-12,
+            'hors grille : la table');
+        self::assertEqualsWithDelta(0.06, Pricing::estimateUsd('illisible', 1000, 1000, $grille), 1e-12,
+            'un prix illisible ne vaut rien : la table, au plus cher');
     }
 
     #[TestDox('UC-VIS-03-U06 — DemoConfig : base > env > fichier > défaut ; le fournisseur ne vient jamais de la base')]

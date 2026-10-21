@@ -86,8 +86,9 @@ de l'accueil.
    `maxInputChars`, preuve de travail valide, non expirée, suffisante et **jamais
    utilisée** (empreinte insérée, clé primaire), quota par IP et par heure,
    coupe-circuit journalier — le **pire cas** de l'appel y est réservé (RG4) ;
-   puis appelle le fournisseur avec **son** modèle et **son** plafond de tokens,
-   remplace la réservation par les tokens et le coût estimé réels, et renvoie
+   puis appelle le fournisseur avec **son** modèle (un Haiku) et toute la
+   sortie de ce modèle, remplace la réservation par les tokens et le coût
+   estimé réels, et renvoie
    `{text, usage, model, stopReason}`.
 6. Le moteur valide chaque pôle et le document complet, au schéma puis à la
    conformité au référentiel (ses pôles, chacun une fois ; ses codes) ; la page affiche le
@@ -139,7 +140,7 @@ de l'accueil.
   (espaces de bord exclus) ou plus de 5 000 caractères **bruts** → bouton
   inactif, avec une indication sauf si la zone est vide ; côté API, prompt
   vide → `422`, `system` non textuel → `422`, entrée (`system` + `prompt`) >
-  `maxInputChars` (200 000 par défaut) → `413`, avant toute preuve. Le gabarit
+  `maxInputChars` (2 000 000 par défaut) → `413`, avant toute preuve. Le gabarit
   du prompt d'extraction ajoute ≈ 8 600 caractères : au maximum de la page, un
   appel en compte environ 13 600, sous l'ancien plafond de 20 000 lui-même
   (AN3, corrigée).
@@ -175,8 +176,9 @@ de l'accueil.
 - **RG1** — Défi sans état, à usage unique : l'unicité est garantie à la
   **consommation** (empreinte en clé primaire), l'émission ne stocke rien.
 - **RG2** — Gardes ordonnés du moins coûteux au plus coûteux ; le fournisseur,
-  le modèle et le plafond de sortie sont imposés par le serveur (indications du
-  client ignorées).
+  le modèle (un Haiku, UC-ADM-04 RG9) et la sortie (le maximum du modèle,
+  128 000 tokens pour Haiku 5.5, sans plafond depuis le 2026-10-21) sont
+  imposés par le serveur (indications du client ignorées).
 - **RG3** — Configuration : base (`settings.demo_overrides`, admin) > variables
   `DEMO_*` > `api/config/demo.php` > défauts ; le fournisseur ne vient jamais de
   la base ; base indisponible → couche ignorée en silence.
@@ -186,12 +188,17 @@ de l'accueil.
   la cartographie ouverte, UC-APP-09 A6, le Service humanome, UC-APP-02, le banc
   et la rétro-ingénierie du promptologue), visiteurs et comptes confondus.
   Depuis le 2026-10-21, le **pire cas** de chaque appel est réservé avant qu'il
-  parte, par un seul `UPDATE` conditionnel sur la ligne du jour : un token par
-  octet de `system` + `prompt`, plus le surcoût de la requête (1 024), plus tout
-  le plafond de sortie, au tarif du modèle (palier long de Haiku 5.5 compris,
-  au-delà de 100 000 tokens d'entrée). Sans la place, `503` ; avec, la
-  réservation devient l'usage réel. Ensemble, des appels concurrents ne passent
-  jamais le budget.
+  parte, par un seul `UPDATE` conditionnel sur la ligne du jour : son entrée —
+  un token par octet de `system` + `prompt`, plus le surcoût de la requête
+  (1 024) ; au-delà de 100 000 octets, le compte d'Anthropic
+  (`POST /v1/messages/count_tokens`, gratuit, sur la requête même, augmenté de
+  2 % et de 64 tokens, jamais au-dessus des octets ; sans réponse, les octets)
+  —, plus toute la sortie du modèle, au tarif de la grille des crédits (relevée
+  chaque jour, UC-ADM-05 A6), palier long de Haiku 5.5 compris (au-delà de
+  100 000 tokens d'entrée), puis de `Pricing` pour un modèle qu'elle n'offre
+  pas. Sans la place, `503`, et rien n'est parti ; avec, la réservation devient
+  l'usage réel. Ensemble, des appels concurrents ne passent jamais le budget,
+  et aucune réponse n'est coupée pour le tenir.
 - **RG5** — Intention : pas de réessai automatique contre un quota (429) ni un
   budget (503), un seul pour un incident transitoire. Réalité : le
   fournisseur de la démo respecte cette intention (sauf `429` `pow_reused`),
@@ -219,7 +226,9 @@ de l'accueil.
 | API | `GET /api/llm/status`, `GET /api/llm/challenge`, `POST /api/llm` — `api/src/routes/llm.php` | Orchestration des gardes |
 | Domaine | `api/src/Llm/PowChallenge.php` — `issue`, `verify`, `secretFromEnv`, `leadingZeroBits` | Preuve de travail sans état |
 | Domaine | `api/src/Llm/UsageCounters.php` — `reserve`, `settle`, `release`, `today`, `isExhausted` | Coupe-circuit journalier : réservation du pire cas, règlement au réel |
-| Domaine | `api/src/Llm/Pricing.php` — `estimateUsd` | Coût estimé, palier long de Haiku 5.5 compris |
+| Domaine | `api/src/Llm/Pricing.php` — `estimateUsd` | Coût estimé : la grille des crédits d'abord, palier long de Haiku 5.5 compris |
+| Domaine | `api/src/Llm/AnthropicProvider.php` — `countTokens` | Compte d'Anthropic d'une entrée de plus de 100 000 octets (RG4) |
+| Domaine | `api/src/Llm/ModelLimits.php` — `sortieMax` | La sortie de chaque appel, le maximum du modèle (RG2) |
 | Domaine | `api/src/Llm/DemoConfig.php` — `load` | Précédence de configuration |
 | Domaine | `api/src/Llm/MockProvider.php`, `api/src/Llm/AnthropicProvider.php`, `api/src/Llm/LlmRuntime.php` | Fournisseurs, client HTTP injectable |
 | Domaine | `api/src/Auth/RateLimiter.php`, `api/src/ClientIp.php` | Quota par IP (voir UC-EMP-01) |
@@ -255,6 +264,7 @@ de l'accueil.
 | UC-VIS-03-U23 | `buildExtractionPrompt`, `buildKairosExtractionPrompt`, `DEMO_TEXT_MAX_CHARS` | Anomalie AN3 **corrigée** : au maximum de la page, chaque appel — les 7 pôles et le kairos — tient sous l'ancien plafond serveur de 20 000 | idem |
 | UC-VIS-03-U24 | `localIsoToday` | Jour LOCAL (fuseau UTC+14) et non UTC (étape 2) | idem |
 | UC-VIS-03-U25 | `UsageCounters::reserve`, `settle`, `release` | Deux appels en vol réservent sous un budget qu'un troisième dépasserait : refusé, rien de réservé ; plafond de tokens de même ; pile aux deux plafonds : accepté ; réglée, une réservation fait place à l'usage réel et compte la requête ; rendue, elle ne laisse rien (RG4) | `api/tests/UseCases/Unit/UcVis03EssayerCartographieTest.php` |
+| UC-VIS-03-U26 | `Pricing::estimateUsd` | La grille des crédits passe avant la table : son prix, son palier long, un identifiant daté ou non ; un modèle qu'elle n'offre pas garde la table (RG4) | idem |
 
 ### Tests fonctionnels
 
@@ -262,7 +272,7 @@ de l'accueil.
 |---|---|---|---|---|
 | UC-VIS-03-F01 | Nominal, A6 | API | Statut, 8 appels (7 pôles + kairos) avec défis distincts, défis hachés, compteurs, aucune session | `api/tests/UseCases/Functional/UcVis03EssayerCartographieTest.php` |
 | UC-VIS-03-F02 | Garanties (RGPD) | API | Ni texte, ni extrait de la réponse, ni IP dans **aucune** table ; seau haché | idem |
-| UC-VIS-03-F03 | A1 | API | Anthropic simulé : modèle et plafond imposés, clé en en-tête, coût compté | idem |
+| UC-VIS-03-F03 | A1 | API | Anthropic simulé : modèle et sortie (le maximum du modèle, 64 000 pour Haiku 4.5) imposés, clé en en-tête, coût compté | idem |
 | UC-VIS-03-F04 | E1 | API | Champ piège → 400 banal, rien de compté ni consommé | idem |
 | UC-VIS-03-F05 | E2 | API | Preuve absente, falsifiée, faible, expirée (non consommée), rejouée | idem |
 | UC-VIS-03-F06 | E3 | API | 422 / 413 avant toute preuve | idem |
@@ -284,7 +294,8 @@ de l'accueil.
 | UC-VIS-03-F22 | E7 | IHM | Pôle 2 inexploitable deux fois → « L'analyse a échoué… (détail technique : extractDay : pôle 2 … » , Réessayer, texte conservé, 3 POST | idem |
 | UC-VIS-03-F23 | Anomalie AN3 (corrigée) | IHM | Texte de 5 000 caractères, le maximum de la page → 8 appels acceptés par un faux serveur au plafond de 20 000, cartographie produite | idem |
 | UC-VIS-03-F24 | Nominal (référentiel publié) | IHM | La dernière version publiée de RESPIRE compte six pôles (index statique) : texte d'introduction « 6 pôles instruits un par un », progression « appel k sur 7 », 7 POST acceptés, synthèse « Les 6 pôles de la feuille du jour » | idem |
-| UC-VIS-03-F25 | E5, E7, RG4 | API | Un appel en vol tient 0,007 $ d'un budget de 0,01 $ : le pire cas d'un nouvel appel (≈ 0,0037 $) n'a pas la place → 503, rien n'est envoyé ; la place rendue, l'appel passe et son usage réel remplace sa réservation ; réponse 2xx illisible et délai dépassé gardent leur pire cas ; l'appel suivant n'a plus la place, la dépense reste sous 0,01 $ | `api/tests/UseCases/Functional/UcVis03EssayerCartographieTest.php` |
+| UC-VIS-03-F25 | E5, E7, RG4 | API | Un appel en vol tient 0,50 $ d'un budget de 0,80 $ : le pire cas d'un nouvel appel (toute la sortie de Haiku 4.5, ≈ 0,32 $) n'a pas la place → 503, rien n'est envoyé ; la place rendue, l'appel passe et son usage réel remplace sa réservation ; réponse 2xx illisible et délai dépassé gardent leur pire cas ; l'appel suivant n'a plus la place, la dépense reste sous 0,80 $ | `api/tests/UseCases/Functional/UcVis03EssayerCartographieTest.php` |
+| UC-VIS-03-F26 | RG4 | API | Au-delà de 100 000 octets, la réserve prend le compte d'Anthropic (`count_tokens` sur la requête même, sans `max_tokens`, +2 % et 64) : 156 000 octets comptés 40 000 tokens restent au tarif de base de Haiku 5.5 et passent sous un budget de 0,20 $ que leurs octets dépasseraient ; le compte en échec → les octets, `503`, rien d'autre n'est parti ; sous 100 000 octets, aucun compte | idem |
 
 ### Tests existants liés (non-régression)
 
@@ -331,7 +342,7 @@ cd engine && npx vitest run test/usecases/unit/uc-vis-03
   caractères (Christian : « 5000 caractères pour les démo "Essayer" sans
   compte, c'est suffisant ») : un appel en compte au plus environ 13 600, sous
   ces 20 000 — que garde une production qui les règle dans son environnement —
-  et sous le plafond par défaut, 420 000 (UC-ADM-04 RG8). Vérifié par
+  et sous le plafond par défaut, 2 000 000 (UC-ADM-04 RG8). Vérifié par
   UC-VIS-03-U23 et F23.
 - **AN4 — Phase « retry » sans libellé** (cosmétique). Pendant la pause de
   2,5 s du nouvel essai (A4), `onPhase('retry')` positionne la phase courante,
@@ -350,6 +361,11 @@ cd engine && npx vitest run test/usecases/unit/uc-vis-03
   requête refusée ensuite par le coupe-circuit journalier.
 - `GET /api/llm/status` dit qu'il reste du budget tant que les compteurs du jour
   sont sous les plafonds ; un appel dont le pire cas ne tient plus dans ce reste
-  est pourtant refusé (RG4). La réservation compte un token par octet, trois à
-  quatre fois l'usage réel d'un texte français : en fin de journée, un appel peut
-  être refusé alors que son coût réel tiendrait.
+  est pourtant refusé (RG4). La réservation compte toute la sortie du modèle
+  (≈ 0,064 $ au tarif de base de Haiku 5.5, quand un appel pôle en rend
+  quelques milliers de tokens) et, sous 100 000 octets, un token par octet,
+  trois à quatre fois l'usage réel d'un texte français : en fin de journée, un
+  appel peut être refusé alors que son coût réel tiendrait, et un Essayer
+  commencé peut s'arrêter après ses premiers pôles payés. Sous le budget de
+  1 $, une quinzaine d'appels au plus sont en vol à la fois ; au-delà, `503`
+  jusqu'à ce que les premiers soient réglés.

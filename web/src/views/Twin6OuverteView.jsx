@@ -12,12 +12,17 @@
 // sinon écrite depuis le document (api/twin6.js, referentielTwin6 ; moteur,
 // fichesPourTwin6).
 //
-// Deux voies, comme convenu :
+// Trois voies :
 //   - CLÉ PERSO : le moteur (executerTwin6) tourne DANS le navigateur, appel
 //     direct au fournisseur avec la clé de l'utilisateur → GRATUIT. La clé ne
 //     quitte pas le navigateur (appel direct, en-tête browser-access).
 //   - CRÉDITS : chaque appel passe par /api/twin6/appel (notre clé), +10 % de
 //     contribution débités du solde prépayé.
+//   - ESSAI GRATUIT (2026-10-21) : chaque appel passe par le proxy de la démo
+//     (POST /api/llm, une preuve de travail par appel), comme l'Essayer, dont il
+//     partage le budget du jour (1 $ par défaut) ; le serveur impose le modèle.
+//     Ouvert aux visiteurs, pour qui c'est la seule voie, et aux comptes ; le
+//     portfolio y compte 5 000 caractères au plus (DEMO_TEXT_MAX_CHARS).
 //
 // Le paquet de prompts est PUBLIC et téléchargeable (bandeau open source).
 
@@ -39,6 +44,23 @@ import ReferentielChoice from '../components/ReferentielChoice.jsx'
 import MergeView from './MergeView.jsx'
 import { useSunburstLib } from './view-helpers.js'
 import { downloadJson } from '../lib/download-json.js'
+import { DEMO_MODEL, DEMO_TEXT_MAX_CHARS, createDemoProvider, describeDemoError } from '../lib/demo-llm.js'
+
+/** L'offre d'un visiteur : ni prix, ni solde, ni structure importée (RG9 : le document publié). */
+const OFFRE_VISITEUR = Object.freeze({ modeles: {}, referentiel: [], solde_microusd: 0 })
+
+/** Une feuille datée : la ligne « ### AAAA-MM-JJ » qui ouvre une journée. */
+const FEUILLE_DATEE = /^###\s+\d{4}-\d{2}-\d{2}\b/m
+
+/** Démo épuisée, pour un compte : ses deux autres voies, pas l'invitation à en créer un. */
+const ESSAI_EPUISE_COMPTE =
+  'L’essai gratuit est épuisé pour aujourd’hui ou momentanément désactivé. ' +
+  'Revenez un peu plus tard — ou cartographiez avec nos crédits ou votre propre clé API.'
+
+/** 5000 -> « 5 000 » (espace des milliers, comme la page Essayer). */
+function formatInt(n) {
+  return String(n).replace(/\B(?=(\d{3})+(?!\d))/g, ' ')
+}
 
 function messageErreur(error) {
   if (error instanceof ApiUnavailableError) return error.message
@@ -68,6 +90,7 @@ export default function Twin6OuverteView({ lib: injectedLib, deps = {} }) {
   const fetchOffer = deps.fetchOffer ?? fetchTwin6Offer
   const creditsFactory = deps.makeCreditsProvider ?? makeCreditsProvider
   const ownKeyFactory = deps.makeOwnKeyProvider ?? makeOwnKeyProvider
+  const demoFactory = deps.makeDemoProvider ?? createDemoProvider
   const listKeys = deps.listKeys ?? listKeysApi
   const revealKey = deps.revealKey ?? revealKeyApi
   const now = deps.now ?? (() => new Date())
@@ -85,14 +108,14 @@ export default function Twin6OuverteView({ lib: injectedLib, deps = {} }) {
   const [res, setRes] = useState({ status: 'loading', pkg: null, offer: null, message: '' })
   const [portfolio, setPortfolio] = useState('')
   const [model, setModel] = useState('')
-  const [voie, setVoie] = useState('credits') // 'credits' | 'cle_perso'
+  const [voie, setVoie] = useState('credits') // 'credits' | 'cle_perso' | 'demo'
   const [apiKey, setApiKey] = useState('')
   const [savedProviders, setSavedProviders] = useState([]) // clés perso enregistrées au profil
   const [useSavedKey, setUseSavedKey] = useState(false)
   // Le référentiel choisi : null, RESPIRE (sa dernière version publiée) ; son document une fois chargé.
   const [choix, setChoix] = useState(null)
   const [ref, setRef] = useState({ status: 'loading', doc: null, message: '' })
-  const [run, setRun] = useState({ status: 'idle', done: 0, total: 0, phase: '', doc: null, referentiel: null, cout: 0, error: '' })
+  const [run, setRun] = useState({ status: 'idle', done: 0, total: 0, phase: '', doc: null, referentiel: null, cout: 0, error: '', voie: null })
   const { lib } = useSunburstLib(deps.lib ?? injectedLib)
   const running = useRef(false)
 
@@ -109,10 +132,18 @@ export default function Twin6OuverteView({ lib: injectedLib, deps = {} }) {
     }
   }, [fetchMeFn])
 
+  // Sans compte, l'essai gratuit est la seule voie.
+  const visiteur = session.status === 'anonymous'
+  const ouverte = session.status === 'authenticated' || visiteur
   useEffect(() => {
-    if (session.status !== 'authenticated') return undefined
+    if (visiteur) setVoie('demo')
+  }, [visiteur])
+
+  useEffect(() => {
+    if (!ouverte) return undefined
     let alive = true
-    Promise.all([loadPkg(callOpts), fetchOffer(callOpts)])
+    // Un visiteur ne lit pas l'offre (/api/twin9/meta exige une session).
+    Promise.all([loadPkg(callOpts), visiteur ? OFFRE_VISITEUR : fetchOffer(callOpts)])
       .then(([pkg, offer]) => {
         if (!alive) return
         setRes({ status: 'ready', pkg, offer, message: '' })
@@ -126,7 +157,7 @@ export default function Twin6OuverteView({ lib: injectedLib, deps = {} }) {
   }, [session.status])
 
   useEffect(() => {
-    if (session.status !== 'authenticated') return undefined
+    if (!ouverte) return undefined
     let alive = true
     setRef({ status: 'loading', doc: null, message: '' })
     loadReferentiel(choix ? { id: choix.id, version: choix.version, ...callOpts } : callOpts)
@@ -160,6 +191,13 @@ export default function Twin6OuverteView({ lib: injectedLib, deps = {} }) {
   const hasSavedKey = savedProviders.includes(OWN_KEY_PROVIDER)
   const modeles = res.offer?.modeles ?? {}
   const portfolioPret = portfolio.trim().length > 40
+  const essai = voie === 'demo'
+  // L'essai gratuit borne le portfolio comme l'Essayer borne son texte.
+  const tropLongPourEssai = essai && portfolio.length > DEMO_TEXT_MAX_CHARS
+  // Et il veut une feuille datée : sans elle, ses huit appels, payés sur le
+  // dollar du jour, finiraient sur « aucune feuille datée » (le texte collé
+  // dans l'Essayer n'en a pas).
+  const sansFeuilleDatee = essai && !FEUILLE_DATEE.test(portfolio)
   const clePersoPrete = (useSavedKey && hasSavedKey) || apiKey.trim() !== ''
   // Le référentiel que lit le moteur : le document choisi ; pour RESPIRE, la
   // structure de /meta tant qu'elle est celle de la version choisie.
@@ -172,9 +210,11 @@ export default function Twin6OuverteView({ lib: injectedLib, deps = {} }) {
     res.status === 'ready' &&
     moteurRef !== null &&
     nbPoles > 0 &&
-    !!model &&
+    (essai || !!model) &&
     portfolioPret &&
-    (voie === 'credits' || clePersoPrete) &&
+    !tropLongPourEssai &&
+    !sansFeuilleDatee &&
+    (voie !== 'cle_perso' || clePersoPrete) &&
     run.status !== 'running'
 
   async function lancer() {
@@ -199,10 +239,15 @@ export default function Twin6OuverteView({ lib: injectedLib, deps = {} }) {
     }
     running.current = true
     const referentiel = moteurRef
-    setRun({ status: 'running', done: 0, total: twin6CallsFor(referentiel), phase: 'scan-pole', doc: null, referentiel, cout: 0, error: '' })
+    setRun({ status: 'running', done: 0, total: twin6CallsFor(referentiel), phase: 'scan-pole', doc: null, referentiel, cout: 0, error: '', voie })
     try {
       let provider
-      if (voie === 'cle_perso') {
+      if (essai) {
+        // Une preuve de travail par appel ; la première est résolue avant le premier scan.
+        const demo = demoFactory(callOpts)
+        await demo.prime()
+        provider = demo.provider
+      } else if (voie === 'cle_perso') {
         // Clé enregistrée au profil (révélée à la demande, no-store) OU saisie.
         const key =
           useSavedKey && hasSavedKey
@@ -222,7 +267,8 @@ export default function Twin6OuverteView({ lib: injectedLib, deps = {} }) {
         templates: { ...res.pkg.templates, fiches: fichesPourTwin6(ref.doc, res.pkg.templates.fiches) },
         referentiel,
         provider,
-        model,
+        // Le proxy de la démo impose son modèle : celui-ci n'est qu'une indication.
+        model: essai ? DEMO_MODEL : model,
         options: {
           onProgress: (p) =>
             setRun((r) => ({ ...r, done: p.done ?? r.done, total: p.total ?? r.total, phase: p.phase ?? r.phase })),
@@ -235,7 +281,11 @@ export default function Twin6OuverteView({ lib: injectedLib, deps = {} }) {
       })
       setRun((r) => ({ ...r, status: 'done', doc: out.document, done: out.calls.length, total: out.calls.length }))
     } catch (e) {
-      setRun((r) => ({ ...r, status: 'error', error: messageErreur(e) }))
+      // Quota, budget du jour, démo coupée : les messages de l'Essayer — sauf,
+      // pour un compte, l'invitation à en créer un.
+      const demo = essai ? describeDemoError(e) : null
+      const error = !essai ? messageErreur(e) : demo.kind === 'unavailable' && !visiteur ? ESSAI_EPUISE_COMPTE : demo.message
+      setRun((r) => ({ ...r, status: 'error', error }))
     } finally {
       running.current = false
     }
@@ -253,18 +303,6 @@ export default function Twin6OuverteView({ lib: injectedLib, deps = {} }) {
       </section>
     )
   }
-  if (session.status === 'anonymous') {
-    return (
-      <section className="twin6-ouverte">
-        <h1>Cartographie ouverte Twin6</h1>
-        <p>
-          La cartographie ouverte nécessite un compte. <a href="#/compte">Connectez-vous</a> pour l’utiliser
-          (gratuit avec votre propre clé API, ou avec nos crédits).
-        </p>
-      </section>
-    )
-  }
-
   const resultatPret = run.status === 'done' && run.doc
 
   return (
@@ -274,7 +312,8 @@ export default function Twin6OuverteView({ lib: injectedLib, deps = {} }) {
         Une cartographie de vos compétences <strong>open source</strong> : un scan par pôle du référentiel choisi
         (RESPIRE par défaut) puis une synthèse Kairos, sur votre portfolio entier. Gratuite avec votre propre clé
         API, ou avec nos crédits
-        (+10 % de contribution au fonctionnement du site).{' '}
+        (+10 % de contribution au fonctionnement du site) ; à essayer gratuitement, même sans compte, sur{' '}
+        {formatInt(DEMO_TEXT_MAX_CHARS)} caractères.{' '}
         <a href={TWIN6_PACKAGE_URL} download>
           Télécharger les prompts
         </a>{' '}
@@ -298,6 +337,23 @@ export default function Twin6OuverteView({ lib: injectedLib, deps = {} }) {
             onChange={(e) => setPortfolio(e.target.value)}
             placeholder={'### 2026-01-05\n---\nCe que j’ai fait, réfléchi, appris…'}
           />
+          {essai ? (
+            <p className="twin6-compteur" data-testid="twin6-compteur">
+              {formatInt(portfolio.length)} / {formatInt(DEMO_TEXT_MAX_CHARS)} caractères (essai gratuit)
+            </p>
+          ) : null}
+          {tropLongPourEssai ? (
+            <p className="twin6-hint" role="status">
+              Trop long pour l’essai gratuit : réduisez votre portfolio à {formatInt(DEMO_TEXT_MAX_CHARS)} caractères
+              (retirez-en {formatInt(portfolio.length - DEMO_TEXT_MAX_CHARS)}).
+            </p>
+          ) : null}
+          {portfolioPret && sansFeuilleDatee ? (
+            <p className="twin6-hint" role="status">
+              L’essai gratuit demande au moins une feuille datée : une ligne <code>### AAAA-MM-JJ</code> avant le texte
+              de la journée.
+            </p>
+          ) : null}
 
           <div className="twin6-options">
             <ReferentielChoice
@@ -306,29 +362,47 @@ export default function Twin6OuverteView({ lib: injectedLib, deps = {} }) {
               disabled={run.status === 'running'}
               list={listReferentiels}
             />
-            <label htmlFor="twin6-modele">Modèle</label>
-            <select
-              id="twin6-modele"
-              value={model}
-              disabled={run.status === 'running'}
-              onChange={(e) => setModel(e.target.value)}
-            >
-              {Object.keys(modeles).map((id) => (
-                <option key={id} value={id}>{id}</option>
-              ))}
-            </select>
+            {essai ? null : (
+              <>
+                <label htmlFor="twin6-modele">Modèle</label>
+                <select
+                  id="twin6-modele"
+                  value={model}
+                  disabled={run.status === 'running'}
+                  onChange={(e) => setModel(e.target.value)}
+                >
+                  {Object.keys(modeles).map((id) => (
+                    <option key={id} value={id}>{id}</option>
+                  ))}
+                </select>
+              </>
+            )}
           </div>
 
           <fieldset className="twin6-voie" disabled={run.status === 'running'}>
             <legend>Comment payer l’usage du modèle ?</legend>
+            {visiteur ? null : (
+              <>
+                <label>
+                  <input type="radio" name="voie" value="credits" checked={voie === 'credits'} onChange={() => setVoie('credits')} />{' '}
+                  Avec nos crédits (+10 % de contribution)
+                </label>
+                <label>
+                  <input type="radio" name="voie" value="cle_perso" checked={voie === 'cle_perso'} onChange={() => setVoie('cle_perso')} />{' '}
+                  Avec ma propre clé API (gratuit — la clé reste dans mon navigateur)
+                </label>
+              </>
+            )}
             <label>
-              <input type="radio" name="voie" value="credits" checked={voie === 'credits'} onChange={() => setVoie('credits')} />{' '}
-              Avec nos crédits (+10 % de contribution)
+              <input type="radio" name="voie" value="demo" checked={voie === 'demo'} onChange={() => setVoie('demo')} />{' '}
+              Essai gratuit ({formatInt(DEMO_TEXT_MAX_CHARS)} caractères au plus, modèle de la démonstration)
             </label>
-            <label>
-              <input type="radio" name="voie" value="cle_perso" checked={voie === 'cle_perso'} onChange={() => setVoie('cle_perso')} />{' '}
-              Avec ma propre clé API (gratuit — la clé reste dans mon navigateur)
-            </label>
+            {visiteur ? (
+              <p className="twin6-hint">
+                Avec un compte, sans limite de longueur : votre propre clé API ou nos crédits.{' '}
+                <a href="#/compte">Connectez-vous</a>.
+              </p>
+            ) : null}
             {voie === 'cle_perso' ? (
               <div className="twin6-cleperso">
                 {hasSavedKey ? (
@@ -374,8 +448,10 @@ export default function Twin6OuverteView({ lib: injectedLib, deps = {} }) {
 
           {moteurRef !== null ? (
             <p className="twin6-note">
-              {nbPoles + 1} appels au modèle ({nbPoles} pôle{nbPoles > 1 ? 's' : ''} + synthèse). Le coût réel dépend de
-              la taille de votre portfolio et du modèle. En crédits, seul le coût réel (+10 %) est débité.
+              {nbPoles + 1} appels au modèle ({nbPoles} pôle{nbPoles > 1 ? 's' : ''} + synthèse).{' '}
+              {essai
+                ? 'Essai gratuit : rien n’est débité ni conservé ; le budget du jour est commun à tous les essais.'
+                : 'Le coût réel dépend de la taille de votre portfolio et du modèle. En crédits, seul le coût réel (+10 %) est débité.'}
             </p>
           ) : ref.status === 'loading' ? (
             <p role="status" className="twin6-note">Chargement du référentiel…</p>
@@ -402,7 +478,13 @@ export default function Twin6OuverteView({ lib: injectedLib, deps = {} }) {
       {resultatPret ? (
         <div className="twin6-resultat">
           <p className="twin6-succes" role="status">
-            Cartographie ouverte terminée{run.cout > 0 ? ` — ${formatUsd(run.cout)} de contribution` : ' (avec votre clé)'}.
+            Cartographie ouverte terminée
+            {run.voie === 'demo'
+              ? ' (essai gratuit)'
+              : run.cout > 0
+                ? ` — ${formatUsd(run.cout)} de contribution`
+                : ' (avec votre clé)'}
+            .
           </p>
           <p className="twin6-resultat-actions">
             <button

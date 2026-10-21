@@ -6,7 +6,10 @@
 // Le VRAI moteur (executerTwin6 + twin6ToMergeDocument) tourne dans jsdom ;
 // seul le réseau est simulé (fetch global) : paquet public fictif, /api/twin9/meta,
 // export statique des référentiels publiés (data/referentiel/, fictifs),
-// /api/twin6/appel (voie crédits) ou api.anthropic.com (voie clé perso).
+// /api/twin6/appel (voie crédits) ou api.anthropic.com (voie clé perso). L'essai
+// gratuit (A6) passe par un faux serveur de la démo aux règles du serveur PHP
+// (défi à usage unique, preuve vérifiée par sha256 via node:crypto, champ piège).
+import { createHash } from 'node:crypto'
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
 import { act, cleanup, fireEvent, render, screen, waitFor } from '@testing-library/react'
 import App from '../../../src/App.jsx'
@@ -26,8 +29,10 @@ import {
   metaTwin9,
   referentielsPublies,
   stubFetch,
+  routeKey,
   twin6ModelText,
 } from '../support/twin.js'
+import { fakeDemoServer } from '../support/vis.js'
 
 // Export « un clic » observé sans Blob ni <a download> (jsdom).
 vi.mock('../../../src/lib/download-json.js', () => ({ downloadJson: vi.fn(() => true) }))
@@ -91,6 +96,40 @@ async function lancer() {
 }
 
 const appelsTwin6 = (calls) => calls.filter((c) => c.key === 'POST twin6/appel')
+
+/**
+ * Essai gratuit (A6) : le faux serveur de la démo répond aux défis et à
+ * POST api/llm (réponse du modèle de la démo) ; toute autre requête suit les
+ * routes du lot, consignées dans `calls`.
+ */
+function serveurDeLaDemo(routesDuLot, answer) {
+  const calls = []
+  const server = fakeDemoServer({
+    createHash,
+    maxInputChars: 420000, // le plafond par défaut d'api/config/demo.php (2026-10-21)
+    answer:
+      answer ??
+      ((body) =>
+        jsonResponse(200, {
+          text: twin6ModelText(body.prompt),
+          usage: { inputTokens: 1200, outputTokens: 300 },
+          model: 'claude-haiku-5-5',
+          stopReason: 'end_turn',
+        })),
+    extra: (url, init = {}) => {
+      if (url === 'api/llm' || url === 'api/llm/challenge') return undefined
+      const key = routeKey(url, init)
+      calls.push({ url, key, init })
+      const path = url.replace(/^api\//, '').split('?')[0]
+      const hit = routesDuLot[key] ?? routesDuLot[url] ?? routesDuLot[path]
+      if (hit === undefined) return jsonResponse(404, { error: 'absent' })
+      return typeof hit === 'function' ? hit(url, init) : hit
+    },
+  })
+  return { ...server, calls }
+}
+
+const VISITEUR = { 'GET auth/me': jsonResponse(401, { error: 'Authentification requise' }) }
 
 beforeEach(() => {
   resetApiClient()
@@ -293,13 +332,103 @@ describe('UC-APP-09 — l’apprenant lance une cartographie ouverte', () => {
     expect(screen.getAllByText(/^\d+ \/ 6$/).length).toBe(2)
   })
 
-  it('UC-APP-09-F04 — E1 : visiteur sans session → invitation à se connecter, rien n’est chargé', async () => {
-    const { calls } = stubFetch(routes({ 'GET auth/me': jsonResponse(401, { error: 'Authentification requise' }) }))
+  it('UC-APP-09-F04 — E1 : visiteur sans session → l’essai gratuit seul (A6), une invitation à se connecter pour les autres voies ; ni offre ni clés lues', async () => {
+    const { calls } = stubFetch(routes(VISITEUR))
     openTwin6(null)
 
-    expect(await screen.findByRole('link', { name: 'Connectez-vous' })).toBeDefined()
-    expect(screen.queryByLabelText(/Votre portfolio/)).toBeNull()
-    expect(calls.some((c) => c.key === 'GET twin9/meta' || c.url === TWIN6_PACKAGE_URL)).toBe(false)
+    await saisirPortfolio()
+    expect(screen.getAllByRole('radio').map((r) => [r.value, r.checked])).toEqual([['demo', true]])
+    expect(screen.queryByLabelText('Modèle')).toBeNull()
+    expect(screen.getByRole('link', { name: 'Connectez-vous' }).getAttribute('href')).toBe('#/compte')
+    expect(screen.getByText(/8 appels au modèle \(7 pôles \+ synthèse\)/).textContent).toContain('rien n’est débité ni conservé')
+    expect(calls.some((c) => c.url === TWIN6_PACKAGE_URL)).toBe(true)
+    expect(calls.some((c) => c.key === 'GET twin9/meta' || c.key === 'GET keys')).toBe(false)
+  })
+
+  it('UC-APP-09-F23 — A6 : un visiteur essaie gratuitement → 8 POST api/llm, chacun avec un défi neuf résolu, aucun /api/twin6/appel ; « (essai gratuit) », sunburst', async () => {
+    const { calls, posts, rejected, issuedCount } = serveurDeLaDemo(routes(VISITEUR))
+    openTwin6(null)
+    await saisirPortfolio()
+    await lancer()
+
+    expect((await screen.findByText(/Cartographie ouverte terminée/)).textContent).toBe(
+      'Cartographie ouverte terminée (essai gratuit).',
+    )
+    expect(document.querySelectorAll('.sector').length).toBeGreaterThan(0)
+    // 7 scans (la fiche du paquet et le portfolio) puis le kairos, par le proxy de la démo.
+    expect(posts).toHaveLength(8)
+    posts.slice(0, 7).forEach((body, i) => {
+      expect(body.prompt).toContain(`# Fiche des compétences du pôle ${i + 1} (P${i + 1}.md)`)
+      expect(body.prompt).toContain(PORTFOLIO)
+    })
+    expect(posts[7].prompt).toContain('## carto_P7')
+    expect(new Set(posts.map((b) => b.challenge)).size).toBe(8)
+    expect(posts.every((b) => b.website === '' && typeof b.nonce === 'string')).toBe(true)
+    expect(rejected).toEqual([])
+    expect(issuedCount()).toBe(8)
+    // Ni offre, ni crédit, ni clé : rien d'autre ne porte le portfolio.
+    expect(calls.some((c) => ['POST twin6/appel', 'GET twin9/meta', 'GET keys'].includes(c.key))).toBe(false)
+    expect(calls.some((c) => String(c.init?.body ?? '').includes('recoupé trois sources'))).toBe(false)
+  })
+
+  it('UC-APP-09-F24 — A6 : un compte choisit l’essai gratuit → les appels passent par la démo, aucun par /api/twin6/appel', async () => {
+    const { calls, posts } = serveurDeLaDemo(routes())
+    openTwin6()
+    await saisirPortfolio()
+    fireEvent.click(screen.getByRole('radio', { name: /Essai gratuit/ }))
+    expect(screen.queryByLabelText('Modèle')).toBeNull()
+    await lancer()
+
+    expect((await screen.findByText(/Cartographie ouverte terminée/)).textContent).toContain('(essai gratuit)')
+    expect(posts).toHaveLength(8)
+    expect(appelsTwin6(calls)).toHaveLength(0)
+  })
+
+  it('UC-APP-09-F25 — A6 : portfolio de plus de 5 000 caractères → essai impossible, ce qu’il faut retirer, aucune requête à la démo', async () => {
+    const { calls, posts, issuedCount } = serveurDeLaDemo(routes(VISITEUR))
+    openTwin6(null)
+    const long = `${PORTFOLIO}\n${'x'.repeat(5000 - PORTFOLIO.length)}`
+    expect(long).toHaveLength(5001)
+    await saisirPortfolio(long)
+
+    expect(screen.getByRole('button', { name: 'Lancer la cartographie ouverte' }).disabled).toBe(true)
+    expect(screen.getByText(/Trop long pour l’essai gratuit/).textContent).toContain('(retirez-en 1)')
+    expect(screen.getByTestId('twin6-compteur').textContent).toBe('5 001 / 5 000 caractères (essai gratuit)')
+    await lancer()
+    expect(posts).toHaveLength(0)
+    expect(issuedCount()).toBe(0)
+    expect(calls.some((c) => c.url.startsWith('api/llm'))).toBe(false)
+  })
+
+  it('UC-APP-09-F26 — A6 : budget du jour épuisé (503) → le message de la démo dès le premier appel, sans nouvel essai, bouton de nouveau cliquable', async () => {
+    const { posts } = serveurDeLaDemo(routes(VISITEUR), () =>
+      jsonResponse(503, { error: 'Démo épuisée pour aujourd’hui, revenez demain.' }),
+    )
+    openTwin6(null)
+    await saisirPortfolio()
+    await lancer()
+
+    expect((await screen.findByRole('alert')).textContent).toBe(
+      'La démo est épuisée pour aujourd’hui ou momentanément désactivée. Revenez un peu plus tard — ou créez un compte pour cartographier sans ces limites.',
+    )
+    expect(posts).toHaveLength(1)
+    expect(screen.queryByText(/Cartographie ouverte terminée/)).toBeNull()
+    expect(screen.getByRole('button', { name: 'Lancer la cartographie ouverte' }).disabled).toBe(false)
+  })
+
+  it('UC-APP-09-F27 — A6 : un compte sur l’essai gratuit, budget du jour épuisé (503) → ses deux autres voies, pas l’invitation à créer un compte', async () => {
+    const { posts } = serveurDeLaDemo(routes(), () =>
+      jsonResponse(503, { error: 'Démo épuisée pour aujourd’hui, revenez demain.' }),
+    )
+    openTwin6()
+    await saisirPortfolio()
+    fireEvent.click(screen.getByRole('radio', { name: /Essai gratuit/ }))
+    await lancer()
+
+    expect((await screen.findByRole('alert')).textContent).toBe(
+      'L’essai gratuit est épuisé pour aujourd’hui ou momentanément désactivé. Revenez un peu plus tard — ou cartographiez avec nos crédits ou votre propre clé API.',
+    )
+    expect(posts).toHaveLength(1)
   })
 
   it('UC-APP-09-F05 — E2 : copie statique (pas d’API) → fonctionnalité indisponible, proprement', async () => {

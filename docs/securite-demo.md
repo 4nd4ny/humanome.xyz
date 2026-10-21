@@ -4,7 +4,12 @@
 `GET /api/llm/status`) et le proxy texte Google Docs (`GET /api/gdoc-text`) —
 `api/src/routes/llm.php`, `api/src/Llm/**`, `api/config/demo.php`. Ce sont les
 seules surfaces exposées **sans compte** (le visiteur est l'absence de session,
-`docs/autorisations.md`).
+`docs/autorisations.md`). Tout ce qui passe par `POST /api/llm` partage les mêmes
+gardes et le même budget du jour (1 $ par défaut depuis le 2026-10-21, visiteurs et
+comptes confondus) : l'Essayer (UC-VIS-03), l'essai gratuit de la cartographie
+ouverte (Twin6, UC-APP-09 A6), le « Service humanome » de l'assistant de
+cartographie (UC-APP-02), le banc d'essai et la rétro-ingénierie du promptologue,
+qui le choisissent par défaut. Le tuteur (UC-VIS-05) a son propre budget.
 
 **Ce que veut l'abuseur :** vider le budget API de la plateforme, exfiltrer la
 clé `ANTHROPIC_API_KEY`, contourner les quotas, ou faire tomber le service.
@@ -22,12 +27,18 @@ un abus avant de dépenser quoi que ce soit :
 1. **Interrupteur** `DEMO_ENABLED` (503 immédiat).
 2. **Honeypot** : champ caché `website` rempli → 400 banal, indistinguable d'une
    erreur de validation (aucun indice que c'est un piège).
-3. **Taille d'entrée** : `system + prompt` ≤ `maxInputChars` (20 000 car.) → 413.
+3. **Taille d'entrée** : `system + prompt` ≤ `maxInputChars` (420 000 car. depuis
+   le 2026-10-21, 20 000 avant : la synthèse de Twin6 porte les sorties des sept
+   scans, 415 000 caractères quand chacun rend ses 16 000 tokens) → 413.
 4. **Preuve de travail** (PoW) : défi signé HMAC, à usage unique, expirant.
 5. **Quota par IP et par heure** (`perIpPerHour`, partagé avec gdoc-text).
-6. **Coupe-circuit journalier global** : plafond de tokens ET de budget USD.
+6. **Coupe-circuit journalier global** : plafond de tokens ET de budget USD. Le
+   **pire cas** de l'appel y est réservé, atomiquement, avant qu'il parte
+   (2026-10-21, voir l'angle 6) ; sans la place, 503.
 7. **Appel amont** avec fournisseur / modèle / plafond de tokens **imposés serveur**.
-8. **Compteurs seulement** (RGPD §6) : tokens in/out + coût estimé, jamais le contenu.
+8. **Compteurs seulement** (RGPD §6) : la réservation devient l'usage réel (tokens
+   in/out + coût estimé), jamais le contenu ; un refus du fournisseur la rend, un
+   délai dépassé la garde (le fournisseur a pu facturer l'appel).
 
 ---
 
@@ -116,7 +127,8 @@ entre IP ; rejouer un défi résolu ; profiter d'une difficulté trop basse.
 
 **Résidu accepté :**
 - **Un détenteur de /48 dispose encore de 65 536 buckets /64.** Pour `POST /api/llm`,
-  le **coupe-circuit journalier** ($5, 2 M tokens) reste le plafond dur — un
+  le **coupe-circuit journalier** (1 $ et 6 M tokens par défaut depuis le
+  2026-10-21) reste le plafond dur — un
   abuseur bien doté vide au pire le budget du jour, ce qui est précisément le rôle
   du coupe-circuit. Pour **gdoc-text** (pas de coupe-circuit journalier), il reste
   un **résidu de DoS de bande passante** proportionnel au nombre de /64 détenus ;
@@ -140,14 +152,30 @@ géant, un prompt système énorme, une entrée massive.
 - **Taille d'entrée plafonnée AVANT l'appel amont** : `mb_strlen(system . prompt)
   > maxInputChars` → 413, avant toute dépense
   (`LlmProxyTest::testOversizedInputAnswers413`).
-- **Plafond de sortie** : `maxTokensPerRequest` (2048) imposé au fournisseur.
+- **Plafond de sortie** : `maxTokensPerRequest` (16 000 depuis le 2026-10-21 : les
+  sorties d'un scan de Twin6 dépassent couramment 8 192 tokens ; 8 192 de juillet à
+  octobre, 2 048 avant) imposé au fournisseur.
+- **Le pire cas réservé avant l'appel** (angle 6) : un token par octet de l'entrée —
+  un tokenizer BPE n'en produit jamais plus —, plus le surcoût de la requête
+  (`AnthropicProvider::REQUEST_OVERHEAD_TOKENS`, 1 024 : le prompt système que le
+  fournisseur ajoute pour l'outil forcé, 406 tokens avec Haiku 5.5), plus tout le
+  plafond de sortie ; au tarif du modèle, palier long compris (`Pricing`).
 
-Coût par requête ainsi borné (≈ 5 500 tokens d'entrée + 2048 de sortie sur haiku
-≈ 0,016 $), donc le budget journalier ≈ 300 requêtes.
+Coût par requête ainsi borné. Avec Haiku 5.5, le modèle par défaut depuis le
+2026-10-21 — 0,10 $ / 0,50 $ le million jusqu'à 100 000 tokens d'entrée, 0,50 $ /
+2,50 $ au-delà, pour tout l'appel (page des prix, 2026-10-21) — un scan de Twin6
+(≈ 56 000 caractères) coûte ≈ 0,006 $ et en réserve ≈ 0,014 $ ; une synthèse au
+plafond (420 000 caractères de français) coûte jusqu'à ≈ 0,1 $ et en réserve
+≈ 0,26 $ ; 420 000 caractères d'une écriture dense (jusqu'à 4 octets par
+caractère) en réservent ≈ 0,9 $, et le fournisseur refuse au-delà d'un million de
+tokens. Un modèle plus cher, posé par l'administrateur, coûte et réserve d'autant
+plus ; le budget, lui, tient.
 
-**Résidu accepté :** l'entrée est mesurée en **caractères**, pas en tokens ; une
-entrée dense peut friser un ratio légèrement supérieur. Borne néanmoins
-déterministe et couverte par le coût maximal par requête.
+**Résidu accepté :** la réservation compte un token par octet, trois à quatre fois
+l'usage réel d'un texte français. En fin de journée, un appel dont le pire cas ne
+tient plus dans le reste du budget est refusé (503) alors que son coût réel y
+tiendrait ; la synthèse de Twin6, qui réserve le plus, peut l'être après sept scans
+payés. C'est le prix d'un plafond qui tient sous concurrence.
 
 ---
 
@@ -211,18 +239,27 @@ compteurs (atomicité) ; un fichier gdoc de 10 Go pour saturer la mémoire.
   (`UsageCounters`) utilisent `INSERT … ON DUPLICATE KEY UPDATE compteur = … + 1`
   — sûr en concurrence, pas de perte d'incrément. La rédemption PoW est
   sérialisée par la clé primaire.
+- **Réservation atomique du budget** (2026-10-21, Christian : « pas plus de dépense
+  journalière ») : `UsageCounters::reserve` ajoute le pire cas de l'appel aux
+  compteurs du jour par un seul `UPDATE` conditionnel — il ne s'applique que si les
+  deux plafonds tiennent encore — sur la ligne du jour, que InnoDB verrouille. Des
+  requêtes concurrentes réservent donc l'une après l'autre et, ensemble, ne passent
+  jamais le budget. La réservation devient l'usage réel (`settle`) ; un refus du
+  fournisseur la rend (`release`). Couvert par UC-VIS-03-U25 et F25.
 - **Téléchargement gdoc plafonné pendant le transfert** : `CurlHttpClient`
   interrompt le transfert (`CURLOPT_WRITEFUNCTION` renvoie 0) dès que le corps
   dépasse 1 Mo → mémoire bornée à ~1 Mo, jamais 10 Go. Timeout de 15 s. Couvert
   par `LlmGdocTextTest::testOversizedDocumentAnswers413`.
 
 **Résidu accepté :**
-- **Dépassement du coupe-circuit journalier sous concurrence.** Le plafond est
-  lu **avant** l'appel amont et écrit **après** (`isExhausted` puis `record`) : N
-  requêtes concurrentes peuvent toutes passer le contrôle avant que l'une n'écrive.
-  Le dépassement est **borné par le nombre de requêtes en vol** (× coût max ≈
-  0,016 $), lui-même limité par le quota par IP. Une réservation atomique de
-  budget serait disproportionnée sur mutualisé — résidu assumé.
+- ~~**Dépassement du coupe-circuit journalier sous concurrence.**~~ Fermé le
+  2026-10-21 par la réservation ci-dessus : le plafond était lu **avant** l'appel et
+  écrit **après** (`isExhausted` puis `record`), si bien que N requêtes concurrentes
+  passaient toutes le contrôle avant que l'une n'écrive — et, Haiku 5.5 compté sans
+  son palier long, une entrée dense ne comptait qu'un cinquième de son coût.
+- **Délai dépassé : la réservation reste entière.** Le fournisseur a pu facturer un
+  appel dont la réponse s'est perdue ; on compte donc son pire cas. La démo s'épuise
+  plus tôt, sans dépenser plus.
 - **Rafale au changement de fenêtre horaire (fixed-window).** `RateLimiter` est à
   fenêtre fixe : un abuseur peut placer `perIpPerHour` requêtes à `10:59:59` puis
   `perIpPerHour` de plus à `11:00:00`, soit un pic de **2×** à la frontière. Résidu
@@ -237,10 +274,10 @@ compteurs (atomicité) ; un fichier gdoc de 10 Go pour saturer la mémoire.
 |---|-------|----------------|--------------------|
 | 1 | PoW | Difficulté ~gratuite pour un attaquant natif | Quota /64 + coupe-circuit journalier |
 | 1 | PoW | Émission de défis non limitée (sans état) | TTL 2 min + rédemption sous quota |
-| 2 | Quota IP | Un /48 = 65 536 buckets /64 | LLM : coupe-circuit $5/jour ; gdoc : résidu bande passante |
-| 3 | Coût | Entrée mesurée en caractères, pas en tokens | Coût max par requête borné |
+| 2 | Quota IP | Un /48 = 65 536 buckets /64 | LLM : coupe-circuit 1 $/jour ; gdoc : résidu bande passante |
+| 3 | Coût | Pire cas réservé à un token par octet : un appel refusé en fin de journée alors que son coût réel tiendrait | Le budget tient |
 | 4 | Clé | Texte d'erreur amont relayé (sans secret) | 502 générique, clé jamais dans le corps |
-| 6 | DoS | Dépassement journalier sous concurrence | Borné par requêtes en vol × coût max |
+| 6 | DoS | Délai dépassé : réservation gardée au pire cas | La démo s'épuise plus tôt, le budget tient |
 | 6 | DoS | Rafale 2× à la frontière de fenêtre horaire (fixed-window) | Borné, coupe-circuit journalier au-dessus |
 
 ## Références
@@ -250,7 +287,8 @@ compteurs (atomicité) ; un fichier gdoc de 10 Go pour saturer la mémoire.
   `AnthropicProvider,CurlHttpClient,Pricing}.php`, `api/config/demo.php`,
   `scripts/migrations/006_llm_usage.sql`.
 - **Tests :** `api/tests/{ClientIpTest,LlmProxyTest,LlmPowTest,LlmGdocTextTest,`
-  `LlmMockProviderTest,AuthRateLimitTest}.php`, `web/src/lib/pow.test.js`,
+  `LlmMockProviderTest,AuthRateLimitTest}.php`, `api/tests/UseCases/*/UcVis03EssayerCartographieTest.php`
+  (réservation : U25, F25 ; tarifs : U05), `web/src/lib/pow.test.js`,
   `web/src/lib/gdoc.test.js`.
 - **Config d'abus :** `perIpPerHour`, `dailyGlobalTokens`, `dailyBudgetUsd`,
   `powDifficultyBits`, `maxInputChars`, `maxTokensPerRequest` — tous

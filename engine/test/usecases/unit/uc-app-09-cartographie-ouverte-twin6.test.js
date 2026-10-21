@@ -19,8 +19,11 @@ import {
   executerTwin6,
   extractJson,
   fichesPourTwin6,
+  rendreGabaritTwin6,
   twin6CallsFor,
+  variablesTwin6,
 } from '../../../src/twin6/index.js'
+import { CHARS_PER_TOKEN_FR } from '../../../src/providers/estimate.js'
 import { twin6ToMergeDocument } from '../../../src/twin6/mapper.js'
 import { createProvider } from '../../../src/providers/index.js'
 import { validateDocument } from '../../../src/validation.js'
@@ -118,6 +121,16 @@ describe('UC-APP-09 — prompts publics Twin6', () => {
     expect(() => extractJson('pas de json')).toThrow(/aucun objet JSON/)
     expect(() => extractJson('{"tronque": ')).toThrow(/aucun objet JSON/)
     expect(() => extractJson('{"a": 1,}')).toThrow(SyntaxError)
+  })
+
+  it('UC-APP-09-U36 — extractJson : un document JSON pur (sortie à outil forcé) se lit tel quel, même quand une de ses chaînes cite un bloc ```', () => {
+    const passage = { extraitVerbatim: 'J’ai écrit :\n```python\nprint(42)\n```\npuis testé.', feuille: '2026-02-10' }
+    expect(extractJson(JSON.stringify({ poleNum: 3, passagesSaillants: [passage] }))).toEqual({
+      poleNum: 3,
+      passagesSaillants: [passage],
+    })
+    // Le JSON pur d'un autre type que l'objet garde le chemin tolérant.
+    expect(extractJson('[{"a":1}]')).toEqual({ a: 1 })
   })
 })
 
@@ -354,6 +367,37 @@ describe('UC-APP-09 — tout référentiel (2026-10-20)', () => {
     for (const prompt of v110) {
       expect(prompt).not.toMatch(/RESPIRE|X\.YY|\$\{/)
     }
+  })
+
+  it('UC-APP-09-U35 — essai gratuit (A6) : sur les gabarits servis, chaque appel tient sous le plafond d’entrée par défaut de la démo — scans d’un portfolio de 5 000 caractères, kairos dont les scans ont rendu tout leur plafond de sortie (RG11)', () => {
+    // Défauts d'api/config/demo.php (2026-10-21) : 420 000 caractères par appel,
+    // 16 000 tokens de sortie ; l'essai borne le portfolio à 5 000 caractères
+    // (web/src/lib/demo-llm.js, DEMO_TEXT_MAX_CHARS).
+    const MAX_INPUT_CHARS = 420_000
+    const MAX_OUTPUT_TOKENS = 16_000
+    const portfolio = 'x'.repeat(5000)
+    const repo = fileURLToPath(new URL('../../../../', import.meta.url))
+    const respire = JSON.parse(readFileSync(`${repo}schemas/fixtures/referentiel-respire-v7.json`, 'utf8'))
+    const variables = variablesTwin6(respire)
+    const { scanPole, kairos } = gabaritsTwin6(repo, '1.1.0')
+    // Fiches écrites depuis le document : celles du corpus font de 13 000 à 19 000 caractères.
+    const fiches = fichesPourTwin6(respire)
+    const scans = respire.poles.map((p) =>
+      buildScanPolePrompt(rendreGabaritTwin6(scanPole, variables), p.num, fiches[String(p.num)], portfolio).length)
+    expect(Math.max(...scans)).toBeLessThanOrEqual(MAX_INPUT_CHARS)
+
+    // Chaque scan rend au plus 16 000 tokens, soit 57 600 caractères au rythme du
+    // moteur (3,6 par token) ; un scan tronqué arrête le run avant le kairos.
+    const sortieMax = Math.ceil(MAX_OUTPUT_TOKENS * CHARS_PER_TOKEN_FR)
+    const cartoPoles = respire.poles.map((p) => ({
+      poleNum: p.num,
+      rapport: 'x'.repeat(sortieMax - JSON.stringify({ poleNum: p.num, rapport: '' }).length),
+    }))
+    expect(JSON.stringify(cartoPoles[6])).toHaveLength(sortieMax)
+    const kairosPrompt = buildKairosPrompt(rendreGabaritTwin6(kairos, variables), cartoPoles, portfolio)
+    expect(kairosPrompt.length).toBeLessThanOrEqual(MAX_INPUT_CHARS)
+    // Sous l'ancien défaut de 200 000, ce kairos recevait un 413 (revue du 2026-10-21).
+    expect(kairosPrompt.length).toBeGreaterThan(200_000)
   })
 })
 

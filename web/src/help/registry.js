@@ -237,6 +237,7 @@ const BASE = {
     points: [
       'Gratuite avec votre propre clé API : le calcul se fait dans votre navigateur, la clé n’en sort pas.',
       'Ou avec nos crédits : seul le coût réel du modèle, majoré de 10 % de contribution, est débité.',
+      'Ou en essai gratuit, même sans compte : un portfolio de 5 000 caractères au plus, aux journées datées (### AAAA-MM-JJ), le modèle de la démonstration, dans la limite du budget du jour, commun à tous les usages de la démonstration.',
       'Les prompts sont publics et téléchargeables (AGPL) : vous pouvez les réutiliser partout.',
       'Le résultat s’affiche dans le même diagramme évolutif que les autres cartographies.',
     ],

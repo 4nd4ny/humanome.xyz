@@ -51,6 +51,9 @@ describe('table de prix (indicative, ordres de grandeur 2026)', () => {
     expect(getModelPricing('claude-haiku-4-5-20251001')).toEqual(
       MODEL_PRICING_USD_PER_MTOK['claude-haiku-4-5']
     )
+    // Haiku 5.5, le modèle de la démo depuis le 2026-10-21 : son propre tarif,
+    // dix fois moindre, et non celui d'une autre famille (parité Pricing.php).
+    expect(getModelPricing('claude-haiku-5-5')).toEqual({ input: 0.1, output: 0.5 })
     // Variantes intermédiaires : résolues au tarif de la FAMILLE (parité
     // avec api/src/Llm/Pricing.php, base de facturation du worker M8).
     expect(getModelPricing('claude-sonnet-4-5')).toEqual(

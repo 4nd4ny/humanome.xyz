@@ -81,10 +81,111 @@ function baseDeps(over = {}) {
   }
 }
 
+/** Le fournisseur de la démo, simulé : une preuve résolue d'avance, puis le moteur l'appelle. */
+function demoFactoryFake(journal = []) {
+  return vi.fn(() => ({
+    provider: { name: 'anthropic', transport: 'proxy', complete: async () => ({}) },
+    prime: vi.fn(async () => journal.push('prime')),
+  }))
+}
+
+const PORTFOLIO_COURT = '### 2026-01-05\n---\nAujourd’hui j’ai réparé l’horloge et réfléchi à ma méthode de travail.'
+
 describe('Twin6OuverteView', () => {
-  it('invite un visiteur anonyme à se connecter', async () => {
-    render(<Twin6OuverteView deps={baseDeps({ fetchMeFn: async () => ({ user: null }) })} />)
-    expect(await screen.findByRole('link', { name: 'Connectez-vous' })).toBeDefined()
+  it('un visiteur : l’essai gratuit seul, sans offre ni clés, et l’invitation à se connecter pour les autres voies', async () => {
+    const fetchOffer = vi.fn(async () => OFFER)
+    const listKeys = vi.fn(async () => [])
+    render(<Twin6OuverteView deps={baseDeps({ fetchMeFn: async () => ({ user: null }), fetchOffer, listKeys })} />)
+
+    expect(await screen.findByLabelText(/Votre portfolio/)).toBeDefined()
+    expect(screen.getByRole('radio', { name: /Essai gratuit/ }).checked).toBe(true)
+    expect(screen.queryByRole('radio', { name: /Avec nos crédits/ })).toBeNull()
+    expect(screen.queryByRole('radio', { name: /Avec ma propre clé API/ })).toBeNull()
+    expect(screen.queryByLabelText('Modèle')).toBeNull() // le serveur de la démo impose le sien
+    expect(screen.getByRole('link', { name: 'Connectez-vous' }).getAttribute('href')).toBe('#/compte')
+    expect(screen.getByTestId('twin6-compteur').textContent).toBe('0 / 5 000 caractères (essai gratuit)')
+    expect(fetchOffer).not.toHaveBeenCalled() // /api/twin9/meta exige une session
+    expect(listKeys).not.toHaveBeenCalled()
+  })
+
+  it('un visiteur lance l’essai : la première preuve est résolue avant le moteur, qui reçoit le fournisseur de la démo et le document publié', async () => {
+    const journal = []
+    const makeDemoProvider = demoFactoryFake(journal)
+    const runEngine = vi.fn(async () => {
+      journal.push('moteur')
+      return { document: MERGE_DOC, calls: new Array(2).fill(0) }
+    })
+    const deps = baseDeps({ fetchMeFn: async () => ({ user: null }), makeDemoProvider, runEngine })
+    render(<Twin6OuverteView deps={deps} />)
+
+    fireEvent.change(await screen.findByLabelText(/Votre portfolio/), { target: { value: PORTFOLIO_COURT } })
+    fireEvent.click(await screen.findByRole('button', { name: 'Lancer la cartographie ouverte' }))
+
+    await waitFor(() => expect(runEngine).toHaveBeenCalledTimes(1))
+    expect(journal).toEqual(['prime', 'moteur'])
+    const arg = runEngine.mock.calls[0][0]
+    expect(arg.provider).toBe(makeDemoProvider.mock.results[0].value.provider)
+    expect(arg.model).toBe('demo') // une indication : le proxy impose son modèle
+    // Sans /meta, le run lit le document publié de RESPIRE (RG9).
+    expect(arg.referentiel.poles).toEqual([{ num: 1, nom: 'TETE — Penser & Comprendre' }])
+    expect(deps.makeOwnKeyProvider).not.toHaveBeenCalled()
+    expect((await screen.findByText(/Cartographie ouverte terminée/)).textContent).toBe(
+      'Cartographie ouverte terminée (essai gratuit).',
+    )
+  })
+
+  it('essai gratuit : au-delà de 5 000 caractères, lancement impossible et ce qu’il faut retirer', async () => {
+    const makeDemoProvider = demoFactoryFake()
+    render(<Twin6OuverteView deps={baseDeps({ fetchMeFn: async () => ({ user: null }), makeDemoProvider })} />)
+
+    const textarea = await screen.findByLabelText(/Votre portfolio/)
+    fireEvent.change(textarea, { target: { value: `${PORTFOLIO_COURT} ${'x'.repeat(5000)}` } })
+    const bouton = await screen.findByRole('button', { name: 'Lancer la cartographie ouverte' })
+    expect(bouton.disabled).toBe(true)
+    expect(screen.getByText(/Trop long pour l’essai gratuit/).textContent).toContain(
+      `(retirez-en ${String(PORTFOLIO_COURT.length + 1).replace(/\B(?=(\d{3})+(?!\d))/g, ' ')})`,
+    )
+
+    fireEvent.change(textarea, { target: { value: `${PORTFOLIO_COURT} ${'x'.repeat(4999 - PORTFOLIO_COURT.length)}` } })
+    expect(screen.getByTestId('twin6-compteur').textContent).toBe('5 000 / 5 000 caractères (essai gratuit)')
+    await waitFor(() => expect(bouton.disabled).toBe(false))
+    expect(makeDemoProvider).not.toHaveBeenCalled()
+  })
+
+  it('essai gratuit épuisé (503) : le message de la démo, et le bouton de nouveau cliquable', async () => {
+    const err = Object.assign(new Error('provider proxy : HTTP 503'), { status: 503 })
+    const runEngine = vi.fn(async () => {
+      throw err
+    })
+    render(
+      <Twin6OuverteView
+        deps={baseDeps({ fetchMeFn: async () => ({ user: null }), makeDemoProvider: demoFactoryFake(), runEngine })}
+      />,
+    )
+    fireEvent.change(await screen.findByLabelText(/Votre portfolio/), { target: { value: PORTFOLIO_COURT } })
+    fireEvent.click(await screen.findByRole('button', { name: 'Lancer la cartographie ouverte' }))
+
+    expect((await screen.findByRole('alert')).textContent).toContain('La démo est épuisée pour aujourd’hui')
+    await waitFor(() =>
+      expect(screen.getByRole('button', { name: 'Lancer la cartographie ouverte' }).disabled).toBe(false),
+    )
+  })
+
+  it('un compte peut aussi choisir l’essai gratuit : le choix du modèle disparaît, le fournisseur de la démo sert', async () => {
+    const makeDemoProvider = demoFactoryFake()
+    const deps = baseDeps({ makeDemoProvider })
+    render(<Twin6OuverteView deps={deps} />)
+
+    expect(await screen.findByLabelText('Modèle')).toBeDefined()
+    fireEvent.click(screen.getByRole('radio', { name: /Essai gratuit/ }))
+    expect(screen.queryByLabelText('Modèle')).toBeNull()
+    expect(screen.queryByRole('link', { name: 'Connectez-vous' })).toBeNull()
+    fireEvent.change(screen.getByLabelText(/Votre portfolio/), { target: { value: PORTFOLIO_COURT } })
+    fireEvent.click(screen.getByRole('button', { name: 'Lancer la cartographie ouverte' }))
+
+    await waitFor(() => expect(deps.runEngine).toHaveBeenCalledTimes(1))
+    expect(deps.runEngine.mock.calls[0][0].provider).toBe(makeDemoProvider.mock.results[0].value.provider)
+    expect(deps.makeOwnKeyProvider).not.toHaveBeenCalled()
   })
 
   it('affiche le formulaire ouvert (clé perso gratuite ou crédits) une fois connecté', async () => {

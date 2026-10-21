@@ -153,8 +153,8 @@ exécution du service/contrat, **f** = intérêt légitime.
 
 | Élément | Détail |
 |---|---|
-| Finalité | Offrir une démonstration de cartographie à un visiteur sans compte (§3.1). |
-| Personnes concernées | Visiteurs anonymes. |
+| Finalité | Offrir une démonstration de cartographie à un visiteur sans compte (§3.1) : l'Essayer, et depuis le 2026-10-21 l'essai gratuit de la cartographie ouverte (Twin6), sur un portfolio de 5 000 caractères au plus. |
+| Personnes concernées | Visiteurs anonymes ; titulaires d'un compte qui choisissent l'essai gratuit de la cartographie ouverte, le « Service humanome » de l'assistant de cartographie, ou le service humanome du banc d'essai et de la rétro-ingénierie du promptologue (aucune donnée de compte n'y est liée). |
 | Données | **Compteurs anonymes uniquement** : tokens et coût estimé par jour (UTC), quotas par IP hachée (sha256, jamais d'IP brute), empreintes de défis anti-abus consommés. Aucun prompt, aucune réponse, aucune IP en clair conservés. |
 | Base légale | **f** (intérêt légitime : sécurité et maîtrise du budget). |
 | Durée | Compteurs journaliers (fenêtres courtes), purgés par l'entretien ; défis anti-rejeu à TTL de 2 min. |

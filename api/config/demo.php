@@ -74,17 +74,34 @@ declare(strict_types=1);
  *
  * Tarifs par modèle (USD par million de tokens) pour l'estimation de coût du
  * coupe-circuit : voir Llm/Pricing (préfixe de modèle le plus long gagnant).
+ *
+ * VALEURS (2026-10-21, Christian : « 1 USD par jour pour tous les utilisateurs
+ * anonymes ou connectés, mais pas plus de dépense journalière ») : un budget
+ * de 1 $ par jour, que partage tout ce qui passe par POST /api/llm — l'Essayer,
+ * l'essai gratuit de la cartographie ouverte (Twin6), le « Service humanome »
+ * de l'assistant de cartographie, le banc et la rétro-ingénierie du
+ * promptologue —, visiteurs et comptes confondus. Le pire cas de chaque appel
+ * y est réservé avant qu'il parte (routes/llm.php) : la dépense ne le dépasse
+ * pas, même sous concurrence. Avec Haiku 5.5, ce dollar paie de quarante à
+ * soixante Essayer, ou de huit à vingt essais de Twin6 (0,05 à 0,13 $). Les
+ * deux pages bornent le texte du visiteur à 5 000 caractères ; le serveur, lui,
+ * borne l'appel entier, gabarit compris : 420 000 caractères, pour la synthèse
+ * de Twin6, qui porte les sorties des sept scans (jusqu'à 415 000 caractères
+ * quand chacun rend ses 16 000 tokens). 16 000 jetons de sortie, car un scan de
+ * Twin6 en rend couramment plus de 8 192 ; 150 s par appel ; 6 millions de
+ * jetons par jour, un garde-fou qui ne dépend pas des tarifs. Sonnet 5.5 ne
+ * convient pas : il refuse la réflexion désactivée qu'envoie la démo.
  */
 
 return [
     'enabled' => true,
     'provider' => 'anthropic', // 'anthropic' | 'mock'
-    'model' => 'claude-haiku-4-5-20251001',
-    'maxTokensPerRequest' => 2048,
-    'maxInputChars' => 20000,
+    'model' => 'claude-haiku-5-5',
+    'maxTokensPerRequest' => 16000,
+    'maxInputChars' => 420000,
     'perIpPerHour' => 20,
-    'dailyGlobalTokens' => 2000000,
-    'dailyBudgetUsd' => 5.0,
+    'dailyGlobalTokens' => 6000000,
+    'dailyBudgetUsd' => 1.0,
     'powDifficultyBits' => 20,
-    'upstreamTimeoutSeconds' => 60,
+    'upstreamTimeoutSeconds' => 150,
 ];

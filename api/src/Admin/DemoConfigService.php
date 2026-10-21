@@ -33,6 +33,7 @@ final class DemoConfigService
      * a hard whitelist — a new model id can be used the day it ships.
      */
     public const ALLOWED_MODELS = [
+        'claude-haiku-5-5',
         'claude-haiku-4-5-20251001',
         'claude-haiku-4-5',
         'claude-sonnet-4-6',
@@ -45,7 +46,7 @@ final class DemoConfigService
     /** Integer fields: [min, max]. */
     private const INT_BOUNDS = [
         'maxTokensPerRequest' => [256, 16000],
-        'maxInputChars' => [1000, 200000],
+        'maxInputChars' => [1000, 500000],
         'perIpPerHour' => [1, 1000],
         'dailyGlobalTokens' => [10000, 50000000],
         'powDifficultyBits' => [8, 24],

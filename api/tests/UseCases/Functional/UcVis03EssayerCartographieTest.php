@@ -4,8 +4,11 @@ declare(strict_types=1);
 
 namespace Humanome\Tests\UseCases\Functional;
 
+use Humanome\Llm\AnthropicProvider;
 use Humanome\Llm\HttpClientException;
 use Humanome\Llm\PowChallenge;
+use Humanome\Llm\Pricing;
+use Humanome\Llm\UsageCounters;
 use Humanome\Tests\LlmTestCase;
 use Humanome\Tests\TestDb;
 use PHPUnit\Framework\Attributes\TestDox;
@@ -34,15 +37,28 @@ final class UcVis03EssayerCartographieTest extends LlmTestCase
         $this->clientIp = '198.51.100.20';
     }
 
+    private const SYSTEM = 'Tu es le cartographe.';
+
+    /** Le prompt d'un appel du moteur (pôle n ou kairos). */
+    private static function prompt(?int $pole): string
+    {
+        return $pole === null
+            ? "SYNTHÈSE KAIROS de la journée 2026-01-06.\n" . self::TEXT
+            : "Pôle {$pole} — instruction.\n{\"poleNum\": \"{$pole}\"}\n" . self::TEXT;
+    }
+
     /** Un appel du moteur (pôle n ou kairos), défi frais résolu. */
     private function engineCall(?int $pole, string $ip = '198.51.100.20', array $extra = []): ResponseInterface
     {
         $this->clientIp = $ip;
-        $prompt = $pole === null
-            ? "SYNTHÈSE KAIROS de la journée 2026-01-06.\n" . self::TEXT
-            : "Pôle {$pole} — instruction.\n{\"poleNum\": \"{$pole}\"}\n" . self::TEXT;
 
-        return $this->postLlm(array_merge(['system' => 'Tu es le cartographe.', 'prompt' => $prompt], $extra));
+        return $this->postLlm(array_merge(['system' => self::SYSTEM, 'prompt' => self::prompt($pole)], $extra));
+    }
+
+    /** @return array{requests: int, inputTokens: int, outputTokens: int, estimatedCostUsd: float} */
+    private static function usage(): array
+    {
+        return (new UsageCounters(self::$pdo))->today();
     }
 
     #[TestDox('UC-VIS-03-F01 — nominal : statut, puis 7 appels pôle + 1 kairos, un défi par appel, compteurs seulement')]
@@ -239,12 +255,60 @@ final class UcVis03EssayerCartographieTest extends LlmTestCase
         self::assertSame(502, $failed->getStatusCode());
         self::assertSame('Erreur du fournisseur LLM : overloaded', self::json($failed)['error']);
 
+        // Refusés par le fournisseur, qui ne les facture pas : rien de compté.
+        self::assertSame(['requests' => 0, 'inputTokens' => 0, 'outputTokens' => 0, 'estimatedCostUsd' => 0.0], self::usage());
+
         $this->http->queueException(new HttpClientException('timeout', true));
         self::assertSame(504, $this->engineCall(3)->getStatusCode());
+        // Délai dépassé : le fournisseur a pu facturer l'appel, son pire cas reste réservé (RG4).
+        $kept = self::usage();
+        self::assertSame(\strlen(self::SYSTEM . self::prompt(3)) + AnthropicProvider::REQUEST_OVERHEAD_TOKENS, $kept['inputTokens']);
+        self::assertSame(512, $kept['outputTokens']);
+        self::assertSame(0, $kept['requests']);
 
         TestDb::setEnv('ANTHROPIC_API_KEY', '');
         self::assertSame(503, $this->engineCall(4)->getStatusCode());
-        // Aucun de ces échecs n'a été compté comme un usage.
-        self::assertSame(0, (int) self::$pdo->query('SELECT COUNT(*) FROM llm_usage_daily')->fetchColumn());
+        self::assertSame($kept, self::usage(), 'sans clé, refus avant toute réservation');
+    }
+
+    #[TestDox('UC-VIS-03-F25 — RG4 : le pire cas d’un appel est réservé avant qu’il parte ; sans la place, 503 et rien n’est envoyé ; le budget du jour tient, appels en vol compris')]
+    public function testF25WorstCaseIsReservedBeforeTheCallLeaves(): void
+    {
+        TestDb::setEnv('DEMO_PROVIDER', 'anthropic');
+        TestDb::setEnv('DEMO_DAILY_BUDGET_USD', '0.01');
+        // Pire cas d'un appel pôle 1 : un token par octet du prompt, le surcoût
+        // de la requête, et tout le plafond de sortie (512), au tarif de Haiku 4.5.
+        $worstIn = \strlen(self::SYSTEM . self::prompt(1)) + AnthropicProvider::REQUEST_OVERHEAD_TOKENS;
+        $worstUsd = Pricing::estimateUsd('claude-haiku-4-5-20251001', $worstIn, 512);
+        self::assertEqualsWithDelta(0.0037, $worstUsd, 0.0001);
+
+        // Un autre appel est en vol et tient 0,007 $ : celui-ci n'a pas la place.
+        $counters = new UsageCounters(self::$pdo);
+        self::assertTrue($counters->reserve(1000, 512, 0.007, 1_000_000, 0.01));
+        $refused = $this->engineCall(1);
+        self::assertSame(503, $refused->getStatusCode());
+        self::assertSame('Démo épuisée pour aujourd’hui, revenez demain.', self::json($refused)['error']);
+        self::assertSame([], $this->http->requests, 'rien n’est parti chez le fournisseur');
+
+        // L'autre appel est refusé par le fournisseur : sa place revient, celui-ci passe
+        // et son usage réel (1 000 + 200 tokens, 0,002 $) remplace sa réservation.
+        $counters->release(1000, 512, 0.007);
+        $this->http->queueResponse(['status' => 200, 'body' => self::anthropicBody('{"poleNum":"1"}', 1000, 200)]);
+        self::assertSame(200, $this->engineCall(1)->getStatusCode());
+        $settled = self::usage();
+        self::assertSame([1, 1000, 200], [$settled['requests'], $settled['inputTokens'], $settled['outputTokens']]);
+        self::assertEqualsWithDelta(0.002, $settled['estimatedCostUsd'], 1e-6);
+
+        // Réponse 2xx illisible : facturée, le pire cas reste. Puis le délai
+        // dépassé, de même. Le budget suivant n'a plus la place d'un pire cas.
+        $this->http->queueResponse(['status' => 200, 'body' => 'pas du JSON']);
+        self::assertSame(502, $this->engineCall(1)->getStatusCode());
+        self::assertEqualsWithDelta(0.002 + $worstUsd, self::usage()['estimatedCostUsd'], 1e-6);
+        $this->http->queueException(new HttpClientException('timeout', true));
+        self::assertSame(504, $this->engineCall(1)->getStatusCode());
+        self::assertEqualsWithDelta(0.002 + 2 * $worstUsd, self::usage()['estimatedCostUsd'], 1e-6);
+        self::assertSame(503, $this->engineCall(1)->getStatusCode(), '0,0095 $ + 0,0037 $ > 0,01 $');
+        self::assertCount(3, $this->http->requests);
+        self::assertLessThanOrEqual(0.01, self::usage()['estimatedCostUsd']);
     }
 }

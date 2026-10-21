@@ -156,10 +156,44 @@ final class UcVis03EssayerCartographieTest extends TestCase
         new UsageCounters(self::$pdo, 'users');
     }
 
-    #[TestDox('UC-VIS-03-U05 — Pricing : tarif du préfixe le plus long, mock gratuit, modèle inconnu au tarif prudent')]
+    #[TestDox('UC-VIS-03-U25 — UsageCounters::reserve : le pire cas réservé d’un coup sous les deux plafonds, puis réglé au réel ou rendu ; à plusieurs, jamais au-delà')]
+    public function testU25ReservationsNeverPassTheCaps(): void
+    {
+        $counters = new UsageCounters(self::$pdo);
+        $day = gmmktime(12, 0, 0, 3, 10, 2026);
+        $reserve = fn (int $in, int $out, float $usd): bool => $counters->reserve($in, $out, $usd, 100_000, 1.0, $day);
+
+        // Deux appels en vol : 0,75 $ réservés sous un budget de 1 $ ; un troisième n'a plus la place.
+        self::assertTrue($reserve(3000, 1000, 0.375));
+        self::assertTrue($reserve(3000, 1000, 0.375));
+        self::assertFalse($reserve(3000, 1000, 0.375), 'budget : 1,125 $ > 1 $');
+        self::assertFalse($reserve(90_000, 2001, 0.125), 'tokens : 100 001 > 100 000');
+        self::assertSame(['requests' => 0, 'inputTokens' => 6000, 'outputTokens' => 2000, 'estimatedCostUsd' => 0.75],
+            $counters->today($day), 'un refus ne réserve rien');
+        self::assertTrue($reserve(90_000, 2000, 0.25), 'pile aux deux plafonds : accepté');
+        self::assertFalse($reserve(1, 0, 0.0), 'plus un token');
+
+        // Réglée, une réservation fait place à l'usage réel et compte la requête ;
+        // rendue (le fournisseur a refusé l'appel), elle ne laisse rien.
+        $counters->settle(3000, 1000, 0.375, 1200, 300, 0.125, $day);
+        $counters->release(3000, 1000, 0.375, $day);
+        $counters->release(90_000, 2000, 0.25, $day);
+        self::assertSame(['requests' => 1, 'inputTokens' => 1200, 'outputTokens' => 300, 'estimatedCostUsd' => 0.125],
+            $counters->today($day));
+        self::assertTrue($reserve(98_000, 500, 0.875), 'la place rendue resservit');
+        self::assertSame(0, $counters->today($day + 86400)['requests'], 'jour UTC suivant intact');
+    }
+
+    #[TestDox('UC-VIS-03-U05 — Pricing : tarif du préfixe le plus long, Haiku 5.5 au sien et à son palier long, mock gratuit, modèle inconnu au tarif prudent')]
     public function testU05PricingEstimate(): void
     {
         self::assertEqualsWithDelta(0.0006, Pricing::estimateUsd('claude-haiku-4-5-20251001', 100, 100), 1e-12);
+        // le modèle de la démo depuis le 2026-10-21 : 0,10 $ / 0,50 $ le million, pas le tarif prudent
+        self::assertEqualsWithDelta(0.00006, Pricing::estimateUsd('claude-haiku-5-5', 100, 100), 1e-12);
+        // jusqu'à 100 000 tokens de prompt ; au-delà, tout l'appel à 0,50 $ / 2,50 $ (page des prix, 2026-10-21)
+        self::assertEqualsWithDelta(0.0105, Pricing::estimateUsd('claude-haiku-5-5', 100_000, 1000), 1e-12);
+        self::assertEqualsWithDelta(0.0525005, Pricing::estimateUsd('claude-haiku-5-5-20261001', 100_001, 1000), 1e-12);
+        self::assertEqualsWithDelta(1.0, Pricing::estimateUsd('claude-haiku-4-5', 1_000_000, 0), 1e-12, 'Haiku 4.5 : pas de palier');
         self::assertEqualsWithDelta(0.018, Pricing::estimateUsd('claude-sonnet-4-5', 1000, 1000), 1e-12);
         self::assertSame(0.0, Pricing::estimateUsd('mock', 5000, 5000));
         self::assertEqualsWithDelta(0.03, Pricing::estimateUsd('modele-inconnu', 1000, 1000), 1e-12);

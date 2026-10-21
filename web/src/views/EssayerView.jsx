@@ -293,6 +293,11 @@ export default function EssayerView({ lib, fetchFn }) {
           Cartographier ce texte
         </button>
       </p>
+      <p className="essayer-aussi">
+        Plusieurs journées datées (<code>### AAAA-MM-JJ</code>) ? Essayez aussi la{' '}
+        <a href="#/twin6-ouverte">cartographie ouverte</a> (Twin6), gratuite elle aussi sur{' '}
+        {formatInt(DEMO_TEXT_MAX_CHARS)} caractères.
+      </p>
     </div>
   )
 }

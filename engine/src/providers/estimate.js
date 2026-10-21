@@ -32,6 +32,11 @@ export const PRICING_DISCLAIMER =
  */
 export const MODEL_PRICING_USD_PER_MTOK = Object.freeze({
   'claude-haiku-4-5': { input: 1, output: 5 },
+  // The demo's model since 2026-10-21 (api/config/demo.php). Its long-prompt
+  // rate (0.50 / 2.50 past 100 000 prompt tokens) is left out here: these
+  // estimates sum calls whose prompts stay far below it. Pricing.php, which
+  // guards the demo's dollar call by call, applies it.
+  'claude-haiku-5-5': { input: 0.1, output: 0.5 },
   // Family prefixes mirror api/src/Llm/Pricing.php (billing basis of the
   // mass worker, M8): intermediate variants (claude-sonnet-4-5…) resolve
   // to their family rates instead of falling out of the table.

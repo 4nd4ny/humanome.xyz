@@ -434,9 +434,9 @@ describe('UC-VIS-04 — liens du panneau pour un compte multi-rôles', () => {
       hint: 'Twin6 — open source',
       reached: async () => {
         await h1('Cartographie ouverte Twin6')
-        // Session reconnue : la page de travail (prompts AGPL téléchargeables), pas l'invite à se connecter.
-        expect(await screen.findByRole('link', { name: 'Télécharger les prompts' })).toBeDefined()
-        expect(screen.queryByText(/La cartographie ouverte nécessite un compte/)).toBeNull()
+        // Session reconnue : la page lit l'offre d'un compte (/api/twin9/meta), que l'essai d'un visiteur
+        // ne lit jamais (le paquet n'est pas routé ici : le formulaire, lui, ne s'affiche pas).
+        await waitFor(() => expect(fetch.calls.some((c) => c.url === 'api/twin9/meta')).toBe(true))
       },
     },
     {

@@ -18,6 +18,15 @@ final class AnthropicProvider
     public const BASE_URL = 'https://api.anthropic.com';
     public const API_VERSION = '2023-06-01';
 
+    /**
+     * Input tokens a request costs besides its system and prompt: the system
+     * prompt Anthropic adds for a forced tool (406 tokens for Haiku 5.5, 474
+     * for Sonnet 5, 588 for Haiku 4.5 — pricing page, read on 2026-10-21), the
+     * tool's definition and the message framing. The demo's worst-case
+     * reservation (routes/llm.php) adds it to the prompt's bytes.
+     */
+    public const REQUEST_OVERHEAD_TOKENS = 1024;
+
     public function __construct(
         private readonly HttpClient $http,
         private readonly string $apiKey,
@@ -92,7 +101,9 @@ final class AnthropicProvider
 
         $data = json_decode($response['body'], true);
         if (!\is_array($data)) {
-            throw new UpstreamException(502, 'réponse amont non-JSON');
+            // The answer's own 2xx status: the provider billed the call (the
+            // demo keeps its reservation, routes/llm.php).
+            throw new UpstreamException($response['status'], 'réponse amont non-JSON');
         }
 
         // Forced tool use: the parsed JSON document arrives as the tool_use

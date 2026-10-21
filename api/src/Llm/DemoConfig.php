@@ -21,7 +21,8 @@ use Humanome\Packages\SettingsRepository;
  *                 skipped and the demo keeps running on env/file values.
  *   2. env      — DEMO_* environment variables (~/app/shared/.env in prod).
  *   3. fichier  — api/config/demo.php.
- *   4. defaut   — coded defaults below.
+ *   4. defaut   — coded defaults below, the file's (2026-10-21: 1 USD a day,
+ *                 Haiku 5.5 — see the file).
  *
  * `provider` is NEVER overridable from the database: the demo runs on the
  * platform Anthropic key (ANTHROPIC_API_KEY, env only — never stored in the
@@ -114,14 +115,14 @@ final class DemoConfig
             enabled: $bool('enabled', 'DEMO_ENABLED', true),
             // provider: env > fichier > defaut ONLY (never from the database).
             provider: self::envString('DEMO_PROVIDER', $raw, 'provider', 'anthropic', $sources),
-            model: $string('model', 'DEMO_MODEL', 'claude-haiku-4-5-20251001'),
-            maxTokensPerRequest: $int('maxTokensPerRequest', 'DEMO_MAX_TOKENS_PER_REQUEST', 2048),
-            maxInputChars: $int('maxInputChars', 'DEMO_MAX_INPUT_CHARS', 20000),
+            model: $string('model', 'DEMO_MODEL', 'claude-haiku-5-5'),
+            maxTokensPerRequest: $int('maxTokensPerRequest', 'DEMO_MAX_TOKENS_PER_REQUEST', 16000),
+            maxInputChars: $int('maxInputChars', 'DEMO_MAX_INPUT_CHARS', 420000),
             perIpPerHour: $int('perIpPerHour', 'DEMO_PER_IP_PER_HOUR', 20),
-            dailyGlobalTokens: $int('dailyGlobalTokens', 'DEMO_DAILY_GLOBAL_TOKENS', 2000000),
-            dailyBudgetUsd: $float('dailyBudgetUsd', 'DEMO_DAILY_BUDGET_USD', 5.0),
+            dailyGlobalTokens: $int('dailyGlobalTokens', 'DEMO_DAILY_GLOBAL_TOKENS', 6000000),
+            dailyBudgetUsd: $float('dailyBudgetUsd', 'DEMO_DAILY_BUDGET_USD', 1.0),
             powDifficultyBits: $int('powDifficultyBits', 'DEMO_POW_DIFFICULTY_BITS', 20),
-            upstreamTimeoutSeconds: $int('upstreamTimeoutSeconds', 'DEMO_UPSTREAM_TIMEOUT', 60),
+            upstreamTimeoutSeconds: $int('upstreamTimeoutSeconds', 'DEMO_UPSTREAM_TIMEOUT', 150),
             sources: $sources,
         );
     }

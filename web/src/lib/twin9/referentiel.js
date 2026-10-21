@@ -3,7 +3,9 @@
 // sections `## X.YY — Nom` (tiret U+2014 obligatoire). Le moteur Twin9 vit dans
 // le dépôt privé Twin_v9 ; la plateforme n'en garde que ce parseur, avec lequel
 // scripts/extract-fiches.mjs tire des P*.md les fiches du référentiel, que
-// scripts/generate-fiches.mjs (prebuild du front) en régénère à l'octet.
+// scripts/generate-fiches.mjs (prebuild du front) en régénère à l'octet, et
+// scripts/twin9/import-protocole.mjs lit la structure des fichiers de pôle de
+// la v9.8 (2026-10-21, à la place du Python de Twin_v9).
 
 import { PY_WS_CLASS, pyStrip } from "./py/pyText.js";
 import { pyFormat } from "./py/pyStr.js";

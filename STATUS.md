@@ -28,6 +28,17 @@ importés). Entrées du 2026-10-20.
 
 ## Fait
 
+- 2026-10-21 — **Import des gabarits sans Python (branche `feat/import-sans-python`).** À la
+  demande de Christian (« Oui : remplacer le script d'import et son appel Python par le parseur
+  JavaScript »), `scripts/twin9/import-protocole.mjs` lit la structure de RESPIRE v7 dans les
+  fichiers de pôle de la v9.8 (`protocole/tagger/P1.md` à `P7.md`) par `parsePole`, le port du
+  `parse_pole` de la v9.8 que la plateforme garde (`web/src/lib/twin9/referentiel.js`), comme le
+  faisait `load_referentiel` : fins de ligne universelles, codes uniques d'un pôle à l'autre, noms
+  accentués des pôles. Un fichier manquant ou illisible donne un avertissement, et le serveur garde
+  sa structure. Vérifié sur les fichiers réels de `Twin_v9` : la structure extraite est identique
+  à celle du Python (7 pôles, 61 compétences). UC-PRO-08-F21 ne dépend plus de `python3` ; il lit
+  sept fichiers de pôle fictifs, dont un en CRLF, et un dossier incomplet.
+
 - 2026-10-20 — **Gabarits Twin6 versionnés, vestiges de T11 retirés (branche
   `feat/gabarits-twin6-et-vestiges`, posée sur `feat/referentiel-dynamique`).** Christian a
   fourni la sauvegarde de Twin6 du site déployé (« Tu pourrais également l'importer dans le dépôt
@@ -90,7 +101,8 @@ importés). Entrées du 2026-10-20.
     (comme celle des routes PayPal), le remplacerait.
   - En attente de Christian : le script d'import extrait encore la structure du référentiel par le
     Python de `Twin_v9` (`aurora.referentiel`) ; le parseur JavaScript des fiches de pôle
-    (`parsePole`) pourrait le remplacer. **À faire avant le déploiement** : valider la version
+    (`parsePole`) pourrait le remplacer. (Fait le 2026-10-21 : entrée « Import des gabarits sans
+    Python ».) **À faire avant le déploiement** : valider la version
     par défaut du paquet (UC-ADM-03). La production n'en a pas : `GET /api/prompt-packages/default`
     y sert le plus récent paquet publié, `twin6-ouverte` 1.0.0 (relevé le 2026-10-20, UC-PRO-01
     AN-2) ; le déploiement importe les paquets dans l'ordre de leurs noms, et ce serait ensuite

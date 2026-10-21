@@ -104,10 +104,13 @@ L'administrateur-promptologue ouvre « Faire évoluer » → « Atelier Twin9 »
   y est en variables (`{$NB_COMPETENCES}`, `{$FORMAT_CODE}`, `{$REFERENTIEL}`,
   `{$LISTE_COMPETENCES}`), et les fichiers de pôle n'y sont plus, la base donnant
   les fiches (`docs/contrats.md` §8.8) ; un Twin_v9 d'avant T16, sans
-  `php/protocole`, est refusé (sortie 1) —, et fait extraire par le Twin_v9
-  lui-même (`python3`, module `aurora.referentiel`) la structure **non
-  secrète** du référentiel (num/nom, code/nom) ; si l'extraction échoue, il
-  avertit et l'omet (le serveur conserve alors celle qu'il détient). Il ne
+  `php/protocole`, est refusé (sortie 1) —, et lit la structure **non
+  secrète** du référentiel (num et nom accentué des pôles, code et nom des
+  compétences) dans les fichiers de pôle de la v9.8, `protocole/tagger/P1.md`
+  à `P7.md`, par le parseur de la plateforme (`parsePole`, port du
+  `parse_pole` de la v9.8 ; sans Python depuis le 2026-10-21) ; si un fichier
+  manque ou ne se lit pas, il avertit et l'omet (le serveur conserve alors
+  celle qu'il détient). Il ne
   lit plus `config.json` et n'envoie plus les fiches (2026-10-20 : ils
   servaient le moteur du navigateur, T11). Il ne journalise que des noms et
   des tailles, jamais un contenu ;
@@ -265,7 +268,7 @@ L'administrateur-promptologue ouvre « Faire évoluer » → « Atelier Twin9 »
 | Domaine | `api/src/Middleware/RequireRole.php` — `all` | Garde conjonctive |
 | Domaine | `api/src/Twin9/Twin9Config.php` — `setReferentiel` | Structure du référentiel (import) |
 | Contrat | `schemas/twin9-protocole-contrat.json` (livré avec la release, `scripts/deploy/stage-api.sh`) | Variables fournies à chaque gabarit (RG10) |
-| Script | `scripts/twin9/import-protocole.mjs` | Acteur technique de A4 : lecture de `TWIN_V9_DIR`, extraction python du référentiel, envoi avec `X-Migrate-Token` — script sans export, exécuté dès son chargement : couvert fonctionnellement seulement, en sous-processus (UC-PRO-08-F19 à F22) |
+| Script | `scripts/twin9/import-protocole.mjs` | Acteur technique de A4 : lecture de `TWIN_V9_DIR`, structure du référentiel lue par `parsePole` (`web/src/lib/twin9/referentiel.js`), envoi avec `X-Migrate-Token` — script sans export, exécuté dès son chargement : couvert fonctionnellement seulement, en sous-processus (UC-PRO-08-F19 à F22) |
 | Script | `scripts/check-publiable.mjs` (+ `.githooks/pre-commit`, `.github/workflows/publiable.yml`) | Garde anti-fuite : aucun gabarit Twin9 ni secret dans les fichiers suivis (RG8) — script sans export, exécuté dès son chargement : couvert fonctionnellement seulement, en sous-processus (UC-PRO-08-F17, F18) |
 
 ## Jeux de tests
@@ -323,7 +326,7 @@ autres tests de runs.
 | UC-PRO-08-F18 | RG8 (Limites) | CLI | **Limite figée** : chemins lus dans l'index mais contenu lu sur le disque — clé indexée puis effacée du disque non relevée ; répertoire de gabarits supprimé du disque mais indexé toujours refusé | idem |
 | UC-PRO-08-F19 | A4, E4 | CLI | `scripts/twin9/import-protocole.mjs --dry-run` (copie en miroir temporaire, faux `TWIN_V9_DIR`) : `.md` de `php/protocole` seuls, noms hiérarchiques sans `.md`, `config.json` plus lu, noms et tailles journalisés sans contenu, rien envoyé ; répertoire absent, protocole vide, Twin_v9 d'avant T16 (sans `php/protocole`), option inconnue (avec `--dry-run`) → sortie 1 | idem |
 | UC-PRO-08-F20 | A4, E4 | CLI + HTTP simulé | Faux serveur `127.0.0.1` : `POST /api/admin/twin9/import`, `X-Migrate-Token`, corps `{files}` (ni référentiel non extrait, ni réglages) ; refus 403 → sortie 1 « twin9 import failed » | idem |
-| UC-PRO-08-F21 | A4 | CLI + HTTP simulé | Faux module `aurora` (`python3`, sauté sans) : référentiel non secret (num/nom, code/nom), pôles triés ; ni en-tête ni fiche envoyés, aucun texte de fiche journalisé | idem |
+| UC-PRO-08-F21 | A4 | CLI + HTTP simulé | Sept fichiers de pôle fictifs (`protocole/tagger/P1.md` à `P7.md`, l'un en CRLF), lus sans Python : référentiel non secret (num et nom accentué, code et nom), ni en-tête ni fiche envoyés ni journalisés ; un fichier de pôle manquant → avertissement, référentiel non envoyé | idem |
 | UC-PRO-08-F22 | E4 | CLI + HTTP simulé | Jeton introuvable (ni `MIGRATE_TOKEN`, ni `.env.deploy` dans le miroir) → sortie 1 « MIGRATE_TOKEN missing (.env.deploy or environment) », aucune requête reçue par le faux serveur | idem |
 | UC-PRO-08-F23 | A6 | IHM | Sans copie, le jeu v9.8 ouvert en lecture ; « Copier » → POST avec CSRF → la copie ouverte, éditable | `web/test/usecases/functional/uc-pro-08-editer-gabarits-twin9.test.jsx` |
 | UC-PRO-08-F24 | A5, E7 | IHM | Liste des jeux (lecture seule, la sienne, le défaut) ; la copie d'un autre ouverte en lecture : ni « Enregistrer » ni « Restaurer », aucune écriture | idem |

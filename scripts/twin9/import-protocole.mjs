@@ -9,7 +9,10 @@
 //                         come from the base (T16); the import replaces the set
 //   protocole/tagger/  -> RESPIRE v7's structure (pole and competence names,
 //                         the poles' accented names), which /meta serves the
-//                         open cartography (Twin6)
+//                         open cartography (Twin6): P1..P7.md read by the
+//                         platform's port of the v9.8's parse_pole
+//                         (web/src/lib/twin9/referentiel.js), no Python since
+//                         2026-10-21
 // and POSTs {files, referentiel} to {BASE_URL}/api/admin/twin9/import with the
 // X-Migrate-Token from .env.deploy (or the MIGRATE_TOKEN env var). It no
 // longer sends config.json's protocol settings nor the pole fiches
@@ -26,7 +29,7 @@
 import { readFileSync, readdirSync, statSync, existsSync } from 'node:fs'
 import { dirname, join, relative, resolve, sep } from 'node:path'
 import { fileURLToPath } from 'node:url'
-import { execFileSync } from 'node:child_process'
+import { parsePole } from '../../web/src/lib/twin9/referentiel.js'
 
 const repoRoot = resolve(dirname(fileURLToPath(import.meta.url)), '../..')
 
@@ -50,6 +53,31 @@ function loadEnvDeploy() {
     if (m && !line.trim().startsWith('#')) env[m[1]] = m[2]
   }
   return env
+}
+
+/**
+ * RESPIRE v7's structure from the v9.8's pole files, as its load_referentiel
+ * reads them: P1..P7.md of protocole/tagger, universal newlines, each through
+ * parse_pole (ported, parsePole), codes unique across poles. Keeps the
+ * non-secret structure only: pole num and accented name, competence code and
+ * name — never a fiche.
+ *
+ * @returns {{num: number, nom: string, competences: {code: string, nom: string}[]}[]}
+ */
+function referentielDuTagger(twinDir) {
+  const dir = join(twinDir, 'protocole', 'tagger')
+  const codes = new Set()
+  const poles = []
+  for (let n = 1; n <= 7; n += 1) {
+    const path = join(dir, `P${n}.md`)
+    const pole = parsePole(readFileSync(path, 'utf8').replace(/\r\n?/g, '\n'), n, path)
+    for (const c of pole.competences) {
+      if (codes.has(c.code)) throw new Error(`Code dupliqué dans le référentiel : ${c.code}`)
+      codes.add(c.code)
+    }
+    poles.push({ num: n, nom: pole.nom, competences: pole.competences.map(({ code, nom }) => ({ code, nom })) })
+  }
+  return poles
 }
 
 function walkMarkdownFiles(dir, base = dir) {
@@ -84,22 +112,14 @@ async function main() {
   }
 
   // Non-secret referentiel STRUCTURE (pole num/nom + competence code/nom)
-  // that /meta serves the open cartography. Parsed by Twin_v9's own
-  // load_referentiel (the faithful source of the accented pole names);
-  // best-effort with a clear warning if python3 is missing (the server keeps
-  // its previous structure).
+  // that /meta serves the open cartography, read from the v9.8's pole files;
+  // best-effort with a clear warning if they are missing or unreadable (the
+  // server keeps its previous structure).
   let referentiel
   try {
-    const py = 'import json,os,sys; sys.path.insert(0, sys.argv[1]); '
-      + 'from aurora.referentiel import load_referentiel; '
-      + 'p=load_referentiel(os.path.join(sys.argv[1],"protocole","tagger")); '
-      + 'print(json.dumps({'
-      + '"referentiel":[{"num":n,"nom":x.nom,"competences":'
-      + '[{"code":c["code"],"nom":c["nom"]} for c in x.competences]} for n,x in sorted(p.items())]'
-      + '}, ensure_ascii=False))'
-    referentiel = JSON.parse(execFileSync('python3', ['-c', py, twinDir], { encoding: 'utf8' })).referentiel
+    referentiel = referentielDuTagger(twinDir)
   } catch (e) {
-    console.warn(`referentiel NOT extracted (python3?): ${e.message} — server keeps its current one`)
+    console.warn(`referentiel NOT extracted (protocole/tagger): ${e.message} — server keeps its current one`)
   }
 
   console.log(`Twin_v9 dir: ${twinDir}`)

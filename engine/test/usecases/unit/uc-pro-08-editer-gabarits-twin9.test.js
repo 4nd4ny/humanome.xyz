@@ -13,10 +13,12 @@
 //     temporaire ;
 //   - scripts/twin9/import-protocole.mjs — acteur technique de A4 : COPIÉ dans
 //     un miroir temporaire avec le parseur des fiches de pôle qu'il importe
-//     (web/src/lib/twin9/ ; son repoRoot devient le miroir, sans .env.deploy :
-//     ni vrai jeton ni SITE_URL du poste) ; il lit TWIN_V9_DIR (ici un faux
-//     Twin_v9), puis poste l'import vers un faux serveur local (127.0.0.1, port
-//     éphémère) ou s'arrête en --dry-run.
+//     (web/src/lib/twin9/) et l'aide qui lit le commit d'un Twin_v9
+//     (scripts/deploy/twin9-checkout.mjs) ; son repoRoot devient le miroir,
+//     sans .env.deploy : ni vrai jeton ni SITE_URL du poste ; il lit
+//     TWIN_V9_DIR (ici un faux Twin_v9, dépôt git temporaire), puis poste
+//     l'import vers un faux serveur local (127.0.0.1, port éphémère) ou
+//     s'arrête en --dry-run.
 // CONFIDENTIALITÉ : aucun gabarit réel ; les « gabarits » écrits ici sont
 // inventés. Les motifs sensibles (fausse clé, mot de passe) sont assemblés à
 // l'exécution pour que ce fichier ne déclenche pas lui-même le garde-fou.
@@ -32,6 +34,7 @@ const REPO = fileURLToPath(new URL('../../../../', import.meta.url))
 const CHECK_PUBLIABLE = join(REPO, 'scripts/check-publiable.mjs')
 const IMPORT_PROTOCOLE = join(REPO, 'scripts/twin9/import-protocole.mjs')
 const PARSEUR_DES_FICHES = join(REPO, 'web/src/lib/twin9')
+const COMMIT_DU_TWIN = join(REPO, 'scripts/deploy/twin9-checkout.mjs')
 
 const tempDirs = []
 afterAll(() => {
@@ -86,8 +89,25 @@ function importProtocole() {
     mkdirSync(dirname(scriptImport), { recursive: true })
     cpSync(IMPORT_PROTOCOLE, scriptImport)
     cpSync(PARSEUR_DES_FICHES, join(miroir, 'web/src/lib/twin9'), { recursive: true })
+    mkdirSync(join(miroir, 'scripts/deploy'), { recursive: true })
+    cpSync(COMMIT_DU_TWIN, join(miroir, 'scripts/deploy/twin9-checkout.mjs'))
   }
   return scriptImport
+}
+
+/** La release préparée du miroir (build/api-release/Twin_v9/COMMIT, T18). */
+const releasePreparee = () => join(dirname(dirname(dirname(importProtocole()))), 'build/api-release/Twin_v9/COMMIT')
+
+/** git dans un dossier de test : la configuration du poste (signature, hooks) n'a pas voix. */
+function gitDe(dir, ...args) {
+  const r = spawnSync('git', ['-c', 'init.defaultBranch=main', '-c', 'user.name=Test', '-c', 'user.email=test@example.test',
+    '-c', 'commit.gpgsign=false', '-c', 'core.hooksPath=/dev/null', ...args], {
+    cwd: dir,
+    encoding: 'utf8',
+    env: { PATH: process.env.PATH ?? '', GIT_CONFIG_GLOBAL: '/dev/null', GIT_CONFIG_NOSYSTEM: '1' },
+  })
+  if (r.status !== 0) throw new Error(`git ${args.join(' ')} : ${r.stderr}`)
+  return r.stdout.trim()
 }
 
 /**
@@ -138,7 +158,7 @@ const TAGGING = 'Gabarit fictif de tagging {$POLE_FICHES}'
  * lit plus depuis le 2026-10-20.
  */
 function fauxTwinV9(extra = {}) {
-  return dossier('twin-v9', {
+  return commite(dossier('twin-v9', {
     'php/protocole/lourd/20-greffier.md': GREFFIER,
     'php/protocole/tagger/1-tag-pole.md': TAGGING,
     'php/protocole/.DS_Store': 'bruit',
@@ -150,8 +170,17 @@ function fauxTwinV9(extra = {}) {
       workers: 6,
     }),
     ...extra,
-  })
+  }))
 }
+
+/** Le dossier, dépôt git dont tout est commité (un Twin_v9 propre, T18) ; son commit : commitDe. */
+function commite(dir) {
+  gitDe(dir, 'init', '-q')
+  gitDe(dir, 'add', '-A')
+  gitDe(dir, 'commit', '-q', '-m', 'Twin_v9 FICTIF')
+  return dir
+}
+const commitDe = (dir) => gitDe(dir, 'rev-parse', 'HEAD')
 
 /**
  * Lance l'import depuis le miroir (asynchrone : le faux serveur tourne dans ce
@@ -188,7 +217,7 @@ async function fauxServeur(statut, reponse) {
 }
 
 describe('UC-PRO-08 — fonctionnels (sous-processus) : garde anti-fuite des gabarits (scripts/check-publiable.mjs)', () => {
-  it('UC-PRO-08-F17 — RG8 : sur les fichiers SUIVIS par git : tout fichier sous golden-twin9/, twin9-oracles/ ou golden-prompt/ est refusé quel que soit son contenu (avec .env réel, clé Anthropic, mot de passe hors tests) → sortie 1 et liste ; un gabarit rangé ailleurs, une ligne portant un marqueur « de test », un binaire ou un fichier non suivi passent (limites) ; dépôt propre → sortie 0', () => {
+  it('UC-PRO-08-F17 — RG8 : sur les fichiers SUIVIS par git : tout fichier sous golden-twin9/, twin9-oracles/ ou golden-prompt/ est refusé quel que soit son contenu (avec .env réel, clé Anthropic, mot de passe hors tests), comme le moteur copié sous un dossier Twin_v9/ (T18) → sortie 1 et liste ; un gabarit rangé ailleurs, une ligne portant un marqueur « de test », un binaire ou un fichier non suivi passent (limites) ; dépôt propre → sortie 0', () => {
     const cle = 'sk-ant-' + 'api03-' + 'Q'.repeat(24)
     const motDePasse = 'DB_' + 'PASSWORD=' + 'Sup3rS3cret'
     const depot = depotGit(
@@ -196,6 +225,8 @@ describe('UC-PRO-08 — fonctionnels (sous-processus) : garde anti-fuite des gab
         'golden-twin9/lourd/20-greffier.md': 'Gabarit fictif (contenu anodin)',
         'engine/test/twin9-oracles/oracle.json': '{}',
         'docs/golden-prompt/notes.md': 'placeholder',
+        // La copie du moteur qu'embarque une release, chargée sous api/ en développement (T18).
+        'api/Twin_v9/php/src/Plateforme.php': '<?php // moteur FICTIF (test)\n',
         // Limite : un gabarit rangé HORS des trois répertoires n'est pas reconnu.
         'protocole/lourd/20-greffier.md': 'Tu es le greffier. {$COMPETENCE_FICHE} {$TEXTE_JOURNEE}',
         '.env': 'APP_ENV=prod\n',
@@ -212,7 +243,7 @@ describe('UC-PRO-08 — fonctionnels (sous-processus) : garde anti-fuite des gab
     const r = checkPubliable(depot)
 
     expect(r.status).toBe(1)
-    expect(r.stderr).toContain('check-publiable : 6 occurrence(s) NON PUBLIABLE(S)')
+    expect(r.stderr).toContain('check-publiable : 7 occurrence(s) NON PUBLIABLE(S)')
     expect(constats(r.stderr)).toEqual([
       'cle-anthropic config/app.ini:1',
       'env-reel .env',
@@ -220,6 +251,7 @@ describe('UC-PRO-08 — fonctionnels (sous-processus) : garde anti-fuite des gab
       'gabarit-twin9 engine/test/twin9-oracles/oracle.json',
       'gabarit-twin9 golden-twin9/lourd/20-greffier.md',
       'mot-de-passe config/db.ini:1',
+      'moteur-twin9 api/Twin_v9/php/src/Plateforme.php',
     ])
     expect(r.stderr).toContain('répertoire de gabarit Twin9 (jamais public)')
     // Le contenu des fichiers n'est jamais recopié dans le rapport.
@@ -256,6 +288,7 @@ describe('UC-PRO-08 — fonctionnels (sous-processus) : import technique A4 (scr
     expect(r.status).toBe(0)
     expect(r.stdout.split('\n').filter(Boolean)).toEqual([
       `Twin_v9 dir: ${twin}`,
+      `Twin_v9 commit: ${commitDe(twin)}`,
       `  lourd/20-greffier (${Buffer.byteLength(GREFFIER, 'utf8')} bytes)`,
       `  tagger/1-tag-pole (${Buffer.byteLength(TAGGING, 'utf8')} bytes)`,
       'referentiel absent',
@@ -367,6 +400,68 @@ describe('UC-PRO-08 — fonctionnels (sous-processus) : import technique A4 (scr
       expect(srv.requetes).toEqual([])
       expect(r.stdout + r.stderr).not.toContain('GABARIT FICTIF')
     } finally {
+      await srv.fermer()
+    }
+  })
+
+  it('UC-PRO-08-F25 — A4, T18 : en version figée — les gabarits d’UN commit, celui de la release : TWIN_V9_DIR doit être la racine d’un dépôt git sans changement dans php/protocole ni protocole/tagger, non suivis compris ; une release préparée (build/api-release/Twin_v9/COMMIT) d’un autre commit → sortie 1 ; sinon le commit est journalisé, et sans release préparée un avertissement le dit non comparé ; aucun envoi sur un refus', async () => {
+    const twin = fauxTwinV9()
+    const sha = commitDe(twin)
+    const srv = await fauxServeur(200, { imported: 2, inchanges: 2, retires: 0 })
+    const refus = async (dir, message) => {
+      const r = await importer(['--base-url', srv.url], { TWIN_V9_DIR: dir })
+      expect(r.status).toBe(1)
+      expect(r.stderr.trim().split('\n').at(0)).toBe(message)
+      expect(r.stdout).toBe('')
+    }
+    try {
+      // Sans release préparée : envoyé, commit journalisé, comparaison annoncée absente.
+      const libre = await importer(['--base-url', srv.url], { TWIN_V9_DIR: twin })
+      expect(libre.status).toBe(0)
+      expect(libre.stdout).toContain(`Twin_v9 commit: ${sha}\n`)
+      expect(libre.stderr).toContain('no staged release (build/api-release): the commit is not compared with the engine deployed')
+
+      // Une release préparée du même commit : envoyé, sans avertissement.
+      mkdirSync(dirname(releasePreparee()), { recursive: true })
+      writeFileSync(releasePreparee(), `${sha}\n`)
+      const meme = await importer(['--base-url', srv.url], { TWIN_V9_DIR: twin })
+      expect(meme.status).toBe(0)
+      expect(meme.stdout).toContain(`Twin_v9 commit: ${sha}\n`)
+      expect(meme.stderr).not.toContain('no staged release')
+      expect(srv.requetes).toHaveLength(2)
+
+      // Une release d'un autre commit : refusé, rien d'envoyé.
+      const autre = 'f'.repeat(40)
+      writeFileSync(releasePreparee(), `${autre}\n`)
+      await refus(twin, `the staged release embeds Twin_v9 ${autre}, ${twin} is at ${sha}: these templates are not its engine's — check out ${autre}, or stage and deploy again (stage-api.sh, deploy.mjs api)`)
+      writeFileSync(releasePreparee(), `${sha}\n`)
+
+      // Un gabarit modifié, un gabarit non suivi, une fiche de pôle non suivie : refusés.
+      writeFileSync(join(twin, 'php/protocole/lourd/20-greffier.md'), `${GREFFIER} modifié`)
+      await refus(twin, `uncommitted changes in ${twin} (php/protocole, protocole/tagger): commit them first, the release ships one commit of the engine and of its templates`)
+      gitDe(twin, 'checkout', '--', 'php/protocole/lourd/20-greffier.md')
+      writeFileSync(join(twin, 'php/protocole/lourd/99-nouveau.md'), 'Gabarit FICTIF non suivi.')
+      await refus(twin, `uncommitted changes in ${twin} (php/protocole, protocole/tagger): commit them first, the release ships one commit of the engine and of its templates`)
+      rmSync(join(twin, 'php/protocole/lourd/99-nouveau.md'))
+      mkdirSync(join(twin, 'protocole/tagger'), { recursive: true })
+      writeFileSync(join(twin, 'protocole/tagger/P1.md'), 'Fiche FICTIVE non suivie.')
+      await refus(twin, `uncommitted changes in ${twin} (php/protocole, protocole/tagger): commit them first, the release ships one commit of the engine and of its templates`)
+      rmSync(join(twin, 'protocole'), { recursive: true })
+
+      // Hors git, ou dans un dépôt sans en être la racine : refusés.
+      const horsGit = dossier('twin-v9-hors-git', { 'php/protocole/lourd/20-greffier.md': GREFFIER })
+      await refus(horsGit, `${horsGit} is not a git checkout: the engine's commit cannot be known`)
+      mkdirSync(join(twin, 'copie/php/protocole'), { recursive: true })
+      writeFileSync(join(twin, 'copie/php/protocole/20-greffier.md'), GREFFIER)
+      gitDe(twin, 'add', '-A')
+      gitDe(twin, 'commit', '-q', '-m', 'copie imbriquée')
+      const imbrique = join(twin, 'copie')
+      const r = await importer(['--base-url', srv.url], { TWIN_V9_DIR: imbrique })
+      expect(r.status).toBe(1)
+      expect(r.stderr.startsWith(`${imbrique} is not the root of its git checkout (`)).toBe(true)
+      expect(srv.requetes).toHaveLength(2) // aucun refus n'a rien envoyé
+    } finally {
+      rmSync(dirname(dirname(releasePreparee())), { recursive: true, force: true })
       await srv.fermer()
     }
   })

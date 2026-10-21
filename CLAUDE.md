@@ -51,8 +51,9 @@ Spécification complète : `docs/cahier-des-charges.md` ; plan de construction :
 - `assets-existants/` est en **lecture seule absolue** (données réelles + prototypes de référence).
 - Le moteur Twin9 (moteur PHP, gabarits, oracle, specs, plan) vit dans le dépôt **privé**
   `4nd4ny/Twin_v9`, cloné à côté (`../Twin_v9`) : rien de ce moteur n'entre ici. La plateforme en
-  charge `php/src` depuis `TWIN_V9_DIR` (par défaut `../Twin_v9`) ; sans lui, Twin9 côté serveur
-  reste désactivé et ses tests sautent (ADR-011). Le front garde l'adaptateur d'affichage d'une
+  charge `php/src` depuis `TWIN_V9_DIR` (par défaut `../Twin_v9`), ou depuis la release qui l'embarque
+  (`<release>/Twin_v9`, T18) ; sans lui, Twin9 côté serveur reste désactivé et ses tests sautent
+  (ADR-011). Le front garde l'adaptateur d'affichage d'une
   carte Twin9 et le parseur des fiches de pôle (`web/src/lib/twin9/`) ; `check-publiable` refuse
   les chemins de l'ancien moteur du navigateur, retiré par T11.
 - Les schémas JSON (`schemas/`) sont le contrat entre modules : toute friction de format

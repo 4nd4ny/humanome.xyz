@@ -163,7 +163,12 @@ final class UcSys03MaintenanceSupervisionTest extends AdminTestCase
         $health = $this->probe('/health');
         self::assertSame(200, $health->getStatusCode());
         self::assertSame('application/json', $health->getHeaderLine('Content-Type'));
-        self::assertSame(['status' => 'ok', 'version' => '2026.09.28-abc1234', 'db' => 'ok'], AdmSupport::body($health));
+        $body = AdmSupport::body($health);
+        self::assertSame(['status' => 'ok', 'version' => '2026.09.28-abc1234', 'db' => 'ok'], array_diff_key($body, ['twin9' => 0]));
+        // Twin9 (T18) : le moteur chargé ou non — selon que TWIN_V9_DIR le tient ici —, zlib présent
+        self::assertSame(['moteur', 'zlib'], array_keys($body['twin9']));
+        self::assertIsBool($body['twin9']['moteur']);
+        self::assertTrue($body['twin9']['zlib']);
 
         $status = $this->probe('/status');
         self::assertSame(200, $status->getStatusCode());

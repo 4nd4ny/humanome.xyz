@@ -13,6 +13,8 @@
 //   node scripts/deploy/deploy.mjs api             # build/api-release -> app/releases/<ts>/
 //                                                  # + www/api/ front controller + current.txt
 //                                                  # + POST /api/admin/migrate + health smoke
+//                                                  # (+ the Twin9 engine the release embeds:
+//                                                  #  loaded, with zlib — T18)
 import { createHash } from 'node:crypto'
 import { readFileSync, readdirSync, statSync } from 'node:fs'
 import { dirname, join, relative, resolve, posix } from 'node:path'
@@ -226,6 +228,37 @@ async function deployApi(env) {
   const healthBody = await health.text()
   console.log(`health: HTTP ${health.status} ${healthBody.slice(0, 300)}`)
   if (!health.ok || !healthBody.includes('"ok"')) throw new Error('health smoke failed')
+
+  // The private Twin9 engine the release embeds (stage-twin9.mjs, T18): loaded
+  // on the server, with zlib, which compresses the runs' state. Its templates
+  // then come from the same commit, by the import (« en version figée »).
+  const commitPath = join(stage, 'Twin_v9', 'COMMIT')
+  if (statSync(commitPath, { throwIfNoEntry: false })?.isFile()) {
+    const commit = readFileSync(commitPath, 'utf8').trim()
+    let twin9 = null
+    try {
+      twin9 = JSON.parse(healthBody).twin9 ?? null
+    } catch {
+      twin9 = null
+    }
+    // The pointer has switched and the base is migrated: this release is live.
+    // Its realistic causes — a TWIN_V9_DIR in the server's .env, PHP without
+    // zlib — survive a rollback, which only brings back the previous code.
+    if (twin9?.moteur !== true || twin9?.zlib !== true) {
+      throw new Error(
+        `Twin9 off on the server (health twin9: ${JSON.stringify(twin9)}): release ${releaseName} is live, ` +
+          `migrations and imports done, without the engine it embeds (${commit}). Check ~/app/shared/.env ` +
+          "(TWIN_V9_DIR must not be set: it would win over that engine) and PHP's zlib extension; " +
+          'the previous release, if need be: node scripts/deploy/deploy.mjs rollback',
+      )
+    }
+    // An engine is loaded; the release's own unless TWIN_V9_DIR says otherwise,
+    // which the run's attestation then shows (recette 4.6).
+    console.log(`Twin9 engine loaded, zlib present; the release embeds Twin_v9 ${commit}`)
+    console.log(
+      `next: its templates, from Twin_v9 at ${commit} — node scripts/twin9/import-protocole.mjs (TWIN_V9_DIR)`,
+    )
+  }
   console.log('api deploy done')
 }
 

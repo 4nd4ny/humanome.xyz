@@ -20,6 +20,7 @@ use Humanome\Referentiel\InvalidDocumentException;
 use Humanome\Referentiel\ReferentielRepository;
 use Humanome\Tests\TestDb;
 use Humanome\Tests\UseCases\Support\AdmSupport;
+use Humanome\Twin9\EngineLoader;
 use PDO;
 use PHPUnit\Framework\Attributes\TestDox;
 use PHPUnit\Framework\TestCase;
@@ -40,9 +41,10 @@ use Slim\Psr7\Factory\ServerRequestFactory;
  * idempotence, fichier en échec, découpage SQL), imports idempotents du
  * référentiel et des paquets de prompts, seed des compétences atomiques avec
  * son gate de parité, fiches Twin9 tirées de la base et stockage du paquet
- * par défaut, et l'exemption CSRF propre à /api/admin/migrate
- * (CsrfMiddleware::process avec un handler factice). Seules des fixtures
- * VERSIONNÉES sont lues (schemas/fixtures/, scripts/data/).
+ * par défaut, l'exemption CSRF propre à /api/admin/migrate
+ * (CsrfMiddleware::process avec un handler factice) et le moteur Twin9 qu'une
+ * release embarque (EngineLoader, T18). Seules des fixtures VERSIONNÉES sont
+ * lues (schemas/fixtures/, scripts/data/).
  */
 final class UcSys02DeployerMigrerTest extends TestCase
 {
@@ -432,6 +434,34 @@ final class UcSys02DeployerMigrerTest extends TestCase
             }
             session_id('');
             unset($_COOKIE[DbSessionHandler::SESSION_NAME]);
+        }
+    }
+
+    #[TestDox('UC-SYS-02-U12 — EngineLoader::directory (T18) : TWIN_V9_DIR d’abord ; sinon le moteur qu’embarque la release, <release>/Twin_v9, chargé avec son commit ; sinon Twin_v9 à côté du dépôt')]
+    public function testU12TheReleaseEmbedsTheEngine(): void
+    {
+        $release = sys_get_temp_dir() . '/uc-sys02-release-' . bin2hex(random_bytes(4));
+        $sha = str_repeat('0123456789', 4);
+        try {
+            // ce que laisse stage-twin9.mjs : les sources et le commit, hors du webroot
+            mkdir($release . '/Twin_v9/php/src', 0777, true);
+            file_put_contents($release . '/Twin_v9/php/src/SondeRelease.php',
+                "<?php\nnamespace Twin9;\nfinal class SondeRelease\n{\n}\n");
+            file_put_contents($release . '/Twin_v9/COMMIT', $sha . "\n");
+
+            TestDb::setEnv('TWIN_V9_DIR', '');
+            self::assertSame($release . '/Twin_v9', EngineLoader::directory($release));
+            self::assertSame(\dirname(__DIR__, 5) . '/Twin_v9', EngineLoader::directory($release . '/sans-moteur'),
+                'sans copie embarquée : à côté du dépôt');
+            self::assertTrue(EngineLoader::load(EngineLoader::directory($release)));
+            self::assertTrue(class_exists(\Twin9\SondeRelease::class), 'les sources embarquées se chargent');
+            self::assertSame($sha, EngineLoader::commit(EngineLoader::directory($release)), 'le commit de l’attestation');
+
+            TestDb::setEnv('TWIN_V9_DIR', '/ailleurs/Twin_v9');
+            self::assertSame('/ailleurs/Twin_v9', EngineLoader::directory($release), 'TWIN_V9_DIR gagne');
+        } finally {
+            TestDb::restoreEnv();
+            exec('rm -rf ' . escapeshellarg($release));
         }
     }
 }

@@ -18,7 +18,9 @@ passe l'oracle complet dans `Twin_v9`, le profil est ici, les runs tournent sur 
 tranches, par appels directs ou par lots, se lancent, se suivent, se lisent et se paient — la base
 commune et la stratégie A de T8 comprises —, sur des jeux de gabarits et des référentiels de toute
 structure, que le moteur lit (T16) et que la cartographie affiche (T17) ; le moteur du navigateur
-est retiré (T11, fusionné le 2026-10-20). Vient ensuite T18.
+est retiré (T11, fusionné le 2026-10-20). T18, la démonstration sur l'OVH, est préparé
+(2026-10-21) : restent les gestes de Christian, son feu vert au déploiement et la recette
+(`docs/recette-twin9.md`).
 
 Hors planning, à la demande de Christian (2026-10-20) : le référentiel dynamique — RESPIRE n'a
 plus de structure imposée, et tous les parcours lisent la structure du référentiel qu'ils emploient
@@ -27,6 +29,67 @@ plus de structure imposée, et tous les parcours lisent la structure du référe
 importés). Entrées du 2026-10-20.
 
 ## Fait
+
+- 2026-10-21 — **T18 préparé : Twin9 sur l'OVH (branche `feat/twin9-t18-demonstration`, empilée
+  sur `feat/import-sans-python`).** Christian : « Feu vert pour la T18. » Le prompt prépare ;
+  Christian fait les gestes du panel OVH, du service de tâches planifiées et du `.env` du serveur,
+  et donne son feu vert à chaque déploiement. Rien n'est déployé.
+  - **La place.** La release embarque le moteur : `scripts/deploy/stage-twin9.mjs`, appelé par
+    `stage-api.sh`, copie le `php/src` du commit de `TWIN_V9_DIR` (défaut `../Twin_v9`) — les
+    fichiers que donne git, pas la copie de travail — et ce commit dans `build/api-release/Twin_v9/`.
+    Il refuse : moteur ou gabarits absents ; un dossier qui n'est pas la racine de son dépôt (le faux
+    moteur des tests, DANS humanome, aurait reçu le commit de humanome : relevé par la revue
+    indépendante) ; un changement non commité, non suivis compris quelle que soit la configuration
+    git (`scripts/deploy/twin9-checkout.mjs`). Seules les sources partent : ni les tests du moteur
+    (5 Mo), ni ses dépendances de développement, ni les gabarits, que l'import met en base.
+    `EngineLoader` trouve `<release>/Twin_v9` sans `TWIN_V9_DIR` (qui, défini, passe avant : il ne
+    doit pas figurer dans `~/app/shared/.env`). Moteur : 42 fichiers, 345 Ko (mesuré) ; release
+    ≈ 4,9 à 6,9 Mo, trois releases ≈ 15 à 21 Mo (déduits : la préparation locale, Composer ayant
+    installé depuis les sources, pesait 22 Mo avec les `.git` des dépendances, que `deploy.mjs`
+    enverrait — la recette relève `du -sh build/api-release`). 56 Mo occupés sur 100 le 16 octobre.
+    Le FTP du cluster n'étant pas chiffré, le moteur y transite en clair (`docs/hebergement.md`).
+    `Twin_v9/` est ignoré par git et refusé par `check-publiable` : sous `api/`, `EngineLoader` le
+    chargerait en développement.
+  - **zlib et le moteur, vérifiés au déploiement.** `GET /api/health` dit
+    `"twin9":{"moteur":…,"zlib":…}`. S'il manque l'un des deux à une release qui embarque le moteur,
+    `deploy.mjs api` échoue en disant la release en ligne (pointeur basculé, migrations faites),
+    Twin9 éteint, et ses causes : `TWIN_V9_DIR` dans le `.env` du serveur, zlib absent — qu'un
+    retour arrière ne corrigerait pas.
+  - **La base, en version figée.** Les migrations 024 à 030 et RESPIRE avec ses fiches viennent de
+    `deploy.mjs api`. Le jeu « v9.8 » à variables vient ensuite par `import-protocole.mjs`, qui
+    refuse un `TWIN_V9_DIR` hors de la racine d'un dépôt, un changement non commité dans
+    `php/protocole` ou `protocole/tagger`, et une release préparée d'un autre commit ; il affiche le
+    commit. Sa réponse compte les gabarits déjà en base à l'octet (`inchanges`) : un second import
+    qui les trouve tous prouve que la base tient ceux du commit de la release. Poids d'un run de test
+    réel (PLANT-01, une journée, un pôle, réponses du vrai run de T2 rejouées en local) : 86 Ko une
+    fois fini, dont 42 Ko de réglages (le référentiel et ses fiches) ; le poids d'un run complet se
+    relèvera dans le panel, avant et après le run de la recette. Le quota de la base reste à relever
+    (Christian).
+  - **Le déclencheur.** `docs/deploiement.md` décrit cron-job.org : `POST` toutes les minutes,
+    `X-Worker-Tick-Token`, corps `{"budgetSeconds": 25}` — le service raccroche à 30 s et désactive
+    une tâche après plus de 25 échecs de suite ; une clé `twin9Runs` dans sa réponse dit le moteur
+    chargé. Le jeton se génère et se pose par Christian seul. À 25 s, **un run en appels directs ne
+    tient pas navigateur fermé** : un appel de plus de ≈ 24 s, coupé trois fois, tombe en panne ; un
+    run qui avance seul passe par lots, la voie du profil v9.8.
+  - **La recette** : `docs/recette-twin9.md`, la liste à dérouler ensemble (avant le déploiement,
+    déploiement, déclencheur, parcours compte → configuration → run par lots navigateur fermé →
+    résultats → partage → purge, ouverture de la démonstration, prix de la grille compris). Twin9
+    s'ouvre dès le déploiement de l'API : aucun interrupteur depuis T11.
+  - Tests : UC-SYS-02-U12 (le moteur de la release), F23 (une release jetable servie par le
+    front-controller charge son moteur, sans `TWIN_V9_DIR`), F24 (`deploy.mjs` et la santé),
+    F25 (`stage-twin9.mjs` sur un faux dépôt git, cas imbriqué et fichier ignoré compris) ;
+    UC-PRO-08-F25 (l'import en version figée), F17 (`Twin_v9/` refusé) ; UC-SYS-03-F01 lit `twin9` ;
+    l'import compte `inchanges` (UC-PRO-08-F10, `Twin9ProtocoleTest`).
+  - Documentation : `docs/deploiement.md`, `docs/hebergement.md`, `docs/recette-twin9.md` (au
+    sommaire GitBook), `docs/contrats.md`, UC-SYS-02 (A8), UC-SYS-03, UC-PRO-08, ADR-011 et ADR-008,
+    `.env.example`, `CLAUDE.md`.
+  - Dettes et idées, non codées : un jeton dédié à la maintenance, comme celui du tick, la
+    laisserait planifier sans confier à un service tiers le jeton des migrations ; d'ici là, elle se
+    lance à la main. Des runs de masse en file peuvent mener un tick près d'une minute, au-delà des
+    30 s du service (un appel de masse part jusqu'à la fin du budget, avec un délai de budget + 8 s) :
+    à revoir si la masse sert en production. `stage-api.sh` pourrait passer `--prefer-dist` à
+    Composer, et `deploy.mjs` sauter les `.git`. F23 suppose un autochargeur de `api/vendor` non
+    optimisé.
 
 - 2026-10-21 — **Import des gabarits sans Python (branche `feat/import-sans-python`).** À la
   demande de Christian (« Oui : remplacer le script d'import et son appel Python par le parseur

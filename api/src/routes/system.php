@@ -11,6 +11,7 @@ use Humanome\Bootstrap;
 use Humanome\Db;
 use Humanome\Env;
 use Humanome\MigrationRunner;
+use Humanome\Twin9\EngineLoader;
 use Psr\Http\Message\ResponseInterface as Response;
 use Psr\Http\Message\ServerRequestInterface as Request;
 use Slim\App;
@@ -42,6 +43,13 @@ return function (App $app): void {
             'status' => 'ok',
             'version' => Bootstrap::version(),
             'db' => $db,
+            // Twin9 on the server (T18): the engine the release embeds is loaded, and
+            // zlib, which compresses the runs' state, is there — two booleans, which
+            // `deploy.mjs api` requires of a release that embeds the engine.
+            'twin9' => [
+                'moteur' => EngineLoader::isLoaded() && class_exists(\Twin9\Plateforme::class),
+                'zlib' => \function_exists('gzcompress'),
+            ],
         ]);
     });
 

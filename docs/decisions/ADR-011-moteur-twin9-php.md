@@ -93,7 +93,10 @@ La plateforme fournit au moteur les appels aux modèles, les clés et l'état du
 les gabarits restent en base (ADR-010 §2). Rien de la v9.8 n'entre dans ce dépôt,
 ni code, ni gabarit, ni enregistrement : `scripts/check-publiable.mjs` le vérifie.
 En production, la release embarque le `php/` de `TWIN_V9_DIR`, hors du webroot
-(ADR-008).
+(ADR-008) : depuis T18, ses sources (`php/src`) et son commit, dans
+`<release>/Twin_v9`, où `EngineLoader` les trouve sans `TWIN_V9_DIR` ; ni les
+tests du moteur, ni ses dépendances de développement, ni les gabarits, que
+l'import met en base (`docs/deploiement.md`).
 
 ### 5. Le portfolio et l'état du run sur le serveur, avec l'accord de l'apprenant
 

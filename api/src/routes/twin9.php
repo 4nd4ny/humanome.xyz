@@ -690,7 +690,8 @@ return function (App $app): void {
 
     // POST /api/admin/twin9/import {files: {name: content}, referentiel?: [...]}
     // -> writes each template into the v9.8's set in twin9_protocole
-    // (archiving versions); a complete import — every template the contract
+    // (archiving versions), {imported, inchanges, retires}: `inchanges` counts
+    // the templates already there to the byte (T18); a complete import — every template the contract
     // of the variables names — replaces the set: a template it does not carry
     // leaves it, archived (the pole files left it so in T16), whereas a
     // partial one takes nothing away (a set of before T16 keeps its pole
@@ -725,11 +726,14 @@ return function (App $app): void {
             // read before anything is written: without it, nothing is
             $nommes = array_change_key_case(TemplateSets::contrat());
             $imported = 0;
+            // the templates the set already held to the byte (T18): an import
+            // that finds them all proves the set equals the files sent
+            $inchanges = 0;
             foreach ($files as $name => $content) {
                 if (!\is_string($name) || !\is_string($content)) {
                     throw new Twin9Exception('Fichier invalide : ' . (string) $name, 422);
                 }
-                $repo->put($name, $content, null);
+                $inchanges += $repo->put($name, $content, null)['status'] === 'unchanged' ? 1 : 0;
                 ++$imported;
             }
             $retires = 0;
@@ -757,6 +761,6 @@ return function (App $app): void {
             return $json($response, ['error' => 'Import failed, see server log'], 500);
         }
 
-        return $json($response, ['imported' => $imported, 'retires' => $retires]);
+        return $json($response, ['imported' => $imported, 'inchanges' => $inchanges, 'retires' => $retires]);
     });
 };

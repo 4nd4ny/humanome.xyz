@@ -14,7 +14,13 @@
 //                         (web/src/lib/twin9/referentiel.js), no Python since
 //                         2026-10-21
 // and POSTs {files, referentiel} to {BASE_URL}/api/admin/twin9/import with the
-// X-Migrate-Token from .env.deploy (or the MIGRATE_TOKEN env var). It no
+// X-Migrate-Token from .env.deploy (or the MIGRATE_TOKEN env var).
+//
+// The templates of ONE commit, the release's (T18, « en version figée ») :
+// TWIN_V9_DIR must be the root of a git checkout without uncommitted changes in
+// php/protocole and protocole/tagger, untracked files included; when a release
+// is staged (build/api-release/Twin_v9/COMMIT, stage-api.sh), it must embed
+// that very commit — else code 1, nothing sent. The commit is printed. It no
 // longer sends config.json's protocol settings nor the pole fiches
 // (2026-10-20): they served the browser's engine (T11), and the server runs
 // take theirs from their profile (T12) and from the base (T16).
@@ -30,6 +36,7 @@ import { readFileSync, readdirSync, statSync, existsSync } from 'node:fs'
 import { dirname, join, relative, resolve, sep } from 'node:path'
 import { fileURLToPath } from 'node:url'
 import { parsePole } from '../../web/src/lib/twin9/referentiel.js'
+import { cleanCommit } from '../deploy/twin9-checkout.mjs'
 
 const repoRoot = resolve(dirname(fileURLToPath(import.meta.url)), '../..')
 
@@ -111,6 +118,21 @@ async function main() {
     throw new Error(`No .md template found under ${protocoleDir}`)
   }
 
+  // One commit, the release's: the engine production runs and its templates.
+  const commit = cleanCommit(twinDir, ['php/protocole', 'protocole/tagger'])
+  const staged = join(repoRoot, 'build', 'api-release', 'Twin_v9', 'COMMIT')
+  if (existsSync(staged)) {
+    const embedded = readFileSync(staged, 'utf8').trim()
+    if (embedded !== commit) {
+      throw new Error(
+        `the staged release embeds Twin_v9 ${embedded}, ${twinDir} is at ${commit}: these templates are not ` +
+          `its engine's — check out ${embedded}, or stage and deploy again (stage-api.sh, deploy.mjs api)`,
+      )
+    }
+  } else {
+    console.warn('no staged release (build/api-release): the commit is not compared with the engine deployed')
+  }
+
   // Non-secret referentiel STRUCTURE (pole num/nom + competence code/nom)
   // that /meta serves the open cartography, read from the v9.8's pole files;
   // best-effort with a clear warning if they are missing or unreadable (the
@@ -123,6 +145,7 @@ async function main() {
   }
 
   console.log(`Twin_v9 dir: ${twinDir}`)
+  console.log(`Twin_v9 commit: ${commit}`)
   for (const [name, content] of Object.entries(files)) {
     console.log(`  ${name} (${Buffer.byteLength(content, 'utf8')} bytes)`)
   }

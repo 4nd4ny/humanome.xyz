@@ -853,7 +853,9 @@ une suivante le relève.
   désormais les fiches, §8.8). Un import partiel ne fait qu'écrire les siens
   et n'ôte rien : un jeu d'avant T16 garde ses fichiers de pôle, qui le
   disent. Les noms s'y comparent comme dans la table, sans la casse ; le
-  contrat se lit avant toute écriture. L'import répond `{imported, retires}`.
+  contrat se lit avant toute écriture. L'import répond `{imported, inchanges,
+  retires}` — `inchanges`, depuis T18 : les gabarits reçus déjà en base à
+  l'octet.
 - **Une copie** (`TemplateSets::copier`, `POST /api/twin9/admin/jeux {id}`,
   atelier) prend chaque gabarit du jeu v9.8 tel qu'il est, sans son histoire
   (migration 029 : `twin9_jeux`, `twin9_jeux_gabarits`, `twin9_jeux_versions`).

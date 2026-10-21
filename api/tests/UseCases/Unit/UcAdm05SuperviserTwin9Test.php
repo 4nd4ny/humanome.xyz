@@ -218,7 +218,7 @@ final class UcAdm05SuperviserTwin9Test extends TestCase
         self::assertSame(['prix_usd_mtok' => [1.0, 5.0]], $tarifs['claude-haiku-4-5'], 'pas le prix par lots de la section suivante');
     }
 
-    #[TestDox('UC-ADM-05-U16 — relevé des prix (RG9) : une page qu’on ne sait pas lire est refusée en entier — section, tableau ou colonnes absents, prix illisible ou hors bornes, palier sans prix de base, trop peu de modèles')]
+    #[TestDox('UC-ADM-05-U16 — relevé des prix (RG9) : une page qu’on ne sait pas lire est refusée en entier — section, tableau ou colonnes absents, prix illisible ou hors bornes, palier sans prix de base, un modèle deux fois (un libellé de palier qu’on ne reconnaît plus), trop peu de modèles')]
     public function testU16UnreadablePageIsRefused(): void
     {
         $page = self::page();
@@ -230,6 +230,10 @@ final class UcAdm05SuperviserTwin9Test extends TestCase
             'prix hors bornes pour Claude Fable 5.1' => str_replace('| $50 / MTok             |', '| $5000 / MTok           |', $page),
             'palier long sans prix de base pour claude-haiku-5-5'
                 => preg_replace('/^\| Claude Haiku 5\.5 \(for prompts up to.*\R/m', '', $page),
+            // Un libellé de palier que le code ne reconnaît plus : la ligne « au-delà » aurait écrasé le prix de base.
+            'claude-haiku-5-5 y figure deux fois'
+                => str_replace(['(for prompts up to 100,000 tokens)', '(for prompts over 100,000 tokens)'],
+                    ['(prompts ≤ 100K tokens)          ', '(prompts > 100K tokens)          '], $page),
             '2 modèle(s) lu(s)' => preg_replace('/^\| Claude (Fable|Mythos|Opus|Sonnet).*\R/m', '', $page),
         ];
         foreach ($cas as $raison => $texte) {
@@ -242,14 +246,14 @@ final class UcAdm05SuperviserTwin9Test extends TestCase
         }
     }
 
-    #[TestDox('UC-ADM-05-U17 — relevé des prix (RG9) : seuls les modèles de la grille sont récrits, prix et palier long tels que la page les donne (un identifiant daté retrouve son modèle) ; un modèle absent de la page garde ses prix et est nommé ; 2 et 2,0 sont un même prix')]
+    #[TestDox('UC-ADM-05-U17 — relevé des prix (RG9) : seuls les modèles de la grille sont récrits, prix et palier long tels que la page les donne (un identifiant daté retrouve son modèle) ; un modèle absent de la page garde ses prix et est nommé ; 2 et 2,0 sont un même prix ; un palier long que la page ne donne plus fait échouer le relevé')]
     public function testU17OnlyTheGridsModelsAreUpdated(): void
     {
         $grille = [
             'claude-haiku-4-5-20251001' => ['prix_usd_mtok' => [1, 5]],
             'claude-sonnet-5' => ['prix_usd_mtok' => [3, 15]],
             'claude-haiku-5-5' => ['prix_usd_mtok' => [0.1, 0.5]],
-            'claude-opus-4-8' => ['prix_usd_mtok' => [5, 25], 'palier_long' => ['au_dela_de' => 200000, 'prix_usd_mtok' => [10, 37.5]]],
+            'claude-opus-4-8' => ['prix_usd_mtok' => [6, 30]],
             'claude-maison-1' => ['prix_usd_mtok' => [7, 8]],
         ];
 
@@ -274,6 +278,16 @@ final class UcAdm05SuperviserTwin9Test extends TestCase
         ], $lecture['changements'][0]);
         self::assertSame(['claude-maison-1'], $lecture['absents']);
         self::assertArrayNotHasKey('claude-fable-5-1', $lecture['modeles'], 'l’offre reste celle de l’administrateur');
+
+        // Un palier de la grille que la page ne donne plus (passé dans un autre tableau ?) : le relevé
+        // échoue plutôt que de l'ôter, ce qui tarifierait les longs prompts au cinquième de leur prix.
+        $grille['claude-opus-4-8'] = ['prix_usd_mtok' => [5, 25], 'palier_long' => ['au_dela_de' => 200000, 'prix_usd_mtok' => [10, 37.5]]];
+        try {
+            TarifsAnthropic::appliquer($grille, TarifsAnthropic::lire(self::page()));
+            self::fail('palier ôté sans un mot');
+        } catch (\UnexpectedValueException $e) {
+            self::assertSame('page des prix illisible : le palier des longs prompts de claude-opus-4-8 n’y figure plus', $e->getMessage());
+        }
     }
 
     #[TestDox('UC-ADM-05-U18 — relevé des prix (RG9) : dû une fois par jour UTC, une heure entre deux tentatives après un échec ; un échec garde le dernier relevé réussi et ne touche pas la grille')]

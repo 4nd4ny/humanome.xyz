@@ -39,6 +39,8 @@ final class WorkerTickTokenTest extends AuthTestBase
         TestDb::setEnv('WORKER_TICK_TOKEN', self::TICK);
         TestDb::setEnv('MIGRATE_TOKEN', self::MIGRATE);
         TestDb::setEnv('WORKER_PROVIDER', 'mock');
+        // No network: without the platform's key the tick reads no prices (UC-ADM-05-F19, F20 test that).
+        TestDb::setEnv('ANTHROPIC_API_KEY', '');
         $this->errorLog = ini_set('error_log', (string) tempnam(sys_get_temp_dir(), 'tick-log-')); // the tick's counters
     }
 

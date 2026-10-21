@@ -8,12 +8,15 @@ namespace Humanome\Llm;
  * USD cost of a call, for the daily budgets (the demo's, the tutor's) and the
  * mass worker's spending (api/config/demo.php: dailyBudgetUsd; Worker\Tick).
  *
- * The price grid comes first (2026-10-21): the one the credits are billed with
- * (Twin9Config 'modeles', list prices without margin), which follows
- * Anthropic's pricing page day by day (Twin9\TarifsAnthropic). A model the grid
- * does not offer falls back to the table below — longest model-id prefix wins,
- * an unknown model gets the most expensive known rate, so a budget errs on the
- * safe side.
+ * Two sources, the higher wins (2026-10-21): the price grid the credits are
+ * billed with (Twin9Config 'modeles', list prices without margin), which
+ * follows Anthropic's pricing page day by day (Twin9\TarifsAnthropic), and the
+ * table below — longest model-id prefix wins. The grid catches a price rise
+ * the table does not know; the table, with its long prompt tier, holds when
+ * the grid is lower or lost a tier (an entry added by hand, a misread page:
+ * independent review of 2026-10-21). A model of the grid alone gets its grid
+ * price; a model of neither, the most expensive known rate. A budget errs on
+ * the safe side.
  *
  * Mirrors engine/src/providers/estimate.js (MODEL_PRICING_USD_PER_MTOK).
  */
@@ -59,24 +62,29 @@ final class Pricing
      */
     public static function estimateUsd(string $model, int $inputTokens, int $outputTokens, array $grille = []): float
     {
+        $couts = [];
         $tarif = self::tarifDeLaGrille($grille, $model);
         if ($tarif !== null) {
             [$in, $out] = $tarif['prix_usd_mtok'];
             $palier = $tarif['palier_long'] ?? null;
-            if (\is_array($palier) && $inputTokens > (int) $palier['au_dela_de']) {
+            if (\is_array($palier) && \is_array($palier['prix_usd_mtok'] ?? null)
+                && $inputTokens > (int) ($palier['au_dela_de'] ?? PHP_INT_MAX)) {
                 [$in, $out] = $palier['prix_usd_mtok'];
             }
-
-            return ($inputTokens * (float) $in + $outputTokens * (float) $out) / 1_000_000;
+            $couts[] = ($inputTokens * (float) $in + $outputTokens * (float) $out) / 1_000_000;
         }
 
-        [$in, $out] = self::rates($model);
-        $tier = self::longest(self::LONG_PROMPT_TIER, $model);
-        if ($tier !== null && $inputTokens > $tier[0]) {
-            [, $in, $out] = $tier;
+        $rates = self::longest(self::USD_PER_MTOK, $model);
+        if ($rates !== null || $couts === []) {
+            [$in, $out] = $rates ?? self::DEFAULT_USD_PER_MTOK;
+            $tier = self::longest(self::LONG_PROMPT_TIER, $model);
+            if ($tier !== null && $inputTokens > $tier[0]) {
+                [, $in, $out] = $tier;
+            }
+            $couts[] = ($inputTokens * $in + $outputTokens * $out) / 1_000_000;
         }
 
-        return ($inputTokens * $in + $outputTokens * $out) / 1_000_000;
+        return max($couts);
     }
 
     /**
@@ -108,12 +116,6 @@ final class Pricing
     public static function sansDate(string $model): string
     {
         return (string) preg_replace('/-\d{8}$/', '', $model);
-    }
-
-    /** @return array{0: float, 1: float} */
-    private static function rates(string $model): array
-    {
-        return self::longest(self::USD_PER_MTOK, $model) ?? self::DEFAULT_USD_PER_MTOK;
     }
 
     /**

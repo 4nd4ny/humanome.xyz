@@ -205,8 +205,8 @@ final class UcVis03EssayerCartographieTest extends TestCase
         self::assertEqualsWithDelta(0.06, Pricing::estimateUsd('modele-inconnu', 1000, 1000), 1e-12, 'au prix de Fable');
     }
 
-    #[TestDox('UC-VIS-03-U26 — Pricing : la grille des crédits passe avant la table — son prix, son palier long, un identifiant daté ou non ; un modèle qu’elle n’offre pas garde la table')]
-    public function testU26PricingReadsTheGridFirst(): void
+    #[TestDox('UC-VIS-03-U26 — Pricing : le plus haut de la grille des crédits et de la table — la grille quand elle est plus chère (son prix, son palier long, un identifiant daté ou non), la table et son palier quand la grille est moins chère ou l’a perdu ; un modèle de la grille seule à son prix, d’aucune au plus cher')]
+    public function testU26PricingTakesTheHigherOfGridAndTable(): void
     {
         $grille = [
             'claude-haiku-4-5-20251001' => ['prix_usd_mtok' => [2, 6]],
@@ -216,6 +216,7 @@ final class UcVis03EssayerCartographieTest extends TestCase
             ],
             'illisible' => ['prix_usd_mtok' => 'gratuit'],
         ];
+        // La grille plus chère que la table (une hausse que la table ne connaît pas) : la grille.
         self::assertEqualsWithDelta(0.008, Pricing::estimateUsd('claude-haiku-4-5-20251001', 1000, 1000, $grille), 1e-12);
         self::assertEqualsWithDelta(0.008, Pricing::estimateUsd('claude-haiku-4-5', 1000, 1000, $grille), 1e-12,
             'l’identifiant sans date est le même modèle');
@@ -226,6 +227,21 @@ final class UcVis03EssayerCartographieTest extends TestCase
             'hors grille : la table');
         self::assertEqualsWithDelta(0.06, Pricing::estimateUsd('illisible', 1000, 1000, $grille), 1e-12,
             'un prix illisible ne vaut rien : la table, au plus cher');
+
+        // La grille moins chère, ou sans le palier de Haiku 5.5 (saisi à la main, page mal lue) :
+        // la table tient, palier compris — 0,079 $ au lieu de 0,395 $ laisserait passer cinq fois le budget.
+        $basse = [
+            'claude-sonnet-5' => ['prix_usd_mtok' => [1, 5]],
+            'claude-haiku-5-5' => ['prix_usd_mtok' => [0.1, 0.5]],
+            'claude-lyra-1' => ['prix_usd_mtok' => [3, 15]],
+        ];
+        self::assertEqualsWithDelta(0.012, Pricing::estimateUsd('claude-sonnet-5', 1000, 1000, $basse), 1e-12);
+        self::assertEqualsWithDelta(0.395, Pricing::estimateUsd('claude-haiku-5-5', 150_000, 128_000, $basse), 1e-12);
+        self::assertEqualsWithDelta(0.018, Pricing::estimateUsd('claude-lyra-1', 1000, 1000, $basse), 1e-12,
+            'un modèle que seule la grille connaît : son prix, pas le plus cher');
+        // Un palier de grille mal formé n'est pas lu.
+        self::assertEqualsWithDelta(0.0006, Pricing::estimateUsd('claude-haiku-5-5', 1000, 1000,
+            ['claude-haiku-5-5' => ['prix_usd_mtok' => [0.1, 0.5], 'palier_long' => ['au_dela_de' => 10]]]), 1e-12);
     }
 
     #[TestDox('UC-VIS-03-U06 — DemoConfig : base > env > fichier > défaut ; le fournisseur ne vient jamais de la base')]

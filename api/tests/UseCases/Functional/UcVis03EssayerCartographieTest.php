@@ -313,26 +313,35 @@ final class UcVis03EssayerCartographieTest extends LlmTestCase
         self::assertLessThanOrEqual(0.8, self::usage()['estimatedCostUsd']);
     }
 
-    #[TestDox('UC-VIS-03-F26 — RG4 : au-delà de 100 000 octets, la réserve prend le compte d’Anthropic (count_tokens, +2 % et 64), pas les octets — le palier long de Haiku 5.5 ne frappe plus un prompt qui ne l’atteint pas ; sans compte, les octets, et le budget tient')]
+    #[TestDox('UC-VIS-03-F26 — RG4 : au-delà de 100 000 octets, la réserve prend le compte d’Anthropic (count_tokens, +10 % et 64), pas les octets — le palier long de Haiku 5.5 ne frappe plus un prompt qui ne l’atteint pas ; un compte absent, nul, illisible ou au-dessus des octets laisse les octets ; le budget tient')]
     public function testF26LargePromptIsCountedByAnthropic(): void
     {
         TestDb::setEnv('DEMO_PROVIDER', 'anthropic');
         TestDb::setEnv('DEMO_MODEL', 'claude-haiku-5-5');
         TestDb::setEnv('DEMO_MAX_INPUT_CHARS', '400000');
-        TestDb::setEnv('DEMO_DAILY_BUDGET_USD', '0.2');
         // 156 000 octets : comptés par octets, plus de 100 000 tokens, tout l'appel
         // au palier long — 0,40 $ de pire cas, plus que le budget du jour.
         $prompt = str_repeat('Une journée de portfolio. ', 6000);
         $octets = \strlen(self::SYSTEM . $prompt) + AnthropicProvider::REQUEST_OVERHEAD_TOKENS;
         self::assertGreaterThan(0.2, Pricing::estimateUsd('claude-haiku-5-5', $octets, 128000));
 
-        // Anthropic en compte 40 000 : la réserve en garde 40 864, au tarif de base.
+        // La marge, au jeton près : 40 000 comptés réservent ceil(40 000 × 1,10) + 64 = 44 064
+        // tokens d'entrée et toute la sortie, 0,0684064 $ ; 41 000 en réserveraient 0,0685164 $.
+        $reserve = static fn (int $entree): float => Pricing::estimateUsd('claude-haiku-5-5', $entree, 128000);
+        self::assertEqualsWithDelta(0.0684064, $reserve(44_064), 1e-12);
+        TestDb::setEnv('DEMO_DAILY_BUDGET_USD', '0.0685');
+        $this->http->queueResponse(['status' => 200, 'body' => json_encode(['input_tokens' => 41000], JSON_THROW_ON_ERROR)]);
+        self::assertSame(503, $this->postLlm(['system' => self::SYSTEM, 'prompt' => $prompt])->getStatusCode(),
+            '45 164 tokens réservés : 0,0685164 $ > 0,0685 $');
+        self::assertCount(1, $this->http->requests, 'le compte seul : l’appel n’est pas parti');
+
+        // Anthropic en compte 40 000 : la réserve tient, au tarif de base.
         $this->http->queueResponse(['status' => 200, 'body' => json_encode(['input_tokens' => 40000], JSON_THROW_ON_ERROR)]);
         $this->http->queueResponse(['status' => 200, 'body' => self::anthropicBody('{"ok":true}', 40000, 300, 'claude-haiku-5-5')]);
         $answer = $this->postLlm(['system' => self::SYSTEM, 'prompt' => $prompt]);
 
         self::assertSame(200, $answer->getStatusCode(), (string) $answer->getBody());
-        [$compte, $appel] = $this->http->requests;
+        [, $compte, $appel] = $this->http->requests;
         self::assertSame('https://api.anthropic.com/v1/messages/count_tokens', $compte['url']);
         $corpsCompte = json_decode((string) $compte['body'], true, 512, JSON_THROW_ON_ERROR);
         $corpsAppel = json_decode((string) $appel['body'], true, 512, JSON_THROW_ON_ERROR);
@@ -345,16 +354,29 @@ final class UcVis03EssayerCartographieTest extends LlmTestCase
         self::assertSame([1, 40000, 300], [$reel['requests'], $reel['inputTokens'], $reel['outputTokens']]);
         self::assertEqualsWithDelta(0.00415, $reel['estimatedCostUsd'], 1e-9);
 
-        // Le compte échoue : la réserve retombe sur les octets, qui ne tiennent pas.
-        $this->http->queueResponse(['status' => 529, 'body' => '{}']);
-        $refused = $this->postLlm(['system' => self::SYSTEM, 'prompt' => $prompt]);
-        self::assertSame(503, $refused->getStatusCode());
-        self::assertCount(3, $this->http->requests, 'le compte, et rien d’autre');
+        // Un compte qu'on ne peut pas croire laisse les octets, qui ne tiennent pas : rien d'autre ne part.
+        TestDb::setEnv('DEMO_DAILY_BUDGET_USD', '0.2');
+        $mauvais = [
+            'refusé' => ['status' => 529, 'body' => '{}'],
+            'nul' => ['status' => 200, 'body' => '{"input_tokens":0}'],
+            'négatif' => ['status' => 200, 'body' => '{"input_tokens":-5}'],
+            'en texte' => ['status' => 200, 'body' => '{"input_tokens":"40000"}'],
+            'au-dessus des octets' => ['status' => 200, 'body' => json_encode(['input_tokens' => $octets * 2], JSON_THROW_ON_ERROR)],
+        ];
+        foreach ($mauvais as $cas => $reponse) {
+            $avant = \count($this->http->requests);
+            $this->http->queueResponse($reponse);
+            self::assertSame(503, $this->postLlm(['system' => self::SYSTEM, 'prompt' => $prompt])->getStatusCode(), $cas);
+            self::assertCount($avant + 1, $this->http->requests, $cas . ' : le compte, et rien d’autre');
+        }
+        $this->http->queueException(new HttpClientException('timeout', true));
+        self::assertSame(503, $this->postLlm(['system' => self::SYSTEM, 'prompt' => $prompt])->getStatusCode(), 'compte sans réponse');
         self::assertSame($reel, self::usage());
 
         // Sous 100 000 octets, pas de compte : les octets suffisent.
+        $avant = \count($this->http->requests);
         $this->http->queueResponse(['status' => 200, 'body' => self::anthropicBody('{"ok":true}', 30, 10, 'claude-haiku-5-5')]);
         self::assertSame(200, $this->postLlm(['system' => self::SYSTEM, 'prompt' => 'Court.'])->getStatusCode());
-        self::assertSame('https://api.anthropic.com/v1/messages', $this->http->requests[3]['url']);
+        self::assertSame('https://api.anthropic.com/v1/messages', $this->http->requests[$avant]['url']);
     }
 }

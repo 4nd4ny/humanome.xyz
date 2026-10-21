@@ -80,8 +80,10 @@ declare(strict_types=1);
  * réglage maxTokensPerRequest d'avant, ne sont plus lus.
  *
  * Tarifs par modèle (USD par million de tokens) pour l'estimation de coût du
- * coupe-circuit : la grille des crédits, relevée chaque jour sur la page des
- * prix d'Anthropic, puis Llm/Pricing pour un modèle qu'elle n'offre pas.
+ * coupe-circuit : le plus haut de la grille des crédits, relevée chaque jour
+ * sur la page des prix d'Anthropic, et de la table de Llm/Pricing — une grille
+ * trop basse, ou qui a perdu le palier long de Haiku 5.5, ne fait pas réserver
+ * moins.
  *
  * VALEURS (2026-10-21, Christian : « 1 USD par jour pour tous les utilisateurs
  * anonymes ou connectés, mais pas plus de dépense journalière », puis « Ok
@@ -92,20 +94,20 @@ declare(strict_types=1);
  * (Twin6), le « Service humanome » de l'assistant de cartographie, le banc et
  * la rétro-ingénierie du promptologue —, visiteurs et comptes confondus. Le
  * pire cas de chaque appel y est réservé avant qu'il parte (routes/llm.php) :
- * son entrée — au-delà de 100 000 octets, le compte d'Anthropic — et toute la
- * sortie que le modèle peut rendre. La dépense ne dépasse pas le budget, même
- * sous concurrence, et aucune réponse n'est coupée pour le tenir : un appel que
- * le budget ne couvre plus ne part pas. Avec Haiku 5.5, ce dollar paie de
- * quarante à soixante Essayer, ou de huit à vingt essais de Twin6 (0,05 à
- * 0,13 $) ; le dernier appel du jour doit pouvoir réserver son pire cas, 0,07 $
- * environ. Les deux pages bornent le texte du visiteur à 5 000 caractères ; le
+ * son entrée — au-delà de 100 000 octets, le compte d'Anthropic, plus 10 % —
+ * et toute la sortie que le modèle peut rendre. La dépense ne dépasse pas le
+ * budget, même sous concurrence, et aucune réponse n'est coupée pour le
+ * tenir : un appel que le budget ne couvre plus ne part pas. Avec Haiku 5.5,
+ * ce dollar paie de quarante à soixante Essayer, ou de huit à vingt essais de
+ * Twin6 (0,05 à 0,13 $) ; le dernier appel du jour doit pouvoir réserver son
+ * pire cas, 0,07 $ environ. Les deux pages bornent le texte du visiteur à 5 000 caractères ; le
  * serveur, lui, borne l'appel entier, gabarit compris : 2 000 000 de
  * caractères, pour la synthèse de Twin6, qui porte les sorties des sept scans,
  * sans plafond désormais — des scans de 64 000 jetons chacun, la moitié du
- * maximum de Haiku 5.5, y tiennent (UC-APP-09-U35) ; en français, environ
- * 556 000 jetons, un peu plus de la moitié de sa fenêtre d'un million. 150 s
- * par appel ; 6 millions de jetons par jour, un garde-fou qui ne dépend pas
- * des tarifs.
+ * maximum de Haiku 5.5, y tiennent (UC-APP-09-U35) ; environ 800 000 jetons
+ * au tokenizer de Haiku 5.5 (≈ 2,5 caractères par jeton selon Anthropic), dans
+ * sa fenêtre d'un million. 150 s par appel ; 6 millions de jetons par jour, un
+ * garde-fou qui ne dépend pas des tarifs.
  */
 
 return [

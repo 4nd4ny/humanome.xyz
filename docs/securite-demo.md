@@ -181,19 +181,25 @@ géant, un prompt système énorme, une entrée massive.
   (`AnthropicProvider::REQUEST_OVERHEAD_TOKENS`, 1 024 : le prompt système que le
   fournisseur ajoute pour l'outil forcé, 406 tokens avec Haiku 5.5) ; au-delà de
   100 000 octets, le compte d'Anthropic (`POST /v1/messages/count_tokens`, gratuit,
-  augmenté de 2 % et de 64 tokens, jamais au-dessus des octets ; sans réponse, les
-  octets, UC-VIS-03-F26) — et toute la sortie du modèle ; au tarif de la grille des
-  crédits, que le relevé quotidien tient aux prix d'Anthropic, palier long compris
-  (`Pricing`, UC-VIS-03-U26).
+  augmenté de 10 % et de 64 tokens, jamais au-dessus des octets ; sans réponse ou
+  d'une valeur douteuse, les octets, UC-VIS-03-F26) : dès ≈ 90 850 tokens comptés,
+  la réserve prend le palier long, et un compte un peu court près du seuil ne fait
+  pas passer le budget — et toute la sortie du modèle ; au plus haut du tarif de la
+  grille des crédits, que le relevé quotidien tient aux prix d'Anthropic, et de la
+  table de `Pricing`, palier long compris : une grille trop basse ou qui a perdu son
+  palier ne fait pas réserver moins (UC-VIS-03-U26).
 
 Coût par requête ainsi borné. Avec Haiku 5.5 — 0,10 $ / 0,50 $ le million jusqu'à
 100 000 tokens d'entrée, 0,50 $ / 2,50 $ au-delà, pour tout l'appel (page des prix,
-2026-10-21) — un scan de Twin6 (≈ 56 000 caractères) coûte ≈ 0,006 $ et en réserve
-≈ 0,07 $, dont 0,064 $ pour ses 128 000 tokens de sortie ; une synthèse de 300 000
-caractères de français (≈ 80 000 tokens, comptés par Anthropic) coûte ≈ 0,01 $ et en
-réserve ≈ 0,07 $ — sans le compte, ses octets l'auraient mise au palier long et lui
-auraient fait réserver ≈ 0,48 $ ; une entrée au plafond (2 000 000 de caractères de
-français, ≈ 556 000 tokens) réserve ≈ 0,6 $. Au-delà d'un million de tokens, le
+2026-10-21) — et son tokenizer, celui des modèles depuis Opus 4.7 (≈ 2,5 caractères
+par token selon Anthropic, un tiers de tokens de plus que l'ancien ; à mesurer en
+français), un scan de Twin6 (≈ 56 000 caractères, ≈ 22 000 tokens) coûte ≈ 0,008 $
+et en réserve ≈ 0,07 $, dont 0,064 $ pour ses 128 000 tokens de sortie ; une
+synthèse de 200 000 caractères (≈ 80 000 tokens, comptés par Anthropic) coûte
+≈ 0,01 $ et en réserve ≈ 0,07 $ — sans le compte, ses octets l'auraient mise au
+palier long et lui auraient fait réserver ≈ 0,42 $ ; une synthèse de plus de
+≈ 90 850 tokens comptés en réserve ≈ 0,37 $ ; une entrée au plafond (2 000 000 de
+caractères, ≈ 800 000 tokens) réserve ≈ 0,76 $. Au-delà d'un million de tokens, le
 fournisseur refuse l'appel, sans le facturer.
 
 **Résidu accepté :** la réservation compte toute la sortie du modèle, 0,064 $ par

@@ -192,11 +192,14 @@ de l'accueil.
   un token par octet de `system` + `prompt`, plus le surcoût de la requête
   (1 024) ; au-delà de 100 000 octets, le compte d'Anthropic
   (`POST /v1/messages/count_tokens`, gratuit, sur la requête même, augmenté de
-  2 % et de 64 tokens, jamais au-dessus des octets ; sans réponse, les octets)
-  —, plus toute la sortie du modèle, au tarif de la grille des crédits (relevée
-  chaque jour, UC-ADM-05 A6), palier long de Haiku 5.5 compris (au-delà de
-  100 000 tokens d'entrée), puis de `Pricing` pour un modèle qu'elle n'offre
-  pas. Sans la place, `503`, et rien n'est parti ; avec, la réservation devient
+  10 % et de 64 tokens, jamais au-dessus des octets ; sans réponse ou d'une
+  valeur nulle, négative ou illisible, les octets) —, plus toute la sortie du
+  modèle, au plus haut du tarif de la grille des crédits (relevée chaque jour,
+  UC-ADM-05 A6) et de la table de `Pricing`, palier long de Haiku 5.5 compris
+  (au-delà de 100 000 tokens d'entrée) : une grille trop basse ou sans palier
+  ne fait pas réserver moins. Avec 10 %, un appel compté à plus de ≈ 90 850
+  tokens réserve au palier long : un compte un peu court près du seuil ne fait
+  pas passer le budget. Sans la place, `503`, et rien n'est parti ; avec, la réservation devient
   l'usage réel. Ensemble, des appels concurrents ne passent jamais le budget,
   et aucune réponse n'est coupée pour le tenir.
 - **RG5** — Intention : pas de réessai automatique contre un quota (429) ni un
@@ -226,7 +229,7 @@ de l'accueil.
 | API | `GET /api/llm/status`, `GET /api/llm/challenge`, `POST /api/llm` — `api/src/routes/llm.php` | Orchestration des gardes |
 | Domaine | `api/src/Llm/PowChallenge.php` — `issue`, `verify`, `secretFromEnv`, `leadingZeroBits` | Preuve de travail sans état |
 | Domaine | `api/src/Llm/UsageCounters.php` — `reserve`, `settle`, `release`, `today`, `isExhausted` | Coupe-circuit journalier : réservation du pire cas, règlement au réel |
-| Domaine | `api/src/Llm/Pricing.php` — `estimateUsd` | Coût estimé : la grille des crédits d'abord, palier long de Haiku 5.5 compris |
+| Domaine | `api/src/Llm/Pricing.php` — `estimateUsd` | Coût estimé : le plus haut de la grille des crédits et de la table, palier long de Haiku 5.5 compris |
 | Domaine | `api/src/Llm/AnthropicProvider.php` — `countTokens` | Compte d'Anthropic d'une entrée de plus de 100 000 octets (RG4) |
 | Domaine | `api/src/Llm/ModelLimits.php` — `sortieMax` | La sortie de chaque appel, le maximum du modèle (RG2) |
 | Domaine | `api/src/Llm/DemoConfig.php` — `load` | Précédence de configuration |
@@ -264,7 +267,7 @@ de l'accueil.
 | UC-VIS-03-U23 | `buildExtractionPrompt`, `buildKairosExtractionPrompt`, `DEMO_TEXT_MAX_CHARS` | Anomalie AN3 **corrigée** : au maximum de la page, chaque appel — les 7 pôles et le kairos — tient sous l'ancien plafond serveur de 20 000 | idem |
 | UC-VIS-03-U24 | `localIsoToday` | Jour LOCAL (fuseau UTC+14) et non UTC (étape 2) | idem |
 | UC-VIS-03-U25 | `UsageCounters::reserve`, `settle`, `release` | Deux appels en vol réservent sous un budget qu'un troisième dépasserait : refusé, rien de réservé ; plafond de tokens de même ; pile aux deux plafonds : accepté ; réglée, une réservation fait place à l'usage réel et compte la requête ; rendue, elle ne laisse rien (RG4) | `api/tests/UseCases/Unit/UcVis03EssayerCartographieTest.php` |
-| UC-VIS-03-U26 | `Pricing::estimateUsd` | La grille des crédits passe avant la table : son prix, son palier long, un identifiant daté ou non ; un modèle qu'elle n'offre pas garde la table (RG4) | idem |
+| UC-VIS-03-U26 | `Pricing::estimateUsd` | Le plus haut de la grille des crédits et de la table : la grille plus chère (son prix, son palier long, un identifiant daté ou non), la table et son palier quand la grille est moins chère ou l'a perdu ; un modèle de la grille seule à son prix, d'aucune au plus cher (RG4) | idem |
 
 ### Tests fonctionnels
 
@@ -295,7 +298,7 @@ de l'accueil.
 | UC-VIS-03-F23 | Anomalie AN3 (corrigée) | IHM | Texte de 5 000 caractères, le maximum de la page → 8 appels acceptés par un faux serveur au plafond de 20 000, cartographie produite | idem |
 | UC-VIS-03-F24 | Nominal (référentiel publié) | IHM | La dernière version publiée de RESPIRE compte six pôles (index statique) : texte d'introduction « 6 pôles instruits un par un », progression « appel k sur 7 », 7 POST acceptés, synthèse « Les 6 pôles de la feuille du jour » | idem |
 | UC-VIS-03-F25 | E5, E7, RG4 | API | Un appel en vol tient 0,50 $ d'un budget de 0,80 $ : le pire cas d'un nouvel appel (toute la sortie de Haiku 4.5, ≈ 0,32 $) n'a pas la place → 503, rien n'est envoyé ; la place rendue, l'appel passe et son usage réel remplace sa réservation ; réponse 2xx illisible et délai dépassé gardent leur pire cas ; l'appel suivant n'a plus la place, la dépense reste sous 0,80 $ | `api/tests/UseCases/Functional/UcVis03EssayerCartographieTest.php` |
-| UC-VIS-03-F26 | RG4 | API | Au-delà de 100 000 octets, la réserve prend le compte d'Anthropic (`count_tokens` sur la requête même, sans `max_tokens`, +2 % et 64) : 156 000 octets comptés 40 000 tokens restent au tarif de base de Haiku 5.5 et passent sous un budget de 0,20 $ que leurs octets dépasseraient ; le compte en échec → les octets, `503`, rien d'autre n'est parti ; sous 100 000 octets, aucun compte | idem |
+| UC-VIS-03-F26 | RG4 | API | Au-delà de 100 000 octets, la réserve prend le compte d'Anthropic (`count_tokens` sur la requête même, sans `max_tokens`) avec sa marge au jeton près (+10 % et 64 : 41 000 comptés ne tiennent pas dans 0,0685 $, 40 000 si) ; 156 000 octets comptés 40 000 tokens restent au tarif de base de Haiku 5.5 et passent sous un budget que leurs octets dépasseraient ; un compte refusé, nul, négatif, en texte, au-dessus des octets ou sans réponse → les octets, `503`, rien d'autre n'est parti ; sous 100 000 octets, aucun compte | idem |
 
 ### Tests existants liés (non-régression)
 

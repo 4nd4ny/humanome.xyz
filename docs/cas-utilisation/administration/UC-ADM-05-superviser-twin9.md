@@ -195,7 +195,13 @@ L'administrateur ouvre « Administrer » → « Supervision Twin9 » (`#/admin/t
   nommé. Une page illisible (réseau, statut HTTP, section, tableau ou colonnes
   introuvables, prix illisible ou hors de ]0 ; 1000], palier sans prix de base,
   moins de trois modèles) ne change rien : l'état dit pourquoi, et le dernier
-  relevé réussi reste affiché. Un prix changé laisse l'événement d'audit
+  relevé réussi reste affiché. Deux lectures qui seraient fausses en silence
+  échouent de même (revue indépendante du 2026-10-21) : un modèle qui figure
+  deux fois dans le tableau — un libellé de palier que le code ne reconnaît
+  plus ferait écraser son prix de base par celui des longs prompts, cinq fois
+  plus cher — et un palier long de la grille que la page ne donne plus — il a pu
+  passer dans un autre tableau, et l'ôter tarifierait les longs prompts de
+  Haiku 5.5 au cinquième de leur prix. Une personne en décide. Un prix changé laisse l'événement d'audit
   `twin9_tarifs_mis_a_jour` (modèle, avant, après) ; l'état vit dans le réglage
   `twin9_tarifs`. Des prix seulement, jamais une donnée personnelle.
 
@@ -249,8 +255,8 @@ L'administrateur ouvre « Administrer » → « Supervision Twin9 » (`#/admin/t
 | UC-ADM-05-U11 | `Twin9Config::read`, `publicView` | Défauts, clés obsolètes ignorées (dont les réglages retirés et les étages d'un modèle, effacés au prochain enregistrement) ; vue publique sans marge, sans promotion, sans offre Twin9 (T11) | idem |
 | UC-ADM-05-U12 | `FactureService::comptes` | Comptes actifs, cumuls, ordre ; **anomalie 3 figée** | idem |
 | UC-ADM-05-U15 | `TarifsAnthropic::lire` | Le tableau « Model pricing », colonnes trouvées par leurs titres : un identifiant par nom, liens et notes ôtés, le palier long de Haiku 5.5 ; le tableau d'une autre section jamais lu (RG9) | idem |
-| UC-ADM-05-U16 | `TarifsAnthropic::lire` | Une page qu'on ne sait pas lire est refusée en entier : section, tableau ou colonnes absents, prix illisible ou hors bornes, palier sans prix de base, trop peu de modèles (RG9) | idem |
-| UC-ADM-05-U17 | `TarifsAnthropic::appliquer` | Seuls les modèles de la grille sont récrits, prix et palier long tels que la page les donne (un identifiant daté retrouve son modèle) ; un modèle absent garde ses prix et est nommé ; 2 et 2,0 sont un même prix (RG9) | idem |
+| UC-ADM-05-U16 | `TarifsAnthropic::lire` | Une page qu'on ne sait pas lire est refusée en entier : section, tableau ou colonnes absents, prix illisible ou hors bornes, palier sans prix de base, un modèle deux fois (un libellé de palier qu'on ne reconnaît plus), trop peu de modèles (RG9) | idem |
+| UC-ADM-05-U17 | `TarifsAnthropic::appliquer` | Seuls les modèles de la grille sont récrits, prix et palier long tels que la page les donne (un identifiant daté retrouve son modèle) ; un modèle absent garde ses prix et est nommé ; 2 et 2,0 sont un même prix ; un palier long que la page ne donne plus fait échouer le relevé (RG9) | idem |
 | UC-ADM-05-U18 | `TarifsAnthropic::du`, `relever` | Dû une fois par jour UTC, une heure entre deux tentatives après un échec ; un échec garde le dernier relevé réussi et ne touche pas la grille (RG9) | idem |
 
 ### Tests fonctionnels
@@ -340,9 +346,14 @@ cd web && npx vitest run test/usecases/unit/uc-adm-05 test/usecases/functional/u
   lecture et partent au prochain enregistrement. Aucune migration ne les efface
   encore, ni le réglage `twin9_fiches` : ce serait une contraction, qui attend
   que la release qui ne les lit plus soit stabilisée en production (ADR-008).
-- Le relevé des prix (A6) lit une page de documentation, pas une API : une
-  mise en forme nouvelle de son tableau le fait échouer — la grille garde
-  alors ses derniers prix, et l'échec s'affiche — jusqu'à ce que le code suive.
+- Le relevé des prix (A6) lit une page de documentation, pas une API. Une
+  mise en forme nouvelle de son tableau le fait échouer quand le code s'en
+  aperçoit — colonnes ou section renommées, prix illisible, un modèle deux fois,
+  un palier disparu (RG9) : la grille garde alors ses derniers prix, et l'échec
+  s'affiche jusqu'à ce que le code suive. Une baisse de prix, elle, s'applique
+  sans contrôle de vraisemblance : Anthropic en a fait de fortes (Opus 4.5), et
+  un seuil les bloquerait ; le budget de la démo n'en dépend pas, `Pricing`
+  prenant le plus haut de la grille et de sa table (UC-VIS-03 RG4).
   Il ne relit que les modèles de l'offre : ajouter un modèle reste un geste de
   l'administrateur, et un modèle qu'Anthropic ne liste plus garde son dernier
   prix (il est nommé parmi les absents). Il n'a lieu que si le

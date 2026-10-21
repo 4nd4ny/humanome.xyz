@@ -222,8 +222,8 @@ par exemple juste avant ou juste après une présentation.
   par `POST /api/llm`, et que le pire cas de chaque appel, réservé avant qu'il
   parte, ne laisse jamais dépasser (UC-VIS-03 RG4) ; `model` `claude-haiku-5-5`
   (0,10 $ / 0,50 $ le million de jetons, 0,50 $ / 2,50 $ au-delà de 100 000
-  jetons d'entrée, pour tout l'appel — les prix de la grille des crédits,
-  relevés chaque jour, UC-ADM-05 A6) ; `maxInputChars` 2 000 000 — l'appel
+  jetons d'entrée, pour tout l'appel — le plus haut de la grille des crédits,
+  relevée chaque jour, UC-ADM-05 A6, et de la table de `Pricing`) ; `maxInputChars` 2 000 000 — l'appel
   entier, gabarit compris : la synthèse de Twin6 porte les sorties des sept
   scans, qu'aucun plafond ne borne plus, et des scans de 64 000 jetons chacun y
   tiennent (UC-APP-09-U35) —, le texte du visiteur étant borné à 5 000

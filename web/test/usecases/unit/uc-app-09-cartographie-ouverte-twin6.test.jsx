@@ -142,13 +142,13 @@ describe('UC-APP-09 — offre et référentiel lus dans /api/twin9/meta', () => 
   it('UC-APP-09-U18 — prix Twin6 (+10 %), référentiel et solde ; replis sûrs si absents', async () => {
     const complet = vi.fn(async () =>
       jsonResponse(200, {
-        modeles_twin6: { 'claude-sonnet-5': [3.3, 16.5] },
+        modeles_twin6: { 'claude-sonnet-5': [2.2, 11] },
         referentiel: [{ num: 1, nom: 'TÊTE', competences: [] }],
         solde_microusd: '2500000',
       }),
     )
     expect(await fetchTwin6Offer({ fetchFn: complet })).toEqual({
-      modeles: { 'claude-sonnet-5': [3.3, 16.5] },
+      modeles: { 'claude-sonnet-5': [2.2, 11] },
       referentiel: [{ num: 1, nom: 'TÊTE', competences: [] }],
       solde_microusd: 2_500_000,
     })
@@ -236,8 +236,8 @@ describe('UC-APP-09 — clé enregistrée et garde-fou de solde', () => {
         deps={{
           fetchMeFn: async () => ({ user: { id: 1 } }),
           loadPackage: async () => ({ ...TWIN6_PACKAGE, templates: {} }),
-          // Réserve d'un appel : 128 000 tokens × 16,50 $ / Mtok = 2,112 $.
-          fetchOffer: async () => ({ modeles: { 'claude-sonnet-5': [3.3, 16.5] }, referentiel: [], solde_microusd: 4_111_999 }),
+          // Réserve d'un appel : 128 000 tokens × 11 $ / Mtok (Sonnet 5 à 2 / 10, contribution comprise) = 1,408 $.
+          fetchOffer: async () => ({ modeles: { 'claude-sonnet-5': [2.2, 11] }, referentiel: [], solde_microusd: 3_399_999 }),
           listKeys: async () => [],
           makeCreditsProvider: creditsFactory,
           runEngine,
@@ -252,15 +252,15 @@ describe('UC-APP-09 — clé enregistrée et garde-fou de solde', () => {
         fireEvent.click(screen.getByRole('button', { name: 'Lancer la cartographie ouverte' }))
       })
 
-    // 1 025 octets → 2 $ + 2,112 $ requis > 4,111999 $ de solde : bloqué.
+    // 1 025 octets → 2 $ + 1,408 $ requis > 3,399999 $ de solde : bloqué.
     fireEvent.change(zone, { target: { value: 'é'.repeat(512) + 'x' } })
     await lancer()
-    expect(screen.getByRole('alert').textContent).toContain('~4.12 $ : 2 $ estimés, et 2.12 $ réservés')
-    expect(screen.getByRole('alert').textContent).toContain('solde 4.11 $')
+    expect(screen.getByRole('alert').textContent).toContain('~3.41 $ : 2 $ estimés, et 1.41 $ réservés')
+    expect(screen.getByRole('alert').textContent).toContain('solde 3.40 $')
     expect(creditsFactory).not.toHaveBeenCalled()
     expect(runEngine).not.toHaveBeenCalled()
 
-    // 1 024 octets → 1 $ + 2,112 $ requis ≤ solde : lancé.
+    // 1 024 octets → 1 $ + 1,408 $ requis ≤ solde : lancé.
     fireEvent.change(zone, { target: { value: 'é'.repeat(512) } })
     await lancer()
     expect(creditsFactory).toHaveBeenCalledTimes(1)

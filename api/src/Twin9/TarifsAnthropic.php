@@ -29,7 +29,13 @@ use PDO;
  * page gives them; a correction made by hand holds until the next reading. A
  * model the page does not list keeps its prices, and the reading names it. A
  * page that cannot be read (network, HTTP status, table or columns not
- * found, a price out of bounds) changes nothing: the state says why.
+ * found, a price out of bounds) changes nothing: the state says why. Two
+ * readings that would be silently wrong fail the same way (independent
+ * review, 2026-10-21): a model listed twice — a tier label this code no
+ * longer recognises would make its long-prompt row overwrite its base row —,
+ * and a long prompt tier of the grid that the page no longer gives — it may
+ * have moved to another table; dropping it would price Haiku 5.5's long
+ * prompts at a fifth of their cost. A person decides those.
  *
  * The worker's tick reads it (POST /api/admin/worker-tick, routes/worker.php),
  * after its slice, once per UTC day, an hour between two failed attempts,
@@ -217,7 +223,12 @@ final class TarifsAnthropic
             }
             $id = 'claude-' . strtolower($m[1]) . '-' . str_replace('.', '-', $m[2]);
             $prix = [self::prix($cellules[$colEntree] ?? '', $nom), self::prix($cellules[$colSortie] ?? '', $nom)];
-            if ($palier !== null && $palier[0] === 'over') {
+            $over = $palier !== null && $palier[0] === 'over';
+            if ($over ? isset($paliers[$id]) : isset($tarifs[$id])) {
+                // One row would overwrite the other: never guess which price is the model's.
+                throw new \UnexpectedValueException('page des prix illisible : ' . $id . ' y figure deux fois');
+            }
+            if ($over) {
                 $paliers[$id] = ['au_dela_de' => $palier[1], 'prix_usd_mtok' => $prix];
             } else {
                 $tarifs[$id] = ['prix_usd_mtok' => $prix];
@@ -238,8 +249,9 @@ final class TarifsAnthropic
 
     /**
      * The grid with the page's prices: each model the page lists gets its
-     * prices and its long prompt tier (none if the page gives none); the
-     * others keep theirs and are named in `absents`.
+     * prices and its long prompt tier; the others keep theirs and are named in
+     * `absents`. A tier of the grid that the page no longer gives fails the
+     * whole reading (UnexpectedValueException): nothing is written.
      *
      * @param array<string, array<string, mixed>> $modeles the grid (Twin9Config::modeles())
      * @param array<string, array<string, mixed>> $tarifs what lire() gave
@@ -260,6 +272,10 @@ final class TarifsAnthropic
             }
             $avant = array_intersect_key($modele, ['prix_usd_mtok' => true, 'palier_long' => true]);
             $apres = array_intersect_key($tarif, ['prix_usd_mtok' => true, 'palier_long' => true]);
+            if (isset($avant['palier_long']) && !isset($apres['palier_long'])) {
+                throw new \UnexpectedValueException(
+                    'page des prix illisible : le palier des longs prompts de ' . $id . ' n’y figure plus');
+            }
             // 2 and 2.0 are one price: loose comparison, on purpose.
             if ($avant != $apres) {
                 $modeles[$id] = $apres;

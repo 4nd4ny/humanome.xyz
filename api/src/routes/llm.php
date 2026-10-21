@@ -218,8 +218,13 @@ return function (App $app): void {
         if ($provider !== null && $reservedInput > AnthropicProvider::COMPTE_AU_DELA) {
             $compte = $provider->countTokens($config->model, $system, $prompt);
             if ($compte !== null) {
-                // An estimate: 2 % and 64 tokens more, never past the bytes' bound.
-                $reservedInput = min($reservedInput, (int) ceil($compte * 1.02) + 64);
+                // An estimate (Anthropic: « may differ by a small amount »):
+                // 10 % and 64 tokens more, never past the bytes' bound. Near
+                // Haiku 5.5's 100,000-token tier, a count a little short would
+                // reserve at the base rate a call billed five times more: from
+                // about 90,850 counted tokens on, the reservation takes the
+                // long-prompt rate (independent review of 2026-10-21).
+                $reservedInput = min($reservedInput, (int) ceil($compte * 1.10) + 64);
             }
         }
         $reservedOutput = $sortie;

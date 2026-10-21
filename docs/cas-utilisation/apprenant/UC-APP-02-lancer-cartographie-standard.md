@@ -417,7 +417,7 @@ Cartographier mes écrits », ou le bouton du tableau de bord `#/espace`).
 
 ### Tests existants liés (non-régression)
 
-- `web/src/components/RunWizard.test.jsx` — étapes, estimation, exécution et reprise (coutures injectées).
+- `web/src/components/RunWizard.test.jsx` — étapes, estimation (le Service humanome au tarif de Haiku 5.5, RG6), exécution et reprise (coutures injectées).
 - `web/src/lib/run-launcher.test.js` — groupes de journées, estimation, paquets, clés, `executeRun` sur stockage mémoire.
 - `web/src/lib/demo-llm.test.js`, `web/src/lib/pow.test.js` — défi, preuve de travail, messages.
 - `engine/src/runs/run.test.js`, `journal.test.js`, `storage.test.js` — machine à états, journal, adaptateurs.

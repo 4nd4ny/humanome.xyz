@@ -13,7 +13,13 @@ import day06 from '../../../schemas/fixtures/cartographie-jour-2026-01-06.json'
 import day07 from '../../../schemas/fixtures/cartographie-jour-2026-01-07.json'
 import { createMemoryAdapter, createPortfolioStore } from '../lib/portfolio-store.js'
 import { ApiUnavailableError } from '../api/client.js'
-import { BUILTIN_PACKAGE, makeRunId } from '../lib/run-launcher.js'
+import {
+  BUILTIN_PACKAGE,
+  SERVICE_ESTIMATION_MODEL,
+  buildEstimate,
+  computeDayGroups,
+  makeRunId,
+} from '../lib/run-launcher.js'
 
 const DAY_DOCS = { '2026-01-05': day05, '2026-01-06': day06, '2026-01-07': day07 }
 
@@ -144,6 +150,28 @@ describe('RunWizard — étapes et estimation', () => {
     expect(text).toMatch(/Coût estimé/)
     expect(text).toMatch(/Durée estimée/)
     expect(screen.getByText(/Prix INDICATIFS/)).toBeTruthy()
+  })
+
+  it('estime le Service humanome au tarif du modèle de la démo qui le sert, Haiku 5.5 — pas Sonnet 5 (2026-10-21)', async () => {
+    const { deps } = makeDeps()
+    const store = await seededPortfolioStore()
+    render(<RunWizard session={session} deps={{ ...deps, portfolioStore: store }} />)
+
+    fireEvent.click(await screen.findByRole('radio', { name: /Mon journal — 3 journée/ }))
+    fireEvent.click(screen.getByRole('button', { name: 'Continuer' }))
+    await screen.findByTestId('packages-fallback')
+    fireEvent.click(screen.getByRole('button', { name: 'Continuer' }))
+    await screen.findByTestId('step-fournisseur')
+    fireEvent.click(screen.getByRole('radio', { name: /Service humanome/ }))
+    fireEvent.click(screen.getByRole('button', { name: 'Continuer' }))
+
+    const text = (await screen.findByTestId('run-estimate')).textContent
+    const [portfolio] = await store.list()
+    const dayGroups = computeDayGroups(portfolio.segments)
+    const cout = (model) => buildEstimate({ dayGroups, referentiel, model }).costUsd.toFixed(2)
+    expect(SERVICE_ESTIMATION_MODEL).toBe('claude-haiku-5-5')
+    expect(cout('claude-haiku-5-5')).not.toBe(cout('claude-sonnet-5'))
+    expect(text).toContain(`Coût estimé : ≈ ${cout('claude-haiku-5-5')} $ US`)
   })
 
   it('bloque l’étape portfolio tant qu’aucun portfolio n’est choisi', async () => {

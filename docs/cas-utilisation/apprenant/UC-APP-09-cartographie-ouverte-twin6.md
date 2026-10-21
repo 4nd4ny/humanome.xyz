@@ -155,8 +155,9 @@ page Essayer (UC-VIS-03), ou par l'adresse.
 - **A3 — Sortie demandée hors bornes** (étape 6) : `max_tokens` (ou l'alias
   `maxTokens`) est ramené dans [256, maximum du modèle] — 128 000 pour Sonnet 5,
   Opus 5.5 ou Haiku 5.5, 64 000 pour Haiku 4.5 (`Llm\ModelLimits`) ; absent,
-  c'est ce maximum : le moteur ne l'envoie plus (2026-10-21, 16 000 au plus et
-  8 192 par défaut avant). Un arrêt `max_tokens` est relayé tel quel
+  c'est ce maximum. Le moteur envoie d'ailleurs ce même maximum
+  (`sortieMaxAnthropic`, UC-APP-09-F01) : 16 000 au plus et 8 192 par défaut
+  avant le 2026-10-21. Un arrêt `max_tokens` est relayé tel quel
   (`stopReason`) pour que le moteur échoue explicitement (E5).
 - **A4 — Autre référentiel publié** (étapes 2-3, 2026-10-20) : l'apprenant
   choisit un autre référentiel dans « Référentiel » ; la vue charge sa dernière
@@ -423,7 +424,7 @@ page Essayer (UC-VIS-03), ou par l'adresse.
 | UC-APP-09-F03 | A2 | IHM | Clé du profil révélée une fois, 8 appels directs avec elle, aucun appel à `/api/twin6/appel` (voie crédits câblée en échec), « (avec votre clé) » | idem |
 | UC-APP-09-F04 | E1 | IHM | Anonyme : l'essai gratuit seul, invitation à se connecter pour les autres voies ; ni offre ni clés lues | idem |
 | UC-APP-09-F05 | E2 | IHM | Copie statique : fonctionnalité indisponible | idem |
-| UC-APP-09-F06 | E3 | IHM | Solde < poids du portfolio et réserve d'un appel (« ~3.12 $ : 1 $ estimés, et 2.12 $ réservés… ») : blocage avant tout appel | idem |
+| UC-APP-09-F06 | E3 | IHM | Solde < poids du portfolio et réserve d'un appel (« ~2.41 $ : 1 $ estimés, et 1.41 $ réservés… », Sonnet 5 à 2 / 10) : blocage avant tout appel | idem |
 | UC-APP-09-F07 | E4 | IHM | 402 en cours de run : arrêt, message, bouton réutilisable | idem |
 | UC-APP-09-F08 | E5 | IHM | Sortie tronquée : échec explicite, pas d'export | idem |
 | UC-APP-09-F09 | E6 | IHM | Paquet public introuvable, ou offre `/meta` en erreur : erreur de chargement, formulaire absent | idem |
@@ -531,10 +532,22 @@ cd engine && npx vitest run test/usecases/unit/uc-app-09
   caractères compacts par pôle en médiane, plus que les 8 192 jetons que les
   voies « crédits » et « clé perso » demandaient ; chaque appel demande
   désormais tout ce que le modèle peut rendre, sur les trois voies (A3, RG11).
-  Une sortie plus longue prend plus de temps : la voie crédits attend
-  l'amont 150 s au plus (`AnthropicCaller`), et un délai dépassé rend la
-  réserve (E11) alors qu'Anthropic a pu facturer l'appel — c'est la plateforme
-  qui le paie.
+  Mais le délai borne encore la sortie : la voie crédits attend l'amont 150 s
+  au plus (`AnthropicCaller`), une sortie plus longue que ce que le modèle écrit
+  dans ce délai est perdue, et le délai dépassé rend la réserve (E11) alors
+  qu'Anthropic a pu facturer l'appel — c'est la plateforme qui le paie. Un
+  compte crédité peut le provoquer exprès, d'un prompt libre qui demande une
+  longue sortie, aussi souvent que son solde couvre une réserve : avec la
+  sortie levée, ce qu'Anthropic peut facturer pour un tel appel monte de 16 000
+  à 128 000 tokens de sortie, s'il poursuit la génération après la coupure.
+  Décision ouverte (STATUS, dettes techniques) : garder la réserve sur un délai
+  dépassé, comme la démo ; ou l'appel en flux, qui garde la connexion et donne
+  l'usage même coupé.
+- Opus 5.5, Fable et Mythos refusent la réflexion coupée qu'envoie la voie
+  crédits (`thinking: disabled` ; Sonnet 5.5 reçoit `between_tools`) : les
+  ajouter à l'offre ferait échouer leurs appels (400, réserve rendue). La
+  grille par défaut ne les offre pas, et le relevé quotidien n'ajoute aucun
+  modèle.
 - Le garde-fou de solde (RG5) est une heuristique client ; seul le refus 402
   serveur (réserve pire-cas) est opposable. Son message arrondit le montant
   requis au centime supérieur et le solde au centime le plus proche, avec un

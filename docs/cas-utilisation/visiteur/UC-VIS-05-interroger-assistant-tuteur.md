@@ -82,8 +82,9 @@ dans l'en-tête, à côté du bouton d'aide « ? ».
    la documentation.
 6. Il appelle le modèle du tuteur (`TUTEUR_MODEL`, un Haiku, RG6) en mode
    **prose** (aucun outil JSON forcé), 600 tokens de sortie au plus ; il compte
-   tokens et coût estimé (au tarif de la grille des crédits, relevée chaque
-   jour, UC-ADM-05 A6) sur les compteurs du tuteur et renvoie `{text, usage,
+   tokens et coût estimé (au plus haut du tarif de la grille des crédits,
+   relevée chaque jour, UC-ADM-05 A6, et de la table de `Pricing`) sur les
+   compteurs du tuteur et renvoie `{text, usage,
    model}` (sans `stopReason` : une réponse tronquée l'est en silence).
 7. Le panneau affiche la réponse, débarrassée du Markdown léger (`**gras**`,
    `__gras__`, `` `code` ``) — jamais interprétée comme HTML.

@@ -51,10 +51,12 @@ vert.
     lit la page des prix (sa version markdown), une fois par jour UTC — une heure entre deux
     tentatives après un échec, sous verrou MySQL, là où `ANTHROPIC_API_KEY` est posée —, et récrit
     prix et palier long des modèles de l'offre que son tableau « Model pricing » donne ; il nomme
-    ceux qu'il ne donne pas et ne change rien d'une page qu'il ne sait pas lire. Audit
-    `twin9_tarifs_mis_a_jour` ; état dans le réglage `twin9_tarifs`, affiché sous l'offre de
-    modèles de `#/admin/twin9`. La démo, le tuteur et la masse tarifent aussi sur la grille (puis
-    sur `Pricing` pour un modèle qu'elle n'offre pas). La grille stockée en production (Sonnet 5 à
+    ceux qu'il ne donne pas et ne change rien d'une page qu'il ne sait pas lire — ni d'une page
+    où un modèle figure deux fois, ni d'une page qui perd un palier long de la grille, deux
+    lectures qui seraient fausses en silence. Audit `twin9_tarifs_mis_a_jour` ; état dans le
+    réglage `twin9_tarifs`, affiché sous l'offre de modèles de `#/admin/twin9`. La démo, le tuteur
+    et la masse tarifent au plus haut de la grille et de la table de `Pricing` : une grille trop
+    basse, ou qui a perdu le palier de Haiku 5.5, ne fait pas réserver moins. La grille stockée en production (Sonnet 5 à
     3 / 15) se corrige au premier tick du déclencheur de T18, sans autre geste — à la main dans
     `#/admin/twin9` d'ici là. UC-ADM-05 A6, RG9, U15 à U19, F19, F20 ; `docs/deploiement.md`.
   - **La sortie sans plafond.** Chaque appel demande tout ce que le modèle peut rendre
@@ -67,9 +69,12 @@ vert.
     entière comprise, **avant** l'appel : un appel qu'il ne couvre pas ne part pas (démo : 503 ;
     crédits : 402), une réponse n'est jamais coupée pour le tenir. Au-delà de 100 000 octets,
     l'entrée réservée par la démo est le compte d'Anthropic (`POST /v1/messages/count_tokens`,
-    gratuit, +2 % et 64 tokens ; les octets s'il ne répond pas) : sans lui, une synthèse de Twin6
-    sous les 100 000 tokens aurait été réservée au palier long de Haiku 5.5 — 0,48 $ au lieu de
-    0,07 $ pour 300 000 caractères de français.
+    gratuit, +10 % et 64 tokens ; les octets s'il ne répond pas ou d'une valeur douteuse) : sans
+    lui, une synthèse de Twin6 sous les 100 000 tokens aurait été réservée au palier long de
+    Haiku 5.5 — 0,42 $ au lieu de 0,07 $ pour 200 000 caractères (≈ 80 000 tokens au tokenizer
+    actuel, ≈ 2,5 caractères par token selon Anthropic) ; avec 10 %, un appel compté à plus de
+    ≈ 90 850 tokens réserve au palier long, qu'un compte un peu court ne fasse pas passer le
+    budget.
     `maxInputChars` passe à 2 000 000 (borne 4 000 000), pour cette synthèse, dont les scans n'ont
     plus de plafond. Le garde-fou de Twin6 compte aussi la réserve d'un appel (≈ 1,41 $ pour
     Sonnet 5) : sans elle, un solde qui couvre le poids du portfolio finissait sur un 402 après
@@ -84,6 +89,14 @@ vert.
     restent aux voies payantes : crédits, clé personnelle, Twin9. L'estimation du Service humanome
     et du banc prend Haiku 5.5 (`SERVICE_ESTIMATION_MODEL`). UC-ADM-04 RG9, A7, U28, F23 ;
     UC-VIS-05 RG6, F20.
+  - **Revue indépendante** : l'assistant estimait encore le Service humanome au prix de Sonnet 5
+    (`RunWizard`, vingt fois Haiku 5.5 : corrigé, avec son test) ; le relevé refuse désormais les
+    deux lectures fausses en silence, et `Pricing` prend le plus haut de la grille et de sa table ;
+    la marge du compte passe de 2 à 10 % ; les tests du worker-tick ne relèvent rien, même si le
+    poste exporte une clé ; les fixtures du front tarifent Sonnet 5 à 2 / 10. Elle a vérifié sur
+    les pages d'Anthropic les prix et les sorties maximales retenus, et lu la vraie page des prix
+    avec le parseur (vingt lignes, aucun changement sur la grille par défaut). Restent les
+    décisions ci-dessous.
   - Remplace, dans l'entrée de la démo ci-dessous : les 16 000 jetons de sortie et les 420 000
     caractères ; le geste « sortie 16 000, entrée 420 000 » (plus de champ de sortie, l'entrée se
     laisse au fichier ou se règle à 2 000 000) ; « à aligner » pour `SERVICE_ESTIMATION_MODEL` ;
@@ -93,8 +106,9 @@ vert.
     le fixe plus bas, et retirer la surcharge de sortie si la page en garde une (elle ne sert
     plus).
   - **Points ouverts**, aux « Dettes techniques » : le délai de 150 s borne encore ce qu'un appel
-    peut rendre ; le tuteur et la masse gardent leurs plafonds ; la masse tourne par défaut sur
-    Sonnet 4.5, retiré le 2026-11-30.
+    peut rendre, et la voie crédits rend la réserve d'un délai dépassé (la plateforme paie) ; le
+    tuteur et la masse gardent leurs plafonds ; la masse tourne par défaut sur Sonnet 4.5, retiré
+    le 2026-11-30 ; Opus 5.5, Fable et Mythos refusent la réflexion coupée de la voie crédits.
 
 - 2026-10-21 — **Démo à 1 $ par jour, essai gratuit de la cartographie ouverte (branche
   `feat/demo-un-dollar`).** Christian : « Twin6 : en version gratuite, mettre une limite de 1 USD de
@@ -2576,13 +2590,26 @@ vert.
 
 ## Dettes techniques / décisions en attente
 
-- Sortie sans plafond (2026-10-21) : le délai amont borne encore ce qu'un appel peut rendre —
-  150 s pour la démo (`upstreamTimeoutSeconds`) comme pour la voie crédits (`AnthropicCaller`).
-  Une sortie plus longue que ce que le modèle écrit dans ce délai est perdue : la démo garde la
-  réservation (son budget paie ce qu'Anthropic a pu facturer), la voie crédits la rend (la
-  plateforme le paie, sans plafond : un compte crédité peut le provoquer à la chaîne, sur un
-  prompt libre). Remède noté, non codé : l'appel en flux (`stream`), qui garde la connexion,
-  donne l'usage même coupé et permet de le facturer.
+- **À décider avant d'ouvrir les crédits au public** — sortie sans plafond (2026-10-21) : le délai
+  amont borne encore ce qu'un appel peut rendre — 150 s pour la démo (`upstreamTimeoutSeconds`)
+  comme pour la voie crédits (`AnthropicCaller`). Une sortie plus longue que ce que le modèle
+  écrit dans ce délai est perdue : la démo garde la réservation (son budget paie ce qu'Anthropic a
+  pu facturer, et le client de la démo refait une fois l'appel, la perdant deux fois), la voie crédits la
+  rend (la plateforme le paie, sans plafond : un compte crédité peut le provoquer à la chaîne, sur
+  un prompt libre, et parallèlement autant que son solde couvre de réserves — ≈ 1,41 $ pour
+  Sonnet 5). Avec la sortie levée, ce qu'Anthropic peut facturer pour un tel appel monte de
+  16 000 à 128 000 tokens, s'il poursuit la génération après la coupure (sa documentation ne le
+  dit pas). Trois remèdes : garder la réserve sur un délai dépassé, comme la démo (le site ne
+  paie plus, l'apprenant paie le pire cas d'un appel perdu) ; allonger le délai, si l'hébergement
+  le tient ; l'appel en flux (`stream`), qui garde la connexion, donne l'usage même coupé et
+  permet de le facturer. Non codé : un choix de facturation, à Christian.
+- Opus 5.5, Fable et Mythos refusent `thinking: disabled` (400) ; la voie crédits l'envoie à tout
+  modèle sauf Sonnet 5.5 (`between_tools`) : les ajouter à l'offre ferait échouer leurs appels.
+  La grille par défaut ne les offre pas, et le relevé n'ajoute aucun modèle.
+- La masse (flux établissement) appelle sur la clé de la plateforme le modèle que l'établissement
+  choisit, Sonnet 4.5 par défaut, payé après coup sous un plafond qu'il fixe : pas des crédits
+  achetés d'avance, au sens de la règle du 2026-10-21 (« Sonnet et Opus disponibles uniquement
+  pour les comptes ayant acheté suffisamment de crédits »). Antérieur, à trancher.
 - Plafonds de sortie gardés, à décider : le tuteur (600 tokens, la longueur d'une réponse, et son
   propre budget de 1 $ — la dépense gratuite du site peut donc atteindre 2 $ par jour) ; la masse
   (`WORKER_MAX_TOKENS`, 8 192, au budget de l'établissement), qui tourne par défaut sur Sonnet 4.5

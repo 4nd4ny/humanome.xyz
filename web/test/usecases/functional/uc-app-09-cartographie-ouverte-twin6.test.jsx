@@ -445,9 +445,9 @@ describe('UC-APP-09 — l’apprenant lance une cartographie ouverte', () => {
     await lancer()
 
     const alerte = await screen.findByRole('alert')
-    // 1 $ de poids, plus la réserve d'un appel : 128 000 tokens de sortie de Sonnet 5 à 16,50 $ / Mtok (contribution comprise).
+    // 1 $ de poids, plus la réserve d'un appel : 128 000 tokens de sortie de Sonnet 5 à 11 $ / Mtok (2 / 10, contribution comprise).
     expect(alerte.textContent).toContain(
-      'Solde insuffisant pour ce portfolio avec ce modèle (~3.12 $ : 1 $ estimés, et 2.12 $ réservés le temps de chaque appel puis rendus ; solde 0.50 $)',
+      'Solde insuffisant pour ce portfolio avec ce modèle (~2.41 $ : 1 $ estimés, et 1.41 $ réservés le temps de chaque appel puis rendus ; solde 0.50 $)',
     )
     expect(alerte.textContent).toContain('propre clé API')
     expect(appelsTwin6(calls)).toHaveLength(0)

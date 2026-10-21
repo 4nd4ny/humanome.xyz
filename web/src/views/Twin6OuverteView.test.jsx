@@ -38,7 +38,7 @@ const PKG = {
   templates: { scanPole: 'SCAN ${POLE}', kairos: 'KAIROS', fiches: { 1: '# Pôle 1 — TÊTE\n\n## 1.01 — Pensée\n' } },
 }
 const OFFER = {
-  modeles: { 'claude-sonnet-5': [3.3, 16.5] },
+  modeles: { 'claude-sonnet-5': [2.2, 11] },
   referentiel: [{ num: 1, nom: 'TÊTE — Penser & Comprendre', competences: [{ code: '1.01', nom: 'Pensée' }] }],
   // Compte financé par défaut : un run sur crédits réussit (le garde-fou de
   // solde ne bloque pas). Le test « solde insuffisant » abaisse ce solde à 1 USD.

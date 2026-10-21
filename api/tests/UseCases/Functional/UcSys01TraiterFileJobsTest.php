@@ -99,7 +99,9 @@ final class UcSys01TraiterFileJobsTest extends MasseTestCase
         $logFile = (string) tempnam(sys_get_temp_dir(), 'uc-sys-01-log');
         $previous = ini_set('error_log', $logFile);
         try {
-            $response = self::withEnv(['WORKER_PROVIDER' => 'mock'], fn (): ResponseInterface => $this->request('POST', '/api/admin/worker-tick', $body, $headers));
+            // Sans clé de la plateforme, le tick ne relève pas les prix d'Anthropic : aucun accès au réseau,
+            // même si le poste exporte une clé (le relevé a ses propres tests, UC-ADM-05-F19, F20).
+            $response = self::withEnv(['WORKER_PROVIDER' => 'mock', 'ANTHROPIC_API_KEY' => ''], fn (): ResponseInterface => $this->request('POST', '/api/admin/worker-tick', $body, $headers));
             $response->getBody()->rewind();
 
             return $response;

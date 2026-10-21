@@ -19,12 +19,19 @@
 //   (ADR-003/ADR-009: the app can be served from any subpath);
 // - automatic retries are DISABLED (maxAttempts: 1): a 429 here means the
 //   demo quota, hammering it would be abuse — the UI offers a manual retry;
+// - the answer comes as it is generated (2026-10-21, api/relais.js): the
+//   wrapper asks for the relay, reports the characters received
+//   (`onProgression`) and hands the engine the JSON the route would have
+//   answered; a call cut short (the delay, the provider) was counted on the
+//   day's budget for what it produced, and is not retried here;
 // - RGPD (cahier §6.5): nothing is logged nor stored anywhere in this module.
 
 import { createProvider } from '@engine/providers/index.js'
 import { ProviderError } from '@engine/providers/errors.js'
 import { parseRetryAfter } from '@engine/providers/retry.js'
 import { solvePow } from './pow.js'
+import { ACCEPT_RELAIS, estRelais, lireRelais } from '../api/relais.js'
+import { RELAIS_INTERROMPU } from '../api/client.js'
 
 export const DEMO_CHALLENGE_URL = 'api/llm/challenge'
 export const DEMO_PROXY_URL = 'api/llm'
@@ -140,14 +147,18 @@ function isUsable(solved, now = Date.now()) {
  * @param {typeof fetch} [options.fetchFn] test seam (same pattern as data/load.js)
  * @param {(phase: 'challenge'|'pow'|'llm') => void} [options.onPhase]
  *   fine-grained progress for the UI (per call: fetch challenge, solve, LLM)
+ * @param {(caracteres: number) => void} [options.onProgression] the characters
+ *   received so far by the call in progress (from 0 at each 'llm' phase)
  * @returns {{provider: {complete: Function, name: string, transport: string},
  *   prime: (signal?: AbortSignal) => Promise<void>}}
  *   `prime()` pre-solves ONE challenge so the first LLM call starts instantly.
  */
-export function createDemoProvider({ fetchFn, onPhase } = {}) {
+export function createDemoProvider({ fetchFn, onPhase, onProgression } = {}) {
   const baseFetch = fetchFn ?? ((...args) => globalThis.fetch(...args))
   /** Pre-solved challenges, consumed FIFO ({challenge, nonce, expiresAt}). */
   const solvedQueue = []
+  /** Calls cut short so far (code « coupe »): counted, never retried here. */
+  let coupes = 0
 
   async function obtainSolved(signal) {
     onPhase?.('challenge')
@@ -177,9 +188,21 @@ export function createDemoProvider({ fetchFn, onPhase } = {}) {
       const { challenge, nonce } = await takeSolved(init.signal)
       onPhase?.('llm')
       const body = JSON.parse(init.body)
-      return baseFetch(url, {
+      const response = await baseFetch(url, {
         ...init,
+        headers: { ...init.headers, Accept: ACCEPT_RELAIS },
         body: JSON.stringify({ ...body, challenge, nonce, website: '' }),
+      })
+      if (!estRelais(response)) return response
+      // The relayed answer, back into the JSON the engine reads, its status included.
+      const issue = (await lireRelais(response, { onProgression, signal: init.signal })) ?? {
+        status: 502,
+        data: { error: RELAIS_INTERROMPU, code: 'coupe' },
+      }
+      if (issue.data?.code === 'coupe') coupes += 1
+      return new Response(JSON.stringify(issue.data), {
+        status: issue.status,
+        headers: { 'content-type': 'application/json' },
       })
     },
   })
@@ -188,6 +211,7 @@ export function createDemoProvider({ fetchFn, onPhase } = {}) {
   // challenge: an 8-call run should not die on a single gateway hiccup.
   // Never retried: 429 (demo quota — hammering it would be abuse) nor 4xx.
   const complete = async (args) => {
+    const coupesAvant = coupes
     try {
       return await provider.complete(args)
     } catch (error) {
@@ -199,7 +223,10 @@ export function createDemoProvider({ fetchFn, onPhase } = {}) {
       const powRejected = /défi/i.test(collectMessages(error))
       const transient =
         status === null || [500, 502, 504, 529].includes(status) || powRejected
-      if (!transient || args?.signal?.aborted || isAbortError(error)) throw error
+      // A call cut short was counted for what it produced: a second one at once
+      // would likely be cut too, and counted again (the engine keeps its own retry).
+      const coupe = coupes > coupesAvant
+      if (!transient || coupe || args?.signal?.aborted || isAbortError(error)) throw error
       onPhase?.('retry')
       await new Promise((resolve) => setTimeout(resolve, UPSTREAM_RETRY_DELAY_MS))
       return provider.complete(args)

@@ -79,8 +79,12 @@ page Essayer (UC-VIS-03), ou par l'adresse.
 
 - Aucun document partiel n'est affiché ; le formulaire reste disponible.
 - Un appel **refusé** (401, 403, 413, 422, 402) n'atteint pas l'amont et
-  n'est pas facturé ; un appel dont l'**amont échoue** (E11) est intégralement
-  remboursé (réserve rendue).
+  n'est pas facturé ; un appel qu'**Anthropic refuse** (statut d'erreur) ou ne
+  reçoit jamais (connexion impossible) est intégralement remboursé (réserve
+  rendue, E11). Un appel **coupé** après qu'Anthropic l'a reçu — délai
+  dépassé, erreur en cours de flux, navigateur parti — est facturé pour ce
+  qu'il a produit, jamais remboursé (E11, RG12) : la plateforme ne paie rien
+  qu'elle ne refacture.
 - En revanche, un appel **abouti** côté serveur est facturé au coût réel, même
   si le moteur échoue ensuite sur sa sortie : l'appel tronqué de E5, et tous les
   appels déjà aboutis d'un run qui s'arrête en cours (E4, E5, RG6, E11, JSON
@@ -116,18 +120,20 @@ page Essayer (UC-VIS-03), ou par l'adresse.
    le numéro et dont les variables du référentiel sont rendues, RG10, fiche du
    pôle et portfolio attachés) puis **1 appel kairos** (les
    `carto_pole` de tous les pôles + le portfolio). Chaque appel est un
-   `POST /api/twin6/appel {model, prompt, system, max_tokens}` avec le jeton CSRF ;
-   la progression « étape n/N » (N = pôles + 1, 8 pour RESPIRE v7) et la
+   `POST /api/twin6/appel {model, prompt, system, max_tokens}` avec le jeton CSRF,
+   qui demande la réponse en flux (RG12) ;
+   la progression « étape n/N » (N = pôles + 1, 8 pour RESPIRE v7), les
+   caractères reçus de l'appel en cours (« 1 234 caractères reçus ») et la
    contribution cumulée (« … débités jusqu'ici ») s'affichent. Une sortie
    tronquée est détectée **ici**, dès le premier appel concerné (E5).
 6. Pour chaque appel, le serveur : vérifie le jeton CSRF de la session (403,
    E12), exige la session (401), la clé plateforme
    (503), borne le corps à 2 Mo (413), valide modèle, prompt et `max_tokens`
    (422), **réserve** atomiquement le
-   pire-cas au tarif Twin6 (402 sinon), appelle Anthropic sur l'URL verrouillée,
-   **réconcilie** la réserve au coût réel et renvoie
+   pire-cas au tarif Twin6 (402 sinon), appelle Anthropic en flux sur l'URL
+   verrouillée, **réconcilie** la réserve au coût réel et renvoie
    `{text, usage, model, stopReason, cout_microusd}` (aucun rendu, aucun filtre :
-   le prompt est public).
+   le prompt est public) — relayé à mesure qu'il arrive (RG12).
 7. Le moteur extrait le JSON de chaque sortie, puis `twin6ToMergeDocument`
    décompose chaque `carto_pole` en instantanés **par feuille** (date des
    passages) et réutilise le pipeline de merge : niveaux, ipsatif, narratifs
@@ -211,8 +217,9 @@ page Essayer (UC-VIS-03), ou par l'adresse.
   votre propre clé API. » — aucun appel (RG5).
 - **E4 — Réserve non couverte** (étape 6) : `402 {error: "Solde insuffisant",
   solde_microusd, requis_estime_microusd}` ; l'amont n'est pas appelé ; la vue
-  arrête le run et affiche le message ; le bouton redevient cliquable. Les
-  appels déjà aboutis du run restent facturés.
+  arrête le run et affiche le message, suivi de ce que le run a débité
+  (« Solde insuffisant (0,0066 $ débités pour ce run.) », 2026-10-21) ; le bouton
+  redevient cliquable. Les appels déjà aboutis du run restent facturés.
 - **E5 — Sortie tronquée** (étape 5, dès le premier appel tronqué) :
   `stopReason = max_tokens` → le moteur lève « sortie tronquée (max_tokens) à
   l'étape … » ; aucun document partiel. L'appel tronqué est un `200` côté
@@ -234,9 +241,31 @@ page Essayer (UC-VIS-03), ou par l'adresse.
   `appels_par_minute`, qui ne bornait plus que la cartographie ouverte depuis
   T11, à la demande de Christian ; la dépense reste bornée par le solde prépayé
   (RG3), le débit d'un compte ne l'est plus (voir Limites).
-- **E11 — Échec du fournisseur** (étape 6) : erreur amont → `502` (ou `504` sur
-  délai, `429` si saturé) au message **générique** ; la réserve est rendue
-  (événement « twin6/cartographie (remboursement échec) »).
+- **E11 — Échec du fournisseur** (étape 6), au message **générique**, jamais
+  le texte amont :
+  - refusé par Anthropic (statut d'erreur, avant toute réponse) → `502`
+    (« Clé API refusée par le fournisseur LLM. » sur 401/403), `429` si saturé ;
+    jamais reçu (connexion impossible) → `502`, ou `504` « Le fournisseur LLM ne
+    répond pas… » quand la connexion n'aboutit pas à temps. Anthropic n'a rien
+    facturé : la réserve est rendue (« twin6/cartographie (remboursement
+    échec) ») ;
+  - **coupé** après qu'Anthropic l'a reçu (2026-10-21, RG12) : délai dépassé
+    (`TWIN6_UPSTREAM_TIMEOUT`, 150 s par défaut) → `504` « La réponse a dépassé
+    le délai de N s : coupée, elle est facturée pour ce qu'elle a produit. » ;
+    erreur d'Anthropic en cours de flux, réponse illisible → `502` « Le
+    fournisseur LLM a interrompu sa réponse : elle est facturée pour ce qu'elle
+    a produit. » ; le corps porte `code: "coupe"` et `cout_microusd`. Facturé :
+    l'entrée annoncée par Anthropic au début du flux (sinon les octets du
+    prompt), la sortie bornée par les octets reçus plus 1 024 jetons, au plus
+    `max_tokens` — toute la sortie quand ces octets ne bornent rien (bloc de
+    réflexion, réponse qui n'est pas un flux) ; le reste de la réserve est rendu
+    (« twin6/cartographie (appel coupé) »). La page en ajoute le coût à la
+    contribution cumulée et affiche le message suivi de ce que le run a débité
+    (« (0,04 $ débités pour ce run.) »). Le navigateur qui part (onglet fermé)
+    coupe l'appel de même. Un flux qui s'arrête sans issue — l'hébergement a
+    arrêté le script — laisse la réserve débitée : la page dit « La connexion
+    au serveur a été coupée avant la fin de la réponse. L'appel a pu être
+    facturé, au plus le montant réservé pour lui : votre solde fait foi. »
 - **E12 — Jeton CSRF absent ou invalide** (étape 6) : avec un cookie de session
   mais sans `X-CSRF-Token` valide → `403 {error: "Jeton CSRF absent ou
   invalide"}` (`CsrfMiddleware`, avant la route) ; rien n'est appelé ni débité.
@@ -320,7 +349,8 @@ page Essayer (UC-VIS-03), ou par l'adresse.
   partage tout ce qui passe par `POST /api/llm` — 1 $ par défaut —, visiteurs et
   comptes confondus ; le serveur impose modèle (un Haiku), sortie (le maximum
   du modèle, 128 000 jetons pour Haiku 5.5, sans plafond depuis le 2026-10-21)
-  et délai (UC-ADM-04). La page borne le portfolio à 5 000 caractères
+  et délai (UC-ADM-04) ; la réponse y arrive en flux comme sur la voie crédits
+  (UC-VIS-03 RG6), les caractères reçus affichés de même. La page borne le portfolio à 5 000 caractères
   (`DEMO_TEXT_MAX_CHARS`) et exige une feuille datée ; le serveur borne l'appel
   entier (`maxInputChars`, 2 000 000 par défaut : un scan porte ≈ 56 000
   caractères, gabarit public, fiche du pôle et portfolio, et la synthèse les
@@ -328,6 +358,20 @@ page Essayer (UC-VIS-03), ou par l'adresse.
   jetons chacun y tiennent, UC-APP-09-U35). Chaque appel réserve son pire cas,
   ≈ 0,07 $ avec Haiku 5.5 : un essai commencé près de la fin du budget du jour
   peut s'arrêter après ses premiers scans (E14).
+- **RG12** — Réponse en flux (2026-10-21, Christian : « Si on passe en appel en
+  flux, alors on voit la réponse arriver au fur et à mesure ? […] Si oui,
+  alors c'est mon choix » ; « Je ne peux pas prendre à charge les coûts
+  extra ») : `/api/twin6/appel` demande à Anthropic une réponse diffusée et la
+  relaie au navigateur qui le demande (`Accept: text/event-stream`, ce que
+  fait le provider « crédits ») — `progression` {caracteres}, `: attente`
+  après 10 s de silence, puis `resultat` (le JSON du nominal) ou `erreur`
+  {status, error, code, cout_microusd} ; tout autre client reçoit ce JSON à la
+  fin. Le délai d'un appel est `TWIN6_UPSTREAM_TIMEOUT` (150 s par défaut, de
+  10 à 900) : OVH borne un script à 165 s sur le mutualisé, sans réglage
+  possible — du temps de calcul, sans doute, où l'attente du réseau ne compte
+  pas : à mesurer en recette avant de le relever. Un appel coupé est facturé pour ce qu'il a produit (E11),
+  jamais remboursé : seul un appel qu'Anthropic n'a pas facturé — refusé, ou
+  jamais reçu — rend sa réserve. Aucun nouvel essai côté serveur.
 
 ## Données et RGPD
 
@@ -370,7 +414,9 @@ page Essayer (UC-VIS-03), ou par l'adresse.
 | API | `GET /api/twin9/meta` — `api/src/routes/twin9.php` | Offre (prix Twin6, référentiel, solde) |
 | Domaine | `api/src/Twin9/Twin9Config.php` — `coutMicrousd`, `reserveMicrousd`, `publicView`, `marge`, `modeles` | Tarification Twin6, bornes |
 | Domaine | `api/src/Twin9/CreditService.php` — `debit`, `adjust` ; `SoldeInsuffisantException` | Réserve, réconciliation, remboursement |
-| Domaine | `api/src/Twin9/AnthropicCaller.php` | Appel amont verrouillé, erreurs génériques |
+| Domaine | `api/src/Twin9/AnthropicCaller.php` — `params`, `entetes`, `BASE_URL` | La requête amont, sur l'URL verrouillée |
+| Domaine | `api/src/Llm/AnthropicFlux.php`, `RelaisAppel.php` | L'appel en flux, son relais, ce qu'un appel coupé a produit (RG12, E11) |
+| Front | `web/src/api/relais.js` ; `web/src/api/client.js` — `apiFetch` | Lecture du relais : progression, issue, annulation (RG12) |
 
 ## Jeux de tests
 
@@ -406,14 +452,16 @@ page Essayer (UC-VIS-03), ou par l'adresse.
 | UC-APP-09-U32 | `referentielTwin6` | RESPIRE : la structure de `/meta` tant qu'elle est celle de la version (ordre indifférent) ; compétence déplacée, pôle en moins, `/meta` vide, autre référentiel → le document (RG9) | idem |
 | UC-APP-09-U28 | `listKeys`, `revealKey` | Liste sans la clé, révélation `GET api/keys/anthropic` (A2) ; la garde propriétaire relève de UC-CPT-04 | idem |
 | UC-APP-09-U29 | `Twin6OuverteView` (isolée) | Garde-fou : ⌈octets / 1024⌉ $, plus la réserve d'un appel (toute la sortie du modèle à son prix), comparés au solde avant tout provider ; montant requis arrondi au centime supérieur (RG5, E3) | idem |
+| UC-APP-09-U38 | `makeCreditsProvider` | Demande le relais ; progression en caractères ; le résultat relayé rend le contrat moteur et sa contribution ; coupé, l'appel remonte son coût puis échoue au message du serveur ; connexion perdue : l'appel a pu être facturé ; l'annulation reste une `AbortError` (RG12, E11) | `web/test/usecases/unit/uc-app-09-cartographie-ouverte-twin6.test.jsx` |
+| UC-APP-09-U39 | `Twin6OuverteView` (isolée) | Voie crédits : les caractères reçus de l'appel en cours, remis à zéro à chaque étape ; un appel coupé laisse son message et ce que le run a débité (RG12, E11) | idem |
 | UC-APP-09-U34 | `Twin6OuverteView` (isolée) | Essai gratuit : un visiteur n'a que cette voie, ni offre ni clés lues ; 5 000 caractères au plus, une feuille datée au moins (sinon bouton inactif et la page dit pourquoi) ; la première preuve avant le moteur, qui reçoit le fournisseur de la démo et le modèle indicatif « demo » (A6, RG11) | idem |
 | UC-APP-09-U21 | `Twin9Config::coutMicrousd` | Coût Twin6 ×1,10 arrondi au-dessus, < Twin9 ×1,20 (RG2) | `api/tests/UseCases/Unit/UcApp09CartographieOuverteTwin6Test.php` |
 | UC-APP-09-U22 | `Twin9Config::reserveMicrousd` | Réserve ≥ tout coût réel possible (RG3) | idem |
 | UC-APP-09-U23 | `Twin9Config::publicView` | Prix Twin6 margés exposés, marges jamais | idem |
 | UC-APP-09-U24 | `CreditService::debit`, `adjust` | Réserve + réconciliation = coût réel ; remboursement d'échec | idem |
 | UC-APP-09-U25 | `CreditService::debit`, `SoldeInsuffisantException` | Aucun découvert, montants portés par l'exception | idem |
-| UC-APP-09-U26 | `AnthropicCaller::appeler` | URL verrouillée, système transmis, réflexion désactivée, usage réel | idem |
-| UC-APP-09-U27 | `AnthropicCaller::appeler` | Erreurs amont → 504/502/429 génériques | idem |
+| UC-APP-09-U26 | `AnthropicCaller::params`, `AnthropicFlux` | URL verrouillée, système transmis, réflexion coupée, flux demandé ; texte et usage réels relus du flux, la réflexion jamais dans le texte (RG12) | idem |
+| UC-APP-09-U27 | `AnthropicFlux::parvenu` | Refus d'Anthropic (son corps lu entier) ou requête jamais partie : rien à facturer ; réponse commencée, ou requête partie entière avant la panne du réseau : facturable (E11) | idem |
 
 ### Tests fonctionnels
 
@@ -425,7 +473,7 @@ page Essayer (UC-VIS-03), ou par l'adresse.
 | UC-APP-09-F04 | E1 | IHM | Anonyme : l'essai gratuit seul, invitation à se connecter pour les autres voies ; ni offre ni clés lues | idem |
 | UC-APP-09-F05 | E2 | IHM | Copie statique : fonctionnalité indisponible | idem |
 | UC-APP-09-F06 | E3 | IHM | Solde < poids du portfolio et réserve d'un appel (« ~2.41 $ : 1 $ estimés, et 1.41 $ réservés… », Sonnet 5 à 2 / 10) : blocage avant tout appel | idem |
-| UC-APP-09-F07 | E4 | IHM | 402 en cours de run : arrêt, message, bouton réutilisable | idem |
+| UC-APP-09-F07 | E4 | IHM | 402 en cours de run : arrêt, message suivi de ce que le run a débité, bouton réutilisable | idem |
 | UC-APP-09-F08 | E5 | IHM | Sortie tronquée : échec explicite, pas d'export | idem |
 | UC-APP-09-F09 | E6 | IHM | Paquet public introuvable, ou offre `/meta` en erreur : erreur de chargement, formulaire absent | idem |
 | UC-APP-09-F21 | A4 | IHM | Autre référentiel publié choisi : décompte « 6 appels (5 pôles + synthèse) », 6 appels, fiches écrites depuis son document, export qui le nomme, total de ses compétences | idem |
@@ -441,7 +489,9 @@ page Essayer (UC-VIS-03), ou par l'adresse.
 | UC-APP-09-F13 | E8 | API | 503 sans clé plateforme, rien débité | idem |
 | UC-APP-09-F14 | E9 | API | 422 / 413 / 400 (JSON scalaire ou illisible) ; liste JSON ou corps vide → 422 ; avant tout débit | idem |
 | UC-APP-09-F15 | E4 | API | 402 avec montants (réserve exacte), solde intact | idem |
-| UC-APP-09-F17 | E11 | API | 502 / 504 génériques, réserves rendues | idem |
+| UC-APP-09-F17 | E11 | API | Refus d'Anthropic (500, 529, 401 « Clé API refusée », 429 relayé) ou requête jamais reçue (502, 504 à son délai) : messages génériques, jamais le texte amont, réserves rendues | idem |
+| UC-APP-09-F28 | RG12 | API | La réponse arrive en flux : progressions, puis le résultat du nominal, coût compris ; débit net = coût réel ; le navigateur parti après la première progression → l'appel coupé, facturé pour l'entrée annoncée et le premier morceau reçu, « appel coupé » au grand-livre | idem |
+| UC-APP-09-F29 | E11, RG12 | API | Délai dépassé en route (504, délai réglé à 40 s par `TWIN6_UPSTREAM_TIMEOUT`, celui de la requête amont), erreur d'Anthropic en cours de flux relayée (502), délai dépassé après l'envoi sans réponse (504, au plus `max_tokens`) : facturés pour ce qu'ils ont produit, jamais remboursés | idem |
 | UC-APP-09-F18 | A3, E5 | API | `max_tokens` borné à [256, maximum du modèle] (alias accepté ; par défaut toute la sortie, 128 000 pour Sonnet 5), `stopReason max_tokens` relayé ; l'appel tronqué est facturé au coût réel (Sonnet 5 à 2 / 10 ; solde = recharge − somme des coûts) | idem |
 | UC-APP-09-F19 | RGPD | API | Sortie relayée non filtrée à l'apprenant ; grand-livre et audit sans prompt ni sortie | idem |
 | UC-APP-09-F20 | E12 | API | Session sans jeton CSRF ou avec un jeton faux → 403, amont non appelé, solde intact | idem |
@@ -533,16 +583,20 @@ cd engine && npx vitest run test/usecases/unit/uc-app-09
   voies « crédits » et « clé perso » demandaient ; chaque appel demande
   désormais tout ce que le modèle peut rendre, sur les trois voies (A3, RG11).
   Mais le délai borne encore la sortie : la voie crédits attend l'amont 150 s
-  au plus (`AnthropicCaller`), une sortie plus longue que ce que le modèle écrit
-  dans ce délai est perdue, et le délai dépassé rend la réserve (E11) alors
-  qu'Anthropic a pu facturer l'appel — c'est la plateforme qui le paie. Un
-  compte crédité peut le provoquer exprès, d'un prompt libre qui demande une
-  longue sortie, aussi souvent que son solde couvre une réserve : avec la
-  sortie levée, ce qu'Anthropic peut facturer pour un tel appel monte de 16 000
-  à 128 000 tokens de sortie, s'il poursuit la génération après la coupure.
-  Décision ouverte (STATUS, dettes techniques) : garder la réserve sur un délai
-  dépassé, comme la démo ; ou l'appel en flux, qui garde la connexion et donne
-  l'usage même coupé.
+  au plus (`TWIN6_UPSTREAM_TIMEOUT`), et une sortie plus longue que ce que le
+  modèle écrit dans ce délai est coupée. Jusqu'au 2026-10-21, le délai dépassé
+  rendait la réserve alors qu'Anthropic avait pu facturer l'appel : la
+  plateforme le payait, et un compte crédité pouvait le provoquer exprès.
+  Décidé ce jour-là (Christian choisit l'appel en flux, RG12) : l'appel coupé
+  est facturé pour ce qu'il a produit, jamais remboursé (E11). Restent : le
+  compte d'un appel coupé suppose qu'Anthropic cesse de générer quand le flux
+  est fermé (UC-VIS-03, Limites, et ses sources) ; OVH borne un script à 165 s,
+  sans réglage — sans doute du temps de calcul, où l'attente du réseau ne compte
+  pas (documentation de PHP), ce que la recette mesurera avant qu'on relève le
+  délai ; un script arrêté avant son issue laisse à l'appel sa réserve entière,
+  payée par le compte ; et
+  rien n'assure qu'OVH relaie le flux à mesure (sinon, tout arrive à la fin,
+  sans progression) : à mesurer en recette (`docs/recette-twin9.md`).
 - Opus 5.5, Fable et Mythos refusent la réflexion coupée qu'envoie la voie
   crédits (`thinking: disabled` ; Sonnet 5.5 reçoit `between_tools`) : les
   ajouter à l'offre ferait échouer leurs appels (400, réserve rendue). La

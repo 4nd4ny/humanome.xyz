@@ -15,6 +15,7 @@ import { act, cleanup, fireEvent, render, screen, waitFor } from '@testing-libra
 import App from '../../../src/App.jsx'
 import { resetApiClient } from '../../../src/api/client.js'
 import { TWIN6_PACKAGE_URL } from '../../../src/api/twin6.js'
+import { formatUsd } from '../../../src/api/twin9.js'
 import { clearReferentielCache } from '../../../src/data/referentiel.js'
 import { downloadJson } from '../../../src/lib/download-json.js'
 import * as fakeLib from '../../../src/test/fake-sunburst-lib.js'
@@ -453,7 +454,7 @@ describe('UC-APP-09 — l’apprenant lance une cartographie ouverte', () => {
     expect(appelsTwin6(calls)).toHaveLength(0)
   })
 
-  it('UC-APP-09-F07 — E4 : le serveur refuse un appel (402, réserve non couverte) → run arrêté, message affiché, bouton réutilisable', async () => {
+  it('UC-APP-09-F07 — E4 : le serveur refuse un appel (402, réserve non couverte) → run arrêté, message affiché avec ce que le run a débité (le premier appel abouti), bouton réutilisable', async () => {
     let n = 0
     const { calls } = stubFetch(
       routes({
@@ -469,7 +470,7 @@ describe('UC-APP-09 — l’apprenant lance une cartographie ouverte', () => {
     await saisirPortfolio()
     await lancer()
 
-    expect((await screen.findByRole('alert')).textContent).toBe('Solde insuffisant')
+    expect((await screen.findByRole('alert')).textContent).toBe(`Solde insuffisant (${formatUsd(6602)} débités pour ce run.)`)
     expect(appelsTwin6(calls)).toHaveLength(2)
     expect(screen.queryByText(/Cartographie ouverte terminée/)).toBeNull()
     expect(screen.getByRole('button', { name: 'Lancer la cartographie ouverte' }).disabled).toBe(false)

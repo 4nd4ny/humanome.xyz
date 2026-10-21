@@ -18,6 +18,15 @@
 //   POST   api/auth/logout    -> 204
 //   DELETE api/auth/account   -> 204 (real purge + audit event, cahier §6.3)
 // Error bodies: {error: '<French user-facing message>', fields?: {name: message}}.
+//
+// A route that relays a call as it comes (text/event-stream, api/relais.js —
+// POST api/twin6/appel when asked) is read to its outcome: the same JSON, the
+// same errors, and `onProgression` meanwhile (2026-10-21).
+
+import { estRelais, lireRelais } from './relais.js'
+
+/** A relayed answer that stopped before its outcome (connection cut, script stopped by the hosting). */
+export const RELAIS_INTERROMPU = 'La connexion au serveur a été coupée avant la fin de la réponse.'
 
 let csrfToken = null
 
@@ -95,13 +104,15 @@ function defaultMessage(status) {
  * Fetches an API endpoint and returns its parsed JSON body.
  *
  * @param {string} path endpoint path without the 'api/' prefix, e.g. 'auth/me'
- * @param {{method?: string, body?: object, fetchFn?: typeof fetch, protocol?: string}} [options]
- *   `fetchFn`/`protocol` are test seams (same pattern as data/load.js).
+ * @param {{method?: string, body?: object, headers?: object, signal?: AbortSignal,
+ *   onProgression?: (caracteres: number) => void, fetchFn?: typeof fetch, protocol?: string}} [options]
+ *   `fetchFn`/`protocol` are test seams (same pattern as data/load.js);
+ *   `onProgression` follows a relayed answer (api/relais.js).
  * @returns {Promise<object | null>} JSON body (null for 204 No Content)
- * @throws {ApiError | ApiUnavailableError}
+ * @throws {ApiError | ApiUnavailableError} — or the AbortError of a cancelled request
  */
 export async function apiFetch(path, options = {}) {
-  const { method = 'GET', body, fetchFn, protocol, headers: extraHeaders } = options
+  const { method = 'GET', body, fetchFn, protocol, headers: extraHeaders, signal, onProgression } = options
 
   if ((protocol ?? globalThis.location?.protocol) === 'file:') {
     throw new ApiUnavailableError()
@@ -126,16 +137,22 @@ export async function apiFetch(path, options = {}) {
       headers,
       credentials: 'same-origin',
       body: body === undefined ? undefined : JSON.stringify(body),
+      ...(signal ? { signal } : {}),
     })
-  } catch {
+  } catch (err) {
+    if (err?.name === 'AbortError') throw err
     throw new ApiUnavailableError()
   }
 
   if (response.status === 204) return null
 
-  const contentType = String(response.headers?.get?.('content-type') ?? '')
+  let status = response.status
   let data = null
-  if (contentType.includes('application/json')) {
+  if (estRelais(response)) {
+    // The relayed answer's outcome is the JSON the route would have answered.
+    const issue = await lireRelais(response, { onProgression, signal })
+    ;({ status, data } = issue ?? { status: 502, data: { error: RELAIS_INTERROMPU, code: 'interrompu' } })
+  } else if (String(response.headers?.get?.('content-type') ?? '').includes('application/json')) {
     try {
       data = await response.json()
     } catch {
@@ -153,7 +170,7 @@ export async function apiFetch(path, options = {}) {
     csrfToken = data.csrfToken
   }
 
-  if (!response.ok) {
+  if (status < 200 || status >= 300) {
     // The API returns user-facing French messages ({error: string}); use them
     // when present, fall back to a generic French message per status.
     const serverMessage =
@@ -165,8 +182,10 @@ export async function apiFetch(path, options = {}) {
     const code =
       (typeof data.error === 'object' ? (data.error?.code ?? null) : null) ??
       (typeof data.code === 'string' ? data.code : null)
-    const error = new ApiError(serverMessage ?? defaultMessage(response.status), response.status, code)
+    const error = new ApiError(serverMessage ?? defaultMessage(status), status, code)
     error.serverMessage = serverMessage
+    // the whole body, for what a route adds to its message (cout_microusd of a cut call…)
+    error.data = data
     error.fields = data.fields && typeof data.fields === 'object' ? data.fields : null
     // a refused document's details, by JSON pointer ({errors: {"/poles": ["…"]}}, the référentiel's routes)
     error.errors = data.errors && typeof data.errors === 'object' && !Array.isArray(data.errors) ? data.errors : null

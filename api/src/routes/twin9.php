@@ -54,9 +54,11 @@ use Humanome\Auth\Session;
 use Humanome\Db;
 use Humanome\Env;
 use Humanome\Keys\KeyVault;
+use Humanome\Llm\AnthropicFlux;
 use Humanome\Llm\HttpClientException;
 use Humanome\Llm\LlmRuntime;
 use Humanome\Llm\ModelLimits;
+use Humanome\Llm\RelaisAppel;
 use Humanome\Middleware\RequireRole;
 use Humanome\Packages\SettingsRepository;
 use Humanome\Twin9\AnthropicCaller;
@@ -403,28 +405,86 @@ return function (App $app): void {
             ], 402);
         }
 
+        // The call, streamed (2026-10-21, Christian: « Si on passe en appel en
+        // flux, alors on voit la réponse arriver au fur et à mesure ? […] Si
+        // oui, alors c'est mon choix » and « Je ne peux pas prendre à charge
+        // les coûts extra »): a browser that asks for it sees the answer come
+        // (RelaisAppel), and a call cut short — the delay, the network, an
+        // error event — is billed for what it produced (AnthropicFlux), never
+        // refunded on a guess: the platform pays for none of it. Only a call
+        // Anthropic refused (an error status) or never received gives the
+        // reservation back: it billed nothing.
+        $delai = max(10, min(900, (int) (Env::get('TWIN6_UPSTREAM_TIMEOUT', '150') ?: 150)));
+        RelaisAppel::libererSession();
         try {
-            $result = (new AnthropicCaller(LlmRuntime::httpClient(), $apiKey))
-                ->appeler($modele, $system, $prompt, $maxTokens);
-        } catch (\Throwable $e) {
+            $appel = AnthropicFlux::ouvrir(LlmRuntime::httpClient(), AnthropicCaller::BASE_URL . '/v1/messages',
+                AnthropicCaller::entetes($apiKey),
+                AnthropicCaller::params($modele, $prompt, $maxTokens, 'coupee', null, $system), $delai);
+        } catch (HttpClientException) {
             $credits->adjust($userId, $reserve, 'twin6/cartographie (remboursement échec)', $modele);
-            throw $e;
+
+            return $json($response, ['error' => 'Le fournisseur LLM est injoignable, réessayez plus tard.'], 502);
+        }
+        if (!$appel->parvenu()) {
+            $credits->adjust($userId, $reserve, 'twin6/cartographie (remboursement échec)', $modele);
+            // Upstream error text is NOT relayed: generic messages (AnthropicCaller).
+            $statut = $appel->statut();
+            if ($statut === 429) {
+                return $json($response, ['error' => 'Le fournisseur LLM est saturé, réessayez plus tard.'], 429);
+            }
+            if ($statut === 401 || $statut === 403) {
+                return $json($response, ['error' => 'Clé API refusée par le fournisseur LLM.'], 502);
+            }
+            if ($statut !== 0) {
+                return $json($response, ['error' => 'Erreur du fournisseur LLM, réessayez plus tard.'], 502);
+            }
+            $sansReponse = $appel->erreurReseau()?->timedOut ?? false;
+
+            return $json($response, ['error' => $sansReponse
+                ? 'Le fournisseur LLM ne répond pas, réessayez plus tard.'
+                : 'Le fournisseur LLM est injoignable, réessayez plus tard.'], $sansReponse ? 504 : 502);
         }
 
-        $cout = (int) $config->coutMicrousd($modele, $result['tokens_in'], $result['tokens_out'], 'twin6');
-        $delta = $reserve - $cout;
-        if ($delta !== 0) {
-            $credits->adjust($userId, $delta, 'twin6/cartographie (réconciliation)', $modele, $result['tokens_in'], $result['tokens_out']);
-        }
+        $conclure = static function () use ($appel, $credits, $config, $userId, $reserve, $modele, $promptBytes,
+                                            $maxTokens, $delai): array {
+            [$entree, $sortie] = $appel->usageAFacturer($promptBytes, $maxTokens);
+            $cout = (int) $config->coutMicrousd($modele, $entree, $sortie, 'twin6');
+            $delta = $reserve - $cout;
+            if ($appel->complet()) {
+                if ($delta !== 0) {
+                    $credits->adjust($userId, $delta, 'twin6/cartographie (réconciliation)', $modele, $entree, $sortie);
+                }
 
-        // Engine proxy-provider contract. No leak filter: nothing is secret.
-        return $json($response, [
-            'text' => $result['texte'],
-            'usage' => ['inputTokens' => $result['tokens_in'], 'outputTokens' => $result['tokens_out']],
-            'model' => $modele,
-            'stopReason' => $result['stop_reason'],
-            'cout_microusd' => $cout,
-        ]);
+                // Engine proxy-provider contract. No leak filter: nothing is secret.
+                return [200, [
+                    'text' => $appel->texte(),
+                    'usage' => ['inputTokens' => $entree, 'outputTokens' => $sortie],
+                    'model' => $modele,
+                    'stopReason' => $appel->raisonArret(),
+                    'cout_microusd' => $cout,
+                ]];
+            }
+            // Cut short: billed for what it produced, the rest of the reservation given back.
+            if ($delta !== 0) {
+                $credits->adjust($userId, $delta, 'twin6/cartographie (appel coupé)', $modele, $entree, $sortie);
+            }
+            $delaiDepasse = ($appel->erreurReseau()?->timedOut ?? false) || $appel->arrete();
+
+            return [$delaiDepasse ? 504 : 502, [
+                'error' => ($delaiDepasse
+                    ? 'La réponse a dépassé le délai de ' . $delai . ' s : coupée, elle est facturée pour ce qu’elle a produit.'
+                    : 'Le fournisseur LLM a interrompu sa réponse : elle est facturée pour ce qu’elle a produit.'),
+                'code' => 'coupe',
+                'cout_microusd' => $cout,
+            ]];
+        };
+
+        if (RelaisAppel::demande($request)) {
+            return RelaisAppel::reponse($response, $appel, $conclure);
+        }
+        [$statut, $donnees] = RelaisAppel::jusquauBout($appel, $conclure);
+
+        return $json($response, $donnees, $statut);
     }));
 
     // ------------------------------------------------------------------

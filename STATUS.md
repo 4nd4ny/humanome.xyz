@@ -28,8 +28,9 @@ plus de structure imposée, et tous les parcours lisent la structure du référe
 (#16, arrivée dans `main` le 2026-10-21 avec la documentation des fiches des référentiels
 importés). Entrées du 2026-10-20. Puis, le 2026-10-21 : la démo à 1 $ par jour, qui tient, et
 l'essai gratuit de la cartographie ouverte (#20) ; les prix d'Anthropic relevés chaque jour (Sonnet 5
-n'est plus surfacturé), la sortie des appels sans plafond et Haiku seul pour la démo (#21, empilée
-sur #20). Suite annoncée par Christian : basculer le site sur l'OVH pour la démonstration, à son feu
+n'est plus surfacturé), la sortie des appels sans plafond, Haiku seul pour la démo et les appels en
+flux — la réponse arrive à mesure, un appel coupé est facturé pour ce qu'il a produit (#21,
+empilée sur #20). Suite annoncée par Christian : basculer le site sur l'OVH pour la démonstration, à son feu
 vert.
 
 ## Fait
@@ -105,10 +106,37 @@ vert.
     le modèle. Dans `#/admin/reglages`, `maxInputChars` à 2 000 000 si une surcharge ou le `.env`
     le fixe plus bas, et retirer la surcharge de sortie si la page en garde une (elle ne sert
     plus).
-  - **Points ouverts**, aux « Dettes techniques » : le délai de 150 s borne encore ce qu'un appel
-    peut rendre, et la voie crédits rend la réserve d'un délai dépassé (la plateforme paie) ; le
-    tuteur et la masse gardent leurs plafonds ; la masse tourne par défaut sur Sonnet 4.5, retiré
-    le 2026-11-30 ; Opus 5.5, Fable et Mythos refusent la réflexion coupée de la voie crédits.
+  - **Les appels en flux** (Christian, à la question ouverte ci-dessous : « Si on passe en appel en
+    flux, alors on voit la réponse arriver au fur et à mesure ? C'est bien ça ? Si oui, alors
+    c'est mon choix. Mais augmente également le timeout si OVH le permet. Je ne peux pas prendre à
+    charge les coûts extra, car le site est prévu pour me coûter de l'argent, pas pour m'en
+    rapporter. »). La démo (`POST /api/llm`) et la voie crédits (`POST /api/twin6/appel`)
+    demandent à Anthropic une réponse diffusée (`Llm\AnthropicFlux`, sur `CurlHttpStream`,
+    curl_multi) et la relaient au navigateur qui le demande (`RelaisAppel`, `RelaisSse` :
+    `progression` {caracteres}, `: attente` après 10 s de silence, puis `resultat` ou `erreur`) ;
+    tout autre client reçoit le même JSON qu'avant, à la fin. L'Essayer, l'essai gratuit et la voie
+    crédits de la cartographie ouverte affichent « N caractères reçus » pour l'appel en cours
+    (`web/src/api/relais.js`). **Facturation** : un appel qu'Anthropic refuse (statut d'erreur) ou
+    ne reçoit jamais (connexion impossible ; une requête partie entière avant la panne compte comme
+    reçue) rend sa réserve ; un appel **coupé** après réception — délai dépassé, erreur en cours de
+    flux, navigateur parti — est facturé pour ce qu'il a produit, jamais remboursé : l'entrée que
+    donne Anthropic au début du flux (sinon la borne), la sortie bornée par les octets reçus plus
+    1 024 tokens, au plus `max_tokens` ; toute la sortie quand ces octets ne bornent rien (bloc de
+    réflexion, réponse qui n'est pas un flux). La démo compte de même sur son budget, au lieu de
+    garder le pire cas, et son client ne refait plus un appel coupé (le moteur garde son nouvel
+    essai). Le navigateur qui annule coupe désormais l'appel (`apiFetch` passe le signal). **Le
+    délai** : OVH borne un script à 165 s sur le mutualisé, sans réglage possible (documentation
+    d'OVH) ; il reste donc à 150 s, réglable — `TWIN6_UPSTREAM_TIMEOUT` (10 à 900) pour les
+    crédits, `upstreamTimeoutSeconds` pour la démo —, à relever si la recette montre plus, ce que
+    le flux rend plausible (dettes techniques). Vérifié en local avec un vrai navigateur, un faux Anthropic en TLS et le vrai client
+    curl : la progression arrive à mesure (12, 36, 60, 84 caractères en 3 s), le délai coupe à
+    10 s et facture 36 octets + 1 024, le navigateur parti fait couper l'appel en amont.
+    `AnthropicCaller::appeler`, sans appelant, est retiré. UC-VIS-03 RG4, RG6, A4, E7, U27 à U30,
+    F10, F25 à F27 ; UC-APP-09 RG12, E11, U26, U27, U38, U39, F17, F28, F29 ; `docs/securite-demo.md`.
+  - **Points ouverts**, aux « Dettes techniques » : le relais à mesure et le délai réel d'OVH, à
+    mesurer en recette ; le tuteur et la masse gardent leurs plafonds ; la masse tourne par défaut
+    sur Sonnet 4.5, retiré le 2026-11-30 ; Opus 5.5, Fable et Mythos refusent la réflexion coupée de
+    la voie crédits.
 
 - 2026-10-21 — **Démo à 1 $ par jour, essai gratuit de la cartographie ouverte (branche
   `feat/demo-un-dollar`).** Christian : « Twin6 : en version gratuite, mettre une limite de 1 USD de
@@ -2590,19 +2618,23 @@ vert.
 
 ## Dettes techniques / décisions en attente
 
-- **À décider avant d'ouvrir les crédits au public** — sortie sans plafond (2026-10-21) : le délai
-  amont borne encore ce qu'un appel peut rendre — 150 s pour la démo (`upstreamTimeoutSeconds`)
-  comme pour la voie crédits (`AnthropicCaller`). Une sortie plus longue que ce que le modèle
-  écrit dans ce délai est perdue : la démo garde la réservation (son budget paie ce qu'Anthropic a
-  pu facturer, et le client de la démo refait une fois l'appel, la perdant deux fois), la voie crédits la
-  rend (la plateforme le paie, sans plafond : un compte crédité peut le provoquer à la chaîne, sur
-  un prompt libre, et parallèlement autant que son solde couvre de réserves — ≈ 1,41 $ pour
-  Sonnet 5). Avec la sortie levée, ce qu'Anthropic peut facturer pour un tel appel monte de
-  16 000 à 128 000 tokens, s'il poursuit la génération après la coupure (sa documentation ne le
-  dit pas). Trois remèdes : garder la réserve sur un délai dépassé, comme la démo (le site ne
-  paie plus, l'apprenant paie le pire cas d'un appel perdu) ; allonger le délai, si l'hébergement
-  le tient ; l'appel en flux (`stream`), qui garde la connexion, donne l'usage même coupé et
-  permet de le facturer. Non codé : un choix de facturation, à Christian.
+- **À mesurer en recette, appels en flux** (décidés le 2026-10-21, entrée « Prix d'Anthropic
+  relevés chaque jour… ») : qu'OVH relaie la réponse à mesure (Apache, PHP-FPM, compression ;
+  sinon tout arrive à la fin, sans progression, ce qui marche aussi), et le délai réel qu'il
+  laisse à un script (165 s documentées ; un forum rapporte un 504 vers 3 min) — un délai réglé
+  au-delà fait arrêter le script avant l'issue, et l'appel garde sa réserve entière (l'apprenant
+  paie le pire cas, la démo le compte). Le compte d'un appel coupé suppose qu'Anthropic cesse de
+  générer quand le flux est fermé, ce que sa documentation ne dit pas (OpenRouter, claudelab.net
+  et TrueFoundry le décrivent, UC-VIS-03 Limites) ; le serveur ne voit un navigateur parti qu'à
+  sa prochaine écriture (10 s au plus de silence). Le temps que borne OVH est sans doute celui de
+  `max_execution_time`, qui, hors Windows, ne compte pas l'attente du réseau (documentation de
+  PHP) : avec le flux, un appel pourrait tenir bien plus que 165 s — ligne 5.3c de
+  `docs/recette-twin9.md`, avant de relever le délai (utile pour Sonnet, dont un scan Twin6
+  peut approcher les 150 s).
+- **Idée, non codée (à Christian)** : facturer un appel coupé au plus près. Un token par octet reçu
+  est sûr pour le site, mais compte jusqu'à trois ou quatre fois la sortie d'un texte français ;
+  `count_tokens` (gratuit, déjà employé par la démo) sur ce qui est arrivé la ramènerait à la
+  sortie réelle, plus la marge, au prix d'un appel de plus à la coupure.
 - Opus 5.5, Fable et Mythos refusent `thinking: disabled` (400) ; la voie crédits l'envoie à tout
   modèle sauf Sonnet 5.5 (`between_tools`) : les ajouter à l'offre ferait échouer leurs appels.
   La grille par défaut ne les offre pas, et le relevé n'ajoute aucun modèle.

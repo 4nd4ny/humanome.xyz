@@ -6,9 +6,10 @@ namespace Humanome\Llm;
 
 /**
  * Anthropic Messages API upstream (raw HTTP over the injectable HttpClient —
- * a proxy must not pull an SDK dependency, CLAUDE.md convention). No
- * streaming: OVH mutualisé buffers responses anyway, per-pole calls are
- * small, the front paces its own progress per call (P6 task).
+ * a proxy must not pull an SDK dependency, CLAUDE.md convention). The demo's
+ * calls stream since 2026-10-21 (ouvrirFlux(), AnthropicFlux): the browser
+ * sees the answer come, and a call cut short is counted for what it produced.
+ * complete() stays for the tutor, whose answers are a few sentences.
  *
  * The API key travels in the x-api-key request header ONLY: never in a URL,
  * never logged, never echoed in any response or exception message.
@@ -117,6 +118,30 @@ final class AnthropicProvider
             // unparseable or fragmentary JSON downstream.
             'stopReason' => (string) ($data['stop_reason'] ?? ''),
         ];
+    }
+
+    /**
+     * The same call as complete(), streamed: the status first, then the
+     * answer as it comes (AnthropicFlux), within this provider's timeout.
+     *
+     * @throws HttpClientException when the request cannot even start
+     */
+    public function ouvrirFlux(string $model, ?string $system, string $prompt, int $maxTokens,
+                               bool $forceJsonDocument = true): AnthropicFlux
+    {
+        return AnthropicFlux::ouvrir(
+            $this->http,
+            rtrim($this->baseUrl, '/') . '/v1/messages',
+            $this->headers(),
+            ['model' => $model, 'max_tokens' => $maxTokens] + self::requestBody($system, $prompt, $forceJsonDocument),
+            $this->timeoutSeconds,
+        );
+    }
+
+    /** The provider's message in an error answer's body — never any request data. */
+    public static function detailErreur(string $body): string
+    {
+        return self::errorDetail($body);
     }
 
     /**

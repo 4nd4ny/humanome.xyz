@@ -130,7 +130,7 @@ export default function Twin6OuverteView({ lib: injectedLib, deps = {} }) {
   // Le référentiel choisi : null, RESPIRE (sa dernière version publiée) ; son document une fois chargé.
   const [choix, setChoix] = useState(null)
   const [ref, setRef] = useState({ status: 'loading', doc: null, message: '' })
-  const [run, setRun] = useState({ status: 'idle', done: 0, total: 0, phase: '', doc: null, referentiel: null, cout: 0, error: '', voie: null })
+  const [run, setRun] = useState({ status: 'idle', done: 0, total: 0, phase: '', doc: null, referentiel: null, cout: 0, error: '', voie: null, caracteres: 0 })
   const { lib } = useSunburstLib(deps.lib ?? injectedLib)
   const running = useRef(false)
 
@@ -263,12 +263,18 @@ export default function Twin6OuverteView({ lib: injectedLib, deps = {} }) {
     }
     running.current = true
     const referentiel = moteurRef
-    setRun({ status: 'running', done: 0, total: twin6CallsFor(referentiel), phase: 'scan-pole', doc: null, referentiel, cout: 0, error: '', voie })
+    setRun({ status: 'running', done: 0, total: twin6CallsFor(referentiel), phase: 'scan-pole', doc: null, referentiel, cout: 0, error: '', voie, caracteres: 0 })
+    // La réponse de chaque appel arrive en flux (relais, 2026-10-21) : ses caractères reçus.
+    const onProgression = (caracteres) => setRun((r) => ({ ...r, caracteres }))
     try {
       let provider
       if (essai) {
         // Une preuve de travail par appel ; la première est résolue avant le premier scan.
-        const demo = demoFactory(callOpts)
+        const demo = demoFactory({
+          ...callOpts,
+          onPhase: (phase) => phase === 'llm' && setRun((r) => ({ ...r, caracteres: 0 })),
+          onProgression,
+        })
         await demo.prime()
         provider = demo.provider
       } else if (voie === 'cle_perso') {
@@ -281,6 +287,7 @@ export default function Twin6OuverteView({ lib: injectedLib, deps = {} }) {
       } else {
         provider = creditsFactory({
           onCout: (c) => setRun((r) => ({ ...r, cout: r.cout + (Number(c) || 0) })),
+          onProgression,
           ...callOpts,
         })
       }
@@ -294,8 +301,9 @@ export default function Twin6OuverteView({ lib: injectedLib, deps = {} }) {
         // Le proxy de la démo impose son modèle : celui-ci n'est qu'une indication.
         model: essai ? DEMO_MODEL : model,
         options: {
+          // Chaque étape ouvre un appel : ses caractères repartent de zéro.
           onProgress: (p) =>
-            setRun((r) => ({ ...r, done: p.done ?? r.done, total: p.total ?? r.total, phase: p.phase ?? r.phase })),
+            setRun((r) => ({ ...r, done: p.done ?? r.done, total: p.total ?? r.total, phase: p.phase ?? r.phase, caracteres: 0 })),
           meta: {
             journalId: 'twin6-ouverte',
             sourceProtocole: `${res.pkg.id}@${res.pkg.version}`,
@@ -309,7 +317,12 @@ export default function Twin6OuverteView({ lib: injectedLib, deps = {} }) {
       // pour un compte, l'invitation à en créer un.
       const demo = essai ? describeDemoError(e) : null
       const error = !essai ? messageErreur(e) : demo.kind === 'unavailable' && !visiteur ? ESSAI_EPUISE_COMPTE : demo.message
-      setRun((r) => ({ ...r, status: 'error', error }))
+      // Sur crédits, ce que le run a coûté jusqu'à l'erreur — un appel coupé compris, facturé pour ce qu'il a produit.
+      setRun((r) => ({
+        ...r,
+        status: 'error',
+        error: voie === 'credits' && r.cout > 0 ? `${error} (${formatUsd(r.cout)} débités pour ce run.)` : error,
+      }))
     } finally {
       running.current = false
     }
@@ -493,6 +506,9 @@ export default function Twin6OuverteView({ lib: injectedLib, deps = {} }) {
         <div className="twin6-progress" role="status">
           <p>
             Analyse en cours — étape {run.done}/{run.total} ({run.phase})
+            {run.caracteres > 0 ? (
+              <span data-testid="twin6-caracteres"> — {formatInt(run.caracteres)} caractères reçus</span>
+            ) : null}
             {run.cout > 0 ? ` — ${formatUsd(run.cout)} débités jusqu’ici` : ''}
           </p>
           <progress value={run.done} max={run.total} />

@@ -69,5 +69,10 @@ return [
         // La démo se règle finement dans api/config/demo.php (surchargée par
         // les DEMO_* de l'env) ; l'UI admin en affiche les valeurs effectives.
         'DEMO_ENABLED' => $value('DEMO_ENABLED', '', 'Interrupteur général de la démo publique (défaut : activée si vide). Détails dans config/demo.php.'),
+        // Un appel de la cartographie ouverte sur crédits arrive en flux ; coupé
+        // au bout de ce délai, il est facturé pour ce qu'il a produit. OVH
+        // borne un script à 165 s sur le mutualisé : 150 laisse le temps de
+        // facturer. À relever si l'hébergement le tient (mesure en recette).
+        'TWIN6_UPSTREAM_TIMEOUT' => $value('TWIN6_UPSTREAM_TIMEOUT', '150', 'Délai (s, 10 à 900) d’un appel de la cartographie ouverte sur crédits ; coupé, il est facturé pour ce qu’il a produit.'),
     ],
 ];

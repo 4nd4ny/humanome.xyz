@@ -5,9 +5,11 @@ declare(strict_types=1);
 namespace Humanome\Tests\UseCases\Functional;
 
 use Humanome\Db;
+use Humanome\Llm\AnthropicFlux;
 use Humanome\Llm\HttpClientException;
 use Humanome\Llm\LlmRuntime;
 use Humanome\Packages\SettingsRepository;
+use Humanome\Tests\AnthropicSse;
 use Humanome\Tests\CartographeTestCase;
 use Humanome\Tests\LlmFakeHttpClient;
 use Humanome\Tests\TestDb;
@@ -198,7 +200,7 @@ final class UcApp09CartographieOuverteTwin6Test extends CartographeTestCase
         self::assertSame(12_000, $this->solde());
     }
 
-    #[TestDox('UC-APP-09-F17 — E11 : échec amont (500 → 502, délai → 504) : message générique et réserve intégralement rendue')]
+    #[TestDox('UC-APP-09-F17 — E11 : appel refusé par Anthropic (500 → 502, 529 → 502, 401 → 502 « Clé API refusée », 429 relayé) ou jamais reçu (connexion refusée → 502, son délai → 504) : message générique, jamais le texte amont, et réserve intégralement rendue — Anthropic n’a rien facturé')]
     public function testF17UpstreamFailureRefundsTheReserve(): void
     {
         $this->crediter(1_000_000);
@@ -206,13 +208,25 @@ final class UcApp09CartographieOuverteTwin6Test extends CartographeTestCase
         $response = $this->appel();
         self::assertSame(502, $response->getStatusCode());
         self::assertStringNotContainsString('confidentiel', (string) $response->getBody());
+        $this->http->queueResponse(['status' => 529, 'body' => '{"type":"error","error":{"type":"overloaded_error"}}']);
+        self::assertSame(502, $this->appel()->getStatusCode());
+        $this->http->queueResponse(['status' => 401, 'body' => '{"error":{"message":"invalid x-api-key sk-ant-xyz"}}']);
+        $cle = $this->appel();
+        self::assertSame([502, ['error' => 'Clé API refusée par le fournisseur LLM.']], [$cle->getStatusCode(), self::json($cle)]);
+        $this->http->queueResponse(['status' => 429, 'body' => '{}']);
+        $sature = $this->appel();
+        self::assertSame([429, ['error' => 'Le fournisseur LLM est saturé, réessayez plus tard.']], [$sature->getStatusCode(), self::json($sature)]);
 
-        $this->http->queueException(new HttpClientException('timeout', true));
-        self::assertSame(504, $this->appel()->getStatusCode());
+        $this->http->queueException(new HttpClientException('network error (curl 7)'));
+        self::assertSame(['error' => 'Le fournisseur LLM est injoignable, réessayez plus tard.'], self::json($this->appel()));
+        $this->http->queueException(new HttpClientException('network error (curl 28)', true));
+        $silence = $this->appel();
+        self::assertSame(504, $silence->getStatusCode());
+        self::assertSame(['error' => 'Le fournisseur LLM ne répond pas, réessayez plus tard.'], self::json($silence));
 
-        self::assertSame(1_000_000, $this->solde(), 'aucun appel échoué n’est facturé');
+        self::assertSame(1_000_000, $this->solde(), 'aucun appel qu’Anthropic n’a pas facturé ne l’est');
         $labels = array_column((new CreditService(Db::get()))->events($this->apprenant['id']), 'label');
-        self::assertSame(2, \count(array_keys($labels, 'twin6/cartographie (remboursement échec)', true)));
+        self::assertSame(6, \count(array_keys($labels, 'twin6/cartographie (remboursement échec)', true)));
     }
 
     #[TestDox('UC-APP-09-F18 — A3, E5 : max_tokens borné à [256, maximum du modèle] (alias maxTokens ; par défaut toute la sortie du modèle, 128 000 pour Sonnet 5, 2026-10-21) ; stop « max_tokens » relayé ET facturé au coût réel')]
@@ -279,5 +293,120 @@ final class UcApp09CartographieOuverteTwin6Test extends CartographeTestCase
         self::assertSame([], $this->http->requests);
         self::assertSame(5_000_000, $this->solde());
         self::assertCount(1, (new CreditService(Db::get()))->events($this->apprenant['id']), 'seule la recharge');
+    }
+
+    /** Un appel qui demande la réponse en flux (Accept: text/event-stream). */
+    private function relais(array $overrides = []): ResponseInterface
+    {
+        $this->cookieSid = $this->apprenant['sid'];
+
+        return $this->request('POST', '/api/twin6/appel', array_merge([
+            'model' => 'claude-sonnet-5',
+            'prompt' => "Scanne le pôle 1.\n\n# Portfolio à cartographier\n\n" . self::PORTFOLIO,
+            'system' => null,
+            'max_tokens' => 8192,
+        ], $overrides), ['X-CSRF-Token' => $this->apprenant['csrf'], 'Accept' => 'text/event-stream']);
+    }
+
+    /**
+     * Les événements d'une réponse relayée, commentaires ôtés.
+     *
+     * @return list<array{0: string, 1: array<string, mixed>}>
+     */
+    private static function evenements(string $flux): array
+    {
+        $evenements = [];
+        foreach (explode("\n\n", $flux) as $bloc) {
+            if (preg_match('/^event: (\S+)\ndata: (.+)$/s', trim($bloc), $m) === 1) {
+                $evenements[] = [$m[1], json_decode($m[2], true, 512, JSON_THROW_ON_ERROR)];
+            }
+        }
+
+        return $evenements;
+    }
+
+    private function cout(int $entree, int $sortie, string $modele = 'claude-sonnet-5'): int
+    {
+        return (int) (new Twin9Config(new SettingsRepository(Db::get())))->coutMicrousd($modele, $entree, $sortie, 'twin6');
+    }
+
+    #[TestDox('UC-APP-09-F28 — RG1 : la réponse arrive en flux (Accept: text/event-stream) — progression en caractères, puis le résultat que donnerait la route, coût compris ; débit net = coût réel à +10 % ; le navigateur parti, l’appel est coupé et facturé pour ce qui était arrivé, le reste de la réserve rendu')]
+    public function testF28AnswerStreamsToTheBrowser(): void
+    {
+        $this->crediter(5_000_000);
+        $texte = 'Pôle 1 : trois sources recoupées avant de conclure.';
+        $this->http->queueStream(AnthropicSse::complet($texte, 700, 90));
+        $flux = $this->relais();
+        self::assertSame(200, $flux->getStatusCode());
+        self::assertSame('text/event-stream; charset=utf-8', $flux->getHeaderLine('Content-Type'));
+        $evenements = self::evenements((string) $flux->getBody());
+        $cout = $this->cout(700, 90);
+        self::assertSame(['resultat', ['text' => $texte, 'usage' => ['inputTokens' => 700, 'outputTokens' => 90],
+            'model' => 'claude-sonnet-5', 'stopReason' => 'end_turn', 'cout_microusd' => $cout]], array_pop($evenements));
+        self::assertNotSame([], $evenements);
+        foreach ($evenements as [$nom, $donnees]) {
+            self::assertSame('progression', $nom);
+            self::assertLessThanOrEqual(mb_strlen($texte), $donnees['caracteres']);
+        }
+        self::assertTrue(json_decode((string) $this->http->requests[0]['body'], true, 512, JSON_THROW_ON_ERROR)['stream']);
+        self::assertSame(5_000_000 - $cout, $this->solde());
+
+        // Le navigateur part après la première progression : coupé, l'appel est facturé
+        // pour l'entrée annoncée et le premier morceau reçu, plus la marge.
+        $this->http->queueStream(AnthropicSse::complet($texte, 650, 90));
+        $parti = $this->relais()->getBody();
+        self::assertSame('progression', self::evenements($parti->read(8192))[0][0]);
+        $parti->close();
+        $premier = mb_substr($texte, 0, (int) ceil(mb_strlen($texte) / 3));
+        $coupe = $this->cout(650, \strlen($premier) + AnthropicFlux::MARGE_SORTIE);
+        self::assertSame(5_000_000 - $cout - $coupe, $this->solde());
+        $evenementsCredit = (new CreditService(Db::get()))->events($this->apprenant['id']);
+        self::assertSame('twin6/cartographie (appel coupé)', $evenementsCredit[0]['label']);
+    }
+
+    #[TestDox('UC-APP-09-F29 — E11 : un appel coupé après qu’Anthropic l’a reçu — délai dépassé en route (504), erreur en cours de flux (502), délai dépassé avant toute réponse (504) — est facturé pour ce qu’il a produit, jamais remboursé : l’entrée annoncée (sinon les octets du prompt), les octets reçus et 1 024 tokens, au plus max_tokens ; le reste de la réserve est rendu ; le délai se règle (TWIN6_UPSTREAM_TIMEOUT)')]
+    public function testF29CutCallsAreBilledForWhatTheyProduced(): void
+    {
+        TestDb::setEnv('TWIN6_UPSTREAM_TIMEOUT', '40');
+        $this->crediter(5_000_000);
+        $partiel = 'Pôle 1 : une analyse longue, coupée';
+
+        // Délai dépassé en route.
+        $this->http->queueStream(AnthropicSse::debut($partiel, 800), 200,
+            new HttpClientException('network error (curl 28)', true, true));
+        $delai = $this->appel();
+        $cout = $this->cout(800, \strlen($partiel) + AnthropicFlux::MARGE_SORTIE);
+        self::assertSame(504, $delai->getStatusCode());
+        self::assertSame(['error' => 'La réponse a dépassé le délai de 40 s : coupée, elle est facturée pour ce qu’elle a produit.',
+            'code' => 'coupe', 'cout_microusd' => $cout], self::json($delai));
+        self::assertSame(40, $this->http->requests[0]['timeout']);
+        self::assertSame(5_000_000 - $cout, $this->solde());
+        $solde = $this->solde();
+
+        // Une erreur d'Anthropic en cours de flux, relayée au navigateur : facturée de même.
+        $this->http->queueStream([...AnthropicSse::debut($partiel, 750),
+            AnthropicSse::evenement('error', ['error' => ['type' => 'overloaded_error', 'message' => 'Overloaded']])]);
+        $erreur = self::evenements((string) $this->relais()->getBody());
+        $cout = $this->cout(750, \strlen($partiel) + AnthropicFlux::MARGE_SORTIE);
+        self::assertSame(['erreur', ['status' => 502,
+            'error' => 'Le fournisseur LLM a interrompu sa réponse : elle est facturée pour ce qu’elle a produit.',
+            'code' => 'coupe', 'cout_microusd' => $cout]], end($erreur));
+        self::assertSame($solde - $cout, $this->solde());
+        $solde = $this->solde();
+
+        // Délai dépassé après l'envoi, avant toute réponse : l'entrée bornée par les octets
+        // du prompt, la marge seule pour la sortie — au plus max_tokens (ici 300).
+        $this->http->queueException(new HttpClientException('network error (curl 28)', true, true));
+        $silence = $this->appel(['max_tokens' => 300]);
+        $octets = \strlen("Scanne le pôle 1.\n\n# Portfolio à cartographier\n\n" . self::PORTFOLIO);
+        $cout = $this->cout($octets, 300);
+        self::assertSame(504, $silence->getStatusCode());
+        self::assertSame($cout, self::json($silence)['cout_microusd']);
+        self::assertSame($solde - $cout, $this->solde());
+
+        // Le dernier a pris toute sa réserve (la sortie au plafond) : rien à rendre, pas d'écriture.
+        $labels = array_column((new CreditService(Db::get()))->events($this->apprenant['id']), 'label');
+        self::assertSame(2, \count(array_keys($labels, 'twin6/cartographie (appel coupé)', true)));
+        self::assertNotContains('twin6/cartographie (remboursement échec)', $labels);
     }
 }

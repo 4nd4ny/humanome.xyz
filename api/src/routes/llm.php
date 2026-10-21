@@ -32,7 +32,7 @@ use Humanome\Llm\LlmRuntime;
 use Humanome\Llm\MockProvider;
 use Humanome\Llm\PowChallenge;
 use Humanome\Llm\Pricing;
-use Humanome\Llm\UpstreamException;
+use Humanome\Llm\RelaisAppel;
 use Humanome\Llm\UsageCounters;
 use Humanome\Packages\SettingsRepository;
 use Humanome\Twin9\Twin9Config;
@@ -237,49 +237,84 @@ return function (App $app): void {
 
         // 7. Upstream call. The server IMPOSES provider, model and output from
         // the config — whatever the client sent is ignored (budget safety).
-        try {
-            $result = $provider === null
-                ? (new MockProvider())->complete($config->model, $system, $prompt, $sortie)
-                : $provider->complete($config->model, $system, $prompt, $sortie);
-        } catch (UpstreamException $e) {
-            // An error status is a call the provider refused, and does not
-            // bill: the reservation goes back. A 2xx answer it could not read
-            // was billed: the reservation stays.
-            if ($e->status >= 400) {
-                $counters->release($reservedInput, $reservedOutput, $reservedUsd, $now);
-            }
-            if ($e->status === 429) {
-                return $json($response, ['error' => 'Le fournisseur LLM est saturé, réessayez plus tard.'], 429)
-                    ->withHeader('Retry-After', $e->retryAfter ?? '30');
-            }
+        if ($provider === null) {
+            $result = (new MockProvider())->complete($config->model, $system, $prompt, $sortie);
+            $counters->settle($reservedInput, $reservedOutput, $reservedUsd, $result['usage']['inputTokens'],
+                $result['usage']['outputTokens'], Pricing::estimateUsd($result['model'],
+                    $result['usage']['inputTokens'], $result['usage']['outputTokens'], $grille), $now);
 
-            return $json($response, ['error' => 'Erreur du fournisseur LLM : ' . $e->getMessage()], 502);
-        } catch (HttpClientException $e) {
-            // The reservation stays: the provider may have billed a call whose
-            // answer was lost, a timed-out one above all.
-            return $json($response, ['error' => 'Le fournisseur LLM est injoignable, réessayez plus tard.'], $e->timedOut ? 504 : 502);
+            return $json($response, [
+                'text' => $result['text'],
+                'usage' => $result['usage'],
+                'model' => $result['model'],
+                'stopReason' => $result['stopReason'] ?? '',
+            ]);
         }
 
-        // 8. Counters only (§6): tokens in/out + estimated cost, never content.
-        $counters->settle(
-            $reservedInput,
-            $reservedOutput,
-            $reservedUsd,
-            $result['usage']['inputTokens'],
-            $result['usage']['outputTokens'],
-            Pricing::estimateUsd($result['model'], $result['usage']['inputTokens'], $result['usage']['outputTokens'],
-                $grille),
-            $now,
-        );
+        // Streamed (2026-10-21): a browser that asks for it sees the answer
+        // come (RelaisAppel); a call cut short — the delay, the network, an
+        // error event — is counted on the day's budget for what it produced
+        // (AnthropicFlux), not its worst case. A call the provider refused
+        // (an error status) or never received gives its reservation back.
+        RelaisAppel::libererSession();
+        try {
+            $appel = $provider->ouvrirFlux($config->model, $system, $prompt, $sortie);
+        } catch (HttpClientException) {
+            $counters->release($reservedInput, $reservedOutput, $reservedUsd, $now);
 
-        return $json($response, [
-            'text' => $result['text'],
-            'usage' => $result['usage'],
-            'model' => $result['model'],
-            // 'max_tokens' = truncated generation: the engine fails loudly on
-            // it instead of parsing a fragmentary JSON.
-            'stopReason' => $result['stopReason'] ?? '',
-        ]);
+            return $json($response, ['error' => 'Le fournisseur LLM est injoignable, réessayez plus tard.'], 502);
+        }
+        if (!$appel->parvenu()) {
+            $counters->release($reservedInput, $reservedOutput, $reservedUsd, $now);
+            $statut = $appel->statut();
+            if ($statut === 429) {
+                return $json($response, ['error' => 'Le fournisseur LLM est saturé, réessayez plus tard.'], 429)
+                    ->withHeader('Retry-After', $appel->entetes()['retry-after'] ?? '30');
+            }
+            if ($statut !== 0) {
+                return $json($response, ['error' => 'Erreur du fournisseur LLM : '
+                    . AnthropicProvider::detailErreur($appel->corpsErreur())], 502);
+            }
+            $delai = $appel->erreurReseau()?->timedOut ?? false;
+
+            return $json($response, ['error' => $delai
+                ? 'Le fournisseur LLM ne répond pas, réessayez plus tard.'
+                : 'Le fournisseur LLM est injoignable, réessayez plus tard.'], $delai ? 504 : 502);
+        }
+
+        $conclure = static function () use ($appel, $counters, $config, $grille, $reservedInput, $reservedOutput,
+                                            $reservedUsd, $sortie, $now): array {
+            // 8. Counters only (§6): tokens in/out + estimated cost, never content.
+            [$entree, $sortieFacturee] = $appel->usageAFacturer($reservedInput, $sortie);
+            $modele = $appel->modele($config->model);
+            $counters->settle($reservedInput, $reservedOutput, $reservedUsd, $entree, $sortieFacturee,
+                Pricing::estimateUsd($modele, $entree, $sortieFacturee, $grille), $now);
+            if ($appel->complet()) {
+                return [200, [
+                    'text' => $appel->document() ?? $appel->texte(),
+                    'usage' => ['inputTokens' => $entree, 'outputTokens' => $sortieFacturee],
+                    'model' => $modele,
+                    // 'max_tokens' = truncated generation: the engine fails loudly on
+                    // it instead of parsing a fragmentary JSON.
+                    'stopReason' => $appel->raisonArret(),
+                ]];
+            }
+            $delaiDepasse = ($appel->erreurReseau()?->timedOut ?? false) || $appel->arrete();
+
+            return [$delaiDepasse ? 504 : 502, [
+                'error' => $delaiDepasse
+                    ? 'La réponse a dépassé le délai de ' . $config->upstreamTimeoutSeconds . ' s : elle est coupée.'
+                    : 'Le fournisseur LLM a interrompu sa réponse, réessayez plus tard.',
+                'code' => 'coupe',
+            ]];
+        };
+
+        if (RelaisAppel::demande($request)) {
+            return RelaisAppel::reponse($response, $appel, $conclure);
+        }
+        [$statut, $donnees] = RelaisAppel::jusquauBout($appel, $conclure);
+
+        return $json($response, $donnees, $statut);
     });
 
     // ------------------------------------------------------------------

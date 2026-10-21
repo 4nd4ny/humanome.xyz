@@ -5,9 +5,11 @@ declare(strict_types=1);
 namespace Humanome\Tests\UseCases\Unit;
 
 use Humanome\Auth\Users;
+use Humanome\Llm\AnthropicFlux;
 use Humanome\Llm\HttpClientException;
 use Humanome\MigrationRunner;
 use Humanome\Packages\SettingsRepository;
+use Humanome\Tests\AnthropicSse;
 use Humanome\Tests\LlmFakeHttpClient;
 use Humanome\Tests\TestDb;
 use Humanome\Tests\UseCases\Support\TwinSupport;
@@ -15,7 +17,6 @@ use Humanome\Twin9\AnthropicCaller;
 use Humanome\Twin9\CreditService;
 use Humanome\Twin9\SoldeInsuffisantException;
 use Humanome\Twin9\Twin9Config;
-use Humanome\Twin9\Twin9Exception;
 use PDO;
 use PHPUnit\Framework\Attributes\TestDox;
 use PHPUnit\Framework\TestCase;
@@ -29,7 +30,8 @@ use PHPUnit\Framework\TestCase;
  * appelées directement, sans couche HTTP : tarification à la contribution
  * Twin6 (Twin9Config, protocole 'twin6'), réserve pire-cas puis réconciliation
  * (CreditService), refus de découvert (SoldeInsuffisantException) et appel
- * amont verrouillé (AnthropicCaller, via le faux client HTTP).
+ * amont verrouillé, en flux (AnthropicCaller::params, AnthropicFlux, via le
+ * faux client HTTP).
  */
 final class UcApp09CartographieOuverteTwin6Test extends TestCase
 {
@@ -156,58 +158,63 @@ final class UcApp09CartographieOuverteTwin6Test extends TestCase
         self::assertCount(1, $credits->events($userId), 'aucun événement pour un débit refusé');
     }
 
-    #[TestDox('UC-APP-09-U26 — AnthropicCaller : URL verrouillée, prompt système transmis, réflexion désactivée, texte et usage RÉELS relus')]
-    public function testU26AnthropicCallerSendsSystemPromptOnLockedUrl(): void
+    #[TestDox('UC-APP-09-U26 — l’appel de la voie crédits (AnthropicCaller::params, AnthropicFlux) : URL verrouillée, prompt système transmis, réflexion coupée, réponse en flux demandée ; texte et usage RÉELS relus du flux, la réflexion jamais dans le texte')]
+    public function testU26CreditsCallIsLockedAndStreamed(): void
     {
         $http = new LlmFakeHttpClient();
-        $http->queueResponse(['status' => 200, 'body' => json_encode([
-            'content' => [
-                ['type' => 'text', 'text' => '{"poleNum":'],
-                ['type' => 'thinking', 'thinking' => 'ignoré'],
-                ['type' => 'text', 'text' => '1}'],
-            ],
-            'usage' => ['input_tokens' => 1234, 'output_tokens' => 56],
-            'stop_reason' => 'end_turn',
-        ], JSON_THROW_ON_ERROR)]);
+        $http->queueStream([
+            AnthropicSse::debut('', 1234)[0],
+            AnthropicSse::evenement('content_block_start', ['index' => 0, 'content_block' => ['type' => 'thinking', 'thinking' => '']]),
+            AnthropicSse::evenement('content_block_delta', ['index' => 0, 'delta' => ['type' => 'thinking_delta', 'thinking' => 'ignoré']]),
+            AnthropicSse::evenement('content_block_start', ['index' => 1, 'content_block' => ['type' => 'text', 'text' => '']]),
+            AnthropicSse::evenement('content_block_delta', ['index' => 1, 'delta' => ['type' => 'text_delta', 'text' => '{"poleNum":']]),
+            AnthropicSse::evenement('content_block_delta', ['index' => 1, 'delta' => ['type' => 'text_delta', 'text' => '1}']]),
+            AnthropicSse::evenement('message_delta', ['delta' => ['stop_reason' => 'end_turn'], 'usage' => ['output_tokens' => 56]]),
+            AnthropicSse::evenement('message_stop', []),
+        ]);
 
-        $result = (new AnthropicCaller($http, TwinSupport::PLATFORM_KEY))
-            ->appeler('claude-sonnet-5', 'Tu es un cartographe.', 'Analyse le pôle 1.', 8192);
+        $appel = AnthropicFlux::ouvrir($http, AnthropicCaller::BASE_URL . '/v1/messages', AnthropicCaller::entetes(TwinSupport::PLATFORM_KEY),
+            AnthropicCaller::params('claude-sonnet-5', 'Analyse le pôle 1.', 8192, 'coupee', null, 'Tu es un cartographe.'), 150);
+        while ($appel->pomper(0.0)) {
+        }
 
-        self::assertSame(['texte' => '{"poleNum":1}', 'tokens_in' => 1234, 'tokens_out' => 56, 'stop_reason' => 'end_turn'], $result);
+        self::assertTrue($appel->complet());
+        self::assertSame(['{"poleNum":1}', [1234, 56], 'end_turn'], [$appel->texte(), $appel->usageAFacturer(1, 1), $appel->raisonArret()]);
         $request = $http->requests[0];
         self::assertSame('https://api.anthropic.com/v1/messages', $request['url']);
-        self::assertSame(AnthropicCaller::BASE_URL . '/v1/messages', $request['url']);
-        self::assertSame(TwinSupport::PLATFORM_KEY, $request['headers']['x-api-key']);
-        self::assertSame('2023-06-01', $request['headers']['anthropic-version']);
+        self::assertSame([TwinSupport::PLATFORM_KEY, '2023-06-01'], [$request['headers']['x-api-key'], $request['headers']['anthropic-version']]);
+        self::assertSame(150, $request['timeout']);
         $payload = json_decode((string) $request['body'], true);
         self::assertSame('Tu es un cartographe.', $payload['system']);
         self::assertSame(['type' => 'disabled'], $payload['thinking']);
         self::assertSame(8192, $payload['max_tokens']);
+        self::assertTrue($payload['stream']);
         self::assertSame([['role' => 'user', 'content' => 'Analyse le pôle 1.']], $payload['messages']);
     }
 
-    #[TestDox('UC-APP-09-U27 — AnthropicCaller : erreurs amont traduites en messages génériques (504/502/429), jamais le texte amont')]
-    public function testU27AnthropicCallerMapsUpstreamErrorsGenerically(): void
+    #[TestDox('UC-APP-09-U27 — AnthropicFlux::parvenu : un refus d’Anthropic (statut d’erreur, son corps lu entier) ou une requête qui n’est jamais partie ne se facture pas ; une réponse commencée (2xx), ou une requête partie entière avant la panne du réseau, oui')]
+    public function testU27OnlyACallAnthropicReceivedIsBilled(): void
     {
-        $cases = [
-            [new HttpClientException('timeout', true), 504, 'ne répond pas'],
-            [new HttpClientException('dns'), 502, 'injoignable'],
-            [['status' => 429, 'body' => '{}'], 429, 'saturé'],
-            [['status' => 401, 'body' => '{"error":{"message":"invalid x-api-key sk-ant-xyz"}}'], 502, 'Clé API refusée'],
-            [['status' => 500, 'body' => '{"error":{"message":"prompt: Analyse le pôle 1."}}'], 502, 'Erreur du fournisseur LLM'],
-            [['status' => 200, 'body' => '<html>proxy</html>'], 502, 'illisible'],
+        $cas = [
+            'refus 500' => [['status' => 500, 'body' => '{"error":{"message":"prompt: Analyse le pôle 1."}}'], false, 500],
+            'refus 429' => [['status' => 429, 'body' => '{}'], false, 429],
+            'connexion refusée' => [new HttpClientException('network error (curl 7)'), false, 0],
+            'délai de connexion' => [new HttpClientException('network error (curl 28)', true), false, 0],
+            'délai après l’envoi' => [new HttpClientException('network error (curl 28)', true, true), true, 0],
+            'réponse commencée' => [AnthropicSse::debut('{"poleNum"', 900), true, 200],
         ];
-        foreach ($cases as [$upstream, $status, $fragment]) {
+        foreach ($cas as $nom => [$amont, $facture, $statut]) {
             $http = new LlmFakeHttpClient();
-            $upstream instanceof HttpClientException ? $http->queueException($upstream) : $http->queueResponse($upstream);
-            try {
-                (new AnthropicCaller($http, 'sk-ant-x'))->appeler('claude-sonnet-5', null, 'Analyse le pôle 1.', 256);
-                self::fail('aucune erreur pour ' . $status);
-            } catch (Twin9Exception $e) {
-                self::assertSame($status, $e->getStatusCode());
-                self::assertStringContainsString($fragment, $e->getMessage());
-                self::assertStringNotContainsString('Analyse le pôle', $e->getMessage());
-                self::assertStringNotContainsString('sk-ant', $e->getMessage());
+            match (true) {
+                $amont instanceof HttpClientException => $http->queueException($amont),
+                isset($amont['status']) => $http->queueResponse($amont),
+                default => $http->queueStream($amont),
+            };
+            $appel = AnthropicFlux::ouvrir($http, AnthropicCaller::BASE_URL . '/v1/messages', AnthropicCaller::entetes('sk-ant-x'),
+                AnthropicCaller::params('claude-sonnet-5', 'Analyse le pôle 1.', 256), 150);
+            self::assertSame([$facture, $statut], [$appel->parvenu(), $appel->statut()], $nom);
+            if ($statut >= 400) {
+                self::assertSame($amont['body'], $appel->corpsErreur(), $nom . ' : le corps du refus, lu entier');
             }
         }
     }

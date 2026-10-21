@@ -7,10 +7,16 @@ namespace Humanome\Llm;
 /**
  * Production HttpClient over ext-curl (available on OVH mutualisé, in local
  * development and in CI). No redirect following, response size cap enforced
- * during the transfer (anti-abuse for gdoc-text).
+ * during the transfer (anti-abuse for gdoc-text). open() hands a response's
+ * body over as it arrives (CurlHttpStream, curl_multi).
  */
-final class CurlHttpClient implements HttpClient
+final class CurlHttpClient implements HttpClient, StreamingHttpClient
 {
+    public function open(string $method, string $url, array $headers, ?string $body, int $timeoutSeconds): HttpStream
+    {
+        return new CurlHttpStream($method, $url, $headers, $body, $timeoutSeconds);
+    }
+
     public function request(
         string $method,
         string $url,

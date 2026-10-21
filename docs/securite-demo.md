@@ -45,10 +45,14 @@ un abus avant de dépenser quoi que ce soit :
    (2026-10-21, voir l'angle 6) — son entrée et toute la sortie que le modèle peut
    rendre — ; sans la place, 503, et rien n'est parti.
 7. **Appel amont** avec fournisseur, modèle (un Haiku) et sortie (le maximum du
-   modèle) **imposés serveur**.
+   modèle) **imposés serveur**, en flux (2026-10-21) : relayé à mesure au
+   navigateur qui le demande (UC-VIS-03 RG6).
 8. **Compteurs seulement** (RGPD §6) : la réservation devient l'usage réel (tokens
-   in/out + coût estimé), jamais le contenu ; un refus du fournisseur la rend, un
-   délai dépassé la garde (le fournisseur a pu facturer l'appel).
+   in/out + coût estimé), jamais le contenu ; un refus du fournisseur, ou une
+   requête qui ne lui est jamais parvenue, la rend ; un appel coupé en route
+   (délai dépassé, erreur en cours de flux, navigateur parti) compte ce qu'il a
+   pu produire — l'entrée annoncée par le fournisseur, les octets reçus plus
+   1 024 tokens, toute la sortie quand ces octets ne bornent rien.
 
 ---
 
@@ -209,8 +213,9 @@ budget ne couvre plus est refusé (503) alors que son coût réel y tiendrait : 
 derniers ≈ 0,07 $ du jour ne servent pas, et un essai (Essayer, Twin6) commencé tout
 près de la fin peut s'arrêter après ses premiers appels payés. Et lever le plafond
 ne lève pas le délai : une sortie plus longue que ce que le modèle écrit en
-`upstreamTimeoutSeconds` (150 s) est coupée par lui, et sa réservation gardée. C'est
-le prix d'un plafond qui tient sous concurrence sans couper une réponse payée.
+`upstreamTimeoutSeconds` (150 s, sous les 165 s qu'OVH laisse à un script) est
+coupée par lui, et comptée pour ce qu'elle a produit. C'est le prix d'un plafond
+qui tient sous concurrence sans couper une réponse payée.
 
 ---
 
@@ -292,9 +297,15 @@ compteurs (atomicité) ; un fichier gdoc de 10 Go pour saturer la mémoire.
   écrit **après** (`isExhausted` puis `record`), si bien que N requêtes concurrentes
   passaient toutes le contrôle avant que l'une n'écrive — et, Haiku 5.5 compté sans
   son palier long, une entrée dense ne comptait qu'un cinquième de son coût.
-- **Délai dépassé : la réservation reste entière.** Le fournisseur a pu facturer un
-  appel dont la réponse s'est perdue ; on compte donc son pire cas, toute la sortie
-  du modèle comprise. La démo s'épuise plus tôt, sans dépenser plus.
+- **Appel coupé : compté pour ce qu'il a pu produire** (2026-10-21 ; avant, le délai
+  dépassé gardait la réservation entière, toute la sortie du modèle comprise). Avec
+  l'appel en flux, ce qui est arrivé borne ce qui a été généré : l'entrée que le
+  fournisseur annonce au début du flux, un token par octet reçu, plus 1 024 tokens
+  encore en vol. Le compte suppose que le fournisseur cesse de générer quand le
+  flux est fermé, ce que sa documentation ne dit pas et que d'autres décrivent
+  (UC-VIS-03, Limites) ; une requête partie entière avant une panne du réseau
+  compte son entrée et ces 1 024 tokens. Un script arrêté par l'hébergement avant
+  l'issue garde sa réservation entière.
 - **Le plafond de tokens doit laisser passer un appel entier.** La réservation y
   compte l'entrée et les 128 000 tokens de sortie de Haiku 5.5 : `dailyGlobalTokens`
   réglé en dessous (la borne de l'administration descend à 10 000) éteint la démo.
@@ -314,9 +325,9 @@ compteurs (atomicité) ; un fichier gdoc de 10 Go pour saturer la mémoire.
 | 1 | PoW | Émission de défis non limitée (sans état) | TTL 2 min + rédemption sous quota |
 | 2 | Quota IP | Un /48 = 65 536 buckets /64 | LLM : coupe-circuit 1 $/jour ; gdoc : résidu bande passante |
 | 3 | Coût | Pire cas réservé avec toute la sortie du modèle (et un token par octet sous 100 000 octets) : un appel refusé en fin de journée alors que son coût réel tiendrait | Le budget tient, aucune réponse payée n'est coupée |
-| 3 | Coût | Une sortie plus longue que ce que le modèle écrit en 150 s est coupée par le délai | Réservation gardée, le budget tient |
+| 3 | Coût | Une sortie plus longue que ce que le modèle écrit en 150 s est coupée par le délai | Comptée pour ce qu'elle a produit, le budget tient |
 | 4 | Clé | Texte d'erreur amont relayé (sans secret) | 502 générique, clé jamais dans le corps |
-| 6 | DoS | Délai dépassé : réservation gardée au pire cas | La démo s'épuise plus tôt, le budget tient |
+| 6 | DoS | Appel coupé compté par les octets reçus : suppose que le fournisseur cesse de générer à la coupure | Marge de 1 024 tokens ; un script arrêté avant l'issue garde son pire cas |
 | 6 | DoS | Rafale 2× à la frontière de fenêtre horaire (fixed-window) | Borné, coupe-circuit journalier au-dessus |
 
 ## Références

@@ -5,16 +5,19 @@ declare(strict_types=1);
 namespace Humanome\Tests\UseCases\Unit;
 
 use Humanome\Db;
+use Humanome\Llm\AnthropicFlux;
 use Humanome\Llm\AnthropicProvider;
 use Humanome\Llm\DemoConfig;
 use Humanome\Llm\HttpClientException;
 use Humanome\Llm\MockProvider;
 use Humanome\Llm\PowChallenge;
 use Humanome\Llm\Pricing;
+use Humanome\Llm\RelaisAppel;
 use Humanome\Llm\UpstreamException;
 use Humanome\Llm\UsageCounters;
 use Humanome\MigrationRunner;
 use Humanome\Packages\SettingsRepository;
+use Humanome\Tests\AnthropicSse;
 use Humanome\Tests\LlmFakeHttpClient;
 use Humanome\Tests\TestDb;
 use PDO;
@@ -242,6 +245,128 @@ final class UcVis03EssayerCartographieTest extends TestCase
         // Un palier de grille mal formé n'est pas lu.
         self::assertEqualsWithDelta(0.0006, Pricing::estimateUsd('claude-haiku-5-5', 1000, 1000,
             ['claude-haiku-5-5' => ['prix_usd_mtok' => [0.1, 0.5], 'palier_long' => ['au_dela_de' => 10]]]), 1e-12);
+    }
+
+    #[TestDox('UC-VIS-03-U27 — AnthropicFlux : une réponse en flux lue par morceaux coupés n’importe où — texte ou JSON de l’outil forcé (compact, comme la réponse entière), entrée au message_start, sortie cumulée au message_delta, commentaires, ping et événements inconnus ignorés, un message JSON entier lu tel quel ; un appel coupé ou en erreur se facture à son entrée comptée (sinon la borne) et aux octets reçus plus 1 024, jamais au-delà de max_tokens ; à toute sa sortie quand ces octets ne bornent rien (réflexion, réponse qui n’est pas un flux)')]
+    public function testU27StreamedAnswerIsReadAsItComes(): void
+    {
+        // Une réponse complète, en CRLF, entourée d'un commentaire, d'un ping et
+        // d'un événement inconnu, livrée par morceaux de 7 octets (un « é » coupé en deux).
+        $sse = ": attente\n\nevent: ping\ndata: {\"type\": \"ping\"}\n\n"
+            . implode('', AnthropicSse::complet('Bonjour, élève !', 120, 9, 'claude-haiku-5-5'))
+            . "event: bientot\ndata: {\"type\":\"bientot\"}\n\n";
+        $appel = AnthropicFlux::depuis(...str_split(str_replace("\n", "\r\n", $sse), 7));
+        self::assertTrue($appel->complet());
+        self::assertSame('Bonjour, élève !', $appel->texte());
+        self::assertNull($appel->document());
+        self::assertSame([120, 9, 'end_turn', 'claude-haiku-5-5', 16],
+            [$appel->tokensEntree(), $appel->tokensSortie(), $appel->raisonArret(), $appel->modele('x'), $appel->caracteres()]);
+        self::assertSame([120, 9], $appel->usageAFacturer(5000, 64000), 'complet : les comptes d’Anthropic');
+
+        // L'outil forcé : son JSON, compact et sans échappement, comme la réponse non diffusée.
+        $outil = AnthropicFlux::depuis(...AnthropicSse::complet("{\"poles\": [{\"num\": 1}],\n \"é\": \"x\"}", 300, 40,
+            'claude-haiku-5-5', 'tool_use', true));
+        self::assertSame('{"poles":[{"num":1}],"é":"x"}', $outil->document());
+        self::assertSame('', $outil->texte());
+
+        // Coupé après trois morceaux de texte : entrée comptée, sortie bornée par les octets reçus.
+        $debut = AnthropicSse::debut('Une réponse longue, coupée', 800);
+        $coupe = AnthropicFlux::depuis(...$debut);
+        self::assertFalse($coupe->complet());
+        self::assertSame([800, \strlen('Une réponse longue, coupée') + AnthropicFlux::MARGE_SORTIE], $coupe->usageAFacturer(5000, 64000));
+        self::assertSame([800, 500], $coupe->usageAFacturer(5000, 500), 'jamais au-delà de max_tokens');
+
+        // Un événement d'erreur en cours de route : incomplet, facturé de même.
+        $erreur = AnthropicFlux::depuis(...[...$debut, AnthropicSse::evenement('error', ['error' => ['type' => 'overloaded_error', 'message' => 'Overloaded']])]);
+        self::assertFalse($erreur->complet());
+        self::assertSame('overloaded_error', $erreur->evenementErreur()['type']);
+        self::assertSame($coupe->usageAFacturer(5000, 64000), $erreur->usageAFacturer(5000, 64000));
+
+        // Rien de lisible : l'entrée bornée par l'appelant, la marge pour la sortie.
+        $illisible = AnthropicFlux::depuis('pas du SSE');
+        self::assertFalse($illisible->complet());
+        self::assertSame([5000, AnthropicFlux::MARGE_SORTIE], $illisible->usageAFacturer(5000, 64000));
+
+        // Un delta d'un genre à venir compte pour tout son encodage.
+        $inconnu = ['type' => 'citations_delta', 'citation' => ['cited_text' => 'é']];
+        $avecInconnu = AnthropicFlux::depuis(...[...$debut,
+            AnthropicSse::evenement('content_block_delta', ['index' => 0, 'delta' => $inconnu])]);
+        self::assertSame([800, \strlen('Une réponse longue, coupée') + \strlen(json_encode($inconnu, JSON_UNESCAPED_UNICODE))
+            + AnthropicFlux::MARGE_SORTIE], $avecInconnu->usageAFacturer(5000, 64000));
+
+        // Ce qui est arrivé ne borne pas ce qui a été produit — un bloc de réflexion (son texte
+        // peut venir résumé, ou pas du tout), une réponse qui n'est pas un flux d'événements
+        // coupée en route — : coupé, l'appel est facturé à toute sa sortie.
+        $reflexion = AnthropicFlux::depuis(
+            AnthropicSse::debut('', 800)[0],
+            AnthropicSse::evenement('content_block_start', ['index' => 0, 'content_block' => ['type' => 'thinking', 'thinking' => '']]),
+            AnthropicSse::evenement('content_block_delta', ['index' => 0, 'delta' => ['type' => 'thinking_delta', 'thinking' => 'Résumé.']]),
+        );
+        self::assertSame([800, 64000], $reflexion->usageAFacturer(5000, 64000));
+        $tronque = AnthropicFlux::depuis('{"type":"message","content":[{"type":"text","text":"tronq');
+        self::assertFalse($tronque->complet());
+        self::assertSame([5000, 64000], $tronque->usageAFacturer(5000, 64000));
+
+        // Un message JSON entier (un client qui ne diffuse pas) se lit comme la réponse entière.
+        $entier = AnthropicFlux::depuis(json_encode(['type' => 'message', 'model' => 'claude-sonnet-5',
+            'content' => [['type' => 'tool_use', 'input' => ['a' => 'é']]], 'stop_reason' => 'tool_use',
+            'usage' => ['input_tokens' => 70, 'output_tokens' => 12]], JSON_THROW_ON_ERROR));
+        self::assertTrue($entier->complet());
+        self::assertSame(['{"a":"é"}', [70, 12], 'tool_use'], [$entier->document(), $entier->usageAFacturer(1, 1), $entier->raisonArret()]);
+    }
+
+    #[TestDox('UC-VIS-03-U30 — RelaisAppel : la réponse relayée (text/event-stream, ni cache ni transformation, ni tampon de proxy) donne la progression — la première tout de suite —, puis l’issue, calculée une fois ; une issue qui échoue devient une erreur 500 générique ; le navigateur parti, l’appel est coupé et son issue calculée une fois, sans rien relayer de plus')]
+    public function testU30RelayStreamsProgressThenTheOutcomeOnce(): void
+    {
+        $relais = static function (array $morceaux, \Closure $issue): array {
+            $http = new LlmFakeHttpClient();
+            $http->queueStream($morceaux);
+            $appel = AnthropicFlux::ouvrir($http, 'https://api.anthropic.com/v1/messages', [], [], 5);
+            $calculs = new \ArrayObject();
+            $reponse = RelaisAppel::reponse(new \Slim\Psr7\Response(), $appel, static function () use ($appel, $issue, $calculs): array {
+                $calculs[] = $appel->arrete();
+
+                return $issue($appel);
+            });
+
+            return [$reponse, $calculs, $appel];
+        };
+        $resultat = static fn (AnthropicFlux $a): array => [200, ['text' => $a->texte()]];
+
+        [$reponse, $calculs] = $relais(AnthropicSse::complet('Bonjour, élève !', 120, 9), $resultat);
+        self::assertSame([200, 'text/event-stream; charset=utf-8', 'no-cache, no-transform', 'no'], [$reponse->getStatusCode(),
+            $reponse->getHeaderLine('Content-Type'), $reponse->getHeaderLine('Cache-Control'), $reponse->getHeaderLine('X-Accel-Buffering')]);
+        $corps = $reponse->getBody();
+        self::assertSame(RelaisAppel::evenement('progression', ['caracteres' => 6]), $corps->read(8192), 'le premier morceau (« Bonjou »), tout de suite');
+        self::assertCount(0, $calculs);
+        self::assertStringEndsWith(RelaisAppel::evenement('resultat', ['text' => 'Bonjour, élève !']), (string) $corps);
+        self::assertTrue($corps->eof());
+        self::assertSame('', $corps->read(8192));
+        $corps->close();
+        unset($corps, $reponse);
+        self::assertSame([false], $calculs->getArrayCopy(), 'l’issue, une fois');
+
+        // Une issue qui échoue : une erreur générique, jamais son détail.
+        [$reponse] = $relais(AnthropicSse::complet('x', 1, 1), static function (): array {
+            throw new \RuntimeException('détail interne');
+        });
+        $journal = ini_set('error_log', '/dev/null');
+        try {
+            self::assertStringEndsWith(RelaisAppel::evenement('erreur', ['status' => 500, 'error' => 'Erreur interne']), (string) $reponse->getBody());
+        } finally {
+            ini_set('error_log', (string) $journal);
+        }
+
+        // Le navigateur part après la première progression : l'appel est coupé, son issue calculée une fois.
+        [$reponse, $calculs, $appel] = $relais(AnthropicSse::complet('Une réponse longue', 300, 40), $resultat);
+        $corps = $reponse->getBody();
+        $corps->read(8192);
+        $corps->close();
+        self::assertSame([true], $calculs->getArrayCopy());
+        self::assertTrue($appel->arrete());
+        self::assertSame('', $corps->read(8192), 'rien de plus');
+        unset($corps, $reponse);
+        self::assertSame([true], $calculs->getArrayCopy());
     }
 
     #[TestDox('UC-VIS-03-U06 — DemoConfig : base > env > fichier > défaut ; le fournisseur ne vient jamais de la base')]

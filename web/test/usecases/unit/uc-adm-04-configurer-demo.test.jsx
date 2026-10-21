@@ -64,7 +64,11 @@ function reglagesFetch(demo = DEMO, onPut = () => jsonResponse(200, demo)) {
 
 async function renderReglages(fetchFn) {
   render(<ReglagesSection fetchFn={fetchFn} />)
-  return screen.findByRole('switch')
+  const toggle = await screen.findByRole('switch')
+  // L'effet qui recopie la configuration dans le brouillon (AN-2) doit avoir joué
+  // avant la première saisie : sous charge, il passait après et l'effaçait.
+  await act(async () => {})
+  return toggle
 }
 
 const puts = (fetchFn) => fetchFn.mock.calls.filter(([, init]) => init?.method === 'PUT')

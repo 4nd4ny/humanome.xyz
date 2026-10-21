@@ -188,7 +188,10 @@ paquet par défaut, et la **démo publique s'édite** via `/api/admin/demo-confi
   production de juillet, qui nomme Sonnet 5.
 - **Bornes** (422 hors bornes ou type invalide) : `dailyBudgetUsd` 0–1000 ;
   `perIpPerHour` 1–1000 ; `powDifficultyBits` 8–24 ; `dailyGlobalTokens`
-  10000–50000000 ; `upstreamTimeoutSeconds` 10–300 ; `maxInputChars`
+  10000–50000000 ; `upstreamTimeoutSeconds` 10–300 (sous les 165 s qu'OVH
+  laisse à un script tant que la recette n'a pas mesuré mieux : un script arrêté
+  avant son issue garde sa réservation entière ; coupé par ce délai, un appel
+  compte ce qu'il a produit) ; `maxInputChars`
   1000–4000000 ; `model` non vide (lettres/chiffres/points/tirets, ≤ 100
   caractères) **et un Haiku** — un Sonnet ou un Opus reçoit un 422 : ils sont
   réservés aux comptes qui ont acheté des crédits ou qui utilisent leur propre
@@ -211,6 +214,12 @@ endroit versionné, les variables d'environnement lues par l'application et
 leurs valeurs par défaut. Chaque valeur est surchargeable par variable
 d'environnement (`~/app/shared/.env` hors webroot en prod ; `.env.dev` exporté
 en dev, `INSTALL.md` §2) — la variable, si non vide, gagne.
+
+`TWIN6_UPSTREAM_TIMEOUT` (150 s, de 10 à 900) y règle le délai d'un appel de la
+cartographie ouverte sur crédits : coupé, l'appel est facturé pour ce qu'il a
+produit (UC-APP-09 E11, RG12) ; sous les 165 s qu'OVH laisse à un script tant
+que la recette n'a pas mesuré mieux (`docs/recette-twin9.md`, 5.3c), comme celui
+de la démo.
 
 **Le fichier ne contient jamais de secret.** Les secrets (mot de passe MySQL,
 `ANTHROPIC_API_KEY`, `MIGRATE_TOKEN`, `WORKER_TICK_TOKEN`, `POW_SECRET`, `SODIUM_MASTER_KEY`) et le

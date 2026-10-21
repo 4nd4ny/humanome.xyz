@@ -16,7 +16,8 @@
 // compétences, la forme de ses codes) au lieu d'écrire RESPIRE v7 en toutes
 // lettres ; pour RESPIRE v7, ses prompts sont ceux de la 1.0.0 à l'octet.
 
-import { apiFetch } from './client.js'
+import { ApiError, apiFetch } from './client.js'
+import { ACCEPT_RELAIS } from './relais.js'
 import { createProvider } from '@engine/providers/index.js'
 import { fetchTwin9Meta, referentielPourMoteur } from './twin9.js'
 
@@ -47,25 +48,51 @@ export async function loadTwin6Package({ fetchFn = fetch, url = TWIN6_PACKAGE_UR
   }
 }
 
+/** Ajouté au message d'un relais coupé sans issue : le serveur a pu facturer l'appel, sa réserve au plus. */
+export const RELAIS_INTERROMPU_CREDITS =
+  ' L’appel a pu être facturé, au plus le montant réservé pour lui : votre solde fait foi.'
+
 /**
  * Provider CRÉDITS (voie « nos crédits ») : chaque complete() passe par POST
  * /api/twin6/appel — apiFetch porte la session (cookie) et le CSRF. Facturé
  * +10 % côté serveur. Contrat moteur {complete(params)} → {text, usage, model,
  * stopReason} (identique à createProvider).
  *
- * @param {{onCout?: (microusd:number)=>void, fetchFn?: typeof fetch}} [opts]
+ * La réponse arrive en flux (2026-10-21, api/relais.js) : `onProgression`
+ * reçoit les caractères reçus de l'appel en cours. Un appel coupé en route —
+ * le délai, une erreur du fournisseur — est facturé pour ce qu'il a produit :
+ * `onCout` en reçoit le coût, puis l'erreur est levée ; l'annuler (signal)
+ * coupe l'appel, facturé de même.
+ *
+ * @param {{onCout?: (microusd:number)=>void, onProgression?: (caracteres:number)=>void,
+ *   fetchFn?: typeof fetch}} [opts]
  */
-export function makeCreditsProvider({ onCout, fetchFn } = {}) {
+export function makeCreditsProvider({ onCout, onProgression, fetchFn } = {}) {
   return {
     name: 'twin6-credits',
     transport: 'proxy',
     async complete({ model, prompt, maxTokens, system = null, signal } = {}) {
-      const data = await apiFetch('twin6/appel', {
-        method: 'POST',
-        body: { model, prompt, system, max_tokens: maxTokens },
-        ...(fetchFn ? { fetchFn } : {}),
-        ...(signal ? { signal } : {}),
-      })
+      let data
+      try {
+        data = await apiFetch('twin6/appel', {
+          method: 'POST',
+          body: { model, prompt, system, max_tokens: maxTokens },
+          headers: { Accept: ACCEPT_RELAIS },
+          ...(onProgression ? { onProgression } : {}),
+          ...(fetchFn ? { fetchFn } : {}),
+          ...(signal ? { signal } : {}),
+        })
+      } catch (error) {
+        const cout = Number(error?.data?.cout_microusd)
+        if (typeof onCout === 'function' && Number.isFinite(cout) && cout > 0) onCout(cout)
+        if (error instanceof ApiError && error.code === 'interrompu') {
+          const interrompu = new ApiError(error.message + RELAIS_INTERROMPU_CREDITS, error.status, error.code)
+          interrompu.serverMessage = interrompu.message
+          interrompu.data = error.data
+          throw interrompu
+        }
+        throw error
+      }
       if (typeof onCout === 'function') onCout(data.cout_microusd ?? 0)
       return {
         text: data.text ?? '',

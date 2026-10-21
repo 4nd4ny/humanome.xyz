@@ -64,11 +64,13 @@ final class UcApp09CartographieOuverteTwin6Test extends TestCase
     public function testU21Twin6CostUsesItsOwnContribution(): void
     {
         $config = self::config();
-        // Exact : 1000×3×1,1 + 200×15×1,1 = 6 600 µUSD ; le flottant 3 300,000…05
-        // est arrondi AU-DESSUS (jamais en faveur de l'apprenant, ≤ 2 µUSD d'écart).
-        self::assertSame(6602, $config->coutMicrousd('claude-sonnet-5', 1000, 200, 'twin6'));
-        self::assertSame(7200, $config->coutMicrousd('claude-sonnet-5', 1000, 200, 'twin9'));
-        self::assertSame(7200, $config->coutMicrousd('claude-sonnet-5', 1000, 200), 'protocole par défaut = twin9');
+        // Sonnet 5 à 2 / 10 (page des prix d'Anthropic, 2026-10-21) : 1000×2×1,1 + 200×10×1,1 = 4 400 µUSD.
+        self::assertSame(4400, $config->coutMicrousd('claude-sonnet-5', 1000, 200, 'twin6'));
+        // Une fraction de µUSD est arrondie AU-DESSUS (jamais en faveur de l'apprenant) :
+        // 1001×2,2 = 2 202,2 → 2 203, plus 201×11 = 2 211.
+        self::assertSame(4414, $config->coutMicrousd('claude-sonnet-5', 1001, 201, 'twin6'));
+        self::assertSame(4800, $config->coutMicrousd('claude-sonnet-5', 1000, 200, 'twin9'));
+        self::assertSame(4800, $config->coutMicrousd('claude-sonnet-5', 1000, 200), 'protocole par défaut = twin9');
         self::assertSame(0, $config->coutMicrousd('claude-sonnet-5', 0, 0, 'twin6'));
         self::assertNull($config->coutMicrousd('modele-fantome', 1000, 200, 'twin6'));
         self::assertSame(1.1, $config->marge('twin6'));
@@ -93,14 +95,14 @@ final class UcApp09CartographieOuverteTwin6Test extends TestCase
     public function testU23PublicViewExposesTwin6PricesOnly(): void
     {
         $view = self::config()->publicView();
-        self::assertSame([3.3, 16.5], $view['modeles_twin6']['claude-sonnet-5']);
+        self::assertSame([2.2, 11.0], $view['modeles_twin6']['claude-sonnet-5']); // 2 / 10 × 1,10
         self::assertSame([1.1, 5.5], $view['modeles_twin6']['claude-haiku-4-5-20251001']);
         self::assertSame([5.5, 27.5], $view['modeles_twin6']['claude-opus-4-8']);
         self::assertArrayNotHasKey('marge', $view);
         self::assertArrayNotHasKey('marge_twin6', $view);
 
         self::config()->update(['marge_twin6' => 1.5]);
-        self::assertSame([4.5, 22.5], self::config()->publicView()['modeles_twin6']['claude-sonnet-5']);
+        self::assertSame([3.0, 15.0], self::config()->publicView()['modeles_twin6']['claude-sonnet-5']); // 2 / 10 × 1,5
     }
 
     #[TestDox('UC-APP-09-U24 — réserve puis réconciliation : le débit NET est exactement le coût réel ; en cas d’échec amont la réserve est rendue')]

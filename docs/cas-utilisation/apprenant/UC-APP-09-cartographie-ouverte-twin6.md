@@ -434,7 +434,7 @@ page Essayer (UC-VIS-03), ou par l'adresse.
 | UC-APP-09-F25 | A6, RG11 | IHM | Portfolio de 5 001 caractères : bouton inactif, « (retirez-en 1) », aucune requête à la démo | idem |
 | UC-APP-09-F26 | E14 | IHM | Budget du jour épuisé (`503`) : message de la démo dès le premier appel, sans nouvel essai, bouton de nouveau cliquable | idem |
 | UC-APP-09-F27 | E14 | IHM | Un compte sur l'essai gratuit, budget du jour épuisé (`503`) : ses deux autres voies, pas l'invitation à créer un compte | idem |
-| UC-APP-09-F10 | Nominal | API | 8 appels : contrat, `text` amont intact et `model`, coût 6 602 µUSD chacun, prompt public transmis tel quel, grand-livre réserve/réconciliation | `api/tests/UseCases/Functional/UcApp09CartographieOuverteTwin6Test.php` |
+| UC-APP-09-F10 | Nominal | API | 8 appels : contrat, `text` amont intact et `model`, coût 4 400 µUSD chacun (Sonnet 5 à 2 / 10), prompt public transmis tel quel, grand-livre réserve/réconciliation | `api/tests/UseCases/Functional/UcApp09CartographieOuverteTwin6Test.php` |
 | UC-APP-09-F11 | Nominal (étape 2), RG7 | API | `/api/twin9/meta` : prix Twin6, référentiel, solde ; Twin6 fonctionne sans Twin9 importé | idem |
 | UC-APP-09-F12 | E7 | API | 401 sans session, aucun appel amont | idem |
 | UC-APP-09-F13 | E8 | API | 503 sans clé plateforme, rien débité | idem |

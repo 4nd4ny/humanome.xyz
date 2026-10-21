@@ -96,7 +96,7 @@ final class UcApp02LancerCartographieStandardTest extends TestCase
     {
         self::assertSame(0.0, Pricing::estimateUsd('mock', 1000, 1000));
         self::assertEqualsWithDelta(0.006, Pricing::estimateUsd('claude-haiku-4-5-20251001', 1000, 1000), 1e-9);
-        self::assertEqualsWithDelta(0.03, Pricing::estimateUsd('modele-inconnu', 1000, 1000), 1e-9, 'tarif par défaut prudent');
+        self::assertEqualsWithDelta(0.06, Pricing::estimateUsd('modele-inconnu', 1000, 1000), 1e-9, 'tarif par défaut prudent : le plus cher de la table, Fable et Mythos à 10 / 50');
 
         $counters = new UsageCounters(self::$pdo);
         $now = 1_800_000_000;

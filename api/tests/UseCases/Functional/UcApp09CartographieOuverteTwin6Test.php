@@ -97,7 +97,7 @@ final class UcApp09CartographieOuverteTwin6Test extends CartographeTestCase
             self::assertSame('claude-sonnet-5', $body['model']);
             self::assertSame(['inputTokens' => 1000, 'outputTokens' => 200], $body['usage']);
             self::assertSame('end_turn', $body['stopReason']);
-            self::assertSame(6602, $body['cout_microusd'], '(1000×3 + 200×15) × 1,10, arrondi au µUSD supérieur');
+            self::assertSame(4400, $body['cout_microusd'], '(1000×2 + 200×10) × 1,10 : Sonnet 5 à 2 / 10');
             $couts += $body['cout_microusd'];
 
             // Aucun rendu serveur : le prompt PUBLIC part tel quel, avec le système.
@@ -107,7 +107,7 @@ final class UcApp09CartographieOuverteTwin6Test extends CartographeTestCase
             self::assertSame(TwinSupport::PLATFORM_KEY, $this->http->requests[$pole - 1]['headers']['x-api-key']);
         }
 
-        self::assertSame(5_000_000 - 8 * 6602, $this->solde());
+        self::assertSame(5_000_000 - 8 * 4400, $this->solde());
         $events = (new CreditService(Db::get()))->events($this->apprenant['id']);
         $labels = array_count_values(array_column($events, 'label'));
         self::assertSame(8, $labels['twin6/cartographie (réserve)']);
@@ -123,7 +123,7 @@ final class UcApp09CartographieOuverteTwin6Test extends CartographeTestCase
 
         self::assertSame(0, (int) Db::get()->query('SELECT COUNT(*) FROM twin9_protocole')->fetchColumn(), 'aucun gabarit Twin9');
         $meta = self::json($this->as_($this->apprenant, 'GET', '/api/twin9/meta'));
-        self::assertSame([3.3, 16.5], $meta['modeles_twin6']['claude-sonnet-5']);
+        self::assertSame([2.2, 11], $meta['modeles_twin6']['claude-sonnet-5']); // 2 / 10 × 1,10 (11.0 → 11 en JSON)
         self::assertSame('TÊTE — Penser & Comprendre', $meta['referentiel'][0]['nom']);
         self::assertSame(2_500_000, $meta['solde_microusd']);
 

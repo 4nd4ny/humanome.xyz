@@ -121,6 +121,24 @@ async function uploadTree(client, localDir, remoteRoot) {
 
 const KEEP_RELEASES = 3
 
+/** One FTPS session: connected, at the root, closed whatever happens — never open during a request to the site. */
+async function ftpSession(env, work) {
+  const client = new Client(30_000)
+  try {
+    await client.access({
+      host: env.FTP_HOST,
+      user: env.FTP_USER,
+      password: env.FTP_PASSWORD,
+      secure: env.FTP_SECURE !== 'false',
+      secureOptions: { rejectUnauthorized: true },
+    })
+    await client.cd('/')
+    return await work(client)
+  } finally {
+    client.close()
+  }
+}
+
 async function deployApi(env) {
   const stage = join(repoRoot, 'build/api-release')
   if (!statSync(stage, { throwIfNoEntry: false })?.isDirectory()) {
@@ -134,17 +152,7 @@ async function deployApi(env) {
     .slice(0, 15)
   const releaseName = `${ts}-${version.replace(/[^A-Za-z0-9._-]/g, '_')}`
 
-  const client = new Client(30_000)
-  try {
-    await client.access({
-      host: env.FTP_HOST,
-      user: env.FTP_USER,
-      password: env.FTP_PASSWORD,
-      secure: env.FTP_SECURE !== 'false',
-      secureOptions: { rejectUnauthorized: true },
-    })
-    await client.cd('/')
-
+  await ftpSession(env, async (client) => {
     console.log(`uploading release ${releaseName} (${version})`)
     await uploadTree(client, stage, `app/releases/${releaseName}`)
     await uploadTree(client, join(repoRoot, 'api/deploy/webroot'), 'www/api')
@@ -152,8 +160,26 @@ async function deployApi(env) {
     // Pointer written last: the new release only becomes live once fully uploaded.
     await client.uploadFrom(Readable.from(`releases/${releaseName}\n`), 'app/current.txt')
     console.log(`current.txt -> releases/${releaseName}`)
+  })
 
-    // Prune old releases (keep the most recent KEEP_RELEASES, name-sorted = time-sorted)
+  // The migrations at once: until they are applied, the new release runs on the previous schema (a tick, a
+  // run's page). They cannot come before the pointer — the endpoint is the live release's, and runs its own
+  // migration files —, so they come right after it, before anything slow: one request is the window left.
+  const base = env.SITE_URL ?? 'https://humanome.xyz'
+  if (env.MIGRATE_TOKEN) {
+    const res = await fetch(`${base}/api/admin/migrate`, {
+      method: 'POST',
+      headers: { 'X-Migrate-Token': env.MIGRATE_TOKEN },
+    })
+    const body = await res.text()
+    console.log(`migrate: HTTP ${res.status} ${body.slice(0, 300)}`)
+    if (!res.ok) throw new Error('migration endpoint failed')
+  }
+
+  // Prune old releases (keep the most recent KEEP_RELEASES, name-sorted = time-sorted), the base migrated:
+  // deleting a release over FTP, file by file (vendor/, the engine), takes minutes. A failed migration
+  // stops before it, the previous releases kept for a rollback.
+  await ftpSession(env, async (client) => {
     const entries = await client.list('app/releases')
     const releases = entries
       .filter((e) => e.isDirectory)
@@ -164,21 +190,9 @@ async function deployApi(env) {
       await client.removeDir(`app/releases/${old}`)
       await client.cd('/')
     }
-  } finally {
-    client.close()
-  }
+  })
 
-  // Migrations + smoke over HTTPS
-  const base = env.SITE_URL ?? 'https://humanome.xyz'
   if (env.MIGRATE_TOKEN) {
-    const res = await fetch(`${base}/api/admin/migrate`, {
-      method: 'POST',
-      headers: { 'X-Migrate-Token': env.MIGRATE_TOKEN },
-    })
-    const body = await res.text()
-    console.log(`migrate: HTTP ${res.status} ${body.slice(0, 300)}`)
-    if (!res.ok) throw new Error('migration endpoint failed')
-
     // Seed/refresh the published referentiel versions (idempotent server-side).
     // 7.0.0 = structure (extract-referentiel.mjs) ; 7.1.0 = même structure
     // enrichie des définitions (enrich-referentiel.mjs). Importées dans l'ordre

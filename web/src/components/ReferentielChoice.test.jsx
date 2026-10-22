@@ -105,6 +105,25 @@ describe('ReferentielChoice', () => {
     expect(sansChoix).not.toHaveBeenCalled()
   })
 
+  it('montre sous le menu la provenance d’un autre référentiel que RESPIRE : d’où il vient, sa licence (S5, E1, E9)', async () => {
+    const source = '« Référentiel Fictif V2 » 2.0.0-proposition.1 du 2026-01-15, https://example.invalid/referentiel. Licence : CC-BY-SA Éditeur fictif.'
+    const avecSource = [{ ...liste[0], source: 'Reconstruit depuis un corpus fictif' }, { ...liste[1], source }]
+    const list = async () => avecSource
+    const { rerender } = render(<ReferentielChoice value={null} onChange={() => {}} list={list} />)
+    const select = await screen.findByRole('combobox', { name: 'Référentiel' })
+    // RESPIRE, le référentiel de la plateforme : rien sous le menu
+    expect(screen.queryByTestId('referentiel-source')).toBeNull()
+    expect(select.hasAttribute('aria-describedby')).toBe(false)
+    rerender(<ReferentielChoice value={{ id: 'fictif-lettre', version: '1.0.0' }} onChange={() => {}} list={list} />)
+    const ligne = screen.getByTestId('referentiel-source')
+    expect(ligne.textContent).toBe(`Provenance : ${source}`)
+    expect(select.getAttribute('aria-describedby')).toBe(ligne.id)
+    // sans provenance connue (index statique) : rien
+    const sansSource = async () => liste
+    rerender(<ReferentielChoice value={{ id: 'fictif-lettre', version: '1.0.0' }} onChange={() => {}} list={sansSource} />)
+    await waitFor(() => expect(screen.queryByTestId('referentiel-source')).toBeNull())
+  })
+
   it('montre le choix reçu ; sans API ni index (copie statique), n’offre rien', async () => {
     const { unmount } = render(<ReferentielChoice value={{ id: 'fictif-lettre', version: '1.0.0' }} onChange={() => {}} list={async () => liste} />)
     expect((await screen.findByRole('combobox', { name: 'Référentiel' })).value).toBe('fictif-lettre@1.0.0')

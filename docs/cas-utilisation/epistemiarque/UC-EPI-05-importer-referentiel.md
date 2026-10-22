@@ -255,7 +255,7 @@ de l'Humanome V18 (https://respire.school/referentiel) se convertit par
 | UC-EPI-05-F14 | Étape 1 | IHM | Le lien de l'atelier ; section vide dite | idem |
 | UC-EPI-05-F15 | Étape 4 | IHM | « Voir » : le document au vote, pôle par pôle, avant le vote ; « Masquer » ; un brouillon aussi | idem |
 | UC-EPI-05-F16 | A6 | API | Amorçage publié sans vote puis « déjà amorcé », servi par `GET /api/referentiels` et par sa version ; même contenu sous une autre provenance « déjà amorcé », la première gardée ; autre contenu sous la même version (description, niveaux, structure), brouillon de l'atelier, RESPIRE, identifiant ou code invalides refusés, rien d'écrit ; la ligne de commande | `api/tests/ReferentielAmorcageTest.php` |
-| UC-EPI-05-F17 | A6 | IHM | Le référentiel amorcé est proposé au menu des parcours et se charge tel que la base le sert | `web/src/components/ReferentielChoice.test.jsx` |
+| UC-EPI-05-F17 | A6 | IHM | Le référentiel amorcé est proposé au menu des parcours et se charge tel que la base le sert ; sa provenance (`source`, servie par `GET /api/referentiels`) s'affiche sous le menu | `web/src/components/ReferentielChoice.test.jsx` |
 | UC-EPI-05-F18 | A6 | API | En production, `POST /api/admin/import-referentiel` amorce un autre référentiel que RESPIRE avec les garde-fous du script : publié (note « Amorçage hors vote (S5) »), puis « unchanged », sous une autre provenance aussi ; une autre description sous la même version ou une empreinte fausse → `409`, rien d'écrit ; un identifiant invalide → `422` | `api/tests/AdminImportReferentielTest.php` |
 
 ### Tests existants liés (non-régression)

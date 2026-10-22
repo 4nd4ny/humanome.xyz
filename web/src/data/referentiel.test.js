@@ -171,6 +171,19 @@ describe('API d’abord, export statique en repli (S5)', () => {
     expect(fetchFn.mock.calls[0][1]).toMatchObject({ method: 'GET', credentials: 'same-origin' })
   })
 
+  it('porte la provenance de chaque référentiel (`source` de sa dernière version : S5, E1, E9) ; l’index statique n’en a pas', async () => {
+    const source = '« Référentiel Fictif » 1.1.0, https://example.invalid/referentiel. Licence : CC-BY-SA Éditeur fictif.'
+    const avecSource = [
+      { ...catalogue[0], source },
+      { ...catalogue[1], source: 42 },
+      { ...catalogue[2], source: '' },
+    ]
+    const liste = await listPublishedReferentiels({ fetchFn: reseau({ 'api/referentiels': apiResponse(avecSource) }) })
+    expect(liste.map((r) => [r.id, r.source])).toEqual([['respire', null], ['fictif-neuf', null], ['fictif-lettre', source]])
+    const depuisIndex = await listPublishedReferentiels({ fetchFn: reseau({}) })
+    expect(depuisIndex.map((r) => [r.id, r.source])).toEqual([['respire', null]])
+  })
+
   it('écarte les entrées malformées ; une réponse vide, malformée ou en erreur retombe sur l’index statique', async () => {
     const melange = [
       ...catalogue.slice(0, 1),

@@ -129,7 +129,8 @@ return function (App $app): void {
         }
     ));
 
-    // The published referentials, each with its latest label and its versions (T15).
+    // The published referentials, each with its latest label and its versions (T15),
+    // and its latest provenance (`source`, S5: the menus show it).
     $app->get('/referentiels', $wrap(function (Request $request, Response $response) use ($json, $repo): Response {
         return $json($response, $repo()->catalogue());
     }));

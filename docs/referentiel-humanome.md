@@ -26,6 +26,12 @@ conversion a relevé dans la source.
 - **Dans l'interface**, son libellé est « Humanome V18 », que les prompts
   abrègent en « Humanome ». La mention de respire.school, la licence et
   l'empreinte du fichier converti sont dans le champ `source`.
+  - Le menu « Référentiel » des parcours l'affiche sous lui quand
+    l'Humanome est choisi (« Provenance : … ») : `GET /api/referentiels`
+    donne la provenance de la dernière version de chaque référentiel.
+  - L'aide (« ? ») de ces parcours dit que l'Humanome V18 est le référentiel
+    de respire.school, sous CC-BY-SA Harmonia Éducation, et non RESPIRE v7.
+  - L'attribution sur la page publique viendra avec elle (lot E).
 
 ## 2. Décisions de Christian (22 octobre 2026)
 
@@ -253,4 +259,5 @@ que le fichier en vient.
 | `engine/src/referentiel-humanome.test.js` | Sur la fixture **fictive** `schemas/fixtures/referentiel-humanome-fictif.yaml` : document attendu et valide au schéma ; libellé, `nomCourt`, niveaux, palette, codes ; composition et ordre des rubriques, rien d'inventé ; hors du document ; provenance ; avertissements ; empreinte de l'extracteur ; niveau facette ; refus, chacun à son chemin ; fiches de scan ; le script (écriture, « déjà à jour », refus d'écraser, YAML illisible) |
 | `api/tests/ReferentielAmorcageTest.php` | Empreinte et ordre du serveur sur le document converti ; niveau facette identique à `auNiveau` ; amorçage publié sans vote puis idempotent, servi par les routes publiques ; même contenu sous une autre provenance (nom de fichier, URL) « déjà amorcé » ; autre contenu sous la même version, brouillon de l'atelier, RESPIRE, identifiant ou code invalides refusés ; la ligne de commande |
 | `api/tests/AdminImportReferentielTest.php` | La route de production amorce le document converti avec les mêmes garde-fous : publié, puis « unchanged », sous une autre provenance aussi ; autre description sous la même version ou empreinte fausse : `409` ; identifiant invalide : `422` |
-| `web/src/components/ReferentielChoice.test.jsx` | Le référentiel amorcé est proposé au menu et se charge tel que la base le sert |
+| `web/src/components/ReferentielChoice.test.jsx` | Le référentiel amorcé est proposé au menu et se charge tel que la base le sert ; sa provenance s'affiche sous le menu, celle de RESPIRE non ; une liste sans RESPIRE fait du premier le choix |
+| `web/src/help/registry.test.js` | L'aide des trois parcours nomme respire.school, l'Humanome V18 et la licence CC-BY-SA |

@@ -74,11 +74,13 @@ export async function loadPublishedReferentiel(options = {}) {
  * The published referentials, from the API (the database), else from
  * index.json: each with its versions, newest first, RESPIRE first and the
  * others by label. Read from the API, a version carries its referential's
- * label and neither file nor date. Empty when neither can be read (file://,
+ * label and neither file nor date, and the referential its provenance (the
+ * `source` of its latest version: where it comes from, its licence — S5, E1,
+ * E9); index.json has none (null). Empty when neither can be read (file://,
  * offline copy): only the bundled RESPIRE is then at hand.
  *
  * @param {{fetchFn?: typeof fetch, protocol?: string}} [options] test seams
- * @returns {Promise<Array<{id: string, label: string, versions: Array<{semver: string, label: string, fichier: string|null, publishedAt: string|null}>}>>}
+ * @returns {Promise<Array<{id: string, label: string, source: string|null, versions: Array<{semver: string, label: string, fichier: string|null, publishedAt: string|null}>}>>}
  */
 export async function listPublishedReferentiels(options = {}) {
   const depuisLaBase = await catalogueFromApi(options).catch(() => null)
@@ -100,7 +102,7 @@ export async function listPublishedReferentiels(options = {}) {
       publishedAt: e.publishedAt ?? null,
     })
   }
-  return trier([...parId.entries()].map(([id, versions]) => ({ id, label: versions[0].label, versions })))
+  return trier([...parId.entries()].map(([id, versions]) => ({ id, label: versions[0].label, source: null, versions })))
 }
 
 /** RESPIRE first, the others by label. */
@@ -112,8 +114,8 @@ function trier(referentiels) {
 const seams = (options) => ({ fetchFn: options.fetchFn, protocol: options.protocol })
 
 /**
- * GET api/referentiels — `[{id, label, versions: string[]}]`, versions newest
- * first — in the shape of listPublishedReferentiels.
+ * GET api/referentiels — `[{id, label, versions: string[], source}]`, versions
+ * newest first — in the shape of listPublishedReferentiels.
  *
  * @returns {Promise<Array<object>>} non-empty @throws on any anomaly (API unreachable, error, empty or malformed answer)
  */
@@ -129,6 +131,7 @@ async function catalogueFromApi(options) {
     referentiels.push({
       id: r.id,
       label,
+      source: typeof r.source === 'string' && r.source !== '' ? r.source : null,
       versions: semvers.map((semver) => ({ semver, label, fichier: null, publishedAt: null })),
     })
   }

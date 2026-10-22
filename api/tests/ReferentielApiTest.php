@@ -136,10 +136,10 @@ final class ReferentielApiTest extends ReferentielTestCase
             ini_set('error_log', $previousLog === false ? '' : $previousLog);
         }
 
-        // the catalogue lists the published one only
+        // the catalogue lists the published one only, with its provenance (S5, E1/E9: the menus show it)
         self::assertSame([
-            ['id' => 'fictif-lettre', 'label' => 'Fictif lettré', 'versions' => ['1.0.0-rc.1']],
-            ['id' => self::RESPIRE, 'label' => 'RESPIRE v7', 'versions' => ['7.0.0']],
+            ['id' => 'fictif-lettre', 'label' => 'Fictif lettré', 'versions' => ['1.0.0-rc.1'], 'source' => $doc['source']],
+            ['id' => self::RESPIRE, 'label' => 'RESPIRE v7', 'versions' => ['7.0.0'], 'source' => self::respireDocument()['source']],
         ], self::body($this->request('GET', '/referentiels')));
     }
 

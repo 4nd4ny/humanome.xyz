@@ -194,8 +194,10 @@ Cartographier mes écrits », ou le bouton du tableau de bord `#/espace`).
   attendre un export statique. Sans API ni index lisibles (copie statique),
   aucun choix n'est offert : RESPIRE embarqué. Une liste sans RESPIRE (une
   base qui ne l'a pas publié) présélectionne son premier référentiel, qui
-  devient le choix : l'assistant charge celui que le menu montre. Un
-  référentiel qui ne se charge pas : message, « Continuer » inactif.
+  devient le choix : l'assistant charge celui que le menu montre. Sous le
+  menu, la provenance d'un autre référentiel que RESPIRE (`source` : d'où il
+  vient, sa licence). Un référentiel qui ne se charge pas : message,
+  « Continuer » inactif.
 
 ## Scénarios d'erreur
 

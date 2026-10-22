@@ -1237,9 +1237,10 @@ Le schéma `referentiel` passe en **2.0.0** (`docs/plan-twin9-php.md` de
   fork prend `referentiel` (défaut `respire` ; un identifiant de la même
   forme, la nouvelle version gardant celui de sa source : la colonne ignore
   la casse). `GET /api/referentiels`
-  (public) rend les référentiels publiés : `[{id, label, versions}]`, le
-  libellé de la dernière version, les versions de la plus récente à la plus
-  ancienne, les référentiels rangés par identifiant.
+  (public) rend les référentiels publiés : `[{id, label, versions, source}]`,
+  le libellé et la provenance (`source`, `null` si elle manque, S5) de la
+  dernière version, les versions de la plus récente à la plus ancienne, les
+  référentiels rangés par identifiant.
   `GET /api/referentiels/{id}/versions/{semver}` (public, lecture seule, S5)
   rend le document d'une version **publiée** de tout référentiel, RESPIRE
   compris, tel que la base le garde (`content`) ; un brouillon, une
@@ -1480,7 +1481,13 @@ plus contre le chiffre 7. Aucun champ n'est renommé.
   présélectionne. Une liste sans RESPIRE (une base qui ne l'a pas publié)
   présélectionne son premier référentiel, et le menu en fait le choix
   (`onChange`, jamais sous un run en cours) : le parcours charge le
-  référentiel affiché, et la masse l'envoie (`referentielId`). Une réponse de l'API vide,
+  référentiel affiché, et la masse l'envoie (`referentielId`). Sous le menu,
+  la provenance (`source`) du référentiel affiché, s'il n'est pas RESPIRE :
+  d'où il vient et sa licence (S5, E1 et E9 ; l'Humanome V18 est celui de
+  respire.school, sous CC-BY-SA). L'index statique ne la porte pas : en
+  repli, rien ne s'affiche. L'aide des trois parcours (`espace`,
+  `twin6ouverte`, `etablissement`) dit ce qu'est l'Humanome V18, s'il est
+  proposé. Une réponse de l'API vide,
   malformée, en erreur, ou un document qui n'est pas la version demandée
   cèdent la place à l'export statique. La page publique `#/referentiel`
   (`loadPublishedReferentiel()` sans identifiant) reste statique.

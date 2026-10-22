@@ -302,8 +302,8 @@ final class UcEpi05ImporterReferentielTest extends TestCase
         self::repo()->createDraft('fictif-neuf', '1.0.0', '1.1.0', null, $autre);
 
         self::assertSame([
-            ['id' => 'fictif-neuf', 'label' => 'Fictif à neuf pôles', 'versions' => ['1.0.0']],
-            ['id' => 'respire', 'label' => 'RESPIRE v7', 'versions' => ['7.0.0']],
+            ['id' => 'fictif-neuf', 'label' => 'Fictif à neuf pôles', 'versions' => ['1.0.0'], 'source' => ReferentielsFictifs::neufPoles()['source']],
+            ['id' => 'respire', 'label' => 'RESPIRE v7', 'versions' => ['7.0.0'], 'source' => self::respire()['source']],
         ], self::repo()->catalogue());
         self::assertSame(['fictif-lettre' => ['1.0.0']], self::repo()->brouillonsDe($auteur));
         self::assertSame(['fictif-neuf' => ['1.1.0']], self::repo()->brouillonsDe($autre));

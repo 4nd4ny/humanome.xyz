@@ -89,16 +89,25 @@ final class ReferentielAmorcageTest extends ReferentielTestCase
         self::assertSame($first['id'], $second['id']);
         self::assertSame(1, self::versions());
 
-        // the flows' menus (lot A): listed by the public catalogue, served by id and version, to anyone
+        // the flows' menus (lot A): listed by the public catalogue with its provenance (the
+        // menus show it: S5, E1/E9), served by id and version, to anyone
         self::assertSame([
-            ['id' => self::ID, 'label' => 'Fictif V2', 'versions' => [self::VERSION]],
-            ['id' => self::RESPIRE, 'label' => 'RESPIRE v7', 'versions' => ['7.0.0']],
+            ['id' => self::ID, 'label' => 'Fictif V2', 'versions' => [self::VERSION], 'source' => $doc['source']],
+            ['id' => self::RESPIRE, 'label' => 'RESPIRE v7', 'versions' => ['7.0.0'], 'source' => self::respireDocument()['source']],
         ], self::body($this->request('GET', '/referentiels')));
         $served = $this->request('GET', '/referentiels/' . self::ID . '/versions/' . self::VERSION);
         self::assertSame(200, $served->getStatusCode(), (string) $served->getBody());
         self::assertSame($doc, self::body($served));
         // RESPIRE stays the default: the latest of its own id
         self::assertSame('7.0.0', self::repo()->latestPublished(self::RESPIRE)['semver']);
+
+        // the provenance listed is the latest version's
+        $suivante = $doc;
+        $suivante['version'] = '2.0.0-proposition.2';
+        $suivante['source'] = 'Une autre provenance fictive, CC-BY-SA Éditeur fictif.';
+        AmorcageReferentiel::amorcer(Db::get(), $suivante);
+        self::assertSame(['id' => self::ID, 'label' => 'Fictif V2', 'versions' => ['2.0.0-proposition.2', self::VERSION],
+            'source' => $suivante['source']], self::body($this->request('GET', '/referentiels'))[0]);
     }
 
     /**

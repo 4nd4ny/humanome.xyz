@@ -326,10 +326,11 @@ final class RunRepository
 
     /**
      * Its owner stops a run in progress: the tick no longer advances it,
-     * cancels its batches at Anthropic and collects them (Twin9Lots), and
-     * settles what its calls hold — those in flight once back, at their real
-     * cost (Twin9Slice). Its journal stays, for a resumption. False when it
-     * was not in progress.
+     * cancels its batches at Anthropic and collects them (Twin9Lots); what
+     * its calls hold that no slice has in flight goes back at once (the
+     * route: RunCosts::libererHorsVol()), its calls in flight once back, at
+     * their real cost (Twin9Slice). Its journal stays, for a resumption.
+     * False when it was not in progress.
      */
     public function annuler(int $id, int $userId): bool
     {

@@ -227,11 +227,25 @@ final class RunCosts
     }
 
     /**
+     * A run its owner cancels (the route, while a slice may hold it): what
+     * its calls hold that no slice has in flight is settled at once — a
+     * call waiting given back, an outcome at its real cost —; a call still
+     * sent, direct or in a batch, keeps its worst case for the slice that
+     * has it in flight, or for the next tick (Twin9Slice, Twin9Lots).
+     *
+     * @return int the calls whose real cost went beyond what they held (depassements)
+     */
+    public function libererHorsVol(int $runId): int
+    {
+        return $this->solder($runId, true, true);
+    }
+
+    /**
      * Settles what a run's calls hold: each call's real cost, at most what
      * it held — the excess is the instance's, counted and logged (the model
      * and the amounts only) —, the rest given back.
      */
-    private function solder(int $runId, bool $tout): int
+    private function solder(int $runId, bool $tout, bool $horsVol = false): int
     {
         $stmt = $this->pdo->prepare('SELECT user_id, reglages FROM twin9_runs WHERE id = ?');
         $stmt->execute([$runId]);
@@ -253,7 +267,8 @@ final class RunCosts
                    FROM twin9_appels
                   WHERE run_id = ? AND reserve_microusd IS NOT NULL
                     AND (statut IN ("repondu", "panne")'
-                    . ($tout ? ' OR NOT (statut = "envoye" AND lot_id IS NOT NULL)' : '') . ')
+                    . ($tout ? ($horsVol ? ' OR statut <> "envoye"' : ' OR NOT (statut = "envoye" AND lot_id IS NOT NULL)')
+                        : '') . ')
                   FOR UPDATE'
             );
             $stmt->execute([$runId]);

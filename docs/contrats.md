@@ -1164,12 +1164,15 @@ une suivante le relève.
   son verrou, pour les seuls runs de la session (`Tick` : `twin9Utilisateur`),
   sans les jobs de masse ; elle finit plus tôt quand ces runs n'attendent plus
   rien. Annuler arrête un run en cours
-  (ses lots sont annulés, relevés puis supprimés, §8.3) : la route ne rend
-  rien elle-même ; la tranche qui le tient n'envoie plus rien (le statut est
-  relu avant chaque départ), ses appels en vol reviennent, écrits avec leur
-  coût, et sa fin solde ce qu'ils tiennent au coût réel ; un run annulé entre
-  deux tranches, ou laissé ainsi par un tick mort, est soldé en tête du tick
-  suivant (`RunRepository::aSolder`, 2026-10-22) ; reprendre relance un run
+  (ses lots sont annulés, relevés puis supprimés, §8.3) : la route rend
+  aussitôt ce que tiennent ses appels qu'aucune tranche n'a en vol (un appel
+  en attente rendu, une issue soldée au coût réel :
+  `RunCosts::libererHorsVol`) ; la tranche qui le tient n'envoie plus rien (le
+  statut est relu avant chaque départ), ses appels en vol reviennent, écrits
+  avec leur coût, et sa fin solde ce qu'ils tiennent au coût réel ; un appel
+  laissé envoyé par un tick mort l'est en tête du tick suivant
+  (`RunRepository::aSolder`, 2026-10-22). Un appel parti à l'instant même de
+  l'annulation, sa réserve déjà rendue, est payé par l'instance ; reprendre relance un run
   annulé ou arrêté, depuis son journal. Depuis P0-1, le suivi porte
   `configuration_empreinte` (l'empreinte de sa configuration, §8.9 ; nulle
   pour un run d'avant elle), et rien d'autre de ses blocs : la page

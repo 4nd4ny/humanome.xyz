@@ -13,6 +13,7 @@ use Humanome\Twin9\DirectCalls;
 use Humanome\Twin9\EngineLoader;
 use Humanome\Twin9\Fournisseurs\Fournisseurs;
 use Humanome\Twin9\ProfilRepository;
+use Humanome\Twin9\RunCosts;
 use Humanome\Twin9\RunRepository;
 use Humanome\Twin9\Twin9Config;
 use Humanome\Worker\Tick;
@@ -358,21 +359,25 @@ final class VoieMixteTest extends TestCase
 
     /**
      * Its owner cancels a run while its direct calls are in flight (the
-     * route, concurrently, frees nothing itself): nothing more leaves, its
-     * calls in flight come back, written with their cost, and the slice's
-     * end settles them at their real cost — never lost, never free.
+     * route, concurrently, frees only what no slice has in flight): nothing
+     * more leaves, its calls in flight come back, written with their cost,
+     * and the slice's end settles them at their real cost — never lost,
+     * never free.
      */
     public function testARunCancelledWithCallsInFlightSettlesThemAtTheirRealCost(): void
     {
         $id = $this->nouveauRun(['/voie' => 'directe']);
         $pdo = $this->pdo;
         $user = $this->user;
+        $config = $this->config;
         $annuleA = null;
-        $http = new FakeMultiHttpClient(static function (array $r) use (&$annuleA, $pdo, $user, $id): array {
+        $http = new FakeMultiHttpClient(static function (array $r) use (&$annuleA, $pdo, $user, $config, $id): array {
             $appel = FakeMultiHttpClient::appel($r);
             if ($annuleA === null && str_contains($appel, 'tags_b')) {
+                // as the route does
                 $annuleA = microtime(true);
                 self::assertTrue((new RunRepository($pdo))->annuler($id, $user));
+                (new RunCosts($pdo, $config))->libererHorsVol($id);
             }
             $chat = str_starts_with($r['url'], Fournisseurs::REGISTRE['openai']['url']);
 

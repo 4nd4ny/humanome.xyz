@@ -239,6 +239,36 @@ final class RunsTest extends CartographeTestCase
             ->getStatusCode());
     }
 
+    /**
+     * Cancelled by its page, without any tick after it: what its calls hold
+     * that no slice has in flight goes back at once — a call waiting, an
+     * answer at its real cost —; a call still sent waits for the slice that
+     * has it in flight, or for the next tick (Twin9Slice).
+     */
+    public function testACancelGivesBackAtOnceWhatNoSliceHolds(): void
+    {
+        $alice = $this->registerAs('annule-rend@example.org', 'Alice');
+        $id = self::json($this->as_($alice, 'POST', '/api/twin9/runs', $this->lancement($this->profil($alice))))['id'];
+        $credits = new CreditService(self::$pdo);
+        $avant = $credits->balance($alice['id']);
+        // its calls as a slice left them, each holding 1,000 µ$: one waiting, one answered (300), one in flight
+        foreach ([['journees/2026-01-05/a', 'attente', null], ['journees/2026-01-05/b', 'repondu', 300],
+                  ['journees/2026-01-05/c', 'envoye', null]] as [$appel, $statut, $cout]) {
+            self::$pdo->prepare('INSERT INTO twin9_appels (run_id, appel, etape, modele, sha256, statut, reserve_microusd,
+                                        pire_cas_microusd, cout_microusd) VALUES (?, ?, "greffier", "claude-haiku-5-5", ?, ?,
+                                        1000, 1000, ?)')
+                ->execute([$id, $appel, str_repeat('0', 64), $statut, $cout]);
+            $credits->adjust($alice['id'], -1000, 'réserve des tests');
+        }
+
+        self::assertSame(200, $this->as_($alice, 'POST', "/api/twin9/runs/$id/annuler")->getStatusCode());
+        self::assertSame($avant - 300 - 1000, $credits->balance($alice['id']),
+            'la réponse payée à son coût réel, l’appel en attente rendu, l’appel en vol encore tenu');
+        self::assertSame(['journees/2026-01-05/c'], self::$pdo->query("SELECT appel FROM twin9_appels WHERE run_id = $id
+                                                                       AND reserve_microusd IS NOT NULL")
+            ->fetchAll(\PDO::FETCH_COLUMN));
+    }
+
     public function testCancelledThenResumedARunGoesToItsEnd(): void
     {
         $alice = $this->registerAs('reprise@example.org', 'Reprise');

@@ -22,7 +22,8 @@ interface BatchApi
     /**
      * A minimal direct call with these settings.
      *
-     * @param array{modele: string, budget_sortie: int, effort: string|null, reflexion: string} $reglage
+     * @param array{fournisseur: string, voie: string, modele: string, budget_sortie: int, effort: string|null,
+     *              reflexion: string} $reglage as CallSettings::pour() gives it
      * @param float $fin when it must be done at the latest (microtime)
      * @return array{ok: bool, http?: int, attendre?: float|null, erreur?: string}
      *         http 400: the API refuses these settings, `erreur` says why

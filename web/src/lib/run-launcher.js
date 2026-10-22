@@ -17,6 +17,7 @@ import {
   createProvider,
   estimateRun,
   getModelPricing,
+  isOutputTruncated,
   sortieMaxAnthropic,
 } from '@engine/providers/index.js'
 import { callsPerDayFor, mergeNarrativeCallsFor } from '@engine/providers/estimate.js'
@@ -396,16 +397,28 @@ export async function executeRun({
 
   // Usage RÉEL cumulé : chaque réponse provider porte {inputTokens,
   // outputTokens} — la mesure autoritaire (vs l'estimation pré-run), jetée
-  // jusqu'ici. Enveloppe locale : aucun changement du moteur.
+  // jusqu'ici. Enveloppe locale : aucun changement du moteur. Une sortie
+  // tronquée lève (OutputTruncatedError, sans allowTruncated : extractDay
+  // échoue la journée, ou dégrade son kairos, sans refaire l'appel) ; payée,
+  // elle est comptée avant de laisser passer l'erreur.
   const usage = { inputTokens: 0, outputTokens: 0, mesures: 0 }
+  const compter = (u) => {
+    if (u && typeof u === 'object') {
+      usage.inputTokens += Number(u.inputTokens) || 0
+      usage.outputTokens += Number(u.outputTokens) || 0
+      usage.mesures += 1
+    }
+  }
   const meteredProvider = {
     complete: async (params) => {
-      const res = await provider.complete(params)
-      if (res?.usage && typeof res.usage === 'object') {
-        usage.inputTokens += Number(res.usage.inputTokens) || 0
-        usage.outputTokens += Number(res.usage.outputTokens) || 0
-        usage.mesures += 1
+      let res
+      try {
+        res = await provider.complete(params)
+      } catch (err) {
+        if (isOutputTruncated(err)) compter(err.usage)
+        throw err
       }
+      compter(res?.usage)
       return res
     },
   }

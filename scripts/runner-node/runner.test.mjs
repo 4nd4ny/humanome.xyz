@@ -47,11 +47,11 @@ function extractionResponses({ prompt }) {
 const FIXED_USAGE = { inputTokens: 1000, outputTokens: 250 }
 
 /** Provider factory injectable : ignore la config, répond depuis la fixture. */
-function mockProviderFactory({ responses = extractionResponses, usage = FIXED_USAGE } = {}) {
+function mockProviderFactory({ responses = extractionResponses, usage = FIXED_USAGE, stopReason } = {}) {
   const created = []
   const factory = (config) => {
     created.push(config)
-    return createMockProvider({ responses, usage })
+    return createMockProvider({ responses, usage, ...(stopReason ? { stopReason } : {}) })
   }
   factory.created = created
   return factory
@@ -349,6 +349,22 @@ describe('runOnce : erreur LLM', () => {
     expect(failed.body.tokens).toEqual({ inputTokens: 2000, outputTokens: 500 })
     expect(failed.body.coutUsd).toBeGreaterThan(0)
     expect(logs.join('\n')).toContain('job 32 : ÉCHEC')
+  })
+
+  it('sortie tronquée (OutputTruncatedError) : jamais refaite, job posté en erreur avec les tokens de l’appel payé', async () => {
+    const api = createApiMock({ batches: [[job(33)]], referentiel })
+    const stopReason = ({ prompt }) => (/# Pôle 2 — /.test(prompt) ? 'max_tokens' : 'end')
+    const { runner } = makeRunner({ api, providerFactory: mockProviderFactory({ stopReason }) })
+
+    const stats = await runner.runOnce()
+
+    expect(stats).toMatchObject({ reserved: 1, ok: 0, errors: 1 })
+    const failed = api.posts.find((p) => p.jobId === '33')
+    expect(failed.body.erreur).toBe(
+      'extractDay : pôle 2 (2026-01-05) — réponse tronquée (budget de sortie atteint) — réduisez le texte de la journée',
+    )
+    // Pôle 1 abouti + pôle 2 tronqué, compté (payé), sans second appel.
+    expect(failed.body.tokens).toEqual({ inputTokens: 2000, outputTokens: 500 })
   })
 
   it('un envoi de résultat raté (5xx) est retenté puis aboutit', async () => {

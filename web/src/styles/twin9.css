@@ -69,3 +69,93 @@
   margin: 0;
   overflow-wrap: anywhere;
 }
+
+/* Configuration du run (P0-1) : à côté de l'attestation, ses réglages par rôle et son exécution. */
+.twin9-configuration {
+  margin-top: 1rem;
+}
+
+.twin9-configuration > summary {
+  color: var(--ink-soft);
+}
+
+.twin9-config dl {
+  display: grid;
+  grid-template-columns: max-content 1fr;
+  gap: 0.25rem 0.75rem;
+  margin: 0.5rem 0;
+}
+
+.twin9-config dd {
+  margin: 0;
+  overflow-wrap: anywhere;
+}
+
+.twin9-config h4 {
+  margin: 1rem 0 0.25rem;
+}
+
+.twin9-config-source {
+  margin: 0.25rem 0;
+  color: var(--ink-soft);
+}
+
+.twin9-config-table {
+  display: block;
+  max-width: 100%;
+  overflow-x: auto;
+  border-collapse: collapse;
+  margin: 0.5rem 0 0.75rem;
+  font-size: 0.92rem;
+}
+
+.twin9-config-table caption {
+  text-align: left;
+  font-weight: 600;
+  padding: 0.25rem 0;
+}
+
+.twin9-config-table th,
+.twin9-config-table td {
+  text-align: left;
+  padding: 0.2rem 0.6rem 0.2rem 0;
+  border-bottom: 1px solid var(--line);
+  vertical-align: top;
+}
+
+.twin9-config-table th[scope='rowgroup'] {
+  padding-top: 0.6rem;
+  color: var(--ink-soft);
+}
+
+.twin9-conseil {
+  border: 1px solid var(--warn-border);
+  background: var(--warn-bg);
+  color: var(--warn);
+  border-radius: 8px;
+  padding: 0.4rem 0.75rem;
+}
+
+/* Étiquette RGPD d'un fournisseur (registre ; pas un avis juridique). */
+.twin9-rgpd {
+  text-transform: none;
+  letter-spacing: 0;
+}
+
+.twin9-rgpd-oui {
+  color: var(--ok);
+  border-color: var(--ok-border);
+  background: var(--ok-bg);
+}
+
+.twin9-rgpd-sous_conditions {
+  color: var(--warn);
+  border-color: var(--warn-border);
+  background: var(--warn-bg);
+}
+
+.twin9-rgpd-non {
+  color: var(--danger);
+  border-color: var(--danger-border);
+  background: var(--danger-bg);
+}

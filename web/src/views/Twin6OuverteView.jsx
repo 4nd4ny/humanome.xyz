@@ -25,6 +25,12 @@
 //     portfolio y compte 5 000 caractères au plus (DEMO_TEXT_MAX_CHARS).
 //
 // Le paquet de prompts est PUBLIC et téléchargeable (bandeau open source).
+//
+// Le document exporté dit comment il a été produit (2026-10-22, docs/contrats.md
+// §4 point 8) : la vue passe au moteur ce qu'elle seule sait — le paquet et
+// l'empreinte de ses octets, le référentiel choisi (son id, sa version, son
+// empreinte, et d'où le moteur lit ses pôles), l'origine de chaque fiche,
+// l'accès —, le moteur complète le bloc et y joint l'exécution.
 
 import { useEffect, useMemo, useRef, useState } from 'react'
 import { ApiUnavailableError, fetchMe } from '../api/client.js'
@@ -38,7 +44,7 @@ import {
   fetchTwin6Offer,
   referentielTwin6,
 } from '../api/twin6.js'
-import { executerTwin6, fichesPourTwin6, twin6CallsFor } from '@engine/twin6/index.js'
+import { executerTwin6, fichesPourTwin6, originesDesFiches, twin6CallsFor } from '@engine/twin6/index.js'
 import { sortieMaxAnthropic } from '@engine/providers/limits.js'
 import { REFERENTIEL_PAR_DEFAUT } from '@engine/conformite.js'
 import { listPublishedReferentiels, loadPublishedReferentiel } from '../data/referentiel.js'
@@ -72,6 +78,30 @@ function messageErreur(error) {
 /** Horodatage ISO sans fuseau (contrat cartographie-merge : ...THH:MM:SS). */
 function horodatage(now) {
   return now.toISOString().slice(0, 19)
+}
+
+/** L'accès d'un run, au vocabulaire du document (« essai » pour la voie « demo » de la vue). */
+const ACCES_PAR_VOIE = Object.freeze({ credits: 'credits', cle_perso: 'cle_perso', demo: 'essai' })
+
+/**
+ * Ce que la vue seule sait de la configuration d'un run (le moteur la complète) :
+ * le paquet et l'empreinte de ses octets, le référentiel choisi — son document
+ * fait foi pour l'id, la version et l'empreinte ; « structure » dit si le moteur
+ * lit ses pôles dans /meta (RESPIRE) ou dans ce document —, l'origine de chaque
+ * fiche, l'accès.
+ */
+function configurationDuRun({ pkg, doc, moteurRef, fiches, voie }) {
+  return {
+    paquet: { id: pkg.id, version: pkg.version, sha256: pkg.sha256 ?? null },
+    referentiel: {
+      id: typeof doc.id === 'string' && doc.id !== '' ? doc.id : 'respire',
+      version: doc.version ?? null,
+      contentHash: typeof doc.contentHash === 'string' ? doc.contentHash : null,
+      structure: moteurRef === doc ? 'document' : 'meta',
+    },
+    fiches: originesDesFiches(fiches, pkg.templates.fiches),
+    acces: ACCES_PAR_VOIE[voie] ?? null,
+  }
 }
 
 /**
@@ -295,10 +325,11 @@ export default function Twin6OuverteView({ lib: injectedLib, deps = {} }) {
         })
       }
 
+      // Les fiches du paquet pour les pôles qu'elles décrivent, sinon écrites depuis le document choisi.
+      const fiches = fichesPourTwin6(ref.doc, res.pkg.templates.fiches)
       const out = await runEngine({
         portfolio,
-        // Les fiches du paquet pour les pôles qu'elles décrivent, sinon écrites depuis le document choisi.
-        templates: { ...res.pkg.templates, fiches: fichesPourTwin6(ref.doc, res.pkg.templates.fiches) },
+        templates: { ...res.pkg.templates, fiches },
         referentiel,
         provider,
         // Le proxy de la démo impose son modèle : celui-ci n'est qu'une indication.
@@ -312,6 +343,9 @@ export default function Twin6OuverteView({ lib: injectedLib, deps = {} }) {
             sourceProtocole: `${res.pkg.id}@${res.pkg.version}`,
             generatedAt: horodatage(now()),
           },
+          configuration: configurationDuRun({ pkg: res.pkg, doc: ref.doc, moteurRef: referentiel, fiches, voie }),
+          // Les bornes de l'exécution, à la même horloge que generatedAt.
+          now,
         },
       })
       setRun((r) => ({ ...r, status: 'done', doc: out.document, done: out.calls.length, total: out.calls.length }))

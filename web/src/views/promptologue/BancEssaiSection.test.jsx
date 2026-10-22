@@ -3,6 +3,8 @@
 import { afterEach, describe, expect, it, vi } from 'vitest'
 import { cleanup, fireEvent, render, screen, waitFor } from '@testing-library/react'
 import BancEssaiSection from './BancEssaiSection.jsx'
+import { runVersionOnDays } from './bench.js'
+import { createMockProvider } from '@engine/providers/mock.js'
 import jourFixture from '../../../../schemas/fixtures/cartographie-jour-2026-01-05.json'
 import pkgFixture from '../../../../schemas/fixtures/prompt-package-exemple.json'
 import referentielFixture from '../../../../schemas/fixtures/referentiel-respire-v7.json'
@@ -133,6 +135,33 @@ describe('BancEssaiSection — exécution', () => {
     await screen.findByLabelText('Version à tester')
     fireEvent.click(screen.getByRole('button', { name: 'Lancer' }))
     await screen.findByText(/quota d'appels LLM dépassé/)
+  })
+
+  it('un run qui échoue sur une sortie tronquée affiche ce qu’il a consommé, appel tronqué compris, au tarif de sa branche', async () => {
+    // Le vrai runVersionOnDays et le vrai extractDay : pôle 1 abouti, pôle 2 coupé.
+    const provider = createMockProvider({
+      responses: (_params, i) => (i === 0 ? JSON.stringify(jourFixture.poles[0]) : '{"frag'),
+      usage: { inputTokens: 100, outputTokens: 400 },
+      stopReason: (_params, i) => (i === 1 ? 'max_tokens' : 'end'),
+    })
+    const deps = fakeDeps(runVersionOnDays)
+    deps.createBundleFn = vi.fn(() => ({
+      provider,
+      prime: null,
+      model: 'demo',
+      maxTokens: 8192,
+      estimationModel: 'claude-sonnet-5',
+    }))
+    render(<BancEssaiSection api={fakeApi()} user={user} deps={deps} />)
+    await screen.findByLabelText('Version à tester')
+    fireEvent.click(screen.getByRole('button', { name: 'Lancer' }))
+
+    expect((await screen.findByRole('alert')).textContent).toMatch(/^extractDay : pôle 2 \(/)
+    // 200 entrée / 800 sortie au tarif de claude-sonnet-5 (2 / 10 $ par Mtok) : 0.0084 $.
+    expect(screen.getByTestId('banc-usage-echec').textContent).toBe(
+      'Tokens réels consommés avant l’échec : 200 entrée / 800 sortie — coût réel 0.0084 $ (table de prix indicative)',
+    )
+    expect(provider.callCount).toBe(2)
   })
 })
 

@@ -195,7 +195,8 @@ l'établissement (l'accès exige l'adhésion active).
 | `/api/worker/jobs` | GET | **Machine** (runner de l'établissement) | Jeton `X-Worker-Token` (haché en base), hors rôles et hors CSRF (aucune session, donc aucun crédit ambiant) ; réserve avec bail 5 min, jobs de SON établissement uniquement ; refus si plafond consommé |
 | `/api/worker/jobs/{id}/checkpoint` | POST | Machine, son job | Jeton ; persiste l'avancement par pôle + renouvelle le bail ; 409 si le job n'est plus `running` |
 | `/api/worker/jobs/{id}/result` | POST | Machine, son job | Jeton ; document **re-validé au schéma côté serveur**, coût déclaré borné, `spent_usd` incrémenté ; 409 en rejeu |
-| `/api/admin/worker-tick` | POST | Technique (ADR-008, ADR-011) | Jeton `WORKER_TICK_TOKEN` (`X-Worker-Tick-Token`), qui n'ouvre que cette route, ou `X-Migrate-Token` ; un tick borné (runs Twin9, puis masse), réponse = compteurs uniquement |
+| `/api/admin/worker-tick` | POST | Technique (ADR-008, ADR-011) | Jeton `WORKER_TICK_TOKEN` (`X-Worker-Tick-Token`), qui n'ouvre que cette route et la maintenance, ou `X-Migrate-Token` ; un tick borné (runs Twin9, puis masse), réponse = compteurs uniquement |
+| `/api/admin/maintenance` | POST | Technique (ADR-008) | `X-Migrate-Token`, ou le jeton du tick (`X-Worker-Tick-Token`, 2026-10-22) ; purge ce qui a expiré (liens de partage morts depuis 30 jours, compteurs de démo des jours passés, défis expirés), réponse = compteurs uniquement |
 
 ### P12 — Administration (cahier §3.8, §4.10)
 
@@ -285,7 +286,7 @@ l'export, dans `PurgeExportTest.php` (T10).
 | `/api/twin9/runs/{id}` | GET | Son propriétaire : sa progression, lue dans son journal ; 404 pour tout autre |
 | `/api/twin9/runs/{id}/annuler`, `/reprendre` | POST | Son propriétaire, + CSRF ; `/reprendre` accepte `{budget_usd}`, un nouveau budget ; 409 hors de l'état voulu |
 | `/api/twin9/runs/{id}/visibilite` | PUT | Son propriétaire, + CSRF : `privee` ou `cartographe` |
-| `/api/twin9/runs/{id}/resultats` | GET | Son propriétaire ; le cartographe lié si le run lui est visible ; 404 pour tout autre, administrateur compris |
+| `/api/twin9/runs/{id}/resultats` | GET | Son propriétaire ; le cartographe lié si le run lui est visible, la configuration et l'exécution du run sans prix, coût, plafond ni clé (P0-1, `docs/contrats.md` §8.9) ; 404 pour tout autre, administrateur compris |
 | `/api/twin9/mes-analyses` | GET | Compte : ses runs (copie du profil, portfolio, journal, sorties, filtrés) et la mémoire de ses cartes, pour l'archive de compte |
 | `/api/twin9/admin/runs` | GET | `admin` : compteurs, statut, dates ; jamais de portfolio ni de résultat |
 

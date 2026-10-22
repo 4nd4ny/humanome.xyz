@@ -10,10 +10,53 @@
 //    synthèse évolutive (kairos, pôles, compétences) sont importés comme
 //    narratifs dont l'ensemble source est la liste de ses feuilles : ils ne
 //    s'affichent que si cet ensemble est exactement l'ensemble actif (§6.4).
+//    Un document Twin6 1.1.0 dit comment il a été produit (2026-10-22,
+//    docs/contrats.md §4 point 8) : la provenance de chaque variante en garde
+//    le modèle servi et la configuration, par liste blanche — ni coût, ni rien
+//    d'un fichier édité à la main qui n'y serait pas prévu.
 
 import { adaptAuroraDay } from './aurora-day.js'
 import { canonicalJson, contentHash, normalizeConfidence, normalizeStatus, stableId, toCount } from '../model.js'
 import { isIsoDate } from '../dates.js'
+
+const texte = (v) => (typeof v === 'string' && v !== '' && v.length <= 128 ? v : null)
+const entier = (v) => (Number.isInteger(v) && v >= 0 ? v : null)
+
+/**
+ * La configuration d'un document Twin6 (bloc `configuration`, 1.1.0), réduite à
+ * sa liste blanche de champs scalaires ; null sans configuration.
+ *
+ * @param {unknown} configuration
+ * @returns {object|null}
+ */
+export function configurationImportee(configuration) {
+  if (configuration === null || typeof configuration !== 'object' || Array.isArray(configuration)) return null
+  const { paquet, referentiel } = configuration
+  return {
+    moteur: texte(configuration.moteur),
+    paquet: { id: texte(paquet?.id), version: texte(paquet?.version), sha256: texte(paquet?.sha256) },
+    referentiel: {
+      id: texte(referentiel?.id),
+      version: texte(referentiel?.version),
+      contentHash: texte(referentiel?.contentHash),
+      structure: texte(referentiel?.structure),
+    },
+    fournisseur: texte(configuration.fournisseur),
+    voie: texte(configuration.voie),
+    acces: texte(configuration.acces),
+    transport: texte(configuration.transport),
+    modele: texte(configuration.modele),
+    maxTokens: entier(configuration.maxTokens),
+    temperature: typeof configuration.temperature === 'number' && Number.isFinite(configuration.temperature) ? configuration.temperature : null,
+    rgpd: texte(configuration.rgpd),
+  }
+}
+
+/** Le modèle d'un document : le premier servi (execution), sinon le modèle demandé (configuration). */
+function modeleDuDocument(doc) {
+  const servis = Array.isArray(doc.execution?.modelesServis) ? doc.execution.modelesServis : []
+  return texte(servis[0]) ?? texte(doc.configuration?.modele)
+}
 
 /** Le document est-il un carto_merge.json (Merge v2) ? */
 export function looksLikeCartoMerge(doc) {
@@ -96,6 +139,8 @@ export function importSiteMerge(doc, { fileName = 'merge.json', now = new Date()
     narratives.push({ id: 'site-merge:kairos', kind: 'kairos-evolutif', scope: {}, sourceDates, html: kairosHtml })
   }
 
+  const model = modeleDuDocument(doc)
+  const configuration = configurationImportee(doc.configuration)
   const variants = []
   for (const [date, codes] of [...byDate.entries()].sort()) {
     if (codes.size === 0) continue
@@ -136,7 +181,16 @@ export function importSiteMerge(doc, { fileName = 'merge.json', now = new Date()
       summary: {
         id: variantId,
         digest,
-        provenance: { source: 'site-merge', run: doc.source?.journalId ?? null, files: [fileName], model: null, prompt: doc.source?.protocole ?? null, analysedAt: doc.generatedAt ?? null, importedAt: now },
+        provenance: {
+          source: 'site-merge',
+          run: doc.source?.journalId ?? null,
+          files: [fileName],
+          model,
+          prompt: doc.source?.protocole ?? null,
+          analysedAt: doc.generatedAt ?? null,
+          importedAt: now,
+          ...(configuration ? { configuration } : {}),
+        },
         verdicts,
         anomalies: [{ severity: 'info', code: 'merge-sans-extraits', message: 'Importé d’un document de fusion : compteurs sans extraits (surlignage indisponible)' }],
       },

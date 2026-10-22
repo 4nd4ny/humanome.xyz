@@ -69,6 +69,12 @@ page Essayer (UC-VIS-03), ou par l'adresse.
 
 - Un document `cartographie-merge` est produit **dans le navigateur** et rendu
   par `MergeView` (sunburst, feuilles de portfolio) ; il est exportable en JSON.
+  Depuis le 2026-10-22, il dit comment il a été produit (`schemaVersion` 1.1.0) :
+  bloc `configuration` (paquet et empreinte sha256 de ses octets servis,
+  référentiel, origine des fiches, accès, fournisseur et son tag RGPD,
+  transport, modèle demandé, budget de sortie) et bloc `execution` (bornes,
+  étape, modèle servi, arrêt et jetons de chaque appel), sans clé ni coût
+  (`docs/contrats.md` §4 point 8).
 - Voie crédits : le solde est débité du **coût réel** de chacun des appels
   (un par pôle du référentiel, plus le kairos : 8 pour RESPIRE v7), à la
   contribution Twin6 (×1,10), et rien d'autre.
@@ -225,9 +231,11 @@ page Essayer (UC-VIS-03), ou par l'adresse.
   arrête le run et affiche le message, suivi de ce que le run a débité
   (« Solde insuffisant (0,0066 $ débités pour ce run.) », 2026-10-21) ; le bouton
   redevient cliquable. Les appels déjà aboutis du run restent facturés.
-- **E5 — Sortie tronquée** (étape 5, dès le premier appel tronqué) :
-  `stopReason = max_tokens` → le moteur lève « sortie tronquée (max_tokens) à
-  l'étape … » ; aucun document partiel. L'appel tronqué est un `200` côté
+- **E5 — Sortie tronquée** (étape 5, dès le premier appel tronqué, sur toutes
+  les voies depuis le 2026-10-22) : `stopReason = max_tokens` → le moteur lève
+  « sortie tronquée (max_tokens) à l'étape … », sans nouvel essai, l'usage du
+  run (l'appel tronqué compris) joint à l'erreur ; aucun document partiel. Un
+  refus du fournisseur (`stopReason = refusal`) arrête le run de même. L'appel tronqué est un `200` côté
   serveur : il est facturé au coût réel, comme les appels aboutis avant lui.
   Depuis le 2026-10-21, chaque appel demande tout ce que le modèle peut rendre :
   une sortie n'est plus coupée que si elle atteint ce maximum.
@@ -448,7 +456,7 @@ page Essayer (UC-VIS-03), ou par l'adresse.
 | UC-APP-09-U08 | `twin6ToMergeDocument` | Feuilles par date, renvoi jamais promu, narratifs rattachés ; un pôle sur deux feuilles : chaque compétence n'est présente que là où ses traces renvoient (RG8) | idem |
 | UC-APP-09-U09 | `twin6ToMergeDocument` | **Anomalie figée** : pôle sans présence → domaine vide non conforme au schéma | idem |
 | UC-APP-09-U10 | `twin6ToMergeDocument` | Entrées vides refusées | idem |
-| UC-APP-09-U11 | `createProvider` direct (A1) | Appel direct à api.anthropic.com ; **anomalie figée** : `stopReason` non relayé | idem |
+| UC-APP-09-U11 | `createProvider` direct (A1) | Appel direct à api.anthropic.com ; sortie tronquée → `OutputTruncatedError` (un appel, usage porté), puis échec d'`executerTwin6` nommant l'étape (anomalie 1 corrigée le 2026-10-22) | idem |
 | UC-APP-09-U12 | `executerTwin6` | **Limite figée** : référentiel vide → 1 appel kairos puis échec | idem |
 | UC-APP-09-U31 | `executerTwin6`, `twin6CallsFor`, `fichesPourTwin6`, `twin6ToMergeDocument` | Tout référentiel : cinq pôles lettrés → 6 appels, fiches écrites depuis le document, document qui le nomme et lui est conforme ; RESPIRE à six pôles → 7 appels, document de RESPIRE conforme à sa version (A4, A5, RG6, RG9) | idem |
 | UC-APP-09-U33 | `executerTwin6`, `gabaritsTwin6`, `variablesTwin6` | Paquet servi (1.1.0) : pour RESPIRE v7, les huit prompts de 1.0.0 à l'octet ; pour cinq pôles lettrés, son nom, ses pôles, ses compétences et la forme de ses codes, sans variable restante (RG10) | idem |
@@ -481,14 +489,14 @@ page Essayer (UC-VIS-03), ou par l'adresse.
 
 | ID | Scénario | Niveau | Vérifie | Fichier |
 |---|---|---|---|---|
-| UC-APP-09-F01 | Nominal | IHM | `<App/>` : RESPIRE par défaut, « 8 appels au modèle (7 pôles + synthèse) » ; progression « étape 1/8 » et contribution cumulée pendant le run ; 8 appels via `/api/twin6/appel` avec CSRF, la fiche du paquet telle quelle, contribution finale, secteurs du sunburst, export JSON (`cartographie-merge` sans `referentiel`, noms de pôle de `/meta`, `.json`, aucun envoi réseau) ; « Compétences établies » sur les compétences du référentiel du run (anomalie 3 corrigée) ; portfolio envoyé nulle part ailleurs | `web/test/usecases/functional/uc-app-09-cartographie-ouverte-twin6.test.jsx` |
+| UC-APP-09-F01 | Nominal | IHM | `<App/>` : RESPIRE par défaut, « 8 appels au modèle (7 pôles + synthèse) » ; progression « étape 1/8 » et contribution cumulée pendant le run ; 8 appels via `/api/twin6/appel` avec CSRF, la fiche du paquet telle quelle, contribution finale, secteurs du sunburst, export JSON (`cartographie-merge` sans `referentiel`, noms de pôle de `/meta`, `.json`, aucun envoi réseau ; en 1.1.0 avec sa `configuration` — sha256 des octets servis du paquet, comparé à `node:crypto` — et son `execution`, valide au schéma) ; « Compétences établies » sur les compétences du référentiel du run (anomalie 3 corrigée) ; portfolio envoyé nulle part ailleurs | `web/test/usecases/functional/uc-app-09-cartographie-ouverte-twin6.test.jsx` |
 | UC-APP-09-F02 | A1, RG5 | IHM | Clé saisie, solde nul : 8 appels directs au fournisseur, aucun passage par l'API, aucun garde-fou de solde | idem |
 | UC-APP-09-F03 | A2 | IHM | Clé du profil révélée une fois, 8 appels directs avec elle, aucun appel à `/api/twin6/appel` (voie crédits câblée en échec), « (avec votre clé) » | idem |
 | UC-APP-09-F04 | E1 | IHM | Anonyme : l'essai gratuit seul, invitation à se connecter pour les autres voies ; ni offre ni clés lues | idem |
 | UC-APP-09-F05 | E2 | IHM | Copie statique : fonctionnalité indisponible | idem |
 | UC-APP-09-F06 | E3 | IHM | Solde < poids du portfolio et réserve d'un appel (« ~2.41 $ : 1 $ estimés, et 1.41 $ réservés… », Sonnet 5 à 2 / 10) : blocage avant tout appel | idem |
 | UC-APP-09-F07 | E4 | IHM | 402 en cours de run : arrêt, message suivi de ce que le run a débité, bouton réutilisable | idem |
-| UC-APP-09-F08 | E5 | IHM | Sortie tronquée : échec explicite, pas d'export | idem |
+| UC-APP-09-F08 | E5 | IHM | Second appel tronqué (facturé à un autre coût que le premier) : échec explicite nommant l'étape `scan-pole/2`, message suivi de ce que le run a débité, appel tronqué compris ; pas d'export, bouton réutilisable | idem |
 | UC-APP-09-F09 | E6 | IHM | Paquet public introuvable, ou offre `/meta` en erreur : erreur de chargement, formulaire absent | idem |
 | UC-APP-09-F21 | A4 | IHM | Autre référentiel publié choisi : décompte « 6 appels (5 pôles + synthèse) », 6 appels, fiches écrites depuis son document, export qui le nomme, total de ses compétences | idem |
 | UC-APP-09-F31 | A4 | IHM | Référentiels publiés en base, absents de l'export statique : RESPIRE en tête et par défaut (la base les range par identifiant), le lettré choisi est lu par `GET /api/referentiels/fictif-lettre/versions/1.0.0` ; 6 appels, fiches écrites depuis ce document ; aucun fichier statique du lettré demandé | idem |
@@ -498,6 +506,7 @@ page Essayer (UC-VIS-03), ou par l'adresse.
 | UC-APP-09-F25 | A6, RG11 | IHM | Portfolio de 5 001 caractères : bouton inactif, « (retirez-en 1) », aucune requête à la démo | idem |
 | UC-APP-09-F26 | E14 | IHM | Budget du jour épuisé (`503`) : message de la démo dès le premier appel, sans nouvel essai, bouton de nouveau cliquable | idem |
 | UC-APP-09-F27 | E14 | IHM | Un compte sur l'essai gratuit, budget du jour épuisé (`503`) : ses deux autres voies, pas l'invitation à créer un compte | idem |
+| UC-APP-09-F31 | E5 | IHM | Refus du fournisseur relayé (`stopReason refusal`) au second appel : « le fournisseur a refusé de répondre à l'étape scan-pole/2 », suivi de ce que le run a débité, refus compris ; pas d'export, bouton réutilisable | idem |
 | UC-APP-09-F10 | Nominal | API | 8 appels : contrat, `text` amont intact et `model`, coût 4 400 µUSD chacun (Sonnet 5 à 2 / 10), prompt public transmis tel quel, grand-livre réserve/réconciliation | `api/tests/UseCases/Functional/UcApp09CartographieOuverteTwin6Test.php` |
 | UC-APP-09-F11 | Nominal (étape 2), RG7 | API | `/api/twin9/meta` : prix Twin6, référentiel, solde ; Twin6 fonctionne sans Twin9 importé | idem |
 | UC-APP-09-F12 | E7 | API | 401 sans session, aucun appel amont | idem |
@@ -535,13 +544,15 @@ cd engine && npx vitest run test/usecases/unit/uc-app-09
 
 ## Anomalies constatées
 
-1. **Voie clé perso : troncature non détectée explicitement.** Le provider direct
-   Anthropic (`engine/src/providers/anthropic.js`, `parseResponse`) ne relaie pas
+1. ~~**Voie clé perso : troncature non détectée explicitement.**~~ Corrigée le
+   2026-10-22 (`docs/contrats.md` §4 point 14). Le provider direct Anthropic
+   (`engine/src/providers/anthropic.js`, `parseResponse`) ne relayait pas
    `stop_reason` ; la garde « sortie tronquée (max_tokens) » d'`executerTwin6` ne
-   se déclenche donc que sur la voie crédits. Sur la voie clé perso, une sortie
-   tronquée échoue plus loin, au parsing JSON, avec un message moins explicite
-   (figé par UC-APP-09-U11). Le cas est devenu rare le 2026-10-21 : chaque
-   appel demande tout ce que le modèle peut rendre.
+   se déclenchait que sur la voie crédits, et une sortie tronquée échouait plus
+   loin, au parsing JSON. L'arrêt est désormais lu et normalisé, la sortie
+   tronquée lève une `OutputTruncatedError` sur toutes les voies, et
+   `executerTwin6` échoue en nommant l'étape, l'usage de l'appel payé compté
+   (UC-APP-09-U11).
 2. **Pôle sans aucune présence établie → document non conforme au schéma.**
    `twin6ToMergeDocument` émet alors un domaine sans compétence, ce que le schéma
    `cartographie-merge` refuse (`domains[].competences` : `minItems 1`). Le viewer

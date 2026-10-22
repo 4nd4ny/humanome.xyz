@@ -21,6 +21,11 @@ export function jsonResponse(status, data, headers = {}) {
     },
     json: async () => data,
     text: async () => JSON.stringify(data),
+    // Les octets du même texte (le paquet Twin6 se lit en octets : son empreinte, 2026-10-22).
+    arrayBuffer: async () => {
+      const octets = new TextEncoder().encode(JSON.stringify(data))
+      return octets.buffer.slice(octets.byteOffset, octets.byteOffset + octets.byteLength)
+    },
   }
 }
 

@@ -4,14 +4,18 @@ declare(strict_types=1);
 
 namespace Humanome\Twin9;
 
+use Humanome\Twin9\Fournisseurs\Fournisseurs;
 use stdClass;
 
 /**
  * What each call of a run is sent with, from the copy of its profile
- * (docs/contrats.md §7.2): the model, the output budget, the effort and the
- * thinking of its step, over those of the step's stage; a reader of the
- * college over the readers' stage; a setting of second_ressort over every call
- * of the second instance.
+ * (docs/contrats.md §7.2): the provider, the model, the output budget, the
+ * effort and the thinking of its step, over those of the step's stage; a
+ * reader of the college over the readers' stage; a setting of second_ressort
+ * over every call of the second instance. Each call is routed by its own
+ * settings: by batches when its provider is Anthropic and the profile's lane
+ * is « lots », directly otherwise. A profile names no provider yet (the
+ * schema refuses it): every call goes to Anthropic.
  */
 final class CallSettings
 {
@@ -61,16 +65,17 @@ final class CallSettings
         'arpenteur' => 'profond',
     ];
 
-    private const CHAMPS = ['modele', 'budget_sortie', 'effort', 'reflexion'];
+    private const CHAMPS = ['fournisseur', 'modele', 'budget_sortie', 'effort', 'reflexion'];
 
     public function __construct(private readonly stdClass $profil)
     {
     }
 
     /**
-     * The settings of one call, by its step and its id.
+     * The settings of one call, by its step and its id, and its lane.
      *
-     * @return array{modele: string, budget_sortie: int, effort: string|null, reflexion: string}
+     * @return array{fournisseur: string, voie: 'lots'|'directe', modele: string, budget_sortie: int,
+     *               effort: string|null, reflexion: string}
      */
     public function pour(string $step, string $id): array
     {
@@ -79,7 +84,7 @@ final class CallSettings
             $reglage = self::sur((array) $etages->lecteurs, $this->lecteur($id));
         } else {
             $etape = self::ETAPES[$step] ?? null;
-            $reglage = (array) $etages->{self::ETAGES[$etape] ?? 'profond'};
+            $reglage = (array) $etages->{$etape === null ? 'profond' : (self::ETAGES[$etape] ?? 'profond')};
             if ($etape !== null) {
                 $reglage = self::sur($reglage, $this->profil->etapes->{$etape} ?? null);
             }
@@ -88,12 +93,7 @@ final class CallSettings
             }
         }
 
-        return [
-            'modele' => (string) $reglage['modele'],
-            'budget_sortie' => (int) $reglage['budget_sortie'],
-            'effort' => isset($reglage['effort']) ? (string) $reglage['effort'] : null,
-            'reflexion' => (string) $reglage['reflexion'],
-        ];
+        return $this->reglage($reglage);
     }
 
     /**
@@ -101,7 +101,8 @@ final class CallSettings
      * each reader, each step of the profile, each under the second instance,
      * and a step the profile does not know.
      *
-     * @return array<string, array{modele: string, budget_sortie: int, effort: string|null, reflexion: string}>
+     * @return array<string, array{fournisseur: string, voie: 'lots'|'directe', modele: string, budget_sortie: int,
+     *                             effort: string|null, reflexion: string}>
      */
     public function parEtape(): array
     {
@@ -119,20 +120,56 @@ final class CallSettings
     }
 
     /**
-     * Every combination of model and settings a call of the run may be sent
-     * with (parEtape(), once each). The batch lane checks them all before the
-     * run's first batch (T8).
+     * Every combination of provider, lane, model and settings a call of the
+     * run may be sent with (parEtape(), once each), of one lane when it is
+     * given. The batch lane checks its own before the run's first batch (T8).
      *
-     * @return list<array{modele: string, budget_sortie: int, effort: string|null, reflexion: string}>
+     * @param 'lots'|'directe'|null $voie
+     * @return list<array{fournisseur: string, voie: 'lots'|'directe', modele: string, budget_sortie: int,
+     *                    effort: string|null, reflexion: string}>
      */
-    public function combinaisons(): array
+    public function combinaisons(?string $voie = null): array
     {
         $uniques = [];
         foreach ($this->parEtape() as $reglage) {
-            $uniques[json_encode($reglage, JSON_THROW_ON_ERROR)] = $reglage;
+            if ($voie === null || $reglage['voie'] === $voie) {
+                $uniques[json_encode($reglage, JSON_THROW_ON_ERROR)] = $reglage;
+            }
         }
 
         return array_values($uniques);
+    }
+
+    /**
+     * What the calls of the run are sent with, in the run's own terms: each
+     * stage as the profile sets it (read from the stage itself: a step's
+     * setting never shows in its stage), each step of the profile, each
+     * under the second instance, each reader of the college, and a step the
+     * profile does not know — each as pour() gives it.
+     *
+     * @return array{etages: array<string, array<string, mixed>>, etapes: array<string, array<string, mixed>>,
+     *               second_ressort: array<string, array<string, mixed>>, lecteurs: array<string, array<string, mixed>>,
+     *               defaut: array<string, mixed>}
+     */
+    public function resume(): array
+    {
+        $etages = [];
+        foreach ((array) $this->profil->etages as $etage => $reglage) {
+            $etages[(string) $etage] = $this->reglage((array) $reglage);
+        }
+        $etapes = [];
+        $second = [];
+        foreach (self::ETAPES as $step => $etape) {
+            $etapes[$etape] ??= $this->pour($step, '');
+            $second[$etape] ??= $this->pour($step, 'second_ressort/');
+        }
+        $lecteurs = [];
+        foreach ($this->profil->college as $lecteur) {
+            $lecteurs[(string) $lecteur->nom] = $this->pour('tagger', '/tags_' . $lecteur->nom . '_P1.json');
+        }
+
+        return ['etages' => $etages, 'etapes' => $etapes, 'second_ressort' => $second, 'lecteurs' => $lecteurs,
+                'defaut' => $this->pour('', '')];
     }
 
     /**
@@ -170,6 +207,29 @@ final class CallSettings
 
         return substr(hash('sha256', json_encode(self::canonique($champs),
             JSON_THROW_ON_ERROR | JSON_UNESCAPED_UNICODE | JSON_PRESERVE_ZERO_FRACTION)), 0, 16);
+    }
+
+    /**
+     * A call's settings, its provider Anthropic when none is set, its lane
+     * the batches when its provider has them and the profile chose them.
+     *
+     * @param array<string, mixed> $reglage
+     * @return array{fournisseur: string, voie: 'lots'|'directe', modele: string, budget_sortie: int,
+     *               effort: string|null, reflexion: string}
+     */
+    private function reglage(array $reglage): array
+    {
+        $fournisseur = (string) ($reglage['fournisseur'] ?? Fournisseurs::DEFAUT);
+        $parLots = (Fournisseurs::REGISTRE[$fournisseur]['lots'] ?? false) && ($this->profil->voie ?? null) === 'lots';
+
+        return [
+            'fournisseur' => $fournisseur,
+            'voie' => $parLots ? 'lots' : 'directe',
+            'modele' => (string) $reglage['modele'],
+            'budget_sortie' => (int) $reglage['budget_sortie'],
+            'effort' => isset($reglage['effort']) ? (string) $reglage['effort'] : null,
+            'reflexion' => (string) $reglage['reflexion'],
+        ];
     }
 
     /** The reader of a call: tags_<name>#<pass>_P<n>.json gives <name>. */

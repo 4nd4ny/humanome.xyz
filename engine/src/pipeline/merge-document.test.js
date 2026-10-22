@@ -406,6 +406,45 @@ describe('buildMergeDocument', () => {
       /narratif manquant/,
     )
   })
+
+  // Les blocs d'un run Twin6 (2026-10-22, docs/contrats.md §4 point 8) : contenus
+  // et forme sont ceux du moteur (twin6/index.test.js), le document les recopie.
+  const configuration = { schema: 'twin6-configuration/1', moteur: 'twin6', modele: 'claude-sonnet-5' }
+  const execution = { schema: 'twin6-execution/1', appels: [], modelesServis: [] }
+
+  it('sans configuration ni exécution : 1.0.0 et aucun des deux blocs, à l’octet', () => {
+    expect(JSON.stringify(buildMergeDocument(agrege, narratives, { ...meta }))).toBe(JSON.stringify(doc))
+    expect(doc).not.toHaveProperty('configuration')
+    expect(doc).not.toHaveProperty('execution')
+    // Une valeur qui n'est pas un objet ne compte pas.
+    const nuls = buildMergeDocument(agrege, narratives, { ...meta, configuration: null, execution: 'x' })
+    expect(JSON.stringify(nuls)).toBe(JSON.stringify(doc))
+  })
+
+  it('avec les blocs : recopiés juste après source, en 1.1.0, le reste à l’identique', () => {
+    const avec = buildMergeDocument(agrege, narratives, { ...meta, configuration, execution })
+    expect(avec.schemaVersion).toBe('1.1.0')
+    expect(Object.keys(avec).slice(0, 7)).toEqual(['schemaVersion', 'kind', 'generatedAt', 'source', 'configuration', 'execution', 'periode'])
+    expect(avec.configuration).toEqual(configuration)
+    expect(avec.execution).toEqual(execution)
+    // Une copie : le document ne partage rien avec la méta de l'appelant.
+    expect(avec.configuration).not.toBe(configuration)
+    const { configuration: _c, execution: _e, ...reste } = avec
+    expect(JSON.stringify({ ...reste, schemaVersion: '1.0.0' })).toBe(JSON.stringify(doc))
+  })
+
+  it('le référentiel d’un autre document reste avant generatedAt ; la configuration seule suffit à la 1.1.0', () => {
+    const seule = buildMergeDocument(agrege, narratives, { ...meta, referentiel: 'fictif-lettre', configuration })
+    expect(seule.schemaVersion).toBe('1.1.0')
+    expect(Object.keys(seule).slice(0, 6)).toEqual(['schemaVersion', 'kind', 'referentiel', 'generatedAt', 'source', 'configuration'])
+    expect(seule).not.toHaveProperty('execution')
+  })
+
+  it('une exécution sans configuration est ignorée : 1.0.0, à l’octet (le schéma la refuse seule)', () => {
+    const seule = buildMergeDocument(agrege, narratives, { ...meta, execution })
+    expect(seule).not.toHaveProperty('execution')
+    expect(JSON.stringify(seule)).toBe(JSON.stringify(doc))
+  })
 })
 
 describe('frDate', () => {

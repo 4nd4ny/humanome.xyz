@@ -10,12 +10,15 @@ use Humanome\Referentiel\ReferentielRepository;
 use Humanome\Tests\CartographeTestCase;
 use Humanome\Tests\TestDb;
 use Humanome\Tests\UseCases\Support\ReferentielsFictifs;
+use Humanome\Twin9\CallSettings;
 use Humanome\Twin9\CreditService;
 use Humanome\Twin9\MoteurReglages;
 use Humanome\Twin9\ProfilRepository;
 use Humanome\Twin9\ProtocoleRepository;
 use Humanome\Twin9\ReferentielMoteur;
+use Humanome\Twin9\RunConfiguration;
 use Humanome\Twin9\RunRepository;
+use Humanome\Validation;
 use PHPUnit\Framework\Attributes\PreserveGlobalState;
 use PHPUnit\Framework\Attributes\RunTestsInSeparateProcesses;
 
@@ -203,6 +206,9 @@ final class RunsTest extends CartographeTestCase
         $autre = $this->registerAs('autre-carto@example.org', 'Autre', ['cartographe']);
         $this->link($alice, $carto);
         $id = self::json($this->as_($alice, 'POST', '/api/twin9/runs', $this->lancement($this->profil($alice))))['id'];
+        // resumed once under a budget: its execution keeps it
+        $this->as_($alice, 'POST', "/api/twin9/runs/$id/annuler");
+        $this->as_($alice, 'POST', "/api/twin9/runs/$id/reprendre", ['budget_usd' => 50]);
         $this->jusquAuBout($alice, $id);
 
         self::assertSame(404, $this->as_($carto, 'GET', "/api/twin9/runs/$id/resultats")->getStatusCode(), 'privé');
@@ -212,6 +218,19 @@ final class RunsTest extends CartographeTestCase
         $lu = $this->as_($carto, 'GET', "/api/twin9/runs/$id/resultats");
         self::assertSame(200, $lu->getStatusCode());
         self::assertSame('cartographe', self::json($lu)['lecteur']);
+        // P0-1: the run's configuration and execution, without what its owner pays nor how — no price, cost, cap,
+        // resumption's budget nor key —, nor the salt of its fingerprint; its owner reads them whole
+        $sien = json_encode(self::json($this->as_($alice, 'GET', "/api/twin9/runs/$id/resultats"))['run']);
+        $duCarto = json_encode(self::json($lu)['run']);
+        foreach (['"prix":', '"plafonds":', '"cle":', '"cout_microusd":', '"budget_usd":', '"sel":'] as $champ) {
+            self::assertStringContainsString($champ, $sien, 'le propriétaire : ' . $champ);
+            self::assertStringNotContainsString($champ, $duCarto, 'le cartographe : ' . $champ);
+        }
+        $run = json_decode($duCarto);
+        self::assertSame(['fige', 1], [$run->execution->source, \count($run->execution->reprises)]);
+        self::assertSame(self::json($this->as_($alice, 'GET', "/api/twin9/runs/$id"))['configuration_empreinte'],
+            $run->configuration->empreinte);
+        self::assertSame([], Validation::validate('twin9-run', (object) ['kind' => 'twin9-run', 'run' => $run])['errors']);
         self::assertSame(404, $this->as_($autre, 'GET', "/api/twin9/runs/$id/resultats")->getStatusCode(), 'non lié');
         self::assertSame(404, $this->as_($carto, 'GET', "/api/twin9/runs/$id")->getStatusCode(), 'seul son propriétaire le suit');
         self::assertSame(422, $this->as_($alice, 'PUT', "/api/twin9/runs/$id/visibilite", ['visibilite' => 'publique'])
@@ -230,10 +249,145 @@ final class RunsTest extends CartographeTestCase
         self::assertFalse(self::json($this->as_($alice, 'POST', '/api/twin9/runs/avancer'))['avance'],
             'un run annulé n’avance plus');
 
+        // P0-1: cancelled, its execution comes from its journal; its configuration is its launch's
+        $execution = self::json($this->as_($alice, 'GET', "/api/twin9/runs/$id/resultats"))['run']['execution'];
+        self::assertSame(['journal', 'annule', []], [$execution['source'], $execution['statut'], $execution['reprises']]);
+        self::assertNotNull($execution['fin_at']);
+        $configuration = self::$pdo->query("SELECT configuration FROM twin9_runs WHERE id = $id")->fetchColumn();
+
         $repris = $this->as_($alice, 'POST', "/api/twin9/runs/$id/reprendre");
         self::assertSame('en_cours', self::json($repris)['statut']);
         self::assertSame(409, $this->as_($alice, 'POST', "/api/twin9/runs/$id/reprendre")->getStatusCode());
+        $execution = self::json($this->as_($alice, 'GET', "/api/twin9/runs/$id/resultats"))['run']['execution'];
+        self::assertSame(['journal', 'en_cours', null], [$execution['source'], $execution['statut'], $execution['fin_at']]);
+        self::assertCount(1, $execution['reprises'], 'une reprise, datée');
+        self::assertMatchesRegularExpression('/^\d{4}-\d{2}-\d{2} \d{2}:\d{2}:\d{2}$/', $execution['reprises'][0]['at']);
+        self::assertNull($execution['reprises'][0]['budget_usd'], 'sous le budget de son profil : aucun');
+
+        $this->as_($alice, 'POST', "/api/twin9/runs/$id/annuler");
+        $this->as_($alice, 'POST', "/api/twin9/runs/$id/reprendre", ['budget_usd' => 12.5]);
         self::assertSame('termine', $this->jusquAuBout($alice, $id)['statut']);
+        $execution = self::json($this->as_($alice, 'GET', "/api/twin9/runs/$id/resultats"))['run']['execution'];
+        self::assertSame('fige', $execution['source']);
+        self::assertSame([null, 12.5], array_column($execution['reprises'], 'budget_usd'), 'ses reprises, figées avec lui');
+        self::assertSame($configuration, self::$pdo->query("SELECT configuration FROM twin9_runs WHERE id = $id")
+            ->fetchColumn(), 'sa configuration n’a pas bougé, à l’octet');
+    }
+
+    /**
+     * P0-1: a run launched keeps its configuration — its call settings as
+     * each call is sent, its settings' fingerprint, the prices as billed,
+     * the engine's versions (none from the fake engine) —, its fingerprint
+     * in its follow-up; its results carry it, and its execution: from its
+     * journal while it runs, its tables objects even before its first call,
+     * frozen once done, its totals its counters', its passes the slices'.
+     */
+    public function testARunKeepsItsConfigurationAndItsExecution(): void
+    {
+        $alice = $this->registerAs('configuration@example.org', 'Alice');
+        $profil = $this->profil($alice, 'Direct');
+        $lance = self::json($this->as_($alice, 'POST', '/api/twin9/runs', $this->lancement($profil)));
+        $id = $lance['id'];
+        $repo = new RunRepository(self::$pdo);
+        $configuration = $repo->configuration($id);
+
+        self::assertSame($configuration->empreinte, $lance['configuration_empreinte']);
+        self::assertSame($configuration->empreinte, RunConfiguration::empreinte($configuration), 'relue, la même');
+        self::assertMatchesRegularExpression(RunConfiguration::SEL, $configuration->sel, 'son sel, tiré au lancement');
+        self::assertArrayNotHasKey('configuration', $lance, 'le suivi n’en sert que l’empreinte');
+        self::assertArrayNotHasKey('execution', $lance);
+        $copie = $repo->charger($id);
+        $moteur = json_decode($copie['moteur']);
+        self::assertSame(CallSettings::empreinte($copie['profil'], $moteur->config->troncatures, $copie['gabarits'],
+            $moteur->referentiel), $configuration->profil->empreinte_reglages, 'l’empreinte des réglages du run');
+        self::assertSame([$profil, 'Direct', 'complet'], [$configuration->profil->id, $configuration->profil->nom,
+                                                          $configuration->profil->mode]);
+        self::assertEquals((new CallSettings($copie['profil']))->resume(), json_decode(json_encode($configuration->appels), true));
+        self::assertEquals((object) ['protocole' => null, 'personas' => null, 'scan' => null],
+            (object) array_diff_key((array) $configuration->moteur, ['commit' => 0]), 'le moteur factice n’en a pas');
+        self::assertSame(['claude-haiku-5-5', 'claude-sonnet-5-5'], array_keys((array) $configuration->prix->grille));
+        self::assertSame(['id' => 'respire', 'version' => '7.0.0'], ['id' => $configuration->referentiel->id,
+                                                                     'version' => $configuration->referentiel->version]);
+
+        // before its first call: from its journal, its tables objects
+        $corps = (string) $this->as_($alice, 'GET', "/api/twin9/runs/$id/resultats")->getBody();
+        foreach (['par_voie', 'par_fournisseur', 'par_modele', 'servis'] as $table) {
+            self::assertStringContainsString('"' . $table . '":{}', $corps, $table);
+        }
+        $run = json_decode($corps)->run;
+        self::assertSame(['journal', 'en_cours', false, 0], [$run->execution->source, $run->execution->statut,
+                                                             $run->execution->partiel, $run->execution->appels->total]);
+        self::assertSame([], Validation::validate('twin9-run', (object) ['kind' => 'twin9-run', 'run' => $run])['errors']);
+
+        $suivi = $this->jusquAuBout($alice, $id);
+        $run = json_decode((string) $this->as_($alice, 'GET', "/api/twin9/runs/$id/resultats")->getBody())->run;
+        $e = $run->execution;
+        $c = $suivi['compteurs'];
+        self::assertSame(['fige', 'termine', false], [$e->source, $e->statut, $e->partiel]);
+        self::assertSame([$c['appels'], $c['pannes'], $c['tronques'], $c['tentatives'], $c['jetons_entree'],
+                          $c['jetons_sortie'], $c['cout_microusd'], $c['lots']],
+            [$e->appels->total, $e->appels->pannes, $e->appels->tronques, $e->appels->tentatives, $e->jetons->entree,
+             $e->jetons->sortie, $e->cout_microusd, $e->lots], 'ses totaux sont ses compteurs');
+        self::assertSame([5, $c['cout_microusd']], [$e->par_voie->directe->appels, $e->par_fournisseur->anthropic->cout_microusd]);
+        self::assertSame($c['duree_s'], $e->duree_active_s);
+        self::assertSame($suivi['finished_at'], $e->fin_at);
+        $ligne = self::$pdo->query("SELECT passes, moteur_ms FROM twin9_runs WHERE id = $id")->fetch();
+        self::assertGreaterThan(0, (int) $ligne['passes']);
+        self::assertSame([(int) $ligne['passes'], (int) $ligne['moteur_ms']], [$e->passes, $e->moteur_ms]);
+        self::assertSame($configuration->moteur->commit, $e->moteur->commit_debut);
+        self::assertEquals($configuration, $run->configuration, 'sa configuration, inchangée');
+        self::assertSame([], Validation::validate('twin9-run', (object) ['kind' => 'twin9-run', 'run' => $run])['errors']);
+    }
+
+    /**
+     * P0-1: the configuration says the days the engine reads, those its
+     * admission took — drawn inside the launch's lock, where the engine's
+     * settings were drawn again (the closure captures them by value).
+     */
+    public function testTheConfigurationKeepsTheDaysItsAdmissionTook(): void
+    {
+        $alice = $this->registerAs('admise@example.org', 'Alice');
+        $profil = ProfilRepository::v98();
+        $profil->voie = 'directe';
+        $profil->budget_usd = 5.0;
+        $cree = self::json($this->as_($alice, 'POST', '/api/twin9/profils', ['nom' => 'Budget', 'profil' => $profil]));
+        $lancement = $this->lancement($cree['id']);
+        $lancement['portfolio']['texte'] .= "## 2026-01-07\nTroisième jour : j'ai présenté.\n";
+        $lance = $this->as_($alice, 'POST', '/api/twin9/runs', $lancement);
+        self::assertSame(201, $lance->getStatusCode(), (string) $lance->getBody());
+        $id = self::json($lance)['id'];
+
+        $copie = (new RunRepository(self::$pdo))->charger($id);
+        self::assertSame(1, $copie['profil']->jours, 'une journée sur trois admise');
+        self::assertSame(1, json_decode($copie['moteur'])->jours);
+        $configuration = (new RunRepository(self::$pdo))->configuration($id);
+        self::assertSame($copie['profil']->jours, $configuration->execution_prevue->jours);
+        self::assertSame(['budget_usd' => 5.0, 'duree_minutes' => null], (array) $configuration->execution_prevue->plafonds);
+    }
+
+    /**
+     * P0-1: an execution that cannot be frozen never keeps its run from
+     * ending: the run is done, its counters kept, its execution null, the
+     * class of the failure alone in the log.
+     */
+    public function testAnExecutionThatCannotBeFrozenLeavesTheRunDone(): void
+    {
+        $alice = $this->registerAs('illisible@example.org', 'Alice');
+        $id = self::json($this->as_($alice, 'POST', '/api/twin9/runs', $this->lancement($this->profil($alice))))['id'];
+        self::$pdo->exec("UPDATE twin9_runs SET execution = '\"illisible\"' WHERE id = $id");
+        $log = (string) tempnam(sys_get_temp_dir(), 'twin9-log');
+        ini_set('error_log', $log);
+
+        $suivi = $this->jusquAuBout($alice, $id);
+        self::assertStringEndsWith('[twin9] exécution du run ' . $id . ' non figée : UnexpectedValueException' . PHP_EOL,
+            (string) file_get_contents($log), 'la classe seule');
+        unlink($log);
+        self::assertSame('termine', $suivi['statut']);
+        self::assertSame(5, $suivi['compteurs']['appels']);
+        self::assertNull(self::$pdo->query("SELECT execution FROM twin9_runs WHERE id = $id")->fetchColumn());
+        self::assertSame(0, (int) self::$pdo->query("SELECT COUNT(*) FROM twin9_appels WHERE run_id = $id")->fetchColumn(),
+            'son journal parti');
+        self::assertNull(self::json($this->as_($alice, 'GET', "/api/twin9/runs/$id/resultats"))['run']['execution']);
     }
 
     /** The page of a run advances its owner's runs, no one else's. */

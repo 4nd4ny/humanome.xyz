@@ -269,7 +269,13 @@ describe('UC-VIS-03 — la réponse en flux (relais, 2026-10-21)', () => {
         ),
     })
     const { provider } = createDemoProvider({ fetchFn: server.mock, onProgression: (n) => progression.push(n) })
-    expect(await provider.complete({ model: 'demo', prompt: 'P' })).toMatchObject(resultat)
+    // tool_use (l'outil forcé de la démo) est une fin normale : stopReason end, la valeur brute gardée.
+    expect(await provider.complete({ model: 'demo', prompt: 'P' })).toMatchObject({
+      ...resultat,
+      stopReason: 'end',
+      stopReasonRaw: 'tool_use',
+      truncated: false,
+    })
     expect(progression).toEqual([12, 15])
     const [, init] = server.mock.mock.calls.find(([url]) => url === 'api/llm')
     expect(init.headers.Accept).toBe('text/event-stream, application/json')

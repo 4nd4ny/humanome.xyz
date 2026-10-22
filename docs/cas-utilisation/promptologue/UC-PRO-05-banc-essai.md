@@ -185,9 +185,11 @@ Le promptologue ouvre **Banc d'essai** dans la navigation de l'atelier
 - **E6 — Périmètre absent du référentiel d'une branche** (étape 4) : en A/B à
   double référentiel, refus **avant** que la branche A ne consomme d'appels.
 - **E7 — Échec d'exécution** (étape 5) : clé personnelle manquante,
-  fournisseur en erreur (quota, HTTP), quota en sandbox, document de la
-  sandbox invalide au schéma ou non conforme au référentiel qu'elle a reçu
-  → message d'erreur ; le résultat précédent reste affiché.
+  fournisseur en erreur (quota, HTTP), sortie tronquée, quota en sandbox,
+  document de la sandbox invalide au schéma ou non conforme au référentiel
+  qu'elle a reçu → message d'erreur ; le résultat précédent reste affiché.
+  Sous le message, les tokens réels que le run a consommés avant l'échec
+  (appel tronqué compris) et leur coût, au tarif de sa branche (2026-10-22).
 - **E8 — Portfolio local sans journée datée** (étapes 3-4) : alerte à la
   sélection, refus au lancement.
 

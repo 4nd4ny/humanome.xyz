@@ -2,7 +2,7 @@ import { describe, it, expect } from 'vitest'
 import { readFileSync } from 'node:fs'
 import { dirname, join } from 'node:path'
 import { fileURLToPath } from 'node:url'
-import { fichesDuReferentiel, fichesPourTwin6 } from './fiches.js'
+import { fichesDuReferentiel, fichesPourTwin6, originesDesFiches } from './fiches.js'
 
 const racine = join(dirname(fileURLToPath(import.meta.url)), '../../..')
 const lire = (chemin) => JSON.parse(readFileSync(join(racine, chemin), 'utf8'))
@@ -62,5 +62,31 @@ describe('fichesPourTwin6', () => {
       1: '# Pôle 1 — A · Percevoir\n\nCe que le pôle cherche.\n\n## A2 — Deuxième\n\nSa définition.\n\n### A2a — Une facette\n\nPlus fine.\n\n---\n\n## A10 — Dixième\n',
       2: '# Pôle 2 — B · Agir\n\n## B1 — Premier\n',
     })
+  })
+})
+
+describe('originesDesFiches', () => {
+  it('RESPIRE v7 : chaque fiche vient du paquet', () => {
+    const paquet = fichesDuCorpus()
+    expect(originesDesFiches(fichesPourTwin6(RESPIRE_V7, paquet), paquet)).toEqual(
+      Object.fromEntries(Object.keys(paquet).map((num) => [num, 'paquet'])),
+    )
+  })
+
+  it('un pôle dont les compétences changent : sa fiche, et la seule, vient du document', () => {
+    const autre = structuredClone(RESPIRE_V7)
+    autre.competences.find((c) => c.code === '1.10').pole = 2
+    const paquet = fichesDuCorpus()
+    const origines = originesDesFiches(fichesPourTwin6(autre, paquet), paquet)
+    expect(origines['1']).toBe('document')
+    expect(origines['2']).toBe('document')
+    expect(origines['3']).toBe('paquet')
+  })
+
+  it('un autre référentiel, ou un paquet sans fiches : document ; les clés sont celles des fiches lues', () => {
+    const fiches = { 1: '# Pôle 1 — A\n', 2: '# Pôle 2 — B\n' }
+    expect(originesDesFiches(fiches, fichesDuCorpus())).toEqual({ 1: 'document', 2: 'document' })
+    expect(originesDesFiches(fiches)).toEqual({ 1: 'document', 2: 'document' })
+    expect(originesDesFiches(fiches, { 1: '# Pôle 1 — A\n' })).toEqual({ 1: 'paquet', 2: 'document' })
   })
 })

@@ -6,7 +6,7 @@
 |---|---|
 | Version PHP | **8.2** (`.ovhconfig` : `app.engine.version=8.2`, `container.image=stable64`) — conforme à la cible ADR-002 |
 | Version MySQL | **8.0.46** (vérifié le 2026-07-12 par sonde PDO exécutée sur le cluster humanome.xyz). Base OVH mutualisée existante, hébergée sur un autre hébergement OVH (`example123.mysql.db`), **joignable depuis humanome.xyz**, charset serveur utf8mb4 — conforme ADR-002. PHP webroot vérifié : 8.2.29. Credentials hors repo (`cahier des charges/mysql.txt` côté poste de travail → `.env` local et `~/app/shared/.env` serveur) |
-| Accès cron | **NON disponible** sur cette offre (vérifié dans le panel OVH le 2026-07-12 : « Ce service n'est pas accessible pour l'offre Hébergement gratuit 100M »). humanome.xyz est sur une offre **Hébergement gratuit 100 Mo** (hosting-free-100m). Conséquence : le tick (runs Twin9 et masse) se déclenche depuis un service externe de tâches planifiées (`POST /api/admin/worker-tick`, jeton du tick, T18), et la maintenance (P12) à la main (`POST /api/admin/maintenance`, jeton des migrations, qu'aucun service tiers ne doit tenir) — aucun cron requis pour la correction (compteurs démo par jour UTC, expiration des liens appliquée à la lecture). Voir docs/deploiement.md § Tâches planifiées |
+| Accès cron | **NON disponible** sur cette offre (vérifié dans le panel OVH le 2026-07-12 : « Ce service n'est pas accessible pour l'offre Hébergement gratuit 100M »). humanome.xyz est sur une offre **Hébergement gratuit 100 Mo** (hosting-free-100m). Conséquence : le tick (runs Twin9 et masse) se déclenche depuis un service externe de tâches planifiées (`POST /api/admin/worker-tick`, jeton du tick, T18), et la maintenance (P12) une fois par jour avec le même jeton depuis le 2026-10-22 (`POST /api/admin/maintenance`), ou à la main avec celui des migrations, qu'aucun service tiers ne doit tenir — aucun cron requis pour la correction (compteurs démo par jour UTC, expiration des liens appliquée à la lecture). Voir docs/deploiement.md § Tâches planifiées |
 | Accès SSH/SFTP | **FTP uniquement** testé et fonctionnel (`ftp.clusterNNN.hosting.ovh.net`). SSH non fourni dans les accès. **FTPS non supporté par ce cluster** (AUTH TLS/SSL → « 500 This security scheme is not implemented », vérifié le 2026-07-12) → transferts en FTP simple, `FTP_SECURE=false` dans `.env.deploy` |
 | Domaine pointé | **Oui** : humanome.xyz → 51.91.236.255 (clusterNNN), Apache répond, webroot `www/` vide |
 
@@ -40,11 +40,17 @@ développement, ni les gabarits, que l'import met en base (ADR-010).
 | Poids (préparation locale du 2026-10-21) | Valeur |
 |---|---|
 | Moteur : `php/src` et `COMMIT` (mesuré) | 42 fichiers, 345 Ko |
-| Release de l'API, moteur compris (déduit, voir ci-dessous) | ≈ 4,9 à 6,9 Mo, 850 à 1 335 fichiers |
-| Trois releases gardées (`deploy.mjs`) | ≈ 15 à 21 Mo |
-| Occupé avant ce déploiement (panel, 2026-10-16) | 56 Mo sur 100 |
+| Release de l'API, moteur compris (mesurée à l'envoi, 2026-10-21) | 4,9 Mo, 803 fichiers |
+| Trois releases gardées (`deploy.mjs`) | ≈ 15 Mo au plus |
+| Occupé (panel, 2026-10-16) | 56 Mo sur 100 |
+| Occupé avant le déploiement du 2026-10-21 (panel, relevé par Christian) | 79 Mo sur 100 |
 
-Le poids d'une release est **déduit**, non mesuré tel quel : dans notre
+**Mesurée le 2026-10-21**, la release déployée pesait 4,9 Mo pour 803 fichiers :
+Composer installant ici depuis les sources (le proxy de notre environnement
+refuse les archives de GitHub, 403), chaque dépendance a été refaite par
+`git archive` de son commit verrouillé — ce que GitHub sert comme archive —, puis
+`composer dump-autoload --no-dev --optimize` (2 026 fichiers et 29 Mo sans
+cela). Avant, le poids était **déduit** : dans notre
 environnement, Composer avait installé les dépendances depuis leurs sources, et
 la préparation pesait 22 Mo et 2 017 fichiers ; sans les dossiers `.git` des
 dépendances, 6,9 Mo et 1 335 fichiers ; sans leurs tests non plus, ≈ 4,9 Mo et

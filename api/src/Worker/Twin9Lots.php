@@ -413,9 +413,12 @@ final class Twin9Lots
             if ($lu['ok']) {
                 $journal->reponseDuLot($appel['appel'], $lu['texte'], $mesure);
                 $compteurs['reponses']++;
-            } else {
+            } else { // refused or cut (P0-2): a failure, never submitted again
                 $journal->panneDuLot($appel['appel'], (string) ($lu['erreur'] ?? 'refus du modèle'), $mesure);
                 $compteurs['pannes']++;
+                if (!empty($lu['tronque'])) {
+                    $compteurs['tronques']++;
+                }
             }
 
             return;
@@ -499,15 +502,15 @@ final class Twin9Lots
     }
 
     /**
-     * Each combination of model and settings of the run, by a minimal direct
-     * call.
+     * Each combination of model and settings the run sends by batches, by a
+     * minimal direct call.
      *
      * @param array<string, int> $compteurs
      * @return string|null why the run fails, or null
      */
     private function verifier(Twin9Run $run, string $cle, float $dernierDepart, float $fin, array &$compteurs): ?string
     {
-        foreach ($run->reglages->combinaisons() as $reglage) {
+        foreach ($run->reglages->combinaisons('lots') as $reglage) {
             if (microtime(true) >= $dernierDepart) {
                 $run->suspendu = true;
 

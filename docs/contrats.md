@@ -26,7 +26,7 @@ schémas ; les deux runtimes sont testés (`engine/src/validation.test.js`,
 |---|---|---|
 | `referentiel.schema.json` | `referentiel` | Référentiel de compétences de toute structure depuis T15 (§9) : des pôles numérotés de 1 à N, les niveaux qu'il déclare avec le motif de leurs codes, ses compétences et leurs éléments plus fins ; RESPIRE v7 (7 pôles, 61 compétences « P.NN ») garde sa structure par une clause du schéma. Versionné semver + `contentHash` SHA-256, édité par les épistémiarques, historisé (cahier §4.1). Document réel : `web/public/data/referentiel/respire-v7.json`. |
 | `cartographie-jour.schema.json` | `cartographie-jour` | Résultat de la cartographie d'UNE feuille de portfolio (une journée) : 7 pôles (pièces, examen adversarial du pédagogue, verdicts, rapport narratif) + synthèse kairos. Documents réels : `web/public/data/demo/jours/<date>.json` (59 feuilles). |
-| `cartographie-merge.schema.json` | `cartographie-merge` | Agrégat chronologique de TOUTES les feuilles (merge évolutif v3) : séries temporelles par pôle et par compétence, archétypes, profil ipsatif, narratifs HTML. Source du sunburst. Document réel : `web/public/data/demo/merge.json`. |
+| `cartographie-merge.schema.json` | `cartographie-merge` | Agrégat chronologique de TOUTES les feuilles (merge évolutif v3) : séries temporelles par pôle et par compétence, archétypes, profil ipsatif, narratifs HTML. Source du sunburst. Document réel : `web/public/data/demo/merge.json`. Depuis la 1.1.0 (2026-10-22), un document de la cartographie ouverte Twin6 porte en plus sa `configuration` et son `execution` (§4, point 8). |
 | `prompt-package.schema.json` | `prompt-package` | Paquet promptologue : textes de prompts + variables + code JS d'orchestration (sandbox Web Worker) + métadonnées (version, auteur, modèle cible, référentiel compatible, changelog). |
 | `competency-map-master.schema.json` | `competency-map-master` | Archive de l'interface de cartographie (`#/cartographie`, master v4, `schemaVersion` 4.x) : référentiel embarqué, journées et variantes (verdicts résumés), détail par journée (extraits, ancres, jury, portfolio du jour), délibérations de run, état de l'apprenant (cases, étiquettes, choix de variante, ensembles, réponses au jury, repères, notes, carnet du dialogue, préférences). Produite par l'espace Export de l'interface et embarquée par l'archive de compte. Fixture : `schemas/fixtures/carto/competency-map-master-exemple.json`, sortie EXACTE de l'interface (`web/scripts/carto-master-fixture.mjs`). |
 | `archive-export.schema.json` | `archive-export` | Format pivot de portabilité (ADR-006) : archive autoporteuse embarquant portfolios en texte intégral, référentiels et prompt-packages COMPLETS, cartographies produites, jeux de l'interface de cartographie (`jeuxCartographie`, depuis la 1.1.0), analyses approfondies Twin9 du compte (`analysesTwin9`, depuis la 1.2.0, §8.5) et journal d'audit. Sert l'export/suppression RGPD, l'import de compte et le seed d'instance. Référence les 5 autres schémas par `$ref` sur leur `$id` absolu. |
@@ -36,7 +36,9 @@ schémas ; les deux runtimes sont testés (`engine/src/validation.test.js`,
 Chaque document porte `schemaVersion` (semver du schéma d'enveloppe : « 1.0.0 »
 partout, sauf l'archive de compte, « 1.1.0 » depuis le 2026-10-14 et « 1.2.0 »
 depuis T10, un référentiel d'une autre structure que RESPIRE, « 2.0.0 »
-depuis T15 (RESPIRE reste en 1.0.0, valide tel quel), et le master
+depuis T15 (RESPIRE reste en 1.0.0, valide tel quel), une cartographie
+fusionnée qui porte sa configuration (Twin6), « 1.1.0 » depuis le 2026-10-22
+(toute autre reste en 1.0.0, à l'octet), et le master
 de l'interface de cartographie, « 4.x ») et `kind` (discriminant, `const` dans
 chaque schéma) — c'est la clé de dispatch de `validateDocument(kind, data)` des
 deux runtimes.
@@ -214,6 +216,70 @@ par `scripts/extract-referentiel.mjs`.
      (`scripts/twin6-gabarits.mjs`) : un gabarit qui a dérivé arrête la
      construction. `#/twin6-ouverte` sert la 1.1.0 ; son méga-prompt, que le
      moteur n'exécute pas, reste le protocole manuel de RESPIRE v7.
+   - **Sortie tronquée, refus (2026-10-22, point 14).** Sur toutes les
+     voies (clé personnelle, crédits, essai), une sortie tronquée arrête le
+     run au premier appel concerné : « executerTwin6: sortie tronquée
+     (max_tokens) à l'étape … », sans nouvel essai ; l'erreur porte
+     l'étape, l'usage du run (l'appel tronqué, payé, compris) et ses
+     appels. Un refus du fournisseur l'arrête de même (« le fournisseur a
+     refusé de répondre à l'étape … »). Chaque appel consigne son arrêt
+     (`calls[].stopReason`, `stopReasonRaw`).
+   - **Le document dit comment il a été produit (2026-10-22, P0-1c :
+     `cartographie-merge` 1.1.0).** Un run lancé depuis `#/twin6-ouverte`
+     exporte deux blocs de plus, juste après `source` :
+     `configuration` (`twin6-configuration/1`) et `execution`
+     (`twin6-execution/1`), décrits par `$defs/configurationTwin6` et
+     `$defs/executionTwin6` du schéma. Seul un document qui les porte passe
+     en `schemaVersion` 1.1.0 ; sans eux (banc d'essai, runs Aurora,
+     Twin9, cohortes, corpus), `buildMergeDocument` rend le document d'hier
+     à l'octet (`scripts/parity/parity-document.mjs` inchangé).
+     - `configuration` : la vue pose ce qu'elle seule sait — `paquet`
+       (`id`, `version`, et `sha256`, l'empreinte hexadécimale des
+       **octets servis** du paquet, calculée avant toute lecture du JSON :
+       avec le référentiel et l'origine des fiches, elle détermine les
+       prompts envoyés, à version du moteur égale), `referentiel` (`id`,
+       `version`, `contentHash` du document publié choisi — `null` pour un
+       document qui n'en porte pas —, et `structure` : `meta` quand le
+       moteur lit les pôles de RESPIRE dans `/api/twin9/meta`, `document`
+       sinon), `fiches` (numéro du pôle → `paquet` ou `document`, selon que
+       sa fiche est celle du paquet ou écrite depuis le document), `acces`
+       (`cle_perso`, `credits` ou `essai` ; la voie « demo » de la vue
+       s'écrit `essai`). `executerTwin6` complète, par liste blanche :
+       `fournisseur` (le registre `PROVIDER_INFO` de
+       `engine/src/providers/index.js` ; un fournisseur qu'il ne connaît
+       pas vaut `null`), `voie` (toujours `directe` : Twin6 enchaîne ses
+       appels depuis le navigateur), `transport` (`direct` ou `proxy`),
+       `modele` (le modèle demandé : `demo` pour l'essai), `maxTokens` (le
+       budget de sortie résolu), `temperature` (`null` sans réglage) et
+       `rgpd`, le tag du fournisseur au registre : `sous_conditions` pour
+       Anthropic et OpenAI, `oui` pour Mistral, `non` pour Google, xAI et
+       OpenRouter, `local` pour Ollama. Aucune clé, aucun gabarit, rien qui
+       dérive d'une clé. Le schéma refuse `voie: lots` pour un autre
+       fournisseur qu'Anthropic (règle commune avec Twin9).
+     - `execution` : `debut` et `fin` (UTC sans fuseau, comme
+       `generatedAt` ; horloge injectable `options.now`), et pour chaque
+       appel son étape (`scan-pole/N`, `kairos`), le modèle **servi** (celui
+       que nomme la réponse : l'essai impose le sien), l'arrêt normalisé
+       (`stopReason`, une classe du point 14, et `stopReasonRaw`, un
+       identifiant court ou `null`) et ses jetons ; puis l'usage total et
+       `modelesServis`. `coutMicrousd` vaut `null` : le moteur ne connaît
+       pas le montant débité, qui reste au relevé du compte — un document
+       se partage. `execution` n'existe pas sans `configuration`
+       (`dependentRequired`) : `buildMergeDocument` ignore une `execution`
+       qu'on lui passe seule, et le document reste en 1.0.0.
+     - **Importeur** (`web/src/carto/core/importers/merge.js`) : la
+       provenance de chaque variante prend pour `model` le premier modèle
+       servi (à défaut le modèle demandé) et garde `configuration` réduite à
+       sa liste blanche de champs scalaires (sans `fiches` ni coût).
+     - Fixtures partagées JS/PHP (valeurs inventées) :
+       `schemas/fixtures/twin6/configuration-execution.json`, greffée sur
+       `cartographie-merge-3-jours.json`, et les cas refusés de
+       `configuration-invalides.json` (`engine/src/validation.test.js`,
+       `api/tests/ValidationTest.php`). L'archive de compte, qui fait `$ref`
+       vers ce schéma, accepte un document configuré tel quel.
+       **Déploiement** : l'API (ses schémas) avant le front, sans quoi un
+       document 1.1.0 que le serveur valide au schéma (une révision de
+       cartographie, `annotations.php`) y serait refusé.
 
 9. **Archive de compte 1.1.0 : les jeux de l'interface de cartographie
    (2026-10-14, journal de la cartographie D-25, question 10 : « tout
@@ -338,7 +404,73 @@ par `scripts/extract-referentiel.mjs`.
     `cartes[]` : `journal`, `referentiel`, `gabarits`, `memoire`) et laisse
     ouverts leurs contenus, ceux du moteur. Absente quand le compte n'a aucun
     run ; jamais réimportée : un run se relance. Ajout rétro-compatible en
-    lecture, comme la 1.1.0.
+    lecture, comme la 1.1.0. Depuis P0-1 (§8.9), chaque run peut porter
+    `configuration` et `execution`, typés par le schéma `twin9-run`
+    (`$defs.configuration`, `$defs.execution`, référencés par `$ref`) :
+    facultatives, **absentes** — jamais nulles — pour un run lancé avant
+    elles ou fini avant elles, si bien qu'un run ancien ne rend jamais
+    l'archive invalide. Sans changement de version de l'archive.
+
+14. **Pourquoi une génération s'arrête : un vocabulaire pour tous les
+    fournisseurs, et une sortie tronquée est une erreur (P0-3,
+    2026-10-22).** Chaque fournisseur dit à sa façon pourquoi il s'arrête
+    (`stop_reason` d'Anthropic, `finish_reason` des API compatibles OpenAI,
+    `finishReason` de Gemini, `done_reason` d'Ollama). Le moteur JS n'en lit
+    qu'une **classe** : `end` (réponse finie), `max_tokens` (budget de
+    sortie atteint), `context_window` (fenêtre de contexte pleine), `refusal`
+    (refus du fournisseur ou du modèle), `other` (tout le reste, y compris
+    une valeur que personne n'a vérifiée), ou `null` (aucun arrêt donné).
+    `max_tokens` garde son nom, que testent les gardes existantes.
+    - **La table est partagée** : `schemas/fixtures/arrets/arrets-fournisseurs.json`
+      (`format`, `brut`, `classe` ; `format` est l'identifiant du
+      fournisseur, car les fournisseurs compatibles OpenAI n'ont pas les
+      mêmes valeurs documentées). N'y figurent que les valeurs relevées sur
+      les documentations officielles le 2026-10-22 ; `engine/src/providers/stop.js`
+      la reflète exactement (`stop.test.js` vérifie dans les deux sens), le
+      PHP la lira. **Ollama n'a aucune valeur vérifiée** : tous ses arrêts
+      valent `other`, une réponse Ollama coupée n'est pas encore détectée.
+      Le relais du serveur rend la valeur brute d'Anthropic ou une valeur
+      déjà normalisée : la classification est idempotente sur les classes.
+      Une valeur brute qui n'est pas un identifiant court
+      (`^[A-Za-z_]{1,32}$`) n'est jamais gardée : elle devient `other`.
+      Deux décisions : un appel d'outil Anthropic (`tool_use`) est une fin
+      normale (la démo et les crédits forcent un outil) ; `CONTINUATION` de
+      Gemini (plafond d'une requête non streamée) vaut `max_tokens`. Le refus
+      d'OpenAI (`message.refusal`) et le prompt bloqué de Gemini
+      (`promptFeedback.blockReason`) donnent `refusal`, sans que leur texte
+      ne sorte jamais de l'adaptateur.
+    - **Le résultat de `complete()`** (accès direct, relais, fournisseur
+      « crédits », mock) : `{text, usage, model, stopReason, stopReasonRaw,
+      truncated}`, `truncated` valant vrai pour `max_tokens` et
+      `context_window`. Gemini : les parts de réflexion (`thought: true`)
+      sont exclues du texte, et la sortie comptée est
+      `candidatesTokenCount + thoughtsTokenCount`, ce qui est facturé.
+    - **Une sortie tronquée est une erreur.** Elle est payée et son texte est
+      un fragment : `complete()` lève une `OutputTruncatedError`
+      (`engine/src/providers/errors.js` : `code: 'sortie_tronquee'`,
+      `status: 200`, `retryable: false`, `stopReason`, `stopReasonRaw`,
+      `limit` — `sortie` ou `contexte` —, `usage`, `maxTokens`,
+      `textLength`), en dehors des reprises : aucun second appel. Le
+      fragment n'est gardé que dans une propriété non énumérable, et le
+      message ne porte aucun contenu. Un appelant qui veut le fragment passe
+      `allowTruncated: true`. Le fournisseur « crédits » de Twin6 compte le
+      coût de l'appel (`onCout`) avant de lever. Un refus est classé, jamais
+      levé : l'appelant décide.
+    - **Ce que fait chaque appelant** : `executerTwin6` lève une erreur qui
+      nomme l'étape et joint `etape`, `usageRun` (l'appel tronqué compris) et
+      `calls`, et fait d'un refus une erreur explicite (`code: 'refus'`) ;
+      `extractDay` ne refait jamais un appel tronqué (un second appel, au
+      maximum de sortie du modèle, serait coupé et payé de nouveau), garde
+      sa consigne « réduisez le texte de la journée », et un kairos tronqué
+      se dégrade en `null` sous `kairosOptional` ; le banc d'essai, le
+      lanceur de runs et le runner Node comptent l'usage de l'appel tronqué,
+      et le banc le montre même quand le run échoue : `runVersionOnDays`
+      joint à l'erreur l'usage cumulé jusqu'à elle (`usageRun`, avec ses
+      `mesures`), que l'IHM affiche avec son coût sous le message ;
+      la démo ne le refait pas (statut 200) et dit « Votre texte est trop
+      long pour l'essai » ; la relance du dialogue de la cartographie dit
+      « Relance coupée » ; le bac à sable rend au paquet tiers un
+      `llm-error`, jamais le fragment. Aucun n'emploie `allowTruncated`.
 
 ## 5. Note d'outillage
 
@@ -604,6 +736,61 @@ public) l'implémente aussi.
   `passe` la reprendrait) ; et `poles`, les pôles du référentiel du run
   (avant T16, ceux du jeu). Rien n'est écrit.
 
+**Une sortie tronquée est une panne** (P0-2, 2026-10-22). Une réponse
+qu'Anthropic arrête sur `max_tokens` (le budget de sortie de l'étape est
+atteint) ou sur `model_context_window_exceeded` (la fenêtre de contexte du
+modèle est pleine) entre au journal comme une panne
+(`AnthropicCaller::lireMessage`, en direct comme par lots), au même titre
+qu'un refus du modèle :
+
+- **jamais relancée** : avec le même prompt et le même budget, la troncature
+  se reproduirait, et la sortie entière serait payée une seconde fois. La
+  seule tentative est celle comptée au départ ; par lots, l'appel n'est pas
+  resoumis ;
+- **payée** : son coût est celui de l'usage que rend Anthropic, jetons de
+  sortie compris, réconcilié avec sa réserve comme celui d'une réponse
+  (§8.5) ;
+- **sans texte** : le début de réponse n'est jamais journalisé ; la raison
+  de la panne (`twin9_appels.panne`) est un libellé du code, court et stable,
+  `réponse tronquée : budget de sortie atteint (max_tokens)` ou `réponse
+  tronquée : fenêtre de contexte pleine`, puisque le moteur la transmet aux
+  cartographes et au prompt d'un rapporteur ;
+- **comptée** à part : `tronques`, au total et par étape, dans les compteurs
+  du run (`RunRepository`, sous-ensemble de `pannes`), et dans ceux de la
+  tranche (`twin9Tronques`).
+
+C'est un **écart voulu avec la v9.8**, dont `AnthropicBackend`
+(`aurora/backends.py`) prend le texte coupé pour une réponse sans regarder
+`stop_reason` : un texte tronqué ne peut plus entrer dans une carte, ni être
+repris plus tard comme « inchangé ». La parité n'en est pas touchée :
+l'oracle 02-cloud n'enregistre aucun arrêt, et ses rejeux répondent
+`end_turn`. **Effet mémoire** : une journée dont un appel est en panne
+n'entre pas dans la mémoire de la carte ; le run suivant la réinstruit,
+avec ses appels. **Effet sur le moteur** : après une panne, le moteur peut
+redemander l'artefact sous `<id>#2` (un greffier, par exemple) ; ce second
+appel, facturé lui aussi, a toutes les chances d'être coupé de même. Le
+remède n'est donc pas de relancer le run tel quel : **augmentez le
+`budget_sortie` de l'étape** dans le profil (§7.2), puis relancez. **Ce
+remède a un coût** : le budget de sortie entre dans l'empreinte des réglages
+(§8.2, `CallSettings::empreinte` hache étages et étapes) ; l'empreinte
+changée, le run suivant instruit de nouveau, et paie, **toutes** les
+journées de la carte que porte le portfolio, pas seulement celle en panne
+— l'aperçu du lancement le dit (« N journées sur M à instruire (… changées) »)
+et en prévoit le coût. Un appel tronqué de la fusion (relectures,
+arpenteur) n'est d'aucune journée : la fusion se refait à chaque run. La
+page du run nomme les étapes des sorties tronquées quand les compteurs
+d'un run fini les donnent (`compteurs.par_etape`, ses étapes du moteur
+rapportées à celles du profil), et le dit.
+
+L'arrêt brut reste dans `twin9_appels.stop_reason`, **assaini** avant
+d'être écrit (`Fournisseurs\Arret::assainir`) : un identifiant court
+(`^[A-Za-z_]{1,32}$`) tel quel, toute autre valeur `other`, un arrêt absent
+`NULL` ; jamais un texte du fournisseur. Sa classe (`Arret::classe`) suit un
+vocabulaire commun à tous les fournisseurs : `end` (`end_turn`,
+`stop_sequence`, `tool_use`), `max_tokens`, `context_window`
+(`model_context_window_exceeded`), `refusal`, `other` (`pause_turn`, toute
+valeur inconnue), ou nulle.
+
 ### 8.1 Les réglages d'un run
 
 `twin9_runs.reglages` garde la copie du profil (`profil`, §7 : réglages
@@ -629,7 +816,12 @@ flottant, comme en Python, où il n'est pas `1` (`JSON_PRESERVE_ZERO_FRACTION`).
 
 Chaque appel part avec les réglages de son étape (`CallSettings`) : l'étape
 du moteur (`Call::step`, la tâche de la v9.8) donne l'étape du profil, puis
-son étage, comme au §7.2.
+son étage, comme au §7.2. Ces réglages nomment aussi le fournisseur de
+l'appel et sa voie, appel par appel : `lots` si le fournisseur est Anthropic et
+que le profil a choisi `voie: lots`, `directe` sinon. Le profil ne nomme pas
+encore de fournisseur (le schéma le refuse) : tout appel part chez Anthropic,
+dans la voie du profil (registre `Twin9\Fournisseurs\Fournisseurs`, où seul
+Anthropic est ouvert).
 
 | `step` du moteur | Étape du profil |
 |---|---|
@@ -682,16 +874,17 @@ une suivante le relève.
 - **La vérification.** Avant le premier lot d'un run, un appel direct minimal
   (une phrase fixe, `AnthropicBatches::VERIFICATION`) part pour chaque
   combinaison de modèle, budget de sortie, effort et réflexion que le profil
-  peut employer (`CallSettings::combinaisons`). Un refus (HTTP 400) arrête le
-  run, avec la raison que donne l'API ; une erreur du fournisseur le fait
-  attendre.
+  peut employer par lots (`CallSettings::combinaisons('lots')`). Un refus
+  (HTTP 400) arrête le run, avec la raison que donne l'API ; une erreur du
+  fournisseur le fait attendre.
 - **La vie d'un lot** (`twin9_lots`) : `soumission`, la ligne écrite avant
   que le lot parte ; `en_cours`, son identifiant Anthropic connu ; `releve`,
   ses résultats écrits au journal ; `supprime`, supprimé chez Anthropic.
   `annulation` vaut pour un run qui n'est plus en cours.
 - **Le relevé.** La tranche demande où en est chaque lot. Un lot fini voit ses
   résultats entrer au journal comme ceux des appels directs
-  (`AnthropicCaller::lireMessage`), au coût de l'usage rendu, à moitié prix.
+  (`AnthropicCaller::lireMessage`), au coût de l'usage rendu, à moitié prix ;
+  un résultat tronqué est une panne, jamais resoumise (§8, P0-2).
   Une requête en erreur repart dans un lot suivant, sa tentative comptée
   (trois, puis la panne) ; une requête expirée aussi, sa tentative rendue.
   Le lot est ensuite supprimé chez Anthropic.
@@ -723,7 +916,8 @@ une suivante le relève.
   tête du dépôt `TWIN_V9_DIR`, sinon
   la première ligne de son fichier `COMMIT`, sinon nul). Il garde aussi sa
   visibilité (`privee` ou `cartographe`) et la date de l'accord (`accord_at`),
-  sans lequel rien ne part.
+  sans lequel rien ne part. Depuis P0-1, il garde aussi sa **configuration**
+  (§8.9), écrite au lancement et jamais modifiée, distincte de l'attestation.
 - **Le suivi** (`GET /api/twin9/runs/{id}`) lit le journal : appels par état,
   journées finies (cartes du jour écrites), fusion faite, lots chez Anthropic,
   run antérieur de la même carte encore en cours ; `retard` dit en mots ce qui
@@ -735,7 +929,10 @@ une suivante le relève.
   sans les jobs de masse ; elle finit plus tôt quand ces runs n'attendent plus
   rien. Annuler arrête un run en cours
   (ses lots sont annulés puis supprimés, §8.3) ; reprendre relance un run
-  annulé ou arrêté, depuis son journal.
+  annulé ou arrêté, depuis son journal. Depuis P0-1, le suivi porte
+  `configuration_empreinte` (l'empreinte de sa configuration, §8.9 ; nulle
+  pour un run d'avant elle), et rien d'autre de ses blocs : la page
+  l'interroge sans cesse.
 - **Les résultats** (`Twin9\Resultats`, `GET /api/twin9/runs/{id}/resultats`) :
   ses sorties, et pour chaque journée que sa fusion nomme (`journee`) sans
   qu'il en ait écrit la carte, la carte que la mémoire garde (`journees/<jour>`,
@@ -748,10 +945,15 @@ une suivante le relève.
   se lit sa carte : les pôles et les compétences que son moteur a lus,
   `{id, version, label, poles: [{num, nom, couleur}], competences: [{code,
   nom, pole}]}`, jamais une fiche, un préambule ni une description ; nul pour
-  un run d'avant T16.
+  un run d'avant T16. Depuis P0-1, `run` porte `configuration` et
+  `execution` (§8.9), nuls pour un run d'avant elles ; un cartographe lié
+  les lit sans prix, coût, plafond ni clé.
 - **Le document `twin9-run`** que la page remet à l'interface de cartographie
-  (`twin9RunFiles`, `web/src/lib/interface-handoff.js`) : `kind: "twin9-run"`,
-  `run` (`id`, `journal`, `mode`, `attestation`, dates), `referentiel` (celui
+  (`twin9RunFiles`, `web/src/lib/interface-handoff.js` ; schéma
+  `schemas/twin9-run.schema.json` depuis P0-1, racine souple : `kind` et
+  `run` imposés) : `kind: "twin9-run"`,
+  `run` (`id`, `journal`, `mode`, `attestation`, dates ; depuis P0-1
+  `configuration` et `execution`, §8.9), `referentiel` (celui
   du run depuis T17, §10 ; le publié avant), `carto_evolutive` (la fusion), `journees` (chaque carte du jour,
   par journée) et `memoire` (les journées reprises). L'interface en fait une
   journée par carte du jour, ses verdicts établis, renvoyés ou jugés, chacun
@@ -760,7 +962,10 @@ une suivante le relève.
   "journee"`), et les synthèses viennent de la fusion
   (`carto/core/importers/twin9-run.js`). Depuis T17, la page le remet pour
   un run de tout référentiel (§10) ; de T16 à T17, pour un run de RESPIRE
-  seul.
+  seul. Depuis P0-1, l'interface ne garde de `run.configuration` et
+  `run.execution` qu'une liste blanche (§8.9), et chaque journée dit ses
+  modèles et son jeu de gabarits (`provenance.model`, `provenance.prompt`,
+  `provenance.configurationRef`).
 
 ### 8.5 Coûts, plafonds, relance, purge et export (T10)
 
@@ -806,7 +1011,8 @@ une suivante le relève.
   de ses appels), `budget_usd`, `duree_minutes`.
 - **Les compteurs** d'un run fini gagnent `journees` (les journées qu'il a
   instruites) et `duree_s` (ses secondes actives, période par période :
-  `twin9_runs.actif_s`).
+  `twin9_runs.actif_s`), et, depuis P0-2 (§8), `tronques`, au total et dans
+  `par_etape` : les pannes d'une sortie tronquée.
 - **L'aperçu** (`POST /api/twin9/runs/apercu`, `{profil, portfolio}`, ce que
   demande un lancement, l'accord excepté ; rien n'est gardé) rend
   `{journal, mode, voie, cle, journees: {total, nouvelles, changees},
@@ -834,9 +1040,11 @@ une suivante le relève.
   `visibilite`, ses dates, `attestation`, `profil` (sa copie), `portfolio
   {nom, texte}`, `compteurs`, `appels[]` (son journal : `appel`, `etape`,
   `modele`, `modele_envoye`, `modele_servi`, `statut`, `tentatives`,
-  `reponse`, `panne`, `stop_reason`, jetons, `cout_microusd`, `duree_ms`,
-  dates ; jamais un prompt ni une clé), `sorties` (par chemin) et
-  `evaluation` (son évaluation, §8.7 ; nulle tant qu'il n'est pas fini) ; chaque
+  `reponse`, `panne`, `stop_reason` — assaini, §8 —, jetons, `cout_microusd`,
+  `duree_ms`, dates ; jamais un prompt ni une clé), `sorties` (par chemin) et
+  `evaluation` (son évaluation, §8.7 ; nulle tant qu'il n'est pas fini), et
+  depuis P0-1 `configuration` et `execution` (§8.9), chacune **omise** quand
+  le run n'en a pas ; chaque
   carte avec `journal`, `referentiel`, `gabarits`, `created_at` et `memoire`
   (le texte JSON de chaque clé). Ce que le moteur et les modèles ont écrit
   passe le filtre de fuite contre tous les jeux de gabarits des runs du
@@ -1172,6 +1380,141 @@ T16, plan validé par Christian le 2026-10-20).
   - La lentille du « Spécialiste du pôle » est écrite dans le code du moteur :
     son empreinte suit son texte, pas une version déclarée comme celle de la
     banque (`PERSONAS_VERSION`).
+
+### 8.9 Configuration et exécution d'un run (P0-1)
+
+Deux blocs, à côté de l'attestation (§8.4), qu'ils ne remplacent pas
+(migration `031_twin9_configuration.sql`, schéma `schemas/twin9-run.schema.json`,
+`$defs.configuration` et `$defs.execution`, stricts : toute clé inconnue est
+refusée ; fixture inventée `schemas/fixtures/twin9-configuration-exemple.json`).
+
+- **La configuration** (`Twin9\RunConfiguration`, `twin9_runs.configuration`,
+  JSON compressé comme `reglages` : octets et `1.0` gardés) est ce avec quoi
+  le run a été lancé. Elle est écrite **une fois**, au lancement, dans le
+  verrou d'admission, après que l'admission a fixé les journées (`jours` est
+  celui que lit le moteur) ; une reprise ne la change pas. Construite champ
+  par champ (liste blanche), elle porte :
+  - `schema` (`twin9-configuration/1`), `empreinte`, `sel` (16 octets tirés
+    au hasard au lancement, en hexadécimal), `lance_at` (l'horloge du run) ;
+  - `moteur` : `commit`, `protocole` (`Journee::VERSION_PROTOCOLE`),
+    `personas` (`{version, empreinte}` de la banque des jurés), `scan`
+    (`Arpenteur::VERSION_SCAN`) — lus par l'appelant (`Lancement`), chacun
+    sous garde, nuls quand le moteur ne les donne pas (le moteur factice des
+    tests) ;
+  - `profil` : `id`, `nom`, `mode`, `empreinte_reglages`
+    (`CallSettings::empreinte`, §8.2, celle de la plateforme du lancement),
+    `signature_evaluations` (`Evaluations::signature`, §8.7) ;
+  - `execution_prevue` : `voie_anthropic` (la voie du profil), `cle`
+    (`instance` ou `personnelle`, jamais la clé), `parallelisme`,
+    `plafonds {budget_usd, duree_minutes}`, `jours`, `rescan`, `memoire` ;
+  - `fournisseurs` : chaque fournisseur qu'atteignent ses appels
+    (`CallSettings::combinaisons()`), `{libelle, rgpd, voie}` (`mixte` s'il
+    a les deux voies) ;
+  - `appels` : `CallSettings::resume()` — `etages`, `etapes`,
+    `second_ressort`, `lecteurs` (chacune un **objet**, quelles que soient
+    ses clés : un lecteur nommé « 0 », que le motif du profil admet, n'en
+    fait pas une liste), `defaut` —, chaque réglage
+    `{fournisseur, voie, modele, budget_sortie, effort, reflexion}` tel que
+    l'appel part (`budget_sortie` est le `max_tokens` envoyé) ;
+  - `college` (`nom`, `famille`, `passes`, `poids`), `backends`
+    (`tribunal`, `rapide` : `kind`, `model`, `model_mini`), `algorithme`
+    (les paramètres de `MoteurReglages::ALGORITHME`) ;
+  - `referentiel` (`id`, `version`, `label`, `empreinte`) et `gabarits`
+    (`jeu`, `versions`, `empreinte`), jamais le bloc du référentiel (fiches,
+    préambules) ni un gabarit ;
+  - `prix` : `{base: "facture", unite: "USD/MTok", remise_lots: 0.5,
+    releve: {jour, statut, source} | null, grille}`, la grille ne gardant
+    que les modèles qu'emploient ses appels, **tels que facturés** (prix
+    catalogue × marge avec la clé de l'instance, prix catalogue avec la clé
+    de l'utilisateur), palier des longs prompts compris. Jamais la marge ni
+    le prix catalogue en tant que tels ; jamais le message d'erreur d'un
+    relevé.
+
+  Son `empreinte` vaut `substr(sha256(json(canonique(bloc sans empreinte ni
+  lance_at))), 0, 16)`, clés triées à toute profondeur, `1.0` gardé flottant,
+  son `sel` compris : relue depuis ce que garde le run, elle est la même. Le
+  suivi n'en sert que cette empreinte (`configuration_empreinte`, §8.4). Le
+  **sel** n'est lu que du propriétaire : un cartographe lié lit la même
+  empreinte, mais sans ce que le bloc lui cache (`prix`, la clé, les
+  plafonds), qui tient en peu de valeurs (deux clés, une marge au centième,
+  des montants ronds, un relevé daté de la veille) ; sans le sel, il les
+  retrouverait par essais, en recalculant l'empreinte de chaque candidat.
+- **L'exécution** (`Twin9\RunExecution`) dit comment le run s'est déroulé :
+  `schema` (`twin9-execution/1`), `source` (`fige` : figée par `terminer()`,
+  avant que le journal ne parte ; `journal` : calculée à la demande depuis le
+  journal, pour un run en cours, arrêté ou annulé), `partiel` (vrai pour un
+  run lancé avant la migration 031 : sans configuration, ses passes, son
+  temps de moteur et son premier commit sont incomplets), `statut`,
+  `debut_at`, `fin_at`, `duree_active_s`, `passes` et `moteur_ms` (les passes
+  du moteur et leur temps, `twin9_runs.passes` et `moteur_ms`, comptés
+  chacune dès qu'elle est jouée, la passe finale avant que `terminer()` ne
+  les fige : un tick qui meurt — tué, à court de temps ou de mémoire, ou
+  une exception sortie de la tranche — ne perd que la passe qu'il jouait ;
+  ce sont donc des minimums, d'une passe au plus par tick mort, sans que
+  `partiel` le dise), `appels {total, repondus, pannes,
+  tronques, refus, tentatives}`, `jetons {entree, sortie}`, `cout_microusd`,
+  `lots`, puis `par_voie`, `par_fournisseur`, `par_modele` (chacun
+  `{appels, pannes, tronques, jetons_entree, jetons_sortie, cout_microusd}`),
+  `servis` (modèles servis par modèle demandé), `arrets` (les classes d'arrêt
+  du §8 : `end`, `max_tokens`, `context_window`, `refusal`, `other`),
+  `moteur {commit_debut, commit_fin}` (`commit_fin` nul tant qu'il n'est pas
+  fini) et `reprises[] {at, budget_usd}` (chaque reprise ajoute la sienne,
+  dans la transaction de la reprise ; avant la fin, la colonne
+  `twin9_runs.execution` ne garde qu'elles). Ses totaux sont ceux de
+  `compteurs` (§8.5). La voie se lit à `custom_id` (qu'un appel d'un lot
+  garde, `lot_id` repassant à NULL avec son lot) ; le fournisseur vaut
+  `anthropic` tant qu'aucun autre n'est câblé. Toute table par nom est un
+  **objet**, vide ou non (`{}`, jamais `[]`). Figer ne retient jamais un
+  run : en cas d'échec (sous SAVEPOINT), le run finit, son exécution reste
+  nulle, et seule la classe de l'exception est journalisée. Un run fini
+  n'a d'exécution que si sa colonne porte un bloc figé (`schema`
+  `twin9-execution/1`, `source: "fige"`, `RunRepository::figee`) : un run
+  qu'une release précédente a fini, après un retour arrière (ADR-008), y
+  laisse les reprises qu'avait écrites celle-ci, et son exécution est nulle
+  — jamais servie, ni exportée, comme un bloc.
+- **Qui les lit.** Le propriétaire, entières, dans `resultats.run` (§8.4)
+  et dans l'export (§8.5), où chacune est omise quand elle est nulle. Un
+  cartographe lié (visibilité `cartographe`) les lit sans ce que paie le
+  propriétaire ni comment : ni `prix`, ni `execution_prevue.plafonds`, ni
+  `execution_prevue.cle`, ni aucun `cout_microusd`, ni le `budget_usd` des
+  reprises ; ni le `sel` de l'empreinte. L'administrateur n'en voit rien
+  (§8.4 : des compteurs).
+- **La page du run** (`web/src/views/twin9/ConfigurationDuRun.jsx`), celle
+  de son seul propriétaire (le suivi répond 404 à tout autre) : le suivi
+  n'en portant que l'empreinte, « Configuration », présente pour **tout**
+  run, lit les deux blocs dans les résultats quand on l'ouvre, de nouveau à
+  chaque ouverture tant que le run est en cours (ses comptes avancent ;
+  jamais au rythme du suivi : les résultats portent les sorties), et quand
+  son statut change ; elle dit chaque réglage de `appels` (rôle,
+  fournisseur et son étiquette RGPD, voie, modèle, budget de sortie), le jeu
+  de gabarits, le référentiel, la clé, puis l'exécution (appels, pannes,
+  tronqués par fournisseur et par voie, passes, coût), d'où viennent ses
+  comptes (figés ; lus dans le journal d'un run en cours, ou arrêté), et le
+  conseil des sorties tronquées (§8). Un run lancé avant P0-1 n'a pas de
+  configuration : elle le dit, et montre son exécution, partielle (un run
+  en cours au déploiement de la migration 031). Un cartographe lié lit les
+  blocs filtrés dans les résultats (l'API) ; la vue, chaque ligne tenant à
+  la présence de son champ (sans `cle` ni `cout_microusd`, elle manque),
+  s'y prête si on la réutilise, mais aucune page ne la lui montre.
+- **Le jeu de cartographie** (`importTwin9Run`, document `twin9-run`, §8.4)
+  se partage et s'archive : il ne garde des deux blocs qu'une **liste
+  blanche**, champ par champ et en valeurs simples, sous la clé
+  `<run>|configuration` de `runDetails` (`kind: "twin9-run-meta"`, jamais
+  comptée comme une délibération) : `configuration {empreinte,
+  fournisseurs {libelle, rgpd, voie}, appels (les six champs de chaque
+  réglage), referentiel {id, version, label, empreinte}, gabarits {jeu}}` et
+  `execution {statut, source, partiel, passes, appels {total, repondus,
+  pannes, tronques, refus}, par_fournisseur, par_voie {appels, pannes,
+  tronques}}`. Jamais `prix`, `execution_prevue` (clé, plafonds), le `sel`,
+  un coût, des jetons, les reprises, l'admission de l'attestation ni
+  l'empreinte du jeu de gabarits. Chaque journée du run porte `provenance.model`
+  (« profond: …, rapide: …, lecteurs: … », le fournisseur devant un modèle
+  tiers), `provenance.prompt` (« gabarits <jeu> »), `configurationRef` et
+  `configuration {empreinte, fournisseurs, voies}` ; `variantId` et `digest`
+  n'en dépendent pas. Sans configuration, l'import est celui d'avant P0-1.
+- **Écart signalé, non corrigé ici** : `attestation.admission` porte déjà
+  `reserve_microusd` et `engagement_microusd`, que lit aussi un cartographe
+  lié.
 
 ## 9. Plusieurs référentiels (T15)
 

@@ -19,6 +19,17 @@
 //
 // Son référentiel est celui du run (T17) : RESPIRE ou celui d'une autre
 // structure, 5 pôles lettrés, 9 pôles… Le jeu neuf qui le reçoit l'adopte.
+//
+// Depuis P0-1 (docs/contrats.md §8.9), le run porte sa configuration et son
+// exécution. Le jeu n'en garde qu'une LISTE BLANCHE, car il se partage et
+// s'archive : l'empreinte, les fournisseurs avec leur voie et leur étiquette
+// RGPD, les réglages de chaque appel, le référentiel, le nom du jeu de
+// gabarits, et de l'exécution les seuls comptes d'appels — jamais un prix,
+// un coût, un plafond, la clé ni l'admission de l'attestation. Ils vont sous
+// la clé « <run>|configuration » des délibérations de run (qui ne la compte
+// pas comme une délibération) ; chaque journée y renvoie
+// (`provenance.configurationRef`) et dit ses modèles et son jeu de gabarits.
+// Sans configuration (un run d'avant P0-1), rien ne change.
 
 import { twin9Dossier, twin9ToMergeDocument } from '../../../lib/twin9/mapper.js'
 import { importSiteMerge } from './merge.js'
@@ -45,6 +56,109 @@ export function cleDeJure(nom) {
 
 const md = (texte) => (typeof texte === 'string' && texte.trim() !== '' ? { markdown: texte, preamble: '' } : null)
 
+const estObjet = (x) => Boolean(x && typeof x === 'object' && !Array.isArray(x))
+const texteOuNull = (x) => (typeof x === 'string' ? x : null)
+const entier = (x) => (Number.isInteger(x) ? x : 0)
+
+/** Les champs nommés d'un objet, et seulement eux, quand leur valeur est simple (texte, nombre, booléen, null). */
+function choisir(source, champs) {
+  const out = {}
+  for (const champ of champs) {
+    const v = source?.[champ]
+    if (v === null || ['string', 'number', 'boolean'].includes(typeof v)) out[champ] = v
+  }
+  return out
+}
+
+/** Une table par nom (fournisseurs, réglages, comptes) : chaque entrée réduite à ses champs nommés. */
+function table(source, champs) {
+  if (!estObjet(source)) return {}
+  return Object.fromEntries(
+    Object.entries(source)
+      .filter(([, v]) => estObjet(v))
+      .map(([k, v]) => [k, choisir(v, champs)]),
+  )
+}
+
+/** Ce avec quoi part un appel (CallSettings::pour(), docs/contrats.md §8.9). */
+const CHAMPS_REGLAGE = ['fournisseur', 'voie', 'modele', 'budget_sortie', 'effort', 'reflexion']
+const CHAMPS_COMPTE = ['appels', 'pannes', 'tronques']
+
+/**
+ * La configuration d'un run telle que le jeu la garde (P0-1, critique de la
+ * PR A) : une liste blanche, champ par champ — l'empreinte, les fournisseurs
+ * (libellé, étiquette RGPD, voie), les réglages de chaque appel, le
+ * référentiel et le nom du jeu de gabarits. Jamais `prix`,
+ * `execution_prevue` (la clé, les plafonds), `profil`, `moteur`,
+ * `algorithme` ni les versions des gabarits.
+ * @param {unknown} configuration `run.configuration` des résultats
+ * @returns {object | null} null sans configuration (un run d'avant P0-1)
+ */
+export function configurationGardee(configuration) {
+  if (!estObjet(configuration)) return null
+  const appels = estObjet(configuration.appels) ? configuration.appels : {}
+  return {
+    empreinte: texteOuNull(configuration.empreinte),
+    fournisseurs: table(configuration.fournisseurs, ['libelle', 'rgpd', 'voie']),
+    appels: {
+      etages: table(appels.etages, CHAMPS_REGLAGE),
+      etapes: table(appels.etapes, CHAMPS_REGLAGE),
+      second_ressort: table(appels.second_ressort, CHAMPS_REGLAGE),
+      lecteurs: table(appels.lecteurs, CHAMPS_REGLAGE),
+      defaut: estObjet(appels.defaut) ? choisir(appels.defaut, CHAMPS_REGLAGE) : null,
+    },
+    referentiel: estObjet(configuration.referentiel) ? choisir(configuration.referentiel, ['id', 'version', 'label', 'empreinte']) : null,
+    gabarits: { jeu: texteOuNull(configuration.gabarits?.jeu) },
+  }
+}
+
+/**
+ * L'exécution d'un run telle que le jeu la garde : ses comptes d'appels
+ * (pannes, sorties tronquées, refus), par fournisseur et par voie, et ses
+ * passes — jamais un coût, des jetons, les budgets de ses reprises.
+ * @param {unknown} execution `run.execution` des résultats
+ * @returns {object | null}
+ */
+export function executionGardee(execution) {
+  if (!estObjet(execution)) return null
+  return {
+    statut: texteOuNull(execution.statut),
+    source: texteOuNull(execution.source),
+    partiel: execution.partiel === true,
+    passes: entier(execution.passes),
+    appels: choisir(execution.appels, ['total', 'repondus', 'pannes', 'tronques', 'refus']),
+    par_fournisseur: table(execution.par_fournisseur, CHAMPS_COMPTE),
+    par_voie: table(execution.par_voie, CHAMPS_COMPTE),
+  }
+}
+
+/** Les modèles d'un run, par étage : « profond: m, rapide: m, lecteurs: m » (le fournisseur devant un modèle tiers). */
+function modelesDuRun(etages) {
+  const parts = []
+  for (const etage of ['profond', 'rapide', 'lecteurs']) {
+    const r = etages[etage]
+    if (typeof r?.modele !== 'string') continue
+    const fournisseur = typeof r.fournisseur === 'string' && r.fournisseur !== 'anthropic' ? `${r.fournisseur}:` : ''
+    parts.push(`${etage}: ${fournisseur}${r.modele}`)
+  }
+  return parts.length > 0 ? parts.join(', ') : null
+}
+
+/** Ce que chaque journée d'un run configuré dit de lui : ses modèles, son jeu de gabarits, le renvoi à sa configuration. */
+function provenanceDeConfiguration(conf, cle) {
+  const voies = new Set()
+  for (const f of Object.values(conf.fournisseurs)) {
+    if (f.voie === 'mixte') ['directe', 'lots'].forEach((v) => voies.add(v))
+    else if (typeof f.voie === 'string') voies.add(f.voie)
+  }
+  return {
+    model: modelesDuRun(conf.appels.etages),
+    prompt: conf.gabarits.jeu ? `gabarits ${conf.gabarits.jeu}` : null,
+    configurationRef: cle,
+    configuration: { empreinte: conf.empreinte, fournisseurs: Object.keys(conf.fournisseurs).sort(), voies: [...voies].sort() },
+  }
+}
+
 /**
  * @param {object} doc document twin9-run
  * @param {{fileName?: string, now?: string}} [opts]
@@ -59,7 +173,20 @@ export function importTwin9Run(doc, { fileName = 'twin9-run.json', now = new Dat
     report.push({ severity: 'warning', code: 'twin9-referentiel-illisible', message: `Référentiel du run illisible (${erreurs.slice(0, 3).join(' ; ')}) : le jeu garde le sien` })
   }
   const runId = `twin9:${doc.run?.id ?? doc.carto_evolutive?.journal_id ?? 'run'}`
-  const provenance = { source: 'twin9', run: runId, files: [fileName], model: null, prompt: null, analysedAt: doc.run?.finished_at ?? null, importedAt: now }
+  // sa configuration (P0-1), par liste blanche : ses journées disent ses modèles et son jeu de gabarits
+  const configuration = configurationGardee(doc.run?.configuration)
+  const configurationRef = `${runId}|configuration`
+  const trace = configuration ? provenanceDeConfiguration(configuration, configurationRef) : null
+  const provenance = {
+    source: 'twin9',
+    run: runId,
+    files: [fileName],
+    model: trace?.model ?? null,
+    prompt: trace?.prompt ?? null,
+    analysedAt: doc.run?.finished_at ?? null,
+    importedAt: now,
+    ...(trace ? { configurationRef, configuration: trace.configuration } : {}),
+  }
 
   // Un run arrêté avant sa fin (T10 : son budget, sa durée, le crédit) : sa carte le dit.
   if (doc.incomplete) {
@@ -103,7 +230,7 @@ export function importTwin9Run(doc, { fileName = 'twin9-run.json', now = new Dat
       continue
     }
     const v = fusion.variants.find((x) => x.date === date)
-    v.summary.provenance = { ...v.summary.provenance, source: 'twin9', run: runId }
+    v.summary.provenance = { ...v.summary.provenance, source: 'twin9', run: runId, ...(trace ?? {}) }
     variants.push(v)
     report.push({ severity: 'info', code: 'twin9-sans-carte-du-jour', message: `${date} : journée sans carte du jour, ses verdicts sans dossier`, date })
   }
@@ -111,6 +238,13 @@ export function importTwin9Run(doc, { fileName = 'twin9-run.json', now = new Dat
     report.push({ severity: 'blocking', code: 'twin9-illisible', message: `${fileName} : aucune journée datée dans ce run` })
   }
   report.push({ severity: 'info', code: 'twin9-run', message: `Run Twin9 ${doc.run?.id ?? ''} : ${variants.length} journée(s), ${runDetails.length} délibération(s)` })
+  // après le compte des délibérations, dont elle n'est pas
+  if (configuration && variants.length > 0) {
+    runDetails.push({
+      key: configurationRef,
+      value: { kind: 'twin9-run-meta', run: runId, configuration, execution: executionGardee(doc.run?.execution) },
+    })
+  }
   return { variants, narratives: fusion.narratives, runDetails, referential, report }
 }
 

@@ -392,9 +392,20 @@ return function (App $app): void {
     // (that class is the source of truth; this file must stay self-contained
     // for the release). Both are covered by tests asserting the same effects.
     // Recommended frequency: DAILY.
+    //
+    // Also opened by the tick's own token (WORKER_TICK_TOKEN,
+    // X-Worker-Tick-Token, 2026-10-22): a scheduled task that triggers the
+    // tick may trigger this housekeeping too, without holding the migration
+    // token — it only purges what has expired, and says how much.
     // ------------------------------------------------------------------
     $app->post('/admin/maintenance', function (Request $request, Response $response) use ($json, $adminGate): Response {
-        if (($denied = $adminGate($request, $response)) !== null) {
+        $tickToken = Env::get('WORKER_TICK_TOKEN');
+        $givenTick = $request->getHeaderLine('X-Worker-Tick-Token');
+        if ($tickToken !== '' && $givenTick !== '' && hash_equals($tickToken, $givenTick)) {
+            if (!Db::isConfigured()) {
+                return $json($response, ['error' => 'Database not configured'], 503);
+            }
+        } elseif (($denied = $adminGate($request, $response)) !== null) {
             return $denied;
         }
 

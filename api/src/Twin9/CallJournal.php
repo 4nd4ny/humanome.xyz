@@ -4,6 +4,7 @@ declare(strict_types=1);
 
 namespace Humanome\Twin9;
 
+use Humanome\Twin9\Fournisseurs\Arret;
 use PDO;
 use Twin9\Run\Call;
 use Twin9\Run\Journal;
@@ -24,6 +25,9 @@ use Twin9\Run\Journal;
  * A call holds its worst case from the moment it leaves (T10, RunCosts): an
  * attempt that brings no outcome keeps it for the next, an outcome leaves it
  * for RunCosts to settle.
+ *
+ * The stop reason is kept raw, a short identifier only (Arret::assainir):
+ * never a provider's text.
  */
 final class CallJournal implements Journal
 {
@@ -264,7 +268,7 @@ final class CallJournal implements Journal
             $reponse === null ? null : RunRepository::compress($reponse),
             $panne === null ? null : mb_substr($panne, 0, 255),
             isset($mesure['modele_servi']) ? mb_substr((string) $mesure['modele_servi'], 0, 80) : null,
-            isset($mesure['stop_reason']) ? mb_substr((string) $mesure['stop_reason'], 0, 32) : null,
+            isset($mesure['stop_reason']) ? Arret::assainir((string) $mesure['stop_reason']) : null,
             $mesure['tokens_in'] ?? null,
             $mesure['tokens_out'] ?? null,
             $mesure['cout_microusd'] ?? null,

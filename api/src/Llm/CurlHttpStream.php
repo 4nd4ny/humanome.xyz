@@ -122,7 +122,6 @@ final class CurlHttpStream implements HttpStream
             if ($this->multi !== null) {
                 curl_multi_remove_handle($this->multi, $this->handle);
             }
-            curl_close($this->handle);
             $this->handle = null;
         }
         if ($this->multi !== null) {

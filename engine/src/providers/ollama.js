@@ -1,5 +1,9 @@
 // humanome engine — providers: Ollama local adapter (cahier §5).
 // DOM-free ESM module (ADR-001). Local /api/chat endpoint, no API key.
+// Its done_reason values are not in the verified table yet (stop.js): every
+// Ollama stop is 'other', a cut answer is not detected.
+
+import { classifyStop } from './stop.js'
 
 export const OLLAMA_BASE_URL = 'http://localhost:11434'
 
@@ -27,7 +31,8 @@ export const ollamaAdapter = {
         inputTokens: data.prompt_eval_count ?? 0,
         outputTokens: data.eval_count ?? 0
       },
-      model: data.model ?? requestedModel
+      model: data.model ?? requestedModel,
+      ...classifyStop('ollama', data.done_reason)
     }
   }
 }

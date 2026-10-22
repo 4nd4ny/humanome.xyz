@@ -19,8 +19,13 @@ declare(strict_types=1);
  * WORKER_PROVIDER=mock (local dev without a key), ANTHROPIC_API_KEY
  * (provider 'humanome'), SODIUM_MASTER_KEY (endpoint keys at rest).
  *
+ * After the slice, once a UTC day where ANTHROPIC_API_KEY is set, it reads
+ * Anthropic's prices into the grid, as the route does (Twin9\TarifsAnthropic,
+ * 2026-10-22).
+ *
  * Output: the tick counters as one JSON line — counters only, never any
- * portfolio or document content (cahier §6.5).
+ * portfolio or document content (cahier §6.5) —, with `tarifs` (ok, echec)
+ * when the prices were read.
  */
 
 $root = dirname(__DIR__);
@@ -66,6 +71,12 @@ try {
 } catch (\Throwable $e) {
     fwrite(STDERR, '[worker] tick en échec : ' . $e->getMessage() . "\n");
     exit(1);
+}
+
+// Anthropic's prices, once a UTC day: their failure never fails the tick.
+$tarifs = \Humanome\Twin9\TarifsAnthropic::releverApresTranche(\Humanome\Db::get());
+if ($tarifs !== null) {
+    $counters['tarifs'] = $tarifs;
 }
 
 echo json_encode($counters, JSON_THROW_ON_ERROR), "\n";

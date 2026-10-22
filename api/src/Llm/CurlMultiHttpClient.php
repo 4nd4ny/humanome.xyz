@@ -116,7 +116,6 @@ final class CurlMultiHttpClient implements MultiHttpClient
         if ($this->multi !== null) {
             curl_multi_remove_handle($this->multi, $ch);
         }
-        curl_close($ch);
         unset($this->running[$id], $this->ids[spl_object_id($ch)]);
     }
 }

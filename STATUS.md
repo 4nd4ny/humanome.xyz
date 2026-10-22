@@ -18,9 +18,12 @@ passe l'oracle complet dans `Twin_v9`, le profil est ici, les runs tournent sur 
 tranches, par appels directs ou par lots, se lancent, se suivent, se lisent et se paient — la base
 commune et la stratégie A de T8 comprises —, sur des jeux de gabarits et des référentiels de toute
 structure, que le moteur lit (T16) et que la cartographie affiche (T17) ; le moteur du navigateur
-est retiré (T11, fusionné le 2026-10-20). T18, la démonstration sur l'OVH, est préparé et
-fusionné (#19, le 2026-10-21, après l'import des gabarits sans Python, #18) : restent les gestes de
-Christian, son feu vert au déploiement et la recette (`docs/recette-twin9.md`).
+est retiré (T11, fusionné le 2026-10-20). T18, la démonstration sur l'OVH, est préparé,
+fusionné (#19, le 2026-10-21, après l'import des gabarits sans Python, #18) et **déployé le
+2026-10-21** au feu vert de Christian (`health` → `7b198cc`, moteur Twin9 `9eea3a1` chargé ; entrée
+« Déploiement » du jour) : restent les tâches planifiées — deux relais depuis un autre
+hébergement OVH, plutôt que cron-job.org (entrée du 2026-10-22) —, dont Christian s'occupe, et la
+recette (`docs/recette-twin9.md`).
 
 Hors planning, à la demande de Christian (2026-10-20) : le référentiel dynamique — RESPIRE n'a
 plus de structure imposée, et tous les parcours lisent la structure du référentiel qu'ils emploient
@@ -30,8 +33,13 @@ importés). Entrées du 2026-10-20. Puis, le 2026-10-21 : la démo à 1 $ par jo
 l'essai gratuit de la cartographie ouverte (#20) ; les prix d'Anthropic relevés chaque jour (Sonnet 5
 n'est plus surfacturé), la sortie des appels sans plafond, Haiku seul pour la démo et les appels en
 flux — la réponse arrive à mesure, un appel coupé est facturé pour ce qu'il a produit (#21,
-empilée sur #20). Suite annoncée par Christian : basculer le site sur l'OVH pour la démonstration, à son feu
-vert.
+empilée sur #20). Le soir même, le site est basculé sur l'OVH pour la démonstration, au feu vert de
+Christian.
+
+Le 2026-10-22, le plan « P0 et multi-fournisseur » de Twin9 commence par sa PR A
+(`feat/twin9-p0-configuration`, non fusionnée) : chaque run garde sa configuration et son exécution
+et les affiche, une sortie tronquée est une panne, la voie directe ne rejoue plus une passe à chaque
+réponse. Suivent la PR B (adaptateurs JS, export Twin6) et, A fusionnée, la PR C (multi-fournisseur).
 
 ## Fait
 
@@ -152,6 +160,251 @@ vert.
     - un jury pour ses pôles, plus tard (Q5).
     - Viennent dans une PR suivante : le choix du référentiel au lancement de Twin9 (lot C) et la
       création simple d'un référentiel (lot D).
+
+- 2026-10-22 — **Twin9, P0 : un run garde sa configuration et son exécution, une sortie tronquée
+  est une panne, la voie directe ne rejoue plus une passe à chaque réponse (branche
+  `feat/twin9-p0-configuration`, PR A du plan « P0 et multi-fournisseur », non fusionnée).**
+  Première des trois PR de la spécification v2 du plan : A (Twin9, plateforme : C0 à C4), B (les
+  arrêts normalisés et la troncature explicite des adaptateurs JS, la configuration de l'export
+  Twin6 : indépendante), C (le multi-fournisseur, après la fusion de A). Cinq commits, un par lot ;
+  `Twin_v9` n'est pas modifié.
+  - **C0 — chaque appel dit son fournisseur et sa voie, sans changement de comportement.**
+    Registre `Twin9\Fournisseurs\Fournisseurs` : six fournisseurs (Anthropic, OpenAI, Mistral,
+    Google, xAI, OpenRouter), leur étiquette RGPD, leur voie par lots, leur adresse verrouillée ;
+    seul Anthropic est ouvert, aucun autre n'est câblé. `CallSettings::pour()` rend
+    `{fournisseur, voie, modele, budget_sortie, effort, reflexion}`, `resume()` les réglages du run
+    par étage (lus dans les étages eux-mêmes), étape, second ressort et lecteur ; plus
+    d'`ETAGES[null]` pour une étape inconnue (dépréciation de PHP 8.5). `EmpreintesFigeesTest`
+    fige, avec des gabarits et un référentiel inventés, l'empreinte des réglages, celle des
+    réglages du moteur et la signature des évaluations du profil v9.8, relevées avant le
+    changement : elles doivent rester vertes jusqu'au bout de la PR C, sans quoi la mémoire des
+    cartes serait réinstruite et repayée.
+  - **C1 — une sortie tronquée est une panne (P0-2).** Un arrêt d'Anthropic sur `max_tokens` (le
+    budget de sortie de l'étape atteint) ou `model_context_window_exceeded`, par appel direct comme
+    par lot, donne une panne définitive — ni relance, ni resoumission —, payée à son coût réel, au
+    message écrit par le code ; sa journée n'entre pas dans la mémoire, et le run suivant la
+    réinstruit. Écart voulu avec la v9.8, qui prenait le texte coupé pour une réponse
+    (`docs/contrats.md` §8, avec le conseil d'augmenter le `budget_sortie` de l'étape). Compteur
+    `tronques` (au total et par étape, une part de `pannes`) ; la raison d'arrêt est assainie
+    avant d'être gardée (`^[A-Za-z_]{1,32}$`, sinon `other`) et classée
+    (`Fournisseurs\Arret` : `end`, `max_tokens`, `context_window`, `refusal`, `other`).
+  - **C2 — la voie directe ne rejoue une passe que si les appels déjà connus ne remplissent pas
+    une place (P0-4).** Mesuré sur le scénario 02-cloud de l'oracle par le tick (vrai moteur,
+    profil v9.8, 6 appels directs, 10 journées de front, l'oracle répondant un appel à la fois) :
+    75 passes et 1,9 s de moteur au lieu de 2 743 et 35,5 s, les mêmes 2 740 appels, chacun une
+    fois, les sorties de l'oracle. Un run par lots joue toujours une passe par tick.
+  - **C3 — la configuration et l'exécution d'un run, côté serveur (P0-1).** Migration
+    `031_twin9_configuration.sql` (expand : `configuration`, `execution`, `passes`,
+    `moteur_ms`). La **configuration** (`RunConfiguration`, liste blanche) est écrite une fois, au
+    lancement, dans le verrou d'admission : les réglages de chaque appel, les fournisseurs
+    atteints et leur étiquette, le collège, les backends, l'algorithme, le référentiel et le jeu
+    de gabarits par identifiant, version et empreinte, les prix tels que facturés, les versions du
+    moteur ; jamais un gabarit, une fiche, une clé, la marge ni un prix catalogue ; une reprise ne
+    la change pas. L'**exécution** (`RunExecution`) est figée par `terminer()` — sous SAVEPOINT :
+    un échec laisse le run finir, l'exécution nulle — et lue dans le journal sinon ; ses totaux
+    sont ceux des compteurs, ses tables des objets même vides, ses reprises datées. Le suivi n'en
+    porte que `configuration_empreinte` (la page l'interroge sans cesse) ; `resultats.run` et
+    l'export du compte portent les deux blocs, un cartographe lié sans prix, coût, plafond, budget
+    de reprise ni clé ; l'export omet un bloc nul, et l'archive d'un compte qui a un run ancien
+    reste valide. Schéma `schemas/twin9-run.schema.json` (blocs stricts), référencé par
+    l'archive ; `twin9-run` connu des validations PHP et JS (validateurs recompilés) ; fixture
+    inventée ; `docs/contrats.md` §8.9, `docs/rgpd-registre.md` §13.
+  - **C4 — la configuration dans l'interface.** Sur la page d'un run lancé depuis, « Configuration »,
+    à côté de l'attestation, qui ne change pas (`web/src/views/twin9/ConfigurationDuRun.jsx`) :
+    lue dans les résultats du run à l'ouverture seulement, relue quand il change de statut ;
+    chaque rôle (étage, étape, étape au second ressort, lecteur du collège) avec son fournisseur
+    et son étiquette RGPD, sa voie, son modèle et son budget de sortie ; le jeu de gabarits, le
+    référentiel, la clé ; puis appels, pannes et sorties tronquées par fournisseur et par voie,
+    passes du moteur, lots, coût, et le conseil d'augmenter le budget de sortie d'une étape dont
+    une sortie a été tronquée. Une ligne manque quand son champ manque (la vue d'un cartographe
+    lié). Ouvert dans la cartographie, l'importeur ne garde des deux blocs qu'une liste blanche,
+    champ par champ, sous « <run>|configuration » — l'empreinte, les fournisseurs (voie,
+    étiquette), les réglages des appels, le référentiel, le nom du jeu, les comptes d'appels —,
+    sans la compter comme une délibération ; chaque journée dit ses modèles et son jeu (« Twin9
+    (serveur) — twin9:7 — profond: …, rapide: …, lecteurs: … — gabarits v9.8 »). Ni prix, ni coût,
+    ni plafond, ni clé, ni l'admission de l'attestation n'entrent dans le jeu, qui se partage et
+    s'archive : vérifié jusqu'au jeu exporté. UC-APP-10 : étape 8, RG13, RG14, U14, U15, F21 ;
+    `docs/contrats.md` §8.4 et §8.9.
+  - Vérifié, sur l'arbre du dernier commit (PHP 8.5.12 et MySQL 8.0 locaux) : PHP `Tests: 1760,
+    Assertions: 18629`, les 2 échecs connus de PHP 8.5 seuls
+    (`AuthActivationTest::testExpiredCodeIsRejected`,
+    `UcCpt02…::testU17SessionCookieAttributes` : la clé `partitioned`), 1 dépréciation (2 sur `main`), `PariteTest` compris (vrai moteur,
+    `../Twin_v9` : 10 tests verts, aussi lancé seul). Une première passe, lancée en même temps
+    que les suites JS, a vu `PariteTest::testTheTestModeByBatchesKilledBetweenTwoBatches` ne pas
+    finir en 100 tranches ; il passe seul et dans la suite relancée sans autre charge : sensible à
+    la charge du poste, à surveiller. Front 2 777 tests verts (259 fichiers) ; moteur 421 tests, 416 verts et les 5 échecs locaux connus d'UC-PRO-08 (F19 à F22,
+    F25 : le faux dépôt `Twin_v9` de ces tests ne se crée pas sur ce poste) ; `check-publiable` OK
+    (crochet de pré-commit) ; catalogue des cas recompté sur les fichiers de tests (979 unitaires,
+    1 144 fonctionnels).
+  - Non vérifié : la syntaxe sous PHP 8.2 (pas de PHP 8.2 sur ce poste ; la CI le dira — une
+    recherche des tournures de PHP 8.3 et plus dans le diff ne trouve rien) ; le bout en bout
+    (Playwright) ; « Configuration » dans un vrai navigateur (jsdom seulement) ; aucun run réel
+    chez Anthropic : la porte payante du plan (un run par lots puis un en direct, en mode test,
+    budget de 2 $ : configuration remplie, exécution figée, coût réel sous la réserve, passes
+    nettement sous les appels en direct) reste à faire, au feu vert de Christian.
+  - **Revue de la PR A (2026-10-22), constats confirmés corrigés** (un commit `fix:` par thème,
+    chacun avec le test qui échouait avant lui ; trois trous de test comblés par un commit
+    `test:`, et un second rend un test du déploiement indépendant de l'horloge) : (1) un run fini par la release précédente après un retour arrière garde dans
+    `execution` ses seules reprises : ce n'est jamais servi ni exporté comme un bloc figé
+    (`RunRepository::figee`), l'archive du compte reste valide ; (2) un lecteur nommé « 0 » ne fait
+    plus des tables de `configuration.appels` une liste ; (3) l'empreinte de la configuration
+    comprend un **sel** tiré au lancement, que seul le propriétaire lit : un cartographe lié ne
+    retrouve plus par essais la marge, la clé, le budget et la durée (les deux autres empreintes
+    qu'il lit, `empreinte_reglages` et `signature_evaluations`, ne couvrent ni clé, ni plafond, ni
+    marge, ni prix : vérifié dans `CallSettings::empreinte` et `Evaluations::comparables`) ;
+    (4) chaque passe du moteur
+    est comptée dès qu'elle est jouée (un tick mort ne perd que la sienne) ; `avance()` ne touche
+    plus les colonnes de 031 ; (5) `deploy.mjs api` migre aussitôt après le pointeur et élague
+    ensuite (la fenêtre où la nouvelle release tourne sur l'ancien schéma tombe des minutes de
+    l'élagage à une requête ; elle ne peut pas disparaître : la route `migrate` est celle de la
+    release en ligne) ; (6) « Configuration » est montée pour tout run (l'exécution partielle d'un
+    run d'avant 031 s'y lit), relit ses comptes à chaque ouverture d'un run en cours, et le conseil
+    des sorties tronquées nomme leurs étapes et dit son coût : un autre budget de sortie change
+    l'empreinte des réglages, et toute la carte est instruite de nouveau ; (7) tests : la voie lue à
+    `custom_id` (run par lots annulé), `execution_prevue` hors des valeurs par défaut, la pose de
+    `plein` par `envoyer()` (UC-APP-10-U16 : les étapes du moteur nommées par le conseil, celles de
+    `CallSettings::ETAPES`). Vérifié sur l'arbre du dernier commit : PHP `Tests: 1761, Assertions:
+    18675`, les 2 échecs connus de PHP 8.5 seuls, 1 dépréciation ; `PariteTest` 10 tests verts
+    (seul aussi) ; moteur 421 tests, 416 verts et les 5 échecs locaux connus d'UC-PRO-08 ; front
+    2 779 tests verts (259 fichiers suivis). Sous la charge du poste (d'autres suites tournaient),
+    des tests à durée sont instables : `CoutsTest` (« ne s'arrête pas en 30 tranches ») et deux
+    tests d'administration du front ont échoué une fois et passent seuls ; non corrigés.
+  - À décider (Christian) : la page lit les deux blocs dans `resultats`, qui porte aussi toutes
+    les sorties du run (lourd pour un grand run, mais à l'ouverture seulement) ; une route légère
+    les servirait seuls. Deux écarts antérieurs, signalés sans être corrigés :
+    `attestation.admission` porte `reserve_microusd` et `engagement_microusd`, que lit aussi un
+    cartographe lié ; `twin9_evaluations.reglages.marge` sort vers le propriétaire par
+    `mes-analyses`. À savoir, sans changement : avec une clé personnelle Anthropic, les résultats
+    des lots se lisent dans la Console du titulaire de la clé.
+
+- 2026-10-22 — **P0, PR B : arrêts normalisés, sortie tronquée explicite, configuration du
+  document Twin6 (branche `feat/p0-arrets-js-twin6`, indépendante de la PR A).** Spécification
+  `spec-v2` (PR B : lots C5 et C6 du plan), faits d'API relevés le 2026-10-22 sur les seules
+  documentations officielles.
+  - **C5 — pourquoi une génération s'arrête** (`docs/contrats.md` §4 point 14). Tout résultat de
+    `complete()` porte une classe d'arrêt (`end`, `max_tokens`, `context_window`, `refusal`,
+    `other`, ou `null`), sa valeur brute et `truncated`. La table est partagée avec le PHP à venir
+    (`schemas/fixtures/arrets/arrets-fournisseurs.json`) et ne retient que les valeurs vérifiées :
+    toute autre vaut `other` — Ollama n'en a aucune, une réponse Ollama coupée n'est donc pas encore
+    détectée (UC-APP-02 A-06 reste ouverte). Une sortie tronquée est payée et n'est qu'un fragment :
+    `complete()` lève une `OutputTruncatedError` (statut 200, jamais réessayée, fragment non
+    énumérable, message sans contenu), sauf `allowTruncated`. Décision pour chaque consommateur :
+    `executerTwin6` nomme l'étape et joint l'usage du run, appel tronqué compris, et fait d'un refus
+    une erreur explicite ; `extractDay` ne refait jamais un appel tronqué ; le fournisseur
+    « crédits » compte le coût puis lève ; le banc, le lanceur de runs et le runner Node comptent
+    l'usage de l'appel tronqué, et le banc l'affiche avec son coût même quand le run échoue
+    (l'erreur emporte l'usage cumulé jusqu'à elle) ; la démo ne le refait pas et dit « Votre texte est trop long pour
+    l'essai » ; la relance du dialogue dit « Relance coupée » ; le bac à sable rend `llm-error`.
+    Gemini : parts de réflexion exclues, sortie comptée = ce qui est facturé. UC-APP-09 anomalie 1
+    corrigée.
+  - **C6 — le document Twin6 dit comment il a été produit** (`cartographie-merge` 1.1.0, §4
+    point 8). La vue passe au moteur le paquet et l'empreinte SHA-256 de ses **octets servis**
+    (calculée par `loadTwin6Package` avant toute lecture du JSON), le référentiel choisi (id,
+    version, `contentHash`, et d'où le moteur lit ses pôles), l'origine de chaque fiche
+    (`originesDesFiches`) et l'accès (`cle_perso`, `credits`, `essai`) ; `executerTwin6` complète,
+    par liste blanche, le fournisseur et son tag RGPD — nouveau registre `PROVIDER_INFO` :
+    Anthropic et OpenAI `sous_conditions`, Mistral `oui`, Google, xAI et OpenRouter `non`, Ollama
+    `local` —, le transport, le modèle demandé, le budget de sortie résolu, la température, et tire
+    `execution` des appels (bornes à horloge injectable, modèle servi, arrêt normalisé et jetons de
+    chaque appel ; coût `null` : un document se partage, le montant reste au relevé du compte).
+    `buildMergeDocument` n'ajoute les blocs qu'avec une configuration (une `execution` seule est
+    ignorée, que le schéma refuserait) : tout autre document (banc,
+    Aurora, Twin9, cohortes, corpus) reste en 1.0.0 à l'octet, parité du document inchangée. Schéma :
+    `$defs/configurationTwin6` et `$defs/executionTwin6`, facultatifs, règle `voie = lots ⇒
+    fournisseur = anthropic`, `execution` seulement avec `configuration` ; validateurs régénérés.
+    L'importeur de la cartographie lit le modèle servi et garde la configuration, réduite à sa
+    liste blanche, en provenance. Fixtures inventées partagées JS/PHP
+    (`schemas/fixtures/twin6/`) : blocs valides greffés sur la fusion de trois jours, et huit cas
+    refusés.
+  - **Déploiement** : l'API (ses schémas) avant le front — le serveur valide au schéma une
+    révision de cartographie, qui serait refusée en 1.1.0.
+  - Tests : moteur 559 (5 échecs locaux préexistants, UC-PRO-08 F19-F22 et F25 : le faux dépôt
+    Twin_v9 ne se crée pas dans cet environnement) ; front 2 778, tous verts (avec `TWIN_V9_DIR`
+    et le paquet 1.1.0 construit) ; `ValidationTest` et `ConformiteTest` verts ; corpus 69/69 ;
+    parité du document 100 %.
+  - **Restent ouverts** : l'empreinte de la configuration n'entre pas dans l'identifiant stable
+    d'une variante importée (deux runs aux compteurs identiques mais aux modèles différents se
+    confondent encore) ; le nom du fichier exporté lit `source.journal_id` au lieu de
+    `source.journalId` (toujours `cartographie-twin6-ouverte.json`, figé par un test) ; la PR C
+    reflétera `PROVIDER_INFO` et la table des arrêts côté PHP.
+
+- 2026-10-22 — **Deux tâches planifiées depuis un autre hébergement OVH ; les prix relevés aussi
+  par `worker.php` (branche `fix/tarifs-worker-cli`, empilée sur `docs/deploiement-2026-10-21`).**
+  Christian (00 h 05) : « J'ai la possibilité de définir un cron depuis un autre site avec l'offre
+  OVH perso qui invoque un script PHP et non distant. Est-ce que ce serait jouable ? » ; puis
+  (00 h 36) : « Oui, met aussi à jour les prix. Une fois par jour ça suffit. Je peux lancer deux
+  crons distincts. »
+  - **Jouable, sans `worker.php`** : une tâche planifiée d'OVH ne lance qu'un fichier de son
+    propre hébergement, et `worker.php` a besoin du code, du `.env`, de la base et du moteur
+    d'humanome.xyz (il n'est d'ailleurs pas dans la release). Deux relais
+    (`scripts/deploy/cron-ovh/`) appellent les routes d'humanome.xyz, comme cron-job.org :
+    `humanome-tick.php` chaque heure — une tâche OVH part au plus une fois par heure et s'arrête
+    à 60 minutes : le tick chaque minute pendant 55 minutes, tranches de 40 s faute de service qui
+    raccroche à 30 s —, `humanome-maintenance.php` chaque jour. Essayés contre l'API locale :
+    compteurs, jeton refusé (code 1), serveur injoignable (le tick continue, code 0).
+  - **La maintenance par le jeton du tick** : la route accepte aussi `X-Worker-Tick-Token`, pour
+    que la seconde tâche ne tienne pas le jeton des migrations (qui migre, importe et donne des
+    rôles) ; elle ne purge que ce qui a expiré. Le jeton du tick, qui n'ouvrait que le tick
+    (ADR-011), ouvre ces deux routes. UC-SYS-03 A4, F11 ; `WorkerTickTokenTest`.
+  - **Les prix par le cron** (`fix:`) : le relevé quotidien n'était que dans la route du tick ;
+    `TarifsAnthropic::releverApresTranche`, appelé par la route et par `php scripts/worker.php`,
+    le fait pour les deux (une fois par jour UTC, comme avant). UC-SYS-01-F26 : le script en
+    sous-processus, la page injoignable par un mandataire qui refuse la connexion (aucun réseau).
+  - **À déployer** : le relais du tick marche avec la production d'aujourd'hui ; celui de la
+    maintenance y reçoit `403` tant que cette branche n'est pas déployée (feu vert de Christian).
+    `deploiement.md`, « Depuis un autre hébergement OVH » : installation et vérification.
+
+- 2026-10-21 — **Déploiement sur humanome.xyz : `main` (`7b198cc`) et le moteur Twin9 (T18).**
+  Christian (22 h 40) : « Tu as mon feu vert pour déployer les deux repository humanome.xyz et
+  Twin_v9 sur le serveur OVH. Je m'occuperai du cron plus tard. »
+  - **Avant** : la production tournait `v1.1.0-106-gc6a0231` (14 octobre). Sa base — celle que
+    nomme `~/app/shared/.env`, que Christian venait de mettre à jour ; d'après lui, la seule base
+    disponible, sur l'hébergement d'harmonia.education — tenait déjà les tables d'humanome,
+    migrations 001 à 023 ; les nouvelles ne créent ou ne modifient que des tables `twin9_*` (et la grille de
+    `settings`), aucune collision possible avec les tables d'harmonia. Disque : 79 Mo sur 100
+    (panel, relevé par Christian).
+  - **Ce qui est parti** : release API `20261021-205251-7b198cc` (803 fichiers, 4,9 Mo, moteur
+    `Twin_v9` `9eea3a1` embarqué) ; `migrate` → 024 à 030 appliquées, 23 déjà là ; référentiels
+    7.0.0 et 7.1.0 et compétences (61) inchangés ; paquets `aurora-v3-reconstruit` 1.1.0 et
+    `twin6-ouverte` 1.1.0 importés, les 1.0.0 inchangés ; `health` →
+    `{"status":"ok","version":"7b198cc","db":"ok","twin9":{"moteur":true,"zlib":true}}`. Gabarits
+    du même commit (`import-protocole.mjs`) : 22 importés, 18 inchangés, 7 retirés (les fiches de
+    pôle, qui viennent de la base depuis T16) ; le second import : 22 inchangés, 0 retiré. Front :
+    4 envois (bundle, gabarit de la copie autonome, `twin6-ouverte-1.1.0.json`, `index.html`),
+    4 retraits (l'ancien bundle et les trois gabarits Twin6 publics, versionnés dans
+    `scripts/data/twin6/` et servis par le paquet depuis #16). Les deux exports statiques du
+    référentiel restent ceux de la production : l'export local n'en diffère que par la mise en
+    forme et les dates de publication de la base locale, comme le 14 octobre.
+  - **Comment** : comme le 14 octobre, le FTP ne se joint que depuis la VM Linux du Mac ; les
+    artefacts sont construits dans le conteneur et remis par le dossier partagé
+    (`13. Cartographie/deploiement-2026-10-21/`, archive vérifiée par son empreinte). Composer y
+    installe depuis les sources (le proxy refuse les archives de GitHub, 403) : chaque dépendance
+    est refaite par `git archive` de son commit verrouillé — ce que GitHub sert comme archive —,
+    puis `composer dump-autoload --no-dev --optimize` (2 026 fichiers et 29 Mo sans cela). Les
+    identifiants FTP et le jeton des migrations sont lus par les scripts dans le `.env.deploy` de
+    la copie de Christian, jamais affichés. D'abord, sans effet : `migrate` sur la release en
+    ligne, qui n'avait rien en attente (`skipped: 23`) — le jeton est le bon. Le shell de la VM
+    coupe toute commande à 180 s et tue ses processus : la release est partie par un outil
+    ponctuel hors dépôt, reprenable et parallèle (six connexions ; 126 dossiers, puis 803 fichiers
+    en 85 s), vérifiée fichier par fichier (tailles), puis les étapes de `deploy.mjs api`
+    (`www/api`, `current.txt` en dernier, migrations, imports, santé) ; l'API avant le front, qui
+    a suivi par `deploy.mjs static` après un `--dry-run` relu. L'outil a été répété de bout en
+    bout contre un serveur FTP local et l'API locale, sur une base au niveau de la production
+    (023) : coupure et reprise, fichier corrompu repris, bascule, migrations, imports.
+  - **Un tick à la main**, avec le `WORKER_TICK_TOKEN` du `.env.deploy` : 200 (le jeton du tick est
+    le bon pour cron-job.org), aucun run ni appel, `"tarifs": "ok"` : la grille stockée est
+    relevée sur la page des prix d'Anthropic — la correction de Sonnet 5 attendait ce premier tick.
+  - **Vérifié en ligne** : santé et état ; en-têtes de l'API (`default-src 'none'`,
+    `X-Frame-Options: DENY`) ; nouveau bundle servi, l'ancien en 404 ; Chromium, depuis le
+    conteneur : accueil, Essayer, cartographie ouverte, référentiel, guides et cartographie se
+    chargent, sans autre erreur que `401 /api/auth/me` (visiteur anonyme) et `/favicon.ico`
+    (absent du bundle). Aucun appel payant : le flux en ligne (recette 5.3b, 5.3c) attend
+    l'accord de Christian.
+  - **Releases gardées** : `v1.1.0-20` (juillet), `v1.1.0-106` (14 octobre ; retour arrière :
+    `deploy.mjs rollback`) et la nouvelle ; rien à élaguer.
+  - **Restent** : la tâche cron-job.org (Christian) — sans elle, un run par lots n'avance que sa
+    page ouverte, et les prix ne se relèvent plus après ce tick ; la recette
+    (`docs/recette-twin9.md`) ; l'archive du dossier partagé, à effacer à la main.
 
 - 2026-10-21 — **Prix d'Anthropic relevés chaque jour, sortie sans plafond, Haiku seul pour la
   démo (branche `feat/tarifs-et-sorties`, empilée sur `feat/demo-un-dollar`).** Christian :
@@ -2750,6 +3003,11 @@ vert.
 
 ## Dettes techniques / décisions en attente
 
+- **Twin9, P0-1 (2026-10-22, PR A)** : « Configuration », sur la page d'un run, lit ses deux blocs
+  dans `GET /api/twin9/runs/{id}/resultats`, qui porte aussi toutes ses sorties (à l'ouverture
+  seulement) ; une route légère les servirait seuls. Antérieurs, signalés : `attestation.admission`
+  (réserve et engagement) lue par un cartographe lié ; la marge dans `twin9_evaluations.reglages`,
+  servie au propriétaire par `mes-analyses`.
 - **À mesurer en recette, appels en flux** (décidés le 2026-10-21, entrée « Prix d'Anthropic
   relevés chaque jour… ») : qu'OVH relaie la réponse à mesure (Apache, PHP-FPM, compression ;
   sinon tout arrive à la fin, sans progression, ce qui marche aussi), et le délai réel qu'il
@@ -2839,7 +3097,12 @@ vert.
 - `deploy.mjs api` téléverse la release fichier par fichier sur une seule connexion (~4 min
   pour 723 fichiers) : trop long pour un shell distant limité à 180 s. Le déploiement du
   2026-10-14 a suivi les mêmes étapes avec un téléversement reprenable et parallèle (outil
-  ponctuel, hors dépôt) ; à intégrer à `deploy.mjs` si ce mode de déploiement se répète.
+  ponctuel, hors dépôt) ; à intégrer à `deploy.mjs` si ce mode de déploiement se répète. Il
+  s'est répété le 2026-10-21 (six connexions : 803 fichiers en 85 s, après plus de deux minutes
+  pour créer les 126 dossiers un par un) : à décider.
+- `stage-api.sh` n'embarque ni `scripts/worker.php` ni `scripts/maintenance.php` : sur une offre
+  OVH avec cron, où `deploiement.md` conseille de les planifier, il faudrait d'abord les ajouter à
+  la release (relevé le 2026-10-22 ; les relais `scripts/deploy/cron-ovh/` s'en passent).
 - Partage historique (`#/espace`, jour / merge / twin9) **retiré sur la branche
   `feat/ultimate-cartography`** (décision du 2026-10-14, journal carto D-43 : plus de nouveau
   lien, `422 share_retired`). Les liens déjà créés restent servis jusqu'à leur échéance — y

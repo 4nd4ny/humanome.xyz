@@ -77,7 +77,15 @@ describe('UC-VIS-03 — transport « proxy » de la démo', () => {
     expect(posts[0].url).toBe('api/llm')
     expect(posts[0].body).toEqual({ provider: 'anthropic', model: 'demo', system: 'Consigne', prompt: 'Texte', maxTokens: 8192 })
     expect(Object.keys(posts[0].headers)).toEqual(['content-type']) // ni clé ni Authorization
-    expect(result).toEqual({ text: '{"ok":true}', usage: { inputTokens: 12, outputTokens: 3 }, model: 'claude-haiku-4-5-20251001', stopReason: 'end_turn' })
+    // L'arrêt relayé brut (end_turn) est normalisé : stopReason end, la valeur brute gardée.
+    expect(result).toEqual({
+      text: '{"ok":true}',
+      usage: { inputTokens: 12, outputTokens: 3 },
+      model: 'claude-haiku-4-5-20251001',
+      stopReason: 'end',
+      stopReasonRaw: 'end_turn',
+      truncated: false,
+    })
   })
 
   // Couche FOURNISSEUR seule (maxAttempts 1) : ne couvre pas RG5 de bout en
@@ -141,7 +149,7 @@ describe('UC-VIS-03 — extractDay dans la configuration de la démo', () => {
     expect(validateDocument('cartographie-jour', doc).valid).toBe(true)
   })
 
-  it('UC-VIS-03-U20 — génération tronquée (stopReason « max_tokens » relayé par le serveur) → échec explicite du pôle après un nouvel essai', async () => {
+  it('UC-VIS-03-U20 — génération tronquée (stopReason « max_tokens » relayé par le serveur) → échec explicite du pôle, sans nouvel essai (2026-10-22 : un second appel serait compté, et coupé)', async () => {
     const { provider, posts } = demoProvider(() =>
       response(200, { text: '{"poleNum":"1","competences":[', usage: {}, model: 'mock', stopReason: 'max_tokens' }),
     )
@@ -154,7 +162,7 @@ describe('UC-VIS-03 — extractDay dans la configuration de la démo', () => {
       kairosOptional: true,
     }).catch((e) => e)
 
-    expect(posts).toHaveLength(2)
+    expect(posts).toHaveLength(1)
     expect(failure.message).toBe('extractDay : pôle 1 (2026-09-28) — réponse tronquée (budget de sortie atteint) — réduisez le texte de la journée')
   })
 })

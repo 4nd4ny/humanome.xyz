@@ -40,11 +40,17 @@ développement, ni les gabarits, que l'import met en base (ADR-010).
 | Poids (préparation locale du 2026-10-21) | Valeur |
 |---|---|
 | Moteur : `php/src` et `COMMIT` (mesuré) | 42 fichiers, 345 Ko |
-| Release de l'API, moteur compris (déduit, voir ci-dessous) | ≈ 4,9 à 6,9 Mo, 850 à 1 335 fichiers |
-| Trois releases gardées (`deploy.mjs`) | ≈ 15 à 21 Mo |
-| Occupé avant ce déploiement (panel, 2026-10-16) | 56 Mo sur 100 |
+| Release de l'API, moteur compris (mesurée à l'envoi, 2026-10-21) | 4,9 Mo, 803 fichiers |
+| Trois releases gardées (`deploy.mjs`) | ≈ 15 Mo au plus |
+| Occupé (panel, 2026-10-16) | 56 Mo sur 100 |
+| Occupé avant le déploiement du 2026-10-21 (panel, relevé par Christian) | 79 Mo sur 100 |
 
-Le poids d'une release est **déduit**, non mesuré tel quel : dans notre
+**Mesurée le 2026-10-21**, la release déployée pesait 4,9 Mo pour 803 fichiers :
+Composer installant ici depuis les sources (le proxy de notre environnement
+refuse les archives de GitHub, 403), chaque dépendance a été refaite par
+`git archive` de son commit verrouillé — ce que GitHub sert comme archive —, puis
+`composer dump-autoload --no-dev --optimize` (2 026 fichiers et 29 Mo sans
+cela). Avant, le poids était **déduit** : dans notre
 environnement, Composer avait installé les dépendances depuis leurs sources, et
 la préparation pesait 22 Mo et 2 017 fichiers ; sans les dossiers `.git` des
 dépendances, 6,9 Mo et 1 335 fichiers ; sans leurs tests non plus, ≈ 4,9 Mo et

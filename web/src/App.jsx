@@ -583,7 +583,7 @@ export default function App({ lib, fetchMeFn = fetchMe }) {
       )
       break
     case 'referentiel':
-      view = <ReferentielView focusCode={route.code} />
+      view = <ReferentielView focusCode={route.code} referentielId={route.referentiel ?? null} />
       break
     case 'essayer':
       view = <EssayerView lib={lib} />

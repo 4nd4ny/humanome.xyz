@@ -1,0 +1,633 @@
+{
+  "description": "Contrat de la page Markdown de l’atelier (web/src/lib/referentiel-markdown.js) avec le serveur (ReferentielRepository) : les documents qu’elle envoie et les motifs qu’elle déduit, que le serveur valide et compile en PCRE (UC-EPI-05-U27, U28). Écrit par le test U27 (ECRIRE_CONTRAT=1). Référentiels FICTIFS.",
+  "documents": [
+    {
+      "schemaVersion": "2.1.0",
+      "kind": "referentiel",
+      "id": "mon-referentiel",
+      "version": "1.0.0",
+      "label": "Mon référentiel",
+      "source": "D’où vient ce référentiel : ses auteurs, sa date, sa licence.",
+      "niveaux": [
+        {
+          "nom": "capacité",
+          "motif": "[A-B][1-2]"
+        },
+        {
+          "nom": "facette",
+          "motif": "[A-B][1-2]\\.[1-2]"
+        }
+      ],
+      "poles": [
+        {
+          "num": 1,
+          "nom": "A · Premier pôle",
+          "couleur": "#2563eb",
+          "description": "Ce que cherche le premier pôle."
+        },
+        {
+          "num": 2,
+          "nom": "B · Second pôle",
+          "couleur": "#10b981",
+          "description": "Ce que cherche le second pôle."
+        }
+      ],
+      "competences": [
+        {
+          "code": "A1",
+          "nom": "Première capacité",
+          "pole": 1,
+          "description": "Ce que désigne la capacité A1.",
+          "elements": [
+            {
+              "code": "A1.1",
+              "nom": "Première facette",
+              "description": "Ce que désigne la facette A1.1."
+            },
+            {
+              "code": "A1.2",
+              "nom": "Deuxième facette",
+              "description": "Ce que désigne la facette A1.2."
+            }
+          ]
+        },
+        {
+          "code": "A2",
+          "nom": "Deuxième capacité",
+          "pole": 1,
+          "description": "Ce que désigne la capacité A2.",
+          "elements": [
+            {
+              "code": "A2.1",
+              "nom": "Une facette",
+              "description": "Ce que désigne la facette A2.1."
+            }
+          ]
+        },
+        {
+          "code": "B1",
+          "nom": "Une capacité",
+          "pole": 2,
+          "description": "Ce que désigne la capacité B1.",
+          "elements": [
+            {
+              "code": "B1.1",
+              "nom": "Une facette",
+              "description": "Ce que désigne la facette B1.1."
+            }
+          ]
+        }
+      ]
+    },
+    {
+      "schemaVersion": "2.1.0",
+      "kind": "referentiel",
+      "id": "fictif-humanome",
+      "version": "2.0.0-proposition.1",
+      "label": "Fictif V2",
+      "source": "« Référentiel Fictif V2 » 2.0.0-proposition.1 du 2026-01-15, https://example.invalid/referentiel-humanome-fictif.yaml. Converti depuis referentiel-humanome-fictif.yaml (sha256 47810adcb5bc7214f1faa01b0dd7d0df3879baed58a8ce6fa7966f03276efa6e) par scripts/convertir-humanome.mjs 1.0.0, niveau capacité. Licence : CC-BY-SA Éditeur fictif.",
+      "niveaux": [
+        {
+          "nom": "capacité",
+          "motif": "[A-B][1-2]"
+        },
+        {
+          "nom": "facette",
+          "motif": "[A-B][1-2]\\.[1-4]"
+        }
+      ],
+      "poles": [
+        {
+          "num": 1,
+          "nom": "A · Observer le fictif",
+          "couleur": "#2563eb",
+          "description": "Ce que cherche le pôle fictif A."
+        },
+        {
+          "num": 2,
+          "nom": "B · Agir dans le fictif",
+          "couleur": "#10b981",
+          "description": "Ce que cherche le pôle fictif B."
+        }
+      ],
+      "competences": [
+        {
+          "code": "A1",
+          "nom": "Première capacité fictive",
+          "pole": 1,
+          "description": "Définition fictive de A1.\n\n**Finalité** : Finalité fictive de A1.\n\n**Savoirs pratiques** : Savoirs fictifs de A1.\n\n**Participation avec l’IA** : Participation fictive de A1.\n\n**Frontière** : Frontière fictive de A1.\n\n**Limites** :\n\n- Limite fictive A1 a.\n- Limite fictive A1 b.\n\n**Situation** : Situation fictive de A1.\n\n**Relance** : Relance fictive de A1 ?\n\n**Ancrage obligatoire** : Ancrage fictif.",
+          "elements": [
+            {
+              "code": "A1.1",
+              "nom": "Facette fictive A1.1",
+              "description": "Description fictive de A1.1.\n\n**Manifestations** :\n\n- Manifestation fictive A1.1 a.\n- Manifestation fictive A1.1 b.\n\n**Faux positif** : Faux positif fictif de A1.1."
+            },
+            {
+              "code": "A1.2",
+              "nom": "Facette fictive A1.2",
+              "description": "Description fictive de A1.2.\n\n**Manifestations** :\n\n- Manifestation fictive A1.2.\n\n**Faux positif** : Faux positif fictif de A1.2."
+            },
+            {
+              "code": "A1.3",
+              "nom": "Facette fictive A1.3",
+              "description": "Description fictive de A1.3.\n\n**Manifestations** :\n\n- Manifestation fictive A1.3.\n\n**Faux positif** : Faux positif fictif de A1.3."
+            }
+          ]
+        },
+        {
+          "code": "A2",
+          "nom": "Deuxième capacité fictive",
+          "pole": 1,
+          "description": "Définition fictive de A2.\n\n**Finalité** : Finalité fictive de A2.\n\n**Savoirs pratiques** : Savoirs fictifs de A2.\n\n**Participation avec l’IA** : Participation fictive de A2.\n\n**Frontière** : Frontière fictive de A2.\n\n**Limites** :\n\n- Limite fictive A2.\n\n**Situation** : Situation fictive de A2.\n\n**Relance** : Relance fictive de A2 ?\n\n**Ancrage obligatoire** : Ancrage fictif.",
+          "elements": [
+            {
+              "code": "A2.1",
+              "nom": "Facette fictive A2.1",
+              "description": "Description fictive de A2.1.\n\n**Manifestations** :\n\n- Manifestation fictive A2.1.\n\n**Faux positif** : Faux positif fictif de A2.1."
+            },
+            {
+              "code": "A2.2",
+              "nom": "Facette fictive A2.2",
+              "description": "Description fictive de A2.2.\n\n**Manifestations** :\n\n- Manifestation fictive A2.2.\n\n**Faux positif** : Faux positif fictif de A2.2."
+            },
+            {
+              "code": "A2.3",
+              "nom": "Facette fictive A2.3",
+              "description": "Description fictive de A2.3.\n\n**Manifestations** :\n\n- Manifestation fictive A2.3.\n\n**Faux positif** : Faux positif fictif de A2.3."
+            },
+            {
+              "code": "A2.4",
+              "nom": "Facette fictive A2.4",
+              "description": "Description fictive de A2.4.\n\n**Manifestations** :\n\n- Manifestation fictive A2.4.\n\n**Faux positif** : Faux positif fictif de A2.4."
+            }
+          ]
+        },
+        {
+          "code": "B1",
+          "nom": "Capacité fictive du pôle B",
+          "pole": 2,
+          "description": "Définition fictive de B1.\n\n**Finalité** : Finalité fictive de B1.\n\n**Savoirs pratiques** : Savoirs fictifs de B1.\n\n**Participation avec l’IA** : Participation fictive de B1.\n\n**Frontière** : Frontière fictive de B1.\n\n**Limites** :\n\n- Limite fictive B1.\n\n**Situation** : Situation fictive de B1.\n\n**Ancrage obligatoire** : Ancrage fictif.",
+          "elements": [
+            {
+              "code": "B1.1",
+              "nom": "Facette fictive B1.1",
+              "description": "Description fictive de B1.1.\n\n**Manifestations** :\n\n- Manifestation fictive B1.1.\n\n**Faux positif** : Faux positif fictif de B1.1."
+            },
+            {
+              "code": "B1.2",
+              "nom": "Facette fictive B1.2",
+              "description": "Description fictive de B1.2.\n\n**Manifestations** :\n\n- Manifestation fictive B1.2.\n\n**Faux positif** : Faux positif fictif de B1.2."
+            },
+            {
+              "code": "B1.3",
+              "nom": "Facette fictive B1.3",
+              "description": "Description fictive de B1.3.\n\n**Manifestations** :\n\n- Manifestation fictive B1.3.\n\n**Faux positif** : Faux positif fictif de B1.3."
+            }
+          ]
+        }
+      ]
+    },
+    {
+      "schemaVersion": "2.1.0",
+      "kind": "referentiel",
+      "id": "fictif-humanome",
+      "version": "2.0.0-proposition.1",
+      "label": "Fictif V2",
+      "source": "« Référentiel Fictif V2 » 2.0.0-proposition.1 du 2026-01-15, https://example.invalid/referentiel-humanome-fictif.yaml. Converti depuis referentiel-humanome-fictif.yaml (sha256 47810adcb5bc7214f1faa01b0dd7d0df3879baed58a8ce6fa7966f03276efa6e) par scripts/convertir-humanome.mjs 1.0.0, niveau facette. Licence : CC-BY-SA Éditeur fictif.",
+      "niveaux": [
+        {
+          "nom": "facette",
+          "motif": "[A-B][1-2]\\.[1-4]"
+        }
+      ],
+      "poles": [
+        {
+          "num": 1,
+          "nom": "A · Observer le fictif",
+          "couleur": "#2563eb",
+          "description": "Ce que cherche le pôle fictif A."
+        },
+        {
+          "num": 2,
+          "nom": "B · Agir dans le fictif",
+          "couleur": "#10b981",
+          "description": "Ce que cherche le pôle fictif B."
+        }
+      ],
+      "competences": [
+        {
+          "code": "A1.1",
+          "nom": "Facette fictive A1.1",
+          "pole": 1,
+          "description": "Description fictive de A1.1.\n\n**Manifestations** :\n\n- Manifestation fictive A1.1 a.\n- Manifestation fictive A1.1 b.\n\n**Faux positif** : Faux positif fictif de A1.1."
+        },
+        {
+          "code": "A1.2",
+          "nom": "Facette fictive A1.2",
+          "pole": 1,
+          "description": "Description fictive de A1.2.\n\n**Manifestations** :\n\n- Manifestation fictive A1.2.\n\n**Faux positif** : Faux positif fictif de A1.2."
+        },
+        {
+          "code": "A1.3",
+          "nom": "Facette fictive A1.3",
+          "pole": 1,
+          "description": "Description fictive de A1.3.\n\n**Manifestations** :\n\n- Manifestation fictive A1.3.\n\n**Faux positif** : Faux positif fictif de A1.3."
+        },
+        {
+          "code": "A2.1",
+          "nom": "Facette fictive A2.1",
+          "pole": 1,
+          "description": "Description fictive de A2.1.\n\n**Manifestations** :\n\n- Manifestation fictive A2.1.\n\n**Faux positif** : Faux positif fictif de A2.1."
+        },
+        {
+          "code": "A2.2",
+          "nom": "Facette fictive A2.2",
+          "pole": 1,
+          "description": "Description fictive de A2.2.\n\n**Manifestations** :\n\n- Manifestation fictive A2.2.\n\n**Faux positif** : Faux positif fictif de A2.2."
+        },
+        {
+          "code": "A2.3",
+          "nom": "Facette fictive A2.3",
+          "pole": 1,
+          "description": "Description fictive de A2.3.\n\n**Manifestations** :\n\n- Manifestation fictive A2.3.\n\n**Faux positif** : Faux positif fictif de A2.3."
+        },
+        {
+          "code": "A2.4",
+          "nom": "Facette fictive A2.4",
+          "pole": 1,
+          "description": "Description fictive de A2.4.\n\n**Manifestations** :\n\n- Manifestation fictive A2.4.\n\n**Faux positif** : Faux positif fictif de A2.4."
+        },
+        {
+          "code": "B1.1",
+          "nom": "Facette fictive B1.1",
+          "pole": 2,
+          "description": "Description fictive de B1.1.\n\n**Manifestations** :\n\n- Manifestation fictive B1.1.\n\n**Faux positif** : Faux positif fictif de B1.1."
+        },
+        {
+          "code": "B1.2",
+          "nom": "Facette fictive B1.2",
+          "pole": 2,
+          "description": "Description fictive de B1.2.\n\n**Manifestations** :\n\n- Manifestation fictive B1.2.\n\n**Faux positif** : Faux positif fictif de B1.2."
+        },
+        {
+          "code": "B1.3",
+          "nom": "Facette fictive B1.3",
+          "pole": 2,
+          "description": "Description fictive de B1.3.\n\n**Manifestations** :\n\n- Manifestation fictive B1.3.\n\n**Faux positif** : Faux positif fictif de B1.3."
+        }
+      ]
+    }
+  ],
+  "motifs": [
+    {
+      "motif": "[A-E][1-4]",
+      "codes": [
+        "A1",
+        "A2",
+        "A3",
+        "A4",
+        "B1",
+        "B2",
+        "B3",
+        "B4",
+        "C1",
+        "C2",
+        "C3",
+        "C4",
+        "D1",
+        "D2",
+        "D3",
+        "D4",
+        "E1",
+        "E2",
+        "E3",
+        "E4"
+      ]
+    },
+    {
+      "motif": "[A-E][1-4]\\.[1-3]",
+      "codes": [
+        "A1.1",
+        "A1.2",
+        "A1.3",
+        "A2.1",
+        "A2.2",
+        "A2.3",
+        "A3.1",
+        "A3.2",
+        "A3.3",
+        "A4.1",
+        "A4.2",
+        "A4.3",
+        "B1.1",
+        "B1.2",
+        "B1.3",
+        "B2.1",
+        "B2.2",
+        "B2.3",
+        "B3.1",
+        "B3.2",
+        "B3.3",
+        "B4.1",
+        "B4.2",
+        "B4.3",
+        "C1.1",
+        "C1.2",
+        "C1.3",
+        "C2.1",
+        "C2.2",
+        "C2.3",
+        "C3.1",
+        "C3.2",
+        "C3.3",
+        "C4.1",
+        "C4.2",
+        "C4.3",
+        "D1.1",
+        "D1.2",
+        "D1.3",
+        "D2.1",
+        "D2.2",
+        "D2.3",
+        "D3.1",
+        "D3.2",
+        "D3.3",
+        "D4.1",
+        "D4.2",
+        "D4.3",
+        "E1.1",
+        "E1.2",
+        "E1.3",
+        "E2.1",
+        "E2.2",
+        "E2.3",
+        "E3.1",
+        "E3.2",
+        "E3.3",
+        "E4.1",
+        "E4.2",
+        "E4.3"
+      ]
+    },
+    {
+      "motif": "[1-7]\\.[0-1]\\d",
+      "codes": [
+        "1.01",
+        "1.02",
+        "1.03",
+        "1.04",
+        "1.05",
+        "1.06",
+        "1.07",
+        "1.08",
+        "1.09",
+        "1.10",
+        "2.01",
+        "2.02",
+        "2.03",
+        "2.04",
+        "2.05",
+        "2.06",
+        "2.07",
+        "2.08",
+        "2.09",
+        "3.01",
+        "3.02",
+        "3.03",
+        "3.04",
+        "3.05",
+        "3.06",
+        "3.07",
+        "4.01",
+        "4.02",
+        "4.03",
+        "4.04",
+        "4.05",
+        "4.06",
+        "4.07",
+        "4.08",
+        "4.09",
+        "5.01",
+        "5.02",
+        "5.03",
+        "5.04",
+        "5.05",
+        "5.06",
+        "5.07",
+        "5.08",
+        "6.01",
+        "6.02",
+        "6.03",
+        "6.04",
+        "6.05",
+        "6.06",
+        "6.07",
+        "6.08",
+        "6.09",
+        "6.10",
+        "7.01",
+        "7.02",
+        "7.03",
+        "7.04",
+        "7.05",
+        "7.06",
+        "7.07",
+        "7.08"
+      ]
+    },
+    {
+      "motif": "1\\.0[1-3]",
+      "codes": [
+        "1.01",
+        "1.02",
+        "1.03"
+      ]
+    },
+    {
+      "motif": "[1-3]\\.[0-19][09]",
+      "codes": [
+        "1.00",
+        "2.19",
+        "3.99"
+      ]
+    },
+    {
+      "motif": "1\\.\\d{2}",
+      "codes": [
+        "1.00",
+        "1.01",
+        "1.02",
+        "1.03",
+        "1.04",
+        "1.05",
+        "1.06",
+        "1.07",
+        "1.08",
+        "1.09",
+        "1.10",
+        "1.11",
+        "1.12",
+        "1.13",
+        "1.14",
+        "1.15",
+        "1.16",
+        "1.17",
+        "1.18",
+        "1.19",
+        "1.20",
+        "1.21",
+        "1.22",
+        "1.23",
+        "1.24",
+        "1.25",
+        "1.26",
+        "1.27",
+        "1.28",
+        "1.29",
+        "1.30",
+        "1.31",
+        "1.32",
+        "1.33",
+        "1.34",
+        "1.35",
+        "1.36",
+        "1.37",
+        "1.38",
+        "1.39",
+        "1.40",
+        "1.41",
+        "1.42",
+        "1.43",
+        "1.44",
+        "1.45",
+        "1.46",
+        "1.47",
+        "1.48",
+        "1.49",
+        "1.50",
+        "1.51",
+        "1.52",
+        "1.53",
+        "1.54",
+        "1.55",
+        "1.56",
+        "1.57",
+        "1.58",
+        "1.59",
+        "1.60",
+        "1.61",
+        "1.62",
+        "1.63",
+        "1.64",
+        "1.65",
+        "1.66",
+        "1.67",
+        "1.68",
+        "1.69",
+        "1.70",
+        "1.71",
+        "1.72",
+        "1.73",
+        "1.74",
+        "1.75",
+        "1.76",
+        "1.77",
+        "1.78",
+        "1.79",
+        "1.80",
+        "1.81",
+        "1.82",
+        "1.83",
+        "1.84",
+        "1.85",
+        "1.86",
+        "1.87",
+        "1.88",
+        "1.89",
+        "1.90",
+        "1.91",
+        "1.92",
+        "1.93",
+        "1.94",
+        "1.95",
+        "1.96",
+        "1.97",
+        "1.98",
+        "1.99"
+      ]
+    },
+    {
+      "motif": "[A-BD][1-3]",
+      "codes": [
+        "A1",
+        "B2",
+        "D3"
+      ]
+    },
+    {
+      "motif": "A[0-2]{1,2}",
+      "codes": [
+        "A2",
+        "A10"
+      ]
+    },
+    {
+      "motif": "c-[1-2]",
+      "codes": [
+        "c-1",
+        "c-2"
+      ]
+    },
+    {
+      "motif": "[X-Y]_[1-2]",
+      "codes": [
+        "X_1",
+        "Y_2"
+      ]
+    },
+    {
+      "motif": "(?:A1|1A)",
+      "codes": [
+        "A1",
+        "1A"
+      ]
+    },
+    {
+      "motif": "seul",
+      "codes": [
+        "seul"
+      ]
+    },
+    {
+      "motif": "[A-Za-z0-9._-]{1,8}",
+      "codes": [
+        "A",
+        "1",
+        "a",
+        "A.1",
+        "1.A",
+        "a.a",
+        "A-1",
+        "1-A",
+        "a-a",
+        "A_1",
+        "1_A",
+        "a_a",
+        "Aa1",
+        "1aA",
+        "a1A",
+        "A1a",
+        "1Aa",
+        "aA1",
+        "A.a",
+        "a.A",
+        "1.a",
+        "a.1",
+        "A-a",
+        "a-A",
+        "1-a",
+        "a-1"
+      ]
+    }
+  ]
+}

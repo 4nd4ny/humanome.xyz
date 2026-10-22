@@ -4,6 +4,7 @@
 import { formatLong, formatShort } from '../core/dates.js'
 import { DEFAULT_PARAMS, GUIDE_LEVELS } from '../core/formulas.js'
 import { poleShortName } from '../core/referential.js'
+import { referentielHash } from '../../router.js'
 import { returnToPoles } from './Sun.jsx'
 import { poleVars } from './colors.js'
 import { usePalette } from './palette.js'
@@ -75,7 +76,8 @@ export function DetailPanel({ refl, dataset, state, selection, t, onSelect, onWh
             <span className="carto-code">{meta.code}</span> {meta.name}
           </h2>
           {meta.description ? <p className="carto-detail-desc">{meta.description}</p> : null}
-          <a className="carto-link" href={`#/referentiel/${encodeURIComponent(meta.code)}`}>
+          {/* La page publique du référentiel de la carte, pas RESPIRE d'office (S5, lot E). */}
+          <a className="carto-link" href={referentielHash(meta.code, refl.id)}>
             Voir dans le référentiel
           </a>
         </header>

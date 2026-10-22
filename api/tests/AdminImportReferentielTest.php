@@ -7,6 +7,7 @@ namespace Humanome\Tests;
 use Humanome\Bootstrap;
 use Humanome\Env;
 use Humanome\Referentiel\AmorcageReferentiel;
+use PHPUnit\Framework\Attributes\TestDox;
 use Psr\Http\Message\ResponseInterface;
 use Slim\Psr7\Factory\ServerRequestFactory;
 
@@ -64,6 +65,7 @@ final class AdminImportReferentielTest extends ReferentielTestCase
      * provenance, so the same version re-converted with another description
      * is a conflict, never a silent « unchanged ».
      */
+    #[TestDox('UC-EPI-05-F18 — en production, POST /api/admin/import-referentiel amorce un autre référentiel que RESPIRE avec les garde-fous du script')]
     public function testAnotherReferentialIsSeededWithTheSeedsGuards(): void
     {
         $doc = json_decode((string) file_get_contents(

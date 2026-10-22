@@ -1974,6 +1974,19 @@ body:has([aria-modal='true'], .portfolio-editor-fullscreen)
   font-size: 0.9rem;
 }
 
+/* Le menu des référentiels publiés (S5, lot E), puis la provenance d'un autre
+   que RESPIRE : d'où il vient, sa licence (S5, E9). Le sha256 qu'elle cite se coupe. */
+.ref-choice {
+  margin: 0 0 0.5rem;
+}
+
+.ref-source {
+  margin: -0.5rem 0 1rem;
+  color: var(--ink-faint);
+  font-size: 0.85rem;
+  overflow-wrap: anywhere;
+}
+
 .ref-loading,
 .account-loading {
   color: var(--ink-faint);
@@ -2077,6 +2090,8 @@ body:has([aria-modal='true'], .portfolio-editor-fullscreen)
   color: var(--ink-soft);
   font-size: 0.9rem;
   line-height: 1.45;
+  /* Les paragraphes et listes d'une description sur plusieurs lignes (l'Humanome V18). */
+  white-space: pre-line;
 }
 
 .ref-competence-code {
@@ -5139,6 +5154,51 @@ body:has([aria-modal='true'], .portfolio-editor-fullscreen)
 
 .epi-change-list li {
   line-height: 1.5;
+}
+
+/* Autres référentiels : modèles, Markdown et son aperçu, export (S5, lot D). */
+.epi-modele pre {
+  max-height: 20rem;
+  overflow: auto;
+  padding: 0.75rem;
+  border-radius: 8px;
+  background: var(--surface-2);
+  font-family: ui-monospace, SFMono-Regular, Menlo, Consolas, monospace;
+  font-size: 0.8rem;
+}
+
+.epi-modele dt {
+  font-family: ui-monospace, SFMono-Regular, Menlo, Consolas, monospace;
+  font-weight: 600;
+}
+
+.epi-modele dd {
+  margin: 0 0 0.4rem 1rem;
+  color: var(--ink-soft);
+}
+
+.epi-markdown textarea {
+  width: 100%;
+  min-height: 14rem;
+  font-family: ui-monospace, SFMono-Regular, Menlo, Consolas, monospace;
+  font-size: 0.85rem;
+}
+
+.epi-md-champs,
+.epi-md-niveau {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: flex-end;
+  gap: 0.5rem 1rem;
+  margin: 0.5rem 0;
+}
+
+.epi-md-erreurs {
+  color: var(--danger);
+}
+
+.epi-md-avertissements {
+  color: var(--warn);
 }
 
 /* Clés API personnelles (profil #/compte) + choix clé enregistrée Twin6. */

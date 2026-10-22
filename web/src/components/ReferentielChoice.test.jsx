@@ -50,7 +50,7 @@ describe('ReferentielChoice', () => {
     expect(fetchFn.mock.calls.map(([url]) => url)).toEqual(['api/referentiels'])
   })
 
-  it('propose le référentiel amorcé depuis le YAML Humanome, puis charge son document tel que la base le sert (S5, lot B)', async () => {
+  it('UC-EPI-05-F17 — propose le référentiel amorcé depuis le YAML Humanome, puis charge son document tel que la base le sert (S5, lot B)', async () => {
     clearReferentielCache()
     const json = (data) => ({ ok: true, status: 200, headers: { get: () => 'application/json' }, json: async () => data })
     const route = `api/referentiels/${converti.id}/versions/${converti.version}`
@@ -105,7 +105,7 @@ describe('ReferentielChoice', () => {
     expect(sansChoix).not.toHaveBeenCalled()
   })
 
-  it('montre sous le menu la provenance d’un autre référentiel que RESPIRE : d’où il vient, sa licence (S5, E1, E9)', async () => {
+  it('UC-EPI-05-F17 — montre sous le menu la provenance d’un autre référentiel que RESPIRE : d’où il vient, sa licence (S5, E1, E9)', async () => {
     const source = '« Référentiel Fictif V2 » 2.0.0-proposition.1 du 2026-01-15, https://example.invalid/referentiel. Licence : CC-BY-SA Éditeur fictif.'
     const avecSource = [{ ...liste[0], source: 'Reconstruit depuis un corpus fictif' }, { ...liste[1], source }]
     const list = async () => avecSource
@@ -132,5 +132,25 @@ describe('ReferentielChoice', () => {
     const { container } = render(<ReferentielChoice value={null} onChange={() => {}} list={vide} />)
     await waitFor(() => expect(vide).toHaveBeenCalled())
     expect(container.innerHTML).toBe('')
+  })
+
+  it('UC-VIS-02-U14 — nommé sans version (la page publique), un référentiel est montré à sa dernière version ; inconnu, le défaut ; provenance={false} la tait', async () => {
+    const source = 'Licence : CC-BY-SA Éditeur fictif.'
+    const list = async () => [liste[0], { ...liste[1], source }]
+    const onChange = vi.fn()
+    const { rerender } = render(<ReferentielChoice value={{ id: 'fictif-lettre' }} onChange={onChange} list={list} />)
+    const select = await screen.findByRole('combobox', { name: 'Référentiel' })
+    expect(select.value).toBe('fictif-lettre@1.0.0')
+    expect(screen.getByTestId('referentiel-source').textContent).toBe(`Provenance : ${source}`)
+    // la page dit elle-même la provenance du document affiché
+    rerender(<ReferentielChoice value={{ id: 'fictif-lettre' }} onChange={onChange} list={list} provenance={false} />)
+    expect(screen.queryByTestId('referentiel-source')).toBeNull()
+    expect(select.hasAttribute('aria-describedby')).toBe(false)
+    // un identifiant absent du menu : RESPIRE montré, sans choix imposé
+    rerender(<ReferentielChoice value={{ id: 'inconnu' }} onChange={onChange} list={list} provenance={false} />)
+    expect(select.value).toBe('respire@7.1.0')
+    expect(onChange).not.toHaveBeenCalled()
+    fireEvent.change(select, { target: { value: 'fictif-lettre@1.0.0' } })
+    expect(onChange).toHaveBeenCalledWith({ id: 'fictif-lettre', version: '1.0.0' })
   })
 })

@@ -8,9 +8,10 @@
 /** @typedef {{titre: string, intro: string, points?: string[]}} HelpEntry */
 
 /**
- * Le menu « Référentiel » des parcours (S5, E1 et E9) : deux référentiels
- * portent le nom RESPIRE sans être le même, et la licence de l'Humanome
- * demande l'attribution. Conditionnel : la production ne l'a peut-être pas.
+ * Le menu « Référentiel » des parcours et de la page publique (S5, E1 et E9 ;
+ * lot E) : deux référentiels portent le nom RESPIRE sans être le même, et la
+ * licence de l'Humanome demande l'attribution. Conditionnel : la production
+ * ne l'a peut-être pas.
  */
 const POINT_REFERENTIELS =
   'Le menu « Référentiel » propose les référentiels publiés, « RESPIRE v7 », celui de la plateforme, par défaut. ' +
@@ -77,11 +78,13 @@ const BASE = {
   referentiel: {
     titre: 'Le référentiel de compétences',
     intro:
-      'Les compétences du référentiel publié, rangées par pôle, telles que sa version les déclare. ' +
+      'Par défaut RESPIRE ; tout autre référentiel publié se choisit dans le menu « Référentiel ». ' +
+      'Ses compétences, rangées par pôle, telles que sa version les déclare. ' +
       'Public en lecture ; il est édité collectivement par les épistémiarques.',
     points: [
       'Recherchez une compétence par code (ex. 1.01) ou par nom.',
-      'Chaque compétence a un permalien partageable.',
+      'Chaque compétence a un permalien partageable ; celui d’un autre référentiel que RESPIRE le nomme (« ?id=… »).',
+      POINT_REFERENTIELS,
       'Les débats sur son évolution se tiennent sur l’espace participatif Decidim.',
     ],
   },

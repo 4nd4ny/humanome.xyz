@@ -9,7 +9,9 @@
 // le menu montre, jamais RESPIRE en douce. Sous le menu, la provenance d'un
 // autre référentiel que RESPIRE (le `source` de sa dernière version, que la
 // base fournit) : d'où il vient et sa licence — l'Humanome V18 est celui de
-// respire.school, sous CC-BY-SA (S5, E1, E9).
+// respire.school, sous CC-BY-SA (S5, E1, E9). La page publique #/referentiel
+// (S5, lot E) le nomme par son seul identifiant (sa dernière version), et dit
+// elle-même la provenance, depuis le document qu'elle affiche.
 import { useEffect, useId, useState } from 'react'
 import { REFERENTIEL_PAR_DEFAUT as RESPIRE } from '@engine/conformite.js'
 import { listPublishedReferentiels } from '../data/referentiel.js'
@@ -19,12 +21,20 @@ const valeur = (r) => `${r.id}@${r.versions[0].semver}`
 
 /**
  * @param {object} props
- * @param {{id: string, version: string}|null} props.value le choix, null : le défaut (RESPIRE)
+ * @param {{id: string, version?: string}|null} props.value le choix, null : le défaut (RESPIRE) ;
+ *   sans version, le référentiel à sa dernière version (un identifiant absent du menu : le défaut)
  * @param {(choix: {id: string, version: string}) => void} props.onChange
  * @param {boolean} [props.disabled]
+ * @param {boolean} [props.provenance] false : pas de ligne « Provenance » sous le menu
  * @param {typeof listPublishedReferentiels} [props.list] seam de test
  */
-export default function ReferentielChoice({ value, onChange, disabled = false, list = listPublishedReferentiels }) {
+export default function ReferentielChoice({
+  value,
+  onChange,
+  disabled = false,
+  provenance: avecProvenance = true,
+  list = listPublishedReferentiels,
+}) {
   const [referentiels, setReferentiels] = useState([])
   const idProvenance = useId()
 
@@ -45,11 +55,14 @@ export default function ReferentielChoice({ value, onChange, disabled = false, l
   }, [value, disabled, sansRespire, referentiels, onChange])
 
   if (referentiels.length === 0) return null
+  const parDefaut = referentiels.find((r) => r.id === RESPIRE) ?? referentiels[0]
   const choisi = value
-    ? `${value.id}@${value.version}`
-    : valeur(referentiels.find((r) => r.id === RESPIRE) ?? referentiels[0])
+    ? value.version
+      ? `${value.id}@${value.version}`
+      : valeur(referentiels.find((r) => r.id === value.id) ?? parDefaut)
+    : valeur(parDefaut)
   const affiche = referentiels.find((r) => valeur(r) === choisi)
-  const provenance = affiche && affiche.id !== RESPIRE && affiche.source ? affiche.source : null
+  const provenance = avecProvenance && affiche && affiche.id !== RESPIRE && affiche.source ? affiche.source : null
 
   return (
     <>

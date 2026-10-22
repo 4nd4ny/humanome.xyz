@@ -106,6 +106,10 @@ describe('plusieurs référentiels dans la cartographie (T17)', () => {
     expect(within(tile('datasets')).getByText(/Référentiel : Fictif lettré\./)).toBeTruthy()
     const [ds] = await store.listDatasets()
     expect([ds.title, ds.referential, ds.dayCount]).toEqual(['Twin9 · journal-e2e · Fictif lettré', 'Fictif lettré', 2])
+    // « Voir dans le référentiel » mène à la page publique de CE référentiel, pas à RESPIRE (S5, lot E, UC-VIS-02 A8)
+    fireEvent.click(sunEl().querySelector('[role="button"][aria-label^="A1 "]'))
+    const detail = await within(tile('detail')).findByRole('article', { name: /^Détail : A1/ })
+    expect(within(detail).getByRole('link', { name: 'Voir dans le référentiel' }).getAttribute('href')).toBe('#/referentiel/A1?id=fictif-lettre')
   })
 
   it('une carte à 9 pôles s’affiche avec leurs noms, une couleur et un motif chacun ; la carte lettrée coexiste avec elle', async () => {

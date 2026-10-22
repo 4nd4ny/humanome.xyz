@@ -11,6 +11,8 @@ import { cleanup, fireEvent, render, screen, waitFor, within } from '@testing-li
 import Twin9View from './Twin9View.jsx'
 import { resetApiClient } from '../api/client.js'
 import { createMemoryAdapter, createPortfolioStore } from '../lib/portfolio-store.js'
+// un run configuré tel que ses résultats le rendent à son propriétaire (P0-1) : valeurs inventées
+import exemple from '../../../schemas/fixtures/twin9-configuration-exemple.json'
 
 afterEach(() => {
   cleanup()
@@ -526,5 +528,143 @@ describe('Twin9View — la page du run (T9)', () => {
     const caseVisible = await screen.findByRole('checkbox', { name: /Mon cartographe peut lire/ })
     fireEvent.click(caseVisible)
     await waitFor(() => expect(corps).toEqual([{ visibilite: 'cartographe' }]))
+  })
+})
+
+// P0-1 (docs/contrats.md §8.9) : la configuration du run, à côté de son attestation. Le suivi n'en porte que
+// l'empreinte ; les blocs se lisent dans les résultats, à l'ouverture de « Configuration ».
+describe('Twin9View — la configuration du run (P0-1)', () => {
+  const configure = (extra = {}) => ({ ...fini(), configuration_empreinte: '44ebff476ea997e8', ...extra })
+  const resultats = (execution = exemple.run.execution) =>
+    jsonResponse(200, {
+      run: { id: 7, journal: 'mon-journal', statut: 'termine', configuration: exemple.run.configuration, execution },
+      lecteur: 'proprietaire',
+      sorties: {},
+      memoire: [],
+    })
+  const lignes = (dl) => Object.fromEntries([...dl.querySelectorAll(':scope > dt')].map((dt) => [dt.textContent, dt.nextElementSibling.textContent]))
+  const cellules = (tr) => [...tr.children].map((c) => c.textContent)
+
+  it('n’apparaît pas pour un run d’avant elle, et ne lit rien tant qu’on ne l’ouvre pas', async () => {
+    let fetchFn = routedFetch({ 'GET api/twin9/runs/7': jsonResponse(200, fini()) })
+    render(<Twin9View section="7" deps={{ fetchFn, pause: async () => {} }} />)
+    await waitFor(() => expect(screen.getByRole('status').textContent).toBe('Terminé'))
+    expect(screen.queryByText('Configuration')).toBeNull()
+    cleanup()
+
+    fetchFn = routedFetch({ 'GET api/twin9/runs/7': jsonResponse(200, configure()), 'GET api/twin9/runs/7/resultats': resultats() })
+    render(<Twin9View section="7" deps={{ fetchFn, pause: async () => {} }} />)
+    await waitFor(() => expect(screen.getByRole('status').textContent).toBe('Terminé'))
+    const details = screen.getByText('Configuration').closest('details')
+    expect(details.open).toBe(false)
+    expect(details.textContent).toBe('Configuration')
+    expect(fetchFn.mock.calls.filter(([url]) => url === 'api/twin9/runs/7/resultats')).toHaveLength(0)
+  })
+
+  it('ouverte, dit chaque rôle avec son fournisseur et son étiquette RGPD, sa voie, son modèle et son budget de sortie ; le jeu, le référentiel, la clé ; puis l’exécution', async () => {
+    const fetchFn = routedFetch({ 'GET api/twin9/runs/7': jsonResponse(200, configure()), 'GET api/twin9/runs/7/resultats': resultats() })
+    render(<Twin9View section="7" deps={{ fetchFn, pause: async () => {} }} />)
+    await waitFor(() => expect(screen.getByRole('status').textContent).toBe('Terminé'))
+    const details = screen.getByText('Configuration').closest('details')
+    fireEvent.click(details.querySelector('summary'))
+    await within(details).findByText('Réglages des appels')
+    expect(fetchFn.mock.calls.filter(([url]) => url === 'api/twin9/runs/7/resultats')).toHaveLength(1)
+
+    const [config, execution] = details.querySelectorAll('dl')
+    expect(lignes(config)).toEqual({
+      Empreinte: '44ebff476ea997e8',
+      'Lancé le': '2026-01-05 09:00:00',
+      Fournisseurs: 'Anthropic RGPD : sous conditions, par lots',
+      'Jeu de gabarits': 'jeu-exemple@fedcba9876543210',
+      Référentiel: 'referentiel-exemple@1.0.0',
+      Clé: 'celle de l’instance',
+    })
+    const role = (cle) => cellules(details.querySelector(`tr[data-role="${cle}"]`))
+    expect(role('etages/profond')).toEqual(['Analyse profonde', 'Anthropic RGPD : sous conditions', 'par lots', 'claude-exemple-profond', '4000'])
+    expect(role('etapes/greffier')).toEqual(['Greffier', 'Anthropic RGPD : sous conditions', 'par lots', 'claude-exemple-rapide', '2000'])
+    expect(role('second_ressort/president')).toEqual(['Président', 'Anthropic RGPD : sous conditions', 'par lots', 'claude-exemple-profond', '3000'])
+    expect(role('lecteurs/lecteur-a')).toEqual(['lecteur-a', 'Anthropic RGPD : sous conditions', 'par lots', 'claude-exemple-rapide', '1000'])
+    expect([...details.querySelectorAll('th[scope="rowgroup"]')].map((th) => th.textContent)).toEqual(['Étages', 'Étapes', 'Second ressort', 'Lecteurs du collège'])
+    expect(details.querySelector('.twin9-rgpd').className).toContain('twin9-rgpd-sous_conditions')
+
+    expect(lignes(execution)).toEqual({
+      Appels: '9 : 8 répondus, 1 en panne dont 1 sortie tronquée',
+      'Passes du moteur': '12 (640 ms de moteur)',
+      Lots: '3',
+      Coût: '0,0042 $',
+    })
+    expect(within(details).getByText(/Figée à la fin du run/)).toBeTruthy()
+    // une sortie tronquée est une panne (P0-2) : le conseil d'augmenter le budget de son étape
+    expect(details.querySelector('.twin9-conseil').textContent).toContain('Une sortie tronquée a été comptée en panne')
+    expect(within(details).getByRole('link', { name: 'Régler mes profils' }).getAttribute('href')).toBe('#/configuration')
+    const [, parFournisseur, parVoie] = details.querySelectorAll('table')
+    expect([...parFournisseur.querySelectorAll('tr')].map(cellules)).toEqual([
+      ['Fournisseur', 'Appels', 'Pannes', 'dont tronqués', 'Coût'],
+      ['Anthropic RGPD : sous conditions', '9', '1', '1', '0,0042 $'],
+    ])
+    expect([...parVoie.querySelectorAll('tr')].map(cellules)).toEqual([
+      ['Voie', 'Appels', 'Pannes', 'dont tronqués', 'Coût'],
+      ['par lots', '9', '1', '1', '0,0042 $'],
+    ])
+
+    // séparée de l'attestation, qui ne change pas ; un seul statut, aucune alerte
+    const attestation = screen.getByText('Attestation').closest('details')
+    expect(attestation).not.toBe(details)
+    expect([...attestation.querySelectorAll('dt')].map((dt) => dt.textContent)).toEqual(['Profil', 'Référentiel', 'Jeu de gabarits', 'Moteur', 'Accord'])
+    expect(screen.getAllByRole('status')).toHaveLength(1)
+    expect(screen.queryByRole('alert')).toBeNull()
+  })
+
+  it('se relit quand le run finit : son exécution, lue dans son journal en cours de route, est alors figée', async () => {
+    let lache
+    const attente = new Promise((resolve) => {
+      lache = resolve
+    })
+    const enCoursDeRoute = configure({ statut: 'en_cours', retard: null, compteurs: null, progression: { appels: { envoye: 1, attente: 0, repondu: 2, panne: 0 }, journees: 1, fusion: false, lots: 0, runs_avant: 0 } })
+    // en cours, encore en cours (la page attend : le test ouvre « Configuration »), puis fini
+    const etats = [enCoursDeRoute, enCoursDeRoute, configure()]
+    let tour = 0
+    const enCours = { ...exemple.run.execution, source: 'journal', statut: 'en_cours', appels: { total: 3, repondus: 2, pannes: 0, tronques: 0, refus: 0, tentatives: 3 } }
+    let lu = 0
+    const fetchFn = routedFetch({
+      'GET api/twin9/runs/7': () => jsonResponse(200, etats[Math.min(tour++, etats.length - 1)]),
+      'POST api/twin9/runs/avancer': jsonResponse(200, { avance: true, locked: false }),
+      'GET api/twin9/runs/7/resultats': () => (lu++ === 0 ? resultats(enCours) : resultats()),
+    })
+    render(<Twin9View section="7" deps={{ fetchFn, pause: () => attente }} />)
+    await waitFor(() => expect(screen.getByRole('status').textContent).toBe('En cours'))
+    const details = screen.getByText('Configuration').closest('details')
+    fireEvent.click(details.querySelector('summary'))
+    await within(details).findByText(/Lue dans son journal/)
+    expect(lignes(details.querySelectorAll('dl')[1]).Appels).toBe('3 : 2 répondus, 0 en panne')
+    expect(details.querySelector('.twin9-conseil')).toBeNull()
+
+    lache()
+    await waitFor(() => expect(screen.getByRole('status').textContent).toBe('Terminé'))
+    await within(details).findByText(/Figée à la fin du run/)
+    expect(fetchFn.mock.calls.filter(([url]) => url === 'api/twin9/runs/7/resultats')).toHaveLength(2)
+  })
+
+  it('dit une erreur de lecture dans le bloc, sans toucher la page ; la rouvrir réessaie', async () => {
+    let echec = true
+    const fetchFn = routedFetch({
+      'GET api/twin9/runs/7': jsonResponse(200, configure()),
+      'GET api/twin9/runs/7/resultats': () => (echec ? jsonResponse(500, { error: 'Erreur interne' }) : resultats()),
+    })
+    render(<Twin9View section="7" deps={{ fetchFn, pause: async () => {} }} />)
+    await waitFor(() => expect(screen.getByRole('status').textContent).toBe('Terminé'))
+    const details = screen.getByText('Configuration').closest('details')
+    const summary = details.querySelector('summary')
+    fireEvent.click(summary)
+    expect((await within(details).findByText('Erreur interne')).className).toBe('load-error')
+    expect(screen.queryByRole('alert')).toBeNull()
+    expect(screen.getByRole('button', { name: 'Ouvrir dans la cartographie' })).toBeTruthy()
+
+    echec = false
+    fireEvent.click(summary)
+    await waitFor(() => expect(details.open).toBe(false))
+    fireEvent.click(summary)
+    await within(details).findByText('Réglages des appels')
+    expect(fetchFn.mock.calls.filter(([url]) => url === 'api/twin9/runs/7/resultats')).toHaveLength(2)
   })
 })

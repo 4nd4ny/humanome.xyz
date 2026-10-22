@@ -5,8 +5,14 @@ import { describe, expect, it } from 'vitest'
 import { existsSync, readFileSync, readdirSync } from 'node:fs'
 import { fileURLToPath } from 'node:url'
 import { dirname, join } from 'node:path'
-import { cleDeJure, importTwin9Run, looksLikeTwin9Run } from './twin9-run.js'
-import { recognize } from '../import.js'
+import { cleDeJure, configurationGardee, executionGardee, importTwin9Run, looksLikeTwin9Run } from './twin9-run.js'
+import { importFiles, recognize } from '../import.js'
+import { createCartoStore, createMemoryAdapter } from '../store.js'
+import { buildArchive } from '../archive.js'
+import { createDataset } from '../model.js'
+import { provenanceLabel } from '../../ui/Manager.jsx'
+// un run configuré tel que ses résultats le rendent à son propriétaire (P0-1) : valeurs inventées, prix compris
+import exemple from '../../../../../schemas/fixtures/twin9-configuration-exemple.json'
 
 const REFERENTIEL = {
   poles: [1, 2, 3, 4, 5, 6, 7].map((num) => ({ num, nom: `Pôle ${num}` })),
@@ -221,6 +227,134 @@ describe('importTwin9Run (T9)', () => {
   it('nomme un juré sans accent ni majuscule', () => {
     expect(cleDeJure('Pédagogue')).toBe('pedagogue')
     expect(cleDeJure('Ingénieur')).toBe('ingenieur')
+  })
+})
+
+// P0-1 (docs/contrats.md §8.9) : le run porte sa configuration et son exécution. Le jeu, qui se partage et
+// s'archive, n'en garde qu'une liste blanche — ni prix, ni coût, ni plafond, ni clé, ni l'admission.
+describe('importTwin9Run : la configuration du run (P0-1)', () => {
+  /** Ce que le jeu ne doit jamais garder d'un run : ce que paie son propriétaire, et comment. */
+  const INTERDITS = ['"prix"', '"grille"', '"remise_lots"', '"cle"', '"plafonds"', '"budget_usd"', '"cout_microusd"', '"jetons', '"execution_prevue"', '"algorithme"', '"versions"', '"reprises"', 'reserve_microusd', 'engagement_microusd', 'fedcba9876543210']
+
+  /** Le run de doc(), configuré, son attestation avec son admission, et une journée que seule la fusion donne. */
+  const configure = () => {
+    const d = doc()
+    d.run = {
+      ...d.run,
+      attestation: {
+        profil: { id: 3, nom: 'Direct', mode: 'complet' },
+        admission: { journees: 3, total: 3, reserve_microusd: 123456, engagement_microusd: 654321 },
+        gabarits: { jeu: 'jeu-exemple', versions: { 'exemple/etape': 2 }, empreinte: 'fedcba9876543210' },
+      },
+      configuration: structuredClone(exemple.run.configuration),
+      execution: structuredClone(exemple.run.execution),
+    }
+    d.carto_evolutive.competences['1.01'].attestations.push({ jour_index: 2, journee: '2026-01-07', date: '2026-01-07', confiance: 0.6, score_preuves: 1, score_indices: 0 })
+    return d
+  }
+  const sansConfiguration = () => {
+    const d = configure()
+    delete d.run.configuration
+    delete d.run.execution
+    return d
+  }
+  const conf = exemple.run.configuration
+
+  it('dit, sur chaque journée, ses modèles, son jeu de gabarits et le renvoi à sa configuration — fusion comprise', () => {
+    const r = importTwin9Run(configure(), { now: '2026-10-22T10:00:00Z' })
+    expect(r.variants.map((v) => v.date)).toEqual(['2026-01-05', '2026-01-06', '2026-01-07'])
+    for (const v of r.variants) {
+      expect(v.summary.provenance).toMatchObject({
+        source: 'twin9',
+        run: 'twin9:7',
+        model: 'profond: claude-exemple-profond, rapide: claude-exemple-rapide, lecteurs: claude-exemple-rapide',
+        prompt: 'gabarits jeu-exemple',
+        configurationRef: 'twin9:7|configuration',
+        configuration: { empreinte: '44ebff476ea997e8', fournisseurs: ['anthropic'], voies: ['lots'] },
+      })
+    }
+    // le libellé de provenance de l'interface les dit
+    expect(provenanceLabel(r.variants[0].summary)).toBe(
+      'Twin9 (serveur) — twin9:7 — profond: claude-exemple-profond, rapide: claude-exemple-rapide, lecteurs: claude-exemple-rapide — gabarits jeu-exemple — analysée le 2026-10-19 — 1 verdicts',
+    )
+  })
+
+  it('garde sa configuration et son exécution par liste blanche, sous « <run>|configuration », sans la compter comme une délibération', () => {
+    const r = importTwin9Run(configure(), { now: '2026-10-22T10:00:00Z' })
+    expect(r.runDetails.map((x) => x.key)).toEqual(['twin9:7|2026-01-05|1.01', 'twin9:7|configuration'])
+    expect(r.report.find((x) => x.code === 'twin9-run').message).toBe('Run Twin9 7 : 3 journée(s), 1 délibération(s)')
+    const meta = r.runDetails[1].value
+    expect(meta).toEqual({
+      kind: 'twin9-run-meta',
+      run: 'twin9:7',
+      configuration: {
+        empreinte: '44ebff476ea997e8',
+        fournisseurs: { anthropic: { libelle: 'Anthropic', rgpd: 'sous_conditions', voie: 'lots' } },
+        appels: conf.appels,
+        referentiel: conf.referentiel,
+        gabarits: { jeu: 'jeu-exemple' },
+      },
+      execution: {
+        statut: 'termine',
+        source: 'fige',
+        partiel: false,
+        passes: 12,
+        appels: { total: 9, repondus: 8, pannes: 1, tronques: 1, refus: 0 },
+        par_fournisseur: { anthropic: { appels: 9, pannes: 1, tronques: 1 } },
+        par_voie: { lots: { appels: 9, pannes: 1, tronques: 1 } },
+      },
+    })
+    // ni prix, ni coût, ni plafond, ni clé, ni l'admission de l'attestation, ni l'empreinte des gabarits, nulle part
+    const texte = JSON.stringify(r)
+    for (const interdit of INTERDITS) expect(texte, interdit).not.toContain(interdit)
+  })
+
+  it('ne recopie qu’un champ nommé, et seulement une valeur simple : une clé inconnue ou un objet glissé dans un réglage ne passent pas', () => {
+    const c = structuredClone(conf)
+    c.appels.etages.profond.secret = 'à ne pas garder'
+    c.appels.etages.profond.modele = { cache: 'objet' }
+    c.fournisseurs.anthropic.cle = 'sk-fictive'
+    c.referentiel.fiches = ['fiche']
+    c.gabarits.contenu = 'gabarit fictif'
+    const garde = configurationGardee(c)
+    expect(garde.appels.etages.profond).toEqual({ fournisseur: 'anthropic', voie: 'lots', budget_sortie: 4000, effort: 'medium', reflexion: 'adaptative' })
+    expect(garde.fournisseurs.anthropic).toEqual({ libelle: 'Anthropic', rgpd: 'sous_conditions', voie: 'lots' })
+    expect(JSON.stringify(garde)).not.toMatch(/secret|cache|sk-fictive|fiche|gabarit fictif/)
+    // un cartographe lié lit l'exécution sans coût : elle se garde de même
+    expect(executionGardee({ ...exemple.run.execution, cout_microusd: undefined }).appels.total).toBe(9)
+    expect([configurationGardee(null), configurationGardee(undefined), configurationGardee([]), executionGardee(null)]).toEqual([null, null, null, null])
+  })
+
+  it('sans configuration (un run d’avant P0-1, ou nulle), rien ne change : provenance, délibérations, rapport', () => {
+    for (const d of [sansConfiguration(), { ...sansConfiguration(), run: { ...sansConfiguration().run, configuration: null, execution: null } }]) {
+      const r = importTwin9Run(d, { now: '2026-10-22T10:00:00Z' })
+      for (const v of r.variants.filter((x) => x.date !== '2026-01-07')) {
+        expect(v.summary.provenance).toEqual({ source: 'twin9', run: 'twin9:7', files: ['twin9-run.json'], model: null, prompt: null, analysedAt: '2026-10-19 10:05:00', importedAt: '2026-10-22T10:00:00Z' })
+      }
+      // la journée de la fusion garde le libellé de la fusion du site
+      expect(r.variants.find((x) => x.date === '2026-01-07').summary.provenance).toMatchObject({ source: 'twin9', run: 'twin9:7', model: null, prompt: 'Twin9 — run du serveur' })
+      expect(r.runDetails.map((x) => x.key)).toEqual(['twin9:7|2026-01-05|1.01'])
+    }
+  })
+
+  it('garde les mêmes variantes, identifiants et empreintes, avec ou sans configuration : la réimportation déduplique', () => {
+    const avec = importTwin9Run(configure(), { now: '2026-10-22T10:00:00Z' })
+    const sans = importTwin9Run(sansConfiguration(), { now: '2026-10-22T10:00:00Z' })
+    const ids = (r) => r.variants.map((v) => [v.date, v.summary.id, v.summary.digest])
+    expect(ids(avec)).toEqual(ids(sans))
+    expect(ids(avec)).toHaveLength(3)
+  })
+
+  it('passe par la chaîne d’import et le magasin : le jeu exporté garde la configuration, jamais un prix, un coût ni la clé', async () => {
+    const store = createCartoStore({ adapter: createMemoryAdapter() })
+    const base = createDataset({ datasetId: 'ds-twin9', title: 'Twin9 · mon-journal', referential: REFERENTIEL, now: '2026-10-22T10:00:00Z' })
+    const result = await importFiles([{ path: 'twin9-run-7.json', text: JSON.stringify(configure()) }], base, { now: '2026-10-22T10:00:00Z' })
+    expect(result.report.filter((x) => x.severity === 'blocking')).toEqual([])
+    await store.commit(result)
+    const archive = buildArchive(await store.exportAll('ds-twin9'), { now: '2026-10-22T10:00:00Z' })
+    expect(archive.runDetails['twin9:7|configuration'].configuration.empreinte).toBe('44ebff476ea997e8')
+    const texte = JSON.stringify(archive)
+    for (const interdit of INTERDITS) expect(texte, interdit).not.toContain(interdit)
   })
 })
 

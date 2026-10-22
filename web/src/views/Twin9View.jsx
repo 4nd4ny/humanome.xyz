@@ -21,6 +21,9 @@
 // run arrêté par son budget reprend sous un nouveau budget, par son crédit
 // une fois rechargé, avant sa fusion comme les autres ; sa carte, incomplète,
 // s'ouvre dans la cartographie, qui le dit. Son attestation dit son admission.
+// Depuis P0-1, sa configuration se lit à côté (twin9/ConfigurationDuRun.jsx) :
+// fournisseur, voie, modèle et budget de sortie de chaque rôle, jeu de
+// gabarits, référentiel, clé ; puis ses appels, pannes et sorties tronquées.
 //
 // Le moteur lit le référentiel du run (T16), et sa carte s'ouvre dans la
 // cartographie avec lui (T17) : RESPIRE, ou celui d'une autre structure, dont
@@ -43,6 +46,7 @@ import {
 } from '../api/twin9.js'
 import { createPortfolioStore } from '../lib/portfolio-store.js'
 import { twin9RunFiles } from '../lib/interface-handoff.js'
+import ConfigurationDuRun from './twin9/ConfigurationDuRun.jsx'
 import '../styles/twin9.css'
 
 const STATUTS = { en_cours: 'En cours', termine: 'Terminé', annule: 'Annulé', echoue: 'Arrêté' }
@@ -538,6 +542,15 @@ function PageDuRun({ id, deps, onOpenInInterface }) {
             <dd>{run.accord_at ?? '—'}</dd>
           </dl>
         </details>
+      ) : null}
+      {/* sa configuration (P0-1) : le suivi n'en porte que l'empreinte, les blocs se lisent dans ses résultats */}
+      {run.configuration_empreinte ? (
+        <ConfigurationDuRun
+          version={run.statut}
+          charger={() =>
+            fetchResultats(id, { fetchFn }).then((r) => ({ configuration: r.run?.configuration ?? null, execution: r.run?.execution ?? null }))
+          }
+        />
       ) : null}
     </article>
   )

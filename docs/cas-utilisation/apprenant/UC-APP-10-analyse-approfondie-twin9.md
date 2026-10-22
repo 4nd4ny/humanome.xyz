@@ -7,7 +7,7 @@
 | **Portée** | humanome.xyz — vues `#/twin9` et `#/twin9/<id>`, routes `/api/twin9/runs…` (`api/src/routes/twin9-runs.php`), profils de `#/configuration` (`/api/twin9/configuration`, `/api/twin9/profils`), ouverture dans l'interface de cartographie (`#/cartographie`) |
 | **Niveau** | Objectif utilisateur |
 | **Cahier des charges** | §3.2, §4.3 (découpage journalier + fusion), §4.4, §6 (RGPD), §7 (Golden Prompt payant) ; ADR-004, ADR-007, ADR-010, ADR-011 ; `docs/contrats.md` §8 |
-| **Statut** | Implémenté (T9, T10, T8 stratégie A, T16, T17) ; le moteur du navigateur et son proxy `POST /api/twin9/appel` sont retirés depuis T11 |
+| **Statut** | Implémenté (T9, T10, T8 stratégie A, T16, T17 ; P0-1 : configuration et exécution du run, 2026-10-22) ; le moteur du navigateur et son proxy `POST /api/twin9/appel` sont retirés depuis T11 |
 
 ## Objectif
 
@@ -44,6 +44,12 @@ badge premium) ou ouvre `#/twin9`.
   (profil et mode, journées admises, jeu de gabarits et ses versions,
   référentiel, sa version et son empreinte, commit du moteur), va au bout :
   ses journées instruites, puis la fusion de sa carte.
+- Depuis P0-1, il garde aussi sa **configuration**, écrite une fois au
+  lancement (le fournisseur, la voie, le modèle et le budget de sortie de
+  chaque appel, les fournisseurs atteints et leur étiquette RGPD, le jeu de
+  gabarits, le référentiel, la clé, les prix tels que facturés), et son
+  **exécution** (appels, pannes, sorties tronquées, passes du moteur, coût,
+  par fournisseur et par voie), que la page du run affiche (RG13).
 - Ses résultats — carte évolutive, cartes du jour avec leurs délibérations,
   rapports — se lisent filtrés et s'ouvrent dans l'interface de cartographie,
   dans un jeu « Twin9 · <journal> · <référentiel> ».
@@ -103,7 +109,18 @@ badge premium) ou ouvre `#/twin9`.
    T16, qui n'a pas gardé de référentiel).
 8. La page garde l'attestation du run (profil, référentiel et version, jeu de
    gabarits et empreinte, moteur, admission, date de l'accord) ; « Mes
-   analyses » liste ses runs.
+   analyses » liste ses runs. À côté, « Configuration » (P0-1, un run lancé
+   depuis : son suivi porte `configuration_empreinte`), ouverte, lit une fois
+   `GET /api/twin9/runs/<id>/resultats` — de nouveau quand le statut du run
+   change — et dit chaque rôle (étage, étape, étape au second ressort,
+   lecteur du collège) avec son fournisseur et son étiquette RGPD, sa voie,
+   son modèle et son budget de sortie ; le jeu de gabarits
+   (`jeu@empreinte`), le référentiel (`id@version`), la clé ; puis
+   l'exécution : appels, pannes dont sorties tronquées (avec le conseil
+   d'augmenter le budget de sortie de leur étape), par fournisseur et par
+   voie, passes du moteur, lots, coût (RG13). Ouvert dans la cartographie
+   (étape 7), chaque journée dit ses modèles et son jeu de gabarits, et le
+   jeu garde la configuration par liste blanche (RG14).
 
 ## Scénarios alternatifs
 
@@ -229,6 +246,27 @@ badge premium) ou ouvre `#/twin9`.
   sinon `422` (« … précède T16 … Pour un autre référentiel » ou « … tel que le
   décrivent ses fiches (7 pôles, 61 compétences). Pour une autre structure de
   RESPIRE, il faut … »).
+- **RG13 — Configuration et exécution** (P0-1, `docs/contrats.md` §8.9) :
+  la configuration est écrite au lancement et ne change plus, une reprise
+  comprise ; l'exécution est figée quand le run finit, lue dans son journal
+  sinon (« partielle » pour un run lancé avant elle). Le suivi, interrogé
+  sans cesse, n'en porte que l'empreinte : la page lit les deux blocs dans
+  les résultats, à l'ouverture seulement. Une sortie tronquée est une panne
+  (§8) : sa journée sera instruite de nouveau. Un cartographe lié les lit
+  sans prix, coût, plafond ni clé ; chaque ligne de la vue tient à la
+  présence de son champ. Un run d'avant P0-1 n'a pas de « Configuration ».
+- **RG14 — Ce que le jeu de cartographie en garde** (`importTwin9Run`) : une
+  liste blanche, champ par champ — l'empreinte, les fournisseurs (libellé,
+  étiquette RGPD, voie), les réglages de chaque appel, le référentiel
+  (`id`, `version`, `label`, `empreinte`), le nom du jeu de gabarits ; de
+  l'exécution, ses comptes d'appels et ses passes —, sous la clé
+  « <run>|configuration » des délibérations de run, qui ne la compte pas
+  comme une délibération. Jamais un prix, un coût, un plafond, la clé,
+  l'admission de l'attestation ni l'empreinte du jeu de gabarits : le jeu se
+  partage et s'archive. Chaque journée porte `provenance.model` (« profond:
+  …, rapide: …, lecteurs: … »), `provenance.prompt` (« gabarits <jeu> ») et
+  `provenance.configurationRef` ; l'interface les affiche sous « Twin9
+  (serveur) ». Sans configuration, l'import ne change pas.
 
 ## Données et RGPD
 
@@ -240,6 +278,7 @@ badge premium) ou ouvre `#/twin9`.
 | Grand-livre | Montants, modèle, jetons, libellé du run et de l'étape — jamais de contenu |
 | Évaluation d'un run fini | Tailles et coûts de ses journées et de sa fusion, rien d'autre ; anonyme une fois le compte supprimé (T8) |
 | Audit anti-fuite | `{run, fuites}` seulement |
+| Configuration et exécution d'un run (P0-1) | Réglages, versions, empreintes, prix facturés et compteurs, jamais un gabarit, une fiche, la clé ni la marge ; lues par le propriétaire entières, par un cartographe lié sans prix, coût, plafond ni clé ; dans le jeu de cartographie, la seule liste blanche de RG14 |
 
 ## Code sollicité
 
@@ -247,9 +286,11 @@ badge premium) ou ouvre `#/twin9`.
 |---|---|---|
 | Front | `web/src/router.js` — `parseHash` ; `web/src/nav.js` — `navGroups` | Routes `#/twin9` et `#/twin9/<id>` ; entrée « Analyse approfondie » (premium) |
 | Front | `web/src/views/Twin9View.jsx` — `Lancer`, `Apercu`, `PageDuRun` | Choix, accord, aperçu, lancement ; suivi, avance, annulation, reprise sous un nouveau budget, visibilité, ouverture dans la cartographie, attestation |
+| Front | `web/src/views/twin9/ConfigurationDuRun.jsx` — `ConfigurationDuRun`, `VueConfiguration` | « Configuration » de la page du run : lecture à l'ouverture, réglages par rôle, exécution (RG13) |
 | Front | `web/src/api/twin9.js` — `fetchRuns`, `fetchConfiguration`, `apercuRun`, `lancerRun`, `fetchRun`, `avancerRuns`, `annulerRun`, `reprendreRun`, `rendreRunVisible`, `fetchResultats`, `formatUsd` | Client des runs |
 | Front | `web/src/lib/interface-handoff.js` — `twin9RunFiles` | Document `twin9-run` remis à l'interface de cartographie |
-| Front | `web/src/carto/core/importers/twin9-run.js` — `importTwin9Run` ; `web/src/lib/twin9/mapper.js` — `twin9Dossier`, `twin9ToMergeDocument` | Jeu de cartographie d'un run, dossier de chaque verdict |
+| Front | `web/src/carto/core/importers/twin9-run.js` — `importTwin9Run`, `configurationGardee`, `executionGardee` ; `web/src/lib/twin9/mapper.js` — `twin9Dossier`, `twin9ToMergeDocument` | Jeu de cartographie d'un run, dossier de chaque verdict, configuration par liste blanche (RG14) |
+| Front | `web/src/carto/ui/Manager.jsx` — `SOURCE_LABELS`, `provenanceLabel` | « Twin9 (serveur) », modèles et jeu de gabarits d'une journée |
 | API | `GET/POST /api/twin9/runs`, `POST …/apercu`, `POST …/avancer`, `GET …/{id}`, `POST …/{id}/annuler`, `POST …/{id}/reprendre`, `PUT …/{id}/visibilite`, `GET …/{id}/resultats`, `GET /api/twin9/admin/runs` — `api/src/routes/twin9-runs.php` | Runs du serveur |
 | API | `api/src/Middleware/CsrfMiddleware.php` | Jeton CSRF des écritures (E1) — logique unitaire couverte par UC-CPT-02-U07 |
 | Domaine | `api/src/Twin9/Lancement.php` — `lancer`, `apercu`, `empreinte` | Lancement, aperçu, estimation, admission ; jeu d'avant T16 (RG12) |
@@ -258,6 +299,7 @@ badge premium) ou ouvre `#/twin9`.
 | Domaine | `api/src/Twin9/RunRepository.php` — `duProprietaire`, `suivi`, `annuler`, `reprendre`, `rendreVisible`, `acces` | Liste, suivi, actions du propriétaire |
 | Domaine | `api/src/Twin9/RunCosts.php`, `api/src/Twin9/CreditService.php` | Réserves, réconciliation, remboursements |
 | Domaine | `api/src/Twin9/Resultats.php` — `lire` ; `api/src/Twin9/LeakFilter.php` | Résultats filtrés, mémoire, référentiel du run |
+| Domaine | `api/src/Twin9/RunConfiguration.php` — `depuis`, `pourCartographe` ; `api/src/Twin9/RunExecution.php` — `bloc`, `depuis`, `pourCartographe` ; `RunRepository::configuration`, `execution` | Configuration et exécution d'un run (RG13) |
 | Domaine | `api/src/Twin9/EngineLoader.php`, `api/src/Worker/Tick.php` | Chargement du moteur, tranches (tick et page) |
 | Moteur | `Twin_v9/php/src` (dépôt privé), `api/tests/fixtures/twin9-factice` (moteur factice des tests) | Exécution du protocole |
 
@@ -280,6 +322,8 @@ badge premium) ou ouvre `#/twin9`.
 | UC-APP-10-U11 | `RunRepository::suivi` | Ce qui retient un run en mots (premier tour, run précédent de la même carte) ; ni portfolio ni sortie | idem |
 | UC-APP-10-U12 | `Resultats::lire` | Seules les sorties publiques ; récitation expurgée, audit en compteur ; référentiel sans fiche ni description (RG9, RG11) | idem |
 | UC-APP-10-U13 | `Lancement::empreinte` | Empreinte d'un jeu de gabarits stable, indépendante de l'ordre, sensible au contenu | idem |
+| UC-APP-10-U14 | `VueConfiguration` | Chaque rôle (fournisseur, étiquette RGPD, voie, modèle, budget de sortie), jeu, référentiel, clé ; exécution par fournisseur et par voie, passes, coût, conseil des sorties tronquées ; un cartographe lié : ni clé ni coût ; un run d'avant P0-1 : son exécution partielle seule (RG13) | `web/test/usecases/unit/uc-app-10-analyse-approfondie-twin9.test.jsx` |
+| UC-APP-10-U15 | `importTwin9Run` | Configuration et exécution gardées par liste blanche sous « <run>\|configuration », non comptées comme une délibération ; modèles et jeu de gabarits de chaque journée ; ni prix, ni coût, ni plafond, ni clé (RG14) | idem |
 
 ### Tests fonctionnels
 
@@ -305,6 +349,7 @@ badge premium) ou ouvre `#/twin9`.
 | UC-APP-10-F17 | E1, E2 | IHM | Visiteur : invite à se connecter ; instance sans moteur : message, sans formulaire | idem |
 | UC-APP-10-F18 | A2, E5 | IHM | Admission partielle dite ; refus : message, « Recharger », aucun lancement possible | idem |
 | UC-APP-10-F19 | A3, A4, A5 | IHM | Annuler, reprendre ; arrêté par le budget, reprise sous un nouveau budget ; case du cartographe | idem |
+| UC-APP-10-F21 | Nominal (étapes 7-8), RG13, RG14 | IHM | `<App/>` : la page d'un run fini ouvre sa configuration, lue dans ses résultats à l'ouverture seulement, à côté de l'attestation inchangée ; ouvert dans la cartographie, le jeu garde la configuration par liste blanche, chaque journée dit ses modèles et son jeu, rien d'un prix, d'un coût ni de la clé | `web/test/usecases/functional/uc-app-10-analyse-approfondie-twin9.test.jsx` |
 
 ### Tests existants liés (non-régression)
 
@@ -315,8 +360,10 @@ badge premium) ou ouvre `#/twin9`.
 - `api/tests/Twin9/CoutsTest.php` — réserves, réconciliation, plafonds (budget, durée, crédit), clé personnelle.
 - `api/tests/Twin9/PurgeExportTest.php` — purge du compte, lots chez Anthropic, export.
 - `api/tests/Twin9MetaTest.php` — le proxy du moteur du navigateur est parti (T11).
-- `web/src/views/Twin9View.test.jsx` — lancement, aperçu, admission, page du run, carte incomplète, référentiels (T17).
-- `web/src/carto/core/importers/twin9-run.test.js`, `web/src/lib/twin9/mapper.test.js` — jeu de cartographie d'un run, dossiers.
+- `api/tests/Twin9/RunConfigurationTest.php`, `api/tests/Twin9/RunsTest.php`, `api/tests/Twin9/PurgeExportTest.php` — configuration et exécution d'un run (P0-1) : liste blanche, vue du cartographe, tables vides en objets, reprises, export d'un run ancien.
+- `web/src/views/Twin9View.test.jsx` — lancement, aperçu, admission, page du run, carte incomplète, référentiels (T17) ; « Configuration » (P0-1) : absente d'un run d'avant elle, lue à l'ouverture seulement, relue quand le run finit, erreur dans le bloc.
+- `web/src/carto/core/importers/twin9-run.test.js`, `web/src/lib/twin9/mapper.test.js` — jeu de cartographie d'un run, dossiers ; configuration par liste blanche, variantes inchangées avec ou sans elle, jeu exporté sans prix ni clé (P0-1).
+- `web/src/lib/archive.test.js` — l'archive du compte avec la configuration et l'exécution d'un run, sans elles pour un run ancien, invalide avec une clé inconnue (P0-1).
 - `web/e2e/twin9-run.e2e.js`, `web/e2e/twin9-referentiels.e2e.js` — de bout en bout, en local (`docs/tests-e2e.md`).
 
 ### Exécuter

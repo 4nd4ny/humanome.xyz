@@ -825,7 +825,10 @@ une suivante le relève.
   "journee"`), et les synthèses viennent de la fusion
   (`carto/core/importers/twin9-run.js`). Depuis T17, la page le remet pour
   un run de tout référentiel (§10) ; de T16 à T17, pour un run de RESPIRE
-  seul.
+  seul. Depuis P0-1, l'interface ne garde de `run.configuration` et
+  `run.execution` qu'une liste blanche (§8.9), et chaque journée dit ses
+  modèles et son jeu de gabarits (`provenance.model`, `provenance.prompt`,
+  `provenance.configurationRef`).
 
 ### 8.5 Coûts, plafonds, relance, purge et export (T10)
 
@@ -1322,6 +1325,31 @@ refusée ; fixture inventée `schemas/fixtures/twin9-configuration-exemple.json`
   propriétaire ni comment : ni `prix`, ni `execution_prevue.plafonds`, ni
   `execution_prevue.cle`, ni aucun `cout_microusd`, ni le `budget_usd` des
   reprises. L'administrateur n'en voit rien (§8.4 : des compteurs).
+- **La page du run** (`web/src/views/twin9/ConfigurationDuRun.jsx`) : le
+  suivi n'en portant que l'empreinte, « Configuration » lit les deux blocs
+  dans les résultats quand on l'ouvre, et de nouveau quand le statut du run
+  change ; elle dit chaque réglage de `appels` (rôle, fournisseur et son
+  étiquette RGPD, voie, modèle, budget de sortie), le jeu de gabarits, le
+  référentiel, la clé, puis l'exécution (appels, pannes, tronqués par
+  fournisseur et par voie, passes, coût). Chaque ligne tient à la présence
+  de son champ : sans `cle` ni `cout_microusd` (un cartographe lié), elle
+  manque.
+- **Le jeu de cartographie** (`importTwin9Run`, document `twin9-run`, §8.4)
+  se partage et s'archive : il ne garde des deux blocs qu'une **liste
+  blanche**, champ par champ et en valeurs simples, sous la clé
+  `<run>|configuration` de `runDetails` (`kind: "twin9-run-meta"`, jamais
+  comptée comme une délibération) : `configuration {empreinte,
+  fournisseurs {libelle, rgpd, voie}, appels (les six champs de chaque
+  réglage), referentiel {id, version, label, empreinte}, gabarits {jeu}}` et
+  `execution {statut, source, partiel, passes, appels {total, repondus,
+  pannes, tronques, refus}, par_fournisseur, par_voie {appels, pannes,
+  tronques}}`. Jamais `prix`, `execution_prevue` (clé, plafonds), un coût,
+  des jetons, les reprises, l'admission de l'attestation ni l'empreinte du
+  jeu de gabarits. Chaque journée du run porte `provenance.model`
+  (« profond: …, rapide: …, lecteurs: … », le fournisseur devant un modèle
+  tiers), `provenance.prompt` (« gabarits <jeu> »), `configurationRef` et
+  `configuration {empreinte, fournisseurs, voies}` ; `variantId` et `digest`
+  n'en dépendent pas. Sans configuration, l'import est celui d'avant P0-1.
 - **Écart signalé, non corrigé ici** : `attestation.admission` porte déjà
   `reserve_microusd` et `engagement_microusd`, que lit aussi un cartographe
   lié.

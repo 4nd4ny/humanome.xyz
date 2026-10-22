@@ -4,10 +4,10 @@
 |---|---|
 | **Acteur principal** | Épistémiarque (ou administrateur : garde « épistémiarque ou admin ») |
 | **Acteurs secondaires** | Membres épistémiarques (vote, UC-EPI-02 A5) ; chaque compte, qui choisit un référentiel publié dans son profil Twin9 (UC-APP-10, page Configuration) ou au lancement d'une cartographie standard, ouverte ou de masse ; l'auteur d'un brouillon, pour ses runs d'essai |
-| **Portée** | Atelier `#/epistemiarque/referentiels` (section « Autres référentiels ») ; API `POST /api/referentiel/import`, `GET /api/referentiels`, `GET /api/referentiels/{id}/versions/{semver}`, et le cycle du grain document (`/api/referentiel/drafts…`, `/api/referentiel/proposals…`, UC-EPI-04) ; hors vote, l'amorçage de l'Humanome V18 converti de son YAML (`scripts/convertir-humanome.mjs`, `scripts/amorcer-referentiel.php`, S5, A6) |
+| **Portée** | Atelier `#/epistemiarque/referentiels` (section « Autres référentiels » : import d'un JSON ou d'un texte Markdown, modèles, export en Markdown) ; API `POST /api/referentiel/import`, `GET /api/referentiels`, `GET /api/referentiels/{id}/versions/{semver}`, et le cycle du grain document (`/api/referentiel/drafts…`, `/api/referentiel/proposals…`, UC-EPI-04) ; hors vote, l'amorçage de l'Humanome V18 converti de son YAML (`scripts/convertir-humanome.mjs`, `scripts/amorcer-referentiel.php`, S5, A6) |
 | **Niveau** | Objectif utilisateur |
 | **Cahier des charges** | §3.5, §4.1 ; T15 (dépôt `Twin_v9`, `docs/plan-twin9-php.md`, lot 4c, première tâche) ; schéma `referentiel` 2.1.0 (`docs/contrats.md` §9 et §11) |
-| **Statut** | Implémenté (T15) ; le moteur lit le référentiel du run depuis T16, la cartographie depuis T17 (`docs/contrats.md` §10) ; conversion et amorçage de l'Humanome V18 depuis S5 (A6) |
+| **Statut** | Implémenté (T15) ; le moteur lit le référentiel du run depuis T16, la cartographie depuis T17 (`docs/contrats.md` §10) ; conversion et amorçage de l'Humanome V18 depuis S5 (A6) ; écriture en Markdown, modèles et export depuis S5, lot D (A7 à A9) |
 
 ## Objectif
 
@@ -24,12 +24,15 @@ Un épistémiarque dispose du référentiel au format JSON du schéma
 exemple converti depuis sa source, et veut le proposer aux membres. Le YAML
 de l'Humanome V18 (https://respire.school/referentiel) se convertit par
 `scripts/convertir-humanome.mjs` (A6, `docs/referentiel-humanome.md`).
+Depuis S5 (lot D), il peut aussi l'écrire en Markdown, au format des fiches
+de pôle, en partant d'un modèle ou d'un référentiel publié exporté (A7 à A9).
 
 ## Préconditions
 
 - Session ouverte, rôle `epistemiarque` ou `admin` ; jeton CSRF.
 - Le document déclare ses niveaux et le motif des codes de chacun (`niveaux`),
-  sauf s'il n'a qu'un niveau au motif de RESPIRE (`\d\.\d{2}`).
+  sauf s'il n'a qu'un niveau au motif de RESPIRE (`\d\.\d{2}`). Écrit en
+  Markdown, la page déduit les motifs des codes (RG12).
 
 ## Garanties en cas de succès
 
@@ -47,11 +50,22 @@ de l'Humanome V18 (https://respire.school/referentiel) se convertit par
   fiches de scan s'écrivent depuis son document, sans rien à générer (RG10).
 - Un brouillon ou une proposition ne sont jamais servis par ces routes, pas
   même à leur auteur (ils ne servent que ses runs d'essai, RG7).
+- Un texte Markdown importé (A7) devient le même brouillon que le JSON qu'il
+  décrit : la page envoie ce document par la même route, que le serveur
+  contrôle de la même façon.
+- Un référentiel publié exporté en Markdown (A9), relu avec les mêmes
+  identifiant, libellé et version, redonne son document : pôles et leurs
+  couleurs, compétences, descriptions, éléments, provenance, noms des
+  niveaux, donc la même empreinte ; seuls les motifs se déduisent de
+  nouveau (RG12). Relu puis réécrit, le texte revient octet pour octet
+  (vérifié sur RESPIRE et sur la fixture fictive à la forme Humanome).
 
 ## Garanties minimales (en cas d'échec)
 
 - Aucun document invalide n'est enregistré ; RESPIRE n'est jamais modifié
   par un import.
+- Un texte Markdown dont l'aperçu montre une erreur ne part pas ; refusé par
+  le serveur, il reste dans la page, à corriger sur place.
 
 ## Scénario nominal
 
@@ -110,6 +124,38 @@ de l'Humanome V18 (https://respire.school/referentiel) se convertit par
   production, sans shell : par l'atelier (étapes 1 à 5), ou par
   `POST /api/admin/import-referentiel`, qui applique les mêmes garde-fous à
   tout autre identifiant que `respire` (`docs/referentiel-humanome.md` §5).
+- **A7 — Écrire le référentiel en Markdown** (S5, lot D ; étapes 2 et 3).
+  Dans le bloc « En Markdown », l'épistémiarque colle ou écrit le texte, ou
+  choisit un fichier `.md` (« Fichier Markdown »), au format des fiches de
+  pôle que le moteur écrit (RG10, RG11). Il saisit l'identifiant, le libellé
+  et la version dans trois champs. À chaque frappe, la page lit le texte
+  (`web/src/lib/referentiel-markdown.js`) et montre :
+  - l'aperçu : nombre de pôles, de compétences et d'éléments plus fins, puis
+    chaque pôle avec son nombre de compétences ;
+  - chaque niveau, avec son nom (celui du commentaire « niveaux », sinon
+    « compétence », « élément », « sous-élément ») et le motif déduit de ses
+    codes (RG12), tous deux modifiables ; « Reprendre le motif déduit »
+    annule une saisie ;
+  - les erreurs, chacune à sa ligne (E6), et les avertissements, qui
+    n'empêchent rien (RG13).
+  Avec plusieurs niveaux, il choisit le niveau qui tient lieu de compétence.
+  « Importer le Markdown » envoie le document par `POST /api/referentiel/import`
+  (étape 3), sans `contentHash`, que le serveur calcule ; la page se recharge
+  et le formulaire se vide.
+- **A8 — Partir d'un modèle.** « Télécharger un modèle » : en Markdown
+  (`modele-referentiel.md`, avec ses commentaires facultatifs et l'écueil
+  des noms de pôle de RESPIRE, RG13) ou en JSON (`modele-referentiel.json`,
+  le même référentiel fictif, commenté champ par champ dans la page, sous
+  « Le modèle JSON, champ par champ »). Le modèle Markdown se lit sans
+  erreur ; le JSON s'importe comme en A3.
+- **A9 — Exporter en Markdown.** Le bloc « Exporter en Markdown » propose
+  chaque version publiée de tout référentiel, RESPIRE compris. La page lit
+  son document (`GET /api/referentiels/{id}/versions/{semver}`) et le
+  télécharge en `{id}-v{version}.md` : la fiche de chaque pôle, octet pour
+  octet celle du moteur (`fichesDuReferentiel`), la couleur du pôle sous son
+  titre, la provenance et les noms des niveaux en tête. Le texte se
+  réimporte (A7) sous un autre identifiant, ou sous une nouvelle version du
+  même ; RESPIRE, lui, ne s'importe pas (E2) et s'édite dans son atelier.
 
 ## Scénarios d'erreur
 
@@ -134,6 +180,29 @@ de l'Humanome V18 (https://respire.school/referentiel) se convertit par
   autre, ou le sien en mode complet → `422` « Profil refusé —
   /referentiel/version : un brouillon ne sert qu'aux runs d'essai de son
   auteur ».
+- **E6 — Markdown refusé dans la page** (A7) : « Importer le Markdown »
+  reste grisé tant que l'aperçu liste une erreur, chacune à sa ligne, dans
+  l'ordre du texte :
+  - texte avant le premier pôle, compétence avant tout pôle ;
+  - titre de pôle ou de compétence mal formé (« # Pôle N — Nom »,
+    « ## CODE — Nom ») ;
+  - pôles qui ne se numérotent pas 1, 2, 3… dans l'ordre, pôle sans
+    compétence ;
+  - niveau sauté (« #### » sous « ## ») ;
+  - code invalide ou en double ;
+  - couleur illisible, commentaire jamais refermé, aucun pôle ;
+  - code qui ne suit pas le motif, saisi, de son niveau ; motif vide,
+    illisible (RG2) ou de plus de 100 caractères ; nom de niveau vide ou en
+    double ;
+  - identifiant absent, invalide ou `respire` ; version absente, hors semver
+    ou de plus de 32 caractères ; libellé absent ou de plus de 190 caractères
+    (UC-EPI-04 AN2, évité ici) ;
+  - enfin, ce que le schéma refuserait encore.
+  Les éléments d'un titre refusé ne font pas d'autre erreur. Un refus du
+  serveur s'affiche par pointeur, comme en E1, et le texte reste.
+- **E7 — Export impossible** (A9) : une version que l'API ne sert pas
+  (`404`), un document plus profond que « ###### », un navigateur sans
+  téléchargement : la page le dit, rien ne part.
 
 ## Règles de gestion
 
@@ -188,6 +257,45 @@ de l'Humanome V18 (https://respire.school/referentiel) se convertit par
   d'autre champ pour elles. La cartographie standard et la masse ne lisent que
   les pôles, les codes et les noms. RESPIRE, lui, garde ses fiches rédigées,
   dans la base (UC-EPI-01 à 03, UC-EPI-04 L3).
+- **RG11** — Le texte Markdown de l'atelier (S5, lot D) est celui de ces
+  fiches, mises bout à bout :
+  - « # Pôle N — Nom » ouvre un pôle, numéroté 1, 2, 3… dans l'ordre ;
+  - « ## CODE — Nom » ouvre une compétence de ce pôle ;
+  - « ### CODE — Nom » ouvre un élément plus fin du titre au-dessus, et
+    ainsi de suite jusqu'à « ###### », sans sauter de niveau ;
+  - le texte sous un titre le décrit ; un « --- » entre deux fiches est
+    facultatif et n'entre dans aucune description ;
+  - « – » et « - » se lisent comme « — » ; le BOM et les fins de ligne CRLF
+    ou CR sont admis.
+  Trois commentaires facultatifs gardent ce que les fiches ne disent pas :
+  « <!-- couleur : #rrggbb --> » sur la ligne qui suit le titre d'un pôle ;
+  « <!-- source : … --> » et « <!-- niveaux : capacité, facette --> » avant
+  le premier pôle, où tout autre commentaire est ignoré. Dans une
+  description, une ligne qui se lirait comme un titre ou un séparateur
+  s'écrit précédée d'une barre oblique inverse, que la lecture retire.
+  L'identifiant, le libellé et la version ne sont pas dans le texte. Sans
+  commentaire « source », la provenance est « Écrit en Markdown dans
+  l'atelier des épistémiarques ».
+- **RG12** — Le motif de chaque niveau se déduit de ses codes, le plus
+  étroit compatible : position par position, le caractère que tous les codes
+  y partagent, sinon la plage des leurs (`[A-E]`, `[1-4]`, `\d` pour tous
+  les chiffres, des plages disjointes comme `[A-BD]`). Des classes
+  identiques qui se suivent se comptent (`\d{2}`). Une suite de longueur
+  variable prend la plage de ses caractères et ses longueurs (`A[0-2]{1,2}`
+  pour A2 et A10). Des codes de formes différentes donnent l'alternative de
+  leurs motifs. Au-delà de 100 caractères, la forme générale d'un code
+  `[A-Za-z0-9._-]{1,8}`. Exemples :
+  - les capacités A1 à E4 donnent `[A-E][1-4]` ;
+  - RESPIRE v7 donne `[1-7]\.[0-1]\d`, plus étroit que son motif par défaut
+    `\d\.\d{2}` (RG1).
+  Le moteur ne se sert du motif que pour valider les codes : un motif étroit
+  attrape une faute de frappe (A9 parmi A1…E4) sans rien changer au run.
+- **RG13** — Un pôle dont le premier mot est, en capitales et sans accents,
+  la clé d'un pôle de RESPIRE (TETE, COEUR, MAIN, AME, RACINES, CITE,
+  FLAMBEAU) reçoit dans l'analyse approfondie les jurés de ce pôle de
+  RESPIRE, quel que soit son numéro (S5, E5) ; deux pôles de même clé n'en
+  ont plus (le moteur les numérote). L'aperçu du Markdown en avertit, et le
+  modèle le dit.
 
 ## Données et RGPD
 
@@ -201,8 +309,9 @@ de l'Humanome V18 (https://respire.school/referentiel) se convertit par
 
 | Couche | Élément | Rôle |
 |---|---|---|
-| Front | `web/src/views/epistemiarque/ReferentielsSection.jsx`, `web/src/views/EpistemiarqueView.jsx` (section `referentiels`, lien de l'atelier) | Import, niveau, lecture, vote, publication |
-| Front | `web/src/views/epistemiarque/api.js` — `importReferentiel`, `listCatalogue`, `getDraft` ; `web/src/api/client.js` (`ApiError.errors`) | Client, détail d'un refus |
+| Front | `web/src/views/epistemiarque/ReferentielsSection.jsx`, `web/src/views/EpistemiarqueView.jsx` (section `referentiels`, lien de l'atelier) | Import, niveau, lecture, vote, publication ; modèles, Markdown et son aperçu, export (A7 à A9) |
+| Front | `web/src/lib/referentiel-markdown.js` — `analyserMarkdown`, `deduireMotif`, `referentielDepuisMarkdown`, `referentielEnMarkdown`, `MODELE_MARKDOWN`, `MODELE_JSON` | Le Markdown lu en document et le document écrit en Markdown (RG11 à RG13), sans dépendance ; l'écriture passe par `fichesDuReferentiel` du moteur, la dernière vérification par ses validateurs compilés |
+| Front | `web/src/views/epistemiarque/api.js` — `importReferentiel`, `listCatalogue`, `getDraft`, `getPublishedVersion` ; `web/src/api/client.js` (`ApiError.errors`) ; `web/src/lib/download-json.js` (`downloadBlob`) | Client, détail d'un refus, téléchargement de l'export |
 | Front | `web/src/views/ConfigurationView.jsx` | Brouillons proposés en version |
 | API | `api/src/routes/referentiel.php` — `POST /referentiel/import`, `GET /referentiels`, `GET /referentiels/{id}/versions/{semver}` (S5), listes de tous les référentiels, fork d'un autre | Orchestration, lectures publiques des versions publiées |
 | Front | `web/src/data/referentiel.js` — `listPublishedReferentiels`, `loadPublishedReferentiel` ; `web/src/components/ReferentielChoice.jsx` | Menus des parcours : la base par l'API publique d'abord, l'export statique en repli (S5) |
@@ -234,6 +343,13 @@ de l'Humanome V18 (https://respire.school/referentiel) se convertit par
 | UC-EPI-05-U11 | `convertirHumanome` | Sur la fixture fictive à la forme Humanome : document attendu, valide au schéma ; libellé, `nomCourt`, niveaux déduits, palette, codes ; rubriques composées dans l'ordre, absentes omises, hors du document ce que le schéma ne représente pas ; provenance ; avertissements (`structure`, rubriques) ; empreinte de l'extracteur ; niveau facette ; refus à leur chemin ; fiches de scan (A6) | `engine/src/referentiel-humanome.test.js` |
 | UC-EPI-05-U12 | `scripts/convertir-humanome.mjs` | Écrit le document attendu ; relancé, « déjà à jour » ; refuse d'écraser une version tirée d'un autre fichier, un YAML illisible ou refusé, un niveau inconnu (A6) | idem |
 | UC-EPI-05-U13 | `ContentHash`, `auNiveau` | Le document converti a l'empreinte et l'ordre du serveur ; son niveau facette est celui d'`auNiveau` (A6) | `api/tests/ReferentielAmorcageTest.php` |
+| UC-EPI-05-U14 | `createEpistemiarqueApi` | `getPublishedVersion` : `GET referentiels/{id}/versions/{semver}`, segments encodés (A9) | `web/test/usecases/unit/uc-epi-05-importer-referentiel.test.js` |
+| UC-EPI-05-U15 | `referentielEnMarkdown`, `referentielDepuisMarkdown` | RESPIRE 7.1.0 et 7.0.0 tels que publiés (`web/public/data/referentiel/`) : le texte est celui des fiches du moteur, couleur sous le titre, provenance en tête ; relu, mêmes pôles, compétences, provenance, même empreinte (`b246101c…`), valide au schéma ; réécrit, octet pour octet (A9) | `web/src/lib/referentiel-markdown.test.js` |
+| UC-EPI-05-U16 | idem | La fixture fictive à la forme Humanome, aux niveaux capacité et facette : niveaux nommés par le commentaire, facettes un titre plus bas, aller-retour exact ; ses motifs saisis, le document est celui de la fixture hors empreinte (A9) | idem |
+| UC-EPI-05-U17 | `deduireMotif` | Le motif le plus étroit : `[A-E][1-4]`, `[1-7]\.[0-1]\d` pour RESPIRE, plages disjointes, classes comptées (`\d{2}`), longueurs variables, séparateurs, formes différentes en alternative, repli au-delà de 100 caractères ; chaque code le suit (RG12) | idem |
+| UC-EPI-05-U18 | `analyserMarkdown`, `referentielDepuisMarkdown` | Chaque erreur à sa ligne : texte avant le premier pôle, compétence hors pôle, couleur illisible, niveau sauté, titre mal formé, doublon, code invalide, numérotation, pôle vide, commentaire non refermé, aucun pôle ; sous un titre refusé, pas d'autre erreur ; code hors du motif saisi, motif illisible ou vide, nom de niveau vide ou en double ; les trois champs (E6) | idem |
+| UC-EPI-05-U19 | idem | BOM, CRLF, CR, « – » et « - », « --- » facultatif : le même document ; lignes de description échappées, aller-retour exact ; plus de six niveaux de titre refusés à l'écriture (RG11) | idem |
+| UC-EPI-05-U20 | `MODELE_MARKDOWN`, `MODELE_JSON`, avertissements | Le modèle Markdown se lit sans erreur ni avertissement ; le modèle JSON est le même référentiel, valide au schéma une fois l'empreinte calculée ; un pôle au premier mot d'un pôle de RESPIRE est signalé, pas deux pôles de même clé (A8, RG13) | idem |
 
 ### Tests fonctionnels
 
@@ -257,6 +373,10 @@ de l'Humanome V18 (https://respire.school/referentiel) se convertit par
 | UC-EPI-05-F16 | A6 | API | Amorçage publié sans vote puis « déjà amorcé », servi par `GET /api/referentiels` et par sa version ; même contenu sous une autre provenance « déjà amorcé », la première gardée ; autre contenu sous la même version (description, niveaux, structure), brouillon de l'atelier, RESPIRE, identifiant ou code invalides refusés, rien d'écrit ; la ligne de commande | `api/tests/ReferentielAmorcageTest.php` |
 | UC-EPI-05-F17 | A6 | IHM | Le référentiel amorcé est proposé au menu des parcours et se charge tel que la base le sert ; sa provenance (`source`, servie par `GET /api/referentiels`) s'affiche sous le menu | `web/src/components/ReferentielChoice.test.jsx` |
 | UC-EPI-05-F18 | A6 | API | En production, `POST /api/admin/import-referentiel` amorce un autre référentiel que RESPIRE avec les garde-fous du script : publié (note « Amorçage hors vote (S5) »), puis « unchanged », sous une autre provenance aussi ; une autre description sous la même version ou une empreinte fausse → `409`, rien d'écrit ; un identifiant invalide → `422` | `api/tests/AdminImportReferentielTest.php` |
+| UC-EPI-05-F19 | A7 | IHM | Un fichier `.md` remplit le texte ; aperçu (pôles, compétences, éléments) ; sans les trois champs, les erreurs le disent ; motifs déduits affichés, l'un élargi à la main ; niveau choisi ; le document envoyé est celui attendu ; message, rechargement, formulaire vidé | `web/test/usecases/functional/uc-epi-05-importer-referentiel.test.jsx` |
+| UC-EPI-05-F20 | E6 | IHM | Niveau sauté, pôle vide, doublon, à leur ligne, import grisé, sans alerte ; un code hors du motif saisi, puis « Reprendre le motif déduit » ; un refus du serveur par pointeur, le texte gardé, rien rechargé | idem |
+| UC-EPI-05-F21 | A8 | IHM | Les deux modèles se téléchargent (nom, contenu) ; le JSON commenté champ par champ ; l'écueil des noms de pôle de RESPIRE dit ; le modèle Markdown collé se lit sans erreur et s'importe comme le modèle JSON | idem |
+| UC-EPI-05-F22 | A9, E7 | IHM | Toutes les versions publiées, RESPIRE compris, proposées ; l'export lit la version par l'API et télécharge `{id}-v{version}.md`, le texte de `referentielEnMarkdown` ; un `404` est dit, rien ne part | idem |
 
 ### Tests existants liés (non-régression)
 
@@ -269,13 +389,15 @@ de l'Humanome V18 (https://respire.school/referentiel) se convertit par
 - `api/tests/ReferentielApiTest.php` — `testAnyPublishedReferentialIsServedByIdAndVersion` (S5) : une version publiée de tout référentiel servie à tous par son identifiant ; brouillon, proposition (même à leur auteur), identifiant ou version inconnus, autre graphie (casse, espace final) → `404` ; lecture seule (`405`) ; le catalogue ne liste que la publiée.
 - `web/src/data/referentiel.test.js` (« API d'abord, export statique en repli ») ; `web/src/components/ReferentielChoice.test.jsx` ; UC-APP-02-F27, UC-APP-09-F31, UC-ETA-03-F30 — les menus des parcours lisent la base.
 - UC-EPI-03 (coupe de release : complétude, la structure de la dernière version publiée), UC-EPI-04 (grain document), `ReferentielApiTest`, `ReferentielImportExportTest`, `CompetenceReleaseTest`, `engine/test/usecases/unit/uc-sys-04-chaine-artefacts-derives.test.js` (validateurs compilés).
+- `web/src/views/epistemiarque/ReferentielsSection.test.jsx` (S5, lot D) — le détail de la section : l'aperçu suit chaque frappe, un nom de niveau saisi nomme le choix et le document, l'aperçu n'est ni une alerte ni un statut, un avertissement n'empêche pas l'import, un fichier illisible est dit, un export sans téléchargement possible ou trop profond est dit, rien à exporter sans référentiel publié.
 
 ### Exécuter
 
 ```sh
 (cd api && vendor/bin/phpunit --filter 'UcEpi05|ReferentielAmorcageTest|testADraftServesOnlyItsAuthorsTestRuns|testARunReadsRespireOnly|testACartographyOfAnotherReferential' --testdox)
 (cd engine && npx vitest run src/referentiel-humanome.test.js)
-cd web && npx vitest run test/usecases/unit/uc-epi-05 test/usecases/functional/uc-epi-05 src/components/ReferentielChoice.test.jsx
+cd web && npx vitest run test/usecases/unit/uc-epi-05 test/usecases/functional/uc-epi-05 src/components/ReferentielChoice.test.jsx \
+  src/lib/referentiel-markdown.test.js src/views/epistemiarque/ReferentielsSection.test.jsx
 ```
 
 ## Anomalies constatées
@@ -287,9 +409,20 @@ Aucune.
 - **L1** — Les pointeurs d'un refus désignent le document trié par code,
   comme pour toute écriture du grain document : le message nomme le code
   fautif.
-- **L2** — L'import lit du JSON au format du schéma : un référentiel publié
-  sous une autre forme se convertit d'abord. Le YAML de l'Humanome V18 a son
-  convertisseur, sur le poste (A6) ; l'atelier ne lit pas le YAML.
+- **L2** — L'import lit du JSON au format du schéma, ou, depuis S5 (lot D),
+  un texte Markdown au format des fiches de pôle (A7, RG11) : un référentiel
+  publié sous une autre forme se convertit d'abord. Le YAML de l'Humanome V18
+  a son convertisseur, sur le poste (A6) ; l'atelier ne lit pas le YAML. Le
+  Markdown a ses propres bornes :
+  - il ne porte ni l'identifiant, ni le libellé, ni la version, saisis dans
+    la page ;
+  - un motif saisi n'y est pas gardé : relu, le texte redonne les motifs
+    déduits (RG12) ;
+  - un bloc de code (« ``` ») d'une description n'y est pas reconnu : ses
+    lignes « # … » se lisent comme des titres ;
+  - il n'écrit pas plus de six niveaux de titre (E7) ;
+  - aucun éditeur riche ni formulaire pôle par pôle, une zone de texte avec
+    son aperçu.
 - **L6** — L'amorçage (A6) publie sans vote : c'est un choix de Christian
   pour l'Humanome V18 (S5, Q1). En production, il passe par
   `POST /api/admin/import-referentiel`, avec les garde-fous du script pour

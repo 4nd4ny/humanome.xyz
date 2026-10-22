@@ -35,6 +35,51 @@ vert.
 
 ## Fait
 
+- 2026-10-22 — **Revue des lots A et B du sprint 5 : quatre constats corrigés (branche
+  `feat/referentiels-simples`).**
+  - **L'amorçage, idempotent pour de bon.** Le même YAML (même sha256) converti sous un autre nom
+    — le `humanome_v18.yaml` de respire.school après la copie de `humanotwin` — ou avec une autre
+    `--url` était refusé comme « autre contenu », et le message demandait une version qui n'existe
+    pas en amont.
+    - La comparaison laisse désormais `source`, la provenance, de côté. La ligne publiée garde
+      celle du premier amorçage.
+    - Rejoué sur le vrai YAML, sur la base de test : « amorcé », puis « déjà amorcé » pour la
+      copie renommée et pour une autre `--url`.
+  - **La production a les garde-fous de l'amorçage.** `POST /api/admin/import-referentiel`, seul
+    chemin hors vote en production, ne comparait que l'empreinte : une autre description sous la
+    même version y passait pour « unchanged ».
+    - La route amorce désormais tout autre identifiant que `respire` par `AmorcageReferentiel`,
+      déplacé dans `api/src/Referentiel` (la release n'embarque que `api/src`) : `409` dans ce cas,
+      `422` pour un identifiant invalide. RESPIRE garde le chemin de `deploy.mjs api`.
+    - La commande de `docs/referentiel-humanome.md` §5 ne met plus le jeton sur la ligne de
+      commande : `sed` le lit dans `.env.deploy`, curl le reçoit par `-H @-`.
+  - **Le menu et le parcours d'accord, même sans RESPIRE.** Sur une base qui n'a pas publié RESPIRE
+    (amorcée de l'Humanome seul), le menu montrait l'Humanome et le run chargeait RESPIRE. Le
+    premier référentiel de la liste devient alors le choix, jamais sous un run en cours : le
+    parcours le charge, la masse l'envoie (`referentielId`).
+  - **La provenance visible** (S5, E1 et E9).
+    - `GET /api/referentiels` donne la `source` de la dernière version de chaque référentiel.
+    - Le menu l'affiche sous lui pour tout autre référentiel que RESPIRE (« Provenance : … ») ;
+      rien en repli sur l'index statique, qui ne la porte pas.
+    - L'aide de l'espace, de Twin6 et de l'établissement dit que « Humanome V18 », s'il est
+      proposé, est le référentiel de respire.school, sous CC-BY-SA Harmonia Éducation, et non
+      RESPIRE v7.
+  - Chaque correction porte le test qui échouait avant elle (`ReferentielAmorcageTest`,
+    `AdminImportReferentielTest`, `ReferentielChoice.test.jsx`, UC-APP-02-F28, UC-ETA-03-F31,
+    `referentiel.test.js`, `registry.test.js`, les formes du catalogue). Documentation :
+    `docs/referentiel-humanome.md`, `docs/contrats.md` §9 et §11, UC-EPI-05 (A6, L6, F16 à F18),
+    UC-APP-02 (A7, F28), UC-ETA-03 (A8, F31), UC-SYS-02 (E5).
+  - **Vérifié** : PHP 1 736 tests, les 2 échecs connus dus à PHP 8.5 (`AuthActivationTest::
+    testExpiredCodeIsRejected`, `UcCpt02…::testU17SessionCookieAttributes`) ; moteur 430 tests, les
+    5 échecs locaux connus (UC-PRO-08 F19 à F22, F25) ; front 2 775 verts (6 ignorés) ;
+    `check-publiable` propre. La commande de production, jeton compris, contre un serveur local
+    factice. Lancée en même temps que les suites JS, la suite PHP a aussi vu échouer trois tests
+    sensibles à la charge (`PariteTest::testTheRealRun`, `EtablissementRunsTest`, UC-APP-10-F14),
+    verts seuls puis dans une seconde suite complète.
+  - **Non vérifié** : rien en production ; la ligne de provenance et l'aide n'ont pas été vues dans
+    un navigateur, seulement par les tests.
+  - **Décisions laissées à Christian** : en production, l'atelier (vote) ou la route d'amorçage ;
+    l'attribution CC-BY-SA sur la page publique multi-référentiel (lot E).
 - 2026-10-22 — **Un multi-référentiel simple : les menus lisent la base, et l'Humanome V18 de
   respire.school entre (sprint 5, lots A et B ; branche `feat/referentiels-simples`).** Christian
   (TODO, sprint 5) : « Je ne vois pas https://respire.school/referentiel par exemple dans les choix
@@ -101,7 +146,7 @@ vert.
     - les menus n'ont pas été ouverts dans un navigateur : tests et routes seulement.
   - **Décisions laissées à Christian** :
     - en production, l'atelier (vote) ou la route d'amorçage (`docs/referentiel-humanome.md` §5,
-      moins stricte que le script) ;
+      qui a depuis les garde-fous du script : entrée ci-dessus) ;
     - signaler l'en-tête faux à Stéphane ;
     - le contrat de lecture de l'Humanome, que le schéma ne porte pas (S5, E8) ;
     - un jury pour ses pôles, plus tard (Q5).

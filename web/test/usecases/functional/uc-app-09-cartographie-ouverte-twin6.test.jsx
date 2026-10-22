@@ -508,13 +508,14 @@ describe('UC-APP-09 — l’apprenant lance une cartographie ouverte', () => {
 
   it('UC-APP-09-F08 — E5 : sortie tronquée (stop max_tokens) → échec explicite nommant l’étape, ce que le run a débité appel tronqué compris, pas de document partiel', async () => {
     // Le premier appel abouti, le second tronqué : facturé (un 200), à un autre
-    // coût, pour que le montant affiché dise s'il compte l'appel tronqué.
+    // coût, pour que le montant affiché dise s'il compte l'appel tronqué — et
+    // une seule fois : sous le centime, formatUsd montre quatre décimales.
     let n = 0
     const { calls } = stubFetch(
       routes({
         'POST twin6/appel': (url, init) => {
           n += 1
-          return n === 1 ? appelOk(url, init) : appelOk(url, init, { stopReason: 'max_tokens', cout_microusd: 9100 })
+          return n === 1 ? appelOk(url, init) : appelOk(url, init, { stopReason: 'max_tokens', cout_microusd: 2100 })
         },
       }),
     )
@@ -524,7 +525,7 @@ describe('UC-APP-09 — l’apprenant lance une cartographie ouverte', () => {
 
     const alerte = (await screen.findByRole('alert')).textContent
     expect(alerte).toMatch(/^executerTwin6: sortie tronquée \(max_tokens\) à l'étape scan-pole\/2 — /)
-    const debite = `(${formatUsd(6602 + 9100)} débités pour ce run.)`
+    const debite = `(${formatUsd(6602 + 2100)} débités pour ce run.)`
     expect(alerte.slice(-debite.length)).toBe(debite)
     expect(appelsTwin6(calls)).toHaveLength(2)
     expect(screen.queryByText(/Cartographie ouverte terminée/)).toBeNull()
@@ -538,7 +539,7 @@ describe('UC-APP-09 — l’apprenant lance une cartographie ouverte', () => {
       routes({
         'POST twin6/appel': (url, init) => {
           n += 1
-          return n === 1 ? appelOk(url, init) : appelOk(url, init, { text: '', stopReason: 'refusal', cout_microusd: 9100 })
+          return n === 1 ? appelOk(url, init) : appelOk(url, init, { text: '', stopReason: 'refusal', cout_microusd: 2100 })
         },
       }),
     )
@@ -547,7 +548,7 @@ describe('UC-APP-09 — l’apprenant lance une cartographie ouverte', () => {
     await lancer()
 
     expect((await screen.findByRole('alert')).textContent).toBe(
-      `executerTwin6: le fournisseur a refusé de répondre à l'étape scan-pole/2 (${formatUsd(6602 + 9100)} débités pour ce run.)`,
+      `executerTwin6: le fournisseur a refusé de répondre à l'étape scan-pole/2 (${formatUsd(6602 + 2100)} débités pour ce run.)`,
     )
     expect(appelsTwin6(calls)).toHaveLength(2)
     expect(screen.queryByText(/Cartographie ouverte terminée/)).toBeNull()

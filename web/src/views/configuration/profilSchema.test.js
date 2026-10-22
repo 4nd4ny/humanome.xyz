@@ -22,11 +22,14 @@ import {
   fournisseurDe,
   fournisseurHerite,
   fournisseursDuProfil,
+  libelle,
   libelleChoix,
   libelleRgpd,
   modeleAdmis,
+  noeud,
   objetDe,
   suivreLeFournisseur,
+  valeurDuMoteur,
 } from './profilSchema.js'
 
 const racine = resolve(dirname(fileURLToPath(import.meta.url)), '../../../..')
@@ -178,5 +181,23 @@ describe('profilSchema — fournisseurs (ADR-012)', () => {
     const apres = structuredClone(avant)
     apres.etapes.greffier = { fournisseur: 'anthropic' }
     expect(suivreLeFournisseur(avant, apres, ['etapes', 'greffier'], v98)).toBe(apres)
+  })
+})
+
+describe('profilSchema — la stigmergie du greffier (sprint 3)', () => {
+  it('un libellé par chemin : deux réglages « enabled », l’Arpenteur et la stigmergie', () => {
+    expect(libelle('enabled', noeud(['scan_global', 'enabled']), ['scan_global', 'enabled'])).toBe('Lancer l’Arpenteur')
+    expect(libelle('enabled', noeud(['stigmergie', 'enabled']), ['stigmergie', 'enabled'])).toBe('Activer la stigmergie')
+    expect(libelle('enabled')).toBe('Lancer l’Arpenteur')
+    expect(['stigmergie', 'evaporation', 'exploration', 'graine', 'lignes'].map((c) => libelle(c, noeud(['stigmergie', c]))))
+      .toEqual(['Stigmergie du greffier (essai)', 'Évaporation (ρ)', 'Exploration (ε)', 'Graine', 'Lignes de traces par dossier (K)'])
+  })
+
+  it('la valeur du moteur d’un réglage absent, que dit sa description ; aucune ailleurs', () => {
+    expect(['evaporation', 'exploration', 'graine', 'lignes'].map((c) => valeurDuMoteur(noeud(['stigmergie', c]))))
+      .toEqual(['0,3', '0,2', '1', '5'])
+    expect(valeurDuMoteur(noeud(['stigmergie', 'enabled']))).toBeNull()
+    expect(valeurDuMoteur(noeud(['jury', 'graine']))).toBeNull()
+    expect(v98.stigmergie).toEqual({ enabled: false })
   })
 })

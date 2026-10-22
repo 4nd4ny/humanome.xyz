@@ -16,10 +16,17 @@
 // suivait l'ancien, un modèle qu'il n'admet pas, l'effort d'Anthropic. La voie
 // ne règle que les appels Anthropic, les autres partent en direct : son
 // explication reste visible. Ce qui serait refusé se dit à côté du réglage.
+//
+// La stigmergie du greffier (sprint 3, un essai du moteur) ne se règle qu'en
+// mode expert, comme le profil prédéfini qui l'active (« Stigmergie
+// (essai) ») : le mode simple masque sa section, sauf dans un profil qui
+// l'active, pour ne rien cacher de ce qui joue. Le mode n'est pas un droit :
+// le serveur admet le même profil dans les deux modes.
 
 import { useCallback, useEffect, useState } from 'react'
 import { ApiError } from '../api/client.js'
 import { createProfil, deleteProfil, fetchConfiguration, fetchProfil, saveProfil } from '../api/twin9.js'
+import { useUiMode } from '../lib/ui-mode.js'
 import {
   ETAPES,
   FIXES,
@@ -48,11 +55,18 @@ import {
   objetDe,
   sensDeNull,
   suivreLeFournisseur,
+  valeurDuMoteur,
 } from './configuration/profilSchema.js'
 import '../styles/configuration.css'
 
 /** Les parties du profil, dans l'ordre du schéma ; le mode a son interrupteur. */
 const PARTIES = Object.keys(SCHEMA.properties).filter((cle) => !FIXES.includes(cle) && cle !== 'mode')
+
+/** Les parties qui ne se règlent qu'en mode expert : un essai du moteur. */
+const EXPERT = ['stigmergie']
+
+/** La valeur d'un profil prédéfini dans la liste des profils (« predefini:stigmergie »), distincte d'un identifiant. */
+const PREDEFINI = 'predefini:'
 
 const ident = (chemin) => `config-${chemin.join('-')}`
 
@@ -110,6 +124,9 @@ function Champ({ chemin, valeur, defaut, peutManquer, onChange, contexte }) {
   const cle = chemin[chemin.length - 1]
   const champ = chemin.join('/')
   const { profil } = contexte
+  // un réglage absent du profil v9.8 que le moteur règle seul (la stigmergie) : sa valeur est celle du moteur
+  const moteur = valeurDuMoteur(node)
+  const parDefaut = defaut === undefined && moteur !== null ? `${moteur}, la valeur du moteur` : lisible(defaut)
   const objet = objetDe(chemin)
   const info = (f) => contexte.fournisseurs.find((x) => x.id === f)
   const nomDe = (f) => info(f)?.libelle ?? libelleChoix(f)
@@ -210,6 +227,17 @@ function Champ({ chemin, valeur, defaut, peutManquer, onChange, contexte }) {
     }
   } else if (g === 'booleen') {
     commande = <input id={id} type="checkbox" checked={valeur === true} onChange={(e) => onChange(e.target.checked)} />
+    if (champ === 'stigmergie/enabled' && valeur === true) {
+      // les calques archivés votent déjà au consensus : le serveur refuse le double compte (ProfilPolicy)
+      if (lire(profil, ['calques', 'accumulation']) !== false) {
+        avertissement = 'La stigmergie demande de couper l’accumulation des calques (Calques) : les calques archivés ' +
+          'votent déjà au consensus, ses traces y compteraient deux fois. Le profil serait refusé.'
+      }
+      explication = profil.rescan === true
+        ? 'Chaque run relit les journées : leurs traces se renforcent ou s’évaporent d’une analyse à l’autre.'
+        : 'Sans nouveaux calques des journées inchangées (rescan), une journée inchangée est reprise de la mémoire : ' +
+          'ses traces ne changent pas d’un run à l’autre. Activer la stigmergie fait relire une fois les journées.'
+    }
   } else if (g === 'entier' || g === 'nombre') {
     commande = (
       <input
@@ -219,7 +247,7 @@ function Champ({ chemin, valeur, defaut, peutManquer, onChange, contexte }) {
         min={node.minimum ?? node.exclusiveMinimum}
         max={node.maximum}
         value={valeur ?? ''}
-        placeholder={nullable(node) ? sensDeNull(node) : peutManquer ? '—' : undefined}
+        placeholder={nullable(node) ? sensDeNull(node) : peutManquer ? (moteur ?? '—') : undefined}
         onChange={(e) => onChange(nombre(e.target.value, node, peutManquer))}
       />
     )
@@ -258,11 +286,11 @@ function Champ({ chemin, valeur, defaut, peutManquer, onChange, contexte }) {
   return (
     <div className={`config-champ${modifie ? ' is-modified' : ''}`} data-chemin={champ}>
       <label htmlFor={id}>
-        {libelle(cle, node)}
+        {libelle(cle, node, chemin)}
         {modifie && (
-          <span className="config-modifie" title={`Par défaut : ${lisible(defaut)}`}>
+          <span className="config-modifie" title={`Par défaut : ${parDefaut}`}>
             <span aria-hidden="true"> ●</span>
-            <span className="visually-hidden"> (modifié ; par défaut : {lisible(defaut)})</span>
+            <span className="visually-hidden"> (modifié ; par défaut : {parDefaut})</span>
           </span>
         )}
       </label>
@@ -345,7 +373,7 @@ function Reglage({ chemin, profil, defaut, onChange, contexte, niveau = 0 }) {
     const n = niveau === 0 ? modifies(profil, defaut, chemin) : 0
     const titre = (
       <>
-        {libelle(chemin[chemin.length - 1], node)}
+        {libelle(chemin[chemin.length - 1], node, chemin)}
         {n > 0 && <span className="config-compte"> · {n} modifié{n > 1 ? 's' : ''}</span>}
       </>
     )
@@ -453,6 +481,7 @@ function Interrupteur({ mode, defaut, onChange }) {
  */
 export default function ConfigurationView({ deps = {} }) {
   const { fetchFn } = deps
+  const { expert } = useUiMode()
   const [etat, setEtat] = useState({ chargement: true })
   const [config, setConfig] = useState(null)
   const [courant, setCourant] = useState(null)
@@ -466,7 +495,15 @@ export default function ConfigurationView({ deps = {} }) {
       setMessage(null)
       setErreur(null)
       setASupprimer(false)
-      setCourant(id === null ? { id: null, nom: '', profil: structuredClone(c.defaut) } : await fetchProfil(id, { fetchFn }))
+      // un profil prédéfini se copie dans un nouveau profil, comme celui de la v9.8
+      const predefini = typeof id === 'string' ? (c.predefinis ?? []).find((p) => PREDEFINI + p.id === id) : undefined
+      setCourant(
+        predefini !== undefined
+          ? { id: null, nom: predefini.nom, profil: structuredClone(predefini.profil), predefini: predefini.id }
+          : id === null || typeof id === 'string'
+            ? { id: null, nom: '', profil: structuredClone(c.defaut) }
+            : await fetchProfil(id, { fetchFn }),
+      )
     },
     [fetchFn],
   )
@@ -571,14 +608,21 @@ export default function ConfigurationView({ deps = {} }) {
           <label htmlFor="config-profil">Profil</label>
           <select
             id="config-profil"
-            value={courant.id ?? ''}
-            onChange={(e) =>
-              ouvrir(config, e.target.value === '' ? null : Number(e.target.value)).catch((err) => setErreur(err.message))
-            }
+            value={courant.predefini !== undefined ? PREDEFINI + courant.predefini : (courant.id ?? '')}
+            onChange={(e) => {
+              const v = e.target.value
+              ouvrir(config, v === '' ? null : v.startsWith(PREDEFINI) ? v : Number(v)).catch((err) => setErreur(err.message))
+            }}
           >
             <option value="">
               {courant.copieDe === undefined ? 'Nouveau, depuis le profil v9.8' : `Nouveau, copie de « ${courant.copieDe} »`}
             </option>
+            {(expert || courant.predefini !== undefined) &&
+              (config.predefinis ?? []).map((p) => (
+                <option key={p.id} value={PREDEFINI + p.id}>
+                  {`Nouveau, depuis « ${p.nom} »`}
+                </option>
+              ))}
             {config.profils.map((p) => (
               <option key={p.id} value={p.id}>
                 {p.nom}
@@ -628,7 +672,7 @@ export default function ConfigurationView({ deps = {} }) {
 
         <Interrupteur mode={courant.profil.mode} defaut={config.defaut.mode} onChange={(m) => changer(['mode'], m)} />
         <FournisseursDuProfil profil={courant.profil} fournisseurs={contexte.fournisseurs} />
-        {PARTIES.map((cle) => (
+        {PARTIES.filter((cle) => expert || !EXPERT.includes(cle) || courant.profil[cle]?.enabled === true).map((cle) => (
           <Reglage
             key={cle}
             chemin={[cle]}

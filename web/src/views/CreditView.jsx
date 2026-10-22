@@ -408,9 +408,13 @@ export default function CreditView({ deps = {} }) {
             {!data.paypalConfigured ? (
               <p role="status" className="credit-indispo" data-testid="recharge-indispo">
                 La recharge par carte (PayPal) est indisponible pour le moment.{' '}
+                {/* une clé personnelle ne sert que chez Anthropic (ADR-012 §5) : un autre fournisseur débite le crédit */}
                 {data.clePriveeDisponible
-                  ? 'Votre clé Anthropic privée enregistrée reste utilisable : les appels Twin9 ne débitent alors aucun crédit.'
-                  : 'Vous pouvez aussi enregistrer votre propre clé Anthropic (aucun débit de crédit) depuis votre compte.'}
+                  ? 'Votre clé Anthropic privée enregistrée reste utilisable pour un profil qui n’appelle qu’Anthropic : '
+                    + 'ses appels Twin9 ne débitent alors aucun crédit ; un profil qui appelle un autre fournisseur part '
+                    + 'avec les clés de la plateforme et débite le crédit.'
+                  : 'Vous pouvez aussi enregistrer votre propre clé Anthropic depuis votre compte (aucun débit de crédit '
+                    + 'pour un profil qui n’appelle qu’Anthropic).'}
               </p>
             ) : data.packs.length === 0 ? (
               <p role="status" className="credit-indispo">

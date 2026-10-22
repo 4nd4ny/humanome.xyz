@@ -50,7 +50,7 @@ describe('ReferentielChoice', () => {
     expect(fetchFn.mock.calls.map(([url]) => url)).toEqual(['api/referentiels'])
   })
 
-  it('propose le référentiel amorcé depuis le YAML Humanome, puis charge son document tel que la base le sert (S5, lot B)', async () => {
+  it('UC-EPI-05-F17 — propose le référentiel amorcé depuis le YAML Humanome, puis charge son document tel que la base le sert (S5, lot B)', async () => {
     clearReferentielCache()
     const json = (data) => ({ ok: true, status: 200, headers: { get: () => 'application/json' }, json: async () => data })
     const route = `api/referentiels/${converti.id}/versions/${converti.version}`
@@ -105,7 +105,7 @@ describe('ReferentielChoice', () => {
     expect(sansChoix).not.toHaveBeenCalled()
   })
 
-  it('montre sous le menu la provenance d’un autre référentiel que RESPIRE : d’où il vient, sa licence (S5, E1, E9)', async () => {
+  it('UC-EPI-05-F17 — montre sous le menu la provenance d’un autre référentiel que RESPIRE : d’où il vient, sa licence (S5, E1, E9)', async () => {
     const source = '« Référentiel Fictif V2 » 2.0.0-proposition.1 du 2026-01-15, https://example.invalid/referentiel. Licence : CC-BY-SA Éditeur fictif.'
     const avecSource = [{ ...liste[0], source: 'Reconstruit depuis un corpus fictif' }, { ...liste[1], source }]
     const list = async () => avecSource

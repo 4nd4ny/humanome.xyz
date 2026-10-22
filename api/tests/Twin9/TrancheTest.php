@@ -13,9 +13,12 @@ use Humanome\Twin9\CreditService;
 use Humanome\Twin9\DirectCalls;
 use Humanome\Twin9\EngineLoader;
 use Humanome\Twin9\ProfilRepository;
+use Humanome\Twin9\RunKey;
 use Humanome\Twin9\RunRepository;
 use Humanome\Twin9\Twin9Config;
 use Humanome\Worker\Tick;
+use Humanome\Worker\Twin9Run;
+use Humanome\Worker\Twin9Slice;
 use PDO;
 use PHPUnit\Framework\Attributes\PreserveGlobalState;
 use PHPUnit\Framework\Attributes\RunTestsInSeparateProcesses;
@@ -467,6 +470,24 @@ final class TrancheTest extends TestCase
     }
 
     /**
+     * P0-4, where a sending sets `plein` (Twin9Slice::envoyer): when a call
+     * the run knows is still to look at — of a day abreast or not — and no
+     * place is left; never when the calls it knows ran out, even the last
+     * one taking the last place: the next answer then brings a pass while
+     * the others fly. The fake engine's first pass knows six calls, two
+     * readings of each of its three days.
+     */
+    public function testASendingIsFullOnlyWhenAKnownCallFindsNoPlace(): void
+    {
+        self::assertSame([2, true], $this->premierEnvoi(['/parallelisme/appels_directs' => 2]), 'des appels restent');
+        self::assertSame([2, true], $this->premierEnvoi(['/parallelisme/appels_directs' => 2, '/parallelisme/journees' => 1]),
+            'ceux des journées qui ne sont pas de front comptent');
+        self::assertSame([6, false], $this->premierEnvoi(['/parallelisme/appels_directs' => 6]),
+            'le dernier appel connu a pris la dernière place');
+        self::assertSame([6, false], $this->premierEnvoi(['/parallelisme/appels_directs' => 7]), 'une place reste');
+    }
+
+    /**
      * One run at a time on a map: the second waits for the first, then takes
      * its days back from the memory, the same settings being the same
      * fingerprint; other call settings play the days again.
@@ -550,6 +571,36 @@ final class TrancheTest extends TestCase
         }
 
         return ProfilRepository::validate($profil);
+    }
+
+    /**
+     * A new run's first pass and first sending, played by a slice as
+     * advanceUntil() plays them; no answer comes back.
+     *
+     * @param array<string, mixed> $profil
+     * @return array{int, bool} its calls in flight, and whether its sending took every place
+     */
+    private function premierEnvoi(array $profil): array
+    {
+        $id = $this->nouveauRun([], $profil, user: $this->utilisateur('plein-' . bin2hex(random_bytes(4)) . '@example.test'));
+        $config = new Twin9Config(new SettingsRepository($this->pdo));
+        $tranche = new Twin9Slice($this->pdo, new DirectCalls(new FakeMultiHttpClient(static fn (array $r): array =>
+            ['body' => FakeMultiHttpClient::message('vu'), 'delai' => 60.0])), new RunKey($this->pdo, $config), $config,
+            new FakeBatchApi(static fn (array $r): array => FakeBatchApi::message('vu')));
+        $maintenant = microtime(true);
+        foreach (['debut' => $maintenant, 'fin' => $maintenant + 30.0, 'dernierDepart' => $maintenant + 25.0,
+                  'compteurs' => ['passes' => 0, 'moteurMs' => 0, 'appels' => 0, 'reprises' => 0]] as $champ => $valeur) {
+            (new \ReflectionProperty(Twin9Slice::class, $champ))->setValue($tranche, $valeur);
+        }
+        $prive = static fn (string $methode, mixed ...$arguments): mixed =>
+            (new \ReflectionMethod(Twin9Slice::class, $methode))->invoke($tranche, ...$arguments);
+        $run = $prive('ouvrir', $id);
+        self::assertInstanceOf(Twin9Run::class, $run);
+        $prive('passer', $run);
+        self::assertCount(6, $run->attendus, 'la première passe connaît six appels');
+        $prive('envoyer', $run);
+
+        return [\count($run->enVol), $run->plein];
     }
 
     /** The engine's passes a run has counted (twin9_runs.passes). */

@@ -268,6 +268,12 @@ final class LotsTest extends TestCase
             $compteurs['par_etape']['greffier'], 'la panne au coût de son usage réel, à moitié prix');
         self::assertSame(['faisceaux', 'journees/J1', 'journees/J2'], $this->cles($id));
         self::assertSame([], $lots->restants());
+        // P0-1: its execution, frozen, counts every call in the batch lane, the cut one among its failures
+        $execution = (new RunRepository($this->pdo))->execution($id);
+        self::assertSame('fige', $execution->source);
+        self::assertSame(['lots'], array_keys((array) $execution->par_voie), 'aucun appel compté en directe');
+        self::assertSame([13, 1, 1], [$execution->par_voie->lots->appels, $execution->par_voie->lots->pannes,
+                                      $execution->par_voie->lots->tronques]);
     }
 
     /**
@@ -319,6 +325,14 @@ final class LotsTest extends TestCase
         self::assertSame([], $lots->restants(), 'annulé, puis supprimé une fois fini');
         self::assertSame(['creer', 'annuler', 'etat', 'supprimer'], $lots->operations('msgbatch_0001'));
         self::assertSame(0, (int) $this->pdo->query('SELECT COUNT(*) FROM twin9_lots')->fetchColumn());
+        // P0-1: its execution, read in its journal, still counts them in the batch lane, read at their custom_id —
+        // given back, they lost their batch (lot_id NULL), and the batch itself is gone
+        self::assertSame(6, (int) $this->pdo->query('SELECT COUNT(*) FROM twin9_appels WHERE lot_id IS NULL
+                                                         AND custom_id IS NOT NULL')->fetchColumn());
+        $execution = (new RunRepository($this->pdo))->execution($id);
+        self::assertSame(['journal', 'annule'], [$execution->source, $execution->statut]);
+        self::assertSame(['lots'], array_keys((array) $execution->par_voie), 'aucun appel compté en directe');
+        self::assertSame(6, $execution->par_voie->lots->appels);
     }
 
     /**

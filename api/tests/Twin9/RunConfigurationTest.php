@@ -178,6 +178,34 @@ final class RunConfigurationTest extends TestCase
         self::assertSame($bloc['empreinte'], RunConfiguration::empreinte($relu), 'relu tel que le run le garde');
     }
 
+    /**
+     * How it was to run, read where MoteurReglages::depuis() puts it: a
+     * profile other than the v9.8's — whose values are the code's fallbacks
+     * too — comes through as set.
+     */
+    public function testThePlannedExecutionIsTheProfilesNotTheDefaults(): void
+    {
+        $brut = ProfilRepository::v98();
+        $brut->voie = 'directe';
+        $brut->cle = 'personnelle';
+        $brut->parallelisme->appels_directs = 3;
+        $brut->parallelisme->journees = 4;
+        $brut->budget_usd = 2.5;
+        $brut->duree_minutes = 30;
+        $brut->jours = 2;
+        $brut->rescan = true;
+        $brut->memoire = false;
+        $profil = ProfilRepository::validate($brut);
+        $profil->referentiel = (object) ['id' => 'fictif', 'version' => '1.0.0'];
+
+        $bloc = self::bloc($profil);
+        self::assertSame(['voie_anthropic' => 'directe', 'cle' => 'personnelle',
+                          'parallelisme' => ['appels_directs' => 3, 'journees' => 4],
+                          'plafonds' => ['budget_usd' => 2.5, 'duree_minutes' => 30],
+                          'jours' => 2, 'rescan' => true, 'memoire' => false], $bloc['execution_prevue']);
+        self::assertSame([], self::valider(json_decode(json_encode($bloc, JSON_THROW_ON_ERROR | JSON_PRESERVE_ZERO_FRACTION))));
+    }
+
     /** The engine's versions are those the caller read, under its guards: none, null; a wrong type, null. */
     public function testTheEnginesVersionsAsTheCallerReadThem(): void
     {

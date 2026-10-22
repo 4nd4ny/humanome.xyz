@@ -167,7 +167,7 @@ final class Twin9Slice
     {
         $this->debut = $debut;
         $this->fin = $fin;
-        $this->dernierDepart = $fin - min(5.0, 0.1 * ($fin - $debut));
+        $this->dernierDepart = $debut + self::dureeAdmise($fin - $debut);
         $this->repos = [];
         $this->grille = null;
         $this->actifs = null;
@@ -479,7 +479,7 @@ final class Twin9Slice
             // another provider's call leaves only if its longest may end within the slice: cut, it may be billed all
             // the same (OpenRouter documents it); it leaves at the next slice — never, longer than a slice
             $duree = $tiers ? (float) ($entree['duree_max_s'] ?? self::DUREE_MAX) : 0.0;
-            if ($tiers && $this->fin - $this->debut < $duree) {
+            if ($tiers && $this->dernierDepart - $this->debut < $duree) {
                 $run->suspendre($fournisseur, 'un appel à ' . Fournisseurs::clePrix($fournisseur, $reglage['modele'])
                     . ' peut durer plus qu’une tranche (duree_max_s de la grille)');
                 continue;
@@ -683,6 +683,20 @@ final class Twin9Slice
             }
             $this->compteurs['coupes']++;
         }
+    }
+
+    /**
+     * What a slice of this length leaves another provider's call, in
+     * seconds, at its head: the slice, less the margin of its last
+     * departure (min(5 s, a tenth) — what the slice spends before its first
+     * departures, at the least: its batches collected, a pass played). A
+     * model whose longest call (duree_max_s) is longer never leaves — the
+     * slice suspends its provider and says why —, and a launch admits none
+     * (ProfilPolicy::admettreAuLancement(), Tick::longueurTwin9()).
+     */
+    public static function dureeAdmise(float $longueur): float
+    {
+        return $longueur - min(5.0, 0.1 * $longueur);
     }
 
     /**

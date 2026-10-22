@@ -552,10 +552,25 @@ valide et range les profils.
   copies tant qu'il est de l'atelier) ; la clé personnelle là où
   l'administrateur l'a ouverte, et chez Anthropic seulement : un profil dont
   un appel part ailleurs n'admet que les clés de l'instance (ADR-012 §5) ;
-  un prix pour chaque modèle Anthropic. Au lancement s'y ajoute
-  (`ProfilPolicy::admettreAuLancement`) : chaque fournisseur que ses appels
-  atteignent est ouvert sur l'instance (§8.1) ; un profil qui en nomme un
-  autre s'enregistre, mais ne s'estime ni ne se lance. Les droits sont au
+  un prix pour chaque modèle Anthropic. Au lancement, à l'aperçu et à la
+  reprise s'y ajoute (`ProfilPolicy::admettreAuLancement`), pour chaque
+  fournisseur que ses appels atteignent (`CallSettings::atteints()` : ses
+  étapes et ses lecteurs) : il est **disponible** — ouvert sur l'instance
+  (§8.1) et, hors d'Anthropic, avec sa clé d'instance ; un seul message pour
+  les deux, « Profil refusé — <étape> : le fournisseur <F> n’est pas
+  disponible sur cette instance », pour que personne n'apprenne quelles clés
+  l'instance détient ; la clé d'Anthropic n'est pas exigée (elle se lit à
+  chaque appel, un run sans elle attend) — ; hors d'Anthropic, son modèle a
+  son prix et ses plafonds dans la grille (« aucun prix pour
+  <fournisseur:modèle> »), un budget de sortie dans son `plafond_sortie`, et
+  une durée maximale (`duree_max_s`) que la tranche lui laisse en tête
+  (`Twin9Slice::dureeAdmise` : la tranche, réserve du tick ôtée, moins la
+  marge de son dernier départ — 35 s pour une tranche de 40 s), la règle
+  même de la tranche. Un profil qui ne passe pas s'enregistre,
+  mais ne s'estime, ne se lance ni ne reprend. `GET
+  /api/twin9/configuration` porte `fournisseurs` : chaque fournisseur du
+  registre, `{id, libelle, rgpd, disponible}`, un booléen sans sa cause.
+  Les droits sont au
   chapitre « Configuration Twin9 » de `docs/autorisations.md`. Le profil
   par défaut, que sert `GET /api/twin9/configuration` (`defaut`) et que
   prend un run lancé sans profil, est celui de la v9.8 avec le jeu de
@@ -899,8 +914,9 @@ direct, dans la même tranche (`Worker\Twin9Slice`).
   modèle (`duree_max_s` de la grille, 30 s à défaut) tient dans ce qui reste
   de la tranche — coupé, il peut être facturé quand même (OpenRouter le
   documente) ; il part en tête de la tranche suivante (compteur
-  `twin9Gardes` du worker). Un modèle plus long qu'une tranche ne part
-  jamais, et la page le dit. Chaque coupure d'un appel par la fin d'une
+  `twin9Gardes` du worker). Un modèle plus long que ce que la tranche lui
+  laisse en tête (`Twin9Slice::dureeAdmise`, la règle du lancement aussi)
+  ne part jamais, et la page le dit. Chaque coupure d'un appel par la fin d'une
   tranche est comptée dans le journal (`twin9_appels.coupures`), puis par
   fournisseur dans les compteurs et l'exécution (§8.5, §8.9).
 - **Repos commun** : après une 429 d'un fournisseur (ou son plafond), la
@@ -1055,7 +1071,15 @@ une suivante le relève.
   tête du dépôt `TWIN_V9_DIR`, sinon
   la première ligne de son fichier `COMMIT`, sinon nul). Il garde aussi sa
   visibilité (`privee` ou `cartographe`) et la date de l'accord (`accord_at`),
-  sans lequel rien ne part. Depuis P0-1, il garde aussi sa **configuration**
+  sans lequel rien ne part. Depuis la voie mixte (P1-5, ADR-012), l'accord
+  nomme les fournisseurs : `accord: {fournisseurs: [ids]}`, comparé à ceux
+  qu'atteignent les appels du run (`CallSettings::fournisseurs()`, l'aperçu
+  les donne), `422` « Accord requis : il nomme les fournisseurs auxquels ce
+  run envoie votre portfolio — … » s'ils diffèrent ; `true` reste admis pour
+  un profil tout Anthropic. La liste, triée, est gardée dans la
+  configuration (`accord.fournisseurs`, §8.9). Une reprise relit la garde
+  de ses fournisseurs (§7.2, `admettreAuLancement`) : un fournisseur fermé
+  depuis, ou sans sa clé d'instance, la refuse en `422`. Depuis P0-1, il garde aussi sa **configuration**
   (§8.9), écrite au lancement et jamais modifiée, distincte de l'attestation.
 - **Le suivi** (`GET /api/twin9/runs/{id}`) lit le journal : appels par état,
   journées finies (cartes du jour écrites), fusion faite, lots chez Anthropic,
@@ -1196,16 +1220,21 @@ une suivante le relève.
   par fournisseur).
 - **L'aperçu** (`POST /api/twin9/runs/apercu`, `{profil, portfolio}`, ce que
   demande un lancement, l'accord excepté ; rien n'est gardé) rend
-  `{journal, mode, voie, cle, journees: {total, nouvelles, changees},
+  `{journal, mode, voie, cle, fournisseurs, journees: {total, nouvelles, changees},
   estimation: {cout_usd, min_usd, max_usd, reserve_usd, duree_s,
   evaluations | reference, poles}, admission: {journees, total, limite,
   instruites, en_attente, changees_en_attente, autres_usd, refus},
   plafonds: {budget_usd, duree_minutes}, credit_usd}`. L'estimation et
   l'admission sont au §8.7 (T8). À défaut d'évaluation, la référence est le
   vrai run de PLANT-01 de T2, en mode essai, 0,1344 $ et 94 s, fois les
-  pôles du référentiel pour un run complet, à moitié prix par lots, la
-  marge avec la clé de l'instance ; par lots, la durée est nulle (celle
-  d'Anthropic). `credit_usd`, avec la clé de l'instance.
+  pôles du référentiel pour un run complet, à moitié prix quand tous ses
+  appels partent par lots, la marge avec la clé de l'instance ; dès qu'une
+  route part par lots, la durée est nulle (celle d'Anthropic). Le pire cas
+  d'un appel se compte par combinaison, au prix de son fournisseur et par
+  sa route (`RunCosts::pireCasDe`). `fournisseurs` (P1-5) : ceux
+  qu'atteignent ses appels, `[{id, libelle, rgpd, voie}]` (`voie` : `lots`,
+  `directe` ou `mixte`), que l'accord nomme. `credit_usd`, avec la clé de
+  l'instance.
 - **Une carte incomplète** : la page d'un run arrêté avec des journées finies
   l'ouvre dans la cartographie. Le document `twin9-run` porte alors
   `incomplete: true`, et `carto_evolutive` peut être nul ; l'import le dit
@@ -1324,8 +1353,12 @@ crédit, ou le budget, permet de finir avec leur fusion.
   (le plus grand pire cas qu'un appel d'une journée, de la fusion, a
   réservé avant de partir, T10 ; `twin9_appels.pire_cas_microusd` le garde
   une fois l'appel réglé) ; `duree_s` (ses secondes actives) ; `reglages`
-  (`voie`, `cle`, `marge` — le facteur que ses coûts comprennent, 1 avec la
-  clé personnelle —, et ce que les prévisions comparent : `mode`,
+  (`voie` — depuis la voie mixte, celle par laquelle le run est passé :
+  `directe`, `lots` ou `mixte`, `CallSettings::voieEffective()` —, `cle`,
+  `marge` — le facteur que ses coûts comprennent, 1 avec la clé
+  personnelle —, `part_anthropique` — depuis la voie mixte, `{journee,
+  fusion}`, la part d'Anthropic dans le coût de ses journées et de sa
+  fusion, nulle sans coût —, et ce que les prévisions comparent : `mode`,
   `referentiel`, `version_referentiel` et `empreinte_referentiel` (T16 :
   celle du référentiel que lit le moteur, §8.8 ; vide pour un run d'avant,
   qui lisait les fiches de son jeu), `gabarits` et
@@ -1342,8 +1375,12 @@ crédit, ou le budget, permet de finir avec leur fusion.
   contenu. L'export du compte porte l'évaluation avec son run (§8.5).
 - **La prévision** (`Evaluations::modele`, `Evaluations::selon`) lit les 200
   dernières évaluations de même signature, chacune convertie à la voie et à
-  la marge du run prévu (moitié prix par lots ; sa marge retirée, celle du
-  run prévu appliquée). Une journée instruite coûte une part fixe — les
+  la marge du run prévu (sa marge retirée, celle du run prévu appliquée ;
+  par lots, seule la part d'Anthropic de chaque phase change de prix,
+  `Evaluations::facteur` : d'une évaluation par lots ou mixte vers un run
+  direct, `1 + a` ; d'une évaluation directe vers un run par lots,
+  `1 − a/2` ; une ligne d'avant la voie mixte, tout Anthropic, `a = 1` :
+  le double, ou la moitié). Une journée instruite coûte une part fixe — les
   fiches de son pôle font l'essentiel de chaque prompt de lecture — et une
   part par Ko, ni l'une ni l'autre négative : la droite des moindres carrés
   par les journées instruites (leur taille, leur coût ; une journée en
@@ -1361,8 +1398,10 @@ crédit, ou le budget, permet de finir avec leur fusion.
   d'appel du run réservent sur un prompt deux fois plus grand que le plus
   grand gabarit du jeu ou le plus grand pôle que lisent ses lecteurs (T16 :
   son préambule et ses fiches, §8.8), avec la plus grande journée à
-  instruire (la carte, pour la fusion). Par appels directs, les secondes
-  actives d'un run par journée instruite, fusion comprise, en moyenne. Sans
+  instruire (la carte, pour la fusion), chaque combinaison au prix de son
+  fournisseur et par sa route. Des runs passés par appels directs seuls
+  (voie `directe`), les secondes actives par journée instruite, fusion
+  comprise, en moyenne. Sans
   évaluation, la référence
   (§8.5) : par journée instruite, une journée pour la fusion, et une journée
   pour le pire cas d'un appel de chacune, au moins ce que disent ses
@@ -1592,6 +1631,9 @@ refusée ; fixture inventée `schemas/fixtures/twin9-configuration-exemple.json`
     (`CallSettings::combinaisons()` : ses étapes et ses lecteurs, jamais
     l'étage des lecteurs seul ni une étape que le profil ne connaît pas),
     `{libelle, rgpd, voie}` (`mixte` s'il a les deux voies) ;
+  - `accord` (depuis la voie mixte, P1-5) : `{fournisseurs}`, ceux que
+    nommait l'accord de son propriétaire, triés ; absent d'un run lancé
+    avant ;
   - `appels` : `CallSettings::resume()` — `etages`, `etapes`,
     `second_ressort`, `lecteurs` (chacune un **objet**, quelles que soient
     ses clés : un lecteur nommé « 0 », que le motif du profil admet, n'en

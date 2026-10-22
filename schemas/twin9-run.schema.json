@@ -210,6 +210,20 @@
             }
           }
         },
+        "accord": {
+          "type": "object",
+          "additionalProperties": false,
+          "required": ["fournisseurs"],
+          "description": "Les fournisseurs que nommait l'accord de son propriétaire au lancement (P1-5, ADR-012), triés : ceux qu'atteignent ses appels. Absent d'un run lancé avant la voie mixte.",
+          "properties": {
+            "fournisseurs": {
+              "type": "array",
+              "minItems": 1,
+              "uniqueItems": true,
+              "items": { "$ref": "#/$defs/fournisseur" }
+            }
+          }
+        },
         "appels": {
           "type": "object",
           "additionalProperties": false,

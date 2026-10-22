@@ -6,6 +6,7 @@ namespace Humanome\Twin9;
 
 use Humanome\Packages\SettingsRepository;
 use Humanome\Referentiel\ReferentielRepository;
+use Humanome\Twin9\Fournisseurs\Fournisseurs;
 use PDO;
 use stdClass;
 
@@ -17,7 +18,11 @@ use stdClass;
  * that copy (MoteurReglages), never from a config.json; the profile's template
  * set (T14: the v9.8's, the instance's default or a copy of a promptologue's),
  * as the run's snapshot; the portfolio its owner sends; their consent to keep it,
- * and the run's state, on the server until they erase them (ADR-011 §5). The
+ * and the run's state, on the server until they erase them (ADR-011 §5), and
+ * to send it to the providers its calls reach, which the consent names
+ * (ADR-012, P1-5): {fournisseurs: [ids]}, compared with those the run
+ * reaches, kept in its configuration; a bare true still serves a profile
+ * all Anthropic, whose consent named Anthropic alone. The
  * attestation keeps what the run was launched with: its profile and its
  * mode, the days it took (T8), the versions of its template set, its
  * referential, the engine's commit. Its configuration block (P0-1,
@@ -30,8 +35,9 @@ use stdClass;
  * least, on average and at the most, by the size of its days and of its map,
  * as the evaluations of the same settings say (T8, Evaluations), failing
  * those the real run of PLANT-01 (T2), made in test mode, times the
- * referential's poles for a complete run; with its caps. This replaces
- * ADR-010's quote by a simulated run (ADR-011 §6).
+ * referential's poles for a complete run; with its caps; and the providers
+ * its calls reach, each with its lane and its GDPR tag, which its consent
+ * names. This replaces ADR-010's quote by a simulated run (ADR-011 §6).
  *
  * The engine reads the run's referential from its settings, drawn from the
  * base at the version its profile freezes (T16, ReferentielMoteur): any
@@ -73,14 +79,16 @@ final class Lancement
     /**
      * @param int|null $profilId a profile of its owner's; null: the default one, the v9.8's
      * @param string $portfolioNom the portfolio's file name: its stem names the journal, and the map
-     * @param bool $accord the owner's consent, which every launch asks
+     * @param mixed $accord the owner's consent, which every launch asks: {fournisseurs: [ids]}, the providers the
+     *                      run's calls reach, as the page showed them; true for a profile all Anthropic
      * @return int the run
      * @throws Twin9Exception 422 naming what is refused, 404 for another's profile, 503 without the engine
      */
-    public function lancer(int $userId, ?int $profilId, string $portfolioNom, string $portfolio, bool $accord,
+    public function lancer(int $userId, ?int $profilId, string $portfolioNom, string $portfolio, mixed $accord,
                            string $visibilite = 'privee', ?\DateTimeImmutable $maintenant = null): int
     {
-        if (!$accord) {
+        $accordes = self::accordes($accord);
+        if ($accordes === null) {
             throw new Twin9Exception('Accord requis : votre portfolio et l’état du run restent sur le serveur '
                 . 'jusqu’à ce que vous les effaciez', 422);
         }
@@ -92,6 +100,13 @@ final class Lancement
         ['profil' => $profil, 'nom' => $nom, 'moteur' => $moteur, 'jeu' => $jeu, 'referentiel' => $referentiel,
          'plateforme' => $plateforme, 'empreinte_reglages' => $empreinteReglages]
             = $this->preparer($userId, $profilId, $portfolioNom, $portfolio, $horloge, $sortie);
+        // the consent names the providers the run reaches, no more, no fewer (ADR-012)
+        $atteints = (new CallSettings($profil))->fournisseurs();
+        if ($accordes === true ? $atteints !== [Fournisseurs::DEFAUT] : $accordes !== self::trie($atteints)) {
+            throw new Twin9Exception('Accord requis : il nomme les fournisseurs auxquels ce run envoie votre '
+                . 'portfolio — ' . implode(', ', array_map(
+                    static fn (string $f): string => (string) Fournisseurs::REGISTRE[$f]['libelle'], $atteints)), 422);
+        }
         // what its configuration block keeps besides its settings (P0-1): the prices and their reading, the engine's
         // versions
         $grille = $this->config->read();
@@ -103,7 +118,7 @@ final class Lancement
         // of an owner at a time, for the next to count what this one is granted
         [$id, $admission, $reserve, $engagement] = $runs->sousVerrou($userId, function () use (
             $runs, $userId, $profil, $moteur, $portfolioNom, $portfolio, $plateforme, $jeu, $referentiel, $horloge,
-            $sortie, $profilId, $nom, $empreinteReglages, $grille, $releve, $versions
+            $sortie, $profilId, $nom, $empreinteReglages, $grille, $releve, $versions, $atteints
         ): array {
             $admission = null;
             $reserve = 0;
@@ -125,7 +140,8 @@ final class Lancement
             // its configuration (P0-1), here only: $moteur is captured by value, the one the admission redrew lives
             // in this closure
             $configuration = RunConfiguration::depuis($profil, $profilId, $nom, $moteur, $jeu, $referentiel,
-                $empreinteReglages, $grille, $releve, $versions, $horloge, bin2hex(random_bytes(16)));
+                $empreinteReglages, $grille, $releve, $versions, $horloge, bin2hex(random_bytes(16)),
+                self::trie($atteints));
 
             return [$runs->creer($userId, $profil, $moteur, trim($portfolioNom), $portfolio, $plateforme->journal(),
                 $jeu['gabarits'], $horloge, $sortie, $reserve, $engagement, $configuration), $admission, $reserve,
@@ -178,6 +194,8 @@ final class Lancement
             'mode' => (string) $profil->mode,
             'voie' => (string) $profil->voie,
             'cle' => (string) $profil->cle,
+            // the providers its calls reach, which its consent names (ADR-012)
+            'fournisseurs' => self::fournisseurs($profil),
             'journees' => ['total' => \count($vue['journees']), 'nouvelles' => $nouvelles, 'changees' => $changees],
             'estimation' => $estimation,
             'admission' => $admission,
@@ -197,7 +215,9 @@ final class Lancement
      * —; failing those, the real run of PLANT-01 (T2), made in test mode,
      * times the referential's poles for a complete run, for each day
      * instructed and a day's worth for the merge. Half price by batches, the
-     * margin with the instance's key.
+     * margin with the instance's key; a mixed run's evaluations converted by
+     * the share of Anthropic in each phase (Evaluations::modele()), the
+     * reference at half price only when every call goes by batches.
      *
      * The days it takes: the first days of the portfolio, in order, as long as
      * what they need fits in the lowest of its limits — its owner's credit
@@ -232,7 +252,11 @@ final class Lancement
     private function prevoir(int $userId, stdClass $profil, array $gabarits, array $referentiel, array $vue): array
     {
         $instance = $profil->cle === 'instance';
+        // the lane of its Anthropic calls; its calls' routes, each by its provider (P1-5)
         $parLots = $profil->voie === 'lots';
+        $reglages = new CallSettings($profil);
+        $toutLots = $reglages->voieEffective() === 'lots';
+        $aLots = $reglages->combinaisons('lots') !== [];
         $marge = $instance ? $this->config->marge() : 1.0;
         // by size, when the engine gives each day's (T8); an older engine, by the reference
         $tailles = array_filter($vue['journees'], static fn (array $j): bool => !isset($j['octets'])) === [];
@@ -240,7 +264,7 @@ final class Lancement
             self::empreinte($gabarits), ReferentielMoteur::empreinte($referentiel)), $parLots, $marge) : null;
         // the reference run read one pole: a complete run reads the referential's
         $poles = $profil->mode === 'test' ? 1 : max(1, (int) $vue['poles']);
-        $reference = self::REFERENCE_MICROUSD * $poles * ($parLots ? 0.5 : 1.0) * $marge;
+        $reference = self::REFERENCE_MICROUSD * $poles * ($toutLots ? 0.5 : 1.0) * $marge;
         $bornes = ['min', 'moyenne', 'max'];
 
         // what bounds it: its owner's credit with the instance's key, less what their runs in progress may still
@@ -267,14 +291,15 @@ final class Lancement
         // a prompt twice the set's largest template or the largest pole its readers read, and this many bytes
         $gabarit = 2 * max(0, 0, ...array_map('strlen', array_values($gabarits)),
             ...ReferentielMoteur::tailles($referentiel));
-        $combinaisons = (new CallSettings($profil))->combinaisons();
+        $combinaisons = $reglages->combinaisons();
         $grille = $this->config->read();
+        // each combination at its provider's price, by its own route (half price by batches)
         $pireCas = static function (?float $observe, int $octets) use ($reference, $gabarit, $combinaisons, $grille,
-                                                                       $parLots, $instance): float {
+                                                                       $instance): float {
             $pire = $observe ?? $reference;
             foreach ($combinaisons as $c) {
-                $pire = max($pire, (float) (Twin9Config::cout($grille, $c['modele'], $gabarit + $octets, $c['budget_sortie'],
-                    'twin9', $parLots, $instance) ?? 0));
+                $pire = max($pire, (float) (RunCosts::pireCasDe($grille, $c['fournisseur'], $c['modele'], $gabarit + $octets,
+                    $c['budget_sortie'], $c['voie'] === 'lots', $instance) ?? 0));
             }
 
             return $pire;
@@ -341,7 +366,8 @@ final class Lancement
 
         // in dollars, to the micro-dollar: the page rounds them
         $usd = static fn (float $microusd): float => round($microusd / 1_000_000, 6);
-        // by batches, the time is Anthropic's: the reference, made by direct calls, says nothing of it
+        // by batches, the time is Anthropic's — as soon as one route goes by batches: the reference, made by direct
+        // calls, says nothing of it
         $secondes = $modele['secondes_par_journee'] ?? (float) (self::REFERENCE_SECONDES * $poles);
         // the evaluations say it all only when they say what its days and its merge cost
         $observe = ($modele['fusion'] ?? null) !== null && ($retenu['instruites'] === 0 || ($modele['journee'] ?? null) !== null);
@@ -352,7 +378,7 @@ final class Lancement
                 'min_usd' => $usd($retenu['jours']['min'] + $retenu['fusion']['min']),
                 'max_usd' => $usd($retenu['jours']['max'] + $retenu['fusion']['max']),
                 'reserve_usd' => $usd($retenu['fusion']['max'] + $retenu['pire_fusion']),
-                'duree_s' => $parLots ? null : (int) round($secondes * max(1, $retenu['instruites'])),
+                'duree_s' => $aLots ? null : (int) round($secondes * max(1, $retenu['instruites'])),
             ] + ($observe ? ['evaluations' => $modele['evaluations']] : ['reference' => 'PLANT-01', 'poles' => $poles]),
             'admission' => [
                 'journees' => $admises,
@@ -393,6 +419,64 @@ final class Lancement
                 . 'portfolio entier : il faudrait ' . $montant . $ailleurs . ' (ses journées et leur fusion, '
                 . $source . ', réserves des appels comprises)',
         };
+    }
+
+    /**
+     * The providers a launch's consent names, as its body says them:
+     * {fournisseurs: [ids]}, sorted; true, a profile all Anthropic's; null:
+     * no consent.
+     *
+     * @return list<string>|true|null
+     */
+    private static function accordes(mixed $accord): array|bool|null
+    {
+        if ($accord === true) {
+            return true;
+        }
+        $liste = \is_array($accord) ? ($accord['fournisseurs'] ?? null) : null;
+        if (!\is_array($liste) || $liste === [] || !array_is_list($liste)) {
+            return null;
+        }
+        foreach ($liste as $f) {
+            if (!\is_string($f) || !Fournisseurs::connu($f)) {
+                return null;
+            }
+        }
+
+        return self::trie(array_values(array_unique($liste)));
+    }
+
+    /** @param list<string> $ids @return list<string> */
+    private static function trie(array $ids): array
+    {
+        sort($ids, SORT_STRING);
+
+        return $ids;
+    }
+
+    /**
+     * The providers a run's calls reach (CallSettings::fournisseurs()), as a
+     * launch's preview shows them for its consent: each with its label, its
+     * GDPR tag and its lane — « mixte » when it has both.
+     *
+     * @return list<array{id: string, libelle: string, rgpd: string, voie: string}>
+     */
+    private static function fournisseurs(stdClass $profil): array
+    {
+        $voies = [];
+        foreach ((new CallSettings($profil))->combinaisons() as $c) {
+            $voies[$c['fournisseur']][$c['voie']] = true;
+        }
+        $fournisseurs = [];
+        foreach (Fournisseurs::REGISTRE as $id => $registre) {
+            if (isset($voies[$id])) {
+                $fournisseurs[] = ['id' => $id, 'libelle' => (string) $registre['libelle'],
+                                   'rgpd' => (string) $registre['rgpd'],
+                                   'voie' => \count($voies[$id]) === 1 ? (string) array_key_first($voies[$id]) : 'mixte'];
+            }
+        }
+
+        return $fournisseurs;
     }
 
     /**

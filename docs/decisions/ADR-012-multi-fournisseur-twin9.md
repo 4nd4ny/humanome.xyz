@@ -49,10 +49,12 @@ Un profil peut nommer chacun d'eux ; un run n'atteint que ceux que l'administrat
   figure dans la liste que si ce réglage vaut `true` ; `false` par défaut.
 
 Ces deux réglages de la configuration Twin9 sont réservés à l'administrateur
-(`docs/autorisations.md`). Un profil qui nomme un fournisseur fermé s'enregistre, mais ne se
-lance pas, ni ne s'estime : « le fournisseur X n'est pas encore ouvert sur cette instance ». La
-garde est revérifiée à l'ouverture de chaque tranche et à la reprise d'un run ; un run qu'elle
-ne laisse plus passer est suspendu, avec sa raison. Ouvrir un tiers suppose que le registre RGPD
+(`docs/autorisations.md`). Un profil qui nomme un fournisseur fermé, ou sans sa clé d'instance,
+s'enregistre, mais ne se lance pas, ni ne s'estime : « le fournisseur X n'est pas disponible sur
+cette instance », un seul message pour les deux, pour que personne n'apprenne quelles clés
+l'instance détient. La garde est revérifiée à l'ouverture de chaque tranche, où un run qu'elle ne
+laisse plus passer est suspendu pour ce fournisseur, avec sa raison, et à la reprise d'un run, qui
+est alors refusée avec le même message. Ouvrir un tiers suppose que le registre RGPD
 et la politique de confidentialité le nomment : ils sont mis à jour dans le même changement que
 l'ouverture possible des tiers.
 

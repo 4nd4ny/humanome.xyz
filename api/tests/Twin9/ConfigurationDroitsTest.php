@@ -9,6 +9,7 @@ use Humanome\Referentiel\ReferentielRepository;
 use Humanome\Tests\CartographeTestCase;
 use Humanome\Tests\TestDb;
 use Humanome\Tests\UseCases\Support\ReferentielsFictifs;
+use Humanome\Twin9\Fournisseurs\Fournisseurs;
 use Humanome\Twin9\ProfilPolicy;
 use Humanome\Twin9\ProfilRepository;
 use Humanome\Twin9\ProtocoleRepository;
@@ -354,11 +355,16 @@ final class ConfigurationDroitsTest extends CartographeTestCase
     /**
      * A profile may name a provider the instance has not opened: it is
      * saved, as one's own choice; it is not launched until the
-     * administrator opens it (ADR-012).
+     * administrator opens it, with its instance key (one message for both:
+     * nobody learns which keys the instance holds), its model priced with
+     * its caps, an output budget within its plafond_sortie and a longest
+     * call that fits in a slice (ADR-012, P1-5). The configuration page
+     * reads one boolean per provider, never why.
      */
     public function testAProviderNotOpenYetIsSavedNotLaunched(): void
     {
         self::$pdo->exec("DELETE FROM settings WHERE name = 'twin9_config'");
+        TestDb::setEnv('MISTRAL_API_KEY', '');
         $compte = $this->registerAs('mixte@example.org', 'Mixte');
         $profil = ProfilRepository::v98();
         $profil->etapes->greffier = (object) ['fournisseur' => 'mistral', 'modele' => 'modele-fictif'];
@@ -370,28 +376,67 @@ final class ConfigurationDroitsTest extends CartographeTestCase
         $config = new Twin9Config(new SettingsRepository(self::$pdo));
         $politique = new ProfilPolicy(self::$pdo, $config);
         $valide = ProfilRepository::validate($profil);
-        try {
-            $politique->admettreAuLancement($valide);
-            self::fail('lancé chez un fournisseur fermé');
-        } catch (Twin9Exception $e) {
-            self::assertSame(422, $e->getStatusCode());
-            self::assertSame('Profil refusé — greffier : le fournisseur Mistral AI n’est pas encore ouvert sur cette '
-                . 'instance', $e->getMessage());
-        }
+        $refus = static function (string $message) use ($politique, $valide): void {
+            try {
+                $politique->admettreAuLancement($valide);
+                self::fail('lancé : ' . $message);
+            } catch (Twin9Exception $e) {
+                self::assertSame([422, 'Profil refusé — ' . $message], [$e->getStatusCode(), $e->getMessage()]);
+            }
+        };
+        $disponibles = function () use ($compte): array {
+            $fournisseurs = self::json($this->as_($compte, 'GET', '/api/twin9/configuration'))['fournisseurs'];
+            foreach ($fournisseurs as $f) {
+                self::assertSame(['id', 'libelle', 'rgpd', 'disponible'], array_keys($f), 'un booléen, jamais pourquoi');
+            }
+
+            return array_column($fournisseurs, 'disponible', 'id');
+        };
+        $indisponible = 'greffier : le fournisseur Mistral AI n’est pas disponible sur cette instance';
+        $refus($indisponible);
         $politique->admettreAuLancement(ProfilRepository::validate(ProfilRepository::v98()));
+        self::assertSame(['anthropic' => true, 'openai' => false, 'mistral' => false, 'google' => false, 'xai' => false,
+                          'openrouter' => false], $disponibles());
 
         $config->update(['twin9_fournisseurs_ouverts' => ['anthropic', 'mistral']]);
-        $politique->admettreAuLancement($valide);
         self::assertSame(['anthropic', 'mistral'], $config->fournisseursActifs());
+        $refus($indisponible); // open, without its instance key: the same message
+        self::assertFalse($disponibles()['mistral']);
+
+        TestDb::setEnv('MISTRAL_API_KEY', 'cle-mistral-factice');
+        self::assertTrue($disponibles()['mistral']);
+        $refus('greffier : aucun prix pour mistral:modele-fictif sur cette instance');
+        $entree = ['prix_usd_mtok' => [0.3, 0.9], 'plafond_sortie' => 8000, 'plafond_reflexion' => 0, 'duree_max_s' => 40];
+        $config->update(['modeles' => $config->modeles() + ['mistral:modele-fictif' => $entree]]);
+        $refus('greffier : un budget de sortie de 16000 jetons dépasse le plafond de mistral:modele-fictif (8000)');
+        $config->update(['modeles' => ['mistral:modele-fictif' => ['plafond_sortie' => 16000] + $entree]
+            + $config->modeles()]);
+        // a slice of 40 s leaves 35.1 s at its head (Twin9Slice::dureeAdmise(), Tick::longueurTwin9()): the slice's rule
+        $refus('greffier : un appel à mistral:modele-fictif peut durer 40 s, plus que ne lui en laisse une tranche de '
+            . 'cette instance (35 s)');
+        $config->update(['modeles' => ['mistral:modele-fictif' => ['plafond_sortie' => 16000, 'duree_max_s' => 36]
+            + $entree] + $config->modeles()]);
+        $refus('greffier : un appel à mistral:modele-fictif peut durer 36 s, plus que ne lui en laisse une tranche de '
+            . 'cette instance (35 s)');
+        $config->update(['modeles' => ['mistral:modele-fictif' => ['plafond_sortie' => 16000, 'duree_max_s' => 35]
+            + $entree] + $config->modeles()]);
+        $politique->admettreAuLancement($valide);
     }
 
-    /** The instance's key: set at installation (ANTHROPIC_API_KEY), never through the interface, never shown. */
+    /**
+     * The instance's keys: set at installation (ANTHROPIC_API_KEY and the
+     * five other providers' variables, ADR-012), never through the
+     * interface, never shown — the configuration page reads whether a
+     * provider is available, never its key.
+     */
     public function testTheInstanceKeyNeverPassesThroughTheInterface(): void
     {
-        TestDb::setEnv('ANTHROPIC_API_KEY', 'sk-ant-factice-instance');
+        foreach (Fournisseurs::REGISTRE as $f => $registre) {
+            TestDb::setEnv((string) $registre['env'], 'cle-' . $f . '-factice-instance');
+        }
         $admin = $this->registerAs('instance@example.org', 'Admin', ['admin']);
 
-        foreach (['cle', 'cle_instance', 'anthropic_api_key', 'ANTHROPIC_API_KEY'] as $champ) {
+        foreach (['cle', 'cle_instance', 'anthropic_api_key', 'ANTHROPIC_API_KEY', 'OPENAI_API_KEY'] as $champ) {
             self::assertSame(422, $this->as_($admin, 'PUT', '/api/twin9/admin/config', [$champ => 'sk-ant-api03-autre'])
                 ->getStatusCode(), $champ);
         }

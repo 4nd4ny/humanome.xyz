@@ -5,9 +5,12 @@ declare(strict_types=1);
 namespace Humanome\Twin9;
 
 use Humanome\Auth\Users;
+use Humanome\Env;
 use Humanome\Keys\KeyVault;
 use Humanome\Referentiel\ReferentielRepository;
 use Humanome\Twin9\Fournisseurs\Fournisseurs;
+use Humanome\Worker\Tick;
+use Humanome\Worker\Twin9Slice;
 use PDO;
 use stdClass;
 
@@ -21,10 +24,12 @@ use stdClass;
  * the administrator opened it and only for Anthropic (ADR-012), the
  * Anthropic models the instance prices (T10). The schema says what a profile
  * is; this says what its owner may pick (admettre(), at its registration and
- * at its launch), and what a launch asks besides: providers the instance
- * opened (admettreAuLancement()). A profile may name a provider not open yet:
- * it is saved, not launched. The default profile, the v9.8's, takes the
- * instance's default set.
+ * at its launch), and what a launch — or a resumption — asks besides
+ * (admettreAuLancement()): every provider its calls reach open on the
+ * instance, with its instance key, and another provider's model priced with
+ * its caps. A profile may name a provider not open yet: it is saved, not
+ * launched. The default profile, the v9.8's, takes the instance's default
+ * set.
  */
 final class ProfilPolicy
 {
@@ -84,22 +89,67 @@ final class ProfilPolicy
     }
 
     /**
-     * What a launch asks beyond admettre() (ADR-012): every provider the
-     * run's calls may reach is open on this instance (Twin9Config:
-     * twin9_fournisseurs_ouverts, and twin9_fournisseurs_non_rgpd for a
-     * provider tagged « non »).
+     * What a launch, or a resumption, asks beyond admettre() (ADR-012,
+     * P1-5), for each provider the run's calls reach (CallSettings::
+     * atteints()): it is available — open on this instance
+     * (twin9_fournisseurs_ouverts, and twin9_fournisseurs_non_rgpd for a
+     * provider tagged « non ») and, for another provider than Anthropic,
+     * with its instance key —, one message for both, so that nobody learns
+     * which keys the instance holds; Anthropic's own key is read as each
+     * call leaves, never asked here. Another provider's model has its price
+     * and its caps in the grid, an output budget within its plafond_sortie,
+     * and a longest call (duree_max_s) that a slice of this instance leaves
+     * room for at its head (Twin9Slice::dureeAdmise()).
      *
-     * @throws Twin9Exception 422 naming the step and the provider
+     * @throws Twin9Exception 422 naming the step and the provider, or the model
      */
     public function admettreAuLancement(stdClass $profil): void
     {
-        $actifs = $this->config->fournisseursActifs();
-        foreach ((new CallSettings($profil))->parEtape() as $etape => $reglage) {
-            if (!\in_array($reglage['fournisseur'], $actifs, true)) {
+        $grille = $this->config->read();
+        $actifs = Fournisseurs::actifs($grille);
+        // what a slice of this instance leaves a third party's call at its head: the slice's own rule
+        $admise = Twin9Slice::dureeAdmise(Tick::longueurTwin9((int) $grille['secondes_par_tranche']));
+        foreach ((new CallSettings($profil))->atteints() as $etape => $reglage) {
+            $fournisseur = $reglage['fournisseur'];
+            if (!\in_array($fournisseur, $actifs, true) || !$this->disponible($fournisseur)) {
                 throw new Twin9Exception('Profil refusé — ' . $etape . ' : le fournisseur '
-                    . self::libelle($reglage['fournisseur']) . ' n’est pas encore ouvert sur cette instance', 422);
+                    . self::libelle($fournisseur) . ' n’est pas disponible sur cette instance', 422);
+            }
+            if ($fournisseur === Fournisseurs::DEFAUT) {
+                continue;
+            }
+            $cle = Fournisseurs::clePrix($fournisseur, $reglage['modele']);
+            $entree = $grille['modeles'][$cle] ?? null;
+            if (!\is_array($entree) || RunCosts::pireCasDe($grille, $fournisseur, $reglage['modele'], 1,
+                    $reglage['budget_sortie'], false, false) === null) {
+                throw new Twin9Exception('Profil refusé — ' . $etape . ' : aucun prix pour ' . $cle
+                    . ' sur cette instance', 422);
+            }
+            if ($reglage['budget_sortie'] > (int) ($entree['plafond_sortie'] ?? 0)) {
+                throw new Twin9Exception('Profil refusé — ' . $etape . ' : un budget de sortie de '
+                    . $reglage['budget_sortie'] . ' jetons dépasse le plafond de ' . $cle . ' ('
+                    . (int) ($entree['plafond_sortie'] ?? 0) . ')', 422);
+            }
+            // a call leaves only if it may end within the slice (Twin9Slice): longer than a slice leaves it, never
+            $duree = (int) ($entree['duree_max_s'] ?? Twin9Slice::DUREE_MAX);
+            if ($duree > $admise) {
+                throw new Twin9Exception('Profil refusé — ' . $etape . ' : un appel à ' . $cle . ' peut durer '
+                    . $duree . ' s, plus que ne lui en laisse une tranche de cette instance ('
+                    . (int) floor($admise) . ' s)', 422);
             }
         }
+    }
+
+    /**
+     * Whether a provider open on this instance may serve a run: Anthropic
+     * always (its key is read as each call leaves, a missing one makes the
+     * run wait); another provider with its instance key only (a personal
+     * key never leaves Anthropic).
+     */
+    private function disponible(string $fournisseur): bool
+    {
+        return $fournisseur === Fournisseurs::DEFAUT
+            || Env::get((string) Fournisseurs::REGISTRE[$fournisseur]['env']) !== '';
     }
 
     private static function libelle(string $fournisseur): string
@@ -147,10 +197,14 @@ final class ProfilPolicy
     /**
      * What the configuration page offers its user: the published
      * referentials and their versions, their own drafts for a test run
-     * (T15), the template sets they may choose, the personal key.
+     * (T15), the template sets they may choose, the personal key, and each
+     * provider with its GDPR tag and whether a run may reach it now — one
+     * boolean, never why (closed, or its instance key missing: nobody
+     * learns which keys the instance holds).
      *
      * @return array{referentiels: list<array{id: string, versions: list<string>, brouillons: list<string>}>,
-     *               gabarits: list<string>, cle_perso_ouverte: bool, cle_perso_enregistree: bool}
+     *               gabarits: list<string>, cle_perso_ouverte: bool, cle_perso_enregistree: bool,
+     *               fournisseurs: list<array{id: string, libelle: string, rgpd: string, disponible: bool}>}
      */
     public function choix(int $userId): array
     {
@@ -173,11 +227,19 @@ final class ProfilPolicy
             }
         }
 
+        $actifs = $this->config->fournisseursActifs();
+        $fournisseurs = [];
+        foreach (Fournisseurs::REGISTRE as $id => $registre) {
+            $fournisseurs[] = ['id' => $id, 'libelle' => (string) $registre['libelle'], 'rgpd' => (string) $registre['rgpd'],
+                               'disponible' => \in_array($id, $actifs, true) && $this->disponible($id)];
+        }
+
         return [
             'referentiels' => $referentiels,
             'gabarits' => (new TemplateSets($this->pdo))->pour($userId),
             'cle_perso_ouverte' => $this->config->clePersoOuverte(),
             'cle_perso_enregistree' => $enregistree,
+            'fournisseurs' => $fournisseurs,
         ];
     }
 }

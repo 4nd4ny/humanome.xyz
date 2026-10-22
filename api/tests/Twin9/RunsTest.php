@@ -622,7 +622,7 @@ final class RunsTest extends CartographeTestCase
         foreach (['/api/twin9/runs/apercu', '/api/twin9/runs'] as $route) {
             $refus = $this->as_($alice, 'POST', $route, $this->lancement($mixte));
             self::assertSame(422, $refus->getStatusCode(), $route . ' : ' . $refus->getBody());
-            self::assertSame('Profil refusé — greffier : le fournisseur Mistral AI n’est pas encore ouvert sur cette '
+            self::assertSame('Profil refusé — greffier : le fournisseur Mistral AI n’est pas disponible sur cette '
                 . 'instance', self::json($refus)['error']);
         }
 
@@ -630,13 +630,103 @@ final class RunsTest extends CartographeTestCase
         $config->update(['twin9_fournisseurs_ouverts' => []]);
         $refus = $this->as_($alice, 'POST', '/api/twin9/runs', $this->lancement($direct));
         self::assertSame(422, $refus->getStatusCode());
-        self::assertSame('Profil refusé — lecteurs : le fournisseur Anthropic n’est pas encore ouvert sur cette instance',
-            self::json($refus)['error']);
+        self::assertSame('Profil refusé — lecteur haiku : le fournisseur Anthropic n’est pas disponible sur cette instance',
+            self::json($refus)['error'], 'la première étape que ses appels atteignent');
         self::assertSame(0, (int) self::$pdo->query('SELECT COUNT(*) FROM twin9_runs')->fetchColumn());
 
         $config->update(['twin9_fournisseurs_ouverts' => ['anthropic']]);
         $lance = $this->as_($alice, 'POST', '/api/twin9/runs', $this->lancement($direct));
         self::assertSame(201, $lance->getStatusCode(), (string) $lance->getBody());
+    }
+
+    /**
+     * The consent names the providers the run reaches (ADR-012, P1-5): the
+     * preview lists them, each with its lane and its GDPR tag; a consent
+     * that names others, or fewer, is refused, a bare true too for a mixed
+     * profile; the list is kept in the run's configuration. A profile all
+     * Anthropic still takes true, and keeps « anthropic ».
+     */
+    public function testTheConsentNamesTheProvidersTheRunReaches(): void
+    {
+        $this->ouvrirTiers();
+        $alice = $this->registerAs('consentement@example.org', 'Alice');
+        $mixte = $this->profilMixte($alice);
+
+        $apercu = self::json($this->as_($alice, 'POST', '/api/twin9/runs/apercu', $this->lancement($mixte)));
+        self::assertSame([['id' => 'anthropic', 'libelle' => 'Anthropic', 'rgpd' => 'sous_conditions', 'voie' => 'lots'],
+                          ['id' => 'openai', 'libelle' => 'OpenAI', 'rgpd' => 'sous_conditions', 'voie' => 'directe']],
+            $apercu['fournisseurs']);
+        self::assertNull($apercu['estimation']['duree_s'], 'une route par lots : la durée est celle d’Anthropic');
+
+        foreach ([true, ['fournisseurs' => ['anthropic']], ['fournisseurs' => ['anthropic', 'openai', 'mistral']]]
+                 as $accord) {
+            $refus = $this->as_($alice, 'POST', '/api/twin9/runs', ['accord' => $accord] + $this->lancement($mixte));
+            self::assertSame(422, $refus->getStatusCode(), json_encode($accord));
+            self::assertSame('Accord requis : il nomme les fournisseurs auxquels ce run envoie votre portfolio — '
+                . 'Anthropic, OpenAI', self::json($refus)['error']);
+        }
+        foreach ([['fournisseurs' => 'openai'], ['fournisseurs' => []], ['fournisseurs' => ['ollama']], ['oui']]
+                 as $accord) {
+            self::assertSame(422, $this->as_($alice, 'POST', '/api/twin9/runs', ['accord' => $accord]
+                + $this->lancement($mixte))->getStatusCode(), json_encode($accord));
+        }
+        self::assertSame(0, (int) self::$pdo->query('SELECT COUNT(*) FROM twin9_runs')->fetchColumn());
+
+        $lance = $this->as_($alice, 'POST', '/api/twin9/runs',
+            ['accord' => ['fournisseurs' => ['openai', 'anthropic']]] + $this->lancement($mixte));
+        self::assertSame(201, $lance->getStatusCode(), (string) $lance->getBody());
+        $configuration = (new RunRepository(self::$pdo))->configuration(self::json($lance)['id']);
+        self::assertSame(['anthropic', 'openai'], $configuration->accord->fournisseurs, 'gardé, trié');
+        // sorted, whatever the registry's order (Anthropic, OpenAI, Mistral AI) and the consent's
+        $trois = $this->as_($alice, 'POST', '/api/twin9/runs', ['accord' => ['fournisseurs' => ['openai', 'anthropic',
+            'mistral']]] + $this->lancement($this->profilMixte($alice, mistral: true)));
+        self::assertSame(201, $trois->getStatusCode(), (string) $trois->getBody());
+        self::assertSame(['anthropic', 'mistral', 'openai'], (new RunRepository(self::$pdo))
+            ->configuration(self::json($trois)['id'])->accord->fournisseurs);
+        self::assertSame(['lots', 'directe'], [$configuration->fournisseurs->anthropic->voie,
+                                               $configuration->fournisseurs->openai->voie]);
+        self::assertSame([], Validation::validate('twin9-run', (object) ['kind' => 'twin9-run', 'run' => (object) [
+            'id' => 1, 'journal' => 'j', 'statut' => 'en_cours', 'configuration' => $configuration]])['errors']);
+
+        $bob = $this->registerAs('anthropic-seul@example.org', 'Bob');
+        foreach ([true, ['fournisseurs' => ['anthropic']]] as $n => $accord) {
+            $lance = $this->as_($bob, 'POST', '/api/twin9/runs', ['accord' => $accord]
+                + $this->lancement($this->profil($bob, 'Direct ' . $n)));
+            self::assertSame(201, $lance->getStatusCode(), (string) $lance->getBody());
+            self::assertSame(['anthropic'], (new RunRepository(self::$pdo))->configuration(self::json($lance)['id'])
+                ->accord->fournisseurs);
+        }
+    }
+
+    /**
+     * A resumption reads the guard of its providers again (ADR-012): a
+     * provider closed since keeps the run stopped, with the launch's
+     * message; open again, it resumes.
+     */
+    public function testAResumptionReadsTheGuardOfItsProvidersAgain(): void
+    {
+        $this->ouvrirTiers();
+        $alice = $this->registerAs('reprise-garde@example.org', 'Alice');
+        $lance = $this->as_($alice, 'POST', '/api/twin9/runs',
+            ['accord' => ['fournisseurs' => ['anthropic', 'openai']]] + $this->lancement($this->profilMixte($alice)));
+        self::assertSame(201, $lance->getStatusCode(), (string) $lance->getBody());
+        $id = self::json($lance)['id'];
+        self::assertSame(200, $this->as_($alice, 'POST', "/api/twin9/runs/$id/annuler")->getStatusCode());
+
+        $config = new Twin9Config(new SettingsRepository(self::$pdo));
+        $config->update(['twin9_fournisseurs_ouverts' => ['anthropic']]);
+        $refus = $this->as_($alice, 'POST', "/api/twin9/runs/$id/reprendre");
+        self::assertSame(422, $refus->getStatusCode());
+        self::assertSame('Profil refusé — greffier : le fournisseur OpenAI n’est pas disponible sur cette instance',
+            self::json($refus)['error']);
+        self::assertSame('annule', (new RunRepository(self::$pdo))->statut($id));
+
+        TestDb::setEnv('OPENAI_API_KEY', '');
+        $config->update(['twin9_fournisseurs_ouverts' => ['anthropic', 'openai']]);
+        self::assertSame(422, $this->as_($alice, 'POST', "/api/twin9/runs/$id/reprendre")->getStatusCode(),
+            'sans sa clé d’instance non plus');
+        TestDb::setEnv('OPENAI_API_KEY', 'cle-openai-factice-runs');
+        self::assertSame('en_cours', self::json($this->as_($alice, 'POST', "/api/twin9/runs/$id/reprendre"))['statut']);
     }
 
     /**
@@ -786,6 +876,40 @@ final class RunsTest extends CartographeTestCase
         $profil = ProfilRepository::v98();
         $profil->voie = 'directe';
         $cree = $this->as_($user, 'POST', '/api/twin9/profils', ['nom' => $nom, 'profil' => $profil]);
+        self::assertSame(201, $cree->getStatusCode(), (string) $cree->getBody());
+
+        return self::json($cree)['id'];
+    }
+
+    /**
+     * OpenAI and Mistral AI opened on the instance, each with its (invented)
+     * key and model: a slice's guard and a launch's let them through.
+     */
+    private function ouvrirTiers(): void
+    {
+        TestDb::setEnv('OPENAI_API_KEY', 'cle-openai-factice-runs');
+        TestDb::setEnv('MISTRAL_API_KEY', 'cle-mistral-factice-runs');
+        $entree = ['prix_usd_mtok' => [0.7, 1.3], 'plafond_sortie' => 30000, 'plafond_reflexion' => 0, 'duree_max_s' => 1];
+        $config = new Twin9Config(new SettingsRepository(self::$pdo));
+        $config->update(['twin9_fournisseurs_ouverts' => ['anthropic', 'openai', 'mistral'],
+                         'modeles' => $config->modeles() + ['openai:modele-fictif-1' => $entree,
+                                                            'mistral:modele-fictif-2' => $entree]]);
+    }
+
+    /**
+     * A profile of $user's, its greffier at OpenAI — its president at Mistral AI too, with $mistral —, the rest
+     * Anthropic's by batches. @return int its id
+     */
+    private function profilMixte(array $user, bool $mistral = false): int
+    {
+        $profil = ProfilRepository::v98();
+        $profil->voie = 'lots';
+        $profil->etapes->greffier = (object) ['fournisseur' => 'openai', 'modele' => 'modele-fictif-1'];
+        if ($mistral) {
+            $profil->etapes->president = (object) ['fournisseur' => 'mistral', 'modele' => 'modele-fictif-2'];
+        }
+        $cree = $this->as_($user, 'POST', '/api/twin9/profils', ['nom' => $mistral ? 'Mixte à trois' : 'Mixte',
+                                                                  'profil' => $profil]);
         self::assertSame(201, $cree->getStatusCode(), (string) $cree->getBody());
 
         return self::json($cree)['id'];

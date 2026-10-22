@@ -159,6 +159,15 @@ final class VoieMixteTest extends TestCase
             ->fetchAll(PDO::FETCH_COLUMN);
         self::assertSame(['openai:' . self::MODELE], $modeles, 'le grand livre sous la clé de prix');
         self::assertSame([], $lots->restants());
+
+        // its evaluation: the lane it went by, and the share of Anthropic in what its days and its merge cost
+        $reglages = json_decode((string) $this->pdo->query('SELECT reglages FROM twin9_evaluations WHERE run_id = ' . $id)
+            ->fetchColumn(), true, 64, JSON_THROW_ON_ERROR);
+        $openai = 3 * (int) $this->config->coutMicrousd('openai:' . self::MODELE, 100, 20);
+        $journees = $attendu - (int) $this->config->coutMicrousd($sonnet, 100, 20, parLots: true);
+        self::assertSame('mixte', $reglages['voie']);
+        self::assertEqualsWithDelta(['journee' => round(($journees - $openai) / $journees, 4), 'fusion' => 1.0],
+            $reglages['part_anthropique'], 0.00001);
     }
 
     /**
@@ -287,7 +296,8 @@ final class VoieMixteTest extends TestCase
      */
     public function testAThirdPartysCallLeavesOnlyIfItMayEndWithinTheSlice(): void
     {
-        $this->config->update(['modeles' => ['openai:' . self::MODELE => ['duree_max_s' => 2] + self::entree()]
+        // a slice of 4 s (3.6 s once its reserve is kept) leaves 3.24 s at its head (Twin9Slice::dureeAdmise())
+        $this->config->update(['modeles' => ['openai:' . self::MODELE => ['duree_max_s' => 3] + self::entree()]
             + $this->config->modeles()]);
         $this->nouveauRun(['/voie' => 'directe', '/college' => [self::lecteur('a')],
                            '/etapes/greffier' => (object) ['fournisseur' => 'openai', 'modele' => self::MODELE]],
@@ -315,7 +325,7 @@ final class VoieMixteTest extends TestCase
         $autre = $this->nouveauRun(['/voie' => 'directe', '/college' => [self::lecteur('a')],
                                     '/etapes/greffier' => (object) ['fournisseur' => 'openai', 'modele' => self::MODELE]],
             ['lecteurs' => ['a'], 'etapes' => ['greffier']], $this->utilisateur('long@example.test'));
-        $this->config->update(['modeles' => ['openai:' . self::MODELE => ['duree_max_s' => 10] + self::entree()]
+        $this->config->update(['modeles' => ['openai:' . self::MODELE => ['duree_max_s' => 4] + self::entree()]
             + $this->config->modeles()]);
         $rapide = new FakeMultiHttpClient(static fn (array $r): array => str_contains($r['url'], 'anthropic')
             ? ['body' => FakeMultiHttpClient::message('vu')]

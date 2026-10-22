@@ -21,7 +21,8 @@ use stdClass;
  * settings' fingerprint and its evaluations' signature; how it was to run
  * (the lane of Anthropic's calls, the key, the parallelism, the caps, the
  * days the admission took); the providers its calls reach, with their GDPR
- * tag and lane; each call's settings as it is sent (CallSettings::resume());
+ * tag and lane, and those its owner's consent named (P1-5); each call's
+ * settings as it is sent (CallSettings::resume());
  * the college, the backends, the algorithm's parameters; the referential and
  * the template set by id, version and fingerprint; the prices as billed (the
  * margin included with the instance's key), for the models its calls use.
@@ -60,11 +61,12 @@ final class RunConfiguration
      * @param array{commit?: string|null, protocole?: string|null, personas?: array{version: string, empreinte: string}|null,
      *              scan?: string|null} $versions the engine's, read by the caller; null when the engine has none
      * @param string $sel the block's salt (SEL), drawn by the caller: bin2hex(random_bytes(16))
+     * @param list<string>|null $accord the providers its owner's consent named (Lancement, ADR-012); null: none kept
      * @return array<string, mixed>
      */
     public static function depuis(stdClass $profil, ?int $profilId, string $nom, stdClass $moteur, array $jeu,
                                   array $referentiel, string $empreinteReglages, array $grille, ?array $releve,
-                                  array $versions, \DateTimeImmutable $horloge, string $sel): array
+                                  array $versions, \DateTimeImmutable $horloge, string $sel, ?array $accord = null): array
     {
         if (preg_match(self::SEL, $sel) !== 1) {
             throw new \InvalidArgumentException('Sel de configuration invalide');
@@ -138,6 +140,10 @@ final class RunConfiguration
                 'memoire' => (bool) ($moteur->memoire ?? true),
             ],
             'fournisseurs' => (object) $fournisseurs,
+        ] + ($accord === null ? [] : [
+            // the providers its owner agreed to send their portfolio to (P1-5), as the consent named them
+            'accord' => ['fournisseurs' => array_values(array_map('strval', $accord))],
+        ]) + [
             'appels' => self::tables($reglages->resume()),
             'college' => $college,
             'backends' => ['tribunal' => (object) $backend($moteur->config->backend_tribunal ?? null),

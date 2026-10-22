@@ -358,10 +358,36 @@ final class UcVis05InterrogerTuteurTest extends LlmTestCase
         }
     }
 
-    #[TestDox('UC-VIS-05-F20 — RG6 : l’assistant, gratuit, reste sur Haiku — Haiku 5.5 par défaut (TUTEUR_MODEL vide, sprint 11 lot D) ; un Sonnet ou un Opus dans TUTEUR_MODEL est ignoré au profit de Haiku 5.5 ; un autre Haiku (4.5) l’emporte, servi tel quel ; réflexion désactivée')]
+    #[TestDox('UC-VIS-05-F20 — RG6 : l’assistant, gratuit, reste sur Haiku — Haiku 5.5 par défaut (TUTEUR_MODEL absent de l’environnement, sprint 11 lot D, ou vide) ; un Sonnet ou un Opus dans TUTEUR_MODEL est ignoré au profit de Haiku 5.5 ; un autre Haiku (4.5) l’emporte, servi tel quel ; réflexion désactivée')]
     public function testF20TheTutorStaysOnHaiku(): void
     {
         TestDb::setEnv('DEMO_PROVIDER', 'anthropic');
+
+        // TUTEUR_MODEL absent des trois couches que lit Env::get ($_ENV,
+        // $_SERVER, getenv) : c'est le défaut de la route qui sert, pas le
+        // repli « pas un Haiku » qu'exerce la valeur vide. setUp a mémorisé
+        // $_ENV (restoreEnv le remet) ; les deux autres couches sont remises ici.
+        unset($_ENV['TUTEUR_MODEL']);
+        $serveur = $_SERVER['TUTEUR_MODEL'] ?? null;
+        $processus = getenv('TUTEUR_MODEL');
+        unset($_SERVER['TUTEUR_MODEL']);
+        putenv('TUTEUR_MODEL');
+        try {
+            self::assertFalse(getenv('TUTEUR_MODEL'));
+            $this->http->queueResponse(['status' => 200, 'body' => self::anthropicBody('Ouvrez #/essayer.', 100, 10, 'claude-haiku-5-5')]);
+            self::assertSame(200, $this->ask('Par où commencer ?')->getStatusCode(), 'TUTEUR_MODEL absent');
+            $sent = json_decode((string) end($this->http->requests)['body'], true);
+            self::assertSame('claude-haiku-5-5', $sent['model'], 'TUTEUR_MODEL absent : Haiku 5.5 (décision 4 du sprint 11)');
+            self::assertSame(['type' => 'disabled'], $sent['thinking'], 'TUTEUR_MODEL absent');
+        } finally {
+            if ($serveur !== null) {
+                $_SERVER['TUTEUR_MODEL'] = $serveur;
+            }
+            if ($processus !== false) {
+                putenv('TUTEUR_MODEL=' . $processus);
+            }
+        }
+
         $modeles = [];
         foreach (['' => 'claude-haiku-5-5', 'claude-sonnet-5' => 'claude-haiku-5-5', 'claude-opus-4-8' => 'claude-haiku-5-5',
             'claude-haiku-4-5-20251001' => 'claude-haiku-4-5-20251001'] as $demande => $servi) {

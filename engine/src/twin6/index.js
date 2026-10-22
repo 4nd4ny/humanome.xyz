@@ -24,6 +24,8 @@
 import { twin6ToMergeDocument } from './mapper.js'
 import { rendreGabaritTwin6, variablesTwin6 } from './variables.js'
 import { sortieMaxAnthropic } from '../providers/limits.js'
+import { ProviderError } from '../providers/errors.js'
+import { isOutputTruncated, isTruncatedResult, truncationError } from '../providers/stop.js'
 
 // Les fiches d'un pôle pour tout référentiel (WP1, 2026-10-20), exposées avec le pipeline.
 export { fichesDuReferentiel, fichesPourTwin6 } from './fiches.js'
@@ -104,6 +106,11 @@ export function extractJson(text) {
  *   coupée est payée et perdue ; le proxy de la démo impose de toute façon le sien).
  * @returns {Promise<{document: object, cartoPoles: Array, kairos: object,
  *   usage: {inputTokens:number, outputTokens:number}, calls: Array}>}
+ *   calls : {etape, usage, model, stopReason, stopReasonRaw} par appel.
+ * @throws {OutputTruncatedError} sortie tronquée (budget de sortie ou fenêtre de contexte) :
+ *   le message nomme l'étape ; `etape`, `usageRun` (le run jusqu'à l'appel tronqué compris, qui
+ *   est payé) et `calls` y sont joints ; aucun nouvel essai.
+ * @throws {ProviderError} code 'refus' : le fournisseur a refusé de répondre (mêmes champs joints).
  */
 export async function executerTwin6({ portfolio, templates, referentiel, provider, model, options = {} }) {
   if (typeof portfolio !== 'string' || portfolio.trim() === '') {
@@ -130,13 +137,70 @@ export async function executerTwin6({ portfolio, templates, referentiel, provide
   const usage = { inputTokens: 0, outputTokens: 0 }
   const calls = []
 
+  // Tout appel qui a répondu est payé, même tronqué ou refusé : il entre au cumul.
   const accumulate = (etape, res) => {
-    if (res.stopReason === 'max_tokens') {
-      throw new Error(`executerTwin6: sortie tronquée (max_tokens) à l'étape ${etape}`)
-    }
     usage.inputTokens += res.usage?.inputTokens ?? 0
     usage.outputTokens += res.usage?.outputTokens ?? 0
-    calls.push({ etape, usage: res.usage ?? null, model: res.model ?? model })
+    calls.push({
+      etape,
+      usage: res.usage ?? null,
+      model: res.model ?? model,
+      stopReason: res.stopReason ?? null,
+      stopReasonRaw: res.stopReasonRaw ?? null,
+    })
+  }
+  // L'échec porte l'étape et ce que le run a consommé jusqu'à lui.
+  const echec = (err, etape) => {
+    err.etape = etape
+    err.usageRun = { ...usage }
+    err.calls = calls.map((c) => ({ ...c }))
+    return err
+  }
+  const tronque = (etape, res, cause) =>
+    echec(
+      truncationError(res, {
+        provider: res.provider ?? provider.name ?? null,
+        maxTokens: res.maxTokens ?? maxTokens,
+        message: `executerTwin6: sortie tronquée (${res.stopReason === 'context_window' ? 'context_window' : 'max_tokens'}) à l'étape ${etape}`
+          + (cause ? ` — ${cause.message}` : ''),
+        cause,
+      }),
+      etape,
+    )
+
+  // Un appel : la sortie tronquée (levée par le fournisseur, ou signalée par un
+  // fournisseur injecté) et le refus deviennent des erreurs explicites, plutôt
+  // qu'un échec obscur d'extractJson sur un fragment ou un texte vide.
+  const appeler = async (etape, prompt) => {
+    let res
+    try {
+      res = await provider.complete({ model, prompt, maxTokens, temperature, signal })
+    } catch (err) {
+      if (!isOutputTruncated(err)) throw err
+      const coupe = {
+        text: err.fragment,
+        usage: err.usage,
+        model: err.model,
+        stopReason: err.stopReason,
+        stopReasonRaw: err.stopReasonRaw,
+        provider: err.provider,
+        maxTokens: err.maxTokens,
+      }
+      accumulate(etape, coupe)
+      throw tronque(etape, coupe, err)
+    }
+    accumulate(etape, res)
+    if (isTruncatedResult(res)) throw tronque(etape, res)
+    if (res.stopReason === 'refusal') {
+      const refus = new ProviderError(`executerTwin6: le fournisseur a refusé de répondre à l'étape ${etape}`, {
+        status: 200,
+        retryable: false,
+        provider: provider.name ?? null,
+      })
+      refus.code = 'refus'
+      throw echec(refus, etape)
+    }
+    return res
   }
 
   // Phase 1 — un scan-pole par pôle du référentiel, dans l'ordre de leurs numéros.
@@ -146,8 +210,7 @@ export async function executerTwin6({ portfolio, templates, referentiel, provide
     if (!fiche) throw new Error(`executerTwin6: fiche manquante pour le pôle ${num}`)
     onProgress?.({ phase: 'scan-pole', pole: num, done, total })
     const prompt = buildScanPolePrompt(scanPole, num, fiche, portfolio)
-    const res = await provider.complete({ model, prompt, maxTokens, temperature, signal })
-    accumulate(`scan-pole/${num}`, res)
+    const res = await appeler(`scan-pole/${num}`, prompt)
     const cartoPole = extractJson(res.text)
     if (cartoPole.poleNum == null) cartoPole.poleNum = num
     cartoPoles.push(cartoPole)
@@ -157,8 +220,7 @@ export async function executerTwin6({ portfolio, templates, referentiel, provide
   // Phase 2 — kairos transversal.
   onProgress?.({ phase: 'kairos', done, total })
   const kairosPrompt = buildKairosPrompt(kairosGabarit, cartoPoles, portfolio)
-  const kres = await provider.complete({ model, prompt: kairosPrompt, maxTokens, temperature, signal })
-  accumulate('kairos', kres)
+  const kres = await appeler('kairos', kairosPrompt)
   const kairos = extractJson(kres.text)
   done += 1
   onProgress?.({ phase: 'done', done, total })

@@ -18,7 +18,7 @@
 
 import { ApiError, apiFetch } from './client.js'
 import { ACCEPT_RELAIS } from './relais.js'
-import { createProvider } from '@engine/providers/index.js'
+import { classifyStop, createProvider, throwIfTruncated } from '@engine/providers/index.js'
 import { fetchTwin9Meta, referentielPourMoteur } from './twin9.js'
 
 /** Paquet de prompts open source (servi statiquement, téléchargeable). */
@@ -56,7 +56,10 @@ export const RELAIS_INTERROMPU_CREDITS =
  * Provider CRÉDITS (voie « nos crédits ») : chaque complete() passe par POST
  * /api/twin6/appel — apiFetch porte la session (cookie) et le CSRF. Facturé
  * +10 % côté serveur. Contrat moteur {complete(params)} → {text, usage, model,
- * stopReason} (identique à createProvider).
+ * stopReason, stopReasonRaw, truncated} (identique à createProvider) : l'arrêt
+ * relayé (celui d'Anthropic) est normalisé, et une sortie tronquée lève
+ * l'OutputTruncatedError du moteur APRÈS `onCout` — l'appel est facturé —,
+ * sauf allowTruncated.
  *
  * La réponse arrive en flux (2026-10-21, api/relais.js) : `onProgression`
  * reçoit les caractères reçus de l'appel en cours. Un appel coupé en route —
@@ -71,7 +74,7 @@ export function makeCreditsProvider({ onCout, onProgression, fetchFn } = {}) {
   return {
     name: 'twin6-credits',
     transport: 'proxy',
-    async complete({ model, prompt, maxTokens, system = null, signal } = {}) {
+    async complete({ model, prompt, maxTokens, system = null, signal, allowTruncated } = {}) {
       let data
       try {
         data = await apiFetch('twin6/appel', {
@@ -94,15 +97,16 @@ export function makeCreditsProvider({ onCout, onProgression, fetchFn } = {}) {
         throw error
       }
       if (typeof onCout === 'function') onCout(data.cout_microusd ?? 0)
-      return {
+      const result = {
         text: data.text ?? '',
         usage: {
           inputTokens: data.usage?.inputTokens ?? 0,
           outputTokens: data.usage?.outputTokens ?? 0,
         },
         model: data.model ?? model,
-        stopReason: data.stopReason ?? null,
+        ...classifyStop('anthropic', data.stopReason),
       }
+      return throwIfTruncated(result, { provider: 'anthropic', maxTokens, allowTruncated })
     },
   }
 }

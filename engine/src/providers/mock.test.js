@@ -1,5 +1,6 @@
 import { describe, it, expect, vi } from 'vitest'
 import { createMockProvider } from './mock.js'
+import { OutputTruncatedError } from './errors.js'
 
 describe('createMockProvider', () => {
   it('expose la même interface que createProvider ({complete, name})', async () => {
@@ -93,5 +94,27 @@ describe('createMockProvider', () => {
     const mock = createMockProvider()
     await expect(mock.complete({ prompt: 'p' })).rejects.toThrow(/"model" est requis/)
     await expect(mock.complete({ model: 'm' })).rejects.toThrow(/"prompt" est requis/)
+  })
+
+  it('arrêt normalisé : end par défaut, comme createProvider', async () => {
+    const result = await createMockProvider({ responses: 'ok' }).complete({ model: 'm', prompt: 'p' })
+    expect(result).toMatchObject({ text: 'ok', stopReason: 'end', stopReasonRaw: 'end', truncated: false })
+  })
+
+  it('option stopReason : max_tokens lève la même OutputTruncatedError (usage compris), sauf allowTruncated', async () => {
+    const mock = createMockProvider({
+      responses: '{"frag',
+      usage: { inputTokens: 5, outputTokens: 64 },
+      stopReason: (_params, i) => (i === 0 ? 'max_tokens' : 'end')
+    })
+    const failure = await mock.complete({ model: 'm', prompt: 'p', maxTokens: 64 }).catch((e) => e)
+    expect(failure).toBeInstanceOf(OutputTruncatedError)
+    expect(failure).toMatchObject({ provider: 'mock', model: 'm', usage: { inputTokens: 5, outputTokens: 64 }, maxTokens: 64 })
+    expect(mock.callCount).toBe(1)
+    expect((await mock.complete({ model: 'm', prompt: 'p' })).stopReason).toBe('end')
+
+    const allowed = await createMockProvider({ responses: '{"frag', stopReason: 'context_window' })
+      .complete({ model: 'm', prompt: 'p', allowTruncated: true })
+    expect(allowed).toMatchObject({ text: '{"frag', stopReason: 'context_window', truncated: true })
   })
 })

@@ -87,11 +87,14 @@ describe('UC-APP-09 — provider « crédits » (POST api/twin6/appel)', () => {
     expect(init.method).toBe('POST')
     expect(init.headers['X-CSRF-Token']).toBe('csrf-uc-app-09')
     expect(JSON.parse(init.body)).toEqual({ model: 'claude-sonnet-5', prompt: 'Scanne le pôle 1', system: null, max_tokens: 8192 })
+    // L'arrêt relayé brut est normalisé (stopReason end, valeur brute gardée).
     expect(res).toEqual({
       text: '{"poleNum":1}',
       usage: { inputTokens: 1000, outputTokens: 200 },
       model: 'claude-sonnet-5',
-      stopReason: 'end_turn',
+      stopReason: 'end',
+      stopReasonRaw: 'end_turn',
+      truncated: false,
     })
     expect(couts).toEqual([6602])
     expect(provider).toMatchObject({ name: 'twin6-credits', transport: 'proxy' })
@@ -106,6 +109,8 @@ describe('UC-APP-09 — provider « crédits » (POST api/twin6/appel)', () => {
       usage: { inputTokens: 0, outputTokens: 0 },
       model: 'm',
       stopReason: null,
+      stopReasonRaw: null,
+      truncated: false,
     })
     expect(couts).toEqual([0])
 
@@ -347,7 +352,9 @@ describe('UC-APP-09 — la réponse en flux (relais, 2026-10-21)', () => {
       text: RESULTAT.text,
       usage: RESULTAT.usage,
       model: 'claude-sonnet-5',
-      stopReason: 'end_turn',
+      stopReason: 'end',
+      stopReasonRaw: 'end_turn',
+      truncated: false,
     })
     expect(relais.mock.calls[0][1].headers.Accept).toBe('text/event-stream, application/json')
     expect(progression).toEqual([10])

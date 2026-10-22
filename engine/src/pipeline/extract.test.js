@@ -4,6 +4,7 @@ import { readFileSync } from 'node:fs'
 import { describe, expect, it } from 'vitest'
 
 import { createMockProvider } from '../providers/mock.js'
+import { OutputTruncatedError } from '../providers/errors.js'
 import {
   ATTAQUES,
   RAISON_COURT_CIRCUIT,
@@ -316,6 +317,60 @@ describe('extractDay', () => {
     }
     await expect(extractDay({ dayText: DAY_TEXT, date: DATE, referentiel, provider }))
       .rejects.toThrow(/tronquée/)
+  })
+
+  it('sortie tronquée levée par le fournisseur : un seul appel pour le pôle (jamais refaite), consigne gardée, cause typée', async () => {
+    const provider = createMockProvider({
+      responses: '{"poleNum": "1", "competences": [',
+      usage: { inputTokens: 10, outputTokens: 4096 },
+      stopReason: 'max_tokens',
+    })
+    const failure = await extractDay({ dayText: DAY_TEXT, date: DATE, referentiel, provider, maxTokens: 4096 })
+      .catch((e) => e)
+    expect(failure.message).toBe(
+      'extractDay : pôle 1 (2026-01-05) — réponse tronquée (budget de sortie atteint) — réduisez le texte de la journée',
+    )
+    expect(failure.cause).toBeInstanceOf(OutputTruncatedError)
+    expect(failure.cause.usage).toEqual({ inputTokens: 10, outputTokens: 4096 })
+    expect(provider.callCount).toBe(1)
+  })
+
+  it('fournisseur injecté qui signale seulement max_tokens : pas de second essai non plus', async () => {
+    let calls = 0
+    const provider = {
+      complete: async () => {
+        calls += 1
+        return { text: '{"poleNum": "1", "competences": [', usage: {}, model: 'mock', stopReason: 'max_tokens' }
+      },
+    }
+    await expect(extractDay({ dayText: DAY_TEXT, date: DATE, referentiel, provider })).rejects.toThrow(/tronquée/)
+    expect(calls).toBe(1)
+  })
+
+  it('fenêtre de contexte pleine : message dédié', async () => {
+    const provider = createMockProvider({ responses: '{', stopReason: 'context_window' })
+    await expect(extractDay({ dayText: DAY_TEXT, date: DATE, referentiel, provider })).rejects.toThrow(
+      'extractDay : pôle 1 (2026-01-05) — réponse tronquée (fenêtre de contexte du modèle pleine) — réduisez le texte de la journée',
+    )
+  })
+
+  it('kairos tronqué : jamais refait ; kairosOptional le dégrade en null, sinon échec explicite', async () => {
+    const responses = ({ prompt }) => {
+      const num = poleOfPrompt(prompt)
+      return num === null ? '{"kairos": {' : JSON.stringify(minimalPoleResponse(num))
+    }
+    const stopReason = ({ prompt }) => (poleOfPrompt(prompt) === null ? 'max_tokens' : 'end')
+
+    const strict = createMockProvider({ responses, stopReason })
+    const failure = await extractDay({ dayText: DAY_TEXT, date: DATE, referentiel, provider: strict }).catch((e) => e)
+    expect(failure.message).toBe('extractDay : kairos (2026-01-05) — réponse kairos tronquée (budget de sortie atteint)')
+    expect(failure.cause).toBeInstanceOf(OutputTruncatedError)
+    expect(strict.callCount).toBe(8) // 7 pôles + 1 kairos, sans second kairos
+
+    const tolerant = createMockProvider({ responses, stopReason })
+    const doc = await extractDay({ dayText: DAY_TEXT, date: DATE, referentiel, provider: tolerant, kairosOptional: true })
+    expect(doc.kairos).toBeNull()
+    expect(tolerant.callCount).toBe(8)
   })
 
   it('exige provider, referentiel, dayText et date', async () => {

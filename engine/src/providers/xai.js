@@ -5,4 +5,4 @@ import { createOpenAiCompatibleAdapter } from './openai.js'
 
 export const XAI_BASE_URL = 'https://api.x.ai'
 
-export const xaiAdapter = createOpenAiCompatibleAdapter(XAI_BASE_URL)
+export const xaiAdapter = createOpenAiCompatibleAdapter(XAI_BASE_URL, { format: 'xai' })

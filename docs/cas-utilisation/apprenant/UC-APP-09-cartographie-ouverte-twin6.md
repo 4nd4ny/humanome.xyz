@@ -220,9 +220,11 @@ page Essayer (UC-VIS-03), ou par l'adresse.
   arrête le run et affiche le message, suivi de ce que le run a débité
   (« Solde insuffisant (0,0066 $ débités pour ce run.) », 2026-10-21) ; le bouton
   redevient cliquable. Les appels déjà aboutis du run restent facturés.
-- **E5 — Sortie tronquée** (étape 5, dès le premier appel tronqué) :
-  `stopReason = max_tokens` → le moteur lève « sortie tronquée (max_tokens) à
-  l'étape … » ; aucun document partiel. L'appel tronqué est un `200` côté
+- **E5 — Sortie tronquée** (étape 5, dès le premier appel tronqué, sur toutes
+  les voies depuis le 2026-10-22) : `stopReason = max_tokens` → le moteur lève
+  « sortie tronquée (max_tokens) à l'étape … », sans nouvel essai, l'usage du
+  run (l'appel tronqué compris) joint à l'erreur ; aucun document partiel. Un
+  refus du fournisseur (`stopReason = refusal`) arrête le run de même. L'appel tronqué est un `200` côté
   serveur : il est facturé au coût réel, comme les appels aboutis avant lui.
   Depuis le 2026-10-21, chaque appel demande tout ce que le modèle peut rendre :
   une sortie n'est plus coupée que si elle atteint ce maximum.
@@ -442,7 +444,7 @@ page Essayer (UC-VIS-03), ou par l'adresse.
 | UC-APP-09-U08 | `twin6ToMergeDocument` | Feuilles par date, renvoi jamais promu, narratifs rattachés ; un pôle sur deux feuilles : chaque compétence n'est présente que là où ses traces renvoient (RG8) | idem |
 | UC-APP-09-U09 | `twin6ToMergeDocument` | **Anomalie figée** : pôle sans présence → domaine vide non conforme au schéma | idem |
 | UC-APP-09-U10 | `twin6ToMergeDocument` | Entrées vides refusées | idem |
-| UC-APP-09-U11 | `createProvider` direct (A1) | Appel direct à api.anthropic.com ; **anomalie figée** : `stopReason` non relayé | idem |
+| UC-APP-09-U11 | `createProvider` direct (A1) | Appel direct à api.anthropic.com ; sortie tronquée → `OutputTruncatedError` (un appel, usage porté), puis échec d'`executerTwin6` nommant l'étape (anomalie 1 corrigée le 2026-10-22) | idem |
 | UC-APP-09-U12 | `executerTwin6` | **Limite figée** : référentiel vide → 1 appel kairos puis échec | idem |
 | UC-APP-09-U31 | `executerTwin6`, `twin6CallsFor`, `fichesPourTwin6`, `twin6ToMergeDocument` | Tout référentiel : cinq pôles lettrés → 6 appels, fiches écrites depuis le document, document qui le nomme et lui est conforme ; RESPIRE à six pôles → 7 appels, document de RESPIRE conforme à sa version (A4, A5, RG6, RG9) | idem |
 | UC-APP-09-U33 | `executerTwin6`, `gabaritsTwin6`, `variablesTwin6` | Paquet servi (1.1.0) : pour RESPIRE v7, les huit prompts de 1.0.0 à l'octet ; pour cinq pôles lettrés, son nom, ses pôles, ses compétences et la forme de ses codes, sans variable restante (RG10) | idem |
@@ -528,13 +530,15 @@ cd engine && npx vitest run test/usecases/unit/uc-app-09
 
 ## Anomalies constatées
 
-1. **Voie clé perso : troncature non détectée explicitement.** Le provider direct
-   Anthropic (`engine/src/providers/anthropic.js`, `parseResponse`) ne relaie pas
+1. ~~**Voie clé perso : troncature non détectée explicitement.**~~ Corrigée le
+   2026-10-22 (`docs/contrats.md` §4 point 14). Le provider direct Anthropic
+   (`engine/src/providers/anthropic.js`, `parseResponse`) ne relayait pas
    `stop_reason` ; la garde « sortie tronquée (max_tokens) » d'`executerTwin6` ne
-   se déclenche donc que sur la voie crédits. Sur la voie clé perso, une sortie
-   tronquée échoue plus loin, au parsing JSON, avec un message moins explicite
-   (figé par UC-APP-09-U11). Le cas est devenu rare le 2026-10-21 : chaque
-   appel demande tout ce que le modèle peut rendre.
+   se déclenchait que sur la voie crédits, et une sortie tronquée échouait plus
+   loin, au parsing JSON. L'arrêt est désormais lu et normalisé, la sortie
+   tronquée lève une `OutputTruncatedError` sur toutes les voies, et
+   `executerTwin6` échoue en nommant l'étape, l'usage de l'appel payé compté
+   (UC-APP-09-U11).
 2. **Pôle sans aucune présence établie → document non conforme au schéma.**
    `twin6ToMergeDocument` émet alors un domaine sans compétence, ce que le schéma
    `cartographie-merge` refuse (`domains[].competences` : `minItems 1`). Le viewer

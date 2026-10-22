@@ -1,6 +1,8 @@
 // Banc d'essai (P10.4) — logique pure : routage moteur/sandbox, résumés,
 // consistance multi-run (engine compareRuns), rapport A/B.
 import { describe, expect, it, vi } from 'vitest'
+import { createMockProvider } from '@engine/providers/mock.js'
+import { OutputTruncatedError } from '@engine/providers/errors.js'
 import jourFixture from '../../../../schemas/fixtures/cartographie-jour-2026-01-05.json'
 import jour2Fixture from '../../../../schemas/fixtures/cartographie-jour-2026-01-06.json'
 import pkgFixture from '../../../../schemas/fixtures/prompt-package-exemple.json'
@@ -730,6 +732,32 @@ describe('runVersionOnDays — usage réel cumulé (D16)', () => {
       sandboxRunner: vi.fn(),
     })
     expect(result.usage).toEqual({ inputTokens: 400, outputTokens: 160, mesures: 4 })
+  })
+
+  it('une sortie tronquée (OutputTruncatedError) est comptée — l’appel est payé — puis l’erreur passe', async () => {
+    const provider = createMockProvider({
+      responses: '{"frag',
+      usage: { inputTokens: 100, outputTokens: 4096 },
+      stopReason: (_params, i) => (i === 1 ? 'max_tokens' : 'end'),
+    })
+    let seen = null
+    const extractDayFn = vi.fn(async ({ provider: p, date }) => {
+      await p.complete({ model: 'test', prompt: 'a' })
+      seen = await p.complete({ model: 'test', prompt: 'b' }).catch((e) => e)
+      return { ...structuredClone(jourFixture), date }
+    })
+    const result = await runVersionOnDays({
+      pkg: BUILTIN_PACKAGE,
+      dayGroups: [DAYS[0]],
+      referentiel: referentielFixture,
+      provider,
+      model: 'test',
+      extractDayFn,
+      sandboxRunner: vi.fn(),
+    })
+    expect(seen).toBeInstanceOf(OutputTruncatedError)
+    expect(result.usage).toEqual({ inputTokens: 200, outputTokens: 8192, mesures: 2 })
+    expect(provider.callCount).toBe(2)
   })
 
   it('fournisseur muet sur usage -> compteurs à zéro, mesures 0', async () => {

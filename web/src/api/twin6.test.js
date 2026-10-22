@@ -1,6 +1,7 @@
 import { describe, it, expect, vi, beforeEach } from 'vitest'
 import { loadTwin6Package, makeCreditsProvider, makeOwnKeyProvider, fetchTwin6Offer } from './twin6.js'
 import { resetApiClient } from './client.js'
+import { OutputTruncatedError } from '@engine/providers/errors.js'
 
 function jsonResponse(body, { ok = true, status = 200 } = {}) {
   return {
@@ -70,9 +71,52 @@ describe('makeCreditsProvider', () => {
       text: 'carto_P1 { ... }',
       usage: { inputTokens: 1200, outputTokens: 300 },
       model: 'claude-sonnet-5',
-      stopReason: 'end_turn',
+      stopReason: 'end',
+      stopReasonRaw: 'end_turn',
+      truncated: false,
     })
     expect(couts).toEqual([6602])
+  })
+
+  it('sortie tronquée : onCout reçoit le coût de l’appel (facturé), PUIS l’OutputTruncatedError est levée', async () => {
+    const events = []
+    const fetchFn = vi.fn(async () =>
+      jsonResponse({
+        text: '{"poleNum": 1, "compet',
+        usage: { inputTokens: 1200, outputTokens: 64000 },
+        model: 'claude-sonnet-5',
+        stopReason: 'max_tokens',
+        cout_microusd: 9100,
+      }),
+    )
+    const provider = makeCreditsProvider({ onCout: (c) => events.push(['cout', c]), fetchFn })
+    const failure = await provider
+      .complete({ model: 'claude-sonnet-5', prompt: 'Analyse pôle 1', maxTokens: 64000 })
+      .catch((e) => {
+        events.push(['erreur'])
+        return e
+      })
+    expect(events).toEqual([['cout', 9100], ['erreur']])
+    expect(failure).toBeInstanceOf(OutputTruncatedError)
+    expect(failure).toMatchObject({
+      provider: 'anthropic',
+      model: 'claude-sonnet-5',
+      stopReason: 'max_tokens',
+      stopReasonRaw: 'max_tokens',
+      usage: { inputTokens: 1200, outputTokens: 64000 },
+      maxTokens: 64000,
+    })
+    expect(fetchFn).toHaveBeenCalledTimes(1)
+
+    // allowTruncated : le fragment revient, marqué.
+    const allowed = await makeCreditsProvider({ fetchFn }).complete({ model: 'claude-sonnet-5', prompt: 'p', allowTruncated: true })
+    expect(allowed).toMatchObject({ text: '{"poleNum": 1, "compet', truncated: true, stopReason: 'max_tokens' })
+  })
+
+  it('refus relayé : classé (stopReason refusal), pas levé', async () => {
+    const fetchFn = vi.fn(async () => jsonResponse({ text: '', usage: {}, model: 'claude-sonnet-5', stopReason: 'refusal', cout_microusd: 10 }))
+    const res = await makeCreditsProvider({ fetchFn }).complete({ model: 'claude-sonnet-5', prompt: 'p' })
+    expect(res).toMatchObject({ text: '', stopReason: 'refusal', stopReasonRaw: 'refusal', truncated: false })
   })
 })
 

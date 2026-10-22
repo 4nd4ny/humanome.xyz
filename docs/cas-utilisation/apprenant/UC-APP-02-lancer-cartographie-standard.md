@@ -281,7 +281,9 @@ Cartographier mes écrits », ou le bouton du tableau de bord `#/espace`).
   par identifiant parmi `SUPPORTED_PROVIDERS` (les 6 fournisseurs proposés
   par l'écran, dans le même ordre) ; chaque adaptateur traduit l'appel
   unifié `{model, prompt, maxTokens}` dans le format de son API et ramène
-  `{text, usage: {inputTokens, outputTokens}, model}` (le modèle renvoyé par
+  `{text, usage: {inputTokens, outputTokens}, model, stopReason,
+  stopReasonRaw, truncated}` (l'arrêt normalisé, `docs/contrats.md` §4
+  point 14 ; le modèle renvoyé par
   l'API remplace le modèle demandé dans cette valeur de retour) ; l'assistant
   n'en retient que l'usage, cumulé dans `runMeta.usage` — `runMeta.model`
   reste le modèle saisi.
@@ -292,7 +294,7 @@ Cartographier mes écrits », ou le bouton du tableau de bord `#/espace`).
   | OpenAI (`openai.js`) | `https://api.openai.com/v1/chat/completions` | `authorization: Bearer <clé>` | `max_tokens` | `choices[0].message.content` ; `usage.prompt_tokens` / `completion_tokens` |
   | xAI (`xai.js`) | `https://api.x.ai/v1/chat/completions` | idem OpenAI | idem | idem (adaptateur compatible OpenAI) |
   | OpenRouter (`openrouter.js`) | `https://openrouter.ai/api/v1/chat/completions` | idem OpenAI | idem | idem ; identifiant `éditeur/modèle` transmis tel quel |
-  | Google (`google.js`) | `https://generativelanguage.googleapis.com/v1beta/models/<modèle encodé>:generateContent` | `x-goog-api-key` (jamais `?key=`) | `generationConfig.maxOutputTokens` | `candidates[0].content.parts[].text` concaténés (vide si réponse bloquée) ; `usageMetadata.promptTokenCount` / `candidatesTokenCount` |
+  | Google (`google.js`) | `https://generativelanguage.googleapis.com/v1beta/models/<modèle encodé>:generateContent` | `x-goog-api-key` (jamais `?key=`) | `generationConfig.maxOutputTokens` | `candidates[0].content.parts[].text` concaténés, parts de réflexion (`thought: true`) exclues (vide si réponse bloquée : refus) ; `usageMetadata.promptTokenCount` / `candidatesTokenCount` + `thoughtsTokenCount` |
   | Ollama (`ollama.js`) | `http://localhost:11434/api/chat`, `stream: false` | aucune — une clé saisie n'est pas envoyée | `options.num_predict` | `message.content` ; `prompt_eval_count` / `eval_count` |
 
   Toute réponse non 2xx devient une `ProviderError` (`errors.js` :
@@ -301,7 +303,13 @@ Cartographier mes écrits », ou le bouton du tableau de bord `#/espace`).
   `message` du corps JSON (rien si le corps n'est pas du JSON) ; elle n'est
   réessayable (`retry.js`) que pour 429, ≥ 500 et l'erreur réseau
   (`status` 0, « <fournisseur>: erreur réseau (…) »). Un `200` au corps non
-  JSON donne une `ProviderError` non réessayable.
+  JSON donne une `ProviderError` non réessayable. Une réponse coupée par le
+  budget de sortie ou la fenêtre de contexte (`max_tokens`, `length`,
+  `MAX_TOKENS`, `model_context_window_exceeded`…) lève une
+  `OutputTruncatedError` (`status` 200, jamais réessayée, usage de l'appel
+  porté) : `extractDay` échoue la journée sur « réponse tronquée (budget de
+  sortie atteint) — réduisez le texte de la journée » sans refaire l'appel,
+  et le lanceur en compte l'usage. Ollama fait exception (A-06).
 
 ## Données et RGPD
 
@@ -370,18 +378,18 @@ Cartographier mes écrits », ou le bouton du tableau de bord `#/espace`).
 | UC-APP-02-U26 | `createDemoProvider` | Aucune reprise sur quota 429 ni sur 503 : 1 défi, 1 POST (RG5) | `web/test/usecases/unit/uc-app-02-lancer-cartographie-standard.test.js` |
 | UC-APP-02-U27 | `createDemoProvider` | Une seule reprise après 2,5 s avec un défi neuf sur 502, erreur réseau, `pow_reused`, `pow_expired` ; pas de seconde reprise (RG5) | idem |
 | UC-APP-02-U28 | `createProvider`, `SUPPORTED_PROVIDERS` | 6 fournisseurs ; clé exigée en direct sauf Ollama ; fournisseur, transport, `model` ou `prompt` invalides refusés sans aucun envoi (E3, RG9) | `engine/test/usecases/unit/uc-app-02-fournisseurs-cle-personnelle.test.js` |
-| UC-APP-02-U29 | `openai.js` | URL, `authorization: Bearer`, messages system/user, `max_tokens` ; texte, usage, modèle ; réponse vide → `''` et 0 (A1, RG9) | idem |
+| UC-APP-02-U29 | `openai.js` | URL, `authorization: Bearer`, messages system/user, `max_tokens` ; texte, usage, modèle, arrêt normalisé (`stop` → `end`) ; réponse vide → `''`, 0 et arrêt `null` (A1, RG9) | idem |
 | UC-APP-02-U30 | `xai.js`, `openrouter.js` | Même format compatible OpenAI, URL propre ; modèle `éditeur/modèle` transmis tel quel (RG9) | idem |
-| UC-APP-02-U31 | `google.js` | Modèle encodé dans le chemin (pas d'injection de paramètre), `x-goog-api-key` jamais en `?key=`, `generationConfig` ; parties concaténées, `usageMetadata`, `modelVersion` ; réponse bloquée → texte vide ; **comportement actuel** : jetons de réflexion non comptés (Limites) | idem |
+| UC-APP-02-U31 | `google.js` | Modèle encodé dans le chemin (pas d'injection de paramètre), `x-goog-api-key` jamais en `?key=`, `generationConfig` ; parties concaténées, `usageMetadata` (réflexion comptée en sortie depuis le 2026-10-22), `modelVersion` ; réponse bloquée → texte vide, arrêt `refusal` | idem |
 | UC-APP-02-U32 | `ollama.js` | `localhost:11434/api/chat` sans en-tête de clé (une clé saisie n'est pas envoyée), `stream: false`, `num_predict` ; compteurs Ollama (RG9) | idem |
 | UC-APP-02-U33 | `ProviderError` (`errors.js`) | 401 OpenAI, 400 Google, 404 Ollama, 403 non JSON (xAI) : message et détail par format d'API, non réessayés ; `200` non JSON refusé (E7) | idem |
 | UC-APP-02-U34 | `retry.js` via `createProvider` | 429 + `Retry-After` ; 503 : 3 essais, attentes 250 puis 500 ms ; réseau (status 0) ; `Retry-After` d'1 h plafonné à 5 min ; interruption pendant une attente de `Retry-After` déjà en cours (attente réelle abandonnée aussitôt, aucun 2e envoi), signal transmis à `fetch` (A1, A4) | idem |
 | UC-APP-02-U35 | `extractDay` + transport direct | Journée nominale sur Gemini (8 requêtes, document valide) ; 503 persistant → 6 requêtes au pôle 1 puis échec contextualisé ; 401 → 2 requêtes (A1, E4, E7) | idem |
-| UC-APP-02-U36 | Adaptateurs directs, `extractDay` (anomalie A-06) | **Comportement actuel** : fin par budget de sortie (`max_tokens`, `length`, `MAX_TOKENS`) non remontée (`stopReason` absent, alors que le proxy la relaie) ; journée tronquée → « réponse sans tableau competences » au lieu de « réponse tronquée » | idem |
+| UC-APP-02-U36 | Adaptateurs directs, `extractDay` (anomalie A-06, corrigée en partie) | Fin par budget de sortie (`max_tokens`, `length`, `MAX_TOKENS`) → `OutputTruncatedError` (un appel, usage porté), en direct comme en proxy ; journée tronquée → « réponse tronquée », sans second appel ; **comportement actuel** : Ollama (`done_reason: length`) rend encore le fragment | idem |
 | UC-APP-02-U37 | `formatDateFr` via `extractDay` | Les 8 prompts d'une journée portent « # Feuille de portfolio du 07/01/2026 (2026-01-07) » une seule fois (étape 6) | `engine/test/usecases/unit/uc-app-02-prompts-narratifs.test.js` |
 | UC-APP-02-U38 | `buildNarrativePrompts` sur `mergeDays` | 3 journées → 69 prompts = `MERGE_NARRATIVE_CALLS` de l'estimation ; ordre compétences → pôles → kairos ; période, court-circuit, trace verbatim jointe, moyennes `formatFixed2` à deux décimales (égalité exacte au demi arrondie au demi pair : 0.625 → 0.62), rapports de pôle et synthèse kairos des journées (étape 7, RG6) | idem |
 | UC-APP-02-U39 | `createProviderBundle` (mode clé) | Liste de l'écran = `SUPPORTED_PROVIDERS` ; pour chacun des 6 fournisseurs : modèle par défaut et budget de sortie (toute la sortie du modèle pour Anthropic, 8 192 pour les autres) au bon endpoint, dans le champ de l'API, clé dans l'en-tête attendu, rien vers humanome (A1, RG9) | `web/test/usecases/unit/uc-app-02-fournisseurs-cle-personnelle.test.js` |
-| UC-APP-02-U40 | `anthropic.js` | `api.anthropic.com/v1/messages`, en-têtes exacts (`x-api-key`, `anthropic-version: 2023-06-01`, `anthropic-dangerous-direct-browser-access: true`), `max_tokens`, `system` seulement s'il est fourni ; seuls les blocs de type `text` concaténés, usage et modèle ; réponse vide → `''` et 0 (A1, RG9) | `engine/test/usecases/unit/uc-app-02-fournisseurs-cle-personnelle.test.js` |
+| UC-APP-02-U40 | `anthropic.js` | `api.anthropic.com/v1/messages`, en-têtes exacts (`x-api-key`, `anthropic-version: 2023-06-01`, `anthropic-dangerous-direct-browser-access: true`), `max_tokens`, `system` seulement s'il est fourni ; seuls les blocs de type `text` concaténés, usage, modèle et arrêt normalisé (`end_turn` → `end`) ; réponse vide → `''`, 0 et arrêt `null` (A1, RG9) | `engine/test/usecases/unit/uc-app-02-fournisseurs-cle-personnelle.test.js` |
 | UC-APP-02-U41 | `buildEstimate`, `executeRun` (A7, A6, RG6, RG7) | Tout référentiel : estimation sur sa structure (5 pôles lettrés : 34 appels ; RESPIRE à six pôles : 7 par journée) ; 18 appels pour 3 journées, prompts qui le nomment, documents jour et fusion qui le nomment, un domaine par pôle ; un pôle sans compétence établie → fusion non constructible, message « chacun des pôles du référentiel » | `web/test/usecases/unit/uc-app-02-lancer-cartographie-standard.test.js` |
 
 ### Tests fonctionnels
@@ -495,6 +503,12 @@ cd engine && npx vitest run test/usecases --testNamePattern UC-APP-02
   `competences`) et la journée échoue après le même nombre d'appels, mais
   avec un message trompeur (« réponse sans tableau competences (objet
   code/…) ») au lieu de la consigne de réduire le texte. Figé par U36.
+  **Corrigé en partie le 2026-10-22** (`docs/contrats.md` §4 point 14) : les
+  adaptateurs Anthropic, OpenAI, xAI, OpenRouter et Google lisent l'arrêt et
+  lèvent une `OutputTruncatedError` ; `extractDay` dit « réponse tronquée »
+  sans refaire l'appel. Reste Ollama : aucune valeur de `done_reason` n'est
+  vérifiée sur sa documentation officielle, son arrêt vaut `other` et une
+  réponse coupée y passe encore pour un fragment (U36).
 
 ## Limites
 
@@ -518,14 +532,11 @@ cd engine && npx vitest run test/usecases --testNamePattern UC-APP-02
   seulement l'envoi de l'en-tête `anthropic-dangerous-direct-browser-access`
   d'Anthropic, pas son acceptation ; origines admises par un serveur Ollama
   local), ni le contenu mixte ne sont vérifiés ici.
-  Deux points restent à confronter aux API réelles : l'adaptateur Google ne
-  compte en sortie que `candidatesTokenCount` — les jetons de réflexion
-  (`thoughtsTokenCount`) des modèles Gemini 2.5, dont le modèle par défaut
-  `gemini-2.5-flash`, ne sont pas ajoutés aux compteurs de `runMeta`
-  (comportement actuel figé par U31) ; le corps OpenAI utilise `max_tokens`,
-  que les modèles de raisonnement récents d'OpenAI peuvent refuser au profit
-  de `max_completion_tokens` (sans effet sur le modèle par défaut
-  `gpt-4o-mini`).
+  Un point reste à confronter aux API réelles : le corps OpenAI utilise
+  `max_tokens`, que les modèles de raisonnement récents d'OpenAI peuvent
+  refuser au profit de `max_completion_tokens` (sans effet sur le modèle par
+  défaut `gpt-4o-mini`). Les jetons de réflexion de Gemini
+  (`thoughtsTokenCount`) sont comptés en sortie depuis le 2026-10-22 (U31).
 - `GET /api/prompt-packages/{id}/{version}` n'est pas appelé par l'assistant
   (il sert à l'archive, UC-APP-06, et à l'atelier promptologue).
 - Le repli « télécharger le résultat (JSON) » de l'assistant ne s'affiche que

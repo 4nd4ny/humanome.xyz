@@ -5,6 +5,7 @@
 
 import { sleep } from './retry.js'
 import { estimateTokens } from './estimate.js'
+import { classifyStop, throwIfTruncated } from './stop.js'
 
 function defaultResponse({ model, prompt }, callIndex) {
   return `[mock:${model}] réponse déterministe #${callIndex + 1} (${prompt.length} caractères de prompt)`
@@ -23,10 +24,14 @@ function defaultResponse({ model, prompt }, callIndex) {
  * @param {number} [options.latencyMs=0] simulated latency (abortable)
  * @param {{inputTokens: number, outputTokens: number}} [options.usage]
  *   fixed usage; defaults to the estimateTokens() heuristic on prompt/text
+ * @param {string|null|((params: object, callIndex: number) => string|null)} [options.stopReason='end']
+ *   the stop class of each answer (stop.js); 'max_tokens' or 'context_window'
+ *   raise the same OutputTruncatedError as createProvider, unless the call
+ *   passes allowTruncated: true
  * @returns mock provider: {complete, name: 'mock', calls, callCount, reset()}
  */
 export function createMockProvider(options = {}) {
-  const { responses, latencyMs = 0, usage } = options
+  const { responses, latencyMs = 0, usage, stopReason = 'end' } = options
   const calls = []
 
   function resolveText(params, callIndex) {
@@ -63,14 +68,17 @@ export function createMockProvider(options = {}) {
       calls.push({ model, system, prompt, maxTokens, temperature })
       if (latencyMs > 0) await sleep(latencyMs, signal)
       const text = resolveText(params, callIndex)
-      return {
+      const stop = typeof stopReason === 'function' ? stopReason(params, callIndex) : stopReason
+      const result = {
         text,
         usage: usage ?? {
           inputTokens: estimateTokens(`${system ?? ''}${prompt}`),
           outputTokens: estimateTokens(text)
         },
-        model
+        model,
+        ...classifyStop('mock', stop)
       }
+      return throwIfTruncated(result, { provider: 'mock', maxTokens, allowTruncated: params.allowTruncated })
     }
   }
 }

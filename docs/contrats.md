@@ -214,6 +214,14 @@ par `scripts/extract-referentiel.mjs`.
      (`scripts/twin6-gabarits.mjs`) : un gabarit qui a dérivé arrête la
      construction. `#/twin6-ouverte` sert la 1.1.0 ; son méga-prompt, que le
      moteur n'exécute pas, reste le protocole manuel de RESPIRE v7.
+   - **Sortie tronquée, refus (2026-10-22, point 14).** Sur toutes les
+     voies (clé personnelle, crédits, essai), une sortie tronquée arrête le
+     run au premier appel concerné : « executerTwin6: sortie tronquée
+     (max_tokens) à l'étape … », sans nouvel essai ; l'erreur porte
+     l'étape, l'usage du run (l'appel tronqué, payé, compris) et ses
+     appels. Un refus du fournisseur l'arrête de même (« le fournisseur a
+     refusé de répondre à l'étape … »). Chaque appel consigne son arrêt
+     (`calls[].stopReason`, `stopReasonRaw`).
 
 9. **Archive de compte 1.1.0 : les jeux de l'interface de cartographie
    (2026-10-14, journal de la cartographie D-25, question 10 : « tout
@@ -339,6 +347,64 @@ par `scripts/extract-referentiel.mjs`.
     ouverts leurs contenus, ceux du moteur. Absente quand le compte n'a aucun
     run ; jamais réimportée : un run se relance. Ajout rétro-compatible en
     lecture, comme la 1.1.0.
+
+14. **Pourquoi une génération s'arrête : un vocabulaire pour tous les
+    fournisseurs, et une sortie tronquée est une erreur (P0-3,
+    2026-10-22).** Chaque fournisseur dit à sa façon pourquoi il s'arrête
+    (`stop_reason` d'Anthropic, `finish_reason` des API compatibles OpenAI,
+    `finishReason` de Gemini, `done_reason` d'Ollama). Le moteur JS n'en lit
+    qu'une **classe** : `end` (réponse finie), `max_tokens` (budget de
+    sortie atteint), `context_window` (fenêtre de contexte pleine), `refusal`
+    (refus du fournisseur ou du modèle), `other` (tout le reste, y compris
+    une valeur que personne n'a vérifiée), ou `null` (aucun arrêt donné).
+    `max_tokens` garde son nom, que testent les gardes existantes.
+    - **La table est partagée** : `schemas/fixtures/arrets/arrets-fournisseurs.json`
+      (`format`, `brut`, `classe` ; `format` est l'identifiant du
+      fournisseur, car les fournisseurs compatibles OpenAI n'ont pas les
+      mêmes valeurs documentées). N'y figurent que les valeurs relevées sur
+      les documentations officielles le 2026-10-22 ; `engine/src/providers/stop.js`
+      la reflète exactement (`stop.test.js` vérifie dans les deux sens), le
+      PHP la lira. **Ollama n'a aucune valeur vérifiée** : tous ses arrêts
+      valent `other`, une réponse Ollama coupée n'est pas encore détectée.
+      Le relais du serveur rend la valeur brute d'Anthropic ou une valeur
+      déjà normalisée : la classification est idempotente sur les classes.
+      Une valeur brute qui n'est pas un identifiant court
+      (`^[A-Za-z_]{1,32}$`) n'est jamais gardée : elle devient `other`.
+      Deux décisions : un appel d'outil Anthropic (`tool_use`) est une fin
+      normale (la démo et les crédits forcent un outil) ; `CONTINUATION` de
+      Gemini (plafond d'une requête non streamée) vaut `max_tokens`. Le refus
+      d'OpenAI (`message.refusal`) et le prompt bloqué de Gemini
+      (`promptFeedback.blockReason`) donnent `refusal`, sans que leur texte
+      ne sorte jamais de l'adaptateur.
+    - **Le résultat de `complete()`** (accès direct, relais, fournisseur
+      « crédits », mock) : `{text, usage, model, stopReason, stopReasonRaw,
+      truncated}`, `truncated` valant vrai pour `max_tokens` et
+      `context_window`. Gemini : les parts de réflexion (`thought: true`)
+      sont exclues du texte, et la sortie comptée est
+      `candidatesTokenCount + thoughtsTokenCount`, ce qui est facturé.
+    - **Une sortie tronquée est une erreur.** Elle est payée et son texte est
+      un fragment : `complete()` lève une `OutputTruncatedError`
+      (`engine/src/providers/errors.js` : `code: 'sortie_tronquee'`,
+      `status: 200`, `retryable: false`, `stopReason`, `stopReasonRaw`,
+      `limit` — `sortie` ou `contexte` —, `usage`, `maxTokens`,
+      `textLength`), en dehors des reprises : aucun second appel. Le
+      fragment n'est gardé que dans une propriété non énumérable, et le
+      message ne porte aucun contenu. Un appelant qui veut le fragment passe
+      `allowTruncated: true`. Le fournisseur « crédits » de Twin6 compte le
+      coût de l'appel (`onCout`) avant de lever. Un refus est classé, jamais
+      levé : l'appelant décide.
+    - **Ce que fait chaque appelant** : `executerTwin6` lève une erreur qui
+      nomme l'étape et joint `etape`, `usageRun` (l'appel tronqué compris) et
+      `calls`, et fait d'un refus une erreur explicite (`code: 'refus'`) ;
+      `extractDay` ne refait jamais un appel tronqué (un second appel, au
+      maximum de sortie du modèle, serait coupé et payé de nouveau), garde
+      sa consigne « réduisez le texte de la journée », et un kairos tronqué
+      se dégrade en `null` sous `kairosOptional` ; le banc d'essai, le
+      lanceur de runs et le runner Node comptent l'usage de l'appel tronqué ;
+      la démo ne le refait pas (statut 200) et dit « Votre texte est trop
+      long pour l'essai » ; la relance du dialogue de la cartographie dit
+      « Relance coupée » ; le bac à sable rend au paquet tiers un
+      `llm-error`, jamais le fragment. Aucun n'emploie `allowTruncated`.
 
 ## 5. Note d'outillage
 

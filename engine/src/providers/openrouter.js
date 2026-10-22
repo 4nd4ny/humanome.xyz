@@ -5,4 +5,4 @@ import { createOpenAiCompatibleAdapter } from './openai.js'
 
 export const OPENROUTER_BASE_URL = 'https://openrouter.ai/api'
 
-export const openrouterAdapter = createOpenAiCompatibleAdapter(OPENROUTER_BASE_URL)
+export const openrouterAdapter = createOpenAiCompatibleAdapter(OPENROUTER_BASE_URL, { format: 'openrouter' })

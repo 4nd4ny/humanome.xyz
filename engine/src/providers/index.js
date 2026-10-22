@@ -10,9 +10,17 @@
 //
 // P5 constraints honoured here: no hard-coded key, no telemetry, the engine
 // never reads/writes anything server-side on its own initiative.
+//
+// Every result carries the normalized stop (stop.js): stopReason, its raw
+// value and `truncated`. A cut generation (output budget or context window
+// exhausted) is paid and holds a fragment: complete() raises an
+// OutputTruncatedError instead, outside the retry loop — no second call —,
+// unless the caller asks for the fragment with allowTruncated: true. A refusal
+// is classified, never raised: the caller decides.
 
 import { ProviderError } from './errors.js'
 import { withRetry, parseRetryAfter, throwIfAborted } from './retry.js'
+import { classifyStop, throwIfTruncated } from './stop.js'
 import { anthropicAdapter } from './anthropic.js'
 import { openaiAdapter } from './openai.js'
 import { xaiAdapter } from './xai.js'
@@ -20,7 +28,16 @@ import { openrouterAdapter } from './openrouter.js'
 import { googleAdapter } from './google.js'
 import { ollamaAdapter } from './ollama.js'
 
-export { ProviderError } from './errors.js'
+export { ProviderError, OutputTruncatedError } from './errors.js'
+export {
+  classifyStop,
+  isOutputTruncated,
+  isTruncatedResult,
+  throwIfTruncated,
+  truncationError,
+  STOP_CLASSES,
+  STOP_TABLES
+} from './stop.js'
 export { withRetry, parseRetryAfter, sleep, MAX_RETRY_AFTER_MS } from './retry.js'
 export { createMockProvider } from './mock.js'
 export {
@@ -136,9 +153,15 @@ function validateCompleteParams(params) {
  * @param {(ms: number, signal?: AbortSignal) => Promise<void>} [config.sleepFn] injectable (tests)
  * @param {() => number} [config.random] injectable jitter source (tests)
  * @returns {{ complete: (params: {model: string, system?: string, prompt: string,
- *   maxTokens?: number, temperature?: number, signal?: AbortSignal}) =>
- *   Promise<{text: string, usage: {inputTokens: number, outputTokens: number}, model: string}>,
+ *   maxTokens?: number, temperature?: number, signal?: AbortSignal,
+ *   allowTruncated?: boolean}) =>
+ *   Promise<{text: string, usage: {inputTokens: number, outputTokens: number}, model: string,
+ *     stopReason: 'end'|'max_tokens'|'context_window'|'refusal'|'other'|null,
+ *     stopReasonRaw: ?string, truncated: boolean}>,
  *   name: string, transport: 'direct'|'proxy' }}
+ *   complete() rejects with an OutputTruncatedError when the generation was
+ *   cut (stopReason 'max_tokens' or 'context_window'), unless allowTruncated
+ *   is true: then the fragment comes back with truncated: true.
  */
 export function createProvider(config = {}) {
   const {
@@ -183,7 +206,15 @@ export function createProvider(config = {}) {
       transport,
       async complete(params = {}) {
         validateCompleteParams(params)
-        const { model, system, prompt, maxTokens = DEFAULT_MAX_TOKENS, temperature, signal } = params
+        const {
+          model,
+          system,
+          prompt,
+          maxTokens = DEFAULT_MAX_TOKENS,
+          temperature,
+          signal,
+          allowTruncated
+        } = params
         // Proxy contract (M5): the key stays on the server, none travels here.
         const body = { provider, model, system: system ?? null, prompt, maxTokens }
         if (temperature !== undefined) body.temperature = temperature
@@ -196,18 +227,18 @@ export function createProvider(config = {}) {
           retryOptions,
           provider
         })
-        return {
+        const result = {
           text: data.text ?? '',
           usage: {
             inputTokens: data.usage?.inputTokens ?? 0,
             outputTokens: data.usage?.outputTokens ?? 0
           },
           model: data.model ?? model,
-          // 'max_tokens' = truncated generation (relayed by the proxy when
-          // the upstream exposes it); consumers use it to fail loudly rather
-          // than parse a fragment.
-          stopReason: data.stopReason || null
+          // The server relays the provider's raw value (Anthropic) or one it
+          // already normalized ('max_tokens'): classifyStop takes both.
+          ...classifyStop(provider, data.stopReason)
         }
+        return throwIfTruncated(result, { provider, maxTokens, allowTruncated })
       }
     }
   }
@@ -218,7 +249,15 @@ export function createProvider(config = {}) {
     transport,
     async complete(params = {}) {
       validateCompleteParams(params)
-      const { model, system, prompt, maxTokens = DEFAULT_MAX_TOKENS, temperature, signal } = params
+      const {
+        model,
+        system,
+        prompt,
+        maxTokens = DEFAULT_MAX_TOKENS,
+        temperature,
+        signal,
+        allowTruncated
+      } = params
       const { url, headers, body } = adapter.buildRequest(
         { baseUrl: resolvedBaseUrl, apiKey },
         { model, system, prompt, maxTokens, temperature }
@@ -232,7 +271,8 @@ export function createProvider(config = {}) {
         retryOptions,
         provider
       })
-      return adapter.parseResponse(data, model)
+      // Outside withRetry: a cut generation is never called again.
+      return throwIfTruncated(adapter.parseResponse(data, model), { provider, maxTokens, allowTruncated })
     }
   }
 }

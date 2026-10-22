@@ -2,6 +2,8 @@ import { describe, it, expect, vi } from 'vitest'
 import { executerTwin6, buildScanPolePrompt, buildKairosPrompt, extractJson, TWIN6_CALLS, twin6CallsFor, fichesPourTwin6 } from './index.js'
 import { validateDocument } from '../validation.js'
 import { validateDocumentPourReferentiel } from '../conformite.js'
+import { createMockProvider } from '../providers/mock.js'
+import { OutputTruncatedError } from '../providers/errors.js'
 
 const referentiel = {
   poles: [
@@ -185,5 +187,70 @@ describe('executerTwin6', () => {
     await expect(
       executerTwin6({ portfolio: 'x', templates, referentiel, provider, model: 'm' }),
     ).rejects.toThrow(/tronquée/)
+  })
+
+  it('sortie tronquée levée par le fournisseur : erreur nommant l’étape, usage du run (appel tronqué compris), aucun nouvel essai', async () => {
+    const pole = (num) => JSON.stringify(cartoPoleFor(num))
+    // Pôles 1 et 2 aboutis, pôle 3 coupé (le fournisseur lève, comme createProvider).
+    const provider = createMockProvider({
+      responses: ({ prompt }) => pole(Number(/Fiche des compétences du pôle (\d)/.exec(prompt)[1])),
+      usage: { inputTokens: 100, outputTokens: 40 },
+      stopReason: (_params, i) => (i === 2 ? 'max_tokens' : 'end'),
+    })
+    const failure = await executerTwin6({ portfolio: 'x', templates, referentiel, provider, model: 'm', options: { maxTokens: 64 } })
+      .catch((e) => e)
+
+    expect(failure).toBeInstanceOf(OutputTruncatedError)
+    expect(failure.message).toMatch(/^executerTwin6: sortie tronquée \(max_tokens\) à l'étape scan-pole\/3 — réponse tronquée : budget de sortie atteint \(max_tokens = 64\)/)
+    expect(failure).toMatchObject({
+      etape: 'scan-pole/3',
+      provider: 'mock',
+      maxTokens: 64,
+      usage: { inputTokens: 100, outputTokens: 40 },
+      usageRun: { inputTokens: 300, outputTokens: 120 },
+    })
+    expect(failure.calls.map((c) => [c.etape, c.stopReason])).toEqual([
+      ['scan-pole/1', 'end'],
+      ['scan-pole/2', 'end'],
+      ['scan-pole/3', 'max_tokens'],
+    ])
+    expect(failure.cause).toBeInstanceOf(OutputTruncatedError)
+    expect(provider.callCount).toBe(3)
+  })
+
+  it('fenêtre de contexte pleine (fournisseur injecté) : même échec explicite', async () => {
+    const provider = { name: 'inj', complete: vi.fn(async () => ({ text: '{', usage: { inputTokens: 9, outputTokens: 1 }, model: 'm', stopReason: 'context_window', truncated: true })) }
+    const failure = await executerTwin6({ portfolio: 'x', templates, referentiel, provider, model: 'm' }).catch((e) => e)
+    expect(failure).toBeInstanceOf(OutputTruncatedError)
+    expect(failure.message).toBe("executerTwin6: sortie tronquée (context_window) à l'étape scan-pole/1")
+    expect(failure).toMatchObject({ etape: 'scan-pole/1', limit: 'contexte', usageRun: { inputTokens: 9, outputTokens: 1 } })
+  })
+
+  it('refus du fournisseur : erreur explicite (code refus) au lieu d’un échec d’extractJson sur un texte vide', async () => {
+    const provider = createMockProvider({ responses: '', usage: { inputTokens: 7, outputTokens: 0 }, stopReason: 'refusal' })
+    const failure = await executerTwin6({ portfolio: 'x', templates, referentiel, provider, model: 'm' }).catch((e) => e)
+    expect(failure.message).toBe("executerTwin6: le fournisseur a refusé de répondre à l'étape scan-pole/1")
+    expect(failure).toMatchObject({
+      code: 'refus',
+      status: 200,
+      retryable: false,
+      etape: 'scan-pole/1',
+      usageRun: { inputTokens: 7, outputTokens: 0 },
+    })
+    expect(failure.calls).toEqual([
+      { etape: 'scan-pole/1', usage: { inputTokens: 7, outputTokens: 0 }, model: 'm', stopReason: 'refusal', stopReasonRaw: 'refusal' },
+    ])
+    expect(provider.callCount).toBe(1)
+  })
+
+  it('chaque appel consigne son arrêt (stopReason, stopReasonRaw)', async () => {
+    const out = await executerTwin6({ portfolio: 'x', templates, referentiel, provider: mockProvider(), model: 'm' })
+    expect(out.calls[0]).toEqual({
+      etape: 'scan-pole/1',
+      usage: { inputTokens: 1000, outputTokens: 400 },
+      model: 'mock-1',
+      stopReason: 'end_turn',
+      stopReasonRaw: null,
+    })
   })
 })

@@ -151,6 +151,34 @@ describe('clés locales (localStorage humanome-keys)', () => {
 })
 
 describe('executeRun — moteur réel, stockage mémoire', () => {
+  it('kairos tronqué (OutputTruncatedError) : jamais refait, journée dégradée (kairos null), appel payé compté dans usage', async () => {
+    // Les pôles répondent normalement ; chaque kairos est coupé (le fournisseur lève).
+    const kairos = createMockProvider({ responses: '{"kairos": {', usage: { inputTokens: 10, outputTokens: 5 }, stopReason: 'max_tokens' })
+    const poles = extractionMock()
+    const wrapped = {
+      callCount: 0,
+      async complete(params) {
+        wrapped.callCount += 1
+        if (params.prompt.includes('SYNTHÈSE KAIROS')) return kairos.complete(params)
+        const res = await poles.complete(params)
+        return { ...res, usage: { inputTokens: 10, outputTokens: 5 } }
+      },
+    }
+    const result = await executeRun({
+      runId: makeRunId('p-tronque', BUILTIN_PACKAGE),
+      dayGroups: GROUPS,
+      referentiel,
+      provider: wrapped,
+      model: 'mock-cartographe',
+      storage: createMemoryStorage(),
+      now: () => '2026-01-08T12:00:00',
+    })
+    expect(wrapped.callCount).toBe(24) // 3 × (7 pôles + 1 kairos), aucun second kairos
+    expect(result.dayDocuments).toHaveLength(3)
+    expect(result.dayDocuments.every((d) => d.kairos === null)).toBe(true)
+    expect(result.usage).toEqual({ inputTokens: 240, outputTokens: 120, mesures: 24 })
+  })
+
   it('exécute 3 journées, produit un document merge VALIDE avec résumés locaux', async () => {
     const storage = createMemoryStorage()
     const provider = extractionMock()

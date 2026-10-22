@@ -13,6 +13,7 @@ import {
   buildWorkerSource,
 } from './protocol.js'
 import { createIframeHost, runPackageInSandbox } from './sandbox.js'
+import { createProvider } from '@engine/providers/index.js'
 import { usesEngineOrchestration } from './index.js'
 
 /** Faux hôte : enregistre les envois, laisse le test émettre des messages. */
@@ -163,6 +164,39 @@ describe('runPackageInSandbox — protocole complet (faux hôte)', () => {
       message: '429 quota fournisseur',
     })
     expect(host.terminated).toBe(false) // le paquet peut dégrader et continuer
+    host.emit({ type: 'result', document: jourFixture })
+    await expect(promise).resolves.toBeTruthy()
+  })
+
+  it('une sortie tronquée (OutputTruncatedError du moteur) devient llm-error : le paquet tiers ne reçoit jamais le fragment', async () => {
+    const fetchFn = vi.fn(async () => ({
+      ok: true,
+      status: 200,
+      headers: { get: () => null },
+      json: async () => ({
+        content: [{ type: 'text', text: '{"poleNum": "1", "compet' }],
+        usage: { input_tokens: 10, output_tokens: 1024 },
+        model: 'claude-x',
+        stop_reason: 'max_tokens',
+      }),
+    }))
+    const provider = createProvider({ provider: 'anthropic', apiKey: 'k-test', fetchFn })
+    const { host, promise } = launch({ provider })
+    host.emit({ type: 'boot' })
+    host.emit({ type: 'ready' })
+    host.emit({ type: 'llm', id: 5, prompt: 'x' })
+    await vi.waitFor(() => {
+      expect(host.sent.some((m) => m.type === 'llm-error')).toBe(true)
+    })
+    expect(host.sent.find((m) => m.type === 'llm-error')).toEqual({
+      type: 'llm-error',
+      id: 5,
+      message: 'réponse tronquée : budget de sortie atteint (max_tokens = 1024) — anthropic/claude-x',
+    })
+    expect(host.sent.some((m) => m.type === 'llm-ok')).toBe(false)
+    expect(JSON.stringify(host.sent.filter((m) => m.id === 5))).not.toContain('compet')
+    expect(fetchFn).toHaveBeenCalledTimes(1)
+    expect(host.terminated).toBe(false)
     host.emit({ type: 'result', document: jourFixture })
     await expect(promise).resolves.toBeTruthy()
   })

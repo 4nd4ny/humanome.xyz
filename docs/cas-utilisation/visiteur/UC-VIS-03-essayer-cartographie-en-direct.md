@@ -185,7 +185,12 @@ de l'accueil.
   `code: "coupe"`, et arrivent en événement `erreur` au navigateur qui suit le
   flux. Réponse inexploitable d'un pôle après le nouvel essai du moteur →
   « L'analyse a échoué en cours de route (détail technique : extractDay :
-  pôle n …) », « Réessayer », texte conservé.
+  pôle n …) », « Réessayer », texte conservé. Réponse **coupée** par la
+  limite de sortie du modèle (`stopReason: max_tokens` relayé, 2026-10-22) :
+  comptée, jamais refaite (ni par la démo, ni par le moteur) → « Votre texte
+  est trop long pour l'essai : la réponse du modèle a été coupée avant la
+  fin. Raccourcissez-le, puis relancez l'analyse. », sans « Réessayer »,
+  texte conservé (UC-VIS-03-U20 ; message : `web/src/lib/demo-llm.test.js`).
 
 ## Règles de gestion
 
@@ -308,7 +313,7 @@ de l'accueil.
 | UC-VIS-03-U17 | `createProvider` (`maxAttempts: 1`) | Couche fournisseur seule : 429 sans nouvel essai, `Retry-After` porté (ne couvre pas RG5 de bout en bout, voir U22) | idem |
 | UC-VIS-03-U18 | `extractDay` | 7 pôles + kairos → document valide au schéma | idem |
 | UC-VIS-03-U19 | `extractDay` (`kairosOptional`) | Kairos inexploitable → `null`, « skipped » (A3) | idem |
-| UC-VIS-03-U20 | `extractDay` | `stopReason: max_tokens` → échec explicite après un nouvel essai | idem |
+| UC-VIS-03-U20 | `extractDay` | `stopReason: max_tokens` relayé → `OutputTruncatedError`, échec explicite du pôle **sans** nouvel essai (1 POST, 2026-10-22) | idem |
 | UC-VIS-03-U21 | `createDemoProvider` | Nouvel essai unique après 2,5 s (phase `retry`, défi neuf) sur 504, erreur réseau, défi expiré ; aucun sur 429, 503, preuve invalide, annulation (A4) | `web/test/usecases/unit/uc-vis-03-essayer-cartographie-en-direct.test.js` |
 | UC-VIS-03-U22 | `createDemoProvider` + `extractDay` | **Comportement actuel figé** — anomalie AN2 : 429 ou 503 au POST → 2 POST, 504 persistant → 4 POST | idem |
 | UC-VIS-03-U23 | `buildExtractionPrompt`, `buildKairosExtractionPrompt`, `DEMO_TEXT_MAX_CHARS` | Anomalie AN3 **corrigée** : au maximum de la page, chaque appel — les 7 pôles et le kairos — tient sous l'ancien plafond serveur de 20 000 | idem |

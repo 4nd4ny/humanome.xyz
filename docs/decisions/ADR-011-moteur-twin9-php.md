@@ -3,7 +3,8 @@
 ## Statut
 
 Accepté — 2026-10-18 (décisions du propriétaire du 2026-10-17). Amende ADR-001,
-ADR-005, ADR-008 et ADR-010.
+ADR-005, ADR-008 et ADR-010. §1 amendé le 2026-10-22 : la v9.8 est gelée
+(décision du Sprint 2, prise par délégation du propriétaire).
 
 ## Contexte
 
@@ -34,6 +35,15 @@ vérifie, appel par appel, que le moteur PHP envoie les mêmes prompts ; les éc
 voulus sont listés dans ses tests. La v9.8 reste la référence : si elle évolue,
 l'oracle se régénère. Le portage n'ajoute aucun plafond à l'algorithme : budget et
 durée d'un run sont des plafonds facultatifs, choisis par l'utilisateur.
+
+> **Amendé le 2026-10-22** (décision du Sprint 2, prise par délégation du
+> propriétaire), ce qui remplace « si elle évolue, l'oracle se régénère » : la
+> v9.8 Python est gelée au tag `v9.8-reference` du dépôt `Twin_v9`, hors
+> production. L'algorithme évolue dans le moteur PHP, chaque changement étant un
+> écart voulu listé dans `OracleTest`, avec son test. L'oracle n'est régénéré que
+> si la v9.8 change : `ReferenceTest` compare ses entrées (`twin9.py`, `aurora/`,
+> `config.json`, `models.json`, `protocole/`, `tests/portfolios/`) aux empreintes
+> d'`oracle/reference.sha256`, et toute dérive le fait échouer.
 
 ### 2. Exécution sur le serveur, par tranches
 

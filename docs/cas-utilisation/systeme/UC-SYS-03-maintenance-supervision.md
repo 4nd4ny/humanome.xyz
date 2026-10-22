@@ -23,7 +23,8 @@ couverture RGPD de l'effacement de compte.
 - Une sonde (ou le smoke de déploiement, UC-SYS-02) interroge `/api/health` ou
   `/api/status`.
 - Un planificateur externe appelle `POST /api/admin/maintenance` (fréquence
-  recommandée : quotidienne) : c'est la **seule** entrée en production.
+  recommandée : quotidienne), avec le jeton des migrations ou, depuis le
+  2026-10-22, celui du tick (A4) : c'est la **seule** entrée en production.
   `php scripts/maintenance.php` en est l'équivalent local/dev : le script
   n'est **pas livré** dans la release (`stage-api.sh` ne copie que
   `scripts/migrations`, `migrate.php` et `scripts/data`).
@@ -117,6 +118,14 @@ couverture RGPD de l'effacement de compte.
   rattachée à cet identifiant. ». Sans argument, seul l'audit du schéma est
   produit. Lecture seule ; code de sortie 0, ou 2 si une colonne non gouvernée
   existe.
+- **A4 — Par le jeton du tick** (étape 3 ; 2026-10-22, Christian : « Je peux
+  lancer deux crons distincts ») : la route s'ouvre aussi au jeton du
+  déclencheur (`WORKER_TICK_TOKEN`, en-tête `X-Worker-Tick-Token`), pour
+  qu'une tâche planifiée qui lance déjà le tick lance aussi la maintenance
+  quotidienne sans tenir le jeton des migrations, qui migre, importe et donne
+  des rôles. Mêmes effets, mêmes compteurs ; un jeton du tick faux → `403`,
+  passé pour celui des migrations → `403` ; non configuré, il n'ouvre rien.
+  Le jeton des migrations l'ouvre toujours (UC-SYS-03-F11).
 
 ## Scénarios d'erreur
 
@@ -217,6 +226,7 @@ couverture RGPD de l'effacement de compte.
 | UC-SYS-03-F08 | A3, E4 | CLI | `rgpd-audit.php` : schéma sain, empreinte, vide après `DELETE /api/auth/account` ; table orpheline → « ⚠ BUG RGPD », code 2 ; sans base → code 1 ; injoignable → code 255 | idem |
 | UC-SYS-03-F09 | AN-1 | API | Comportement actuel : la maintenance efface l'historique démo du monitoring | idem |
 | UC-SYS-03-F10 | E2 | API | Cookie de session périmé sans `X-CSRF-Token` → `403` CSRF, rien de purgé ; sans cookie → `200` | idem |
+| UC-SYS-03-F11 | A4 | API | Par le jeton du tick : mêmes survivants et compteurs que F04 ; jeton du tick faux, ou passé pour celui des migrations → `403` ; non configuré → `403` ; le jeton des migrations l'ouvre toujours | idem |
 
 ### Tests existants liés (non-régression)
 

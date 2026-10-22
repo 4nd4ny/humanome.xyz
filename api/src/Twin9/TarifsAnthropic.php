@@ -5,8 +5,10 @@ declare(strict_types=1);
 namespace Humanome\Twin9;
 
 use Humanome\Auth\Audit;
+use Humanome\Env;
 use Humanome\Llm\HttpClient;
 use Humanome\Llm\HttpClientException;
+use Humanome\Llm\LlmRuntime;
 use Humanome\Llm\Pricing;
 use Humanome\Packages\SettingsRepository;
 use PDO;
@@ -37,12 +39,14 @@ use PDO;
  * have moved to another table; dropping it would price Haiku 5.5's long
  * prompts at a fifth of their cost. A person decides those.
  *
- * The worker's tick reads it (POST /api/admin/worker-tick, routes/worker.php),
- * after its slice, once per UTC day, an hour between two failed attempts,
- * under a MySQL lock — and only where the platform's Anthropic key is set: an
- * instance that bills no call on it has nothing to price. The state lives in
- * settings ('twin9_tarifs'); a price changed leaves an audit event
- * (twin9_tarifs_mis_a_jour). Prices only, never any user data.
+ * The worker's tick reads it, after its slice (releverApresTranche) — through
+ * either trigger: the route (POST /api/admin/worker-tick, routes/worker.php)
+ * and the cron (scripts/worker.php, 2026-10-22) —, once per UTC day, an hour
+ * between two failed attempts, under a MySQL lock — and only where the
+ * platform's Anthropic key is set: an instance that bills no call on it has
+ * nothing to price. The state lives in settings ('twin9_tarifs'); a price
+ * changed leaves an audit event (twin9_tarifs_mis_a_jour). Prices only, never
+ * any user data.
  */
 final class TarifsAnthropic
 {
@@ -64,6 +68,29 @@ final class TarifsAnthropic
 
     /** Fewer models than this: not the table of all Claude models. */
     private const MODELES_MIN = 3;
+
+    /**
+     * What both triggers of the tick do after its slice: the route and the
+     * cron. Reads the prices when due, where the platform's key is set. Never
+     * fails the tick: an unexpected error is logged, and nothing is reported.
+     *
+     * @return string|null the reading's status ('ok' or 'echec'), null when none ran
+     */
+    public static function releverApresTranche(PDO $pdo): ?string
+    {
+        if (Env::get('ANTHROPIC_API_KEY') === '') {
+            return null;
+        }
+        try {
+            $etat = self::releverSiDu($pdo, LlmRuntime::httpClient());
+        } catch (\Throwable $e) {
+            error_log('[tarifs] ' . $e->getMessage());
+
+            return null;
+        }
+
+        return $etat === null ? null : (string) $etat['statut'];
+    }
 
     /**
      * Reads the page and updates the grid, when it is due (du()). Null when

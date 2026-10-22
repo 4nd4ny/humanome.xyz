@@ -7,10 +7,12 @@ namespace Humanome\Tests\UseCases\Functional;
 use Humanome\Db;
 use Humanome\Env;
 use Humanome\Packages\PromptPackageRepository;
+use Humanome\Packages\SettingsRepository;
 use Humanome\Tests\MasseTestCase;
 use Humanome\Tests\TestDb;
 use Humanome\Tests\UseCases\Support\EtaSupport;
 use Humanome\Tests\UseCases\Support\EtaTickSupport;
+use Humanome\Twin9\TarifsAnthropic;
 use Humanome\Validation;
 use Humanome\Worker\Tick;
 use PHPUnit\Framework\Attributes\TestDox;
@@ -742,5 +744,42 @@ final class UcSys01TraiterFileJobsTest extends MasseTestCase
         $done = $this->worker('POST', $path, ['document' => $document, 'coutUsd' => 0.02], $token);
         self::assertSame(200, $done->getStatusCode(), (string) $done->getBody());
         self::assertSame('fictif-lettre', json_decode((string) Db::get()->query("SELECT document FROM mass_jobs WHERE id = {$job['id']}")->fetchColumn(), true)['referentiel']);
+    }
+
+    #[TestDox('UC-SYS-01-F26 — UC-ADM-05 RG9 : le cron (php scripts/worker.php) relève aussi les prix d’Anthropic, une fois par jour, là où la clé de la plateforme est posée — une page injoignable est un échec noté, sans faire échouer le tick ; pas de nouvel essai avant une heure ; sans clé, aucun relevé')]
+    public function testF26CronReadsAnthropicPricesOnceADay(): void
+    {
+        $pdo = Db::get();
+        $settings = new SettingsRepository($pdo);
+        $pdo->exec("DELETE FROM settings WHERE name = '" . TarifsAnthropic::SETTING_KEY . "'");
+        // La page des prix injoignable, sans réseau : un mandataire qui refuse la connexion.
+        $env = self::cliDbEnv() + [
+            'WORKER_PROVIDER' => 'mock',
+            'WORKER_TICK_BUDGET_SECONDS' => '1',
+            'ANTHROPIC_API_KEY' => 'sk-ant-simule',
+            'https_proxy' => 'http://127.0.0.1:9',
+        ];
+
+        [$code, $stdout, $stderr] = self::runCli($env);
+        self::assertSame(0, $code, $stderr);
+        $counters = json_decode(trim($stdout), true, 512, JSON_THROW_ON_ERROR);
+        self::assertSame('echec', $counters['tarifs'] ?? null, 'le cron tente le relevé du jour');
+        $etat = $settings->get(TarifsAnthropic::SETTING_KEY);
+        self::assertSame('echec', $etat['statut'] ?? null);
+        self::assertSame(TarifsAnthropic::SOURCE, $etat['source']);
+        self::assertIsInt($etat['tentative_at']);
+        self::assertArrayNotHasKey('jour', $etat, 'aucun relevé réussi');
+
+        [$code, $stdout, $stderr] = self::runCli($env);
+        self::assertSame(0, $code, $stderr);
+        self::assertArrayNotHasKey('tarifs', json_decode(trim($stdout), true, 512, JSON_THROW_ON_ERROR),
+            'un échec il y a moins d’une heure : pas de nouvel essai');
+
+        $pdo->exec("DELETE FROM settings WHERE name = '" . TarifsAnthropic::SETTING_KEY . "'");
+        [$code, $stdout, $stderr] = self::runCli(array_diff_key($env, ['ANTHROPIC_API_KEY' => true]));
+        self::assertSame(0, $code, $stderr);
+        self::assertArrayNotHasKey('tarifs', json_decode(trim($stdout), true, 512, JSON_THROW_ON_ERROR),
+            'sans clé de la plateforme, rien à relever');
+        self::assertNull($settings->get(TarifsAnthropic::SETTING_KEY));
     }
 }

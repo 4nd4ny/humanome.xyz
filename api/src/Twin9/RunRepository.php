@@ -182,9 +182,10 @@ final class RunRepository
         }
         $profil = self::unpack((string) $row['reglages'])->profil;
 
+        // what its calls cost its owner (RunCosts::facture()): with the instance's key, never beyond what each held
         $stmt = $this->pdo->prepare(
-            'SELECT statut, COUNT(*) AS n, SUM(COALESCE(cout_microusd, 0)) AS cout FROM twin9_appels WHERE run_id = ?
-              GROUP BY statut'
+            'SELECT statut, COUNT(*) AS n, SUM(COALESCE(' . RunCosts::facture('', ($profil->cle ?? 'instance') === 'instance')
+                . ', 0)) AS cout FROM twin9_appels WHERE run_id = ? GROUP BY statut'
         );
         $stmt->execute([$id]);
         $appels = ['envoye' => 0, 'attente' => 0, 'repondu' => 0, 'panne' => 0];
@@ -246,10 +247,12 @@ final class RunRepository
                 'lots' => $lots,
                 'runs_avant' => $avant,
             ],
-            // what it cost its owner so far (the real cost of its calls, margin included with the instance's
-            // key), and its caps (T10)
+            // what it cost its owner so far (the cost of its calls, margin included with the instance's key — never
+            // beyond what each held: the excess is the instance's, RunCosts::facture()), and its caps (T10); a run
+            // done before the counters kept it, its real cost
             'cout' => [
-                'depense_microusd' => (int) ($compteurs['cout_microusd'] ?? $depense),
+                'depense_microusd' => (int) ($compteurs === null ? $depense
+                    : ($compteurs['facture_microusd'] ?? $compteurs['cout_microusd'] ?? $depense)),
                 'budget_usd' => $profil->budget_usd ?? null,
                 'duree_minutes' => $profil->duree_minutes ?? null,
             ],
@@ -363,7 +366,7 @@ final class RunRepository
             $execution->reprises[] = ['at' => (string) $row['maintenant'], 'budget_usd' => $copie->profil->budget_usd ?? null];
             // what it has committed, and what the owner's other runs in progress leave free
             $stmt = $this->pdo->prepare(
-                'SELECT COALESCE(SUM(COALESCE(reserve_microusd, cout_microusd, 0)), 0) FROM twin9_appels WHERE run_id = ?'
+                'SELECT COALESCE(SUM(' . RunCosts::impute() . '), 0) FROM twin9_appels WHERE run_id = ?'
             );
             $stmt->execute([$id]);
             $engage = (int) $stmt->fetchColumn();
@@ -615,7 +618,7 @@ final class RunRepository
         $stmt = $this->pdo->prepare(
             'SELECT (SELECT COALESCE(MAX(balance_microusd), 0) FROM twin9_credits WHERE user_id = ?),
                     (SELECT COALESCE(SUM(GREATEST(0, CAST(r.engagement_microusd AS SIGNED)
-                              - (SELECT COALESCE(SUM(COALESCE(a.reserve_microusd, a.cout_microusd, 0)), 0)
+                              - (SELECT COALESCE(SUM(' . RunCosts::impute('a.') . '), 0)
                                    FROM twin9_appels a WHERE a.run_id = r.id))), 0)
                        FROM twin9_runs r
                       WHERE r.user_id = ? AND r.statut = "en_cours" AND r.engagement_microusd > 0 AND r.id <> ?)'
@@ -771,12 +774,19 @@ final class RunRepository
      * counted apart (`tronques`, P0-2), each stop read in its provider's
      * table —, the cuts the slices' ends made (`coupures`), tokens, cost and
      * time, by step and by provider (P1-5), the models served and its
-     * batches; the days it instructed and how long it was active.
+     * batches; the days it instructed and how long it was active. Its cost
+     * is the real one (`cout_microusd`); what it cost its owner apart
+     * (`facture_microusd`, RunCosts::facture(): never beyond what each call
+     * held with the instance's key, the excess being the instance's).
      *
      * @return array<string, mixed>
      */
     private function compteurs(int $id): array
     {
+        $stmt = $this->pdo->prepare('SELECT reglages FROM twin9_runs WHERE id = ?');
+        $stmt->execute([$id]);
+        $reglages = $stmt->fetchColumn();
+        $credits = $reglages === false || (self::unpack((string) $reglages)->profil->cle ?? 'instance') === 'instance';
         $stmt = $this->pdo->prepare('SELECT COUNT(*) FROM twin9_lots WHERE run_id = ?');
         $stmt->execute([$id]);
         $lots = (int) $stmt->fetchColumn();
@@ -795,13 +805,15 @@ final class RunRepository
         $stmt = $this->pdo->prepare(
             'SELECT etape, fournisseur, statut, stop_reason, COUNT(*) AS n, SUM(tentatives) AS tentatives,
                     SUM(coupures) AS coupures, SUM(jetons_entree) AS entree, SUM(jetons_sortie) AS sortie,
-                    SUM(cout_microusd) AS cout, SUM(duree_ms) AS duree
+                    SUM(cout_microusd) AS cout, SUM(' . RunCosts::facture('', $credits) . ') AS facture,
+                    SUM(duree_ms) AS duree
                FROM twin9_appels WHERE run_id = ? GROUP BY etape, fournisseur, statut, stop_reason
               ORDER BY etape, fournisseur, statut'
         );
         $stmt->execute([$id]);
         $total = ['appels' => 0, 'pannes' => 0, 'tronques' => 0, 'tentatives' => 0, 'coupures' => 0,
-                  'jetons_entree' => 0, 'jetons_sortie' => 0, 'cout_microusd' => 0, 'duree_ms' => 0];
+                  'jetons_entree' => 0, 'jetons_sortie' => 0, 'cout_microusd' => 0, 'facture_microusd' => 0,
+                  'duree_ms' => 0];
         $parEtape = [];
         $parFournisseur = [];
         foreach ($stmt->fetchAll() as $row) {
@@ -833,6 +845,7 @@ final class RunRepository
             $total['jetons_entree'] += (int) $row['entree'];
             $total['jetons_sortie'] += (int) $row['sortie'];
             $total['cout_microusd'] += (int) $row['cout'];
+            $total['facture_microusd'] += (int) $row['facture'];
             $total['duree_ms'] += (int) $row['duree'];
         }
         ksort($parFournisseur, SORT_STRING);

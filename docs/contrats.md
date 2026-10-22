@@ -1198,7 +1198,15 @@ une suivante le relève.
 - **Un appel ne débite jamais plus que sa réserve** (ADR-012 §6) : un coût
   réel au-delà — un fournisseur qui facture plus de sortie que le pire cas
   n'en comptait, une grille qui a changé entre l'envoi et la réponse — est
-  payé par l'instance, jamais par le crédit de l'auteur. Le journal garde le
+  payé par l'instance, jamais par le crédit de l'auteur, ni par son budget :
+  ce qu'un appel soldé engage (`RunCosts::impute`, que lisent le budget du
+  run, ce que ses autres runs peuvent encore dépenser et la reprise) est son
+  coût réel plafonné au pire cas qu'il tenait (`pire_cas_microusd`) avec la
+  clé de l'instance — son coût réel avec la clé de l'auteur, qui le paie à
+  son fournisseur. Les compteurs gardent les deux : `cout_microusd`, le coût
+  réel, et `facture_microusd`, ce que le run a coûté à son auteur, que le
+  suivi rend en `cout.depense_microusd` (2026-10-22 ; un run fini avant,
+  son coût réel). Le journal garde le
   coût réel (`cout_microusd`) ; l'excédent est compté par tranche
   (`depassements`, compteur `twin9Depassements` du worker) et journalisé
   (`[twin9-couts] run <id>, <clé de prix> : …`, le modèle et les montants

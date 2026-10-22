@@ -31,11 +31,11 @@ use stdClass;
  *   returns, stays; the rest goes back. Never more than the call held: a
  *   real cost beyond it is counted (`depassements`), logged with its model
  *   and the amounts, and the instance pays the excess — never its owner's
- *   credit. A run stopped, cancelled or done gives back what its calls
- *   still hold, but for the calls of a batch still at Anthropic, settled
- *   once their batch is collected or cancelled.
- * - What a run has committed — the worst cases held, the real costs settled —
- *   never exceeds its budget: a call whose worst case would go beyond it does
+ *   credit, nor their budget (impute()). A run stopped, cancelled or done
+ *   gives back what its calls still hold, but for the calls of a batch still
+ *   at Anthropic, settled once their batch is collected or cancelled.
+ * - What a run has committed — the worst cases held, the costs settled as
+ *   its owner pays them (impute()) — never exceeds its budget: a call whose worst case would go beyond it does
  *   not leave, nor any new one after it, and the run stops once nothing it
  *   sent is still out. Its owner's credit stops it the same way; its
  *   duration too, every call held back. The calls of its days never eat into
@@ -138,15 +138,55 @@ final class RunCosts
             'twin9', $fournisseur === Fournisseurs::DEFAUT && $parLots, $marge);
     }
 
-    /** What a run has committed: the worst cases its calls hold, the real costs of those settled. */
+    /**
+     * What a run has committed: the worst cases its calls hold, the costs of
+     * those settled as its owner pays them (impute()).
+     */
     public function engage(int $runId): int
     {
         $stmt = $this->pdo->prepare(
-            'SELECT COALESCE(SUM(COALESCE(reserve_microusd, cout_microusd, 0)), 0) FROM twin9_appels WHERE run_id = ?'
+            'SELECT COALESCE(SUM(' . self::impute('', $this->parCredits($runId)) . '), 0) FROM twin9_appels WHERE run_id = ?'
         );
         $stmt->execute([$runId]);
 
         return (int) $stmt->fetchColumn();
+    }
+
+    /**
+     * What a call weighs on its run's budget and its owner's credit, as an
+     * SQL expression over twin9_appels ($a: the table's alias and its dot):
+     * the worst case it holds; settled, its real cost — with the instance's
+     * key, at most the worst case it held (pire_cas_microusd, its reserve:
+     * solder() never debits beyond, the excess is the instance's). With its
+     * owner's own key ($credits false), its real cost, which they pay their
+     * provider.
+     */
+    public static function impute(string $a = '', bool $credits = true): string
+    {
+        return 'COALESCE(' . $a . 'reserve_microusd, ' . self::facture($a, $credits) . ', 0)';
+    }
+
+    /**
+     * What a call settled cost its owner, as an SQL expression over
+     * twin9_appels (null before its outcome): with the instance's key, its
+     * real cost at most the worst case it held; with their own key, its
+     * real cost (impute()).
+     */
+    public static function facture(string $a = '', bool $credits = true): string
+    {
+        return $credits ? 'LEAST(' . $a . 'cout_microusd, COALESCE(' . $a . 'pire_cas_microusd, ' . $a . 'cout_microusd))'
+            : $a . 'cout_microusd';
+    }
+
+    /** Whether a run's owner's credits pay its calls (the instance's key); true for a run not found. */
+    private function parCredits(int $runId): bool
+    {
+        $stmt = $this->pdo->prepare('SELECT reglages FROM twin9_runs WHERE id = ?');
+        $stmt->execute([$runId]);
+        $reglages = $stmt->fetchColumn();
+
+        return $reglages === false || (json_decode(RunRepository::uncompress((string) $reglages), false, 512,
+            JSON_THROW_ON_ERROR)->profil->cle ?? 'instance') === 'instance';
     }
 
     /**

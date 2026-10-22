@@ -627,6 +627,62 @@ final class CoutsTest extends TestCase
         self::assertStringNotContainsString('[appel:', $journal, 'jamais un prompt');
     }
 
+    /**
+     * A real cost beyond its reserve, which the instance pays, never weighs
+     * on its owner: their run's budget and what their other runs may still
+     * spend count what they paid — each call's real cost, at most what it
+     * held —, and its page says that cost; the journal and the counters keep
+     * the real one.
+     */
+    public function testTheExcessNeverWeighsOnItsOwnersBudget(): void
+    {
+        $config = new Twin9Config(new SettingsRepository($this->pdo));
+        $config->update(['modeles' => $config->modeles() + self::TIERS] + self::OUVERTS);
+        TestDb::setEnv('OPENAI_API_KEY', 'sk-openai-cle-secrete-4');
+        $id = $this->nouveauRun(array_replace(self::SONNET, array_slice(self::MIXTE, 0, 2), ['/budget_usd' => 500.0]),
+            engagement: 900_000_000);
+        // its readers (OpenAI) answer, beyond what they held; its other calls wait until the check is done
+        $retenir = true;
+        $http = self::fournisseurs(25000, static function (string $appel) use (&$retenir): bool {
+            return $retenir && !str_contains($appel, '/tags_');
+        });
+        $log = (string) tempnam(sys_get_temp_dir(), 'twin9-log');
+        ini_set('error_log', $log);
+        $runs = new RunRepository($this->pdo);
+        $tick = fn (): array => (new Tick($this->pdo, ['budgetSeconds' => 2, 'twin9Sender' => new DirectCalls($http),
+                                                       'twin9Pauses' => [0.05, 0.1]]))->run();
+        $depasses = fn (): int => (int) $this->pdo->query('SELECT COUNT(*) FROM twin9_appels WHERE reserve_microusd IS NULL
+                                                             AND cout_microusd > pire_cas_microusd')->fetchColumn();
+        for ($n = 0; $n < 10 && $depasses() === 0; $n++) {
+            $tick();
+        }
+        self::assertGreaterThan(0, $depasses(), 'des appels au-delà de leur réserve, soldés');
+        $impute = 0;
+        $reel = 0;
+        foreach ($this->pdo->query('SELECT reserve_microusd AS r, cout_microusd AS c, pire_cas_microusd AS p
+                                      FROM twin9_appels')->fetchAll() as $a) {
+            $impute += $a['r'] !== null ? (int) $a['r'] : ($a['c'] === null ? 0 : min((int) $a['c'], (int) ($a['p'] ?? $a['c'])));
+            $reel += $a['r'] !== null ? (int) $a['r'] : (int) ($a['c'] ?? 0);
+        }
+        self::assertLessThan($reel, $impute);
+        self::assertSame($impute, (new RunCosts($this->pdo, $config))->engage($id),
+            'son budget ne compte que ce que son auteur paie');
+        self::assertSame(900_000_000 - $impute, $runs->disponible($this->user)['autres'],
+            'ce que ses autres runs peuvent dépenser non plus');
+
+        $retenir = false;
+        for ($n = 0; $n < 30 && $runs->statut($id) === 'en_cours'; $n++) {
+            $tick();
+        }
+        self::assertSame('termine', $runs->statut($id));
+        $paye = self::CREDIT - (new CreditService($this->pdo))->balance($this->user);
+        $compteurs = $runs->compteursDe($id);
+        self::assertSame($paye, $compteurs['facture_microusd'], 'ce que son auteur a payé');
+        self::assertGreaterThan($paye, $compteurs['cout_microusd'], 'le journal garde le coût réel');
+        self::assertSame($paye, $runs->suivi($id)['cout']['depense_microusd'], 'sa page dit ce qu’il a coûté à son auteur');
+        unlink($log);
+    }
+
     /** The DoD: no key in the journal, the outputs, the memory, the batches, the ledger nor the export. */
     public function testNoKeyIsWrittenAnywhere(): void
     {
@@ -687,11 +743,17 @@ final class CoutsTest extends TestCase
      * Each provider answering in its format: half its prompt's bytes in,
      * 15,000 tokens out (Gemini: 14,900 and 100 of thought); OpenAI
      * $sortieOpenai tokens out with its prompt's bytes and overhead in, when
-     * given.
+     * given. While $retenir says so, a call is refused for its rate (a 429
+     * of a fifth of a second): it waits, its run with it.
+     *
+     * @param (\Closure(string): bool)|null $retenir by the call's id
      */
-    private static function fournisseurs(?int $sortieOpenai = null): FakeMultiHttpClient
+    private static function fournisseurs(?int $sortieOpenai = null, ?\Closure $retenir = null): FakeMultiHttpClient
     {
-        return new FakeMultiHttpClient(static function (array $r) use ($sortieOpenai): array {
+        return new FakeMultiHttpClient(static function (array $r) use ($sortieOpenai, $retenir): array {
+            if ($retenir !== null && $retenir(FakeMultiHttpClient::appel($r))) {
+                return ['status' => 429, 'headers' => ['retry-after' => '0.2'], 'body' => '{}'];
+            }
             $texte = 'vu ' . FakeMultiHttpClient::appel($r);
             $entree = intdiv(\strlen(FakeMultiHttpClient::prompt($r)), 2);
             $f = self::fournisseurDe($r['url']);

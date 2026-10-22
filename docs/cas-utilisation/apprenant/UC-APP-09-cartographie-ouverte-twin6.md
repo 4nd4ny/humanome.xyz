@@ -120,7 +120,8 @@ page Essayer (UC-VIS-03), ou par l'adresse.
    (« 8 appels au modèle (7 pôles + synthèse) » pour RESPIRE v7) ; un lien
    « Télécharger les prompts » (AGPL) est affiché.
 3. L'apprenant colle son portfolio (feuilles `### AAAA-MM-JJ`, plus de 40
-   caractères), choisit le modèle, garde RESPIRE (ou choisit un autre
+   caractères) ou le reprend de « Mes portfolios » (A7), choisit le modèle
+   (mode expert ; en mode simple : A8), garde RESPIRE (ou choisit un autre
    référentiel, A4) et garde la voie « Avec nos crédits ».
 4. Au clic, la vue vérifie que le solde couvre le **poids** du portfolio
    (RG5), puis lance le moteur `executerTwin6` avec un provider « crédits »,
@@ -211,6 +212,25 @@ page Essayer (UC-VIS-03), ou par l'adresse.
   chaque appel — un scan par pôle et le kairos, comme à l'étape 5 — est un
   `POST /api/llm` portant un défi neuf résolu à la volée (UC-VIS-03, étapes 3
   à 5) ; rien n'est débité, et le message final dit « (essai gratuit) ».
+- **A7 — Partir d'un de mes portfolios** (étape 3, 2026-10-22, sprint 1,
+  amélioration 11) : si le module portfolio de ce navigateur en garde
+  (IndexedDB), la liste « Partir d'un de mes portfolios » les propose, comme
+  Twin9. En choisir un remplit la zone de saisie : un texte qui a déjà des
+  feuilles `### AAAA-MM-JJ` est repris tel quel ; sinon chaque journée datée
+  de son découpage devient une feuille `### AAAA-MM-JJ`, suivie de `---` et du
+  texte de la journée (son en-tête d'origine compris), et les passages non
+  datés sont laissés de côté. Une ligne dit combien de journées sont reprises
+  et combien de passages sont laissés ; un portfolio sans journée datée ne
+  remplit rien et renvoie à « Mon portfolio ». Le texte reste modifiable.
+  Sans stockage local lisible, la liste n'apparaît pas.
+- **A8 — Mode simple** (étape 2-3, 2026-10-22,
+  [UC-VIS-06](../visiteur/UC-VIS-06-choisir-affichage-simple-expert.md)) :
+  un compte apprenant seul, sans choix enregistré dans le navigateur, est en
+  mode simple. La liste des modèles n'est pas proposée ; une ligne nomme le
+  modèle cible du paquet (`modeleCibleDefaut`), que le run emploie, même si
+  un autre avait été choisi en mode expert. Le choix du référentiel et des
+  voies de paiement ne change pas. Les autres scénarios se jouent en mode
+  expert.
 
 ## Scénarios d'erreur
 
@@ -409,7 +429,9 @@ page Essayer (UC-VIS-03), ou par l'adresse.
 | Couche | Élément | Rôle |
 |---|---|---|
 | Front | `web/src/router.js` — `parseHash` | Route `#/twin6-ouverte` |
-| Front | `web/src/views/Twin6OuverteView.jsx` | Garde de session, formulaire, voies de paiement, garde-fou de solde, progression, résultat |
+| Front | `web/src/views/Twin6OuverteView.jsx` | Garde de session, formulaire, voies de paiement, garde-fou de solde, progression, résultat ; liste des modèles en mode expert seulement (A8) |
+| Front | `web/src/views/Twin6OuverteView.jsx` — `portfolioEnFeuilles` ; `web/src/lib/portfolio-store.js` — `createPortfolioStore` ; `web/src/lib/run-launcher.js` — `computeDayGroups` | « Mes portfolios » : liste, texte en feuilles datées (A7) — unitaire : `Twin6OuverteView.test.jsx` |
+| Front | `web/src/lib/ui-mode.js` — `useUiMode` | Mode d'affichage fourni par le shell (A8, UC-VIS-06) |
 | Front | `web/src/api/twin6.js` — `loadTwin6Package`, `makeCreditsProvider`, `makeOwnKeyProvider`, `fetchTwin6Offer` | Paquet public, provider proxy facturé, provider direct, offre |
 | Front | `web/src/api/twin6.js` — `referentielTwin6` | Référentiel du run (RG9) — unitaire : UC-APP-09-U32 |
 | Front | `web/src/components/ReferentielChoice.jsx`, `web/src/data/referentiel.js` — `listPublishedReferentiels`, `loadPublishedReferentiel` | Choix et chargement du référentiel publié (étape 2, A4, E13) : la base par l'API publique d'abord, l'export statique en repli (S5) |
@@ -487,6 +509,9 @@ page Essayer (UC-VIS-03), ou par l'adresse.
 
 ### Tests fonctionnels
 
+Les scénarios IHM se jouent en mode expert, posé dans le navigateur avant le
+montage (`humanome-mode`), sauf F32, qui rejoue le mode simple (A8).
+
 | ID | Scénario | Niveau | Vérifie | Fichier |
 |---|---|---|---|---|
 | UC-APP-09-F01 | Nominal | IHM | `<App/>` : RESPIRE par défaut, « 8 appels au modèle (7 pôles + synthèse) » ; progression « étape 1/8 » et contribution cumulée pendant le run ; 8 appels via `/api/twin6/appel` avec CSRF, la fiche du paquet telle quelle, contribution finale, secteurs du sunburst, export JSON (`cartographie-merge` sans `referentiel`, noms de pôle de `/meta`, `.json`, aucun envoi réseau ; en 1.1.0 avec sa `configuration` — sha256 des octets servis du paquet, comparé à `node:crypto` — et son `execution`, valide au schéma) ; « Compétences établies » sur les compétences du référentiel du run (anomalie 3 corrigée) ; portfolio envoyé nulle part ailleurs | `web/test/usecases/functional/uc-app-09-cartographie-ouverte-twin6.test.jsx` |
@@ -507,6 +532,9 @@ page Essayer (UC-VIS-03), ou par l'adresse.
 | UC-APP-09-F26 | E14 | IHM | Budget du jour épuisé (`503`) : message de la démo dès le premier appel, sans nouvel essai, bouton de nouveau cliquable | idem |
 | UC-APP-09-F27 | E14 | IHM | Un compte sur l'essai gratuit, budget du jour épuisé (`503`) : ses deux autres voies, pas l'invitation à créer un compte | idem |
 | UC-APP-09-F31 | E5 | IHM | Refus du fournisseur relayé (`stopReason refusal`) au second appel : « le fournisseur a refusé de répondre à l'étape scan-pole/2 », suivi de ce que le run a débité, refus compris ; pas d'export, bouton réutilisable | idem |
+| UC-APP-09-F32 | A8 | IHM | Mode simple (apprenant, aucun choix stocké), offre de deux modèles : ni liste ni champ « Modèle », ligne « Modèle : claude-sonnet-5 (par défaut… », référentiel au choix ; mode expert depuis le tiroir, Haiku choisi, retour au mode simple : les 8 appels partent sur `claude-sonnet-5` | idem |
+| UC-APP-09-F33 | A7 | IHM | Un portfolio du module portfolio aux en-têtes « Mardi 10 février 2026 », précédé d'un passage non daté : la liste le propose ; choisi, la zone de saisie reçoit deux feuilles `### 2026-02-10` et `### 2026-02-11` ; « 2 journées datées… ; 1 passage non daté laissé de côté. » ; les 8 prompts portent ce texte, jamais le passage non daté | idem |
+| UC-APP-09-F34 | A7 | IHM | Un texte déjà en feuilles est repris tel quel (« 1 journée datée ») ; un portfolio sans journée datée ne remplace rien et renvoie à « Mon portfolio » ; sans IndexedDB, pas de liste | idem |
 | UC-APP-09-F10 | Nominal | API | 8 appels : contrat, `text` amont intact et `model`, coût 4 400 µUSD chacun (Sonnet 5 à 2 / 10), prompt public transmis tel quel, grand-livre réserve/réconciliation | `api/tests/UseCases/Functional/UcApp09CartographieOuverteTwin6Test.php` |
 | UC-APP-09-F11 | Nominal (étape 2), RG7 | API | `/api/twin9/meta` : prix Twin6, référentiel, solde ; Twin6 fonctionne sans Twin9 importé | idem |
 | UC-APP-09-F12 | E7 | API | 401 sans session, aucun appel amont | idem |
@@ -524,7 +552,7 @@ page Essayer (UC-VIS-03), ou par l'adresse.
 ### Tests existants liés (non-régression)
 
 - `api/tests/Twin6AppelTest.php` — session, 503, validation, 402, facturation à +10 %.
-- `web/src/views/Twin6OuverteView.test.jsx` — vue isolée (voies, clé du profil, garde-fou, export).
+- `web/src/views/Twin6OuverteView.test.jsx` — vue isolée (voies, clé du profil, garde-fou, export) ; mode simple sous `UiModeContext` (A8) ; `portfolioEnFeuilles` et la liste « Mes portfolios » (A7).
 - `web/src/api/twin6.test.js` — client du paquet, providers, offre.
 - `engine/src/twin6/index.test.js`, `engine/src/twin6/mapper.test.js` — moteur et projection, sur RESPIRE et
   sur d'autres structures (cinq pôles lettrés, RESPIRE à six pôles).

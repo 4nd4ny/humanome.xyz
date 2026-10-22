@@ -15,6 +15,12 @@
 // dans runMeta/promptPackage, et le banc d'essai promptologue (P10) branchera
 // l'exécution des paquets publiés. Le document merge est construit SANS
 // narratifs LLM (résumés locaux : badge + compteurs, pas de récit).
+//
+// Mode simple (lib/ui-mode.js, 2026-10-22) : l'étape 2 s'intitule
+// « Référentiel » et dit en une ligne le protocole exécuté, le paquet embarqué,
+// qui est aussi celui qu'enregistre la cartographie ; le champ « Modèle » de la
+// clé personnelle disparaît (modèle par défaut du fournisseur). Le choix du
+// référentiel reste visible dans les deux modes.
 
 import { useEffect, useMemo, useRef, useState } from 'react'
 import { createPortfolioStore } from '../lib/portfolio-store.js'
@@ -41,10 +47,11 @@ import {
   syncKeyToServer,
 } from '../lib/run-launcher.js'
 import { loadCartoStore } from '../views/espace/carto-store-bridge.js'
+import { useUiMode } from '../lib/ui-mode.js'
 
 const STEPS = [
   { key: 'portfolio', label: 'Portfolio' },
-  { key: 'prompt', label: 'Version de prompt' },
+  { key: 'prompt', label: 'Version de prompt', simpleLabel: 'Référentiel' },
   { key: 'fournisseur', label: 'Fournisseur' },
   { key: 'estimation', label: 'Estimation' },
   { key: 'execution', label: 'Exécution' },
@@ -65,6 +72,8 @@ function formatInt(n) {
  */
 export default function RunWizard({ session, deps = {} }) {
   const connected = session.status === 'authenticated'
+  // Mode d'affichage (défaut du contexte : expert, tout est proposé).
+  const { expert } = useUiMode()
   const portfolioStore = useMemo(
     () => deps.portfolioStore ?? createPortfolioStore(),
     [deps.portfolioStore],
@@ -156,14 +165,20 @@ export default function RunWizard({ session, deps = {} }) {
     () => (portfolio ? computeDayGroups(portfolio.segments) : []),
     [portfolio],
   )
+  // Mode simple : la liste n'est pas proposée, le paquet est l'embarqué — celui
+  // que le moteur exécute —, même si un autre avait été choisi en mode expert.
   const selectedPackage = useMemo(() => {
+    if (!expert) return BUILTIN_PACKAGE
     const list = packages?.packages ?? [BUILTIN_PACKAGE]
     return list.find((p) => `${p.id}@${p.version}` === packageKey) ?? BUILTIN_PACKAGE
-  }, [packages, packageKey])
+  }, [expert, packages, packageKey])
 
   const providerDef = PROVIDERS.find((p) => p.id === providerId)
+  // Le modèle de la clé personnelle : en mode simple, celui du fournisseur par
+  // défaut (le champ n'est pas affiché).
+  const runModel = expert ? model : (providerDef?.defaultModel ?? model)
   // Le Service humanome s'estime au modèle de la démo qui le sert, un Haiku (2026-10-21).
-  const estimationModel = mode === 'humanome' ? SERVICE_ESTIMATION_MODEL : model
+  const estimationModel = mode === 'humanome' ? SERVICE_ESTIMATION_MODEL : runModel
   const estimate = useMemo(() => {
     if (!referentiel || dayGroups.length === 0) return null
     try {
@@ -199,7 +214,7 @@ export default function RunWizard({ session, deps = {} }) {
       portfolioTitre: portfolio.titre,
       mode,
       provider: mode === 'humanome' ? 'humanome' : providerId,
-      model: mode === 'humanome' ? 'impose par la plateforme' : model,
+      model: mode === 'humanome' ? 'impose par la plateforme' : runModel,
       jours: dayGroups.length,
       generatedAt: new Date().toISOString(),
       // Tokens RÉELS mesurés sur cette session de run (compteurs seulement,
@@ -275,7 +290,7 @@ export default function RunWizard({ session, deps = {} }) {
         mode,
         provider: providerId,
         apiKey: apiKey.trim(),
-        model,
+        model: runModel,
         fetchFn: deps.fetchFn,
       })
       if (bundle.prime) await bundle.prime(controller.signal)
@@ -358,7 +373,7 @@ export default function RunWizard({ session, deps = {} }) {
             aria-current={i === step ? 'step' : undefined}
             className={i === step ? 'step-active' : i < step ? 'step-done' : 'step-pending'}
           >
-            {s.label}
+            {expert ? s.label : (s.simpleLabel ?? s.label)}
           </li>
         ))}
       </ol>
@@ -399,14 +414,19 @@ export default function RunWizard({ session, deps = {} }) {
 
       {stepKey === 'prompt' ? (
         <div className="run-step" data-testid="step-prompt">
-          <h3>2. Version de prompt</h3>
+          <h3>{expert ? '2. Version de prompt' : '2. Référentiel'}</h3>
           <ReferentielChoice value={refChoix} onChange={setRefChoix} list={deps.listReferentiels} />
           {referentielError ? (
             <p role="alert" className="load-error" data-testid="referentiel-error">
               {referentielError}
             </p>
           ) : null}
-          {packages === null ? (
+          {!expert ? (
+            <p className="privacy-note" data-testid="run-protocol">
+              Protocole : {BUILTIN_PACKAGE.id}@{BUILTIN_PACKAGE.version} (embarqué). Le mode expert, au
+              bas du menu, propose les autres versions publiées.
+            </p>
+          ) : packages === null ? (
             <p>Chargement des versions publiées…</p>
           ) : (
             <>
@@ -493,17 +513,19 @@ export default function RunWizard({ session, deps = {} }) {
                   </select>
                 </label>
               </p>
-              <p>
-                <label>
-                  Modèle{' '}
-                  <input
-                    type="text"
-                    value={model}
-                    onChange={(event) => setModel(event.target.value)}
-                    aria-label="Modèle"
-                  />
-                </label>
-              </p>
+              {expert ? (
+                <p>
+                  <label>
+                    Modèle{' '}
+                    <input
+                      type="text"
+                      value={model}
+                      onChange={(event) => setModel(event.target.value)}
+                      aria-label="Modèle"
+                    />
+                  </label>
+                </p>
+              ) : null}
               {providerDef?.requiresKey ? (
                 <>
                   <p>

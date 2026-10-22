@@ -16,7 +16,18 @@
 //   Supported date formats: ISO « 2025-12-22 », numeric FR « 22/12/2025 »
 //   (also `.` or `-` as separator, and « 1er.01.2026 » for the first of the
 //   month), textual FR « 22 décembre 2025 » (« 1er » accepted, accents
-//   optional). A textual date WITHOUT a year is
+//   optional). A two-digit year is read as 20AA, as Twin9 reads it
+//   (Twin_v9/php/src/Portfolio.php, `iso()`), and only in the headings where
+//   Twin9 looks for it: « 02.03.26 » (dots, no « 1er ») in a `##` or `###`
+//   heading at the very start of the line (`### 02.03.26` is 2026-03-02,
+//   carto sprint 4). Elsewhere — a plain line, a `#` or `####`…`######`
+//   heading, an indented heading, `/` or `-` separators — it stays prose (a
+//   version number « 1.2.10 » alone on its line, too). Twin9 also needs at
+//   least two such headings to date anything; the interface opens a day at
+//   the first one (and reads four-digit years under any heading level, as
+//   before), so the two still differ there.
+//   Twin9 also reads a three-digit year as 2000 + n (« 12.03.202 » is
+//   2202-03-12); not mirrored: that is a typo, not a date. A textual date WITHOUT a year is
 //   accepted only when anchored by a weekday or a heading mark
 //   (« Lundi 22 décembre ») and yields `date: null` (the user names it).
 // - A date in the middle of a sentence NEVER splits: the pattern is anchored
@@ -56,6 +67,8 @@ const MONTH_RE = /^(\d{1,2})(?:er)?\s+(janvier|f[ée]vrier|mars|avril|mai|juin|j
 const ISO_RE = /^(\d{4})-(\d{2})-(\d{2})\b/
 // « 1er » only right after a lone 1 at the start: « 1er.01.2026 », never « 11er ».
 const NUMERIC_RE = /^(\d{1,2})(?:(?<=^1)er)?([/.-])(\d{1,2})\2(\d{4})\b/
+// Twin9's two-digit year (« 02.03.26 » → 2026-03-02): dots only, headings only.
+const SHORT_YEAR_RE = /^(\d{1,2})\.(\d{1,2})\.(\d{2})\b/
 const SEPARATOR_RE = /^\s{0,3}(?:-{3,}|={3,}|\*{3,}|_{3,})\s*$/
 const HEADING_RE = /^\s{0,3}(#{1,6})\s+(.*)$/
 
@@ -90,9 +103,11 @@ function localToday () {
 
 /**
  * Tries to read a date anchored at the start of `str`.
- * @returns {{iso: string | null, length: number, needsAnchor: boolean} | null}
+ * @returns {{iso: string | null, length: number, needsAnchor: boolean, needsHeading?: boolean} | null}
  *   `iso` is null for year-less textual dates; `needsAnchor` marks matches only
- *   valid when backed by a weekday or heading mark.
+ *   valid when backed by a weekday or heading mark; `needsHeading`, those only
+ *   valid in a `##` or `###` heading at the start of the line (a two-digit
+ *   year, where Twin9 looks for it).
  */
 function matchDateAtStart (str) {
   let m = ISO_RE.exec(str)
@@ -107,6 +122,13 @@ function matchDateAtStart (str) {
     const [d, mo, y] = [Number(m[1]), Number(m[3]), Number(m[4])]
     if (!isRealDate(y, mo, d)) return null
     return { iso: toIso(y, mo, d), length: m[0].length, needsAnchor: false }
+  }
+
+  m = SHORT_YEAR_RE.exec(str)
+  if (m) {
+    const [d, mo, y] = [Number(m[1]), Number(m[2]), 2000 + Number(m[3])]
+    if (!isRealDate(y, mo, d)) return null
+    return { iso: toIso(y, mo, d), length: m[0].length, needsAnchor: false, needsHeading: true }
   }
 
   m = MONTH_RE.exec(str)
@@ -153,6 +175,10 @@ function matchDateHeader (line) {
   const date = matchDateAtStart(rest)
   if (!date) return null
   if (date.needsAnchor && !hasWeekday && !isHeading) return null
+  // Twin9 reads a two-digit year only in a `##` or `###` heading at the very
+  // start of the line (Portfolio.php, `^#{2,3}` then a blank): not under `#`,
+  // `####`…`######`, nor in an indented heading.
+  if (date.needsHeading && !(isHeading && line.startsWith('#') && headingMatch[1].length >= 2 && headingMatch[1].length <= 3)) return null
 
   const remainder = rest.slice(date.length).trim()
   if (remainder === '') return { date: date.iso, titre }

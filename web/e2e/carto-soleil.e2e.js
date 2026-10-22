@@ -93,6 +93,12 @@ async function clickSector(page, labelStart) {
   await page.mouse.click(pt.x, pt.y)
 }
 
+// La tuile « Réglages » n'est proposée qu'en mode expert (UC-VIS-06) : le
+// visiteur de ces parcours l'a choisi dans ce navigateur.
+test.beforeEach(async ({ page }) => {
+  await page.addInitScript(() => localStorage.setItem('humanome-mode', 'expert'))
+})
+
 test('double-clic sur l’arc d’un pôle : ses compétences sur 360° ; clic au centre : retour aux pôles', async ({ page }) => {
   await page.goto('/#/cartographie')
   await page.locator('input[type="file"][accept]').setInputFiles(louFiles())

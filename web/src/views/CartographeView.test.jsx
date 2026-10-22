@@ -1,7 +1,7 @@
 // Espace cartographe (P9) : garde de rôle, accueil (invitation, apprentis,
 // file des cartographies à relire), formation parcours cartographe.
 import { afterEach, describe, expect, it, vi } from 'vitest'
-import { cleanup, fireEvent, render, screen, waitFor, within } from '@testing-library/react'
+import { act, cleanup, fireEvent, render, screen, waitFor, within } from '@testing-library/react'
 import CartographeView from './CartographeView.jsx'
 import { resetApiClient } from '../api/client.js'
 import { listChapters } from './espace/formation-content.js'
@@ -170,6 +170,39 @@ describe('CartographeView — formation cartographe', () => {
     expect(screen.getByRole('link', { name: '← Tous les chapitres' }).getAttribute('href')).toBe(
       '#/cartographe/formation',
     )
+  })
+})
+
+describe('CartographeView — sous-menu (sprint 1, amélioration 8)', () => {
+  // Chaque section marque SON onglet, et lui seul : la relecture d'une
+  // cartographie relève de la file, un chapitre relève de la formation. Les
+  // appels des sections répondent 404 : seul le sous-menu est vérifié ici.
+  const CASES = [
+    [null, 'File de relecture'],
+    ['relecture/12', 'File de relecture'],
+    ['comparer', 'Comparer'],
+    ['consistance', 'Consistance'],
+    ['formation', 'Formation'],
+    [`formation/${listChapters('cartographe')[0].slug}`, 'Formation'],
+  ]
+
+  it.each(CASES)('section %s → onglet « %s » marqué aria-current="page"', async (section, tab) => {
+    const fetchFn = vi.fn(async () => jsonResponse(404, { error: 'absent' }))
+    render(<CartographeView section={section} deps={{ fetchMeFn: cartographe, fetchFn, getReferentiel: async () => null }} />)
+    const nav = within(await screen.findByRole('navigation', { name: 'Sections de l’espace cartographe' }))
+    const current = nav.getAllByRole('link').filter((a) => a.getAttribute('aria-current') === 'page')
+    expect(current.map((a) => a.textContent)).toEqual([tab])
+  })
+
+  it('la formation reste ouverte à tous, mais sans le sous-menu pour qui n’est pas cartographe', async () => {
+    // La formation s'affiche avant la réponse de la session : on attend que la
+    // session (apprenant) soit lue et appliquée, puis on vérifie l'absence.
+    const fetchMeFn = vi.fn(apprenant)
+    render(<CartographeView section="formation" deps={{ fetchMeFn }} />)
+    expect(await screen.findByText('Formation cartographe')).toBeTruthy()
+    await waitFor(() => expect(fetchMeFn).toHaveBeenCalled())
+    await act(async () => {})
+    expect(screen.queryByRole('navigation', { name: 'Sections de l’espace cartographe' })).toBeNull()
   })
 })
 

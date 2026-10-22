@@ -43,6 +43,155 @@ réponse. Suivent la PR B (adaptateurs JS, export Twin6) et, A fusionnée, la PR
 
 ## Fait
 
+- 2026-10-22 — **Sprints 1 et 4 de la liste de Christian : l'ergonomie et le « Mode expert »
+  (lot 1), puis la journée d'une analyse qui en couvre plusieurs (branche
+  `feat/ergonomie-et-journees`, issue de `main` à `fd6a16d`, `main` à `2a5984c` fusionné
+  depuis).** Études du
+  sprint 1 (ergonomie, mode expert, quatorze améliorations) et du sprint 4 (cause prouvée,
+  correctifs T0 à T3). Décisions prises le 2026-10-22 par délégation de Christian : D1
+  option A (le mode simple masque la « Cartographie ouverte », Twin6 ; l'échelle Essayer →
+  Cartographier mes écrits → Analyse approfondie reste), D2 oui (« Comparaison » en mode
+  expert), D3 défaut selon le rôle (simple pour un visiteur ou un apprenant seul, expert dès
+  un rôle de travail), D4 dans le navigateur seulement (clé `humanome-mode`), D5 « Mode
+  expert » ; améliorations 1 à 8, le mode expert, puis 10, 11 et 14 ; T1 et T2.
+  - **Sprint 1, améliorations 1 à 8** (`1338988`, `2ae9808`), mobile d'abord, sans refonte
+    graphique : cibles tactiles de 44 px au toucher ; « Fermer le menu » dans le tiroir
+    (remplace la punaise sous 921 px) ; espaces de la cartographie sur une ligne qui défile
+    sous 768 px ; `fix:` un compte connecté sans rôle gardait le menu d'un visiteur, sans
+    déconnexion (UC-VIS-04 AN2, UC-CPT-02 AN4 corrigées) ; aide juste (entrée
+    `configuration`, plus de chiffres en dur) ; le portfolio ne promet plus « bientôt »
+    (UC-APP-01 A-03) ; « Monitoring » dans le menu admin ; sous-menus cartographe et
+    promptologue sur le gabarit des onglets admin (`aria-current`).
+  - **Mode expert, lot 1** (`4fb10ff`) : un réglage d'affichage, jamais un droit (aucune
+    garde de vue, aucun code serveur ne le lit, toute adresse reste valide, aucune famille de
+    rôle n'est masquée). Bascule « Mode expert » en bas du tiroir et ligne « Affichage » du
+    compte. En mode simple : pas de « Cartographie ouverte » ; l'assistant de run nomme le
+    protocole embarqué, sans liste de paquets ni champ « Modèle » (ce qui s'enregistre est
+    ce qui tourne) ; Twin6 sans liste de modèles ; la cartographie sans onglet
+    « Comparaison » (sauf ouvert par son adresse), sans tuile « Réglages », sans « Préparer
+    une démo ». En mode expert, « Mes profils Twin9 » (`#/configuration`) entre au menu.
+    `docs/ergonomie-navigation.md` §5ter, fiche UC-VIS-06.
+  - **Améliorations 10, 11 et 14** (`4fb10ff`) : « Mes analyses approfondies » au tableau
+    de bord de l'apprenant ; Twin6 part d'un portfolio de « Mes portfolios » (journées
+    datées en feuilles `### AAAA-MM-JJ`, passages sans date comptés et laissés de côté) ;
+    les guides montrent d'abord les parcours des rôles de la session.
+  - **Sprint 4, T1** (`4e056c6`, journal de la cartographie, D-14 et D-66 amendées) :
+    l'analyse rangée au 10 février de la démonstration retient 175 traces écrites du 1er
+    au 9 ; l'interface le dit partout où elle montre la trace (« passage du mar. 3 févr. »
+    dans la modale du 10, « trace de l'analyse du 10 février 2026 » et « Ouvrir la journée
+    analysée » dans le volet du portfolio) ; une journée qui ne contribue pas dit pourquoi
+    (trois messages) ; « run du … » au lieu d'« analysée le … ». Test de caractérisation
+    écrit d'abord, puis inversé.
+  - **Sprint 4, T2** (`ab0285d`, D-72, `docs/contrats.md` §4 point 15) : l'index écrit la
+    date du passage d'une trace écrite un autre jour (`at`, facultatif ; écrit à l'import
+    pour tout importeur, run Twin9 compris, depuis la revue). La modale du 3 février garde
+    « Aucune analyse n'est rangée à ce jour. » et ajoute « Relevé par l'analyse du 10
+    février » : les compétences, leurs preuves et indices de ce jour, un lien vers le 10 sur
+    chacune — sans rien lire de plus (D-67). Gestionnaire : « relevée le 10 févr. »,
+    « couvre 8 autres journées (1er–9 févr.) » ; anomalies d'information `couverte-par` et
+    `analyse-multi-journees` (jamais « à traiter ») ; la case de la heatmap le dit à qui la
+    lit. Une archive d'avant reçoit `at` de ses détails à l'import, un index au découpage.
+    **Jeux déjà dans le navigateur : une passe unique à l'ouverture** (tous les détails lus
+    une fois, dans la transaction qui écrit l'index ; version notée, `passageDates` ; jamais
+    sur un jeu lu à la demande ; si elle échoue, le jeu s'ouvre tel quel), plutôt que
+    « réimportez » : réimporter les mêmes fichiers n'aurait rien changé, une variante
+    gardant son identifiant.
+  - **Années sur deux chiffres** (`cf09e8b`, `1adfb06`, D-72, UC-APP-01 RG5 ter) : le
+    découpage lit `### 02.03.26` comme le 2026-03-02, comme Twin9, et seulement dans les
+    titres où Twin9 la cherche (des points, dans un titre `##` ou `###` en début de ligne) ;
+    une ligne nue, un titre `#` ou `####` à `######`, un titre indenté, `/`, `-`,
+    « 1er.03.26 » et trois chiffres restent du texte. Deux écarts à Twin9 demeurent,
+    connus : il ne date rien sans au moins deux tels titres, l'interface ouvre une journée
+    dès le premier ; une année sur quatre chiffres se lit dans l'interface sous tout niveau
+    de titre (comme avant ce sprint). Sur les cinq portfolios fictifs de Twin9, les journées
+    de l'interface sont les siennes (PLANT-01 : dix journées au lieu d'un bloc daté du
+    jour ; les SYNTH-* : aucune des deux côtés), vérifié contre le moteur PHP ; les fichiers
+    sont lus dans `TWIN_V9_DIR`, jamais recopiés ici (UC-APP-01-U22). **Effet sur le
+    coût** : un portfolio titré ainsi n'est plus un seul bloc mais une journée par titre ;
+    l'estimation et les appels d'une cartographie standard (« Cartographier mes écrits »)
+    croissent d'autant — voulu, puisque ce sont les journées que Twin9 analyse.
+  - **Revue du 2026-10-22 : sept constats confirmés, corrigés**, chacun par un test écrit
+    d'abord, qui échouait :
+    - `d5a7095` (deux constats) : l'import écrit `at` pour tout importeur, depuis le détail
+      de chaque variante (`mergeIntoDataset`). Un run Twin9 (`twin9-run.js`, non touché, ne
+      garde que `{id, role}`) l'a donc dès l'import, dans un jeu neuf comme dans un jeu déjà
+      passé, et le jeu affiché par « Ouvrir dans l'interface » sans attendre une
+      réouverture. Avant, seule la passe le lui donnait, et seulement dans un jeu pas encore
+      passé : les mêmes données s'affichaient avec ou sans « Relevé par … » selon l'ordre
+      des opérations. La passe ne sert plus qu'aux jeux rangés avant T2 ; `passageDates`
+      reste 1 (la branche n'a jamais été déployée).
+    - `1adfb06` (deux constats) : l'année sur deux chiffres ne se lit plus sous `#`,
+      `####` à `######` ni dans un titre indenté, où Twin9 ne la lit pas (`^#{2,3}`) : la
+      première version y ouvrait des journées que Twin9 n'ouvre pas, d'où le symptôme du
+      sprint 4. Un portfolio synthétique aux titres de tous niveaux est comparé au moteur
+      PHP (mêmes dates des deux côtés).
+    - `ecfa955` : « couvre N autres journées » et `analyse-multi-journees` ne comptent plus
+      les traces d'un verdict court-circuité ou « présence non établie », que « relevée
+      le … » et la section de la modale ignoraient déjà.
+    - `c1ce242` : la plage des journées couvertes se lit sans survol, au toucher et au
+      clavier (« couvre 8 autres journées (1er–9 févr.) ») ; le nombre de traces reste au
+      survol.
+    - `e1c5b51` : `main` (`2a5984c` : PR A #26, référentiels simples #25, sans Python #27)
+      fusionné dans la branche. Le validateur compilé n'est pas résolu à la main : il est
+      régénéré (`node scripts/build-validators.mjs`), avec `at`, `passageDates` et les
+      schémas Twin9 de `main`. Le catalogue des cas est recompté depuis les identifiants des
+      tests (60 cas, 988 tests unitaires, 1 167 fonctionnels, 193 anomalies). Les deux côtés
+      avaient créé un UC-APP-02-F27 : celui de `main` le garde, le mode simple devient F29.
+      `SOURCE_LABELS` avait deux clés `twin9` : « Twin9 (serveur) », de `main` et documenté
+      par UC-APP-10, est gardé. Le test Twin9 de `main` attendait « analysée le », devenu
+      « run du » (C10).
+  - **Vérifié** (après la revue et la fusion de `main`) : front 2 828 tests verts (264
+    fichiers, avec `TWIN_V9_DIR` : rien de sauté ; `main` a retiré des tests Python de
+    `web/src/lib/twin9/py`) ; moteur 586 tests, dont les 5 échecs locaux connus
+    (UC-PRO-08 F19 à F22 et F25), parité des années sur deux chiffres jouée contre le
+    moteur PHP de `TWIN_V9_DIR` (après `npm ci` du moteur : `main` y ajoute `yaml`) ; PHP
+    `ValidationTest`, `ConformiteTest`, `CartoPartageTest` et `UcVis04SeRepererTest` verts
+    (46 tests, base `humanome_test_s1`) ; `check-publiable` vert. Avant la fusion, au fil
+    des lots : e2e navigation-burger, carto-export, carto-soleil, guides-public. La plage de
+    la démonstration (« couvre 8 autres journées (1er–9 févr.) », 175 traces, toutes
+    établies ou à revoir) recalculée sur son document-jour du 10 février
+    (`web/public/data/demo/jours/2026-02-10.json`), importé dans un jeu neuf.
+  - **Vérifié aussi, avant la PR** : la suite PHP complète après la fusion (1 776 tests,
+    les 2 échecs connus sous PHP 8.5 seulement) ; dans un navigateur, à 375 px, sur la
+    démonstration : le tiroir (« Fermer le menu », pas de punaise), la bascule « Mode expert »
+    (gardée, le tiroir reste ouvert ; « Comparaison » absente en mode simple), la modale du
+    3 février (« Aucune analyse n'est rangée à ce jour. », « Relevé par l'analyse du 10
+    février », neuf compétences), la ligne du 10 dans le Gestionnaire (« couvre 8 autres
+    journées (1er–9 févr.) ») et « passage du mar. 3 févr. » sous 6.08 dans la modale du 10.
+    Un test instable de `main` réparé au passage (`MonitoringSection` : deux requêtes en
+    course, `root@b.fr` affiché deux fois).
+  - **Non vérifié** : le volet du portfolio de T1 dans un navigateur ; les e2e
+    `carto-soleil` et `carto-export`, pas relancés pour T1 ni T2 ; la passe dans un vrai
+    IndexedDB (testée avec le magasin en mémoire) et sa durée sur une démonstration devenue
+    locale (environ 17 Mo de détails) ; e2e `parcours-apprenant` (API locale) ; aucun e2e
+    relancé après la fusion de `main` (qui a touché `global.css`, `help/registry.js`,
+    `RunWizard.jsx`, `Twin6OuverteView.jsx`). Ouvert, dans `main` déjà : deux tests UC-APP-09-F31 (A4 du sprint 5 et E5),
+    non renumérotés ici.
+  - **Après les PR Twin9** : le lot 2 du mode expert (liste des profils de `Twin9View`) ;
+    S4 T0 (envoyer à Twin9 des en-têtes que l'interface lit pareil), C3 (deux cartes Twin9
+    le même jour) et C4 (« établie par faisceau »).
+  - **À faire à distance (feu vert de Christian)** : redécouper la démonstration
+    (`node web/scripts/carto-demo-split.mjs`, qui écrit `at`) puis la redéployer — d'ici
+    là, son 3 février dit « Aucune analyse n'est rangée à ce jour. » sans le lien ; et
+    déployer le front (aucune migration ; le schéma n'ajoute que des champs facultatifs à
+    un contrat ouvert, l'ordre de déploiement est libre).
+  - **Pas fait, voulu** : améliorations 12 (familles de rôle repliables) et 13 (thème dans
+    le tiroir au téléphone), l'accessibilité est à revoir avec le sprint 9.
+  - **Décisions laissées à Christian** :
+    - **T3, répartir les traces par date de passage** : seul ce palier répond à « je ne
+      devrais pas voir les compétences d'une autre journée ». Mais le statut et la
+      confiance d'un verdict rendu sur neuf journées seraient recopiés sur chacune, pas
+      mesurés (6.08 « établie » au 3 février sur une seule preuve) ; une journée qui a sa
+      propre analyse imposerait un choix (l'analyse propre l'emporterait) ; le kairos et
+      les rapports de pôle resteraient globaux. Variante minimale : répartir hors ligne la
+      seule démonstration, l'interface inchangée.
+    - Le nom d'un run Twin9 dans la provenance : « Twin9 (serveur) », de `main` (PR A),
+      gardé à la fusion plutôt que « Twin9 » (sprint 4, C11) ; une ligne de
+      `SOURCE_LABELS` (`Manager.jsx`) et deux tests à changer s'il préfère l'autre.
+    - D4 V2 (le mode retenu par compte, et non par navigateur) : avec le sprint 8 (rôles
+      auto-attribués) ; et une seule vue « journée » à garder (`#/jour/<date>` historique
+      et `#/cartographie/jour/<date>`).
+
 - 2026-10-22 — **Sprint 2, lot D : plus rien de Python dans humanome.xyz, et la production le
   vérifie (branche `chore/sans-python`, non fusionnée).** Le Sprint 2 (liste de travail de
   Christian, hors dépôt) demandait s'il restait du Python, s'il servait, et pourquoi il n'était pas

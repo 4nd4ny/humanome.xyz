@@ -104,6 +104,8 @@ describe('UC-VIS-04 — navigation par familles d’intention', () => {
       .filter((i) => i.route)
       .map((i) => i.route)
     expect(everyRoute.length).toBeGreaterThan(10)
+    // `configuration` (profils Twin9) a son entrée de menu en mode expert (2026-10-22), et son aide.
+    expect(everyRoute).toContain('configuration')
     for (const route of new Set([...everyRoute, 'day'])) {
       expect(helpFor(route).titre, route).not.toBe('Aide')
     }
@@ -150,8 +152,22 @@ const ITEM = {
     section: 'nouveau-run',
     badge: 'standard',
   },
-  ouverte: { href: '#/twin6-ouverte', label: 'Cartographie ouverte', route: 'twin6ouverte', badge: 'gratuit', hint: 'Twin6 — open source' },
+  ouverte: {
+    href: '#/twin6-ouverte',
+    label: 'Cartographie ouverte',
+    route: 'twin6ouverte',
+    badge: 'gratuit',
+    hint: 'Twin6 — open source',
+    expert: true,
+  },
   approfondie: { href: '#/twin9', label: 'Analyse approfondie', route: 'twin9', badge: 'premium', hint: 'Twin9' },
+  profilsTwin9: {
+    href: '#/configuration',
+    label: 'Mes profils Twin9',
+    route: 'configuration',
+    hint: 'réglages de l’analyse approfondie',
+    expert: true,
+  },
   partager: { href: '#/espace', label: 'Partager ma cartographie', hint: 'version choisie, réservée aux adultes' },
   file: { href: '#/cartographe', label: 'Ma file de relecture', route: 'cartographe' },
   comparer: { href: '#/cartographe/comparer', label: 'Comparer', route: 'cartographe', section: 'comparer' },
@@ -184,6 +200,7 @@ const ITEM = {
     roles: ['epistemiarque'],
     hint: 'éditer, voter, entériner — débats sur Decidim',
   },
+  monitoring: { href: '#/admin/monitoring', label: 'Monitoring', route: 'admin', section: 'monitoring' },
   roles: { href: '#/admin/roles', label: 'Rôles et comptes', route: 'admin', section: 'roles' },
   golden: { href: '#/admin/golden', label: 'Golden Prompt', route: 'admin', section: 'golden' },
   reglages: { href: '#/admin/reglages', label: 'Réglages', route: 'admin', section: 'reglages' },
@@ -205,9 +222,9 @@ const FAMILY_HEAD = {
 }
 
 const DECOUVRIR = ['accueil', 'demo', 'essayer', 'referentiel', 'guides']
-const CARTOGRAPHIE = ['tableau', 'portfolio', 'cartographier', 'ouverte', 'approfondie', 'partager']
+const CARTOGRAPHIE = ['tableau', 'portfolio', 'cartographier', 'ouverte', 'approfondie', 'profilsTwin9', 'partager']
 const ENCADRER = ['file', 'comparer', 'consistance']
-const ADMINISTRER = ['roles', 'golden', 'reglages', 'config', 'supervision']
+const ADMINISTRER = ['monitoring', 'roles', 'golden', 'reglages', 'config', 'supervision']
 const COMPTE_CONNECTE = ['profil', 'credit', 'confidentialite']
 
 /** Structure attendue : [[idFamille, [clés d'items]], …] + famille compte. */
@@ -270,6 +287,9 @@ describe('UC-VIS-04 — plan du site exhaustif par combinaison de rôles', () =>
   it('UC-VIS-04-U13 — navGroups : href, badges, hints et visibilité de CHAQUE lien, du visiteur au cumul de tous les rôles ; chaque href mène à sa route', () => {
     for (const [name, roles, want] of COMBINATIONS) {
       expect(shown(navGroups({ roles })), name).toEqual(want)
+      // Mode simple (UC-VIS-06) : les mêmes familles, sans les items `expert`.
+      const simple = want.map((family) => ({ ...family, items: family.items.filter((i) => !i.expert) }))
+      expect(shown(navGroups({ roles, expert: false })), `${name} (simple)`).toEqual(simple)
     }
     // Couverture : le cumul expose chaque item de FAMILIES exactement une fois.
     const all = navGroups({ roles: COMBINATIONS.at(-1)[1] })

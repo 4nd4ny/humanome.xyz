@@ -478,3 +478,28 @@ describe('UC-APP-06 — interface de cartographie (archive 1.1.0, décision du 2
     expect((await notice()).textContent).toBe('Import terminé : 0 portfolio(s) et 0 cartographie(s) restaurés (les doublons sont ignorés).')
   })
 })
+
+describe('UC-APP-06 — espace Export de la cartographie : préparer une démo (A6)', () => {
+  it('UC-APP-06-F18 — A6 : « Préparer une démo » n’est proposé qu’en mode expert ; en mode simple (apprenant), les quatre formats restent ; activé depuis le tiroir, la carte et l’outil d’anonymisation paraissent', async () => {
+    const store = createInterfaceStore()
+    const base = createInterfaceDataset({ datasetId: masterFixture.datasetId, title: masterFixture.title, referential: masterFixture.referential, now: masterFixture.createdAt })
+    await store.commit(await importIntoInterface([{ path: 'lou.json', text: JSON.stringify(masterFixture) }], base, { now: masterFixture.createdAt }))
+    stubNetwork()
+    localStorage.removeItem('humanome-mode')
+    window.location.hash = '#/cartographie/export'
+    render(<App lib={fakeLib} fetchMeFn={async () => ({ user: USER })} />)
+
+    expect(await screen.findByRole('heading', { name: 'Archive complète (JSON)' })).toBeDefined()
+    for (const name of ['Copie autonome (HTML)', 'Portfolio (Markdown)', 'Rapport imprimable (PDF)']) {
+      expect(screen.getByRole('heading', { name })).toBeDefined()
+    }
+    expect(screen.queryByRole('heading', { name: 'Préparer une démo' })).toBeNull()
+
+    const menu = within(screen.getByRole('navigation', { name: 'Navigation principale' }))
+    fireEvent.click(menu.getByRole('switch', { name: 'Mode expert' }), { detail: 1 })
+    expect(await screen.findByRole('heading', { name: 'Préparer une démo' })).toBeDefined()
+    fireEvent.click(screen.getByRole('button', { name: 'Ouvrir l’outil d’anonymisation' }))
+    expect(await screen.findByRole('region', { name: 'Préparer une démo anonymisée' })).toBeDefined()
+    localStorage.removeItem('humanome-mode')
+  })
+})

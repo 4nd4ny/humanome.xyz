@@ -106,12 +106,17 @@ const go = (hash) => {
  * @param {{route?: {sub?: string | null, date?: string, focus?: string | null},
  *   deps?: {store?: object, fetchFn?: typeof fetch, loadReferential?: () => Promise<{doc: object}>,
  *     share?: {serverEnabled?: boolean, adultOnly?: boolean}, shareApi?: object},
- *   session?: {roles?: string[]},
+ *   session?: {roles?: string[], expert?: boolean},
  *   slots?: Record<string, (ctx: object) => React.ReactNode>}} props
  *   slots : espaces fournis par les phases suivantes (comparaison, tableau de bord, export…)
  *   deps.share : module de partage (spec §12.2) — absent ou serverEnabled faux, l'espace
  *   n'existe pas ; session.roles : il n'est offert qu'à un compte connecté, apprenant (ses
  *   versions) ou cartographe (une version garantie publiée à la demande d'une personne, D-42).
+ *   session.expert (défaut : vrai, tout est proposé) : faux — mode simple du site
+ *   (lib/ui-mode.js) —, l'onglet « Comparaison » n'est listé que s'il est l'espace
+ *   ouvert (son adresse reste valide), la tuile « Réglages » n'est pas proposée
+ *   dans « Panneaux » et l'Export n'offre pas « Préparer une démo ». Le
+ *   Gestionnaire et son point d'anomalies restent dans les deux modes.
  *   deps.llm : relances facultatives du dialogue (P7) par un modèle de langage — absent,
  *   le dialogue reste entièrement scripté et local (copie autonome).
  */
@@ -136,6 +141,7 @@ export default function CartoApp({ route = {}, deps = {}, slots = {}, mode = 'si
   // Un compte apprenant publie et partage ses versions ; un compte cartographe
   // publie, à la demande d'une personne, une version garantie (journal D-42).
   const roles = session?.roles ?? []
+  const expert = session?.expert ?? true
   const canShare = !viewer && shareConfig.serverEnabled && (roles.includes('apprenant') || roles.includes('cartographe'))
   const shareApi = useMemo(() => deps.shareApi ?? createShareApi(deps.fetchFn ? { fetchFn: deps.fetchFn } : {}), [deps.shareApi, deps.fetchFn])
   const [ui, dispatch] = useReducer(reducer, initialUi)
@@ -486,7 +492,7 @@ export default function CartoApp({ route = {}, deps = {}, slots = {}, mode = 'si
     ),
     settings: <Settings bare params={params} geometry={geometry} onPrefs={onPrefs} prefs={prefs} poles={refl.poles} palette={palette} onPalette={setPalette} />,
   }
-  const available = CARTO_TILES.filter(([id]) => tileNodes[id] != null)
+  const available = CARTO_TILES.filter(([id]) => tileNodes[id] != null && (expert || id !== 'settings'))
   const shownTiles = available
     .filter(([id]) => tiles.shown.includes(id))
     .map(([id, label]) => ({
@@ -510,7 +516,10 @@ export default function CartoApp({ route = {}, deps = {}, slots = {}, mode = 'si
           slotRef={space === 'tableau-de-bord' && !slots['tableau-de-bord'] ? setToolsSlot : null}
         />
         <nav className="carto-spaces" aria-label="Espaces de la cartographie">
-          {SPACES.filter(([id]) => !(viewer && id === 'export') && (id !== 'partage' || canShare)).map(([id, label, hash]) => (
+          {SPACES.filter(
+            ([id]) =>
+              !(viewer && id === 'export') && (id !== 'partage' || canShare) && (expert || id !== 'comparaison' || space === 'comparaison'),
+          ).map(([id, label, hash]) => (
             <a key={id} href={hash} aria-current={space === id ? 'page' : undefined}>
               {label}
               {id === 'gestionnaire' && todoCount(dataset) > 0 ? <span className="carto-dot" aria-label={`${todoCount(dataset)} anomalies à traiter`} /> : null}
@@ -605,6 +614,7 @@ export default function CartoApp({ route = {}, deps = {}, slots = {}, mode = 'si
               data={data}
               fetchFn={deps.fetchFn}
               onOpenDataset={() => go('#/cartographie')}
+              expert={expert}
             />
           )
         ) : space === 'dialogue' && !slots.dialogue ? (
@@ -655,6 +665,7 @@ export default function CartoApp({ route = {}, deps = {}, slots = {}, mode = 'si
             reinforced={Boolean(prefs.reinforced)}
             onClose={closeDay}
             onNavigate={(d) => openDay(d, route.focus ?? undefined)}
+            onOpenDay={openDay}
             trapActive={!ui.reader}
             renderVerdict={(v, variant) => (
               <DayVerdictDetail
@@ -669,6 +680,7 @@ export default function CartoApp({ route = {}, deps = {}, slots = {}, mode = 'si
                 update={data.update}
                 onOpenTrace={openTrace}
                 onOpenPassage={openPassage}
+                onOpenDay={openDay}
               />
             )}
           >
@@ -700,6 +712,11 @@ export default function CartoApp({ route = {}, deps = {}, slots = {}, mode = 'si
             reducedMotion={reducedMotion}
             onClose={closeReader}
             onIndex={(index) => dispatch({ type: 'readerIndex', index })}
+            onOpenDay={(d, code) => {
+              // Comme « Pourquoi cette surface ? » : le volet se ferme, la journée s'ouvre.
+              closeReader()
+              openDay(d, code)
+            }}
           />
         ) : null}
       </div>

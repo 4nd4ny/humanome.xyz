@@ -444,15 +444,24 @@ export default function PortfolioView({ store, fetchFn, today, saveDelay = 600 }
               {showCarto ? (
                 <section className="portfolio-carto" role="status" aria-label="Cartographier">
                   <h3>Cartographier ce portfolio</h3>
-                  <p>
-                    Le lancement d’une cartographie sur votre propre portfolio sera disponible
-                    dans l’espace apprenant (bientôt) : choix de la version de prompt, du
-                    fournisseur LLM et estimation de coût avant exécution.
-                  </p>
-                  <p>
-                    En attendant, la démo « Essayer » reste le chemin sans compte : rendez-vous
-                    sur <a href="#/">l’accueil</a> pour générer une mini-cartographie en direct.
-                  </p>
+                  {/* Les trois chemins réels (UC-APP-01 A-03, corrigée le
+                      2026-10-22) : l'échelle standard → premium → essai du menu. */}
+                  <ul className="portfolio-carto-paths">
+                    <li>
+                      <a href="#/espace/nouveau-run">Cartographier mes écrits</a> (standard) :
+                      l’assistant de l’espace apprenant vous fait choisir ce portfolio, le
+                      référentiel et le fournisseur, et estime le coût avant de lancer.
+                    </li>
+                    <li>
+                      <a href="#/twin9">Analyse approfondie</a> (premium, Twin9) : choisissez ce
+                      portfolio parmi « Mes portfolios » ; la page annonce le coût et la durée
+                      estimés avant tout lancement.
+                    </li>
+                    <li>
+                      <a href="#/essayer">Essayer</a> (gratuit, sans compte) : collez une page de
+                      votre journal pour une cartographie en direct, que rien ne conserve.
+                    </li>
+                  </ul>
                 </section>
               ) : null}
             </>

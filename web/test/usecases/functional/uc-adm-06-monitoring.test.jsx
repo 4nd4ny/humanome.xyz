@@ -110,7 +110,9 @@ describe('UC-ADM-06 — l’administrateur consulte le monitoring', () => {
     const backend = createAdminBackend({ users: USERS, routes: monitoringRoutes() })
     openAdmin(backend, '#/admin')
 
-    const card = await screen.findByRole('link', { name: /Monitoring/ })
+    // La carte de l'accueil admin (le menu « Administrer » porte aussi un lien « Monitoring »).
+    const home = within(await screen.findByRole('navigation', { name: 'Sections d’administration' }))
+    const card = home.getByRole('link', { name: /Monitoring/ })
     await act(async () => {
       window.location.hash = card.getAttribute('href')
       window.dispatchEvent(new HashChangeEvent('hashchange'))

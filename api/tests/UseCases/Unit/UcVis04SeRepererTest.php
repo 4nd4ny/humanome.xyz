@@ -55,8 +55,8 @@ final class UcVis04SeRepererTest extends TestCase
         self::assertSame(['apprenant', 'cartographe', 'etablissement'], Users::rolesOf(self::$pdo, $id));
     }
 
-    #[TestDox('UC-VIS-04-U02 — rolesOf : compte sans rôle ou inconnu → liste vide (navigation « visiteur » : Découvrir + Compte)')]
-    public function testU02NoRoleMeansVisitorNavigation(): void
+    #[TestDox('UC-VIS-04-U02 — rolesOf : compte sans rôle ou inconnu → liste vide (aucune famille de rôle : Découvrir et la famille du compte)')]
+    public function testU02NoRoleMeansNoRoleFamily(): void
     {
         self::assertSame([], Users::rolesOf(self::$pdo, self::user()));
         self::assertSame([], Users::rolesOf(self::$pdo, 999_999));

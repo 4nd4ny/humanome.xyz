@@ -214,7 +214,27 @@ export function useCartoData(deps = {}) {
     return up
   }, [])
 
-  const openDataset = useCallback(async (datasetId) => showDataset(await store.loadDataset(datasetId)), [store, showDataset])
+  /**
+   * Lit un jeu rangé ici pour l'ouvrir : un jeu importé avant que l'index ne
+   * dise la date du passage de ses traces la reçoit, une fois (sprint 4, T2 ;
+   * store `addPassageDates`). Si la passe échoue, le jeu s'ouvre tel quel :
+   * seuls les liens vers l'analyse qui a relevé un passage manquent.
+   */
+  const loadStored = useCallback(
+    async (datasetId) => {
+      if (typeof store.addPassageDates === 'function') {
+        try {
+          return await store.addPassageDates(datasetId)
+        } catch (err) {
+          console.warn('Dates des passages non écrites :', err)
+        }
+      }
+      return store.loadDataset(datasetId)
+    },
+    [store],
+  )
+
+  const openDataset = useCallback(async (datasetId) => showDataset(await loadStored(datasetId)), [loadStored, showDataset])
 
   // ---- Mises à jour de l'index (enregistrement différé) ----------------------
   // Un jeu supprimé (ou une démonstration remplacée) dans un autre onglet n'est
@@ -626,7 +646,7 @@ export function useCartoData(deps = {}) {
         }
         const wanted = readPref(CURRENT_KEY)
         const id = list.some((d) => d.datasetId === wanted) ? wanted : list[0].datasetId
-        const stored = await store.loadDataset(id)
+        const stored = await loadStored(id)
         if (cancelled) return
         showDataset(stored)
         // Une démonstration intacte se met à jour en arrière-plan (D-57).
@@ -648,7 +668,7 @@ export function useCartoData(deps = {}) {
     return () => {
       cancelled = true
     }
-  }, [refreshList, showDataset, store])
+  }, [refreshList, showDataset, store, loadStored])
 
   /** Supprime un jeu de données (après confirmation en deux temps dans l'UI). */
   const deleteDataset = useCallback(

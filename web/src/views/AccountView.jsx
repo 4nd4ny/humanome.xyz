@@ -18,6 +18,7 @@ import ApiKeysSection from './account/ApiKeysSection.jsx'
 import Avatar from '../components/Avatar.jsx'
 import { resizeAvatar } from '../lib/resize-image.js'
 import { dropAllDrafts } from '../carto/ui/shareDrafts.js'
+import { useUiMode } from '../lib/ui-mode.js'
 
 const PASSWORD_MIN_LENGTH = 10
 
@@ -30,6 +31,35 @@ const ROLE_LABELS = {
   employeur: 'Employeur',
   etablissement: 'Établissement',
   admin: 'Administrateur',
+}
+
+/**
+ * Ligne « Affichage » du profil : le mode expert, réglage de CE navigateur
+ * (pas du compte, V1), qui ne change aucun droit.
+ */
+function DisplayModeRow() {
+  const { expert, setExpert } = useUiMode()
+  return (
+    <div className="account-row">
+      <dt>Affichage</dt>
+      <dd>
+        <label>
+          <input
+            type="checkbox"
+            role="switch"
+            checked={expert}
+            onChange={(event) => setExpert(event.target.checked)}
+          />{' '}
+          Mode expert
+        </label>
+        <span className="field-hint">
+          {' '}
+          — profils Twin9, versions de prompt, modèles, comparaison, réglages fins. Gardé dans ce
+          navigateur ; il ne change aucun droit.
+        </span>
+      </dd>
+    </div>
+  )
 }
 
 /**
@@ -438,6 +468,9 @@ export default function AccountView({ initialActivation = null }) {
                   : 'Aucun rôle attribué pour l’instant'}
               </dd>
             </div>
+            {/* « Mes rôles » : ce que je fais ; « Affichage » : ce que je vois
+                (lib/ui-mode.js). Le même réglage que l'interrupteur du menu. */}
+            <DisplayModeRow />
           </dl>
           <button type="button" className="button" onClick={handleLogout} disabled={busy}>
             Se déconnecter

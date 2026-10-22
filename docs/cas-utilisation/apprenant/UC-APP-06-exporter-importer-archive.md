@@ -22,7 +22,7 @@
 |---|---|
 | **Acteur principal** | Apprenant (fonctionne aussi sans session) |
 | **Acteurs secondaires** | — (le serveur ne fournit que des lectures) |
-| **Portée** | humanome.xyz — section « Mes données » du tableau de bord `#/espace`, entièrement dans le navigateur |
+| **Portée** | humanome.xyz — section « Mes données » du tableau de bord `#/espace`, entièrement dans le navigateur ; « Préparer une démo » de l'espace Export de la cartographie (`#/cartographie/export`, A6) |
 | **Niveau** | Objectif utilisateur |
 | **Cahier des charges** | §3.2 (exporter/importer son compte complet : portfolio, cartographies, prompts utilisés, référentiel), §4.2, §5 (clone déployable), §6.1 (export local systématique), §6.3 (export en un clic) |
 | **Décisions** | ADR-006 (archive d'export, format pivot), ADR-001 (client-first) ; `docs/autorisations.md` (P8 : pas de route `/api/account/export|import` en v1) |
@@ -145,6 +145,19 @@ archive ») dans la section « Mes données » du tableau de bord `#/espace`.
   d'ailleurs, importé dans l'interface) est laissé de côté, seul, et nommé
   (« 1 jeu(x) illisible(s) laissé(s) de côté (« … ») : exportez-le(s) depuis
   l'espace Export de la cartographie. ») ; le reste de l'archive part.
+- **A6 — Préparer une démo, depuis l'espace Export de la cartographie**
+  (rattaché ici le 2026-10-22 : aucune fiche ne le décrivait) : à côté de ses
+  quatre formats (archive JSON, copie autonome HTML, portfolio Markdown,
+  rapport imprimable), l'espace Export de l'interface de cartographie
+  propose « Préparer une démo » : une copie anonymisée du jeu ouvert, pour
+  déposer une démonstration sur le serveur (UC-ADM-04 traite la démo
+  publique côté serveur). Les noms choisis sont remplacés partout (portfolio,
+  extraits, jury) pour que les surlignages tiennent ; la table de
+  correspondance n'est jamais exportée. Cet outil n'est proposé qu'en
+  **mode expert**
+  ([UC-VIS-06](../visiteur/UC-VIS-06-choisir-affichage-simple-expert.md)) :
+  en mode simple, la carte et l'outil ne s'affichent pas ; les quatre
+  formats restent.
 
 ## Scénarios d'erreur
 
@@ -219,6 +232,7 @@ archive ») dans la section « Mes données » du tableau de bord `#/espace`.
 | Front | `web/src/lib/carto-store.js`, `web/src/lib/portfolio-store.js` | Sources et cibles locales |
 | Front | `web/src/carto/core/store.js`, `archive.js` (`buildArchive`), `import.js` (`importFiles`) | Jeux de l'interface de cartographie : lecture, archive master v4, restauration |
 | Front | `web/src/api/client.js` — `fetchMe`, `apiFetch` ; `web/src/data/referentiel.js` ; `web/src/data/load.js` — `getReferentiel`, `frenchDate` | Lectures du compte, des paquets, de la masse ; référentiel publié ou embarqué ; dates des titres dérivés |
+| Front | `web/src/carto/ui/ExportPanel.jsx`, `web/src/carto/ui/DemoTool.jsx`, `web/src/carto/core/anonymize.js` | Espace Export de la cartographie, « Préparer une démo » (A6), proposé en mode expert seulement — unitaire : UC-VIS-06-U07 ; `anonymize.test.js` |
 | Moteur | `engine/src/validation.js` — `validateDocument('archive-export')` ; `schemas/archive-export.schema.json` | Contrat pivot (ADR-006) |
 | API | `GET /api/auth/me` (`api/src/routes/auth.php`), `GET /api/prompt-packages`, `GET /api/prompt-packages/{id}/{version}` (`packages.php`, lecture publique), `GET /api/mes-documents-masse` (`etablissement.php`, `RequireRole` `apprenant`), `GET /api/twin9/mes-analyses` (`twin9-runs.php`, session) | Lectures seules |
 | Domaine | `api/src/Packages/PromptPackageRepository.php` — `listPublished`, `findPublished` | Paquet embarqué, filtrage des paquets privés |
@@ -263,6 +277,7 @@ archive ») dans la section « Mes données » du tableau de bord `#/espace`.
 | UC-APP-06-F05 | A3 | IHM | Réimport : 0 restauré | idem |
 | UC-APP-06-F06 | A4 | IHM | Fixture d'une autre instance : titres dérivés, traçabilité conservée ; id `inconnu` → `null`, version `0.0.0` d'un id réel conservée | idem |
 | UC-APP-06-F17 | Nominal (1.1.0) | IHM | Jeux de l'interface de cartographie : dans l'archive (démonstration exceptée), conforme, portfolio, réponses et carnet compris ; navigateur neuf : jeu restauré à l'identique, démonstration absente ; réimport : rien | idem |
+| UC-APP-06-F18 | A6 | IHM | Espace Export de la cartographie (`#/cartographie/export`), apprenant en mode simple : les quatre formats, pas « Préparer une démo » ; « Mode expert » activé depuis le tiroir : la carte paraît, « Ouvrir l'outil d'anonymisation » ouvre l'outil | idem |
 | UC-APP-06-F07 | E1, E2, E3 | IHM | Fichier refusé (3 cas), alerte, rien d'importé | idem |
 | UC-APP-06-F08 | E4 (anomalie A-03) | IHM | **Comportement actuel** : une analyse Twin9 locale annule tout l'export | idem |
 | UC-APP-06-F09 | Nominal (anomalie A-01) | IHM | **Comportement actuel** : paquet embarqué = 1er publié, pas celui des cartographies | idem |
@@ -282,6 +297,7 @@ archive ») dans la section « Mes données » du tableau de bord `#/espace`.
 - `api/tests/MasseLearnerAccessTest.php` — `GET /api/mes-documents-masse` (droits, isolation, départ de cohorte).
 - `api/tests/PackagesTest.php` — lecture publique des paquets publiés.
 - `web/e2e/parcours-apprenant.e2e.js` — étape « Export de l'archive » (validée par le moteur, navigateur réel).
+- A6 : `web/src/carto/core/anonymize.test.js` (remplacements), `web/e2e/carto-export.e2e.js` (démo anonymisée ouverte en `file://`, surlignages ; mode expert posé dans le navigateur), UC-VIS-06-U07 (carte absente en mode simple).
 
 ### Exécuter
 

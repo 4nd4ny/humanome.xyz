@@ -76,6 +76,28 @@ describe('EspaceView — tableau de bord (#/espace)', () => {
     )
   })
 
+  it('bloc portfolios : « Cartographier mes écrits » (principal) puis « Mes analyses approfondies » (Twin9, sprint 1 amélioration 10)', async () => {
+    render(
+      <EspaceView
+        section={null}
+        deps={{
+          fetchMeFn: connecte,
+          portfolioStore: await seededPortfolios(),
+          trainingStore: fakeTrainingStore(),
+          cartographiesPanel: FakePanel,
+        }}
+      />,
+    )
+    await screen.findByText('Journal Astrolabe')
+    const bloc = screen.getByRole('region', { name: 'Mes portfolios' })
+    const boutons = [...bloc.querySelectorAll('a.button')].map((a) => [a.textContent, a.getAttribute('href'), a.className])
+    expect(boutons).toEqual([
+      ['Gérer mes portfolios', '#/portfolio', 'button'],
+      ['Cartographier mes écrits', '#/espace/nouveau-run', 'button button-primary'],
+      ['Mes analyses approfondies', '#/twin9', 'button'],
+    ])
+  })
+
   it('bandeau anonyme : tout marche en local, invite à se connecter', async () => {
     render(
       <EspaceView

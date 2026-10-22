@@ -21,6 +21,7 @@ import * as fakeLib from '../../../src/test/fake-sunburst-lib.js'
 import { calledUrls, jsonResponse } from '../support/vis.js'
 import { FakeIDBKeyRange, createFakeIndexedDb } from '../support/appl-fake-indexeddb.js'
 import { routedFetch } from '../support/appl-http.js'
+import profilV98 from '../../../../api/config/twin9-profil-v98.json'
 
 // F20 : magasins locaux réels (portfolios, cartographies, Twin9) sur un
 // IndexedDB factice — jsdom n'en fournit pas.
@@ -208,6 +209,33 @@ describe('UC-VIS-04 — guides publics', () => {
     expect(new Set(calledUrls(network))).toEqual(new Set(['api/auth/me']))
   })
 
+  // Sprint 1, amélioration 14 (2026-10-22) : ses propres parcours d'abord.
+  it('UC-VIS-04-F21 — A4 : hub des guides — un visiteur voit « Pour commencer » (visiteur, apprenant, employeur) puis « Autres parcours » ; un compte cartographe voit d’abord « Vos guides » (apprenant, cartographe)', async () => {
+    stubNetwork()
+    openApp('#/guides')
+    const cards = (name) =>
+      [...screen.getByRole('region', { name }).querySelectorAll('.guides-card a')].map((a) => a.getAttribute('href'))
+    await waitFor(() => expect(cards('Pour commencer')).toEqual(['#/guides/visiteur', '#/guides/apprenant', '#/guides/employeur']))
+    expect(cards('Autres parcours')).toHaveLength(6)
+    cleanup()
+    resetApiClient()
+
+    const cartographe = { id: 8, email: 'carto@example.org', displayName: 'Cara', roles: ['apprenant', 'cartographe'], hasAvatar: false }
+    vi.stubGlobal('fetch', routedFetch([['api/auth/me', () => jsonResponse(200, { user: cartographe, csrfToken: 'csrf' })]]))
+    openApp('#/guides', async () => ({ user: cartographe }))
+    await waitFor(() => expect(cards('Vos guides')).toEqual(['#/guides/apprenant', '#/guides/cartographe']))
+    expect(cards('Autres parcours')).toEqual([
+      '#/guides/visiteur',
+      '#/guides/employeur',
+      '#/guides/etablissement',
+      '#/guides/epistemiarque',
+      '#/guides/promptologue',
+      '#/guides/admin',
+      '#/guides/noesiologie',
+    ])
+    expect(screen.queryByRole('region', { name: 'Pour commencer' })).toBeNull()
+  })
+
   it('UC-VIS-04-F10 — E2 : guide ou chapitre inconnu → message et lien de retour', async () => {
     stubNetwork()
     openApp('#/guides/inconnu')
@@ -333,19 +361,22 @@ describe('UC-VIS-04 — session réelle du shell', () => {
     expect(new Set(calledUrls(network))).toEqual(new Set(['api/auth/me']))
   })
 
-  // ANOMALIE AN2 — comportement ACTUEL figé : le shell dérive « connecté » de
-  // roles.length > 0. Un compte SANS rôle (dernier rôle retiré par l'admin)
-  // voit la navigation d'un visiteur : « Se connecter », pas de « Se
-  // déconnecter » ni d'identité. Attendu : navigation de compte.
-  it('UC-VIS-04-F19 — [comportement actuel, anomalie AN2] session d’un compte sans aucun rôle → navigation de visiteur, pas de déconnexion depuis le menu', async () => {
+  // Anomalie AN2, corrigée le 2026-10-22 : le shell dérive « connecté » de la
+  // présence d'un utilisateur de session, et non plus de roles.length > 0. Un
+  // compte SANS rôle (dernier rôle retiré par l'admin) garde « Mon compte »,
+  // son identité et « Se déconnecter » ; l'accueil dit « Vos espaces », sans
+  // la barre des profils d'un visiteur.
+  it('UC-VIS-04-F19 — anomalie AN2 corrigée : session d’un compte sans aucun rôle → « Mon compte », identité et « Se déconnecter » dans le menu, « Vos espaces » à l’accueil', async () => {
     stubNetwork()
     openApp('#/', async () => ({ user: { id: 3, displayName: 'Zoé', roles: [], hasAvatar: false } }))
 
-    await waitFor(() => expect(screen.getByRole('heading', { name: 'Explorer le site' })).toBeDefined())
-    expect(groups()).toEqual(['Découvrir', 'Compte'])
-    expect(mainNav().getByRole('link', { name: 'Se connecter' })).toBeDefined()
-    expect(mainNav().queryByRole('button', { name: 'Se déconnecter' })).toBeNull()
-    expect(mainNav().queryByRole('link', { name: 'Mon profil' })).toBeNull()
+    await waitFor(() => expect(groups()).toEqual(['Découvrir', 'Mon compte']))
+    expect(screen.getByRole('heading', { name: 'Vos espaces' })).toBeDefined()
+    expect(screen.queryByRole('button', { name: 'Voir les profils d’utilisateurs' })).toBeNull()
+    expect(mainNav().queryByRole('link', { name: 'Se connecter' })).toBeNull()
+    expect(mainNav().getByRole('link', { name: 'Profil et rôles' })).toBeDefined()
+    expect(mainNav().getByRole('button', { name: 'Se déconnecter' })).toBeDefined()
+    expect(mainNav().getByRole('link', { name: 'Mon profil' }).textContent).toContain('Zoé')
   })
 })
 
@@ -381,7 +412,8 @@ describe('UC-VIS-04 — liens du panneau pour un compte multi-rôles', () => {
       ['api/prompt-packages', () => jsonResponse(200, [])],
       // L'analyse approfondie tourne sur cette instance ; le compte n'a ni run ni profil.
       ['api/twin9/runs', () => jsonResponse(200, { disponible: true, runs: [] })],
-      ['api/twin9/configuration', () => jsonResponse(200, { profils: [], referentiels: [], gabarits: ['v9.8'], cle_perso_ouverte: false, cle_perso_enregistree: false })],
+      // Le profil par défaut (v9.8) : la page des profils Twin9 en part (F20, « Mes profils Twin9 »).
+      ['api/twin9/configuration', () => jsonResponse(200, { profils: [], defaut: profilV98, referentiels: [], gabarits: ['v9.8'], cle_perso_ouverte: false, cle_perso_enregistree: false })],
       ['api/twin9/admin/jeux', () => jsonResponse(200, { defaut: 'v9.8', jeux: [{ id: 'v9.8', auteur: null, mien: false, gabarits: 0, created_at: null, defaut: true }] })],
       ['api/twin9/admin/jeux/v9.8/protocole', () => jsonResponse(200, { protocole: [] })],
     ])
@@ -452,6 +484,20 @@ describe('UC-VIS-04 — liens du panneau pour un compte multi-rôles', () => {
       },
     },
     {
+      // Entrée de menu ajoutée le 2026-10-22 (mode expert, UC-VIS-06) : un
+      // compte qui porte un rôle de travail est en mode expert par défaut.
+      name: 'Mes profils Twin9',
+      href: '#/configuration',
+      badge: null,
+      hint: 'réglages de l’analyse approfondie',
+      reached: async () => {
+        await h2('Configuration de Twin9')
+        // Session reconnue par le serveur simulé : pas l'invite à se connecter.
+        await waitFor(() => expect(fetch.calls.some((c) => c.url === 'api/twin9/configuration')).toBe(true))
+        expect(screen.queryByText(/pour régler vos runs Twin9/)).toBeNull()
+      },
+    },
+    {
       name: 'Atelier de prompts',
       href: '#/promptologue',
       badge: null,
@@ -471,6 +517,19 @@ describe('UC-VIS-04 — liens du panneau pour un compte multi-rôles', () => {
         // Rôles du SHELL admin ∧ promptologue : l'atelier (gabarits), pas l'écran réservé.
         expect(await screen.findByRole('heading', { level: 3, name: 'Gabarits du Golden Prompt — jeu « v9.8 »' })).toBeDefined()
         expect(screen.queryByTestId('twin9-atelier-reserve')).toBeNull()
+      },
+    },
+    {
+      // Entrée de menu ajoutée le 2026-10-22 (sprint 1, amélioration 7) ;
+      // api/admin/monitoring n'est pas routé : la section affiche son erreur.
+      name: 'Monitoring',
+      href: '#/admin/monitoring',
+      badge: null,
+      hint: null,
+      reached: async () => {
+        await h1('Administration')
+        await h2('Monitoring')
+        expect(adminTab()).toBe('Monitoring')
       },
     },
     {

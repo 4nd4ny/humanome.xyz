@@ -101,11 +101,11 @@ test('parcours apprenant complet : compte, portfolio, run mock, partage depuis l
       .check()
     await page.getByRole('button', { name: 'Continuer' }).click()
 
-    // (b) version de prompt : le paquet par défaut reste sélectionné.
+    // (b) référentiel : un compte apprenant est en mode simple par défaut
+    // (UC-VIS-06) — pas de liste de versions, le protocole embarqué en une ligne.
     await expect(page.getByTestId('step-prompt')).toBeVisible()
-    await expect(
-      page.getByRole('radio', { name: /aurora-v3-reconstruit@1\.1\.0/ }),
-    ).toBeChecked()
+    await expect(page.getByTestId('run-protocol')).toContainText('aurora-v3-reconstruit@1.1.0 (embarqué)')
+    await expect(page.getByRole('radio', { name: /aurora-v3-reconstruit@1\.1\.0/ })).toHaveCount(0)
     await page.getByRole('button', { name: 'Continuer' }).click()
 
     // (c) fournisseur : « Service humanome » (proxy mock + preuve de travail).

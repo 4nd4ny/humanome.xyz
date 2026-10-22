@@ -284,6 +284,18 @@ describe('UC-APP-03 — scénarios d’erreur', () => {
     expect(within(portfolios).getByRole('link', { name: 'Cartographier mes écrits' }).getAttribute('href')).toBe('#/espace/nouveau-run')
   })
 
+  it('UC-APP-03-F16 — E2 : à côté de « Cartographier mes écrits », « Mes analyses approfondies » mène aux analyses Twin9 (#/twin9)', async () => {
+    stubNetwork()
+    openDashboard()
+
+    const portfolios = await screen.findByRole('region', { name: 'Mes portfolios' })
+    const lien = within(portfolios).getByRole('link', { name: 'Mes analyses approfondies' })
+    expect(lien.getAttribute('href')).toBe('#/twin9')
+    // Lien secondaire : l'assistant standard reste l'action principale.
+    expect(within(portfolios).getByRole('link', { name: 'Cartographier mes écrits' }).className).toContain('button-primary')
+    expect(lien.className).not.toContain('button-primary')
+  })
+
   it('UC-APP-03-F09 — E3 : entrée sans document : « Voir » et « Télécharger le JSON » inactifs', async () => {
     await createCartoStore().saveCartography({ type: 'merge', titre: 'Entrée vide' })
     stubNetwork()

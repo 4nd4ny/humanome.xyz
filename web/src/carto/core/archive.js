@@ -9,7 +9,7 @@
 // `includesPortfolio`. Sans le portfolio, les volumes par jour restent (la
 // heatmap reste juste) mais le texte part : le surlignage devient indisponible.
 
-import { KIND, SCHEMA_VERSION } from './model.js'
+import { KIND, SCHEMA_VERSION, variantWithPassageDates } from './model.js'
 import { isIsoDate } from './dates.js'
 import { withoutRestatements } from './restatement.js'
 import { isSplitIndex } from './split.js'
@@ -83,11 +83,14 @@ export function importArchive(doc, { fileName = 'archive.json' } = {}) {
     }
     const detail = details[day.date] ?? null
     for (const summary of day.variants ?? []) {
+      const vd = detail?.variants?.[summary.id]
       variants.push({
         date: day.date,
-        summary,
+        // Une archive d'avant le sprint 4 (T2) n'a pas la date du passage de ses
+        // traces dans l'index (`at`) : elle est lue dans leur détail.
+        summary: remote ? summary : variantWithPassageDates(summary, vd, day.date),
         // Une archive construite avant D-66 garde les textes complets qui redisent leurs rubriques : allégée ici.
-        detail: remote ? null : withoutRestatements(detail?.variants?.[summary.id] ?? { verdicts: {}, passages: [], poleReports: {}, audits: {}, kairos: null, kairosRaw: null, emergences: null }),
+        detail: remote ? null : withoutRestatements(vd ?? { verdicts: {}, passages: [], poleReports: {}, audits: {}, kairos: null, kairosRaw: null, emergences: null }),
       })
     }
     if (detail?.portfolio && typeof detail.portfolio.text === 'string') {

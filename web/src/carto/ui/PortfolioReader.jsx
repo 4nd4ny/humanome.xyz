@@ -13,8 +13,11 @@
 // jaune (début et fin retrouvés), en orange (un seul bout) ou encadré en
 // pointillés (approché), et chaque marque qui n'est pas le jaune est dite une
 // fois, là où elle apparaît. Le surlignage fonctionne dans toute cartographie
-// fusionnée : chaque trace garde sa journée et la date de son passage. Hors
-// ligne : aucun réseau, aucun nouvel onglet.
+// fusionnée : chaque trace garde sa journée et la date de son passage. Quand
+// le volet montre une autre journée que celle de l'analyse qui a retenu la
+// trace (une analyse qui couvre plusieurs journées du portfolio, sprint 4), il
+// le dit et ouvre, sur demande, la journée analysée (D-14). Hors ligne : aucun
+// réseau, aucun nouvel onglet.
 
 import { useEffect, useMemo, useRef, useState } from 'react'
 import { formatLong, weekdayName } from '../core/dates.js'
@@ -124,9 +127,12 @@ function quoteCaption(result, { portfolioCount, primaryHasText, primary, demo })
  *   getDetail: (date: string) => object | null | undefined, ensureDetails: (dates: string[]) => Promise<void>,
  *   reducedMotion?: boolean,
  *   onClose: () => void, onIndex?: (i: number) => void,
+ *   onOpenDay?: (d: string, code?: string) => void,
  * }} props
+ *   onOpenDay : ouvre la journée de l'analyse qui a retenu la trace (bouton
+ *   « Ouvrir la journée analysée », quand le volet en montre une autre)
  */
-export function PortfolioReader({ target, dataset, refl, getDetail, ensureDetails, reducedMotion = false, onClose, onIndex }) {
+export function PortfolioReader({ target, dataset, refl, getDetail, ensureDetails, reducedMotion = false, onClose, onIndex, onOpenDay }) {
   const palette = usePalette()
   const panelRef = useRef(null)
   const headingRef = useRef(null)
@@ -238,10 +244,16 @@ export function PortfolioReader({ target, dataset, refl, getDetail, ensureDetail
   // Passage lu dans la feuille d'un autre jour que celui de la trace (décalage de date de l'analyse).
   const elsewhere = settled && shownDate !== want.primary
   const isTrace = target.kind === 'trace'
+  // Journée de l'analyse qui a retenu la trace, quand le volet en montre une
+  // autre (D-14) : le bouton y mène. Sa date ne se dit que si elle n'est pas
+  // déjà celle de la trace, dite par « datée du » (D-66).
+  const analysed = isTrace && settled && want.secondary && shownDate !== want.secondary ? want.secondary : null
+  const otherAnalysis = analysed !== null && analysed !== want.primary
   const details = []
   if (n > 1) details.push(`trace ${k + 1} sur ${n}`)
   if (want.role) details.push(ROLE_LABELS[want.role] ?? want.role)
   if (elsewhere) details.push(`${isTrace ? 'datée' : 'daté'} du ${formatLong(want.primary)}`)
+  if (otherAnalysis) details.push(`trace de l’analyse du ${formatLong(analysed)}`)
   const detailLine = details.join(', ')
 
   // Pour les lecteurs d'écran seulement : ce que la mise en page montre
@@ -253,6 +265,7 @@ export function PortfolioReader({ target, dataset, refl, getDetail, ensureDetail
   else if (result?.status === 'found') outcome = 'Passage surligné.'
   else if (result?.status === 'relocated') outcome = `Passage surligné dans cette feuille ; ${isTrace ? 'la trace est datée' : 'le passage est daté'} du ${formatLong(want.primary)}.`
   else outcome = caption ?? ''
+  if (otherAnalysis) outcome = `${outcome ? `${outcome} ` : ''}Trace de l’analyse du ${formatLong(analysed)}.`
   const live = `${n > 1 ? `Trace ${k + 1} sur ${n}, ` : ''}${weekdayName(shownDate)} ${formatLong(shownDate)} : ${outcome}`
   const occurrenceWord = result?.status === 'approximate' ? 'Phrase' : 'Occurrence'
 
@@ -305,6 +318,13 @@ export function PortfolioReader({ target, dataset, refl, getDetail, ensureDetail
             {detailLine ? <span className="carto-reader-sub">{detailLine}</span> : null}
           </p>
         )}
+        {analysed && onOpenDay ? (
+          <p className="carto-reader-note">
+            <button type="button" className="carto-link-btn" onClick={() => onOpenDay(analysed, target.code)} title={`Ouvrir la cartographie du ${formatLong(analysed)}`}>
+              Ouvrir la journée analysée
+            </button>
+          </p>
+        ) : null}
         {caption ? (
           <figure className="carto-reader-quote">
             <figcaption>{caption}</figcaption>

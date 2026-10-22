@@ -21,6 +21,8 @@ import * as fakeLib from '../../../src/test/fake-sunburst-lib.js'
 import respire from '../../../public/data/referentiel/respire-v7.json'
 import { FakeIDBKeyRange, createFakeIndexedDb } from '../support/appl-fake-indexeddb.js'
 import { bodyOf, jsonResponse, meResponse, stubFetch } from '../support/twin.js'
+// un run configuré, tel que ses résultats le rendent à son propriétaire (P0-1) : valeurs inventées
+import exemple from '../../../../schemas/fixtures/twin9-configuration-exemple.json'
 
 const idb = createFakeIndexedDb()
 const CSRF = 'csrf-twin-lot'
@@ -425,4 +427,56 @@ describe('UC-APP-10 — l’apprenant lance une analyse approfondie, la suit et 
     // Le run fini ne s'avance plus.
     expect(ecritures(calls, 'POST twin9/runs/avancer')).toEqual([])
   })
+
+  it('UC-APP-10-F21 — P0-1 : la page du run fini ouvre sa configuration (rôles, fournisseurs et étiquette RGPD, voies, modèles, budgets de sortie ; appels, pannes, sorties tronquées, coût), lue dans ses résultats ; ouvert dans la cartographie, le jeu ne garde de sa configuration que la liste blanche', async () => {
+    const r = resultats()
+    r.run = { ...r.run, configuration: exemple.run.configuration, execution: exemple.run.execution }
+    const { calls } = stubFetch(
+      routes({
+        // ses compteurs par étape nomment celle de la sortie tronquée
+        'GET twin9/runs/7': jsonResponse(200, {
+          ...fini(),
+          compteurs: { ...fini().compteurs, par_etape: { greffier: { appels: 2, pannes: 1, tronques: 1, cout_microusd: 900 } } },
+          configuration_empreinte: exemple.run.configuration.empreinte,
+        }),
+        'GET twin9/runs/7/resultats': jsonResponse(200, r),
+      }),
+    )
+    await openApp('#/twin9/7')
+    await waitFor(() => expect(screen.getByRole('status').textContent).toBe('Terminé'))
+    // à côté de l'attestation, qui ne change pas
+    const attestation = screen.getByText('Attestation').closest('details')
+    expect([...attestation.querySelectorAll('dt')].map((dt) => dt.textContent)).toEqual(['Profil', 'Référentiel', 'Jeu de gabarits', 'Moteur', 'Admission', 'Accord'])
+    const configuration = screen.getByText('Configuration').closest('details')
+    expect(calls.filter((c) => c.key === 'GET twin9/runs/7/resultats')).toHaveLength(0)
+    fireEvent.click(configuration.querySelector('summary'))
+    await within(configuration).findByText('Réglages des appels')
+    expect(configuration.querySelector('tr[data-role="etages/profond"]').textContent).toBe('Analyse profondeAnthropic RGPD : sous conditionspar lotsclaude-exemple-profond4000')
+    const ligne = (terme) => [...configuration.querySelectorAll('dt')].find((dt) => dt.textContent === terme).nextElementSibling.textContent
+    expect(ligne('Clé')).toBe('celle de l’instance')
+    expect(ligne('Appels')).toBe('9 : 8 répondus, 1 en panne dont 1 sortie tronquée')
+    expect(ligne('Coût')).toBe('0,0042 $')
+    // le conseil nomme l'étape, et dit le coût du remède : toute la carte instruite de nouveau
+    const conseil = configuration.querySelector('.twin9-conseil').textContent
+    expect(conseil).toContain('Une sortie tronquée a été comptée en panne (étape « Greffier »).')
+    expect(conseil).toContain('augmentez le budget de sortie de l’étape « Greffier »')
+    expect(conseil).toContain('toutes les journées de la carte sont instruites de nouveau, et payées, pas seulement celles d’une panne')
+
+    // ouvert dans la cartographie : chaque journée dit ses modèles et son jeu ; ni prix, ni coût, ni plafond, ni clé dans le jeu
+    fireEvent.click(screen.getByRole('button', { name: 'Ouvrir dans la cartographie' }))
+    await waitFor(() => expect(window.location.hash).toBe('#/cartographie'))
+    await waitFor(() => expect(document.querySelector('.carto-context-dataset')?.textContent).toBe('Twin9 · mon-journal · RESPIRE v7'), ATTENTE)
+    const store = createInterfaceStore()
+    const [jeu] = await store.listDatasets()
+    const tout = await store.exportAll(jeu.datasetId)
+    expect(tout.runDetails['twin9:7|configuration'].configuration.gabarits).toEqual({ jeu: 'jeu-exemple' })
+    const provenance = tout.dataset.days[0].variants[0].provenance
+    expect([provenance.model, provenance.prompt, provenance.configurationRef]).toEqual([
+      'profond: claude-exemple-profond, rapide: claude-exemple-rapide, lecteurs: claude-exemple-rapide',
+      'gabarits jeu-exemple',
+      'twin9:7|configuration',
+    ])
+    expect(JSON.stringify(tout)).not.toMatch(/"prix"|"grille"|"cle"|"plafonds"|"budget_usd"|"cout_microusd"|"reprises"|reserve_microusd/)
+  })
 })
+

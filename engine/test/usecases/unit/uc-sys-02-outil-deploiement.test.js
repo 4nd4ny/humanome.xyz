@@ -300,7 +300,7 @@ describe('UC-SYS-02 — outil de déploiement deploy.mjs (sous-processus, faux F
     }
   }, TIMEOUT)
 
-  it('UC-SYS-02-F21 — Nominal étapes 3 à 9 (RG6) : release téléversée sous un nom assaini, front-controller, PUIS current.txt, élagage à 3, et seulement ensuite la séquence distante (migrate, référentiel présent seulement, seed, paquets .json, santé) ; seed en échec (E11) → arrêt, pointeur déjà basculé ; sans MIGRATE_TOKEN → santé seule ; santé sans "ok" → code 1', async () => {
+  it('UC-SYS-02-F21 — Nominal étapes 3 à 9 (RG6) : release téléversée sous un nom assaini, front-controller, PUIS current.txt, la session FTP fermée ; migrate AUSSITÔT, puis l’élagage à 3 (une seconde session), puis la suite distante (référentiel présent seulement, seed, paquets .json, santé) ; migrate en échec → arrêt, pointeur basculé, rien d’élagué ; seed en échec (E11) → arrêt, pointeur déjà basculé ; sans MIGRATE_TOKEN → élagage et santé seuls ; santé sans "ok" → code 1', async () => {
     const files = {
       'build/api-release/VERSION': 'v1.4.0-2-gabc123/dirty\n',
       'build/api-release/public/index.php': '<?php // release factice (test)\n',
@@ -342,9 +342,12 @@ describe('UC-SYS-02 — outil de déploiement deploy.mjs (sous-processus, faux F
         'app/current.txt', // pointeur écrit APRÈS la release et le front-controller
       ])
       expect(uploads(checkout).at(-1)).toMatchObject({ text: `releases/${release}\n`, source: 'stream' })
-      // Élagage : 4 releases → les 3 plus récentes gardées (ordre des noms).
+      // Le pointeur écrit, la session se ferme ; l'élagage vient dans une seconde session, APRÈS la migration :
+      // 4 releases → les 3 plus récentes gardées (ordre des noms).
       const ops = ftpCalls(checkout)
-      expect(ops.slice(ops.findIndex((c) => c.path === 'app/current.txt') + 1)).toEqual([
+      const pointeur = ops.findIndex((c) => c.path === 'app/current.txt')
+      expect(ops.slice(pointeur + 1).map((c) => c.op)).toEqual(['close', 'new', 'access', 'cd', 'list', 'removeDir', 'cd', 'close'])
+      expect(ops.slice(pointeur + 5)).toEqual([
         { op: 'list', path: 'app/releases' },
         { op: 'removeDir', path: `app/releases/${older[0]}` },
         { op: 'cd', path: '/' },
@@ -352,7 +355,9 @@ describe('UC-SYS-02 — outil de déploiement deploy.mjs (sous-processus, faux F
       ])
       expect(remoteState(checkout).releases.sort()).toEqual([older[1], active, release])
 
-      // Séquence distante : toutes les requêtes APRÈS la fin du FTP (RG6), jeton en en-tête.
+      // Séquence distante, jeton en en-tête, jamais pendant une session FTP (RG6) : la migration dès le pointeur
+      // basculé — la nouvelle release ne tourne sur l'ancien schéma que le temps de cette requête —, le reste après
+      // l'élagage.
       expect(requests.map((r) => `${r.method} ${r.url}`)).toEqual([
         'POST /api/admin/migrate',
         'POST /api/admin/import-referentiel',
@@ -361,11 +366,27 @@ describe('UC-SYS-02 — outil de déploiement deploy.mjs (sous-processus, faux F
         'POST /api/admin/import-prompt-package',
         'GET /api/health',
       ])
-      expect(requests.every((r) => r.ftpCallsBefore === ops.length)).toBe(true)
+      expect(requests[0].ftpCallsBefore).toBe(pointeur + 2)
+      expect(requests.slice(1).every((r) => r.ftpCallsBefore === ops.length)).toBe(true)
       expect(requests.slice(0, -1).every((r) => r.token === MIGRATE_TOKEN)).toBe(true)
       expect(requests.at(-1).token).toBeNull()
       expect(requests[1].body).toBe(files['web/public/data/referentiel/respire-v7.1.0.json'])
       expect(requests.slice(3, 5).map((r) => r.body).sort()).toEqual([files['build/prompt-packages/a-paquet.json'], files['build/prompt-packages/b-paquet.json']])
+
+      // Migration en échec : arrêt aussitôt, le pointeur DÉJÀ basculé, rien d'élagué (les releases précédentes
+      // restent pour un retour arrière), ni import ni santé.
+      replies['POST /api/admin/migrate'] = [500, '{"error":"Migration failed, see server log"}']
+      requests.length = 0
+      const avantMigration = ftpCalls(checkout).length
+      const nonMigre = await deploy(checkout, ['api'])
+      expect(nonMigre.status).toBe(1)
+      expect(nonMigre.stderr).toBe('deploy failed: migration endpoint failed\n')
+      expect(requests.map((r) => r.url)).toEqual(['/api/admin/migrate'])
+      const opsNonMigre = ftpCalls(checkout).slice(avantMigration)
+      expect(opsNonMigre.at(-1)).toEqual({ op: 'close' })
+      expect(opsNonMigre.filter((c) => c.op === 'list' || c.op === 'removeDir')).toEqual([])
+      expect(opsNonMigre.filter((c) => c.op === 'uploadFrom').at(-1).path).toBe('app/current.txt')
+      replies['POST /api/admin/migrate'] = [200, '{"applied":[],"skipped":27}']
 
       // Seed en échec (E11) : arrêt avant paquets et santé ; le pointeur a DÉJÀ
       // basculé sur la nouvelle release. (Jusqu'au 2026-10-20, c'était le
@@ -376,19 +397,25 @@ describe('UC-SYS-02 — outil de déploiement deploy.mjs (sous-processus, faux F
       expect(blocked.status).toBe(1)
       expect(blocked.stderr).toBe('deploy failed: competence seed failed\n')
       expect(requests.map((r) => r.url)).toEqual(['/api/admin/migrate', '/api/admin/import-referentiel', '/api/admin/seed-competences'])
-      expect(requests[0].ftpCallsBefore).toBe(ftpCalls(checkout).length) // FTP terminé avant le refus
+      expect(requests[1].ftpCallsBefore).toBe(ftpCalls(checkout).length) // FTP terminé (élagage compris) avant le refus
       const newest = uploads(checkout).at(-1)
       expect(newest.path).toBe('app/current.txt')
       expect(newest.text).toMatch(/^releases\/\d{8}-\d{6}-v1\.4\.0-2-gabc123_dirty\n$/)
       expect(remoteState(checkout).files['app/current.txt']).toBe(newest.text)
 
-      // Sans MIGRATE_TOKEN : étapes 4 à 8 sautées sur un avertissement, santé seule.
+      // Sans MIGRATE_TOKEN : étapes 4 à 8 sautées sur un avertissement, l'élagage et la santé seuls.
       writeFileSync(join(checkout.root, '.env.deploy'), envDeploy({ SITE_URL: base }))
       requests.length = 0
+      const avantSansJeton = ftpCalls(checkout).length
       const skipped = await deploy(checkout, ['api'])
       expect(skipped.status).toBe(0)
       expect(skipped.stderr).toBe('MIGRATE_TOKEN not set in .env.deploy — skipping remote migrations\n')
       expect(requests.map((r) => `${r.method} ${r.url}`)).toEqual(['GET /api/health'])
+      // l'élagage passe (ce qu'il ôte dépend des noms des releases : à la seconde près, deux déploiements n'en font qu'une)
+      const sansJeton = ftpCalls(checkout).slice(avantSansJeton).map((c) => c.op)
+      const apresPointeur = sansJeton.slice(sansJeton.lastIndexOf('uploadFrom') + 1)
+      expect(apresPointeur.slice(0, 5)).toEqual(['close', 'new', 'access', 'cd', 'list'])
+      expect(apresPointeur.at(-1)).toBe('close')
 
       // Smoke : 200 sans la chaîne "ok" → code 1.
       replies['GET /api/health'] = [200, '{"status":"degraded"}']

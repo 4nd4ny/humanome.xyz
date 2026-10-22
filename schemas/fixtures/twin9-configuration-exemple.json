@@ -1,0 +1,135 @@
+{
+  "kind": "twin9-run",
+  "run": {
+    "id": 42,
+    "journal": "journal-exemple",
+    "statut": "termine",
+    "retard": null,
+    "mode": "complet",
+    "attestation": null,
+    "configuration": {
+      "schema": "twin9-configuration/1",
+      "empreinte": "ad519cee3a0b8405",
+      "sel": "0f1e2d3c4b5a69788796a5b4c3d2e1f0",
+      "lance_at": "2026-01-05 09:00:00",
+      "moteur": {
+        "commit": "abc1234",
+        "protocole": "protocole-exemple",
+        "personas": { "version": "personas-exemple", "empreinte": "1a2b3c4d" },
+        "scan": "scan-exemple"
+      },
+      "profil": {
+        "id": 7,
+        "nom": "Profil d'exemple",
+        "mode": "complet",
+        "empreinte_reglages": "00112233aabbccdd",
+        "signature_evaluations": "ffeeddcc44332211"
+      },
+      "execution_prevue": {
+        "voie_anthropic": "lots",
+        "cle": "instance",
+        "parallelisme": { "appels_directs": 4, "journees": 2 },
+        "plafonds": { "budget_usd": 3.5, "duree_minutes": null },
+        "jours": 2,
+        "rescan": false,
+        "memoire": true
+      },
+      "fournisseurs": {
+        "anthropic": { "libelle": "Anthropic", "rgpd": "sous_conditions", "voie": "lots" }
+      },
+      "appels": {
+        "etages": {
+          "lecteurs": { "fournisseur": "anthropic", "voie": "lots", "modele": "claude-exemple-rapide", "budget_sortie": 1000, "effort": null, "reflexion": "coupee" },
+          "rapide": { "fournisseur": "anthropic", "voie": "lots", "modele": "claude-exemple-rapide", "budget_sortie": 2000, "effort": null, "reflexion": "coupee" },
+          "profond": { "fournisseur": "anthropic", "voie": "lots", "modele": "claude-exemple-profond", "budget_sortie": 4000, "effort": "medium", "reflexion": "adaptative" }
+        },
+        "etapes": {
+          "greffier": { "fournisseur": "anthropic", "voie": "lots", "modele": "claude-exemple-rapide", "budget_sortie": 2000, "effort": null, "reflexion": "coupee" },
+          "president": { "fournisseur": "anthropic", "voie": "lots", "modele": "claude-exemple-profond", "budget_sortie": 4000, "effort": "medium", "reflexion": "adaptative" }
+        },
+        "second_ressort": {
+          "greffier": { "fournisseur": "anthropic", "voie": "lots", "modele": "claude-exemple-profond", "budget_sortie": 3000, "effort": "low", "reflexion": "coupee" },
+          "president": { "fournisseur": "anthropic", "voie": "lots", "modele": "claude-exemple-profond", "budget_sortie": 3000, "effort": "low", "reflexion": "coupee" }
+        },
+        "lecteurs": {
+          "lecteur-a": { "fournisseur": "anthropic", "voie": "lots", "modele": "claude-exemple-rapide", "budget_sortie": 1000, "effort": null, "reflexion": "coupee" }
+        },
+        "defaut": { "fournisseur": "anthropic", "voie": "lots", "modele": "claude-exemple-profond", "budget_sortie": 4000, "effort": "medium", "reflexion": "adaptative" }
+      },
+      "college": [
+        { "nom": "lecteur-a", "famille": "anthropic", "passes": 2, "poids": 1.0 }
+      ],
+      "backends": {
+        "tribunal": { "kind": "anthropic", "model": "claude-exemple-profond", "model_mini": "claude-exemple-rapide" },
+        "rapide": { "kind": "anthropic", "model": "claude-exemple-rapide" }
+      },
+      "algorithme": {
+        "seuils_consensus": { "seuil": 0.5 },
+        "juge_leger": {},
+        "jury": { "taille": 3 },
+        "premiere_impression": true,
+        "calques": {},
+        "merge": {},
+        "scan_global": {},
+        "troncatures": null
+      },
+      "referentiel": { "id": "referentiel-exemple", "version": "1.0.0", "label": "Référentiel d'exemple", "empreinte": "0123456789abcdef" },
+      "gabarits": {
+        "jeu": "jeu-exemple",
+        "versions": { "exemple/etape": 2, "exemple/lecture": 1 },
+        "empreinte": "fedcba9876543210"
+      },
+      "prix": {
+        "base": "facture",
+        "unite": "USD/MTok",
+        "remise_lots": 0.5,
+        "releve": { "jour": "2026-01-05", "statut": "ok", "source": null },
+        "grille": {
+          "claude-exemple-profond": { "entree": 1.5, "sortie": 7.5 },
+          "claude-exemple-rapide": { "entree": 0.25, "sortie": 1.25, "palier_long": { "au_dela_de": 50000, "entree": 0.5, "sortie": 2.5 } }
+        }
+      }
+    },
+    "execution": {
+      "schema": "twin9-execution/1",
+      "source": "fige",
+      "partiel": false,
+      "statut": "termine",
+      "debut_at": "2026-01-05 09:00:00",
+      "fin_at": "2026-01-05 10:30:00",
+      "duree_active_s": 5400,
+      "passes": 12,
+      "moteur_ms": 640,
+      "appels": { "total": 9, "repondus": 8, "pannes": 1, "tronques": 1, "refus": 0, "tentatives": 9 },
+      "jetons": { "entree": 9000, "sortie": 3000 },
+      "cout_microusd": 4200,
+      "lots": 3,
+      "par_voie": {
+        "lots": { "appels": 9, "pannes": 1, "tronques": 1, "jetons_entree": 9000, "jetons_sortie": 3000, "cout_microusd": 4200 }
+      },
+      "par_fournisseur": {
+        "anthropic": { "appels": 9, "pannes": 1, "tronques": 1, "jetons_entree": 9000, "jetons_sortie": 3000, "cout_microusd": 4200 }
+      },
+      "par_modele": {
+        "claude-exemple-profond": { "appels": 3, "pannes": 1, "tronques": 1, "jetons_entree": 3000, "jetons_sortie": 1500, "cout_microusd": 3000 },
+        "claude-exemple-rapide": { "appels": 6, "pannes": 0, "tronques": 0, "jetons_entree": 6000, "jetons_sortie": 1500, "cout_microusd": 1200 }
+      },
+      "servis": {
+        "claude-exemple-profond": { "claude-exemple-profond-20260101": 3 },
+        "claude-exemple-rapide": { "claude-exemple-rapide-20260101": 6 }
+      },
+      "arrets": { "end": 8, "max_tokens": 1, "context_window": 0, "refusal": 0, "other": 0 },
+      "moteur": { "commit_debut": "abc1234", "commit_fin": "abc1234" },
+      "reprises": [
+        { "at": "2026-01-05 10:00:00", "budget_usd": 3.5 }
+      ]
+    },
+    "created_at": "2026-01-05 09:00:00",
+    "finished_at": "2026-01-05 10:30:00"
+  },
+  "referentiel": null,
+  "carto_evolutive": null,
+  "journees": {},
+  "memoire": [],
+  "incomplete": false
+}

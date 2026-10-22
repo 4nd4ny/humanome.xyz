@@ -512,6 +512,7 @@ export const SOURCE_LABELS = {
   'site-merge': 'fusion du site',
   'v3-master': 'master V3',
   archive: 'archive',
+  twin9: 'Twin9 (serveur)',
 }
 
 function ArbitrationSection({ days, update }) {

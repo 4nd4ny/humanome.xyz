@@ -1,0 +1,405 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://humanome.xyz/schemas/twin9-run.schema.json",
+  "title": "Run Twin9 : document de l'interface, configuration et exécution",
+  "description": "Le document « twin9-run » que la page d'un run remet à l'interface de cartographie (web/src/lib/interface-handoff.js, docs/contrats.md §8.4), et les deux blocs d'un run Twin9 côté serveur (P0-1, docs/contrats.md §8.9) : sa configuration (ce avec quoi il a été lancé, écrite une fois, jamais modifiée) et son exécution (comment il s'est déroulé, figée quand il finit, calculée depuis son journal sinon). La racine est souple : seuls « kind » et « run » sont imposés ; les deux blocs sont stricts (toute clé inconnue est refusée) et ne portent jamais un gabarit, une fiche, une clé, la marge ni un prix catalogue. L'archive de compte les référence (archive-export, analysesTwin9.runs[]).",
+  "type": "object",
+  "required": ["kind", "run"],
+  "properties": {
+    "kind": {
+      "const": "twin9-run",
+      "description": "Discriminant de type de document. Toujours « twin9-run » pour ce schéma."
+    },
+    "run": {
+      "type": "object",
+      "required": ["id", "journal", "statut"],
+      "description": "Le run tel que le rend GET /api/twin9/runs/{id}/resultats (« run ») : identifiant, journal, statut, mode, attestation, dates, et depuis P0-1 sa configuration et son exécution (nulles pour un run d'avant P0-1 ; un cartographe lié les lit sans prix, coût, plafond ni clé).",
+      "properties": {
+        "id": { "type": "integer", "minimum": 1 },
+        "journal": { "type": "string" },
+        "statut": { "$ref": "#/$defs/statut" },
+        "configuration": {
+          "anyOf": [{ "type": "null" }, { "$ref": "#/$defs/configuration" }]
+        },
+        "execution": {
+          "anyOf": [{ "type": "null" }, { "$ref": "#/$defs/execution" }]
+        }
+      }
+    },
+    "referentiel": { "type": ["object", "null"] },
+    "carto_evolutive": { "type": ["object", "null"] },
+    "journees": { "type": "object" },
+    "memoire": { "type": "array" },
+    "incomplete": { "type": "boolean" }
+  },
+  "$defs": {
+    "fournisseur": {
+      "enum": ["anthropic", "openai", "mistral", "google", "xai", "openrouter"],
+      "description": "Fournisseur d'un appel (registre Twin9\\Fournisseurs\\Fournisseurs ; un test vérifie l'égalité)."
+    },
+    "rgpd": {
+      "enum": ["oui", "sous_conditions", "non"],
+      "description": "Étiquette RGPD d'un fournisseur (registre ; ce n'est pas un avis juridique)."
+    },
+    "voie": {
+      "enum": ["lots", "directe"],
+      "description": "Voie d'un appel : par lots (Anthropic, si le profil les choisit) ou directe."
+    },
+    "statut": { "enum": ["en_cours", "termine", "echoue", "annule"] },
+    "empreinte": { "type": "string", "pattern": "^[0-9a-f]{16}$" },
+    "date": {
+      "type": "string",
+      "pattern": "^\\d{4}-\\d{2}-\\d{2} \\d{2}:\\d{2}:\\d{2}$",
+      "description": "Date et heure du serveur, « AAAA-MM-JJ hh:mm:ss »."
+    },
+    "texte": { "type": ["string", "null"] },
+    "reglage": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["fournisseur", "voie", "modele", "budget_sortie", "effort", "reflexion"],
+      "description": "Ce avec quoi un appel part (CallSettings::pour()) : fournisseur, voie, modèle, budget de sortie (max_tokens), effort (nul s'il n'est pas réglé), réflexion.",
+      "properties": {
+        "fournisseur": { "$ref": "#/$defs/fournisseur" },
+        "voie": { "$ref": "#/$defs/voie" },
+        "modele": { "type": "string", "minLength": 1, "maxLength": 80 },
+        "budget_sortie": { "type": "integer", "minimum": 1 },
+        "effort": { "type": ["string", "null"] },
+        "reflexion": { "type": "string" }
+      }
+    },
+    "reglages": {
+      "type": "object",
+      "additionalProperties": { "$ref": "#/$defs/reglage" }
+    },
+    "backend": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["kind", "model"],
+      "properties": {
+        "kind": { "type": "string" },
+        "model": { "type": "string" },
+        "model_mini": { "type": "string" }
+      }
+    },
+    "prix": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["entree", "sortie"],
+      "properties": {
+        "entree": { "type": "number", "minimum": 0 },
+        "sortie": { "type": "number", "minimum": 0 },
+        "palier_long": {
+          "type": "object",
+          "additionalProperties": false,
+          "required": ["au_dela_de", "entree", "sortie"],
+          "properties": {
+            "au_dela_de": { "type": "integer", "minimum": 1 },
+            "entree": { "type": "number", "minimum": 0 },
+            "sortie": { "type": "number", "minimum": 0 }
+          }
+        }
+      }
+    },
+    "compte": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["appels", "pannes", "tronques", "jetons_entree", "jetons_sortie"],
+      "description": "Les appels d'une voie, d'un fournisseur ou d'un modèle : appels, pannes, sorties tronquées (des pannes), jetons, et leur coût (retiré pour un cartographe).",
+      "properties": {
+        "appels": { "type": "integer", "minimum": 0 },
+        "pannes": { "type": "integer", "minimum": 0 },
+        "tronques": { "type": "integer", "minimum": 0 },
+        "jetons_entree": { "type": "integer", "minimum": 0 },
+        "jetons_sortie": { "type": "integer", "minimum": 0 },
+        "cout_microusd": { "type": "integer", "minimum": 0 }
+      }
+    },
+    "configuration": {
+      "type": "object",
+      "additionalProperties": false,
+      "description": "Configuration d'un run Twin9 (Twin9\\RunConfiguration, P0-1) : écrite au lancement, jamais modifiée, une reprise comprise. « empreinte » hache tout le bloc sauf elle-même et « lance_at » (clés triées, 1.0 gardé flottant), son « sel » compris. « sel », « prix » (tels que facturés, marge comprise avec la clé de l'instance), « execution_prevue.plafonds » et « execution_prevue.cle » manquent pour un cartographe lié.",
+      "required": ["schema", "empreinte", "lance_at", "moteur", "profil", "execution_prevue", "fournisseurs", "appels",
+                   "college", "backends", "algorithme", "referentiel", "gabarits"],
+      "properties": {
+        "schema": { "const": "twin9-configuration/1" },
+        "empreinte": { "$ref": "#/$defs/empreinte" },
+        "sel": {
+          "type": "string",
+          "pattern": "^[0-9a-f]{32}$",
+          "description": "Tiré au hasard au lancement, compris dans l'empreinte, lu du seul propriétaire : sans lui, l'empreinte que lit un cartographe lié ne laisse pas retrouver, par essais, ce qui lui est caché."
+        },
+        "lance_at": { "$ref": "#/$defs/date" },
+        "moteur": {
+          "type": "object",
+          "additionalProperties": false,
+          "required": ["commit", "protocole", "personas", "scan"],
+          "description": "Versions du moteur au lancement, chacune nulle quand le moteur ne la donne pas.",
+          "properties": {
+            "commit": {
+              "anyOf": [{ "type": "null" }, { "type": "string", "pattern": "^[0-9a-f]{7,40}$" }]
+            },
+            "protocole": { "$ref": "#/$defs/texte" },
+            "personas": {
+              "anyOf": [
+                { "type": "null" },
+                {
+                  "type": "object",
+                  "additionalProperties": false,
+                  "required": ["version", "empreinte"],
+                  "properties": { "version": { "type": "string" }, "empreinte": { "type": "string" } }
+                }
+              ]
+            },
+            "scan": { "$ref": "#/$defs/texte" }
+          }
+        },
+        "profil": {
+          "type": "object",
+          "additionalProperties": false,
+          "required": ["id", "nom", "mode", "empreinte_reglages", "signature_evaluations"],
+          "properties": {
+            "id": { "type": ["integer", "null"] },
+            "nom": { "type": "string" },
+            "mode": { "enum": ["complet", "test"] },
+            "empreinte_reglages": { "$ref": "#/$defs/empreinte" },
+            "signature_evaluations": { "$ref": "#/$defs/empreinte" }
+          }
+        },
+        "execution_prevue": {
+          "type": "object",
+          "additionalProperties": false,
+          "required": ["voie_anthropic", "parallelisme", "jours", "rescan", "memoire"],
+          "properties": {
+            "voie_anthropic": { "$ref": "#/$defs/voie" },
+            "cle": { "enum": ["instance", "personnelle"] },
+            "parallelisme": {
+              "type": "object",
+              "additionalProperties": false,
+              "required": ["appels_directs", "journees"],
+              "properties": {
+                "appels_directs": { "type": "integer", "minimum": 1 },
+                "journees": { "type": "integer", "minimum": 1 }
+              }
+            },
+            "plafonds": {
+              "type": "object",
+              "additionalProperties": false,
+              "required": ["budget_usd", "duree_minutes"],
+              "properties": {
+                "budget_usd": { "type": ["number", "null"] },
+                "duree_minutes": { "type": ["integer", "null"] }
+              }
+            },
+            "jours": { "type": ["integer", "null"], "minimum": 0 },
+            "rescan": { "type": "boolean" },
+            "memoire": { "type": "boolean" }
+          }
+        },
+        "fournisseurs": {
+          "type": "object",
+          "propertyNames": { "$ref": "#/$defs/fournisseur" },
+          "additionalProperties": {
+            "type": "object",
+            "additionalProperties": false,
+            "required": ["libelle", "rgpd", "voie"],
+            "properties": {
+              "libelle": { "type": "string" },
+              "rgpd": { "$ref": "#/$defs/rgpd" },
+              "voie": { "enum": ["lots", "directe", "mixte"] }
+            }
+          }
+        },
+        "appels": {
+          "type": "object",
+          "additionalProperties": false,
+          "required": ["etages", "etapes", "second_ressort", "lecteurs", "defaut"],
+          "properties": {
+            "etages": { "$ref": "#/$defs/reglages" },
+            "etapes": { "$ref": "#/$defs/reglages" },
+            "second_ressort": { "$ref": "#/$defs/reglages" },
+            "lecteurs": { "$ref": "#/$defs/reglages" },
+            "defaut": { "$ref": "#/$defs/reglage" }
+          }
+        },
+        "college": {
+          "type": "array",
+          "items": {
+            "type": "object",
+            "additionalProperties": false,
+            "required": ["nom", "famille", "passes", "poids"],
+            "properties": {
+              "nom": { "type": "string" },
+              "famille": { "type": "string" },
+              "passes": { "type": "integer", "minimum": 1 },
+              "poids": { "type": "number" }
+            }
+          }
+        },
+        "backends": {
+          "type": "object",
+          "additionalProperties": false,
+          "required": ["tribunal", "rapide"],
+          "properties": {
+            "tribunal": { "$ref": "#/$defs/backend" },
+            "rapide": { "$ref": "#/$defs/backend" }
+          }
+        },
+        "algorithme": {
+          "type": "object",
+          "additionalProperties": false,
+          "required": ["seuils_consensus", "juge_leger", "jury", "premiere_impression", "calques", "merge",
+                       "scan_global", "troncatures"],
+          "description": "Les paramètres d'algorithme du profil, sous leurs noms du config.json de la v9.8 (MoteurReglages::ALGORITHME).",
+          "properties": {
+            "seuils_consensus": true, "juge_leger": true, "jury": true, "premiere_impression": true, "calques": true,
+            "merge": true, "scan_global": true, "troncatures": true
+          }
+        },
+        "referentiel": {
+          "type": "object",
+          "additionalProperties": false,
+          "required": ["id", "version", "label", "empreinte"],
+          "properties": {
+            "id": { "type": "string" },
+            "version": { "type": "string" },
+            "label": { "type": "string" },
+            "empreinte": { "$ref": "#/$defs/empreinte" }
+          }
+        },
+        "gabarits": {
+          "type": "object",
+          "additionalProperties": false,
+          "required": ["jeu", "versions", "empreinte"],
+          "properties": {
+            "jeu": { "type": "string" },
+            "versions": { "type": "object", "additionalProperties": { "type": "integer" } },
+            "empreinte": { "$ref": "#/$defs/empreinte" }
+          }
+        },
+        "prix": {
+          "type": "object",
+          "additionalProperties": false,
+          "required": ["base", "unite", "remise_lots", "releve", "grille"],
+          "properties": {
+            "base": { "const": "facture" },
+            "unite": { "const": "USD/MTok" },
+            "remise_lots": { "type": "number", "minimum": 0, "maximum": 1 },
+            "releve": {
+              "anyOf": [
+                { "type": "null" },
+                {
+                  "type": "object",
+                  "additionalProperties": false,
+                  "required": ["jour", "statut", "source"],
+                  "properties": {
+                    "jour": { "$ref": "#/$defs/texte" },
+                    "statut": { "$ref": "#/$defs/texte" },
+                    "source": { "$ref": "#/$defs/texte" }
+                  }
+                }
+              ]
+            },
+            "grille": { "type": "object", "additionalProperties": { "$ref": "#/$defs/prix" } }
+          }
+        }
+      }
+    },
+    "execution": {
+      "type": "object",
+      "additionalProperties": false,
+      "description": "Exécution d'un run Twin9 (Twin9\\RunExecution, P0-1) : figée quand il finit (« fige »), calculée depuis son journal sinon (« journal ») ; « partiel » pour un run lancé avant la migration 031. Ses totaux sont ceux de ses compteurs. Toute table par nom est un objet, même vide. Les coûts et les budgets des reprises manquent pour un cartographe lié.",
+      "required": ["schema", "source", "partiel", "statut", "debut_at", "fin_at", "duree_active_s", "passes", "moteur_ms",
+                   "appels", "jetons", "lots", "par_voie", "par_fournisseur", "par_modele", "servis", "arrets",
+                   "moteur", "reprises"],
+      "properties": {
+        "schema": { "const": "twin9-execution/1" },
+        "source": { "enum": ["fige", "journal"] },
+        "partiel": { "type": "boolean" },
+        "statut": { "$ref": "#/$defs/statut" },
+        "debut_at": { "anyOf": [{ "type": "null" }, { "$ref": "#/$defs/date" }] },
+        "fin_at": { "anyOf": [{ "type": "null" }, { "$ref": "#/$defs/date" }] },
+        "duree_active_s": { "type": "integer", "minimum": 0 },
+        "passes": { "type": "integer", "minimum": 0 },
+        "moteur_ms": { "type": "integer", "minimum": 0 },
+        "appels": {
+          "type": "object",
+          "additionalProperties": false,
+          "required": ["total", "repondus", "pannes", "tronques", "refus", "tentatives"],
+          "properties": {
+            "total": { "type": "integer", "minimum": 0 },
+            "repondus": { "type": "integer", "minimum": 0 },
+            "pannes": { "type": "integer", "minimum": 0 },
+            "tronques": { "type": "integer", "minimum": 0 },
+            "refus": { "type": "integer", "minimum": 0 },
+            "tentatives": { "type": "integer", "minimum": 0 }
+          }
+        },
+        "jetons": {
+          "type": "object",
+          "additionalProperties": false,
+          "required": ["entree", "sortie"],
+          "properties": {
+            "entree": { "type": "integer", "minimum": 0 },
+            "sortie": { "type": "integer", "minimum": 0 }
+          }
+        },
+        "cout_microusd": { "type": "integer", "minimum": 0 },
+        "lots": { "type": "integer", "minimum": 0 },
+        "par_voie": {
+          "type": "object",
+          "propertyNames": { "$ref": "#/$defs/voie" },
+          "additionalProperties": { "$ref": "#/$defs/compte" }
+        },
+        "par_fournisseur": {
+          "type": "object",
+          "propertyNames": { "$ref": "#/$defs/fournisseur" },
+          "additionalProperties": { "$ref": "#/$defs/compte" }
+        },
+        "par_modele": {
+          "type": "object",
+          "additionalProperties": { "$ref": "#/$defs/compte" }
+        },
+        "servis": {
+          "type": "object",
+          "additionalProperties": {
+            "type": "object",
+            "additionalProperties": { "type": "integer", "minimum": 0 }
+          }
+        },
+        "arrets": {
+          "type": "object",
+          "additionalProperties": false,
+          "required": ["end", "max_tokens", "context_window", "refusal", "other"],
+          "properties": {
+            "end": { "type": "integer", "minimum": 0 },
+            "max_tokens": { "type": "integer", "minimum": 0 },
+            "context_window": { "type": "integer", "minimum": 0 },
+            "refusal": { "type": "integer", "minimum": 0 },
+            "other": { "type": "integer", "minimum": 0 }
+          }
+        },
+        "moteur": {
+          "type": "object",
+          "additionalProperties": false,
+          "required": ["commit_debut", "commit_fin"],
+          "properties": {
+            "commit_debut": { "$ref": "#/$defs/texte" },
+            "commit_fin": { "$ref": "#/$defs/texte" }
+          }
+        },
+        "reprises": {
+          "type": "array",
+          "items": {
+            "type": "object",
+            "additionalProperties": false,
+            "required": ["at"],
+            "properties": {
+              "at": { "$ref": "#/$defs/date" },
+              "budget_usd": { "type": ["number", "null"] }
+            }
+          }
+        }
+      }
+    }
+  }
+}

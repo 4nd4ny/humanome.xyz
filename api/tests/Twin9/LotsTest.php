@@ -137,7 +137,7 @@ final class LotsTest extends TestCase
         $verifs = array_keys(array_filter($lots->journal, static fn (array $o): bool => $o[0] === 'verifier'));
         self::assertNotSame([], $verifs);
         self::assertLessThan($premier, max($verifs), 'les réglages se vérifient avant le premier lot, et seulement là');
-        $combinaisons = (new CallSettings($this->profil()))->combinaisons();
+        $combinaisons = (new CallSettings($this->profil()))->combinaisons('lots');
         self::assertSame($combinaisons, array_map(static fn (array $v): array => array_diff_key($v, ['cle' => 1]),
             $lots->verifications), 'un appel direct minimal par combinaison de modèle et de réglages');
         self::assertSame(['faisceaux', 'journees/J1', 'journees/J2', 'journees/J3'], $this->cles($id));
@@ -236,6 +236,47 @@ final class LotsTest extends TestCase
     }
 
     /**
+     * P0-2 by batches: a result cut by its budget is a failure, never
+     * submitted again, paid at its real usage at half price and counted
+     * apart; its day stays out of the memory.
+     */
+    public function testACutResultIsAFailureNeverSubmittedAgain(): void
+    {
+        $id = $this->nouveauRun();
+        $coupe = 'journees/J3/1-greffier.md';
+        $lots = new FakeBatchApi(static fn (array $r): array => FakeBatchApi::appel($r) === $coupe
+            ? FakeBatchApi::message('un début coupé', sortie: (int) $r['params']['max_tokens'], stop: 'max_tokens')
+            : FakeBatchApi::message('vu ' . FakeBatchApi::appel($r)), regards: 0);
+
+        $tronques = 0;
+        for ($n = 0; $n < 40 && (new RunRepository($this->pdo))->statut($id) === 'en_cours'; $n++) {
+            $tronques += $this->tick($lots)['twin9Tronques'];
+        }
+
+        self::assertSame('termine', (new RunRepository($this->pdo))->statut($id));
+        self::assertSame(1, $tronques);
+        self::assertCount(1, array_filter($lots->requetes, static fn (array $r): bool => FakeBatchApi::appel($r) === $coupe),
+            'jamais resoumis');
+        $compteurs = (new RunRepository($this->pdo))->compteursDe($id);
+        self::assertSame([13, 13, 1, 1], [$compteurs['appels'], $compteurs['tentatives'], $compteurs['pannes'],
+                                          $compteurs['tronques']], 'une tentative chacun');
+        $reglage = (new CallSettings($this->profil()))->pour('greffier', $coupe);
+        $config = new Twin9Config(new SettingsRepository($this->pdo));
+        self::assertSame(['appels' => 3, 'pannes' => 1, 'tronques' => 1,
+                          'cout_microusd' => 2 * $config->coutMicrousd($reglage['modele'], 100, 20, parLots: true)
+                              + $config->coutMicrousd($reglage['modele'], 100, $reglage['budget_sortie'], parLots: true)],
+            $compteurs['par_etape']['greffier'], 'la panne au coût de son usage réel, à moitié prix');
+        self::assertSame(['faisceaux', 'journees/J1', 'journees/J2'], $this->cles($id));
+        self::assertSame([], $lots->restants());
+        // P0-1: its execution, frozen, counts every call in the batch lane, the cut one among its failures
+        $execution = (new RunRepository($this->pdo))->execution($id);
+        self::assertSame('fige', $execution->source);
+        self::assertSame(['lots'], array_keys((array) $execution->par_voie), 'aucun appel compté en directe');
+        self::assertSame([13, 1, 1], [$execution->par_voie->lots->appels, $execution->par_voie->lots->pannes,
+                                      $execution->par_voie->lots->tronques]);
+    }
+
+    /**
      * The API refuses a run's settings: the run fails before its first
      * batch, and says why. A check the provider cannot answer waits.
      */
@@ -284,6 +325,14 @@ final class LotsTest extends TestCase
         self::assertSame([], $lots->restants(), 'annulé, puis supprimé une fois fini');
         self::assertSame(['creer', 'annuler', 'etat', 'supprimer'], $lots->operations('msgbatch_0001'));
         self::assertSame(0, (int) $this->pdo->query('SELECT COUNT(*) FROM twin9_lots')->fetchColumn());
+        // P0-1: its execution, read in its journal, still counts them in the batch lane, read at their custom_id —
+        // given back, they lost their batch (lot_id NULL), and the batch itself is gone
+        self::assertSame(6, (int) $this->pdo->query('SELECT COUNT(*) FROM twin9_appels WHERE lot_id IS NULL
+                                                         AND custom_id IS NOT NULL')->fetchColumn());
+        $execution = (new RunRepository($this->pdo))->execution($id);
+        self::assertSame(['journal', 'annule'], [$execution->source, $execution->statut]);
+        self::assertSame(['lots'], array_keys((array) $execution->par_voie), 'aucun appel compté en directe');
+        self::assertSame(6, $execution->par_voie->lots->appels);
     }
 
     /**

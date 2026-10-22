@@ -24,23 +24,29 @@ use Twin9\Run\Pending;
  * 1): at most N runs advance within the slice. Each pass replays a run from
  * its start, its answers taken from the journal, its days done from the
  * memory; the calls it waits for leave, concurrently, and each answer is
- * written as it comes back; a new pass follows as soon as a call may leave
- * again. A call is written to the journal before it leaves and after it
- * comes back; no transaction stays open while one waits.
+ * written as it comes back; a place an answer frees goes to a call the last
+ * pass already knows, and a new pass is played, its calls sent at once, only
+ * when those cannot fill it (P0-4, Twin9Run::aRejouer). A call is written to
+ * the journal before it leaves and after it comes back; no transaction stays
+ * open while one waits.
  *
  * Attempts are the v9.8's (three, two then four seconds apart), within the
  * slice: a rate refusal waits its Retry-After without spending one, a 429
  * without one (a spending cap) holds the run back, a refusal of the model is
- * a failure. A call the slice's end cuts leaves again in the next one; when
- * it had at least half a slice, the cut counts as an attempt, so that a call
- * too long for any slice ends as a failure instead of being paid again and
- * again. A tick that dies leaves its calls in flight sent: the next takes
- * them up, their attempt counted.
+ * a failure, and so is an output cut by its budget or by the model's context
+ * (P0-2, counted in `tronques`). A call the slice's end cuts leaves again in
+ * the next one; when it had at least half a slice, the cut counts as an
+ * attempt, so that a call too long for any slice ends as a failure instead
+ * of being paid again and again. A tick that dies leaves its calls in flight
+ * sent: the next takes them up, their attempt counted.
  *
  * By direct calls, only the oldest days a run has under way send their calls
  * (the days led abreast, parallelisme.journees), at most
  * parallelisme.appels_directs at a time; by batches, all its days (T8). The
- * key is read for each call. Logging: counters only.
+ * key is read for each call. Logging: counters only. Each pass the slice
+ * plays of a run is counted as soon as it is played, with the engine's time
+ * (twin9_runs.passes, moteur_ms: its execution block's, P0-1): a tick that
+ * dies loses only the pass it was playing.
  *
  * A run by batches (T8, Twin9Lots) is opened only when its batches call for
  * it: one has ended, nothing is at Anthropic any more, or calls are still to
@@ -123,8 +129,8 @@ final class Twin9Slice
         $this->fin = $fin;
         $this->dernierDepart = $fin - min(5.0, 0.1 * ($fin - $debut));
         $this->compteurs = ['runs' => 0, 'passes' => 0, 'moteurMs' => 0, 'appels' => 0, 'reponses' => 0, 'pannes' => 0,
-                            'reprises' => 0, 'coupes' => 0, 'termines' => 0, 'echoues' => 0, 'lots' => 0,
-                            'releves' => 0, 'verifications' => 0, 'annules' => 0];
+                            'tronques' => 0, 'reprises' => 0, 'coupes' => 0, 'termines' => 0, 'echoues' => 0,
+                            'lots' => 0, 'releves' => 0, 'verifications' => 0, 'annules' => 0];
         $this->lots->menage($this->dernierDepart, $this->compteurs, $utilisateur);
         foreach ($this->runs->aAvancer($n + self::SURVOLS, $utilisateur) as $id) {
             if ($this->compteurs['runs'] >= $n || microtime(true) >= $this->dernierDepart) {
@@ -139,12 +145,19 @@ final class Twin9Slice
 
         while ($this->etats !== [] && microtime(true) < $this->fin) {
             foreach ($this->etats as $run) {
-                if ($run->aJouer()) {
+                if ($run->passes === 0) {
                     $this->passer($run);
                 }
             }
             foreach ($this->etats as $run) {
                 $this->envoyer($run);
+                // the calls known could not fill the places the answers freed (P0-4): a pass, and its calls leave now
+                if (isset($this->etats[$run->id]) && $run->aRejouer()) {
+                    $this->passer($run);
+                    if (isset($this->etats[$run->id])) {
+                        $this->envoyer($run);
+                    }
+                }
             }
             $reveil = $this->reveil();
             if ($this->sender->running() === 0) {
@@ -233,7 +246,7 @@ final class Twin9Slice
         return $run;
     }
 
-    /** One pass of a run: done, or the calls it waits for. */
+    /** One pass of a run, counted as soon as it is played (P0-1): done, or the calls it waits for. */
     private function passer(Twin9Run $run): void
     {
         if ($this->runs->statut($run->id) !== 'en_cours') {
@@ -245,6 +258,7 @@ final class Twin9Slice
         $run->passes++;
         $this->compteurs['passes']++;
         $debut = hrtime(true);
+        $erreur = null;
         try {
             $run->plateforme->passe($run->journal, $run->memoire, $run->sortie);
         } catch (Pending $p) {
@@ -252,14 +266,19 @@ final class Twin9Slice
 
             return;
         } catch (\Throwable $e) {
-            unset($this->etats[$run->id]);
-            $this->echec($run->id, $e, 'erreur du moteur');
-
-            return;
+            $erreur = $e;
         } finally {
-            $this->compteurs['moteurMs'] += intdiv(hrtime(true) - $debut, 1_000_000);
+            $ms = intdiv(hrtime(true) - $debut, 1_000_000);
+            $this->compteurs['moteurMs'] += $ms;
+            // before anything else of the slice, which may die: its final pass before terminer() freezes them
+            $this->runs->compter($run->id, 1, $ms);
         }
         unset($this->etats[$run->id]);
+        if ($erreur !== null) {
+            $this->echec($run->id, $erreur, 'erreur du moteur');
+
+            return;
+        }
         $this->couts->liberer($run->id);
         // its evaluation (T8): the size of each day of its map — those it took, those its memory keeps —, as the
         // engine reads them; unknown, its costs alone
@@ -276,10 +295,14 @@ final class Twin9Slice
         }
     }
 
-    /** The calls of a run that may leave now: directly, or into its batches once a pass. */
+    /**
+     * The calls of a run that may leave now: directly, or into its batches
+     * once a pass. Directly, whether they took every place (Twin9Run::$plein).
+     */
     private function envoyer(Twin9Run $run): void
     {
         $run->reveil = null;
+        $run->plein = false;
         if ($run->suspendu || microtime(true) >= $this->dernierDepart) {
             return;
         }
@@ -302,6 +325,8 @@ final class Twin9Slice
         $jours = $run->joursDeFront();
         foreach ($run->attendus as $call) {
             if (\count($run->enVol) >= $run->appelsDirects) {
+                $run->plein = true;
+
                 return;
             }
             $jour = Twin9Run::jour($call->id);
@@ -427,10 +452,14 @@ final class Twin9Slice
 
             return;
         }
-        if (!empty($issue['refus'])) {
+        if (!empty($issue['refus']) || !empty($issue['tronque'])) {
+            // refused or cut (P0-2): the same prompt would be again, at the same cost — never retried
             $run->journal->panne($call, (string) $issue['erreur'], $mesure);
             $run->nouvelles = true;
             $this->compteurs['pannes']++;
+            if (!empty($issue['tronque'])) {
+                $this->compteurs['tronques']++;
+            }
 
             return;
         }

@@ -102,13 +102,19 @@ Le mainteneur lance `./scripts/deploy/stage-api.sh` puis
    `VERSION`, caractères hors `[A-Za-z0-9._-]` remplacés par `_` : le nom
    respecte donc le motif du front-controller, RG6), puis l'arborescence
    `api/deploy/webroot/` (`index.php`, `.htaccess`) dans `www/api/`, **puis**
-   écrit `app/current.txt` (`releases/<nom>\n`), puis élague par ordre de nom
-   les releases au-delà de 3. Dès cet instant, la nouvelle release est servie
-   (avant les étapes 4 à 9).
-4. Il appelle `POST /api/admin/migrate` (en-tête `X-Migrate-Token`) :
-   `MigrationRunner::run` prend le verrou MySQL `GET_LOCK('humanome_migrate', 30)`,
-   crée `schema_migrations` si besoin et applique chaque `.sql` non encore
-   enregistré, dans l'ordre lexicographique → `200 {applied: [...], skipped: n}`.
+   écrit `app/current.txt` (`releases/<nom>\n`) et ferme la session FTP. Dès
+   cet instant, la nouvelle release est servie (avant les étapes 4 à 9).
+4. Il appelle **aussitôt** `POST /api/admin/migrate` (en-tête
+   `X-Migrate-Token`) : `MigrationRunner::run` prend le verrou MySQL
+   `GET_LOCK('humanome_migrate', 30)`, crée `schema_migrations` si besoin et
+   applique chaque `.sql` non encore enregistré, dans l'ordre lexicographique
+   → `200 {applied: [...], skipped: n}`. Puis, dans une seconde session FTP,
+   il élague par ordre de nom les releases au-delà de 3 — après la migration :
+   supprimer une release par FTP, fichier par fichier (`vendor/`, le moteur
+   Twin9), prend des minutes, pendant lesquelles la nouvelle release aurait
+   tourné sur l'ancien schéma. Une migration en échec arrête tout avant
+   l'élagage : les releases précédentes restent, pour un retour arrière.
+   Sans `MIGRATE_TOKEN`, l'élagage a lieu quand même.
 5. `POST /api/admin/import-referentiel` avec `respire-v7.json` puis
    `respire-v7.1.0.json`, lus dans `web/public/data/referentiel/` du poste —
    **chacun** est sauté en silence s'il est absent (sur une base neuve, si
@@ -298,7 +304,9 @@ Le mainteneur lance `./scripts/deploy/stage-api.sh` puis
   remplace pas le lien initial). `lockLinks` compte les insertions
   **tentées**, pas les lignes écrites (61 à chaque passage).
 - **RG6** — `current.txt` est écrit après l'upload complet (release et
-  front-controller), mais **avant** l'élagage et les étapes distantes 4 à 9 ;
+  front-controller), mais **avant** les étapes distantes 4 à 9, dont la
+  migration vient aussitôt, et l'élagage juste après elle ; aucune requête au
+  site ne part pendant une session FTP ;
   le nom de release est assaini par `deploy.mjs` pour rester dans le motif du
   front-controller. Le front-controller n'accepte
   qu'un chemin relatif de motif `releases/[A-Za-z0-9._-]+` (qui admet
@@ -321,7 +329,7 @@ Le mainteneur lance `./scripts/deploy/stage-api.sh` puis
 
 | Couche | Élément | Rôle |
 |---|---|---|
-| Outil | `scripts/deploy/deploy.mjs` — `main` (cibles `static`, `api`, `rollback`, `releases` ; codes 1/2), `loadEnvDeploy`, `buildLocalIndex`/`readRemoteManifest` (synchro par manifeste), `uploadTree`, `deployApi`, `listReleases`, `rollbackApi`, `releasesCommand` ; `scripts/deploy/stage-api.sh` | Upload FTP, pointeur, élagage, séquence distante, smoke (moteur Twin9 compris, F24), rollback — `deploy.mjs` est exécuté en sous-processus sur une copie, avec un faux module `basic-ftp` et un site local (F19 à F22, F24) ; pas de test unitaire : il n'exporte aucune fonction et lance `main()` dès l'import ; côté serveur, la séquence HTTP est rejouée par F01/F02 ; `stage-api.sh` n'est pas exécuté (voir Limites) |
+| Outil | `scripts/deploy/deploy.mjs` — `main` (cibles `static`, `api`, `rollback`, `releases` ; codes 1/2), `loadEnvDeploy`, `buildLocalIndex`/`readRemoteManifest` (synchro par manifeste), `uploadTree`, `ftpSession`, `deployApi`, `listReleases`, `rollbackApi`, `releasesCommand` ; `scripts/deploy/stage-api.sh` | Upload FTP, pointeur, élagage, séquence distante, smoke (moteur Twin9 compris, F24), rollback — `deploy.mjs` est exécuté en sous-processus sur une copie, avec un faux module `basic-ftp` et un site local (F19 à F22, F24) ; pas de test unitaire : il n'exporte aucune fonction et lance `main()` dès l'import ; côté serveur, la séquence HTTP est rejouée par F01/F02 ; `stage-api.sh` n'est pas exécuté (voir Limites) |
 | Outil | `scripts/deploy/stage-twin9.mjs` | Le moteur Twin9 dans la release, et ses refus (A8) — exécuté en sous-processus sur un faux dépôt `Twin_v9` (F25) |
 | Domaine | `api/src/Twin9/EngineLoader.php` — `directory`, `load`, `commit` | Le moteur de la release, trouvé sans `TWIN_V9_DIR` (U12, F23) |
 | API | `GET /api/health` — `api/src/routes/system.php` | `twin9: {moteur, zlib}` (F23) |
@@ -377,7 +385,7 @@ Le mainteneur lance `./scripts/deploy/stage-api.sh` puis
 | UC-SYS-02-F18 | E10, E11, AN-6 | CLI (disposition jetable) + domaine | `seed-competences.php` : autoload absent → 1 ; `competences-v7.json` absent → 1 ; comportement actuel : `fiches-v7.json` absent → code 0, `61 backfillées · fiches 0`, fiches et en-têtes effacés de la base, Twin9 refuse alors RESPIRE (`503`) ; un seed complet rétablit la base et le bloc de Twin9 | idem |
 | UC-SYS-02-F19 | E12 | CLI `deploy.mjs` (copie jetable, faux `basic-ftp`) | Cible inconnue ou absente → code 2 « Unknown target … » sans `.env.deploy` ; `.env.deploy` absent → « deploy failed: ENOENT… », code 1, pour les 4 cibles ; `FTP_HOST` (ligne commentée), `FTP_USER` (vide), `FTP_PASSWORD` manquants → code 1 ; `build/api-release` ou `web/dist` absent → code 1 ; aucun client FTP créé | `engine/test/usecases/unit/uc-sys-02-outil-deploiement.test.js` |
 | UC-SYS-02-F20 | A6, AN-5 | CLI `deploy.mjs` + site local | Comportement actuel : `rollback` avec [A, B, C] et `current.txt` = A → `current.txt` réécrit vers B sans être lu, second `rollback` identique ; santé `503` seulement affichée, code 0 ; `releases` : `*` sur la release pointée, « (none) » sans pointeur ; moins de 2 releases (ou listage en échec) → code 1, pointeur intact ; FTPS sauf `FTP_SECURE=false` | idem |
-| UC-SYS-02-F21 | Nominal (3-9), RG6, E11 | CLI `deploy.mjs` + site local | Nom de release assaini (motif du front-controller), release puis front-controller puis `current.txt`, élagage à 3, fermeture FTP **avant** la première requête ; séquence migrate → référentiel (7.1.0 seule présente, 7.0.0 sautée) → seed → paquets `.json` seulement → santé (`db: "error"` accepté) ; seed en échec → code 1, arrêt, pointeur déjà basculé ; sans `MIGRATE_TOKEN` → avertissement, santé seule ; santé sans `"ok"` → code 1 | idem |
+| UC-SYS-02-F21 | Nominal (3-9), RG6, E11 | CLI `deploy.mjs` + site local | Nom de release assaini (motif du front-controller), release puis front-controller puis `current.txt`, la session FTP **fermée** ; migrate **aussitôt**, puis élagage à 3 dans une seconde session, puis référentiel (7.1.0 seule présente, 7.0.0 sautée) → seed → paquets `.json` seulement → santé (`db: "error"` accepté), aucune requête pendant une session FTP ; migrate en échec → code 1, arrêt, pointeur basculé, rien d'élagué ; seed en échec → code 1, arrêt, pointeur déjà basculé ; sans `MIGRATE_TOKEN` → avertissement, élagage et santé seuls ; santé sans `"ok"` → code 1 | idem |
 | UC-SYS-02-F22 | Nominal (1) | CLI `deploy.mjs` | Synchro `static` : seuls les fichiers modifiés envoyés, seuls les fichiers de l'ancien manifeste disparus supprimés (échec = avertissement, fichier hors manifeste intact), manifeste écrit en dernier ; `--dry-run` sans transfert ; manifeste illisible ou absent → envoi complet sans suppression | idem |
 | UC-SYS-02-F23 | A8 | CLI (front-controller, disposition jetable) | Release qui embarque un moteur (le moteur factice des tests) : servie par `www/api/index.php`, sans `TWIN_V9_DIR`, `/api/health` → `"twin9":{"moteur":true,"zlib":true}` ; moteur retiré → `moteur: false` | `api/tests/UseCases/Functional/UcSys02DeployerMigrerTest.php` |
 | UC-SYS-02-F24 | A8, étape 9 | CLI `deploy.mjs` + site local | Release avec `Twin_v9/COMMIT` : le moteur part sous `app/releases/<nom>/`, rien sous `www/` que le front-controller ; santé sans `twin9`, sans zlib ou sans moteur → code 1 : la release en ligne (celle de `current.txt`), le commit, les causes à vérifier, le retour arrière facultatif ; chargé → commit embarqué, suite (gabarits du même commit), « api deploy done » | `engine/test/usecases/unit/uc-sys-02-outil-deploiement.test.js` |
@@ -486,8 +494,16 @@ cd engine && npx vitest run test/usecases/unit/uc-sys-02
   exécute.
 - Fenêtre de déploiement : entre l'écriture de `current.txt` (étape 3) et la
   fin des migrations (étape 4), la nouvelle release sert des requêtes sur
-  l'ancien schéma ; les migrations expand/contract (RG3) sont conçues pour la
-  tolérer, mais un échec distant laisse la nouvelle release en ligne (voir
+  l'ancien schéma. Le mode expand/contract (RG3) protège l'**ancienne**
+  release du nouveau schéma (un retour arrière), pas la nouvelle de l'ancien :
+  une requête ou un tick qui lit une colonne pas encore créée échoue (`500`),
+  et se rétablit à la requête ou au tick qui suit la migration — pour
+  Twin9 depuis la migration 031 (P0-1), le comptage des passes, la fin d'un
+  run, le suivi de sa page et son lancement. Les migrations ne peuvent pas
+  précéder le pointeur : la route est celle de la release en ligne, qui
+  applique ses propres fichiers. Elles le suivent donc aussitôt, avant
+  l'élagage (étape 4) : la fenêtre est d'une requête, au lieu des minutes de
+  l'élagage. Un échec distant laisse la nouvelle release en ligne (voir
   Garanties minimales).
 - La route `POST /api/admin/twin9/import` (jeton, import des gabarits Twin9
   confidentiels) et `POST /api/admin/worker-tick` relèvent d'autres cas

@@ -118,15 +118,15 @@ final class AnthropicCaller
     /**
      * What a response says. Answered: the text (its text blocks, as the v9.8
      * reads them), the usage, the stop reason, the model served. Refused by
-     * the model (stop_reason « refusal »): a failure, never retried. A rate
-     * refusal (429, 529): `debit`, with its Retry-After in seconds when the
-     * API gives one (a 429 without one is a spending cap). Anything else: a
-     * generic error, which the run may try again.
+     * the model (stop_reason « refusal ») or cut (lireMessage()): a failure,
+     * never retried. A rate refusal (429, 529): `debit`, with its Retry-After
+     * in seconds when the API gives one (a 429 without one is a spending
+     * cap). Anything else: a generic error, which the run may try again.
      *
      * @param array<string, string> $headers lower-case names
      * @return array{ok: bool, texte?: string, tokens_in?: int, tokens_out?: int, stop_reason?: string,
-     *               modele_servi?: string|null, refus?: bool, debit?: bool, http?: int, attendre?: float|null,
-     *               erreur?: string}
+     *               modele_servi?: string|null, refus?: bool, tronque?: bool, debit?: bool, http?: int,
+     *               attendre?: float|null, erreur?: string}
      */
     public static function lire(int $status, array $headers, string $body): array
     {
@@ -153,9 +153,17 @@ final class AnthropicCaller
      * text, the usage, the stop reason, the model served; a refusal of the
      * model is a failure.
      *
+     * So is an output cut (P0-2), by the output budget (`max_tokens`) or by
+     * the model's full context (`model_context_window_exceeded`): `tronque`,
+     * its usage kept — it is paid — but never its text, and an error the
+     * code writes, short and stable, as the engine passes it on to a
+     * cartographer and to a reporter's prompt. Where the v9.8 takes the cut
+     * text as an answer (aurora/backends.py, AnthropicBackend), the platform
+     * deliberately does not (docs/contrats.md §8).
+     *
      * @param array<string, mixed> $data a Messages API message
      * @return array{ok: bool, texte: string, tokens_in: int, tokens_out: int, stop_reason: string,
-     *               modele_servi: string|null, refus?: bool, erreur?: string}
+     *               modele_servi: string|null, refus?: bool, tronque?: bool, erreur?: string}
      */
     public static function lireMessage(array $data): array
     {
@@ -177,6 +185,11 @@ final class AnthropicCaller
             return ['ok' => false, 'refus' => true, 'texte' => $texte, 'erreur' => 'refus du modèle'
                 . (\is_string($categorie) && preg_match('/^[a-z_]{1,40}$/', $categorie) === 1 ? ' (' . $categorie . ')' : '')]
                 + $lu;
+        }
+        if ($lu['stop_reason'] === 'max_tokens' || $lu['stop_reason'] === 'model_context_window_exceeded') {
+            return ['ok' => false, 'tronque' => true, 'texte' => '', 'erreur' => $lu['stop_reason'] === 'max_tokens'
+                ? 'réponse tronquée : budget de sortie atteint (max_tokens)'
+                : 'réponse tronquée : fenêtre de contexte pleine'] + $lu;
         }
 
         return ['ok' => true, 'texte' => $texte] + $lu;

@@ -71,7 +71,6 @@ while (time() - $debut < $duree) {
     $corps = curl_exec($ch);
     $statut = (int) curl_getinfo($ch, CURLINFO_RESPONSE_CODE);
     $erreur = curl_error($ch);
-    curl_close($ch);
     $ticks++;
     $heure = gmdate('H:i:s');
 

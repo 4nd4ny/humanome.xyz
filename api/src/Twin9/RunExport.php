@@ -10,7 +10,8 @@ use PDO;
 /**
  * An account's Twin9 runs in its export (T10, ADR-011 §5; the archive's
  * `analysesTwin9`, docs/contrats.md §8.5): each run with its settings, its
- * portfolio, its attestation, its journal — the responses, never a prompt
+ * portfolio, its attestation, its configuration and execution blocks (P0-1,
+ * §8.9: each left out when the run has none), its journal — the responses, never a prompt
  * (the journal keeps their SHA-256 only), never a key —, its outputs and its
  * evaluation (T8, Evaluations); the memory of each of its maps. A run done
  * keeps its counters only, its journal gone (ADR-011 §5).
@@ -96,10 +97,15 @@ final class RunExport
             ];
         }
 
+        $runs = new RunRepository($this->pdo);
         $sorties = [];
-        foreach ((new RunRepository($this->pdo))->sorties($id) as $chemin => $texte) {
+        foreach ($runs->sorties($id) as $chemin => $texte) {
             $sorties[$chemin] = Resultats::filtrer($index, $texte, str_ends_with($chemin, '.json'), $fuites);
         }
+        // its configuration and its execution (P0-1), each left out when it has none — a run launched before
+        // them, a run done before them —: the archive's schema wants them whole or absent
+        $blocs = array_filter(['configuration' => $runs->configuration($id), 'execution' => $runs->execution($id)],
+            static fn (?\stdClass $bloc): bool => $bloc !== null);
 
         return [
             'id' => (int) $r['id'],
@@ -112,6 +118,7 @@ final class RunExport
             'accord_at' => $r['accord_at'],
             'attestation' => $r['attestation'] === null ? null : json_decode((string) $r['attestation'], true, 512,
                 JSON_THROW_ON_ERROR),
+        ] + $blocs + [
             // the copy of its profile; the engine's settings are drawn from it
             'profil' => json_decode(RunRepository::uncompress((string) $r['reglages']), false, 512,
                 JSON_THROW_ON_ERROR)->profil,

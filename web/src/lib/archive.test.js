@@ -5,6 +5,7 @@ import dayFixture from '../../../schemas/fixtures/cartographie-jour-2026-01-05.j
 import mergeFixture from '../../../schemas/fixtures/cartographie-merge-3-jours.json'
 import referentielFixture from '../../../schemas/fixtures/referentiel-respire-v7.json'
 import promptPackageFixture from '../../../schemas/fixtures/prompt-package-exemple.json'
+import twin9ConfigurationFixture from '../../../schemas/fixtures/twin9-configuration-exemple.json'
 import { exportArchive, importArchive, isPristineDemo, UNKNOWN_ID, UNKNOWN_VERSION } from './archive.js'
 import { demoBaseline } from '../carto/core/model.js'
 import { createCartoStore, createMemoryAdapter } from './carto-store.js'
@@ -528,6 +529,29 @@ describe('archive 1.2.0 : les analyses approfondies Twin9', () => {
     const stores = makeStores()
     const restored = await importArchive(JSON.stringify(archive), stores)
     expect(restored).toMatchObject({ portfolios: 0, cartographies: 0 })
+  })
+
+  // P0-1 (docs/contrats.md §8.9) : chaque run porte sa configuration et son exécution, omises pour un run d'avant elles
+  it('embarque la configuration et l’exécution d’un run, archive conforme ; un run d’avant elles les omet ; une clé inconnue la rend invalide', async () => {
+    const { configuration, execution } = twin9ConfigurationFixture.run
+    const avecBlocs = () => {
+      const a = analyses()
+      a.runs = [{ ...a.runs[0], configuration: structuredClone(configuration), execution: structuredClone(execution) }, { ...a.runs[0], id: 6 }]
+      return a
+    }
+    const { archive } = await exportArchive({ ...makeStores(), ...offlineDeps(), getTwin9: async () => ({ data: avecBlocs(), error: null }), download: () => {} })
+    expect(archive.analysesTwin9.runs[0].configuration).toEqual(configuration)
+    expect(archive.analysesTwin9.runs[0].execution).toEqual(execution)
+    expect('configuration' in archive.analysesTwin9.runs[1]).toBe(false)
+    expect(validateDocument('archive-export', archive)).toEqual({ valid: true, errors: [] })
+
+    // le schéma de twin9-run est bien relié : une clé inconnue dans un bloc, un tableau à la place d'une table, refusés
+    const inconnue = structuredClone(archive)
+    inconnue.analysesTwin9.runs[0].configuration.marge = 1.2
+    expect(validateDocument('archive-export', inconnue).valid).toBe(false)
+    const tableau = structuredClone(archive)
+    tableau.analysesTwin9.runs[0].execution.par_modele = []
+    expect(validateDocument('archive-export', tableau).valid).toBe(false)
   })
 
   it('les lit sur GET api/twin9/mes-analyses ; rien pour un visiteur ni sans la route ; une erreur du serveur dite, l’archive part quand même', async () => {

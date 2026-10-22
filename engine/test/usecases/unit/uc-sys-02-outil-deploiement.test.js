@@ -411,7 +411,11 @@ describe('UC-SYS-02 — outil de déploiement deploy.mjs (sous-processus, faux F
       expect(skipped.status).toBe(0)
       expect(skipped.stderr).toBe('MIGRATE_TOKEN not set in .env.deploy — skipping remote migrations\n')
       expect(requests.map((r) => `${r.method} ${r.url}`)).toEqual(['GET /api/health'])
-      expect(ftpCalls(checkout).slice(avantSansJeton).map((c) => c.op).slice(-4)).toEqual(['access', 'cd', 'list', 'close']) // l'élagage passe, rien à ôter
+      // l'élagage passe (ce qu'il ôte dépend des noms des releases : à la seconde près, deux déploiements n'en font qu'une)
+      const sansJeton = ftpCalls(checkout).slice(avantSansJeton).map((c) => c.op)
+      const apresPointeur = sansJeton.slice(sansJeton.lastIndexOf('uploadFrom') + 1)
+      expect(apresPointeur.slice(0, 5)).toEqual(['close', 'new', 'access', 'cd', 'list'])
+      expect(apresPointeur.at(-1)).toBe('close')
 
       // Smoke : 200 sans la chaîne "ok" → code 1.
       replies['GET /api/health'] = [200, '{"status":"degraded"}']

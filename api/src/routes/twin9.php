@@ -64,6 +64,7 @@ use Humanome\Packages\SettingsRepository;
 use Humanome\Twin9\AnthropicCaller;
 use Humanome\Twin9\CreditService;
 use Humanome\Twin9\FactureService;
+use Humanome\Twin9\Fournisseurs\Fournisseurs;
 use Humanome\Twin9\PayPalClient;
 use Humanome\Twin9\ProtocoleRepository;
 use Humanome\Twin9\SoldeInsuffisantException;
@@ -267,14 +268,15 @@ return function (App $app): void {
 
     // GET /api/twin9/admin/config — effective config (admin shape: raw list
     // prices + margin; the front only ever sees Twin9Config::publicView()),
-    // and the state of the daily reading of Anthropic's prices
-    // (releve_tarifs, TarifsAnthropic; null before the first), which no PUT
-    // takes.
+    // the state of the daily reading of Anthropic's prices (releve_tarifs,
+    // TarifsAnthropic; null before the first), and the providers of a Twin9
+    // call with their GDPR tag and whether the instance's key is set
+    // (fournisseurs, ADR-012: a boolean, never the key), which no PUT takes.
     $app->get('/twin9/admin/config', $wrap(function (Request $request, Response $response) use ($json): Response {
         $settings = new SettingsRepository(Db::get());
 
         return $json($response, (new Twin9Config($settings))->read()
-            + ['releve_tarifs' => TarifsAnthropic::etat($settings)]);
+            + ['releve_tarifs' => TarifsAnthropic::etat($settings), 'fournisseurs' => Fournisseurs::pourAdministrateur()]);
     }))->add($admin);
 
     // PUT /api/twin9/admin/config {champs partiels} — 422 out of bounds
@@ -287,7 +289,7 @@ return function (App $app): void {
         $settings = new SettingsRepository(Db::get());
 
         return $json($response, (new Twin9Config($settings))->update($body)
-            + ['releve_tarifs' => TarifsAnthropic::etat($settings)]);
+            + ['releve_tarifs' => TarifsAnthropic::etat($settings), 'fournisseurs' => Fournisseurs::pourAdministrateur()]);
     }))->add($admin);
 
     // ==================================================================

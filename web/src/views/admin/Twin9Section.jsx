@@ -1,7 +1,13 @@
 // Section « Twin9 » de l'administration (ADR-010, AD-D2) — SUPERVISION seule :
 //   1. Réglages  : marge Twin9/Twin6, promo « Twin9 gratuit clé perso », packs
-//                  PayPal, offre de modèles -> PUT partiel (diff). Décision
-//                  COMMERCIALE, admin seul.
+//                  PayPal, fournisseurs ouverts aux runs (ADR-012), offre de
+//                  modèles -> PUT partiel (diff). Décision COMMERCIALE, admin
+//                  seul. Un fournisseur autre qu'Anthropic s'ouvre ici, avec
+//                  son étiquette RGPD et la présence de la clé de l'instance
+//                  (jamais la clé) ; un fournisseur étiqueté « non » derrière un
+//                  second interrupteur ; ses modèles se tarifent à la main, avec
+//                  leurs plafonds (sortie, réflexion, durée d'un appel) et leur
+//                  réglage de raisonnement.
 //   2. Jeu par défaut (T14) : le jeu de gabarits du profil par défaut, parmi
 //                  le jeu v9.8 et les copies des promptologues (sans contenu).
 //   3. Comptes   : supervision des comptes ayant une activité (soldes/cumuls).
@@ -20,6 +26,15 @@ import {
   formatUsd,
   saveTwin9Config,
 } from '../../api/twin9.js'
+import {
+  FOURNISSEURS,
+  LIBELLES_FOURNISSEURS,
+  REFLEXION_PARAMS,
+  RGPD_FOURNISSEURS,
+  clePrix,
+  depuisClePrix,
+  libelleRgpd,
+} from '../configuration/profilSchema.js'
 
 /** @param {string} iso @returns {string} date/heure française courte ('—' si vide) */
 function frDate(iso) {
@@ -30,23 +45,55 @@ function frDate(iso) {
 
 // ---- 1. Réglages -----------------------------------------------------------
 
+/** Les fournisseurs qu'un run peut atteindre (twin9_fournisseurs_ouverts) : Anthropic seul quand la config ne le dit pas. */
+function ouvertsDe(config) {
+  return Array.isArray(config?.twin9_fournisseurs_ouverts) ? config.twin9_fournisseurs_ouverts : ['anthropic']
+}
+
+/** Une valeur de la grille, en chaîne pour un champ ('' : absente). */
+const champ = (v) => (v === undefined || v === null ? '' : String(v))
+
 /** Brouillon (chaînes) depuis la config effective (admin shape). */
 function draftFromConfig(config) {
   return {
     marge: config?.marge === undefined ? '' : String(config.marge),
     margeTwin6: config?.marge_twin6 === undefined ? '' : String(config.marge_twin6),
     clePersoOuverte: Boolean(config?.twin9_cle_perso_ouverte),
+    ouverts: ouvertsDe(config),
+    nonRgpd: Boolean(config?.twin9_fournisseurs_non_rgpd),
     packs: (config?.packs ?? []).map((p) => ({
       montant_usd: String(p.montant_usd),
       libelle: p.libelle,
     })),
-    modeles: Object.entries(config?.modeles ?? {}).map(([id, m]) => ({
-      id,
-      prixIn: String(m.prix_usd_mtok?.[0] ?? ''),
-      prixOut: String(m.prix_usd_mtok?.[1] ?? ''),
-    })),
+    modeles: Object.entries(config?.modeles ?? {}).map(([cle, m]) => {
+      const [fournisseur, id] = depuisClePrix(cle)
+      return {
+        fournisseur,
+        id,
+        prixIn: String(m.prix_usd_mtok?.[0] ?? ''),
+        prixOut: String(m.prix_usd_mtok?.[1] ?? ''),
+        plafondSortie: champ(m.plafond_sortie),
+        plafondReflexion: champ(m.plafond_reflexion),
+        dureeMaxS: champ(m.duree_max_s),
+        reflexionParam: m.reflexion_param ?? '',
+      }
+    }),
   }
 }
+
+/**
+ * Les fournisseurs, tels que le serveur les dit à l'administrateur (libellé,
+ * étiquette RGPD, voie par lots, variable de la clé de l'instance et sa
+ * présence) ; à défaut, le registre recopié, sans rien de la clé.
+ */
+function registreDe(config) {
+  return Array.isArray(config?.fournisseurs)
+    ? config.fournisseurs
+    : FOURNISSEURS.map((id) => ({ id, libelle: LIBELLES_FOURNISSEURS[id], rgpd: RGPD_FOURNISSEURS[id], lots: id === 'anthropic' }))
+}
+
+/** Un entier écrit en chiffres, ou NaN. */
+const entier = (texte) => (/^\d+$/.test(String(texte).trim()) ? Number(String(texte).trim()) : Number.NaN)
 
 /** « 2 / 10 » : les prix [entrée, sortie] d'un modèle, en USD par million de jetons. */
 function prixLisibles(tarif) {
@@ -73,7 +120,8 @@ function ReleveTarifs({ releve }) {
       <a href="https://platform.claude.com/docs/en/about-claude/pricing" target="_blank" rel="noreferrer">
         la page des prix d’Anthropic
       </a>{' '}
-      par le déclencheur, pour les modèles de l’offre : une correction à la main tient jusqu’au relevé suivant.
+      par le déclencheur, pour les modèles d’Anthropic de l’offre : une correction à la main tient jusqu’au relevé
+      suivant. Les prix des autres fournisseurs se saisissent à la main, et aucun relevé ne les touche.
     </>
   )
   if (!releve) {
@@ -124,6 +172,7 @@ function ReleveTarifs({ releve }) {
  */
 function ReglagesBloc({ config, fetchFn, onSaved }) {
   const [draft, setDraft] = useState(() => draftFromConfig(config))
+  const registre = registreDe(config)
   const [busy, setBusy] = useState(false)
   const [message, setMessage] = useState(null)
   const [error, setError] = useState(null)
@@ -153,9 +202,25 @@ function ReglagesBloc({ config, fetchFn, onSaved }) {
     }))
   }
   function addModele() {
+    // la durée maximale d'un appel proposée : 30 s, qu'une tranche de 40 s laisse au départ (35 s)
     setDraft((prev) => ({
       ...prev,
-      modeles: [...prev.modeles, { id: '', prixIn: '', prixOut: '' }],
+      modeles: [
+        ...prev.modeles,
+        { fournisseur: 'anthropic', id: '', prixIn: '', prixOut: '', plafondSortie: '', plafondReflexion: '0', dureeMaxS: '30', reflexionParam: '' },
+      ],
+    }))
+  }
+
+  /** Ouvrir ou fermer un fournisseur ; refermer les fournisseurs « non » les retire tous. */
+  function setOuvert(id, ouvert) {
+    setDraft((prev) => ({ ...prev, ouverts: ouvert ? [...prev.ouverts, id] : prev.ouverts.filter((f) => f !== id) }))
+  }
+  function setNonRgpd(permis) {
+    setDraft((prev) => ({
+      ...prev,
+      nonRgpd: permis,
+      ouverts: permis ? prev.ouverts : prev.ouverts.filter((f) => registre.find((r) => r.id === f)?.rgpd !== 'non'),
     }))
   }
   function removeModele(i) {
@@ -178,6 +243,12 @@ function ReglagesBloc({ config, fetchFn, onSaved }) {
       patch.twin9_cle_perso_ouverte = Boolean(draft.clePersoOuverte)
     }
 
+    // les fournisseurs ouverts, dans l'ordre du registre ; envoyés seulement s'ils changent
+    const ouverts = FOURNISSEURS.filter((f) => draft.ouverts.includes(f))
+    const avant = ouvertsDe(config)
+    if (ouverts.length !== avant.length || ouverts.some((f) => !avant.includes(f))) patch.twin9_fournisseurs_ouverts = ouverts
+    if (draft.nonRgpd !== Boolean(config.twin9_fournisseurs_non_rgpd)) patch.twin9_fournisseurs_non_rgpd = draft.nonRgpd
+
     const nextPacks = draft.packs.map((p) => ({
       montant_usd: Number.parseFloat(String(p.montant_usd).replace(',', '.')),
       libelle: p.libelle.trim(),
@@ -191,13 +262,30 @@ function ReglagesBloc({ config, fetchFn, onSaved }) {
     for (const m of draft.modeles) {
       const id = m.id.trim()
       if (id === '') return { error: 'Identifiant de modèle vide.' }
+      // la clé de la grille : l'identifiant nu chez Anthropic, « fournisseur:modèle » ailleurs (ADR-012)
+      const cle = clePrix(m.fournisseur, id)
       const prixIn = Number.parseFloat(String(m.prixIn).replace(',', '.'))
       const prixOut = Number.parseFloat(String(m.prixOut).replace(',', '.'))
       if (!Number.isFinite(prixIn) || !Number.isFinite(prixOut)) {
-        return { error: `Prix invalide pour « ${id} ».` }
+        return { error: `Prix invalide pour « ${cle} ».` }
       }
-      // ce que le formulaire n'édite pas (le palier des longs prompts, T10) reste tel quel
-      nextModeles[id] = { ...(config.modeles?.[id] ?? {}), prix_usd_mtok: [prixIn, prixOut] }
+      // ce que le formulaire n'édite pas (le palier des longs prompts, T10) reste tel quel, à sa place
+      const entree = { ...(config.modeles?.[cle] ?? {}), prix_usd_mtok: [prixIn, prixOut] }
+      if (m.fournisseur !== 'anthropic') {
+        // un autre fournisseur porte ses plafonds (le serveur vérifie leurs bornes de chaque fournisseur)
+        const sortie = entier(m.plafondSortie)
+        const reflexion = entier(m.plafondReflexion)
+        const duree = entier(m.dureeMaxS)
+        if (!(sortie > 0)) return { error: `Plafond de sortie invalide pour « ${cle} » : entier strictement positif attendu.` }
+        if (!Number.isInteger(reflexion)) return { error: `Plafond de réflexion invalide pour « ${cle} » : entier positif ou nul attendu.` }
+        if (!(duree >= 1 && duree <= 45)) return { error: `Durée maximale invalide pour « ${cle} » : de 1 à 45 secondes.` }
+        entree.plafond_sortie = sortie
+        entree.plafond_reflexion = reflexion
+        entree.duree_max_s = duree
+        if (m.reflexionParam !== '' && REFLEXION_PARAMS[m.fournisseur]) entree.reflexion_param = m.reflexionParam
+        else delete entree.reflexion_param
+      }
+      nextModeles[cle] = entree
     }
     if (JSON.stringify(nextModeles) !== JSON.stringify(config.modeles)) patch.modeles = nextModeles
 
@@ -239,7 +327,7 @@ function ReglagesBloc({ config, fetchFn, onSaved }) {
       <h3>Réglages</h3>
 
       <div className="admin-field">
-        <label htmlFor="twin9-marge">Contribution Twin9 (multiplicateur sur les prix Anthropic)</label>
+        <label htmlFor="twin9-marge">Contribution Twin9 (multiplicateur sur les prix des fournisseurs)</label>
         <div className="admin-field-input">
           <input
             id="twin9-marge"
@@ -345,11 +433,80 @@ function ReglagesBloc({ config, fetchFn, onSaved }) {
         Ajouter un pack
       </button>
 
+      <h4>Fournisseurs des appels Twin9</h4>
+      <p className="privacy-note">
+        Un run n’atteint que les fournisseurs ouverts ici, Anthropic seul par défaut (ADR-012). Un autre fournisseur
+        n’est appelé qu’en direct, avec la clé de l’instance, que l’environnement du serveur porte et que cette page ne
+        montre jamais ; ses modèles se tarifent à la main dans l’offre ci-dessous. Les étiquettes RGPD sont
+        indicatives, pas un avis juridique. Ouvrir un fournisseur, c’est l’ouvrir à tous les comptes : les textes de
+        confidentialité le nomment déjà.
+      </p>
+      <div className="admin-field admin-field-toggle">
+        <label htmlFor="twin9-non-rgpd">
+          <input
+            id="twin9-non-rgpd"
+            type="checkbox"
+            checked={draft.nonRgpd}
+            disabled={busy}
+            onChange={(event) => setNonRgpd(event.target.checked)}
+          />{' '}
+          Permettre d’ouvrir les fournisseurs étiquetés « non » au regard du RGPD
+        </label>
+      </div>
+      <ul className="twin9-admin-fournisseurs">
+        {registre.map((f) => {
+          const ouvert = draft.ouverts.includes(f.id)
+          return (
+            <li key={f.id} className="twin9-admin-fournisseur" data-fournisseur={f.id}>
+              <label htmlFor={`twin9-fournisseur-${f.id}`}>
+                <input
+                  id={`twin9-fournisseur-${f.id}`}
+                  type="checkbox"
+                  checked={ouvert}
+                  disabled={busy || (f.rgpd === 'non' && !draft.nonRgpd && !ouvert)}
+                  onChange={(event) => setOuvert(f.id, event.target.checked)}
+                />{' '}
+                {f.libelle}
+              </label>{' '}
+              <span className={`value-badge twin9-rgpd twin9-rgpd-${f.rgpd}`}>{libelleRgpd(f.rgpd)}</span>
+              {' · '}
+              {f.lots ? 'par lots ou en direct' : 'en direct'}
+              {typeof f.cle_instance === 'boolean' ? ` · clé de l’instance (${f.env}) : ${f.cle_instance ? 'posée' : 'absente'}` : ''}
+            </li>
+          )
+        })}
+      </ul>
+
       <h4>Offre de modèles</h4>
       <ReleveTarifs releve={config?.releve_tarifs ?? null} />
+      <p className="privacy-note">
+        Le modèle d’un autre fournisseur porte ses plafonds : le plafond de sortie (en jetons, au moins le budget de
+        sortie des étapes qui l’emploient ; 32 768 au plus chez Google), le plafond de réflexion (les jetons de
+        raisonnement que le pire cas d’un appel ajoute ; plus de zéro chez xAI, dont le raisonnement ne se coupe pas),
+        la durée maximale d’un appel (de 1 à 45 s ; une tranche de 40 s en laisse 35 au départ d’un appel), et chez
+        OpenAI et Google le réglage de raisonnement le plus bas que le modèle admet (un mauvais choix fait refuser ses
+        appels).
+      </p>
       <ul className="twin9-admin-modeles">
         {draft.modeles.map((m, i) => (
           <li key={i} className="twin9-admin-modele">
+            <div className="admin-field">
+              <label htmlFor={`twin9-modele-fournisseur-${i}`}>Fournisseur</label>
+              <div className="admin-field-input">
+                <select
+                  id={`twin9-modele-fournisseur-${i}`}
+                  value={m.fournisseur}
+                  disabled={busy}
+                  onChange={(event) => setModele(i, 'fournisseur', event.target.value)}
+                >
+                  {registre.map((f) => (
+                    <option key={f.id} value={f.id}>
+                      {f.libelle}
+                    </option>
+                  ))}
+                </select>
+              </div>
+            </div>
             <div className="admin-field">
               <label htmlFor={`twin9-modele-id-${i}`}>Identifiant du modèle</label>
               <div className="admin-field-input">
@@ -392,6 +549,74 @@ function ReglagesBloc({ config, fetchFn, onSaved }) {
                 />
               </div>
             </div>
+            {m.fournisseur !== 'anthropic' ? (
+              <>
+                <div className="admin-field">
+                  <label htmlFor={`twin9-modele-plafond-sortie-${i}`}>Plafond de sortie (jetons)</label>
+                  <div className="admin-field-input">
+                    <input
+                      id={`twin9-modele-plafond-sortie-${i}`}
+                      type="number"
+                      min="1"
+                      step="1"
+                      value={m.plafondSortie}
+                      disabled={busy}
+                      onChange={(event) => setModele(i, 'plafondSortie', event.target.value)}
+                    />
+                  </div>
+                </div>
+                <div className="admin-field">
+                  <label htmlFor={`twin9-modele-plafond-reflexion-${i}`}>Plafond de réflexion (jetons)</label>
+                  <div className="admin-field-input">
+                    <input
+                      id={`twin9-modele-plafond-reflexion-${i}`}
+                      type="number"
+                      min="0"
+                      step="1"
+                      value={m.plafondReflexion}
+                      disabled={busy}
+                      onChange={(event) => setModele(i, 'plafondReflexion', event.target.value)}
+                    />
+                  </div>
+                </div>
+                <div className="admin-field">
+                  <label htmlFor={`twin9-modele-duree-${i}`}>Durée maximale d’un appel (s)</label>
+                  <div className="admin-field-input">
+                    <input
+                      id={`twin9-modele-duree-${i}`}
+                      type="number"
+                      min="1"
+                      max="45"
+                      step="1"
+                      value={m.dureeMaxS}
+                      disabled={busy}
+                      onChange={(event) => setModele(i, 'dureeMaxS', event.target.value)}
+                    />
+                    <span className="admin-field-bounds">1 – 45</span>
+                  </div>
+                </div>
+                {REFLEXION_PARAMS[m.fournisseur] ? (
+                  <div className="admin-field">
+                    <label htmlFor={`twin9-modele-reflexion-${i}`}>Réglage de raisonnement</label>
+                    <div className="admin-field-input">
+                      <select
+                        id={`twin9-modele-reflexion-${i}`}
+                        value={m.reflexionParam}
+                        disabled={busy}
+                        onChange={(event) => setModele(i, 'reflexionParam', event.target.value)}
+                      >
+                        <option value="">aucun (celui du modèle)</option>
+                        {REFLEXION_PARAMS[m.fournisseur].map((v) => (
+                          <option key={v} value={v}>
+                            {v}
+                          </option>
+                        ))}
+                      </select>
+                    </div>
+                  </div>
+                ) : null}
+              </>
+            ) : null}
             <button
               type="button"
               className="admin-button-secondary"

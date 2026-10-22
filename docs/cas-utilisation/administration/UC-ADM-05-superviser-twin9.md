@@ -3,18 +3,19 @@
 | Champ | Valeur |
 |---|---|
 | **Acteur principal** | Administrateur (rôle `admin`) |
-| **Acteurs secondaires** | Apprenants et établissements (offre, prix et promotion appliqués à leurs analyses et à leurs profils, UC-APP-09/10/11) ; PayPal (montants des packs) ; Anthropic (page des prix, relevée chaque jour, A6) ; le déclencheur externe du worker (T18), qui fait le relevé |
+| **Acteurs secondaires** | Apprenants et établissements (offre, prix, promotion et fournisseurs ouverts appliqués à leurs analyses et à leurs profils, UC-APP-09/10/11) ; PayPal (montants des packs) ; Anthropic (page des prix, relevée chaque jour, A6) ; le déclencheur externe du worker (T18), qui fait le relevé ; les autres fournisseurs des appels Twin9 (OpenAI, Mistral AI, Google, xAI, OpenRouter : A7, A8, ADR-012) |
 | **Portée** | humanome.xyz — vue `#/admin/twin9` (section « Supervision Twin9 » de l'administration), routes `GET/PUT /api/twin9/admin/config`, `GET /api/twin9/admin/comptes`, `GET /api/twin9/admin/jeux`, `PUT /api/twin9/admin/jeux/defaut` |
 | **Niveau** | Objectif utilisateur |
 | **Cahier des charges** | §3.8 et §4.10 (administration), §7 (modèle économique : coût API + marge) ; ADR-010 §3 et §6 ; décision AD-D2 (`docs/autorisations.md`) |
-| **Statut** | Implémenté (supervision commerciale séparée de l'atelier des gabarits, AD-D2) |
+| **Statut** | Implémenté (supervision commerciale séparée de l'atelier des gabarits, AD-D2 ; fournisseurs des appels Twin9 à l'écran le 2026-10-22, ADR-012) |
 
 ## Objectif
 
 Permettre à l'administrateur de piloter l'offre commerciale de Twin9 et de la
 cartographie ouverte Twin6 — contributions (marges), promotion « Twin9 avec sa
 propre clé », packs de recharge, modèles et leurs prix, que la plateforme
-relève chaque jour sur la page d'Anthropic (A6) —, de
+relève chaque jour sur la page d'Anthropic (A6) —, d'ouvrir aux runs Twin9
+d'autres fournisseurs qu'Anthropic et de tarifer leurs modèles (A7, A8), de
 fixer le jeu de gabarits par défaut (T14) et de suivre les soldes et cumuls de
 tous les comptes qui utilisent le crédit prépayé, **sans jamais voir le
 contenu des gabarits** (réservé à l'atelier, UC-PRO-08).
@@ -48,7 +49,9 @@ L'administrateur ouvre « Administrer » → « Supervision Twin9 » (`#/admin/t
 2. La section charge `GET /api/twin9/admin/config` (forme administrateur :
    contributions `marge` et `marge_twin6`, promotion, packs, modèles avec prix
    **catalogue** — l'interrupteur, le rythme, les réglages du pipeline et les
-   étages de l'offre sont partis le 2026-10-20, voir Limites) et
+   étages de l'offre sont partis le 2026-10-20, voir Limites —, fournisseurs
+   ouverts aux runs, et en lecture seule chaque fournisseur avec son étiquette
+   RGPD et la présence de la clé de l'instance, A7) et
    `GET /api/twin9/admin/comptes`.
 3. Elle affiche le formulaire des réglages, le jeu de gabarits par défaut (A5),
    la table des comptes et un renvoi vers l'atelier (`#/twin9-atelier`) pour
@@ -95,6 +98,28 @@ L'administrateur ouvre « Administrer » → « Supervision Twin9 » (`#/admin/t
   suivant (A6), qui récrit ceux d'un modèle que la page d'Anthropic donne : la
   contribution de la plateforme se règle par la marge (RG2), pas par le prix
   catalogue.
+- **A7 — Fournisseurs des appels Twin9** (ADR-012, étape 4) : sous « Fournisseurs
+  des appels Twin9 », chaque fournisseur du registre, son étiquette RGPD
+  (indicative, pas un avis juridique), sa voie (Anthropic : par lots ou en
+  direct ; les autres : en direct) et la clé de l'instance « posée » ou
+  « absente », avec le nom de sa variable d'environnement — un booléen, jamais
+  la clé (`fournisseurs`, que `GET` et `PUT` renvoient et qu'aucun `PUT` ne
+  prend). Une case par fournisseur l'ouvre aux runs (`twin9_fournisseurs_ouverts`,
+  Anthropic seul par défaut, envoyé dans l'ordre du registre et seulement s'il
+  change) ; un fournisseur étiqueté « non » (Google, xAI, OpenRouter) ne se coche
+  qu'une fois l'interrupteur « Permettre d'ouvrir les fournisseurs étiquetés
+  « non » au regard du RGPD » coché (`twin9_fournisseurs_non_rgpd`, fermé par
+  défaut), et le décocher referme ces fournisseurs avec lui, que le serveur
+  refuserait sinon. Un profil peut nommer un fournisseur fermé : il
+  s'enregistre, ne se lance pas (UC-APP-10 A9) ; un run en cours n'envoie
+  plus rien à un fournisseur refermé dès sa tranche suivante : ses appels
+  l'attendent, sa page dit pourquoi, ses autres fournisseurs continuent.
+- **A8 — Modèles d'un autre fournisseur** (ADR-012, étape 4) : une ligne de l'offre
+  choisit son fournisseur ; hors d'Anthropic, sa clé est « fournisseur:modèle »
+  et elle porte, saisis à la main (aucun relevé ne les touche), son plafond de
+  sortie, son plafond de réflexion, la durée maximale d'un appel (30 s
+  proposées pour un modèle ajouté) et, chez OpenAI et Google, son réglage de
+  raisonnement (RG11). Ces champs n'existent pas pour un modèle d'Anthropic.
 - ~~**A4 — Réglages hors formulaire**~~ : retiré le 2026-10-20 avec
   l'interrupteur `enabled`, le rythme `appels_par_minute` et les réglages du
   `pipeline`, à la demande de Christian (voir Limites). La fusion de premier
@@ -143,7 +168,9 @@ L'administrateur ouvre « Administrer » → « Supervision Twin9 » (`#/admin/t
   la vue affiche le message et garde la saisie.
 - **E3 — Saisie invalide détectée dans le navigateur** (étape 4) : contribution
   Twin9 ou Twin6 non numérique, identifiant de modèle vide, prix ou montant de
-  pack non numérique → message, aucun envoi.
+  pack non numérique, et pour le modèle d'un autre fournisseur un plafond de
+  sortie qui n'est pas un entier strictement positif, un plafond de réflexion
+  qui n'est pas un entier, une durée hors de 1 à 45 s → message, aucun envoi.
 - **E4 — Chargement impossible** (étape 2) : erreur serveur → « Chargement
   impossible. » ; copie statique → message d'indisponibilité d'`AdminView`
   (« Copie statique du site… »), la section n'est pas montée.
@@ -181,6 +208,22 @@ L'administrateur ouvre « Administrer » → « Supervision Twin9 » (`#/admin/t
   l'import écrivait aussi la configuration, en ouvrant l'interrupteur.)
 - **RG8** — Comptes : uniquement ceux qui ont au moins un événement au
   grand-livre ; compteurs et montants seulement.
+- **RG10** — Fournisseurs (A7, ADR-012) : `twin9_fournisseurs_ouverts`, liste
+  d'identifiants du registre sans doublon, `["anthropic"]` par défaut ;
+  `twin9_fournisseurs_non_rgpd`, booléen, `false` par défaut ; un fournisseur
+  étiqueté « non » ouvert sans lui → `422`. La clé de l'instance d'un
+  fournisseur vient de l'environnement (`api/.env.example`), jamais de
+  l'interface ; l'administrateur seul apprend si elle est posée, une page
+  d'utilisateur ne lit qu'un booléen `disponible` sans sa cause.
+- **RG11** — Grille d'un autre fournisseur (A8, `Twin9Config::validerTiers`) :
+  clé « fournisseur:modèle », le modèle suivant le motif de son fournisseur ;
+  `plafond_sortie` entier > 0 (32 768 au plus chez Google, requête non
+  streamée) ; `plafond_reflexion` entier ≥ 0 (> 0 chez xAI, dont le
+  raisonnement ne se coupe pas) ; `duree_max_s` de 1 à 45 ; `reflexion_param`
+  chez OpenAI et Google seulement, parmi les valeurs que leur documentation
+  liste (un mauvais choix pour un modèle fait refuser ses appels, `400`). Ces
+  champs sont refusés sur un modèle d'Anthropic ; le relevé (A6) et l'offre
+  publique ignorent les clés à « : ».
 - **RG9** — Relevé des prix (A6, `Twin9\TarifsAnthropic`) : dû quand aucun
   relevé n'a réussi ce jour UTC, et qu'une heure a passé depuis une tentative
   échouée ; fait sous verrou MySQL (`GET_LOCK`), un seul processus à la fois ;
@@ -215,6 +258,7 @@ L'administrateur ouvre « Administrer » → « Supervision Twin9 » (`#/admin/t
 | Jeu de gabarits par défaut | Réglage `twin9_gabarits_defaut` (son identifiant seul) ; la liste des jeux montre le nom affiché de l'auteur d'une copie, jamais un gabarit |
 | Table des comptes | Nom affiché et email des comptes actifs, solde, cumuls, dernière activité — visibles de l'administrateur seul, jamais de contenu |
 | Prix catalogue et marges | Vue administrateur seulement |
+| Fournisseurs ouverts, étiquettes RGPD, présence des clés de l'instance (A7) | Réglage `twin9_config` ; la présence d'une clé est un booléen lu dans l'environnement à chaque requête, jamais la clé ; administrateur seul. Ouvrir un fournisseur l'ajoute aux destinataires des runs Twin9 (`docs/rgpd-registre.md` §13, politique de confidentialité), que l'accord de chaque lancement nomme |
 
 ## Code sollicité
 
@@ -222,12 +266,14 @@ L'administrateur ouvre « Administrer » → « Supervision Twin9 » (`#/admin/t
 |---|---|---|
 | Front | `web/src/router.js` — `parseHash` ; `web/src/nav.js` — `navGroups` | Route `#/admin/twin9`, entrée réservée à l'admin |
 | Front | `web/src/views/AdminView.jsx` | Garde de session et de rôle, dépêche de la section |
-| Front | `web/src/views/admin/Twin9Section.jsx` | Réglages (diff, validation cliente), état du relevé des prix (`ReleveTarifs`, A6), jeu de gabarits par défaut, table des comptes |
+| Front | `web/src/views/admin/Twin9Section.jsx` | Réglages (diff, validation cliente), fournisseurs (A7), modèles d'un autre fournisseur (A8), état du relevé des prix (`ReleveTarifs`, A6), jeu de gabarits par défaut, table des comptes |
+| Front | `web/src/views/configuration/profilSchema.js` — `FOURNISSEURS`, `RGPD_FOURNISSEURS`, `REFLEXION_PARAMS`, `clePrix`, `depuisClePrix` | Registre recopié du PHP (comparé par un test) |
 | Front | `web/src/api/twin9.js` — `fetchTwin9Config`, `saveTwin9Config`, `fetchComptes`, `fetchJeux`, `fixerJeuDefaut`, `formatUsd` | Client de supervision |
 | API | `GET/PUT /api/twin9/admin/config`, `GET /api/twin9/admin/comptes`, `GET /api/twin9/admin/jeux`, `PUT /api/twin9/admin/jeux/defaut` — `api/src/routes/twin9.php` | Routes de supervision (admin) |
 | API | `api/src/Middleware/RequireRole.php` — `any('admin')` | Garde admin (401 / 403, RG1, E1) — logique unitaire couverte par UC-ADM-01-U10 |
 | API | `api/src/Middleware/CsrfMiddleware.php` | Jeton CSRF des mutations (E5) — logique unitaire couverte par UC-CPT-02-U07 |
-| Domaine | `api/src/Twin9/Twin9Config.php` — `read`, `update`, `defaults`, `publicView` | Configuration effective, validation, vue publique |
+| Domaine | `api/src/Twin9/Twin9Config.php` — `read`, `update`, `defaults`, `publicView`, `validerTiers` | Configuration effective, validation (RG10, RG11), vue publique |
+| Domaine | `api/src/Twin9/Fournisseurs/Fournisseurs.php` — `REGISTRE`, `actifs`, `pourAdministrateur` | Les fournisseurs, ceux qu'un run atteint, ce que l'administrateur en lit (A7) |
 | Domaine | `api/src/Twin9/FactureService.php` — `comptes` | Table de supervision |
 | Domaine | `api/src/Twin9/TarifsAnthropic.php` — `releverSiDu`, `du`, `relever`, `lire`, `appliquer`, `etat` | Relevé quotidien des prix (A6, RG9) |
 | API | `POST /api/admin/worker-tick` — `api/src/routes/worker.php` | Fait le relevé après sa tranche, quand il est dû (compteur `tarifs`) |
@@ -250,6 +296,8 @@ L'administrateur ouvre « Administrer » → « Supervision Twin9 » (`#/admin/t
 | UC-ADM-05-U13 | `AdminView` | Admin → section Twin9 ; non-admin → espace réservé sans appel ; copie statique → message (RG1, E1, E4) | idem |
 | UC-ADM-05-U14 | `Twin9Section` (jeu par défaut) | Jeux par leur nom et leur auteur, sans contenu ; « Enregistrer » désactivé sur le défaut actuel, puis `PUT jeux/defaut {jeu}` (A5) | idem |
 | UC-ADM-05-U19 | `Twin9Section` (`ReleveTarifs`) | L'état du relevé sous l'offre de modèles : aucun relevé, puis ses changements et les modèles absents de la page, ou l'échec et sa raison ; jamais renvoyé dans le `PUT` (A6) | idem |
+| UC-ADM-05-U20 | `Twin9Section` (fournisseurs) | Chaque fournisseur, son étiquette RGPD, sa voie, sa clé d'instance posée ou absente ; rien de modifié → aucun `PUT` (offre relue dans un autre ordre comprise) ; Mistral AI ouvert → `{twin9_fournisseurs_ouverts}` seul ; un fournisseur « non » attend le second interrupteur, que refermer referme avec lui (A7, RG10) | idem |
+| UC-ADM-05-U21 | `Twin9Section` (grille tierce) | Le modèle d'un autre fournisseur : son fournisseur, ses plafonds, son réglage de raisonnement (OpenAI et Google) ; une modification ne change que sa valeur ; un modèle ajouté, à 30 s ; plafonds invalides → message, aucun `PUT` (A8, RG11, E3) | idem |
 | UC-ADM-05-U08 | `Twin9Config::update` | Fusion partielle, persistance de la configuration complète (défauts figés), clé inconnue refusée sans écriture (RG7) | `api/tests/UseCases/Unit/UcAdm05SuperviserTwin9Test.php` |
 | UC-ADM-05-U09 | `Twin9Config::update` | Bornes de chaque réglage (RG2-RG5) ; un modèle ne porte que ses prix (RG4) ; les réglages retirés le 2026-10-20 sont des clés inconnues ; configuration entière inchangée après les refus | idem |
 | UC-ADM-05-U10 | `Twin9Config::update` | **Anomalie 2 figée** : message « 1 et 100 USD » pour une borne à 500 | idem |
@@ -284,6 +332,7 @@ L'administrateur ouvre « Administrer » → « Supervision Twin9 » (`#/admin/t
 | UC-ADM-05-F18 | A5 | IHM | `<App/>` : la copie d'un promptologue choisie → PUT avec CSRF → confirmation, aucun appel aux gabarits ; jeu inconnu → message du serveur | `web/test/usecases/functional/uc-adm-05-superviser-twin9.test.jsx` |
 | UC-ADM-05-F19 | A6 | API | Le déclencheur relève les prix une fois par jour : la grille stockée de juillet (Sonnet 5 à 3 / 15) passe à 2 / 10, l'apprenant le voit sur `/meta`, l'administrateur lit le relevé ; le tick suivant du jour ne relit rien | `api/tests/UseCases/Functional/UcAdm05SuperviserTwin9Test.php` |
 | UC-ADM-05-F20 | A6 | API | Une page des prix illisible ne change rien : le tick répond, la grille garde ses prix, l'administrateur lit l'échec et sa raison ; sans clé de la plateforme, aucun relevé | idem |
+| UC-ADM-05-F21 | A7, A8, E2 | IHM | `<App/>` : Mistral AI ouvert et un de ses modèles tarifé avec ses plafonds → un `PUT` (CSRF) ; clés de l'instance posée ou absente, jamais montrées ; Google ne se coche qu'avec le second interrupteur, que refermer le referme ; un plafond de sortie que Gemini n'admet pas, refusé par le serveur (`422`) : message, saisie gardée | `web/test/usecases/functional/uc-adm-05-superviser-twin9.test.jsx` |
 
 ### Tests existants liés (non-régression)
 
@@ -292,6 +341,9 @@ L'administrateur ouvre « Administrer » → « Supervision Twin9 » (`#/admin/t
 - `api/tests/Twin9FactureTest.php` — `testAdminComptesIsAdminOnlyAndAggregates`.
 - `api/tests/Twin9PayPalTest.php` — packs 200 et 500 configurables.
 - `web/src/views/admin/Twin9Section.test.jsx` — supervision sans contenu, diff, promotion, pack, comptes, garde d'`AdminView`.
+- `api/tests/Twin9/ConfigurationDroitsTest.php` — `testTheProvidersAreOpenedByTheAdministrator` (RG10, admin seul), `testTheAdministratorReadsWhichInstanceKeysAreSet` (A7 : un booléen, jamais la clé, refusé en `PUT`), `testTheInstanceKeyNeverPassesThroughTheInterface`.
+- `api/tests/Twin9/CoutsTest.php` — `testTheGridKeepsAThirdPartysCaps` (RG11), `testAThirdPartysWorstCaseCountsItsCaps`.
+- `web/src/views/configuration/profilSchema.test.js` — le registre recopié (libellés, étiquettes, motifs de modèle, réglages de raisonnement) égal à celui du PHP.
 
 ### Exécuter
 

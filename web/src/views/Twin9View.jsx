@@ -25,6 +25,13 @@
 // fournisseur, voie, modèle et budget de sortie de chaque rôle, jeu de
 // gabarits, référentiel, clé ; puis ses appels, pannes et sorties tronquées.
 //
+// L'accord nomme les fournisseurs auxquels le run envoie le texte, chacun avec
+// sa voie et son étiquette RGPD (ADR-012) : la configuration les donne pour
+// chaque profil, avant tout aperçu, puisque l'aperçu emporte déjà le
+// portfolio. Il vaut pour cette liste : un profil qui en atteint d'autres le
+// redemande. Le lancement l'envoie ({fournisseurs: [ids]}), et le serveur
+// refuse une liste qui n'est pas celle du profil.
+//
 // Le moteur lit le référentiel du run (T16), et sa carte s'ouvre dans la
 // cartographie avec lui (T17) : RESPIRE, ou celui d'une autre structure, dont
 // le titre du jeu porte le nom.
@@ -46,6 +53,7 @@ import {
 } from '../api/twin9.js'
 import { createPortfolioStore } from '../lib/portfolio-store.js'
 import { twin9RunFiles } from '../lib/interface-handoff.js'
+import { libelleRgpd, libelleVoie } from './configuration/profilSchema.js'
 import ConfigurationDuRun from './twin9/ConfigurationDuRun.jsx'
 import '../styles/twin9.css'
 
@@ -76,6 +84,47 @@ function phraseJournees({ total, nouvelles, changees }) {
   return `Ce portfolio a déjà été évalué : ${n} journée${s(n)} sur ${total} à instruire (${quoi}), les autres reprises telles quelles.`
 }
 
+/** Anthropic seul, sa voie inconnue : face à un serveur qui ne nomme pas les fournisseurs d'un profil, il n'en appelle pas d'autre. */
+const ANTHROPIC = { id: 'anthropic', libelle: 'Anthropic', rgpd: 'sous_conditions', voie: null }
+
+/** Les fournisseurs qu'atteint le profil choisi (GET twin9/configuration) : ceux que l'accord nomme. */
+function fournisseursDuLancement(donnees, profil) {
+  const liste = profil === '' ? donnees?.defautFournisseurs : donnees?.profils.find((p) => String(p.id) === profil)?.fournisseurs
+  return Array.isArray(liste) && liste.length > 0 ? liste : [ANTHROPIC]
+}
+
+/** « Anthropic, OpenAI et Mistral AI ». */
+function enumeration(noms) {
+  return noms.length < 2 ? noms.join('') : `${noms.slice(0, -1).join(', ')} et ${noms[noms.length - 1]}`
+}
+
+/**
+ * Ce que l'accord dit des fournisseurs : chacun, sa voie et son étiquette RGPD ;
+ * le délai d'un lot chez Anthropic ; un fournisseur étiqueté « non ».
+ */
+function phraseFournisseurs(fournisseurs) {
+  const nom = (f) => {
+    const precisions = [f.voie ? libelleVoie(f.voie) : null, f.rgpd ? libelleRgpd(f.rgpd) : null].filter(Boolean)
+    return precisions.length > 0 ? `${f.libelle} (${precisions.join(' ; ')})` : f.libelle
+  }
+  const phrases = [
+    fournisseurs.length === 1
+      ? `Le texte part chez ${nom(fournisseurs[0])}, le fournisseur du modèle.`
+      : `Le texte part chez les fournisseurs des modèles de ce profil : ${enumeration(fournisseurs.map(nom))}.`,
+  ]
+  if (fournisseurs.some((f) => f.id === 'anthropic' && f.voie !== 'directe')) {
+    phrases.push('Par lots, Anthropic garde le lot jusqu’à sa suppression, 29 jours au plus.')
+  }
+  const non = fournisseurs.filter((f) => f.rgpd === 'non').map((f) => f.libelle)
+  if (non.length > 0) {
+    phrases.push(
+      `${enumeration(non)} ${non.length > 1 ? 'sont étiquetés' : 'est étiqueté'} « non » au regard du RGPD : à éviter pour ` +
+        'les journaux d’élèves réels.',
+    )
+  }
+  return phrases.join(' ')
+}
+
 /**
  * Avant de lancer : les journées à instruire ; le coût estimé, en moyenne, au plus bas et au plus haut, et la durée ;
  * celles que le crédit ou le budget admet avec leur fusion (T8), ou le refus, qui dit ce qu'il faudrait ; les plafonds.
@@ -91,7 +140,17 @@ function Apercu({ apercu }) {
     dollars(e.min_usd) === dollars(e.max_usd)
       ? dollars(e.cout_usd)
       : `${dollars(e.cout_usd)} en moyenne, de ${dollars(e.min_usd)} à ${dollars(e.max_usd)}`
-  const temps = e.duree_s != null ? ` · durée estimée : ${duree(e.duree_s)}` : apercu.voie === 'lots' ? ' · par lots, la durée dépend d’Anthropic' : ''
+  // par lots, la durée est celle d'Anthropic, même quand d'autres appels partent en direct (P1-5)
+  const voies = Array.isArray(apercu.fournisseurs) ? apercu.fournisseurs.map((f) => f.voie) : [apercu.voie]
+  const parLots = voies.some((v) => v === 'lots' || v === 'mixte')
+  const temps =
+    e.duree_s != null
+      ? ` · durée estimée : ${duree(e.duree_s)}`
+      : parLots
+        ? voies.some((v) => v !== 'lots')
+          ? ' · en partie par lots, la durée dépend d’Anthropic'
+          : ' · par lots, la durée dépend d’Anthropic'
+        : ''
   const { budget_usd: budget, duree_minutes: minutes } = apercu.plafonds
   const s = (n) => (n > 1 ? 's' : '')
   return (
@@ -176,7 +235,8 @@ function Lancer({ deps }) {
   const [fichier, setFichier] = useState(null)
   const [profil, setProfil] = useState('')
   const [visible, setVisible] = useState(false)
-  const [accord, setAccord] = useState(false)
+  // l'accord, donné pour une liste de fournisseurs et de voies : la clé de cette liste, null sans accord
+  const [accord, setAccord] = useState(null)
   const [occupe, setOccupe] = useState(false)
   const [erreur, setErreur] = useState(null)
 
@@ -186,7 +246,7 @@ function Lancer({ deps }) {
     Promise.all([fetchRuns({ fetchFn }), fetchConfiguration({ fetchFn }), store.list().catch(() => [])])
       .then(([runs, config, portfolios]) => {
         if (!actif) return
-        setDonnees({ ...runs, profils: config.profils, portfolios })
+        setDonnees({ ...runs, profils: config.profils, defautFournisseurs: config.defaut_fournisseurs ?? null, portfolios })
         setPortfolio(portfolios[0]?.id ?? 'fichier')
         setEtat({})
       })
@@ -196,6 +256,15 @@ function Lancer({ deps }) {
     }
   }, [fetchFn, deps.store])
 
+  // L'accord vaut pour les fournisseurs qu'il nomme : un profil qui en atteint d'autres, ou par une autre voie, le redemande.
+  const fournisseurs = fournisseursDuLancement(donnees, profil)
+  const cleAccord = JSON.stringify(fournisseurs.map((f) => [f.id, f.voie]))
+  const accorde = accord !== null && accord === cleAccord
+  // un accord donné pour d'autres fournisseurs tombe : revenir à leur profil le redemande
+  useEffect(() => {
+    if (accord !== null && accord !== cleAccord) setAccord(null)
+  }, [accord, cleAccord])
+
   // Avant de lancer, l'accord donné : ce que le run instruirait, et ce qu'il coûterait.
   const local = donnees?.portfolios.find((p) => p.id === portfolio) ?? null
   const choisi = local ? { nom: nomDeFichier(local.titre), texte: local.texte } : fichier
@@ -203,7 +272,7 @@ function Lancer({ deps }) {
   const nom = choisi?.nom ?? null
   const texte = choisi?.texte ?? ''
   useEffect(() => {
-    if (!accord || nom === null || texte.trim() === '') {
+    if (!accorde || nom === null || texte.trim() === '') {
       setApercu(null)
       return undefined
     }
@@ -215,7 +284,7 @@ function Lancer({ deps }) {
     return () => {
       actif = false
     }
-  }, [accord, profil, nom, texte, fetchFn])
+  }, [accorde, profil, nom, texte, fetchFn])
 
   if (etat.chargement) return <p>Chargement…</p>
   if (etat.erreur) {
@@ -229,7 +298,7 @@ function Lancer({ deps }) {
   }
 
   // refusé d'avance (T8) : le crédit ou le budget ne couvre pas même une journée et sa fusion
-  const pret = accord && choisi !== null && choisi.texte.trim() !== '' && !occupe && !apercu?.donnees?.admission?.refus
+  const pret = accorde && choisi !== null && choisi.texte.trim() !== '' && !occupe && !apercu?.donnees?.admission?.refus
 
   const lancer = async (e) => {
     e.preventDefault()
@@ -237,7 +306,12 @@ function Lancer({ deps }) {
     setErreur(null)
     try {
       const run = await lancerRun(
-        { profil: profil === '' ? null : Number(profil), portfolio: choisi, accord: true, visibilite: visible ? 'cartographe' : 'privee' },
+        {
+          profil: profil === '' ? null : Number(profil),
+          portfolio: choisi,
+          accord: { fournisseurs: fournisseurs.map((f) => f.id) },
+          visibilite: visible ? 'cartographe' : 'privee',
+        },
         { fetchFn },
       )
       navigate(`#/twin9/${run.id}`)
@@ -301,10 +375,9 @@ function Lancer({ deps }) {
           <fieldset className="twin9-accord">
             <legend>Accord</legend>
             <label className="twin9-case">
-              <input type="checkbox" checked={accord} onChange={(e) => setAccord(e.target.checked)} /> J’accepte que mon
-              portfolio et l’état de l’analyse restent sur le serveur humanome.xyz jusqu’à ce que je les efface. Le texte
-              part chez Anthropic, le fournisseur du modèle ; par lots, Anthropic garde le lot jusqu’à sa suppression,
-              29 jours au plus. Voir la <a href="#/confidentialite">politique de confidentialité</a>.
+              <input type="checkbox" checked={accorde} onChange={(e) => setAccord(e.target.checked ? cleAccord : null)} /> J’accepte
+              que mon portfolio et l’état de l’analyse restent sur le serveur humanome.xyz jusqu’à ce que je les efface.{' '}
+              {phraseFournisseurs(fournisseurs)} Voir la <a href="#/confidentialite">politique de confidentialité</a>.
             </label>
           </fieldset>
           {apercu?.donnees ? <Apercu apercu={apercu.donnees} /> : null}

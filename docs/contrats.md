@@ -569,8 +569,18 @@ valide et range les profils.
   même de la tranche. Un profil qui ne passe pas s'enregistre,
   mais ne s'estime, ne se lance ni ne reprend. `GET
   /api/twin9/configuration` porte `fournisseurs` : chaque fournisseur du
-  registre, `{id, libelle, rgpd, disponible}`, un booléen sans sa cause.
-  Les droits sont au
+  registre, `{id, libelle, rgpd, disponible}`, un booléen sans sa cause ; et,
+  pour l'accord du lancement, qui les nomme avant tout aperçu (l'aperçu
+  emporte déjà le portfolio), les fournisseurs qu'atteignent les appels de
+  chaque profil (`profils[].fournisseurs`) et du profil par défaut
+  (`defaut_fournisseurs`) : `[{id, libelle, rgpd, voie}]` dans l'ordre du
+  registre, comme l'aperçu (`Lancement::fournisseurs`, `voie` : `lots`,
+  `directe` ou `mixte`) ; `null` pour un profil rangé que le schéma n'admet
+  plus (son lancement est refusé de toute façon). La page `#/configuration`
+  les recalcule en direct depuis le profil édité (`fournisseursDuProfil`,
+  `web/src/views/configuration/profilSchema.js`, dont l'étage de chaque
+  étape, les libellés, les étiquettes et les motifs de modèle sont comparés
+  aux fichiers PHP par un test). Les droits sont au
   chapitre « Configuration Twin9 » de `docs/autorisations.md`. Le profil
   par défaut, que sert `GET /api/twin9/configuration` (`defaut`) et que
   prend un run lancé sans profil, est celui de la v9.8 avec le jeu de
@@ -876,7 +886,15 @@ le fournisseur de chaque étage, étape ou lecteur (§7.2) ; un run n'atteint
 que ceux que l'administrateur a ouverts (ADR-012) : `twin9_fournisseurs_ouverts`
 dans la configuration Twin9, `["anthropic"]` par défaut, un fournisseur
 étiqueté `non` (Google, xAI, OpenRouter) n'y figurant que si
-`twin9_fournisseurs_non_rgpd` vaut `true` (`false` par défaut). Chaque
+`twin9_fournisseurs_non_rgpd` vaut `true` (`false` par défaut). `GET` et
+`PUT /api/twin9/admin/config` portent en plus, en lecture seule comme
+`releve_tarifs`, `fournisseurs` : chaque fournisseur du registre,
+`{id, libelle, rgpd, lots, env, cle_instance}` — `env`, le nom de la
+variable de la clé de l'instance, `cle_instance`, si elle est posée, un
+booléen, jamais la clé (`Fournisseurs::pourAdministrateur`) ; un `PUT` qui
+l'envoie est refusé (clé inconnue). La page d'administration
+(`#/admin/twin9`, UC-ADM-05) ouvre les fournisseurs et tarifie leurs
+modèles avec leurs plafonds. Chaque
 appel direct part chez le fournisseur que nomment ses réglages, par
 l'appelant du registre (`Twin9\Fournisseurs\Registre`), avec la clé de ce
 fournisseur (`RunKey`, ci-dessous). Le journal garde le fournisseur de
@@ -1076,7 +1094,12 @@ une suivante le relève.
   qu'atteignent les appels du run (`CallSettings::fournisseurs()`, l'aperçu
   les donne), `422` « Accord requis : il nomme les fournisseurs auxquels ce
   run envoie votre portfolio — … » s'ils diffèrent ; `true` reste admis pour
-  un profil tout Anthropic. La liste, triée, est gardée dans la
+  un profil tout Anthropic. La page de lancement (`#/twin9`) envoie toujours
+  la liste, même d'Anthropic seul : son texte d'accord nomme chaque
+  fournisseur, sa voie et son étiquette RGPD, lus dans la configuration
+  (`profils[].fournisseurs`, `defaut_fournisseurs`, §7) avant tout aperçu, et
+  l'accord donné tombe quand le profil choisi en atteint d'autres ou par une
+  autre voie. La liste, triée, est gardée dans la
   configuration (`accord.fournisseurs`, §8.9). Une reprise relit la garde
   de ses fournisseurs (§7.2, `admettreAuLancement`) : un fournisseur fermé
   depuis, ou sans sa clé d'instance, la refuse en `422`. Depuis P0-1, il garde aussi sa **configuration**

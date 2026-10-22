@@ -110,8 +110,11 @@ export function apercuRun(choix, options) {
 
 /**
  * Lance un run : son profil (null : celui de la v9.8), son portfolio, l'accord
- * de la personne, qui chaque lancement demande. Rend le run tel que sa page le suit.
- * @param {{profil: number|null, portfolio: {nom: string, texte: string}, accord: boolean, visibilite?: string}} lancement
+ * de la personne, qui chaque lancement demande et qui nomme les fournisseurs
+ * auxquels le run envoie le texte ({fournisseurs: [ids]}, ADR-012 ; le serveur
+ * refuse une liste qui n'est pas celle du profil). Rend le run tel que sa page le suit.
+ * @param {{profil: number|null, portfolio: {nom: string, texte: string}, accord: {fournisseurs: string[]}|boolean,
+ *   visibilite?: string}} lancement
  */
 export function lancerRun(lancement, options) {
   return apiFetch('twin9/runs', { ...options, method: 'POST', body: lancement })

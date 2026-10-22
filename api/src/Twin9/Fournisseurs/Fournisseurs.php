@@ -4,6 +4,8 @@ declare(strict_types=1);
 
 namespace Humanome\Twin9\Fournisseurs;
 
+use Humanome\Env;
+
 /**
  * The providers a Twin9 call may be sent to (P1-5), and what the platform
  * knows of each: its label, its GDPR tag (not a legal opinion: the platform
@@ -79,6 +81,29 @@ final class Fournisseurs
         }
 
         return $actifs;
+    }
+
+    /**
+     * What the administrator's page shows of each provider, in the
+     * registry's order (ADR-012): its label, its GDPR tag, whether it has a
+     * batch lane, the environment variable of the instance's key and
+     * whether it is set — a boolean, never the key. The administrator's
+     * alone: a user's page reads whether a provider is available, never why
+     * (ProfilPolicy::choix()).
+     *
+     * @return list<array{id: string, libelle: string, rgpd: string, lots: bool, env: string, cle_instance: bool}>
+     */
+    public static function pourAdministrateur(): array
+    {
+        $fournisseurs = [];
+        foreach (self::REGISTRE as $id => $fournisseur) {
+            $fournisseurs[] = ['id' => $id, 'libelle' => (string) $fournisseur['libelle'],
+                               'rgpd' => (string) $fournisseur['rgpd'], 'lots' => (bool) $fournisseur['lots'],
+                               'env' => (string) $fournisseur['env'],
+                               'cle_instance' => Env::get((string) $fournisseur['env']) !== ''];
+        }
+
+        return $fournisseurs;
     }
 
     /** Whether the platform knows this provider. */

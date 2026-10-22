@@ -259,6 +259,24 @@ final class ProfilRepository
         ], $stmt->fetchAll(PDO::FETCH_ASSOC));
     }
 
+    /**
+     * A user's profiles' documents, by id, decoded into objects: what the
+     * configuration's route reads the providers of each from (ADR-012).
+     *
+     * @return array<int, stdClass>
+     */
+    public function documentsDe(int $userId): array
+    {
+        $stmt = $this->pdo->prepare('SELECT id, profil FROM twin9_profils WHERE user_id = ?');
+        $stmt->execute([$userId]);
+        $documents = [];
+        foreach ($stmt->fetchAll(PDO::FETCH_ASSOC) as $row) {
+            $documents[(int) $row['id']] = json_decode((string) $row['profil'], false, 512, JSON_THROW_ON_ERROR);
+        }
+
+        return $documents;
+    }
+
     /** Gives each missing setting that has a default in the schema its default. */
     private static function complete(stdClass $doc, stdClass $node, stdClass $schema): void
     {

@@ -7,25 +7,47 @@
 // Les droits (docs/autorisations.md, « Configuration Twin9 ») : chacun règle
 // ses profils, le référentiel parmi les publiés, la clé personnelle là où
 // l'administrateur l'a ouverte. Le serveur valide et complète chaque profil.
+//
+// Chaque étage, étape et lecteur choisit son fournisseur (ADR-012) : absent,
+// il hérite du sien (« hérité : … »), et son étiquette RGPD se lit à côté,
+// sans attendre le focus ; un fournisseur que l'instance n'ouvre pas, ou dont
+// elle n'a pas la clé, ne se choisit pas (le serveur dit lequel, jamais
+// pourquoi). Changer de fournisseur emporte la famille d'un lecteur qui
+// suivait l'ancien, un modèle qu'il n'admet pas, l'effort d'Anthropic. La voie
+// ne règle que les appels Anthropic, les autres partent en direct : son
+// explication reste visible. Ce qui serait refusé se dit à côté du réglage.
 
 import { useCallback, useEffect, useState } from 'react'
 import { ApiError } from '../api/client.js'
 import { createProfil, deleteProfil, fetchConfiguration, fetchProfil, saveProfil } from '../api/twin9.js'
 import {
+  ETAPES,
   FIXES,
+  FOURNISSEUR_DEFAUT,
   SCHEMA,
   ecrire,
   egal,
+  etageDeLEtape,
   facultatif,
+  familleDefaut,
+  fournisseurDe,
+  fournisseurHerite,
+  fournisseursDuProfil,
   genre,
   libelle,
   libelleChoix,
+  libelleRgpd,
+  libelleVoie,
   lire,
   lisible,
+  modeleAdmis,
+  modeleDe,
   modifies,
   noeud,
   nullable,
+  objetDe,
   sensDeNull,
+  suivreLeFournisseur,
 } from './configuration/profilSchema.js'
 import '../styles/configuration.css'
 
@@ -33,6 +55,44 @@ import '../styles/configuration.css'
 const PARTIES = Object.keys(SCHEMA.properties).filter((cle) => !FIXES.includes(cle) && cle !== 'mode')
 
 const ident = (chemin) => `config-${chemin.join('-')}`
+
+/**
+ * Ce que l'instance dit de chaque fournisseur (GET twin9/configuration) : son
+ * libellé, son étiquette RGPD, s'il peut servir un run maintenant ; Anthropic
+ * seul face à un serveur qui ne le dit pas.
+ */
+const ANTHROPIC_SEUL = [{ id: FOURNISSEUR_DEFAUT, libelle: 'Anthropic', rgpd: 'sous_conditions', disponible: true }]
+
+/** « Anthropic, OpenAI et Mistral AI ». */
+function enumeration(noms) {
+  return noms.length < 2 ? noms.join('') : `${noms.slice(0, -1).join(', ')} et ${noms[noms.length - 1]}`
+}
+
+/** L'étiquette RGPD d'un fournisseur, en pastille (ce n'est pas un avis juridique). */
+function Rgpd({ info }) {
+  return info?.rgpd ? <span className={`value-badge twin9-rgpd twin9-rgpd-${info.rgpd}`}>{libelleRgpd(info.rgpd)}</span> : null
+}
+
+/**
+ * Les appels d'un étage qui partent ailleurs que chez Anthropic sans poser leur
+ * propre effort : ils hériteraient du sien, que l'API refuse hors d'Anthropic
+ * (le second ressort recouvre chaque étape).
+ */
+function heritiersHorsAnthropic(profil, etage) {
+  const hors = new Set()
+  const ajouter = (f) => f !== null && f !== FOURNISSEUR_DEFAUT && hors.add(f)
+  if (etage === 'lecteurs') {
+    ;(profil.college ?? []).forEach((l, i) => l.effort === undefined && ajouter(fournisseurDe(profil, ['college', i])))
+    return [...hors]
+  }
+  const second = lire(profil, ['etapes', 'second_ressort'])
+  for (const etape of ETAPES.filter((e) => e !== 'second_ressort' && etageDeLEtape(e) === etage)) {
+    if (lire(profil, ['etapes', etape, 'effort']) !== undefined) continue
+    ajouter(fournisseurDe(profil, ['etapes', etape]))
+    if (second?.effort === undefined) ajouter(second?.fournisseur ?? null)
+  }
+  return [...hors]
+}
 
 /** La valeur d'un champ numérique : vide, c'est « aucun » ou l'absence ; sinon un nombre. */
 function nombre(texte, node, peutManquer) {
@@ -49,10 +109,18 @@ function Champ({ chemin, valeur, defaut, peutManquer, onChange, contexte }) {
   const modifie = !egal(valeur, defaut)
   const cle = chemin[chemin.length - 1]
   const champ = chemin.join('/')
+  const { profil } = contexte
+  const objet = objetDe(chemin)
+  const info = (f) => contexte.fournisseurs.find((x) => x.id === f)
+  const nomDe = (f) => info(f)?.libelle ?? libelleChoix(f)
+  // ce qui reste visible sans le focus : l'étiquette RGPD, une explication, ce que le serveur refuserait
+  let pastille = null
+  let explication = null
+  let avertissement = null
   let commande
 
-  const options = (valeurs, vide) => (
-    <select id={id} value={valeur ?? ''} onChange={(e) => onChange(e.target.value === '' ? vide : e.target.value)}>
+  const options = (valeurs, vide, desactive = false) => (
+    <select id={id} value={valeur ?? ''} disabled={desactive} onChange={(e) => onChange(e.target.value === '' ? vide : e.target.value)}>
       {(peutManquer || vide === null) && <option value="">{vide === null ? sensDeNull(node) : '—'}</option>}
       {valeurs.map((v) => (
         <option key={v.valeur ?? v} value={v.valeur ?? v} disabled={v.desactive}>
@@ -74,15 +142,72 @@ function Champ({ chemin, valeur, defaut, peutManquer, onChange, contexte }) {
     // ses propres brouillons, pour ses runs d'essai (T15)
     const brouillons = (ref?.brouillons ?? []).map((v) => ({ valeur: v, libelle: `${v} (brouillon, run d’essai)` }))
     commande = options([...(ref?.versions ?? []), ...brouillons], null)
+  } else if (cle === 'fournisseur' && objet !== null) {
+    // absent, il hérite ; un fournisseur indisponible ne se choisit pas, mais celui que le profil nomme se voit
+    const herite = fournisseurHerite(profil, objet)
+    const effectif = valeur ?? herite
+    commande = (
+      <select id={id} value={valeur ?? ''} onChange={(e) => onChange(e.target.value === '' ? undefined : e.target.value)}>
+        <option value="">{herite === null ? 'hérité : celui de chaque étape' : `hérité : ${nomDe(herite)}`}</option>
+        {node.enum.map((v) => {
+          const disponible = info(v)?.disponible === true
+          return (
+            <option key={v} value={v} disabled={!disponible && valeur !== v}>
+              {nomDe(v)}
+              {disponible ? '' : ' (indisponible sur cette instance)'}
+            </option>
+          )
+        })}
+      </select>
+    )
+    pastille = effectif === null ? null : <Rgpd info={info(effectif)} />
+    if (valeur !== undefined && valeur !== herite && lire(profil, [...objet, 'modele']) === undefined) {
+      avertissement = `Choisissez le modèle ${nomDe(valeur)} de ce réglage : il change de fournisseur.`
+    } else if (effectif !== null && info(effectif)?.disponible !== true) {
+      avertissement = `${nomDe(effectif)} n’est pas disponible sur cette instance : le profil s’enregistre, il ne se lance pas.`
+    }
+  } else if (champ === 'voie') {
+    // la voie ne règle que les appels Anthropic : sans eux, elle est sans effet
+    const anthropic = fournisseursDuProfil(profil).some((f) => f.id === FOURNISSEUR_DEFAUT)
+    commande = options(node.enum.map((v) => ({ valeur: v, libelle: libelleChoix(v) })), undefined, !anthropic)
+    explication = anthropic
+      ? 'Par lots, le défaut : les appels Anthropic passent par son API Message Batches, à moitié prix, et leurs réponses ' +
+        'arrivent en différé, de quelques minutes à quelques heures ; Anthropic garde un lot jusqu’à sa suppression, 29 jours ' +
+        'au plus. Directe : plein tarif, au fil de l’eau, autant d’appels à la fois que le parallélisme le permet. Les appels ' +
+        'aux autres fournisseurs partent toujours en direct ; un profil mixte n’avance qu’au rythme de ses lots.'
+      : 'Sans effet : ce profil n’appelle pas Anthropic, tous ses appels partent en direct.'
   } else if (g === 'choix') {
+    // la clé personnelle ne sert que chez Anthropic (ADR-012)
+    const tiers = champ === 'cle' ? fournisseursDuProfil(profil).filter((f) => f.id !== FOURNISSEUR_DEFAUT) : []
     commande = options(
       node.enum.map((v) => ({
         valeur: v,
         libelle: libelleChoix(v),
-        desactive: champ === 'cle' && v === 'personnelle' && !contexte.clePersoOuverte && valeur !== v,
+        desactive: champ === 'cle' && v === 'personnelle' && (!contexte.clePersoOuverte || tiers.length > 0) && valeur !== v,
       })),
       undefined,
     )
+    if (champ === 'cle' && valeur === 'personnelle' && tiers.length > 0) {
+      avertissement = `La clé personnelle ne sert que chez Anthropic : ce profil appelle aussi ${enumeration(
+        tiers.map((f) => nomDe(f.id)),
+      )}, il ne part qu’avec les clés de l’instance.`
+    }
+    if (cle === 'reflexion' && objet !== null) {
+      const f = fournisseurDe(profil, objet)
+      if (f !== null && f !== FOURNISSEUR_DEFAUT) {
+        explication = `Chez ${nomDe(f)}, ce réglage d’Anthropic ne part pas : le raisonnement suit l’entrée de la grille de l’instance pour ce modèle.`
+      }
+    }
+    if (cle === 'effort' && objet !== null && valeur !== undefined) {
+      const f = fournisseurDe(profil, objet)
+      const heritiers = objet[0] === 'etages' ? heritiersHorsAnthropic(profil, objet[1]) : []
+      if (f !== null && f !== FOURNISSEUR_DEFAUT) {
+        avertissement = `L’effort est propre à Anthropic : cet appel part chez ${nomDe(f)}, retirez-le.`
+      } else if (heritiers.length > 0) {
+        avertissement = `Des appels de cet étage partent chez ${enumeration(heritiers.map(nomDe))} : ils hériteraient de cet ` +
+          'effort, que l’API refuse hors d’Anthropic. Retirez-le de l’étage, ou posez-le étape par étape.'
+      }
+    }
   } else if (g === 'booleen') {
     commande = <input id={id} type="checkbox" checked={valeur === true} onChange={(e) => onChange(e.target.checked)} />
   } else if (g === 'entier' || g === 'nombre') {
@@ -99,16 +224,31 @@ function Champ({ chemin, valeur, defaut, peutManquer, onChange, contexte }) {
       />
     )
   } else {
+    // la famille d'un lecteur qui n'en pose pas : celle que le serveur en déduit
+    const placeholder =
+      cle === 'famille' && objet !== null
+        ? `par défaut : ${familleDefaut(fournisseurDe(profil, objet), modeleDe(profil, objet))}`
+        : peutManquer
+          ? '—'
+          : undefined
     commande = (
       <input
         id={id}
         type="text"
         value={valeur ?? ''}
         pattern={node.pattern}
-        placeholder={peutManquer ? '—' : undefined}
+        placeholder={placeholder}
         onChange={(e) => onChange(e.target.value === '' && peutManquer ? undefined : e.target.value)}
       />
     )
+    if (cle === 'modele' && objet !== null) {
+      const f = fournisseurDe(profil, objet)
+      if (f !== null && (valeur === '' || (valeur === undefined && objet[0] === 'etages'))) {
+        avertissement = `Choisissez un modèle ${nomDe(f)}.`
+      } else if (f !== null && valeur !== undefined && !modeleAdmis(f, valeur)) {
+        avertissement = `« ${valeur} » n’est pas un identifiant de modèle ${nomDe(f)}.`
+      }
+    }
   }
 
   const aide =
@@ -126,9 +266,41 @@ function Champ({ chemin, valeur, defaut, peutManquer, onChange, contexte }) {
           </span>
         )}
       </label>
-      <div className="config-commande">{commande}</div>
+      <div className="config-commande">
+        {commande}
+        {pastille}
+      </div>
+      {explication && <p className="config-explication">{explication}</p>}
+      {avertissement && <p className="config-avertissement">{avertissement}</p>}
       {aide && <p className="config-aide">{aide}</p>}
     </div>
+  )
+}
+
+/**
+ * Les fournisseurs qu'atteignent les appels du profil, chacun avec son
+ * étiquette RGPD et sa voie, et s'il peut servir un run sur cette instance :
+ * ce que l'accord du lancement nommera.
+ */
+function FournisseursDuProfil({ profil, fournisseurs }) {
+  const info = (f) => fournisseurs.find((x) => x.id === f)
+  return (
+    <section className="config-fournisseurs" aria-label="Fournisseurs de ce profil">
+      <p>
+        Ce profil envoie son texte à :{' '}
+        {fournisseursDuProfil(profil).map((f, i, liste) => (
+          <span key={f.id} className="config-fournisseur">
+            {info(f.id)?.libelle ?? libelleChoix(f.id)} <Rgpd info={info(f.id)} /> ({libelleVoie(f.voie)}
+            {info(f.id)?.disponible === true ? '' : ', indisponible sur cette instance'})
+            {i < liste.length - 1 ? ' · ' : '.'}
+          </span>
+        ))}
+      </p>
+      <p className="config-explication">
+        Les étiquettes RGPD sont indicatives, pas un avis juridique. Un profil qui nomme un fournisseur indisponible
+        s’enregistre, mais ne se lance pas ; seul l’administrateur ouvre un fournisseur.
+      </p>
+    </section>
   )
 }
 
@@ -339,6 +511,9 @@ export default function ConfigurationView({ deps = {} }) {
       let profil = ecrire(c.profil, chemin, valeur)
       // un autre référentiel : sa dernière version, celles du précédent n'y valant rien
       if (chemin.join('/') === 'referentiel/id') profil = ecrire(profil, ['referentiel', 'version'], null)
+      // un autre fournisseur : la famille qui le suivait, un modèle qu'il n'admet pas, l'effort d'Anthropic
+      const objet = objetDe(chemin)
+      if (objet !== null && chemin[2] === 'fournisseur') profil = suivreLeFournisseur(c.profil, profil, objet, config.defaut)
       return { ...c, profil }
     })
   }
@@ -385,6 +560,7 @@ export default function ConfigurationView({ deps = {} }) {
     referentiels: config.referentiels,
     clePersoOuverte: config.cle_perso_ouverte,
     clePersoEnregistree: config.cle_perso_enregistree,
+    fournisseurs: Array.isArray(config.fournisseurs) ? config.fournisseurs : ANTHROPIC_SEUL,
   }
 
   return (
@@ -451,6 +627,7 @@ export default function ConfigurationView({ deps = {} }) {
         )}
 
         <Interrupteur mode={courant.profil.mode} defaut={config.defaut.mode} onChange={(m) => changer(['mode'], m)} />
+        <FournisseursDuProfil profil={courant.profil} fournisseurs={contexte.fournisseurs} />
         {PARTIES.map((cle) => (
           <Reglage
             key={cle}

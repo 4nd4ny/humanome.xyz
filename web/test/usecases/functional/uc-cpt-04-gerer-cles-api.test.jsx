@@ -193,6 +193,24 @@ describe('UC-CPT-04 — section « Clés API personnelles » du profil', () => {
   })
 })
 
+describe('UC-CPT-04 — la clé Mistral AI et Twin9 (ADR-012)', () => {
+  it('UC-CPT-04-F22 — A6 : une clé Mistral AI s’enregistre comme les autres ; la section dit qu’aucun parcours ne l’emploie encore, et que Twin9 n’emploie qu’une clé personnelle Anthropic', async () => {
+    const { api, section } = await openKeysSection()
+    await section.findByText('Aucune clé enregistrée.')
+    expect(section.getByText(/Pour l’analyse approfondie Twin9, une clé personnelle ne sert que chez Anthropic/)).toBeDefined()
+
+    fireEvent.change(section.getByLabelText('Fournisseur'), { target: { value: 'mistral' } })
+    expect(section.getByText(/Aucun parcours n’emploie encore une clé Mistral AI/)).toBeDefined()
+    await submitKey(section, 'Mistral AI', 'cle-mistral-perso-factice')
+
+    expect(await section.findByText('Clé Mistral AI enregistrée (chiffrée).')).toBeDefined()
+    const [put] = api.callsTo('keys', 'PUT')
+    expect(put.body).toEqual({ provider: 'mistral', apiKey: 'cle-mistral-perso-factice' })
+    expect(await section.findByText('Mistral AI', { selector: '.account-keys-provider' })).toBeDefined()
+    expect(screen.queryByText(/cle-mistral-perso-factice/)).toBeNull()
+  })
+})
+
 describe('UC-CPT-04 — clé dans l’assistant de run', () => {
   it('UC-CPT-04-F15 — A1 : sans compte, la clé mémorisée localement est pré-remplie, sert au run et ne part jamais vers humanome', async () => {
     const api = installFakeAccountApi()

@@ -240,9 +240,10 @@ fixe ce qui vaut pour toute l'instance. Chaque ligne de la matrice a son test da
 | Copier le jeu v9.8, éditer sa copie, ses versions, son retour arrière (T14) | — | — | `admin` ∧ `promptologue` : ✔ la sienne ; la copie d'un autre se lit (403 en écriture) ; `admin` seul : — (403) |
 | Le jeu de gabarits par défaut, celui du profil par défaut (T14) | — | — (403) | ✔ (`#/admin/twin9`, `/api/twin9/admin/jeux/defaut`) |
 | Prix, marge, ouverture des clés personnelles | — | — (403) | ✔ (`#/admin/twin9`, `/api/twin9/admin/config`) |
-| Ouverture des fournisseurs (`twin9_fournisseurs_ouverts`, Anthropic seul par défaut) et des fournisseurs étiquetés « non » au regard du RGPD (`twin9_fournisseurs_non_rgpd`, fermé par défaut) — ADR-012 | — | — (403) | ✔ (`/api/twin9/admin/config`, pas encore à l'écran) |
+| Ouverture des fournisseurs (`twin9_fournisseurs_ouverts`, Anthropic seul par défaut) et des fournisseurs étiquetés « non » au regard du RGPD (`twin9_fournisseurs_non_rgpd`, fermé par défaut), prix et plafonds de leurs modèles — ADR-012 | — | — (403) | ✔ (`#/admin/twin9`, `/api/twin9/admin/config`) |
+| Savoir quelles clés d'instance sont posées | — | — : la page de configuration ne lit qu'un booléen `disponible` par fournisseur, sans sa cause | ✔ (`fournisseurs[].cle_instance` de `/api/twin9/admin/config`, un booléen, jamais la clé) |
 | Runs par tick, durée d'une tranche (T7) | — | — (403) | ✔ (`/api/twin9/admin/config`, pas encore à l'écran) |
-| La clé de l'instance | — | — | à l'installation (`ANTHROPIC_API_KEY`, `docs/deploiement.md`), jamais par l'interface |
+| La clé de l'instance | — | — | à l'installation (`ANTHROPIC_API_KEY` et, pour les autres fournisseurs, `OPENAI_API_KEY`, `MISTRAL_API_KEY`, `GOOGLE_API_KEY`, `XAI_API_KEY`, `OPENROUTER_API_KEY` : `api/.env.example`), jamais par l'interface |
 
 Les jeux de gabarits des promptologues (T14) y ont leurs lignes, testées dans
 `ConfigurationDroitsTest.php` (le jeu de ses runs), `Twin9ProtocoleTest.php` et
@@ -253,6 +254,8 @@ depuis T16, un run sur un autre référentiel que RESPIRE part, son moteur
 lisant le référentiel du profil (`RunsTest.php`,
 `testARunReadsTheReferentialItsProfileNames`). Les fournisseurs (ADR-012)
 ont les leurs : leur ouverture (`testTheProvidersAreOpenedByTheAdministrator`),
+les clés d'instance que lit l'administrateur seul (`testTheAdministratorReadsWhichInstanceKeysAreSet`),
+les fournisseurs de chaque profil que l'accord nomme (`testTheConfigurationNamesEachProfilesProviders`),
 un profil qui nomme un fournisseur fermé (`testAProviderNotOpenYetIsSavedNotLaunched`),
 la clé personnelle, Anthropic seulement
 (`testThePersonalKeyOnlyWhereTheAdministratorOpenedIt`), et le lancement

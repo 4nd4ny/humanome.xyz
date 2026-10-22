@@ -424,6 +424,71 @@ final class ConfigurationDroitsTest extends CartographeTestCase
     }
 
     /**
+     * A launch's consent names the providers a run reaches before any
+     * preview, the portfolio not sent yet (ADR-012): the configuration's
+     * route gives each profile's, and the default's, as the preview does —
+     * label, GDPR tag, lane —, whether the instance opened them or not; a
+     * stored profile the schema no longer admits gives none.
+     */
+    public function testTheConfigurationNamesEachProfilesProviders(): void
+    {
+        self::$pdo->exec("DELETE FROM settings WHERE name = 'twin9_config'");
+        $compte = $this->registerAs('consentement@example.org', 'Consentement');
+        $mixte = ProfilRepository::v98();
+        $mixte->etapes->greffier = (object) ['fournisseur' => 'mistral', 'modele' => 'modele-fictif'];
+        $direct = ProfilRepository::v98();
+        $direct->voie = 'directe';
+        foreach (['Mixte' => $mixte, 'Direct' => $direct] as $nom => $profil) {
+            self::assertSame(201, $this->as_($compte, 'POST', '/api/twin9/profils', ['nom' => $nom, 'profil' => $profil])
+                ->getStatusCode(), $nom);
+        }
+        // a profile stored before a change of the schema, which it no longer passes
+        $userId = (int) self::$pdo->query("SELECT id FROM users WHERE email = 'consentement@example.org'")->fetchColumn();
+        self::$pdo->prepare('INSERT INTO twin9_profils (user_id, nom, profil) VALUES (?, ?, ?)')
+            ->execute([$userId, 'Ancien', '{"schemaVersion":"0.1.0"}']);
+
+        $configuration = self::json($this->as_($compte, 'GET', '/api/twin9/configuration'));
+        $anthropic = ['id' => 'anthropic', 'libelle' => 'Anthropic', 'rgpd' => 'sous_conditions'];
+        self::assertSame([
+            'Ancien' => null,
+            'Direct' => [$anthropic + ['voie' => 'directe']],
+            'Mixte' => [$anthropic + ['voie' => 'lots'],
+                        ['id' => 'mistral', 'libelle' => 'Mistral AI', 'rgpd' => 'oui', 'voie' => 'directe']],
+        ], array_column($configuration['profils'], 'fournisseurs', 'nom'));
+        self::assertSame([$anthropic + ['voie' => 'lots']], $configuration['defaut_fournisseurs']);
+        self::assertSame(['id', 'nom', 'updated_at', 'fournisseurs'], array_keys($configuration['profils'][0]));
+    }
+
+    /**
+     * The administrator's page reads each provider with its GDPR tag and
+     * whether the instance's key is set — a boolean, never the key; no PUT
+     * takes it (ADR-012).
+     */
+    public function testTheAdministratorReadsWhichInstanceKeysAreSet(): void
+    {
+        foreach (Fournisseurs::REGISTRE as $registre) {
+            TestDb::setEnv((string) $registre['env'], '');
+        }
+        TestDb::setEnv('MISTRAL_API_KEY', 'cle-mistral-factice-instance');
+        $admin = $this->registerAs('cles-instance@example.org', 'Admin', ['admin']);
+
+        $lu = self::json($this->as_($admin, 'GET', '/api/twin9/admin/config'));
+        self::assertSame(['anthropic', 'openai', 'mistral', 'google', 'xai', 'openrouter'],
+            array_column($lu['fournisseurs'], 'id'));
+        self::assertSame(['anthropic' => false, 'openai' => false, 'mistral' => true, 'google' => false, 'xai' => false,
+                          'openrouter' => false], array_column($lu['fournisseurs'], 'cle_instance', 'id'));
+        self::assertSame(['id' => 'google', 'libelle' => 'Google (Gemini)', 'rgpd' => 'non', 'lots' => false,
+                          'env' => 'GOOGLE_API_KEY', 'cle_instance' => false], $lu['fournisseurs'][3]);
+        self::assertTrue($lu['fournisseurs'][0]['lots']);
+
+        $mis = $this->as_($admin, 'PUT', '/api/twin9/admin/config', ['marge' => 1.5]);
+        self::assertSame($lu['fournisseurs'], self::json($mis)['fournisseurs']);
+        self::assertSame(422, $this->as_($admin, 'PUT', '/api/twin9/admin/config',
+            ['fournisseurs' => $lu['fournisseurs']])->getStatusCode());
+        self::assertStringNotContainsString('factice-instance', (string) $mis->getBody());
+    }
+
+    /**
      * The instance's keys: set at installation (ANTHROPIC_API_KEY and the
      * five other providers' variables, ADR-012), never through the
      * interface, never shown — the configuration page reads whether a

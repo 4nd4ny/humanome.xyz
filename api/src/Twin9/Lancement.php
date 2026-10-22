@@ -456,12 +456,14 @@ final class Lancement
 
     /**
      * The providers a run's calls reach (CallSettings::fournisseurs()), as a
-     * launch's preview shows them for its consent: each with its label, its
-     * GDPR tag and its lane — « mixte » when it has both.
+     * launch's preview shows them for its consent — and the configuration's
+     * route for each profile, before any preview (the consent names them
+     * before the portfolio leaves the page): each with its label, its GDPR
+     * tag and its lane — « mixte » when it has both.
      *
      * @return list<array{id: string, libelle: string, rgpd: string, voie: string}>
      */
-    private static function fournisseurs(stdClass $profil): array
+    public static function fournisseurs(stdClass $profil): array
     {
         $voies = [];
         foreach ((new CallSettings($profil))->combinaisons() as $c) {

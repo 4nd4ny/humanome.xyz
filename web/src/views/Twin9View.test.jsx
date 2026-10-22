@@ -82,6 +82,9 @@ const apercu = (extra = {}) => ({
   ...extra,
 })
 
+const ANTHROPIC_LOTS = { id: 'anthropic', libelle: 'Anthropic', rgpd: 'sous_conditions', voie: 'lots' }
+const ANTHROPIC_DIRECT = { ...ANTHROPIC_LOTS, voie: 'directe' }
+
 async function bibliotheque() {
   const store = createPortfolioStore(createMemoryAdapter())
   await store.create({ titre: 'Mon journal', texte: '## 2026-01-05\nPremier jour.\n' })
@@ -110,7 +113,7 @@ describe('Twin9View — lancer (T9)', () => {
     const navigate = vi.fn()
     const fetchFn = routedFetch({
       'GET api/twin9/runs': jsonResponse(200, { disponible: true, runs: [] }),
-      'GET api/twin9/configuration': jsonResponse(200, { profils: [{ id: 3, nom: 'Direct' }] }),
+      'GET api/twin9/configuration': jsonResponse(200, { profils: [{ id: 3, nom: 'Direct', fournisseurs: [ANTHROPIC_DIRECT] }] }),
       'POST api/twin9/runs/apercu': jsonResponse(200, apercu()),
       'POST api/twin9/runs': (init) => {
         envoye = JSON.parse(init.body)
@@ -124,7 +127,11 @@ describe('Twin9View — lancer (T9)', () => {
 
     fireEvent.change(screen.getByLabelText('Profil'), { target: { value: '3' } })
     fireEvent.click(screen.getByRole('checkbox', { name: /Mon cartographe peut lire/ }))
-    fireEvent.click(screen.getByRole('checkbox', { name: /J’accepte que mon portfolio/ }))
+    const accord = screen.getByRole('checkbox', { name: /J’accepte que mon portfolio/ })
+    expect(accord.closest('label').textContent).toContain(
+      'Le texte part chez Anthropic (en direct ; RGPD : sous conditions), le fournisseur du modèle. Voir la politique',
+    )
+    fireEvent.click(accord)
     expect(lancer.disabled).toBe(false)
     fireEvent.click(lancer)
 
@@ -132,9 +139,76 @@ describe('Twin9View — lancer (T9)', () => {
     expect(envoye).toEqual({
       profil: 3,
       portfolio: { nom: 'Mon journal.md', texte: '## 2026-01-05\nPremier jour.\n' },
-      accord: true,
+      accord: { fournisseurs: ['anthropic'] },
       visibilite: 'cartographe',
     })
+  })
+
+  it('l’accord nomme les fournisseurs du profil, leur voie et leur étiquette RGPD ; il vaut pour eux seuls (ADR-012)', async () => {
+    let envoye = null
+    const corps = []
+    const mistral = { id: 'mistral', libelle: 'Mistral AI', rgpd: 'oui', voie: 'directe' }
+    const google = { id: 'google', libelle: 'Google (Gemini)', rgpd: 'non', voie: 'directe' }
+    const fetchFn = routedFetch({
+      'GET api/twin9/runs': jsonResponse(200, { disponible: true, runs: [] }),
+      'GET api/twin9/configuration': jsonResponse(200, {
+        profils: [
+          { id: 3, nom: 'Mixte', fournisseurs: [ANTHROPIC_LOTS, mistral] },
+          { id: 4, nom: 'Tiers', fournisseurs: [mistral, google] },
+          { id: 5, nom: 'Mixte bis', fournisseurs: [ANTHROPIC_LOTS, mistral] },
+        ],
+        defaut_fournisseurs: [ANTHROPIC_LOTS],
+      }),
+      'POST api/twin9/runs/apercu': (init) => {
+        corps.push(JSON.parse(init.body).profil)
+        return jsonResponse(200, apercu({ fournisseurs: [ANTHROPIC_LOTS, mistral], estimation: { ...apercu().estimation, duree_s: null } }))
+      },
+      'POST api/twin9/runs': (init) => {
+        envoye = JSON.parse(init.body)
+        return jsonResponse(201, run())
+      },
+    })
+    render(<Twin9View deps={{ fetchFn, store: await bibliotheque(), navigate: vi.fn() }} />)
+    const lancer = await screen.findByRole('button', { name: 'Lancer l’analyse' })
+    const accord = () => screen.getByRole('checkbox', { name: /J’accepte que mon portfolio/ })
+    expect(accord().closest('label').textContent).toContain(
+      'Le texte part chez Anthropic (par lots ; RGPD : sous conditions), le fournisseur du modèle. Par lots, Anthropic garde ' +
+        'le lot jusqu’à sa suppression, 29 jours au plus.',
+    )
+
+    fireEvent.change(screen.getByLabelText('Profil'), { target: { value: '3' } })
+    expect(accord().closest('label').textContent).toContain(
+      'Le texte part chez les fournisseurs des modèles de ce profil : Anthropic (par lots ; RGPD : sous conditions) et ' +
+        'Mistral AI (en direct ; RGPD : oui). Par lots, Anthropic garde le lot jusqu’à sa suppression, 29 jours au plus.',
+    )
+    fireEvent.click(accord())
+    const avant = await screen.findByRole('region', { name: 'Avant de lancer' })
+    expect(avant.textContent).toContain('en partie par lots, la durée dépend d’Anthropic')
+
+    // un profil aux mêmes fournisseurs, par les mêmes voies : l'accord tient
+    fireEvent.change(screen.getByLabelText('Profil'), { target: { value: '5' } })
+    expect(accord().checked).toBe(true)
+    await waitFor(() => expect(corps).toEqual([3, 5]))
+
+    // d'autres fournisseurs : l'accord est à redonner, et rien ne part avant
+    fireEvent.change(screen.getByLabelText('Profil'), { target: { value: '4' } })
+    expect(accord().checked).toBe(false)
+    expect(lancer.disabled).toBe(true)
+    expect(screen.queryByRole('region', { name: 'Avant de lancer' })).toBeNull()
+    expect(accord().closest('label').textContent).toContain(
+      'Mistral AI (en direct ; RGPD : oui) et Google (Gemini) (en direct ; RGPD : non). Google (Gemini) est étiqueté « non » ' +
+        'au regard du RGPD : à éviter pour les journaux d’élèves réels.',
+    )
+    expect(accord().closest('label').textContent).not.toContain('29 jours')
+    expect(corps).toEqual([3, 5])
+
+    fireEvent.change(screen.getByLabelText('Profil'), { target: { value: '3' } })
+    fireEvent.click(accord())
+    await waitFor(() => expect(lancer.disabled).toBe(false))
+    fireEvent.click(lancer)
+    await waitFor(() => expect(envoye).not.toBeNull())
+    expect(envoye.accord).toEqual({ fournisseurs: ['anthropic', 'mistral'] })
+    expect(screen.queryByRole('alert')).toBeNull()
   })
 
   it('avant de lancer, l’accord donné, dit les journées à instruire, le coût estimé et sa fourchette, la durée', async () => {

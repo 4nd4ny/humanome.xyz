@@ -3,6 +3,10 @@
 // Stockage serveur OPT-IN et chiffré (libsodium). L'utilisateur enregistre ici
 // sa clé API privée pour lancer les cartographies « clé perso » (Twin6) sans la
 // ressaisir à chaque fois. La clé n'est jamais réaffichée après enregistrement.
+// L'analyse approfondie Twin9 n'emploie qu'une clé personnelle Anthropic : ses
+// appels aux autres fournisseurs partent avec les clés de la plateforme
+// (ADR-012) ; la section le dit, et dit qu'une clé Mistral AI ne sert encore
+// à aucun parcours.
 
 import { useCallback, useEffect, useState } from 'react'
 import { ApiError } from '../../api/client.js'
@@ -95,6 +99,10 @@ export default function ApiKeysSection({ deps = {} }) {
         (opt-in, RGPD) et n’est <strong>jamais réaffichée</strong> ensuite ; vous pouvez la supprimer
         à tout moment.
       </p>
+      <p className="account-keys-intro">
+        Pour l’analyse approfondie Twin9, une clé personnelle ne sert que chez Anthropic : un profil qui
+        appelle un autre fournisseur ne part qu’avec les clés de la plateforme.
+      </p>
 
       {keys === null ? (
         <p role="status">Chargement des clés…</p>
@@ -138,12 +146,18 @@ export default function ApiKeysSection({ deps = {} }) {
                 type="password"
                 value={apiKey}
                 onChange={(e) => setApiKey(e.target.value)}
-                placeholder="ex. sk-ant-…"
+                placeholder={KEY_PROVIDERS.find((p) => p.id === provider)?.exemple}
                 autoComplete="off"
                 spellCheck={false}
                 disabled={busy}
               />
             </label>
+            {provider === 'mistral' ? (
+              <p className="account-keys-hint">
+                Aucun parcours n’emploie encore une clé Mistral AI : l’assistant de cartographie n’appelle pas ce
+                fournisseur, et l’analyse approfondie n’emploie que la clé Anthropic.
+              </p>
+            ) : null}
             <button type="submit" className="button" disabled={busy || apiKey.trim().length < 8}>
               {busy ? '…' : 'Enregistrer la clé'}
             </button>

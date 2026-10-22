@@ -1309,8 +1309,12 @@ refusée ; fixture inventée `schemas/fixtures/twin9-configuration-exemple.json`
   run lancé avant la migration 031 : sans configuration, ses passes, son
   temps de moteur et son premier commit sont incomplets), `statut`,
   `debut_at`, `fin_at`, `duree_active_s`, `passes` et `moteur_ms` (les passes
-  du moteur et leur temps, cumulés tranche après tranche,
-  `twin9_runs.passes` et `moteur_ms`), `appels {total, repondus, pannes,
+  du moteur et leur temps, `twin9_runs.passes` et `moteur_ms`, comptés
+  chacune dès qu'elle est jouée, la passe finale avant que `terminer()` ne
+  les fige : un tick qui meurt — tué, à court de temps ou de mémoire, ou
+  une exception sortie de la tranche — ne perd que la passe qu'il jouait ;
+  ce sont donc des minimums, d'une passe au plus par tick mort, sans que
+  `partiel` le dise), `appels {total, repondus, pannes,
   tronques, refus, tentatives}`, `jetons {entree, sortie}`, `cout_microusd`,
   `lots`, puis `par_voie`, `par_fournisseur`, `par_modele` (chacun
   `{appels, pannes, tronques, jetons_entree, jetons_sortie, cout_microusd}`),

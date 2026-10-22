@@ -92,7 +92,8 @@ final class TrancheTest extends TestCase
 
     /**
      * Killed between two calls (the tick dies as a call is about to leave),
-     * then resumed: every call reaches Anthropic once.
+     * then resumed: every call reaches Anthropic once. The passes the dead
+     * tick played stay counted (P0-1): each is, as soon as it is played.
      */
     public function testKilledBetweenTwoCallsItResumesWithoutACallTwice(): void
     {
@@ -102,12 +103,17 @@ final class TrancheTest extends TestCase
             return ['body' => FakeMultiHttpClient::message('vu ' . FakeMultiHttpClient::appel($r))];
         });
         $tueur = new KillingMultiHttpClient($http, auDepart: [4, 9]);
+        $passes = 0; // those of the ticks that lived, then of those that died
         for ($n = 0; $n < 10 && (new RunRepository($this->pdo))->statut($id) === 'en_cours'; $n++) {
+            $avant = $this->passes($id);
             try {
-                (new Tick($this->pdo, ['budgetSeconds' => 5, 'twin9Sender' => new DirectCalls($tueur)]))->run();
+                $passes += (new Tick($this->pdo, ['budgetSeconds' => 5, 'twin9Sender' => new DirectCalls($tueur)]))
+                    ->run()['twin9Passes'];
             } catch (\RuntimeException $e) {
                 self::assertSame('tick tué', $e->getMessage());
                 $morts++;
+                self::assertGreaterThan($avant, $this->passes($id), 'les passes du tick mort restent comptées');
+                $passes += $this->passes($id) - $avant;
             }
         }
 
@@ -116,6 +122,7 @@ final class TrancheTest extends TestCase
         $appels = array_map([FakeMultiHttpClient::class, 'appel'], $http->requests);
         self::assertCount(13, $appels);
         self::assertSame(array_values(array_unique($appels)), $appels, 'aucun appel en double');
+        self::assertSame($passes, (new RunRepository($this->pdo))->execution($id)->passes, 'toutes, figées');
     }
 
     /** Killed during a call, whose answer is lost: that call leaves again, once, its attempt counted. */
@@ -543,6 +550,15 @@ final class TrancheTest extends TestCase
         }
 
         return ProfilRepository::validate($profil);
+    }
+
+    /** The engine's passes a run has counted (twin9_runs.passes). */
+    private function passes(int $run): int
+    {
+        $stmt = $this->pdo->prepare('SELECT passes FROM twin9_runs WHERE id = ?');
+        $stmt->execute([$run]);
+
+        return (int) $stmt->fetchColumn();
     }
 
     /** @return list<string> the keys of a run's map */

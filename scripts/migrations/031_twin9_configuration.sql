@@ -15,8 +15,9 @@
 --   its passes and engine time, its resumptions. Before that it holds only
 --   its resumptions; the rest is computed from the journal on demand.
 -- passes, moteur_ms: the engine's passes of the run and their time, in
---   milliseconds, summed slice after slice (P0-4's measure); partial for a
---   run that began before this migration.
+--   milliseconds, each counted as it is played (P0-4's measure; a tick that
+--   dies loses only the pass it was playing); partial for a run that began
+--   before this migration.
 --
 -- RGPD (registre §13): settings, versions, counters and amounts, never
 -- content; account purge removes them with the run (CASCADE).

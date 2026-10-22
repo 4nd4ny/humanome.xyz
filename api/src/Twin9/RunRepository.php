@@ -439,22 +439,19 @@ final class RunRepository
         return $statut === false ? null : (string) $statut;
     }
 
-    /**
-     * The slice touched the run: when, what holds it back, if anything, and
-     * the engine's passes it played of it, with their time (P0-1, P0-4).
-     */
-    public function avance(int $id, ?string $attente, int $passes = 0, int $moteurMs = 0): void
+    /** The slice touched the run: when, and what holds it back, if anything. */
+    public function avance(int $id, ?string $attente): void
     {
-        $this->pdo->prepare(
-            'UPDATE twin9_runs SET avance_at = NOW(3), attente = ?, passes = passes + ?, moteur_ms = moteur_ms + ?
-              WHERE id = ?'
-        )->execute([$attente === null ? null : mb_substr($attente, 0, 255), max(0, $passes), max(0, $moteurMs), $id]);
+        $this->pdo->prepare('UPDATE twin9_runs SET avance_at = NOW(3), attente = ? WHERE id = ?')
+            ->execute([$attente === null ? null : mb_substr($attente, 0, 255), $id]);
     }
 
     /**
-     * The engine's passes a slice played of a run, with their time, when it
-     * leaves the slice otherwise than by avance() or terminer(): stopped, or
-     * cancelled meanwhile.
+     * The engine's passes a slice played of a run, with their time (P0-1,
+     * P0-4), counted as soon as each one is played: a tick that dies — killed,
+     * out of time or memory, or an exception out of the slice — loses only
+     * the pass it was playing, never those before it; the run's final pass is
+     * counted before terminer() freezes them.
      */
     public function compter(int $id, int $passes, int $moteurMs): void
     {
@@ -499,9 +496,8 @@ final class RunRepository
      * @param array<string, int> $octets the days of its map, in order — those it took, then those its memory
      *        keeps —: each day's size in bytes, by its id
      * @param float $marge the instance's margin its costs include; 1.0 with its owner's own key
-     * @param int $passes the engine's passes of its last slice, its final one included, and $moteurMs their time
      */
-    public function terminer(int $id, array $octets = [], float $marge = 1.0, int $passes = 0, int $moteurMs = 0): bool
+    public function terminer(int $id, array $octets = [], float $marge = 1.0): bool
     {
         $this->pdo->beginTransaction();
         try {
@@ -517,8 +513,6 @@ final class RunRepository
 
                 return false;
             }
-            $passes = max(0, $passes);
-            $moteurMs = max(0, $moteurMs);
             $compteurs = $this->compteurs($id);
             $this->pdo->exec('SAVEPOINT evaluation');
             try {
@@ -545,8 +539,9 @@ final class RunRepository
                     'debut_at' => (string) $run['created_at'],
                     'fin_at' => (string) $run['maintenant'],
                     'duree_active_s' => (int) $compteurs['duree_s'],
-                    'passes' => (int) $run['passes'] + $passes,
-                    'moteur_ms' => (int) $run['moteur_ms'] + $moteurMs,
+                    // its passes, its final one included: each counted as it was played (compter())
+                    'passes' => (int) $run['passes'],
+                    'moteur_ms' => (int) $run['moteur_ms'],
                     'commit_debut' => $configuration?->moteur?->commit ?? null,
                     'commit_fin' => EngineLoader::commit(),
                     'partiel' => $configuration === null,
@@ -565,10 +560,10 @@ final class RunRepository
             // its batches deleted at Anthropic go with the journal; one still there waits for the tick
             $this->pdo->prepare('DELETE FROM twin9_lots WHERE run_id = ? AND statut = "supprime"')->execute([$id]);
             $this->pdo->prepare(
-                'UPDATE twin9_runs SET statut = "termine", attente = NULL, compteurs = ?, execution = ?, finished_at = ?,
-                        passes = passes + ?, moteur_ms = moteur_ms + ?, ' . self::ACTIF . ' WHERE id = ?'
+                'UPDATE twin9_runs SET statut = "termine", attente = NULL, compteurs = ?, execution = ?, finished_at = ?, '
+                    . self::ACTIF . ' WHERE id = ?'
             )->execute([json_encode($compteurs, JSON_THROW_ON_ERROR | JSON_UNESCAPED_UNICODE), $execution,
-                        (string) $run['maintenant'], $passes, $moteurMs, $id]);
+                        (string) $run['maintenant'], $id]);
             $this->pdo->commit();
         } catch (\Throwable $e) {
             $this->pdo->rollBack();

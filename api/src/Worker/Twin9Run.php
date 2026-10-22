@@ -33,9 +33,6 @@ final class Twin9Run
     /** Its passes in this slice. */
     public int $passes = 0;
 
-    /** The engine's time of its passes in this slice, in milliseconds. */
-    public int $moteurMs = 0;
-
     /** What holds the run back, for its page; null: nothing. */
     public ?string $attente = null;
 

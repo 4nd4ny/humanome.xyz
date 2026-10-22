@@ -43,9 +43,10 @@ use Twin9\Run\Pending;
  * By direct calls, only the oldest days a run has under way send their calls
  * (the days led abreast, parallelisme.journees), at most
  * parallelisme.appels_directs at a time; by batches, all its days (T8). The
- * key is read for each call. Logging: counters only. A run leaving the
- * slice, whichever way, keeps the passes it played of it and the engine's
- * time (twin9_runs.passes, moteur_ms: its execution block's, P0-1).
+ * key is read for each call. Logging: counters only. Each pass the slice
+ * plays of a run is counted as soon as it is played, with the engine's time
+ * (twin9_runs.passes, moteur_ms: its execution block's, P0-1): a tick that
+ * dies loses only the pass it was playing.
  *
  * A run by batches (T8, Twin9Lots) is opened only when its batches call for
  * it: one has ended, nothing is at Anthropic any more, or calls are still to
@@ -171,20 +172,18 @@ final class Twin9Slice
             }
         }
         $this->couper();
-        // each run that leaves the slice keeps the passes it played and their time, once (P0-1)
         foreach ($this->etats as $run) {
             if ($this->runs->statut($run->id) !== 'en_cours') {
-                $this->runs->compter($run->id, $run->passes, $run->moteurMs);
                 $this->couts->liberer($run->id); // cancelled meanwhile: what its calls hold goes back
                 continue;
             }
             $this->couts->regler($run->id);
             // held back with nothing out any more: it stops, its map incomplete, to resume
             if ($run->bloque !== null && $run->envoyes === 0 && $this->lots->enVol($run->id) === 0) {
-                $this->arreter($run->id, $run->bloque, $run);
+                $this->arreter($run->id, $run->bloque);
                 continue;
             }
-            $this->runs->avance($run->id, $run->bloque ?? $run->attente, $run->passes, $run->moteurMs);
+            $this->runs->avance($run->id, $run->bloque ?? $run->attente);
         }
 
         return $this->compteurs;
@@ -247,12 +246,11 @@ final class Twin9Slice
         return $run;
     }
 
-    /** One pass of a run: done, or the calls it waits for. */
+    /** One pass of a run, counted as soon as it is played (P0-1): done, or the calls it waits for. */
     private function passer(Twin9Run $run): void
     {
         if ($this->runs->statut($run->id) !== 'en_cours') {
             unset($this->etats[$run->id]); // cancelled meanwhile
-            $this->runs->compter($run->id, $run->passes, $run->moteurMs);
 
             return;
         }
@@ -271,12 +269,13 @@ final class Twin9Slice
             $erreur = $e;
         } finally {
             $ms = intdiv(hrtime(true) - $debut, 1_000_000);
-            $run->moteurMs += $ms;
             $this->compteurs['moteurMs'] += $ms;
+            // before anything else of the slice, which may die: its final pass before terminer() freezes them
+            $this->runs->compter($run->id, 1, $ms);
         }
         unset($this->etats[$run->id]);
         if ($erreur !== null) {
-            $this->echec($run->id, $erreur, 'erreur du moteur', $run);
+            $this->echec($run->id, $erreur, 'erreur du moteur');
 
             return;
         }
@@ -291,10 +290,8 @@ final class Twin9Slice
             $octets = [];
         }
         if ($this->runs->terminer($run->id, array_map(intval(...), $octets),
-            $run->credits() ? $this->config->marge() : 1.0, $run->passes, $run->moteurMs)) {
+            $run->credits() ? $this->config->marge() : 1.0)) {
             $this->compteurs['termines']++;
-        } else {
-            $this->runs->compter($run->id, $run->passes, $run->moteurMs); // cancelled meanwhile
         }
     }
 
@@ -314,7 +311,7 @@ final class Twin9Slice
                 $refus = $this->lots->soumettre($run, $this->debut, $this->dernierDepart, $this->fin, $this->compteurs);
                 if ($refus !== null) {
                     unset($this->etats[$run->id]);
-                    $this->arreter($run->id, $refus, $run);
+                    $this->arreter($run->id, $refus);
                 }
             }
 
@@ -361,7 +358,7 @@ final class Twin9Slice
                     $run->credits());
                 if ($reserve === null) {
                     unset($this->etats[$run->id]);
-                    $this->arreter($run->id, 'aucun prix pour ' . $reglage['modele'] . ' sur cette instance', $run);
+                    $this->arreter($run->id, 'aucun prix pour ' . $reglage['modele'] . ' sur cette instance');
 
                     return;
                 }
@@ -527,23 +524,16 @@ final class Twin9Slice
         return $reveil;
     }
 
-    private function echec(int $id, \Throwable $e, string $raison, ?Twin9Run $run = null): void
+    private function echec(int $id, \Throwable $e, string $raison): void
     {
         // the class only: an engine's message may quote a template or the portfolio
         error_log(sprintf('[twin9] run %d : %s (%s)', $id, $raison, $e::class));
-        $this->arreter($id, $raison, $run);
+        $this->arreter($id, $raison);
     }
 
-    /**
-     * A run stops, for a resumption: what its calls hold goes back
-     * (RunCosts); the passes the slice played of it, when it had begun
-     * playing it, stay counted.
-     */
-    private function arreter(int $id, string $raison, ?Twin9Run $run = null): void
+    /** A run stops, for a resumption: what its calls hold goes back (RunCosts). */
+    private function arreter(int $id, string $raison): void
     {
-        if ($run !== null) {
-            $this->runs->compter($id, $run->passes, $run->moteurMs);
-        }
         if ($this->runs->echouer($id, $raison)) {
             $this->compteurs['echoues']++;
         }

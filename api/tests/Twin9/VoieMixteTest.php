@@ -186,7 +186,8 @@ final class VoieMixteTest extends TestCase
         self::assertSame(1, $c['twin9Lots'], 'le lot d’Anthropic part');
         self::assertCount(3, $lots->requetes);
         self::assertSame([], $http->requests, 'rien chez OpenAI sans sa clé');
-        self::assertSame(Twin9Lots::EN_COURS . ' ; clé OpenAI indisponible', $this->attente($id));
+        // the same words as for a provider closed: its owner never learns which keys the instance holds
+        self::assertSame(Twin9Lots::EN_COURS . ' ; fournisseur OpenAI indisponible sur cette instance', $this->attente($id));
         self::assertSame('en_cours', (new RunRepository($this->pdo))->statut($id));
 
         TestDb::setEnv('OPENAI_API_KEY', self::CLE_OPENAI);
@@ -570,7 +571,8 @@ final class VoieMixteTest extends TestCase
         $c = $this->tick($lots, $http);
         self::assertSame(1, $c['twin9Lots']);
         self::assertSame([], $http->requests);
-        self::assertStringContainsString('fournisseur OpenAI fermé sur cette instance', (string) $this->attente($id));
+        self::assertSame(Twin9Lots::EN_COURS . ' ; fournisseur OpenAI indisponible sur cette instance',
+            $this->attente($id), 'les mots d’une clé absente : jamais pourquoi');
 
         $this->config->update(['twin9_fournisseurs_ouverts' => ['anthropic', 'openai']]);
         $this->jusquAuBout($lots, $http);

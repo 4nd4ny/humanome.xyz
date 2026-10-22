@@ -334,9 +334,12 @@ final class Twin9Slice
      * slice for each (as the slice opens the run, and for any provider a
      * call names besides): a provider the instance no longer opens, a third
      * party its owner's personal key would reach, or one whose instance key
-     * is missing sends nothing — the run waits, its page says why; its other
-     * providers go on. Anthropic's key is read as each call or batch leaves,
-     * as before.
+     * is missing sends nothing — the run waits; its other providers go on.
+     * Its page says the provider is unavailable on this instance, the same
+     * words whether it is closed or its instance key missing: nobody learns
+     * which keys the instance holds (ProfilPolicy) — the administrator reads
+     * both on their page. Anthropic's key is read as each call or batch
+     * leaves, as before.
      */
     private function garde(Twin9Run $run, string $fournisseur): bool
     {
@@ -345,20 +348,30 @@ final class Twin9Slice
             $this->actifs ??= $this->config->fournisseursActifs();
             $nom = Fournisseurs::REGISTRE[$fournisseur]['libelle'] ?? $fournisseur;
             if (!\in_array($fournisseur, $this->actifs, true)) {
-                $raison = 'fournisseur ' . $nom . ' fermé sur cette instance';
-                $run->suspendre($fournisseur, $raison);
+                $run->suspendre($fournisseur, self::indisponible($fournisseur));
                 if ($fournisseur === Fournisseurs::DEFAUT) {
-                    $run->suspendre('lots', $raison);
+                    $run->suspendre('lots', self::indisponible($fournisseur));
                 }
             } elseif ($fournisseur !== Fournisseurs::DEFAUT && !$run->credits()) {
                 $run->suspendre($fournisseur, 'clé personnelle refusée chez ' . $nom);
             } elseif ($fournisseur !== Fournisseurs::DEFAUT
                 && $this->cles->pour($run->userId, $run->cle, $fournisseur) === null) {
-                $run->suspendre($fournisseur, 'clé ' . $nom . ' indisponible');
+                $run->suspendre($fournisseur, self::indisponible($fournisseur));
             }
         }
 
         return !$run->suspendu($fournisseur);
+    }
+
+    /**
+     * What a run's page says of a provider its calls may not reach on this
+     * instance: closed, its instance key missing or refused — one sentence,
+     * never which.
+     */
+    public static function indisponible(string $fournisseur): string
+    {
+        return 'fournisseur ' . (Fournisseurs::REGISTRE[$fournisseur]['libelle'] ?? $fournisseur)
+            . ' indisponible sur cette instance';
     }
 
     /** One pass of a run, counted as soon as it is played (P0-1): done, or the calls it waits for. */
@@ -525,7 +538,8 @@ final class Twin9Slice
             }
             $cle = $this->cles->pour($run->userId, $run->cle, $fournisseur);
             if ($cle === null) {
-                $run->suspendre($fournisseur, 'clé ' . Fournisseurs::REGISTRE[$fournisseur]['libelle'] . ' indisponible');
+                // Anthropic's, as before (a personal key may be its owner's to set); another's, never why
+                $run->suspendre($fournisseur, $tiers ? self::indisponible($fournisseur) : 'clé Anthropic indisponible');
                 continue;
             }
             // its owner may cancel it at any moment: read before each departure, nothing leaves once cancelled

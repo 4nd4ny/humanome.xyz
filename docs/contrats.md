@@ -926,8 +926,12 @@ direct, dans la même tranche (`Worker\Twin9Slice`).
 - **La garde** est relue à l'ouverture de chaque tranche, et pour tout
   fournisseur qu'un appel nomme : un fournisseur que l'instance n'ouvre plus,
   une clé personnelle vers un tiers, une clé d'instance tierce absente
-  suspendent ce fournisseur (« fournisseur OpenAI fermé sur cette instance »,
-  « clé personnelle refusée chez … », « clé … indisponible ») ; le run attend.
+  suspendent ce fournisseur ; le run attend. Sa page dit « fournisseur OpenAI
+  indisponible sur cette instance », les mêmes mots pour un fournisseur fermé
+  et pour une clé d'instance absente (ou refusée) : personne n'apprend quelles
+  clés l'instance détient (§8.4, `docs/autorisations.md`), l'administrateur
+  lit l'un et l'autre sur sa page (2026-10-22) ; « clé personnelle refusée
+  chez … » pour la clé de l'auteur lui-même.
 - **Durée d'un appel tiers** : il ne part que si la durée maximale de son
   modèle (`duree_max_s` de la grille, 30 s à défaut) tient dans ce qui reste
   de la tranche — coupé, il peut être facturé quand même (OpenRouter le

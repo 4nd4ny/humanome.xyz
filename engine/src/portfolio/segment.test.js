@@ -121,6 +121,19 @@ describe('segmentText — variantes de formats de dates', () => {
   })
 })
 
+// Un portfolio synthétique aux titres de tous niveaux, années sur deux chiffres :
+// Twin9 n'en date que les titres ## et ### non indentés (02, 06 et 14 ; le 4,
+// sous ####, reste dans la journée du 2).
+const MIXED_LEVELS =
+  '### 02.03.26\n\nun\n\n#### 04.03.26\n\ndeux\n\n### 06.03.26\n\ntrois\n\n# 08.03.26\n\nquatre\n\n' +
+  '   ### 10.03.26\n\ncinq\n\n###### 12.03.26\n\nsix\n\n## 14.03.26\n\nsept\n'
+const NO_DATE = '0000-00-00'
+const interfaceDates = (text) =>
+  segmentText(text, { today: NO_DATE })
+    .map((s) => s.date)
+    .filter((d) => d !== null && d !== NO_DATE)
+    .sort()
+
 describe('segmentText — années à deux chiffres, comme Twin9 (carto, sprint 4)', () => {
   it('« ### 02.03.26 » est le 2026-03-02 ; « ## 9.3.26 », « ### Lundi 02.03.26 — Atelier » aussi', () => {
     const text = '### 02.03.26\n\nun\n\n## 9.3.26\n\ndeux\n\n### Lundi 16.03.26 — Atelier\n\ntrois\n'
@@ -128,11 +141,17 @@ describe('segmentText — années à deux chiffres, comme Twin9 (carto, sprint 4
     expect(segmentText('### **27.03.26**\ntexte', TODAY)[0].date).toBe('2026-03-27')
   })
 
-  it('là où Twin9 ne lit pas la date, elle reste du texte : ligne nue, « / » ou « - », « 1er », trois chiffres, hors calendrier', () => {
-    for (const line of ['02.03.26', '1.2.10', '### 02/03/26', '### 02-03-26', '### 1er.03.26', '### 12.03.202', '### 31.02.26', '### 02.03.26abc']) {
+  it('là où Twin9 ne lit pas la date, elle reste du texte : ligne nue, titre # ou #### à ######, titre indenté, « / » ou « - », « 1er », trois chiffres, hors calendrier', () => {
+    const lines = ['02.03.26', '1.2.10', '# 02.03.26', '#### 02.03.26', '###### 02.03.26', '   ### 02.03.26', ' ## 02.03.26']
+    for (const line of [...lines, '### 02/03/26', '### 02-03-26', '### 1er.03.26', '### 12.03.202', '### 31.02.26', '### 02.03.26abc']) {
       const segments = segmentText(`### 2026-03-01\navant\n${line}\naprès`, TODAY)
       expect(segments.map((s) => s.date), line).toEqual(['2026-03-01'])
     }
+  })
+
+  // Twin9 (Portfolio.php) : `^#{2,3}` suivi d'un blanc, en début de ligne.
+  it('titres de niveaux mêlés : seuls ## et ###, en début de ligne, ouvrent une journée', () => {
+    expect(interfaceDates(MIXED_LEVELS)).toEqual(['2026-03-02', '2026-03-06', '2026-03-14'])
   })
 
   it('l’année à quatre chiffres ne change pas', () => {
@@ -150,7 +169,6 @@ describe('segmentText — années à deux chiffres, comme Twin9 (carto, sprint 4
 const TWIN_V9_DIR = process.env.TWIN_V9_DIR || join(dirname(fileURLToPath(import.meta.url)), '../../../../Twin_v9')
 const TWIN9_PORTFOLIOS = join(TWIN_V9_DIR, 'tests/portfolios')
 const hasTwin9 = existsSync(TWIN9_PORTFOLIOS)
-const NO_DATE = '0000-00-00'
 // Dates de `Portfolio::splitFile` (PHP) et `split_portfolio` (Python) de
 // Twin_v9 (9eea3a1) sur ces fichiers, relevées le 2026-10-22.
 const TWIN9_DATES = {
@@ -160,12 +178,6 @@ const TWIN9_DATES = {
   'SYNTH-06.md': [],
   'SYNTH-08.md': []
 }
-const interfaceDates = (text) =>
-  segmentText(text, { today: NO_DATE })
-    .map((s) => s.date)
-    .filter((d) => d !== null && d !== NO_DATE)
-    .sort()
-
 describe.skipIf(!hasTwin9)('segmentText — les portfolios fictifs de Twin9 : mêmes journées', () => {
   it('les cinq portfolios sont là', () => {
     expect(readdirSync(TWIN9_PORTFOLIOS).filter((f) => f.endsWith('.md')).sort()).toEqual(Object.keys(TWIN9_DATES))
@@ -190,6 +202,13 @@ describe.skipIf(!hasTwin9)('segmentText — les portfolios fictifs de Twin9 : m�
   it.skipIf(!php)('Twin9 (PHP) donne ces dates', () => {
     const code = 'require $argv[1] . "/php/vendor/autoload.php"; $o = []; foreach (glob($argv[1] . "/tests/portfolios/*.md") as $f) { $d = array_values(array_filter(array_column(\\Twin9\\Portfolio::splitFile($f)["feuilles"], "date"))); sort($d); $o[basename($f)] = $d; } echo json_encode($o);'
     expect(JSON.parse(execFileSync('php', ['-r', code, TWIN_V9_DIR], { encoding: 'utf8' }))).toEqual(TWIN9_DATES)
+  })
+
+  it.skipIf(!php)('Twin9 (PHP) : titres de niveaux mêlés, les mêmes journées que l’interface', () => {
+    const code = 'require $argv[1] . "/php/vendor/autoload.php"; $d = array_values(array_filter(array_column(\\Twin9\\Portfolio::split($argv[2], "niveaux.md")["feuilles"], "date"))); sort($d); echo json_encode($d);'
+    const twin9 = JSON.parse(execFileSync('php', ['-r', code, TWIN_V9_DIR, MIXED_LEVELS], { encoding: 'utf8' }))
+    expect(twin9).toEqual(['2026-03-02', '2026-03-06', '2026-03-14'])
+    expect(interfaceDates(MIXED_LEVELS)).toEqual(twin9)
   })
 })
 

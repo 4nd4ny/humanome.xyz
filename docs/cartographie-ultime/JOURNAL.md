@@ -3011,14 +3011,22 @@ l'index, pour que la journée du passage renvoie à l'analyse :
   ce que la section annonce est ce qui compte dans la journée analysée.
 - **Année sur deux chiffres** (`engine/src/portfolio/segment.js`) : le
   découpage lit `### 02.03.26` comme le 2 mars 2026, comme Twin9
-  (`Twin_v9/php/src/Portfolio.php`, `iso()` : 20AA), et seulement là où
-  Twin9 la lit (des points, dans un titre) : une ligne nue, `/`, `-`,
-  « 1er.03.26 » et une année sur trois chiffres (Twin9 lit « 12.03.202 »
-  comme 2202) restent du texte, pour ne pas ouvrir de journée que Twin9
-  n'ouvrirait pas. Sur les cinq portfolios fictifs de Twin9, les journées de
-  l'interface sont désormais les siennes : PLANT-01 (`### 02.03.26` …) donne
-  ses dix journées, au lieu d'un seul bloc daté du jour ; les quatre
-  SYNTH-*, sans date, aucune des deux côtés.
+  (`Twin_v9/php/src/Portfolio.php`, `iso()` : 20AA), et seulement dans les
+  titres où Twin9 la cherche (des points, dans un titre `##` ou `###` en
+  début de ligne, `^#{2,3}` suivi d'un blanc) : une ligne nue, un titre `#`
+  ou `####` à `######`, un titre indenté, `/`, `-`, « 1er.03.26 » et une
+  année sur trois chiffres (Twin9 lit « 12.03.202 » comme 2202) restent du
+  texte. Deux écarts demeurent, connus : Twin9 ne date rien sans au moins
+  deux tels titres, quand l'interface ouvre une journée dès le premier ; une
+  année sur quatre chiffres se lit dans l'interface sous tout niveau de
+  titre (avant ce sprint déjà, étude du sprint 4 §4.1). Sur les cinq
+  portfolios fictifs de Twin9, les journées de l'interface sont désormais
+  les siennes : PLANT-01 (`### 02.03.26` …) donne ses dix journées, au lieu
+  d'un seul bloc daté du jour ; les quatre SYNTH-*, sans date, aucune des
+  deux côtés ; un portfolio synthétique aux titres de tous niveaux donne,
+  des deux côtés, les seules journées de ses titres `##` et `###`. (Revue
+  du 2026-10-22 : la première version lisait aussi l'année sous `#`,
+  `####` à `######` et dans un titre indenté, où Twin9 ne la lit pas.)
 - **Pas fait** :
   - **T3**, répartir les traces par date de passage : une décision de
     Christian (le statut et la confiance seraient recopiés d'un verdict

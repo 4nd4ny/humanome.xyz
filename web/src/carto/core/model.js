@@ -373,12 +373,23 @@ export function passageAt(sourceDate, date) {
 }
 
 /**
- * Dates des passages d'une variante écrits un autre jour que le sien.
+ * Un verdict dont les calculs retiennent les traces (statut qui fournit des
+ * traces, hors court-circuit) : les seuls qui relèvent les passages d'une
+ * autre journée, des deux côtés du chemin (D-72).
+ */
+const keepsTraces = (v) => !v?.courtCircuit && TRACE_PROVIDING_STATUSES.has(v?.status)
+
+/**
+ * Dates des passages d'une variante écrits un autre jour que le sien, parmi
+ * les traces que les calculs retiennent (comme `passageCoverage`).
  * @returns {Set<string>}
  */
 export function coveredDates(variant) {
   const out = new Set()
-  for (const v of variant?.verdicts ?? []) for (const t of v.traces ?? []) if (isIsoDate(t?.at)) out.add(t.at)
+  for (const v of variant?.verdicts ?? []) {
+    if (!keepsTraces(v)) continue
+    for (const t of v.traces ?? []) if (isIsoDate(t?.at)) out.add(t.at)
+  }
   return out
 }
 
@@ -399,7 +410,7 @@ export function passageCoverage(dataset) {
     if (!variant) continue
     const byDate = new Map() // date du passage → Map(code → {code, proofs, hints})
     for (const v of variant.verdicts ?? []) {
-      if (v.courtCircuit || !TRACE_PROVIDING_STATUSES.has(v.status)) continue
+      if (!keepsTraces(v)) continue
       for (const t of v.traces ?? []) {
         if (!isIsoDate(t?.at) || t.at === day.date) continue
         if (!byDate.has(t.at)) byDate.set(t.at, new Map())
@@ -427,10 +438,17 @@ export function analysesLabel(dates, ref) {
   return `les analyses ${each.slice(0, -1).join(', ')} et ${each.at(-1)}`
 }
 
-/** Anomalie « analyse-multi-journees » d'une variante de la journée `date`, ou null. */
+/**
+ * Anomalie « analyse-multi-journees » d'une variante de la journée `date`, ou
+ * null : ses traces que les calculs retiennent, écrites d'autres jours (ce
+ * que la journée du passage dit « relevé », `passageCoverage`).
+ */
 export function multiDayAnomaly(date, variant) {
   const at = []
-  for (const v of variant.verdicts ?? []) for (const t of v.traces ?? []) if (isIsoDate(t?.at) && t.at !== date) at.push(t.at)
+  for (const v of variant.verdicts ?? []) {
+    if (!keepsTraces(v)) continue
+    for (const t of v.traces ?? []) if (isIsoDate(t?.at) && t.at !== date) at.push(t.at)
+  }
   if (at.length === 0) return null
   const dates = [...new Set(at)].sort()
   const span = dates.length === 1 ? `passages du ${dayMonth(dates[0], date)}` : `${dates.length} journées, du ${dayMonth(dates[0], date)} au ${dayMonth(dates.at(-1), date)}`

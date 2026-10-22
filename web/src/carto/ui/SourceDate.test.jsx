@@ -204,6 +204,20 @@ describe('sprint 4 — la journée du passage renvoie à l’analyse qui l’a r
     expect(document.querySelector('.carto-dot')).toBeNull()
   })
 
+  it('gestionnaire : une trace que les calculs ne retiennent pas (présence non établie) ne fait ni « couvre » ni « relevée »', async () => {
+    const store = createCartoStore({ adapter: createMemoryAdapter() })
+    const res = await importMulti()
+    await store.commit(res)
+    const ds = structuredClone(res.dataset)
+    ds.days.find((d) => d.date === '2026-02-10').variants[0].verdicts[0].status = 'not_established'
+    await store.saveDataset(ds)
+    await mount(store)
+    const rows = [...document.querySelectorAll('.carto-day-list li.carto-day')]
+    const row = (date) => rows.find((li) => li.querySelector('.carto-day-date').textContent === date)
+    expect(row('mar. 10 févr. 2026').querySelector('.carto-day-ind').textContent).not.toMatch(/couvre/)
+    expect(row('mar. 3 févr. 2026').querySelector('.carto-day-ind').textContent).not.toMatch(/relevée/)
+  })
+
   it('un jeu rangé avant T2 reçoit at à son ouverture, une fois : la modale du 3 renvoie au 10', async () => {
     const store = createCartoStore({ adapter: createMemoryAdapter() })
     const res = await importMulti()

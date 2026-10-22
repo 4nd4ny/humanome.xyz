@@ -189,7 +189,7 @@ describe('couverture et anomalies', () => {
     const covered = dayAnomalies({ date: '2026-02-03', variants: [], variantChoice: 'auto', portfolio: { chars: 10 } }, { coverage })
     expect(covered.find((x) => x.code === 'couverte-par').message).toBe('Passages relevés par les analyses du 10 févr. et du 17 févr.')
     // L'année d'une autre année seulement.
-    const [y] = dayAnomalies({ date: '2026-01-02', variants: [{ verdicts: [{ code: '1', traces: [{ id: 'x', role: 'preuve', at: '2025-12-30' }] }] }], variantChoice: 'auto', portfolio: null })
+    const [y] = dayAnomalies({ date: '2026-01-02', variants: [{ verdicts: [{ code: '1', status: 'established', traces: [{ id: 'x', role: 'preuve', at: '2025-12-30' }] }] }], variantChoice: 'auto', portfolio: null })
     expect(y.message).toBe('Analyse du 2 janv. : 1 trace de passages écrits d’autres jours (passages du 30 déc. 2025)')
   })
 
@@ -200,6 +200,22 @@ describe('couverture et anomalies', () => {
     const ds = structuredClone((await importMulti()).dataset)
     day(ds, '2026-02-10').variants[0].verdicts[0].courtCircuit = true
     expect(passageCoverage(ds).size).toBe(0)
+  })
+
+  // Les deux côtés du chemin comptent les mêmes traces (D-72) : le 10 ne dit
+  // pas « couvre » ce que le 3 ne dit pas « relevé ».
+  it('court-circuit ou présence non établie : ni « analyse-multi-journees » au 10, ni « couverte-par » au 3', async () => {
+    const changes = { courtCircuit: (v) => (v.courtCircuit = true), not_established: (v) => (v.status = 'not_established') }
+    for (const [name, change] of Object.entries(changes)) {
+      const ds = structuredClone((await importMulti()).dataset)
+      const v10 = day(ds, '2026-02-10').variants[0]
+      change(v10.verdicts[0])
+      const coverage = passageCoverage(ds)
+      expect(coverage.size, name).toBe(0)
+      expect(coveredDates(v10).size, name).toBe(0)
+      expect(dayAnomalies(day(ds, '2026-02-10'), { portfolioImported: true, coverage }).map((a) => a.code), name).not.toContain('analyse-multi-journees')
+      expect(dayAnomalies(day(ds, '2026-02-03'), { portfolioImported: true, coverage }).map((a) => a.code), name).toEqual(['sans-analyse'])
+    }
   })
 
   it('heatmap : la case du 3 dit l’analyse qui a relevé ses passages', async () => {

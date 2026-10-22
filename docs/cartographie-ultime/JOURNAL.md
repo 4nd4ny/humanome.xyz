@@ -3008,7 +3008,11 @@ l'index, pour que la journée du passage renvoie à l'analyse :
 - **[choix d'implémentation] Une variante seule, celle qui contribue,
   relève** les passages d'une autre journée, et seulement les traces que les
   calculs retiennent (statut qui fournit des traces, hors court-circuit) :
-  ce que la section annonce est ce qui compte dans la journée analysée.
+  ce que la section annonce est ce qui compte dans la journée analysée. Le
+  côté qui relève compte les mêmes traces (revue du 2026-10-22) : « couvre
+  N autres journées » et `analyse-multi-journees` laissent de côté un
+  verdict court-circuité ou « présence non établie », comme « relevée le
+  … » et `couverte-par`.
 - **Année sur deux chiffres** (`engine/src/portfolio/segment.js`) : le
   découpage lit `### 02.03.26` comme le 2 mars 2026, comme Twin9
   (`Twin_v9/php/src/Portfolio.php`, `iso()` : 20AA), et seulement dans les

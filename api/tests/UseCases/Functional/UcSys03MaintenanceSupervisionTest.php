@@ -281,6 +281,28 @@ final class UcSys03MaintenanceSupervisionTest extends AdminTestCase
         self::assertSame([500, ['error' => 'Maintenance failed, see server log']], [$failed->getStatusCode(), AdmSupport::body($failed)]);
     }
 
+    #[TestDox('UC-SYS-03-F11 — A4 : la tâche planifiée de maintenance avec le jeton du tick (WORKER_TICK_TOKEN) → mêmes effets, sans le jeton des migrations ; un jeton du tick faux, ou passé pour celui des migrations → 403 ; non configuré, il n’ouvre rien')]
+    public function testF11MaintenanceWithTheTickToken(): void
+    {
+        $tick = 'uc-sys03-jeton-du-tick-0123456789abcdef';
+        TestDb::setEnv('WORKER_TICK_TOKEN', $tick);
+        $parLeTick = static fn (string $jeton): ResponseInterface => AdmSupport::toolRequest(
+            'POST', '/admin/maintenance', null, null, ['X-Worker-Tick-Token' => $jeton]);
+        $keep = $this->seedShareLinks();
+
+        $first = $parLeTick($tick);
+
+        self::assertSame(200, $first->getStatusCode());
+        self::assertSame(['shareLinksPurged' => 3, 'demoDaysPruned' => 1, 'powChallengesPruned' => 1], AdmSupport::body($first));
+        self::assertSame($keep, self::shareLinkIds(), 'les mêmes effets que par le jeton des migrations (F04)');
+        self::assertSame(403, $parLeTick('faux')->getStatusCode());
+        self::assertSame(403, $this->maintenance($tick)->getStatusCode(), 'le jeton du tick n’est pas celui des migrations');
+
+        TestDb::setEnv('WORKER_TICK_TOKEN', '');
+        self::assertSame(403, $parLeTick($tick)->getStatusCode(), 'non configuré, le jeton du tick n’ouvre rien');
+        self::assertSame(200, $this->maintenance()->getStatusCode(), 'le jeton des migrations l’ouvre toujours');
+    }
+
     #[TestDox('UC-SYS-03-F06 — A2/E4 : équivalent CLI php scripts/maintenance.php → mêmes effets, compteurs en une ligne JSON ; sans base → code 1 ; base injoignable → message SQL sur stderr, code 1')]
     public function testF06MaintenanceCommandLine(): void
     {

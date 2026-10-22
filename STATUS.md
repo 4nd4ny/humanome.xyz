@@ -21,7 +21,8 @@ structure, que le moteur lit (T16) et que la cartographie affiche (T17) ; le mot
 est retiré (T11, fusionné le 2026-10-20). T18, la démonstration sur l'OVH, est préparé,
 fusionné (#19, le 2026-10-21, après l'import des gabarits sans Python, #18) et **déployé le
 2026-10-21** au feu vert de Christian (`health` → `7b198cc`, moteur Twin9 `9eea3a1` chargé ; entrée
-« Déploiement » du jour) : restent le déclencheur cron-job.org, dont Christian s'occupe, et la
+« Déploiement » du jour) : restent les tâches planifiées — deux relais depuis un autre
+hébergement OVH, plutôt que cron-job.org (entrée du 2026-10-22) —, dont Christian s'occupe, et la
 recette (`docs/recette-twin9.md`).
 
 Hors planning, à la demande de Christian (2026-10-20) : le référentiel dynamique — RESPIRE n'a
@@ -36,6 +37,32 @@ empilée sur #20). Le soir même, le site est basculé sur l'OVH pour la démons
 Christian.
 
 ## Fait
+
+- 2026-10-22 — **Deux tâches planifiées depuis un autre hébergement OVH ; les prix relevés aussi
+  par `worker.php` (branche `fix/tarifs-worker-cli`, empilée sur `docs/deploiement-2026-10-21`).**
+  Christian (00 h 05) : « J'ai la possibilité de définir un cron depuis un autre site avec l'offre
+  OVH perso qui invoque un script PHP et non distant. Est-ce que ce serait jouable ? » ; puis
+  (00 h 36) : « Oui, met aussi à jour les prix. Une fois par jour ça suffit. Je peux lancer deux
+  crons distincts. »
+  - **Jouable, sans `worker.php`** : une tâche planifiée d'OVH ne lance qu'un fichier de son
+    propre hébergement, et `worker.php` a besoin du code, du `.env`, de la base et du moteur
+    d'humanome.xyz (il n'est d'ailleurs pas dans la release). Deux relais
+    (`scripts/deploy/cron-ovh/`) appellent les routes d'humanome.xyz, comme cron-job.org :
+    `humanome-tick.php` chaque heure — une tâche OVH part au plus une fois par heure et s'arrête
+    à 60 minutes : le tick chaque minute pendant 55 minutes, tranches de 40 s faute de service qui
+    raccroche à 30 s —, `humanome-maintenance.php` chaque jour. Essayés contre l'API locale :
+    compteurs, jeton refusé (code 1), serveur injoignable (le tick continue, code 0).
+  - **La maintenance par le jeton du tick** : la route accepte aussi `X-Worker-Tick-Token`, pour
+    que la seconde tâche ne tienne pas le jeton des migrations (qui migre, importe et donne des
+    rôles) ; elle ne purge que ce qui a expiré. Le jeton du tick, qui n'ouvrait que le tick
+    (ADR-011), ouvre ces deux routes. UC-SYS-03 A4, F11 ; `WorkerTickTokenTest`.
+  - **Les prix par le cron** (`fix:`) : le relevé quotidien n'était que dans la route du tick ;
+    `TarifsAnthropic::releverApresTranche`, appelé par la route et par `php scripts/worker.php`,
+    le fait pour les deux (une fois par jour UTC, comme avant). UC-SYS-01-F26 : le script en
+    sous-processus, la page injoignable par un mandataire qui refuse la connexion (aucun réseau).
+  - **À déployer** : le relais du tick marche avec la production d'aujourd'hui ; celui de la
+    maintenance y reçoit `403` tant que cette branche n'est pas déployée (feu vert de Christian).
+    `deploiement.md`, « Depuis un autre hébergement OVH » : installation et vérification.
 
 - 2026-10-21 — **Déploiement sur humanome.xyz : `main` (`7b198cc`) et le moteur Twin9 (T18).**
   Christian (22 h 40) : « Tu as mon feu vert pour déployer les deux repository humanome.xyz et
@@ -2778,6 +2805,9 @@ Christian.
   ponctuel, hors dépôt) ; à intégrer à `deploy.mjs` si ce mode de déploiement se répète. Il
   s'est répété le 2026-10-21 (six connexions : 803 fichiers en 85 s, après plus de deux minutes
   pour créer les 126 dossiers un par un) : à décider.
+- `stage-api.sh` n'embarque ni `scripts/worker.php` ni `scripts/maintenance.php` : sur une offre
+  OVH avec cron, où `deploiement.md` conseille de les planifier, il faudrait d'abord les ajouter à
+  la release (relevé le 2026-10-22 ; les relais `scripts/deploy/cron-ovh/` s'en passent).
 - Partage historique (`#/espace`, jour / merge / twin9) **retiré sur la branche
   `feat/ultimate-cartography`** (décision du 2026-10-14, journal carto D-43 : plus de nouveau
   lien, `422 share_retired`). Les liens déjà créés restent servis jusqu'à leur échéance — y

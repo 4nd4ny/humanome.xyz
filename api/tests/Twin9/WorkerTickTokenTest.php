@@ -31,6 +31,9 @@ final class WorkerTickTokenTest extends AuthTestBase
         ['POST', '/api/admin/twin9/import'],
     ];
 
+    /** Besides the tick, the tick's token opens the daily maintenance (2026-10-22, UC-SYS-03-F11). */
+    private const AUSSI_PAR_LE_JETON_DU_TICK = [['POST', '/api/admin/maintenance']];
+
     private string|false $errorLog = false;
 
     protected function setUp(): void
@@ -68,12 +71,17 @@ final class WorkerTickTokenTest extends AuthTestBase
             ['X-Migrate-Token' => self::MIGRATE])->getStatusCode(), 'le jeton des migrations l\'ouvre toujours');
     }
 
-    public function testTheTickTokenOpensNoOtherRoute(): void
+    public function testTheTickTokenOpensNoOtherRouteThanTheMaintenance(): void
     {
-        foreach (self::ROUTES_DU_JETON_DES_MIGRATIONS as [$method, $path]) {
+        foreach (self::ROUTES_DU_JETON_DES_MIGRATIONS as $route) {
+            [$method, $path] = $route;
             foreach (['X-Migrate-Token', 'X-Worker-Tick-Token'] as $header) {
                 $status = $this->request($method, $path, [], [$header => self::TICK])->getStatusCode();
-                self::assertContains($status, [401, 403], "$method $path ($header) : $status");
+                if ($header === 'X-Worker-Tick-Token' && \in_array($route, self::AUSSI_PAR_LE_JETON_DU_TICK, true)) {
+                    self::assertSame(200, $status, "$method $path ($header)");
+                } else {
+                    self::assertContains($status, [401, 403], "$method $path ($header) : $status");
+                }
             }
         }
     }

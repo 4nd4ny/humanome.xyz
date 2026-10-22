@@ -741,9 +741,10 @@ final class RunRepository
     /**
      * The counters a run keeps of its journal: calls, attempts, failures —
      * those of an output cut, by its budget or by the model's context, also
-     * counted apart (`tronques`, P0-2) —, tokens, cost and time, by step, the
-     * models served and its batches; the days it instructed and how long it
-     * was active.
+     * counted apart (`tronques`, P0-2), each stop read in its provider's
+     * table —, the cuts the slices' ends made (`coupures`), tokens, cost and
+     * time, by step and by provider (P1-5), the models served and its
+     * batches; the days it instructed and how long it was active.
      *
      * @return array<string, mixed>
      */
@@ -765,37 +766,49 @@ final class RunRepository
         $stmt->execute([$id]);
         $dureeS = (int) $stmt->fetchColumn();
         $stmt = $this->pdo->prepare(
-            'SELECT etape, statut, stop_reason, COUNT(*) AS n, SUM(tentatives) AS tentatives,
-                    SUM(jetons_entree) AS entree, SUM(jetons_sortie) AS sortie, SUM(cout_microusd) AS cout,
-                    SUM(duree_ms) AS duree
-               FROM twin9_appels WHERE run_id = ? GROUP BY etape, statut, stop_reason ORDER BY etape, statut'
+            'SELECT etape, fournisseur, statut, stop_reason, COUNT(*) AS n, SUM(tentatives) AS tentatives,
+                    SUM(coupures) AS coupures, SUM(jetons_entree) AS entree, SUM(jetons_sortie) AS sortie,
+                    SUM(cout_microusd) AS cout, SUM(duree_ms) AS duree
+               FROM twin9_appels WHERE run_id = ? GROUP BY etape, fournisseur, statut, stop_reason
+              ORDER BY etape, fournisseur, statut'
         );
         $stmt->execute([$id]);
-        $total = ['appels' => 0, 'pannes' => 0, 'tronques' => 0, 'tentatives' => 0, 'jetons_entree' => 0,
-                  'jetons_sortie' => 0, 'cout_microusd' => 0, 'duree_ms' => 0];
+        $total = ['appels' => 0, 'pannes' => 0, 'tronques' => 0, 'tentatives' => 0, 'coupures' => 0,
+                  'jetons_entree' => 0, 'jetons_sortie' => 0, 'cout_microusd' => 0, 'duree_ms' => 0];
         $parEtape = [];
+        $parFournisseur = [];
         foreach ($stmt->fetchAll() as $row) {
             $etape = (string) $row['etape'];
+            $fournisseur = (string) $row['fournisseur'];
+            $n = (int) $row['n'];
             $parEtape[$etape] ??= ['appels' => 0, 'pannes' => 0, 'tronques' => 0, 'cout_microusd' => 0];
-            $parEtape[$etape]['appels'] += (int) $row['n'];
+            $parFournisseur[$fournisseur] ??= ['appels' => 0, 'pannes' => 0, 'tronques' => 0, 'coupures' => 0,
+                                               'cout_microusd' => 0];
+            $parEtape[$etape]['appels'] += $n;
             $parEtape[$etape]['cout_microusd'] += (int) $row['cout'];
-            $total['appels'] += (int) $row['n'];
+            $parFournisseur[$fournisseur]['appels'] += $n;
+            $parFournisseur[$fournisseur]['coupures'] += (int) $row['coupures'];
+            $parFournisseur[$fournisseur]['cout_microusd'] += (int) $row['cout'];
+            $total['appels'] += $n;
             if ($row['statut'] === 'panne') {
-                $parEtape[$etape]['pannes'] += (int) $row['n'];
-                $total['pannes'] += (int) $row['n'];
-                // read with Anthropic's table until the journal keeps each call's provider (P1-5, voie mixte):
-                // another provider's cut is counted by its slice (Twin9Slice::inscrire), not here yet
-                if (Arret::tronquee('anthropic', $row['stop_reason'] === null ? null : (string) $row['stop_reason'])) {
-                    $parEtape[$etape]['tronques'] += (int) $row['n'];
-                    $total['tronques'] += (int) $row['n'];
+                $parEtape[$etape]['pannes'] += $n;
+                $parFournisseur[$fournisseur]['pannes'] += $n;
+                $total['pannes'] += $n;
+                // its stop, in its provider's table (the journal keeps each call's)
+                if (Arret::tronquee($fournisseur, $row['stop_reason'] === null ? null : (string) $row['stop_reason'])) {
+                    $parEtape[$etape]['tronques'] += $n;
+                    $parFournisseur[$fournisseur]['tronques'] += $n;
+                    $total['tronques'] += $n;
                 }
             }
             $total['tentatives'] += (int) $row['tentatives'];
+            $total['coupures'] += (int) $row['coupures'];
             $total['jetons_entree'] += (int) $row['entree'];
             $total['jetons_sortie'] += (int) $row['sortie'];
             $total['cout_microusd'] += (int) $row['cout'];
             $total['duree_ms'] += (int) $row['duree'];
         }
+        ksort($parFournisseur, SORT_STRING);
         $stmt = $this->pdo->prepare(
             'SELECT modele_servi, COUNT(*) FROM twin9_appels WHERE run_id = ? AND modele_servi IS NOT NULL
               GROUP BY modele_servi ORDER BY modele_servi'
@@ -803,6 +816,7 @@ final class RunRepository
         $stmt->execute([$id]);
 
         return $total + ['lots' => $lots, 'journees' => $journees, 'duree_s' => $dureeS, 'par_etape' => $parEtape,
+                         'par_fournisseur' => $parFournisseur,
                          'modeles_servis' => array_map(intval(...), $stmt->fetchAll(PDO::FETCH_KEY_PAIR))];
     }
 

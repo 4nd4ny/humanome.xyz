@@ -68,6 +68,13 @@ final class CallSettings
 
     private const CHAMPS = ['fournisseur', 'modele', 'budget_sortie', 'effort', 'reflexion'];
 
+    /**
+     * The entries of parEtape() no call of the engine is sent with: the
+     * readers' stage itself — each reader of the college is its own entry,
+     * the stage only what it inherits — and a step the profile does not know.
+     */
+    private const NON_ATTEINTS = ['lecteurs', 'autre étape'];
+
     public function __construct(private readonly stdClass $profil)
     {
     }
@@ -121,9 +128,24 @@ final class CallSettings
     }
 
     /**
+     * What the calls of the run are sent with, by step, as parEtape() gives
+     * it, but for what no call of the engine reaches (NON_ATTEINTS): the
+     * readers' stage itself and a step the profile does not know.
+     *
+     * @return array<string, array{fournisseur: string, voie: 'lots'|'directe', modele: string, budget_sortie: int,
+     *                             effort: string|null, reflexion: string}>
+     */
+    public function atteints(): array
+    {
+        return array_diff_key($this->parEtape(), array_flip(self::NON_ATTEINTS));
+    }
+
+    /**
      * Every combination of provider, lane, model and settings a call of the
-     * run may be sent with (parEtape(), once each), of one lane when it is
-     * given. The batch lane checks its own before the run's first batch (T8).
+     * run is sent with (atteints(), once each), of one lane when it is given.
+     * The batch lane checks its own before the run's first batch (T8); the
+     * launch, the consent and the slice's guard read the providers they
+     * reach (fournisseurs()).
      *
      * @param 'lots'|'directe'|null $voie
      * @return list<array{fournisseur: string, voie: 'lots'|'directe', modele: string, budget_sortie: int,
@@ -132,13 +154,41 @@ final class CallSettings
     public function combinaisons(?string $voie = null): array
     {
         $uniques = [];
-        foreach ($this->parEtape() as $reglage) {
+        foreach ($this->atteints() as $reglage) {
             if ($voie === null || $reglage['voie'] === $voie) {
                 $uniques[json_encode($reglage, JSON_THROW_ON_ERROR)] = $reglage;
             }
         }
 
         return array_values($uniques);
+    }
+
+    /**
+     * The providers the run's calls reach (combinaisons()), of one lane when
+     * it is given, in the registry's order.
+     *
+     * @param 'lots'|'directe'|null $voie
+     * @return list<string>
+     */
+    public function fournisseurs(?string $voie = null): array
+    {
+        $atteints = array_flip(array_column($this->combinaisons($voie), 'fournisseur'));
+
+        return array_values(array_filter(array_keys(Fournisseurs::REGISTRE),
+            static fn (string $f): bool => isset($atteints[$f])));
+    }
+
+    /**
+     * The run's lane as it goes (P1-5): « lots » when every call it sends goes
+     * by batches, « directe » when none does, « mixte » otherwise.
+     *
+     * @return 'lots'|'directe'|'mixte'
+     */
+    public function voieEffective(): string
+    {
+        $voies = array_unique(array_column($this->combinaisons(), 'voie'));
+
+        return \count($voies) > 1 ? 'mixte' : ($voies === ['lots'] ? 'lots' : 'directe');
     }
 
     /**

@@ -33,17 +33,40 @@ final class Twin9Run
     /** Its passes in this slice. */
     public int $passes = 0;
 
-    /** What holds the run back, for its page; null: nothing. */
+    /** What holds its direct calls back, for its page (a rate refusal, a key, a cap); null: nothing. */
     public ?string $attente = null;
 
-    /** No more sending in this slice (no key, the provider's spending cap). */
-    public bool $suspendu = false;
+    /**
+     * What its batches say, for its page (Twin9Lots: a batch at Anthropic,
+     * calls still to submit, a lost batch, the key…); null: nothing. Its
+     * sentinel Twin9Lots::A_SOUMETTRE is never composed with another reason.
+     */
+    public ?string $attenteLots = null;
+
+    /**
+     * What sends nothing more in this slice, with why: a provider (no key,
+     * its spending cap, closed on the instance) or « lots », its batches
+     * (Twin9Lots). A provider suspended never holds back another's calls.
+     *
+     * @var array<string, string>
+     */
+    public array $suspendus = [];
+
+    /** @var array<string, true> the providers whose guard this slice read (Twin9Slice::garde()) */
+    public array $gardes = [];
 
     /** When the first call it holds back (attempts, Retry-After) may leave; null: none. */
     public ?float $reveil = null;
 
-    /** By batches: the calls of its pass have gone to their batches in this slice. */
-    public bool $soumis = false;
+    /** By batches: the pass whose calls went to their batches in this slice (one submission a slice); 0: none yet. */
+    public int $passeSoumise = 0;
+
+    /**
+     * Why it stops (P1-5, deferred stop): nothing more leaves, nor is a pass
+     * played; the calls in flight come back, or the slice's end cuts them,
+     * and are written with their cost; then the slice stops it. Null: it goes on.
+     */
+    public ?string $arret = null;
 
     /** What it has committed (RunCosts): the worst cases its calls hold, the real costs settled, in micro-USD. */
     public int $engage = 0;
@@ -57,9 +80,11 @@ final class Twin9Run
 
     /**
      * @param string $cle "instance" (its owner's credits pay, margin included) or "personnelle"
+     * @param bool $routeLots some of its calls go by batches: Anthropic's, its profile's lane « lots » (P1-5)
      * @param int|null $budget its budget in micro-USD (T10); null: none
      * @param float|null $limite when its duration ends (unix time); null: none
      * @param int $reserveFusion what it keeps for its merge, in micro-USD (T8, strategy A)
+     * @param bool $routeDirecte some of its calls go directly: another provider's, or Anthropic's by the « directe » lane
      */
     public function __construct(
         public readonly int $id,
@@ -72,11 +97,59 @@ final class Twin9Run
         public readonly string $cle,
         public readonly int $appelsDirects,
         public readonly int $journeesDeFront,
-        public readonly bool $parLots = false,
+        public readonly bool $routeLots = false,
         public readonly ?int $budget = null,
         public readonly ?float $limite = null,
         public readonly int $reserveFusion = 0,
+        public readonly bool $routeDirecte = true,
     ) {
+    }
+
+    /**
+     * A provider, or « lots » (its batches), sends nothing more in this
+     * slice; $raison, when given, is what its page reads (its batches' or
+     * its direct calls').
+     */
+    public function suspendre(string $voie, ?string $raison = null): void
+    {
+        $this->suspendus[$voie] = $raison ?? ($this->suspendus[$voie] ?? '');
+        if ($raison !== null) {
+            if ($voie === 'lots') {
+                $this->attenteLots = $raison;
+            } else {
+                $this->attente = $raison;
+            }
+        }
+    }
+
+    /** Whether a provider, or « lots », sends nothing more in this slice. */
+    public function suspendu(string $voie): bool
+    {
+        return isset($this->suspendus[$voie]);
+    }
+
+    /**
+     * What holds it back, for its page: its batches' reason, then each
+     * provider's suspended and its direct calls' latest; null: nothing.
+     * Calls still to submit (Twin9Lots::A_SOUMETTRE) say only that: the
+     * next slice reads it exactly, to play the run again.
+     */
+    public function attente(): ?string
+    {
+        if ($this->attenteLots === Twin9Lots::A_SOUMETTRE) {
+            return Twin9Lots::A_SOUMETTRE;
+        }
+        $raisons = [$this->attenteLots];
+        foreach ($this->suspendus as $voie => $raison) {
+            if ($voie !== 'lots') {
+                $raisons[] = $raison;
+            }
+        }
+        $raisons[] = $this->attente;
+        $raisons = array_values(array_unique(array_filter($raisons,
+            static fn (?string $r): bool => $r !== null && $r !== '')));
+
+        return $raisons === [] ? null : implode(' ; ', $raisons);
     }
 
     /** Whether its owner's credits pay its calls, the margin included: the instance's key. */
@@ -114,13 +187,14 @@ final class Twin9Run
      */
     public function aRejouer(): bool
     {
-        return $this->nouvelles && !$this->plein;
+        return $this->nouvelles && !$this->plein && $this->arret === null;
     }
 
     /**
      * The days whose calls may leave: by direct calls, the oldest the run has
-     * under way, as many as it leads abreast (parallelisme.journees); by
-     * batches, all of them (T8, strategy A: each wave waits a whole batch).
+     * under way, as many as it leads abreast (parallelisme.journees); with
+     * calls by batches, all of them (T8, strategy A: each wave waits a whole
+     * batch), its direct calls bounded by appels_directs alone.
      *
      * @return array<string, true>
      */
@@ -129,7 +203,7 @@ final class Twin9Run
         $jours = [];
         foreach ($this->attendus as $call) {
             $jour = self::jour($call->id);
-            if ($jour !== null && !isset($jours[$jour]) && ($this->parLots || \count($jours) < $this->journeesDeFront)) {
+            if ($jour !== null && !isset($jours[$jour]) && ($this->routeLots || \count($jours) < $this->journeesDeFront)) {
                 $jours[$jour] = true;
             }
         }

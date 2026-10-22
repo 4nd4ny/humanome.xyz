@@ -41,6 +41,10 @@ use Twin9\Run\Call;
  *   owner's credit leave room for, the rest waits for a next one.
  * - The batches of an account erased, submitted with the instance's key, are
  *   cancelled and deleted from twin9_lots_a_effacer.
+ * - In a mixed run (P1-5), only Anthropic's calls go by batches, at most
+ *   one submission a run and a slice, at its head, before its direct calls
+ *   leave; while its requests wait, the slice reads the direct calls in
+ *   flight. A suspension of another provider never holds its batches back.
  *
  * No transaction stays open while Anthropic answers. Logging: counters only.
  */
@@ -139,41 +143,50 @@ final class Twin9Lots
     }
 
     /**
-     * The calls a run waits for, into bounded batches; before its first
-     * batch, its settings are checked.
+     * The calls a run waits for by batches, into bounded batches; before its
+     * first batch, its settings are checked. Each request to Anthropic is
+     * bounded by the slice's last departure, and before each one the slice
+     * reads the direct calls in flight ($pendant: Twin9Slice), which would
+     * otherwise wait for it.
      *
      * @param array<string, int> $compteurs the slice's
+     * @param (\Closure(): void)|null $pendant reads the direct calls in flight, between two requests
      * @return string|null why the run fails (the API refuses its settings or its batch), or null
      */
-    public function soumettre(Twin9Run $run, float $debut, float $dernierDepart, float $fin, array &$compteurs): ?string
+    public function soumettre(Twin9Run $run, float $debut, float $dernierDepart, float $fin, array &$compteurs,
+                              ?\Closure $pendant = null): ?string
     {
         $avantLaFin = min(self::TEMPS_SOUMISSION, 0.25 * ($fin - $debut));
-        $run->soumis = true;
+        // a request waits until the slice's last departure at the latest: the direct calls in flight then have the
+        // rest of it to come back
+        $borne = $dernierDepart;
+        $pendant ??= static function (): void {
+        };
+        $run->passeSoumise = max(1, $run->passes);
         if ($run->horsDuree()) {
             $run->bloque = RunCosts::DUREE;
-            $run->attente = $this->enVol($run->id) > 0 ? self::EN_COURS : null;
+            $run->attenteLots = $this->enVol($run->id) > 0 ? self::EN_COURS : null;
 
             return null;
         }
         $candidats = $this->candidats($run);
         if ($candidats === []) {
-            $run->attente = $this->enVol($run->id) > 0 ? self::EN_COURS : null;
+            $run->attenteLots = $this->enVol($run->id) > 0 ? self::EN_COURS : null;
 
             return null;
         }
         $cle = $this->cles->pour($run->userId, $run->cle);
         if ($cle === null) {
-            $run->attente = 'clé Anthropic indisponible';
-            $run->suspendu = true;
+            $run->suspendre('lots', 'clé Anthropic indisponible');
 
             return null;
         }
         // a tick that dies before its batches have left leaves its run to play again
         $this->pdo->prepare('UPDATE twin9_runs SET attente = ? WHERE id = ?')->execute([self::A_SOUMETTRE, $run->id]);
-        $run->attente = self::A_SOUMETTRE;
+        $run->attenteLots = self::A_SOUMETTRE;
         if (!$this->dejaSoumis($run->id)) {
-            $refus = $this->verifier($run, $cle, $dernierDepart, $fin, $compteurs);
-            if ($refus !== null || $run->suspendu) {
+            $refus = $this->verifier($run, $cle, $dernierDepart, $borne, $compteurs, $pendant);
+            if ($refus !== null || $run->suspendu('lots')) {
                 return $refus;
             }
         }
@@ -209,8 +222,8 @@ final class Twin9Lots
                                       $reglage['budget_sortie'], $reglage['reflexion'], $reglage['effort'])],
                 JSON_THROW_ON_ERROR | JSON_UNESCAPED_UNICODE);
             if ($membres !== [] && \strlen(self::ENVELOPPE) + \strlen($corps) + 1 + \strlen($ligne) > $this->octets) {
-                $refus = $this->envoyer($run, $cle, $corps, $membres, $fin - $avantLaFin, $fin, $compteurs);
-                if ($refus !== null || $run->suspendu) {
+                $refus = $this->envoyer($run, $cle, $corps, $membres, $fin - $avantLaFin, $borne, $compteurs, $pendant);
+                if ($refus !== null || $run->suspendu('lots')) {
                     return $refus;
                 }
                 $corps = '';
@@ -223,9 +236,9 @@ final class Twin9Lots
                 $solde = $solde === null ? null : $solde - $reserve;
             }
         }
-        $refus = $this->envoyer($run, $cle, $corps, $membres, $fin - $avantLaFin, $fin, $compteurs);
-        if ($refus === null && !$run->suspendu) {
-            $run->attente = $this->enVol($run->id) > 0 ? self::EN_COURS : null;
+        $refus = $this->envoyer($run, $cle, $corps, $membres, $fin - $avantLaFin, $borne, $compteurs, $pendant);
+        if ($refus === null && !$run->suspendu('lots')) {
+            $run->attenteLots = $this->enVol($run->id) > 0 ? self::EN_COURS : null;
         }
 
         return $refus;
@@ -505,20 +518,25 @@ final class Twin9Lots
 
     /**
      * Each combination of model and settings the run sends by batches, by a
-     * minimal direct call.
+     * minimal direct call; before each, the slice reads the direct calls in
+     * flight ($pendant).
      *
+     * @param float $borne when a check must be done at the latest
      * @param array<string, int> $compteurs
+     * @param \Closure(): void $pendant
      * @return string|null why the run fails, or null
      */
-    private function verifier(Twin9Run $run, string $cle, float $dernierDepart, float $fin, array &$compteurs): ?string
+    private function verifier(Twin9Run $run, string $cle, float $dernierDepart, float $borne, array &$compteurs,
+                              \Closure $pendant): ?string
     {
         foreach ($run->reglages->combinaisons('lots') as $reglage) {
+            $pendant();
             if (microtime(true) >= $dernierDepart) {
-                $run->suspendu = true;
+                $run->suspendre('lots');
 
                 return null;
             }
-            $issue = $this->api->verifier($cle, $reglage, $fin);
+            $issue = $this->api->verifier($cle, $reglage, $borne);
             $compteurs['verifications']++;
             if ($issue['ok']) {
                 continue;
@@ -527,9 +545,8 @@ final class Twin9Lots
             if ($http === 400) {
                 return 'l\'API refuse les réglages de ' . $reglage['modele'] . ' : ' . ($issue['erreur'] ?? 'HTTP 400');
             }
-            $run->attente = $http === 401 || $http === 403 ? 'clé Anthropic refusée'
-                : 'vérification des réglages : ' . ($issue['erreur'] ?? 'fournisseur indisponible');
-            $run->suspendu = true;
+            $run->suspendre('lots', $http === 401 || $http === 403 ? 'clé Anthropic refusée'
+                : 'vérification des réglages : ' . ($issue['erreur'] ?? 'fournisseur indisponible'));
 
             return null;
         }
@@ -547,17 +564,19 @@ final class Twin9Lots
      * @param list<array{0: Call, 1: string, 2: int, 3: int|null}> $membres each call, its model, its attempt and the
      *                                                                       worst case it newly holds
      * @param float $dernier the latest a batch may leave in this slice
+     * @param float $borne when its submission must be answered at the latest
      * @param array<string, int> $compteurs
+     * @param \Closure(): void $pendant reads the direct calls in flight (Twin9Slice)
      * @return string|null why the run fails, or null
      */
-    private function envoyer(Twin9Run $run, string $cle, string $corps, array $membres, float $dernier, float $fin,
-                             array &$compteurs): ?string
+    private function envoyer(Twin9Run $run, string $cle, string $corps, array $membres, float $dernier, float $borne,
+                             array &$compteurs, \Closure $pendant): ?string
     {
         if ($membres === []) {
             return null;
         }
         if (microtime(true) > $dernier) {
-            $run->suspendu = true;
+            $run->suspendre('lots');
 
             return null;
         }
@@ -580,7 +599,7 @@ final class Twin9Lots
             $this->pdo->rollBack();
             $run->journal->oublier();
             $run->bloque = RunCosts::CREDIT;
-            $run->suspendu = true;
+            $run->suspendre('lots');
 
             return null;
         } catch (\Throwable $e) {
@@ -589,7 +608,9 @@ final class Twin9Lots
             throw $e;
         }
         $run->envoyes += \count($membres);
-        $issue = $this->api->creer($cle, $corps, $fin);
+        // its row and its calls written, the transaction closed: the direct calls in flight are read first
+        $pendant();
+        $issue = $this->api->creer($cle, $corps, max(microtime(true) + 0.1, $borne));
         if ($issue['ok']) {
             $this->pdo->prepare('UPDATE twin9_lots SET lot = ?, statut = "en_cours" WHERE id = ?')
                 ->execute([(string) $issue['lot']['id'], $lotId]);
@@ -599,22 +620,22 @@ final class Twin9Lots
             return null;
         }
         $http = $issue['http'] ?? null;
-        $run->suspendu = true;
+        $run->suspendre('lots');
         if ($http === null) {
-            $run->attente = self::PERDU;
+            $run->attenteLots = self::PERDU;
 
             return null;
         }
         $run->journal->rendreLeLot($lotId);
         $this->pdo->prepare('DELETE FROM twin9_lots WHERE id = ?')->execute([$lotId]);
         if ($http === 401 || $http === 403) {
-            $run->attente = 'clé Anthropic refusée';
+            $run->attenteLots = 'clé Anthropic refusée';
         } elseif ($http === 429 || $http === 529) {
-            $run->attente = 'débit du fournisseur';
+            $run->attenteLots = 'débit du fournisseur';
         } elseif ($http >= 400 && $http < 500) {
             return 'lot refusé par l\'API (HTTP ' . $http . ')';
         } else {
-            $run->attente = 'fournisseur indisponible';
+            $run->attenteLots = 'fournisseur indisponible';
         }
 
         return null;
@@ -640,8 +661,10 @@ final class Twin9Lots
     }
 
     /**
-     * The calls of a run's pass that go into batches: those of the days it
-     * leads abreast, neither answered, failed, nor in a batch already.
+     * The calls of a run's pass that go into batches: Anthropic's, its lane
+     * « lots » (CallSettings::pour()) — another provider's leave directly —,
+     * of the days it leads abreast, neither answered, failed, nor in a batch
+     * already.
      *
      * @return list<array{0: Call, 1: int, 2: int|null}> each call with its attempt and the worst case it holds
      */
@@ -652,7 +675,8 @@ final class Twin9Lots
         $vus = [];
         foreach ($run->attendus as $call) {
             $jour = Twin9Run::jour($call->id);
-            if (isset($vus[$call->id]) || ($jour !== null && !isset($jours[$jour]))) {
+            if (isset($vus[$call->id]) || ($jour !== null && !isset($jours[$jour]))
+                || $run->reglages->pour($call->step, $call->id)['voie'] !== 'lots') {
                 continue;
             }
             $vus[$call->id] = true;

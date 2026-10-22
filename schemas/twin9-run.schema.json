@@ -104,11 +104,12 @@
       "type": "object",
       "additionalProperties": false,
       "required": ["appels", "pannes", "tronques", "jetons_entree", "jetons_sortie"],
-      "description": "Les appels d'une voie, d'un fournisseur ou d'un modèle : appels, pannes, sorties tronquées (des pannes), jetons, et leur coût (retiré pour un cartographe).",
+      "description": "Les appels d'une voie, d'un fournisseur ou d'un modèle : appels, pannes, sorties tronquées (des pannes), coupures par la fin d'une tranche (depuis la voie mixte, P1-5 ; absentes d'un bloc figé avant elle), jetons, et leur coût (retiré pour un cartographe).",
       "properties": {
         "appels": { "type": "integer", "minimum": 0 },
         "pannes": { "type": "integer", "minimum": 0 },
         "tronques": { "type": "integer", "minimum": 0 },
+        "coupures": { "type": "integer", "minimum": 0 },
         "jetons_entree": { "type": "integer", "minimum": 0 },
         "jetons_sortie": { "type": "integer", "minimum": 0 },
         "cout_microusd": { "type": "integer", "minimum": 0 }

@@ -283,13 +283,15 @@ final class RunConfigurationTest extends TestCase
             $bloc['appels']);
         self::assertSame(['end' => 3, 'max_tokens' => 1, 'context_window' => 0, 'refusal' => 1, 'other' => 0],
             $bloc['arrets']);
-        self::assertEquals((object) ['lots' => ['appels' => 7, 'pannes' => 2, 'tronques' => 1, 'jetons_entree' => 45,
-                                                'jetons_sortie' => 59, 'cout_microusd' => 11]], $bloc['par_voie']);
-        self::assertEquals((object) ['anthropic' => ['appels' => 7, 'pannes' => 2, 'tronques' => 1, 'jetons_entree' => 45,
-                                                     'jetons_sortie' => 59, 'cout_microusd' => 11]], $bloc['par_fournisseur']);
+        self::assertEquals((object) ['lots' => ['appels' => 7, 'pannes' => 2, 'tronques' => 1, 'coupures' => 0,
+                                                'jetons_entree' => 45, 'jetons_sortie' => 59, 'cout_microusd' => 11]],
+            $bloc['par_voie']);
+        self::assertEquals((object) ['anthropic' => ['appels' => 7, 'pannes' => 2, 'tronques' => 1, 'coupures' => 0,
+                                                     'jetons_entree' => 45, 'jetons_sortie' => 59, 'cout_microusd' => 11]],
+            $bloc['par_fournisseur'], 'des lignes d’avant la migration 032, sans fournisseur : Anthropic');
         self::assertSame(['claude-haiku-5-5', 'claude-sonnet-5-5'], array_keys((array) $bloc['par_modele']));
-        self::assertSame(['appels' => 3, 'pannes' => 1, 'tronques' => 0, 'jetons_entree' => 5, 'jetons_sortie' => 0,
-                          'cout_microusd' => 1], $bloc['par_modele']->{'claude-sonnet-5-5'});
+        self::assertSame(['appels' => 3, 'pannes' => 1, 'tronques' => 0, 'coupures' => 0, 'jetons_entree' => 5,
+                          'jetons_sortie' => 0, 'cout_microusd' => 1], $bloc['par_modele']->{'claude-sonnet-5-5'});
         self::assertEquals((object) ['claude-haiku-5-5' => (object) ['claude-haiku-5-5-servi' => 4]], $bloc['servis']);
 
         $lu = RunExecution::pourCartographe(json_decode(json_encode($bloc), false));
@@ -298,6 +300,43 @@ final class RunConfigurationTest extends TestCase
         self::assertStringNotContainsString('budget_usd', $texte);
         self::assertSame('2026-01-05 10:00:00', $lu->reprises[0]->at);
         self::assertSame([], self::valider(null, $lu));
+    }
+
+    /**
+     * A mixed run's execution (P1-5): each line under its provider, its
+     * stop read in its provider's table, each model under its price key,
+     * the slices' cuts counted; the block stays valid.
+     */
+    public function testAMixedRunsExecutionCountsEachProviderApart(): void
+    {
+        $run = ['statut' => 'en_cours', 'debut_at' => '2026-01-05 09:00:00', 'fin_at' => null, 'duree_active_s' => 12,
+                'passes' => 2, 'moteur_ms' => 3, 'commit_debut' => null, 'commit_fin' => null, 'partiel' => false,
+                'reprises' => []];
+        $lignes = [
+            ['voie_appel' => 'lots', 'fournisseur' => 'anthropic', 'modele_appel' => 'claude-haiku-5-5',
+             'modele_servi' => 'claude-haiku-5-5', 'statut' => 'repondu', 'stop_reason' => 'end_turn', 'n' => 2,
+             'coupures' => 0, 'entree' => 20, 'sortie' => 6, 'cout' => 4],
+            ['voie_appel' => 'directe', 'fournisseur' => 'openai', 'modele_appel' => 'modele-fictif-1',
+             'modele_servi' => 'modele-fictif-1-servi', 'statut' => 'repondu', 'stop_reason' => 'stop', 'n' => 2,
+             'coupures' => 1, 'entree' => 30, 'sortie' => 8, 'cout' => 9],
+            ['voie_appel' => 'directe', 'fournisseur' => 'openai', 'modele_appel' => 'modele-fictif-1',
+             'modele_servi' => null, 'statut' => 'panne', 'stop_reason' => 'length', 'n' => 1, 'coupures' => 2,
+             'entree' => 10, 'sortie' => 50, 'cout' => 5],
+        ];
+        $compteurs = ['appels' => 5, 'pannes' => 1, 'tronques' => 1, 'tentatives' => 6, 'jetons_entree' => 60,
+                      'jetons_sortie' => 64, 'cout_microusd' => 18, 'lots' => 1];
+        $bloc = RunExecution::depuis('journal', $run, $compteurs, $lignes);
+
+        self::assertSame(['end' => 4, 'max_tokens' => 1, 'context_window' => 0, 'refusal' => 0, 'other' => 0],
+            $bloc['arrets'], '« stop » et « length » dans la table d’OpenAI');
+        self::assertSame(['anthropic', 'openai'], array_keys((array) $bloc['par_fournisseur']));
+        self::assertSame(['appels' => 3, 'pannes' => 1, 'tronques' => 1, 'coupures' => 3, 'jetons_entree' => 40,
+                          'jetons_sortie' => 58, 'cout_microusd' => 14], $bloc['par_fournisseur']->openai);
+        self::assertSame(['directe', 'lots'], array_keys((array) $bloc['par_voie']));
+        self::assertSame(['claude-haiku-5-5', 'openai:modele-fictif-1'], array_keys((array) $bloc['par_modele']));
+        self::assertEquals((object) ['claude-haiku-5-5' => (object) ['claude-haiku-5-5' => 2],
+                                     'openai:modele-fictif-1' => (object) ['modele-fictif-1-servi' => 2]], $bloc['servis']);
+        self::assertSame([], self::valider(null, json_decode(json_encode($bloc, JSON_THROW_ON_ERROR))));
     }
 
     /** The contract's providers and GDPR tags are the registry's. */

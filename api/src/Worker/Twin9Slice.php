@@ -56,6 +56,27 @@ use Twin9\Run\Pending;
  * bounded batches. The batches of runs no longer in progress are cancelled
  * and deleted first.
  *
+ * Each call goes its own route (P1-5, ADR-012): by batches when its provider
+ * is Anthropic and its profile's lane « lots », directly otherwise. A run
+ * with a direct route is opened at every slice, its batches collected
+ * first. Its batches leave once a slice, at its head, before its direct
+ * calls — the calls by batches a later pass reveals go at the next slice —;
+ * while a request of the batch lane waits, the slice reads the direct calls
+ * in flight. The direct loop never sends a call by batches. A provider is
+ * suspended alone (its key, its spending cap, closed on the instance): it
+ * never holds another's calls back, nor the batches. The guard — the
+ * providers the instance opens, the instance's key of a third party, never a
+ * personal key beyond Anthropic — is read again as each slice opens a run.
+ * Another provider's call leaves only if its model's longest call
+ * (duree_max_s, the price grid's) fits in what remains of the slice: cut, it
+ * may be billed all the same; each cut is counted in the journal. After a
+ * 429, the instance's key rests from that provider for every run of the
+ * slice. A third party refusing a call's settings (HTTP 400), a run held
+ * more than thirty minutes by a third party's spending cap, a batch refused,
+ * a price missing, the engine failing: the run stops, deferred — nothing
+ * more leaves, the calls in flight come back or are cut, written with their
+ * cost, then it stops and what its calls hold goes back.
+ *
  * A call leaves holding its worst case (T10, RunCosts): debited from its
  * owner's credits with the instance's key, counted against the run's budget.
  * A call whose worst case its budget or its owner's credit cannot hold does
@@ -77,6 +98,12 @@ final class Twin9Slice
 
     /** A spending cap answers 429 without Retry-After: the run's calls wait this long. */
     public const PAUSE_PLAFOND = 60.0;
+
+    /** A run held this long, in seconds, by another provider's spending cap stops, its reserve given back (P1-5). */
+    public const PLAFOND_MAX = 1800.0;
+
+    /** Another provider's longest call, in seconds, when its grid entry says none (Twin9Config: duree_max_s). */
+    public const DUREE_MAX = 30;
 
     /** The runs by batches a slice may look at beyond its N, their batches still at Anthropic. */
     private const SURVOLS = 20;
@@ -101,6 +128,18 @@ final class Twin9Slice
     private float $fin = 0.0;
 
     private float $dernierDepart = 0.0;
+
+    /** @var array<string, float> by provider: until when the instance's key rests from it after a 429 (P1-5) */
+    private array $repos = [];
+
+    /** @var array<string, array<string, mixed>>|null the price grid, read once a slice */
+    private ?array $grille = null;
+
+    /** @var list<string>|null the providers the instance opens, read once a slice */
+    private ?array $actifs = null;
+
+    /** @var array<string, true> the calls held back by their model's longest call (« run:call »), counted once */
+    private array $gardes = [];
 
     /** @param array{pauses?: list<float>, octets?: int, fenetre?: float} $options tests: shorter pauses, smaller batches, a shorter window to find a lost batch */
     public function __construct(
@@ -129,9 +168,14 @@ final class Twin9Slice
         $this->debut = $debut;
         $this->fin = $fin;
         $this->dernierDepart = $fin - min(5.0, 0.1 * ($fin - $debut));
+        $this->repos = [];
+        $this->grille = null;
+        $this->actifs = null;
+        $this->gardes = [];
         $this->compteurs = ['runs' => 0, 'passes' => 0, 'moteurMs' => 0, 'appels' => 0, 'reponses' => 0, 'pannes' => 0,
-                            'tronques' => 0, 'reprises' => 0, 'coupes' => 0, 'termines' => 0, 'echoues' => 0,
-                            'lots' => 0, 'releves' => 0, 'verifications' => 0, 'annules' => 0, 'depassements' => 0];
+                            'tronques' => 0, 'reprises' => 0, 'coupes' => 0, 'gardes' => 0, 'termines' => 0,
+                            'echoues' => 0, 'lots' => 0, 'releves' => 0, 'verifications' => 0, 'annules' => 0,
+                            'depassements' => 0];
         $this->lots->menage($this->dernierDepart, $this->compteurs, $utilisateur);
         foreach ($this->runs->aAvancer($n + self::SURVOLS, $utilisateur) as $id) {
             if ($this->compteurs['runs'] >= $n || microtime(true) >= $this->dernierDepart) {
@@ -178,14 +222,20 @@ final class Twin9Slice
                 $this->depasse($this->couts->liberer($run->id)); // cancelled meanwhile: what its calls hold goes back
                 continue;
             }
+            // to stop, its calls in flight now back or cut, written with their cost (deferred stop)
+            if ($run->arret !== null) {
+                $this->arreter($run->id, $run->arret);
+                continue;
+            }
             $this->depasse($this->couts->regler($run->id));
             // held back with nothing out any more: it stops, its map incomplete, to resume
             if ($run->bloque !== null && $run->envoyes === 0 && $this->lots->enVol($run->id) === 0) {
                 $this->arreter($run->id, $run->bloque);
                 continue;
             }
-            $this->runs->avance($run->id, $run->bloque ?? $run->attente);
+            $this->runs->avance($run->id, $run->bloque ?? $run->attente());
         }
+        $this->compteurs['gardes'] = \count($this->gardes);
 
         return $this->compteurs;
     }
@@ -196,14 +246,20 @@ final class Twin9Slice
         if ($tete === null || $tete['statut'] !== 'en_cours') {
             return null;
         }
-        $parLots = ($tete['profil']->voie ?? null) === 'lots';
-        if ($parLots) {
+        // its routes (P1-5): Anthropic's calls by batches when its profile says so, every other directly
+        $routes = new CallSettings($tete['profil']);
+        $routeLots = ($tete['profil']->voie ?? null) === 'lots' && $routes->combinaisons('lots') !== [];
+        $routeDirecte = $routes->combinaisons('directe') !== [];
+        $attenteLots = null;
+        if ($routeLots) {
             $releve = $this->lots->relever($id, $tete['user_id'], $tete['attente'], $this->fin, $this->compteurs);
-            if (!$releve['jouer']) {
+            // by batches alone, it is played only when its batches call for it; with a direct route, at every slice
+            if (!$releve['jouer'] && !$routeDirecte) {
                 $this->runs->avance($id, $releve['attente']);
 
                 return null;
             }
+            $attenteLots = $routeDirecte ? $releve['attente'] : null;
         }
         $r = $this->runs->charger($id);
         if ($r === null) {
@@ -237,14 +293,60 @@ final class Twin9Slice
             (string) $profil->cle,
             max(1, (int) $profil->parallelisme->appels_directs),
             max(1, (int) $profil->parallelisme->journees),
-            $parLots,
+            $routeLots,
             $plafonds['budget'],
             $plafonds['limite'],
             $r['reserve_fusion'],
+            $routeDirecte,
         );
         $run->engage = $this->couts->engage($id);
+        $run->attenteLots = $attenteLots;
+        $this->garder($run);
 
         return $run;
+    }
+
+    /**
+     * The guard of a run's providers, read again as each slice opens it
+     * (P1-5, ADR-012), for each provider its calls reach.
+     */
+    private function garder(Twin9Run $run): void
+    {
+        foreach ($run->reglages->fournisseurs() as $fournisseur) {
+            $this->garde($run, $fournisseur);
+        }
+    }
+
+    /**
+     * Whether a run's calls may go to a provider in this slice, read once a
+     * slice for each (as the slice opens the run, and for any provider a
+     * call names besides): a provider the instance no longer opens, a third
+     * party its owner's personal key would reach, or one whose instance key
+     * is missing sends nothing — the run waits, its page says why; its other
+     * providers go on. Anthropic's key is read as each call or batch leaves,
+     * as before.
+     */
+    private function garde(Twin9Run $run, string $fournisseur): bool
+    {
+        if (!isset($run->gardes[$fournisseur])) {
+            $run->gardes[$fournisseur] = true;
+            $this->actifs ??= $this->config->fournisseursActifs();
+            $nom = Fournisseurs::REGISTRE[$fournisseur]['libelle'] ?? $fournisseur;
+            if (!\in_array($fournisseur, $this->actifs, true)) {
+                $raison = 'fournisseur ' . $nom . ' fermé sur cette instance';
+                $run->suspendre($fournisseur, $raison);
+                if ($fournisseur === Fournisseurs::DEFAUT) {
+                    $run->suspendre('lots', $raison);
+                }
+            } elseif ($fournisseur !== Fournisseurs::DEFAUT && !$run->credits()) {
+                $run->suspendre($fournisseur, 'clé personnelle refusée chez ' . $nom);
+            } elseif ($fournisseur !== Fournisseurs::DEFAUT
+                && $this->cles->pour($run->userId, $run->cle, $fournisseur) === null) {
+                $run->suspendre($fournisseur, 'clé ' . $nom . ' indisponible');
+            }
+        }
+
+        return !$run->suspendu($fournisseur);
     }
 
     /** One pass of a run, counted as soon as it is played (P0-1): done, or the calls it waits for. */
@@ -274,6 +376,13 @@ final class Twin9Slice
             // before anything else of the slice, which may die: its final pass before terminer() freezes them
             $this->runs->compter($run->id, 1, $ms);
         }
+        if ($erreur !== null && $run->enVol !== []) {
+            // its calls in flight come back first, written with their cost (deferred stop); the class only in the log
+            error_log(sprintf('[twin9] run %d : %s (%s)', $run->id, 'erreur du moteur', $erreur::class));
+            $run->arret ??= 'erreur du moteur';
+
+            return;
+        }
         unset($this->etats[$run->id]);
         if ($erreur !== null) {
             $this->echec($run->id, $erreur, 'erreur du moteur');
@@ -297,25 +406,29 @@ final class Twin9Slice
     }
 
     /**
-     * The calls of a run that may leave now: directly, or into its batches
-     * once a pass. Directly, whether they took every place (Twin9Run::$plein).
+     * The calls of a run that may leave now: into its batches once a slice,
+     * at its head (P1-5: at most one submission a run and a slice, the calls
+     * by batches its first pass knows), then directly — never a call by
+     * batches. Directly, whether they took every place (Twin9Run::$plein).
+     * A run to stop sends nothing more.
      */
     private function envoyer(Twin9Run $run): void
     {
         $run->reveil = null;
         $run->plein = false;
-        if ($run->suspendu || microtime(true) >= $this->dernierDepart) {
+        if ($run->arret !== null || microtime(true) >= $this->dernierDepart) {
             return;
         }
-        if ($run->parLots) {
-            if ($run->passes > 0 && !$run->soumis) {
-                $refus = $this->lots->soumettre($run, $this->debut, $this->dernierDepart, $this->fin, $this->compteurs);
-                if ($refus !== null) {
-                    unset($this->etats[$run->id]);
-                    $this->arreter($run->id, $refus);
-                }
-            }
+        if ($run->routeLots && $run->passes > 0 && $run->passeSoumise === 0 && !$run->suspendu('lots')) {
+            $refus = $this->lots->soumettre($run, $this->debut, $this->dernierDepart, $this->fin, $this->compteurs,
+                fn () => $this->pendant());
+            if ($refus !== null) {
+                $run->arret ??= $refus; // its direct calls in flight come back first
 
+                return;
+            }
+        }
+        if (!$run->routeDirecte || microtime(true) >= $this->dernierDepart) {
             return;
         }
         if ($run->horsDuree()) {
@@ -334,6 +447,13 @@ final class Twin9Slice
             if (isset($run->enVol[$call->id]) || ($jour !== null && !isset($jours[$jour]))) {
                 continue;
             }
+            $reglage = $run->reglages->pour($call->step, $call->id);
+            // the call's provider, decided once: its route, its key, its price, its caller (Fournisseurs\Registre); a
+            // call by batches is the batch lane's alone, a provider suspended sends nothing more
+            $fournisseur = $reglage['fournisseur'];
+            if ($reglage['voie'] === 'lots' || $run->suspendu($fournisseur) || !$this->garde($run, $fournisseur)) {
+                continue;
+            }
             $tentative = 1;
             $detenu = null;
             $etat = $run->journal->etat($call->id);
@@ -348,9 +468,26 @@ final class Twin9Slice
                 $tentative = $etat['tentatives'] + 1;
                 $detenu = $etat['reserve'];
             }
-            $reglage = $run->reglages->pour($call->step, $call->id);
-            // the call's provider, decided once: its key, its price, its caller (Fournisseurs\Registre)
-            $fournisseur = $reglage['fournisseur'];
+            // the instance's key rests from a provider after its 429, for every run of the slice
+            $repos = $run->credits() ? ($this->repos[$fournisseur] ?? null) : null;
+            if ($repos !== null && $repos > microtime(true)) {
+                $run->reveil = min($run->reveil ?? INF, $repos);
+                continue;
+            }
+            $tiers = $fournisseur !== Fournisseurs::DEFAUT;
+            $entree = $tiers ? ($this->grille()[Fournisseurs::clePrix($fournisseur, $reglage['modele'])] ?? []) : [];
+            // another provider's call leaves only if its longest may end within the slice: cut, it may be billed all
+            // the same (OpenRouter documents it); it leaves at the next slice — never, longer than a slice
+            $duree = $tiers ? (float) ($entree['duree_max_s'] ?? self::DUREE_MAX) : 0.0;
+            if ($tiers && $this->fin - $this->debut < $duree) {
+                $run->suspendre($fournisseur, 'un appel à ' . Fournisseurs::clePrix($fournisseur, $reglage['modele'])
+                    . ' peut durer plus qu’une tranche (duree_max_s de la grille)');
+                continue;
+            }
+            if ($tiers && $this->fin - microtime(true) < $duree) {
+                $this->gardes[$run->id . ':' . $call->id] = true;
+                continue;
+            }
             // a call already holding its worst case leaves with it; a new one holds its own, if it can
             $reserve = null;
             if ($detenu === null) {
@@ -360,9 +497,9 @@ final class Twin9Slice
                 $reserve = $this->couts->pireCas($fournisseur, $reglage['modele'], $call->prompt,
                     $reglage['budget_sortie'], false, $run->credits());
                 if ($reserve === null) {
-                    unset($this->etats[$run->id]);
-                    $this->arreter($run->id, 'aucun prix pour '
-                        . Fournisseurs::clePrix($fournisseur, $reglage['modele']) . ' sur cette instance');
+                    // its calls in flight come back first (deferred stop)
+                    $run->arret ??= 'aucun prix pour ' . Fournisseurs::clePrix($fournisseur, $reglage['modele'])
+                        . ' sur cette instance';
 
                     return;
                 }
@@ -378,21 +515,16 @@ final class Twin9Slice
             }
             $cle = $this->cles->pour($run->userId, $run->cle, $fournisseur);
             if ($cle === null) {
-                $run->attente = 'clé ' . Fournisseurs::REGISTRE[$fournisseur]['libelle'] . ' indisponible';
-                $run->suspendu = true;
-
-                return;
+                $run->suspendre($fournisseur, 'clé ' . Fournisseurs::REGISTRE[$fournisseur]['libelle'] . ' indisponible');
+                continue;
             }
             if (!$this->partir($run, $call, $fournisseur, $reglage['modele'], $tentative, $reserve)) {
                 continue;
             }
-            if ($fournisseur !== Fournisseurs::DEFAUT) {
-                // the reasoning setting of its model's grid entry, if the administrator named one (ADR-012 §6)
-                $entree = $this->config->modeles()[Fournisseurs::clePrix($fournisseur, $reglage['modele'])] ?? [];
-                $param = $entree['reflexion_param'] ?? null;
-                if (\is_string($param)) {
-                    $reglage['reflexion_param'] = $param;
-                }
+            // the reasoning setting of its model's grid entry, if the administrator named one (ADR-012 §6)
+            $param = $entree['reflexion_param'] ?? null;
+            if (\is_string($param)) {
+                $reglage['reflexion_param'] = $param;
             }
             $this->sender->send($run->id, $call, $reglage, $cle, $this->fin);
             $run->enVol[$call->id] = $tentative;
@@ -411,7 +543,7 @@ final class Twin9Slice
                             ?int $reserve): bool
     {
         if ($reserve === null) {
-            $run->journal->envoye($call, $modele, $tentative);
+            $run->journal->envoye($call, $modele, $tentative, null, null, null, $fournisseur);
 
             return true;
         }
@@ -421,7 +553,7 @@ final class Twin9Slice
                 $this->couts->debiter($run->userId, $run->id, $call->step, Fournisseurs::clePrix($fournisseur, $modele),
                     $reserve);
             }
-            $run->journal->envoye($call, $modele, $tentative, null, null, $reserve);
+            $run->journal->envoye($call, $modele, $tentative, null, null, $reserve, $fournisseur);
             $this->pdo->commit();
         } catch (SoldeInsuffisantException) {
             $this->pdo->rollBack();
@@ -479,18 +611,41 @@ final class Twin9Slice
 
             return;
         }
+        $fournisseur = $reglage['fournisseur'];
+        $tiers = $fournisseur !== Fournisseurs::DEFAUT;
+        $nom = Fournisseurs::REGISTRE[$fournisseur]['libelle'];
+        if ($tiers && !empty($issue['configuration'])) {
+            // another provider refuses the call's settings (HTTP 400): the same request would be refused again — the
+            // call waits, its attempt given back, and the run stops once its calls in flight are back (deferred stop),
+            // to resume once its settings or the grid are mended
+            $run->journal->plusTard($call, microtime(true), $tentative - 1);
+            $run->arret ??= $nom . ' refuse les réglages de l’appel au modèle ' . $reglage['modele']
+                . ' (HTTP 400) : le run s’arrête, à reprendre une fois ses réglages ou ceux de la grille corrigés';
+            $this->compteurs['reprises']++;
+
+            return;
+        }
         // a spending cap or a quota, as the provider's caller reads it; at Anthropic, a 429 without Retry-After
         $plafond = (bool) ($issue['plafond']
             ?? (($issue['http'] ?? null) === 429 && ($issue['attendre'] ?? null) === null));
         if (!empty($issue['debit']) && ($plafond || ($issue['attendre'] ?? null) !== null)) {
             // a rate refusal spends no attempt
-            $run->journal->plusTard($call, microtime(true) + ($plafond ? self::PAUSE_PLAFOND : (float) $issue['attendre']),
-                $tentative - 1);
+            $reprise = microtime(true) + ($plafond ? self::PAUSE_PLAFOND : (float) $issue['attendre']);
+            if ($run->credits() && ($plafond || ($issue['http'] ?? null) === 429)) {
+                // the instance's key: every run of the slice rests from this provider as long
+                $this->repos[$fournisseur] = max($this->repos[$fournisseur] ?? 0.0, $reprise);
+            }
             if ($plafond) {
-                $run->attente = 'plafond de dépense atteint chez le fournisseur';
-                $run->suspendu = true;
+                $depuis = $run->journal->plafond($call, $reprise, $tentative - 1);
+                $run->suspendre($fournisseur, 'plafond de dépense atteint chez ' . ($tiers ? $nom : 'le fournisseur'));
+                if ($tiers && $depuis >= self::PLAFOND_MAX) {
+                    // held this long by a third party's cap: it stops, what its calls hold given back (deferred stop)
+                    $run->arret ??= 'plafond de dépense atteint chez ' . $nom . ' depuis plus de '
+                        . (int) round(self::PLAFOND_MAX / 60) . ' minutes : le run s’arrête, sa réserve est rendue';
+                }
             } else {
-                $run->attente = 'débit du fournisseur';
+                $run->journal->plusTard($call, $reprise, $tentative - 1);
+                $run->attente = 'débit du fournisseur' . ($tiers ? ' ' . $nom : '');
             }
             $this->compteurs['reprises']++;
 
@@ -523,10 +678,32 @@ final class Twin9Slice
                 $run->journal->panne($call, 'délai dépassé : l\'appel ne tient pas dans une tranche');
                 $this->compteurs['pannes']++;
             } else {
-                $run->journal->plusTard($call, microtime(true), $compte ? $tentative : $tentative - 1);
+                // counted among its cuts, by provider in the run's counters and its execution
+                $run->journal->plusTard($call, microtime(true), $compte ? $tentative : $tentative - 1, true);
             }
             $this->compteurs['coupes']++;
         }
+    }
+
+    /**
+     * While a synchronous request of the batch lane waits (Twin9Lots: a
+     * check, a submission), the direct calls in flight are read as they come
+     * back, never blocking.
+     */
+    private function pendant(): void
+    {
+        if ($this->sender->running() === 0) {
+            return;
+        }
+        foreach ($this->sender->wait(microtime(true)) as $issue) {
+            $this->inscrire($issue);
+        }
+    }
+
+    /** @return array<string, array<string, mixed>> the price grid, read once a slice */
+    private function grille(): array
+    {
+        return $this->grille ??= $this->config->modeles();
     }
 
     /** The earliest moment a call held back may leave, if any. */

@@ -66,15 +66,23 @@ final class CoutsTest extends TestCase
 
     private const CREDIT = 1_000_000_000;
 
-    /** Other providers' models, at invented prices (ADR-012 §6: their prices are the administrator's). */
+    /**
+     * Other providers' models, at invented prices (ADR-012 §6: their prices are the administrator's); their
+     * longest call a second, which the tests' slices of two seconds leave room for (Twin9Slice: a third
+     * party's call leaves only if it may end within the slice).
+     */
     private const TIERS = [
         'openai:modele-fictif-1' => ['prix_usd_mtok' => [0.7, 1.3], 'plafond_sortie' => 30000, 'plafond_reflexion' => 0,
-                                     'duree_max_s' => 30, 'reflexion_param' => 'low'],
+                                     'duree_max_s' => 1, 'reflexion_param' => 'low'],
         'mistral:modele-fictif-2' => ['prix_usd_mtok' => [0.3, 0.9], 'plafond_sortie' => 30000,
-                                      'plafond_reflexion' => 500, 'duree_max_s' => 30],
+                                      'plafond_reflexion' => 500, 'duree_max_s' => 1],
         'google:gemini-fictif-1' => ['prix_usd_mtok' => [0.4, 1.1], 'plafond_sortie' => 30000, 'plafond_reflexion' => 0,
-                                     'duree_max_s' => 30, 'reflexion_param' => 'LOW'],
+                                     'duree_max_s' => 1, 'reflexion_param' => 'LOW'],
     ];
+
+    /** The providers those runs reach, opened on the instance: the slice's guard sends nothing to another (ADR-012). */
+    private const OUVERTS = ['twin9_fournisseurs_ouverts' => ['anthropic', 'openai', 'google'],
+                             'twin9_fournisseurs_non_rgpd' => true];
 
     /** The readers at OpenAI, the deep stage at Google, the fast one at Anthropic (Sonnet 5.5). */
     private const MIXTE = [
@@ -517,7 +525,7 @@ final class CoutsTest extends TestCase
     public function testARunToOtherProvidersSendsEachItsKeyAndWritesNoneAnywhere(): void
     {
         $config = new Twin9Config(new SettingsRepository($this->pdo));
-        $config->update(['modeles' => $config->modeles() + self::TIERS]);
+        $config->update(['modeles' => $config->modeles() + self::TIERS] + self::OUVERTS);
         TestDb::setEnv('OPENAI_API_KEY', 'sk-openai-cle-secrete-3');
         TestDb::setEnv('GOOGLE_API_KEY', 'goog-cle-secrete-4');
         $id = $this->nouveauRun(array_replace(self::SONNET, self::MIXTE, ['/budget_usd' => 50.0]));
@@ -554,6 +562,10 @@ final class CoutsTest extends TestCase
             ->fetchAll(PDO::FETCH_COLUMN);
         self::assertSame(['claude-sonnet-5-5', 'google:gemini-fictif-1', 'openai:modele-fictif-1'], $modeles,
             'chaque réserve sous la clé de prix de son modèle');
+        $soldes = $this->pdo->query('SELECT DISTINCT model FROM twin9_credit_events
+                                      WHERE kind <> "debit" AND model IS NOT NULL ORDER BY model')->fetchAll(PDO::FETCH_COLUMN);
+        self::assertSame(['claude-sonnet-5-5', 'google:gemini-fictif-1', 'openai:modele-fictif-1'], $soldes,
+            'chaque solde aussi : le journal garde le fournisseur de chaque appel');
         $this->aucuneCle();
         $export = '';
         (new RunExport($this->pdo))->ecrire($this->user, static function (string $morceau) use (&$export): void {
@@ -571,7 +583,7 @@ final class CoutsTest extends TestCase
     public function testARealCostBeyondItsReserveIsTheInstances(): void
     {
         $config = new Twin9Config(new SettingsRepository($this->pdo));
-        $config->update(['modeles' => $config->modeles() + self::TIERS]);
+        $config->update(['modeles' => $config->modeles() + self::TIERS] + self::OUVERTS);
         TestDb::setEnv('OPENAI_API_KEY', 'sk-openai-cle-secrete-3');
         $id = $this->nouveauRun(array_replace(self::SONNET, array_slice(self::MIXTE, 0, 2), ['/budget_usd' => 50.0]));
         $http = self::fournisseurs(sortieOpenai: 25000);
@@ -610,7 +622,8 @@ final class CoutsTest extends TestCase
         self::assertSame(self::CREDIT - $paye, (new CreditService($this->pdo))->balance($this->user),
             'son auteur ne paie que ce que ses appels tenaient');
         self::assertSame($openai, $depassements);
-        self::assertSame($openai, substr_count($journal, '[twin9-couts] run ' . $id . ', modele-fictif-1 : coût réel'));
+        // under its price key, as the journal keeps each call's provider (P1-5)
+        self::assertSame($openai, substr_count($journal, '[twin9-couts] run ' . $id . ', openai:modele-fictif-1 : coût réel'));
         self::assertStringNotContainsString('[appel:', $journal, 'jamais un prompt');
     }
 

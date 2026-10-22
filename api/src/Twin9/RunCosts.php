@@ -203,7 +203,9 @@ final class RunCosts
         $this->pdo->beginTransaction();
         try {
             $stmt = $this->pdo->prepare(
-                'SELECT appel, statut, COALESCE(modele_envoye, modele) AS modele, reserve_microusd AS reserve,
+                // each call under its price key (Fournisseurs::clePrix()), as its reserve was debited
+                'SELECT appel, statut, IF(fournisseur = "anthropic", COALESCE(modele_envoye, modele),
+                        CONCAT(fournisseur, ":", COALESCE(modele_envoye, modele))) AS modele, reserve_microusd AS reserve,
                         COALESCE(cout_microusd, 0) AS cout, COALESCE(jetons_entree, 0) AS entree,
                         COALESCE(jetons_sortie, 0) AS sortie
                    FROM twin9_appels

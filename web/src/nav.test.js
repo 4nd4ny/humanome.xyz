@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest'
-import { isCurrentItem, navGroups } from './nav.js'
+import { FAMILIES, isCurrentItem, navGroups } from './nav.js'
 
 describe('navGroups (sept familles d’intention)', () => {
   it('un visiteur anonyme voit « Découvrir » et « Compte » (Se connecter)', () => {
@@ -26,6 +26,7 @@ describe('navGroups (sept familles d’intention)', () => {
       'Cartographier mes écrits',
       'Cartographie ouverte',
       'Analyse approfondie',
+      'Mes profils Twin9',
       'Partager ma cartographie',
     ])
     // Échelle de valeur lisible depuis les libellés (friction n°1).
@@ -102,6 +103,57 @@ describe('navGroups (sept familles d’intention)', () => {
   it('un rôle inconnu n’ajoute rien', () => {
     const groups = navGroups({ roles: ['inconnu'] })
     expect(groups.map((g) => g.id)).toEqual(['decouvrir', 'compte'])
+  })
+})
+
+describe('navGroups — mode simple / expert (lib/ui-mode.js)', () => {
+  const labels = (groups, id) => groups.find((g) => g.id === id).items.map((i) => i.label)
+
+  it('mode simple : « Cartographie ouverte » (Twin6) et « Mes profils Twin9 » ne sont pas listés, et eux seuls', () => {
+    const expert = navGroups({ roles: ['apprenant'], expert: true })
+    const simple = navGroups({ roles: ['apprenant'], expert: false })
+    expect(labels(simple, 'cartographie')).toEqual([
+      'Tableau de bord',
+      'Mon portfolio',
+      'Cartographier mes écrits',
+      'Analyse approfondie',
+      'Partager ma cartographie',
+    ])
+    const keys = (groups) => groups.flatMap((g) => g.items.map((i) => `${g.id} › ${i.label}`))
+    const removed = keys(expert).filter((k) => !keys(simple).includes(k))
+    expect(removed).toEqual(['cartographie › Cartographie ouverte', 'cartographie › Mes profils Twin9'])
+    expect(keys(simple).filter((k) => !keys(expert).includes(k))).toEqual([])
+    // L'échelle de valeur du mode simple : un lien par palier, standard puis premium (Essayer, gratuit, est dans Découvrir).
+    expect(simple.flatMap((g) => g.items).filter((i) => i.badge).map((i) => [i.label, i.badge])).toEqual([
+      ['Essayer', 'gratuit'],
+      ['Cartographier mes écrits', 'standard'],
+      ['Analyse approfondie', 'premium'],
+    ])
+  })
+
+  it('mode expert (défaut) : « Mes profils Twin9 » mène à #/configuration, après « Analyse approfondie »', () => {
+    const carto = navGroups({ roles: ['apprenant'] }).find((g) => g.id === 'cartographie')
+    const index = carto.items.findIndex((i) => i.label === 'Mes profils Twin9')
+    expect(carto.items[index]).toMatchObject({ href: '#/configuration', route: 'configuration', expert: true })
+    expect(carto.items[index - 1].label).toBe('Analyse approfondie')
+    expect(navGroups({ roles: ['apprenant'], expert: true })).toEqual(navGroups({ roles: ['apprenant'] }))
+  })
+
+  it('propriété : pour chaque rôle et chaque cumul, les familles sont les mêmes dans les deux modes (le mode ne retire jamais une famille de rôle)', () => {
+    const roles = ['apprenant', 'cartographe', 'promptologue', 'epistemiarque', 'employeur', 'etablissement', 'admin']
+    const sessions = [[], ...roles.map((r) => [r]), ...roles.map((r) => ['apprenant', r]), roles]
+    for (const session of sessions) {
+      for (const authenticated of [true, false]) {
+        const ids = (expert) => navGroups({ roles: session, authenticated, expert }).map((g) => g.id)
+        expect(ids(false), session.join('+') || 'visiteur').toEqual(ids(true))
+      }
+    }
+    // Seuls des items de « Ma cartographie » portent l'attribut expert.
+    const expertItems = FAMILIES.flatMap((f) => f.items.filter((i) => i.expert).map((i) => [f.id, i.label]))
+    expect(expertItems).toEqual([
+      ['cartographie', 'Cartographie ouverte'],
+      ['cartographie', 'Mes profils Twin9'],
+    ])
   })
 })
 

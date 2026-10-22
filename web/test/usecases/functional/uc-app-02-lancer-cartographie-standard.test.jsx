@@ -8,8 +8,13 @@
 // est simulé (fetch global) — proxy « Service humanome » (défi + preuve de
 // travail + POST api/llm) ou API Messages d'Anthropic (clé personnelle),
 // qui répondent par les fixtures versionnées. Aucun appel réseau réel.
+//
+// Mode d'affichage (UC-VIS-06) : un compte apprenant seul est en mode SIMPLE
+// par défaut ; les scénarios qui choisissent une version de prompt ou le
+// modèle se jouent en mode EXPERT, posé dans le navigateur avant le montage
+// (beforeEach) ; F27 rejoue le mode simple.
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
-import { act, cleanup, fireEvent, render, screen, waitFor } from '@testing-library/react'
+import { act, cleanup, fireEvent, render, screen, waitFor, within } from '@testing-library/react'
 import App from '../../../src/App.jsx'
 import { resetApiClient } from '../../../src/api/client.js'
 import { createPortfolioStore } from '../../../src/lib/portfolio-store.js'
@@ -144,6 +149,8 @@ beforeEach(() => {
   vi.stubGlobal('indexedDB', idb.factory)
   vi.stubGlobal('IDBKeyRange', FakeIDBKeyRange)
   localStorage.clear()
+  // Mode expert : liste des versions de prompt et champ « Modèle » proposés.
+  localStorage.setItem('humanome-mode', 'expert')
 })
 
 afterEach(() => {
@@ -438,6 +445,65 @@ describe('UC-APP-02 — scénarios alternatifs', () => {
     expect(merge.document.domains.map((d) => d.id)).toEqual(LETTRE.poles.map((p) => p.nom))
     // Les checkpoints de ce run sont les siens : ni ceux d'un run de RESPIRE ni l'inverse.
     expect(idb.entries(...RUNS).some(([k]) => k.includes('::aurora-v3-reconstruit@1.1.0::fictif-lettre@1.0.0:checkpoint:'))).toBe(true)
+  })
+})
+
+describe('UC-APP-02 — mode simple (UC-VIS-06)', () => {
+  it('UC-APP-02-F27 — mode simple (apprenant, aucun choix stocké) : étape 2 « Référentiel » sans liste de versions, protocole embarqué nommé, référentiel au choix ; pas de champ « Modèle » ; la cartographie enregistre aurora-v3-reconstruit@1.1.0 et le modèle par défaut', async () => {
+    localStorage.removeItem('humanome-mode')
+    await seedPortfolio()
+    // Le serveur publie une autre version : le mode simple ne la propose pas.
+    // Deux référentiels publiés : le choix est offert, RESPIRE par défaut.
+    const index = [
+      { referentielId: 'respire', semver: '7.0.0', label: 'RESPIRE v7', publishedAt: '2026-10-18T11:23:39', fichier: 'respire-v7.0.0.json' },
+      { referentielId: 'fictif-lettre', semver: '1.0.0', label: 'Fictif lettré', publishedAt: '2026-10-20T09:00:00', fichier: 'fictif-lettre-v1.0.0.json' },
+    ]
+    const fetchMock = stubNetwork({
+      packages: [{ id: 'aurora-lab', version: '2.0.0', description: 'Extraction affinée' }],
+      extra: [
+        ['data/referentiel/index.json', () => jsonResponse(200, index)],
+        ['data/referentiel/respire-v7.0.0.json', () => jsonResponse(200, getReferentiel())],
+      ],
+    })
+    openWizard()
+    await screen.findByTestId('espace-connecte')
+
+    const steps = within(screen.getByTestId('run-wizard-steps'))
+    expect(steps.getByText('Référentiel')).toBeDefined()
+    expect(steps.queryByText('Version de prompt')).toBeNull()
+    fireEvent.click(await screen.findByRole('radio', { name: /Journal de Maya — 3 journée\(s\)/ }))
+    next()
+    await screen.findByTestId('step-prompt')
+    expect(screen.getByRole('heading', { level: 3, name: '2. Référentiel' })).toBeDefined()
+    expect(screen.getByTestId('run-protocol').textContent).toContain('Protocole : aurora-v3-reconstruit@1.1.0 (embarqué)')
+    expect(screen.queryByRole('radio', { name: /aurora/ })).toBeNull()
+    // RG2 de UC-VIS-06 : le choix du référentiel reste visible.
+    expect((await screen.findByRole('combobox', { name: 'Référentiel' })).value).toBe('respire@7.0.0')
+    await waitFor(() => expect(screen.getByRole('button', { name: 'Continuer' }).disabled).toBe(false))
+    next()
+    await screen.findByTestId('step-fournisseur')
+    // Clé personnelle (défaut) : fournisseur et clé, pas de champ « Modèle ».
+    expect(screen.getByLabelText('Fournisseur')).toBeDefined()
+    expect(screen.queryByLabelText('Modèle')).toBeNull()
+    fireEvent.change(screen.getByLabelText('Clé API'), { target: { value: KEY } })
+    next()
+    await screen.findByTestId('run-estimate')
+    next()
+    await screen.findByTestId('step-execution')
+    await launch()
+    await screen.findByTestId('run-success', {}, { timeout: 15000 })
+
+    // Appels directs au fournisseur, au modèle par défaut du fournisseur.
+    const direct = fetchMock.calls.filter((c) => c.url === 'https://api.anthropic.com/v1/messages')
+    expect(direct).toHaveLength(24)
+    expect(direct.every((c) => bodyOf(c).model === 'claude-sonnet-4-6')).toBe(true)
+    const saved = idb.values(...CARTOS)
+    expect(saved.map((c) => c.type).sort()).toEqual(['jour', 'jour', 'jour', 'merge'])
+    expect(saved.every((c) => c.promptPackage.id === 'aurora-v3-reconstruit' && c.promptPackage.version === '1.1.0')).toBe(true)
+    expect(saved.find((c) => c.type === 'merge').runMeta).toMatchObject({ mode: 'cle', provider: 'anthropic', model: 'claude-sonnet-4-6' })
+    expect(idb.entries(...RUNS).some(([k]) => k.includes('::aurora-v3-reconstruit@1.1.0::respire@7.0.0:checkpoint:'))).toBe(true)
+    // Le mode n'a été ni écrit ni modifié par l'assistant.
+    expect(localStorage.getItem('humanome-mode')).toBeNull()
   })
 })
 

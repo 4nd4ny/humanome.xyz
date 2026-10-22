@@ -9,14 +9,22 @@
 // /api/twin6/appel (voie crédits) ou api.anthropic.com (voie clé perso). L'essai
 // gratuit (A6) passe par un faux serveur de la démo aux règles du serveur PHP
 // (défi à usage unique, preuve vérifiée par sha256 via node:crypto, champ piège).
+//
+// Mode d'affichage (UC-VIS-06) : un apprenant seul est en mode SIMPLE par
+// défaut ; les scénarios se jouent en mode EXPERT (liste des modèles), posé
+// dans le navigateur avant le montage ; F32 rejoue le mode simple. F33 et F34
+// reprennent un portfolio du module portfolio (IndexedDB factice).
 import { createHash } from 'node:crypto'
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
-import { act, cleanup, fireEvent, render, screen, waitFor } from '@testing-library/react'
+import { act, cleanup, fireEvent, render, screen, waitFor, within } from '@testing-library/react'
 import App from '../../../src/App.jsx'
 import { resetApiClient } from '../../../src/api/client.js'
 import { TWIN6_PACKAGE_URL } from '../../../src/api/twin6.js'
 import { formatUsd } from '../../../src/api/twin9.js'
 import { clearReferentielCache } from '../../../src/data/referentiel.js'
+import { createPortfolioStore } from '../../../src/lib/portfolio-store.js'
+import { segmentText } from '@engine/portfolio/segment.js'
+import { FakeIDBKeyRange, createFakeIndexedDb } from '../support/appl-fake-indexeddb.js'
 import { downloadJson } from '../../../src/lib/download-json.js'
 import { validateDocument } from '@engine/validation.js'
 import * as fakeLib from '../../../src/test/fake-sunburst-lib.js'
@@ -137,13 +145,34 @@ beforeEach(() => {
   resetApiClient()
   clearReferentielCache()
   downloadJson.mockClear()
+  localStorage.clear()
+  // Mode expert : la liste des modèles est proposée (F32 rejoue le mode simple).
+  localStorage.setItem('humanome-mode', 'expert')
 })
 
 afterEach(() => {
   cleanup()
   window.location.hash = ''
   resetApiClient()
+  localStorage.clear()
 })
+
+// F33-F34 : le module portfolio réel, sur un IndexedDB factice.
+const idb = createFakeIndexedDb()
+
+/** Pose un IndexedDB factice et y range un portfolio (segmenté comme le module portfolio). */
+async function avecPortfolio(titre, texte) {
+  vi.stubGlobal('indexedDB', idb.factory)
+  vi.stubGlobal('IDBKeyRange', FakeIDBKeyRange)
+  await createPortfolioStore().create({ titre, texte, segments: segmentText(texte, { today: '2026-07-12' }) })
+}
+
+/** Démonte l'application, puis retire l'IndexedDB factice (et le fetch simulé). */
+function sansIndexedDb() {
+  cleanup()
+  idb.reset()
+  vi.unstubAllGlobals()
+}
 
 describe('UC-APP-09 — l’apprenant lance une cartographie ouverte', () => {
   it('UC-APP-09-F01 — nominal (voie crédits) : 8 appels via /api/twin6/appel, progression et contribution affichées, sunburst rendu, export JSON', async () => {
@@ -554,6 +583,95 @@ describe('UC-APP-09 — l’apprenant lance une cartographie ouverte', () => {
     expect(screen.queryByText(/Cartographie ouverte terminée/)).toBeNull()
     expect(screen.queryByTestId('twin6-export')).toBeNull()
     expect(screen.getByRole('button', { name: 'Lancer la cartographie ouverte' }).disabled).toBe(false)
+  })
+
+  it('UC-APP-09-F32 — mode simple (apprenant, aucun choix stocké) : pas de liste des modèles, le modèle cible du paquet nommé et employé, même choisi autrement en mode expert ; le référentiel reste au choix', async () => {
+    localStorage.removeItem('humanome-mode')
+    const { calls } = stubFetch(
+      routes({ 'GET twin9/meta': jsonResponse(200, metaTwin9({ modeles_twin6: { 'claude-sonnet-5': [2.2, 11], 'claude-haiku-5-5': [1.1, 5.5] } })) }),
+    )
+    openTwin6()
+    await saisirPortfolio()
+    expect(screen.queryByLabelText('Modèle')).toBeNull()
+    expect(screen.getByTestId('twin6-modele-defaut').textContent).toContain('Modèle : claude-sonnet-5 (par défaut')
+    expect(screen.getByRole('combobox', { name: 'Référentiel' }).value).toBe('respire@7.0.0')
+
+    // Mode expert depuis le tiroir : la liste paraît, on choisit Haiku…
+    const menu = within(screen.getByRole('navigation', { name: 'Navigation principale' }))
+    fireEvent.click(menu.getByRole('switch', { name: 'Mode expert' }))
+    expect(localStorage.getItem('humanome-mode')).toBe('expert')
+    fireEvent.change(screen.getByLabelText('Modèle'), { target: { value: 'claude-haiku-5-5' } })
+    // … puis retour au mode simple : le modèle employé redevient le modèle cible du paquet.
+    fireEvent.click(menu.getByRole('switch', { name: 'Mode expert' }))
+    expect(localStorage.getItem('humanome-mode')).toBe('simple')
+    expect(screen.queryByLabelText('Modèle')).toBeNull()
+    await lancer()
+
+    await screen.findByText(/Cartographie ouverte terminée/)
+    const appels = appelsTwin6(calls)
+    expect(appels).toHaveLength(8)
+    expect(appels.every((c) => bodyOf(c).model === 'claude-sonnet-5')).toBe(true)
+  })
+
+  it('UC-APP-09-F33 — mes portfolios : un portfolio aux journées « Lundi 9 février 2026 » remplit la zone de saisie en feuilles ### AAAA-MM-JJ, le passage non daté laissé de côté et compté ; le run lit ce texte', async () => {
+    const texte =
+      'Note de départ, sans date, à ne pas cartographier.\n\n' +
+      'Mardi 10 février 2026\nAujourd’hui j’ai recoupé trois sources avant de conclure.\n\n' +
+      'Mercredi 11 février 2026\nJ’ai expliqué ma démarche au groupe, qui l’a reprise.'
+    try {
+      await avecPortfolio('Journal de Léa', texte)
+      const { calls } = stubFetch(routes())
+      openTwin6()
+      const choix = await screen.findByLabelText('Partir d’un de mes portfolios')
+      expect([...choix.options].map((o) => o.textContent)).toEqual(['— choisir —', 'Journal de Léa'])
+      fireEvent.change(choix, { target: { value: choix.options[1].value } })
+
+      const attendu =
+        '### 2026-02-10\n---\nMardi 10 février 2026\nAujourd’hui j’ai recoupé trois sources avant de conclure.\n\n' +
+        '### 2026-02-11\n---\nMercredi 11 février 2026\nJ’ai expliqué ma démarche au groupe, qui l’a reprise.'
+      expect(screen.getByLabelText(/Votre portfolio/).value).toBe(attendu)
+      expect(screen.getByTestId('twin6-reprise').textContent).toBe(
+        '« Journal de Léa » : 2 journées datées, en feuilles ### AAAA-MM-JJ ; 1 passage non daté laissé de côté.',
+      )
+      await screen.findByText(/appels au modèle/)
+      await lancer()
+      await screen.findByText(/Cartographie ouverte terminée/)
+      const appels = appelsTwin6(calls)
+      expect(appels).toHaveLength(8)
+      expect(appels.every((c) => bodyOf(c).prompt.includes(attendu))).toBe(true)
+      expect(appels.some((c) => bodyOf(c).prompt.includes('Note de départ'))).toBe(false)
+    } finally {
+      sansIndexedDb()
+    }
+  })
+
+  it('UC-APP-09-F34 — mes portfolios : un texte déjà en feuilles ### AAAA-MM-JJ est repris tel quel ; un portfolio sans journée datée ne remplit rien et le dit ; sans stockage local, pas de liste', async () => {
+    try {
+      await avecPortfolio('Déjà au format', PORTFOLIO)
+      await createPortfolioStore().create({ titre: 'Sans date', texte: 'Des notes', segments: [{ date: null, texte: 'Des notes', debut: 0, fin: 9 }] })
+      stubFetch(routes())
+      openTwin6()
+      const choix = await screen.findByLabelText('Partir d’un de mes portfolios')
+      const valeur = (titre) => [...choix.options].find((o) => o.textContent === titre).value
+      fireEvent.change(choix, { target: { value: valeur('Déjà au format') } })
+      expect(screen.getByLabelText(/Votre portfolio/).value).toBe(PORTFOLIO)
+      expect(screen.getByTestId('twin6-reprise').textContent).toBe('« Déjà au format » : 1 journée datée, en feuilles ### AAAA-MM-JJ.')
+      fireEvent.change(choix, { target: { value: valeur('Sans date') } })
+      // Rien n'est écrasé : le texte repris auparavant reste.
+      expect(screen.getByLabelText(/Votre portfolio/).value).toBe(PORTFOLIO)
+      expect(screen.getByTestId('twin6-reprise').textContent).toBe(
+        '« Sans date » n’a aucune journée datée : datez ses journées dans « Mon portfolio ».',
+      )
+    } finally {
+      sansIndexedDb()
+    }
+    resetApiClient()
+
+    // Sans IndexedDB (jsdom nu) : le formulaire, sans la liste.
+    stubFetch(routes())
+    openTwin6()
+    await screen.findByLabelText(/Votre portfolio/)
+    expect(screen.queryByLabelText('Partir d’un de mes portfolios')).toBeNull()
   })
 
   it('UC-APP-09-F09 — E6 : paquet de prompts public introuvable, ou offre /api/twin9/meta illisible → erreur de chargement, formulaire absent', async () => {

@@ -80,7 +80,8 @@ Cartographier mes écrits », ou le bouton du tableau de bord `#/espace`).
    de journées (segments datés regroupés par date, textes d'une même date
    concaténés, tri chronologique ; segments non datés ignorés). « Continuer »
    n'est actif qu'avec au moins une journée.
-3. **Version de prompt** : le sélecteur « Référentiel » propose les
+3. **Version de prompt** (mode expert ; en mode simple : A8) : le sélecteur
+   « Référentiel » propose les
    référentiels publiés (index statique), RESPIRE à sa dernière version par
    défaut (un autre : A7) ; le paquet embarqué `aurora-v3-reconstruit@1.1.0`
    est proposé en tête et présélectionné, suivi des versions publiées ;
@@ -190,6 +191,18 @@ Cartographier mes écrits », ou le bouton du tableau de bord `#/espace`).
   (RG3). Sans index lisible (copie statique), aucun choix n'est offert : RESPIRE
   embarqué. Un référentiel qui ne se charge pas : message, « Continuer »
   inactif.
+- **A8 — Mode simple** (étapes 3 et 4, 2026-10-22,
+  [UC-VIS-06](../visiteur/UC-VIS-06-choisir-affichage-simple-expert.md)) :
+  un compte apprenant seul, sans choix enregistré dans le navigateur, est en
+  mode simple. L'étape 3 s'intitule « Référentiel » (dans la liste des
+  étapes comme dans son titre) : le choix du référentiel reste offert, la
+  liste des versions de prompt ne l'est pas, une ligne dit le protocole
+  exécuté (« Protocole : aurora-v3-reconstruit@1.1.0 (embarqué) ») ; la
+  cartographie enregistre ce paquet, qui est celui que le moteur exécute,
+  même si une autre version avait été choisie en mode expert. À l'étape 4,
+  la clé personnelle n'a pas de champ « Modèle » : le modèle par défaut du
+  fournisseur est employé et enregistré (`runMeta.model`). Les scénarios
+  A3 et le choix du modèle de A1 se jouent en mode expert.
 
 ## Scénarios d'erreur
 
@@ -327,7 +340,8 @@ Cartographier mes écrits », ou le bouton du tableau de bord `#/espace`).
 | Couche | Élément | Rôle |
 |---|---|---|
 | Front | `web/src/views/EspaceView.jsx` | Session, dispatch de `#/espace/nouveau-run` |
-| Front | `web/src/components/RunWizard.jsx` ; `web/src/components/ReferentielChoice.jsx` | Assistant en 5 étapes, choix du référentiel publié (A7), exécution, enregistrement |
+| Front | `web/src/components/RunWizard.jsx` ; `web/src/components/ReferentielChoice.jsx` | Assistant en 5 étapes, choix du référentiel publié (A7), exécution, enregistrement ; étapes 3 et 4 réduites en mode simple (A8) |
+| Front | `web/src/lib/ui-mode.js` — `useUiMode` | Mode d'affichage fourni par le shell (A8, UC-VIS-06) |
 | Front | `web/src/data/referentiel.js` — `loadPublishedReferentiel`, `listPublishedReferentiels` | RESPIRE publié (repli embarqué) ou le référentiel choisi, liste des référentiels publiés |
 | Front | `web/src/lib/run-launcher.js` — `computeDayGroups`, `fetchPromptPackages`, `buildEstimate`, `createProviderBundle`, `makeRunId`, `executeRun`, `buildLocalNarratives`, clés locales et synchronisation | Logique non-UI du lancement, résumés locaux du merge, validation de la fusion (schéma puis conformité) |
 | Front | `web/src/lib/demo-llm.js` — `createDemoProvider`, `describeDemoError` ; `web/src/lib/pow.js` | Service humanome : défi, preuve de travail, messages |
@@ -395,6 +409,9 @@ Cartographier mes écrits », ou le bouton du tableau de bord `#/espace`).
 
 ### Tests fonctionnels
 
+Les scénarios IHM se jouent en mode expert, posé dans le navigateur avant le
+montage (`humanome-mode`), sauf F27, qui rejoue le mode simple (A8).
+
 | ID | Scénario | Niveau | Vérifie | Fichier |
 |---|---|---|---|---|
 | UC-APP-02-F01 | Nominal | IHM | `<App/>` : 5 étapes, estimation, 24 POST avec défis distincts, 3 jours + merge privés et tracés | `web/test/usecases/functional/uc-app-02-lancer-cartographie-standard.test.jsx` |
@@ -423,10 +440,11 @@ Cartographier mes écrits », ou le bouton du tableau de bord `#/espace`).
 | UC-APP-02-F24 | E5 (anomalie A-05) | API | **Comportement actuel** : quota par défaut (20/h) → un run de 3 journées bloqué au 21e appel, `Retry-After` 30/60/120/240 | `api/tests/UseCases/Functional/UcApp02LancerCartographieStandardTest.php` |
 | UC-APP-02-F25 | E7 | IHM | Clé personnelle refusée (`401` d'Anthropic) : 2 requêtes par journée (aucune reprise du transport, nouvel essai d'`extractDay`), 6 au total ; les 3 journées listées en échec « extractDay : pôle 1 (…) — anthropic: HTTP 401 — invalid x-api-key » ; aucun appel à `api/llm`, rien d'enregistré | `web/test/usecases/functional/uc-app-02-lancer-cartographie-standard.test.jsx` |
 | UC-APP-02-F26 | A7 | IHM | Index des référentiels publiés : « Référentiel » propose RESPIRE (défaut) et un référentiel lettré ; choisi, il est chargé ; estimation 34 appels ; 18 POST dont les prompts le nomment ; 3 jours + fusion enregistrés avec `referentiel: {id, version}`, documents nommés, 5 domaines ; checkpoints sous l'identifiant qui l'inclut | `web/test/usecases/functional/uc-app-02-lancer-cartographie-standard.test.jsx` |
+| UC-APP-02-F27 | A8 | IHM | Mode simple (apprenant, aucun choix stocké), une autre version publiée par le serveur : étape « Référentiel » (liste des étapes et titre), ligne du protocole embarqué, aucun bouton de version, choix du référentiel offert ; clé personnelle sans champ « Modèle » ; 24 appels directs au modèle par défaut (`claude-sonnet-4-6`) ; 3 jours + fusion enregistrés avec `aurora-v3-reconstruit@1.1.0` et ce modèle ; mode jamais écrit par l'assistant | idem |
 
 ### Tests existants liés (non-régression)
 
-- `web/src/components/RunWizard.test.jsx` — étapes, estimation (le Service humanome au tarif de Haiku 5.5, RG6), exécution et reprise (coutures injectées).
+- `web/src/components/RunWizard.test.jsx` — étapes, estimation (le Service humanome au tarif de Haiku 5.5, RG6), exécution et reprise (coutures injectées) ; mode simple (A8) et mode expert sous `UiModeContext`.
 - `web/src/lib/run-launcher.test.js` — groupes de journées, estimation, paquets, clés, `executeRun` sur stockage mémoire.
 - `web/src/lib/demo-llm.test.js`, `web/src/lib/pow.test.js` — défi, preuve de travail, messages.
 - `engine/src/runs/run.test.js`, `journal.test.js`, `storage.test.js` — machine à états, journal, adaptateurs.
@@ -435,7 +453,7 @@ Cartographier mes écrits », ou le bouton du tableau de bord `#/espace`).
 - `scripts/parity/parity-prompts.mjs` — parité des 69 prompts narratifs avec l'oracle `assets-existants/merge-prototype/intermediate/prompts/` (lancement manuel, hors CI : lit `assets-existants/`).
 - `engine/src/providers/index.test.js` (requêtes et réponses de chaque adaptateur, proxy, erreurs, reprises, validation), `mock.test.js`, `retry.test.js`, `estimate.test.js` ; `engine/src/validation.test.js`.
 - `api/tests/LlmProxyTest.php`, `LlmPowTest.php`, `LlmMockProviderTest.php`, `PackagesDefaultTest.php`, `PackagesTest.php`.
-- `web/e2e/parcours-apprenant.e2e.js` — étapes « Lancement du run » et « Run complet » (24 appels mock, navigateur réel).
+- `web/e2e/parcours-apprenant.e2e.js` — étapes « Lancement du run » (en mode simple : ligne du protocole embarqué, A8) et « Run complet » (24 appels mock, navigateur réel).
 
 ### Exécuter
 

@@ -12,6 +12,12 @@
 
 ## 1. Analyse de la complexité
 
+> **État historique (2026-07).** Ce chapitre décrit l'IA **d'avant** la refonte : la
+> famille « Mon travail », l'ancienne route `/merge`, un panneau en haut à droite.
+> L'état actuel est celui du code (`web/src/nav.js` : sept familles d'intention ;
+> tiroir qui glisse depuis la gauche) et des §5, §5bis et §5ter ci-dessous
+> (mis à jour le 2026-10-22, sprint 1).
+
 ### 1.1 Le principe fondateur : navigation **additive par rôle**
 
 Toute l'IA repose sur un seul mécanisme (`web/src/nav.js`) :
@@ -473,24 +479,29 @@ Un **prototype interactif** rendant ce graphe avec nœuds cliquables est fourni 
 
 ## 5. Le menu burger (déjà implémenté)
 
-Modifié : `web/src/App.jsx` et `web/src/styles/global.css`. Comportement (vérifié au navigateur,
-14 tests verts, 0 erreur console) :
+Modifié : `web/src/App.jsx` et `web/src/styles/global.css`. Comportement actuel (mis à jour le
+2026-10-22) :
 
-- **Web + mobile** : la barre ne porte plus que la marque (gauche) et, à droite, l'aide « ? » et un
-  **bouton « ☰ Menu »**. La navigation vit dans un **panneau déroulant** ancré en haut à droite,
-  groupé par famille avec intertitres (`DÉCOUVRIR`, `MON TRAVAIL`, `COMPTE`).
-- **Desktop** : le panneau se **révèle au survol** de la zone droite (`@media (hover: hover)`), et
-  se **fige au clic** (état épinglé). Un délai de grâce évite que le trou bouton↔panneau ou la barre
-  de défilement ne le referme.
-- **Mobile** : le panneau s'ouvre **au tap** (pas de survol sur `hover: none`, conforme à la demande).
-- **Accessibilité** (au-delà de la demande, pour ne pas exclure le clavier / lecteur d'écran) :
-  bouton `aria-expanded` / `aria-controls`, ouverture aussi **au focus clavier**
-  (`.app-nav-panel:focus-within`), **Échap** ferme et rend le focus au bouton, clic extérieur ferme.
-  Aucun `hidden`/`aria-hidden` : les liens restent dans le DOM et l'ordre de tabulation ; le masquage
-  est purement visuel (`opacity` + `pointer-events`) — donc tabuler dans la nav la **révèle**.
+- **En-tête** : plus de marque ; en haut à droite, quatre commandes fixes — thème, aide « ? »,
+  assistant tuteur et **bouton « Menu »**. La navigation vit dans un **tiroir qui glisse depuis le
+  bord gauche**, groupé par famille d'intention avec intertitres (les 7 familles de §3.1).
+- **Desktop (souris)** : survoler le bouton Menu, ou approcher le bord gauche (zone de 12 px,
+  réglette visuelle), ouvre le tiroir après un court délai ; il reste ouvert le temps de traverser
+  l'écran et se rétracte quand la souris le quitte. Un clic l'ouvre durablement. La **punaise**
+  l'épingle (gardé dans le navigateur, `humanome-menu-pinned`) : au-delà de 921 px, le contenu se
+  décale (tiroir docké) ; en deçà, il se superpose.
+- **Mobile (doigt)** : le tiroir s'ouvre au tap ; un tap extérieur le referme. Sous 921 px, la
+  croix « Fermer le menu » remplace la punaise ; comme Échap, elle referme, détache et rend le
+  focus au bouton Menu. Au pointeur grossier, chaque commande fait au moins 44 px.
+- **Clic d'un lien** : le tiroir non épinglé se referme, même quand seule la sous-section change.
+- **Accessibilité** : bouton `aria-expanded` / `aria-controls`, ouverture aussi **au focus clavier**
+  (`.app-nav-panel:focus-within`), **Échap** ferme et désépingle, rend le focus au bouton ; un
+  `role="group"` nommé par famille ; la page courante porte `aria-current="page"`.
+- **Bas du tiroir** : l'interrupteur « Mode expert » (§5ter), puis, connecté, l'identité et
+  « Se déconnecter ».
 
-Le panneau porte désormais le regroupement par **intention** de §3.1 : `nav.js` est la source
-unique des 7 familles, et le burger comme les tuiles de l'accueil (§5bis) la consomment.
+Le tiroir porte le regroupement par **intention** de §3.1 : `nav.js` est la source unique des 7
+familles, et le tiroir, les tuiles de l'accueil (§5bis) et l'aide la consomment.
 
 ## 5bis. La landing « palais mental » (câblée le 2026-07-14)
 
@@ -509,6 +520,68 @@ L'accueil réutilise la grille de tuiles du prototype TOC (copie dans l'état :
   Le **premier clic sélectionne** (aide affichée + lien marqué, `aria-live` sur le callout,
   Échap désarme) ; le **second clic ouvre**. On lit avant d'entrer — c'est la TOC interactive
   en actes.
+
+## 5ter. Le mode expert (câblé le 2026-10-22, sprint 1)
+
+Étude ergonomique du sprint 1 (2026-10-22) ; cas d'utilisation :
+[UC-VIS-06](cas-utilisation/visiteur/UC-VIS-06-choisir-affichage-simple-expert.md).
+
+**Principe : le rôle fixe les droits, le mode fixe la densité de l'affichage.** Deux niveaux,
+*simple* et *expert*. Le mode vit dans le navigateur ; aucune garde de vue ni du serveur ne le
+lit ; toute adresse directe reste valide ; il ne retire jamais une famille de rôle.
+
+**Décisions (Christian, 2026-10-22).**
+
+| | Décision |
+|---|---|
+| D1 | Option A : le mode simple masque « Cartographie ouverte » (Twin6) ; l'échelle Essayer → Cartographier mes écrits → Analyse approfondie reste, un lien par palier |
+| D2 | « Comparaison » (espace de la cartographie) passe en mode expert |
+| D3 | Défaut selon le rôle : simple pour un visiteur ou un apprenant seul, expert dès un rôle de travail (cartographe, promptologue, épistémiarque, établissement, admin) |
+| D4 | Persistance V1 dans le navigateur seulement (`localStorage` `humanome-mode`) ; la V2 par compte attend le sprint 8 |
+| D5 | Libellé : « Mode expert » |
+
+**Où basculer.** Au bas du tiroir, pour tous, visiteur compris : un interrupteur
+(`role="switch"`, 44 px) et sa précision « profils Twin9, versions de prompt, modèles,
+comparaison, réglages fins ». Basculer ne referme pas le tiroir : l'effet se voit aussitôt. En
+second lieu, la ligne « Affichage » de `#/compte`, à côté de « Rôles » (ce que je fais / ce que je
+vois). Pas dans l'en-tête, qui porte déjà quatre commandes.
+
+**Résolution.** `mode = choix stocké ?? (un rôle de travail ? 'expert' : 'simple')`
+(`web/src/lib/ui-mode.js`). Le choix n'est écrit qu'au basculement : un défaut dérivé n'est
+jamais stocké, un visiteur qui se connecte cartographe passe donc en expert. Stockage illisible :
+le défaut, sans erreur. Seul le shell (`App.jsx`) choisit ; la valeur par défaut du contexte
+(`UiModeContext`) et de `navGroups` est « expert », si bien qu'un composant rendu seul affiche
+tout.
+
+**Ce que le mode simple masque, et ce qu'il garde.**
+
+| Élément | Mode simple | Mode expert |
+|---|---|---|
+| Menu « Cartographie ouverte » (Twin6) | masqué | visible |
+| Menu « Mes profils Twin9 » (`#/configuration`, après « Analyse approfondie ») | absent | visible |
+| Assistant standard, étape 2 | « Référentiel » : le choix du référentiel et une ligne « Protocole : aurora-v3-reconstruit@1.1.0 (embarqué) » ; le paquet enregistré est celui qui s'exécute | « Version de prompt » : liste des versions publiées |
+| Assistant standard, étape 3 : champ « Modèle » de la clé personnelle | masqué (modèle par défaut du fournisseur, enregistré tel quel) | visible |
+| Twin6 : liste des modèles | masquée (une ligne nomme le modèle cible du paquet, employé) | visible |
+| Cartographie : onglet « Comparaison » | masqué, sauf s'il est l'espace ouvert | visible |
+| Cartographie : tuile « Réglages » dans « Panneaux » | non proposée | proposée |
+| Export de la cartographie : « Préparer une démo » | masquée | visible |
+| Aide « ? » de la cartographie, de l'espace apprenant et de Twin6 | un point : « activez le « Mode expert » au bas du menu » | — |
+| Twin9 : liste des profils et « Régler mes profils » | **lot 2**, après la fusion des lots Twin9 en cours | visibles |
+| Gestionnaire et son point d'anomalies, Dialogue, Export (quatre formats), choix du référentiel, accord, estimation, familles de rôle, écrans des clés personnelles | **gardés** | gardés |
+
+Effet sur le menu : un apprenant voit 13 liens en mode simple, 15 en mode expert ; un visiteur, 7
+dans les deux modes. Le gain principal est dans les pages. Sur l'accueil, l'aperçu d'un profil
+(« Voir les profils d'utilisateurs ») montre ce que ce profil verrait, à son mode par défaut.
+
+**Ce que le mode n'est pas.** Ni un droit, ni une mesure : rien n'est envoyé ni compté. Il ne sert
+pas à masquer les écrans des clés personnelles, question de conformité (sprint 6). Il se
+distinguera des rôles auto-attribués du sprint 8 (« Mes rôles » et « Affichage », côte à côte
+dans `#/compte`).
+
+**Limites.** Ordinateur partagé d'une école : la préférence est celle du navigateur, comme le
+thème (V2 par compte si le besoin se confirme). Le mot « mode expert » désigne aussi la formation
+apprenant (« Formation apprenant — mode expert ») : sans rapport, à renommer si la confusion se
+confirme.
 
 ---
 

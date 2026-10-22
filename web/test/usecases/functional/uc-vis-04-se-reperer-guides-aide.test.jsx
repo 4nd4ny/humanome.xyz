@@ -21,6 +21,7 @@ import * as fakeLib from '../../../src/test/fake-sunburst-lib.js'
 import { calledUrls, jsonResponse } from '../support/vis.js'
 import { FakeIDBKeyRange, createFakeIndexedDb } from '../support/appl-fake-indexeddb.js'
 import { routedFetch } from '../support/appl-http.js'
+import profilV98 from '../../../../api/config/twin9-profil-v98.json'
 
 // F20 : magasins locaux réels (portfolios, cartographies, Twin9) sur un
 // IndexedDB factice — jsdom n'en fournit pas.
@@ -208,6 +209,33 @@ describe('UC-VIS-04 — guides publics', () => {
     expect(new Set(calledUrls(network))).toEqual(new Set(['api/auth/me']))
   })
 
+  // Sprint 1, amélioration 14 (2026-10-22) : ses propres parcours d'abord.
+  it('UC-VIS-04-F21 — A4 : hub des guides — un visiteur voit « Pour commencer » (visiteur, apprenant, employeur) puis « Autres parcours » ; un compte cartographe voit d’abord « Vos guides » (apprenant, cartographe)', async () => {
+    stubNetwork()
+    openApp('#/guides')
+    const cards = (name) =>
+      [...screen.getByRole('region', { name }).querySelectorAll('.guides-card a')].map((a) => a.getAttribute('href'))
+    await waitFor(() => expect(cards('Pour commencer')).toEqual(['#/guides/visiteur', '#/guides/apprenant', '#/guides/employeur']))
+    expect(cards('Autres parcours')).toHaveLength(6)
+    cleanup()
+    resetApiClient()
+
+    const cartographe = { id: 8, email: 'carto@example.org', displayName: 'Cara', roles: ['apprenant', 'cartographe'], hasAvatar: false }
+    vi.stubGlobal('fetch', routedFetch([['api/auth/me', () => jsonResponse(200, { user: cartographe, csrfToken: 'csrf' })]]))
+    openApp('#/guides', async () => ({ user: cartographe }))
+    await waitFor(() => expect(cards('Vos guides')).toEqual(['#/guides/apprenant', '#/guides/cartographe']))
+    expect(cards('Autres parcours')).toEqual([
+      '#/guides/visiteur',
+      '#/guides/employeur',
+      '#/guides/etablissement',
+      '#/guides/epistemiarque',
+      '#/guides/promptologue',
+      '#/guides/admin',
+      '#/guides/noesiologie',
+    ])
+    expect(screen.queryByRole('region', { name: 'Pour commencer' })).toBeNull()
+  })
+
   it('UC-VIS-04-F10 — E2 : guide ou chapitre inconnu → message et lien de retour', async () => {
     stubNetwork()
     openApp('#/guides/inconnu')
@@ -384,7 +412,8 @@ describe('UC-VIS-04 — liens du panneau pour un compte multi-rôles', () => {
       ['api/prompt-packages', () => jsonResponse(200, [])],
       // L'analyse approfondie tourne sur cette instance ; le compte n'a ni run ni profil.
       ['api/twin9/runs', () => jsonResponse(200, { disponible: true, runs: [] })],
-      ['api/twin9/configuration', () => jsonResponse(200, { profils: [], referentiels: [], gabarits: ['v9.8'], cle_perso_ouverte: false, cle_perso_enregistree: false })],
+      // Le profil par défaut (v9.8) : la page des profils Twin9 en part (F20, « Mes profils Twin9 »).
+      ['api/twin9/configuration', () => jsonResponse(200, { profils: [], defaut: profilV98, referentiels: [], gabarits: ['v9.8'], cle_perso_ouverte: false, cle_perso_enregistree: false })],
       ['api/twin9/admin/jeux', () => jsonResponse(200, { defaut: 'v9.8', jeux: [{ id: 'v9.8', auteur: null, mien: false, gabarits: 0, created_at: null, defaut: true }] })],
       ['api/twin9/admin/jeux/v9.8/protocole', () => jsonResponse(200, { protocole: [] })],
     ])
@@ -452,6 +481,20 @@ describe('UC-VIS-04 — liens du panneau pour un compte multi-rôles', () => {
         // Compte reconnu : le lancement d'une analyse, pas l'invite à se connecter.
         expect(await screen.findByRole('heading', { level: 3, name: 'Lancer une analyse' })).toBeDefined()
         expect(screen.queryByText(/pour lancer une analyse approfondie/)).toBeNull()
+      },
+    },
+    {
+      // Entrée de menu ajoutée le 2026-10-22 (mode expert, UC-VIS-06) : un
+      // compte qui porte un rôle de travail est en mode expert par défaut.
+      name: 'Mes profils Twin9',
+      href: '#/configuration',
+      badge: null,
+      hint: 'réglages de l’analyse approfondie',
+      reached: async () => {
+        await h2('Configuration de Twin9')
+        // Session reconnue par le serveur simulé : pas l'invite à se connecter.
+        await waitFor(() => expect(fetch.calls.some((c) => c.url === 'api/twin9/configuration')).toBe(true))
+        expect(screen.queryByText(/pour régler vos runs Twin9/)).toBeNull()
       },
     },
     {

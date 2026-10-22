@@ -283,28 +283,45 @@ const FALLBACK = {
 }
 
 /**
- * Aide de la rubrique courante, adaptée au rôle si pertinent.
+ * Rubriques dont le mode simple masque des réglages avancés (lib/ui-mode.js) :
+ * la cartographie (espace Comparaison, tuile Réglages, outil d'anonymisation),
+ * l'espace apprenant (version de prompt et modèle de l'assistant), Twin6 (liste
+ * des modèles). Twin9 (liste des profils) rejoindra la liste avec le lot 2.
+ */
+const SIMPLE_MODE_ROUTES = new Set(['cartographie', 'espace', 'twin6ouverte'])
+
+/** Le point d'aide du mode simple, sur ces rubriques. */
+export const SIMPLE_MODE_POINT =
+  'Des réglages avancés existent : activez le « Mode expert » au bas du menu.'
+
+/**
+ * Aide de la rubrique courante, adaptée au rôle et au mode d'affichage si
+ * pertinent.
  *
  * @param {string} route nom de route (router.js)
- * @param {{roles?: string[]}} [session]
+ * @param {{roles?: string[], expert?: boolean}} [session] `expert` : défaut
+ *   vrai (aucun point sur le mode)
  * @returns {HelpEntry}
  */
 export function helpFor(route, session = {}) {
-  const entry = BASE[route] ?? FALLBACK
+  let entry = BASE[route] ?? FALLBACK
   const roles = session.roles ?? []
   // Astuce ciblée : sur l'accueil et la cartographie, rappeler à un rôle de
-  // travail où se trouve son espace (ergonomie par famille, item 5).
+  // travail où se trouve son espace (ergonomie par famille, item 5) ; le
+  // cartographe prime sur l'établissement.
   if ((route === 'home' || route === 'cartographie') && roles.includes('cartographe')) {
-    return withExtra(
+    entry = withExtra(
       entry,
       'Vous êtes cartographe : « Ma file de relecture » est dans le menu, famille « Encadrer et garantir ».',
     )
-  }
-  if ((route === 'home' || route === 'cartographie') && roles.includes('etablissement')) {
-    return withExtra(
+  } else if ((route === 'home' || route === 'cartographie') && roles.includes('etablissement')) {
+    entry = withExtra(
       entry,
       'Vous gérez un établissement : « Mes cohortes » est dans le menu, famille « Piloter mon organisation ».',
     )
+  }
+  if (session.expert === false && SIMPLE_MODE_ROUTES.has(route)) {
+    entry = withExtra(entry, SIMPLE_MODE_POINT)
   }
   return entry
 }

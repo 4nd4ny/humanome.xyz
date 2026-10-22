@@ -33,6 +33,10 @@ export const ROLE_LABELS = {
  *   moins UN des rôles suffit (disjonction).
  * - `allRoles` (item) : restreint l'item à la CONJONCTION de rôles (TOUS
  *   requis, ex. « Atelier Twin9 » : admin ∧ promptologue, AD-D2).
+ * - `expert` (item) : l'item n'est listé qu'en mode expert (lib/ui-mode.js,
+ *   §5ter de docs/ergonomie-navigation.md). Un réglage d'affichage, jamais un
+ *   droit : son adresse reste valide en mode simple, et le mode ne retire
+ *   jamais une famille de rôle.
  *
  * Famille : { id, label, intent, audience, roles?, items }
  * - sans `roles`, la famille est visible par tous (Découvrir, Mon compte).
@@ -68,8 +72,24 @@ export const FAMILIES = [
         section: 'nouveau-run',
         badge: 'standard',
       },
-      { href: '#/twin6-ouverte', label: 'Cartographie ouverte', route: 'twin6ouverte', badge: 'gratuit', hint: 'Twin6 — open source' },
+      // Mode simple (D1, option A) : l'échelle Essayer → Cartographier mes
+      // écrits → Analyse approfondie reste lisible, un lien par palier.
+      {
+        href: '#/twin6-ouverte',
+        label: 'Cartographie ouverte',
+        route: 'twin6ouverte',
+        badge: 'gratuit',
+        hint: 'Twin6 — open source',
+        expert: true,
+      },
       { href: '#/twin9', label: 'Analyse approfondie', route: 'twin9', badge: 'premium', hint: 'Twin9' },
+      {
+        href: '#/configuration',
+        label: 'Mes profils Twin9',
+        route: 'configuration',
+        hint: 'réglages de l’analyse approfondie',
+        expert: true,
+      },
       { href: '#/espace', label: 'Partager ma cartographie', hint: 'version choisie, réservée aux adultes' },
     ],
   },
@@ -180,19 +200,22 @@ function compteFamily(authenticated) {
 /**
  * Familles visibles pour une session donnée (navigation additive par rôle).
  *
- * @param {{roles?: string[], authenticated?: boolean}} [session]
+ * @param {{roles?: string[], authenticated?: boolean, expert?: boolean}} [session]
+ *   `expert` (défaut : vrai, tout est listé) : faux, les items `expert` sont
+ *   omis ; les familles visibles ne changent pas.
  * @returns {Array<{id: string, label: string, intent: string, audience: string,
  *   items: Array<{href: string, label: string, route?: string, section?: string,
- *   badge?: string, hint?: string}>}>}
+ *   badge?: string, hint?: string, expert?: boolean}>}>}
  */
-export function navGroups({ roles = [], authenticated = roles.length > 0 } = {}) {
+export function navGroups({ roles = [], authenticated = roles.length > 0, expert = true } = {}) {
   const groups = []
   for (const family of FAMILIES) {
     if (family.roles && !family.roles.some((role) => roles.includes(role))) continue
     const items = family.items.filter(
       (item) =>
         (!item.roles || item.roles.some((role) => roles.includes(role))) &&
-        (!item.allRoles || item.allRoles.every((role) => roles.includes(role))),
+        (!item.allRoles || item.allRoles.every((role) => roles.includes(role))) &&
+        (expert || !item.expert),
     )
     if (items.length > 0) groups.push({ ...family, items })
   }

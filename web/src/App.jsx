@@ -4,6 +4,7 @@ import { getDemoMerge, getReferentiel, loadDay } from './data/load.js'
 import { fetchMe, logout } from './api/client.js'
 import { isCurrentItem, navGroups } from './nav.js'
 import { applyTheme, resolvedTheme, subscribeSystemTheme } from './lib/theme.js'
+import { UiModeContext, defaultMode, storeMode, storedMode } from './lib/ui-mode.js'
 import Help from './help/Help.jsx'
 import HomeView from './views/HomeView.jsx'
 import CartoApp from './carto/ui/CartoApp.jsx'
@@ -142,9 +143,30 @@ export default function App({ lib, fetchMeFn = fetchMe }) {
   // roles = [] pour un visiteur ou une copie statique — la nav « Découvrir »
   // reste toujours affichée.
   const [roles, setRoles] = useState([])
+  // Mode d'affichage simple / expert (lib/ui-mode.js, §5ter de
+  // docs/ergonomie-navigation.md) : le choix stocké dans ce navigateur, sinon
+  // le défaut des rôles (expert dès un rôle de travail). Lu paresseusement ;
+  // écrit SEULEMENT au basculement, jamais depuis le défaut dérivé (un
+  // visiteur qui se connecte cartographe passe ainsi en expert). Tant que la
+  // session n'a pas répondu, roles = [] : un cartographe passe de simple à
+  // expert à la réponse de auth/me, tiroir fermé.
+  const [storedChoice, setStoredChoice] = useState(() => storedMode())
+  const expert = (storedChoice ?? defaultMode(roles)) === 'expert'
+  const uiMode = useMemo(
+    () => ({
+      expert,
+      setExpert(next) {
+        const mode = next ? 'expert' : 'simple'
+        setStoredChoice(mode)
+        storeMode(mode)
+      },
+    }),
+    [expert],
+  )
   // Rôles transmis à l'interface de cartographie : l'espace Partage n'est
-  // offert qu'à un compte apprenant (le serveur garde ses propres contrôles).
-  const cartoSession = useMemo(() => ({ roles }), [roles])
+  // offert qu'à un compte apprenant (le serveur garde ses propres contrôles) ;
+  // le mode y masque, en simple, « Comparaison » et la tuile « Réglages ».
+  const cartoSession = useMemo(() => ({ roles, expert }), [roles, expert])
   // Identité minimale pour l'avatar de nav (D6) : {id, displayName, hasAvatar}.
   const [sessionUser, setSessionUser] = useState(null)
   // « Connecté » = un utilisateur de session, et non « au moins un rôle » : un
@@ -629,10 +651,10 @@ export default function App({ lib, fetchMeFn = fetchMe }) {
       )
       break
     default:
-      view = <HomeView onUserFiles={handleUserFiles} roles={roles} authenticated={authenticated} />
+      view = <HomeView onUserFiles={handleUserFiles} roles={roles} authenticated={authenticated} expert={expert} />
   }
 
-  const groups = navGroups({ roles, authenticated })
+  const groups = navGroups({ roles, authenticated, expert })
 
   return (
     <div className={`app${pinned ? ' is-menu-docked' : ''}`}>
@@ -649,7 +671,7 @@ export default function App({ lib, fetchMeFn = fetchMe }) {
           </button>
           <Help
             route={route.name}
-            session={{ roles }}
+            session={{ roles, expert }}
             open={helpOpen}
             onToggle={() => setHelpOpen((v) => !v)}
             onClose={() => setHelpOpen(false)}
@@ -748,6 +770,29 @@ export default function App({ lib, fetchMeFn = fetchMe }) {
                     ))}
                   </div>
                 ))}
+                {/* Mode d'affichage, pour tous (visiteur compris). Un bouton,
+                    pas un lien : basculer ne referme pas le tiroir
+                    (handleNavClick ne réagit qu'aux liens), l'effet se voit
+                    aussitôt. Pas de role=group : le tiroir n'en compte qu'un
+                    par famille. */}
+                <div className="app-nav-mode">
+                  <button
+                    type="button"
+                    role="switch"
+                    className="app-nav-mode-switch"
+                    aria-checked={expert}
+                    aria-describedby="app-nav-mode-hint"
+                    onClick={() => uiMode.setExpert(!expert)}
+                  >
+                    <span className="app-nav-mode-track" aria-hidden="true">
+                      <span className="app-nav-mode-thumb" />
+                    </span>
+                    Mode expert
+                  </button>
+                  <span className="app-nav-mode-hint" id="app-nav-mode-hint">
+                    profils Twin9, versions de prompt, modèles, comparaison, réglages fins
+                  </span>
+                </div>
                 {authenticated ? (
                   <div className="app-nav-logout">
                     {/* D6 : avatar (ou initiales en repli) près de la déconnexion. */}
@@ -775,7 +820,7 @@ export default function App({ lib, fetchMeFn = fetchMe }) {
       </header>
       {/* L'interface de cartographie occupe toute la largeur disponible. */}
       <main className={`app-main${route.name === 'cartographie' || route.name === 'redirect' ? ' app-main--full' : ''}`}>
-        {view}
+        <UiModeContext.Provider value={uiMode}>{view}</UiModeContext.Provider>
       </main>
       <footer className="app-footer">
         <p>

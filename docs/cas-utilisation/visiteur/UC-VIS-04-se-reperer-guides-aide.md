@@ -65,7 +65,10 @@ statique, sans API.
    épinglé par la punaise). Sous 921 px, où le tiroir ne se docke pas, la
    punaise cède la place à la croix « Fermer le menu », qui referme, détache
    et rend le focus au bouton Menu ; au doigt (pointeur grossier), chaque
-   commande de l'en-tête et du tiroir fait au moins 44 px.
+   commande de l'en-tête et du tiroir fait au moins 44 px. Au bas du tiroir,
+   l'interrupteur « Mode expert » règle la densité de l'affichage
+   ([UC-VIS-06](UC-VIS-06-choisir-affichage-simple-expert.md)) ; un visiteur
+   est en mode simple par défaut, ce qui ne change rien à son menu.
 4. Le visiteur survole une entrée du plan du site : l'encart affiche l'aide de
    la rubrique (même contenu que « ? ») ; un premier clic la sélectionne
    (« Cliquez à nouveau… »), un second l'ouvre.
@@ -94,7 +97,13 @@ statique, sans API.
   seule la sous-section change (`#/admin/golden` → `#/admin/reglages`). Les
   trois échelles de « cartographier un texte » portent un badge de valeur
   (« Cartographie ouverte » gratuit, « Cartographier mes écrits » standard,
-  « Analyse approfondie » premium). « Partager ma cartographie » est un alias
+  « Analyse approfondie » premium). « Cartographie ouverte » (Twin6) et
+  « Mes profils Twin9 » (`#/configuration`, après « Analyse approfondie »,
+  depuis le 2026-10-22) ne sont listés qu'en mode expert (UC-VIS-06) : un
+  apprenant seul, en mode simple par défaut, garde l'échelle Essayer →
+  Cartographier mes écrits → Analyse approfondie ; un compte qui porte un
+  rôle de travail est en mode expert par défaut. Le mode ne retire jamais
+  une famille. « Partager ma cartographie » est un alias
   du tableau de bord (`#/espace`, bloc « Mes cartographies », où « Partager
   depuis l'interface » ouvre la cartographie à l'espace Partage de
   l'interface ; précision « version choisie, réservée aux adultes » depuis le
@@ -114,7 +123,10 @@ statique, sans API.
 - **A3 — Aide contextuelle** (étape 5) : le contenu dépend de la route (une
   entrée par rubrique du menu ; repli « Aide » sinon) et du rôle.
 - **A4 — Guides publics** : `#/guides` présente une carte par parcours (9),
-  groupées par famille ; `#/guides/<parcours>` liste ses chapitres ; un
+  en deux groupes (2026-10-22, sprint 1, amélioration 14) : d'abord les
+  parcours de la session — un par rôle détenu (« Vos guides ») ; sans rôle,
+  visiteur, apprenant et employeur (« Pour commencer ») —, puis « Autres
+  parcours » ; dans chaque groupe, les cartes sont rangées par famille ; `#/guides/<parcours>` liste ses chapitres ; un
   chapitre est rendu depuis le Markdown embarqué (md.js puis DOMPurify), avec
   chapitre précédent/suivant et la case « Chapitre terminé ». Pour un
   visiteur, la progression est enregistrée **dans ce navigateur**
@@ -160,6 +172,8 @@ statique, sans API.
   compte (`compteFamily`) ne dépend que du paramètre `authenticated` de
   `navGroups` (par défaut : au moins un rôle) ; le shell le passe toujours,
   vrai dès qu'un utilisateur de session existe, rôle ou non (AN2, corrigée).
+  Le paramètre `expert` (défaut vrai) omet en mode simple les items marqués
+  `expert`, jamais une famille (UC-VIS-06 RG1).
 - **RG3** — La navigation n'est qu'un confort : l'accès est garanti côté
   serveur (garde de rôle des routes API) ; la plupart des vues relisent aussi
   la session (ex. `#/cartographe` : « Cet espace de travail est réservé aux
@@ -174,7 +188,7 @@ statique, sans API.
 |---|---|
 | Rôles de la session | Lus à chaque montage/changement de session, jamais stockés côté client |
 | Progression des guides (visiteur) | `localStorage` du navigateur uniquement |
-| Thème, épinglage du menu | `localStorage` (préférences d'affichage) |
+| Thème, épinglage du menu, mode d'affichage | `localStorage` (préférences d'affichage : `humanome-theme`, `humanome-menu-pinned`, `humanome-mode`, UC-VIS-06) |
 
 ## Code sollicité
 
@@ -184,12 +198,13 @@ statique, sans API.
 | Front | `web/src/App.jsx` — dont `handleNavClick` ; `web/src/main.jsx` (point d'entrée : rendu de `<App/>` seulement) | Shell : session, menu (tiroir, épinglage, fermeture au clic d'un lien), aide, thème, page introuvable |
 | Front | `web/src/api/client.js` — `fetchMe`, `apiFetch` | Sonde de session : `401` → visiteur, autre erreur → `ApiError`, réseau/`file://` → `ApiUnavailableError` (étape 1, E3) |
 | Front | `web/index.html` (script anti-FOUC) | Thème mémorisé appliqué avant le premier affichage (A5, RG5) |
-| Front | `web/src/nav.js` — `FAMILIES`, `navGroups` (et `compteFamily`, interne), `isCurrentItem` | Plan du site par familles : liens, badges, précisions, visibilité par rôle, page courante (RG1, RG2) |
+| Front | `web/src/nav.js` — `FAMILIES`, `navGroups` (et `compteFamily`, interne), `isCurrentItem` | Plan du site par familles : liens, badges, précisions, visibilité par rôle et par mode d'affichage, page courante (RG1, RG2) |
+| Front | `web/src/lib/ui-mode.js` | Mode d'affichage du shell, interrupteur du tiroir (UC-VIS-06) |
 | Front | Vues atteintes depuis le panneau : `web/src/views/EspaceView.jsx` (`espace/DashboardSection.jsx`), `web/src/components/RunWizard.jsx`, `Twin6OuverteView.jsx`, `Twin9View.jsx`, `PromptologueView.jsx`, `Twin9AtelierView.jsx`, `AdminView.jsx` (`admin/GoldenSection.jsx`, `admin/ReglagesSection.jsx`, `admin/ConfigSection.jsx`), `CartographeView.jsx` (`cartographe/ConsistanceSection.jsx`) | Destination de chaque lien des familles de travail (A1) ; leur fonctionnement relève de leurs UC (UC-APP-02, 05, 09, 10 ; UC-PRO-01, 08 ; UC-ADM-02, 03, 04 ; UC-CAR-07) |
 | Front | `web/src/views/HomeView.jsx`, `web/src/components/FamilyTiles.jsx` — `PERSONAS` | Accueil, tuiles, profils, encart d'aide |
 | Front | `web/src/help/Help.jsx`, `web/src/help/registry.js` — `helpFor` | Aide contextuelle |
 | Front | `web/src/lib/theme.js` — `storedTheme`, `resolvedTheme`, `applyTheme`, `subscribeSystemTheme` | Thème (RG5) |
-| Front | `web/src/views/GuidesView.jsx`, `web/src/views/espace/FormationSection.jsx`, `web/src/views/espace/formation-content.js` — `listChapters`, `getChapter`, `rewriteChapterLink`, `guidesBaseHash` | Guides publics |
+| Front | `web/src/views/GuidesView.jsx` — `guidesDeLaSession`, `web/src/views/espace/FormationSection.jsx`, `web/src/views/espace/formation-content.js` — `listChapters`, `getChapter`, `rewriteChapterLink`, `guidesBaseHash` | Guides publics, parcours de la session en tête (A4) |
 | Front | `web/src/lib/training-store.js` — `createTrainingStore` | Progression locale |
 | Front | `web/src/views/ConfidentialiteView.jsx`, `web/src/lib/md.js` — `renderMarkdown` ; `web/src/lib/narrative.js` — `renderNarrativeHtml` | Page confidentialité, chapitres ; assainissement DOMPurify (RG4, ADR-007) |
 | Front | `web/src/views/CartographeView.jsx` | Exemple de garde de vue pour un visiteur (RG3) |
@@ -208,7 +223,7 @@ statique, sans API.
 | UC-VIS-04-U02 | `Users::rolesOf`, `assignRole` | Aucun rôle → liste vide (aucune famille de rôle) ; rôle inconnu refusé | idem |
 | UC-VIS-04-U03 | `parseHash`, `guidesHash` | Routes de repérage, introuvable | `web/test/usecases/unit/uc-vis-04-se-reperer-guides-aide.test.js` |
 | UC-VIS-04-U04 | `navGroups`, `isCurrentItem`, `FAMILIES` | Familles du visiteur, additivité, conjonction, page courante (RG2) | idem |
-| UC-VIS-04-U05 | `helpFor`, `navGroups` | Une entrée d'aide pour chaque rubrique du menu (tous rôles) et pour `configuration` (profils Twin9, sans entrée de menu), repli, astuces cartographe / établissement et priorité cartographe | idem |
+| UC-VIS-04-U05 | `helpFor`, `navGroups` | Une entrée d'aide pour chaque rubrique du menu (tous rôles, dont `configuration`, « Mes profils Twin9 » du mode expert), repli, astuces cartographe / établissement et priorité cartographe | idem |
 | UC-VIS-04-U06 | `PERSONAS` | Profils explorables, employeur sans compte | idem |
 | UC-VIS-04-U07 | `theme.js` | Suivi du système, choix explicite persistant qui prime (RG5) | idem |
 | UC-VIS-04-U08 | `formation-content.js` | Parcours, chapitres ordonnés et titrés, liens réécrits, parcours inconnu | idem |
@@ -216,7 +231,7 @@ statique, sans API.
 | UC-VIS-04-U10 | `createTrainingStore` | **Comportement actuel figé** — anomalie AN1 | idem |
 | UC-VIS-04-U11 | `renderMarkdown` | Page légale : titres, liens de l'app, rien d'exécutable (RG4) | idem |
 | UC-VIS-04-U12 | `fetchMe` | `401` → `{user: null}` ; `500` → `ApiError` ; réseau et `file://` → `ApiUnavailableError` (étape 1, E3) | idem |
-| UC-VIS-04-U13 | `navGroups`, `FAMILIES`, `isCurrentItem`, `parseHash` | Plan du site exhaustif par combinaison de rôles (visiteur ; chaque rôle seul, dont employeur ; admin seul, admin + promptologue, admin + épistémiarque ; cumul) : href, libellé, route/section, badge, précision et visibilité de chaque item, famille du compte selon le seul paramètre `authenticated` (sans rôle mais authentifié → « Mon compte » ; avec rôle mais non authentifié → « Compte ») ; chaque href conduit, par le routeur réel, à la route qui le marque courant ; alias « Partager ma cartographie » jamais courant (RG1, RG2) | idem |
+| UC-VIS-04-U13 | `navGroups`, `FAMILIES`, `isCurrentItem`, `parseHash` | Plan du site exhaustif par combinaison de rôles (visiteur ; chaque rôle seul, dont employeur ; admin seul, admin + promptologue, admin + épistémiarque ; cumul) : href, libellé, route/section, badge, précision et visibilité de chaque item, en mode expert (défaut) et en mode simple (mêmes familles, sans les items `expert`), famille du compte selon le seul paramètre `authenticated` (sans rôle mais authentifié → « Mon compte » ; avec rôle mais non authentifié → « Compte ») ; chaque href conduit, par le routeur réel, à la route qui le marque courant ; alias « Partager ma cartographie » jamais courant (RG1, RG2) | idem |
 
 ### Tests fonctionnels
 
@@ -241,11 +256,12 @@ statique, sans API.
 | UC-VIS-04-F17 | A1 | IHM | Rôle ajouté → famille « Faire évoluer » après l'événement `humanome:auth`, sans recharger | idem |
 | UC-VIS-04-F18 | RG3 | IHM | Visiteur sur `#/cartographe` → « Cet espace de travail est réservé aux cartographes. », aucune donnée demandée | idem |
 | UC-VIS-04-F19 | A1 (anomalie AN2 corrigée) | IHM | Session d'un compte sans rôle → familles « Découvrir » et « Mon compte », identité et « Se déconnecter » dans le menu, accueil « Vos espaces » sans barre des profils | idem |
-| UC-VIS-04-F20 | A1, RG2 | IHM | Compte portant tous les rôles attribuables (employeur compris) : tuiles (href, badge, précision), puis clic depuis le panneau sur « Partager ma cartographie », « Cartographier mes écrits », « Cartographie ouverte », « Analyse approfondie », « Atelier de prompts », « Atelier Twin9 », « Monitoring », « Golden Prompt », « Réglages », « Configuration serveur », « Consistance » → adresse, titre et section de la vue atteinte, session reconnue par la vue, `aria-current` (alias : « Tableau de bord »), menu sans précision, tiroir refermé et focus retiré du lien | idem |
+| UC-VIS-04-F20 | A1, RG2 | IHM | Compte portant tous les rôles attribuables (employeur compris) : tuiles (href, badge, précision), puis clic depuis le panneau sur « Partager ma cartographie », « Cartographier mes écrits », « Cartographie ouverte », « Analyse approfondie », « Mes profils Twin9 » (mode expert par défaut d'un compte de travail), « Atelier de prompts », « Atelier Twin9 », « Monitoring », « Golden Prompt », « Réglages », « Configuration serveur », « Consistance » → adresse, titre et section de la vue atteinte, session reconnue par la vue, `aria-current` (alias : « Tableau de bord »), menu sans précision, tiroir refermé et focus retiré du lien | idem |
+| UC-VIS-04-F21 | A4 | IHM | Hub des guides : un visiteur voit « Pour commencer » (visiteur, apprenant, employeur) puis « Autres parcours » (6 cartes) ; un compte apprenant + cartographe voit « Vos guides » (apprenant, cartographe) puis les 7 autres | idem |
 
 ### Tests existants liés (non-régression)
 
-- `web/src/App.test.jsx` — menu (survol, bord gauche, épinglage, Échap), thème, déconnexion, route introuvable.
+- `web/src/App.test.jsx` — menu (survol, bord gauche, épinglage, Échap), thème, déconnexion, route introuvable, mode simple / expert (UC-VIS-06).
 - `web/src/nav.test.js`, `web/src/help/registry.test.js`, `web/src/help/Help.test.jsx`, `web/src/lib/theme.test.js`, `web/src/anti-fouc.test.js`.
 - `web/src/components/FamilyTiles.test.jsx`, `web/src/views/HomeView.test.jsx`, `web/src/views/GuidesView.test.jsx`, `web/src/views/ConfidentialiteView.test.jsx`, `web/src/lib/training-store.test.js`, `web/src/lib/md.test.js`.
 - `api/tests/AuthRoutesTest.php` (`/auth/me`), `web/e2e/guides-public.e2e.js`, `web/e2e/navigation-burger.e2e.js`.
@@ -267,8 +283,8 @@ cd web && npx vitest run test/usecases/unit/uc-vis-04 test/usecases/functional/u
   fermeture **visuelle** après clic d'un lien n'est couverte par aucun test
   e2e : `web/e2e/navigation-burger.e2e.js` (Playwright, local uniquement) ne
   couvre que le survol, l'épinglage, le tap extérieur et, au doigt, les
-  cibles de 44 px, la croix « Fermer le menu » et la bande des espaces de la
-  cartographie.
+  cibles de 44 px (interrupteur « Mode expert » compris), la croix « Fermer
+  le menu » et la bande des espaces de la cartographie.
 - **Destinations des liens** : F20 vérifie que chaque lien atteint sa vue
   (adresse, titre, section, garde de session levée) avec un réseau réduit à
   la session et à quelques réponses vides ; les autres appels répondent 404

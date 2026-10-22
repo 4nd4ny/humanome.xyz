@@ -166,6 +166,9 @@ test.describe('mobile (tap)', () => {
     expect(closeBox.width).toBeGreaterThanOrEqual(44)
     const link = await page.locator(PANEL).getByRole('link', { name: 'Référentiel', exact: true }).boundingBox()
     expect(link.height).toBeGreaterThanOrEqual(44)
+    // L'interrupteur « Mode expert », au bas du tiroir (UC-VIS-06), a la même cible.
+    const modeSwitch = await page.locator(PANEL).getByRole('switch', { name: 'Mode expert' }).boundingBox()
+    expect(modeSwitch.height).toBeGreaterThanOrEqual(44)
 
     await close.tap()
     await expect.poll(() => panelRightEdge(page)).toBeLessThanOrEqual(1)
@@ -192,7 +195,8 @@ test.describe('mobile (tap)', () => {
     await expect(spaces.getByRole('link', { name: 'Export' })).toBeAttached()
 
     const tops = await spaces.getByRole('link').evaluateAll((links) => links.map((a) => a.getBoundingClientRect().top))
-    expect(tops.length).toBeGreaterThanOrEqual(6)
+    // Visiteur en mode simple (UC-VIS-06) : cinq espaces, « Comparaison » n'est pas listé.
+    expect(tops.length).toBeGreaterThanOrEqual(5)
     expect(new Set(tops).size).toBe(1)
     for (const box of await spaces.getByRole('link').evaluateAll((links) => links.map((a) => a.getBoundingClientRect().height))) {
       expect(box).toBeGreaterThanOrEqual(44)

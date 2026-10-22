@@ -229,6 +229,16 @@ journée (`#/jour/<iso>`, éventuellement `?focus=<code>`).
   rapport évolutif. Sur une feuille antérieure, le détail est celui de la
   **trame** (agrégats cumulés à cette date), pas celui du document final. Une
   journée ouvre directement `#/jour/<date>`, servie depuis la mémoire.
+- **A8 — Mode d'affichage** (2026-10-22,
+  [UC-VIS-06](UC-VIS-06-choisir-affichage-simple-expert.md)) : un visiteur
+  est en mode **simple** par défaut. L'interface de cartographie
+  (`#/cartographie`) n'y liste pas l'espace « Comparaison » (son adresse
+  `#/cartographie/comparaison` reste valide, et son onglet s'affiche tant
+  qu'il est l'espace ouvert), ne propose pas la tuile « Réglages » dans
+  « Panneaux » et, dans l'espace Export, ne propose pas « Préparer une
+  démo » (UC-APP-06 A6). Le Gestionnaire et son point « anomalies à
+  traiter » restent dans les deux modes. « Mode expert », au bas du menu,
+  rend ces éléments aussitôt.
 
 ## Scénarios d'erreur
 
@@ -442,6 +452,7 @@ Préconditions).
 - `web/src/components/{TimelinePlayer,HeatmapCalendar,Sunburst,DetailsPanel,StatBadges}.test.jsx`, `web/src/lib/narrative.test.js`, `web/src/data/load.test.js`, `web/src/router.test.js`, `web/src/App.test.jsx`.
 - `web/src/lib/sunburst/{geometry,build-tree,as-of}.test.js` — primitives de la bibliothèque ; `web/src/lib/sunburst/parity.test.js` — parité octet pour octet des tracés avec le rendu de référence du prototype (`reference/original-render-400x400.json`).
 - `web/e2e/timeline-demo.e2e.js` — voir anomalie AN2.
+- A8 : UC-VIS-06-U05, U06, F01, F03 et F08 (`web/test/usecases/{unit,functional}/uc-vis-06-choisir-affichage-simple-expert.test.jsx`) ; `web/e2e/carto-soleil.e2e.js` et `carto-export.e2e.js` posent le mode expert dans le navigateur (tuile « Réglages », outil d'anonymisation).
 
 ### Exécuter
 

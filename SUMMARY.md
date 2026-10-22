@@ -96,6 +96,7 @@
     * [UC-VIS-03 — Essayer la cartographie en direct, sans compte](docs/cas-utilisation/visiteur/UC-VIS-03-essayer-cartographie-en-direct.md)
     * [UC-VIS-04 — Se repérer : accueil, navigation, guides, aide, confidentialité](docs/cas-utilisation/visiteur/UC-VIS-04-se-reperer-guides-aide.md)
     * [UC-VIS-05 — Interroger l'assistant tuteur](docs/cas-utilisation/visiteur/UC-VIS-05-interroger-assistant-tuteur.md)
+    * [UC-VIS-06 — Choisir l'affichage simple ou expert](docs/cas-utilisation/visiteur/UC-VIS-06-choisir-affichage-simple-expert.md)
   * Compte
     * [UC-CPT-01 — Créer un compte et l'activer par code email](docs/cas-utilisation/compte/UC-CPT-01-creer-activer-compte.md)
     * [UC-CPT-02 — Se connecter et se déconnecter](docs/cas-utilisation/compte/UC-CPT-02-se-connecter-deconnecter.md)

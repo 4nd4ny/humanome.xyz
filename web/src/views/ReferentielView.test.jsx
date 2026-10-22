@@ -251,4 +251,46 @@ describe('ReferentielView', () => {
     await waitFor(() => expect(replaceHash).toHaveBeenCalledWith('#/referentiel?id=fictif-humanome'))
     expect(replaceHash).toHaveBeenCalledTimes(1)
   })
+
+  it('UC-VIS-02-U17 — au clavier, un choix du menu ne s’affiche qu’à sa validation (Entrée, la sortie du menu, un instant sans touche) ; au pointeur, aussitôt', async () => {
+    const lister = async () => [
+      { id: 'respire', label: 'RESPIRE v7.1.0', source: null, versions: [{ semver: '7.1.0', label: 'RESPIRE v7.1.0' }] },
+      { id: humanome.id, label: humanome.label, source: null, versions: [{ semver: humanome.version, label: humanome.label }] },
+      { id: 'autre', label: 'Autre', source: null, versions: [{ semver: '1.0.0', label: 'Autre' }] },
+    ]
+    const replaceHash = vi.fn()
+    render(<ReferentielView load={load} list={lister} replaceHash={replaceHash} delaiClavier={50} />)
+    const menu = await screen.findByRole('combobox', { name: 'Référentiel' })
+    const auClavier = (touche, valeur) => {
+      fireEvent.keyDown(menu, { key: touche })
+      fireEvent.change(menu, { target: { value: valeur } }) // Chrome et Firefox sous Windows : un « change » par flèche
+    }
+
+    // les flèches parcourent les options : rien ne se charge, le menu montre l'option parcourue
+    auClavier('ArrowDown', `${humanome.id}@${humanome.version}`)
+    auClavier('ArrowDown', 'autre@1.0.0')
+    expect(replaceHash).not.toHaveBeenCalled()
+    expect(menu.value).toBe('autre@1.0.0')
+    // Entrée valide l'option parcourue
+    fireEvent.keyDown(menu, { key: 'Enter' })
+    expect(replaceHash.mock.calls).toEqual([['#/referentiel?id=autre']])
+
+    // quitter le menu valide aussi
+    auClavier('ArrowUp', `${humanome.id}@${humanome.version}`)
+    expect(replaceHash).toHaveBeenCalledTimes(1)
+    fireEvent.focusOut(menu)
+    expect(replaceHash).toHaveBeenLastCalledWith('#/referentiel?id=fictif-humanome')
+
+    // un instant sans autre touche aussi (sous macOS, Entrée choisit dans la liste déroulante, hors de la page)
+    auClavier('ArrowDown', 'autre@1.0.0')
+    expect(replaceHash).toHaveBeenCalledTimes(2)
+    await waitFor(() => expect(replaceHash).toHaveBeenCalledTimes(3))
+    expect(replaceHash).toHaveBeenLastCalledWith('#/referentiel?id=autre')
+
+    // au pointeur, le choix s'affiche aussitôt
+    fireEvent.mouseDown(menu)
+    fireEvent.change(menu, { target: { value: `${humanome.id}@${humanome.version}` } })
+    expect(replaceHash).toHaveBeenCalledTimes(4)
+    expect(replaceHash).toHaveBeenLastCalledWith('#/referentiel?id=fictif-humanome')
+  })
 })

@@ -9,6 +9,16 @@ import { referentielHash } from '../router.js'
 const remplacerAdresse = (hash) => window.location.replace(hash)
 
 /**
+ * Au clavier, le délai sans autre touche (ms) après lequel l'option parcourue
+ * s'affiche, faute d'Entrée ou de sortie du menu (sous macOS, Entrée choisit
+ * dans la liste déroulante, hors de la page).
+ */
+const DELAI_CLAVIER = 1000
+
+/** Les touches qui ne parcourent pas les options du menu. */
+const TOUCHES_NEUTRES = new Set(['Enter', 'Tab', 'Escape', 'Shift', 'Control', 'Alt', 'Meta'])
+
+/**
  * Référentiel public (P4.4, cahier §4.1/§3.5) : arbre pôles -> compétences
  * de la version publiée, tels qu'elle les déclare, aux couleurs des pôles,
  * recherche plein-texte client (code, nom et définition, insensible aux
@@ -19,7 +29,12 @@ const remplacerAdresse = (hash) => window.location.replace(hash)
  * Tout référentiel publié (S5, lot E) : le menu « Référentiel »
  * (ReferentielChoice) les propose, chacun à sa dernière version, RESPIRE par
  * défaut ; l'adresse nomme un autre par `?id=<id>` (lien profond, permaliens
- * compris), et le menu la remplace. Un référentiel se lit comme dans les
+ * compris), et le menu la remplace. Au pointeur, le choix s'affiche aussitôt ;
+ * au clavier, où les flèches d'un menu fermé changent l'option (Chrome et
+ * Firefox sous Windows : un « change » par flèche), l'option parcourue ne
+ * s'affiche qu'à sa validation — Entrée, la sortie du menu, ou un instant
+ * sans autre touche (DELAI_CLAVIER) —, pas à chaque flèche (WCAG 3.2.2).
+ * Un référentiel se lit comme dans les
  * parcours (data/referentiel.js, `{id}`) : la base par l'API publique
  * d'abord, l'export statique en repli, RESPIRE embarqué en dernier. Un
  * identifiant qui ne se charge pas est dit, et RESPIRE s'affiche à sa place ;
@@ -31,7 +46,8 @@ const remplacerAdresse = (hash) => window.location.replace(hash)
  *
  * @param {{focusCode?: string | null, referentielId?: string | null,
  *   load?: typeof loadPublishedReferentiel, list?: typeof listPublishedReferentiels,
- *   replaceHash?: (hash: string) => void}} props `load`, `list` et `replaceHash` sont des coutures de test.
+ *   replaceHash?: (hash: string) => void, delaiClavier?: number}} props `load`, `list`,
+ *   `replaceHash` et `delaiClavier` sont des coutures de test.
  */
 export default function ReferentielView({
   focusCode = null,
@@ -39,6 +55,7 @@ export default function ReferentielView({
   load = loadPublishedReferentiel,
   list = listPublishedReferentiels,
   replaceHash = remplacerAdresse,
+  delaiClavier = DELAI_CLAVIER,
 }) {
   // Le référentiel demandé par l'adresse ; null : RESPIRE, le défaut.
   const choix = referentielId && referentielId !== RESPIRE ? referentielId : null
@@ -82,6 +99,42 @@ export default function ReferentielView({
     },
     [choix, replaceHash],
   )
+
+  // Le choix du menu pas encore affiché (au clavier, en attente de validation ;
+  // sinon, le temps que l'adresse change) : le menu le montre.
+  const [enAttente, setEnAttente] = useState(null)
+  const enAttenteRef = useRef(null)
+  const clavier = useRef(false) // la dernière interaction avec le menu : une touche, ou le pointeur
+  const minuterie = useRef(null)
+  useEffect(() => {
+    enAttenteRef.current = null
+    setEnAttente(null)
+  }, [choix, essai])
+  useEffect(() => () => clearTimeout(minuterie.current), [])
+
+  // Affiche le choix en attente, une fois (la sortie du menu qui suit n'y revient pas).
+  const valider = useCallback(() => {
+    clearTimeout(minuterie.current)
+    const referentiel = enAttenteRef.current
+    enAttenteRef.current = null
+    if (referentiel !== null) choisir(referentiel)
+  }, [choisir])
+
+  const surChoix = useCallback(
+    (referentiel) => {
+      enAttenteRef.current = referentiel
+      setEnAttente(referentiel)
+      clearTimeout(minuterie.current)
+      if (clavier.current) minuterie.current = setTimeout(valider, delaiClavier)
+      else valider()
+    },
+    [valider, delaiClavier],
+  )
+
+  const surTouche = (event) => {
+    if (event.key === 'Enter') valider()
+    else if (!TOUCHES_NEUTRES.has(event.key)) clavier.current = true
+  }
 
   const doc = data?.doc ?? null
   // Le document affiché est-il celui que demande l'adresse ? Sinon, le
@@ -134,11 +187,18 @@ export default function ReferentielView({
     <div className="referentiel" aria-busy={aJour ? undefined : 'true'}>
       <header className="ref-header">
         <h1>Référentiel de compétences</h1>
-        <div className="ref-choice">
+        <div
+          className="ref-choice"
+          onKeyDown={surTouche}
+          onMouseDown={() => {
+            clavier.current = false
+          }}
+          onBlur={valider}
+        >
           <ReferentielChoice
-            // le référentiel affiché : RESPIRE (null) à la place d'un introuvable
-            value={choix && !introuvable ? { id: choix } : null}
-            onChange={choisir}
+            // le choix en attente, sinon le référentiel affiché : RESPIRE (null) à la place d'un introuvable
+            value={enAttente ?? (choix && !introuvable ? { id: choix } : null)}
+            onChange={surChoix}
             list={list}
             provenance={false}
           />

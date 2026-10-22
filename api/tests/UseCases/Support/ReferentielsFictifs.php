@@ -7,7 +7,10 @@ namespace Humanome\Tests\UseCases\Support;
 /**
  * Two FICTIONAL referentials of other structures than RESPIRE's (T15, UC-EPI-05):
  * nothing of a real referential enters the repository, the Humanome V18
- * included, which enters by the épistémiarques' atelier.
+ * included: it enters a database from its YAML, kept outside the repository,
+ * by the épistémiarques' atelier or by the seed (scripts/convertir-humanome.mjs
+ * then scripts/amorcer-referentiel.php, S5; its fixture is fictional too,
+ * schemas/fixtures/referentiel-humanome-fictif.yaml).
  *
  *  - lettre(): the shape of the Humanome V18 — five lettered poles A to E,
  *    four capacities each (A1 to E4), two facets under each (A1.1, A1.2),

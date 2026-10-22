@@ -126,7 +126,8 @@ Ordre réel, reconstitué d'`INSTALL.md` §2 et §6, du `prebuild` de
    paquet Twin6 ne dépendent donc plus d'un build du front antérieur) et
    `build-twin6-prompt-package.mjs` (paquets publiés `twin6-ouverte` 1.0.0 et
    1.1.0, RG6),
-   et enfin `composer`.
+   puis `composer`, et enfin le contrôle « pas de Python » : un `.py` ou un
+   `.pyc` dans la release la fait refuser (UC-SYS-02 E13).
 8. **Consommation.** `node scripts/deploy/deploy.mjs api` importe
    `respire-v7.json`, `respire-v7.1.0.json` (s'il existe) et
    `build/prompt-packages/*.json` (UC-SYS-02 étapes 5 et 8).
@@ -443,7 +444,9 @@ cd engine && npx vitest run test/usecases/unit/uc-sys-04-construire-artefacts-de
   constatée en appelant `exportArchive` avec un référentiel 7.1.0 injecté ; elle
   n'est figée ici qu'au niveau du moteur (F06), le front relevant d'UC-APP-06.
 - L'exécution complète de `stage-api.sh` (`composer`) n'est pas rejouée :
-  seul son ordre est vérifié (U06) ; sa conséquence d'AN-4 (paquet Twin6 non
+  seul son ordre est vérifié (U06). UC-SYS-02-F26 l'exécute sur une copie,
+  avec de faux `node`, `composer` et `git`, pour son contrôle final « pas de
+  Python » (UC-SYS-02 E13) ; sa conséquence d'AN-4 (paquet Twin6 non
   régénéré) est déduite du comportement de `build-twin6-prompt-package.mjs`
   figé par F16. `validate-corpus.mjs` enregistre encore un
   hook de chargement des `.json` devenu sans objet depuis les validateurs

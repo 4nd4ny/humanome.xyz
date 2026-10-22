@@ -174,7 +174,7 @@ l'application (`web/src/App.jsx`).
 
 - `web/src/lib/ui-mode.test.js` — lecture, écriture, défaut, résolution, contexte.
 - `web/src/nav.test.js` (bloc « mode simple / expert »), `web/src/help/registry.test.js` (bloc « mode simple »), `web/src/App.test.jsx` (bloc « mode simple / expert » : interrupteur, persistance, défaut selon le rôle, choix stocké, lien direct).
-- `web/src/components/RunWizard.test.jsx`, `web/src/views/Twin6OuverteView.test.jsx` (blocs « mode simple ») ; UC-APP-02-F27, UC-APP-09-F32, UC-APP-06-F18.
+- `web/src/components/RunWizard.test.jsx`, `web/src/views/Twin6OuverteView.test.jsx` (blocs « mode simple ») ; UC-APP-02-F29, UC-APP-09-F32, UC-APP-06-F18.
 - UC-VIS-04-U13 (plan du site exhaustif dans les deux modes), UC-VIS-04-F20 (« Mes profils Twin9 » d'un compte de travail).
 - `web/e2e/navigation-burger.e2e.js` (cible de 44 px de l'interrupteur au doigt), `web/e2e/parcours-apprenant.e2e.js` (étape « Référentiel » du mode simple) ; `carto-export.e2e.js` et `carto-soleil.e2e.js` posent le mode expert.
 

@@ -174,6 +174,29 @@ export function referentielsPublies(referentiels) {
 }
 
 /**
+ * Routes de l'API publique des référentiels publiés en base (S5) : le
+ * catalogue, rangé par identifiant comme la base le rend, et une route par
+ * version publiée.
+ *
+ * @param {Array<object>} referentiels documents publiés
+ */
+export function referentielsEnBase(referentiels) {
+  const parId = new Map()
+  for (const r of referentiels) parId.set(r.id, [...(parId.get(r.id) ?? []), r])
+  const routes = {
+    'GET referentiels': jsonResponse(
+      200,
+      [...parId.keys()].sort().map((id) => {
+        const versions = parId.get(id)
+        return { id, label: versions[0].label, versions: versions.map((r) => r.version) }
+      }),
+    ),
+  }
+  for (const r of referentiels) routes[`GET referentiels/${r.id}/versions/${r.version}`] = jsonResponse(200, r)
+  return routes
+}
+
+/**
  * Sortie `carto_pole` FICTIVE du pôle N : la compétence N.01 attestée par une
  * trace concrète sur la feuille `feuille`.
  */

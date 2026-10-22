@@ -1,0 +1,91 @@
+{
+  "schemaVersion": "2.1.0",
+  "kind": "referentiel",
+  "id": "fictif-humanome",
+  "version": "2.0.0-proposition.1",
+  "label": "Fictif V2",
+  "contentHash": "24f7e975664673d9709769661763ecdddca19b2c716ba895f73be2f40435799f",
+  "source": "« Référentiel Fictif V2 » 2.0.0-proposition.1 du 2026-01-15, https://example.invalid/referentiel-humanome-fictif.yaml. Converti depuis referentiel-humanome-fictif.yaml (sha256 47810adcb5bc7214f1faa01b0dd7d0df3879baed58a8ce6fa7966f03276efa6e) par scripts/convertir-humanome.mjs 1.0.0, niveau facette. Licence : CC-BY-SA Éditeur fictif.",
+  "niveaux": [
+    {
+      "nom": "facette",
+      "motif": "[A-B][1-2]\\.[1-9]"
+    }
+  ],
+  "poles": [
+    {
+      "num": 1,
+      "nom": "A · Observer le fictif",
+      "couleur": "#2563eb",
+      "description": "Ce que cherche le pôle fictif A."
+    },
+    {
+      "num": 2,
+      "nom": "B · Agir dans le fictif",
+      "couleur": "#10b981",
+      "description": "Ce que cherche le pôle fictif B."
+    }
+  ],
+  "competences": [
+    {
+      "code": "A1.1",
+      "nom": "Facette fictive A1.1",
+      "pole": 1,
+      "description": "Description fictive de A1.1.\n\n**Manifestations** :\n\n- Manifestation fictive A1.1 a.\n- Manifestation fictive A1.1 b.\n\n**Faux positif** : Faux positif fictif de A1.1."
+    },
+    {
+      "code": "A1.2",
+      "nom": "Facette fictive A1.2",
+      "pole": 1,
+      "description": "Description fictive de A1.2.\n\n**Manifestations** :\n\n- Manifestation fictive A1.2.\n\n**Faux positif** : Faux positif fictif de A1.2."
+    },
+    {
+      "code": "A1.3",
+      "nom": "Facette fictive A1.3",
+      "pole": 1,
+      "description": "Description fictive de A1.3.\n\n**Manifestations** :\n\n- Manifestation fictive A1.3.\n\n**Faux positif** : Faux positif fictif de A1.3."
+    },
+    {
+      "code": "A2.1",
+      "nom": "Facette fictive A2.1",
+      "pole": 1,
+      "description": "Description fictive de A2.1.\n\n**Manifestations** :\n\n- Manifestation fictive A2.1.\n\n**Faux positif** : Faux positif fictif de A2.1."
+    },
+    {
+      "code": "A2.2",
+      "nom": "Facette fictive A2.2",
+      "pole": 1,
+      "description": "Description fictive de A2.2.\n\n**Manifestations** :\n\n- Manifestation fictive A2.2.\n\n**Faux positif** : Faux positif fictif de A2.2."
+    },
+    {
+      "code": "A2.3",
+      "nom": "Facette fictive A2.3",
+      "pole": 1,
+      "description": "Description fictive de A2.3.\n\n**Manifestations** :\n\n- Manifestation fictive A2.3.\n\n**Faux positif** : Faux positif fictif de A2.3."
+    },
+    {
+      "code": "A2.4",
+      "nom": "Facette fictive A2.4",
+      "pole": 1,
+      "description": "Description fictive de A2.4.\n\n**Manifestations** :\n\n- Manifestation fictive A2.4.\n\n**Faux positif** : Faux positif fictif de A2.4."
+    },
+    {
+      "code": "B1.1",
+      "nom": "Facette fictive B1.1",
+      "pole": 2,
+      "description": "Description fictive de B1.1.\n\n**Manifestations** :\n\n- Manifestation fictive B1.1.\n\n**Faux positif** : Faux positif fictif de B1.1."
+    },
+    {
+      "code": "B1.2",
+      "nom": "Facette fictive B1.2",
+      "pole": 2,
+      "description": "Description fictive de B1.2.\n\n**Manifestations** :\n\n- Manifestation fictive B1.2.\n\n**Faux positif** : Faux positif fictif de B1.2."
+    },
+    {
+      "code": "B1.3",
+      "nom": "Facette fictive B1.3",
+      "pole": 2,
+      "description": "Description fictive de B1.3.\n\n**Manifestations** :\n\n- Manifestation fictive B1.3.\n\n**Faux positif** : Faux positif fictif de B1.3."
+    }
+  ]
+}

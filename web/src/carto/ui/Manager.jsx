@@ -529,8 +529,8 @@ export const SOURCE_LABELS = {
   'merge-v2': 'Merge v2',
   'site-merge': 'fusion du site',
   'v3-master': 'master V3',
-  twin9: 'Twin9',
   archive: 'archive',
+  twin9: 'Twin9 (serveur)',
 }
 
 function ArbitrationSection({ days, update }) {

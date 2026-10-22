@@ -255,7 +255,7 @@ describe('UC-ETA-03 — CohorteSection rendue isolément', () => {
     expect(select.value).toBe('respire@7.0.0')
     let block = await estimateCost()
     expect(block.textContent).toContain('40 appels LLM') // 5 journées × (7 pôles + kairos)
-    expect(getReferentiel).toHaveBeenLastCalledWith(undefined) // le défaut : la dernière version publiée de RESPIRE
+    expect(getReferentiel).toHaveBeenLastCalledWith({ id: 'respire' }) // le défaut : la dernière version publiée de RESPIRE (la base d'abord, S5)
 
     // Autre référentiel : l'estimation affichée ne vaut plus, puis se recalcule à ses pôles.
     fireEvent.change(select, { target: { value: 'fictif-neuf@1.0.0' } })

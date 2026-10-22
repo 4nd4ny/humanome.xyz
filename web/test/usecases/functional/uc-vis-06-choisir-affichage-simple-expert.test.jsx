@@ -202,7 +202,7 @@ describe('UC-VIS-06 — règles de gestion', () => {
     expect(await screen.findByText(/pour régler vos runs Twin9/)).toBeDefined()
   })
 
-  // Le choix du référentiel en mode simple est rejoué par UC-APP-02-F27 et UC-APP-09-F32 ;
+  // Le choix du référentiel en mode simple est rejoué par UC-APP-02-F29 et UC-APP-09-F32 ;
   // le point d'anomalies du Gestionnaire, par UC-VIS-06-U05.
   it('UC-VIS-06-F08 — RG2 : en mode simple, le Gestionnaire reste ; « Réglages » n’est pas proposé dans « Panneaux », et revient au passage en mode expert', async () => {
     demoNetwork()

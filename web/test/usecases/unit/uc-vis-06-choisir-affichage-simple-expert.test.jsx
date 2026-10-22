@@ -8,7 +8,7 @@
 // « Réglages », Gestionnaire et son point) et espace Export (« Préparer une
 // démo »). L'assistant standard et Twin6 sont couverts par leurs tests de
 // composant (RunWizard.test.jsx, Twin6OuverteView.test.jsx) et par
-// UC-APP-02-F27 et UC-APP-09-F32.
+// UC-APP-02-F29 et UC-APP-09-F32.
 import { useEffect, useState } from 'react'
 import { afterEach, beforeEach, describe, expect, it } from 'vitest'
 import { act, cleanup, fireEvent, render, screen, waitFor, within } from '@testing-library/react'

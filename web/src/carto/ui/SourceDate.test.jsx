@@ -288,7 +288,7 @@ describe('sprint 4 — trois messages pour une journée qui ne contribue pas (C7
 describe('sprint 4 — libellés de provenance (C10, C11)', () => {
   it('« run du X » : la date du run, pas celle de la journée ; Twin9 nommé', () => {
     const v = { verdicts: [{}, {}], provenance: { source: 'twin9', run: 'twin9:7', analysedAt: '2026-02-11T08:00:00Z' } }
-    expect(provenanceLabel(v)).toBe('Twin9 — twin9:7 — run du 2026-02-11 — 2 verdicts')
-    expect(SOURCE_LABELS.twin9).toBe('Twin9')
+    expect(provenanceLabel(v)).toBe('Twin9 (serveur) — twin9:7 — run du 2026-02-11 — 2 verdicts')
+    expect(SOURCE_LABELS.twin9).toBe('Twin9 (serveur)')
   })
 })

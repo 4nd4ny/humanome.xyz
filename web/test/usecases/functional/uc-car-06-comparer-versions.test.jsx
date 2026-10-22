@@ -103,9 +103,10 @@ describe('UC-CAR-06 — comparer deux cartographies d’un même apprenant', () 
     expect(net.called('GET api/cartographe/cartographies/21').length).toBeGreaterThan(0)
     expect(net.called('GET api/cartographe/cartographies/22').length).toBeGreaterThan(0)
     expect(net.called('GET api/cartographe/cartographies/23')).toHaveLength(0) // Noé : jamais chargé
-    // RG4 : uniquement des lectures — session, référentiel publié, file, les deux documents.
+    // RG4 : uniquement des lectures — session, référentiel publié (l'API publique
+    // d'abord, l'export statique en repli, S5), file, les deux documents.
     expect(net.calls.every((call) => call.key.startsWith('GET '))).toBe(true)
-    const allowed = /^GET (api\/auth\/me|api\/cartographe\/cartographies(\/2[12])?|data\/referentiel\/.+)$/
+    const allowed = /^GET (api\/auth\/me|api\/cartographe\/cartographies(\/2[12])?|api\/referentiels(\/.+)?|data\/referentiel\/.+)$/
     expect(net.calls.filter((call) => !allowed.test(call.key))).toEqual([])
 
     // 4. Tableau : résumé, ligne surlignée, cellules divergentes.

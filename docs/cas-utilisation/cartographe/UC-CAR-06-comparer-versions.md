@@ -37,7 +37,8 @@ Le cartographe ouvre `#/cartographe/comparer` (menu « Comparer », ou lien
   compte les divergences.
 - Rien n'est écrit : la comparaison est calculée dans le navigateur ; seules
   des lectures `GET` sont émises (session `api/auth/me`, référentiels publiés
-  statiques `data/referentiel/…`, file et deux documents).
+  — la base par `api/referentiels…`, S5, à défaut les fichiers statiques
+  `data/referentiel/…` —, file et deux documents).
 
 ## Garanties minimales (en cas d'échec)
 

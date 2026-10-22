@@ -16,8 +16,9 @@ approuvée : l'**entériner** (la version de compétence devient la version en
 vigueur, immuable), puis, quand une ou plusieurs évolutions sont entérinées,
 **couper une release** du référentiel — un document complet, immuable,
 servi aussitôt par l'API — assemblé à partir des compétences publiées, sans
-second vote. Les runs de masse (UC-ETA-03) l'épinglent aussitôt ; les
-cartographies standard (UC-APP-02) et la page publique ne la voient qu'après
+second vote. Les runs de masse (UC-ETA-03) l'épinglent aussitôt ; depuis S5
+(2026-10-22), les cartographies standard (UC-APP-02) et ouvertes (UC-APP-09)
+aussi, leurs menus lisant la base ; seule la page publique ne la voit qu'après
 ré-export statique et redéploiement (L1).
 
 ## Déclencheur
@@ -87,10 +88,13 @@ affiche « Majorité atteinte : la compétence peut être entérinée. »
 7. Le site affiche « Release 7.1.0 publiée (snapshot du référentiel). ». La
    release est aussitôt la dernière version servie par l'API
    (`GET /api/referentiel`) et épinglée par les nouveaux runs de masse
-   (UC-ETA-03, `etablissement.php` lit `latestPublished`) ; les cartographies
-   standard (`RunWizard`, UC-APP-02) et les vues cartographe lisent l'export
-   statique `data/referentiel/index.json` et ne la voient qu'après ré-export et
-   redéploiement (L1). `GET /api/referentiel/diff/{de}/{à}` la compare aux
+   (UC-ETA-03, `etablissement.php` lit `latestPublished`) ; depuis S5
+   (2026-10-22), les cartographies standard (`RunWizard`, UC-APP-02) et
+   ouvertes (UC-APP-09), l'estimation des runs de masse et les vues
+   cartographe la lisent aussi dans la base (`GET /api/referentiels`,
+   `GET /api/referentiels/respire/versions/{semver}`), l'export statique
+   `data/referentiel/index.json` n'étant plus que leur repli ; seule la page
+   publique attend le ré-export et le redéploiement (L1). `GET /api/referentiel/diff/{de}/{à}` la compare aux
    précédentes.
 8. **Propagation (exploitation)** — la page publique `#/referentiel` lit des
    fichiers statiques : `php scripts/export-referentiel-static.php [dossier]`
@@ -233,7 +237,7 @@ affiche « Majorité atteinte : la compétence peut être entérinée. »
 | UC-EPI-03-U09 | `StaticExporter::export` | Release exportée en dossier temporaire, valide au schéma, définition entérinée, index le plus récent d'abord | idem |
 | UC-EPI-03-U10 | `FicheGenerator` | `poleFiches` (RG7), `corpus`, `fichesStructure` complet (pôles, en-têtes, `fiche_md` par code) depuis les versions en vigueur ; fiche au vote non propagée | idem |
 | UC-EPI-03-U11 | `createCompetenceApi` | `publishDraft` et `cutRelease` : routes et corps | `web/test/usecases/unit/uc-epi-03-enteriner-publier.test.jsx` |
-| UC-EPI-03-U12 | `CutReleaseCard` (vue isolée) | Bouton inactif sans version, semver rognée, libellé par défaut, succès puis 409 affichés ; texte « immédiatement épinglable par les cartographies » (AN3, figé) | idem |
+| UC-EPI-03-U12 | `CutReleaseCard` (vue isolée) | Bouton inactif sans version, semver rognée, libellé par défaut, succès puis 409 affichés ; texte « immédiatement épinglable par les cartographies » (AN3, corrigée en S5 : le texte dit vrai) | idem |
 | UC-EPI-03-U13 | Section Décision (vue isolée) | Note par défaut / rognée, retour à l'atelier | idem |
 | UC-EPI-03-U14 | Section Décision (vue isolée) | Refus 409 : message, on reste, bouton réactivé | idem |
 | UC-EPI-03-U15 | `CompetenceSeeder::seed` | Re-seed idempotent après une définition entérinée ; après un renommage entériné, `RuntimeException` « Gate de parité ÉCHOUÉ » (AN2, figé) | `api/tests/UseCases/Unit/UcEpi03EnterinerPublierTest.php` |
@@ -300,8 +304,11 @@ cd web && npx vitest run test/usecases/unit/uc-epi-03 test/usecases/functional/u
 - **AN3 — Texte trompeur de la carte « Publier une version du
   référentiel ».** Elle annonce un snapshot « immédiatement épinglable par
   les cartographies », alors que seules les cartographies de masse
-  (UC-ETA-03) épinglent la version servie par l'API ; la cartographie
-  standard lit l'export statique (L1). Figé par UC-EPI-03-U12.
+  (UC-ETA-03) épinglaient la version servie par l'API ; la cartographie
+  standard lisait l'export statique (L1). **Corrigée le 2026-10-22** (S5) :
+  les menus des cartographies standard, ouvertes et de masse lisent la base
+  (`GET /api/referentiels`), et la release y est épinglable dès qu'elle est
+  coupée ; le texte, que fige toujours UC-EPI-03-U12, dit désormais vrai.
 
 ## Limites
 
@@ -311,11 +318,11 @@ cd web && npx vitest run test/usecases/unit/uc-epi-03 test/usecases/functional/u
   d'export, et le déploiement pousse les fichiers locaux vers la production
   (pas l'inverse). Une release coupée dans l'atelier de production n'a donc
   pas de chemin outillé vers la page publique ; elle est en revanche servie
-  aussitôt par l'API (`GET /api/referentiel`) et épinglée par les runs de
-  masse (UC-ETA-03). Les cartographies standard (`RunWizard` →
-  `loadPublishedReferentiel`, UC-APP-02) lisent le même export statique : elles
-  n'épinglent la release qu'après ré-export et redéploiement, contrairement à
-  ce qu'annonce la carte de l'atelier (AN3).
+  aussitôt par l'API (`GET /api/referentiel`, `GET /api/referentiels`) et
+  épinglée par les runs de masse (UC-ETA-03) et, depuis S5 (2026-10-22), par
+  les cartographies standard et ouvertes (`RunWizard`, `Twin6OuverteView` →
+  `loadPublishedReferentiel({id})`, UC-APP-02, UC-APP-09), qui lisent la base
+  d'abord et l'export statique seulement en repli.
 - **L2** — Le modèle atomique ne connaît que RESPIRE et sa structure semée
   (7 pôles, 61 compétences) : aucune route ne crée, ne retire ni ne déplace
   une compétence atomique, ni un pôle. Une version de RESPIRE d'une autre

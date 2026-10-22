@@ -9,7 +9,12 @@
 // (fetchFn, store, pause) : Lancer (journées à instruire), Apercu (admission,
 // refus) et PageDuRun (reprise après un arrêt par un plafond). Les runs
 // tournent sur le serveur (ADR-011) : le front ne fait que les lancer, les
-// suivre et les lire.
+// suivre et les lire. Depuis P0-1 : la configuration et l'exécution du run
+// (VueConfiguration, pour son propriétaire et pour un cartographe lié) et
+// ce que l'importeur du run en garde dans le jeu (liste blanche).
+import { readFileSync } from 'node:fs'
+import { dirname, resolve } from 'node:path'
+import { fileURLToPath } from 'node:url'
 import { afterEach, describe, expect, it, vi } from 'vitest'
 import { cleanup, fireEvent, render, screen, waitFor, within } from '@testing-library/react'
 import { parseHash } from '../../../src/router.js'
@@ -30,7 +35,11 @@ import {
 import { twin9RunFiles } from '../../../src/lib/interface-handoff.js'
 import { createMemoryAdapter, createPortfolioStore } from '../../../src/lib/portfolio-store.js'
 import Twin9View from '../../../src/views/Twin9View.jsx'
+import { ETAPES_DU_MOTEUR, VueConfiguration } from '../../../src/views/twin9/ConfigurationDuRun.jsx'
+import { importTwin9Run } from '../../../src/carto/core/importers/twin9-run.js'
 import { jsonResponse } from '../support/twin.js'
+// un run configuré, tel que ses résultats le rendent à son propriétaire (P0-1) : valeurs inventées
+import exemple from '../../../../schemas/fixtures/twin9-configuration-exemple.json'
 
 afterEach(() => {
   cleanup()
@@ -348,5 +357,121 @@ describe('UC-APP-10 — Twin9View : la page d’un run arrêté', () => {
     expect(screen.queryByLabelText(/Nouveau budget/)).toBeNull()
     fireEvent.click(screen.getByRole('button', { name: 'Reprendre' }))
     await waitFor(() => expect(corps).toEqual([undefined]))
+  })
+})
+
+// P0-1 (docs/contrats.md §8.9) : ce avec quoi un run a été lancé, et comment il s'est déroulé.
+describe('UC-APP-10 — la configuration et l’exécution d’un run (P0-1)', () => {
+  /** Ce qu'un cartographe lié en lit (RunConfiguration::pourCartographe, RunExecution::pourCartographe). */
+  function pourCartographe() {
+    const configuration = structuredClone(exemple.run.configuration)
+    delete configuration.prix
+    delete configuration.execution_prevue.plafonds
+    delete configuration.execution_prevue.cle
+    const execution = structuredClone(exemple.run.execution)
+    delete execution.cout_microusd
+    for (const table of ['par_voie', 'par_fournisseur', 'par_modele']) for (const c of Object.values(execution[table])) delete c.cout_microusd
+    for (const r of execution.reprises) delete r.budget_usd
+    return { configuration, execution }
+  }
+  const termes = (racine, selecteur) => [...racine.querySelectorAll(selecteur)].map((x) => x.textContent)
+
+  it('UC-APP-10-U14 — VueConfiguration : chaque rôle avec son fournisseur et son étiquette RGPD, sa voie, son modèle, son budget de sortie ; jeu, référentiel, clé ; appels, pannes et sorties tronquées par fournisseur et par voie, passes, coût — sans clé ni coût pour un cartographe lié', () => {
+    const { container } = render(<VueConfiguration configuration={exemple.run.configuration} execution={exemple.run.execution} />)
+    expect(termes(container, 'dl:first-of-type > dt')).toEqual(['Empreinte', 'Lancé le', 'Fournisseurs', 'Jeu de gabarits', 'Référentiel', 'Clé'])
+    expect(container.querySelector('tr[data-role="etapes/greffier"]').textContent).toBe('GreffierAnthropic RGPD : sous conditionspar lotsclaude-exemple-rapide2000')
+    // tous les rôles : 3 étages, les étapes et le second ressort de la configuration, chaque lecteur du collège
+    const appels = exemple.run.configuration.appels
+    expect(container.querySelectorAll('tr[data-role]')).toHaveLength(['etages', 'etapes', 'second_ressort', 'lecteurs'].reduce((n, g) => n + Object.keys(appels[g]).length, 0))
+    expect(termes(container, 'dl:last-of-type > dt')).toEqual(['Appels', 'Passes du moteur', 'Lots', 'Coût'])
+    expect(termes(container, 'table caption')).toEqual(['Réglages des appels', 'Par fournisseur', 'Par voie'])
+    expect(termes(container, 'table:last-of-type thead th')).toEqual(['Voie', 'Appels', 'Pannes', 'dont tronqués', 'Coût'])
+    // le conseil des sorties tronquées (P0-2) : sans les compteurs d'un run fini, ni l'étape ni la phase ne sont
+    // connues ; le remède dit son coût — un autre budget de sortie change l'empreinte des réglages
+    const conseil = container.querySelector('.twin9-conseil').textContent
+    expect(conseil).toContain('Une sortie tronquée a été comptée en panne.')
+    expect(conseil).toContain('Une journée dont un appel est en panne n’entre pas dans la mémoire de la carte')
+    expect(conseil).toContain('augmentez le budget de sortie de son étape')
+    expect(conseil).toContain('change l’empreinte des réglages, et au prochain run toutes les journées de la carte sont instruites de nouveau, et payées, pas seulement celles d’une panne')
+    // jamais un prix : la grille n'est pas affichée
+    expect(container.textContent).not.toMatch(/USD\/MTok|remise|1,5 \$|7,5 \$/)
+    cleanup()
+
+    // les compteurs du run fini nomment les étapes, comme la page des profils : une journée, ou la fusion
+    const conseilDe = (parEtape, tronques = 1) => {
+      const execution = { ...exemple.run.execution, appels: { ...exemple.run.execution.appels, tronques } }
+      const { container: c } = render(<VueConfiguration configuration={exemple.run.configuration} execution={execution} parEtape={parEtape} />)
+      const texte = c.querySelector('.twin9-conseil').textContent
+      cleanup()
+      return texte
+    }
+    const greffier = conseilDe({ greffier: { appels: 3, pannes: 1, tronques: 1 }, president: { appels: 2, pannes: 0, tronques: 0 } })
+    expect(greffier).toContain('Une sortie tronquée a été comptée en panne (étape « Greffier »).')
+    expect(greffier).toContain('augmentez le budget de sortie de l’étape « Greffier »')
+    expect(greffier).toContain('Une journée dont un appel est en panne')
+    expect(greffier).not.toContain('fusion')
+    const fusion = conseilDe({ merge_rapporteur: { appels: 1, pannes: 1, tronques: 1 } })
+    expect(fusion).toContain('(étape « Relectures »)')
+    expect(fusion).toContain('Un appel de la fusion n’est d’aucune journée : la fusion se refait à chaque run.')
+    expect(fusion).not.toContain('Une journée dont')
+    expect(fusion).toContain('toutes les journées de la carte sont instruites de nouveau')
+    const deux = conseilDe({ jure2: { appels: 4, pannes: 1, tronques: 1 }, tagger: { appels: 6, pannes: 1, tronques: 1 }, condense: { appels: 1, pannes: 1, tronques: 1 } }, 3)
+    expect(deux).toContain('3 sorties tronquées ont été comptées en panne (étapes « Jurés, second tour », « Lecteurs », « Arpenteur »).')
+    expect(deux).toContain('Une journée dont un appel est en panne')
+    expect(deux).toContain('la fusion se refait à chaque run')
+    expect(deux).toContain('Pour qu’elles ne soient plus tronquées, augmentez le budget de sortie de ces étapes (Régler mes profils)')
+
+    const lu = pourCartographe()
+    const { container: c2 } = render(<VueConfiguration configuration={lu.configuration} execution={lu.execution} />)
+    expect(termes(c2, 'dl:first-of-type > dt')).toEqual(['Empreinte', 'Lancé le', 'Fournisseurs', 'Jeu de gabarits', 'Référentiel'])
+    expect(termes(c2, 'dl:last-of-type > dt')).toEqual(['Appels', 'Passes du moteur', 'Lots'])
+    expect(termes(c2, 'table:last-of-type thead th')).toEqual(['Voie', 'Appels', 'Pannes', 'dont tronqués'])
+    expect(c2.textContent).not.toMatch(/\$|undefined|NaN/)
+    cleanup()
+
+    // un run d'avant P0-1 : son exécution seule, marquée partielle
+    const { container: c3 } = render(<VueConfiguration configuration={null} execution={{ ...lu.execution, partiel: true, source: 'journal', statut: 'en_cours' }} />)
+    expect(c3.textContent).toContain('Ce run a été lancé avant que sa configuration soit gardée.')
+    expect(c3.textContent).toContain('Lue dans son journal à l’ouverture : le run n’est pas fini, et ses comptes avancent ; refermez puis rouvrez « Configuration » pour les relire.')
+    expect(c3.textContent).toContain('ses passes et le temps du moteur sont incomplets')
+    cleanup()
+
+    // un run arrêté : ses comptes, lus dans son journal, ne bougent plus
+    const { container: c4 } = render(<VueConfiguration configuration={lu.configuration} execution={{ ...lu.execution, source: 'journal', statut: 'annule' }} />)
+    expect(c4.querySelector('.twin9-config-source').textContent).toBe('Lue dans son journal : le run est arrêté, ses comptes ne bougent plus tant qu’il ne reprend pas.')
+  })
+
+  it('UC-APP-10-U16 — les étapes que nomme le conseil des sorties tronquées sont celles du moteur, comme CallSettings::ETAPES les range', () => {
+    const php = readFileSync(resolve(dirname(fileURLToPath(import.meta.url)), '../../../../api/src/Twin9/CallSettings.php'), 'utf8')
+    const bloc = /public const ETAPES = \[([\s\S]*?)\];/.exec(php)[1]
+    const etapes = Object.fromEntries([...bloc.matchAll(/'(\w+)' => '(\w+)'/g)].map((m) => [m[1], m[2]]))
+    expect(Object.keys(etapes).length).toBeGreaterThan(15)
+    expect(ETAPES_DU_MOTEUR).toEqual(etapes)
+  })
+
+  it('UC-APP-10-U15 — importTwin9Run : la configuration et l’exécution gardées par liste blanche sous « <run>|configuration » (ni prix, ni coût, ni plafond, ni clé), non comptées comme une délibération ; chaque journée dit ses modèles et son jeu de gabarits', () => {
+    const doc = {
+      kind: 'twin9-run',
+      run: { ...exemple.run, id: 7, journal: 'mon-journal' },
+      referentiel: null,
+      carto_evolutive: null,
+      journees: { '2026-01-05': { journee: '2026-01-05', date: '2026-01-05', verdicts: { '1.01': { code: '1.01', nom: 'Analyse', statut: 'présence établie', score_preuves: 1, score_indices: 0, confiance: 0.8 } } } },
+      memoire: [],
+    }
+    const r = importTwin9Run(doc, { now: '2026-10-22T10:00:00Z' })
+    expect(r.variants[0].summary.provenance).toMatchObject({
+      source: 'twin9',
+      model: 'profond: claude-exemple-profond, rapide: claude-exemple-rapide, lecteurs: claude-exemple-rapide',
+      prompt: 'gabarits jeu-exemple',
+      configurationRef: 'twin9:7|configuration',
+      configuration: { empreinte: exemple.run.configuration.empreinte, fournisseurs: ['anthropic'], voies: ['lots'] },
+    })
+    expect(r.runDetails.map((x) => x.key)).toEqual(['twin9:7|configuration'])
+    expect(r.report.find((x) => x.code === 'twin9-run').message).toBe('Run Twin9 7 : 1 journée(s), 0 délibération(s)')
+    const meta = r.runDetails[0].value
+    expect(Object.keys(meta.configuration)).toEqual(['empreinte', 'fournisseurs', 'appels', 'referentiel', 'gabarits'])
+    expect(meta.configuration.gabarits).toEqual({ jeu: 'jeu-exemple' })
+    expect(Object.keys(meta.execution)).toEqual(['statut', 'source', 'partiel', 'passes', 'appels', 'par_fournisseur', 'par_voie'])
+    expect(JSON.stringify(r)).not.toMatch(/"prix"|"grille"|"cle"|"plafonds"|"budget_usd"|"cout_microusd"|"jetons|"reprises"/)
   })
 })

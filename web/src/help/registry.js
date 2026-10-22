@@ -7,6 +7,17 @@
 
 /** @typedef {{titre: string, intro: string, points?: string[]}} HelpEntry */
 
+/**
+ * Le menu « Référentiel » des parcours (S5, E1 et E9) : deux référentiels
+ * portent le nom RESPIRE sans être le même, et la licence de l'Humanome
+ * demande l'attribution. Conditionnel : la production ne l'a peut-être pas.
+ */
+const POINT_REFERENTIELS =
+  'Le menu « Référentiel » propose les référentiels publiés, « RESPIRE v7 », celui de la plateforme, par défaut. ' +
+  'Si « Humanome V18 » est proposé, c’est le référentiel publié par https://respire.school/referentiel ' +
+  '(licence CC-BY-SA Harmonia Éducation), un autre que RESPIRE v7 malgré le nom du site. ' +
+  'La provenance d’un autre référentiel s’affiche sous le menu.'
+
 /** @type {Record<string, HelpEntry>} par route (voir router.js). */
 const BASE = {
   home: {
@@ -92,6 +103,7 @@ const BASE = {
       'lancez une cartographie, choisissez sa confidentialité, la partagez et exportez vos données.',
     points: [
       'Lancer une cartographie : choisissez la version de prompt, le fournisseur (votre clé ou le service humanome), voyez l’estimation de coût, suivez la progression.',
+      POINT_REFERENTIELS,
       'Confidentialité par cartographie : « Privée », « Partagée avec mon cartographe » ou « Partager ».',
       'Partage employeur : « Partager depuis l’interface » ouvre la cartographie dans l’interface de cartographie, où vous composez une version partagée (réservée aux adultes) ; votre cartographe peut aussi la publier avec sa garantie. Les liens créés avant restent révocables ici.',
       'RGPD : exportez toutes vos données en un fichier, ou supprimez votre compte (effacement réel).',
@@ -160,6 +172,7 @@ const BASE = {
       'Créez une cohorte, configurez votre fournisseur LLM et votre budget.',
       'Vos apprenants rejoignent avec leur consentement et déposent leur portfolio.',
       'Lancez un run de masse et suivez son avancement en direct ; les cartographies se lisent membre par membre.',
+      POINT_REFERENTIELS,
     ],
   },
   admin: {
@@ -256,6 +269,7 @@ const BASE = {
       'Ou en essai gratuit, même sans compte : un portfolio de 5 000 caractères au plus, aux journées datées (### AAAA-MM-JJ), le modèle de la démonstration, dans la limite du budget du jour, commun à tous les usages de la démonstration.',
       'Les prompts sont publics et téléchargeables (AGPL) : vous pouvez les réutiliser partout.',
       'Le résultat s’affiche dans le même diagramme évolutif que les autres cartographies.',
+      POINT_REFERENTIELS,
     ],
   },
   confidentialite: {

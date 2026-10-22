@@ -77,10 +77,12 @@ l'apprenant.
    `twin9`}.
 6. Le site remplace le formulaire par le titre et la mention de garantie
    éventuelle, puis charge le référentiel **que nomme le document**
-   (2026-10-20 : sa dernière version publiée `data/referentiel/…` ; RESPIRE
+   (2026-10-20 : la plus récente de ses versions publiées à laquelle le
+   document est conforme, lue dans la base par l'API publique
+   `GET api/referentiels…` — S5 —, à défaut dans `data/referentiel/…` ; RESPIRE
    pour un document qui n'en nomme pas, repli sur la copie embarquée ; un autre
-   référentiel introuvable est dit, jamais lu avec RESPIRE — seul autre appel
-   réseau) et rend la cartographie : `MergeView` si `type = merge`, `DayView`
+   référentiel introuvable est dit, jamais lu avec RESPIRE — seuls autres
+   appels réseau) et rend la cartographie : `MergeView` si `type = merge`, `DayView`
    dans tous les autres cas. Le type `twin9` n'est pas traité (voir AN1).
 
 ## Scénarios alternatifs

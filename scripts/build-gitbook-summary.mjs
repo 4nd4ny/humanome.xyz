@@ -30,7 +30,7 @@ const PARCOURS = [
 const DOCS_GROUPS = [
   [
     'Spécification & référence',
-    ['cahier-des-charges.md', 'contrats.md', 'inventaire-assets.md', 'offre-employeur.md', 'ergonomie-navigation.md'],
+    ['cahier-des-charges.md', 'contrats.md', 'referentiel-humanome.md', 'inventaire-assets.md', 'offre-employeur.md', 'ergonomie-navigation.md'],
   ],
   [
     'Exploitation',

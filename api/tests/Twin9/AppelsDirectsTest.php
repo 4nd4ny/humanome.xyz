@@ -6,6 +6,7 @@ namespace Humanome\Tests\Twin9;
 
 use Humanome\Twin9\AnthropicCaller;
 use Humanome\Twin9\CallSettings;
+use Humanome\Twin9\Fournisseurs\Arret;
 use Humanome\Twin9\ProfilRepository;
 use PHPUnit\Framework\TestCase;
 use stdClass;
@@ -15,7 +16,8 @@ use stdClass;
  * sets — model, output budget, effort when set, thinking cut in the form the
  * model accepts, never a temperature — and each response is read as the v9.8
  * reads it, a refusal of the model being a failure and a rate refusal giving
- * its Retry-After.
+ * its Retry-After; a cut output is a failure too (P0-2), and the stop reason
+ * is kept as a short identifier.
  */
 final class AppelsDirectsTest extends TestCase
 {
@@ -48,14 +50,80 @@ final class AppelsDirectsTest extends TestCase
     public function testAResponseIsReadAsTheV98ReadsIt(): void
     {
         $lu = AnthropicCaller::lire(200, [], (string) json_encode([
-            'model' => 'claude-haiku-5-5-20261001', 'stop_reason' => 'max_tokens',
+            'model' => 'claude-haiku-5-5-20261001', 'stop_reason' => 'end_turn',
             'content' => [['type' => 'thinking', 'thinking' => 'à part'], ['type' => 'text', 'text' => 'un '],
                           ['type' => 'text', 'text' => 'texte']],
             'usage' => ['input_tokens' => 12, 'output_tokens' => 34],
         ]));
         self::assertSame(['ok' => true, 'texte' => 'un texte', 'tokens_in' => 12, 'tokens_out' => 34,
-                          'stop_reason' => 'max_tokens', 'modele_servi' => 'claude-haiku-5-5-20261001'], $lu,
-            'une sortie tronquée n\'est pas une panne, comme dans la v9.8');
+                          'stop_reason' => 'end_turn', 'modele_servi' => 'claude-haiku-5-5-20261001'], $lu,
+            'les blocs de texte, la réflexion à part');
+    }
+
+    /**
+     * P0-2: an output cut by its budget, or by the model's full context, is
+     * a failure — unlike the v9.8, which takes the cut text as an answer —,
+     * its usage kept (it is paid), its text never, its error the code's.
+     */
+    public function testACutOutputIsAFailure(): void
+    {
+        $message = [
+            'model' => 'claude-haiku-5-5-20261001', 'stop_reason' => 'max_tokens',
+            'content' => [['type' => 'thinking', 'thinking' => 'à part'], ['type' => 'text', 'text' => 'un début '],
+                          ['type' => 'text', 'text' => 'coupé']],
+            'usage' => ['input_tokens' => 12, 'output_tokens' => 34],
+        ];
+        self::assertSame(['ok' => false, 'tronque' => true, 'texte' => '',
+                          'erreur' => 'réponse tronquée : budget de sortie atteint (max_tokens)',
+                          'tokens_in' => 12, 'tokens_out' => 34, 'stop_reason' => 'max_tokens',
+                          'modele_servi' => 'claude-haiku-5-5-20261001'],
+            AnthropicCaller::lire(200, [], (string) json_encode($message)),
+            'une sortie tronquée est une panne, à l\'inverse de la v9.8');
+
+        $message['stop_reason'] = 'model_context_window_exceeded';
+        self::assertSame(['ok' => false, 'tronque' => true, 'texte' => '',
+                          'erreur' => 'réponse tronquée : fenêtre de contexte pleine',
+                          'tokens_in' => 12, 'tokens_out' => 34, 'stop_reason' => 'model_context_window_exceeded',
+                          'modele_servi' => 'claude-haiku-5-5-20261001'],
+            AnthropicCaller::lireMessage($message), 'la fenêtre de contexte pleine aussi, par lots comme en direct');
+        self::assertArrayNotHasKey('refus', AnthropicCaller::lireMessage($message));
+
+        foreach (['end_turn', 'stop_sequence', 'pause_turn'] as $stop) {
+            $message['stop_reason'] = $stop;
+            self::assertTrue(AnthropicCaller::lireMessage($message)['ok'], $stop);
+        }
+    }
+
+    /**
+     * The stop reason is kept as a short identifier, never as a provider's
+     * text, and classed in one vocabulary: Anthropic's seven values, a class
+     * as itself, anything else `other`, nothing null.
+     */
+    public function testTheStopReasonIsSanitisedAndClassed(): void
+    {
+        self::assertSame('end_turn', Arret::assainir('end_turn'));
+        self::assertSame('model_context_window_exceeded', Arret::assainir('model_context_window_exceeded'));
+        self::assertSame('ABCDEFGHIJKLMNOPQRSTUVWXYZ_abcde', Arret::assainir('ABCDEFGHIJKLMNOPQRSTUVWXYZ_abcde'), '32');
+        self::assertSame('other', Arret::assainir('ABCDEFGHIJKLMNOPQRSTUVWXYZ_abcdef'), '33 caractères');
+        self::assertSame('other', Arret::assainir('end-turn'));
+        self::assertSame('other', Arret::assainir('arrêt'));
+        self::assertSame('other', Arret::assainir('max_tokens: le prompt cité'));
+        self::assertNull(Arret::assainir(''), 'absent');
+        self::assertNull(Arret::assainir(null));
+
+        $classes = ['end_turn' => 'end', 'stop_sequence' => 'end', 'tool_use' => 'end', 'max_tokens' => 'max_tokens',
+                    'model_context_window_exceeded' => 'context_window', 'refusal' => 'refusal',
+                    'pause_turn' => 'other', 'end' => 'end', 'context_window' => 'context_window',
+                    'other' => 'other', 'inconnu' => 'other', 'max_tokens (cité)' => 'other'];
+        foreach ($classes as $brut => $classe) {
+            self::assertSame($classe, Arret::classe('anthropic', $brut), $brut);
+        }
+        self::assertNull(Arret::classe('anthropic', null));
+        self::assertTrue(Arret::tronquee('anthropic', 'max_tokens'));
+        self::assertTrue(Arret::tronquee('anthropic', 'model_context_window_exceeded'));
+        self::assertFalse(Arret::tronquee('anthropic', 'end_turn'));
+        self::assertFalse(Arret::tronquee('anthropic', 'refusal'));
+        self::assertFalse(Arret::tronquee('anthropic', null));
     }
 
     public function testARefusalOfTheModelIsAFailure(): void
@@ -95,7 +163,8 @@ final class AppelsDirectsTest extends TestCase
                                       'reflexion' => 'adaptative'],
                             (object) ['nom' => 'autre', 'famille' => 'x', 'modele' => 'claude-sonnet-5-5']];
         $s = new CallSettings(ProfilRepository::validate($profil));
-        $haiku = ['modele' => 'claude-haiku-5-5', 'budget_sortie' => 16000, 'effort' => null, 'reflexion' => 'coupee'];
+        $haiku = ['fournisseur' => 'anthropic', 'voie' => 'lots', 'modele' => 'claude-haiku-5-5', 'budget_sortie' => 16000,
+                  'effort' => null, 'reflexion' => 'coupee'];
         $sonnet = array_replace($haiku, ['modele' => 'claude-sonnet-5-5']);
 
         self::assertSame(array_replace($haiku, ['reflexion' => 'adaptative']),
@@ -114,6 +183,85 @@ final class AppelsDirectsTest extends TestCase
         self::assertSame(array_replace($haiku, ['modele' => 'claude-opus-4-8', 'budget_sortie' => 1000]),
             $s->pour('greffier', 'second_ressort/1.01/20-greffier.md'));
         self::assertSame($sonnet, $s->pour('inconnue', 'x'), 'l\'étage profond à défaut');
+        self::assertSame(['fournisseur', 'voie', 'modele', 'budget_sortie', 'effort', 'reflexion'],
+            array_keys($s->pour('jure', 'x')));
+    }
+
+    /** A step the profile does not know reads the deep stage, without indexing the stages by null (PHP 8.5). */
+    public function testAnUnknownStepReadsTheDeepStageCleanly(): void
+    {
+        $s = new CallSettings(ProfilRepository::validate(ProfilRepository::v98()));
+        set_error_handler(static function (int $niveau, string $message): never {
+            throw new \ErrorException($message, 0, $niveau);
+        });
+        try {
+            self::assertSame('claude-sonnet-5-5', $s->pour('inconnue', 'x')['modele']);
+            self::assertSame('claude-sonnet-5-5', $s->pour('', '')['modele']);
+        } finally {
+            restore_error_handler();
+        }
+    }
+
+    /**
+     * Each call is routed by its own settings: by batches when it goes to
+     * Anthropic and the profile chose them, directly otherwise. Every call
+     * of a profile goes to Anthropic: its lane is the profile's.
+     */
+    public function testEachCallIsRoutedByItsOwnSettings(): void
+    {
+        $lots = new CallSettings(ProfilRepository::validate(ProfilRepository::v98()));
+        $profil = ProfilRepository::v98();
+        $profil->voie = 'directe';
+        $direct = new CallSettings(ProfilRepository::validate($profil));
+
+        foreach ([[$lots, 'lots'], [$direct, 'directe']] as [$s, $voie]) {
+            foreach ($s->parEtape() as $etape => $reglage) {
+                self::assertSame(['anthropic', $voie], [$reglage['fournisseur'], $reglage['voie']], $etape);
+            }
+            self::assertSame($s->combinaisons(), $s->combinaisons($voie));
+            self::assertSame([], $s->combinaisons($voie === 'lots' ? 'directe' : 'lots'));
+        }
+        self::assertSame(array_map(static fn (array $r): array => array_replace($r, ['voie' => 'directe']),
+            $lots->combinaisons()), $direct->combinaisons(), 'les mêmes réglages, une autre voie');
+    }
+
+    /**
+     * The summary of a run's calls: each stage as the profile sets it — a
+     * step's setting never shows in its stage —, each step, each under the
+     * second instance, each reader, and a step the profile does not know.
+     */
+    public function testTheSummaryOfTheCalls(): void
+    {
+        $profil = ProfilRepository::v98();
+        $profil->voie = 'directe';
+        $profil->etapes = (object) [
+            'greffier' => (object) ['budget_sortie' => 1000],
+            'second_ressort' => (object) ['modele' => 'claude-opus-4-8'],
+        ];
+        $profil->college[0]->reflexion = 'adaptative';
+        $s = new CallSettings(ProfilRepository::validate($profil));
+        $resume = $s->resume();
+        $haiku = ['fournisseur' => 'anthropic', 'voie' => 'directe', 'modele' => 'claude-haiku-5-5',
+                  'budget_sortie' => 16000, 'effort' => null, 'reflexion' => 'coupee'];
+        $sonnet = array_replace($haiku, ['modele' => 'claude-sonnet-5-5']);
+
+        self::assertSame(['etages', 'etapes', 'second_ressort', 'lecteurs', 'defaut'], array_keys($resume));
+        self::assertSame(['lecteurs' => $haiku, 'rapide' => $haiku, 'profond' => $sonnet], $resume['etages'],
+            'l\'étage rapide garde son budget, que le greffier surcharge');
+        self::assertSame(array_values(array_unique(CallSettings::ETAPES)), array_keys($resume['etapes']));
+        self::assertSame(array_keys($resume['etapes']), array_keys($resume['second_ressort']));
+        self::assertSame(array_replace($haiku, ['budget_sortie' => 1000]), $resume['etapes']['greffier']);
+        self::assertSame($haiku, $resume['etapes']['juge_leger']);
+        self::assertSame($sonnet, $resume['etapes']['relectures']);
+        self::assertSame(array_replace($haiku, ['modele' => 'claude-opus-4-8', 'budget_sortie' => 1000]),
+            $resume['second_ressort']['greffier']);
+        self::assertSame(array_replace($sonnet, ['modele' => 'claude-opus-4-8']), $resume['second_ressort']['jures']);
+        self::assertSame(['haiku' => array_replace($haiku, ['reflexion' => 'adaptative'])], $resume['lecteurs']);
+        self::assertSame($sonnet, $resume['defaut']);
+        foreach ($s->combinaisons() as $reglage) {
+            self::assertContains($reglage, [...array_values($resume['etages']), ...array_values($resume['etapes']),
+                ...array_values($resume['second_ressort']), ...array_values($resume['lecteurs']), $resume['defaut']]);
+        }
     }
 
     /** Every step the engine names has its step in the profile. */

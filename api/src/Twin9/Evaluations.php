@@ -33,8 +33,8 @@ final class Evaluations
 {
     private const JSON = JSON_THROW_ON_ERROR | JSON_UNESCAPED_UNICODE | JSON_PRESERVE_ZERO_FRACTION;
 
-    /** What a reader's settings say of its cost. */
-    private const LECTEUR = ['modele', 'budget_sortie', 'effort', 'reflexion', 'passes'];
+    /** What a reader's settings say of its cost: its provider too, when it names one. */
+    private const LECTEUR = ['fournisseur', 'modele', 'budget_sortie', 'effort', 'reflexion', 'passes'];
 
     /** The algorithm's parameters: they change a run's calls, their number or their size. */
     private const ALGORITHME = ['seuils_consensus', 'juge_leger', 'jury', 'premiere_impression', 'calques', 'merge',

@@ -2649,7 +2649,8 @@ Au passage, dans la même modale :
   mise « à examiner » ;
 - la provenance dit « run du AAAA-MM-JJ » et non plus « analysée le … » :
   c'est la date du run, pas celle de la journée analysée ; un run Twin9 se
-  nomme « Twin9 ».
+  nomme « Twin9 (serveur) » (le libellé que la PR A lui a donné dans `main`,
+  gardé à la fusion de `main` dans cette branche, le 2026-10-22).
 
 ### D-67 — La démonstration lue à la demande **[décidé]**
 

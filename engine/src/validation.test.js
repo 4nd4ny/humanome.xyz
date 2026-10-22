@@ -148,7 +148,7 @@ function makeMergeDocument() {
 }
 
 describe('validateDocument', () => {
-  it('supports the six document kinds', () => {
+  it('supports the seven document kinds', () => {
     expect([...SUPPORTED_KINDS].sort()).toEqual([
       'archive-export',
       'cartographie-jour',
@@ -156,10 +156,11 @@ describe('validateDocument', () => {
       'competency-map-master',
       'prompt-package',
       'referentiel',
+      'twin9-run',
     ])
   })
 
-  it('compiles the six schemas (cross-schema $ref included)', () => {
+  it('compiles the seven schemas (cross-schema $ref included)', () => {
     for (const kind of SUPPORTED_KINDS) {
       // an empty object is never a valid document, but validation must run
       // without throwing: that proves the schema compiled and its $ref resolved
@@ -269,6 +270,38 @@ describe('validateDocument — tout référentiel (T17)', () => {
     const cle = { ...makeMergeDocument(), referentiel: 'fictif' }
     cle.profilIpsatif['0'] = cle.profilIpsatif['1']
     expect(validateDocument('cartographie-merge', cle).valid).toBe(false)
+  })
+})
+
+// P0-1: a Twin9 run's configuration and execution (schemas/twin9-run.schema.json, docs/contrats.md §8.9),
+// on the invented fixture; PHP twin: api/tests/Twin9/RunConfigurationTest.php.
+describe('twin9-run', () => {
+  const fixture = (nom) => JSON.parse(readFileSync(new URL(`../../schemas/fixtures/${nom}`, import.meta.url), 'utf8'))
+
+  it('validates the invented fixture, its blocks strict', () => {
+    const doc = fixture('twin9-configuration-exemple.json')
+    expect(validateDocument('twin9-run', doc)).toEqual({ valid: true, errors: [] })
+    const inconnue = structuredClone(doc)
+    inconnue.run.configuration.marge = 1.2
+    expect(validateDocument('twin9-run', inconnue).errors.map((e) => e.path)).toContain('/run/configuration')
+    const vide = structuredClone(doc)
+    vide.run.execution.par_voie = []
+    expect(validateDocument('twin9-run', vide).valid).toBe(false)
+    const ancien = structuredClone(doc)
+    ancien.run.configuration = null
+    ancien.run.execution = null
+    expect(validateDocument('twin9-run', ancien).valid).toBe(true)
+  })
+
+  it('lets an account’s archive carry them, whole or absent', () => {
+    const { configuration, execution } = fixture('twin9-configuration-exemple.json').run
+    const run = { id: 42, journal: 'journal-exemple', statut: 'termine', profil: {}, appels: [], sorties: {},
+                  portfolio: { nom: 'journal-exemple.md', texte: '## J1' } }
+    const archive = (r) => ({ ...fixture('archive-export-exemple.json'), schemaVersion: '1.2.0',
+                              analysesTwin9: { runs: [r], cartes: [] } })
+    expect(validateDocument('archive-export', archive({ ...run, configuration, execution }))).toEqual({ valid: true, errors: [] })
+    expect(validateDocument('archive-export', archive(run)).valid).toBe(true)
+    expect(validateDocument('archive-export', archive({ ...run, configuration, execution: null })).valid).toBe(false)
   })
 })
 

@@ -255,7 +255,7 @@
     },
     "analysesTwin9": {
       "type": "object",
-      "description": "Analyses approfondies Twin9 du compte, depuis la version 1.2.0 de l'archive (ADR-011 §5) : telles que GET /api/twin9/mes-analyses les rend (docs/contrats.md §8.5) — chaque run, avec la copie de son profil, son portfolio, son attestation, son journal d'appels (réponses des modèles, jamais un prompt ni une clé), ses sorties, ses compteurs et, fini, son évaluation (T8 : taille et coût de chaque journée, coût de la fusion, plus grands pires cas d'un appel, réglages du profil) ; la mémoire de chacune de ses cartes. Ce que les modèles ont écrit passe le filtre anti-fuite des gabarits. Optionnel : absent quand le compte n'a aucun run. Jamais réimporté : un run se relance.",
+      "description": "Analyses approfondies Twin9 du compte, depuis la version 1.2.0 de l'archive (ADR-011 §5) : telles que GET /api/twin9/mes-analyses les rend (docs/contrats.md §8.5) — chaque run, avec la copie de son profil, son portfolio, son attestation, depuis P0-1 sa configuration et son exécution (absentes pour un run d'avant elles), son journal d'appels (réponses des modèles, jamais un prompt ni une clé), ses sorties, ses compteurs et, fini, son évaluation (T8 : taille et coût de chaque journée, coût de la fusion, plus grands pires cas d'un appel, réglages du profil) ; la mémoire de chacune de ses cartes. Ce que les modèles ont écrit passe le filtre anti-fuite des gabarits. Optionnel : absent quand le compte n'a aucun run. Jamais réimporté : un run se relance.",
       "additionalProperties": false,
       "required": ["runs", "cartes"],
       "properties": {
@@ -275,7 +275,15 @@
                 "properties": { "nom": { "type": "string" }, "texte": { "type": "string" } }
               },
               "appels": { "type": "array", "items": { "type": "object" } },
-              "sorties": { "type": "object", "additionalProperties": { "type": "string" } }
+              "sorties": { "type": "object", "additionalProperties": { "type": "string" } },
+              "configuration": {
+                "$ref": "https://humanome.xyz/schemas/twin9-run.schema.json#/$defs/configuration",
+                "description": "Sa configuration (P0-1, docs/contrats.md §8.9) : ce avec quoi il a été lancé. Absente pour un run lancé avant elle."
+              },
+              "execution": {
+                "$ref": "https://humanome.xyz/schemas/twin9-run.schema.json#/$defs/execution",
+                "description": "Son exécution (P0-1, docs/contrats.md §8.9) : figée s'il est fini, depuis son journal sinon. Absente pour un run fini avant elle."
+              }
             }
           }
         },

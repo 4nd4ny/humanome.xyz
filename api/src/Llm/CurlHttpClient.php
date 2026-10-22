@@ -74,7 +74,6 @@ final class CurlHttpClient implements HttpClient, StreamingHttpClient
         $ok = curl_exec($ch);
         $status = (int) curl_getinfo($ch, CURLINFO_RESPONSE_CODE);
         $errno = curl_errno($ch);
-        curl_close($ch);
 
         if ($ok === false && !$overflow) {
             // Generic message only: never echo the URL (it may carry a docId)

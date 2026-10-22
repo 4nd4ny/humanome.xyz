@@ -25,6 +25,7 @@
 import { useEffect, useMemo, useRef, useState } from 'react'
 import { createPortfolioStore } from '../lib/portfolio-store.js'
 import { loadPublishedReferentiel } from '../data/referentiel.js'
+import { REFERENTIEL_PAR_DEFAUT } from '@engine/conformite.js'
 import { apiFetch } from '../api/client.js'
 import { createIndexedDbStorage } from '@engine/runs/index.js'
 import { callsPerDayFor, mergeNarrativeCallsFor } from '@engine/providers/estimate.js'
@@ -133,12 +134,13 @@ export default function RunWizard({ session, deps = {} }) {
   }, [])
 
   // Le référentiel du run : RESPIRE par défaut (repli embarqué garanti), ou
-  // celui choisi, dont le run lit la structure.
+  // celui choisi, dont le run lit la structure. Par défaut, la dernière version
+  // publiée de RESPIRE lue comme le menu la montre : dans la base d'abord (S5).
   useEffect(() => {
     let alive = true
     setReferentiel(null)
     setReferentielError(null)
-    const load = refChoix ? loadReferentiel({ id: refChoix.id, version: refChoix.version }) : loadReferentiel()
+    const load = loadReferentiel(refChoix ? { id: refChoix.id, version: refChoix.version } : { id: REFERENTIEL_PAR_DEFAUT })
     load
       .then(({ doc }) => alive && setReferentiel(doc))
       .catch((err) => alive && setReferentielError(err?.message ?? 'Référentiel indisponible.'))

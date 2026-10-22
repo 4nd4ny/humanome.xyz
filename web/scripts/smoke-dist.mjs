@@ -5,7 +5,8 @@
 // Static checks first, so that they are reported even if the bundle fails:
 // the site map for AI and crawlers (sprint 11, prebuild build-site-map.mjs,
 // copied from public/) is in dist/ and not empty; the entry is a relative
-// classic script (type="module" is CORS-blocked on file://).
+// classic script (type="module" is CORS-blocked on file://), deferred or
+// placed after #root (the harness runs the bundle itself, after parsing).
 //
 // Then dist/index.html runs in jsdom at a file:// URL and the IIFE bundle is
 // evaluated as built. Every network call is recorded and refused, as a
@@ -69,6 +70,17 @@ const moduleTag = html.match(/<script[^>]*type="module"[^>]*>/)
 check(!moduleTag, `script d’entrée classique, pas de module${moduleTag ? ` (trouvé : ${moduleTag[0]})` : ''}`)
 const scriptMatch = html.match(/<script[^>]*src="(\.\/[^"]+\.js)"[^>]*><\/script>/)
 if (!check(Boolean(scriptMatch), 'script d’entrée en chemin relatif (./assets/…)')) finish()
+// The bundle calls createRoot(document.getElementById('root')) as soon as it
+// runs: a classic script in <head> must be deferred (classicScriptTags), or
+// placed after #root, else the page stays blank (React error #299). Below,
+// the harness evaluates the bundle itself once the whole document is parsed,
+// so only this static check sees where and when a browser runs it. `async`
+// does not count: it may run before #root is parsed.
+const entryTag = scriptMatch[0]
+const rootAt = html.search(/<div[^>]*\bid="root"/)
+const deferred = /<script\b[^>]*\sdefer(?:[\s=>]|$)/.test(entryTag)
+const afterRoot = rootAt >= 0 && scriptMatch.index > rootAt
+check(deferred || afterRoot, `script d’entrée exécuté après l’analyse de #root (defer, ou placé après) : ${entryTag}`)
 const bundle = readFileSync(join(distDir, scriptMatch[1]), 'utf8')
 
 // ---- The bundle under file:// ----------------------------------------------

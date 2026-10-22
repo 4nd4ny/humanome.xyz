@@ -251,6 +251,38 @@ describe('UC-EPI-05 — un référentiel en Markdown', () => {
     expect(lireTexte(lu).document).toBeNull()
   })
 
+  it('UC-EPI-05-U24 — les titres comme en CommonMark : jusqu’à trois espaces devant, des « # » de fermeture ; l’écriture échappe ce qui s’y lirait', () => {
+    const attendu = lireTexte('# Pôle 1 — A\n## A1 — x\n## A2 — y\n# Pôle 2 — B\n## B1 — z').document
+    // un titre indenté d'une à trois espaces reste un titre : ni avalé dans la description du précédent, ni rattaché à son pôle
+    const indente = '# Pôle 1 — A\n## A1 — x\n ## A2 — y\n   # Pôle 2 — B\n  ## B1 — z'
+    expect(lireTexte(indente).erreurs).toEqual([])
+    expect(lireTexte(indente).document).toEqual(attendu)
+    // quatre espaces : du code, donc du texte (la description de A1)
+    expect(lireTexte('# Pôle 1 — A\n## A1 — x\n    ## A2 — y').document.competences).toEqual([
+      { code: 'A1', nom: 'x', pole: 1, description: '## A2 — y' },
+    ])
+    // les « # » de fermeture ne sont pas du nom
+    const fermes = '# Pôle 1 — A #\n## A1 — x ##\n## A2 — y ####   \n# Pôle 2 — B #\n## B1 — z #'
+    expect(lireTexte(fermes).erreurs).toEqual([])
+    expect(lireTexte(fermes).document).toEqual(attendu)
+
+    // un nom qui finit par « # », une description dont des lignes indentées se liraient comme un titre ou un séparateur :
+    // écrits échappés, relus tels quels
+    const doc = structuredClone(attendu)
+    doc.competences[0].nom = 'Langage C #'
+    doc.competences[1].nom = '#'
+    doc.poles[1].nom = 'B \\#'
+    doc.competences[2].description = 'Texte.\n  ## pas un titre\n   --- \n    # du code'
+    const texte = referentielEnMarkdown(doc)
+    expect(texte).toContain('\n## A1 — Langage C \\#\n')
+    expect(texte).toContain('\n## A2 — \\#\n')
+    expect(texte).toContain('\n# Pôle 2 — B \\\\#\n')
+    expect(texte).toContain('\nTexte.\n\\  ## pas un titre\n\\   --- \n    # du code\n')
+    expect(lireTexte(texte).erreurs).toEqual([])
+    expect(lireTexte(texte).document).toEqual(doc)
+    expect(referentielEnMarkdown(lireTexte(texte).document)).toBe(texte)
+  })
+
   it('UC-EPI-05-U19 — BOM, fins de ligne CRLF, tirets, séparateurs, lignes échappées : le même document', () => {
     const lf = '# Pôle 1 — A · Pôle\n\nLe pôle.\n\n## A1 — Une\n\nLa première.\n\n---\n\n## A2 — Deux\n'
     const attendu = lireTexte(lf).document

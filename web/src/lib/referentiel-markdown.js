@@ -26,9 +26,15 @@
 // UTF-8 (un « texte brut » Windows-1252) : le texte est refusé, pas importé
 // avec des noms corrompus.
 //
+// Les titres se lisent comme en CommonMark : jusqu'à trois espaces devant les
+// « # » (quatre font du code, donc du texte), et une suite finale de « # »
+// précédée d'un blanc (« ## A1 — Nom ## ») n'est pas du nom.
+//
 // Dans une description, une ligne qui se lirait comme un titre (« # … ») ou un
 // séparateur (« --- ») s'écrit précédée d'une barre oblique inverse (« \# … »),
-// que la lecture retire : l'aller-retour est exact pour tout texte.
+// que la lecture retire ; un nom qui finit par « # » précédé d'un blanc
+// (« Langage C # ») s'écrit « Langage C \# », dont la lecture retire la barre.
+// L'aller-retour est exact pour tout texte.
 //
 // Le motif de chaque niveau se DÉDUIT de ses codes, le plus étroit compatible
 // (deduireMotif) ; la page l'affiche et le laisse modifier. Le moteur ne s'en
@@ -73,14 +79,19 @@ const MOTIF_MAX = 100
 const MOTIF_LARGE = '[A-Za-z0-9._-]{1,8}'
 
 // Les blancs d'un titre : tabulation ou espace, insécables comprises (\p{Zs}).
-/** Un titre : 1 à 6 « # », puis un blanc ou la fin de la ligne. */
-const TITRE_RE = /^(#{1,6})(?:[\t\p{Zs}]+(.*?))?[\t\p{Zs}]*$/u
+/** Un titre : jusqu'à trois espaces, 1 à 6 « # », puis un blanc ou la fin de la ligne. */
+const TITRE_RE = /^ {0,3}(#{1,6})(?:[\t\p{Zs}]+(.*?))?[\t\p{Zs}]*$/u
+/** La suite de « # » qui ferme un titre, précédée d'un blanc (ou tout le titre). */
+const FERMETURE_RE = /(?:^|[\t\p{Zs}]+)#+$/u
+/** Un nom qui finit par « # » précédé d'un blanc, échappé à l'écriture (« C \# ») ou à échapper (« C # »). */
+const DIESES_FINAUX_ECHAPPES_RE = /(^|[\t\p{Zs}])\\(\\*#+)$/u
+const DIESES_FINAUX_RE = /(^|[\t\p{Zs}])(\\*#+)$/u
 const POLE_RE = /^P[ôo]le[\t\p{Zs}]+(\d+)[\t\p{Zs}]+[—–-][\t\p{Zs}]+(.+)$/iu
 const NOEUD_RE = /^(\S+)[\t\p{Zs}]+[—–-][\t\p{Zs}]+(.+)$/u
-const SEPARATEUR_RE = /^-{3,}[\t\p{Zs}]*$/u
+const SEPARATEUR_RE = /^ {0,3}-{3,}[\t\p{Zs}]*$/u
 /** Une ligne de description qui se lirait comme un titre ou un séparateur, échappée ou non. */
-const ECHAPPABLE_RE = /^\\*(?:#{1,6}(?:[\t\p{Zs}]|$)|-{3,}[\t\p{Zs}]*$)/u
-const ECHAPPEE_RE = /^\\+(?:#{1,6}(?:[\t\p{Zs}]|$)|-{3,}[\t\p{Zs}]*$)/u
+const ECHAPPABLE_RE = /^\\*(?: {0,3}#{1,6}(?:[\t\p{Zs}]|$)| {0,3}-{3,}[\t\p{Zs}]*$)/u
+const ECHAPPEE_RE = /^\\+(?: {0,3}#{1,6}(?:[\t\p{Zs}]|$)| {0,3}-{3,}[\t\p{Zs}]*$)/u
 /** Le caractère de remplacement d'un octet que le décodage UTF-8 n'a pas lu. */
 const ILLISIBLE = '\uFFFD'
 const COULEUR_COMMENTAIRE_RE = /^<!--\s*couleur\s*:\s*(.*?)\s*-->$/iu
@@ -236,7 +247,8 @@ export function analyserMarkdown(texte) {
 
     clore()
     const dieses = titre[1]
-    const contenu = titre[2] ?? ''
+    // sans sa suite de « # » de fermeture ; un « # » final échappé (« C \# ») est du nom
+    const contenu = (titre[2] ?? '').replace(FERMETURE_RE, '').replace(DIESES_FINAUX_ECHAPPES_RE, '$1$2')
     if (dieses.length === 1) {
       finirPole()
       const rang = poles.length + 1
@@ -517,9 +529,13 @@ export function referentielDepuisMarkdown(texte, champs = {}) {
 const profondeurDe = (noeud) =>
   Array.isArray(noeud.elements) && noeud.elements.length > 0 ? 1 + Math.max(...noeud.elements.map(profondeurDe)) : 0
 
-/** Le nœud, sa description et celles de ses éléments échappées. */
+/** Un nom qui se lirait avec des « # » de fermeture, échappé. */
+const echapperNom = (nom) => String(nom).replace(DIESES_FINAUX_RE, '$1\\$2')
+
+/** Le nœud (pôle, compétence, élément) : son nom, sa description et ceux de ses éléments échappés. */
 function echappe(noeud) {
   const copie = { ...noeud }
+  if (typeof noeud.nom === 'string') copie.nom = echapperNom(noeud.nom)
   if (typeof noeud.description === 'string') copie.description = echapper(noeud.description)
   if (Array.isArray(noeud.elements)) copie.elements = noeud.elements.map(echappe)
   return copie

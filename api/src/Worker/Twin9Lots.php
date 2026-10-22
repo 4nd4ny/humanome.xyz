@@ -413,9 +413,12 @@ final class Twin9Lots
             if ($lu['ok']) {
                 $journal->reponseDuLot($appel['appel'], $lu['texte'], $mesure);
                 $compteurs['reponses']++;
-            } else {
+            } else { // refused or cut (P0-2): a failure, never submitted again
                 $journal->panneDuLot($appel['appel'], (string) ($lu['erreur'] ?? 'refus du modèle'), $mesure);
                 $compteurs['pannes']++;
+                if (!empty($lu['tronque'])) {
+                    $compteurs['tronques']++;
+                }
             }
 
             return;

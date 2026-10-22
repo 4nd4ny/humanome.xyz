@@ -31,11 +31,12 @@ use Twin9\Run\Pending;
  * Attempts are the v9.8's (three, two then four seconds apart), within the
  * slice: a rate refusal waits its Retry-After without spending one, a 429
  * without one (a spending cap) holds the run back, a refusal of the model is
- * a failure. A call the slice's end cuts leaves again in the next one; when
- * it had at least half a slice, the cut counts as an attempt, so that a call
- * too long for any slice ends as a failure instead of being paid again and
- * again. A tick that dies leaves its calls in flight sent: the next takes
- * them up, their attempt counted.
+ * a failure, and so is an output cut by its budget or by the model's context
+ * (P0-2, counted in `tronques`). A call the slice's end cuts leaves again in
+ * the next one; when it had at least half a slice, the cut counts as an
+ * attempt, so that a call too long for any slice ends as a failure instead
+ * of being paid again and again. A tick that dies leaves its calls in flight
+ * sent: the next takes them up, their attempt counted.
  *
  * By direct calls, only the oldest days a run has under way send their calls
  * (the days led abreast, parallelisme.journees), at most
@@ -123,8 +124,8 @@ final class Twin9Slice
         $this->fin = $fin;
         $this->dernierDepart = $fin - min(5.0, 0.1 * ($fin - $debut));
         $this->compteurs = ['runs' => 0, 'passes' => 0, 'moteurMs' => 0, 'appels' => 0, 'reponses' => 0, 'pannes' => 0,
-                            'reprises' => 0, 'coupes' => 0, 'termines' => 0, 'echoues' => 0, 'lots' => 0,
-                            'releves' => 0, 'verifications' => 0, 'annules' => 0];
+                            'tronques' => 0, 'reprises' => 0, 'coupes' => 0, 'termines' => 0, 'echoues' => 0,
+                            'lots' => 0, 'releves' => 0, 'verifications' => 0, 'annules' => 0];
         $this->lots->menage($this->dernierDepart, $this->compteurs, $utilisateur);
         foreach ($this->runs->aAvancer($n + self::SURVOLS, $utilisateur) as $id) {
             if ($this->compteurs['runs'] >= $n || microtime(true) >= $this->dernierDepart) {
@@ -427,10 +428,14 @@ final class Twin9Slice
 
             return;
         }
-        if (!empty($issue['refus'])) {
+        if (!empty($issue['refus']) || !empty($issue['tronque'])) {
+            // refused or cut (P0-2): the same prompt would be again, at the same cost — never retried
             $run->journal->panne($call, (string) $issue['erreur'], $mesure);
             $run->nouvelles = true;
             $this->compteurs['pannes']++;
+            if (!empty($issue['tronque'])) {
+                $this->compteurs['tronques']++;
+            }
 
             return;
         }

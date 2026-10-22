@@ -4,6 +4,7 @@ declare(strict_types=1);
 
 namespace Humanome\Twin9;
 
+use Humanome\Twin9\Fournisseurs\Arret;
 use PDO;
 use stdClass;
 
@@ -578,9 +579,11 @@ final class RunRepository
     }
 
     /**
-     * The counters a run keeps of its journal: calls, attempts, failures,
-     * tokens, cost and time, by step, the models served and its batches; the
-     * days it instructed and how long it was active.
+     * The counters a run keeps of its journal: calls, attempts, failures —
+     * those of an output cut, by its budget or by the model's context, also
+     * counted apart (`tronques`, P0-2) —, tokens, cost and time, by step, the
+     * models served and its batches; the days it instructed and how long it
+     * was active.
      *
      * @return array<string, mixed>
      */
@@ -602,23 +605,29 @@ final class RunRepository
         $stmt->execute([$id]);
         $dureeS = (int) $stmt->fetchColumn();
         $stmt = $this->pdo->prepare(
-            'SELECT etape, statut, COUNT(*) AS n, SUM(tentatives) AS tentatives, SUM(jetons_entree) AS entree,
-                    SUM(jetons_sortie) AS sortie, SUM(cout_microusd) AS cout, SUM(duree_ms) AS duree
-               FROM twin9_appels WHERE run_id = ? GROUP BY etape, statut ORDER BY etape, statut'
+            'SELECT etape, statut, stop_reason, COUNT(*) AS n, SUM(tentatives) AS tentatives,
+                    SUM(jetons_entree) AS entree, SUM(jetons_sortie) AS sortie, SUM(cout_microusd) AS cout,
+                    SUM(duree_ms) AS duree
+               FROM twin9_appels WHERE run_id = ? GROUP BY etape, statut, stop_reason ORDER BY etape, statut'
         );
         $stmt->execute([$id]);
-        $total = ['appels' => 0, 'pannes' => 0, 'tentatives' => 0, 'jetons_entree' => 0, 'jetons_sortie' => 0,
-                  'cout_microusd' => 0, 'duree_ms' => 0];
+        $total = ['appels' => 0, 'pannes' => 0, 'tronques' => 0, 'tentatives' => 0, 'jetons_entree' => 0,
+                  'jetons_sortie' => 0, 'cout_microusd' => 0, 'duree_ms' => 0];
         $parEtape = [];
         foreach ($stmt->fetchAll() as $row) {
             $etape = (string) $row['etape'];
-            $parEtape[$etape] ??= ['appels' => 0, 'pannes' => 0, 'cout_microusd' => 0];
+            $parEtape[$etape] ??= ['appels' => 0, 'pannes' => 0, 'tronques' => 0, 'cout_microusd' => 0];
             $parEtape[$etape]['appels'] += (int) $row['n'];
             $parEtape[$etape]['cout_microusd'] += (int) $row['cout'];
             $total['appels'] += (int) $row['n'];
             if ($row['statut'] === 'panne') {
                 $parEtape[$etape]['pannes'] += (int) $row['n'];
                 $total['pannes'] += (int) $row['n'];
+                // every call is Anthropic's until the other providers' callers (PR C)
+                if (Arret::tronquee('anthropic', $row['stop_reason'] === null ? null : (string) $row['stop_reason'])) {
+                    $parEtape[$etape]['tronques'] += (int) $row['n'];
+                    $total['tronques'] += (int) $row['n'];
+                }
             }
             $total['tentatives'] += (int) $row['tentatives'];
             $total['jetons_entree'] += (int) $row['entree'];

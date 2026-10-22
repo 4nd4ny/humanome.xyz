@@ -236,6 +236,41 @@ final class LotsTest extends TestCase
     }
 
     /**
+     * P0-2 by batches: a result cut by its budget is a failure, never
+     * submitted again, paid at its real usage at half price and counted
+     * apart; its day stays out of the memory.
+     */
+    public function testACutResultIsAFailureNeverSubmittedAgain(): void
+    {
+        $id = $this->nouveauRun();
+        $coupe = 'journees/J3/1-greffier.md';
+        $lots = new FakeBatchApi(static fn (array $r): array => FakeBatchApi::appel($r) === $coupe
+            ? FakeBatchApi::message('un début coupé', sortie: (int) $r['params']['max_tokens'], stop: 'max_tokens')
+            : FakeBatchApi::message('vu ' . FakeBatchApi::appel($r)), regards: 0);
+
+        $tronques = 0;
+        for ($n = 0; $n < 40 && (new RunRepository($this->pdo))->statut($id) === 'en_cours'; $n++) {
+            $tronques += $this->tick($lots)['twin9Tronques'];
+        }
+
+        self::assertSame('termine', (new RunRepository($this->pdo))->statut($id));
+        self::assertSame(1, $tronques);
+        self::assertCount(1, array_filter($lots->requetes, static fn (array $r): bool => FakeBatchApi::appel($r) === $coupe),
+            'jamais resoumis');
+        $compteurs = (new RunRepository($this->pdo))->compteursDe($id);
+        self::assertSame([13, 13, 1, 1], [$compteurs['appels'], $compteurs['tentatives'], $compteurs['pannes'],
+                                          $compteurs['tronques']], 'une tentative chacun');
+        $reglage = (new CallSettings($this->profil()))->pour('greffier', $coupe);
+        $config = new Twin9Config(new SettingsRepository($this->pdo));
+        self::assertSame(['appels' => 3, 'pannes' => 1, 'tronques' => 1,
+                          'cout_microusd' => 2 * $config->coutMicrousd($reglage['modele'], 100, 20, parLots: true)
+                              + $config->coutMicrousd($reglage['modele'], 100, $reglage['budget_sortie'], parLots: true)],
+            $compteurs['par_etape']['greffier'], 'la panne au coût de son usage réel, à moitié prix');
+        self::assertSame(['faisceaux', 'journees/J1', 'journees/J2'], $this->cles($id));
+        self::assertSame([], $lots->restants());
+    }
+
+    /**
      * The API refuses a run's settings: the run fails before its first
      * batch, and says why. A check the provider cannot answer waits.
      */

@@ -604,6 +604,51 @@ public) l'implémente aussi.
   `passe` la reprendrait) ; et `poles`, les pôles du référentiel du run
   (avant T16, ceux du jeu). Rien n'est écrit.
 
+**Une sortie tronquée est une panne** (P0-2, 2026-10-22). Une réponse
+qu'Anthropic arrête sur `max_tokens` (le budget de sortie de l'étape est
+atteint) ou sur `model_context_window_exceeded` (la fenêtre de contexte du
+modèle est pleine) entre au journal comme une panne
+(`AnthropicCaller::lireMessage`, en direct comme par lots), au même titre
+qu'un refus du modèle :
+
+- **jamais relancée** : avec le même prompt et le même budget, la troncature
+  se reproduirait, et la sortie entière serait payée une seconde fois. La
+  seule tentative est celle comptée au départ ; par lots, l'appel n'est pas
+  resoumis ;
+- **payée** : son coût est celui de l'usage que rend Anthropic, jetons de
+  sortie compris, réconcilié avec sa réserve comme celui d'une réponse
+  (§8.5) ;
+- **sans texte** : le début de réponse n'est jamais journalisé ; la raison
+  de la panne (`twin9_appels.panne`) est un libellé du code, court et stable,
+  `réponse tronquée : budget de sortie atteint (max_tokens)` ou `réponse
+  tronquée : fenêtre de contexte pleine`, puisque le moteur la transmet aux
+  cartographes et au prompt d'un rapporteur ;
+- **comptée** à part : `tronques`, au total et par étape, dans les compteurs
+  du run (`RunRepository`, sous-ensemble de `pannes`), et dans ceux de la
+  tranche (`twin9Tronques`).
+
+C'est un **écart voulu avec la v9.8**, dont `AnthropicBackend`
+(`aurora/backends.py`) prend le texte coupé pour une réponse sans regarder
+`stop_reason` : un texte tronqué ne peut plus entrer dans une carte, ni être
+repris plus tard comme « inchangé ». La parité n'en est pas touchée :
+l'oracle 02-cloud n'enregistre aucun arrêt, et ses rejeux répondent
+`end_turn`. **Effet mémoire** : une journée dont un appel est en panne
+n'entre pas dans la mémoire de la carte ; le run suivant la réinstruit,
+avec ses appels. **Effet sur le moteur** : après une panne, le moteur peut
+redemander l'artefact sous `<id>#2` (un greffier, par exemple) ; ce second
+appel, facturé lui aussi, a toutes les chances d'être coupé de même. Le
+remède n'est donc pas de relancer le run tel quel : **augmentez le
+`budget_sortie` de l'étape** dans le profil (§7.2), puis relancez.
+
+L'arrêt brut reste dans `twin9_appels.stop_reason`, **assaini** avant
+d'être écrit (`Fournisseurs\Arret::assainir`) : un identifiant court
+(`^[A-Za-z_]{1,32}$`) tel quel, toute autre valeur `other`, un arrêt absent
+`NULL` ; jamais un texte du fournisseur. Sa classe (`Arret::classe`) suit un
+vocabulaire commun à tous les fournisseurs : `end` (`end_turn`,
+`stop_sequence`, `tool_use`), `max_tokens`, `context_window`
+(`model_context_window_exceeded`), `refusal`, `other` (`pause_turn`, toute
+valeur inconnue), ou nulle.
+
 ### 8.1 Les réglages d'un run
 
 `twin9_runs.reglages` garde la copie du profil (`profil`, §7 : réglages
@@ -696,7 +741,8 @@ une suivante le relève.
   `annulation` vaut pour un run qui n'est plus en cours.
 - **Le relevé.** La tranche demande où en est chaque lot. Un lot fini voit ses
   résultats entrer au journal comme ceux des appels directs
-  (`AnthropicCaller::lireMessage`), au coût de l'usage rendu, à moitié prix.
+  (`AnthropicCaller::lireMessage`), au coût de l'usage rendu, à moitié prix ;
+  un résultat tronqué est une panne, jamais resoumise (§8, P0-2).
   Une requête en erreur repart dans un lot suivant, sa tentative comptée
   (trois, puis la panne) ; une requête expirée aussi, sa tentative rendue.
   Le lot est ensuite supprimé chez Anthropic.
@@ -811,7 +857,8 @@ une suivante le relève.
   de ses appels), `budget_usd`, `duree_minutes`.
 - **Les compteurs** d'un run fini gagnent `journees` (les journées qu'il a
   instruites) et `duree_s` (ses secondes actives, période par période :
-  `twin9_runs.actif_s`).
+  `twin9_runs.actif_s`), et, depuis P0-2 (§8), `tronques`, au total et dans
+  `par_etape` : les pannes d'une sortie tronquée.
 - **L'aperçu** (`POST /api/twin9/runs/apercu`, `{profil, portfolio}`, ce que
   demande un lancement, l'accord excepté ; rien n'est gardé) rend
   `{journal, mode, voie, cle, journees: {total, nouvelles, changees},
@@ -839,8 +886,8 @@ une suivante le relève.
   `visibilite`, ses dates, `attestation`, `profil` (sa copie), `portfolio
   {nom, texte}`, `compteurs`, `appels[]` (son journal : `appel`, `etape`,
   `modele`, `modele_envoye`, `modele_servi`, `statut`, `tentatives`,
-  `reponse`, `panne`, `stop_reason`, jetons, `cout_microusd`, `duree_ms`,
-  dates ; jamais un prompt ni une clé), `sorties` (par chemin) et
+  `reponse`, `panne`, `stop_reason` — assaini, §8 —, jetons, `cout_microusd`,
+  `duree_ms`, dates ; jamais un prompt ni une clé), `sorties` (par chemin) et
   `evaluation` (son évaluation, §8.7 ; nulle tant qu'il n'est pas fini) ; chaque
   carte avec `journal`, `referentiel`, `gabarits`, `created_at` et `memoire`
   (le texte JSON de chaque clé). Ce que le moteur et les modèles ont écrit

@@ -6,6 +6,7 @@ namespace Humanome\Tests\Twin9;
 
 use Humanome\Twin9\AnthropicCaller;
 use Humanome\Twin9\CallSettings;
+use Humanome\Twin9\Fournisseurs\Arret;
 use Humanome\Twin9\ProfilRepository;
 use PHPUnit\Framework\TestCase;
 use stdClass;
@@ -15,7 +16,8 @@ use stdClass;
  * sets — model, output budget, effort when set, thinking cut in the form the
  * model accepts, never a temperature — and each response is read as the v9.8
  * reads it, a refusal of the model being a failure and a rate refusal giving
- * its Retry-After.
+ * its Retry-After; a cut output is a failure too (P0-2), and the stop reason
+ * is kept as a short identifier.
  */
 final class AppelsDirectsTest extends TestCase
 {
@@ -48,14 +50,80 @@ final class AppelsDirectsTest extends TestCase
     public function testAResponseIsReadAsTheV98ReadsIt(): void
     {
         $lu = AnthropicCaller::lire(200, [], (string) json_encode([
-            'model' => 'claude-haiku-5-5-20261001', 'stop_reason' => 'max_tokens',
+            'model' => 'claude-haiku-5-5-20261001', 'stop_reason' => 'end_turn',
             'content' => [['type' => 'thinking', 'thinking' => 'à part'], ['type' => 'text', 'text' => 'un '],
                           ['type' => 'text', 'text' => 'texte']],
             'usage' => ['input_tokens' => 12, 'output_tokens' => 34],
         ]));
         self::assertSame(['ok' => true, 'texte' => 'un texte', 'tokens_in' => 12, 'tokens_out' => 34,
-                          'stop_reason' => 'max_tokens', 'modele_servi' => 'claude-haiku-5-5-20261001'], $lu,
-            'une sortie tronquée n\'est pas une panne, comme dans la v9.8');
+                          'stop_reason' => 'end_turn', 'modele_servi' => 'claude-haiku-5-5-20261001'], $lu,
+            'les blocs de texte, la réflexion à part');
+    }
+
+    /**
+     * P0-2: an output cut by its budget, or by the model's full context, is
+     * a failure — unlike the v9.8, which takes the cut text as an answer —,
+     * its usage kept (it is paid), its text never, its error the code's.
+     */
+    public function testACutOutputIsAFailure(): void
+    {
+        $message = [
+            'model' => 'claude-haiku-5-5-20261001', 'stop_reason' => 'max_tokens',
+            'content' => [['type' => 'thinking', 'thinking' => 'à part'], ['type' => 'text', 'text' => 'un début '],
+                          ['type' => 'text', 'text' => 'coupé']],
+            'usage' => ['input_tokens' => 12, 'output_tokens' => 34],
+        ];
+        self::assertSame(['ok' => false, 'tronque' => true, 'texte' => '',
+                          'erreur' => 'réponse tronquée : budget de sortie atteint (max_tokens)',
+                          'tokens_in' => 12, 'tokens_out' => 34, 'stop_reason' => 'max_tokens',
+                          'modele_servi' => 'claude-haiku-5-5-20261001'],
+            AnthropicCaller::lire(200, [], (string) json_encode($message)),
+            'une sortie tronquée est une panne, à l\'inverse de la v9.8');
+
+        $message['stop_reason'] = 'model_context_window_exceeded';
+        self::assertSame(['ok' => false, 'tronque' => true, 'texte' => '',
+                          'erreur' => 'réponse tronquée : fenêtre de contexte pleine',
+                          'tokens_in' => 12, 'tokens_out' => 34, 'stop_reason' => 'model_context_window_exceeded',
+                          'modele_servi' => 'claude-haiku-5-5-20261001'],
+            AnthropicCaller::lireMessage($message), 'la fenêtre de contexte pleine aussi, par lots comme en direct');
+        self::assertArrayNotHasKey('refus', AnthropicCaller::lireMessage($message));
+
+        foreach (['end_turn', 'stop_sequence', 'pause_turn'] as $stop) {
+            $message['stop_reason'] = $stop;
+            self::assertTrue(AnthropicCaller::lireMessage($message)['ok'], $stop);
+        }
+    }
+
+    /**
+     * The stop reason is kept as a short identifier, never as a provider's
+     * text, and classed in one vocabulary: Anthropic's seven values, a class
+     * as itself, anything else `other`, nothing null.
+     */
+    public function testTheStopReasonIsSanitisedAndClassed(): void
+    {
+        self::assertSame('end_turn', Arret::assainir('end_turn'));
+        self::assertSame('model_context_window_exceeded', Arret::assainir('model_context_window_exceeded'));
+        self::assertSame('ABCDEFGHIJKLMNOPQRSTUVWXYZ_abcde', Arret::assainir('ABCDEFGHIJKLMNOPQRSTUVWXYZ_abcde'), '32');
+        self::assertSame('other', Arret::assainir('ABCDEFGHIJKLMNOPQRSTUVWXYZ_abcdef'), '33 caractères');
+        self::assertSame('other', Arret::assainir('end-turn'));
+        self::assertSame('other', Arret::assainir('arrêt'));
+        self::assertSame('other', Arret::assainir('max_tokens: le prompt cité'));
+        self::assertNull(Arret::assainir(''), 'absent');
+        self::assertNull(Arret::assainir(null));
+
+        $classes = ['end_turn' => 'end', 'stop_sequence' => 'end', 'tool_use' => 'end', 'max_tokens' => 'max_tokens',
+                    'model_context_window_exceeded' => 'context_window', 'refusal' => 'refusal',
+                    'pause_turn' => 'other', 'end' => 'end', 'context_window' => 'context_window',
+                    'other' => 'other', 'inconnu' => 'other', 'max_tokens (cité)' => 'other'];
+        foreach ($classes as $brut => $classe) {
+            self::assertSame($classe, Arret::classe('anthropic', $brut), $brut);
+        }
+        self::assertNull(Arret::classe('anthropic', null));
+        self::assertTrue(Arret::tronquee('anthropic', 'max_tokens'));
+        self::assertTrue(Arret::tronquee('anthropic', 'model_context_window_exceeded'));
+        self::assertFalse(Arret::tronquee('anthropic', 'end_turn'));
+        self::assertFalse(Arret::tronquee('anthropic', 'refusal'));
+        self::assertFalse(Arret::tronquee('anthropic', null));
     }
 
     public function testARefusalOfTheModelIsAFailure(): void

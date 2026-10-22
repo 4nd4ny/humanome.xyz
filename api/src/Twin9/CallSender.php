@@ -11,8 +11,8 @@ use Twin9\Run\Call;
  * concurrently (DirectCalls); in the parity tests, to a replay of the oracle.
  *
  * Calls go by run: two runs may ask calls of the same id. An outcome is what
- * AnthropicCaller::lire() says of a response (ok, refus, debit and attendre,
- * erreur…), with the run, the call and its duration in seconds.
+ * AnthropicCaller::lire() says of a response (ok, refus, tronque, debit and
+ * attendre, erreur…), with the run, the call and its duration in seconds.
  */
 interface CallSender
 {

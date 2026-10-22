@@ -8,6 +8,7 @@ use Humanome\Keys\KeyVault;
 use Humanome\MigrationRunner;
 use Humanome\Packages\SettingsRepository;
 use Humanome\Tests\TestDb;
+use Humanome\Twin9\CallSettings;
 use Humanome\Twin9\CreditService;
 use Humanome\Twin9\DirectCalls;
 use Humanome\Twin9\EngineLoader;
@@ -295,6 +296,73 @@ final class TrancheTest extends TestCase
         self::assertSame(1, $compteurs['pannes']);
         self::assertSame(['claude-haiku-5-5' => 1, 'claude-haiku-5-5-20261001' => 6], $compteurs['modeles_servis']);
         self::assertSame(['faisceaux', 'journees/J1', 'journees/J2'], $this->cles($id));
+    }
+
+    /**
+     * P0-2: an output cut by its budget is a failure at once — one request,
+     * its row a failure paid at its real usage, its text never kept —,
+     * counted apart; its day stays out of the memory, and the next run of
+     * the map instructs it again.
+     */
+    public function testACutOutputIsAFailureNeverSentAgain(): void
+    {
+        $id = $this->nouveauRun(['lecteurs' => ['a'], 'etapes' => ['greffier']]);
+        $coupe = 'journees/J2/1-greffier.md';
+        $fusions = 0;
+        $http = new FakeMultiHttpClient(static function (array $r) use ($coupe, &$fusions): array {
+            $appel = FakeMultiHttpClient::appel($r);
+            if ($appel === $coupe) {
+                return ['body' => ['type' => 'message', 'model' => 'claude-haiku-5-5', 'stop_reason' => 'max_tokens',
+                                   'content' => [['type' => 'text', 'text' => 'un début coupé']],
+                                   'usage' => ['input_tokens' => 100, 'output_tokens' => $r['body']['max_tokens']]]];
+            }
+            if ($appel === 'fusion' && ++$fusions === 1) {
+                return ['body' => FakeMultiHttpClient::message('lente'), 'delai' => 5.0];
+            }
+
+            return ['body' => FakeMultiHttpClient::message('vu ' . $appel)];
+        });
+
+        $c = (new Tick($this->pdo, ['budgetSeconds' => 1, 'twin9Sender' => new DirectCalls($http),
+                                    'twin9Pauses' => [0.05, 0.1]]))->run();
+        self::assertSame(1, $c['twin9Tronques']);
+        self::assertSame('en_cours', (new RunRepository($this->pdo))->statut($id), 'la fusion n\'a pas fini');
+        $reglage = (new CallSettings($this->profil()))->pour('greffier', $coupe);
+        $config = new Twin9Config(new SettingsRepository($this->pdo));
+        $stmt = $this->pdo->prepare('SELECT statut, tentatives, reponse, panne, stop_reason, jetons_entree, jetons_sortie,
+                                            cout_microusd FROM twin9_appels WHERE run_id = ? AND appel = ?');
+        $stmt->execute([$id, $coupe]);
+        $ligne = $stmt->fetch();
+        self::assertSame(['statut' => 'panne', 'tentatives' => 1, 'reponse' => null,
+                          'panne' => 'réponse tronquée : budget de sortie atteint (max_tokens)',
+                          'stop_reason' => 'max_tokens', 'jetons_entree' => 100,
+                          'jetons_sortie' => $reglage['budget_sortie'],
+                          'cout_microusd' => $config->coutMicrousd($reglage['modele'], 100, $reglage['budget_sortie'])],
+            ['statut' => $ligne['statut'], 'tentatives' => (int) $ligne['tentatives'], 'reponse' => $ligne['reponse'],
+             'panne' => $ligne['panne'], 'stop_reason' => $ligne['stop_reason'],
+             'jetons_entree' => (int) $ligne['jetons_entree'], 'jetons_sortie' => (int) $ligne['jetons_sortie'],
+             'cout_microusd' => (int) $ligne['cout_microusd']], 'une panne, au coût de son usage réel');
+        self::assertSame(['journees/J1', 'journees/J3'], $this->cles($id), 'la journée coupée hors de la mémoire');
+
+        $this->jusquAuBout($http);
+        $envois = array_filter($http->requests, static fn (array $r): bool => FakeMultiHttpClient::appel($r) === $coupe);
+        self::assertCount(1, $envois, 'jamais relancé : le même prompt serait coupé de même');
+        $compteurs = (new RunRepository($this->pdo))->compteursDe($id);
+        self::assertSame([1, 1], [$compteurs['pannes'], $compteurs['tronques']]);
+        self::assertSame(['appels' => 3, 'pannes' => 1, 'tronques' => 1,
+                          'cout_microusd' => 2 * $config->coutMicrousd($reglage['modele'], 100, 20)
+                              + $config->coutMicrousd($reglage['modele'], 100, $reglage['budget_sortie'])],
+            $compteurs['par_etape']['greffier']);
+        self::assertSame(0, $compteurs['par_etape']['tagger']['tronques'] ?? null);
+        self::assertSame(['faisceaux', 'journees/J1', 'journees/J3'], $this->cles($id));
+
+        $suivant = $this->nouveauRun(['lecteurs' => ['a'], 'etapes' => ['greffier']]);
+        $http2 = new FakeMultiHttpClient(static fn (array $r): array =>
+            ['body' => FakeMultiHttpClient::message('vu ' . FakeMultiHttpClient::appel($r))]);
+        $this->jusquAuBout($http2);
+        self::assertSame(['journees/J2/tags_a_P1.json', $coupe, 'fusion'],
+            array_map([FakeMultiHttpClient::class, 'appel'], $http2->requests), 'le run suivant la réinstruit');
+        self::assertSame(['faisceaux', 'journees/J1', 'journees/J2', 'journees/J3'], $this->cles($suivant));
     }
 
     /** The key is read as each call leaves; without one, the run waits, it does not fail. */

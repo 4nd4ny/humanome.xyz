@@ -33,7 +33,7 @@ export function noContentResponse() {
 
 const CSRF_EXEMPT = new Set(['POST auth/login', 'POST auth/register', 'POST auth/activate', 'POST auth/resend'])
 const MUTATING = new Set(['POST', 'PUT', 'PATCH', 'DELETE'])
-const SERVER_KEY_PROVIDERS = ['anthropic', 'openai', 'mistral', 'google', 'openrouter', 'xai', 'ollama', 'mock']
+const SERVER_KEY_PROVIDERS = ['anthropic', 'openai', 'google', 'openrouter', 'xai', 'ollama', 'mock']
 const AVATAR_MIMES = ['image/jpeg', 'image/png', 'image/webp']
 // N.B. : le motif PHP de training.php (sans modificateur D) accepte EN PLUS un
 // saut de ligne final (UC-CPT-05, anomalie AN2, figée côté API par UC-CPT-05-F15) ;

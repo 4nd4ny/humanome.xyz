@@ -109,11 +109,10 @@ describe('deleteKey', () => {
 })
 
 describe('KEY_PROVIDERS', () => {
-  it('propose les 6 fournisseurs de l’exigence et Mistral AI (ADR-012), sans « mock », chacun avec le début d’une clé', () => {
+  it('propose exactement les 6 fournisseurs de l’exigence, sans « mock » ni Mistral AI (aucun parcours n’en emploie la clé), chacun avec le début d’une clé', () => {
     expect(KEY_PROVIDERS.map((p) => p.id)).toEqual([
       'anthropic',
       'openai',
-      'mistral',
       'google',
       'openrouter',
       'xai',
@@ -126,7 +125,6 @@ describe('KEY_PROVIDERS', () => {
   it('providerLabel donne le libellé lisible et retombe sur l’id pour un fournisseur inconnu', () => {
     expect(providerLabel('anthropic')).toBe('Anthropic (Claude)')
     expect(providerLabel('ollama')).toBe('Ollama (local)')
-    expect(providerLabel('mistral')).toBe('Mistral AI')
     expect(providerLabel('inconnu')).toBe('inconnu')
   })
 })

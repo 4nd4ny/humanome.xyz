@@ -12,14 +12,15 @@ const e = encodeURIComponent
 
 /**
  * Fournisseurs LLM proposés dans l'interface (« mock » exclu — usage test) :
- * ceux de l'assistant de cartographie, et Mistral AI, fournisseur des appels
- * Twin9 (ADR-012), que l'assistant n'appelle pas encore. `exemple` : le début
- * d'une clé, pour le champ de saisie (jamais une clé entière).
+ * ceux de l'assistant de cartographie. Pas Mistral AI, fournisseur des appels
+ * Twin9 (ADR-012) : aucun parcours n'emploie sa clé (Twin9 l'appelle avec la
+ * clé de l'instance, l'assistant n'a pas d'adaptateur), et une clé sans
+ * usage ne se collecte pas (minimisation). `exemple` : le début d'une clé,
+ * pour le champ de saisie (jamais une clé entière).
  */
 export const KEY_PROVIDERS = [
   { id: 'anthropic', label: 'Anthropic (Claude)', exemple: 'ex. sk-ant-…' },
   { id: 'openai', label: 'OpenAI (GPT)', exemple: 'ex. sk-…' },
-  { id: 'mistral', label: 'Mistral AI', exemple: 'clé de La Plateforme Mistral' },
   { id: 'google', label: 'Google (Gemini)', exemple: 'ex. AIza…' },
   { id: 'openrouter', label: 'OpenRouter', exemple: 'ex. sk-or-…' },
   { id: 'xai', label: 'xAI (Grok)', exemple: 'ex. xai-…' },

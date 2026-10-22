@@ -102,18 +102,16 @@ final class KeysTest extends AuthTestBase
     }
 
     /**
-     * Mistral AI, a provider of Twin9's calls (ADR-012), is accepted like the
-     * others; its key is its owner's to read back, never a Twin9 run's
-     * (RunKey: the instance's key only, away from Anthropic).
+     * A Mistral AI key is not collected (data minimisation, RGPD art. 5.1.c):
+     * no path uses one — a Twin9 run reaches Mistral AI with the instance's
+     * key only (ADR-012 §5), the cartography assistant has no Mistral
+     * adapter.
      */
-    public function testAMistralKeyIsStoredLikeTheOthers(): void
+    public function testAMistralKeyIsNotCollected(): void
     {
-        self::assertContains('mistral', KeyVault::PROVIDERS);
-        self::assertSame(204, $this->putKey('mistral', 'cle-mistral-EXEMPLE-0123')->getStatusCode());
-        $response = $this->request('GET', '/api/keys/mistral');
-        self::assertSame(200, $response->getStatusCode());
-        self::assertSame('cle-mistral-EXEMPLE-0123', self::json($response)['apiKey']);
-        self::assertSame(['mistral'], array_column(self::json($this->request('GET', '/api/keys')), 'provider'));
+        self::assertNotContains('mistral', KeyVault::PROVIDERS);
+        self::assertSame(422, $this->putKey('mistral', 'cle-mistral-EXEMPLE-0123')->getStatusCode());
+        self::assertSame([], self::json($this->request('GET', '/api/keys')));
     }
 
     public function testValidation(): void

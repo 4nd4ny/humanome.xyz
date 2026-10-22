@@ -3,7 +3,7 @@
 | Champ | Valeur |
 |---|---|
 | **Acteur principal** | Tout utilisateur qui lance des cartographies avec sa propre clé de fournisseur LLM (apprenant le plus souvent) |
-| **Acteurs secondaires** | Fournisseur LLM choisi (Anthropic, OpenAI, Mistral AI, Google, OpenRouter, xAI, Ollama local) — appelé directement par le navigateur dans ce cas (Mistral AI excepté, que l'assistant n'appelle pas encore) ; pour un run Twin9 à clé personnelle (UC-APP-10), c'est le **serveur humanome** qui appelle Anthropic avec la clé déchiffrée (voir « Consommateurs de la clé serveur ») |
+| **Acteurs secondaires** | Fournisseur LLM choisi (Anthropic, OpenAI, Google, OpenRouter, xAI, Ollama local) — appelé directement par le navigateur dans ce cas ; pour un run Twin9 à clé personnelle (UC-APP-10), c'est le **serveur humanome** qui appelle Anthropic avec la clé déchiffrée (voir « Consommateurs de la clé serveur ») |
 | **Portée** | humanome.xyz — section « Clés API personnelles » de `#/compte` ; étape « Fournisseur » de l'assistant `#/espace/nouveau-run` ; `PUT`/`GET /api/keys`, `GET`/`DELETE /api/keys/{provider}` |
 | **Niveau** | Objectif utilisateur |
 | **Cahier des charges** | §4.5 (« clé API personnelle optionnelle »), §5, §6.2 (stockage serveur = opt-in) ; ADR-001 (exécution dans le navigateur), **ADR-004** (localStorage par défaut, opt-in serveur chiffré) |
@@ -52,8 +52,8 @@ personnelle ».
 1. L'utilisateur connecté ouvre `#/compte` ; la section « Clés API
    personnelles » appelle `GET /api/keys` et affiche la liste des fournisseurs
    enregistrés (« enregistrée le AAAA-MM-JJ ») ou « Aucune clé enregistrée. ».
-2. Il choisit un fournisseur parmi sept (Anthropic, OpenAI, Mistral AI,
-   Google, OpenRouter, xAI, Ollama) et saisit sa clé dans un champ masqué
+2. Il choisit un fournisseur parmi six (Anthropic, OpenAI, Google,
+   OpenRouter, xAI, Ollama) et saisit sa clé dans un champ masqué
    (`type="password"`, sans autocomplétion), dont l'exemple montre le début
    d'une clé de ce fournisseur (« ex. sk-ant-… ») ; le bouton « Enregistrer la
    clé » n'est actif qu'à partir de 8 caractères (espaces retirés). La section
@@ -87,14 +87,15 @@ personnelle ».
 - **A5 — Supprimer la clé serveur** (révocation de l'opt-in) : « Supprimer »
   dans la liste → `DELETE /api/keys/{provider}` → `204` ; « Clé <fournisseur>
   supprimée. », liste rechargée. La clé locale éventuelle n'est pas touchée.
-- **A6 — Clé Mistral AI ; Twin9 et les clés personnelles** (ADR-012, étape 2) :
-  Mistral AI, fournisseur possible des appels Twin9, a sa clé comme les
-  autres ; choisi, la section dit qu'aucun parcours ne l'emploie encore —
-  l'assistant de cartographie n'appelle pas Mistral AI (pas d'adaptateur, la
-  politique de sécurité du contenu inchangée), et l'analyse approfondie
-  n'emploie qu'une clé personnelle Anthropic : un profil Twin9 qui appelle un
-  autre fournisseur ne part qu'avec les clés de la plateforme (refusé sinon,
-  UC-APP-10 A6). Le titulaire d'une clé lit ce qui part avec elle ; les
+- **A6 — Twin9 et les clés personnelles** (ADR-012, étape 2) : l'analyse
+  approfondie n'emploie qu'une clé personnelle Anthropic : un profil Twin9 qui
+  appelle un autre fournisseur ne part qu'avec les clés de la plateforme
+  (refusé sinon, UC-APP-10 A6) ; la section le dit. Mistral AI, fournisseur
+  possible des appels Twin9, n'a pas de clé ici : aucun parcours ne
+  l'emploierait — l'assistant de cartographie ne l'appelle pas (pas
+  d'adaptateur), Twin9 avec la clé de l'instance —, et une clé sans usage ne
+  se collecte pas (minimisation, 2026-10-22 : proposée un temps, retirée avant
+  toute mise en production). Le titulaire d'une clé lit ce qui part avec elle ; les
   gabarits de la plateforme ne partent jamais avec la clé d'un apprenant
   ailleurs que chez Anthropic.
 
@@ -140,11 +141,13 @@ personnelle ».
 - **RG4** — La liste ne porte jamais de matériau de clé ; la révélation est
   réservée au propriétaire authentifié et marquée `no-store`.
 - **RG5** — Chaque route n'agit que sur les clés du compte de la session.
-- **RG6** — Fournisseurs : la section du profil en propose sept, les six de
-  l'assistant et `mistral` (fournisseur des appels Twin9, ADR-012), que
-  l'assistant n'appelle pas ; le coffre accepte en plus `mock` (tests).
-  Ollama n'exige pas de clé dans l'assistant. Twin9 n'emploie qu'une clé
-  personnelle `anthropic` (A6).
+- **RG6** — Fournisseurs : la section du profil propose les six de
+  l'assistant ; le coffre accepte en plus `mock` (tests). Pas de clé
+  `mistral`, bien que Mistral AI serve les appels Twin9 (ADR-012) : aucun
+  parcours ne l'emploierait — Twin9 l'appelle avec la clé de l'instance,
+  l'assistant n'a pas d'adaptateur —, et une clé sans usage ne se collecte
+  pas (minimisation, 2026-10-22). Ollama n'exige pas de clé dans
+  l'assistant. Twin9 n'emploie qu'une clé personnelle `anthropic` (A6).
 
 ## Données et RGPD
 
@@ -194,12 +197,12 @@ La clé enregistrée ici ne sert pas qu'à l'assistant de run :
 | UC-CPT-04-U04 | `KeyVault::listForUser` | Propriétaire seul, tri, date ISO, pas de clé (RG4) | idem |
 | UC-CPT-04-U05 | `KeyVault::reveal` | Autre compte, fournisseur absent, rotation, blob tronqué → `null` (E5) | idem |
 | UC-CPT-04-U06 | `KeyVault::delete` | Suppression réelle, bornée au compte | idem |
-| UC-CPT-04-U07 | `KeyVault::PROVIDERS` | Six fournisseurs + `mistral` + `mock` (RG6) | idem |
+| UC-CPT-04-U07 | `KeyVault::PROVIDERS` | Six fournisseurs + `mock`, sans `mistral` (RG6) | idem |
 | UC-CPT-04-U08 | `setLocalKey`, `getLocalKey`, `readLocalKeys` | Table `humanome-keys`, effacement (RG1) | `web/test/usecases/unit/uc-cpt-04-gerer-cles-api.test.jsx` |
 | UC-CPT-04-U09 | idem | Stockage corrompu ou plein toléré | idem |
 | UC-CPT-04-U10 | `syncKeyToServer`, `fetchKeyFromServer` | PUT `keys`, GET `keys/<encodé>` | idem |
 | UC-CPT-04-U11 | `fetchKeyFromServer` | Réponse vide → message français ; erreur API propagée | idem |
-| UC-CPT-04-U12 | `KEY_PROVIDERS`, `PROVIDERS`, `providerLabel` | Les six fournisseurs de l'assistant et Mistral AI, tous dans `KeyVault::PROVIDERS` (lu dans `api/src/Keys/KeyVault.php`) ; Ollama sans clé (RG6) | idem |
+| UC-CPT-04-U12 | `KEY_PROVIDERS`, `PROVIDERS`, `providerLabel` | Les six mêmes fournisseurs au profil et dans l'assistant, tous dans `KeyVault::PROVIDERS` (lu dans `api/src/Keys/KeyVault.php`), sans Mistral AI ; Ollama sans clé (RG6) | idem |
 | UC-CPT-04-U13 | `ApiKeysSection` (seul, coutures `deps`) | Message serveur ou repli générique, clé envoyée sans espaces, pas de rechargement après échec, liste datée ; **anomalie AN1 figée** : alerte de chargement jamais effacée | idem |
 | UC-CPT-04-U14 | `listKeys`, `storeKey`, `revealKey`, `deleteKey` | URL (fournisseur encodé), méthode, corps, `X-CSRF-Token` sur PUT/DELETE seulement | idem |
 
@@ -228,7 +231,7 @@ La clé enregistrée ici ne sert pas qu'à l'assistant de run :
 | UC-CPT-04-F19 | E1 | IHM | Synchro 503 : run non démarré, message, clé déjà mémorisée localement | idem |
 | UC-CPT-04-F20 | A1, RG1 | IHM | Connecté, options par défaut : synchro proposée mais décochée, run sans aucun appel `/api/keys`, clé locale | idem |
 | UC-CPT-04-F21 | E3 | IHM | Assistant : clé de 4 caractères + synchro → 422 « Validation échouée », run non démarré, clé mémorisée | idem |
-| UC-CPT-04-F22 | A6 | IHM | `<App/>` : la section dit que Twin9 n'emploie qu'une clé personnelle Anthropic ; Mistral AI choisi, qu'aucun parcours n'emploie encore sa clé ; la clé enregistrée (PUT `mistral`), listée, jamais réaffichée | `web/test/usecases/functional/uc-cpt-04-gerer-cles-api.test.jsx` |
+| UC-CPT-04-F22 | A6 | IHM | `<App/>` : la section dit que Twin9 n'emploie qu'une clé personnelle Anthropic ; elle ne propose aucune clé Mistral AI (RG6) | `web/test/usecases/functional/uc-cpt-04-gerer-cles-api.test.jsx` |
 
 Les tests F15 à F21 jouent l'assistant dans la vue `#/espace/nouveau-run`
 (`EspaceView`) : la session (connecté, anonyme, jeton CSRF) est dérivée par la

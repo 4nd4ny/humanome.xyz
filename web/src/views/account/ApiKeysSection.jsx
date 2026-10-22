@@ -5,8 +5,8 @@
 // ressaisir à chaque fois. La clé n'est jamais réaffichée après enregistrement.
 // L'analyse approfondie Twin9 n'emploie qu'une clé personnelle Anthropic : ses
 // appels aux autres fournisseurs partent avec les clés de la plateforme
-// (ADR-012) ; la section le dit, et dit qu'une clé Mistral AI ne sert encore
-// à aucun parcours.
+// (ADR-012) ; la section le dit. Elle ne propose pas de clé Mistral AI,
+// qu'aucun parcours n'emploie (minimisation).
 
 import { useCallback, useEffect, useState } from 'react'
 import { ApiError } from '../../api/client.js'
@@ -152,12 +152,6 @@ export default function ApiKeysSection({ deps = {} }) {
                 disabled={busy}
               />
             </label>
-            {provider === 'mistral' ? (
-              <p className="account-keys-hint">
-                Aucun parcours n’emploie encore une clé Mistral AI : l’assistant de cartographie n’appelle pas ce
-                fournisseur, et l’analyse approfondie n’emploie que la clé Anthropic.
-              </p>
-            ) : null}
             <button type="submit" className="button" disabled={busy || apiKey.trim().length < 8}>
               {busy ? '…' : 'Enregistrer la clé'}
             </button>

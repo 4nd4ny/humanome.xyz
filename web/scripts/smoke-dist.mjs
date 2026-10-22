@@ -1,10 +1,12 @@
 // Smoke test of the BUILT bundle (dist/) under the file:// target (ADR-003,
 // plan-fusion-visu étape 6): loads dist/index.html in jsdom with a file:// URL
 // (no server, no fetch available), executes the IIFE bundle, and checks that
-// the merge view renders the 331 sector paths of the original diagram.
+// the merge view renders the 331 sector paths of the original diagram. Also
+// checks that the site map for AI and crawlers (sprint 11, prebuild
+// build-site-map.mjs, copied from public/) is in dist/ and not empty.
 //
 // Usage: npm run build && node scripts/smoke-dist.mjs
-import { readFileSync } from 'node:fs'
+import { existsSync, readFileSync, statSync } from 'node:fs'
 import { resolve, dirname, join } from 'node:path'
 import { fileURLToPath, pathToFileURL } from 'node:url'
 import { JSDOM } from 'jsdom'
@@ -12,6 +14,16 @@ import { JSDOM } from 'jsdom'
 const webRoot = resolve(dirname(fileURLToPath(import.meta.url)), '..')
 const distDir = join(webRoot, 'dist')
 const html = readFileSync(join(distDir, 'index.html'), 'utf8')
+
+// Site map files (scripts/build-site-map.mjs): present, non-empty. Checked
+// first, so that they are reported even if the bundle check below throws.
+let siteMapFailures = 0
+for (const name of ['llms.txt', 'llms-full.txt', 'sitemap.xml', 'robots.txt', 'legal/confidentialite.md']) {
+  const path = join(distDir, name)
+  const size = existsSync(path) ? statSync(path).size : 0
+  if (size === 0) siteMapFailures += 1
+  console.log(`${size > 0 ? 'OK ' : 'FAIL'} carte du site : ${name} (${size} octets)`)
+}
 
 // The entry must be a classic script (type="module" is CORS-blocked on file://).
 const moduleTag = html.match(/<script[^>]*type="module"[^>]*>/)
@@ -52,7 +64,7 @@ const checks = {
   'fonds gris (54 x 5)': [doc.querySelectorAll('svg.sunburst path.gray-sector').length, 270],
   'jours de la heatmap': [doc.querySelectorAll('rect.heatmap-day').length, 59],
 }
-let failed = 0
+let failed = siteMapFailures
 for (const [label, [actual, expected]] of Object.entries(checks)) {
   const ok = actual === expected
   if (!ok) failed += 1

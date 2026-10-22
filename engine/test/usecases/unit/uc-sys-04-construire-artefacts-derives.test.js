@@ -242,7 +242,7 @@ describe('UC-SYS-04 — unitaires', () => {
     expect(total).toBe(61)
   })
 
-  it('UC-SYS-04-U06 — Ordre réel de la chaîne : stage-api.sh (digest tuteur avant la copie de scripts/data, puis paquet aurora, fiches Twin6 régénérées, paquet Twin6), prebuild web, imports de deploy.mjs — lignes ACTIVES seulement', () => {
+  it('UC-SYS-04-U06 — Ordre réel de la chaîne : stage-api.sh (digest tuteur et carte du site avant la copie de scripts/data, puis paquet aurora, fiches Twin6 régénérées, paquet Twin6), prebuild web (dont les fichiers publics de la carte du site, en dernier), imports de deploy.mjs — lignes ACTIVES seulement', () => {
     // Seules les lignes actives comptent : une étape commentée (`# node …`) ou
     // neutralisée (`: …; # node …`) ne satisfait pas les expressions ancrées.
     const stage = readFileSync(join(REPO, 'scripts/deploy/stage-api.sh'), 'utf8')
@@ -280,13 +280,15 @@ describe('UC-SYS-04 — unitaires', () => {
       'build-twin6-package.mjs',
       'validate-corpus',
       'build-gitbook-summary',
+      // Les fichiers publics de la carte du site viennent du prebuild du front.
+      'build-site-map',
     ]) {
       expect(activeText, manual).not.toContain(manual)
     }
 
     const web = JSON.parse(readFileSync(join(REPO, 'web/package.json'), 'utf8'))
     expect(web.scripts.prebuild).toBe(
-      'node ../scripts/generate-fiches.mjs && node ../scripts/build-twin6-package.mjs && node scripts/build-viewer.mjs',
+      'node ../scripts/generate-fiches.mjs && node ../scripts/build-twin6-package.mjs && node scripts/build-viewer.mjs && node ../scripts/build-site-map.mjs',
     )
 
     // deploy.mjs : boucles d'import réelles (hors commentaires), référentiels puis paquets.

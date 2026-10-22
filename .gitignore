@@ -54,6 +54,16 @@ web/.claude/
 # régénéré à chaque stage-api — comme les prompt-packages, on ne versionne
 # que le générateur, pas l'artefact (évite la dérive avec nav.js/content).
 scripts/data/tuteur-digest.md
+# Carte du site (sprint 11) : générée de la même façon. site-map.json vient de
+# build-tuteur-digest.mjs (release API) ; les fichiers publics lisibles par les
+# IA et les robots viennent de build-site-map.mjs (prebuild du front).
+scripts/data/site-map.json
+web/public/llms.txt
+web/public/llms-full.txt
+web/public/sitemap.xml
+web/public/robots.txt
+web/public/guides/
+web/public/legal/
 
 # Python (générateurs de vecteurs) — jamais versionner les caches compilés
 # (ils embarquent le chemin absolu local de la machine qui les a produits).

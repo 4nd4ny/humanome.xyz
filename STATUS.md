@@ -123,12 +123,15 @@ réponse. Suivent la PR B (adaptateurs JS, export Twin6) et, A fusionnée, la PR
     nettement sous les appels en direct) reste à faire, au feu vert de Christian.
   - **Revue de la PR A (2026-10-22), constats confirmés corrigés** (un commit `fix:` par thème,
     chacun avec le test qui échouait avant lui ; trois trous de test comblés par un commit
-    `test:`) : (1) un run fini par la release précédente après un retour arrière garde dans
+    `test:`, et un second rend un test du déploiement indépendant de l'horloge) : (1) un run fini par la release précédente après un retour arrière garde dans
     `execution` ses seules reprises : ce n'est jamais servi ni exporté comme un bloc figé
     (`RunRepository::figee`), l'archive du compte reste valide ; (2) un lecteur nommé « 0 » ne fait
     plus des tables de `configuration.appels` une liste ; (3) l'empreinte de la configuration
     comprend un **sel** tiré au lancement, que seul le propriétaire lit : un cartographe lié ne
-    retrouve plus par essais la marge, la clé, le budget et la durée ; (4) chaque passe du moteur
+    retrouve plus par essais la marge, la clé, le budget et la durée (les deux autres empreintes
+    qu'il lit, `empreinte_reglages` et `signature_evaluations`, ne couvrent ni clé, ni plafond, ni
+    marge, ni prix : vérifié dans `CallSettings::empreinte` et `Evaluations::comparables`) ;
+    (4) chaque passe du moteur
     est comptée dès qu'elle est jouée (un tick mort ne perd que la sienne) ; `avance()` ne touche
     plus les colonnes de 031 ; (5) `deploy.mjs api` migre aussitôt après le pointeur et élague
     ensuite (la fenêtre où la nouvelle release tourne sur l'ancien schéma tombe des minutes de
@@ -138,7 +141,8 @@ réponse. Suivent la PR B (adaptateurs JS, export Twin6) et, A fusionnée, la PR
     des sorties tronquées nomme leurs étapes et dit son coût : un autre budget de sortie change
     l'empreinte des réglages, et toute la carte est instruite de nouveau ; (7) tests : la voie lue à
     `custom_id` (run par lots annulé), `execution_prevue` hors des valeurs par défaut, la pose de
-    `plein` par `envoyer()`. Vérifié sur l'arbre du dernier commit : PHP `Tests: 1761, Assertions:
+    `plein` par `envoyer()` (UC-APP-10-U16 : les étapes du moteur nommées par le conseil, celles de
+    `CallSettings::ETAPES`). Vérifié sur l'arbre du dernier commit : PHP `Tests: 1761, Assertions:
     18675`, les 2 échecs connus de PHP 8.5 seuls, 1 dépréciation ; `PariteTest` 10 tests verts
     (seul aussi) ; moteur 421 tests, 416 verts et les 5 échecs locaux connus d'UC-PRO-08 ; front
     2 779 tests verts (259 fichiers suivis). Sous la charge du poste (d'autres suites tournaient),

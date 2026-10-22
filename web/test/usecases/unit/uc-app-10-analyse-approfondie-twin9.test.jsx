@@ -441,7 +441,7 @@ describe('UC-APP-10 — la configuration et l’exécution d’un run (P0-1)', (
     expect(c4.querySelector('.twin9-config-source').textContent).toBe('Lue dans son journal : le run est arrêté, ses comptes ne bougent plus tant qu’il ne reprend pas.')
   })
 
-  it('UC-APP-10-U14 — les étapes que nomme le conseil des sorties tronquées sont celles du moteur, comme CallSettings::ETAPES les range', () => {
+  it('UC-APP-10-U16 — les étapes que nomme le conseil des sorties tronquées sont celles du moteur, comme CallSettings::ETAPES les range', () => {
     const php = readFileSync(resolve(dirname(fileURLToPath(import.meta.url)), '../../../../api/src/Twin9/CallSettings.php'), 'utf8')
     const bloc = /public const ETAPES = \[([\s\S]*?)\];/.exec(php)[1]
     const etapes = Object.fromEntries([...bloc.matchAll(/'(\w+)' => '(\w+)'/g)].map((m) => [m[1], m[2]]))

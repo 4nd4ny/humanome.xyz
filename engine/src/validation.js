@@ -14,6 +14,7 @@ import {
   validate_competency_map_master,
   validate_prompt_package,
   validate_referentiel,
+  validate_twin9_run,
 } from './validation-compiled.js'
 
 // kind -> precompiled validator, where kind is the document discriminant
@@ -26,6 +27,8 @@ const VALIDATORS_BY_KIND = {
   // Archive de l'interface de cartographie (master v4, journal D-25).
   'competency-map-master': validate_competency_map_master,
   'archive-export': validate_archive_export,
+  // Run Twin9 remis à l'interface, avec sa configuration et son exécution (P0-1).
+  'twin9-run': validate_twin9_run,
 }
 
 /** Document kinds supported by validateDocument(). */

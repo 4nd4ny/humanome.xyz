@@ -4,6 +4,7 @@ declare(strict_types=1);
 
 namespace Humanome\Twin9;
 
+use Humanome\Packages\SettingsRepository;
 use Humanome\Referentiel\ReferentielRepository;
 use PDO;
 use stdClass;
@@ -19,7 +20,9 @@ use stdClass;
  * and the run's state, on the server until they erase them (ADR-011 §5). The
  * attestation keeps what the run was launched with: its profile and its
  * mode, the days it took (T8), the versions of its template set, its
- * referential, the engine's commit.
+ * referential, the engine's commit. Its configuration block (P0-1,
+ * RunConfiguration) keeps, once and for good, how each of its calls is sent
+ * and what it was launched with.
  *
  * Before a launch (T10, apercu()): the portfolio's days the run would
  * instruct — new or changed since its map's memory; it takes the others back
@@ -87,14 +90,20 @@ final class Lancement
         $horloge = $maintenant ?? new \DateTimeImmutable();
         $sortie = 'twin9/runs/' . bin2hex(random_bytes(8));
         ['profil' => $profil, 'nom' => $nom, 'moteur' => $moteur, 'jeu' => $jeu, 'referentiel' => $referentiel,
-         'plateforme' => $plateforme] = $this->preparer($userId, $profilId, $portfolioNom, $portfolio, $horloge, $sortie);
+         'plateforme' => $plateforme, 'empreinte_reglages' => $empreinteReglages]
+            = $this->preparer($userId, $profilId, $portfolioNom, $portfolio, $horloge, $sortie);
+        // what its configuration block keeps besides its settings (P0-1): the prices and their reading, the engine's
+        // versions
+        $grille = $this->config->read();
+        $releve = TarifsAnthropic::etat(new SettingsRepository($this->pdo));
+        $versions = self::versionsDuMoteur();
 
         $runs = new RunRepository($this->pdo);
         // T8, strategy A: the days that fit with the merge's reserve; the others wait for a next run. One launch
         // of an owner at a time, for the next to count what this one is granted
         [$id, $admission, $reserve, $engagement] = $runs->sousVerrou($userId, function () use (
             $runs, $userId, $profil, $moteur, $portfolioNom, $portfolio, $plateforme, $jeu, $referentiel, $horloge,
-            $sortie
+            $sortie, $profilId, $nom, $empreinteReglages, $grille, $releve, $versions
         ): array {
             $admission = null;
             $reserve = 0;
@@ -113,9 +122,14 @@ final class Lancement
                     $moteur = MoteurReglages::depuis($profil, $referentiel);
                 }
             }
+            // its configuration (P0-1), here only: $moteur is captured by value, the one the admission redrew lives
+            // in this closure
+            $configuration = RunConfiguration::depuis($profil, $profilId, $nom, $moteur, $jeu, $referentiel,
+                $empreinteReglages, $grille, $releve, $versions, $horloge);
 
             return [$runs->creer($userId, $profil, $moteur, trim($portfolioNom), $portfolio, $plateforme->journal(),
-                $jeu['gabarits'], $horloge, $sortie, $reserve, $engagement), $admission, $reserve, $engagement];
+                $jeu['gabarits'], $horloge, $sortie, $reserve, $engagement, $configuration), $admission, $reserve,
+                    $engagement];
         });
         $runs->attester($id, [
             'profil' => ['id' => $profilId, 'nom' => $nom, 'mode' => $profil->mode],
@@ -456,10 +470,11 @@ final class Lancement
         $referentiel = (new ReferentielMoteur($this->pdo))->bloc((string) $profil->referentiel->id,
             (string) $profil->referentiel->version);
         $moteur = MoteurReglages::depuis($profil, $referentiel);
+        $empreinteReglages = CallSettings::empreinte($profil, $moteur->config->troncatures ?? null, $jeu['gabarits'],
+            $referentiel);
         try {
             $plateforme = new \Twin9\Plateforme(json_encode($moteur, self::JSON), $portfolioNom, $portfolio,
-                $jeu['gabarits'], $sortie, $horloge,
-                CallSettings::empreinte($profil, $moteur->config->troncatures ?? null, $jeu['gabarits'], $referentiel));
+                $jeu['gabarits'], $sortie, $horloge, $empreinteReglages);
         } catch (\Twin9\ReferentielInvalide $e) {
             // the engine names the pole or the code at fault, never a fiche (T16)
             throw new Twin9Exception('Le référentiel « ' . $profil->referentiel->id . ' » ne se lit pas : '
@@ -476,7 +491,36 @@ final class Lancement
         }
 
         return ['profil' => $profil, 'nom' => $nom, 'moteur' => $moteur, 'jeu' => $jeu, 'referentiel' => $referentiel,
-                'plateforme' => $plateforme];
+                'plateforme' => $plateforme, 'empreinte_reglages' => $empreinteReglages];
+    }
+
+    /**
+     * The engine's versions a run's configuration keeps (P0-1): its commit,
+     * the v9.8 protocol's, the jurors' bank's, the scan's — each read under
+     * its guard, null when the engine has none (an older one, the tests'
+     * fake one).
+     *
+     * @return array{commit: string|null, protocole: string|null,
+     *               personas: array{version: string, empreinte: string}|null, scan: string|null}
+     */
+    private static function versionsDuMoteur(): array
+    {
+        $constante = static fn (string $nom): ?string => \defined($nom) && \is_string(\constant($nom))
+            ? \constant($nom) : null;
+        $personas = null;
+        if (method_exists(\Twin9\Tribunal::class, 'infosPersonas')) {
+            $infos = \Twin9\Tribunal::infosPersonas();
+            if (\is_object($infos) && method_exists($infos, 'get')) {
+                $personas = ['version' => (string) $infos->get('version'), 'empreinte' => (string) $infos->get('empreinte')];
+            }
+        }
+
+        return [
+            'commit' => EngineLoader::commit(),
+            'protocole' => $constante(\Twin9\Journee::class . '::VERSION_PROTOCOLE'),
+            'personas' => $personas,
+            'scan' => $constante(\Twin9\Arpenteur::class . '::VERSION_SCAN'),
+        ];
     }
 
     /**

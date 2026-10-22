@@ -17,6 +17,7 @@ use Humanome\Twin9\EngineLoader;
 use Humanome\Twin9\ProfilRepository;
 use Humanome\Twin9\ProtocoleRepository;
 use Humanome\Twin9\RunPurge;
+use Humanome\Validation;
 use Humanome\Worker\Tick;
 use PDO;
 use PHPUnit\Framework\Attributes\PreserveGlobalState;
@@ -177,6 +178,18 @@ final class PurgeExportTest extends CartographeTestCase
         self::assertNull($b['evaluation'], 'un run en cours n’en a pas encore');
         self::assertSame('directe', $a['profil']['voie']);
         self::assertSame('Direct', $a['attestation']['profil']['nom']);
+        // P0-1: its configuration and its execution, frozen though its journal is gone, its totals its counters'
+        self::assertSame(['twin9-configuration/1', 'Direct'], [$a['configuration']['schema'], $a['configuration']['profil']['nom']]);
+        self::assertArrayHasKey('prix', $a['configuration'], 'son propriétaire lit tout');
+        self::assertSame('fige', $a['execution']['source']);
+        foreach (['appels' => 'total', 'pannes' => 'pannes', 'tronques' => 'tronques', 'tentatives' => 'tentatives']
+                 as $compteur => $champ) {
+            self::assertSame($a['compteurs'][$compteur], $a['execution']['appels'][$champ], $compteur);
+        }
+        self::assertSame([$a['compteurs']['cout_microusd'], $a['compteurs']['jetons_entree'], $a['compteurs']['lots']],
+            [$a['execution']['cout_microusd'], $a['execution']['jetons']['entree'], $a['execution']['lots']]);
+        self::assertSame(['journal', 1], [$b['execution']['source'], $b['execution']['appels']['total']],
+            'en cours : depuis son journal');
         self::assertSame(['journees/2026-01-05/1-greffier.md'], array_column($b['appels'], 'appel'));
         self::assertStringContainsString('[expurgé]', $b['appels'][0]['reponse']);
         self::assertStringNotContainsString('ne jamais réciter ce gabarit', $texte);
@@ -187,6 +200,46 @@ final class PurgeExportTest extends CartographeTestCase
         $deBob = json_decode((string) $this->as_($bob, 'GET', '/api/twin9/mes-analyses')->getBody(), true);
         self::assertSame(['journal-bob'], array_column($deBob['cartes'], 'journal'));
         self::assertStringNotContainsString('journal-fini', json_encode($deBob));
+    }
+
+    /**
+     * P0-1: a run of before the configuration — done, its execution never
+     * frozen; in progress, without a configuration — never makes the
+     * account's archive invalid: its blocks are left out, whole or absent;
+     * a run without a call yet has its execution's tables as objects.
+     */
+    public function testAnOldRunNeverMakesTheArchiveInvalid(): void
+    {
+        $alice = $this->registerAs('ancien@example.org', 'Alice');
+        $profil = $this->profil($alice);
+        $ancien = $this->lancer($alice, $profil, 'journal-ancien.md');
+        $this->jusquAuBout($alice, $ancien);
+        $enCours = $this->lancer($alice, $profil, 'journal-en-cours.md');
+        $this->journal($enCours, 'Un appel répondu.');
+        self::$pdo->exec("UPDATE twin9_runs SET configuration = NULL, execution = NULL WHERE id IN ($ancien, $enCours)");
+        $neuf = $this->lancer($alice, $profil, 'journal-neuf.md');
+
+        $texte = (string) $this->as_($alice, 'GET', '/api/twin9/mes-analyses')->getBody();
+        $export = json_decode($texte, false, 512, JSON_THROW_ON_ERROR);
+        [$a, $b, $c] = $export->runs;
+        self::assertSame([$ancien, $enCours, $neuf], [$a->id, $b->id, $c->id]);
+        self::assertObjectNotHasProperty('configuration', $a);
+        self::assertObjectNotHasProperty('execution', $a, 'fini avant elle : son exécution n’a pas été figée');
+        self::assertObjectNotHasProperty('configuration', $b);
+        self::assertSame(['journal', true, 1], [$b->execution->source, $b->execution->partiel, $b->execution->appels->total],
+            'lancé avant elle : partielle');
+        self::assertSame(['journal', false, 0], [$c->execution->source, $c->execution->partiel, $c->execution->appels->total]);
+        foreach (['par_voie', 'par_fournisseur', 'par_modele', 'servis'] as $table) {
+            self::assertEquals(new \stdClass(), $c->execution->{$table}, $table);
+        }
+        self::assertStringContainsString('"par_voie":{}', $texte);
+
+        // the account's archive, as the browser builds it, carries them
+        $archive = json_decode((string) file_get_contents(\dirname(__DIR__, 3) . '/schemas/fixtures/archive-export-exemple.json'),
+            false, 512, JSON_THROW_ON_ERROR);
+        $archive->schemaVersion = '1.2.0';
+        $archive->analysesTwin9 = $export;
+        self::assertSame(['valid' => true, 'errors' => []], Validation::validate('archive-export', $archive));
     }
 
     /**

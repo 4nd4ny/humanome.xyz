@@ -48,10 +48,12 @@ final class RunRepository
      * @param int $reserveFusion what it keeps for its merge, in micro-USD: its days' calls never eat into it (T8)
      * @param int $engagement what its launch granted it on its owner's credit, in micro-USD: their other runs never
      *                        eat into what it may still spend of it (T8)
+     * @param array<string, mixed>|null $configuration its configuration block (P0-1, RunConfiguration), kept as it
+     *                                                 is, never changed; null: none (tests)
      */
     public function creer(int $userId, stdClass $profil, stdClass $moteur, string $portfolioNom, string $portfolio,
                           string $journal, array $gabarits, \DateTimeImmutable $horloge, ?string $sortie = null,
-                          int $reserveFusion = 0, int $engagement = 0): int
+                          int $reserveFusion = 0, int $engagement = 0, ?array $configuration = null): int
     {
         $referentiel = (string) ($profil->referentiel->id ?? '');
         $jeu = (string) ($profil->gabarits ?? '');
@@ -66,8 +68,8 @@ final class RunRepository
 
         $this->pdo->prepare(
             'INSERT INTO twin9_runs (user_id, carte_id, reglages, portfolio, gabarits, horloge, debut_at,
-                                     reserve_fusion_microusd, engagement_microusd)
-             VALUES (?, ?, ?, ?, ?, ?, NOW(), ?, ?)'
+                                     reserve_fusion_microusd, engagement_microusd, configuration)
+             VALUES (?, ?, ?, ?, ?, ?, NOW(), ?, ?, ?)'
         )->execute([
             $userId,
             $carteId,
@@ -78,6 +80,7 @@ final class RunRepository
             $horloge->format('Y-m-d H:i:s'),
             max(0, $reserveFusion),
             max(0, $engagement),
+            $configuration === null ? null : self::pack($configuration),
         ]);
 
         return (int) $this->pdo->lastInsertId();
@@ -158,7 +161,9 @@ final class RunRepository
      * A run as its page follows it (T9): its status and what holds it back,
      * its progress read in its journal — calls by state, days done, batches
      * at Anthropic, an earlier run of its map it waits for —, its
-     * attestation and, once done, its counters. No portfolio, no output.
+     * attestation, its configuration's fingerprint (P0-1: its blocks
+     * themselves come with its results, the page asks this one often) and,
+     * once done, its counters. No portfolio, no output.
      *
      * @return array<string, mixed>|null
      */
@@ -166,7 +171,8 @@ final class RunRepository
     {
         $stmt = $this->pdo->prepare(
             'SELECT r.id, r.user_id, r.carte_id, c.portfolio AS journal, r.statut, r.attente, r.visibilite,
-                    r.attestation, r.reglages, r.compteurs, r.created_at, r.avance_at, r.finished_at, r.accord_at
+                    r.attestation, r.configuration, r.reglages, r.compteurs, r.created_at, r.avance_at, r.finished_at,
+                    r.accord_at
                FROM twin9_runs r JOIN twin9_cartes c ON c.id = r.carte_id WHERE r.id = ?'
         );
         $stmt->execute([$id]);
@@ -231,6 +237,8 @@ final class RunRepository
             'voie' => (string) $profil->voie,
             'attestation' => $row['attestation'] === null ? null : json_decode((string) $row['attestation'], true,
                 512, JSON_THROW_ON_ERROR),
+            'configuration_empreinte' => $row['configuration'] === null ? null
+                : (string) self::unpack((string) $row['configuration'])->empreinte,
             'progression' => [
                 'appels' => $appels,
                 'journees' => (int) $journees,
@@ -299,25 +307,33 @@ final class RunRepository
         return $this->sousVerrou($userId, fn (): bool => $this->reprendreAdmis($id, $userId, $plafonds));
     }
 
-    /** @param array{budget_usd?: float|int|null} $plafonds */
+    /**
+     * Its configuration stays as it was launched (P0-1); its execution block
+     * keeps the resumption, when and under which budget.
+     *
+     * @param array{budget_usd?: float|int|null} $plafonds
+     */
     private function reprendreAdmis(int $id, int $userId, array $plafonds): bool
     {
         $this->pdo->beginTransaction();
         try {
-            $stmt = $this->pdo->prepare('SELECT reglages FROM twin9_runs
+            $stmt = $this->pdo->prepare('SELECT reglages, execution, NOW() AS maintenant FROM twin9_runs
                                           WHERE id = ? AND user_id = ? AND statut IN ("annule", "echoue") FOR UPDATE');
             $stmt->execute([$id, $userId]);
-            $blob = $stmt->fetchColumn();
-            if ($blob === false) {
+            $row = $stmt->fetch();
+            if ($row === false) {
                 $this->pdo->rollBack();
 
                 return false;
             }
+            $copie = self::unpack((string) $row['reglages']);
             $reglages = null;
             if (\array_key_exists('budget_usd', $plafonds)) {
-                $reglages = self::unpack((string) $blob);
+                $reglages = $copie;
                 $reglages->profil->budget_usd = $plafonds['budget_usd'];
             }
+            $execution = self::executionGardee($row['execution']);
+            $execution->reprises[] = ['at' => (string) $row['maintenant'], 'budget_usd' => $copie->profil->budget_usd ?? null];
             // what it has committed, and what the owner's other runs in progress leave free
             $stmt = $this->pdo->prepare(
                 'SELECT COALESCE(SUM(COALESCE(reserve_microusd, cout_microusd, 0)), 0) FROM twin9_appels WHERE run_id = ?'
@@ -327,9 +343,11 @@ final class RunRepository
             ['solde' => $solde, 'autres' => $autres] = $this->disponible($userId, $id);
             $this->pdo->prepare(
                 'UPDATE twin9_runs SET statut = "en_cours", attente = NULL, finished_at = NULL, debut_at = NOW(),
-                        reglages = COALESCE(?, reglages), engagement_microusd = LEAST(engagement_microusd, ?)
+                        reglages = COALESCE(?, reglages), engagement_microusd = LEAST(engagement_microusd, ?),
+                        execution = ?
                   WHERE id = ?'
-            )->execute([$reglages === null ? null : self::pack($reglages), $engage + max(0, $solde - $autres), $id]);
+            )->execute([$reglages === null ? null : self::pack($reglages), $engage + max(0, $solde - $autres),
+                        json_encode($execution, self::JSON), $id]);
             $this->pdo->commit();
         } catch (\Throwable $e) {
             $this->pdo->rollBack();
@@ -421,11 +439,30 @@ final class RunRepository
         return $statut === false ? null : (string) $statut;
     }
 
-    /** The slice touched the run: when, and what holds it back, if anything. */
-    public function avance(int $id, ?string $attente): void
+    /**
+     * The slice touched the run: when, what holds it back, if anything, and
+     * the engine's passes it played of it, with their time (P0-1, P0-4).
+     */
+    public function avance(int $id, ?string $attente, int $passes = 0, int $moteurMs = 0): void
     {
-        $this->pdo->prepare('UPDATE twin9_runs SET avance_at = NOW(3), attente = ? WHERE id = ?')
-            ->execute([$attente === null ? null : mb_substr($attente, 0, 255), $id]);
+        $this->pdo->prepare(
+            'UPDATE twin9_runs SET avance_at = NOW(3), attente = ?, passes = passes + ?, moteur_ms = moteur_ms + ?
+              WHERE id = ?'
+        )->execute([$attente === null ? null : mb_substr($attente, 0, 255), max(0, $passes), max(0, $moteurMs), $id]);
+    }
+
+    /**
+     * The engine's passes a slice played of a run, with their time, when it
+     * leaves the slice otherwise than by avance() or terminer(): stopped, or
+     * cancelled meanwhile.
+     */
+    public function compter(int $id, int $passes, int $moteurMs): void
+    {
+        if ($passes <= 0 && $moteurMs <= 0) {
+            return;
+        }
+        $this->pdo->prepare('UPDATE twin9_runs SET passes = passes + ?, moteur_ms = moteur_ms + ? WHERE id = ?')
+            ->execute([max(0, $passes), max(0, $moteurMs), $id]);
     }
 
     /** An output of the run, as the engine writes it. */
@@ -453,18 +490,26 @@ final class RunRepository
     /**
      * The run is done: its journal becomes its counters, and its evaluation,
      * without any content, joins those that foresee the next runs (T8,
-     * Evaluations) — a failure to record it never keeps the run from ending.
-     * False when it was no longer in progress (cancelled meanwhile).
+     * Evaluations) — a failure to record it never keeps the run from ending;
+     * its execution block is frozen (P0-1, RunExecution), its resumptions
+     * kept — a failure to freeze it leaves it null, and never keeps the run
+     * from ending either. False when it was no longer in progress (cancelled
+     * meanwhile).
      *
      * @param array<string, int> $octets the days of its map, in order — those it took, then those its memory
      *        keeps —: each day's size in bytes, by its id
      * @param float $marge the instance's margin its costs include; 1.0 with its owner's own key
+     * @param int $passes the engine's passes of its last slice, its final one included, and $moteurMs their time
      */
-    public function terminer(int $id, array $octets = [], float $marge = 1.0): bool
+    public function terminer(int $id, array $octets = [], float $marge = 1.0, int $passes = 0, int $moteurMs = 0): bool
     {
         $this->pdo->beginTransaction();
         try {
-            $stmt = $this->pdo->prepare('SELECT statut, user_id, reglages, gabarits FROM twin9_runs WHERE id = ? FOR UPDATE');
+            $stmt = $this->pdo->prepare(
+                'SELECT statut, user_id, reglages, gabarits, configuration, execution, passes, moteur_ms, created_at,
+                        NOW() AS maintenant
+                   FROM twin9_runs WHERE id = ? FOR UPDATE'
+            );
             $stmt->execute([$id]);
             $run = $stmt->fetch();
             if ($run === false || $run['statut'] !== 'en_cours') {
@@ -472,6 +517,8 @@ final class RunRepository
 
                 return false;
             }
+            $passes = max(0, $passes);
+            $moteurMs = max(0, $moteurMs);
             $compteurs = $this->compteurs($id);
             $this->pdo->exec('SAVEPOINT evaluation');
             try {
@@ -488,13 +535,40 @@ final class RunRepository
                 }
                 error_log('[twin9] évaluation du run ' . $id . ' non consignée : ' . $e::class);
             }
+            // its execution, frozen before its journal goes (P0-1); unreadable, null — the class only in the log
+            $execution = null;
+            $this->pdo->exec('SAVEPOINT execution');
+            try {
+                $configuration = $run['configuration'] === null ? null : self::unpack((string) $run['configuration']);
+                $execution = json_encode((new RunExecution($this->pdo))->bloc($id, 'fige', [
+                    'statut' => 'termine',
+                    'debut_at' => (string) $run['created_at'],
+                    'fin_at' => (string) $run['maintenant'],
+                    'duree_active_s' => (int) $compteurs['duree_s'],
+                    'passes' => (int) $run['passes'] + $passes,
+                    'moteur_ms' => (int) $run['moteur_ms'] + $moteurMs,
+                    'commit_debut' => $configuration?->moteur?->commit ?? null,
+                    'commit_fin' => EngineLoader::commit(),
+                    'partiel' => $configuration === null,
+                    'reprises' => self::executionGardee($run['execution'])->reprises,
+                ], $compteurs), self::JSON);
+            } catch (\Throwable $e) {
+                try {
+                    $this->pdo->exec('ROLLBACK TO SAVEPOINT execution');
+                } catch (\Throwable) {
+                    throw $e; // the transaction itself is lost (a deadlock): the run ends at the next slice
+                }
+                $execution = null;
+                error_log('[twin9] exécution du run ' . $id . ' non figée : ' . $e::class);
+            }
             $this->pdo->prepare('DELETE FROM twin9_appels WHERE run_id = ?')->execute([$id]);
             // its batches deleted at Anthropic go with the journal; one still there waits for the tick
             $this->pdo->prepare('DELETE FROM twin9_lots WHERE run_id = ? AND statut = "supprime"')->execute([$id]);
             $this->pdo->prepare(
-                'UPDATE twin9_runs SET statut = "termine", attente = NULL, compteurs = ?, finished_at = NOW(), '
-                . self::ACTIF . ' WHERE id = ?'
-            )->execute([json_encode($compteurs, JSON_THROW_ON_ERROR | JSON_UNESCAPED_UNICODE), $id]);
+                'UPDATE twin9_runs SET statut = "termine", attente = NULL, compteurs = ?, execution = ?, finished_at = ?,
+                        passes = passes + ?, moteur_ms = moteur_ms + ?, ' . self::ACTIF . ' WHERE id = ?'
+            )->execute([json_encode($compteurs, JSON_THROW_ON_ERROR | JSON_UNESCAPED_UNICODE), $execution,
+                        (string) $run['maintenant'], $passes, $moteurMs, $id]);
             $this->pdo->commit();
         } catch (\Throwable $e) {
             $this->pdo->rollBack();
@@ -576,6 +650,81 @@ final class RunRepository
         $json = $stmt->fetchColumn();
 
         return \is_string($json) ? json_decode($json, true, 512, JSON_THROW_ON_ERROR) : null;
+    }
+
+    /**
+     * A run's configuration block (P0-1, RunConfiguration), as its launch
+     * wrote it, its objects objects; null for a run launched before
+     * migration 031.
+     */
+    public function configuration(int $id): ?stdClass
+    {
+        $stmt = $this->pdo->prepare('SELECT configuration FROM twin9_runs WHERE id = ?');
+        $stmt->execute([$id]);
+        $blob = $stmt->fetchColumn();
+
+        return \is_string($blob) ? self::unpack($blob) : null;
+    }
+
+    /**
+     * A run's execution block (P0-1, RunExecution), its objects objects: as
+     * frozen once it is done (null when that failed, or for a run done
+     * before migration 031); otherwise from its journal, with the
+     * resumptions it keeps. Null for an unknown run.
+     */
+    public function execution(int $id): ?stdClass
+    {
+        $stmt = $this->pdo->prepare(
+            'SELECT statut, configuration, execution, passes, moteur_ms, created_at, finished_at,
+                    actif_s + IF(statut = "en_cours",
+                                 GREATEST(0, TIMESTAMPDIFF(SECOND, COALESCE(debut_at, created_at), NOW())), 0) AS actif
+               FROM twin9_runs WHERE id = ?'
+        );
+        $stmt->execute([$id]);
+        $run = $stmt->fetch();
+        if ($run === false) {
+            return null;
+        }
+        if ($run['statut'] === 'termine') {
+            return $run['execution'] === null ? null : json_decode((string) $run['execution'], false, 512,
+                JSON_THROW_ON_ERROR);
+        }
+        $configuration = $run['configuration'] === null ? null : self::unpack((string) $run['configuration']);
+        $bloc = (new RunExecution($this->pdo))->bloc($id, 'journal', [
+            'statut' => (string) $run['statut'],
+            'debut_at' => (string) $run['created_at'],
+            'fin_at' => $run['finished_at'] === null ? null : (string) $run['finished_at'],
+            'duree_active_s' => (int) $run['actif'],
+            'passes' => (int) $run['passes'],
+            'moteur_ms' => (int) $run['moteur_ms'],
+            'commit_debut' => $configuration?->moteur?->commit ?? null,
+            'commit_fin' => null,
+            'partiel' => $configuration === null,
+            'reprises' => self::executionGardee($run['execution'])->reprises,
+        ], $this->compteurs($id));
+
+        return json_decode(json_encode($bloc, self::JSON), false, 512, JSON_THROW_ON_ERROR);
+    }
+
+    /**
+     * What a run's execution column holds: its frozen block, or before it
+     * is done its resumptions only; nothing yet, none.
+     *
+     * @throws \UnexpectedValueException for anything else
+     */
+    private static function executionGardee(mixed $json): stdClass
+    {
+        $gardee = $json === null ? (object) ['reprises' => []] : json_decode((string) $json, false, 512,
+            JSON_THROW_ON_ERROR);
+        if (!$gardee instanceof stdClass) {
+            throw new \UnexpectedValueException('Exécution du run illisible');
+        }
+        $gardee->reprises ??= [];
+        if (!\is_array($gardee->reprises)) {
+            throw new \UnexpectedValueException('Reprises du run illisibles');
+        }
+
+        return $gardee;
     }
 
     /**

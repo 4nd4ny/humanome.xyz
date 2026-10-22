@@ -36,7 +36,9 @@ use Humanome\Packages\SettingsRepository;
 use Humanome\Twin9\EngineLoader;
 use Humanome\Twin9\Lancement;
 use Humanome\Twin9\Resultats;
+use Humanome\Twin9\RunConfiguration;
 use Humanome\Twin9\RunCosts;
+use Humanome\Twin9\RunExecution;
 use Humanome\Twin9\RunExport;
 use Humanome\Twin9\RunRepository;
 use Humanome\Twin9\Twin9Config;
@@ -250,12 +252,22 @@ return function (App $app): void {
             if ($lecteur === null) {
                 throw new Twin9Exception('Run introuvable', 404);
             }
-            $suivi = (new RunRepository($pdo))->suivi($id);
+            $runs = new RunRepository($pdo);
+            $suivi = $runs->suivi($id);
+            // its configuration and its execution (P0-1, docs/contrats.md §8.9); a cartographe reads neither what
+            // its owner pays nor how: no price, cost, cap nor key
+            $configuration = $runs->configuration($id);
+            $execution = $runs->execution($id);
+            if ($lecteur === 'cartographe') {
+                $configuration = $configuration === null ? null : RunConfiguration::pourCartographe($configuration);
+                $execution = $execution === null ? null : RunExecution::pourCartographe($execution);
+            }
 
             return $json($response, [
                 'run' => ['id' => $id, 'journal' => $suivi['journal'], 'statut' => $suivi['statut'],
                           'retard' => $suivi['retard'], 'mode' => $suivi['mode'],
                           'attestation' => $suivi['attestation'],
+                          'configuration' => $configuration, 'execution' => $execution,
                           'created_at' => $suivi['created_at'], 'finished_at' => $suivi['finished_at']],
                 'lecteur' => $lecteur,
             ] + (new Resultats($pdo))->lire($id, $userId));

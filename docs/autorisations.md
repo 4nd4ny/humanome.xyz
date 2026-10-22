@@ -284,7 +284,7 @@ l'export, dans `PurgeExportTest.php` (T10).
 | `/api/twin9/runs/{id}` | GET | Son propriétaire : sa progression, lue dans son journal ; 404 pour tout autre |
 | `/api/twin9/runs/{id}/annuler`, `/reprendre` | POST | Son propriétaire, + CSRF ; `/reprendre` accepte `{budget_usd}`, un nouveau budget ; 409 hors de l'état voulu |
 | `/api/twin9/runs/{id}/visibilite` | PUT | Son propriétaire, + CSRF : `privee` ou `cartographe` |
-| `/api/twin9/runs/{id}/resultats` | GET | Son propriétaire ; le cartographe lié si le run lui est visible ; 404 pour tout autre, administrateur compris |
+| `/api/twin9/runs/{id}/resultats` | GET | Son propriétaire ; le cartographe lié si le run lui est visible, la configuration et l'exécution du run sans prix, coût, plafond ni clé (P0-1, `docs/contrats.md` §8.9) ; 404 pour tout autre, administrateur compris |
 | `/api/twin9/mes-analyses` | GET | Compte : ses runs (copie du profil, portfolio, journal, sorties, filtrés) et la mémoire de ses cartes, pour l'archive de compte |
 | `/api/twin9/admin/runs` | GET | `admin` : compteurs, statut, dates ; jamais de portfolio ni de résultat |
 

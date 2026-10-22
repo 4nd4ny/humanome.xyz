@@ -349,6 +349,23 @@ final class TrancheTest extends TestCase
         self::assertCount(1, $envois, 'jamais relancé : le même prompt serait coupé de même');
         $compteurs = (new RunRepository($this->pdo))->compteursDe($id);
         self::assertSame([1, 1], [$compteurs['pannes'], $compteurs['tronques']]);
+        // P0-1: its execution, frozen, says it too — the cut stop, its lane, its model —, its totals its counters'
+        $execution = json_decode(json_encode((new RunRepository($this->pdo))->execution($id)), true);
+        self::assertSame(['fige', true], [$execution['source'], $execution['partiel']], 'un run créé sans configuration');
+        $n = $compteurs['appels'];
+        // MySQL's JSON column orders the keys its own way: compared as maps
+        self::assertEquals(['total' => $n, 'repondus' => $n - 1, 'pannes' => 1, 'tronques' => 1, 'refus' => 0,
+                          'tentatives' => $compteurs['tentatives']], $execution['appels']);
+        self::assertSame([$compteurs['cout_microusd'], $compteurs['jetons_entree'], $compteurs['jetons_sortie']],
+            [$execution['cout_microusd'], $execution['jetons']['entree'], $execution['jetons']['sortie']]);
+        self::assertEquals(['end' => $n - 1, 'max_tokens' => 1, 'context_window' => 0, 'refusal' => 0, 'other' => 0],
+            $execution['arrets']);
+        self::assertSame(['directe'], array_keys($execution['par_voie']));
+        self::assertSame(['anthropic'], array_keys($execution['par_fournisseur']));
+        self::assertSame([$n, 1, 1, $compteurs['cout_microusd']], [$execution['par_voie']['directe']['appels'],
+            $execution['par_voie']['directe']['pannes'], $execution['par_voie']['directe']['tronques'],
+            $execution['par_voie']['directe']['cout_microusd']]);
+        self::assertSame(1, $execution['par_modele'][$reglage['modele']]['tronques']);
         self::assertSame(['appels' => 3, 'pannes' => 1, 'tronques' => 1,
                           'cout_microusd' => 2 * $config->coutMicrousd($reglage['modele'], 100, 20)
                               + $config->coutMicrousd($reglage['modele'], 100, $reglage['budget_sortie'])],
@@ -417,10 +434,12 @@ final class TrancheTest extends TestCase
         });
         $runs = new RunRepository($this->pdo);
         $passes = 0;
+        $moteurMs = 0;
         $appels = 0;
         for ($t = 0; $t < 10 && $runs->statut($id) === 'en_cours'; $t++) {
             $c = (new Tick($this->pdo, ['budgetSeconds' => 5, 'twin9Sender' => new DirectCalls($http)]))->run();
             $passes += $c['twin9Passes'];
+            $moteurMs += $c['twin9MoteurMs'];
             $appels += $c['twin9Appels'];
         }
 
@@ -431,6 +450,13 @@ final class TrancheTest extends TestCase
         self::assertSame(13, $appels);
         self::assertLessThan($appels, $passes, 'une passe par réponse, avant P0-4');
         self::assertSame($runs->sorties($reference), $runs->sorties($id), 'les sorties, à l\'octet');
+
+        // P0-1: the run keeps its passes and the engine's time, slice after slice, its final pass included
+        $stmt = $this->pdo->prepare('SELECT passes, moteur_ms FROM twin9_runs WHERE id = ?');
+        $stmt->execute([$id]);
+        self::assertSame([$passes, $moteurMs], array_map(intval(...), $stmt->fetch(PDO::FETCH_NUM)));
+        $execution = $runs->execution($id);
+        self::assertSame([$passes, $moteurMs, 'fige'], [$execution->passes, $execution->moteur_ms, $execution->source]);
     }
 
     /**

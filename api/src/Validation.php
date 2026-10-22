@@ -30,6 +30,8 @@ final class Validation
         'competency-map-master',
         'archive-export',
         'twin9-profil',
+        // the document handed to the cartography interface, and a run's configuration and execution (P0-1)
+        'twin9-run',
     ];
 
     private const MAX_ERRORS = 20;

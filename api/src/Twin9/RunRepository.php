@@ -277,9 +277,36 @@ final class RunRepository
     }
 
     /**
-     * Its owner stops a run in progress: the tick no longer advances it, and
-     * cancels then deletes its batches at Anthropic (Twin9Lots). Its journal
-     * stays, for a resumption. False when it was not in progress.
+     * The runs no longer in progress (cancelled, stopped) whose calls still
+     * hold a worst case outside a batch at Anthropic: cancelled between two
+     * slices, or left so by a tick that died. The slice settles them
+     * (RunCosts::liberer()) before any other work, under the worker's lock:
+     * none of their calls is in flight then.
+     *
+     * @param int|null $userId those of one user only (the page of their run, T9)
+     * @return list<int>
+     */
+    public function aSolder(int $n, ?int $userId = null): array
+    {
+        $stmt = $this->pdo->prepare(
+            'SELECT r.id FROM twin9_runs r
+              WHERE r.statut IN ("annule", "echoue")' . ($userId === null ? '' : ' AND r.user_id = ?') . '
+                AND EXISTS (SELECT 1 FROM twin9_appels a
+                             WHERE a.run_id = r.id AND a.reserve_microusd IS NOT NULL
+                               AND NOT (a.statut = "envoye" AND a.lot_id IS NOT NULL))
+              ORDER BY r.id LIMIT ' . max(1, $n)
+        );
+        $stmt->execute($userId === null ? [] : [$userId]);
+
+        return array_map(intval(...), $stmt->fetchAll(PDO::FETCH_COLUMN));
+    }
+
+    /**
+     * Its owner stops a run in progress: the tick no longer advances it,
+     * cancels its batches at Anthropic and collects them (Twin9Lots), and
+     * settles what its calls hold — those in flight once back, at their real
+     * cost (Twin9Slice). Its journal stays, for a resumption. False when it
+     * was not in progress.
      */
     public function annuler(int $id, int $userId): bool
     {

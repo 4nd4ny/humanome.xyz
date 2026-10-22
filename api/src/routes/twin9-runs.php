@@ -40,7 +40,6 @@ use Humanome\Twin9\Lancement;
 use Humanome\Twin9\ProfilPolicy;
 use Humanome\Twin9\Resultats;
 use Humanome\Twin9\RunConfiguration;
-use Humanome\Twin9\RunCosts;
 use Humanome\Twin9\RunExecution;
 use Humanome\Twin9\RunExport;
 use Humanome\Twin9\RunRepository;
@@ -196,8 +195,8 @@ return function (App $app): void {
             if (!(new RunRepository(Db::get()))->annuler($id, $userId)) {
                 throw new Twin9Exception('Ce run n’est pas en cours', 409);
             }
-            // what its calls hold goes back; its batches at Anthropic, once the tick has cancelled them
-            (new RunCosts(Db::get(), new Twin9Config(new SettingsRepository(Db::get()))))->liberer($id);
+            // what its calls hold goes back at the tick, never here: a slice may have some in flight, which come
+            // back, written with their cost, and are paid at it (Twin9Slice); its batches, once collected (Twin9Lots)
 
             return $json($response, $suivi($id));
         }

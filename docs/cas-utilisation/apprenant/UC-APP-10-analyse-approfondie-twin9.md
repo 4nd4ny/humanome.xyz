@@ -144,8 +144,9 @@ badge premium) ou ouvre `#/twin9`.
   l'aperçu le dit, le run prend celles-là, les autres attendent une prochaine
   analyse ; l'attestation le garde.
 - **A3 — Annuler, reprendre** (étape 6) : « Annuler » (`POST
-  /api/twin9/runs/<id>/annuler`) arrête le run en cours, rend ses réserves,
-  annule ses lots chez Anthropic ; « Reprendre » (`POST …/reprendre`) relance
+  /api/twin9/runs/<id>/annuler`) arrête le run en cours ; le tick rend ses
+  réserves, ses appels en vol payés au coût réel une fois revenus, annule ses
+  lots chez Anthropic et en relève les réponses ; « Reprendre » (`POST …/reprendre`) relance
   un run annulé ou arrêté depuis son journal : ce qui est fait n'est pas
   refait.
 - **A4 — Arrêt par un plafond** (étape 6) : le budget, la durée du profil ou le

@@ -356,6 +356,76 @@ final class VoieMixteTest extends TestCase
     }
 
     /**
+     * Its owner cancels a run while its direct calls are in flight (the
+     * route, concurrently, frees nothing itself): nothing more leaves, its
+     * calls in flight come back, written with their cost, and the slice's
+     * end settles them at their real cost — never lost, never free.
+     */
+    public function testARunCancelledWithCallsInFlightSettlesThemAtTheirRealCost(): void
+    {
+        $id = $this->nouveauRun(['/voie' => 'directe']);
+        $pdo = $this->pdo;
+        $user = $this->user;
+        $annuleA = null;
+        $http = new FakeMultiHttpClient(static function (array $r) use (&$annuleA, $pdo, $user, $id): array {
+            $appel = FakeMultiHttpClient::appel($r);
+            if ($annuleA === null && str_contains($appel, 'tags_b')) {
+                $annuleA = microtime(true);
+                self::assertTrue((new RunRepository($pdo))->annuler($id, $user));
+            }
+            $chat = str_starts_with($r['url'], Fournisseurs::REGISTRE['openai']['url']);
+
+            return ['body' => FakeMultiHttpClient::message('vu ' . $appel, $chat ? self::MODELE : 'claude-haiku-5-5',
+                format: $chat ? 'chat' : 'anthropic'), 'delai' => 0.5];
+        });
+
+        (new Tick($this->pdo, ['budgetSeconds' => 4, 'twin9Sender' => new DirectCalls($http)]))->run();
+
+        self::assertSame('annule', (new RunRepository($this->pdo))->statut($id), 'annulé, jamais en échec');
+        self::assertNotNull($annuleA);
+        self::assertNotSame([], $http->requests);
+        foreach ($http->requests as $r) {
+            $appel = FakeMultiHttpClient::appel($r);
+            self::assertLessThanOrEqual($annuleA, $r['at'], $appel . ' : plus rien ne part après l’annulation');
+            $etat = $this->appel($id, $appel);
+            self::assertSame('repondu', $etat['statut'], $appel . ' : revenu, écrit');
+            self::assertGreaterThan(0, (int) $etat['cout_microusd'], $appel . ' : avec son coût');
+        }
+        self::assertSame(0, (int) $this->pdo->query('SELECT COUNT(*) FROM twin9_appels WHERE reserve_microusd IS NOT NULL')
+            ->fetchColumn(), 'plus rien n’est retenu');
+        $couts = (int) $this->pdo->query('SELECT SUM(cout_microusd) FROM twin9_appels')->fetchColumn();
+        self::assertSame(self::CREDIT - $couts, (new CreditService($this->pdo))->balance($this->user),
+            'ses appels en vol payés à leur coût réel, rien d’autre');
+    }
+
+    /**
+     * A run cancelled between two slices — or whose tick died — keeps what
+     * its calls hold no longer than the next tick: each call's reserve goes
+     * back, at its real cost for one answered.
+     */
+    public function testACancelledRunsReservesGoBackAtTheNextTick(): void
+    {
+        $id = $this->nouveauRun(['/voie' => 'directe']);
+        $http = new FakeMultiHttpClient(static fn (array $r): array =>
+            ['status' => 429, 'headers' => ['retry-after' => '30'], 'body' => '{}']);
+        (new Tick($this->pdo, ['budgetSeconds' => 2, 'twin9Sender' => new DirectCalls($http)]))->run();
+        self::assertGreaterThan(0, (int) $this->pdo->query('SELECT COUNT(*) FROM twin9_appels
+                                                               WHERE reserve_microusd IS NOT NULL')->fetchColumn());
+        self::assertLessThan(self::CREDIT, (new CreditService($this->pdo))->balance($this->user), 'des réserves tenues');
+        // a call a dead tick left in flight
+        $this->pdo->prepare('UPDATE twin9_appels SET statut = "envoye" WHERE run_id = ? AND appel = ?')
+            ->execute([$id, 'journees/J1/tags_a_P1.json']);
+
+        self::assertTrue((new RunRepository($this->pdo))->annuler($id, $this->user));
+        (new Tick($this->pdo, ['budgetSeconds' => 2, 'twin9Sender' => new DirectCalls($http)]))->run();
+
+        self::assertSame(0, (int) $this->pdo->query('SELECT COUNT(*) FROM twin9_appels WHERE reserve_microusd IS NOT NULL')
+            ->fetchColumn(), 'tout est rendu');
+        self::assertSame(self::CREDIT, (new CreditService($this->pdo))->balance($this->user));
+        self::assertSame('annule', (new RunRepository($this->pdo))->statut($id));
+    }
+
+    /**
      * A third party's call leaves only if its model's longest call fits in
      * what remains of the slice: held back, it leaves at the head of the
      * next; a model longer than a slice never leaves, and the page says why.

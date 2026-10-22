@@ -107,6 +107,9 @@ final class Twin9Slice
     /** Another provider's longest call, in seconds, when its grid entry says none (Twin9Config: duree_max_s). */
     public const DUREE_MAX = 30;
 
+    /** Why a run cancelled during the slice sends nothing more (Twin9Run::$arret); never written: it is cancelled. */
+    private const ANNULE = 'annulé par son auteur';
+
     /** The runs by batches a slice may look at beyond its N, their batches still at Anthropic. */
     private const SURVOLS = 20;
 
@@ -179,6 +182,11 @@ final class Twin9Slice
                             'echoues' => 0, 'lots' => 0, 'releves' => 0, 'verifications' => 0, 'annules' => 0,
                             'depassements' => 0];
         $this->lots->menage($this->dernierDepart, $this->compteurs, $utilisateur);
+        // the runs cancelled (or stopped) between two slices, or whose tick died: what their calls hold goes back, at
+        // its real cost for a call answered — no slice holds their calls in flight now (the worker's lock)
+        foreach ($this->runs->aSolder(self::SURVOLS, $utilisateur) as $id) {
+            $this->depasse($this->couts->liberer($id));
+        }
         foreach ($this->runs->aAvancer($n + self::SURVOLS, $utilisateur) as $id) {
             if ($this->compteurs['runs'] >= $n || microtime(true) >= $this->dernierDepart) {
                 break;
@@ -221,7 +229,9 @@ final class Twin9Slice
         $this->couper();
         foreach ($this->etats as $run) {
             if ($this->runs->statut($run->id) !== 'en_cours') {
-                $this->depasse($this->couts->liberer($run->id)); // cancelled meanwhile: what its calls hold goes back
+                // cancelled meanwhile, its calls in flight now back or cut: what they hold is settled, at its real
+                // cost for an answer
+                $this->depasse($this->couts->liberer($run->id));
                 continue;
             }
             // to stop, its calls in flight now back or cut, written with their cost (deferred stop)
@@ -354,9 +364,7 @@ final class Twin9Slice
     /** One pass of a run, counted as soon as it is played (P0-1): done, or the calls it waits for. */
     private function passer(Twin9Run $run): void
     {
-        if ($this->runs->statut($run->id) !== 'en_cours') {
-            unset($this->etats[$run->id]); // cancelled meanwhile
-
+        if ($this->annule($run)) {
             return;
         }
         $run->nouvelles = false;
@@ -418,7 +426,7 @@ final class Twin9Slice
     {
         $run->reveil = null;
         $run->plein = false;
-        if ($run->arret !== null || microtime(true) >= $this->dernierDepart) {
+        if ($run->arret !== null || microtime(true) >= $this->dernierDepart || $this->annule($run)) {
             return;
         }
         if ($run->routeLots && $run->passes > 0 && $run->passeSoumise === 0 && !$run->suspendu('lots')) {
@@ -520,6 +528,10 @@ final class Twin9Slice
                 $run->suspendre($fournisseur, 'clé ' . Fournisseurs::REGISTRE[$fournisseur]['libelle'] . ' indisponible');
                 continue;
             }
+            // its owner may cancel it at any moment: read before each departure, nothing leaves once cancelled
+            if ($this->annule($run)) {
+                return;
+            }
             if (!$this->partir($run, $call, $fournisseur, $reglage['modele'], $tentative, $reserve)) {
                 continue;
             }
@@ -568,6 +580,29 @@ final class Twin9Slice
             throw $e;
         }
         $run->engage += $reserve;
+
+        return true;
+    }
+
+    /**
+     * Whether its owner cancelled the run meanwhile (the route, which frees
+     * nothing itself). With calls in flight, it stays in the slice, sending
+     * nothing more (deferred, as a stop): they come back, or the slice's end
+     * cuts them, written with their cost, and the slice's end settles what
+     * they hold at their real cost — never lost, never free. Without, it
+     * leaves the slice, which settles it as well.
+     */
+    private function annule(Twin9Run $run): bool
+    {
+        if ($this->runs->statut($run->id) === 'en_cours') {
+            return false;
+        }
+        if ($run->enVol !== []) {
+            $run->arret ??= self::ANNULE;
+        } else {
+            unset($this->etats[$run->id]);
+            $this->depasse($this->couts->liberer($run->id));
+        }
 
         return true;
     }

@@ -490,7 +490,7 @@ page Essayer (UC-VIS-03), ou par l'adresse.
 | UC-APP-09-F05 | E2 | IHM | Copie statique : fonctionnalité indisponible | idem |
 | UC-APP-09-F06 | E3 | IHM | Solde < poids du portfolio et réserve d'un appel (« ~2.41 $ : 1 $ estimés, et 1.41 $ réservés… », Sonnet 5 à 2 / 10) : blocage avant tout appel | idem |
 | UC-APP-09-F07 | E4 | IHM | 402 en cours de run : arrêt, message suivi de ce que le run a débité, bouton réutilisable | idem |
-| UC-APP-09-F08 | E5 | IHM | Sortie tronquée : échec explicite, pas d'export | idem |
+| UC-APP-09-F08 | E5 | IHM | Second appel tronqué (facturé à un autre coût que le premier) : échec explicite nommant l'étape `scan-pole/2`, message suivi de ce que le run a débité, appel tronqué compris ; pas d'export, bouton réutilisable | idem |
 | UC-APP-09-F09 | E6 | IHM | Paquet public introuvable, ou offre `/meta` en erreur : erreur de chargement, formulaire absent | idem |
 | UC-APP-09-F21 | A4 | IHM | Autre référentiel publié choisi : décompte « 6 appels (5 pôles + synthèse) », 6 appels, fiches écrites depuis son document, export qui le nomme, total de ses compétences | idem |
 | UC-APP-09-F22 | A5 | IHM | Dernière version de RESPIRE à six pôles : 7 appels, document de RESPIRE aux pôles de cette version (noms du document publié), total de ses compétences | idem |
@@ -499,6 +499,7 @@ page Essayer (UC-VIS-03), ou par l'adresse.
 | UC-APP-09-F25 | A6, RG11 | IHM | Portfolio de 5 001 caractères : bouton inactif, « (retirez-en 1) », aucune requête à la démo | idem |
 | UC-APP-09-F26 | E14 | IHM | Budget du jour épuisé (`503`) : message de la démo dès le premier appel, sans nouvel essai, bouton de nouveau cliquable | idem |
 | UC-APP-09-F27 | E14 | IHM | Un compte sur l'essai gratuit, budget du jour épuisé (`503`) : ses deux autres voies, pas l'invitation à créer un compte | idem |
+| UC-APP-09-F31 | E5 | IHM | Refus du fournisseur relayé (`stopReason refusal`) au second appel : « le fournisseur a refusé de répondre à l'étape scan-pole/2 », suivi de ce que le run a débité, refus compris ; pas d'export, bouton réutilisable | idem |
 | UC-APP-09-F10 | Nominal | API | 8 appels : contrat, `text` amont intact et `model`, coût 4 400 µUSD chacun (Sonnet 5 à 2 / 10), prompt public transmis tel quel, grand-livre réserve/réconciliation | `api/tests/UseCases/Functional/UcApp09CartographieOuverteTwin6Test.php` |
 | UC-APP-09-F11 | Nominal (étape 2), RG7 | API | `/api/twin9/meta` : prix Twin6, référentiel, solde ; Twin6 fonctionne sans Twin9 importé | idem |
 | UC-APP-09-F12 | E7 | API | 401 sans session, aucun appel amont | idem |

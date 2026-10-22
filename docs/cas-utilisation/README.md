@@ -127,7 +127,7 @@ rejouant les fixtures : aucun appel réseau réel).
 | [UC-APP-06](apprenant/UC-APP-06-exporter-importer-archive.md) | Exporter et importer son archive complète | 20 | 17 | 6 |
 | [UC-APP-07](apprenant/UC-APP-07-inviter-cartographe.md) | Inviter un cartographe | 9 | 10 | 1 |
 | [UC-APP-08](apprenant/UC-APP-08-rejoindre-cohorte.md) | Rejoindre une cohorte, déposer son portfolio, quitter | 12 | 25 | 4 |
-| [UC-APP-09](apprenant/UC-APP-09-cartographie-ouverte-twin6.md) | Lancer une cartographie ouverte (Twin6) | 39 | 29 | 1 |
+| [UC-APP-09](apprenant/UC-APP-09-cartographie-ouverte-twin6.md) | Lancer une cartographie ouverte (Twin6) | 39 | 30 | 1 |
 | [UC-APP-10](apprenant/UC-APP-10-analyse-approfondie-twin9.md) | Lancer une analyse approfondie (Twin9) | 13 | 20 | 0 |
 | [UC-APP-11](apprenant/UC-APP-11-gerer-credit-twin9.md) | Gérer son crédit Twin9 (achat, factures, remboursement) | 17 | 29 | 3 |
 | [UC-APP-12](apprenant/UC-APP-12-interface-ipsative-v3.md) | Explorer sa cartographie dans l'interface ipsative V3 (retirée le 2026-10-14) | 29 | 0 | 19 |

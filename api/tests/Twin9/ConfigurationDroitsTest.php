@@ -424,6 +424,45 @@ final class ConfigurationDroitsTest extends CartographeTestCase
     }
 
     /**
+     * A launch is measured on the shortest slice the instance serves: its
+     * own (secondes_par_tranche), or its trigger's, shorter — cron-job.org's
+     * 25 s (docs/deploiement.md) leave a third party's call 21 s at its
+     * head, not 35; the administrator's page says both.
+     */
+    public function testALaunchIsMeasuredOnTheTriggersSlice(): void
+    {
+        self::$pdo->exec("DELETE FROM settings WHERE name IN ('twin9_config', 'twin9_tranche_declencheur')");
+        TestDb::setEnv('MISTRAL_API_KEY', 'cle-mistral-factice');
+        $admin = $this->registerAs('tranche-declencheur@example.org', 'Admin', ['admin']);
+        $profil = ProfilRepository::v98();
+        $profil->etapes->greffier = (object) ['fournisseur' => 'mistral', 'modele' => 'modele-fictif'];
+        $valide = ProfilRepository::validate($profil);
+        $config = new Twin9Config(new SettingsRepository(self::$pdo));
+        $config->update(['twin9_fournisseurs_ouverts' => ['anthropic', 'mistral'],
+                         'modeles' => $config->modeles() + ['mistral:modele-fictif' => ['prix_usd_mtok' => [0.3, 0.9],
+                             'plafond_sortie' => 16000, 'plafond_reflexion' => 0, 'duree_max_s' => 30]]]);
+        $politique = new ProfilPolicy(self::$pdo, $config);
+        $politique->admettreAuLancement($valide); // 30 s within the 35 s a slice of 40 s leaves
+        $admise = fn (): array => array_intersect_key(self::json($this->as_($admin, 'GET', '/api/twin9/admin/config')),
+            ['secondes_declencheur' => 1, 'duree_max_admise' => 1]);
+        self::assertSame(['secondes_declencheur' => null, 'duree_max_admise' => 35], $admise());
+
+        $config->noterTrancheDuDeclencheur(25);
+        self::assertSame(['secondes_declencheur' => 25, 'duree_max_admise' => 21], $admise());
+        try {
+            $politique->admettreAuLancement($valide);
+            self::fail('30 s ne tiennent pas dans les 21 s que laisse une tranche de 25 s');
+        } catch (Twin9Exception $e) {
+            self::assertSame([422, 'Profil refusé — greffier : un appel à mistral:modele-fictif peut durer 30 s, plus que '
+                . 'ne lui en laisse une tranche de cette instance (21 s)'], [$e->getStatusCode(), $e->getMessage()]);
+        }
+        $config->update(['modeles' => ['mistral:modele-fictif' => ['duree_max_s' => 21]
+            + $config->modeles()['mistral:modele-fictif']] + $config->modeles()]);
+        $politique->admettreAuLancement($valide);
+        self::$pdo->exec("DELETE FROM settings WHERE name = 'twin9_tranche_declencheur'"); // the class's other tests
+    }
+
+    /**
      * A launch's consent names the providers a run reaches before any
      * preview, the portfolio not sent yet (ADR-012): the configuration's
      * route gives each profile's, and the default's, as the preview does —

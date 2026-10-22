@@ -29,7 +29,9 @@ use Humanome\Etablissement\ConfigRepository;
 use Humanome\Keys\KeyVault;
 use Humanome\Referentiel\Conformite;
 use Humanome\Referentiel\ReferentielRepository;
+use Humanome\Packages\SettingsRepository;
 use Humanome\Twin9\TarifsAnthropic;
+use Humanome\Twin9\Twin9Config;
 use Humanome\Validation;
 use Humanome\Worker\JobQueue;
 use Humanome\Worker\Tick;
@@ -333,7 +335,15 @@ return function (App $app): void {
         }
 
         try {
-            $counters = (new Tick(Db::get(), $options))->run();
+            $tick = new Tick(Db::get(), $options);
+            // the slices this trigger asks: a launch is measured on the shortest one served (ProfilPolicy), never
+            // failing the tick
+            try {
+                (new Twin9Config(new SettingsRepository(Db::get())))->noterTrancheDuDeclencheur($tick->budgetSeconds());
+            } catch (\Throwable $e) {
+                error_log('[worker-tick] tranche du déclencheur non notée : ' . $e::class);
+            }
+            $counters = $tick->run();
         } catch (\Throwable $e) {
             error_log('[worker-tick] ' . $e->getMessage());
 

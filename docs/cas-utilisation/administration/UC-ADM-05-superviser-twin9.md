@@ -118,7 +118,9 @@ L'administrateur ouvre « Administrer » → « Supervision Twin9 » (`#/admin/t
   choisit son fournisseur ; hors d'Anthropic, sa clé est « fournisseur:modèle »
   et elle porte, saisis à la main (aucun relevé ne les touche), son plafond de
   sortie, son plafond de réflexion, la durée maximale d'un appel (30 s
-  proposées pour un modèle ajouté) et, chez OpenAI et Google, son réglage de
+  proposées pour un modèle ajouté, au plus ce que laisse au départ d'un appel
+  la tranche la plus courte que sert l'instance — la sienne, ou celle du
+  déclencheur, que la section dit) et, chez OpenAI et Google, son réglage de
   raisonnement (RG11). Ces champs n'existent pas pour un modèle d'Anthropic.
   Un modèle dont un appel a coûté plus que sa réserve (l'instance a payé
   l'excédent) est signalé sur sa ligne, « pire cas insuffisant », avec le plus

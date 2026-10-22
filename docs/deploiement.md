@@ -178,14 +178,28 @@ de ses règles, relevées dans sa FAQ le 2026-10-21, décident des réglages :
 Une tranche dure 40 s par défaut (`secondes_par_tranche`) : le corps
 `{"budgetSeconds": 25}` la ramène à 25 s, pour que le tick réponde avant que le
 service raccroche — sans quoi chaque appel compterait comme un échec. Un run
-par lots n'y perd rien : une tranche soumet ou relève ses lots en quelques
-secondes. **Un run en appels directs, lui, ne tient pas navigateur fermé** : un
-appel plus long que la tranche (≈ 24 s) est coupé ; compté dès qu'il en a duré
-la moitié, il tombe en panne à sa troisième coupe (« délai dépassé : l'appel ne
-tient pas dans une tranche », `Twin9Slice::couper`), et sa journée manque à la
-carte — chaque appel coupé ayant pu être facturé par le fournisseur. Un run qui
-doit avancer seul passe donc par lots, la voie du profil v9.8 par défaut ; en
-appels directs, il lui faut sa page ouverte, qui donne des tranches de 40 s.
+**tout** par lots n'y perd rien : une tranche soumet ou relève ses lots en
+quelques secondes. **Un run en appels directs, lui, ne tient pas navigateur
+fermé** : un appel plus long que la tranche (≈ 24 s) est coupé ; compté dès
+qu'il en a duré la moitié, il tombe en panne à sa troisième coupe (« délai
+dépassé : l'appel ne tient pas dans une tranche », `Twin9Slice::couper`), et sa
+journée manque à la carte — chaque appel coupé ayant pu être facturé par le
+fournisseur. Un run qui doit avancer seul passe donc par lots, la voie du profil
+v9.8 par défaut ; en appels directs, il lui faut sa page ouverte, qui donne des
+tranches de 40 s.
+
+**Un profil mixte** (ADR-012 : des étapes chez un autre fournisseur
+qu'Anthropic) garde `voie = lots` pour ses appels d'Anthropic, mais ses appels
+aux autres fournisseurs partent en direct, à chaque tranche. La route garde la
+durée que demande le déclencheur (réglage `twin9_tranche_declencheur`), et le
+lancement se mesure sur la tranche la plus courte servie : sous 25 s, un appel
+tiers ne part que si la durée maximale de son modèle (`duree_max_s` de la
+grille) tient dans les **21 s** qu'une telle tranche laisse à son départ (35 s
+pour 40 s) ; un modèle plus long est refusé au lancement. Un run lancé avant
+que le déclencheur ne raccourcisse ses tranches attend, pour ce modèle seul,
+une tranche plus longue (sa page ouverte), puis s'arrête au bout de
+30 minutes, sa réserve rendue (2026-10-22). La page d'administration dit la
+tranche du déclencheur et ce qu'elle laisse.
 
 Le tick relève aussi les prix d'Anthropic, une fois par jour UTC, après sa
 tranche (UC-ADM-05 A6, 2026-10-21 ; par la route comme par `php scripts/worker.php`

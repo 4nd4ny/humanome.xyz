@@ -62,6 +62,12 @@ final class Twin9Config
     public const PIRE_CAS_KEY = 'twin9_pire_cas_insuffisant';
 
     /**
+     * The slice the external trigger asks (POST /api/admin/worker-tick), kept
+     * apart from 'twin9_config' as the route writes it: {secondes, at}.
+     */
+    public const DECLENCHEUR_KEY = 'twin9_tranche_declencheur';
+
+    /**
      * Referentiel STRUCTURE (pole num/nom + competence code/nom) the client
      * engine needs to assemble artefacts — NOT secret (codes and names are the
      * public RESPIRE referentiel; only the accented pole names differ from the
@@ -361,6 +367,36 @@ final class Twin9Config
     public function secondesParTranche(): int
     {
         return (int) $this->read()['secondes_par_tranche'];
+    }
+
+    /**
+     * Keeps the length of the slices the external trigger asks (its
+     * budgetSeconds: cron-job.org's 25 s, docs/deploiement.md), written
+     * only when it changes: a launch is measured on the shortest slice the
+     * instance serves (secondesServies()).
+     */
+    public function noterTrancheDuDeclencheur(int $secondes): void
+    {
+        if ($this->secondesDeclencheur() !== $secondes) {
+            $this->settings->set(self::DECLENCHEUR_KEY, ['secondes' => $secondes, 'at' => gmdate('Y-m-d\TH:i:s\Z')]);
+        }
+    }
+
+    /** The slices the external trigger last asked, in seconds; null before it ran. */
+    public function secondesDeclencheur(): ?int
+    {
+        $declencheur = $this->settings->get(self::DECLENCHEUR_KEY);
+
+        return \is_int($declencheur['secondes'] ?? null) ? $declencheur['secondes'] : null;
+    }
+
+    /**
+     * The shortest slice the instance serves, in seconds: its own
+     * (secondes_par_tranche, a run's page's), or its trigger's if shorter.
+     */
+    public function secondesServies(): int
+    {
+        return min($this->secondesParTranche(), $this->secondesDeclencheur() ?? PHP_INT_MAX);
     }
 
     /** @return list<array{montant_usd: float|int, libelle: string}> */

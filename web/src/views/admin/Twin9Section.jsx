@@ -93,6 +93,14 @@ function registreDe(config) {
     : FOURNISSEURS.map((id) => ({ id, libelle: LIBELLES_FOURNISSEURS[id], rgpd: RGPD_FOURNISSEURS[id], lots: id === 'anthropic' }))
 }
 
+/**
+ * Ce que la tranche la plus courte que sert l'instance (la sienne, ou celle du
+ * déclencheur si elle est plus courte) laisse à un appel d'un autre
+ * fournisseur au départ, en secondes entières, tel que le serveur le dit
+ * (duree_max_admise : la règle du lancement) ; 35 à défaut (40 s).
+ */
+const dureeAdmiseDe = (config) => (Number.isInteger(config?.duree_max_admise) ? config.duree_max_admise : 35)
+
 /** Un entier écrit en chiffres, ou NaN. */
 const entier = (texte) => (/^\d+$/.test(String(texte).trim()) ? Number(String(texte).trim()) : Number.NaN)
 
@@ -222,12 +230,14 @@ function ReglagesBloc({ config, fetchFn, onSaved }) {
     }))
   }
   function addModele() {
-    // la durée maximale d'un appel proposée : 30 s, qu'une tranche de 40 s laisse au départ (35 s)
+    // la durée maximale d'un appel proposée : 30 s, au plus ce que la tranche la plus courte servie laisse au départ
+    // d'un appel (35 s pour une tranche de 40 s, 21 s pour les 25 s de cron-job.org ; au-delà, un lancement est refusé)
+    const duree = String(Math.min(30, dureeAdmiseDe(config)))
     setDraft((prev) => ({
       ...prev,
       modeles: [
         ...prev.modeles,
-        { fournisseur: 'anthropic', id: '', prixIn: '', prixOut: '', plafondSortie: '', plafondReflexion: '0', dureeMaxS: '30', reflexionParam: '' },
+        { fournisseur: 'anthropic', id: '', prixIn: '', prixOut: '', plafondSortie: '', plafondReflexion: '0', dureeMaxS: duree, reflexionParam: '' },
       ],
     }))
   }
@@ -503,9 +513,16 @@ function ReglagesBloc({ config, fetchFn, onSaved }) {
         Le modèle d’un autre fournisseur porte ses plafonds : le plafond de sortie (en jetons, au moins le budget de
         sortie des étapes qui l’emploient ; 32 768 au plus chez Google), le plafond de réflexion (les jetons de
         raisonnement que le pire cas d’un appel ajoute ; plus de zéro chez xAI, dont le raisonnement ne se coupe pas),
-        la durée maximale d’un appel (de 1 à 45 s ; une tranche de 40 s en laisse 35 au départ d’un appel), et chez
-        OpenAI et Google le réglage de raisonnement le plus bas que le modèle admet (un mauvais choix fait refuser ses
-        appels).
+        la durée maximale d’un appel (de 1 à 45 s), et chez OpenAI et Google le réglage de raisonnement le plus bas
+        que le modèle admet (un mauvais choix fait refuser ses appels).
+      </p>
+      <p className="privacy-note" data-testid="twin9-duree-admise">
+        {Number.isInteger(config?.secondes_declencheur)
+          ? `Le déclencheur demande des tranches de ${config.secondes_declencheur} s, et une page de run ouverte de ${config?.secondes_par_tranche ?? 40} s : `
+          : `Les tranches durent ${config?.secondes_par_tranche ?? 40} s : `}
+        la plus courte laisse {dureeAdmiseDe(config)} s au départ d’un appel. Un modèle plus long n’est pas admis au
+        lancement ; un run qui l’emploie déjà attend une tranche plus longue (sa page ouverte), puis s’arrête au bout de
+        30 minutes.
       </p>
       <ul className="twin9-admin-modeles">
         {draft.modeles.map((m, i) => (

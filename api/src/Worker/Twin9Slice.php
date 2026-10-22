@@ -70,7 +70,10 @@ use Twin9\Run\Pending;
  * personal key beyond Anthropic — is read again as each slice opens a run.
  * Another provider's call leaves only if its model's longest call
  * (duree_max_s, the price grid's) fits in what remains of the slice: cut, it
- * may be billed all the same; each cut is counted in the journal. After a
+ * may be billed all the same; each cut is counted in the journal. A model
+ * longer than what the slice leaves at its head (a trigger's shorter slice)
+ * waits for a longer one, alone — its provider's other models go on —; held
+ * thirty minutes so (twin9_runs.retenu_depuis), the run stops. After a
  * 429, the instance's key rests from that provider for every run of the
  * slice; refused (HTTP 401, 403: revoked, mistyped), its calls wait as on a
  * spending cap, no attempt spent — counted for the administrator
@@ -243,6 +246,14 @@ final class Twin9Slice
                 continue;
             }
             $this->depasse($this->couts->regler($run->id));
+            // held back by a model longer than its slices (its page closed, a trigger's slices too short): thirty
+            // minutes so, it stops, what its calls hold given back — never in progress without end
+            if ($this->runs->retenu($run->id, $run->tropLong !== null) >= self::PLAFOND_MAX) {
+                $this->arreter($run->id, 'un appel à ' . $run->tropLong . ' peut durer plus que ne lui en laissent '
+                    . 'les tranches de ce run depuis plus de ' . (int) round(self::PLAFOND_MAX / 60) . ' minutes : le '
+                    . 'run s’arrête, sa réserve est rendue ; à reprendre la page du run ouverte');
+                continue;
+            }
             // held back with nothing out any more: it stops, its map incomplete, to resume
             if ($run->bloque !== null && $run->envoyes === 0 && $this->lots->enVol($run->id) === 0) {
                 $this->arreter($run->id, $run->bloque);
@@ -477,7 +488,9 @@ final class Twin9Slice
             // the call's provider, decided once: its route, its key, its price, its caller (Fournisseurs\Registre); a
             // call by batches is the batch lane's alone, a provider suspended sends nothing more
             $fournisseur = $reglage['fournisseur'];
-            if ($reglage['voie'] === 'lots' || $run->suspendu($fournisseur) || !$this->garde($run, $fournisseur)) {
+            $clePrix = Fournisseurs::clePrix($fournisseur, $reglage['modele']);
+            if ($reglage['voie'] === 'lots' || $run->suspendu($fournisseur) || $run->suspendu($clePrix)
+                || !$this->garde($run, $fournisseur)) {
                 continue;
             }
             $tentative = 1;
@@ -501,13 +514,16 @@ final class Twin9Slice
                 continue;
             }
             $tiers = $fournisseur !== Fournisseurs::DEFAUT;
-            $entree = $tiers ? ($this->grille()[Fournisseurs::clePrix($fournisseur, $reglage['modele'])] ?? []) : [];
+            $entree = $tiers ? ($this->grille()[$clePrix] ?? []) : [];
             // another provider's call leaves only if its longest may end within the slice: cut, it may be billed all
-            // the same (OpenRouter documents it); it leaves at the next slice — never, longer than a slice
+            // the same (OpenRouter documents it); it leaves at the next slice — longer than what this slice leaves it
+            // at its head (a trigger's shorter slice), its model alone waits for a longer one, the page says so
             $duree = $tiers ? (float) ($entree['duree_max_s'] ?? self::DUREE_MAX) : 0.0;
             if ($tiers && $this->dernierDepart - $this->debut < $duree) {
-                $run->suspendre($fournisseur, 'un appel à ' . Fournisseurs::clePrix($fournisseur, $reglage['modele'])
-                    . ' peut durer plus qu’une tranche (duree_max_s de la grille)');
+                $run->suspendre($clePrix, 'un appel à ' . $clePrix . ' peut durer ' . (int) $duree . ' s, plus que ne lui '
+                    . 'en laisse une tranche de ' . (int) floor($this->dernierDepart - $this->debut) . ' s : il attend une '
+                    . 'tranche plus longue, que donne la page du run ouverte');
+                $run->tropLong ??= $clePrix;
                 continue;
             }
             if ($tiers && $this->fin - microtime(true) < $duree) {
@@ -760,9 +776,10 @@ final class Twin9Slice
      * seconds, at its head: the slice, less the margin of its last
      * departure (min(5 s, a tenth) — what the slice spends before its first
      * departures, at the least: its batches collected, a pass played). A
-     * model whose longest call (duree_max_s) is longer never leaves — the
-     * slice suspends its provider and says why —, and a launch admits none
-     * (ProfilPolicy::admettreAuLancement(), Tick::longueurTwin9()).
+     * model whose longest call (duree_max_s) is longer does not leave in it
+     * — the slice holds its calls back and says why —, and a launch admits
+     * none that the shortest slice the instance serves, its trigger's
+     * included, would hold so (ProfilPolicy::dureeAdmise()).
      */
     public static function dureeAdmise(float $longueur): float
     {

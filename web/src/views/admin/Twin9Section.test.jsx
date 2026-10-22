@@ -188,6 +188,24 @@ describe('Twin9Section — pire cas insuffisant (ADR-012 §6)', () => {
   })
 })
 
+describe('Twin9Section — durée d’un appel et tranche du déclencheur', () => {
+  it('dit ce que laisse la tranche la plus courte servie, et propose au plus cette durée', async () => {
+    await renderReady({
+      ...baseRoutes,
+      'GET api/twin9/admin/config': jsonResponse(200, { ...CONFIG, secondes_declencheur: 25, duree_max_admise: 21 }),
+    })
+
+    const aide = screen.getByTestId('twin9-duree-admise')
+    expect(aide.textContent).toMatch(/déclencheur demande des tranches de 25 s/)
+    expect(aide.textContent).toMatch(/21 s au départ d’un appel/)
+    fireEvent.click(screen.getByRole('button', { name: 'Ajouter un modèle' }))
+    const fournisseurs = screen.getAllByLabelText('Fournisseur')
+    fireEvent.change(fournisseurs[fournisseurs.length - 1], { target: { value: 'openai' } })
+    const durees = screen.getAllByLabelText('Durée maximale d’un appel (s)')
+    expect(durees[durees.length - 1].value).toBe('21')
+  })
+})
+
 describe('Twin9Section — comptes (supervision)', () => {
   it('affiche la table des comptes avec cumuls en USD', async () => {
     await renderReady(baseRoutes)

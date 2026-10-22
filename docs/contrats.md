@@ -563,10 +563,17 @@ valide et range les profils.
   chaque appel, un run sans elle attend) — ; hors d'Anthropic, son modèle a
   son prix et ses plafonds dans la grille (« aucun prix pour
   <fournisseur:modèle> »), un budget de sortie dans son `plafond_sortie`, et
-  une durée maximale (`duree_max_s`) que la tranche lui laisse en tête
-  (`Twin9Slice::dureeAdmise` : la tranche, réserve du tick ôtée, moins la
-  marge de son dernier départ — 35 s pour une tranche de 40 s), la règle
-  même de la tranche. Un profil qui ne passe pas s'enregistre,
+  une durée maximale (`duree_max_s`) que la tranche **la plus courte** que
+  sert l'instance lui laisse en tête (`ProfilPolicy::dureeAdmise` : la
+  tranche, réserve du tick ôtée, moins la marge de son dernier départ — 35 s
+  pour une tranche de 40 s, 21 s pour les 25 s de cron-job.org), la règle
+  même de la tranche ; la plus courte est celle de l'instance
+  (`secondes_par_tranche`, celle de la page d'un run), ou celle que demande
+  le déclencheur (`budgetSeconds` de `POST /api/admin/worker-tick`, gardé
+  dans le réglage `twin9_tranche_declencheur` quand il change, 2026-10-22),
+  si elle est plus courte ; `GET /api/twin9/admin/config` rend l'une
+  (`secondes_declencheur`) et ce qu'elle laisse (`duree_max_admise`). Un
+  modèle au pire cas insuffisant est refusé de même (§8.5). Un profil qui ne passe pas s'enregistre,
   mais ne s'estime, ne se lance ni ne reprend. `GET
   /api/twin9/configuration` porte `fournisseurs` : chaque fournisseur du
   registre, `{id, libelle, rgpd, disponible}`, un booléen sans sa cause ; et,
@@ -937,8 +944,16 @@ direct, dans la même tranche (`Worker\Twin9Slice`).
   de la tranche — coupé, il peut être facturé quand même (OpenRouter le
   documente) ; il part en tête de la tranche suivante (compteur
   `twin9Gardes` du worker). Un modèle plus long que ce que la tranche lui
-  laisse en tête (`Twin9Slice::dureeAdmise`, la règle du lancement aussi)
-  ne part jamais, et la page le dit. Chaque coupure d'un appel par la fin d'une
+  laisse en tête (`Twin9Slice::dureeAdmise`) — un run lancé avant que le
+  déclencheur ne raccourcisse ses tranches — ne part pas dans cette
+  tranche : ses appels seuls attendent (les autres modèles du même
+  fournisseur partent), et la page dit qu'il attend une tranche plus longue,
+  que donne sa page ouverte ; retenu ainsi **plus de 30 minutes**
+  (`twin9_runs.retenu_depuis`, migration `033_twin9_retenue.sql`, remis à
+  zéro par une tranche qui ne retient rien et par une reprise), le run
+  s'arrête, sa réserve rendue (2026-10-22 ; avant, tout le fournisseur
+  restait suspendu et le run en cours sans fin, son engagement gardé).
+  Chaque coupure d'un appel par la fin d'une
   tranche est comptée dans le journal (`twin9_appels.coupures`), puis par
   fournisseur dans les compteurs et l'exécution (§8.5, §8.9).
 - **Repos commun** : après une 429 d'un fournisseur (ou son plafond), la

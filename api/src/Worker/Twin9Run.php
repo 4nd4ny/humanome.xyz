@@ -45,7 +45,8 @@ final class Twin9Run
 
     /**
      * What sends nothing more in this slice, with why: a provider (no key,
-     * its spending cap, closed on the instance) or « lots », its batches
+     * its spending cap, closed on the instance), a provider's model alone
+     * (its price key: longer than the slice) or « lots », its batches
      * (Twin9Lots). A provider suspended never holds back another's calls.
      *
      * @var array<string, string>
@@ -74,6 +75,14 @@ final class Twin9Run
     /** Why no new call of it leaves (RunCosts: its budget, its duration, its owner's credit); null: nothing. */
     public ?string $bloque = null;
 
+
+    /**
+     * The price key of another provider's model whose call this slice held
+     * back, its longest call (duree_max_s) outlasting what the slice leaves
+     * it (a trigger's shorter slice): the slice keeps since when
+     * (twin9_runs.retenu_depuis); null: none held so.
+     */
+    public ?string $tropLong = null;
 
     /** Calls it sent in this slice, directly or in batches: while any, it does not stop. */
     public int $envoyes = 0;

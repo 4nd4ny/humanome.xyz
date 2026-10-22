@@ -66,6 +66,7 @@ use Humanome\Twin9\CreditService;
 use Humanome\Twin9\FactureService;
 use Humanome\Twin9\Fournisseurs\Fournisseurs;
 use Humanome\Twin9\PayPalClient;
+use Humanome\Twin9\ProfilPolicy;
 use Humanome\Twin9\ProtocoleRepository;
 use Humanome\Twin9\SoldeInsuffisantException;
 use Humanome\Twin9\TarifsAnthropic;
@@ -273,7 +274,10 @@ return function (App $app): void {
     // call with their GDPR tag and whether the instance's key is set
     // (fournisseurs, ADR-012: a boolean, never the key), and the third
     // parties' models whose worst case fell short (pire_cas_insuffisants,
-    // RunCosts::solder()), which no PUT takes.
+    // RunCosts::solder()), the slices the external trigger asks
+    // (secondes_declencheur, null before it ran) and what the shortest slice
+    // leaves a third party's call (duree_max_admise, whole seconds, the
+    // launch's rule), which no PUT takes.
     $app->get('/twin9/admin/config', $wrap(function (Request $request, Response $response) use ($json): Response {
         $settings = new SettingsRepository(Db::get());
 
@@ -281,7 +285,9 @@ return function (App $app): void {
 
         return $json($response, $config->read()
             + ['releve_tarifs' => TarifsAnthropic::etat($settings), 'fournisseurs' => Fournisseurs::pourAdministrateur(),
-               'pire_cas_insuffisants' => (object) $config->pireCasInsuffisants()]);
+               'pire_cas_insuffisants' => (object) $config->pireCasInsuffisants(),
+               'secondes_declencheur' => $config->secondesDeclencheur(),
+               'duree_max_admise' => (int) floor(ProfilPolicy::dureeAdmise($config))]);
     }))->add($admin);
 
     // PUT /api/twin9/admin/config {champs partiels} — 422 out of bounds
@@ -296,7 +302,9 @@ return function (App $app): void {
 
         return $json($response, $config->update($body)
             + ['releve_tarifs' => TarifsAnthropic::etat($settings), 'fournisseurs' => Fournisseurs::pourAdministrateur(),
-               'pire_cas_insuffisants' => (object) $config->pireCasInsuffisants()]);
+               'pire_cas_insuffisants' => (object) $config->pireCasInsuffisants(),
+               'secondes_declencheur' => $config->secondesDeclencheur(),
+               'duree_max_admise' => (int) floor(ProfilPolicy::dureeAdmise($config))]);
     }))->add($admin);
 
     // ==================================================================

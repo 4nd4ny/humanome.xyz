@@ -529,9 +529,83 @@ final class VoieMixteTest extends TestCase
                                    'twin9Utilisateur' => $this->userDe($autre)]))->run();
         }
         self::assertSame('en_cours', (new RunRepository($this->pdo))->statut($autre));
-        self::assertSame('un appel à openai:' . self::MODELE . ' peut durer plus qu’une tranche (duree_max_s de la grille)',
-            $this->attente($autre));
+        self::assertSame('un appel à openai:' . self::MODELE . ' peut durer 4 s, plus que ne lui en laisse une tranche de '
+            . '3 s : il attend une tranche plus longue, que donne la page du run ouverte', $this->attente($autre));
         self::assertSame(3, \count($rapide->requests), 'les lecteurs d’Anthropic sont partis');
+    }
+
+    /**
+     * A model whose longest call outlasts what this slice leaves it (a
+     * trigger's shorter slice) holds its own calls alone — another model of
+     * the same provider leaves —, and the page says why and what to do; a
+     * longer slice (its page open) lets them leave, and the run is no
+     * longer held.
+     */
+    public function testAModelLongerThanTheSliceHoldsItsOwnCallsAlone(): void
+    {
+        $long = 'modele-fictif-2';
+        $this->config->update(['modeles' => $this->config->modeles()
+            + ['openai:' . $long => ['duree_max_s' => 4] + self::entree()]]);
+        $college = [self::lecteur('a'), (object) ['nom' => 'b', 'poids' => 1, 'passes' => 1, 'fournisseur' => 'openai',
+                                                  'modele' => $long], self::lecteur('c', 'openai')];
+        $id = $this->nouveauRun(['/voie' => 'directe', '/college' => $college], ['lecteurs' => ['a', 'b', 'c']]);
+        $http = new FakeMultiHttpClient(static fn (array $r): array => str_contains($r['url'], 'anthropic')
+            ? ['body' => FakeMultiHttpClient::message('vu')]
+            : ['body' => FakeMultiHttpClient::message('vu', (string) $r['body']['model'], format: 'chat')]);
+        $tick = fn (int $secondes): array => (new Tick($this->pdo, ['budgetSeconds' => $secondes,
+                                                                    'twin9Sender' => new DirectCalls($http)]))->run();
+        $openai = static fn (): array => array_map([FakeMultiHttpClient::class, 'appel'], array_values(array_filter(
+            $http->requests, static fn (array $r): bool => str_contains($r['url'], 'openai'))));
+
+        // a slice of 4 s (3.24 s at its head): the readers c leave, the readers b wait
+        $tick(4);
+        self::assertNotSame([], $openai(), 'un autre modèle du même fournisseur part');
+        foreach ($openai() as $appel) {
+            self::assertStringContainsString('/tags_c_', $appel);
+        }
+        self::assertStringContainsString('un appel à openai:' . $long . ' peut durer 4 s, plus que ne lui en laisse une '
+            . 'tranche de 3 s : il attend une tranche plus longue, que donne la page du run ouverte', (string) $this->attente($id));
+        self::assertNotNull($this->retenuDepuis($id), 'retenu depuis cette tranche');
+
+        // a slice of 6 s (4.86 s at its head), as its page open gives: they leave, the run is no longer held
+        $tick(6);
+        self::assertNotSame([], array_filter($openai(), static fn (string $a): bool => str_contains($a, '/tags_b_')));
+        self::assertNull($this->retenuDepuis($id));
+    }
+
+    /**
+     * A run held thirty minutes by a model longer than the slices it gets
+     * (its page closed, a trigger's slices too short) stops, what its calls
+     * hold given back, its page saying how to resume it; resumed, it is no
+     * longer held.
+     */
+    public function testARunHeldThirtyMinutesByAModelLongerThanItsSlicesStops(): void
+    {
+        $this->config->update(['modeles' => ['openai:' . self::MODELE => ['duree_max_s' => 4] + self::entree()]
+            + $this->config->modeles()]);
+        $id = $this->nouveauRun(['/voie' => 'directe']);
+        $http = new FakeMultiHttpClient(static fn (array $r): array => str_contains($r['url'], 'anthropic')
+            ? ['body' => FakeMultiHttpClient::message('vu')]
+            : throw new \LogicException('un appel plus long que la tranche ne part pas'));
+        $tick = fn (): array => (new Tick($this->pdo, ['budgetSeconds' => 4, 'twin9Sender' => new DirectCalls($http)]))->run();
+
+        $tick();
+        $runs = new RunRepository($this->pdo);
+        self::assertSame('en_cours', $runs->statut($id));
+        self::assertNotNull($this->retenuDepuis($id));
+
+        $this->pdo->prepare('UPDATE twin9_runs SET retenu_depuis = NOW(3) - INTERVAL 31 MINUTE WHERE id = ?')->execute([$id]);
+        $c = $tick();
+        self::assertSame('echoue', $runs->statut($id));
+        self::assertSame(1, $c['twin9Echoues']);
+        self::assertSame('un appel à openai:' . self::MODELE . ' peut durer plus que ne lui en laissent les tranches de '
+            . 'ce run depuis plus de 30 minutes : le run s’arrête, sa réserve est rendue ; à reprendre la page du run '
+            . 'ouverte', $this->attente($id));
+        self::assertSame(0, (int) $this->pdo->query('SELECT COUNT(*) FROM twin9_appels WHERE reserve_microusd IS NOT NULL')
+            ->fetchColumn());
+
+        self::assertTrue($runs->reprendre($id, $this->user));
+        self::assertNull($this->retenuDepuis($id), 'repris, il ne l’est plus');
     }
 
     /** A third party's call the slice's end cuts is counted, by provider, in the journal and the execution. */
@@ -756,6 +830,15 @@ final class VoieMixteTest extends TestCase
         $stmt->execute([$run, $appel]);
 
         return $stmt->fetch(PDO::FETCH_ASSOC);
+    }
+
+    private function retenuDepuis(int $run): ?string
+    {
+        $stmt = $this->pdo->prepare('SELECT retenu_depuis FROM twin9_runs WHERE id = ?');
+        $stmt->execute([$run]);
+        $depuis = $stmt->fetchColumn();
+
+        return $depuis === null || $depuis === false ? null : (string) $depuis;
     }
 
     private function attente(int $run): ?string

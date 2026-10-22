@@ -280,6 +280,26 @@ final class RunRepository
     }
 
     /**
+     * Since when a run's calls are held back by a model longer than the
+     * slices it gets (twin9_runs.retenu_depuis, migration 033): kept while
+     * $retenu, cleared otherwise.
+     *
+     * @return float the seconds since, by the database's clock; 0 when not held
+     */
+    public function retenu(int $id, bool $retenu): float
+    {
+        $this->pdo->prepare('UPDATE twin9_runs SET retenu_depuis = IF(?, COALESCE(retenu_depuis, NOW(3)), NULL)
+                              WHERE id = ?')->execute([$retenu ? 1 : 0, $id]);
+        if (!$retenu) {
+            return 0.0;
+        }
+        $stmt = $this->pdo->prepare('SELECT TIMESTAMPDIFF(MICROSECOND, retenu_depuis, NOW(3)) FROM twin9_runs WHERE id = ?');
+        $stmt->execute([$id]);
+
+        return max(0.0, (float) $stmt->fetchColumn() / 1_000_000);
+    }
+
+    /**
      * The runs no longer in progress (cancelled, stopped) whose calls still
      * hold a worst case outside a batch at Anthropic: cancelled between two
      * slices, or left so by a tick that died. The slice settles them
@@ -314,7 +334,7 @@ final class RunRepository
     public function annuler(int $id, int $userId): bool
     {
         $stmt = $this->pdo->prepare(
-            'UPDATE twin9_runs SET statut = "annule", attente = NULL, finished_at = NOW(), ' . self::ACTIF . '
+            'UPDATE twin9_runs SET statut = "annule", attente = NULL, retenu_depuis = NULL, finished_at = NOW(), ' . self::ACTIF . '
               WHERE id = ? AND user_id = ? AND statut = "en_cours"'
         );
         $stmt->execute([$id, $userId]);
@@ -372,7 +392,8 @@ final class RunRepository
             $engage = (int) $stmt->fetchColumn();
             ['solde' => $solde, 'autres' => $autres] = $this->disponible($userId, $id);
             $this->pdo->prepare(
-                'UPDATE twin9_runs SET statut = "en_cours", attente = NULL, finished_at = NULL, debut_at = NOW(),
+                'UPDATE twin9_runs SET statut = "en_cours", attente = NULL, retenu_depuis = NULL, finished_at = NULL,
+                        debut_at = NOW(),
                         reglages = COALESCE(?, reglages), engagement_microusd = LEAST(engagement_microusd, ?),
                         execution = ?
                   WHERE id = ?'
@@ -590,7 +611,8 @@ final class RunRepository
             // its batches deleted at Anthropic go with the journal; one still there waits for the tick
             $this->pdo->prepare('DELETE FROM twin9_lots WHERE run_id = ? AND statut = "supprime"')->execute([$id]);
             $this->pdo->prepare(
-                'UPDATE twin9_runs SET statut = "termine", attente = NULL, compteurs = ?, execution = ?, finished_at = ?, '
+                'UPDATE twin9_runs SET statut = "termine", attente = NULL, retenu_depuis = NULL, compteurs = ?, execution = ?,
+                        finished_at = ?, '
                     . self::ACTIF . ' WHERE id = ?'
             )->execute([json_encode($compteurs, JSON_THROW_ON_ERROR | JSON_UNESCAPED_UNICODE), $execution,
                         (string) $run['maintenant'], $id]);
@@ -659,7 +681,7 @@ final class RunRepository
     public function echouer(int $id, string $raison): bool
     {
         $stmt = $this->pdo->prepare(
-            'UPDATE twin9_runs SET statut = "echoue", attente = ?, finished_at = NOW(), ' . self::ACTIF . '
+            'UPDATE twin9_runs SET statut = "echoue", attente = ?, retenu_depuis = NULL, finished_at = NOW(), ' . self::ACTIF . '
               WHERE id = ? AND statut = "en_cours"'
         );
         $stmt->execute([mb_substr($raison, 0, 255), $id]);

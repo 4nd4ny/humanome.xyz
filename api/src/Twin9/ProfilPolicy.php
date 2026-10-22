@@ -100,8 +100,8 @@ final class ProfilPolicy
      * and its caps in the grid, a worst case not marked insufficient
      * (Twin9Config::pireCasInsuffisants()), an output budget within its
      * plafond_sortie,
-     * and a longest call (duree_max_s) that a slice of this instance leaves
-     * room for at its head (Twin9Slice::dureeAdmise()).
+     * and a longest call (duree_max_s) that the shortest slice of this
+     * instance leaves room for at its head (dureeAdmise()).
      *
      * @throws Twin9Exception 422 naming the step and the provider, or the model
      */
@@ -110,8 +110,8 @@ final class ProfilPolicy
         $grille = $this->config->read();
         $actifs = Fournisseurs::actifs($grille);
         $insuffisants = $this->config->pireCasInsuffisants();
-        // what a slice of this instance leaves a third party's call at its head: the slice's own rule
-        $admise = Twin9Slice::dureeAdmise(Tick::longueurTwin9((int) $grille['secondes_par_tranche']));
+        // what the shortest slice of this instance leaves a third party's call at its head: the slice's own rule
+        $admise = self::dureeAdmise($this->config);
         foreach ((new CallSettings($profil))->atteints() as $etape => $reglage) {
             $fournisseur = $reglage['fournisseur'];
             if (!\in_array($fournisseur, $actifs, true) || !$this->disponible($fournisseur)) {
@@ -147,6 +147,18 @@ final class ProfilPolicy
                     . (int) floor($admise) . ' s)', 422);
             }
         }
+    }
+
+    /**
+     * What the shortest slice this instance serves (Twin9Config::
+     * secondesServies(): its own, or its trigger's if shorter) leaves a third
+     * party's call at its head, in seconds: the slice's own rule
+     * (Twin9Slice::dureeAdmise(), Tick::longueurTwin9()) — 35.1 s for 40 s,
+     * 21.6 s for the 25 s of cron-job.org.
+     */
+    public static function dureeAdmise(Twin9Config $config): float
+    {
+        return Twin9Slice::dureeAdmise(Tick::longueurTwin9($config->secondesServies()));
     }
 
     /**

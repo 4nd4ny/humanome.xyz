@@ -197,6 +197,12 @@ final class Tick
         return $counters;
     }
 
+    /** The tick's budget, in seconds: the one asked, else the configured one (45 at most). */
+    public function budgetSeconds(): int
+    {
+        return $this->budgetSeconds;
+    }
+
     /**
      * The length of the Twin9 slice of a tick of this budget, in seconds: the
      * budget less the reserve the slice keeps to wind down in (a tenth,

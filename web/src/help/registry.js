@@ -16,9 +16,11 @@ const BASE = {
       'Vous pouvez explorer une cartographie de démonstration, essayer l’outil sur votre propre texte, ' +
       'ou créer un compte pour construire et partager la vôtre.',
     points: [
-      '« Cartographie » : la démonstration sur des données réelles (59 journées).',
+      // Sans chiffres : plusieurs référentiels coexistent, et la démonstration
+      // peut changer de corpus (sprint 1, amélioration 5 ; même règle que nav.js).
+      '« Cartographie » : la démonstration, sur des données réelles, ou vos propres fichiers de cartographie.',
       '« Essayer » : collez un texte, obtenez une cartographie en direct, sans compte.',
-      '« Référentiel » : les 61 compétences, en 7 pôles, sur lesquelles tout repose.',
+      '« Référentiel » : les compétences, pôle par pôle, sur lesquelles tout repose.',
     ],
   },
   cartographie: {
@@ -64,8 +66,8 @@ const BASE = {
   referentiel: {
     titre: 'Le référentiel de compétences',
     intro:
-      'Les 61 compétences RESPIRE, réparties en 7 pôles (TÊTE, CŒUR, MAIN, ÂME, RACINES, CITÉ, ' +
-      'FLAMBEAU). Public en lecture ; il est édité collectivement par les épistémiarques.',
+      'Les compétences du référentiel publié, rangées par pôle, telles que sa version les déclare. ' +
+      'Public en lecture ; il est édité collectivement par les épistémiarques.',
     points: [
       'Recherchez une compétence par code (ex. 1.01) ou par nom.',
       'Chaque compétence a un permalien partageable.',
@@ -120,7 +122,7 @@ const BASE = {
   epistemiarque: {
     titre: 'Édition du référentiel',
     intro:
-      'Vous éditez collectivement le référentiel des 61 compétences. Chaque compétence est une ' +
+      'Vous éditez collectivement le référentiel de compétences. Chaque compétence est une ' +
       'entité atomique : elle évolue, se versionne et se vote indépendamment des autres, sans jamais ' +
       'écraser le travail d’un autre épistémiarque.',
     points: [
@@ -228,6 +230,20 @@ const BASE = {
       'La supervision commerciale (contribution, promo, comptes) reste dans #/admin/twin9 (administrateur).',
     ],
   },
+  configuration: {
+    titre: 'Vos profils Twin9',
+    intro:
+      'Un profil réunit les réglages d’une analyse approfondie Twin9 : le référentiel, les modèles du ' +
+      'collège, la voie d’envoi (appels directs ou par lots), le budget, la durée, les seuils… Vous en ' +
+      'gardez plusieurs, et choisissez l’un d’eux au lancement d’une analyse.',
+    points: [
+      'Un nouveau profil part du profil v9.8 ; « Copier » part du profil ouvert. Une valeur modifiée porte un point (●), dont l’infobulle rappelle la valeur par défaut.',
+      'Le « Mode essai » ne lit que la première journée du portfolio et le premier pôle du référentiel : de quoi vérifier un réglage à moindre coût.',
+      'Le budget et la durée arrêtent l’analyse avant de les dépasser ; laissés vides, ils ne bornent rien.',
+      'L’aide d’un réglage paraît quand vous y entrez. Le serveur valide et complète chaque profil enregistré.',
+      'La clé personnelle n’est proposée que si l’administration l’a ouverte ; elle s’ajoute dans « Mon compte ».',
+    ],
+  },
   twin6ouverte: {
     titre: 'Cartographie ouverte Twin6',
     intro:
@@ -261,8 +277,9 @@ const BASE = {
 const FALLBACK = {
   titre: 'Aide',
   intro:
-    'Utilisez la navigation en haut de page pour explorer la cartographie, essayer l’outil, consulter ' +
-    'le référentiel ou accéder à votre espace. Le bouton « ? » donne l’aide de la rubrique ouverte.',
+    'Le bouton « Menu », en haut à droite, ouvre la navigation dans un tiroir à gauche : explorer la ' +
+    'cartographie, essayer l’outil, consulter le référentiel ou accéder à votre espace. Le bouton « ? » ' +
+    'donne l’aide de la rubrique ouverte.',
 }
 
 /**

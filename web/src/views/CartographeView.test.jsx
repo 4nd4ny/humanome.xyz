@@ -173,6 +173,34 @@ describe('CartographeView — formation cartographe', () => {
   })
 })
 
+describe('CartographeView — sous-menu (sprint 1, amélioration 8)', () => {
+  // Chaque section marque SON onglet, et lui seul : la relecture d'une
+  // cartographie relève de la file, un chapitre relève de la formation. Les
+  // appels des sections répondent 404 : seul le sous-menu est vérifié ici.
+  const CASES = [
+    [null, 'File de relecture'],
+    ['relecture/12', 'File de relecture'],
+    ['comparer', 'Comparer'],
+    ['consistance', 'Consistance'],
+    ['formation', 'Formation'],
+    [`formation/${listChapters('cartographe')[0].slug}`, 'Formation'],
+  ]
+
+  it.each(CASES)('section %s → onglet « %s » marqué aria-current="page"', async (section, tab) => {
+    const fetchFn = vi.fn(async () => jsonResponse(404, { error: 'absent' }))
+    render(<CartographeView section={section} deps={{ fetchMeFn: cartographe, fetchFn, getReferentiel: async () => null }} />)
+    const nav = within(await screen.findByRole('navigation', { name: 'Sections de l’espace cartographe' }))
+    const current = nav.getAllByRole('link').filter((a) => a.getAttribute('aria-current') === 'page')
+    expect(current.map((a) => a.textContent)).toEqual([tab])
+  })
+
+  it('la formation reste ouverte à tous, mais sans le sous-menu pour qui n’est pas cartographe', async () => {
+    render(<CartographeView section="formation" deps={{ fetchMeFn: apprenant }} />)
+    expect(await screen.findByText('Formation cartographe')).toBeTruthy()
+    await waitFor(() => expect(screen.queryByRole('navigation', { name: 'Sections de l’espace cartographe' })).toBeNull())
+  })
+})
+
 describe('CartographeView — sections', () => {
   it('section inconnue : alerte + retour à l’accueil', async () => {
     render(<CartographeView section="inconnue" deps={{ fetchMeFn: cartographe }} />)

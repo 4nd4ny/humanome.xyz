@@ -330,12 +330,15 @@ cd engine && npx vitest run test/usecases --testNamePattern UC-APP-01
   `url` : la validation native du navigateur (`typeMismatch`) bloque la
   soumission avant le gestionnaire, sans requête ni message de l'application.
   Figé par F17.
-- **A-03 — Bouton « Cartographier » obsolète.** Le panneau affiché annonce
-  que le lancement « sera disponible dans l'espace apprenant (bientôt) » et
-  renvoie vers la démo « Essayer », alors que l'assistant `#/espace/nouveau-run`
-  existe (UC-APP-02) et que l'aide contextuelle (`web/src/help/registry.js`)
-  indique « Depuis un portfolio, vous lancez « Cartographier mes écrits » ».
-  Comportement couvert par `web/src/views/PortfolioView.test.jsx`.
+- ~~**A-03 — Bouton « Cartographier » obsolète.**~~ Corrigée le 2026-10-22.
+  Le panneau annonçait que le lancement « sera disponible dans l'espace
+  apprenant (bientôt) » et renvoyait vers la démo « Essayer », alors que
+  l'assistant `#/espace/nouveau-run` existe (UC-APP-02) et que l'aide
+  contextuelle (`web/src/help/registry.js`) indique « Depuis un portfolio,
+  vous lancez « Cartographier mes écrits » ». Il mène désormais aux trois
+  chemins réels : « Cartographier mes écrits » (`#/espace/nouveau-run`),
+  « Analyse approfondie » (`#/twin9`) et « Essayer » (`#/essayer`). Prouvé
+  par `web/src/views/PortfolioView.test.jsx`.
 - **A-04 — Changement de portfolio pendant la pause de 600 ms : le portfolio
   ouvert est réenregistré sans modification et la liste garde l'ancien titre
   du portfolio quitté.** Dans `web/src/views/PortfolioView.jsx`,

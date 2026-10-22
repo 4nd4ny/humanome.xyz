@@ -62,7 +62,10 @@ statique, sans API.
    (démonstration), Essayer — badge « gratuit », Référentiel, Guides) et
    « Compte » (Se connecter, Confidentialité). La rubrique courante porte
    `aria-current="page"`. Un clic sur un lien referme le tiroir (sauf s'il est
-   épinglé par la punaise).
+   épinglé par la punaise). Sous 921 px, où le tiroir ne se docke pas, la
+   punaise cède la place à la croix « Fermer le menu », qui referme, détache
+   et rend le focus au bouton Menu ; au doigt (pointeur grossier), chaque
+   commande de l'en-tête et du tiroir fait au moins 44 px.
 4. Le visiteur survole une entrée du plan du site : l'encart affiche l'aide de
    la rubrique (même contenu que « ? ») ; un premier clic la sélectionne
    (« Cliquez à nouveau… »), un second l'ouvre.
@@ -76,8 +79,10 @@ statique, sans API.
   `{user: {id, email, displayName, roles, hasAvatar}, csrfToken}` ; le plan du
   site devient « Vos espaces » (familles des rôles), le menu ajoute ces
   familles, l'identité (avatar ou initiales, lien « Mon profil ») et « Se
-  déconnecter ». Un compte **sans aucun rôle** est en revanche traité en
-  visiteur (anomalie AN2). Un rôle
+  déconnecter ». Un compte **sans aucun rôle** garde « Mon compte », son
+  identité et « Se déconnecter », et l'accueil « Vos espaces » (Découvrir et
+  Mon compte) : « connecté » veut dire un utilisateur de session, pas un rôle
+  (AN2, corrigée le 2026-10-22). Un rôle
   attribué par l'administration apparaît au prochain chargement de
   l'application (ou rafraîchissement de session, événement `humanome:auth`),
   sans reconnexion : le serveur relit les rôles à chaque appel. L'aide de l'accueil
@@ -153,7 +158,8 @@ statique, sans API.
   famille soit visible : un administrateur seul n'a pas « Faire évoluer », un
   administrateur épistémiarque l'a, sans l'Atelier Twin9. La famille du
   compte (`compteFamily`) ne dépend que du paramètre `authenticated` de
-  `navGroups` (par défaut : au moins un rôle — d'où l'anomalie AN2).
+  `navGroups` (par défaut : au moins un rôle) ; le shell le passe toujours,
+  vrai dès qu'un utilisateur de session existe, rôle ou non (AN2, corrigée).
 - **RG3** — La navigation n'est qu'un confort : l'accès est garanti côté
   serveur (garde de rôle des routes API) ; la plupart des vues relisent aussi
   la session (ex. `#/cartographe` : « Cet espace de travail est réservé aux
@@ -199,10 +205,10 @@ statique, sans API.
 | ID | Cible | Vérifie | Fichier |
 |---|---|---|---|
 | UC-VIS-04-U01 | `Users::rolesOf` | Rôles triés, source de la navigation | `api/tests/UseCases/Unit/UcVis04SeRepererTest.php` |
-| UC-VIS-04-U02 | `Users::rolesOf`, `assignRole` | Aucun rôle → navigation visiteur ; rôle inconnu refusé | idem |
+| UC-VIS-04-U02 | `Users::rolesOf`, `assignRole` | Aucun rôle → liste vide (aucune famille de rôle) ; rôle inconnu refusé | idem |
 | UC-VIS-04-U03 | `parseHash`, `guidesHash` | Routes de repérage, introuvable | `web/test/usecases/unit/uc-vis-04-se-reperer-guides-aide.test.js` |
 | UC-VIS-04-U04 | `navGroups`, `isCurrentItem`, `FAMILIES` | Familles du visiteur, additivité, conjonction, page courante (RG2) | idem |
-| UC-VIS-04-U05 | `helpFor`, `navGroups` | Une entrée d'aide pour chaque rubrique du menu (tous rôles), repli, astuces cartographe / établissement et priorité cartographe | idem |
+| UC-VIS-04-U05 | `helpFor`, `navGroups` | Une entrée d'aide pour chaque rubrique du menu (tous rôles) et pour `configuration` (profils Twin9, sans entrée de menu), repli, astuces cartographe / établissement et priorité cartographe | idem |
 | UC-VIS-04-U06 | `PERSONAS` | Profils explorables, employeur sans compte | idem |
 | UC-VIS-04-U07 | `theme.js` | Suivi du système, choix explicite persistant qui prime (RG5) | idem |
 | UC-VIS-04-U08 | `formation-content.js` | Parcours, chapitres ordonnés et titrés, liens réécrits, parcours inconnu | idem |
@@ -234,8 +240,8 @@ statique, sans API.
 | UC-VIS-04-F16 | Nominal (1), E3 | IHM | Shell réel : `GET api/auth/me` → `401` → navigation de visiteur ; API injoignable → idem (branche `catch`) | `web/test/usecases/functional/uc-vis-04-se-reperer-guides-aide.test.jsx` |
 | UC-VIS-04-F17 | A1 | IHM | Rôle ajouté → famille « Faire évoluer » après l'événement `humanome:auth`, sans recharger | idem |
 | UC-VIS-04-F18 | RG3 | IHM | Visiteur sur `#/cartographe` → « Cet espace de travail est réservé aux cartographes. », aucune donnée demandée | idem |
-| UC-VIS-04-F19 | Anomalie AN2 | IHM | **Comportement actuel figé** — session d'un compte sans rôle → navigation de visiteur, pas de « Se déconnecter » | idem |
-| UC-VIS-04-F20 | A1, RG2 | IHM | Compte portant tous les rôles attribuables (employeur compris) : tuiles (href, badge, précision), puis clic depuis le panneau sur « Partager ma cartographie », « Cartographier mes écrits », « Cartographie ouverte », « Analyse approfondie », « Atelier de prompts », « Atelier Twin9 », « Golden Prompt », « Réglages », « Configuration serveur », « Consistance » → adresse, titre et section de la vue atteinte, session reconnue par la vue, `aria-current` (alias : « Tableau de bord »), menu sans précision, tiroir refermé et focus retiré du lien | idem |
+| UC-VIS-04-F19 | A1 (anomalie AN2 corrigée) | IHM | Session d'un compte sans rôle → familles « Découvrir » et « Mon compte », identité et « Se déconnecter » dans le menu, accueil « Vos espaces » sans barre des profils | idem |
+| UC-VIS-04-F20 | A1, RG2 | IHM | Compte portant tous les rôles attribuables (employeur compris) : tuiles (href, badge, précision), puis clic depuis le panneau sur « Partager ma cartographie », « Cartographier mes écrits », « Cartographie ouverte », « Analyse approfondie », « Atelier de prompts », « Atelier Twin9 », « Monitoring », « Golden Prompt », « Réglages », « Configuration serveur », « Consistance » → adresse, titre et section de la vue atteinte, session reconnue par la vue, `aria-current` (alias : « Tableau de bord »), menu sans précision, tiroir refermé et focus retiré du lien | idem |
 
 ### Tests existants liés (non-régression)
 
@@ -260,7 +266,9 @@ cd web && npx vitest run test/usecases/unit/uc-vis-04 test/usecases/functional/u
   (`link.blur()` de `handleNavClick`, qui déjoue `:focus-within`). La
   fermeture **visuelle** après clic d'un lien n'est couverte par aucun test
   e2e : `web/e2e/navigation-burger.e2e.js` (Playwright, local uniquement) ne
-  couvre que le survol, l'épinglage et le tap extérieur.
+  couvre que le survol, l'épinglage, le tap extérieur et, au doigt, les
+  cibles de 44 px, la croix « Fermer le menu » et la bande des espaces de la
+  cartographie.
 - **Destinations des liens** : F20 vérifie que chaque lien atteint sa vue
   (adresse, titre, section, garde de session levée) avec un réseau réduit à
   la session et à quelques réponses vides ; les autres appels répondent 404
@@ -284,15 +292,15 @@ cd web && npx vitest run test/usecases/unit/uc-vis-04 test/usecases/functional/u
   correctif limité à `writeLocal` déplacerait donc la perte au moment de la
   migration. Correctif attendu : fusionner dans `writeLocal` **et** ne retirer
   que l'entrée migrée. Comportement actuel figé par UC-VIS-04-U10 et F11.
-- **AN2 — Compte sans rôle traité en visiteur.** Le shell dérive
-  `authenticated` de `roles.length > 0` (`web/src/App.jsx`) : une session
-  valide d'un compte qui n'a plus aucun rôle (le retrait du dernier rôle par
-  `DELETE /api/admin/users/{id}/roles/{role}` n'est pas refusé,
-  `UserDirectory::revoke`) voit « Compte → Se connecter », sans identité ni
-  « Se déconnecter », et l'accueil « Explorer le site » avec la barre des
-  profils. Correctif attendu (hors lot) : dériver `authenticated` de la
-  présence d'un utilisateur de session. Comportement actuel figé par
-  UC-VIS-04-F19.
+- ~~**AN2 — Compte sans rôle traité en visiteur.**~~ Corrigée le 2026-10-22.
+  Le shell dérivait `authenticated` de `roles.length > 0` (`web/src/App.jsx`) :
+  une session valide d'un compte qui n'a plus aucun rôle (le retrait du
+  dernier rôle par `DELETE /api/admin/users/{id}/roles/{role}` n'est pas
+  refusé, `UserDirectory::revoke`) voyait « Compte → Se connecter », sans
+  identité ni « Se déconnecter », et l'accueil « Explorer le site » avec la
+  barre des profils. Le shell dérive désormais `authenticated` de la présence
+  d'un utilisateur de session et le passe au menu comme aux tuiles de
+  l'accueil (`HomeView`, `FamilyTiles`). Prouvé par UC-VIS-04-F19, inversé.
 - **AN3 — Note d'aperçu trompeuse pour le profil Employeur.** Dans la barre
   des profils (`web/src/components/FamilyTiles.jsx`), la note
   « Aperçu du profil Employeur : voici les espaces que ce rôle voit une fois

@@ -47,9 +47,12 @@ function itemKey(item) {
   return `${item.href} ${item.label}`
 }
 
-/** @param {{roles?: string[]}} props rôles de la session (App) */
-export default function FamilyTiles({ roles = [] }) {
-  const authenticated = roles.length > 0
+/**
+ * @param {{roles?: string[], authenticated?: boolean}} props rôles de la
+ *   session (App) ; `authenticated` = un utilisateur de session, même sans
+ *   rôle (UC-VIS-04 AN2, corrigée le 2026-10-22) — à défaut, déduit des rôles
+ */
+export default function FamilyTiles({ roles = [], authenticated = roles.length > 0 }) {
   // Visiteur : profil exploré via la persona-bar (null tant que non révélée).
   const [reveal, setReveal] = useState(false)
   const [persona, setPersona] = useState('visiteur')

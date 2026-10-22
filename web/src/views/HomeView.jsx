@@ -11,9 +11,10 @@ import { filesFromDataTransfer, readFiles } from '../carto/ui/ImportPanel.jsx'
  * Depuis le 2026-10-14, l'interface V3 (#/merge) est retirée.
  *
  * @param {{onUserFiles: (files: Array<{path: string, bytes: Uint8Array}>) => void,
- *   roles?: string[]}} props
+ *   roles?: string[], authenticated?: boolean}} props `authenticated` : un
+ *   utilisateur de session (App) ; à défaut, déduit des rôles
  */
-export default function HomeView({ onUserFiles, roles = [] }) {
+export default function HomeView({ onUserFiles, roles = [], authenticated = roles.length > 0 }) {
   const [error, setError] = useState(null)
   const [dragging, setDragging] = useState(false)
   const inputRef = useRef(null)
@@ -61,7 +62,7 @@ export default function HomeView({ onUserFiles, roles = [] }) {
         </p>
       </section>
 
-      <FamilyTiles roles={roles} />
+      <FamilyTiles roles={roles} authenticated={authenticated} />
 
       <section
         className={`dropzone${dragging ? ' dropzone-active' : ''}`}

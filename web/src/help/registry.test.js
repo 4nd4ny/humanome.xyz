@@ -45,6 +45,33 @@ describe('helpFor — aide par rubrique et par rôle', () => {
     expect(entry.intro).toContain('navigation')
   })
 
+  it('le repli décrit la navigation telle qu’elle est : un tiroir ouvert par « Menu », pas une barre en haut de page', () => {
+    const { intro } = helpFor('route-inexistante')
+    expect(intro).toContain('Menu')
+    expect(intro).toContain('tiroir')
+    expect(intro).not.toContain('haut de page')
+  })
+
+  it('#/configuration (profils Twin9) a son entrée, et non le repli', () => {
+    const entry = helpFor('configuration')
+    expect(entry.titre).toBe('Vos profils Twin9')
+    expect(entry.points.join(' ')).toContain('Mode essai')
+  })
+
+  it('aucune entrée n’annonce de chiffres en dur (plusieurs référentiels coexistent, la démonstration peut changer)', () => {
+    // Toutes les rubriques du routeur (router.js), plus le repli.
+    const routes = [
+      'home', 'cartographie', 'day', 'essayer', 'referentiel', 'portfolio', 'espace', 'account',
+      'cartographe', 'epistemiarque', 'promptologue', 'etablissement', 'admin', 'guides', 'twin9',
+      'employeur', 'twin9atelier', 'configuration', 'twin6ouverte', 'confidentialite', 'share', 'not-found',
+    ]
+    const figures = /\b\d+\s+(compétences|pôles|journées)\b/
+    for (const route of routes) {
+      const { titre, intro, points = [] } = helpFor(route)
+      for (const text of [titre, intro, ...points]) expect(text, route).not.toMatch(figures)
+    }
+  })
+
   it('session absente ou sans rôles : ne jette pas, retourne l’entrée de base', () => {
     expect(helpFor('cartographie').titre).toBe('Votre cartographie')
     expect(helpFor('cartographie', {}).titre).toBe('Votre cartographie')

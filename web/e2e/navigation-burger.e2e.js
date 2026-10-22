@@ -7,7 +7,10 @@
 //   • point 3 : épinglé, le contenu est docké (padding-left) à >= 921 px,
 //     superposé en dessous ; l'épinglage survit à un rechargement (localStorage) ;
 //   • point 4 : la grappe .app-header-actions (thème + ? + Menu) reste fixe
-//     au défilement.
+//     au défilement ;
+//   • sprint 1 (2026-10-22), au doigt : cibles de 44 px (@media pointer:
+//     coarse), croix « Fermer le menu » à la place de la punaise sous 921 px,
+//     espaces de la cartographie sur une ligne qui défile sous 768 px.
 // LOCAL UNIQUEMENT (docs/tests-e2e.md) : joué contre le dev-server Vite lancé
 // par Playwright (webServer). Session anonyme : aucun état serveur requis.
 
@@ -68,6 +71,8 @@ test.describe('desktop (survol)', () => {
     // >= 921 px : le tiroir devient une vraie barre latérale, le contenu est décalé.
     await expect.poll(paddingLeft).toBe('320px')
     expect((await page.locator(PANEL).boundingBox()).x).toBe(0)
+    // La punaise suffit : pas de croix « Fermer le menu » à cette largeur.
+    await expect(page.getByRole('button', { name: 'Fermer le menu' })).toBeHidden()
 
     // Persistance (localStorage 'humanome-menu-pinned') : survit au rechargement.
     await page.reload()
@@ -82,6 +87,10 @@ test.describe('desktop (survol)', () => {
     await page.setViewportSize({ width: 920, height: 800 })
     expect(parseFloat(await paddingLeft())).toBeLessThan(30)
     expect((await page.locator(PANEL).boundingBox()).x).toBe(0)
+    // Sans dock, la punaise cède la place à la croix, qui détache et referme.
+    await expect(page.getByRole('button', { name: 'Détacher le panneau' })).toBeHidden()
+    await page.getByRole('button', { name: 'Fermer le menu' }).click()
+    await expect.poll(() => panelRightEdge(page)).toBeLessThanOrEqual(SLIVER + 1)
   })
 
   test('au défilement, la grappe d’actions (thème + aide + Menu) reste visible en haut à droite', async ({
@@ -123,5 +132,79 @@ test.describe('mobile (tap)', () => {
     // Tap hors du panneau (le tiroir fait 320 px de large) -> fermeture.
     await page.touchscreen.tap(370, 500)
     await expect.poll(() => panelRightEdge(page)).toBeLessThanOrEqual(1)
+  })
+
+  // Sprint 1, améliorations 1 et 2 : au doigt, chaque commande de l'en-tête et
+  // du tiroir fait au moins 44 px ; sous 921 px, la croix « Fermer le menu »
+  // remplace la punaise (pas de dock possible) et rend le focus au bouton Menu.
+  test('au doigt : cibles de 44 px, croix « Fermer le menu » à la place de la punaise', async ({ page }) => {
+    await page.goto('/#/')
+    // Précondition : l'émulation mobile expose bien un pointeur grossier.
+    expect(await page.evaluate(() => matchMedia('(pointer: coarse)').matches)).toBe(true)
+
+    const header = [
+      page.getByRole('button', { name: 'Menu de navigation' }),
+      page.getByRole('button', { name: /Passer au thème/ }),
+      page.getByRole('button', { name: 'Aide sur cette rubrique' }),
+      page.getByRole('button', { name: 'Assistant : poser une question sur le site' }),
+    ]
+    for (const control of header) {
+      const box = await control.boundingBox()
+      expect(box.height).toBeGreaterThanOrEqual(44)
+      expect(box.width).toBeGreaterThanOrEqual(44)
+    }
+    // La grappe tient dans la largeur, sans déborder à gauche.
+    expect((await page.locator('.app-header-actions').boundingBox()).x).toBeGreaterThan(0)
+
+    await page.getByRole('button', { name: 'Menu de navigation' }).tap()
+    await expect.poll(() => panelLeft(page)).toBe(0)
+    await expect(page.locator('.app-pin')).toBeHidden()
+    const close = page.getByRole('button', { name: 'Fermer le menu' })
+    await expect(close).toBeVisible()
+    const closeBox = await close.boundingBox()
+    expect(closeBox.height).toBeGreaterThanOrEqual(44)
+    expect(closeBox.width).toBeGreaterThanOrEqual(44)
+    const link = await page.locator(PANEL).getByRole('link', { name: 'Référentiel', exact: true }).boundingBox()
+    expect(link.height).toBeGreaterThanOrEqual(44)
+
+    await close.tap()
+    await expect.poll(() => panelRightEdge(page)).toBeLessThanOrEqual(1)
+    await expect(page.getByRole('button', { name: 'Menu de navigation' })).toBeFocused()
+  })
+
+  test('un épinglage gardé d’un grand écran se referme par la croix sur un téléphone', async ({ page }) => {
+    await page.addInitScript(() => localStorage.setItem('humanome-menu-pinned', '1'))
+    await page.goto('/#/')
+    // Sous 921 px : épinglé = superposé, jamais docké.
+    await expect.poll(() => panelLeft(page)).toBe(0)
+    await page.getByRole('button', { name: 'Fermer le menu' }).tap()
+    await expect.poll(() => panelRightEdge(page)).toBeLessThanOrEqual(1)
+    expect(await page.evaluate(() => localStorage.getItem('humanome-menu-pinned'))).toBeNull()
+  })
+
+  // Sprint 1, amélioration 3 : les espaces de la cartographie tiennent sur une
+  // ligne qui défile de côté, au lieu de s'empiler sur deux ou trois lignes.
+  test('cartographie : les espaces tiennent sur une ligne qui défile, onglets de 44 px', async ({ page }) => {
+    await page.goto('/#/cartographie')
+    // Sans fichiers à soi : la démonstration (données servies par Vite).
+    await page.getByRole('button', { name: 'Explorer la démonstration' }).tap()
+    const spaces = page.getByRole('navigation', { name: 'Espaces de la cartographie' })
+    await expect(spaces.getByRole('link', { name: 'Export' })).toBeAttached()
+
+    const tops = await spaces.getByRole('link').evaluateAll((links) => links.map((a) => a.getBoundingClientRect().top))
+    expect(tops.length).toBeGreaterThanOrEqual(6)
+    expect(new Set(tops).size).toBe(1)
+    for (const box of await spaces.getByRole('link').evaluateAll((links) => links.map((a) => a.getBoundingClientRect().height))) {
+      expect(box).toBeGreaterThanOrEqual(44)
+    }
+
+    // La bande défile : plus large que l'écran, la page, elle, ne déborde pas.
+    const { scrollWidth, clientWidth } = await spaces.evaluate((nav) => ({ scrollWidth: nav.scrollWidth, clientWidth: nav.clientWidth }))
+    expect(scrollWidth).toBeGreaterThan(clientWidth)
+    await spaces.evaluate((nav) => nav.scrollTo({ left: nav.scrollWidth }))
+    await expect.poll(() => spaces.evaluate((nav) => nav.scrollLeft)).toBeGreaterThan(0)
+    await spaces.getByRole('link', { name: 'Export' }).tap()
+    await expect(page).toHaveURL(/#\/cartographie\/export$/)
+    expect(await page.evaluate(() => document.documentElement.scrollWidth <= window.innerWidth)).toBe(true)
   })
 })

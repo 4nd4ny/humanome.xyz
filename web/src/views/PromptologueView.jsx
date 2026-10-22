@@ -19,6 +19,18 @@ import BancEssaiSection from './promptologue/BancEssaiSection.jsx'
 import RetroSection from './promptologue/RetroSection.jsx'
 
 /**
+ * Onglets de l'atelier, au gabarit des onglets de l'administration (sprint 1,
+ * amélioration 8) : `match` dit si la section courante relève de l'onglet
+ * (l'éditeur d'un brouillon relève des paquets, un chapitre de la formation).
+ */
+const TABS = [
+  { href: '#/promptologue', label: 'Paquets', match: (s) => s === null || s.startsWith('editeur/') },
+  { href: '#/promptologue/banc-essai', label: 'Banc d’essai', match: (s) => s === 'banc-essai' },
+  { href: '#/promptologue/retro', label: 'Rétrospective', match: (s) => s === 'retro' },
+  { href: '#/promptologue/formation', label: 'Formation', match: (s) => s === 'formation' || Boolean(s?.startsWith('formation/')) },
+]
+
+/**
  * @param {object} props
  * @param {string | null} props.section segment après #/promptologue :
  *   null | 'editeur/<draftId>' | 'banc-essai' | 'retro' | 'formation[/<chapitre>]'
@@ -126,10 +138,11 @@ export default function PromptologueView({ section, deps = {} }) {
             Connecté en tant que {session.user.displayName ?? session.user.email} (promptologue).
           </p>
           <nav aria-label="Sections de l’atelier" className="promptologue-nav">
-            <a href="#/promptologue">Paquets</a>
-            <a href="#/promptologue/banc-essai">Banc d’essai</a>
-            <a href="#/promptologue/retro">Rétrospective</a>
-            <a href="#/promptologue/formation">Formation</a>
+            {TABS.map((tab) => (
+              <a key={tab.href} href={tab.href} aria-current={tab.match(section) ? 'page' : undefined}>
+                {tab.label}
+              </a>
+            ))}
           </nav>
         </>
       ) : null}

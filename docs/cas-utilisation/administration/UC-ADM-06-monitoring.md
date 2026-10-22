@@ -20,8 +20,9 @@ en attente avec les retardataires à relancer, et comptes par rôle.
 
 ## Déclencheur
 
-L'administrateur ouvre `#/admin/monitoring` (première carte « Monitoring » de
-l'accueil `#/admin`, ou onglet « Monitoring »).
+L'administrateur ouvre `#/admin/monitoring` (menu « Administrer » →
+« Monitoring », première carte « Monitoring » de l'accueil `#/admin`, ou
+onglet « Monitoring »).
 
 ## Préconditions
 
@@ -267,9 +268,9 @@ cd web && npx vitest run test/usecases/unit/uc-adm-06 test/usecases/functional/u
 
 ## Limites
 
-- **L1** — La famille de menu « Administrer » (`web/src/nav.js`) ne liste pas le
-  monitoring : on l'atteint par l'accueil `#/admin` (première carte) ou les
-  onglets d'administration.
+- **L1** — Levée le 2026-10-22 : la famille de menu « Administrer »
+  (`web/src/nav.js`) liste désormais « Monitoring » en premier, comme les
+  sections de l'administration (UC-VIS-04-U13 et F20).
 - **L2** — L'axe du temps de l'IHM est construit en dates **UTC**
   (`toISOString`), alors que le serveur groupe par `DATE()` / `CURDATE()` dans
   le fuseau de la session MySQL : si ces fuseaux diffèrent, un point proche de

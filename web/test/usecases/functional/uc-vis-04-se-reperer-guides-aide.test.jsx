@@ -333,19 +333,22 @@ describe('UC-VIS-04 — session réelle du shell', () => {
     expect(new Set(calledUrls(network))).toEqual(new Set(['api/auth/me']))
   })
 
-  // ANOMALIE AN2 — comportement ACTUEL figé : le shell dérive « connecté » de
-  // roles.length > 0. Un compte SANS rôle (dernier rôle retiré par l'admin)
-  // voit la navigation d'un visiteur : « Se connecter », pas de « Se
-  // déconnecter » ni d'identité. Attendu : navigation de compte.
-  it('UC-VIS-04-F19 — [comportement actuel, anomalie AN2] session d’un compte sans aucun rôle → navigation de visiteur, pas de déconnexion depuis le menu', async () => {
+  // Anomalie AN2, corrigée le 2026-10-22 : le shell dérive « connecté » de la
+  // présence d'un utilisateur de session, et non plus de roles.length > 0. Un
+  // compte SANS rôle (dernier rôle retiré par l'admin) garde « Mon compte »,
+  // son identité et « Se déconnecter » ; l'accueil dit « Vos espaces », sans
+  // la barre des profils d'un visiteur.
+  it('UC-VIS-04-F19 — anomalie AN2 corrigée : session d’un compte sans aucun rôle → « Mon compte », identité et « Se déconnecter » dans le menu, « Vos espaces » à l’accueil', async () => {
     stubNetwork()
     openApp('#/', async () => ({ user: { id: 3, displayName: 'Zoé', roles: [], hasAvatar: false } }))
 
-    await waitFor(() => expect(screen.getByRole('heading', { name: 'Explorer le site' })).toBeDefined())
-    expect(groups()).toEqual(['Découvrir', 'Compte'])
-    expect(mainNav().getByRole('link', { name: 'Se connecter' })).toBeDefined()
-    expect(mainNav().queryByRole('button', { name: 'Se déconnecter' })).toBeNull()
-    expect(mainNav().queryByRole('link', { name: 'Mon profil' })).toBeNull()
+    await waitFor(() => expect(groups()).toEqual(['Découvrir', 'Mon compte']))
+    expect(screen.getByRole('heading', { name: 'Vos espaces' })).toBeDefined()
+    expect(screen.queryByRole('button', { name: 'Voir les profils d’utilisateurs' })).toBeNull()
+    expect(mainNav().queryByRole('link', { name: 'Se connecter' })).toBeNull()
+    expect(mainNav().getByRole('link', { name: 'Profil et rôles' })).toBeDefined()
+    expect(mainNav().getByRole('button', { name: 'Se déconnecter' })).toBeDefined()
+    expect(mainNav().getByRole('link', { name: 'Mon profil' }).textContent).toContain('Zoé')
   })
 })
 
@@ -471,6 +474,19 @@ describe('UC-VIS-04 — liens du panneau pour un compte multi-rôles', () => {
         // Rôles du SHELL admin ∧ promptologue : l'atelier (gabarits), pas l'écran réservé.
         expect(await screen.findByRole('heading', { level: 3, name: 'Gabarits du Golden Prompt — jeu « v9.8 »' })).toBeDefined()
         expect(screen.queryByTestId('twin9-atelier-reserve')).toBeNull()
+      },
+    },
+    {
+      // Entrée de menu ajoutée le 2026-10-22 (sprint 1, amélioration 7) ;
+      // api/admin/monitoring n'est pas routé : la section affiche son erreur.
+      name: 'Monitoring',
+      href: '#/admin/monitoring',
+      badge: null,
+      hint: null,
+      reached: async () => {
+        await h1('Administration')
+        await h2('Monitoring')
+        expect(adminTab()).toBe('Monitoring')
       },
     },
     {

@@ -104,7 +104,8 @@ describe('UC-VIS-04 — navigation par familles d’intention', () => {
       .filter((i) => i.route)
       .map((i) => i.route)
     expect(everyRoute.length).toBeGreaterThan(10)
-    for (const route of new Set([...everyRoute, 'day'])) {
+    // `configuration` (profils Twin9) n'a pas encore d'entrée de menu, mais a son aide.
+    for (const route of new Set([...everyRoute, 'day', 'configuration'])) {
       expect(helpFor(route).titre, route).not.toBe('Aide')
     }
     expect(helpFor('referentiel').titre).toBe('Le référentiel de compétences')
@@ -184,6 +185,7 @@ const ITEM = {
     roles: ['epistemiarque'],
     hint: 'éditer, voter, entériner — débats sur Decidim',
   },
+  monitoring: { href: '#/admin/monitoring', label: 'Monitoring', route: 'admin', section: 'monitoring' },
   roles: { href: '#/admin/roles', label: 'Rôles et comptes', route: 'admin', section: 'roles' },
   golden: { href: '#/admin/golden', label: 'Golden Prompt', route: 'admin', section: 'golden' },
   reglages: { href: '#/admin/reglages', label: 'Réglages', route: 'admin', section: 'reglages' },
@@ -207,7 +209,7 @@ const FAMILY_HEAD = {
 const DECOUVRIR = ['accueil', 'demo', 'essayer', 'referentiel', 'guides']
 const CARTOGRAPHIE = ['tableau', 'portfolio', 'cartographier', 'ouverte', 'approfondie', 'partager']
 const ENCADRER = ['file', 'comparer', 'consistance']
-const ADMINISTRER = ['roles', 'golden', 'reglages', 'config', 'supervision']
+const ADMINISTRER = ['monitoring', 'roles', 'golden', 'reglages', 'config', 'supervision']
 const COMPTE_CONNECTE = ['profil', 'credit', 'confidentialite']
 
 /** Structure attendue : [[idFamille, [clés d'items]], …] + famille compte. */

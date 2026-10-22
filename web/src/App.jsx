@@ -53,6 +53,15 @@ function PinIcon() {
   )
 }
 
+/** Croix — referme le tiroir (petits écrans, où la punaise n'est pas offerte). */
+function CloseIcon() {
+  return (
+    <svg viewBox="0 0 20 20" width="18" height="18" fill="none" aria-hidden="true">
+      <path d="M5 5l10 10M15 5 5 15" stroke="currentColor" strokeWidth="1.6" strokeLinecap="round" />
+    </svg>
+  )
+}
+
 /** Soleil — affiché en thème CLAIR (cliquer passe au sombre). */
 function SunIcon() {
   return (
@@ -138,6 +147,10 @@ export default function App({ lib, fetchMeFn = fetchMe }) {
   const cartoSession = useMemo(() => ({ roles }), [roles])
   // Identité minimale pour l'avatar de nav (D6) : {id, displayName, hasAvatar}.
   const [sessionUser, setSessionUser] = useState(null)
+  // « Connecté » = un utilisateur de session, et non « au moins un rôle » : un
+  // compte dont l'admin a retiré le dernier rôle garde « Mon compte » et sa
+  // déconnexion (UC-VIS-04 AN2, UC-CPT-02 AN4, corrigées le 2026-10-22).
+  const authenticated = sessionUser !== null
   const [helpOpen, setHelpOpen] = useState(false)
   // Menu « burger » : la navigation principale vit dans un panneau qui glisse
   // depuis le bord gauche de l'écran (web + mobile), pour libérer la barre.
@@ -252,6 +265,22 @@ export default function App({ lib, fetchMeFn = fetchMe }) {
     edgeDisarmedRef.current = true
     setMenuOpen(false)
     link.blur()
+  }
+
+  /**
+   * Bouton « Fermer le menu » de l'en-tête du panneau. Au doigt, il n'y avait
+   * que le tap à l'extérieur, et sous 921 px la punaise est masquée (pas de
+   * dock possible) : un panneau épinglé sur grand écran restait alors devant
+   * la page, sans Échap sur un téléphone. Même effet qu'Échap : on referme,
+   * on détache, le bord est désarmé et le focus revient au bouton Menu.
+   */
+  function handleCloseClick() {
+    clearHoverTimers()
+    hoverOpenedRef.current = false
+    edgeDisarmedRef.current = true
+    setMenuOpen(false)
+    setPinned(false)
+    burgerRef.current?.focus()
   }
 
   function handlePanelPointerLeave(event) {
@@ -600,11 +629,10 @@ export default function App({ lib, fetchMeFn = fetchMe }) {
       )
       break
     default:
-      view = <HomeView onUserFiles={handleUserFiles} roles={roles} />
+      view = <HomeView onUserFiles={handleUserFiles} roles={roles} authenticated={authenticated} />
   }
 
-  const groups = navGroups({ roles })
-  const authenticated = roles.length > 0
+  const groups = navGroups({ roles, authenticated })
 
   return (
     <div className={`app${pinned ? ' is-menu-docked' : ''}`}>
@@ -687,6 +715,17 @@ export default function App({ lib, fetchMeFn = fetchMe }) {
                   onClick={() => setPinned((v) => !v)}
                 >
                   <PinIcon />
+                </button>
+                {/* Sous 921 px, la punaise est masquée (CSS) : cette croix
+                    la remplace ; au-delà, c'est la croix qui se retire. */}
+                <button
+                  type="button"
+                  className="app-nav-close"
+                  aria-label="Fermer le menu"
+                  title="Fermer le menu"
+                  onClick={handleCloseClick}
+                >
+                  <CloseIcon />
                 </button>
               </div>
               <nav className="app-nav" aria-label="Navigation principale" onClick={handleNavClick}>

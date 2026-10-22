@@ -374,6 +374,41 @@ describe('App — thème, épinglage persistant, clic extérieur (refonte ergono
     expect(document.activeElement).toBe(refLink)
   })
 
+  it('« Fermer le menu » referme le tiroir et rend le focus au bouton Menu', () => {
+    window.location.hash = '#/'
+    renderApp()
+
+    const burger = screen.getByRole('button', { name: 'Menu de navigation' })
+    fireEvent.click(burger)
+    const menu = document.querySelector('.app-menu')
+    expect(menu.className).toContain('is-open')
+
+    const close = screen.getByRole('button', { name: 'Fermer le menu' })
+    // La croix vit dans l'en-tête du panneau, à côté de la punaise (CSS : l'une
+    // ou l'autre selon la largeur, de part et d'autre de 921 px).
+    expect(close.closest('.app-nav-panel-head')).not.toBeNull()
+    close.focus()
+    fireEvent.click(close)
+    expect(menu.className).not.toContain('is-open')
+    expect(burger.getAttribute('aria-expanded')).toBe('false')
+    expect(document.activeElement).toBe(burger)
+  })
+
+  it('« Fermer le menu » détache aussi un panneau épinglé (sous 921 px, la punaise est masquée)', () => {
+    localStorage.setItem('humanome-menu-pinned', '1')
+    window.location.hash = '#/'
+    renderApp()
+
+    const menu = document.querySelector('.app-menu')
+    expect(menu.className).toContain('is-pinned')
+    fireEvent.click(screen.getByRole('button', { name: 'Fermer le menu' }))
+    expect(menu.className).not.toContain('is-pinned')
+    expect(menu.className).not.toContain('is-open')
+    expect(localStorage.getItem('humanome-menu-pinned')).toBeNull()
+    expect(document.querySelector('.app').className).not.toContain('is-menu-docked')
+    expect(document.activeElement).toBe(screen.getByRole('button', { name: 'Menu de navigation' }))
+  })
+
   it('menu fermé, les liens du panneau restent dans le DOM et focusables (a11y, jamais display:none)', () => {
     window.location.hash = '#/'
     renderApp()

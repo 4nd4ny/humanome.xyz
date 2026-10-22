@@ -145,6 +145,8 @@ export const FAMILIES = [
     audience: 'Administrateur',
     roles: ['admin'],
     items: [
+      // Premier, comme dans les sections de l'administration (AdminView).
+      { href: '#/admin/monitoring', label: 'Monitoring', route: 'admin', section: 'monitoring' },
       { href: '#/admin/roles', label: 'Rôles et comptes', route: 'admin', section: 'roles' },
       { href: '#/admin/golden', label: 'Golden Prompt', route: 'admin', section: 'golden' },
       { href: '#/admin/reglages', label: 'Réglages', route: 'admin', section: 'reglages' },

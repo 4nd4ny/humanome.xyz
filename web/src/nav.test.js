@@ -49,7 +49,9 @@ describe('navGroups (sept familles d’intention)', () => {
     const encadrer = groups.find((g) => g.id === 'encadrer')
     expect(encadrer.items[0]).toMatchObject({ href: '#/cartographe', label: 'Ma file de relecture' })
     const admin = groups.find((g) => g.id === 'administrer')
-    expect(admin.items).toHaveLength(5)
+    expect(admin.items).toHaveLength(6)
+    // Le monitoring a son entrée, la première, comme dans l'administration.
+    expect(admin.items[0]).toMatchObject({ href: '#/admin/monitoring', label: 'Monitoring' })
   })
 
   it('« Faire évoluer » filtre ses items par rôle (promptologue vs épistémiarque)', () => {

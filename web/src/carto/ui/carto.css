@@ -437,6 +437,32 @@ kbd {
   border-bottom-color: var(--accent);
   font-weight: 700;
 }
+/* Sous 768 px, les espaces tiennent sur UNE ligne qui défile de côté, comme
+   les onglets de l'administration : à la ligne, ils prenaient deux ou trois
+   lignes au-dessus du contenu (sprint 1, amélioration 3). */
+@media (max-width: 767px) {
+  .carto-spaces {
+    flex-wrap: nowrap;
+    overflow-x: auto;
+    -webkit-overflow-scrolling: touch;
+    gap: 0 1.1rem;
+    padding-bottom: 0.15rem;
+  }
+  .carto-spaces a {
+    flex: 0 0 auto;
+    white-space: nowrap;
+  }
+}
+/* Au doigt, chaque onglet fait 44 px de haut (amélioration 1) ; la hauteur
+   de ligne centre le libellé et garde le point « anomalies » en exposant. */
+@media (pointer: coarse) {
+  .carto-spaces a {
+    box-sizing: border-box;
+    min-height: 44px;
+    line-height: 42px;
+    padding: 0;
+  }
+}
 
 /* ---- Tuiles de la cartographie (journal D-53) -------------------------------------
    La grille du tableau de bord (TileGrid, V3), aux couleurs du site. Chaque

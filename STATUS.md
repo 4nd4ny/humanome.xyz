@@ -48,8 +48,8 @@ autre fournisseur qu'Anthropic, que l'administrateur ouvre (entrée du 2026-10-2
 - 2026-10-22 — **Twin9 multi-fournisseur : chaque étage, étape et lecteur choisit son fournisseur,
   l'administrateur les ouvre, l'accord les nomme (branche `feat/twin9-multi-fournisseur`, PR C du
   plan « P0 et multi-fournisseur », non poussée).** Spécification `spec-v2` (PR C : lots C7, C8a,
-  C8b, C9), faits d'API relevés le 2026-10-22 sur les seules documentations officielles. Sept
-  commits : ADR-012, C7, C8a, C8b, le lancement, C9 et cette entrée. `Twin_v9` n'est pas modifié ; un profil tout Anthropic garde
+  C8b, C9), faits d'API relevés le 2026-10-22 sur les seules documentations officielles. Huit
+  commits : ADR-012, C7, C8a, C8b, le lancement, C9, cette entrée et une précision du registre RGPD. `Twin_v9` n'est pas modifié ; un profil tout Anthropic garde
   exactement ses empreintes (`EmpreintesFigeesTest`, `PariteTest`).
   - **ADR-012** amende ADR-010 §2 et §4 et ADR-011 §3 : six fournisseurs connus (Anthropic, OpenAI,
     Mistral AI, Google, xAI, OpenRouter), une adresse verrouillée chacun, la route par appel, la
@@ -107,7 +107,9 @@ autre fournisseur qu'Anthropic, que l'administrateur ouvre (entrée du 2026-10-2
     étiquettes indicatives), registre RGPD §6, §8, §12, §13, aide de Twin9, `docs/contrats.md` §7,
     §8.1, §8.4, `docs/autorisations.md`, fiches UC-ADM-05 (A7, A8, RG10, RG11, U20, U21, F21),
     UC-CPT-04 (A6, U12, F22), UC-APP-10 (A9, RG1, U17, F22).
-  - Vérifié, sur l'arbre du dernier commit (PHP 8.5.12 et MySQL 8.0 locaux, base
+  - Non signalé par la page, refusé par le serveur (`422` qui nomme l'étape) : l'effort propre d'une
+    étape quand le second ressort part chez un autre fournisseur.
+  - Vérifié, sur l'arbre du commit de C9 (PHP 8.5.12 et MySQL 8.0 locaux, base
     `humanome_test_c`) : PHP `Tests: 1826, Assertions: 20049`, les 2 échecs connus de PHP 8.5 seuls
     (`AuthActivationTest::testExpiredCodeIsRejected`, `UcCpt02…::testU17SessionCookieAttributes`),
     1 dépréciation, aucun test sauté (`PariteTest` compris, vrai moteur `../Twin_v9`) ; front 2 817 tests verts (260 fichiers ; 2 794 avant C9) ;
@@ -130,8 +132,12 @@ autre fournisseur qu'Anthropic, que l'administrateur ouvre (entrée du 2026-10-2
     appel tiers ; (4) la clé Mistral AI de « Mon compte » ne sert encore à aucun parcours
     (l'assistant n'a pas d'adaptateur Mistral, Twin9 n'emploie qu'une clé personnelle Anthropic) :
     la garder ainsi annoncée, ou la retirer ; (5) l'accord retombe aussi quand seule la voie
-    d'Anthropic change (par lots ↔ en direct : la conservation du lot change) ; (6) la clé d'instance
-    Google doit être de l'offre payante (conditions de Gemini pour l'EEE), à vérifier à la pose.
+    d'Anthropic change (par lots ↔ en direct : la conservation du lot change) ; (6) à vérifier à la
+    pose des clés d'instance, que le code ne peut pas imposer et dont dépendent la politique de
+    confidentialité et les étiquettes : la clé Google de l'offre payante (conditions de Gemini pour
+    l'EEE) ; chez Mistral AI, l'usage des données pour l'entraînement coupé (Admin > Privacy,
+    « Anonymous improvement data ») ou une offre payante ; chez OpenRouter, « Input & Output
+    Logging » et « Use of Inputs/Outputs » laissés désactivés sur le compte de la clé.
 
 - 2026-10-22 — **Twin9, P0 : un run garde sa configuration et son exécution, une sortie tronquée
   est une panne, la voie directe ne rejoue plus une passe à chaque réponse (branche

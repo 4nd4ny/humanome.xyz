@@ -374,6 +374,41 @@ describe('App — thème, épinglage persistant, clic extérieur (refonte ergono
     expect(document.activeElement).toBe(refLink)
   })
 
+  it('« Fermer le menu » referme le tiroir et rend le focus au bouton Menu', () => {
+    window.location.hash = '#/'
+    renderApp()
+
+    const burger = screen.getByRole('button', { name: 'Menu de navigation' })
+    fireEvent.click(burger)
+    const menu = document.querySelector('.app-menu')
+    expect(menu.className).toContain('is-open')
+
+    const close = screen.getByRole('button', { name: 'Fermer le menu' })
+    // La croix vit dans l'en-tête du panneau, à côté de la punaise (CSS : l'une
+    // ou l'autre selon la largeur, de part et d'autre de 921 px).
+    expect(close.closest('.app-nav-panel-head')).not.toBeNull()
+    close.focus()
+    fireEvent.click(close)
+    expect(menu.className).not.toContain('is-open')
+    expect(burger.getAttribute('aria-expanded')).toBe('false')
+    expect(document.activeElement).toBe(burger)
+  })
+
+  it('« Fermer le menu » détache aussi un panneau épinglé (sous 921 px, la punaise est masquée)', () => {
+    localStorage.setItem('humanome-menu-pinned', '1')
+    window.location.hash = '#/'
+    renderApp()
+
+    const menu = document.querySelector('.app-menu')
+    expect(menu.className).toContain('is-pinned')
+    fireEvent.click(screen.getByRole('button', { name: 'Fermer le menu' }))
+    expect(menu.className).not.toContain('is-pinned')
+    expect(menu.className).not.toContain('is-open')
+    expect(localStorage.getItem('humanome-menu-pinned')).toBeNull()
+    expect(document.querySelector('.app').className).not.toContain('is-menu-docked')
+    expect(document.activeElement).toBe(screen.getByRole('button', { name: 'Menu de navigation' }))
+  })
+
   it('menu fermé, les liens du panneau restent dans le DOM et focusables (a11y, jamais display:none)', () => {
     window.location.hash = '#/'
     renderApp()
@@ -667,5 +702,86 @@ describe('App — menu au survol (bouton + bord gauche géométrique)', () => {
     movePointer(8)
     act(() => vi.advanceTimersByTime(200))
     expect(menu.className).toContain('is-open')
+  })
+})
+
+// Mode d'affichage simple / expert (sprint 1, 2026-10-22 ; lib/ui-mode.js,
+// UC-VIS-06) : seul le shell choisit le mode. Interrupteur au bas du tiroir,
+// pour tous ; défaut selon les rôles (expert dès un rôle de travail) ; choix
+// gardé dans ce navigateur (`humanome-mode`), écrit au basculement seulement.
+describe('App — mode simple / expert', () => {
+  const mainNav = () => within(screen.getByRole('navigation', { name: 'Navigation principale' }))
+  const modeSwitch = () => mainNav().getByRole('switch', { name: 'Mode expert' })
+  const session = (roles) => async () => ({ user: { id: 2, displayName: 'Lou', roles } })
+
+  it('visiteur : l’interrupteur est au bas du tiroir, éteint ; le basculer garde le choix sans refermer le tiroir', () => {
+    window.location.hash = '#/'
+    renderApp()
+    const burger = screen.getByRole('button', { name: 'Menu de navigation' })
+    fireEvent.click(burger)
+    expect(burger.getAttribute('aria-expanded')).toBe('true')
+
+    expect(modeSwitch().getAttribute('aria-checked')).toBe('false')
+    expect(modeSwitch().getAttribute('aria-describedby')).toBe('app-nav-mode-hint')
+    expect(document.getElementById('app-nav-mode-hint').textContent).toContain('profils Twin9')
+    // Pas un groupe de plus : le tiroir en compte un par famille.
+    expect(mainNav().getAllByRole('group').map((g) => g.getAttribute('aria-label'))).toEqual(['Découvrir', 'Compte'])
+    expect(localStorage.getItem('humanome-mode')).toBeNull()
+
+    fireEvent.click(modeSwitch(), { detail: 1 })
+    expect(modeSwitch().getAttribute('aria-checked')).toBe('true')
+    expect(localStorage.getItem('humanome-mode')).toBe('expert')
+    expect(burger.getAttribute('aria-expanded')).toBe('true')
+
+    fireEvent.click(modeSwitch(), { detail: 1 })
+    expect(modeSwitch().getAttribute('aria-checked')).toBe('false')
+    expect(localStorage.getItem('humanome-mode')).toBe('simple')
+  })
+
+  it('défaut selon le rôle : un apprenant seul est en simple (ni « Cartographie ouverte » ni « Mes profils Twin9 »), un cartographe en expert ; rien n’est écrit', async () => {
+    window.location.hash = '#/'
+    renderApp(session(['apprenant']))
+    await waitFor(() => expect(mainNav().getByRole('link', { name: 'Tableau de bord' })).toBeDefined())
+    expect(modeSwitch().getAttribute('aria-checked')).toBe('false')
+    expect(mainNav().queryByRole('link', { name: /^Cartographie ouverte/ })).toBeNull()
+    expect(mainNav().queryByRole('link', { name: 'Mes profils Twin9' })).toBeNull()
+    expect(mainNav().getByRole('link', { name: /^Analyse approfondie/ }).getAttribute('href')).toBe('#/twin9')
+    cleanup()
+
+    renderApp(session(['apprenant', 'cartographe']))
+    await waitFor(() => expect(mainNav().getByRole('link', { name: 'Ma file de relecture' })).toBeDefined())
+    expect(modeSwitch().getAttribute('aria-checked')).toBe('true')
+    expect(mainNav().getByRole('link', { name: /^Cartographie ouverte/ }).getAttribute('href')).toBe('#/twin6-ouverte')
+    expect(mainNav().getByRole('link', { name: 'Mes profils Twin9' }).getAttribute('href')).toBe('#/configuration')
+    // Le défaut dérivé n'est jamais stocké : il suivra les rôles du prochain compte.
+    expect(localStorage.getItem('humanome-mode')).toBeNull()
+  })
+
+  it('le choix stocké l’emporte sur le défaut du rôle', async () => {
+    window.location.hash = '#/'
+    localStorage.setItem('humanome-mode', 'simple')
+    renderApp(session(['apprenant', 'cartographe']))
+    await waitFor(() => expect(mainNav().getByRole('link', { name: 'Ma file de relecture' })).toBeDefined())
+    expect(modeSwitch().getAttribute('aria-checked')).toBe('false')
+    expect(mainNav().queryByRole('link', { name: /^Cartographie ouverte/ })).toBeNull()
+    cleanup()
+
+    localStorage.setItem('humanome-mode', 'expert')
+    renderApp(session(['apprenant']))
+    await waitFor(() => expect(mainNav().getByRole('link', { name: 'Mes profils Twin9' })).toBeDefined())
+    expect(modeSwitch().getAttribute('aria-checked')).toBe('true')
+  })
+
+  it('masqué n’est pas interdit : en mode simple, #/twin6-ouverte s’ouvre par son adresse', async () => {
+    vi.stubGlobal('fetch', vi.fn(async () => { throw new TypeError('Failed to fetch') }))
+    try {
+      window.location.hash = '#/twin6-ouverte'
+      renderApp(session(['apprenant']))
+      await waitFor(() => expect(mainNav().getByRole('link', { name: 'Tableau de bord' })).toBeDefined())
+      expect(mainNav().queryByRole('link', { name: /^Cartographie ouverte/ })).toBeNull()
+      expect(await screen.findByRole('heading', { level: 1, name: 'Cartographie ouverte Twin6' })).toBeDefined()
+    } finally {
+      vi.unstubAllGlobals()
+    }
   })
 })

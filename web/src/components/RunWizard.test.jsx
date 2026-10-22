@@ -13,6 +13,7 @@ import day06 from '../../../schemas/fixtures/cartographie-jour-2026-01-06.json'
 import day07 from '../../../schemas/fixtures/cartographie-jour-2026-01-07.json'
 import { createMemoryAdapter, createPortfolioStore } from '../lib/portfolio-store.js'
 import { ApiUnavailableError } from '../api/client.js'
+import { UiModeContext } from '../lib/ui-mode.js'
 import {
   BUILTIN_PACKAGE,
   SERVICE_ESTIMATION_MODEL,
@@ -253,4 +254,76 @@ describe('RunWizard — exécution', () => {
     // Les trois documents jour (dont le checkpointé) et le merge sont sauvegardés.
     expect(carto.saved.map((e) => e.type)).toEqual(['jour', 'jour', 'jour', 'merge'])
   }, 20000)
+})
+
+// Mode simple du site (lib/ui-mode.js, 2026-10-22) : seul le shell le choisit ;
+// rendu seul, l'assistant reste en mode expert (défaut du contexte, ci-dessus).
+describe('RunWizard — mode simple', () => {
+  const SIMPLE = { expert: false, setExpert() {} }
+
+  it('étape 2 « Référentiel » : ni boutons de version de prompt ni repli, le protocole embarqué en une ligne ; étape 3 sans champ « Modèle » ; la cartographie enregistre le paquet embarqué et le modèle par défaut', async () => {
+    const bundles = []
+    const { deps, carto } = makeDeps({
+      deps: {
+        // L'API publie une autre version : le mode simple ne la propose pas.
+        apiFetchFn: vi.fn(async () => [{ id: 'aurora-lab', version: '2.0.0', description: 'Extraction affinée' }]),
+        providerBundleFactory: (args) => {
+          bundles.push(args)
+          return { provider: extractionMock(), prime: null, model: 'mock-cartographe', maxTokens: 8192 }
+        },
+      },
+    })
+    render(
+      <UiModeContext.Provider value={SIMPLE}>
+        <RunWizard session={session} deps={{ ...deps, portfolioStore: await seededPortfolioStore() }} />
+      </UiModeContext.Provider>,
+    )
+    expect(screen.getByTestId('run-wizard-steps').textContent).toContain('Référentiel')
+    expect(screen.getByTestId('run-wizard-steps').textContent).not.toContain('Version de prompt')
+
+    fireEvent.click(await screen.findByRole('radio', { name: /Mon journal — 3 journée/ }))
+    fireEvent.click(screen.getByRole('button', { name: 'Continuer' }))
+    await screen.findByTestId('step-prompt')
+    expect(screen.getByRole('heading', { name: '2. Référentiel' })).toBeTruthy()
+    expect(screen.getByTestId('run-protocol').textContent).toContain('aurora-v3-reconstruit@1.1.0 (embarqué)')
+    expect(screen.queryAllByRole('radio')).toHaveLength(0)
+    expect(screen.queryByTestId('packages-fallback')).toBeNull()
+    fireEvent.click(screen.getByRole('button', { name: 'Continuer' }))
+
+    await screen.findByTestId('step-fournisseur')
+    expect(screen.queryByLabelText('Modèle')).toBeNull()
+    fireEvent.change(screen.getByLabelText('Clé API'), { target: { value: 'sk-perso' } })
+    fireEvent.click(screen.getByRole('button', { name: 'Continuer' }))
+    await screen.findByTestId('run-estimate')
+    fireEvent.click(screen.getByRole('button', { name: 'Continuer' }))
+    await screen.findByTestId('step-execution')
+    fireEvent.click(screen.getByRole('button', { name: 'Lancer le run' }))
+    await screen.findByTestId('run-success', {}, { timeout: 15000 })
+
+    expect(bundles.at(-1)).toMatchObject({ mode: 'cle', provider: 'anthropic', model: 'claude-sonnet-4-6' })
+    expect(carto.saved).toHaveLength(4)
+    for (const entry of carto.saved) {
+      expect(entry.promptPackage).toEqual({ id: 'aurora-v3-reconstruit', version: '1.1.0' })
+      expect(entry.runMeta.model).toBe('claude-sonnet-4-6')
+    }
+  }, 20000)
+
+  it('en mode expert, les versions publiées et le champ « Modèle » restent proposés (même assistant)', async () => {
+    const { deps } = makeDeps({
+      deps: { apiFetchFn: vi.fn(async () => [{ id: 'aurora-lab', version: '2.0.0', description: 'Extraction affinée' }]) },
+    })
+    render(
+      <UiModeContext.Provider value={{ expert: true, setExpert() {} }}>
+        <RunWizard session={session} deps={{ ...deps, portfolioStore: await seededPortfolioStore() }} />
+      </UiModeContext.Provider>,
+    )
+    fireEvent.click(await screen.findByRole('radio', { name: /Mon journal — 3 journée/ }))
+    fireEvent.click(screen.getByRole('button', { name: 'Continuer' }))
+    expect(await screen.findByRole('radio', { name: /aurora-lab@2\.0\.0/ })).toBeTruthy()
+    expect(screen.getByRole('heading', { name: '2. Version de prompt' })).toBeTruthy()
+    expect(screen.queryByTestId('run-protocol')).toBeNull()
+    fireEvent.click(screen.getByRole('button', { name: 'Continuer' }))
+    await screen.findByTestId('step-fournisseur')
+    expect(screen.getByLabelText('Modèle').value).toBe('claude-sonnet-4-6')
+  })
 })

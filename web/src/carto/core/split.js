@@ -24,7 +24,7 @@
 // démonstration) et le remontage d'une journée à partir des fichiers lus
 // (magasin). Rien sur le réseau.
 
-import { canonicalJson, contentHash } from './model.js'
+import { canonicalJson, contentHash, withPassageDates } from './model.js'
 
 /** Besoins d'un lecteur de détails : tout, la journée seule, son texte, une compétence, un pôle. */
 export const NEED_ALL = 'all'
@@ -123,7 +123,9 @@ export function splitArchive(archive) {
     remote.runs[key] = path
   }
 
-  const index = { ...archive, details: {}, runDetails: {} }
+  // L'index dit la date du passage de chaque trace écrite un autre jour
+  // (`at`, sprint 4, T2) : lue ici dans les détails, qui partent dans les fichiers.
+  const index = { ...withPassageDates(archive, (date) => archive.details?.[date]), details: {}, runDetails: {} }
   delete index.remote
   const version = `v-${contentHash(canonicalJson({ index, files })).slice(0, 12)}`
   index.remote = { version, base: `${version}/`, ...remote }

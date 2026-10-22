@@ -217,16 +217,22 @@ describe('UC-CPT-02 — connexion et déconnexion', () => {
     expect(nav().getByRole('button', { name: 'Se déconnecter' })).toBeDefined()
   })
 
-  it('UC-CPT-02-F23 — ANOMALIE AN4 : compte connecté SANS aucun rôle → profil affiché mais navigation de visiteur, sans « Se déconnecter »', async () => {
+  it('UC-CPT-02-F23 — anomalie AN4 corrigée : compte connecté SANS aucun rôle → profil, identité et « Se déconnecter » dans le menu ; la déconnexion depuis le menu ramène la navigation de visiteur', async () => {
     const api = installFakeAccountApi({ users: [{ ...ADA, roles: [] }], loggedInAs: 'ada@example.org' })
     openApp()
 
     expect((await profileShown()).getByText('Aucun rôle attribué pour l’instant')).toBeDefined()
     await waitFor(() => expect(api.callsTo('auth/me').length).toBeGreaterThanOrEqual(2)) // shell + profil
-    // Comportement ACTUEL figé : App.jsx déduit « connecté » de roles.length > 0.
-    expect(nav().getByRole('link', { name: 'Se connecter' })).toBeDefined()
+    // App.jsx déduit « connecté » de la présence d'un utilisateur de session (2026-10-22).
+    expect(await nav().findByRole('button', { name: 'Se déconnecter' })).toBeDefined()
+    expect(nav().queryByRole('link', { name: 'Se connecter' })).toBeNull()
+    expect(nav().getByText('Ada Lovelace')).toBeDefined()
+
+    await click('Se déconnecter', nav())
+
+    await waitFor(() => expect(api.session).toBeNull())
+    expect(await nav().findByRole('link', { name: 'Se connecter' })).toBeDefined()
     expect(nav().queryByRole('button', { name: 'Se déconnecter' })).toBeNull()
-    expect(nav().queryByText('Ada Lovelace')).toBeNull()
   })
 
   it('UC-CPT-02-F24 — A3 : /me en erreur serveur (500) → « Impossible de vérifier votre session… », pas le message « copie statique »', async () => {

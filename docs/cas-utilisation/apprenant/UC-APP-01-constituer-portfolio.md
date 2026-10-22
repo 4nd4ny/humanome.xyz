@@ -68,7 +68,8 @@ ou le lien « Créer un portfolio » du tableau de bord `#/espace`).
 4. À chaque modification du texte, le découpage est **recalculé** par
    `segmentText` : une journée commence à chaque entête de date (ISO
    `2026-01-05`, numérique `05/01/2026`, textuelle `5 janvier 2026`, avec
-   jour de semaine, marques `#` ou titre court) ; un séparateur (`---`,
+   jour de semaine, marques `#` ou titre court ; `### 05.01.26`, l'année sur
+   deux chiffres, dans un titre `##` ou `###` seulement, RG5 ter) ; un séparateur (`---`,
    `===`…) ne coupe qu'avant la première entête de date (RG5 bis) ;
    le titre du document est rattaché à la première journée, mais un texte
    réel avant la première date (préambule) forme une journée non datée ;
@@ -188,6 +189,20 @@ ou le lien « Créer un portfolio » du tableau de bord `#/espace`).
   dans sa journée (journal carto D-55, 2026-10-15) : un journal exporté de
   Google Docs, qui en met plusieurs par journée, se découpe à ses seuls
   titres datés.
+- **RG5 ter** — Une année sur deux chiffres se lit 20AA, comme le moteur
+  Twin9 la lit (`Twin_v9/php/src/Portfolio.php`), et seulement dans les
+  titres où il la cherche : `JJ.MM.AA` ou `J.M.AA`, avec des points, dans
+  un titre `##` ou `###` en début de ligne (`### 02.03.26` est le 2 mars
+  2026). Ailleurs — ligne nue, titre `#` ou `####` à `######`, titre
+  indenté, `/` ou `-`, « 1er.03.26 », trois chiffres — elle reste du texte
+  (journal carto D-72, sprint 4). Deux écarts demeurent : Twin9 ne date
+  rien sans au moins deux tels titres, quand l'interface ouvre une journée
+  dès le premier ; et une année sur quatre chiffres se lit, dans
+  l'interface, sous tout niveau de titre (comme avant). Sur les cinq
+  portfolios fictifs de Twin9 (`Twin_v9/tests/portfolios`) et sur un
+  portfolio synthétique aux titres de tous niveaux, les journées de
+  l'interface sont celles de Twin9 (test du moteur, sauté sans
+  `TWIN_V9_DIR`).
 - **RG6** — Identifiant Google Docs. Côté navigateur, un identifiant collé
   seul doit faire 20 à 80 caractères `[A-Za-z0-9_-]` ; un identifiant extrait
   d'une URL (`/document/d/`, `/document/u/<n>/d/`, `?id=` sur **n'importe
@@ -246,6 +261,7 @@ ou le lien « Créer un portfolio » du tableau de bord `#/espace`).
 | UC-APP-01-U05 | `segmentText` | Export Google Docs avec BOM : même découpage | idem |
 | UC-APP-01-U06 | `segmentText` | **Comportement actuel** : CRLF → entêtes `##` ignorées (anomalie A-01) | idem |
 | UC-APP-01-U21 | `segmentText` | Séparateur `---` → journée non datée avant la première entête datée, trait dans sa journée après (RG5 bis) ; entêtes de même date fusionnées ; « ## Lundi 22 décembre » → date `null` (RG5) ; date en milieu de phrase sans coupure ; préambule non daté | idem |
+| UC-APP-01-U22 | `segmentText` | Année sur deux chiffres (RG5 ter) : `### 02.03.26` → 2026-03-02 ; ligne nue, titre `#` ou `####` à `######`, titre indenté, `/`, `-`, « 1er », trois chiffres : du texte. Les cinq portfolios fictifs de Twin9 et un portfolio aux titres de tous niveaux donnent ses dates : `engine/src/portfolio/segment.test.js` (sauté sans `TWIN_V9_DIR`) | idem |
 | UC-APP-01-U07 | `parseHash`, `FAMILIES` | `#/portfolio` → route `portfolio` ; entrée « Mon portfolio » de « Ma cartographie » | `web/test/usecases/unit/uc-app-01-constituer-portfolio.test.jsx` |
 | UC-APP-01-U08 | `createIndexedDbAdapter` | Ouverture paresseuse, `open('humanome-portfolios', 1)`, magasin `portfolios` à clé `id`, CRUD | idem |
 | UC-APP-01-U09 | `createIndexedDbAdapter` | Ouverture refusée → échec puis nouvelle tentative | idem |
@@ -330,12 +346,15 @@ cd engine && npx vitest run test/usecases --testNamePattern UC-APP-01
   `url` : la validation native du navigateur (`typeMismatch`) bloque la
   soumission avant le gestionnaire, sans requête ni message de l'application.
   Figé par F17.
-- **A-03 — Bouton « Cartographier » obsolète.** Le panneau affiché annonce
-  que le lancement « sera disponible dans l'espace apprenant (bientôt) » et
-  renvoie vers la démo « Essayer », alors que l'assistant `#/espace/nouveau-run`
-  existe (UC-APP-02) et que l'aide contextuelle (`web/src/help/registry.js`)
-  indique « Depuis un portfolio, vous lancez « Cartographier mes écrits » ».
-  Comportement couvert par `web/src/views/PortfolioView.test.jsx`.
+- ~~**A-03 — Bouton « Cartographier » obsolète.**~~ Corrigée le 2026-10-22.
+  Le panneau annonçait que le lancement « sera disponible dans l'espace
+  apprenant (bientôt) » et renvoyait vers la démo « Essayer », alors que
+  l'assistant `#/espace/nouveau-run` existe (UC-APP-02) et que l'aide
+  contextuelle (`web/src/help/registry.js`) indique « Depuis un portfolio,
+  vous lancez « Cartographier mes écrits » ». Il mène désormais aux trois
+  chemins réels : « Cartographier mes écrits » (`#/espace/nouveau-run`),
+  « Analyse approfondie » (`#/twin9`) et « Essayer » (`#/essayer`). Prouvé
+  par `web/src/views/PortfolioView.test.jsx`.
 - **A-04 — Changement de portfolio pendant la pause de 600 ms : le portfolio
   ouvert est réenregistré sans modification et la liste garde l'ancien titre
   du portfolio quitté.** Dans `web/src/views/PortfolioView.jsx`,

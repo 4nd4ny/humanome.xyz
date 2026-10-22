@@ -27,6 +27,10 @@ const FILE = {
 }
 
 /** La sortie d'un appel : le maximum du modèle (2026-10-21), un affichage, pas un réglage. */
+// L'interrupteur de la démo, par son nom : le tiroir de l'application porte
+// aussi un interrupteur, « Mode expert » (sprint 1, 2026-10-22).
+const DEMO_SWITCH = { name: /^Démo publique/ }
+
 const sortieMax = (model) => (model.startsWith('claude-haiku-4-5') ? 64000 : 128000)
 
 /** Faux /api/admin/demo-config : base > fichier, bornes de maxInputChars, un Haiku seulement. */
@@ -98,7 +102,7 @@ describe('UC-ADM-04 — l’administrateur configure la démo publique', () => {
     const backend = createAdminBackend({ routes: demoRoutes() })
     openAdmin(backend)
 
-    const toggle = await screen.findByRole('switch')
+    const toggle = await screen.findByRole('switch', DEMO_SWITCH)
     expect(toggle.getAttribute('aria-checked')).toBe('true')
     expect(toggle.textContent).toContain('Démo publique : activée')
     expect(screen.getByText(/Clé API/).textContent).toContain('configurée')
@@ -106,8 +110,8 @@ describe('UC-ADM-04 — l’administrateur configure la démo publique', () => {
     await click(toggle)
 
     expect(await screen.findByText('Démo publique désactivée.')).toBeTruthy()
-    await waitFor(() => expect(screen.getByRole('switch').getAttribute('aria-checked')).toBe('false'))
-    expect(screen.getByRole('switch').textContent).toContain('désactivée')
+    await waitFor(() => expect(screen.getByRole('switch', DEMO_SWITCH).getAttribute('aria-checked')).toBe('false'))
+    expect(screen.getByRole('switch', DEMO_SWITCH).textContent).toContain('désactivée')
     const [put] = callsTo(backend.calls, 'PUT', 'api/admin/demo-config')
     expect(JSON.parse(put.init.body)).toEqual({ enabled: false })
     expect(put.init.headers['X-CSRF-Token']).toBe(CSRF)
@@ -117,7 +121,7 @@ describe('UC-ADM-04 — l’administrateur configure la démo publique', () => {
   it('UC-ADM-04-F12 — nominal (réglages) : modèle (un Haiku) et entrée max modifiés → PUT partiel, message, badges « réglage base », sortie du modèle affichée', async () => {
     const backend = createAdminBackend({ routes: demoRoutes() })
     openAdmin(backend)
-    await screen.findByRole('switch')
+    await screen.findByRole('switch', DEMO_SWITCH)
     expect(screen.getByTestId('demo-sortie').textContent).toMatch(/64\s000 jetons/)
 
     fireEvent.change(screen.getByLabelText('Modèle'), { target: { value: 'claude-haiku-5-5' } })
@@ -135,7 +139,7 @@ describe('UC-ADM-04 — l’administrateur configure la démo publique', () => {
   it('UC-ADM-04-F13 — A2 : « Réinitialiser » supprime les surcharges (DELETE) et rend la main au fichier', async () => {
     const backend = createAdminBackend({ routes: demoRoutes() })
     openAdmin(backend)
-    await click(await screen.findByRole('switch'))
+    await click(await screen.findByRole('switch', DEMO_SWITCH))
     await screen.findByText('Démo publique désactivée.')
 
     await click(screen.getByRole('button', { name: 'Réinitialiser (revenir aux valeurs env/fichier)' }))
@@ -143,13 +147,13 @@ describe('UC-ADM-04 — l’administrateur configure la démo publique', () => {
     expect(await screen.findByText('Réglages de la démo réinitialisés (valeurs env/fichier).')).toBeTruthy()
     expect(callsTo(backend.calls, 'DELETE', 'api/admin/demo-config')).toHaveLength(1)
     expect(screen.queryByText('réglage base')).toBeNull()
-    expect(screen.getByRole('switch').getAttribute('aria-checked')).toBe('true')
+    expect(screen.getByRole('switch', DEMO_SWITCH).getAttribute('aria-checked')).toBe('true')
   })
 
   it('UC-ADM-04-F14 — E3 : valeur hors bornes → message du serveur, rien n’est appliqué', async () => {
     const backend = createAdminBackend({ routes: demoRoutes() })
     openAdmin(backend)
-    await screen.findByRole('switch')
+    await screen.findByRole('switch', DEMO_SWITCH)
 
     fireEvent.change(screen.getByLabelText('Entrée max (caractères)'), { target: { value: '9999999' } })
     await click(screen.getByRole('button', { name: 'Enregistrer' }))
@@ -161,7 +165,7 @@ describe('UC-ADM-04 — l’administrateur configure la démo publique', () => {
   it('UC-ADM-04-F15 — E3 (client) : champ vide refusé localement, aucune requête PUT', async () => {
     const backend = createAdminBackend({ routes: demoRoutes() })
     openAdmin(backend)
-    await screen.findByRole('switch')
+    await screen.findByRole('switch', DEMO_SWITCH)
 
     fireEvent.change(screen.getByLabelText('Délai amont (secondes)'), { target: { value: '' } })
     await click(screen.getByRole('button', { name: 'Enregistrer' }))
@@ -176,10 +180,10 @@ describe('UC-ADM-04 — l’administrateur configure la démo publique', () => {
     const backend = createAdminBackend({ routes })
     openAdmin(backend)
 
-    await click(await screen.findByRole('switch'))
+    await click(await screen.findByRole('switch', DEMO_SWITCH))
 
     expect((await screen.findByRole('alert')).textContent).toBe('Jeton CSRF absent ou invalide')
-    expect(screen.getByRole('switch').getAttribute('aria-checked')).toBe('true')
+    expect(screen.getByRole('switch', DEMO_SWITCH).getAttribute('aria-checked')).toBe('true')
   })
 
   it('UC-ADM-04-F17 — A4 : #/admin/config — couche serveur lisible, secrets réduits à « configuré / absent »', async () => {
@@ -199,7 +203,7 @@ describe('UC-ADM-04 — l’administrateur configure la démo publique', () => {
     openAdmin(visitor)
     expect(await screen.findByTestId('admin-reserve')).toBeTruthy()
     expect(screen.getByText(/Vous n’êtes pas connecté/)).toBeTruthy()
-    expect(screen.queryByRole('switch')).toBeNull()
+    expect(screen.queryByRole('switch', DEMO_SWITCH)).toBeNull()
     expect(callsTo(visitor.calls, 'GET', 'api/admin/demo-config')).toHaveLength(0)
     cleanup()
     vi.unstubAllGlobals()
@@ -214,7 +218,7 @@ describe('UC-ADM-04 — l’administrateur configure la démo publique', () => {
 
     expect(await screen.findByTestId('admin-reserve')).toBeTruthy()
     expect(screen.queryByText(/Vous n’êtes pas connecté/)).toBeNull()
-    expect(screen.queryByRole('switch')).toBeNull()
+    expect(screen.queryByRole('switch', DEMO_SWITCH)).toBeNull()
     expect(callsTo(backend.calls, 'GET', 'api/admin/demo-config')).toHaveLength(0)
   })
 
@@ -229,7 +233,7 @@ describe('UC-ADM-04 — l’administrateur configure la démo publique', () => {
     })
     const backend = createAdminBackend({ routes })
     openAdmin(backend)
-    await screen.findByRole('switch')
+    await screen.findByRole('switch', DEMO_SWITCH)
 
     expect(screen.getByLabelText('Modèle').value).toBe('__autre__')
     expect(screen.getByLabelText('Identifiant de modèle libre').value).toBe('claude-haiku-6')

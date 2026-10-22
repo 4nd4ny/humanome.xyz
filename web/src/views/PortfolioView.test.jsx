@@ -1,5 +1,5 @@
 import { afterEach, describe, expect, it } from 'vitest'
-import { cleanup, fireEvent, render, screen, waitFor } from '@testing-library/react'
+import { cleanup, fireEvent, render, screen, waitFor, within } from '@testing-library/react'
 import PortfolioView from './PortfolioView.jsx'
 import { createMemoryAdapter, createPortfolioStore } from '../lib/portfolio-store.js'
 
@@ -179,13 +179,19 @@ describe('PortfolioView', () => {
     expect(called).toBe(false)
   })
 
-  it('« Cartographier » : écran « disponible dans l’espace apprenant (bientôt) »', async () => {
+  // UC-APP-01, anomalie A-03 corrigée le 2026-10-22 : le panneau ne promet plus
+  // « bientôt » un lancement déjà livré, il mène aux trois chemins réels.
+  it('« Cartographier » : les trois chemins réels (standard, Twin9, essai), plus aucun « bientôt »', async () => {
     await createWithText()
     fireEvent.click(screen.getByRole('button', { name: 'Cartographier' }))
     const panel = screen.getByRole('status', { name: 'Cartographier' })
-    expect(panel.textContent).toContain('disponible')
-    expect(panel.textContent).toContain('l’espace apprenant (bientôt)')
-    expect(panel.textContent).toContain('Essayer')
+    expect(panel.textContent).not.toContain('bientôt')
+    const links = within(panel).getAllByRole('link')
+    expect(links.map((a) => [a.textContent, a.getAttribute('href')])).toEqual([
+      ['Cartographier mes écrits', '#/espace/nouveau-run'],
+      ['Analyse approfondie', '#/twin9'],
+      ['Essayer', '#/essayer'],
+    ])
   })
 
   it('bouton « Exporter (.md) » présent pour le portfolio courant', async () => {

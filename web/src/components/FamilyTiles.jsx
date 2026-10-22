@@ -12,6 +12,7 @@
 import { useEffect, useState } from 'react'
 import { navGroups } from '../nav.js'
 import { helpFor } from '../help/registry.js'
+import { defaultMode } from '../lib/ui-mode.js'
 import { navigate, parseHash } from '../router.js'
 
 /**
@@ -47,9 +48,15 @@ function itemKey(item) {
   return `${item.href} ${item.label}`
 }
 
-/** @param {{roles?: string[]}} props rôles de la session (App) */
-export default function FamilyTiles({ roles = [] }) {
-  const authenticated = roles.length > 0
+/**
+ * @param {{roles?: string[], authenticated?: boolean, expert?: boolean}} props
+ *   rôles de la session (App) ; `authenticated` = un utilisateur de session,
+ *   même sans rôle (UC-VIS-04 AN2, corrigée le 2026-10-22) — à défaut, déduit
+ *   des rôles ; `expert` = mode d'affichage de la personne qui regarde
+ *   (défaut : expert). L'aperçu d'un profil montre, lui, ce que CE profil
+ *   verrait : le mode par défaut de ses rôles (lib/ui-mode.js).
+ */
+export default function FamilyTiles({ roles = [], authenticated = roles.length > 0, expert = true }) {
   // Visiteur : profil exploré via la persona-bar (null tant que non révélée).
   const [reveal, setReveal] = useState(false)
   const [persona, setPersona] = useState('visiteur')
@@ -72,15 +79,17 @@ export default function FamilyTiles({ roles = [] }) {
   const selected = PERSONAS.find((p) => p.id === persona) ?? PERSONAS[0]
   const previewing = !authenticated && reveal && persona !== 'visiteur'
   const effectiveRoles = authenticated ? roles : previewing && selected.roles ? selected.roles : []
+  const effectiveExpert = previewing ? defaultMode(effectiveRoles) === 'expert' : expert
   const families = navGroups({
     roles: effectiveRoles,
     authenticated: authenticated || previewing,
+    expert: effectiveExpert,
   })
 
   // Le survol/focus PRIME sur la sélection : on peut lire l'aide d'un autre
   // lien sans perdre son lien armé (l'invite ne s'affiche alors pas).
   const active = preview ?? armed
-  const help = active ? helpFor(parseHash(active.href).name, { roles: effectiveRoles }) : null
+  const help = active ? helpFor(parseHash(active.href).name, { roles: effectiveRoles, expert: effectiveExpert }) : null
   const showArmedHint = Boolean(armed && active && active.key === armed.key)
 
   /** Oubli de toute lecture en cours (changement de profil / de grille). */

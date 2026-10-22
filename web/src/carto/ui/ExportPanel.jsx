@@ -30,10 +30,13 @@ function Status({ value }) {
 
 /**
  * @param {{dataset: object, refl: object, state: object, params: object,
- *   t: string | null, data: object, fetchFn?: typeof fetch, onOpenDataset?: () => void}} props
+ *   t: string | null, data: object, fetchFn?: typeof fetch, onOpenDataset?: () => void,
+ *   expert?: boolean}} props
  *   Le soleil du rapport se dessine ici, avec l'anneau des pôles standard.
+ *   `expert` (défaut : vrai) : faux — mode simple du site —, la carte « Préparer
+ *   une démo » (outil d'anonymisation, §11.1) n'est pas proposée.
  */
-export function ExportPanel({ dataset, refl, state, params, t, data, fetchFn, onOpenDataset }) {
+export function ExportPanel({ dataset, refl, state, params, t, data, fetchFn, onOpenDataset, expert = true }) {
   const uid = useId()
   const [jsonPortfolio, setJsonPortfolio] = useState(true)
   const [htmlPortfolio, setHtmlPortfolio] = useState(false)
@@ -263,21 +266,23 @@ export function ExportPanel({ dataset, refl, state, params, t, data, fetchFn, on
           </button>
         </section>
 
-        <section className="carto-export-card carto-export-card--wide" aria-labelledby={`${uid}-demo`}>
-          <h3 id={`${uid}-demo`}>Préparer une démo</h3>
-          <p className="carto-small">
-            Pour déposer une démonstration sur le serveur : une copie anonymisée de ce jeu. Les noms choisis sont remplacés partout (portfolio, extraits, jury) pour
-            que les surlignages tiennent ; la table de correspondance n’est jamais exportée.
-          </p>
-          {demoOpen ? null : (
-            <button type="button" className="carto-btn carto-btn--quiet" onClick={() => setDemoOpen(true)}>
-              Ouvrir l’outil d’anonymisation
-            </button>
-          )}
-        </section>
+        {expert ? (
+          <section className="carto-export-card carto-export-card--wide" aria-labelledby={`${uid}-demo`}>
+            <h3 id={`${uid}-demo`}>Préparer une démo</h3>
+            <p className="carto-small">
+              Pour déposer une démonstration sur le serveur : une copie anonymisée de ce jeu. Les noms choisis sont remplacés partout (portfolio, extraits, jury) pour
+              que les surlignages tiennent ; la table de correspondance n’est jamais exportée.
+            </p>
+            {demoOpen ? null : (
+              <button type="button" className="carto-btn carto-btn--quiet" onClick={() => setDemoOpen(true)}>
+                Ouvrir l’outil d’anonymisation
+              </button>
+            )}
+          </section>
+        ) : null}
       </div>
 
-      {demoOpen ? <DemoTool dataset={dataset} data={data} fetchFn={fetchFn} onClose={() => setDemoOpen(false)} onOpened={onOpenDataset} /> : null}
+      {expert && demoOpen ? <DemoTool dataset={dataset} data={data} fetchFn={fetchFn} onClose={() => setDemoOpen(false)} onOpened={onOpenDataset} /> : null}
 
       {reportOpen ? (
         <ReportPreview

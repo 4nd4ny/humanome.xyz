@@ -107,7 +107,10 @@ la page Confidentialité.
 - **E2 — Rien encore** (étape 3) : « Aucune cartographie pour l'instant.
   Lancez une cartographie depuis votre portfolio pour la retrouver ici. » ;
   « Mes portfolios » propose « Créer un portfolio » (`#/portfolio`) et
-  « Cartographier mes écrits » (`#/espace/nouveau-run`).
+  « Cartographier mes écrits » (`#/espace/nouveau-run`), suivi, depuis le
+  2026-10-22 (sprint 1, amélioration 10), d'un lien secondaire « Mes analyses
+  approfondies » vers les analyses Twin9 (`#/twin9`, UC-APP-10) ; le bloc
+  porte ces boutons dans tous les cas, portfolios présents ou non.
 - **E3 — Entrée sans document** (étape 3) : « Voir » et « Télécharger le
   JSON » sont inactifs.
 - **E4 — Accès API refusé** (A5) : sans session `401` ; compte sans rôle
@@ -158,7 +161,7 @@ la page Confidentialité.
 | Front | `web/src/router.js` — `parseHash` | Route `#/espace` et ses sections (segment décodé par `decodeURIComponent`, E5) |
 | Front | `web/src/api/client.js` — `fetchMe`, `ApiUnavailableError` | Session : utilisateur, 401 anonyme, API absente (bandeaux A1) |
 | Front | `web/src/views/EspaceView.jsx` | Session, bandeaux, dispatch, repli « section inconnue » (E5) |
-| Front | `web/src/views/espace/DashboardSection.jsx` | Quatre blocs, ouverture de la visionneuse |
+| Front | `web/src/views/espace/DashboardSection.jsx` | Quatre blocs, ouverture de la visionneuse ; « Mes analyses approfondies » (`#/twin9`, E2) |
 | Front | `web/src/lib/portfolio-store.js`, `web/src/lib/training-store.js` | Bloc « Mes portfolios » (message E1) ; bloc « Ma formation » (`GET api/training/progress` si connecté) |
 | Front | `web/src/views/espace/cartographies-panel-bridge.js`, `carto-store-bridge.js` | Chargement paresseux du panneau et du carto-store |
 | Front | `web/src/views/espace/CartographiesPanel.jsx` | Liste, libellés, badge, « Voir », « Télécharger le JSON » |
@@ -210,6 +213,7 @@ la page Confidentialité.
 | UC-APP-03-F13 | A-02 | IHM | **Comportement actuel** : clic sur un jour du calendrier de la visionneuse → `#/jour/2026-01-06`, `data/demo/jours/2026-01-06.json` demandé | `web/test/usecases/functional/uc-app-03-consulter-ses-cartographies.test.jsx` |
 | UC-APP-03-F14 | A3 | IHM | Twin9 sans journée datée : message explicatif, JSON téléchargeable | idem |
 | UC-APP-03-F15 | E5 | IHM | `<App/>` sur `#/espace/cohortes/3` : alerte « Section inconnue de l'espace apprenant : « cohortes/3 ». », lien de retour, aucun bloc, aucune ouverture IndexedDB, seul `api/auth/me` demandé ; le retour rouvre le tableau de bord (qui lit IndexedDB) ; visiteur : même alerte sous le bandeau « pas connecté » ; `<App/>` sur `#/espace/100%` : le rendu lève une `URIError`, rien n'est affiché, ni sonde de session ni requête (comportement actuel, UC-VIS-02 AN1) | idem |
+| UC-APP-03-F16 | E2 | IHM | À côté de « Cartographier mes écrits » (principal), « Mes analyses approfondies » mène à `#/twin9`, en lien secondaire | idem |
 
 ### Tests existants liés (non-régression)
 

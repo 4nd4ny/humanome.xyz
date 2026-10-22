@@ -1,4 +1,7 @@
-import { readFileSync } from 'node:fs'
+import { execFileSync } from 'node:child_process'
+import { existsSync, readFileSync, readdirSync } from 'node:fs'
+import { dirname, join } from 'node:path'
+import { fileURLToPath } from 'node:url'
 import { describe, expect, it } from 'vitest'
 import {
   mergeSegments,
@@ -115,6 +118,97 @@ describe('segmentText — variantes de formats de dates', () => {
     expect(segmentText('45/13/2025\ntexte', TODAY)).toHaveLength(1)
     expect(segmentText('45/13/2025\ntexte', TODAY)[0].date).toBe('2026-07-12')
     expect(segmentText('## 2025-02-30\ntexte', TODAY)[0].date).toBe('2026-07-12')
+  })
+})
+
+// Un portfolio synthétique aux titres de tous niveaux, années sur deux chiffres :
+// Twin9 n'en date que les titres ## et ### non indentés (02, 06 et 14 ; le 4,
+// sous ####, reste dans la journée du 2).
+const MIXED_LEVELS =
+  '### 02.03.26\n\nun\n\n#### 04.03.26\n\ndeux\n\n### 06.03.26\n\ntrois\n\n# 08.03.26\n\nquatre\n\n' +
+  '   ### 10.03.26\n\ncinq\n\n###### 12.03.26\n\nsix\n\n## 14.03.26\n\nsept\n'
+const NO_DATE = '0000-00-00'
+const interfaceDates = (text) =>
+  segmentText(text, { today: NO_DATE })
+    .map((s) => s.date)
+    .filter((d) => d !== null && d !== NO_DATE)
+    .sort()
+
+describe('segmentText — années à deux chiffres, comme Twin9 (carto, sprint 4)', () => {
+  it('« ### 02.03.26 » est le 2026-03-02 ; « ## 9.3.26 », « ### Lundi 02.03.26 — Atelier » aussi', () => {
+    const text = '### 02.03.26\n\nun\n\n## 9.3.26\n\ndeux\n\n### Lundi 16.03.26 — Atelier\n\ntrois\n'
+    expect(segmentText(text, TODAY).map((s) => s.date)).toEqual(['2026-03-02', '2026-03-09', '2026-03-16'])
+    expect(segmentText('### **27.03.26**\ntexte', TODAY)[0].date).toBe('2026-03-27')
+  })
+
+  it('là où Twin9 ne lit pas la date, elle reste du texte : ligne nue, titre # ou #### à ######, titre indenté, « / » ou « - », « 1er », trois chiffres, hors calendrier', () => {
+    const lines = ['02.03.26', '1.2.10', '# 02.03.26', '#### 02.03.26', '###### 02.03.26', '   ### 02.03.26', ' ## 02.03.26']
+    for (const line of [...lines, '### 02/03/26', '### 02-03-26', '### 1er.03.26', '### 12.03.202', '### 31.02.26', '### 02.03.26abc']) {
+      const segments = segmentText(`### 2026-03-01\navant\n${line}\naprès`, TODAY)
+      expect(segments.map((s) => s.date), line).toEqual(['2026-03-01'])
+    }
+  })
+
+  // Twin9 (Portfolio.php) : `^#{2,3}` suivi d'un blanc, en début de ligne.
+  it('titres de niveaux mêlés : seuls ## et ###, en début de ligne, ouvrent une journée', () => {
+    expect(interfaceDates(MIXED_LEVELS)).toEqual(['2026-03-02', '2026-03-06', '2026-03-14'])
+  })
+
+  it('l’année à quatre chiffres ne change pas', () => {
+    expect(segmentText('22.12.2025\ntexte', TODAY)[0].date).toBe('2025-12-22')
+    expect(segmentText('### 02.03.2026\ntexte', TODAY)[0].date).toBe('2026-03-02')
+  })
+})
+
+// Les cinq portfolios fictifs du moteur Twin9 (dépôt privé : `TWIN_V9_DIR`,
+// par défaut cloné à côté de celui-ci, ../Twin_v9 ; sans lui, sauté — jamais
+// recopiés ici, le dépôt alimente un miroir public). Les journées de
+// l'interface sont celles de Twin9 : mêmes dates, triées (Twin9 trie ses
+// feuilles), sans la date de repli de l'interface (un texte sans en-tête
+// daté : Twin9 n'en a aucune).
+const TWIN_V9_DIR = process.env.TWIN_V9_DIR || join(dirname(fileURLToPath(import.meta.url)), '../../../../Twin_v9')
+const TWIN9_PORTFOLIOS = join(TWIN_V9_DIR, 'tests/portfolios')
+const hasTwin9 = existsSync(TWIN9_PORTFOLIOS)
+// Dates de `Portfolio::splitFile` (PHP) et `split_portfolio` (Python) de
+// Twin_v9 (9eea3a1) sur ces fichiers, relevées le 2026-10-22.
+const TWIN9_DATES = {
+  'PLANT-01.md': ['2026-03-02', '2026-03-04', '2026-03-06', '2026-03-09', '2026-03-11', '2026-03-13', '2026-03-16', '2026-03-19', '2026-03-23', '2026-03-27'],
+  'SYNTH-01.md': [],
+  'SYNTH-02.md': [],
+  'SYNTH-06.md': [],
+  'SYNTH-08.md': []
+}
+describe.skipIf(!hasTwin9)('segmentText — les portfolios fictifs de Twin9 : mêmes journées', () => {
+  it('les cinq portfolios sont là', () => {
+    expect(readdirSync(TWIN9_PORTFOLIOS).filter((f) => f.endsWith('.md')).sort()).toEqual(Object.keys(TWIN9_DATES))
+  })
+
+  for (const [file, dates] of Object.entries(TWIN9_DATES)) {
+    it(`${file} : ${dates.length ? `${dates.length} journées, du ${dates[0]} au ${dates.at(-1)}` : 'aucune date (titres sans date)'}`, () => {
+      expect(interfaceDates(readFileSync(join(TWIN9_PORTFOLIOS, file), 'utf8'))).toEqual(dates)
+    })
+  }
+
+  // Le moteur lui-même, quand PHP et ses dépendances sont là : la table ci-dessus est bien la sienne.
+  const php = (() => {
+    if (!existsSync(join(TWIN_V9_DIR, 'php/vendor/autoload.php'))) return false
+    try {
+      execFileSync('php', ['-v'], { stdio: 'ignore' })
+      return true
+    } catch {
+      return false
+    }
+  })()
+  it.skipIf(!php)('Twin9 (PHP) donne ces dates', () => {
+    const code = 'require $argv[1] . "/php/vendor/autoload.php"; $o = []; foreach (glob($argv[1] . "/tests/portfolios/*.md") as $f) { $d = array_values(array_filter(array_column(\\Twin9\\Portfolio::splitFile($f)["feuilles"], "date"))); sort($d); $o[basename($f)] = $d; } echo json_encode($o);'
+    expect(JSON.parse(execFileSync('php', ['-r', code, TWIN_V9_DIR], { encoding: 'utf8' }))).toEqual(TWIN9_DATES)
+  })
+
+  it.skipIf(!php)('Twin9 (PHP) : titres de niveaux mêlés, les mêmes journées que l’interface', () => {
+    const code = 'require $argv[1] . "/php/vendor/autoload.php"; $d = array_values(array_filter(array_column(\\Twin9\\Portfolio::split($argv[2], "niveaux.md")["feuilles"], "date"))); sort($d); echo json_encode($d);'
+    const twin9 = JSON.parse(execFileSync('php', ['-r', code, TWIN_V9_DIR, MIXED_LEVELS], { encoding: 'utf8' }))
+    expect(twin9).toEqual(['2026-03-02', '2026-03-06', '2026-03-14'])
+    expect(interfaceDates(MIXED_LEVELS)).toEqual(twin9)
   })
 })
 

@@ -66,7 +66,11 @@ function traceExtract(getDetail, t, code) {
  * Liste des traces d'une compétence (ordre : journées, puis ordre du jury).
  * Dans la modale d'un jour, la date de chaque trace est celle du jour
  * (`dated` faux) ; la liste se compte d'elle-même, sans total dans son titre.
- * @param {{traces: Array<{id: string, date: string, variantId: string, role: string}>, code: string,
+ * Une trace dont le passage est écrit un autre jour que celui de l'analyse
+ * (`passage`, la `sourceDate` de son détail : une analyse qui couvre
+ * plusieurs journées du portfolio) le dit pourtant, avec un lien vers la
+ * journée du passage (sprint 4, D-66 amendée).
+ * @param {{traces: Array<{id: string, date: string, variantId: string, role: string, passage?: string}>, code: string,
  *   getDetail: Function, onOpenTrace: (index: number) => void, onOpenDay?: (d: string, code?: string) => void,
  *   dated?: boolean}} props
  */
@@ -79,6 +83,8 @@ export function TraceList({ traces, code, getDetail, onOpenTrace, onOpenDay, dat
         {traces.map((t, i) => {
           const extract = traceExtract(getDetail, t, code)
           const short = typeof extract === 'string' && extract.length > SNIPPET ? `${extract.slice(0, SNIPPET).trimEnd()}…` : extract
+          // L'année de la journée se lit déjà : le passage ne la redit que si elle change (D-71).
+          const passage = !dated && t.passage && t.passage !== t.date ? formatShort(t.passage, { year: t.passage.slice(0, 4) !== t.date.slice(0, 4) }) : null
           return (
             <li key={t.id} className={`carto-trace carto-trace--${t.role}`}>
               <div className="carto-trace-meta">
@@ -88,6 +94,13 @@ export function TraceList({ traces, code, getDetail, onOpenTrace, onOpenDay, dat
                   </button>
                 ) : (
                   <span>{formatShort(t.date)}</span>
+                )}
+                {!passage ? null : onOpenDay ? (
+                  <button type="button" className="carto-link-btn" onClick={() => onOpenDay(t.passage, code)} title={`Ouvrir la cartographie du ${formatLong(t.passage)}`}>
+                    passage du {passage}
+                  </button>
+                ) : (
+                  <span>passage du {passage}</span>
                 )}
                 <span className="carto-role">{t.role === 'preuve' ? 'preuve' : 'indice'}</span>
               </div>
@@ -280,21 +293,25 @@ export function ObservationDays({ code, comp, dataset, t, getDetail, getRunDetai
  *   ensureDetails?: (dates: string[], need?: string | string[]) => void, getRunDetail: Function,
  *   ensureRunDetail: (key: string) => void, update: Function,
  *   onOpenTrace: (code: string, list: object[], index: number) => void,
- *   onOpenPassage: (p: {date: string, extract: string, label?: string}) => void}} props
+ *   onOpenPassage: (p: {date: string, extract: string, label?: string}) => void,
+ *   onOpenDay?: (d: string, code?: string) => void}} props
  */
-export function DayVerdictDetail({ v, variant, date, dataset, getDetail, ensureDetails, getRunDetail, ensureRunDetail, update, onOpenTrace, onOpenPassage }) {
+export function DayVerdictDetail({ v, variant, date, dataset, getDetail, ensureDetails, getRunDetail, ensureRunDetail, update, onOpenTrace, onOpenPassage, onOpenDay }) {
   // Lu quand la compétence s'ouvre dans la modale, et seulement elle (D-67).
   useEffect(() => {
     ensureDetails?.([date], needCode(v.code))
   }, [ensureDetails, date, v.code])
   const vd = verdictDetailOf(getDetail, date, variant.id, v.code)
   if (vd === undefined) return <p className="carto-muted">Chargement…</p>
-  const list = (v.traces ?? []).map((t) => ({ id: t.id, date, variantId: variant.id, role: t.role }))
+  // La date du passage de chaque trace, lue dans le détail déjà chargé : celle
+  // d'une autre journée quand l'analyse en couvre plusieurs (sprint 4).
+  const list = (v.traces ?? []).map((t) => ({ id: t.id, date, variantId: variant.id, role: t.role, passage: vd?.traces?.[t.id]?.sourceDate ?? date }))
   const run = vd?.runRef ? getRunDetail(vd.runRef) : null
   return (
     <div className="carto-day-verdict-body">
-      {/* La journée est celle de la modale : ses traces ne redisent pas la date (D-66). */}
-      <TraceList traces={list} code={v.code} getDetail={getDetail} onOpenTrace={(i) => onOpenTrace(v.code, list, i)} dated={false} />
+      {/* La journée est celle de la modale : ses traces ne redisent pas la date, sauf
+          celle d'un passage écrit un autre jour (D-66 amendée). */}
+      <TraceList traces={list} code={v.code} getDetail={getDetail} onOpenTrace={(i) => onOpenTrace(v.code, list, i)} onOpenDay={onOpenDay} dated={false} />
       {/* La ligne de la compétence dit déjà confiance, preuves et statut (D-66). */}
       <VerdictFacts verdict={v} detail={vd} summary={false} />
       <ReviewControls dataset={dataset} obsKey={observationKey(date, variant.id, v.code)} update={update} />

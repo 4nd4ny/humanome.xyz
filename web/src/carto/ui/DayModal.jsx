@@ -5,7 +5,7 @@
 
 import { useEffect, useMemo, useRef, useState } from 'react'
 import { computeDayState, layoutSun } from '../core/state.js'
-import { contributingVariant, hasPortfolio } from '../core/model.js'
+import { contributingVariant, hasPortfolio, passageCoverage } from '../core/model.js'
 import { formatLong, formatShort, weekdayName } from '../core/dates.js'
 import { Sun } from './Sun.jsx'
 import { provenanceLabel } from './Manager.jsx'
@@ -67,6 +67,71 @@ export function useFocusTrap(containerRef, active, onEscape) {
   }, [containerRef, active, onEscape])
 }
 
+/**
+ * Pourquoi aucune analyse ne contribue pour cette journée : trois situations
+ * distinctes, et non plus une seule phrase (sprint 4, C7).
+ * @param {object | undefined} day journée sans variante qui contribue
+ * @returns {{fact: string, message: string}} ligne « Analyse » et phrase sous les verdicts
+ */
+export function noContribution(day) {
+  const n = day?.variants?.length ?? 0
+  if (n === 0) return { fact: 'aucune', message: 'Aucune analyse n’est rangée à ce jour.' }
+  if (day.variantChoice === 'examine') return { fact: 'mise « à examiner »', message: 'Journée mise à examiner : elle ne compte pas.' }
+  if (n > 1) return { fact: `${n} analyses à arbitrer`, message: `${n} analyses : choisissez celle qui compte dans le Gestionnaire.` }
+  return { fact: 'à choisir', message: 'L’analyse de ce jour ne compte pas : choisissez-la dans le Gestionnaire.' }
+}
+
+/**
+ * Les analyses d'autres journées qui ont relevé des passages de celle-ci
+ * (sprint 4, T2) : lues dans l'index seul (`at` des traces, aucun détail),
+ * chacune avec ses compétences, dans l'ordre du référentiel, et un lien qui
+ * ouvre la journée analysée sur la compétence. Leurs traces comptent dans la
+ * journée de l'analyse, pas dans celle-ci : le soleil de ce jour reste vide.
+ * @param {{date: string, covering: Array<{date: string, codes: Array<{code: string, proofs: number, hints: number}>}>,
+ *   refl: object, palette: object, onOpenDay?: (d: string, code?: string) => void}} props
+ */
+export function CoveredBy({ date, covering, refl, palette, onOpenDay }) {
+  const order = (a, b) => (refl.compByCode.get(a.code)?.order ?? 999) - (refl.compByCode.get(b.code)?.order ?? 999)
+  return covering.map((c) => {
+    const id = `carto-covered-${c.date}`
+    // L'année de la journée est dans le titre de la modale : elle ne se redit que si elle change (D-71).
+    const day = formatLong(c.date, { year: c.date.slice(0, 4) !== date.slice(0, 4) })
+    return (
+      <section key={c.date} className="carto-covered" aria-labelledby={id}>
+        <h3 id={id}>Relevé par l’analyse du {day}</h3>
+        <p className="carto-muted carto-small">
+          Des passages de ce jour sont cités par l’analyse d’une autre journée : leurs traces comptent dans la cartographie du {day}, pas dans celle de ce jour.
+        </p>
+        <ul className="carto-verdict-list">
+          {[...c.codes].sort(order).map(({ code, proofs, hints }) => {
+            const meta = refl.compByCode.get(code)
+            const name = (
+              <>
+                <span className="carto-code">{code}</span> {meta?.name ?? '(hors référentiel)'}
+              </>
+            )
+            return (
+              <li key={code} className="carto-pole" style={poleVars(refl.poleByNum.get(meta?.pole)?.color ?? '#78716c', palette)}>
+                {onOpenDay ? (
+                  <button type="button" className="carto-link-btn" onClick={() => onOpenDay(c.date, code)} title={`Ouvrir la cartographie du ${formatLong(c.date)} sur ${code}`}>
+                    {name}
+                  </button>
+                ) : (
+                  name
+                )}
+                <span className="carto-count">
+                  {' '}
+                  · {proofs} preuve{proofs > 1 ? 's' : ''}, {hints} indice{hints > 1 ? 's' : ''}
+                </span>
+              </li>
+            )
+          })}
+        </ul>
+      </section>
+    )
+  })
+}
+
 const STATUS_GROUPS = [
   ['observed', 'Compétences observées ce jour'],
   ['not_established', 'Examinées sans trace retenue (présence non établie)'],
@@ -79,20 +144,25 @@ const STATUS_GROUPS = [
  *   date: string, dataset: object, refl: object, params: object, geometry: object,
  *   activeDates: string[], focusCode?: string | null, reinforced?: boolean,
  *   onClose: () => void, onNavigate: (d: string) => void, onSelect?: (t: object) => void,
+ *   onOpenDay?: (d: string, code?: string) => void,
  *   renderVerdict?: (v: object, variant: object) => React.ReactNode,
  *   trapActive?: boolean,
  *   children?: (ctx: {date: string, state: object, variant: object | null}) => React.ReactNode,
  * }} props
  *   renderVerdict : contenu dépliable de chaque compétence du jour (traces, motif, jury) ;
+ *   onOpenDay : ouvre une autre journée sur une compétence (l'analyse qui a relevé les passages de ce jour) ;
  *   trapActive : false pendant que le lecteur de portfolio (volet non modal) a la main ;
  *   children : rendu supplémentaire en bas de la modale
  */
-export function DayModal({ date, dataset, refl, params, geometry, activeDates, focusCode = null, reinforced = false, onClose, onNavigate, renderVerdict, trapActive = true, children }) {
+export function DayModal({ date, dataset, refl, params, geometry, activeDates, focusCode = null, reinforced = false, onClose, onNavigate, onOpenDay, renderVerdict, trapActive = true, children }) {
   const ref = useRef(null)
   const palette = usePalette()
   useFocusTrap(ref, trapActive, onClose)
   const day = dataset.days.find((d) => d.date === date)
   const variant = day ? contributingVariant(day) : null
+  const none = variant ? null : noContribution(day)
+  // Une journée sans analyse qui contribue : celles d'autres journées qui ont relevé ses passages (sprint 4, T2).
+  const covering = useMemo(() => (variant ? [] : (passageCoverage(dataset).get(date) ?? [])), [dataset, date, variant])
   const state = useMemo(() => computeDayState(dataset, date, { ref: refl, params }), [dataset, date, refl, params])
   const layout = useMemo(() => layoutSun(state, refl, geometry, { minThickness: params?.minThicknessPx ?? 2, minArc: params?.minArcPx ?? 2 }), [state, refl, geometry, params])
   const nav = activeDates.includes(date) ? activeDates : [...activeDates, date].sort()
@@ -157,7 +227,7 @@ export function DayModal({ date, dataset, refl, params, geometry, activeDates, f
               </div>
               <div>
                 <dt>Analyse</dt>
-                <dd>{variant ? provenanceLabel(variant) : day?.variants.length ? 'variante à choisir ou « à examiner »' : 'aucune'}</dd>
+                <dd>{variant ? provenanceLabel(variant) : none.fact}</dd>
               </div>
               {day?.tags.length ? (
                 <div>
@@ -219,7 +289,8 @@ export function DayModal({ date, dataset, refl, params, geometry, activeDates, f
                 </details>
               ) : null,
             )}
-            {!variant ? <p className="carto-muted">Pas d’analyse qui contribue pour ce jour.</p> : null}
+            {none ? <p className="carto-muted">{none.message}</p> : null}
+            {covering.length > 0 ? <CoveredBy date={date} covering={covering} refl={refl} palette={palette} onOpenDay={onOpenDay} /> : null}
             {typeof children === 'function' ? children({ date, state, variant }) : null}
           </div>
         </div>

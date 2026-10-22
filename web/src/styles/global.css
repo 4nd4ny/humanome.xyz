@@ -652,6 +652,37 @@ body:has([aria-modal='true'], .portfolio-editor-fullscreen)
   transform: rotate(0deg);
 }
 
+/* Croix « Fermer le menu » : même gabarit que la punaise, qu'elle remplace
+   sous 921 px. Là, pas de dock (le panneau épinglé reste en superposition) :
+   la punaise n'y sert à rien, et au doigt seul un tap extérieur refermait. */
+.app-nav-close {
+  display: none;
+  align-items: center;
+  justify-content: center;
+  width: 36px;
+  height: 36px;
+  border-radius: 8px;
+  border: 1px solid transparent;
+  background: transparent;
+  color: var(--ink-faint);
+  cursor: pointer;
+}
+
+.app-nav-close:hover {
+  background: var(--paper);
+  color: var(--ink);
+}
+
+@media (max-width: 920px) {
+  .app-pin {
+    display: none;
+  }
+
+  .app-nav-close {
+    display: inline-flex;
+  }
+}
+
 /* Navigation verticale dans le panneau, groupée par famille (Découvrir,
    Mon travail, Compte) avec un intertitre discret par groupe. */
 .app-nav {
@@ -784,6 +815,86 @@ body:has([aria-modal='true'], .portfolio-editor-fullscreen)
 
 .app-logout-btn svg {
   flex: 0 0 auto;
+}
+
+/* Mode d'affichage simple / expert (lib/ui-mode.js) : interrupteur au bas
+   du tiroir, entre les familles et la déconnexion. Même gabarit que le
+   bouton de déconnexion (44 px) ; la piste suit aria-checked. Aucun visuel
+   nouveau hors de ce bloc (la charte est le sprint 9). */
+.app-nav-mode {
+  margin-top: 0.35rem;
+  padding-top: 0.35rem;
+  border-top: 1px solid var(--line);
+}
+
+.app-nav-mode-switch {
+  display: flex;
+  align-items: center;
+  gap: 0.6rem;
+  width: 100%;
+  min-height: 44px;
+  padding: 0.5rem 0.55rem;
+  border: none;
+  border-radius: 8px;
+  background: transparent;
+  color: var(--ink-soft);
+  font: inherit;
+  font-size: 0.98rem;
+  font-weight: 600;
+  cursor: pointer;
+  text-align: left;
+}
+
+.app-nav-mode-switch:hover {
+  background: var(--paper);
+  color: var(--ink);
+}
+
+.app-nav-mode-track {
+  position: relative;
+  flex: 0 0 auto;
+  width: 34px;
+  height: 20px;
+  border-radius: 999px;
+  background: var(--line);
+  border: 1px solid var(--ink-faint);
+  transition: background-color 0.15s ease;
+}
+
+.app-nav-mode-thumb {
+  position: absolute;
+  top: 2px;
+  left: 2px;
+  width: 14px;
+  height: 14px;
+  border-radius: 50%;
+  background: var(--card);
+  border: 1px solid var(--ink-faint);
+  transition: transform 0.15s ease;
+}
+
+.app-nav-mode-switch[aria-checked='true'] .app-nav-mode-track {
+  background: var(--accent-solid);
+  border-color: var(--accent-solid);
+}
+
+.app-nav-mode-switch[aria-checked='true'] .app-nav-mode-thumb {
+  transform: translateX(14px);
+  border-color: var(--accent-solid);
+}
+
+.app-nav-mode-hint {
+  display: block;
+  padding: 0 0.55rem 0.35rem;
+  font-size: 0.8rem;
+  color: var(--ink-faint);
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .app-nav-mode-track,
+  .app-nav-mode-thumb {
+    transition: none;
+  }
 }
 
 /* Badge d'échelle de valeur (gratuit / standard / premium) — porté par les
@@ -1141,6 +1252,36 @@ body:has([aria-modal='true'], .portfolio-editor-fullscreen)
   margin: 0;
 }
 
+/* Cibles tactiles (sprint 1, amélioration 1) : au doigt (pointeur grossier),
+   chaque commande de l'en-tête et du tiroir, les pastilles et les liens des
+   tuiles font au moins 44 px ; la souris garde les gabarits ci-dessus. À
+   360 px, la grappe thème + aide + tuteur + Menu tient en 300 px environ. */
+@media (pointer: coarse) {
+  .app-theme-toggle,
+  .tuteur-toggle,
+  .help-button {
+    width: 44px;
+    height: 44px;
+  }
+
+  .app-burger,
+  .chip,
+  .routes a {
+    min-height: 44px;
+  }
+
+  .app-pin,
+  .app-nav-close {
+    width: 44px;
+    height: 44px;
+  }
+
+  .help-close {
+    min-width: 44px;
+    min-height: 44px;
+  }
+}
+
 @media print {
   .app-nav,
   .app-header-actions,
@@ -1157,11 +1298,22 @@ body:has([aria-modal='true'], .portfolio-editor-fullscreen)
   margin: 0.25rem 0 1.5rem;
 }
 
+/* Les parcours de la session d'abord, puis « Autres parcours » (sprint 1,
+   amélioration 14) : un intitulé par groupe, les familles en dessous. */
+.guides-group > h2 {
+  font-size: 1.25rem;
+  margin: 0 0 0.9rem;
+}
+
+.guides-group + .guides-group {
+  margin-top: 2.25rem;
+}
+
 .guides-family {
   margin-bottom: 1.75rem;
 }
 
-.guides-family h2 {
+.guides-family h3 {
   font-size: 1.1rem;
   color: var(--ink-soft);
   border-bottom: 1px solid var(--line);
@@ -2641,6 +2793,15 @@ body:has([aria-modal='true'], .portfolio-editor-fullscreen)
   margin-top: 0;
 }
 
+.portfolio-carto-paths {
+  margin: 0;
+  padding-left: 1.25rem;
+}
+
+.portfolio-carto-paths li + li {
+  margin-top: 0.4rem;
+}
+
 /* ---------- Impression (esprit du bloc print de l'original, l.644) ----------
    Une cartographie = un document : sunburst pleine largeur, puis le panneau
    détails de la sélection (ou la synthèse kairos en vue merge). Chrome et
@@ -3074,17 +3235,6 @@ body:has([aria-modal='true'], .portfolio-editor-fullscreen)
   gap: 1rem;
 }
 
-.cartographe-nav {
-  display: flex;
-  flex-wrap: wrap;
-  gap: 0.35rem 1rem;
-  padding: 0.5rem 0.9rem;
-  border: 1px solid var(--line);
-  border-radius: 10px;
-  background: var(--card);
-  font-size: 0.92rem;
-}
-
 .cartographe-reserve {
   max-width: 640px;
   display: flex;
@@ -3298,10 +3448,6 @@ body:has([aria-modal='true'], .portfolio-editor-fullscreen)
 }
 
 @media (max-width: 767px) {
-  .cartographe-nav {
-    font-size: 0.88rem;
-  }
-
   .cartographe-comparer-diagrammes {
     grid-template-columns: minmax(0, 1fr);
   }
@@ -3310,17 +3456,6 @@ body:has([aria-modal='true'], .portfolio-editor-fullscreen)
 /* ---------------------------------------------------------------------------
    Atelier promptologue (P10) — M7 chantier D
    --------------------------------------------------------------------------- */
-
-.promptologue-nav {
-  display: flex;
-  flex-wrap: wrap;
-  gap: 0.75rem;
-  margin: 0.5rem 0 1.25rem;
-  padding: 0.5rem 0.9rem;
-  border: 1px solid var(--line);
-  border-radius: 10px;
-  background: var(--card);
-}
 
 .promptologue section {
   margin: 1.25rem 0;
@@ -3720,8 +3855,12 @@ body:has([aria-modal='true'], .portfolio-editor-fullscreen)
 }
 
 /* Onglets : pastilles à grande cible tactile, défilement horizontal sur
-   petit écran, section active clairement marquée (aria-current). */
-.admin-tabs {
+   petit écran, section active clairement marquée (aria-current). Les
+   sous-menus de l'espace cartographe et de l'atelier promptologue suivent le
+   même gabarit (sprint 1, amélioration 8). */
+.admin-tabs,
+.cartographe-nav,
+.promptologue-nav {
   display: flex;
   gap: 0.4rem;
   margin: 0.75rem 0 1.25rem;
@@ -3730,7 +3869,9 @@ body:has([aria-modal='true'], .portfolio-editor-fullscreen)
   -webkit-overflow-scrolling: touch;
 }
 
-.admin-tabs a {
+.admin-tabs a,
+.cartographe-nav a,
+.promptologue-nav a {
   display: inline-flex;
   align-items: center;
   min-height: 44px;
@@ -3744,12 +3885,16 @@ body:has([aria-modal='true'], .portfolio-editor-fullscreen)
   white-space: nowrap;
 }
 
-.admin-tabs a:hover {
+.admin-tabs a:hover,
+.cartographe-nav a:hover,
+.promptologue-nav a:hover {
   border-color: var(--accent);
   color: var(--accent);
 }
 
-.admin-tabs a[aria-current='page'] {
+.admin-tabs a[aria-current='page'],
+.cartographe-nav a[aria-current='page'],
+.promptologue-nav a[aria-current='page'] {
   background: var(--accent-solid);
   border-color: var(--accent);
   color: #fff;

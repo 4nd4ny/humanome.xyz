@@ -275,7 +275,7 @@ describe('importTwin9Run : la configuration du run (P0-1)', () => {
     }
     // le libellé de provenance de l'interface les dit
     expect(provenanceLabel(r.variants[0].summary)).toBe(
-      'Twin9 (serveur) — twin9:7 — profond: claude-exemple-profond, rapide: claude-exemple-rapide, lecteurs: claude-exemple-rapide — gabarits jeu-exemple — analysée le 2026-10-19 — 1 verdicts',
+      'Twin9 (serveur) — twin9:7 — profond: claude-exemple-profond, rapide: claude-exemple-rapide, lecteurs: claude-exemple-rapide — gabarits jeu-exemple — run du 2026-10-19 — 1 verdicts',
     )
   })
 

@@ -11,7 +11,7 @@
 // l'observation : un état commun à tous les liens est repris tel quel, des
 // états différents deviennent « nuancée » avec une note qui le dit.
 
-import { canonicalJson, contentHash, normalizeRole, observationKey, stableId } from '../model.js'
+import { canonicalJson, contentHash, normalizeRole, observationKey, passageAt, stableId } from '../model.js'
 import { splitExtract } from '../highlight.js'
 import { isIsoDate } from '../dates.js'
 import { keepKairosMarkdown } from '../restatement.js'
@@ -89,7 +89,9 @@ export function importV3Master(master, { fileName = 'master-v3.json', now = new 
           const extract = typeof p?.verbatim === 'string' ? p.verbatim : ''
           if (!extract) unresolved++
           const anchors = splitExtract(extract)
-          tSummaries.push({ id, role })
+          // La feuille du passage peut être un autre jour : l'index le dit (`at`, sprint 4, T2).
+          const sourceDate = isIsoDate(p?.feuille) ? p.feuille : date
+          tSummaries.push({ id, role, ...passageAt(sourceDate, date) })
           tDetails[id] = {
             role,
             rawRole: l.evidentialRole || null,
@@ -101,7 +103,7 @@ export function importV3Master(master, { fileName = 'master-v3.json', now = new 
             end: anchors.end,
             context: p?.contexte ?? '',
             author: p?.auteur ?? null,
-            sourceDate: isIsoDate(p?.feuille) ? p.feuille : date,
+            sourceDate,
             resolved: Boolean(extract),
           }
         })

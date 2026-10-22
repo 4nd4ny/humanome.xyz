@@ -1,7 +1,7 @@
 // Atelier promptologue (P10) : garde de rôle, accueil (publiés + brouillons +
 // défaut marqué), « nouvelle version », dispatch formation (API chantier C).
 import { afterEach, describe, expect, it, vi } from 'vitest'
-import { cleanup, fireEvent, render, screen, waitFor } from '@testing-library/react'
+import { cleanup, fireEvent, render, screen, waitFor, within } from '@testing-library/react'
 import PromptologueView from './PromptologueView.jsx'
 import { ApiUnavailableError } from '../api/client.js'
 import pkgFixture from '../../../schemas/fixtures/prompt-package-exemple.json'
@@ -113,6 +113,38 @@ describe('PromptologueView — accueil (paquets publiés, brouillons, défaut)',
       expect(api.proposeDefault).toHaveBeenCalledWith('aurora-v3-reconstruit', '1.0.0'),
     )
     await screen.findByText(/Proposition envoyée/)
+  })
+})
+
+describe('PromptologueView — sous-menu (sprint 1, amélioration 8)', () => {
+  // Chaque section marque SON onglet, et lui seul : l'éditeur d'un brouillon
+  // relève des paquets, un chapitre relève de la formation. Les sections sont
+  // remplacées par des doublures quand elles appelleraient l'API ; tout autre
+  // appel du client reste en attente (la section reste « en chargement »).
+  const Fake = () => <p>section</p>
+  const pendingApi = () =>
+    new Proxy(fakeApi(), {
+      get: (target, key) => (key in target || key === 'then' ? target[key] : () => new Promise(() => {})),
+    })
+  const CASES = [
+    [null, 'Paquets'],
+    ['editeur/7', 'Paquets'],
+    ['banc-essai', 'Banc d’essai'],
+    ['retro', 'Rétrospective'],
+    ['formation', 'Formation'],
+    ['formation/01-prompt-engineering-applique', 'Formation'],
+  ]
+
+  it.each(CASES)('section %s → onglet « %s » marqué aria-current="page"', async (section, tab) => {
+    render(
+      <PromptologueView
+        section={section}
+        deps={{ fetchMeFn: promptologue, api: pendingApi(), formationSection: Fake, benchDeps: {}, retroDeps: {} }}
+      />,
+    )
+    const nav = within(await screen.findByRole('navigation', { name: 'Sections de l’atelier' }))
+    const current = nav.getAllByRole('link').filter((a) => a.getAttribute('aria-current') === 'page')
+    expect(current.map((a) => a.textContent)).toEqual([tab])
   })
 })
 

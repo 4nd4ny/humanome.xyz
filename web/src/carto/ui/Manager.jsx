@@ -10,7 +10,7 @@
 // suppression en deux temps (jamais window.confirm / window.prompt).
 
 import { useEffect, useMemo, useRef, useState } from 'react'
-import { contributingVariant, dayAnomalies, hasAnalysis, hasPortfolio, todoCount } from '../core/model.js'
+import { contributingVariant, coveredDates, datesSpan, dayAnomalies, hasAnalysis, hasPortfolio, multiDayAnomaly, passageCoverage, todoCount } from '../core/model.js'
 import { dayCodes } from '../core/heatmap.js'
 import { allTags, describeDefinition, groupDays, rangeBetween, resolveSetDates, triState } from '../core/sets.js'
 import {
@@ -215,6 +215,8 @@ export function DayList({ dataset, t, selected: given = null, update, onSetT, on
     return g
   }, [dataset, grouping])
   const byDate = useMemo(() => new Map(dataset.days.map((d) => [d.date, d])), [dataset.days])
+  // Les journées relevées par l'analyse d'une autre (sprint 4, T2), une fois pour toute la liste.
+  const coverage = useMemo(() => passageCoverage(dataset), [dataset])
 
   function toggle(date, shiftKey) {
     const day = byDate.get(date)
@@ -282,6 +284,7 @@ export function DayList({ dataset, t, selected: given = null, update, onSetT, on
                     day={byDate.get(date)}
                     t={t}
                     portfolioImported={portfolioImported}
+                    coverage={coverage}
                     onToggle={toggle}
                     onSetT={onSetT}
                     onOpenDay={onOpenDay}
@@ -390,11 +393,18 @@ export function DatasetTitle({ dataset, onRename }) {
   )
 }
 
-function DayRow({ day, t, portfolioImported, onToggle, onSetT, onOpenDay, update }) {
+function DayRow({ day, t, portfolioImported, coverage = null, onToggle, onSetT, onOpenDay, update }) {
   const [tagDraft, setTagDraft] = useState('')
   const codes = dayCodes(day)
-  const anomalies = dayAnomalies(day, { portfolioImported })
+  const anomalies = dayAnomalies(day, { portfolioImported, coverage })
   const v = contributingVariant(day)
+  // Sprint 4, T2 : l'analyse de ce jour a relevé des passages d'autres jours ;
+  // ou ce jour sans analyse qui contribue a ses passages relevés par une autre.
+  const multi = v ? multiDayAnomaly(day.date, v) : null
+  const covers = multi ? [...coveredDates(v)] : []
+  const others = covers.length
+  const coveredBy = anomalies.find((a) => a.code === 'couverte-par')
+  const coveringDates = coveredBy ? (coverage?.get(day.date) ?? []).map((c) => c.date) : []
   const classes = ['carto-day']
   if (!hasAnalysis(day)) classes.push('is-portfolio-only')
   if (!day.active) classes.push('is-off')
@@ -415,6 +425,13 @@ function DayRow({ day, t, portfolioImported, onToggle, onSetT, onOpenDay, update
       <span className="carto-day-ind">
         {hasAnalysis(day) ? <span title="compétences observées">{codes.size} comp.</span> : <span className="carto-muted">sans analyse</span>}
         {hasPortfolio(day) ? <span title="volume du portfolio">{kchars(day.portfolio.chars)}</span> : portfolioImported && hasAnalysis(day) ? <span className="carto-flag" title="analyse sans portfolio : surlignage indisponible">sans portfolio</span> : null}
+        {others > 0 ? (
+          // La plage se lit sans survol (au toucher, au clavier) ; le détail reste au survol.
+          <span title={multi.message}>
+            couvre {others} autre{others > 1 ? 's' : ''} journée{others > 1 ? 's' : ''} ({datesSpan(covers, day.date)})
+          </span>
+        ) : null}
+        {coveringDates.length > 0 ? <span title={coveredBy.message}>relevée le {coveringDates.map((d) => formatShort(d, { weekday: false, year: d.slice(0, 4) !== day.date.slice(0, 4) })).join(', ')}</span> : null}
         {day.variants.length > 1 ? <span className={day.variantChoice === 'pending' ? 'carto-flag' : ''}>{day.variants.length} variantes</span> : null}
         {anomalies.some((a) => a.severity === 'blocking' || a.severity === 'arbitrate' || a.severity === 'warning') ? (
           <span className="carto-flag" title={anomalies.map((a) => a.message).join('\n')}>
@@ -499,7 +516,8 @@ export function provenanceLabel(v) {
   if (p.run) parts.push(p.run)
   if (p.model) parts.push(p.model)
   if (p.prompt) parts.push(p.prompt)
-  if (p.analysedAt) parts.push(`analysée le ${String(p.analysedAt).slice(0, 10)}`)
+  // La date du run, et non celle de la journée analysée (sprint 4, C10).
+  if (p.analysedAt) parts.push(`run du ${String(p.analysedAt).slice(0, 10)}`)
   parts.push(`${v.verdicts.length} verdicts`)
   return parts.join(' — ')
 }

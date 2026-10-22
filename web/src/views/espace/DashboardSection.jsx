@@ -1,6 +1,7 @@
 // Tableau de bord de l'espace apprenant (P8.1) : trois blocs.
 //
-//  - Mes portfolios : portfolio-store existant (IndexedDB locale, P7) ;
+//  - Mes portfolios : portfolio-store existant (IndexedDB locale, P7), avec
+//    « Cartographier mes écrits » et « Mes analyses approfondies » (Twin9) ;
 //  - Mes cartographies : ./CartographiesPanel.jsx (chantier C) chargé via le
 //    pont (module absent -> message d'attente, jamais de build cassé) ;
 //  - Ma formation : progression % + lien vers #/espace/formation.
@@ -145,6 +146,11 @@ export default function DashboardSection({
           </a>{' '}
           <a className="button button-primary" href="#/espace/nouveau-run">
             Cartographier mes écrits
+          </a>{' '}
+          {/* Les analyses Twin9 vivent dans #/twin9 (sprint 1, amélioration 10) :
+              un lien secondaire, à côté de l'assistant standard. */}
+          <a className="button" href="#/twin9">
+            Mes analyses approfondies
           </a>
         </p>
       </section>

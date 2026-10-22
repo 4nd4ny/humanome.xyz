@@ -1,6 +1,6 @@
 import { afterEach, describe, expect, it } from 'vitest'
 import { cleanup, render, screen, waitFor } from '@testing-library/react'
-import GuidesView from './GuidesView.jsx'
+import GuidesView, { guidesDeLaSession } from './GuidesView.jsx'
 
 afterEach(cleanup)
 
@@ -74,8 +74,9 @@ describe('GuidesView — cartes admin + noésiologie et rendu de chapitre (8+1 m
 
   it('les familles « Administrer » et « Écosystème RESPIRE » sont des sections de l’accueil', () => {
     render(<GuidesView parcours={null} chapter={null} deps={{ fetchMeFn: anonymous }} />)
-    expect(screen.getByRole('heading', { level: 2, name: 'Administrer' })).toBeDefined()
-    expect(screen.getByRole('heading', { level: 2, name: 'Écosystème RESPIRE' })).toBeDefined()
+    // Intitulés de famille sous les deux groupes (« Pour commencer », « Autres parcours »), 2026-10-22.
+    expect(screen.getByRole('heading', { level: 3, name: 'Administrer' })).toBeDefined()
+    expect(screen.getByRole('heading', { level: 3, name: 'Écosystème RESPIRE' })).toBeDefined()
   })
 
   it('rend un chapitre via le hub avec ses liens internes réécrits vers #/guides/…', async () => {
@@ -130,5 +131,61 @@ describe('GuidesView — cartes admin + noésiologie et rendu de chapitre (8+1 m
       ).toBeNull()
       view.unmount()
     }
+  })
+})
+
+// Sprint 1, amélioration 14 (2026-10-22) : l'accueil du hub présente d'abord
+// les parcours de la session — un par rôle détenu ; sans rôle, visiteur,
+// apprenant et employeur —, puis « Autres parcours ». Chaque parcours garde
+// UNE carte.
+describe('GuidesView — ses propres parcours d’abord', () => {
+  const cardIds = (region) =>
+    [...region.querySelectorAll('.guides-card a')].map((a) => a.getAttribute('href').replace('#/guides/', ''))
+
+  it('guidesDeLaSession : un parcours par rôle détenu ; sans rôle (ou rôle inconnu), visiteur, apprenant et employeur', () => {
+    expect(guidesDeLaSession([])).toEqual(['visiteur', 'apprenant', 'employeur'])
+    expect(guidesDeLaSession(null)).toEqual(['visiteur', 'apprenant', 'employeur'])
+    expect(guidesDeLaSession(['inconnu'])).toEqual(['visiteur', 'apprenant', 'employeur'])
+    expect(guidesDeLaSession(['apprenant'])).toEqual(['apprenant'])
+    expect(guidesDeLaSession(['cartographe', 'apprenant'])).toEqual(['apprenant', 'cartographe'])
+    expect(guidesDeLaSession(['admin', 'promptologue', 'employeur'])).toEqual(['employeur', 'promptologue', 'admin'])
+  })
+
+  it('visiteur : « Pour commencer » (Découvrir, Votre cartographie) puis « Autres parcours », 9 cartes au total', async () => {
+    const { container } = render(<GuidesView parcours={null} chapter={null} deps={{ fetchMeFn: anonymous }} />)
+    const own = screen.getByRole('region', { name: 'Pour commencer' })
+    expect(cardIds(own)).toEqual(['visiteur', 'apprenant', 'employeur'])
+    const others = screen.getByRole('region', { name: 'Autres parcours' })
+    expect(cardIds(others)).toEqual(['cartographe', 'etablissement', 'epistemiarque', 'promptologue', 'admin', 'noesiologie'])
+    expect(container.querySelectorAll('.guides-card')).toHaveLength(9)
+    // « Pour commencer » vient avant « Autres parcours » dans le document.
+    expect(own.compareDocumentPosition(others) & Node.DOCUMENT_POSITION_FOLLOWING).toBeTruthy()
+  })
+
+  it('compte apprenant + cartographe : « Vos guides » = apprenant et cartographe, le reste en « Autres parcours »', async () => {
+    const session = async () => ({ user: { id: 4, roles: ['apprenant', 'cartographe'] } })
+    const { container } = render(<GuidesView parcours={null} chapter={null} deps={{ fetchMeFn: session }} />)
+    const own = await screen.findByRole('region', { name: 'Vos guides' })
+    expect(cardIds(own)).toEqual(['apprenant', 'cartographe'])
+    expect(cardIds(screen.getByRole('region', { name: 'Autres parcours' }))).toEqual([
+      'visiteur',
+      'employeur',
+      'etablissement',
+      'epistemiarque',
+      'promptologue',
+      'admin',
+      'noesiologie',
+    ])
+    expect(screen.queryByRole('region', { name: 'Pour commencer' })).toBeNull()
+    expect(container.querySelectorAll('.guides-card')).toHaveLength(9)
+  })
+
+  it('session illisible : l’accueil d’un visiteur', async () => {
+    const failing = async () => {
+      throw new Error('API absente')
+    }
+    render(<GuidesView parcours={null} chapter={null} deps={{ fetchMeFn: failing }} />)
+    await waitFor(() => expect(screen.getByRole('region', { name: 'Pour commencer' })).toBeDefined())
+    expect(cardIds(screen.getByRole('region', { name: 'Pour commencer' }))).toEqual(['visiteur', 'apprenant', 'employeur'])
   })
 })

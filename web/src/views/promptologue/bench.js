@@ -584,6 +584,9 @@ export function validatePartialJour(kind, doc, referentiel) {
  * @param {typeof runPackageInSandbox} [params.sandboxRunner] couture de test
  * @returns {Promise<{pkg: {id: string, version: string}, engine: boolean,
  *   days: Array<{iso: string, document: object}>, llmCalls: number, durationMs: number}>}
+ *   un run qui échoue lève : l'erreur porte alors `usageRun`, l'usage réel
+ *   cumulé jusqu'à elle ({inputTokens, outputTokens, mesures}, appel tronqué
+ *   compris), que le résultat n'aurait pas rendu
  */
 export async function runVersionOnDays({
   pkg,
@@ -632,6 +635,17 @@ export async function runVersionOnDays({
       return res
     },
   }
+  // Un run qui échoue lève sans rendre son résultat : l'erreur emporte l'usage
+  // cumulé jusqu'à elle (appels déjà payés, appel tronqué compris), que l'IHM
+  // affiche. Il remplace l'usageRun d'executerTwin6, qui ne compte pas les mesures.
+  const avecUsage = async (etape) => {
+    try {
+      return await etape()
+    } catch (err) {
+      if (err !== null && typeof err === 'object') err.usageRun = { ...usage }
+      throw err
+    }
+  }
 
   // Périmètre restreint : calculé UNE fois ici pour router (le moteur refait
   // son propre filtrage via l'option perimetre d'extractDay).
@@ -650,7 +664,7 @@ export async function runVersionOnDays({
     const portfolio = dayGroupsToPortfolio(dayGroups)
     const totalCalls = callsPerDayFor(referentiel)
     let calls = 0
-    const { document } = await executerTwin6Fn({
+    const { document } = await avecUsage(() => executerTwin6Fn({
       portfolio,
       templates,
       referentiel,
@@ -668,7 +682,7 @@ export async function runVersionOnDays({
           }
         },
       },
-    })
+    }))
     return {
       pkg: { id: pkg.id, version: pkg.version },
       engine: true,
@@ -693,7 +707,7 @@ export async function runVersionOnDays({
     report(llmCalls)
     let document
     if (engine) {
-      document = await extractDayFn({
+      document = await avecUsage(() => extractDayFn({
         dayText: texte,
         date: iso,
         referentiel,
@@ -707,9 +721,9 @@ export async function runVersionOnDays({
           llmCalls += 1
           report(llmCalls)
         },
-      })
+      }))
     } else {
-      const result = await sandboxRunner({
+      const result = await avecUsage(() => sandboxRunner({
         pkg,
         dayText: texte,
         date: iso,
@@ -723,7 +737,7 @@ export async function runVersionOnDays({
         maxTokens,
         signal,
         onLlmCall: ({ calls }) => report(llmCalls + calls),
-      })
+      }))
       llmCalls += result.llmCalls
       document = result.document
       // Même marqueur que le moteur (extractDay) : sans lui, l'export du run

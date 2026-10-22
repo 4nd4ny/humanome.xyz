@@ -458,7 +458,10 @@ par `scripts/extract-referentiel.mjs`.
       maximum de sortie du modèle, serait coupé et payé de nouveau), garde
       sa consigne « réduisez le texte de la journée », et un kairos tronqué
       se dégrade en `null` sous `kairosOptional` ; le banc d'essai, le
-      lanceur de runs et le runner Node comptent l'usage de l'appel tronqué ;
+      lanceur de runs et le runner Node comptent l'usage de l'appel tronqué,
+      et le banc le montre même quand le run échoue : `runVersionOnDays`
+      joint à l'erreur l'usage cumulé jusqu'à elle (`usageRun`, avec ses
+      `mesures`), que l'IHM affiche avec son coût sous le message ;
       la démo ne le refait pas (statut 200) et dit « Votre texte est trop
       long pour l'essai » ; la relance du dialogue de la cartographie dit
       « Relance coupée » ; le bac à sable rend au paquet tiers un

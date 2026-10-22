@@ -258,7 +258,7 @@ describe('Twin6OuverteView', () => {
     const arg = deps.runEngine.mock.calls[0][0]
     expect(arg.referentiel.poles).toEqual([{ num: 1, nom: 'TÊTE — Penser & Comprendre' }]) // les noms de /meta
     expect(arg.templates.fiches).toEqual({ 1: PKG.templates.fiches[1] }) // la fiche du paquet, telle quelle
-    expect(deps.loadReferentiel.mock.calls[0][0]).toEqual({}) // la dernière version publiée de RESPIRE
+    expect(deps.loadReferentiel.mock.calls[0][0]).toEqual({ id: 'respire' }) // la dernière version publiée de RESPIRE (la base d'abord, S5)
     // Le total des compétences établies est celui de ce référentiel.
     expect(await screen.findAllByText('1 / 1')).toHaveLength(2)
   })

@@ -5,6 +5,7 @@ declare(strict_types=1);
 namespace Humanome\Tests;
 
 use Humanome\Referentiel\ContentHash;
+use Humanome\Tests\UseCases\Support\ReferentielsFictifs;
 
 /**
  * HTTP tests of the referentiel module (P4.2/P4.3) against humanome_test:
@@ -67,6 +68,79 @@ final class ReferentielApiTest extends ReferentielTestCase
 
         $missing = $this->request('GET', '/referentiel/versions/9.9.9');
         self::assertSame(404, $missing->getStatusCode());
+    }
+
+    /**
+     * S5: the flows' menus read the database. Any published version of any
+     * referential is served by id, to anyone; never a draft nor a proposal,
+     * nor another spelling of an id or a semver (the column ignores case).
+     */
+    public function testAnyPublishedReferentialIsServedByIdAndVersion(): void
+    {
+        self::importRespire();
+        $author = self::createUser('epistemiarque');
+        $published = self::repo()->importDraft(ReferentielsFictifs::lettre('1.0.0-rc.1'), 'capacité', $author);
+        self::adoptAndPublish($published['id'], 'Version fictive publiée', $author);
+        $draft = self::repo()->importDraft(ReferentielsFictifs::lettre('1.1.0'), 'capacité', $author);
+        $proposal = self::repo()->importDraft(ReferentielsFictifs::lettre('1.2.0'), 'capacité', $author);
+        self::governance()->submit($proposal['id'], null, $author);
+        self::assertSame(['draft', 'review'], [$draft['status'], self::repo()->findById($proposal['id'])['status']]);
+
+        // anonymous, then any logged-in role: the document as published
+        $served = $this->request('GET', '/referentiels/fictif-lettre/versions/1.0.0-rc.1');
+        self::assertSame(200, $served->getStatusCode(), (string) $served->getBody());
+        $doc = self::body($served);
+        self::assertSame(['fictif-lettre', '1.0.0-rc.1', 'Fictif lettré'], [$doc['id'], $doc['version'], $doc['label']]);
+        self::assertCount(5, $doc['poles']);
+        self::assertCount(20, $doc['competences']);
+        self::assertSame($published['contentHash'], $doc['contentHash']);
+        self::loginAs(self::createUser('apprenant'));
+        self::assertSame($doc, self::body($this->request('GET', '/referentiels/fictif-lettre/versions/1.0.0-rc.1')));
+        $_SESSION = [];
+
+        // RESPIRE by the same route
+        $respire = $this->request('GET', '/referentiels/respire/versions/7.0.0');
+        self::assertSame(200, $respire->getStatusCode());
+        self::assertSame([self::RESPIRE, '7.0.0'], [self::body($respire)['id'], self::body($respire)['version']]);
+
+        // a draft, a proposal, an unknown id or version, another spelling: 404
+        foreach ([
+            'fictif-lettre/versions/1.1.0',
+            'fictif-lettre/versions/1.2.0',
+            'inconnu/versions/1.0.0',
+            'fictif-lettre/versions/9.9.9',
+            'FICTIF-LETTRE/versions/1.0.0-rc.1',
+            'Respire/versions/7.0.0',
+            'respire%20/versions/7.0.0',
+            'fictif-lettre/versions/1.0.0-RC.1',
+            'fictif-lettre/versions/1.0.0-rc.1%20',
+        ] as $path) {
+            $refused = $this->request('GET', '/referentiels/' . $path);
+            self::assertSame(404, $refused->getStatusCode(), $path);
+            self::assertSame(['error' => 'Unknown published version'], self::body($refused), $path);
+        }
+
+        // nor to its author, an épistémiarque: a draft serves only their test runs (UC-EPI-05 RG7)
+        self::loginAs($author);
+        self::assertSame(404, $this->request('GET', '/referentiels/fictif-lettre/versions/1.1.0')->getStatusCode());
+        $_SESSION = [];
+
+        // read-only
+        $previousLog = ini_set('error_log', '/dev/null'); // the error middleware logs the HttpMethodNotAllowedException
+        try {
+            foreach (['POST', 'PUT', 'DELETE'] as $method) {
+                self::assertSame(405, $this->request($method, '/referentiels/fictif-lettre/versions/1.0.0-rc.1', [])
+                    ->getStatusCode(), $method);
+            }
+        } finally {
+            ini_set('error_log', $previousLog === false ? '' : $previousLog);
+        }
+
+        // the catalogue lists the published one only
+        self::assertSame([
+            ['id' => 'fictif-lettre', 'label' => 'Fictif lettré', 'versions' => ['1.0.0-rc.1']],
+            ['id' => self::RESPIRE, 'label' => 'RESPIRE v7', 'versions' => ['7.0.0']],
+        ], self::body($this->request('GET', '/referentiels')));
     }
 
     public function testDiffIs404ForUnknownVersion(): void

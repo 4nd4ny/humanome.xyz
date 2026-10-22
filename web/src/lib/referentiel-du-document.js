@@ -8,11 +8,13 @@
 // structure paraît. Plus jamais RESPIRE supposé pour un document d'un autre
 // référentiel.
 //
-// Lecture seule : une version connue mais introuvable (index statique sans
-// elle, copie hors ligne) cède la place à la dernière version publiée du même
-// référentiel ; RESPIRE retombe enfin sur sa copie embarquée
-// (loadPublishedReferentiel sans id ne rejette jamais). Un autre référentiel
-// introuvable rejette : la vue le dit plutôt que de le lire avec RESPIRE.
+// Lecture seule : les versions publiées viennent de la base (API publique,
+// S5), à défaut de l'index statique. Une version connue mais introuvable (ni
+// l'une ni l'autre ne l'ont, copie hors ligne) cède la place à la dernière
+// version publiée du même référentiel ; RESPIRE retombe enfin sur sa copie
+// embarquée (loadPublishedReferentiel sans id ne rejette jamais). Un autre
+// référentiel introuvable rejette : la vue le dit plutôt que de le lire avec
+// RESPIRE.
 
 import { REFERENTIEL_PAR_DEFAUT, validateConformite } from '@engine/conformite.js'
 import { listPublishedReferentiels, loadPublishedReferentiel } from '../data/referentiel.js'
@@ -53,11 +55,11 @@ export async function chargerReferentielDuDocument(
       const exact = docDe(await getReferentiel({ id, version }))
       if (exact) return exact
     } catch {
-      // la version connue manque à l'index : la dernière publiée, ci-dessous
+      // la version connue est introuvable : la dernière publiée, ci-dessous
     }
   } else if (document?.kind === 'cartographie-jour' || document?.kind === 'cartographie-merge') {
     // Sans version connue : la plus récente version publiée à laquelle le
-    // document est conforme (les versions de l'index, de la plus récente à la
+    // document est conforme (les versions publiées, de la plus récente à la
     // plus ancienne).
     const publie = (await listReferentiels().catch(() => [])).find((r) => r.id === id)
     for (const { semver } of publie?.versions ?? []) {

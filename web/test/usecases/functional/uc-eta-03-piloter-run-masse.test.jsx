@@ -348,4 +348,61 @@ describe('UC-ETA-03 — l’établissement lance et suit un run de masse', () =>
     })
     expect(await screen.findByTestId('etab-run-progress')).toBeDefined()
   })
+
+  it('UC-ETA-03-F30 — A8 : le menu et l’estimation lisent la base (API publique), sans export statique ; par défaut, la dernière RESPIRE de la base', async () => {
+    const neuf = {
+      schemaVersion: '2.0.0',
+      kind: 'referentiel',
+      id: 'fictif-neuf',
+      version: '1.0.0',
+      label: 'Fictif à neuf pôles',
+      poles: Array.from({ length: 9 }, (_, i) => ({ num: i + 1, nom: `Pôle fictif ${i + 1}` })),
+      competences: Array.from({ length: 18 }, (_, i) => ({ code: `${Math.floor(i / 2) + 1}.0${(i % 2) + 1}`, nom: `C${i}`, pole: Math.floor(i / 2) + 1 })),
+    }
+    // Une RESPIRE 7.1.0 FICTIVE à six pôles, publiée sur le site après l'export
+    // statique (qui n'est pas servi : la copie embarquée, 7.0.0 à sept pôles,
+    // en serait le repli).
+    const respire71 = {
+      ...neuf,
+      id: 'respire',
+      version: '7.1.0',
+      label: 'RESPIRE v7.1',
+      poles: neuf.poles.slice(0, 6),
+      competences: neuf.competences.slice(0, 12),
+    }
+    // Publiés sur le site, absents de l'export statique (servi en 404) ; la
+    // base range les référentiels par identifiant.
+    const api = cohorteApi({
+      'GET api/referentiels': jsonResponse(200, [
+        { id: 'fictif-neuf', label: 'Fictif à neuf pôles', versions: ['1.0.0'] },
+        { id: 'respire', label: 'RESPIRE v7.1', versions: ['7.1.0', '7.0.0'] },
+      ]),
+      'GET api/referentiels/respire/versions/7.1.0': jsonResponse(200, respire71),
+      'GET api/referentiels/fictif-neuf/versions/1.0.0': jsonResponse(200, neuf),
+      'POST api/etablissement/cohortes/7/runs': jsonResponse(201, { runId: 42, jobs: 5 }),
+      'GET api/etablissement/runs/42': jsonResponse(200, runBoard({ referentiel: { id: 'fictif-neuf', version: '1.0.0' } })),
+    })
+    openApp('#/etablissement/cohorte/7')
+
+    const select = await screen.findByRole('combobox', { name: 'Référentiel' })
+    expect([...select.options].map((o) => o.textContent)).toEqual(['RESPIRE v7.1', 'Fictif à neuf pôles'])
+    expect(select.value).toBe('respire@7.1.0')
+
+    // Menu non touché : l'estimation lit la version que le menu montre, celle
+    // que le serveur figera (six pôles + kairos), pas la copie embarquée (sept).
+    let block = await estimate()
+    expect(block.textContent).toContain('2 membre(s) sélectionné(s), 5 journée(s) au total, soit 35 appels LLM')
+    expect(api.callsTo('GET api/referentiels/respire/versions/7.1.0').length).toBeGreaterThan(0)
+
+    fireEvent.change(select, { target: { value: 'fictif-neuf@1.0.0' } })
+    block = await estimate()
+    expect(block.textContent).toContain('2 membre(s) sélectionné(s), 5 journée(s) au total, soit 50 appels LLM')
+    expect(api.callsTo('GET api/referentiels/fictif-neuf/versions/1.0.0').length).toBeGreaterThan(0)
+    expect(api.calls.some((c) => c.url.startsWith('data/referentiel/fictif-neuf'))).toBe(false)
+    await confirm()
+    expect(api.callsTo('POST api/etablissement/cohortes/7/runs')[0].body).toMatchObject({
+      referentielId: 'fictif-neuf',
+      referentielVersion: '1.0.0',
+    })
+  })
 })

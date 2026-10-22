@@ -439,6 +439,37 @@ describe('UC-APP-02 — scénarios alternatifs', () => {
     // Les checkpoints de ce run sont les siens : ni ceux d'un run de RESPIRE ni l'inverse.
     expect(idb.entries(...RUNS).some(([k]) => k.includes('::aurora-v3-reconstruit@1.1.0::fictif-lettre@1.0.0:checkpoint:'))).toBe(true)
   })
+
+  it('UC-APP-02-F27 — A7 : les référentiels publiés en base (API publique) sont offerts sans export statique ; l’estimation lit le document de l’API', async () => {
+    await seedPortfolio()
+    // Publié sur le site, absent de l'export statique (non routé : 404) ; la
+    // base range les référentiels par identifiant.
+    const fetchMock = stubNetwork({
+      extra: [
+        ['api/referentiels', () => jsonResponse(200, [
+          { id: 'fictif-lettre', label: 'Fictif lettré', versions: ['1.0.0'] },
+          { id: 'respire', label: 'RESPIRE v7', versions: ['7.0.0'] },
+        ])],
+        ['api/referentiels/respire/versions/7.0.0', () => jsonResponse(200, getReferentiel())],
+        ['api/referentiels/fictif-lettre/versions/1.0.0', () => jsonResponse(200, LETTRE)],
+      ],
+    })
+    openWizard()
+    fireEvent.click(await screen.findByRole('radio', { name: /Journal de Maya — 3 journée\(s\)/ }))
+    next()
+    const choix = await screen.findByRole('combobox', { name: 'Référentiel' })
+    expect([...choix.options].map((o) => o.textContent)).toEqual(['RESPIRE v7', 'Fictif lettré'])
+    expect(choix.value).toBe('respire@7.0.0')
+    fireEvent.change(choix, { target: { value: 'fictif-lettre@1.0.0' } })
+    await waitFor(() => expect(fetchMock.calls.some((c) => c.url === 'api/referentiels/fictif-lettre/versions/1.0.0')).toBe(true))
+    await waitFor(() => expect(screen.getByRole('button', { name: 'Continuer' }).disabled).toBe(false))
+    next()
+    fireEvent.click(await screen.findByRole('radio', { name: /Service humanome/ }))
+    next()
+    // Sa structure, lue dans la base : 3 × (5 pôles + kairos) + (10 capacités + 5 pôles + kairos) récits.
+    expect((await screen.findByTestId('run-estimate')).textContent).toContain('34 appels au modèle')
+    expect(fetchMock.calls.some((c) => c.url.startsWith('data/referentiel/fictif-lettre'))).toBe(false)
+  })
 })
 
 describe('UC-APP-02 — scénarios d’erreur', () => {

@@ -17,7 +17,9 @@ declare(strict_types=1);
  * (POST /referentiel/import); its drafts and proposals join the workbench
  * lists; a new version of it forks like RESPIRE's (POST /referentiel/drafts
  * with « referentiel »). The published referentials are public
- * (GET /referentiels). RESPIRE's public reads stay as they were.
+ * (GET /referentiels), and so is each of their published versions
+ * (GET /referentiels/{id}/versions/{semver}, S5: the flows' menus read them).
+ * RESPIRE's public reads stay as they were.
  */
 
 use Humanome\Db;
@@ -131,6 +133,25 @@ return function (App $app): void {
     $app->get('/referentiels', $wrap(function (Request $request, Response $response) use ($json, $repo): Response {
         return $json($response, $repo()->catalogue());
     }));
+
+    // One published version of any referential, by id (S5): the flows' menus
+    // read the database, not the static export of a workstation. Never a draft
+    // nor a proposal. The column ignores case and trailing spaces: an id outside
+    // ID_PATTERN, or a row whose id or semver is spelled otherwise, is not it.
+    $app->get('/referentiels/{id}/versions/{semver}', $wrap(
+        function (Request $request, Response $response, array $args) use ($json, $repo): Response {
+            $id = (string) $args['id'];
+            $semver = (string) $args['semver'];
+            $version = preg_match(ReferentielRepository::ID_PATTERN, $id) === 1
+                ? $repo()->findPublished($id, $semver)
+                : null;
+            if ($version === null || $version['referentielId'] !== $id || $version['semver'] !== $semver) {
+                return $json($response, ['error' => 'Unknown published version'], 404);
+            }
+
+            return $json($response, $version['content']);
+        }
+    ));
 
     $app->get('/referentiel/diff/{from}/{to}', $wrap(
         function (Request $request, Response $response, array $args) use ($json, $repo): Response {

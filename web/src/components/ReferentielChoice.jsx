@@ -1,7 +1,8 @@
 // Choix du référentiel d'un parcours (2026-10-20) : la cartographie standard,
 // Twin6 et la masse cartographient le référentiel publié qu'on choisit,
 // RESPIRE par défaut — le parcours en lit la structure dans son JSON
-// (data/referentiel.js). Sans index des référentiels (copie statique, hors
+// (data/referentiel.js). La liste vient de la base (API publique, S5), à
+// défaut de l'index statique ; sans l'une ni l'autre (copie statique, hors
 // ligne), aucun choix n'est offert : le parcours garde RESPIRE.
 import { useEffect, useState } from 'react'
 import { listPublishedReferentiels } from '../data/referentiel.js'

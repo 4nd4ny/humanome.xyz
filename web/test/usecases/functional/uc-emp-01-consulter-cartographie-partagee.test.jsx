@@ -148,11 +148,12 @@ describe('UC-EMP-01 — l’employeur consulte le lien reçu', () => {
     expect(JSON.parse(init.body)).toEqual({ password: 'sesame-employeur' })
     expect(init.headers['X-CSRF-Token']).toBeUndefined()
     // Après l'ouverture : le POST de partage et, au premier déverrouillage
-    // (cache du module), le référentiel publié — rien d'autre.
+    // (cache du module), le référentiel publié — l'API publique d'abord,
+    // l'export statique en repli (S5) — rien d'autre.
     expect(
       calledUrls(fetchMock)
         .slice(1)
-        .every((url) => url === SHARE_URL || url.startsWith('data/referentiel/')),
+        .every((url) => url === SHARE_URL || url.startsWith('api/referentiels') || url.startsWith('data/referentiel/')),
     ).toBe(true)
   })
 

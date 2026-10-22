@@ -1,7 +1,9 @@
 import { afterEach, describe, it, expect, vi } from 'vitest'
 import { cleanup, render, screen, fireEvent, waitFor } from '@testing-library/react'
 import ReferentielChoice from './ReferentielChoice.jsx'
-import { listPublishedReferentiels } from '../data/referentiel.js'
+import { clearReferentielCache, listPublishedReferentiels, loadPublishedReferentiel } from '../data/referentiel.js'
+// Le document qu'écrit scripts/convertir-humanome.mjs depuis la fixture FICTIVE à la forme Humanome (S5, lot B)
+import converti from '../../../schemas/fixtures/referentiel-humanome-fictif.json'
 
 const liste = [
   { id: 'respire', label: 'RESPIRE v7', versions: [{ semver: '7.1.0', label: 'RESPIRE v7.1' }, { semver: '7.0.0', label: 'RESPIRE v7' }] },
@@ -46,6 +48,38 @@ describe('ReferentielChoice', () => {
     fireEvent.change(select, { target: { value: 'fictif-lettre@1.0.0' } })
     expect(onChange).toHaveBeenCalledWith({ id: 'fictif-lettre', version: '1.0.0' })
     expect(fetchFn.mock.calls.map(([url]) => url)).toEqual(['api/referentiels'])
+  })
+
+  it('propose le référentiel amorcé depuis le YAML Humanome, puis charge son document tel que la base le sert (S5, lot B)', async () => {
+    clearReferentielCache()
+    const json = (data) => ({ ok: true, status: 200, headers: { get: () => 'application/json' }, json: async () => data })
+    const route = `api/referentiels/${converti.id}/versions/${converti.version}`
+    const fetchFn = vi.fn(async (url) => {
+      // la réponse des routes publiques du lot A, une fois le document amorcé (ReferentielAmorcageTest)
+      if (url === 'api/referentiels') {
+        return json([
+          { id: converti.id, label: converti.label, versions: [converti.version] },
+          { id: 'respire', label: 'RESPIRE v7', versions: ['7.0.0'] },
+        ])
+      }
+      if (url === route) return json(converti)
+      throw new Error(`unexpected ${url}`)
+    })
+    const onChange = vi.fn()
+    render(<ReferentielChoice value={null} onChange={onChange} list={() => listPublishedReferentiels({ fetchFn })} />)
+    const select = await screen.findByRole('combobox', { name: 'Référentiel' })
+    expect([...select.options].map((o) => [o.value, o.textContent])).toEqual([
+      ['respire@7.0.0', 'RESPIRE v7'],
+      ['fictif-humanome@2.0.0-proposition.1', 'Fictif V2'],
+    ])
+    fireEvent.change(select, { target: { value: 'fictif-humanome@2.0.0-proposition.1' } })
+    expect(onChange).toHaveBeenCalledWith({ id: 'fictif-humanome', version: '2.0.0-proposition.1' })
+    const { doc, origin } = await loadPublishedReferentiel({ ...onChange.mock.calls[0][0], fetchFn })
+    expect(origin).toBe('published')
+    expect(doc).toEqual(converti)
+    expect(doc.competences.map((c) => c.code)).toEqual(['A1', 'A2', 'B1'])
+    expect(fetchFn.mock.calls.map(([url]) => url)).toEqual(['api/referentiels', route])
+    clearReferentielCache()
   })
 
   it('montre le choix reçu ; sans API ni index (copie statique), n’offre rien', async () => {

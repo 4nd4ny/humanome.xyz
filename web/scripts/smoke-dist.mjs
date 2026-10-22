@@ -9,9 +9,11 @@
 // placed after #root (the harness runs the bundle itself, after parsing).
 //
 // Then dist/index.html runs in jsdom at a file:// URL and the IIFE bundle is
-// evaluated as built. Every network call is recorded and refused, as a
-// browser refuses fetch on file:// (TypeError "Failed to fetch"):
-//   1. home (#/): rendered, its CSS injected by the bundle, no request;
+// evaluated as built. Every network call is recorded with the phase in
+// progress, then refused, as a browser refuses fetch on file:// (TypeError
+// "Failed to fetch"):
+//   1. bundle evaluation and home (#/): rendered, its CSS injected by the
+//      bundle, no request;
 //   2. public referential (#/referentiel): the embedded RESPIRE v7, no read
 //      attempted (UC-VIS-02 A6);
 //   3. historical day view (#/jour/<iso>): its file:// message, no request
@@ -19,9 +21,13 @@
 //   4. cartography (#/cartographie): the import screen, no request; its demo
 //      is read from the site (D-67), so « Explorer la démonstration » only
 //      tries data/demo/… and says to import one's own files instead;
-//   5. home « Ouvrir mes fichiers de cartographie » with three versioned day
-//      fixtures: the interface opens and draws their sun, without any request.
-// Any jsdom error or console.error fails the run.
+//   5. back to the home page, then « Ouvrir mes fichiers de cartographie »
+//      with three versioned day fixtures: the interface opens and draws their
+//      sun, without any request.
+// Last, once no request has come for a while, a global check: from the
+// bundle's evaluation to the end, no request outside the demo phase (late
+// reads and those between two steps included). Any jsdom error or
+// console.error fails the run.
 //
 // Not exercised: the retired #/merge address (D-38). Its redirect calls
 // history.replaceState, which jsdom 25 refuses for every file:// URL (it
@@ -99,16 +105,21 @@ const dom = new JSDOM(html, {
 const { window } = dom
 const doc = window.document
 
-// file:// reality: no network. Each attempt is recorded, then refused as a
-// browser refuses it (jsdom's own XHR could read file: URLs: replaced too).
+// file:// reality: no network. Each attempt is recorded with the phase in
+// progress (set before each step, and before the bundle is evaluated), then
+// refused as a browser refuses it (jsdom's own XHR could read file: URLs:
+// replaced too).
+const DEMO_PHASE = 'démonstration'
+let phase = 'évaluation du bundle et accueil'
 const requests = []
+const record = (url) => requests.push({ url: String(url), phase })
 window.fetch = (input) => {
-  requests.push(String(input?.url ?? input))
+  record(input?.url ?? input)
   return Promise.reject(new window.TypeError('Failed to fetch'))
 }
 window.XMLHttpRequest = class {
   open(method, url) {
-    requests.push(String(url))
+    record(url)
   }
   setRequestHeader() {}
   addEventListener() {}
@@ -153,18 +164,33 @@ function go(hash) {
   window.location.hash = hash
 }
 
-/** Checks that no request was attempted since `since` (an index in `requests`). */
-function noRequest(since, where) {
-  const attempted = requests.slice(since)
-  check(attempted.length === 0, `aucune requête (${where})${attempted.length ? ` : ${attempted.join(', ')}` : ''}`)
+/** Waits until no new request has come for `quiet` ms (late reads, at most `timeout`). */
+async function settle(quiet = 300, timeout = 5000) {
+  const deadline = Date.now() + timeout
+  let count = requests.length
+  let since = Date.now()
+  while (Date.now() - since < quiet && Date.now() < deadline) {
+    await new Promise((resolveWait) => setTimeout(resolveWait, 50))
+    if (requests.length !== count) {
+      count = requests.length
+      since = Date.now()
+    }
+  }
+}
+
+/** URLs of the requests attempted during phase `name`. */
+const attemptedIn = (name) => requests.filter((r) => r.phase === name).map((r) => r.url)
+
+/** Checks that no request was attempted during the current phase. */
+function noRequest() {
+  const attempted = attemptedIn(phase)
+  check(attempted.length === 0, `aucune requête (${phase})${attempted.length ? ` : ${attempted.join(', ')}` : ''}`)
 }
 
 const text = (el) => (el?.textContent ?? '').replace(/\s+/g, ' ').trim()
 
+// 1. Bundle evaluation and home: requests emitted while the bundle runs count.
 window.eval(bundle)
-
-// 1. Home.
-let since = requests.length
 check(await waitFor(() => doc.querySelector('.home-title')), 'accueil rendu')
 check(
   [...doc.querySelectorAll('a[href="#/cartographie"]')].some((a) => text(a) === 'Explorer la cartographie de démonstration'),
@@ -172,42 +198,44 @@ check(
 )
 check(doc.querySelector('input[type="file"][aria-label="Ouvrir mes fichiers de cartographie"]'), 'accueil : « Ouvrir mes fichiers de cartographie »')
 check(doc.querySelector('style')?.textContent.includes('.app-header'), 'CSS injectée dans <style> par le bundle')
-noRequest(since, 'accueil')
+noRequest()
 
 // 2. Public referential: the copy embedded in the bundle (RESPIRE v7: 7 poles,
 // 61 competences, one permalink each).
-since = requests.length
+phase = 'référentiel'
 go('#/referentiel')
 const permalinks = await waitFor(() => {
   const links = doc.querySelectorAll('a[href^="#/referentiel/"]')
   return links.length > 0 ? links : null
 })
 check(permalinks?.length === 61, `référentiel embarqué : ${permalinks?.length ?? 0} compétences (attendu 61)`)
-noRequest(since, 'référentiel')
+noRequest()
 
 // 3. Historical day view: not available from a file (relative fetch), it says so.
-since = requests.length
+phase = 'vue journée'
 go('#/jour/2026-01-05')
 check(
   await waitFor(() => text(doc.querySelector('main')).includes('disponible sur le site en ligne ou via un serveur local')),
   'vue journée : message file://',
 )
-noRequest(since, 'vue journée')
+noRequest()
 
 // 4. Cartography, empty: the import screen; the demo cannot be read from a file.
-since = requests.length
+phase = 'cartographie'
 go('#/cartographie')
 check(await waitFor(() => doc.querySelector('section[aria-label="Importer des fichiers"]')), 'cartographie : écran d’import')
-noRequest(since, 'cartographie')
-since = requests.length
+noRequest()
 const demoButton = [...doc.querySelectorAll('button')].find((b) => text(b) === 'Explorer la démonstration')
 if (check(Boolean(demoButton), 'cartographie : « Explorer la démonstration »')) {
+  phase = DEMO_PHASE
   demoButton.click()
   check(
     await waitFor(() => text(doc.querySelector('.carto-error[role="alert"]')).includes('copie ouverte directement depuis le disque')),
     'démonstration : message « importez vos fichiers à la place »',
   )
-  const attempted = requests.slice(since)
+  // Its reads may come after its message: wait for them before the next phase.
+  await settle()
+  const attempted = attemptedIn(DEMO_PHASE)
   check(
     attempted.length > 0 && attempted.every((url) => url.startsWith('data/demo/')),
     `démonstration : seules les lectures data/demo/… tentées (${attempted.join(', ') || 'aucune'})`,
@@ -219,9 +247,11 @@ if (check(Boolean(demoButton), 'cartographie : « Explorer la démonstration »'
 // fixtures observe these 12 competences, in all 7 RESPIRE poles, over 3 days.
 const FIXTURES = ['2026-01-05', '2026-01-06', '2026-01-07'].map((d) => `cartographie-jour-${d}.json`)
 const EXPECTED_CODES = ['1.01', '1.03', '2.01', '2.02', '2.06', '3.04', '3.07', '4.05', '5.01', '5.03', '6.07', '7.01']
+phase = 'retour à l’accueil'
 go('#/')
 const homeInput = await waitFor(() => doc.querySelector('input[type="file"][aria-label="Ouvrir mes fichiers de cartographie"]'))
-since = requests.length
+noRequest()
+phase = 'ouverture des fichiers'
 if (check(Boolean(homeInput), 'accueil : sélecteur de fichiers')) {
   const files = FIXTURES.map((name) => new window.File([readFileSync(join(fixturesDir, name), 'utf8')], name, { type: 'application/json' }))
   Object.defineProperty(homeInput, 'files', { configurable: true, value: files })
@@ -239,8 +269,20 @@ if (check(Boolean(homeInput), 'accueil : sélecteur de fichiers')) {
     `soleil : ${codes.length} compétences des fixtures (attendu ${EXPECTED_CODES.length}${codes.join(' ') === EXPECTED_CODES.join(' ') ? '' : ` : ${EXPECTED_CODES.join(' ')} ; lu : ${codes.join(' ') || 'aucune'}`})`,
   )
   check(text(doc.querySelector('[data-tile="sun"] .carto-sun-center')).includes('3 j.'), 'soleil : 3 journées')
-  noRequest(since, 'ouverture des fichiers')
+  noRequest()
 }
+
+// Global: from the bundle's evaluation to the end, once no request has come
+// for a while, nothing outside the demo phase (whose reads, all data/demo/…,
+// are checked at step 4): a request between two steps, or after the last
+// one, is attributed to the phase in progress and fails here.
+phase = 'fin'
+await settle()
+const outside = requests.filter((r) => r.phase !== DEMO_PHASE)
+check(
+  outside.length === 0,
+  `aucune requête hors la démonstration, de l’évaluation du bundle à la fin${outside.length ? ` : ${outside.map((r) => `${r.url} (${r.phase})`).join(', ')}` : ''}`,
+)
 
 check(pageErrors.length === 0, `aucune erreur de page${pageErrors.length ? ` : ${pageErrors.join(' | ').slice(0, 2000)}` : ''}`)
 window.close()

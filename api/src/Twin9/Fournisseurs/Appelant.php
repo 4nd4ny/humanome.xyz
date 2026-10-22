@@ -31,6 +31,8 @@ namespace Humanome\Twin9\Fournisseurs;
  *   debit         a rate refusal: `attendre` seconds before the next try, or
  *                 `plafond` — a spending cap or a quota, never retried at once
  *   configuration the provider refused the request's settings (HTTP 400)
+ *   cle_refusee   the provider refused the key (HTTP 401, 403): the instance's,
+ *                 at another provider than Anthropic (Twin9Slice waits for it)
  *   http          the HTTP status of a refusal
  *   erreur        the label of a failure, in French, written by the code
  */

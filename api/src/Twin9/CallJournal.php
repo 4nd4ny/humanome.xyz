@@ -156,7 +156,8 @@ final class CallJournal implements Journal
 
     /**
      * After: the call met its provider's spending cap (a 402, a quota
-     * spent, at Anthropic a 429 without Retry-After): it leaves again later,
+     * spent, at Anthropic a 429 without Retry-After), or a third party's
+     * refusal of the instance's key (a 401, a 403): it leaves again later,
      * its attempts as given, and the time it has met the cap since its first
      * refusal is kept from one try to the next.
      *

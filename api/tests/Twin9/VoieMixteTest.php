@@ -427,6 +427,63 @@ final class VoieMixteTest extends TestCase
     }
 
     /**
+     * The instance's OpenAI key refused (HTTP 401: revoked, mistyped): its
+     * calls wait, no attempt spent, never a failure — the run's page says
+     * the provider is unavailable, never why —; held thirty minutes, the run
+     * stops, its reserve given back; resumed once the key is mended, it goes
+     * to its end with every reader.
+     */
+    public function testARefusedThirdPartyKeyHoldsItsCallsBackWithoutFailing(): void
+    {
+        $id = $this->nouveauRun(['/voie' => 'directe']);
+        $refusee = true;
+        $http = new FakeMultiHttpClient(static function (array $r) use (&$refusee): array {
+            $appel = FakeMultiHttpClient::appel($r);
+            if (str_starts_with($r['url'], Fournisseurs::REGISTRE['anthropic']['url'])) {
+                return ['body' => FakeMultiHttpClient::message('vu ' . $appel)];
+            }
+
+            return $refusee ? ['status' => 401, 'body' => '{"error":{"message":"texte-du-fournisseur-canari"}}']
+                : ['body' => FakeMultiHttpClient::message('vu ' . $appel, self::MODELE, format: 'chat')];
+        });
+        $tick = fn (): array => (new Tick($this->pdo, ['budgetSeconds' => 4,
+                                                       'twin9Sender' => new DirectCalls($http)]))->run();
+
+        $c = $tick();
+        self::assertSame(3, $c['twin9ClesRefusees'], 'comptés pour l’administrateur');
+        self::assertStringContainsString('fournisseur OpenAI indisponible sur cette instance', (string) $this->attente($id));
+        $tick();
+        $tick();
+        $runs = new RunRepository($this->pdo);
+        self::assertSame('en_cours', $runs->statut($id));
+        self::assertSame(0, (int) $this->pdo->query('SELECT COUNT(*) FROM twin9_appels WHERE statut = "panne"')
+            ->fetchColumn(), 'jamais une panne');
+        $etat = $this->appel($id, 'journees/J1/tags_b_P1.json');
+        self::assertSame(['attente', 0], [$etat['statut'], (int) $etat['tentatives']], 'aucune tentative perdue');
+
+        // thirty minutes refused: at its next try, the run stops, what its calls hold given back
+        $this->pdo->prepare('UPDATE twin9_appels SET plafond_depuis = NOW(3) - INTERVAL 31 MINUTE, reprise_at = NOW(3)
+                              WHERE run_id = ? AND appel = ?')->execute([$id, 'journees/J1/tags_b_P1.json']);
+        $tick();
+        self::assertSame('echoue', $runs->statut($id));
+        self::assertSame('fournisseur OpenAI indisponible sur cette instance depuis plus de 30 minutes : le run '
+            . 's’arrête, sa réserve est rendue', $this->attente($id));
+        self::assertSame(0, (int) $this->pdo->query('SELECT COUNT(*) FROM twin9_appels WHERE reserve_microusd IS NOT NULL')
+            ->fetchColumn());
+        self::assertStringNotContainsString('canari', (string) json_encode($this->pdo->query(
+            'SELECT panne, stop_reason FROM twin9_appels')->fetchAll()) . $this->attente($id));
+
+        $refusee = false;
+        self::assertTrue($runs->reprendre($id, $this->user));
+        $this->pdo->exec('UPDATE twin9_appels SET reprise_at = NOW(3) WHERE statut = "attente"');
+        for ($n = 0; $n < 20 && $runs->statut($id) === 'en_cours'; $n++) {
+            $tick();
+        }
+        self::assertSame('termine', $runs->statut($id));
+        self::assertSame(0, $runs->compteursDe($id)['par_fournisseur']['openai']['pannes'], 'chaque lecteur b est là');
+    }
+
+    /**
      * A third party's call leaves only if its model's longest call fits in
      * what remains of the slice: held back, it leaves at the head of the
      * next; a model longer than a slice never leaves, and the page says why.

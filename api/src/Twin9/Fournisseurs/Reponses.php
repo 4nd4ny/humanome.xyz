@@ -38,8 +38,11 @@ final class Reponses
      * provider's code says the credit, the spending limit or the quota is
      * spent); 402: a cap, never retried at once (Gemini, Mistral, OpenRouter:
      * the credit is spent). 400: the provider refuses the call's settings, a
-     * configuration error. 503: saturated, with its Retry-After if any.
-     * Anything else: a generic error, which the run may try again.
+     * configuration error. 401, 403: the key refused (`cle_refusee`: the
+     * instance's, revoked or mistyped — another provider never gets a
+     * personal key), which the run waits for without spending an attempt.
+     * 503: saturated, with its Retry-After if any. Anything else: a generic
+     * error, which the run may try again.
      *
      * @param array<string, string> $headers
      * @return array<string, mixed> an outcome (Appelant)
@@ -65,7 +68,8 @@ final class Reponses
                     'erreur' => $nom . ' refuse les réglages de l’appel (HTTP 400)'];
         }
         if ($status === 401 || $status === 403) {
-            return ['ok' => false, 'http' => $status, 'erreur' => 'clé refusée par ' . $nom . ' (HTTP ' . $status . ')'];
+            return ['ok' => false, 'cle_refusee' => true, 'http' => $status,
+                    'erreur' => 'clé refusée par ' . $nom . ' (HTTP ' . $status . ')'];
         }
 
         return ['ok' => false, 'http' => $status, 'erreur' => 'erreur du fournisseur ' . $nom . ' (HTTP ' . $status . ')'];

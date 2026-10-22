@@ -72,8 +72,11 @@ use Twin9\Run\Pending;
  * (duree_max_s, the price grid's) fits in what remains of the slice: cut, it
  * may be billed all the same; each cut is counted in the journal. After a
  * 429, the instance's key rests from that provider for every run of the
- * slice. A third party refusing a call's settings (HTTP 400), a run held
- * more than thirty minutes by a third party's spending cap, a batch refused,
+ * slice; refused (HTTP 401, 403: revoked, mistyped), its calls wait as on a
+ * spending cap, no attempt spent — counted for the administrator
+ * (`clesRefusees`), never said on a run's page. A third party refusing a
+ * call's settings (HTTP 400), a run held more than thirty minutes by a third
+ * party's spending cap or its key refused, a batch refused,
  * a price missing, the engine failing: the run stops, deferred — nothing
  * more leaves, the calls in flight come back or are cut, written with their
  * cost, then it stops and what its calls hold goes back; its batch still at
@@ -180,7 +183,7 @@ final class Twin9Slice
         $this->compteurs = ['runs' => 0, 'passes' => 0, 'moteurMs' => 0, 'appels' => 0, 'reponses' => 0, 'pannes' => 0,
                             'tronques' => 0, 'reprises' => 0, 'coupes' => 0, 'gardes' => 0, 'termines' => 0,
                             'echoues' => 0, 'lots' => 0, 'releves' => 0, 'verifications' => 0, 'annules' => 0,
-                            'depassements' => 0];
+                            'depassements' => 0, 'clesRefusees' => 0];
         $this->lots->menage($this->dernierDepart, $this->compteurs, $utilisateur);
         // the runs cancelled (or stopped) between two slices, or whose tick died: what their calls hold goes back, at
         // its real cost for a call answered — no slice holds their calls in flight now (the worker's lock)
@@ -665,6 +668,22 @@ final class Twin9Slice
         $fournisseur = $reglage['fournisseur'];
         $tiers = $fournisseur !== Fournisseurs::DEFAUT;
         $nom = Fournisseurs::REGISTRE[$fournisseur]['libelle'];
+        if ($tiers && !empty($issue['cle_refusee'])) {
+            // the instance's key refused by another provider (revoked, mistyped): every call to it would be — the
+            // call waits, its attempt given back, as on a spending cap, the instance's key resting from the provider
+            // for every run of the slice; the page says it unavailable, never why; held thirty minutes, it stops
+            $reprise = microtime(true) + self::PAUSE_PLAFOND;
+            $this->repos[$fournisseur] = max($this->repos[$fournisseur] ?? 0.0, $reprise);
+            $depuis = $run->journal->plafond($call, $reprise, $tentative - 1);
+            $run->suspendre($fournisseur, self::indisponible($fournisseur));
+            if ($depuis >= self::PLAFOND_MAX) {
+                $run->arret ??= self::indisponible($fournisseur) . ' depuis plus de '
+                    . (int) round(self::PLAFOND_MAX / 60) . ' minutes : le run s’arrête, sa réserve est rendue';
+            }
+            $this->compteurs['clesRefusees']++;
+
+            return;
+        }
         if ($tiers && !empty($issue['configuration'])) {
             // another provider refuses the call's settings (HTTP 400): the same request would be refused again — the
             // call waits, its attempt given back, and the run stops once its calls in flight are back (deferred stop),

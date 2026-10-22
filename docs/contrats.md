@@ -950,8 +950,9 @@ direct, dans la même tranche (`Worker\Twin9Slice`).
   run s'arrête, à reprendre une fois ses réglages ou ceux de la grille
   corrigés », l'appel refusé attendant sans perdre de tentative), un lot
   refusé, un prix absent, le moteur en échec, un run retenu **plus de
-  30 minutes** par le plafond de dépense d'un tiers
-  (`twin9_appels.plafond_depuis`, gardé d'un essai à l'autre) —, plus rien
+  30 minutes** par le plafond de dépense d'un tiers, ou par le refus de la
+  clé de l'instance chez un tiers (`twin9_appels.plafond_depuis`, gardé d'un
+  essai à l'autre) —, plus rien
   ne part ni ne se rejoue ; ses appels en vol reviennent (ou la fin de
   tranche les coupe) et sont écrits avec leur coût ; puis il s'arrête
   (`echoue`), et ce que tiennent ses appels revient (§8.5) ; son lot encore
@@ -997,7 +998,14 @@ bloqué, `SAFETY`…), une sortie tronquée (`length`, `model_length`,
 réponse 200 (OpenRouter) sont des pannes, jamais rejouées ; une 429 attend
 son `Retry-After`, 10 s sans lui ; une 402, ou une 429 d'OpenAI dont le code
 dit le crédit, le plafond ou le quota épuisé, est un plafond (`plafond`) ;
-une 400 dit que le fournisseur refuse les réglages (`configuration`). Les
+une 400 dit que le fournisseur refuse les réglages (`configuration`) ; une
+401 ou une 403, qu'il refuse la clé de l'instance (`cle_refusee` : révoquée,
+mal recopiée) — l'appel attend comme sur un plafond, sans perdre de
+tentative, la clé de l'instance se repose de ce fournisseur pour toute la
+tranche, la page du run le dit indisponible sans dire pourquoi, le worker le
+compte (`twin9ClesRefusees`) ; trente minutes ainsi, le run s'arrête, sa
+réserve rendue (2026-10-22 ; avant, chaque appel tombait en panne après trois
+tentatives, et la carte sortait sans ce fournisseur). Les
 textes des fournisseurs ne sortent jamais : erreurs écrites par le code,
 arrêt brut assaini (§8), modèle servi gardé s'il est un identifiant. La
 clé (`RunKey::pour`, par fournisseur) : celle de l'instance, lue dans la

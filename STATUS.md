@@ -43,6 +43,75 @@ réponse. Suivent la PR B (adaptateurs JS, export Twin6) et, A fusionnée, la PR
 
 ## Fait
 
+- 2026-10-22 — **Revue des lots D et E du sprint 5 : les constats confirmés sont corrigés (branche
+  `feat/referentiel-markdown`, non fusionnée).** Seize commits : douze `fix:`, chacun avec le test
+  qui échouait avant lui, deux `test:`, un `style:` sans test (aucun comportement ne change) et ce
+  `docs:`. Le menu de navigation n'a pas changé.
+  - **Codes faits de chiffres seulement** (« ## 1 — Lire ») : la page Markdown les refuse à leur
+    ligne, et le serveur à tout niveau, à son pointeur (`ReferentielRepository::controlerCode`,
+    `CHIFFRES_SEULS`), pour le JSON aussi. Le moteur Twin9 refuse une compétence ainsi codée, et
+    tout niveau peut tenir lieu de compétence ; une version publiée ne se corrige plus. Le test
+    Twin9 qui vérifie ce refus au lancement (`api/tests/Twin9/ReferentielMoteurTest.php`) écrit
+    désormais sa version telle quelle en base, comme une version d'avant le contrôle : le serveur
+    refuse ce qu'il publiait. Le message « code invalide » dit « lettres sans accent ».
+  - **Lecture du Markdown** : les espaces insécables (U+00A0, U+202F) et un « Pôle » décomposé
+    se lisent (texte composé en NFC, blancs `\p{Zs}`, comme `Text::WS` du moteur) ; un texte qui
+    n'est pas en UTF-8 (un « texte brut » Windows-1252) est refusé au lieu d'importer des noms
+    corrompus ; un titre indenté d'une à trois espaces et des « # » de fermeture se lisent comme
+    en CommonMark.
+  - **Aller-retour Markdown → JSON → Markdown** : exact pour un texte composé, aux blancs près
+    autour d'une description ou de la provenance. Une description qui commence par des blancs
+    puis « # » ou par « <!-- » (la couleur d'un pôle), une provenance vide, un nom qui finit par
+    « # » reviennent. Ce que le format ne peut pas écrire (provenance contenant « --> », nom de
+    niveau contenant une virgule, nom sur plusieurs lignes ou entouré de blancs) est refusé à
+    l'export, nommé, au lieu d'être perdu en silence.
+  - **Motifs** : un motif saisi que JavaScript ne lit pas (syntaxe PCRE : possessif, atomique,
+    « (?i) ») n'est plus qu'un avertissement, et le serveur tranche ; `\p{Lu}` se lit (drapeau u).
+  - **Atelier** : l'aperçu compte au niveau choisi (« 3 compétences au niveau « facette » ») et
+    accorde ses nombres ; « Importer le Markdown » est `aria-disabled`, décrit par un résumé
+    visible (« 2 erreurs empêchent l'import »), et l'activer porte le focus sur les erreurs ; les
+    trois champs fautifs sont `aria-invalid` et reliés à leur erreur ; un nouveau fichier repart
+    des noms et motifs de son texte, et le champ fichier se vide.
+  - **Page publique** : l'API est attendue 5 s au plus, puis l'export statique répond (une API
+    qui pend ne bloque plus la page) ; le catalogue n'est demandé qu'une fois ; après un échec, le
+    menu montre le référentiel affiché, et choisir de nouveau celui qui a échoué le redemande ; au
+    clavier, l'option parcourue ne s'affiche qu'à sa validation (Entrée, sortie du menu, une
+    seconde sans touche) ; `fold()` retrouve son échappement `̀-ͯ`.
+  - **Tests** : la fixture de contrat `schemas/fixtures/markdown/referentiel-markdown-contrat.json`
+    (fictive) tient ce que la page envoie et déduit (UC-EPI-05-U27) ; le serveur en valide les
+    documents à chaque niveau et compile les motifs en PCRE (U28). L'assertion tautologique de U17
+    est remplacée. Les tests que la fiche UC-EPI-05 nommait U11 à U13 et F16 à F18 portent enfin
+    leurs identifiants.
+  - Documentation : UC-EPI-05 (statut, garanties, A7, E1, E6, E7, RG2, RG11, L2, code sollicité ;
+    U17, U18, U21 à U28, F19, F20), UC-VIS-02 (garanties, étape 2, A7, A9, E5, RG4, RG6, limites ;
+    U15 à U17), `docs/contrats.md` §9 et §10, le tableau des cas (1 004 et 1 163 identifiants).
+  - **Vérifié** :
+    - front : 2 768 tests verts (261 fichiers, `TWIN_V9_DIR` défini), lancés sur `ad02b32` : seule la
+      documentation a changé depuis ; `npm run build` passe ;
+    - moteur : 573 tests, 568 verts et les 5 échecs locaux connus (UC-PRO-08 F19 à F22, F25) ;
+    - PHP : 1 778 tests par `phpunit-locked.sh` (base `humanome_test_s5de`), les 2 échecs connus dus à PHP 8.5
+      (`AuthActivationTest::testExpiredCodeIsRejected`,
+      `UcCpt02SeConnecterDeconnecterTest::testU17SessionCookieAttributes`) et une dépréciation de
+      PHPUnit, hors des classes touchées (relancées avec `--display-deprecations` : aucune) ;
+    - `check-publiable` ; le recomptage des identifiants distincts égale chaque ligne du tableau et
+      son total ;
+    - chaque `fix:` : son test lancé rouge avant la correction, vert après.
+  - **Non vérifié** : rien dans un navigateur (ni l'atelier, ni la page publique) ; le
+    comportement réel du menu au clavier sous Windows (Chrome, Firefox), que jsdom ne reproduit
+    pas ; rien en production.
+  - **Décisions laissées à Christian** :
+    - le serveur refuse les codes faits de chiffres à tout niveau, y compris par
+      `importPublishedDocument`, l'amorçage et la route d'import admin ; une version déjà
+      enregistrée avec de tels codes ne se soumet, ne se publie ni ne se forke plus ;
+    - le texte Markdown se lit en NFC : un nom décomposé relu composé change d'empreinte ;
+    - un motif que la page ne lit pas n'est qu'un avertissement (« A)|(B » n'est plus signalé
+      avant l'envoi ; le serveur le refuse, par pointeur) ;
+    - les délais : 5 s pour l'API, 10 s de validité du catalogue, 1 s au clavier ; au clavier,
+      la validation par Entrée, sortie ou pause plutôt qu'un bouton « Afficher » ;
+    - le nouvel essai d'un référentiel introuvable en le choisissant de nouveau au menu ;
+    - ce que le Markdown ne peut pas écrire est refusé à l'export plutôt qu'échappé (une virgule
+      dans un nom de niveau, « --> » dans la provenance).
+
 - 2026-10-22 — **Un multi-référentiel simple, suite : écrire un référentiel en Markdown dans
   l'atelier, et la page publique montre tout référentiel publié (sprint 5, lots D et E ; branche
   `feat/referentiel-markdown`, non fusionnée).** Trois commits, deux pour le lot D, un pour le lot E.

@@ -7,7 +7,7 @@
 | **Portée** | Atelier `#/epistemiarque/referentiels` (section « Autres référentiels » : import d'un JSON ou d'un texte Markdown, modèles, export en Markdown) ; API `POST /api/referentiel/import`, `GET /api/referentiels`, `GET /api/referentiels/{id}/versions/{semver}`, et le cycle du grain document (`/api/referentiel/drafts…`, `/api/referentiel/proposals…`, UC-EPI-04) ; hors vote, l'amorçage de l'Humanome V18 converti de son YAML (`scripts/convertir-humanome.mjs`, `scripts/amorcer-referentiel.php`, S5, A6) |
 | **Niveau** | Objectif utilisateur |
 | **Cahier des charges** | §3.5, §4.1 ; T15 (dépôt `Twin_v9`, `docs/plan-twin9-php.md`, lot 4c, première tâche) ; schéma `referentiel` 2.1.0 (`docs/contrats.md` §9 et §11) |
-| **Statut** | Implémenté (T15) ; le moteur lit le référentiel du run depuis T16, la cartographie depuis T17 (`docs/contrats.md` §10) ; conversion et amorçage de l'Humanome V18 depuis S5 (A6) ; écriture en Markdown, modèles et export depuis S5, lot D (A7 à A9) |
+| **Statut** | Implémenté (T15) ; le moteur lit le référentiel du run depuis T16, la cartographie depuis T17 (`docs/contrats.md` §10) ; conversion et amorçage de l'Humanome V18 depuis S5 (A6) ; écriture en Markdown, modèles et export depuis S5, lot D (A7 à A9) ; revue du lot D (2026-10-22) : codes faits de chiffres refusés, lecture CommonMark et Unicode des titres, aller-retour exact ou refus nommé, motifs PCRE, aperçu au niveau choisi, accessibilité de l'import |
 
 ## Objectif
 
@@ -60,13 +60,18 @@ de pôle, en partant d'un modèle ou d'un référentiel publié exporté (A7 à 
   identifiant, libellé et version, redonne son document : pôles et leurs
   couleurs, compétences, descriptions, éléments, provenance, noms des
   niveaux, donc la même empreinte ; seuls les motifs se déduisent de
-  nouveau (RG12). Relu puis réécrit, le texte revient octet pour octet
-  (vérifié sur RESPIRE et sur la fixture fictive à la forme Humanome).
+  nouveau (RG12). L'aller-retour est exact pour un texte composé (NFC),
+  aux blancs près qui entourent une description ou la provenance (la fiche
+  du moteur les retire) ; ce que le Markdown ne peut pas écrire est refusé
+  à l'export, nommé (E7), jamais perdu en silence. Relu puis réécrit, le
+  texte revient octet pour octet (vérifié sur RESPIRE, sur la fixture
+  fictive à la forme Humanome et sur les cas limites de U24 et U25).
 
 ## Garanties minimales (en cas d'échec)
 
 - Aucun document invalide n'est enregistré ; RESPIRE n'est jamais modifié
-  par un import.
+  par un import. Aucun code fait de chiffres seulement n'est enregistré
+  (RG2) : le moteur Twin9 refuserait le référentiel à chaque lancement.
 - Un texte Markdown dont l'aperçu montre une erreur ne part pas ; refusé par
   le serveur, il reste dans la page, à corriger sur place.
 
@@ -134,7 +139,9 @@ de pôle, en partant d'un modèle ou d'un référentiel publié exporté (A7 à 
   et la version dans trois champs. À chaque frappe, la page lit le texte
   (`web/src/lib/referentiel-markdown.js`) et montre :
   - l'aperçu : nombre de pôles, de compétences et d'éléments plus fins, puis
-    chaque pôle avec son nombre de compétences ;
+    chaque pôle avec son nombre de compétences, comptés au niveau qui tient
+    lieu de compétence (« 3 compétences au niveau « facette » ») : ceux du
+    brouillon que créera le serveur (RG4) ;
   - chaque niveau, avec son nom (celui du commentaire « niveaux », sinon
     « compétence », « élément », « sous-élément ») et le motif déduit de ses
     codes (RG12), tous deux modifiables ; « Reprendre le motif déduit »
@@ -142,6 +149,9 @@ de pôle, en partant d'un modèle ou d'un référentiel publié exporté (A7 à 
   - les erreurs, chacune à sa ligne (E6), et les avertissements, qui
     n'empêchent rien (RG13).
   Avec plusieurs niveaux, il choisit le niveau qui tient lieu de compétence.
+  Un nouveau fichier repart des noms et des motifs de son texte
+  (l'identifiant, le libellé et la version restent) ; le même fichier,
+  corrigé, se choisit de nouveau.
   « Importer le Markdown » envoie le document par `POST /api/referentiel/import`
   (étape 3), sans `contentHash`, que le serveur calcule ; la page se recharge
   et le formulaire se vide.
@@ -166,7 +176,8 @@ de pôle, en partant d'un modèle ou d'un référentiel publié exporté (A7 à 
   niveau (« « E9 » ne suit pas le motif [A-E][1-4] du niveau « capacité » »),
   un motif illisible ou trop coûteux à évaluer (RG2), des pôles qui ne se
   numérotent pas de 1 à N sans trou, un élément d'un niveau que le
-  référentiel ne déclare pas, un code en double, un niveau inconnu, une
+  référentiel ne déclare pas, un code en double ou fait de chiffres
+  seulement (RG2), un niveau inconnu, une
   branche qui s'arrête au-dessus du niveau choisi (RG4), un document hors
   schéma → `422` avec, par pointeur, la raison ; la page les liste et écarte
   le fichier : choisi de nouveau, c'est sa version corrigée qui part. Rien
@@ -184,28 +195,43 @@ de pôle, en partant d'un modèle ou d'un référentiel publié exporté (A7 à 
   /referentiel/version : un brouillon ne sert qu'aux runs d'essai de son
   auteur ».
 - **E6 — Markdown refusé dans la page** (A7) : « Importer le Markdown »
-  reste grisé tant que l'aperçu liste une erreur, chacune à sa ligne, dans
-  l'ordre du texte :
+  reste indisponible (`aria-disabled` : il reste dans l'ordre de
+  tabulation) tant que l'aperçu liste une erreur, chacune à sa ligne, dans
+  l'ordre du texte. Un résumé visible, relié au bouton, le dit (« 2 erreurs
+  empêchent l'import ») ; activer le bouton porte le focus sur la liste des
+  erreurs ; un champ fautif (identifiant, libellé, version) est marqué
+  `aria-invalid` et relié à son erreur. Les erreurs :
   - texte avant le premier pôle, compétence avant tout pôle ;
   - titre de pôle ou de compétence mal formé (« # Pôle N — Nom »,
     « ## CODE — Nom ») ;
   - pôles qui ne se numérotent pas 1, 2, 3… dans l'ordre, pôle sans
     compétence ;
   - niveau sauté (« #### » sous « ## ») ;
-  - code invalide ou en double ;
+  - code invalide (lettres sans accent), en double, ou fait de chiffres
+    seulement (RG2) ;
   - couleur illisible, commentaire jamais refermé, aucun pôle ;
-  - code qui ne suit pas le motif, saisi, de son niveau ; motif vide,
-    illisible (RG2) ou de plus de 100 caractères ; nom de niveau vide ou en
-    double ;
+  - texte qui n'est pas en UTF-8 (un caractère « � », dit une fois, à sa
+    première ligne) ;
+  - code qui ne suit pas le motif, saisi, de son niveau ; motif vide, de
+    plus de 100 caractères, à caractère de contrôle ou à verbe « (*… »
+    (RG2) ; nom de niveau vide, en double, ou qui contient une virgule ou
+    « --> » ;
   - identifiant absent, invalide ou `respire` ; version absente, hors semver
     ou de plus de 32 caractères ; libellé absent ou de plus de 190 caractères
     (UC-EPI-04 AN2, évité ici) ;
   - enfin, ce que le schéma refuserait encore.
-  Les éléments d'un titre refusé ne font pas d'autre erreur. Un refus du
-  serveur s'affiche par pointeur, comme en E1, et le texte reste.
+  Les éléments d'un titre refusé ne font pas d'autre erreur. Un motif saisi
+  que la page ne lit pas en JavaScript (une syntaxe propre à PCRE :
+  quantificateur possessif, groupe atomique, « (?i) ») n'est qu'un
+  avertissement : ses codes ne sont pas vérifiés dans la page, le serveur
+  tranche. Un refus du serveur s'affiche par pointeur, comme en E1, et le
+  texte reste.
 - **E7 — Export impossible** (A9) : une version que l'API ne sert pas
-  (`404`), un document plus profond que « ###### », un navigateur sans
-  téléchargement : la page le dit, rien ne part.
+  (`404`), un document plus profond que « ###### », un document que le
+  Markdown ne peut pas écrire (un nom sur plusieurs lignes ou entouré de
+  blancs, un nom de niveau qui contient une virgule ou « --> », une
+  provenance qui contient « --> »), un navigateur sans téléchargement : la
+  page le dit, rien ne part.
 
 ## Règles de gestion
 
@@ -219,8 +245,16 @@ de pôle, en partant d'un modèle ou d'un référentiel publié exporté (A7 à 
   compile seul et n'use d'aucun verbe `(*…)`, sinon « Motif illisible ». Il
   s'évalue sous une limite de 10 000 pas de retour arrière : au-delà, il est
   refusé une fois (« Motif trop coûteux à évaluer »). Un code a 1 à 8
-  caractères (lettres, chiffres, `.`, `_`, `-`), unique dans tout le
-  référentiel.
+  caractères (lettres sans accent, chiffres, `.`, `_`, `-`), unique dans
+  tout le référentiel, et n'est jamais fait de chiffres seulement (« 11 ») :
+  le moteur Twin9 refuse une compétence ainsi codée, et tout niveau peut
+  tenir lieu de compétence. Le serveur le refuse à tout niveau, à son
+  pointeur (`CHIFFRES_SEULS`, depuis la revue du lot D), la page Markdown à
+  sa ligne ; une version enregistrée avant ce contrôle est refusée par ce
+  qui la revalide (soumission, publication, fork) et au lancement (RG8).
+  Le motif est lu en PCRE par le serveur et le moteur ; la page le lit en
+  JavaScript (drapeau `u` d'abord) et n'avertit que d'un motif qu'elle ne
+  lit pas (E6).
 - **RG3** — Les pôles se numérotent de 1 à N, sans trou ; un pôle lettré
   (A à E) porte son rang (1 à 5).
 - **RG4** — Lire à un niveau : ses éléments deviennent les compétences, sous
@@ -269,13 +303,23 @@ de pôle, en partant d'un modèle ou d'un référentiel publié exporté (A7 à 
   - le texte sous un titre le décrit ; un « --- » entre deux fiches est
     facultatif et n'entre dans aucune description ;
   - « – » et « - » se lisent comme « — » ; le BOM et les fins de ligne CRLF
-    ou CR sont admis.
+    ou CR sont admis ;
+  - comme en CommonMark, un titre peut être précédé de trois espaces au
+    plus (quatre font du code, donc du texte), et une suite finale de « # »
+    précédée d'un blanc le ferme sans être du nom (« ## A1 — Nom ## ») ;
+  - une espace insécable (U+00A0, U+202F) sépare les mots d'un titre comme
+    une autre, comme le lit le moteur ; le texte se lit composé (NFC), si
+    bien qu'un « Pôle » décomposé est un « Pôle » ; un caractère « � »,
+    celui d'un fichier qui n'est pas en UTF-8, le fait refuser (E6).
   Trois commentaires facultatifs gardent ce que les fiches ne disent pas :
   « <!-- couleur : #rrggbb --> » sur la ligne qui suit le titre d'un pôle ;
   « <!-- source : … --> » et « <!-- niveaux : capacité, facette --> » avant
   le premier pôle, où tout autre commentaire est ignoré. Dans une
-  description, une ligne qui se lirait comme un titre ou un séparateur
-  s'écrit précédée d'une barre oblique inverse, que la lecture retire.
+  description, une ligne qui se lirait comme un titre, un séparateur ou un
+  commentaire (« <!-- … », comme celui de la couleur sous le titre d'un
+  pôle) s'écrit précédée d'une barre oblique inverse, que la lecture
+  retire ; un nom qui finit par « # » précédé d'un blanc s'écrit « … \# »,
+  dont la lecture retire la barre.
   L'identifiant, le libellé et la version ne sont pas dans le texte. Sans
   commentaire « source », la provenance est « Écrit en Markdown dans
   l'atelier des épistémiarques ».
@@ -318,7 +362,7 @@ de pôle, en partant d'un modèle ou d'un référentiel publié exporté (A7 à 
 | Front | `web/src/views/ConfigurationView.jsx` | Brouillons proposés en version |
 | API | `api/src/routes/referentiel.php` — `POST /referentiel/import`, `GET /referentiels`, `GET /referentiels/{id}/versions/{semver}` (S5), listes de tous les référentiels, fork d'un autre | Orchestration, lectures publiques des versions publiées |
 | Front | `web/src/data/referentiel.js` — `listPublishedReferentiels`, `loadPublishedReferentiel` ; `web/src/components/ReferentielChoice.jsx` | Menus des parcours : la base par l'API publique d'abord, l'export statique en repli (S5) |
-| Domaine | `api/src/Referentiel/ReferentielRepository.php` — `importDraft`, `auNiveau`, `niveaux`, `regexDuMotif`, `validateDocument`, `catalogue`, `brouillonsDe`, `findVersion`, `editableVersions` | Import, contrôles, lectures |
+| Domaine | `api/src/Referentiel/ReferentielRepository.php` — `importDraft`, `auNiveau`, `niveaux`, `regexDuMotif`, `validateDocument`, `controlerCode` (`CHIFFRES_SEULS`), `catalogue`, `brouillonsDe`, `findVersion`, `editableVersions` | Import, contrôles, lectures |
 | Domaine | `api/src/Referentiel/ContentHash.php` | Niveaux et éléments gardés hors de l'empreinte |
 | Domaine | `api/src/Twin9/ProfilPolicy.php`, `api/src/Twin9/Lancement.php`, `api/src/Twin9/ReferentielMoteur.php` | RG7, RG8, RG10 |
 | Moteur | `engine/src/twin6/fiches.js` — `fichesDuReferentiel`, `fichesPourTwin6` | Fiches de Twin6 écrites depuis le document (RG10) |
@@ -349,10 +393,18 @@ de pôle, en partant d'un modèle ou d'un référentiel publié exporté (A7 à 
 | UC-EPI-05-U14 | `createEpistemiarqueApi` | `getPublishedVersion` : `GET referentiels/{id}/versions/{semver}`, segments encodés (A9) | `web/test/usecases/unit/uc-epi-05-importer-referentiel.test.js` |
 | UC-EPI-05-U15 | `referentielEnMarkdown`, `referentielDepuisMarkdown` | RESPIRE 7.1.0 et 7.0.0 tels que publiés (`web/public/data/referentiel/`) : le texte est celui des fiches du moteur, couleur sous le titre, provenance en tête ; relu, mêmes pôles, compétences, provenance, même empreinte (`b246101c…`), valide au schéma ; réécrit, octet pour octet (A9) | `web/src/lib/referentiel-markdown.test.js` |
 | UC-EPI-05-U16 | idem | La fixture fictive à la forme Humanome, aux niveaux capacité et facette : niveaux nommés par le commentaire, facettes un titre plus bas, aller-retour exact ; ses motifs saisis, le document est celui de la fixture hors empreinte (A9) | idem |
-| UC-EPI-05-U17 | `deduireMotif` | Le motif le plus étroit : `[A-E][1-4]`, `[1-7]\.[0-1]\d` pour RESPIRE, plages disjointes, classes comptées (`\d{2}`), longueurs variables, séparateurs, formes différentes en alternative, repli au-delà de 100 caractères ; chaque code le suit (RG12) | idem |
-| UC-EPI-05-U18 | `analyserMarkdown`, `referentielDepuisMarkdown` | Chaque erreur à sa ligne : texte avant le premier pôle, compétence hors pôle, couleur illisible, niveau sauté, titre mal formé, doublon, code invalide, numérotation, pôle vide, commentaire non refermé, aucun pôle ; sous un titre refusé, pas d'autre erreur ; code hors du motif saisi, motif illisible ou vide, nom de niveau vide ou en double ; les trois champs (E6) | idem |
+| UC-EPI-05-U17 | `deduireMotif` | Le motif le plus étroit : `[A-E][1-4]`, `[1-7]\.[0-1]\d` pour RESPIRE, plages disjointes, classes comptées (`\d{2}`), longueurs variables, séparateurs, formes différentes en alternative, repli au-delà de 100 caractères ; chaque code le suit ; avec le motif déduit de A1…E4, « A9 » refusé à sa ligne (RG12) | idem |
+| UC-EPI-05-U18 | `analyserMarkdown`, `referentielDepuisMarkdown` | Chaque erreur à sa ligne : texte avant le premier pôle, compétence hors pôle, couleur illisible, niveau sauté, titre mal formé, doublon, code invalide (« É1 » : lettres sans accent), numérotation, pôle vide, commentaire non refermé, aucun pôle ; sous un titre refusé, pas d'autre erreur ; code hors du motif saisi, motif vide, nom de niveau vide ou en double ; un motif que JavaScript ne lit pas (« A)\|(B ») n'est qu'un avertissement ; les trois champs (E6) | idem |
 | UC-EPI-05-U19 | idem | BOM, CRLF, CR, « – » et « - », « --- » facultatif : le même document ; lignes de description échappées, aller-retour exact ; plus de six niveaux de titre refusés à l'écriture (RG11) | idem |
 | UC-EPI-05-U20 | `MODELE_MARKDOWN`, `MODELE_JSON`, avertissements | Le modèle Markdown se lit sans erreur ni avertissement ; le modèle JSON est le même référentiel, valide au schéma une fois l'empreinte calculée ; un pôle au premier mot d'un pôle de RESPIRE est signalé, pas deux pôles de même clé (A8, RG13) | idem |
+| UC-EPI-05-U21 | `analyserMarkdown`, `referentielDepuisMarkdown` | Un code fait de chiffres seulement refusé à sa ligne, à tout niveau ; sous un titre refusé, pas d'autre erreur ; un chiffre avec une lettre, un point ou un tiret passe (RG2) | `web/src/lib/referentiel-markdown.test.js` |
+| UC-EPI-05-U22 | `validateDocument` | Le même refus côté serveur, à son pointeur, pour une compétence ou un élément, même quand le motif l'admet (RG2) | `api/tests/UseCases/Unit/UcEpi05ImporterReferentielTest.php` |
+| UC-EPI-05-U23 | `referentielDepuisMarkdown` | Espaces insécables (U+00A0, U+202F) dans les titres, « Pôle » et noms décomposés (NFD) : le même document ; un texte Windows-1252 lu en UTF-8 refusé une fois, à sa première ligne (RG11, E6) | `web/src/lib/referentiel-markdown.test.js` |
+| UC-EPI-05-U24 | `referentielDepuisMarkdown`, `referentielEnMarkdown` | Titres indentés d'une à trois espaces (quatre : du texte), « # » de fermeture retirés ; un nom qui finit par « # », des lignes de description indentées qui se liraient comme un titre ou un séparateur : écrits échappés, relus tels quels (RG11) | idem |
+| UC-EPI-05-U25 | `referentielEnMarkdown` | Une description qui commence par des blancs puis « # » ou par un commentaire (de couleur), une provenance vide : relues ; une provenance à « --> », un nom de niveau à virgule, un nom sur deux lignes ou entouré de blancs : refusés à l'export, nommés (E7) ; un nom de niveau saisi à virgule refusé | idem |
+| UC-EPI-05-U26 | `referentielDepuisMarkdown` | Un motif saisi propre à PCRE (possessif, atomique, « (?i) ») : avertissement, import possible ; « \p{Lu} » lu ; vide, plus de 100 caractères, verbe, caractère de contrôle : erreurs (RG2, E6) | idem |
+| UC-EPI-05-U27 | `MODELE_JSON`, `referentielDepuisMarkdown`, `deduireMotif` | `schemas/fixtures/markdown/referentiel-markdown-contrat.json` est ce que la page envoie (le modèle, la fixture à la forme Humanome relue en Markdown) et les motifs qu'elle déduit (ceux de U17) ; `ECRIRE_CONTRAT=1` le réécrit | idem |
+| UC-EPI-05-U28 | `validateDocument`, `auNiveau`, `regexDuMotif` | Chaque document de ce contrat se valide à chacun de ses niveaux ; chaque motif se compile en PCRE et y retrouve ses codes | `api/tests/UseCases/Unit/UcEpi05ImporterReferentielTest.php` |
 
 ### Tests fonctionnels
 
@@ -376,8 +428,8 @@ de pôle, en partant d'un modèle ou d'un référentiel publié exporté (A7 à 
 | UC-EPI-05-F16 | A6 | API | Amorçage publié sans vote puis « déjà amorcé », servi par `GET /api/referentiels` et par sa version ; même contenu sous une autre provenance « déjà amorcé », la première gardée ; autre contenu sous la même version (description, niveaux, structure), brouillon de l'atelier, RESPIRE, identifiant ou code invalides refusés, rien d'écrit ; la ligne de commande | `api/tests/ReferentielAmorcageTest.php` |
 | UC-EPI-05-F17 | A6 | IHM | Le référentiel amorcé est proposé au menu des parcours et se charge tel que la base le sert ; sa provenance (`source`, servie par `GET /api/referentiels`) s'affiche sous le menu | `web/src/components/ReferentielChoice.test.jsx` |
 | UC-EPI-05-F18 | A6 | API | En production, `POST /api/admin/import-referentiel` amorce un autre référentiel que RESPIRE avec les garde-fous du script : publié (note « Amorçage hors vote (S5) »), puis « unchanged », sous une autre provenance aussi ; une autre description sous la même version ou une empreinte fausse → `409`, rien d'écrit ; un identifiant invalide → `422` | `api/tests/AdminImportReferentielTest.php` |
-| UC-EPI-05-F19 | A7 | IHM | Un fichier `.md` remplit le texte ; aperçu (pôles, compétences, éléments) ; sans les trois champs, les erreurs le disent ; motifs déduits affichés, l'un élargi à la main ; niveau choisi ; le document envoyé est celui attendu ; message, rechargement, formulaire vidé | `web/test/usecases/functional/uc-epi-05-importer-referentiel.test.jsx` |
-| UC-EPI-05-F20 | E6 | IHM | Niveau sauté, pôle vide, doublon, à leur ligne, import grisé, sans alerte ; un code hors du motif saisi, puis « Reprendre le motif déduit » ; un refus du serveur par pointeur, le texte gardé, rien rechargé | idem |
+| UC-EPI-05-F19 | A7, E6 | IHM | Un fichier `.md` remplit le texte ; aperçu (pôles, compétences, éléments, accordés) au niveau choisi ; sans les trois champs, les erreurs le disent, le bouton indisponible (`aria-disabled`) décrit par le résumé, chaque champ `aria-invalid` relié à son erreur, le focus porté sur les erreurs, rien d'envoyé ; motifs déduits affichés, l'un élargi à la main ; niveau choisi, l'aperçu le suit ; le document envoyé est celui attendu ; message, rechargement, formulaire vidé | `web/test/usecases/functional/uc-epi-05-importer-referentiel.test.jsx` |
+| UC-EPI-05-F20 | E6 | IHM | Niveau sauté, pôle vide, doublon, à leur ligne, import indisponible, sans alerte ; un code hors du motif saisi, puis « Reprendre le motif déduit » ; un refus du serveur par pointeur, le texte gardé, rien rechargé | idem |
 | UC-EPI-05-F21 | A8 | IHM | Les deux modèles se téléchargent (nom, contenu) ; le JSON commenté champ par champ ; l'écueil des noms de pôle de RESPIRE dit ; le modèle Markdown collé se lit sans erreur et s'importe comme le modèle JSON | idem |
 | UC-EPI-05-F22 | A9, E7 | IHM | Toutes les versions publiées, RESPIRE compris, proposées ; l'export lit la version par l'API et télécharge `{id}-v{version}.md`, le texte de `referentielEnMarkdown` ; un `404` est dit, rien ne part | idem |
 
@@ -386,19 +438,19 @@ de pôle, en partant d'un modèle ou d'un référentiel publié exporté (A7 à 
 - `api/tests/Twin9/ConfigurationDroitsTest.php` — `testADraftServesOnlyItsAuthorsTestRuns` (RG7, la ligne de la matrice), `testOnlyAPublishedReferential`.
 - `api/tests/Twin9/RunsTest.php` — `testARunReadsTheReferentialItsProfileNames` (RG8 : un run sur un autre référentiel part, ses réglages portent son référentiel ; un brouillon RESPIRE sert le run d'essai de son auteur).
 - `engine/src/twin6/fiches.test.js` — les fiches de Twin6 d'un autre référentiel, écrites depuis son document (RG10).
-- `api/tests/Twin9/ReferentielMoteurTest.php` — le référentiel que lit le moteur (RG8, RG10) : fiches de RESPIRE prises dans la base, celles d'un autre écrites depuis son document, ordre naturel des codes ; avec le vrai moteur, un référentiel qu'il ne lit pas est refusé au lancement.
+- `api/tests/Twin9/ReferentielMoteurTest.php` — le référentiel que lit le moteur (RG8, RG10) : fiches de RESPIRE prises dans la base, celles d'un autre écrites depuis son document, ordre naturel des codes ; avec le vrai moteur, un référentiel qu'il ne lit pas (des codes faits de chiffres, une version écrite telle quelle comme enregistrée avant le contrôle de RG2) est refusé au lancement.
 - `api/tests/AnnotationsTest.php` — `testACartographyOfAnotherReferentialTakesItsCodes` (RG9).
 - `web/src/views/ConfigurationView.test.jsx` — les brouillons proposés en version.
 - `api/tests/ReferentielApiTest.php` — `testAnyPublishedReferentialIsServedByIdAndVersion` (S5) : une version publiée de tout référentiel servie à tous par son identifiant ; brouillon, proposition (même à leur auteur), identifiant ou version inconnus, autre graphie (casse, espace final) → `404` ; lecture seule (`405`) ; le catalogue ne liste que la publiée.
 - `web/src/data/referentiel.test.js` (« API d'abord, export statique en repli ») ; `web/src/components/ReferentielChoice.test.jsx` ; UC-APP-02-F27, UC-APP-09-F31, UC-ETA-03-F30 — les menus des parcours lisent la base.
 - UC-VIS-02-U12 à U14, F18 à F21 (S5, lot E) — la page publique montre un référentiel publié autre que RESPIRE, lu dans la base, avec sa provenance, par le menu ou un lien profond ; un identifiant introuvable est dit (L4).
 - UC-EPI-03 (coupe de release : complétude, la structure de la dernière version publiée), UC-EPI-04 (grain document), `ReferentielApiTest`, `ReferentielImportExportTest`, `CompetenceReleaseTest`, `engine/test/usecases/unit/uc-sys-04-chaine-artefacts-derives.test.js` (validateurs compilés).
-- `web/src/views/epistemiarque/ReferentielsSection.test.jsx` (S5, lot D) — le détail de la section : l'aperçu suit chaque frappe, un nom de niveau saisi nomme le choix et le document, l'aperçu n'est ni une alerte ni un statut, un avertissement n'empêche pas l'import, un fichier illisible est dit, un export sans téléchargement possible ou trop profond est dit, rien à exporter sans référentiel publié.
+- `web/src/views/epistemiarque/ReferentielsSection.test.jsx` (S5, lot D) — le détail de la section : l'aperçu suit chaque frappe et compte au niveau choisi (une capacité et trois facettes : 1 puis 3 compétences), un nom de niveau saisi nomme le choix et le document, un nouveau fichier repart des noms et motifs de son texte et vide le champ, l'aperçu n'est ni une alerte ni un statut, un avertissement n'empêche pas l'import, un fichier illisible est dit, un export sans téléchargement possible ou trop profond est dit, rien à exporter sans référentiel publié.
 
 ### Exécuter
 
 ```sh
-(cd api && vendor/bin/phpunit --filter 'UcEpi05|ReferentielAmorcageTest|testADraftServesOnlyItsAuthorsTestRuns|testARunReadsRespireOnly|testACartographyOfAnotherReferential' --testdox)
+(cd api && vendor/bin/phpunit --filter 'UcEpi05|ReferentielAmorcageTest|AdminImportReferentielTest|testADraftServesOnlyItsAuthorsTestRuns|testARunReadsRespireOnly|testACartographyOfAnotherReferential' --testdox)
 (cd engine && npx vitest run src/referentiel-humanome.test.js)
 cd web && npx vitest run test/usecases/unit/uc-epi-05 test/usecases/functional/uc-epi-05 src/components/ReferentielChoice.test.jsx \
   src/lib/referentiel-markdown.test.js src/views/epistemiarque/ReferentielsSection.test.jsx
@@ -422,6 +474,9 @@ Aucune.
     la page ;
   - un motif saisi n'y est pas gardé : relu, le texte redonne les motifs
     déduits (RG12) ;
+  - les blancs qui entourent une description ou la provenance ne sont pas
+    gardés, et un texte décomposé (NFD) revient composé (NFC) ; ce qu'il ne
+    peut pas écrire est refusé à l'export (E7) ;
   - un bloc de code (« ``` ») d'une description n'y est pas reconnu : ses
     lignes « # … » se lisent comme des titres ;
   - il n'écrit pas plus de six niveaux de titre (E7) ;

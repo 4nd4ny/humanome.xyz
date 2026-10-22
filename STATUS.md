@@ -38,6 +38,101 @@ Christian.
 
 ## Fait
 
+- 2026-10-22 — **Sprints 1 et 4 de la liste de Christian : l'ergonomie et le « Mode expert »
+  (lot 1), puis la journée d'une analyse qui en couvre plusieurs (branche
+  `feat/ergonomie-et-journees`, issue de `main` à `fd6a16d`, non poussée).** Études du
+  sprint 1 (ergonomie, mode expert, quatorze améliorations) et du sprint 4 (cause prouvée,
+  correctifs T0 à T3). Décisions prises le 2026-10-22 par délégation de Christian : D1
+  option A (le mode simple masque la « Cartographie ouverte », Twin6 ; l'échelle Essayer →
+  Cartographier mes écrits → Analyse approfondie reste), D2 oui (« Comparaison » en mode
+  expert), D3 défaut selon le rôle (simple pour un visiteur ou un apprenant seul, expert dès
+  un rôle de travail), D4 dans le navigateur seulement (clé `humanome-mode`), D5 « Mode
+  expert » ; améliorations 1 à 8, le mode expert, puis 10, 11 et 14 ; T1 et T2.
+  - **Sprint 1, améliorations 1 à 8** (`1338988`, `2ae9808`), mobile d'abord, sans refonte
+    graphique : cibles tactiles de 44 px au toucher ; « Fermer le menu » dans le tiroir
+    (remplace la punaise sous 921 px) ; espaces de la cartographie sur une ligne qui défile
+    sous 768 px ; `fix:` un compte connecté sans rôle gardait le menu d'un visiteur, sans
+    déconnexion (UC-VIS-04 AN2, UC-CPT-02 AN4 corrigées) ; aide juste (entrée
+    `configuration`, plus de chiffres en dur) ; le portfolio ne promet plus « bientôt »
+    (UC-APP-01 A-03) ; « Monitoring » dans le menu admin ; sous-menus cartographe et
+    promptologue sur le gabarit des onglets admin (`aria-current`).
+  - **Mode expert, lot 1** (`4fb10ff`) : un réglage d'affichage, jamais un droit (aucune
+    garde de vue, aucun code serveur ne le lit, toute adresse reste valide, aucune famille de
+    rôle n'est masquée). Bascule « Mode expert » en bas du tiroir et ligne « Affichage » du
+    compte. En mode simple : pas de « Cartographie ouverte » ; l'assistant de run nomme le
+    protocole embarqué, sans liste de paquets ni champ « Modèle » (ce qui s'enregistre est
+    ce qui tourne) ; Twin6 sans liste de modèles ; la cartographie sans onglet
+    « Comparaison » (sauf ouvert par son adresse), sans tuile « Réglages », sans « Préparer
+    une démo ». En mode expert, « Mes profils Twin9 » (`#/configuration`) entre au menu.
+    `docs/ergonomie-navigation.md` §5ter, fiche UC-VIS-06.
+  - **Améliorations 10, 11 et 14** (`4fb10ff`) : « Mes analyses approfondies » au tableau
+    de bord de l'apprenant ; Twin6 part d'un portfolio de « Mes portfolios » (journées
+    datées en feuilles `### AAAA-MM-JJ`, passages sans date comptés et laissés de côté) ;
+    les guides montrent d'abord les parcours des rôles de la session.
+  - **Sprint 4, T1** (`4e056c6`, journal de la cartographie, D-14 et D-66 amendées) :
+    l'analyse rangée au 10 février de la démonstration retient 175 traces écrites du 1er
+    au 9 ; l'interface le dit partout où elle montre la trace (« passage du mar. 3 févr. »
+    dans la modale du 10, « trace de l'analyse du 10 février 2026 » et « Ouvrir la journée
+    analysée » dans le volet du portfolio) ; une journée qui ne contribue pas dit pourquoi
+    (trois messages) ; « run du … » au lieu d'« analysée le … ». Test de caractérisation
+    écrit d'abord, puis inversé.
+  - **Sprint 4, T2** (ce lot, D-72, `docs/contrats.md` §4 point 15) : l'index écrit la date
+    du passage d'une trace écrite un autre jour (`at`, facultatif ; importeurs document-jour,
+    Aurora v3, Merge v2 et master V3). La modale du 3 février garde « Aucune analyse n'est
+    rangée à ce jour. » et ajoute « Relevé par l'analyse du 10 février » : les compétences,
+    leurs preuves et indices de ce jour, un lien vers le 10 sur chacune — sans rien lire de
+    plus (D-67). Gestionnaire : « relevée le 10 févr. », « couvre 8 autres journées » ;
+    anomalies d'information `couverte-par` et `analyse-multi-journees` (jamais « à
+    traiter ») ; la case de la heatmap le dit à qui la lit. Une archive d'avant reçoit `at`
+    de ses détails à l'import, un index au découpage. **Jeux déjà dans le navigateur : une
+    passe unique à l'ouverture** (tous les détails lus une fois, dans la transaction qui
+    écrit l'index ; version notée, `passageDates` ; jamais sur un jeu lu à la demande ; si
+    elle échoue, le jeu s'ouvre tel quel), plutôt que « réimportez » : réimporter les mêmes
+    fichiers n'aurait rien changé, une variante gardant son identifiant.
+  - **Années sur deux chiffres** (ce lot, D-72, UC-APP-01 RG5 ter) : le découpage lit
+    `### 02.03.26` comme le 2026-03-02, comme Twin9, et seulement là où Twin9 la lit (des
+    points, dans un titre) ; une ligne nue, `/`, `-`, « 1er.03.26 » et trois chiffres restent
+    du texte. Sur les cinq portfolios fictifs de Twin9, les journées de l'interface sont les
+    siennes (PLANT-01 : dix journées au lieu d'un bloc daté du jour ; les SYNTH-* : aucune
+    des deux côtés), vérifié contre le moteur PHP ; les fichiers sont lus dans
+    `TWIN_V9_DIR`, jamais recopiés ici (UC-APP-01-U22). **Effet sur le coût** : un portfolio
+    titré ainsi n'est plus un seul bloc mais une journée par titre ; l'estimation et les
+    appels d'une cartographie standard (« Cartographier mes écrits ») croissent d'autant —
+    voulu, puisque ce sont les journées que Twin9 analyse.
+  - **Vérifié** : front 2 873 tests verts (264 fichiers, avec `TWIN_V9_DIR` : rien de
+    sauté ; avant ce lot, 2 849 verts et 6 sautés sans lui) ; moteur 570 tests, dont les 5
+    échecs locaux connus (UC-PRO-08 F19 à F22 et F25) ; PHP `ValidationTest`,
+    `ConformiteTest` et `CartoPartageTest` verts (39 tests ; le schéma du master gagne `at`
+    et `passageDates`, validateurs régénérés) ; lots précédents : e2e navigation-burger,
+    carto-export, carto-soleil, guides-public et PHP `UcVis04SeRepererTest`, au fil des
+    commits.
+  - **Non vérifié** : T1 et T2 dans un navigateur (tests DOM seulement) ; les e2e
+    `carto-soleil` et `carto-export`, pas relancés pour T1 ni T2 ; la passe dans un vrai
+    IndexedDB (testée avec le magasin en mémoire) et sa durée sur une démonstration devenue
+    locale (environ 17 Mo de détails) ; e2e `parcours-apprenant` (API locale).
+  - **Après les PR Twin9** : le lot 2 du mode expert (liste des profils de `Twin9View`) ;
+    S4 T0 (envoyer à Twin9 des en-têtes que l'interface lit pareil), C3 (deux cartes Twin9
+    le même jour), C4 (« établie par faisceau ») et `at` à l'import d'un run Twin9
+    (`twin9-run.js`, le test prévu par l'étude y va).
+  - **À faire à distance (feu vert de Christian)** : redécouper la démonstration
+    (`node web/scripts/carto-demo-split.mjs`, qui écrit `at`) puis la redéployer — d'ici
+    là, son 3 février dit « Aucune analyse n'est rangée à ce jour. » sans le lien ; et
+    déployer le front (aucune migration ; le schéma n'ajoute que des champs facultatifs à
+    un contrat ouvert, l'ordre de déploiement est libre).
+  - **Pas fait, voulu** : améliorations 12 (familles de rôle repliables) et 13 (thème dans
+    le tiroir au téléphone), l'accessibilité est à revoir avec le sprint 9.
+  - **Décisions laissées à Christian** :
+    - **T3, répartir les traces par date de passage** : seul ce palier répond à « je ne
+      devrais pas voir les compétences d'une autre journée ». Mais le statut et la
+      confiance d'un verdict rendu sur neuf journées seraient recopiés sur chacune, pas
+      mesurés (6.08 « établie » au 3 février sur une seule preuve) ; une journée qui a sa
+      propre analyse imposerait un choix (l'analyse propre l'emporterait) ; le kairos et
+      les rapports de pôle resteraient globaux. Variante minimale : répartir hors ligne la
+      seule démonstration, l'interface inchangée.
+    - D4 V2 (le mode retenu par compte, et non par navigateur) : avec le sprint 8 (rôles
+      auto-attribués) ; et une seule vue « journée » à garder (`#/jour/<date>` historique
+      et `#/cartographie/jour/<date>`).
+
 - 2026-10-22 — **P0, PR B : arrêts normalisés, sortie tronquée explicite, configuration du
   document Twin6 (branche `feat/p0-arrets-js-twin6`, indépendante de la PR A).** Spécification
   `spec-v2` (PR B : lots C5 et C6 du plan), faits d'API relevés le 2026-10-22 sur les seules

@@ -2953,6 +2953,83 @@ d'indiquer l'année sur les boutons jour suivant et jour précédant. »
   2025 » et « ven. 2 janv. → » ; le 30 décembre 2025, « ← lun. 29 déc. » et
   « jeu. 1er janv. 2026 → ».
 
+### D-72 — La journée d'un passage renvoie à l'analyse qui l'a relevé ; l'année sur deux chiffres **[décidé]**
+
+Sprint 4 de la liste de Christian (`TODO_LIST.md`) : « une trace du 3 février
+apparaît dans la journée du 10 », et la journée du 3 dit qu'aucune analyse n'y
+contribue. Cause prouvée (étude du sprint 4) : l'analyse rangée au 10 février
+porte sur un document qui couvre le 1er et les 3 à 10 février, que
+l'interface découpe chacun en sa journée ; 175 de ses 194 traces ont leur
+passage écrit un autre jour. T1 l'a dit dans les écrans qui lisent le détail
+(D-14 et D-66 amendées). T2, fait le 2026-10-22 par délégation, l'écrit dans
+l'index, pour que la journée du passage renvoie à l'analyse :
+
+- **Dans l'index**, une trace dont le passage est écrit un autre jour porte
+  sa date, `at` (champ facultatif, absent sinon ; `docs/contrats.md` §4
+  point 15). Les calculs ne le lisent pas : la trace compte toujours dans la
+  journée de son analyse, le soleil du 3 reste vide.
+- **La modale d'une journée sans analyse qui contribue** garde son message
+  (« Aucune analyse n'est rangée à ce jour. ») et, quand une analyse d'une
+  autre journée a relevé ses passages, une section « Relevé par l'analyse du
+  10 février » : chaque compétence (ordre du référentiel), ses preuves et
+  indices de ce jour, et un lien qui ouvre la journée analysée sur elle —
+  où la trace dit « passage du mar. 3 févr. » (T1). Une phrase le dit :
+  leurs traces comptent dans la cartographie du 10, pas dans celle de ce
+  jour. Tout est lu dans l'index, rien n'est chargé (D-67). Le chemin se lit
+  dans les deux sens.
+- **Gestionnaire** : la ligne du 3 dit « relevée le 10 févr. », celle du 10
+  « couvre 1 autre journée » (le détail au survol). Ce sont deux anomalies
+  d'information, `couverte-par` et `analyse-multi-journees` : jamais « à
+  traiter », le point du Gestionnaire n'en compte aucune.
+- **Heatmap** : la case du 3 le dit à qui la lit (« passages relevés par
+  l'analyse du 10 févr. ») ; aucun repère graphique (le sprint 9 reprend le
+  dessin).
+- **[choix d'implémentation] Jeux déjà rangés dans le navigateur : une passe
+  unique à l'ouverture, plutôt que « réimportez ».** Réimporter les mêmes
+  fichiers dans le même jeu n'aurait rien changé : une variante garde son
+  identifiant, calculé sur le contenu de l'analyse, et l'import ignore les
+  doublons. La passe lit tous les détails du jeu une fois, dans la même
+  transaction que l'écriture de son index, puis note sa version à la racine
+  (`passageDates`) ; elle ne touche à rien d'autre, ne se refait pas, et ne
+  s'applique pas à un jeu lu à la demande (ses détails sont sur le site) ;
+  si elle échoue, le jeu s'ouvre tel quel. Une archive d'avant reçoit `at`
+  de ses détails à l'import, un index découpé au découpage.
+- **[choix d'implémentation] Une variante seule, celle qui contribue,
+  relève** les passages d'une autre journée, et seulement les traces que les
+  calculs retiennent (statut qui fournit des traces, hors court-circuit) :
+  ce que la section annonce est ce qui compte dans la journée analysée.
+- **Année sur deux chiffres** (`engine/src/portfolio/segment.js`) : le
+  découpage lit `### 02.03.26` comme le 2 mars 2026, comme Twin9
+  (`Twin_v9/php/src/Portfolio.php`, `iso()` : 20AA), et seulement là où
+  Twin9 la lit (des points, dans un titre) : une ligne nue, `/`, `-`,
+  « 1er.03.26 » et une année sur trois chiffres (Twin9 lit « 12.03.202 »
+  comme 2202) restent du texte, pour ne pas ouvrir de journée que Twin9
+  n'ouvrirait pas. Sur les cinq portfolios fictifs de Twin9, les journées de
+  l'interface sont désormais les siennes : PLANT-01 (`### 02.03.26` …) donne
+  ses dix journées, au lieu d'un seul bloc daté du jour ; les quatre
+  SYNTH-*, sans date, aucune des deux côtés.
+- **Pas fait** :
+  - **T3**, répartir les traces par date de passage : une décision de
+    Christian (le statut et la confiance seraient recopiés d'un verdict
+    rendu sur neuf journées, pas mesurés ; une journée qui a sa propre
+    analyse imposerait un choix ; le kairos et les rapports de pôle restent
+    globaux) ;
+  - `at` à l'import d'un run Twin9 (`twin9-run.js`), T0 (envoyer à Twin9
+    des en-têtes que l'interface lit pareil), C3 et C4 : avec le lot Twin9 ;
+  - la démonstration publique : son index déployé n'a pas `at` ; il faut la
+    redécouper (`node web/scripts/carto-demo-split.mjs`, qui l'écrit) puis
+    la redéployer. D'ici là, sa journée du 3 février dit « Aucune analyse
+    n'est rangée à ce jour. » sans le lien.
+- Tests : `core/passage-dates.test.js` (13 : importeurs, identifiant
+  inchangé, couverture, anomalies, heatmap, archive et index d'avant, passe
+  du magasin) ; `ui/SourceDate.test.jsx` (4 de plus : section et lien de la
+  modale, gestionnaire, passe à l'ouverture, modale sans lien) ;
+  `engine/src/portfolio/segment.test.js` (années sur deux chiffres, et les
+  cinq portfolios de Twin9, lus dans `TWIN_V9_DIR`, sautés sans lui, jamais
+  recopiés ici ; leurs dates vérifiées par le moteur PHP quand il est là) ;
+  `core/portfolio-md.test.js` (un `### 02.03.26` d'un autre jour est
+  neutralisé à l'export).
+
 ---
 
 ## 3. État des tests
@@ -4000,3 +4077,10 @@ Question posée avec D-70 (2026-10-16) :
 - **2026-10-16** — Remarque de Christian de 20 h 53 (D-71) : les boutons de
   la journée voisine, dans la modale du jour, ne disent plus l'année — sauf
   quand elle change, au passage du 1er janvier.
+- **2026-10-22** — Sprint 4 de la liste de Christian, par délégation : la
+  trace du 3 février « dans la journée du 10 » vient d'une analyse qui couvre
+  plusieurs journées du portfolio. T1 le dit partout où la trace s'affiche
+  (D-14 et D-66 amendées) ; T2 l'écrit dans l'index, et la journée du 3
+  renvoie à l'analyse du 10 ; le découpage lit les années sur deux chiffres
+  comme Twin9 (D-72). T3, répartir les traces par date de passage, reste à
+  décider.

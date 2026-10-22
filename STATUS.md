@@ -46,7 +46,7 @@ réponse. Suivent la PR B (adaptateurs JS, export Twin6) et, A fusionnée, la PR
 - 2026-10-22 — **Sprints 1 et 4 de la liste de Christian : l'ergonomie et le « Mode expert »
   (lot 1), puis la journée d'une analyse qui en couvre plusieurs (branche
   `feat/ergonomie-et-journees`, issue de `main` à `fd6a16d`, `main` à `2a5984c` fusionné
-  depuis, non poussée).** Études du
+  depuis).** Études du
   sprint 1 (ergonomie, mode expert, quatorze améliorations) et du sprint 4 (cause prouvée,
   correctifs T0 à T3). Décisions prises le 2026-10-22 par délégation de Christian : D1
   option A (le mode simple masque la « Cartographie ouverte », Twin6 ; l'échelle Essayer →
@@ -151,14 +151,21 @@ réponse. Suivent la PR B (adaptateurs JS, export Twin6) et, A fusionnée, la PR
     la démonstration (« couvre 8 autres journées (1er–9 févr.) », 175 traces, toutes
     établies ou à revoir) recalculée sur son document-jour du 10 février
     (`web/public/data/demo/jours/2026-02-10.json`), importé dans un jeu neuf.
-  - **Non vérifié** : T1 et T2 dans un navigateur (tests DOM seulement) ; les e2e
+  - **Vérifié aussi, avant la PR** : la suite PHP complète après la fusion (1 776 tests,
+    les 2 échecs connus sous PHP 8.5 seulement) ; dans un navigateur, à 375 px, sur la
+    démonstration : le tiroir (« Fermer le menu », pas de punaise), la bascule « Mode expert »
+    (gardée, le tiroir reste ouvert ; « Comparaison » absente en mode simple), la modale du
+    3 février (« Aucune analyse n'est rangée à ce jour. », « Relevé par l'analyse du 10
+    février », neuf compétences), la ligne du 10 dans le Gestionnaire (« couvre 8 autres
+    journées (1er–9 févr.) ») et « passage du mar. 3 févr. » sous 6.08 dans la modale du 10.
+    Un test instable de `main` réparé au passage (`MonitoringSection` : deux requêtes en
+    course, `root@b.fr` affiché deux fois).
+  - **Non vérifié** : le volet du portfolio de T1 dans un navigateur ; les e2e
     `carto-soleil` et `carto-export`, pas relancés pour T1 ni T2 ; la passe dans un vrai
     IndexedDB (testée avec le magasin en mémoire) et sa durée sur une démonstration devenue
     locale (environ 17 Mo de détails) ; e2e `parcours-apprenant` (API locale) ; aucun e2e
     relancé après la fusion de `main` (qui a touché `global.css`, `help/registry.js`,
-    `RunWizard.jsx`, `Twin6OuverteView.jsx`) ; la suite PHP complète après la fusion (aucun
-    fichier PHP touché par la revue ; seul le test unitaire `UcVis04SeRepererTest` diffère
-    de `main`). Ouvert, dans `main` déjà : deux tests UC-APP-09-F31 (A4 du sprint 5 et E5),
+    `RunWizard.jsx`, `Twin6OuverteView.jsx`). Ouvert, dans `main` déjà : deux tests UC-APP-09-F31 (A4 du sprint 5 et E5),
     non renumérotés ici.
   - **Après les PR Twin9** : le lot 2 du mode expert (liste des profils de `Twin9View`) ;
     S4 T0 (envoyer à Twin9 des en-têtes que l'interface lit pareil), C3 (deux cartes Twin9

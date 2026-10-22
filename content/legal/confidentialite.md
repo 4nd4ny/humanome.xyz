@@ -86,10 +86,15 @@ mode d'usage, le texte transmis et le destinataire changent :
 - **Analyse approfondie Twin9** : votre portfolio est transmis aux **fournisseurs des modèles de votre profil** — **Anthropic** (modèles Claude) par défaut ; OpenAI, Mistral AI, Google (Gemini), xAI (Grok) ou OpenRouter seulement si l'administrateur de la plateforme les a ouverts et si votre profil les choisit —, que l'accord demandé à chaque lancement nomme. Avec la clé de la plateforme, ou votre propre clé chez Anthropic seulement ; par lots, Anthropic garde chaque lot de requêtes jusqu'à sa suppression, 29 jours au plus (détails ci-dessous).
 - **Dialogue d'accompagnement** (espace Dialogue de la cartographie) : il fonctionne **sans modèle de langage**, entièrement dans votre navigateur. Si vous choisissez d'activer les relances et donnez votre accord, chaque relance que vous demandez transmet **uniquement la question, votre réponse et le passage cité**, directement depuis votre navigateur, au fournisseur que vous avez choisi (avec votre propre clé) ou à Ollama sur votre ordinateur — jamais par nos serveurs. Vos réponses restent dans votre carnet, dans votre navigateur.
 
-Ces fournisseurs agissent comme sous-traitants pour le seul temps du traitement.
-Nous ne leur transmettons jamais votre mot de passe ni vos identifiants de
-compte, et nous ne stockons pas votre texte au-delà de ce que vous avez
-explicitement autorisé.
+Ces fournisseurs agissent comme sous-traitants : ils traitent le texte pour
+produire la réponse, puis le conservent selon leurs propres règles — Anthropic
+efface requêtes et réponses dans les 30 jours (davantage en cas de signalement
+d'abus ; 29 jours au plus pour un lot), et les autres fournisseurs de l'analyse
+approfondie selon les durées décrites plus bas. Plusieurs sont établis hors de
+l'Union européenne (voir « Transferts hors de l'Union européenne »). Nous ne
+leur transmettons jamais votre mot de passe ni vos identifiants de compte, et
+nous ne stockons pas votre texte au-delà de ce que vous avez explicitement
+autorisé.
 
 ### Analyse approfondie Twin9
 
@@ -139,6 +144,20 @@ disent leurs documentations officielles (relevées le 22 octobre 2026) :
   modèle ; nous lui demandons de n'employer que des fournisseurs qui ne
   collectent pas les données, sans repli vers un autre ; la conservation est
   alors celle du fournisseur final.
+
+#### Transferts hors de l'Union européenne
+
+Anthropic, OpenAI, Google, xAI et OpenRouter sont des entreprises américaines :
+le texte qui leur est transmis peut être traité hors de l'Union européenne,
+notamment aux États-Unis. Pour chacun, le pays où il est traité et la garantie
+qui encadre ce transfert (décision d'adéquation, dont le cadre de protection des
+données UE–États-Unis, ou clauses contractuelles types) **n'ont pas encore été
+vérifiés** ; ils le seront avant qu'un fournisseur autre qu'Anthropic soit
+ouvert, et cette page le dira. Mistral AI est une entreprise française ; le lieu
+où elle traite le texte n'est pas encore vérifié non plus. OpenRouter, un
+intermédiaire, transmet en outre la requête au fournisseur du modèle : le pays
+dépend alors de ce dernier. Avec votre propre clé, c'est votre relation
+contractuelle avec votre fournisseur qui s'applique.
 
 Chaque fournisseur porte une **étiquette RGPD** — « oui » (Mistral AI), « sous
 conditions » (Anthropic, OpenAI), « non » (Google, xAI, OpenRouter) — tirée d'une

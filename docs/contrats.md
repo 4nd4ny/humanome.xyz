@@ -1073,6 +1073,13 @@ une suivante le relève.
   Une requête en erreur repart dans un lot suivant, sa tentative comptée
   (trois, puis la panne) ; une requête expirée aussi, sa tentative rendue.
   Le lot est ensuite supprimé chez Anthropic.
+- **La soumission** a, pour la création d'un lot, au moins le temps d'une
+  soumission (le quart de la tranche, huit secondes au plus) avant le
+  dernier départ de la tranche, qui borne la requête : venue plus tard
+  (après une longue vérification), elle attend la tranche suivante. Une
+  création qui n'a pas pu partir quand même (plus une seconde : aucune
+  requête, `non_envoye`) n'est pas un lot perdu : ses appels attendent, leur
+  tentative rendue, et partent à la tranche suivante (2026-10-22).
 - **Un lot perdu**, parti sans que sa réponse arrive, est cherché parmi les
   lots de l'espace de la clé : même nombre de requêtes, créé dans les dix
   minutes autour de son départ, puis, une fois fini, les mêmes `custom_id`.

@@ -366,6 +366,67 @@ final class LotsTest extends TestCase
     }
 
     /**
+     * A creation whose bound leaves no second never leaves: no request, so
+     * no batch to look for — its calls wait again, their attempt given
+     * back, and leave in a batch at the next slice, never « lost ».
+     */
+    public function testACreationThatNeverLeftIsNeverLookedFor(): void
+    {
+        $id = $this->nouveauRun();
+        $lots = (new FakeBatchApi(static fn (array $r): array => FakeBatchApi::message('vu ' . FakeBatchApi::appel($r)),
+            regards: 0))->incident(1, 'sans_temps');
+
+        $this->tick($lots);
+        self::assertNotSame(Twin9Lots::PERDU, $this->attente($id), 'rien à retrouver chez Anthropic');
+        self::assertSame(Twin9Lots::A_SOUMETTRE, $this->attente($id));
+        self::assertSame(0, (int) $this->pdo->query('SELECT COUNT(*) FROM twin9_lots')->fetchColumn());
+        self::assertSame(['attente'], $this->pdo->query('SELECT DISTINCT statut FROM twin9_appels')->fetchAll(PDO::FETCH_COLUMN));
+        self::assertSame(['0'], array_map('strval', $this->pdo->query('SELECT DISTINCT tentatives FROM twin9_appels')
+            ->fetchAll(PDO::FETCH_COLUMN)), 'leur tentative rendue');
+
+        $this->tick($lots);
+        self::assertSame(['msgbatch_0002'], $lots->restants(), 'parti à la tranche suivante');
+        $this->jusquAuBout($lots);
+        self::assertSame('termine', (new RunRepository($this->pdo))->statut($id));
+    }
+
+    /**
+     * A batch leaves only while its creation has, before the slice's last
+     * departure that bounds it, the time a submission needs (a quarter of
+     * the slice, eight seconds at most): a submission come late, after a
+     * long check, waits for the next slice instead of a creation cut short.
+     */
+    public function testALateSubmissionWaitsForTheNextSlice(): void
+    {
+        $id = $this->nouveauRun();
+        $t0 = microtime(true);
+        // the check ends 5 s into a slice of 8 (7.2 s once its reserve is kept): 1.8 s before its end, 1.48 s before
+        // its last departure
+        $lots = new FakeBatchApi(static fn (array $r): array => FakeBatchApi::message('vu ' . FakeBatchApi::appel($r)),
+            regards: 0, verifieur: static function () use ($t0): array {
+                usleep(max(0, (int) (($t0 + 5.0 - microtime(true)) * 1_000_000)));
+
+                return ['ok' => true, 'http' => 200];
+            });
+        $interdit = new FakeMultiHttpClient(static function (): array {
+            throw new \LogicException('aucun appel direct dans la voie par lots');
+        });
+        $tick = fn (): array => (new Tick($this->pdo, ['budgetSeconds' => 8, 'twin9Lots' => $lots,
+                                                       'twin9Sender' => new DirectCalls($interdit)]))->run();
+
+        $tick();
+        foreach ($lots->delais as $delai) {
+            self::assertGreaterThanOrEqual(1.75, $delai, 'une création a toujours le temps d’une soumission');
+        }
+        $tick();
+        self::assertNotSame([], $lots->restants(), 'le lot part à la tranche suivante');
+        foreach ($lots->delais as $delai) {
+            self::assertGreaterThanOrEqual(1.75, $delai);
+        }
+        self::assertSame('en_cours', (new RunRepository($this->pdo))->statut($id));
+    }
+
+    /**
      * T8, strategy A: by batches, every day of the run goes abreast, whatever
      * parallelisme.journees says (the direct lane's): each wave waits a
      * whole batch.

@@ -153,7 +153,11 @@ final class Twin9Lots
      * first batch, its settings are checked. Each request to Anthropic is
      * bounded by the slice's last departure, and before each one the slice
      * reads the direct calls in flight ($pendant: Twin9Slice), which would
-     * otherwise wait for it.
+     * otherwise wait for it. A batch leaves only while its creation has,
+     * before that bound, the time a submission needs (a quarter of the
+     * slice, eight seconds at most); a creation that could not leave all the
+     * same (no second left: no request) is no batch to look for — its calls
+     * wait for the next slice.
      *
      * @param array<string, int> $compteurs the slice's
      * @param (\Closure(): void)|null $pendant reads the direct calls in flight, between two requests
@@ -164,8 +168,10 @@ final class Twin9Lots
     {
         $avantLaFin = min(self::TEMPS_SOUMISSION, 0.25 * ($fin - $debut));
         // a request waits until the slice's last departure at the latest: the direct calls in flight then have the
-        // rest of it to come back
+        // rest of it to come back; a batch leaves only while its creation has, before that bound, the time a
+        // submission needs — come later, it waits for the next slice instead of a creation cut short
         $borne = $dernierDepart;
+        $dernier = $borne - $avantLaFin;
         $pendant ??= static function (): void {
         };
         $run->passeSoumise = max(1, $run->passes);
@@ -228,7 +234,7 @@ final class Twin9Lots
                                       $reglage['budget_sortie'], $reglage['reflexion'], $reglage['effort'])],
                 JSON_THROW_ON_ERROR | JSON_UNESCAPED_UNICODE);
             if ($membres !== [] && \strlen(self::ENVELOPPE) + \strlen($corps) + 1 + \strlen($ligne) > $this->octets) {
-                $refus = $this->envoyer($run, $cle, $corps, $membres, $fin - $avantLaFin, $borne, $compteurs, $pendant);
+                $refus = $this->envoyer($run, $cle, $corps, $membres, $dernier, $borne, $compteurs, $pendant);
                 if ($refus !== null || $run->suspendu('lots')) {
                     return $refus;
                 }
@@ -242,7 +248,7 @@ final class Twin9Lots
                 $solde = $solde === null ? null : $solde - $reserve;
             }
         }
-        $refus = $this->envoyer($run, $cle, $corps, $membres, $fin - $avantLaFin, $borne, $compteurs, $pendant);
+        $refus = $this->envoyer($run, $cle, $corps, $membres, $dernier, $borne, $compteurs, $pendant);
         if ($refus === null && !$run->suspendu('lots')) {
             $run->attenteLots = $this->enVol($run->id) > 0 ? self::EN_COURS : null;
         }
@@ -647,13 +653,19 @@ final class Twin9Lots
         }
         $http = $issue['http'] ?? null;
         $run->suspendre('lots');
-        if ($http === null) {
+        if ($http === null && empty($issue['non_envoye'])) {
             $run->attenteLots = self::PERDU;
 
             return null;
         }
+        // refused, or never sent (its bound left no second: no request, no batch to look for): its calls wait again
         $run->journal->rendreLeLot($lotId);
         $this->pdo->prepare('DELETE FROM twin9_lots WHERE id = ?')->execute([$lotId]);
+        if ($http === null) {
+            $run->envoyes -= \count($membres);
+
+            return null; // still to submit (A_SOUMETTRE), at the next slice
+        }
         if ($http === 401 || $http === 403) {
             $run->attenteLots = 'clé Anthropic refusée';
         } elseif ($http === 429 || $http === 529) {

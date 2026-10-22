@@ -179,13 +179,14 @@ final class AnthropicBatches implements BatchApi
      * One request to the API, bounded by the slice and by $max seconds.
      *
      * @return array{ok: bool, http?: int, data?: array<string, mixed>|null, corps?: string, attendre?: float|null,
-     *               erreur?: string}
+     *               erreur?: string, non_envoye?: true} non_envoye: no second left, no request made
      */
     private function appel(string $methode, string $url, string $cle, ?string $corps, float $fin, int $max): array
     {
         $delai = (int) floor(min((float) $max, $fin - microtime(true)));
         if ($delai < 1) {
-            return ['ok' => false, 'erreur' => 'plus de temps dans la tranche'];
+            // no request leaves: nothing reached Anthropic (a creation so refused is no batch to look for)
+            return ['ok' => false, 'erreur' => 'plus de temps dans la tranche', 'non_envoye' => true];
         }
         try {
             $reponse = $this->http->request($methode, $url, AnthropicCaller::entetes($cle), $corps, $delai);
@@ -211,11 +212,12 @@ final class AnthropicBatches implements BatchApi
 
     /**
      * @param array<string, mixed> $r
-     * @return array{ok: bool, http?: int, attendre?: float|null, erreur?: string}
+     * @return array{ok: bool, http?: int, attendre?: float|null, erreur?: string, non_envoye?: true}
      */
     private static function issue(array $r): array
     {
-        return array_intersect_key($r, ['ok' => true, 'http' => true, 'attendre' => true, 'erreur' => true]);
+        return array_intersect_key($r, ['ok' => true, 'http' => true, 'attendre' => true, 'erreur' => true,
+                                        'non_envoye' => true]);
     }
 
     private static function valide(mixed $id): bool

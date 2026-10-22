@@ -54,6 +54,20 @@ final class AnthropicBatchesTest extends TestCase
         }
     }
 
+    /**
+     * A request whose bound leaves no second never leaves, and says so
+     * (non_envoye): a creation that never left is no batch to look for.
+     */
+    public function testARequestWithoutTimeNeverLeaves(): void
+    {
+        $http = new LlmFakeHttpClient();
+        $lots = new AnthropicBatches($http);
+
+        $issue = $lots->creer('sk-ant-test', '{"requests":[]}', microtime(true) + 0.5);
+        self::assertSame(['ok' => false, 'erreur' => 'plus de temps dans la tranche', 'non_envoye' => true], $issue);
+        self::assertSame([], $http->requests, 'aucune requête');
+    }
+
     /** An id that is not one is never requested; a batch already gone is deleted. */
     public function testAnIdThatIsNotOneIsNeverRequested(): void
     {
@@ -111,7 +125,7 @@ final class AnthropicBatchesTest extends TestCase
         self::assertSame(['ok' => false, 'erreur' => 'réponse illisible du fournisseur'], $lots->creer('k', '{}', $fin));
         self::assertSame(['ok' => false, 'http' => 429, 'attendre' => 30.0, 'erreur' => 'débit du fournisseur (HTTP 429)'],
             $lots->creer('k', '{}', $fin));
-        self::assertSame(['ok' => false, 'erreur' => 'plus de temps dans la tranche'],
+        self::assertSame(['ok' => false, 'erreur' => 'plus de temps dans la tranche', 'non_envoye' => true],
             $lots->creer('k', '{}', microtime(true) + 0.5), 'aucune requête quand la tranche finit');
         self::assertCount(3, $http->requests);
     }

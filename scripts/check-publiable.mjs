@@ -113,7 +113,9 @@ const CONTENT_RULES = [
   },
   {
     id: 'cle-google',
-    re: /\bAIza[0-9A-Za-z_-]{35}\b/,
+    // bornée par des gardes explicites, pas par \b : une clé peut finir par « - », qui n'est pas un caractère de
+    // mot — \b n'y trouvait aucune frontière devant un guillemet, une espace ou la fin de la ligne (2026-10-22)
+    re: /(?<![0-9A-Za-z_-])AIza[0-9A-Za-z_-]{35}(?![0-9A-Za-z_-])/,
     why: 'clé API Google en clair',
   },
   {

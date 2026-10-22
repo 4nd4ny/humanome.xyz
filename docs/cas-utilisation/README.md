@@ -127,7 +127,7 @@ rejouant les fixtures : aucun appel réseau réel).
 | [UC-APP-06](apprenant/UC-APP-06-exporter-importer-archive.md) | Exporter et importer son archive complète | 20 | 17 | 6 |
 | [UC-APP-07](apprenant/UC-APP-07-inviter-cartographe.md) | Inviter un cartographe | 9 | 10 | 1 |
 | [UC-APP-08](apprenant/UC-APP-08-rejoindre-cohorte.md) | Rejoindre une cohorte, déposer son portfolio, quitter | 12 | 25 | 4 |
-**Total : 59 cas d'utilisation, 980 tests unitaires et 1147 tests fonctionnels identifiés, 196 anomalies de production documentées.**
+**Total : 59 cas d'utilisation, 980 tests unitaires et 1148 tests fonctionnels identifiés, 196 anomalies de production documentées.**
 | [UC-APP-11](apprenant/UC-APP-11-gerer-credit-twin9.md) | Gérer son crédit Twin9 (achat, factures, remboursement) | 17 | 29 | 3 |
 | [UC-APP-12](apprenant/UC-APP-12-interface-ipsative-v3.md) | Explorer sa cartographie dans l'interface ipsative V3 (retirée le 2026-10-14) | 29 | 0 | 19 |
 
@@ -160,7 +160,7 @@ rejouant les fixtures : aucun appel réseau réel).
 | [UC-PRO-05](promptologue/UC-PRO-05-banc-essai.md) | Évaluer un paquet au banc d'essai | 32 | 29 | 3 |
 | [UC-PRO-06](promptologue/UC-PRO-06-retrospective.md) | Régénérer rétrospectivement des cartographies | 13 | 23 | 2 |
 | [UC-PRO-07](promptologue/UC-PRO-07-sandbox.md) | Exécuter le code d'un paquet en sandbox | 18 | 13 | 1 |
-| [UC-PRO-08](promptologue/UC-PRO-08-editer-gabarits-twin9.md) | Éditer les gabarits du Golden Prompt Twin9 | 14 | 25 | 5 |
+| [UC-PRO-08](promptologue/UC-PRO-08-editer-gabarits-twin9.md) | Éditer les gabarits du Golden Prompt Twin9 | 14 | 26 | 5 |
 
 ### Épistémiarque
 
@@ -202,7 +202,7 @@ rejouant les fixtures : aucun appel réseau réel).
 | [UC-SYS-04](systeme/UC-SYS-04-construire-artefacts-derives.md) | Construire les données et artefacts dérivés | 6 | 16 | 3 |
 | [UC-SYS-05](systeme/UC-SYS-05-sauvegarder-restaurer.md) | Sauvegarder et restaurer la base | 0 | 8 | 6 |
 
-**Total : 59 cas d'utilisation, 980 tests unitaires et 1147 tests fonctionnels identifiés, 196 anomalies de production documentées.**
+**Total : 59 cas d'utilisation, 980 tests unitaires et 1148 tests fonctionnels identifiés, 196 anomalies de production documentées.**
 
 Les comptes portent sur les identifiants distincts (`UC-…-Unn`, `UC-…-Fnn`) présents dans les fichiers de tests ; un identifiant paramétré (`it.each`) compte pour un.
 <!-- catalogue:end -->

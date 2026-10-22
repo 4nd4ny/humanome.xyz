@@ -264,6 +264,37 @@ describe('UC-PRO-08 — fonctionnels (sous-processus) : garde anti-fuite des gab
     expect(propre.stdout.trim()).toBe('check-publiable : OK — 2 fichiers suivis, aucun résidu non publiable.')
   })
 
+  it('UC-PRO-08-F26 — RG8 : les clés des autres fournisseurs de Twin9 (ADR-012) sont refusées — OpenAI, OpenRouter, xAI, et Google quel que soit son dernier caractère, « - » compris, collé à un guillemet ou en fin de ligne ; les clés factices courtes passent', () => {
+    // assemblées ici, pour que ce fichier ne porte aucune clé entière
+    const google = (fin) => 'AI' + 'za' + 'B'.repeat(34) + fin
+    const depot = depotGit({
+      'config/google-tiret.json': `{"cle": "${google('-')}"}\n`,
+      'config/google-tiret.ini': `GOOGLE_API_KEY=${google('-')}\n`,
+      'config/google-souligne.ini': `GOOGLE_API_KEY=${google('_')}\n`,
+      'config/google.ini': `GOOGLE_API_KEY=${google('Q')}\n`,
+      'config/openai.ini': `OPENAI_API_KEY=${'sk-' + 'proj-' + 'Z'.repeat(48)}\n`,
+      'config/openrouter.ini': `OPENROUTER_API_KEY=${'sk-' + 'or-v1-' + 'a'.repeat(64)}\n`,
+      'config/xai.ini': `XAI_API_KEY=${'xai' + '-' + 'Y'.repeat(48)}\n`,
+      // courtes, comme celles des fixtures (KeysTest, UC-CPT-04) : jamais des clés
+      'config/courtes.ini': 'GOOGLE_API_KEY=AIza-cle-google-ada\nCLE=AIza-bob-google\n',
+      // une clé Google plus longue que les siennes n'en est pas une
+      'config/longue.ini': `CLE=${google('QQ')}\n`,
+    })
+    const r = checkPubliable(depot)
+
+    expect(r.status).toBe(1)
+    expect(constats(r.stderr)).toEqual([
+      'cle-google config/google-souligne.ini:1',
+      'cle-google config/google-tiret.ini:1',
+      'cle-google config/google-tiret.json:1',
+      'cle-google config/google.ini:1',
+      'cle-openai config/openai.ini:1',
+      'cle-openrouter config/openrouter.ini:1',
+      'cle-xai config/xai.ini:1',
+    ])
+    expect(r.stderr).not.toContain('B'.repeat(34))
+  })
+
   it('UC-PRO-08-F18 — limite du hook pre-commit : les CHEMINS viennent de l’index mais le CONTENU est lu dans la copie de travail — une clé indexée puis effacée du disque passe (sortie 0) ; le répertoire de gabarits, lui, reste refusé même supprimé du disque', () => {
     const cle = 'sk-ant-' + 'api03-' + 'Q'.repeat(24)
     const depot = depotGit({ 'config/app.ini': `ANTHROPIC_API_KEY=${cle}\n` })

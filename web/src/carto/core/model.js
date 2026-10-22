@@ -431,6 +431,26 @@ export function passageCoverage(dataset) {
 /** « 10 févr. » ; l'année seulement quand elle n'est pas celle de `ref`. */
 const dayMonth = (iso, ref) => formatShort(iso, { weekday: false, year: iso.slice(0, 4) !== ref.slice(0, 4) })
 
+/**
+ * La plage de quelques dates, lisible d'un coup d'œil : « 3 févr. »,
+ * « 1er–9 févr. », « 28 janv.–3 févr. » ; l'année seulement quand elle
+ * n'est pas celle de `ref`.
+ * @param {string[]} dates
+ * @param {string} ref
+ */
+export function datesSpan(dates, ref) {
+  const sorted = [...dates].sort()
+  if (sorted.length === 0) return ''
+  const first = sorted[0]
+  const last = sorted.at(-1)
+  if (first === last) return dayMonth(first, ref)
+  if (first.slice(0, 7) === last.slice(0, 7)) {
+    const d = Number(first.slice(8, 10))
+    return `${d === 1 ? '1er' : d}–${dayMonth(last, ref)}`
+  }
+  return `${dayMonth(first, ref)}–${dayMonth(last, ref)}`
+}
+
 /** « l'analyse du 10 févr. », « les analyses du 10 févr. et du 17 févr. » */
 export function analysesLabel(dates, ref) {
   const each = dates.map((d) => `du ${dayMonth(d, ref)}`)

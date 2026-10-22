@@ -10,7 +10,7 @@
 // suppression en deux temps (jamais window.confirm / window.prompt).
 
 import { useEffect, useMemo, useRef, useState } from 'react'
-import { contributingVariant, coveredDates, dayAnomalies, hasAnalysis, hasPortfolio, multiDayAnomaly, passageCoverage, todoCount } from '../core/model.js'
+import { contributingVariant, coveredDates, datesSpan, dayAnomalies, hasAnalysis, hasPortfolio, multiDayAnomaly, passageCoverage, todoCount } from '../core/model.js'
 import { dayCodes } from '../core/heatmap.js'
 import { allTags, describeDefinition, groupDays, rangeBetween, resolveSetDates, triState } from '../core/sets.js'
 import {
@@ -401,7 +401,8 @@ function DayRow({ day, t, portfolioImported, coverage = null, onToggle, onSetT, 
   // Sprint 4, T2 : l'analyse de ce jour a relevé des passages d'autres jours ;
   // ou ce jour sans analyse qui contribue a ses passages relevés par une autre.
   const multi = v ? multiDayAnomaly(day.date, v) : null
-  const others = multi ? coveredDates(v).size : 0
+  const covers = multi ? [...coveredDates(v)] : []
+  const others = covers.length
   const coveredBy = anomalies.find((a) => a.code === 'couverte-par')
   const coveringDates = coveredBy ? (coverage?.get(day.date) ?? []).map((c) => c.date) : []
   const classes = ['carto-day']
@@ -425,8 +426,9 @@ function DayRow({ day, t, portfolioImported, coverage = null, onToggle, onSetT, 
         {hasAnalysis(day) ? <span title="compétences observées">{codes.size} comp.</span> : <span className="carto-muted">sans analyse</span>}
         {hasPortfolio(day) ? <span title="volume du portfolio">{kchars(day.portfolio.chars)}</span> : portfolioImported && hasAnalysis(day) ? <span className="carto-flag" title="analyse sans portfolio : surlignage indisponible">sans portfolio</span> : null}
         {others > 0 ? (
+          // La plage se lit sans survol (au toucher, au clavier) ; le détail reste au survol.
           <span title={multi.message}>
-            couvre {others} autre{others > 1 ? 's' : ''} journée{others > 1 ? 's' : ''}
+            couvre {others} autre{others > 1 ? 's' : ''} journée{others > 1 ? 's' : ''} ({datesSpan(covers, day.date)})
           </span>
         ) : null}
         {coveringDates.length > 0 ? <span title={coveredBy.message}>relevée le {coveringDates.map((d) => formatShort(d, { weekday: false, year: d.slice(0, 4) !== day.date.slice(0, 4) })).join(', ')}</span> : null}

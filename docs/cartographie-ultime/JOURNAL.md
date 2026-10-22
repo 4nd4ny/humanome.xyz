@@ -2978,7 +2978,10 @@ l'index, pour que la journée du passage renvoie à l'analyse :
   jour. Tout est lu dans l'index, rien n'est chargé (D-67). Le chemin se lit
   dans les deux sens.
 - **Gestionnaire** : la ligne du 3 dit « relevée le 10 févr. », celle du 10
-  « couvre 1 autre journée » (le détail au survol). Ce sont deux anomalies
+  « couvre 1 autre journée (3 févr.) » — la plage des journées couvertes se
+  lit sans survol, au toucher comme au clavier (« couvre 8 autres journées
+  (1er–9 févr.) » dans la démonstration ; revue du 2026-10-22), le nombre
+  de traces au survol. Ce sont deux anomalies
   d'information, `couverte-par` et `analyse-multi-journees` : jamais « à
   traiter », le point du Gestionnaire n'en compte aucune.
 - **Heatmap** : la case du 3 le dit à qui la lit (« passages relevés par

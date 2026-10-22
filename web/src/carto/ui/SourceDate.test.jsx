@@ -192,7 +192,7 @@ describe('sprint 4 — la journée du passage renvoie à l’analyse qui l’a r
     expect(covered(ten)).toBeNull()
   })
 
-  it('gestionnaire : le 3 « relevée le 10 févr. », le 10 « couvre 1 autre journée », sans point d’anomalie', async () => {
+  it('gestionnaire : le 3 « relevée le 10 févr. », le 10 « couvre 1 autre journée (3 févr.) » — lisible sans survol —, sans point d’anomalie', async () => {
     await mount(await storeMulti())
     const rows = [...document.querySelectorAll('.carto-day-list li.carto-day')]
     const row = (date) => rows.find((li) => li.querySelector('.carto-day-date').textContent === date)
@@ -200,7 +200,7 @@ describe('sprint 4 — la journée du passage renvoie à l’analyse qui l’a r
     expect(within(three).getByText('relevée le 10 févr.').getAttribute('title')).toBe('Passages relevés par l’analyse du 10 févr.')
     expect(within(three).queryByText('!')).toBeNull()
     const ten = row('mar. 10 févr. 2026').querySelector('.carto-day-ind')
-    expect(within(ten).getByText('couvre 1 autre journée').getAttribute('title')).toBe('Analyse du 10 févr. : 1 trace de passages écrits d’autres jours (passages du 3 févr.)')
+    expect(within(ten).getByText('couvre 1 autre journée (3 févr.)').getAttribute('title')).toBe('Analyse du 10 févr. : 1 trace de passages écrits d’autres jours (passages du 3 févr.)')
     expect(document.querySelector('.carto-dot')).toBeNull()
   })
 

@@ -14,6 +14,7 @@ import {
   PASSAGE_DATES,
   coveredDates,
   createDataset,
+  datesSpan,
   dayAnomalies,
   passageAt,
   passageCoverage,
@@ -191,6 +192,15 @@ describe('couverture et anomalies', () => {
     // L'année d'une autre année seulement.
     const [y] = dayAnomalies({ date: '2026-01-02', variants: [{ verdicts: [{ code: '1', status: 'established', traces: [{ id: 'x', role: 'preuve', at: '2025-12-30' }] }] }], variantChoice: 'auto', portfolio: null })
     expect(y.message).toBe('Analyse du 2 janv. : 1 trace de passages écrits d’autres jours (passages du 30 déc. 2025)')
+  })
+
+  it('datesSpan : la plage des journées couvertes, lisible dans la ligne du Gestionnaire', () => {
+    expect(datesSpan(['2026-02-03'], '2026-02-10')).toBe('3 févr.')
+    expect(datesSpan(['2026-02-01', '2026-02-03', '2026-02-09'], '2026-02-10')).toBe('1er–9 févr.')
+    expect(datesSpan(['2026-01-28', '2026-02-03'], '2026-02-10')).toBe('28 janv.–3 févr.')
+    expect(datesSpan(['2025-12-30', '2026-01-01'], '2026-01-02')).toBe('30 déc. 2025–1er janv.')
+    expect(datesSpan(['2025-12-01', '2025-12-30'], '2026-01-02')).toBe('1er–30 déc. 2025')
+    expect(datesSpan([], '2026-01-02')).toBe('')
   })
 
   it('seule la variante qui contribue relève, et seulement ce que les calculs retiennent', async () => {

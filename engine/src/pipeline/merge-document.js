@@ -413,8 +413,9 @@ export function buildKairosHtml(periode, evolutionGlobale, narrativeMd) {
  *   configuration, execution } (generatedAt par défaut = agrege.date_construction ; referentiel,
  *   l'identifiant du référentiel d'un document qui n'est pas de RESPIRE — T17 —, absent sinon ;
  *   configuration et execution, les blocs d'un run Twin6 — docs/contrats.md §4 point 8 —, recopiés
- *   juste après `source` quand ils sont fournis, et le document passe alors en schemaVersion
- *   1.1.0 ; sans eux, il reste en 1.0.0, identique à l'octet)
+ *   juste après `source` quand configuration est fournie, et le document passe alors en
+ *   schemaVersion 1.1.0 ; sans configuration, il reste en 1.0.0, identique à l'octet, et une
+ *   execution seule est ignorée : le schéma n'admet pas d'exécution sans configuration)
  * @returns {object} document conforme à cartographie-merge.schema.json
  */
 export function buildMergeDocument(agrege, narrativeTexts, meta = {}) {
@@ -423,10 +424,14 @@ export function buildMergeDocument(agrege, narrativeTexts, meta = {}) {
   const journalId = meta.journalId ?? null
   const sourceProtocole = meta.sourceProtocole ?? null
   const generatedAt = meta.generatedAt ?? agrege.date_construction ?? null
-  const blocs = {
-    ...(isObject(meta.configuration) ? { configuration: structuredClone(meta.configuration) } : {}),
-    ...(isObject(meta.execution) ? { execution: structuredClone(meta.execution) } : {}),
-  }
+  // L'exécution n'existe pas sans configuration (dependentRequired du schéma) :
+  // seule, elle est ignorée plutôt que de rendre un document que le schéma refuse.
+  const blocs = isObject(meta.configuration)
+    ? {
+        configuration: structuredClone(meta.configuration),
+        ...(isObject(meta.execution) ? { execution: structuredClone(meta.execution) } : {}),
+      }
+    : {}
 
   const rendered = Object.values(par_competence).filter(isRendered)
   const niveaux = computeNiveaux(rendered)
@@ -519,7 +524,7 @@ export function buildMergeDocument(agrege, narrativeTexts, meta = {}) {
 
   return {
     // 1.1.0 : la configuration et l'exécution du run (Twin6, 2026-10-22) ; sans elles, 1.0.0.
-    schemaVersion: 'configuration' in blocs || 'execution' in blocs ? '1.1.0' : '1.0.0',
+    schemaVersion: 'configuration' in blocs ? '1.1.0' : '1.0.0',
     kind: 'cartographie-merge',
     ...(typeof meta.referentiel === 'string' && meta.referentiel !== '' ? { referentiel: meta.referentiel } : {}),
     generatedAt,

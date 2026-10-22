@@ -439,6 +439,12 @@ describe('buildMergeDocument', () => {
     expect(Object.keys(seule).slice(0, 6)).toEqual(['schemaVersion', 'kind', 'referentiel', 'generatedAt', 'source', 'configuration'])
     expect(seule).not.toHaveProperty('execution')
   })
+
+  it('une exécution sans configuration est ignorée : 1.0.0, à l’octet (le schéma la refuse seule)', () => {
+    const seule = buildMergeDocument(agrege, narratives, { ...meta, execution })
+    expect(seule).not.toHaveProperty('execution')
+    expect(JSON.stringify(seule)).toBe(JSON.stringify(doc))
+  })
 })
 
 describe('frDate', () => {

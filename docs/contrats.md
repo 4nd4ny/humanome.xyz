@@ -265,7 +265,8 @@ par `scripts/extract-referentiel.mjs`.
        `modelesServis`. `coutMicrousd` vaut `null` : le moteur ne connaît
        pas le montant débité, qui reste au relevé du compte — un document
        se partage. `execution` n'existe pas sans `configuration`
-       (`dependentRequired`).
+       (`dependentRequired`) : `buildMergeDocument` ignore une `execution`
+       qu'on lui passe seule, et le document reste en 1.0.0.
      - **Importeur** (`web/src/carto/core/importers/merge.js`) : la
        provenance de chaque variante prend pour `model` le premier modèle
        servi (à défaut le modèle demandé) et garde `configuration` réduite à

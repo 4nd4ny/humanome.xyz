@@ -5100,3 +5100,13 @@ body:has([aria-modal='true'], .portfolio-editor-fullscreen)
 .app-main--full {
   max-width: none;
 }
+
+/* Provenance d'un autre référentiel que RESPIRE, sous le menu des parcours
+   (S5, E1 et E9 : d'où il vient, sa licence). Le sha256 qu'elle cite se coupe. */
+.referentiel-choice-source {
+  display: block;
+  margin-top: 0.25rem;
+  color: var(--muted);
+  font-size: 0.85em;
+  overflow-wrap: anywhere;
+}

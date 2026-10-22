@@ -1580,10 +1580,18 @@ Le schéma `referentiel` passe en **2.0.0** (`docs/plan-twin9-php.md` de
   fork prend `referentiel` (défaut `respire` ; un identifiant de la même
   forme, la nouvelle version gardant celui de sa source : la colonne ignore
   la casse). `GET /api/referentiels`
-  (public) rend les référentiels publiés : `[{id, label, versions}]`, le
-  libellé de la dernière version, les versions de la plus récente à la plus
-  ancienne. Les lectures publiques de `/api/referentiel` restent celles de
-  RESPIRE.
+  (public) rend les référentiels publiés : `[{id, label, versions, source}]`,
+  le libellé et la provenance (`source`, `null` si elle manque, S5) de la
+  dernière version, les versions de la plus récente à la plus ancienne, les
+  référentiels rangés par identifiant.
+  `GET /api/referentiels/{id}/versions/{semver}` (public, lecture seule, S5)
+  rend le document d'une version **publiée** de tout référentiel, RESPIRE
+  compris, tel que la base le garde (`content`) ; un brouillon, une
+  proposition, un identifiant ou une version inconnus → `404` « Unknown
+  published version ». La colonne ignorant la casse et les espaces finaux, la
+  route refuse aussi (`404`) un identifiant hors de la forme ci-dessus et
+  toute autre graphie de l'identifiant ou de la version. Les lectures
+  publiques de `/api/referentiel` restent celles de RESPIRE.
 - **Le profil Twin9** (§7) : `referentiel.version` peut désigner un brouillon
   (ou une proposition au vote) si le propriétaire du profil en est l'auteur,
   qu'il est épistémiarque ou administrateur (`ProfilPolicy::AUTEURS`) et que
@@ -1602,6 +1610,21 @@ Le schéma `referentiel` passe en **2.0.0** (`docs/plan-twin9-php.md` de
   (`referentiel_version_id`) n'accepte que ses codes ; sans référentiel
   désigné, la forme de RESPIRE (`[1-7].NN`) jusqu'au 2026-10-20 — depuis,
   les codes de la version que lit sa relecture (§11).
+- **L'Humanome V18** (S5, lot B) : le YAML que publie
+  https://respire.school/referentiel se convertit en document de ce schéma
+  sur le poste (`scripts/convertir-humanome.mjs`, `engine/src/referentiel-humanome.js`) :
+  identifiant `humanome`, libellé « Humanome V18 », niveaux `capacité`
+  `[A-E][1-4]` puis `facette` `[A-E][1-4]\.[1-9]`, les capacités pour
+  compétences et leurs facettes pour éléments, des descriptions composées des
+  rubriques du YAML, la couleur de la palette par rang, l'empreinte calculée
+  comme ci-dessus. `scripts/amorcer-referentiel.php` le publie hors vote,
+  idempotent sur le document entier hors `source`, la provenance
+  (`importPublishedDocument` ne compare que l'empreinte), et refuse `respire` ;
+  en production, `POST /api/admin/import-referentiel` applique les mêmes règles
+  (`AmorcageReferentiel`) à tout autre identifiant que `respire`, RESPIRE
+  gardant l'import du déploiement, idempotent sur l'empreinte. Le schéma ne
+  change pas. Règles, procédure en production et écarts relevés dans la
+  source : `docs/referentiel-humanome.md`.
 - **Hors T15** : la page publique `#/referentiel` ne montre que RESPIRE ;
   `ReferentielDiff` ignore niveaux et éléments. (La cartographie, qui ne
   lisait que RESPIRE et ses 7 pôles, lit le référentiel de chaque run depuis
@@ -1786,12 +1809,31 @@ plus contre le chiffre 7. Aucun champ n'est renommé.
   | Cartographie ouverte (Twin6) | celle choisie (RESPIRE par défaut) ; pour RESPIRE, la structure de `/api/twin9/meta` (noms de pôle accentués) tant qu'elle a les pôles et les codes de la version choisie ; ses gabarits (paquet 1.1.0) en lisent le nom, les pôles, les compétences et la forme des codes (§8) |
   | Analyse approfondie (Twin9) | celle du profil du run (§8.8) |
   | Relecture : annotations, révisions (`ReviewReferentiel`) | la version stockée ; sinon, parmi les versions publiées du référentiel que nomme le document (RESPIRE à défaut), la plus récente à laquelle il est conforme — une journée de RESPIRE v7 reste relue contre v7 quand une version d'une autre structure paraît —, sinon la dernière ; sans version publiée, refus `422` |
-  | Visionneuses, partage, archive, remise à l'interface (`chargerReferentielDuDocument`) | la version notée ; sinon, parmi les versions publiées du référentiel que nomme le document (index statique), la plus récente à laquelle il est conforme — la règle de la relecture —, à défaut la dernière ; RESPIRE embarqué en repli pour un document qui n'en nomme pas ; un autre référentiel introuvable est dit, jamais lu avec RESPIRE |
+  | Visionneuses, partage, archive, remise à l'interface (`chargerReferentielDuDocument`) | la version notée ; sinon, parmi les versions publiées du référentiel que nomme le document (la base par l'API, l'index statique en repli, S5), la plus récente à laquelle il est conforme — la règle de la relecture —, à défaut la dernière ; RESPIRE embarqué en repli pour un document qui n'en nomme pas ; un autre référentiel introuvable est dit, jamais lu avec RESPIRE |
   | Corpus de démonstration (`#/jour`, `validate-corpus.mjs`) | RESPIRE v7 |
 
-  Le choix d'un référentiel publié (`ReferentielChoice`) lit l'index statique
+  Le choix d'un référentiel publié (`ReferentielChoice`) lit la base
+  (`GET /api/referentiels`, S5, 2026-10-22), à défaut l'index statique
   `data/referentiel/index.json` : la dernière version de chacun, RESPIRE
-  d'abord ; sans index (copie hors ligne), aucun choix n'est offert.
+  d'abord ; sans l'une ni l'autre (copie hors ligne), aucun choix n'est
+  offert. Le document d'une version
+  (`loadPublishedReferentiel({id, version})`) se lit de même :
+  `GET /api/referentiels/{id}/versions/{semver}`, à défaut l'export statique,
+  enfin, pour RESPIRE, la copie embarquée ; sans choix, les parcours chargent
+  ainsi la dernière RESPIRE publiée (`{id: 'respire'}`), celle que le menu
+  présélectionne. Une liste sans RESPIRE (une base qui ne l'a pas publié)
+  présélectionne son premier référentiel, et le menu en fait le choix
+  (`onChange`, jamais sous un run en cours) : le parcours charge le
+  référentiel affiché, et la masse l'envoie (`referentielId`). Sous le menu,
+  la provenance (`source`) du référentiel affiché, s'il n'est pas RESPIRE :
+  d'où il vient et sa licence (S5, E1 et E9 ; l'Humanome V18 est celui de
+  respire.school, sous CC-BY-SA). L'index statique ne la porte pas : en
+  repli, rien ne s'affiche. L'aide des trois parcours (`espace`,
+  `twin6ouverte`, `etablissement`) dit ce qu'est l'Humanome V18, s'il est
+  proposé. Une réponse de l'API vide,
+  malformée, en erreur, ou un document qui n'est pas la version demandée
+  cèdent la place à l'export statique. La page publique `#/referentiel`
+  (`loadPublishedReferentiel()` sans identifiant) reste statique.
 - **Les routes**, ce qui change :
   - `POST /api/etablissement/cohortes/{id}/runs` : `referentielId`,
     `referentielVersion` facultatifs ; version non publiée ou identifiant

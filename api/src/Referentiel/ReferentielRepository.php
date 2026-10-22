@@ -124,26 +124,34 @@ final class ReferentielRepository
     }
 
     /**
-     * The published referentials (T15), each with the label of its latest
-     * version and its versions, newest first; RESPIRE among them.
+     * The published referentials (T15), each with the label and the
+     * provenance (`source`, S5: the menus show where another referential comes
+     * from and its licence) of its latest version, and its versions, newest
+     * first; RESPIRE among them.
      *
-     * @return list<array{id: string, label: string, versions: list<string>}>
+     * @return list<array{id: string, label: string, versions: list<string>, source: string|null}>
      */
     public function catalogue(): array
     {
         $stmt = $this->pdo->prepare(
-            'SELECT referentiel_id, semver, label FROM referentiel_versions WHERE status = ? ORDER BY referentiel_id'
+            "SELECT referentiel_id, semver, label, JSON_EXTRACT(content, '$.source') AS source
+             FROM referentiel_versions WHERE status = ? ORDER BY referentiel_id"
         );
         $stmt->execute(['published']);
         $parId = [];
         foreach ($stmt->fetchAll() as $row) {
-            $parId[(string) $row['referentiel_id']][(string) $row['semver']] = (string) $row['label'];
+            $source = $row['source'] === null ? null : json_decode((string) $row['source'], true);
+            $parId[(string) $row['referentiel_id']][(string) $row['semver']] = [
+                'label' => (string) $row['label'],
+                'source' => \is_string($source) && $source !== '' ? $source : null,
+            ];
         }
         $out = [];
-        foreach ($parId as $id => $labels) {
-            $versions = array_map('strval', array_keys($labels));
+        foreach ($parId as $id => $parVersion) {
+            $versions = array_map('strval', array_keys($parVersion));
             usort($versions, static fn (string $a, string $b): int => Semver::compare($b, $a));
-            $out[] = ['id' => (string) $id, 'label' => $labels[$versions[0]], 'versions' => $versions];
+            $latest = $parVersion[$versions[0]];
+            $out[] = ['id' => (string) $id, 'label' => $latest['label'], 'versions' => $versions, 'source' => $latest['source']];
         }
 
         return $out;

@@ -29,6 +29,7 @@ import {
   jsonResponse,
   meResponse,
   metaTwin9,
+  referentielsEnBase,
   referentielsPublies,
   stubFetch,
   routeKey,
@@ -337,6 +338,31 @@ describe('UC-APP-09 — l’apprenant lance une cartographie ouverte', () => {
     const [docExporte] = downloadJson.mock.calls[0]
     expect(docExporte.referentiel).toBe('fictif-lettre')
     expect(docExporte.domains.map((d) => d.id)).toEqual(REFERENTIEL_LETTRE_FICTIF.poles.map((p) => p.nom))
+  })
+
+  it('UC-APP-09-F31 — A4 : les référentiels publiés en base (API publique) sont offerts sans export statique ; le run lit le document de l’API', async () => {
+    const { calls } = stubFetch(
+      routes({
+        ...referentielsEnBase([REFERENTIEL_RESPIRE_FICTIF, REFERENTIEL_LETTRE_FICTIF]),
+        'POST twin6/appel': (url, init) => appelOk(url, init, {}, REFERENTIEL_LETTRE_FICTIF),
+      }),
+    )
+    openTwin6()
+    await saisirPortfolio()
+    // La base les range par identifiant ; le menu met RESPIRE d'abord, présélectionné.
+    const choix = await screen.findByRole('combobox', { name: 'Référentiel' })
+    expect([...choix.options].map((o) => o.textContent)).toEqual(['RESPIRE v7', 'Fictif lettré'])
+    expect(choix.value).toBe('respire@7.0.0')
+    fireEvent.change(choix, { target: { value: 'fictif-lettre@1.0.0' } })
+    expect(await screen.findByText(/6 appels au modèle \(5 pôles \+ synthèse\)/)).toBeDefined()
+
+    await lancer()
+    expect(await screen.findByText(/Cartographie ouverte terminée/)).toBeDefined()
+    const appels = appelsTwin6(calls)
+    expect(appels).toHaveLength(6)
+    expect(bodyOf(appels[0]).prompt).toContain('# Pôle 1 — A · Pôle fictif A\n\n## A1 — Capacité fictive A1')
+    expect(calls.some((c) => c.key === 'GET referentiels/fictif-lettre/versions/1.0.0')).toBe(true)
+    expect(calls.some((c) => c.url.startsWith('data/referentiel/fictif-lettre'))).toBe(false)
   })
 
   it('UC-APP-09-F22 — A5 : une version de RESPIRE d’une autre structure que /meta (six pôles) → six scans, document de RESPIRE aux pôles de cette version', async () => {

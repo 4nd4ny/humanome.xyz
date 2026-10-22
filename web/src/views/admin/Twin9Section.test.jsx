@@ -153,6 +153,41 @@ describe('Twin9Section — réglages', () => {
   })
 })
 
+describe('Twin9Section — pire cas insuffisant (ADR-012 §6)', () => {
+  it('signale le modèle tiers dont un appel a coûté plus que sa réserve, sur sa ligne de la grille', async () => {
+    const tiers = {
+      prix_usd_mtok: [0.7, 1.3],
+      plafond_sortie: 30000,
+      plafond_reflexion: 0,
+      duree_max_s: 10,
+    }
+    await renderReady({
+      ...baseRoutes,
+      'GET api/twin9/admin/config': jsonResponse(200, {
+        ...CONFIG,
+        modeles: { ...CONFIG.modeles, 'openai:modele-fictif-9': tiers },
+        pire_cas_insuffisants: {
+          'openai:modele-fictif-9': {
+            plafond_sortie: 30000,
+            plafond_reflexion: 0,
+            excedent_max_microusd: 7800,
+            appels: 2,
+            depuis: '2026-10-22T10:00:00Z',
+          },
+        },
+      }),
+    })
+
+    const alerte = screen.getByTestId('twin9-pire-cas-openai:modele-fictif-9')
+    expect(alerte.getAttribute('role')).toBe('alert')
+    expect(alerte.textContent).toMatch(/Pire cas insuffisant/)
+    expect(alerte.textContent).toMatch(/2 appels/)
+    expect(alerte.textContent).toMatch(/0,0078 \$/)
+    expect(alerte.textContent).toMatch(/refusé au lancement/)
+    expect(screen.queryByTestId('twin9-pire-cas-modele-fictif-a')).toBeNull()
+  })
+})
+
 describe('Twin9Section — comptes (supervision)', () => {
   it('affiche la table des comptes avec cumuls en USD', async () => {
     await renderReady(baseRoutes)

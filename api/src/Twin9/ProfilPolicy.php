@@ -97,7 +97,9 @@ final class ProfilPolicy
      * with its instance key —, one message for both, so that nobody learns
      * which keys the instance holds; Anthropic's own key is read as each
      * call leaves, never asked here. Another provider's model has its price
-     * and its caps in the grid, an output budget within its plafond_sortie,
+     * and its caps in the grid, a worst case not marked insufficient
+     * (Twin9Config::pireCasInsuffisants()), an output budget within its
+     * plafond_sortie,
      * and a longest call (duree_max_s) that a slice of this instance leaves
      * room for at its head (Twin9Slice::dureeAdmise()).
      *
@@ -107,6 +109,7 @@ final class ProfilPolicy
     {
         $grille = $this->config->read();
         $actifs = Fournisseurs::actifs($grille);
+        $insuffisants = $this->config->pireCasInsuffisants();
         // what a slice of this instance leaves a third party's call at its head: the slice's own rule
         $admise = Twin9Slice::dureeAdmise(Tick::longueurTwin9((int) $grille['secondes_par_tranche']));
         foreach ((new CallSettings($profil))->atteints() as $etape => $reglage) {
@@ -124,6 +127,12 @@ final class ProfilPolicy
                     $reglage['budget_sortie'], false, false) === null) {
                 throw new Twin9Exception('Profil refusé — ' . $etape . ' : aucun prix pour ' . $cle
                     . ' sur cette instance', 422);
+            }
+            if (isset($insuffisants[$cle])) {
+                // a call of it cost more than its reserve, which the instance paid: its caps first (ADR-012 §6)
+                throw new Twin9Exception('Profil refusé — ' . $etape . ' : le pire cas de ' . $cle . ' s’est révélé '
+                    . 'insuffisant (un appel a coûté plus que sa réserve) : ses plafonds sont à revoir dans la grille '
+                    . 'de l’instance', 422);
             }
             if ($reglage['budget_sortie'] > (int) ($entree['plafond_sortie'] ?? 0)) {
                 throw new Twin9Exception('Profil refusé — ' . $etape . ' : un budget de sortie de '

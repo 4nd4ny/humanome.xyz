@@ -271,12 +271,17 @@ return function (App $app): void {
     // the state of the daily reading of Anthropic's prices (releve_tarifs,
     // TarifsAnthropic; null before the first), and the providers of a Twin9
     // call with their GDPR tag and whether the instance's key is set
-    // (fournisseurs, ADR-012: a boolean, never the key), which no PUT takes.
+    // (fournisseurs, ADR-012: a boolean, never the key), and the third
+    // parties' models whose worst case fell short (pire_cas_insuffisants,
+    // RunCosts::solder()), which no PUT takes.
     $app->get('/twin9/admin/config', $wrap(function (Request $request, Response $response) use ($json): Response {
         $settings = new SettingsRepository(Db::get());
 
-        return $json($response, (new Twin9Config($settings))->read()
-            + ['releve_tarifs' => TarifsAnthropic::etat($settings), 'fournisseurs' => Fournisseurs::pourAdministrateur()]);
+        $config = new Twin9Config($settings);
+
+        return $json($response, $config->read()
+            + ['releve_tarifs' => TarifsAnthropic::etat($settings), 'fournisseurs' => Fournisseurs::pourAdministrateur(),
+               'pire_cas_insuffisants' => (object) $config->pireCasInsuffisants()]);
     }))->add($admin);
 
     // PUT /api/twin9/admin/config {champs partiels} — 422 out of bounds
@@ -287,9 +292,11 @@ return function (App $app): void {
             return $json($response, ['error' => 'Corps JSON invalide : objet attendu'], 400);
         }
         $settings = new SettingsRepository(Db::get());
+        $config = new Twin9Config($settings);
 
-        return $json($response, (new Twin9Config($settings))->update($body)
-            + ['releve_tarifs' => TarifsAnthropic::etat($settings), 'fournisseurs' => Fournisseurs::pourAdministrateur()]);
+        return $json($response, $config->update($body)
+            + ['releve_tarifs' => TarifsAnthropic::etat($settings), 'fournisseurs' => Fournisseurs::pourAdministrateur(),
+               'pire_cas_insuffisants' => (object) $config->pireCasInsuffisants()]);
     }))->add($admin);
 
     // ==================================================================

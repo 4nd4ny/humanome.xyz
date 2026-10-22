@@ -683,6 +683,57 @@ final class CoutsTest extends TestCase
         unlink($log);
     }
 
+    /**
+     * A third party's model whose worst case fell short is marked « pire
+     * cas insuffisant » for the administrator, with the caps it had and the
+     * largest excess, and refused at launch until its caps change; mended,
+     * the mark is gone and it is admitted again.
+     */
+    public function testAWorstCaseThatFellShortIsMarkedUntilItsCapsChange(): void
+    {
+        $config = new Twin9Config(new SettingsRepository($this->pdo));
+        $config->update(['modeles' => $config->modeles() + self::TIERS] + self::OUVERTS);
+        TestDb::setEnv('OPENAI_API_KEY', 'sk-openai-cle-secrete-5');
+        $profil = array_replace(self::SONNET, \array_slice(self::MIXTE, 0, 2));
+        $id = $this->nouveauRun($profil);
+        $http = self::fournisseurs(sortieOpenai: 25000);
+        $log = (string) tempnam(sys_get_temp_dir(), 'twin9-log');
+        ini_set('error_log', $log);
+        $politique = new ProfilPolicy($this->pdo, $config);
+        $politique->admettreAuLancement($this->profil($profil));
+        self::assertSame([], $config->pireCasInsuffisants());
+
+        for ($n = 0; $n < 30 && (new RunRepository($this->pdo))->statut($id) === 'en_cours'; $n++) {
+            (new Tick($this->pdo, ['budgetSeconds' => 2, 'twin9Sender' => new DirectCalls($http),
+                                   'twin9Pauses' => [0.05, 0.1]]))->run();
+        }
+        unlink($log);
+
+        $marques = $config->pireCasInsuffisants();
+        self::assertSame(['openai:modele-fictif-1'], array_keys($marques), 'le seul modèle au-delà de son pire cas');
+        $marque = $marques['openai:modele-fictif-1'];
+        self::assertSame([30000, 0], [$marque['plafond_sortie'], $marque['plafond_reflexion']], 'les plafonds d’alors');
+        self::assertSame((int) round(5000 * 1.3 * 1.2), $marque['excedent_max_microusd'], '5 000 jetons de sortie de trop');
+        self::assertGreaterThan(0, $marque['appels']);
+        self::assertMatchesRegularExpression('/^\d{4}-\d{2}-\d{2}T/', $marque['depuis']);
+        try {
+            $politique->admettreAuLancement($this->profil($profil));
+            self::fail('un modèle au pire cas insuffisant ne se lance pas');
+        } catch (Twin9Exception $e) {
+            self::assertSame(422, $e->getStatusCode());
+            self::assertSame('Profil refusé — lecteur haiku : le pire cas de openai:modele-fictif-1 s’est révélé insuffisant '
+                . '(un appel a coûté plus que sa réserve) : ses plafonds sont à revoir dans la grille de l’instance',
+                $e->getMessage());
+        }
+
+        // its reasoning cap raised in the grid: the mark no longer holds
+        $modeles = $config->modeles();
+        $modeles['openai:modele-fictif-1']['plafond_reflexion'] = 6000;
+        $config->update(['modeles' => $modeles]);
+        self::assertSame([], $config->pireCasInsuffisants());
+        $politique->admettreAuLancement($this->profil($profil));
+    }
+
     /** The DoD: no key in the journal, the outputs, the memory, the batches, the ledger nor the export. */
     public function testNoKeyIsWrittenAnywhere(): void
     {

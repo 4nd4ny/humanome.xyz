@@ -7,7 +7,8 @@
 //                  (jamais la clé) ; un fournisseur étiqueté « non » derrière un
 //                  second interrupteur ; ses modèles se tarifent à la main, avec
 //                  leurs plafonds (sortie, réflexion, durée d'un appel) et leur
-//                  réglage de raisonnement.
+//                  réglage de raisonnement ; un modèle dont le pire cas s'est
+//                  révélé insuffisant y est signalé (refusé au lancement).
 //   2. Jeu par défaut (T14) : le jeu de gabarits du profil par défaut, parmi
 //                  le jeu v9.8 et les copies des promptologues (sans contenu).
 //   3. Comptes   : supervision des comptes ayant une activité (soldes/cumuls).
@@ -160,6 +161,25 @@ function ReleveTarifs({ releve }) {
         </p>
       ) : null}
     </div>
+  )
+}
+
+/**
+ * Le modèle d'un autre fournisseur dont un appel a coûté plus que sa réserve
+ * (pire_cas_insuffisants, ADR-012 §6) : l'instance a payé l'excédent, et le
+ * serveur le refuse au lancement tant que ses plafonds n'ont pas changé.
+ */
+function PireCasInsuffisant({ cle, marques }) {
+  const marque = marques?.[cle]
+  if (!marque) return null
+  const appels = Number(marque.appels) || 0
+  return (
+    <p role="alert" className="admin-message" data-testid={`twin9-pire-cas-${cle}`}>
+      Pire cas insuffisant : {appels} appel{appels > 1 ? 's' : ''} de ce modèle {appels > 1 ? 'ont' : 'a'} coûté plus
+      que {appels > 1 ? 'leur réserve' : 'sa réserve'} (jusqu’à {formatUsd(marque.excedent_max_microusd)} de plus,
+      payés par l’instance), depuis le {frDate(marque.depuis)}. Il est refusé au lancement jusqu’à ce que ses plafonds
+      changent : relevez son plafond de réflexion, ou son plafond de sortie.
+    </p>
   )
 }
 
@@ -615,6 +635,7 @@ function ReglagesBloc({ config, fetchFn, onSaved }) {
                     </div>
                   </div>
                 ) : null}
+                <PireCasInsuffisant cle={clePrix(m.fournisseur, m.id.trim())} marques={config?.pire_cas_insuffisants} />
               </>
             ) : null}
             <button

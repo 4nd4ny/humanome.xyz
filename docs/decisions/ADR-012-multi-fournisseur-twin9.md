@@ -166,7 +166,10 @@ pas hors d'Anthropic.
   le plafond de sortie ne compte pas le raisonnement, qui ne s'y coupe pas.
 - Le solde d'un appel ne débite jamais plus que sa réserve : un excédent est journalisé, payé par
   l'instance et jamais par le solde de l'utilisateur ; le couple fournisseur:modèle est signalé à
-  l'administrateur, son pire cas insuffisant.
+  l'administrateur, son pire cas insuffisant (marque gardée avec les plafonds de son entrée de
+  grille, signalée sur sa page), et refusé au lancement tant que ces plafonds n'ont pas changé
+  (2026-10-22 : au-delà de la seule marque que demandait la spécification, la parade de la
+  critique 2 n° 3 ; l'excédent ne pèse pas non plus sur le budget de l'utilisateur).
 
 ### 7. L'étiquette RGPD et l'accord (amende l'ADR-011 §5)
 

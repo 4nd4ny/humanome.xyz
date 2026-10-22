@@ -1210,7 +1210,17 @@ une suivante le relève.
   coût réel (`cout_microusd`) ; l'excédent est compté par tranche
   (`depassements`, compteur `twin9Depassements` du worker) et journalisé
   (`[twin9-couts] run <id>, <clé de prix> : …`, le modèle et les montants
-  seulement). Depuis la voie mixte, les soldes du grand-livre
+  seulement). Le modèle d'un autre fournisseur est alors **marqué « pire cas
+  insuffisant »** (réglage `twin9_pire_cas_insuffisant`, à part de
+  `twin9_config` : le worker l'écrit, une sauvegarde de l'administrateur ne
+  l'écrase pas) avec les plafonds de son entrée de grille, le plus grand
+  excédent, ses appels et depuis quand ; `GET /api/twin9/admin/config` le
+  rend (`pire_cas_insuffisants`, qu'aucun `PUT` ne prend), la page
+  d'administration le signale sur la ligne du modèle, et le lancement (comme
+  la reprise) refuse ce modèle en `422` tant que ses plafonds
+  (`plafond_sortie`, `plafond_reflexion`) n'ont pas changé : corrigés, la
+  marque ne tient plus (2026-10-22). Un modèle d'Anthropic n'est jamais
+  marqué. Depuis la voie mixte, les soldes du grand-livre
   (réconciliation, remboursement) sont rangés, comme les réserves, sous la
   clé de prix de chaque appel (`fournisseur:modèle` hors d'Anthropic). Pour Anthropic, le pire cas majore toujours le coût réel au
   prix de l'envoi : rien ne change.

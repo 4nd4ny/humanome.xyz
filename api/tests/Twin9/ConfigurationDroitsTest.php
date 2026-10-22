@@ -489,6 +489,35 @@ final class ConfigurationDroitsTest extends CartographeTestCase
     }
 
     /**
+     * The administrator's page reads the third parties' models whose worst
+     * case fell short (ADR-012 §6), with the caps they had; no PUT takes
+     * the marks, and a model whose caps change is no longer marked.
+     */
+    public function testTheAdministratorReadsTheWorstCasesThatFellShort(): void
+    {
+        $admin = $this->registerAs('pire-cas@example.org', 'Admin', ['admin']);
+        $config = new Twin9Config(new SettingsRepository(self::$pdo));
+        $config->update(['modeles' => $config->modeles() + ['openai:modele-fictif-9' => ['prix_usd_mtok' => [0.7, 1.3],
+            'plafond_sortie' => 30000, 'plafond_reflexion' => 0, 'duree_max_s' => 10]]]);
+        $config->marquerPireCasInsuffisant('openai:modele-fictif-9', 7800, 2);
+        $config->marquerPireCasInsuffisant('claude-sonnet-5-5', 100);
+
+        $lu = self::json($this->as_($admin, 'GET', '/api/twin9/admin/config'))['pire_cas_insuffisants'];
+        self::assertSame(['openai:modele-fictif-9'], array_keys($lu), 'un modèle d’Anthropic n’est jamais marqué');
+        self::assertSame([30000, 0, 7800, 2], [$lu['openai:modele-fictif-9']['plafond_sortie'],
+            $lu['openai:modele-fictif-9']['plafond_reflexion'], $lu['openai:modele-fictif-9']['excedent_max_microusd'],
+            $lu['openai:modele-fictif-9']['appels']]);
+        self::assertSame(422, $this->as_($admin, 'PUT', '/api/twin9/admin/config',
+            ['pire_cas_insuffisants' => []])->getStatusCode());
+
+        $modeles = $config->modeles();
+        $modeles['openai:modele-fictif-9']['plafond_sortie'] = 40000;
+        $mis = self::json($this->as_($admin, 'PUT', '/api/twin9/admin/config', ['modeles' => $modeles]));
+        self::assertSame([], (array) $mis['pire_cas_insuffisants'], 'ses plafonds changés, la marque ne tient plus');
+        self::assertSame('{}', json_encode((object) $config->pireCasInsuffisants()));
+    }
+
+    /**
      * The instance's keys: set at installation (ANTHROPIC_API_KEY and the
      * five other providers' variables, ADR-012), never through the
      * interface, never shown — the configuration page reads whether a

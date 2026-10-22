@@ -55,6 +55,13 @@ final class Twin9Config
     public const SETTING_KEY = 'twin9_config';
 
     /**
+     * The third parties' models whose worst case fell short (RunCosts::
+     * solder()), kept apart from 'twin9_config': the worker writes them, an
+     * administrator's save never clobbers them, nor they it.
+     */
+    public const PIRE_CAS_KEY = 'twin9_pire_cas_insuffisant';
+
+    /**
      * Referentiel STRUCTURE (pole num/nom + competence code/nom) the client
      * engine needs to assemble artefacts — NOT secret (codes and names are the
      * public RESPIRE referentiel; only the accented pole names differ from the
@@ -183,6 +190,68 @@ final class Twin9Config
         }
 
         return $config;
+    }
+
+    /**
+     * Marks another provider's model whose worst case fell short — a call's
+     * real cost beyond its reserve, which the instance paid (ADR-012 §6):
+     * with the caps its grid entry has now, the largest excess, its calls
+     * so marked and since when. The mark holds as long as those caps stay as
+     * they are (pireCasInsuffisants()): the administrator mends them, it
+     * lapses. An Anthropic model is never marked: its worst case bounds its
+     * real cost at its sending's price (an excess there is a price changed
+     * meanwhile). Marks that no longer hold go at the next write.
+     *
+     * @param int $excedent the largest excess of these calls, in micro-USD
+     * @param int $appels the calls whose real cost went beyond their reserve
+     */
+    public function marquerPireCasInsuffisant(string $cle, int $excedent, int $appels = 1): void
+    {
+        $config = $this->read();
+        $entree = $config['modeles'][$cle] ?? null;
+        if (!str_contains($cle, ':') || !\is_array($entree)) {
+            return;
+        }
+        $marques = self::marquesActives($config, $this->settings->get(self::PIRE_CAS_KEY) ?? []);
+        $avant = $marques[$cle] ?? null;
+        $marques[$cle] = [
+            'plafond_sortie' => $entree['plafond_sortie'] ?? null,
+            'plafond_reflexion' => $entree['plafond_reflexion'] ?? null,
+            'excedent_max_microusd' => max($excedent, (int) ($avant['excedent_max_microusd'] ?? 0)),
+            'appels' => (int) ($avant['appels'] ?? 0) + $appels,
+            'depuis' => $avant['depuis'] ?? gmdate('Y-m-d\TH:i:s\Z'),
+        ];
+        ksort($marques, SORT_STRING);
+        $this->settings->set(self::PIRE_CAS_KEY, $marques);
+    }
+
+    /**
+     * The marks that hold (marquerPireCasInsuffisant()): their model still
+     * in the grid, its caps those of the mark — for the administrator's page,
+     * and refused at launch (ProfilPolicy::admettreAuLancement()).
+     *
+     * @return array<string, array{plafond_sortie: int|null, plafond_reflexion: int|null,
+     *                             excedent_max_microusd: int, appels: int, depuis: string}>
+     */
+    public function pireCasInsuffisants(): array
+    {
+        return self::marquesActives($this->read(), $this->settings->get(self::PIRE_CAS_KEY) ?? []);
+    }
+
+    /**
+     * @param array<string, mixed> $config Twin9Config::read()
+     * @param array<string, mixed> $marques as stored
+     * @return array<string, array<string, mixed>>
+     */
+    private static function marquesActives(array $config, array $marques): array
+    {
+        return array_filter($marques, static function (mixed $marque, string|int $cle) use ($config): bool {
+            $entree = $config['modeles'][$cle] ?? null;
+
+            return \is_array($marque) && \is_array($entree)
+                && ($marque['plafond_sortie'] ?? null) === ($entree['plafond_sortie'] ?? null)
+                && ($marque['plafond_reflexion'] ?? null) === ($entree['plafond_reflexion'] ?? null);
+        }, ARRAY_FILTER_USE_BOTH);
     }
 
     /**

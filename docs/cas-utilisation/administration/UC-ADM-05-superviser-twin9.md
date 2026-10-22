@@ -120,6 +120,10 @@ L'administrateur ouvre « Administrer » → « Supervision Twin9 » (`#/admin/t
   sortie, son plafond de réflexion, la durée maximale d'un appel (30 s
   proposées pour un modèle ajouté) et, chez OpenAI et Google, son réglage de
   raisonnement (RG11). Ces champs n'existent pas pour un modèle d'Anthropic.
+  Un modèle dont un appel a coûté plus que sa réserve (l'instance a payé
+  l'excédent) est signalé sur sa ligne, « pire cas insuffisant », avec le plus
+  grand excédent et depuis quand ; il est refusé au lancement tant que ses
+  plafonds n'ont pas changé (2026-10-22).
 - ~~**A4 — Réglages hors formulaire**~~ : retiré le 2026-10-20 avec
   l'interrupteur `enabled`, le rythme `appels_par_minute` et les réglages du
   `pipeline`, à la demande de Christian (voir Limites). La fusion de premier

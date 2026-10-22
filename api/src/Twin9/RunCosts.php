@@ -31,7 +31,9 @@ use stdClass;
  *   returns, stays; the rest goes back. Never more than the call held: a
  *   real cost beyond it is counted (`depassements`), logged with its model
  *   and the amounts, and the instance pays the excess — never its owner's
- *   credit, nor their budget (impute()). A run stopped, cancelled or done
+ *   credit, nor their budget (impute()); another provider's model is then
+ *   marked « pire cas insuffisant » for the administrator, and refused at
+ *   launch until its caps change (Twin9Config::marquerPireCasInsuffisant()). A run stopped, cancelled or done
  *   gives back what its calls still hold, but for the calls of a batch still
  *   at Anthropic, settled once their batch is collected or cancelled.
  * - What a run has committed — the worst cases held, the costs settled as
@@ -295,9 +297,16 @@ final class RunCosts
             $this->pdo->rollBack();
             throw $e;
         }
+        $parModele = [];
         foreach ($depassements as [$modele, $excedent]) {
             error_log(sprintf('[twin9-couts] run %d, %s : coût réel au-delà de la réserve de %d µUSD, payés par l’instance',
                 $runId, $modele, $excedent));
+            $parModele[$modele] = [max($excedent, $parModele[$modele][0] ?? 0), ($parModele[$modele][1] ?? 0) + 1];
+        }
+        // another provider's model whose worst case fell short: marked for the administrator, refused at launch
+        // until its caps change (Twin9Config::marquerPireCasInsuffisant())
+        foreach ($parModele as $modele => [$excedent, $appels]) {
+            $this->config->marquerPireCasInsuffisant((string) $modele, $excedent, $appels);
         }
 
         return \count($depassements);

@@ -68,9 +68,11 @@ Règles :
   Note du 2026-10-22 : depuis le retrait de la vue merge (journal de la
   cartographie, D-38), le bundle n'affiche plus de démonstration hors ligne :
   celle de l'interface se lit à côté d'`index.html` (D-67). En `file://`, il
-  ouvre les fichiers de la personne, et la copie autonome d'un jeu, exportée
-  de l'interface, s'ouvre avec ses données (INSTALL.md §4,
-  `npm run test:dist`).
+  ouvre l'accueil, le référentiel embarqué et les fichiers de la personne
+  (INSTALL.md §4, `npm run test:dist`). La copie autonome d'un jeu
+  s'exporte depuis le site ou un serveur local (son modèle se lit à côté
+  d'`index.html` ; en `file://`, le bundle le dit), puis s'ouvre hors ligne
+  avec ses données (`web/e2e/carto-export.e2e.js`, UC-APP-06 A6).
 - **Deep-links partageables** (§3.2) : une URL suffit à rouvrir exactement la même
   vue — un jour précis, une compétence en focus — y compris dans un lien envoyé à
   un employeur ou à son cartographe.

@@ -170,6 +170,15 @@ archive ») dans la section « Mes données » du tableau de bord `#/espace`.
 - **E4 — Archive assemblée non conforme** (étape 4) : « L'archive assemblée
   n'est pas conforme au schéma archive-export (N erreur(s)) : export annulé,
   rien n'a été téléchargé. » (cas réel : anomalie A-03).
+- **E5 — Copie du site ouverte en `file://`** (espace Export de la
+  cartographie : « Télécharger la copie » ; A6 : copie HTML de la démo) : le
+  modèle de la copie autonome se lit à côté d'`index.html`
+  (`carto/viewer-template.html`), ce qu'une page ouverte depuis le disque ne
+  peut pas. Rien n'est tenté ni téléchargé : « La copie autonome n'a pas pu
+  être produite : elle se prépare sur le site en ligne ou via un serveur
+  local (son modèle ne peut pas être lu depuis un fichier ouvert
+  directement). » (INSTALL.md §4). Ajouté le 2026-10-22 : le message était
+  « Failed to fetch ». Une copie exportée, elle, s'ouvre en `file://`.
 
 ## Règles de gestion
 
@@ -233,6 +242,7 @@ archive ») dans la section « Mes données » du tableau de bord `#/espace`.
 | Front | `web/src/carto/core/store.js`, `archive.js` (`buildArchive`), `import.js` (`importFiles`) | Jeux de l'interface de cartographie : lecture, archive master v4, restauration |
 | Front | `web/src/api/client.js` — `fetchMe`, `apiFetch` ; `web/src/data/referentiel.js` ; `web/src/data/load.js` — `getReferentiel`, `frenchDate` | Lectures du compte, des paquets, de la masse ; référentiel publié ou embarqué ; dates des titres dérivés |
 | Front | `web/src/carto/ui/ExportPanel.jsx`, `web/src/carto/ui/DemoTool.jsx`, `web/src/carto/core/anonymize.js` | Espace Export de la cartographie, « Préparer une démo » (A6), proposé en mode expert seulement — unitaire : UC-VIS-06-U07 ; `anonymize.test.js` |
+| Front | `web/src/carto/ui/viewerTemplate.js` — `loadViewerTemplate` | Modèle de la copie autonome, lu à côté d'`index.html` ; refus explicite en `file://` (E5) |
 | Moteur | `engine/src/validation.js` — `validateDocument('archive-export')` ; `schemas/archive-export.schema.json` | Contrat pivot (ADR-006) |
 | API | `GET /api/auth/me` (`api/src/routes/auth.php`), `GET /api/prompt-packages`, `GET /api/prompt-packages/{id}/{version}` (`packages.php`, lecture publique), `GET /api/mes-documents-masse` (`etablissement.php`, `RequireRole` `apprenant`), `GET /api/twin9/mes-analyses` (`twin9-runs.php`, session) | Lectures seules |
 | Domaine | `api/src/Packages/PromptPackageRepository.php` — `listPublished`, `findPublished` | Paquet embarqué, filtrage des paquets privés |
@@ -298,6 +308,7 @@ archive ») dans la section « Mes données » du tableau de bord `#/espace`.
 - `api/tests/PackagesTest.php` — lecture publique des paquets publiés.
 - `web/e2e/parcours-apprenant.e2e.js` — étape « Export de l'archive » (validée par le moteur, navigateur réel).
 - A6 : `web/src/carto/core/anonymize.test.js` (remplacements), `web/e2e/carto-export.e2e.js` (démo anonymisée ouverte en `file://`, surlignages ; mode expert posé dans le navigateur), UC-VIS-06-U07 (carte absente en mode simple).
+- E5 : `web/src/carto/ui/viewerTemplate.test.js` (en `file:`, le message, aucune lecture) ; `web/scripts/smoke-dist.mjs` (`npm run test:dist`, étape 6 : « Télécharger la copie » du bundle construit ouvert en `file://`, message et aucune requête — UC-SYS-04).
 
 ### Exécuter
 

@@ -417,15 +417,25 @@ par le catalogue, comme UC-SYS-01-F22, UC-SYS-02-F19 et UC-PRO-08-F17.
 - `web/scripts/smoke-dist.mjs` (`npm run test:dist`, après `npm run build` ;
   local, il lit `web/dist`) — `llms.txt`, `llms-full.txt`, `sitemap.xml`,
   `robots.txt` et `legal/confidentialite.md` présents et non vides dans
-  `web/dist` ; script d'entrée classique, en chemin relatif ; puis le bundle
-  construit, ouvert en `file://` dans jsdom, chaque requête comptée et refusée
-  comme un navigateur la refuse en `file://` : accueil rendu avec sa CSS ;
-  référentiel embarqué (61 compétences) ; message `file://` de la vue journée ;
-  écran d'import de la cartographie, dont la démonstration (lue sur le site)
-  ne tente que `data/demo/…` et invite à importer ses fichiers ; trois
-  journées de `schemas/fixtures/` ouvertes depuis l'accueil, dessinées en
-  soleil (7 pôles, 12 compétences, 3 jours). Hors la démonstration, aucune
-  requête ; aucune erreur de page (INSTALL.md §4).
+  `web/dist` ; script d'entrée classique, en chemin relatif, et exécuté après
+  l'analyse de `#root` : `defer` (posé par `classicScriptTags`), ou placé
+  après `<div id="root">` (`async` ne suffit pas). Sans quoi la page reste
+  blanche dans un navigateur, et seul ce contrôle statique le voit : le script
+  évalue lui-même le bundle, une fois le document analysé. Puis le bundle
+  construit, ouvert en `file://` dans jsdom, chaque requête notée avec la
+  phase en cours et refusée comme un navigateur la refuse en `file://` :
+  évaluation du bundle et accueil rendu avec sa CSS ; référentiel embarqué
+  (61 compétences) ; message `file://` de la vue journée ; écran d'import de
+  la cartographie, dont la démonstration (lue sur le site) ne tente que
+  `data/demo/…` et invite à importer ses fichiers ; retour à l'accueil, puis
+  trois journées de `schemas/fixtures/` ouvertes depuis l'accueil, dessinées
+  en soleil (7 pôles, 12 compétences, 3 jours) et rangées par l'adaptateur
+  IndexedDB du magasin (base `humanome-carto-v4` présente) ; espace Export de
+  ces fichiers : « Télécharger la copie » dit que la copie autonome se prépare
+  sur le site en ligne ou via un serveur local, sans rien tenter (UC-APP-06
+  E5). Enfin, une fois les requêtes calmées (300 ms sans nouvelle), aucune
+  requête hors la démonstration, de l'évaluation du bundle à la fin, entre
+  deux étapes comprises ; aucune erreur de page (INSTALL.md §4).
 - `api/tests/FicheParityTest.php`, `api/tests/FicheAdminEndpointsTest.php` —
   parité PHP (`FicheGenerator`) et route `dump-fiches` (aussi UC-SYS-02-F05,
   UC-EPI-03-F13).
@@ -548,4 +558,13 @@ cd web && npx vitest run test/usecases/unit/uc-sys-04-carte-du-site.test.js
   de fragment ; la redirection est couverte par les tests du routeur et
   d'`App`. Il fournit à jsdom des API que tout navigateur visé possède
   (`TextEncoder`, `TextDecoder`, `structuredClone`, `Blob.arrayBuffer`) et ne
-  vérifie ni la mise en page ni le rendu d'un vrai navigateur.
+  vérifie ni la mise en page ni le rendu d'un vrai navigateur. jsdom n'a pas
+  d'IndexedDB : le script lui donne `fake-indexeddb` (implémentation en
+  mémoire de l'API), pour que le magasin de la cartographie prenne son
+  adaptateur IndexedDB, comme un navigateur, et non son adaptateur en
+  mémoire. Ni l'IndexedDB d'un vrai navigateur en `file://` (politique d'un
+  navigateur pour une page ouverte depuis le disque) ni la persistance après
+  rechargement ne sont donc contrôlés. Une requête émise plus de 300 ms après
+  la dernière étape échappe au contrôle global ; l'outil « Préparer une
+  démo » (mode expert) n'est pas parcouru : sa copie HTML lit le même modèle,
+  par la même fonction (`web/src/carto/ui/viewerTemplate.test.js`).

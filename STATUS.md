@@ -43,6 +43,58 @@ réponse. Suivent la PR B (adaptateurs JS, export Twin6) et, A fusionnée, la PR
 
 ## Fait
 
+- 2026-10-22 — **`npm run test:dist`, correctifs de la relecture (branche `fix/smoke-dist` ;
+  non fusionnée, rien déployé).** Sept constats confirmés de la relecture de l'entrée suivante,
+  corrigés un par un ; chaque `fix:` porte le contrôle qui ne voyait rien avant lui.
+  - **Script d'entrée sans `defer`** (`eef3b6a`, `fix:`) : le bundle appelle `createRoot` dès
+    qu'il s'exécute ; sans `defer`, un script classique dans `<head>` s'exécute avant `#root` et
+    la page reste blanche (erreur React n° 299). Le script évaluant lui-même le bundle après
+    l'analyse du document, il restait vert. Un contrôle statique exige désormais `defer`, ou la
+    balise placée après `<div id="root">` (`async` ne suffit pas).
+  - **Requêtes non comptées** (`1fbf975`, `fix:`) : « hors la démonstration, aucune requête »
+    ne voyait ni les requêtes émises pendant l'évaluation du bundle, ni celles du retour à
+    l'accueil, ni celles d'après le dernier contrôle. Chaque requête est notée avec la phase en
+    cours (posée avant l'évaluation et avant chaque étape) ; chaque étape contrôle la sienne, la
+    démonstration attend 300 ms de calme pour garder ses lectures tardives ; enfin, après le
+    même calme, un contrôle global de l'évaluation du bundle à la fin.
+  - **IndexedDB jamais exercé** (`a3f7aba`, `fix:`) : jsdom n'a pas IndexedDB, le magasin de la
+    cartographie prenait son adaptateur en mémoire, qu'aucun navigateur ne prend. Le script
+    fournit `fake-indexeddb` (déjà en devDependency) et vérifie que la base
+    `humanome-carto-v4` existe après l'ouverture des fichiers.
+  - **Copie autonome en `file://`** (`888c8d3`, `fix(carto):`, seul changement de
+    l'application) : son modèle (`carto/viewer-template.html`) se lit à côté d'`index.html` ;
+    depuis le bundle ouvert en `file://`, « Télécharger la copie » (et la copie HTML de
+    « Préparer une démo ») affichait « Failed to fetch », alors qu'INSTALL.md §4 dit que ce qui
+    se lit ainsi demande un serveur et le dit. `loadViewerTemplate` refuse désormais en `file:`
+    sans rien lire : « La copie autonome n'a pas pu être produite : elle se prépare sur le site
+    en ligne ou via un serveur local (…) ». Nouveau `viewerTemplate.test.js` et étape 6 de
+    `test:dist` (espace Export des fichiers ouverts : message, aucune requête).
+  - **Documentation** (`docs:`) : INSTALL.md §4 cite la copie autonome et « Préparer une démo »
+    parmi ce qui demande un serveur ; la note d'ADR-009 ne garde « INSTALL.md §4,
+    `npm run test:dist` » que pour l'accueil, le référentiel et les fichiers de la personne, et
+    renvoie à `web/e2e/carto-export.e2e.js` (UC-APP-06 A6) pour la copie, exportée depuis le
+    site ou un serveur local puis ouverte hors ligne ; UC-SYS-04 décrit les nouveaux contrôles
+    et ses limites (`fake-indexeddb`, pas l'IndexedDB d'un navigateur) ; UC-APP-06 gagne E5
+    (copie du site ouverte en `file://`) ; phrases de l'entrée suivante et de la note des dettes
+    techniques reprises (la copie s'exporte depuis le site ou un serveur local).
+  - **Vérifié** : `npm run build` puis `npm run test:dist` vert (35 contrôles). Mutations, une
+    à une, vertes avant le correctif et rouges après, puis annulées (bundle reconstruit) :
+    `defer` retiré par `classicScriptTags` (reconstruit) ou de `dist/index.html`, `async` à sa
+    place ; `fetch("api/auth/me")` en tête du bundle ; un fetch au retour sur `#/` ; un fetch
+    100 ms après le dessin du soleil ; `indexedDB.open(t,-1)` dans le bundle ; choix de
+    l'adaptateur forcé en mémoire. Étape 6 rouge sur le bundle construit avant la garde
+    (3 échecs : « Failed to fetch. », `carto/viewer-template.html` tenté, dans sa phase et au
+    contrôle global). Suite web 2 878 tests verts (268 fichiers, dont les 2 nouveaux) ; moteur
+    591 tests, 5 échecs préexistants locaux (UC-PRO-08 F19 à F22, F25), comme sur `main` ;
+    `check-publiable` vert. PHP non concerné, non relancé.
+  - **Non vérifié** : l'IndexedDB d'un vrai navigateur en `file://` (jsdom reçoit
+    `fake-indexeddb`) ni la persistance après rechargement ; une requête émise plus de 300 ms
+    après la dernière ; « Préparer une démo » n'est pas parcouru par `test:dist` (même garde,
+    couverte par le test unitaire) ; le nouveau message n'a pas été vu dans un vrai navigateur
+    (jsdom seulement). Toujours hors CI (le script lit `web/dist`).
+  - **Décisions laissées à Christian** : aucune nouvelle. La garde de la copie autonome dit la
+    limite au lieu de la lever (embarquer le modèle dans le bundle permettrait d'exporter la
+    copie hors ligne : non fait, hors du périmètre d'ADR-003 et de D-38).
 - 2026-10-22 — **`npm run test:dist` remis au vert sur ce que le bundle promet en `file://`
   (branche `fix/smoke-dist`, issue de `main` à `36d4509` ; non fusionnée, rien déployé).** Le
   script ouvrait encore `#/merge`, retirée en D-38 : sous jsdom, la redirection appelle
@@ -81,8 +133,10 @@ réponse. Suivent la PR B (adaptateurs JS, export Twin6) et, A fusionnée, la PR
     vrai navigateur (jsdom) ; il n'est pas en CI (il lit `web/dist`).
   - **Décisions laissées à Christian** : la « démo hors ligne » qu'ADR-009 promettait n'existe
     plus dans le bundle depuis D-38 (la démonstration de l'interface se lit sur le site, D-67) ;
-    hors ligne, seule la copie autonome exportée d'un jeu s'ouvre avec ses données. L'embarquer
-    à nouveau, ou s'en tenir là, reste à décider ; la documentation dit l'état actuel.
+    hors ligne, seule la copie autonome d'un jeu, exportée depuis le site ou un serveur local
+    (pas depuis le bundle ouvert en `file://` : entrée des correctifs, ci-dessus), s'ouvre avec
+    ses données. L'embarquer à nouveau, ou s'en tenir là, reste à décider ; la documentation dit
+    l'état actuel.
 - 2026-10-22 — **Sprint 11, correctifs de la revue (branche `feat/carte-du-site` ; non fusionnée,
   rien déployé).** Quatre constats confirmés de la relecture du sprint, corrigés un par un.
   - **Rubrique sans carte** (`2b89b1d`, `fix:`) : sans carte du site (fichier absent, illisible
@@ -3621,10 +3675,11 @@ réponse. Suivent la PR B (adaptateurs JS, export Twin6) et, A fusionnée, la PR
   `web/src/anti-fouc.test.js`.
 - `npm run test:dist` (`web/scripts/smoke-dist.mjs`) visait encore la vue merge retirée en D-38
   (`#/merge`, `svg.sunburst`) et échouait depuis : **réécrit le 2026-10-22** (branche
-  `fix/smoke-dist`, non fusionnée ; entrée du jour) pour ce que le bundle promet en `file://`
-  (INSTALL.md §4). Reste à trancher : la « démo hors ligne » d'ADR-009 n'existe plus dans le
-  bundle depuis D-38 (la démonstration de l'interface se lit sur le site, D-67) ; hors ligne,
-  seule la copie autonome exportée d'un jeu s'ouvre avec ses données.
+  `fix/smoke-dist`, non fusionnée ; deux entrées du jour) pour ce que le bundle promet en
+  `file://` (INSTALL.md §4), puis corrigé après relecture le même jour. Reste à trancher : la
+  « démo hors ligne » d'ADR-009 n'existe plus dans le bundle depuis D-38 (la démonstration de
+  l'interface se lit sur le site, D-67) ; hors ligne, seule la copie autonome d'un jeu, exportée
+  depuis le site ou un serveur local, s'ouvre avec ses données.
 - `deploy.mjs api` téléverse la release fichier par fichier sur une seule connexion (~4 min
   pour 723 fichiers) : trop long pour un shell distant limité à 180 s. Le déploiement du
   2026-10-14 a suivi les mêmes étapes avec un téléversement reprenable et parallèle (outil

@@ -140,9 +140,13 @@ Ouvrir http://localhost:5173. Le bundle `web/dist` est aussi ouvrable en
 `file://` (routing par hash, ADR-009), sans serveur ni réseau : l'accueil, le
 référentiel (copie embarquée) et la cartographie des fichiers qu'on y ouvre,
 lus dans le navigateur. Ce qui se lit à côté d'`index.html` (fetch relatif)
-demande un serveur et le dit : les vues journée, et la démonstration de la
+demande un serveur et le dit : les vues journée ; la démonstration de la
 cartographie (journal de la cartographie, D-67), qui invite à importer ses
-fichiers. `npm run test:dist` le vérifie sur le bundle construit (§5).
+fichiers ; la copie autonome de l'espace Export et celle de « Préparer une
+démo » (mode expert), dont le modèle (`carto/viewer-template.html`) se lit
+ainsi : elles se préparent sur le site ou via un serveur local, puis
+s'ouvrent hors ligne. `npm run test:dist` le vérifie sur le bundle construit
+(§5), sauf « Préparer une démo » (mode expert, même lecture du modèle).
 
 ## 5. Tests
 

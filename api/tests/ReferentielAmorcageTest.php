@@ -4,21 +4,20 @@ declare(strict_types=1);
 
 namespace Humanome\Tests;
 
-use Humanome\Amorcage\AmorcageReferentiel;
 use Humanome\Db;
 use Humanome\Env;
+use Humanome\Referentiel\AmorcageReferentiel;
 use Humanome\Referentiel\ConflictException;
 use Humanome\Referentiel\ContentHash;
 use Humanome\Referentiel\InvalidDocumentException;
 use Humanome\Referentiel\ReferentielRepository;
 
-require_once \dirname(__DIR__, 2) . '/scripts/amorcer-referentiel.php';
-
 /**
  * S5, lot B: a referential converted from the Humanome YAML
  * (scripts/convertir-humanome.mjs) is seeded as a published version, without
  * a vote (scripts/amorcer-referentiel.php, Christian's decision Q1), and the
- * flows' menus see it (the public routes of lot A). On the FICTIONAL fixture
+ * flows' menus see it (the public routes of lot A); production's entry, the
+ * deploy route, is AdminImportReferentielTest's. On the FICTIONAL fixture
  * the converter writes (schemas/fixtures/referentiel-humanome-fictif*.json,
  * from referentiel-humanome-fictif.yaml): no real referential in the
  * repository.

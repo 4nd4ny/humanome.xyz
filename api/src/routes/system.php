@@ -131,6 +131,11 @@ return function (App $app): void {
     // Remote referentiel import for FTP-only hosting: same trust model as
     // /admin/migrate (deploy-script only). Body = a full referentiel document;
     // validation + contentHash check + idempotence live in the repository.
+    // RESPIRE (the deploy script's files) is idempotent on its contentHash;
+    // any other referential is SEEDED (S5, lot B: the converted Humanome),
+    // with the workstation script's guards (AmorcageReferentiel): an id of the
+    // atelier's form, idempotent on the whole document but its provenance — the
+    // same version with another description is a 409, never « unchanged ».
     $app->post('/admin/import-referentiel', function (Request $request, Response $response) use ($json): Response {
         $token = Env::get('MIGRATE_TOKEN');
         if ($token === '') {
@@ -152,8 +157,16 @@ return function (App $app): void {
         }
 
         try {
-            $repository = new \Humanome\Referentiel\ReferentielRepository(Db::get());
-            $result = $repository->importPublishedDocument($doc, 'Import via deploy script');
+            if (($doc['id'] ?? null) === \Humanome\Referentiel\ReferentielRepository::DEFAULT_REFERENTIEL_ID) {
+                $repository = new \Humanome\Referentiel\ReferentielRepository(Db::get());
+                $result = $repository->importPublishedDocument($doc, 'Import via deploy script');
+            } else {
+                $result = \Humanome\Referentiel\AmorcageReferentiel::amorcer(
+                    Db::get(),
+                    $doc,
+                    \Humanome\Referentiel\AmorcageReferentiel::NOTE_ROUTE,
+                );
+            }
         } catch (\Humanome\Referentiel\ConflictException $e) {
             return $json($response, ['error' => $e->getMessage()], 409);
         } catch (\Humanome\Referentiel\InvalidDocumentException $e) {

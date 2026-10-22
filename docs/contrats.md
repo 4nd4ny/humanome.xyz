@@ -1275,9 +1275,12 @@ Le schéma `referentiel` passe en **2.0.0** (`docs/plan-twin9-php.md` de
   rubriques du YAML, la couleur de la palette par rang, l'empreinte calculée
   comme ci-dessus. `scripts/amorcer-referentiel.php` le publie hors vote,
   idempotent sur le document entier hors `source`, la provenance
-  (`importPublishedDocument` ne compare que l'empreinte), et refuse `respire`. Le schéma ne change pas. Règles,
-  procédure en production et écarts relevés dans la source :
-  `docs/referentiel-humanome.md`.
+  (`importPublishedDocument` ne compare que l'empreinte), et refuse `respire` ;
+  en production, `POST /api/admin/import-referentiel` applique les mêmes règles
+  (`AmorcageReferentiel`) à tout autre identifiant que `respire`, RESPIRE
+  gardant l'import du déploiement, idempotent sur l'empreinte. Le schéma ne
+  change pas. Règles, procédure en production et écarts relevés dans la
+  source : `docs/referentiel-humanome.md`.
 - **Hors T15** : la page publique `#/referentiel` ne montre que RESPIRE ;
   `ReferentielDiff` ignore niveaux et éléments. (La cartographie, qui ne
   lisait que RESPIRE et ses 7 pôles, lit le référentiel de chaque run depuis

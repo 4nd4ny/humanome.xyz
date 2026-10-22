@@ -224,6 +224,10 @@ Le mainteneur lance `./scripts/deploy/stage-api.sh` puis
   requis absents ou rôle inconnu → `422` ; `seed-competences` ignore le corps.
 - **E5 — Conflit d'immuabilité** : même `(id, version)` de paquet avec un autre
   contenu, ou `contentHash` déclaré incohérent avec le référentiel → `409`.
+  Un autre référentiel que RESPIRE (l'amorçage de l'Humanome, S5, UC-EPI-05
+  A6) est comparé sur le document entier hors sa provenance : la même
+  version avec une autre description → `409` aussi ; un identifiant hors de
+  la forme de l'atelier → `422`.
 - ~~**E6 — Garde-fou des fiches**~~ : retiré le 2026-10-20 avec l'étape 7.
 - **E7 — Échec technique** (base injoignable, migration invalide) : `500`
   générique (« Migration failed, see server log », « Import failed, see server

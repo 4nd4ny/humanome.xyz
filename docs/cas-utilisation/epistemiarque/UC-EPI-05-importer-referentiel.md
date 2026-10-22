@@ -108,7 +108,8 @@ de l'Humanome V18 (https://respire.school/referentiel) se convertit par
   un autre contenu ou tenue par l'atelier. La version est ensuite servie par les routes publiques et
   proposée par les menus des parcours, comme une version votée. En
   production, sans shell : par l'atelier (étapes 1 à 5), ou par
-  `POST /api/admin/import-referentiel`, moins stricte (`docs/referentiel-humanome.md` §5).
+  `POST /api/admin/import-referentiel`, qui applique les mêmes garde-fous à
+  tout autre identifiant que `respire` (`docs/referentiel-humanome.md` §5).
 
 ## Scénarios d'erreur
 
@@ -255,6 +256,7 @@ de l'Humanome V18 (https://respire.school/referentiel) se convertit par
 | UC-EPI-05-F15 | Étape 4 | IHM | « Voir » : le document au vote, pôle par pôle, avant le vote ; « Masquer » ; un brouillon aussi | idem |
 | UC-EPI-05-F16 | A6 | API | Amorçage publié sans vote puis « déjà amorcé », servi par `GET /api/referentiels` et par sa version ; même contenu sous une autre provenance « déjà amorcé », la première gardée ; autre contenu sous la même version (description, niveaux, structure), brouillon de l'atelier, RESPIRE, identifiant ou code invalides refusés, rien d'écrit ; la ligne de commande | `api/tests/ReferentielAmorcageTest.php` |
 | UC-EPI-05-F17 | A6 | IHM | Le référentiel amorcé est proposé au menu des parcours et se charge tel que la base le sert | `web/src/components/ReferentielChoice.test.jsx` |
+| UC-EPI-05-F18 | A6 | API | En production, `POST /api/admin/import-referentiel` amorce un autre référentiel que RESPIRE avec les garde-fous du script : publié (note « Amorçage hors vote (S5) »), puis « unchanged », sous une autre provenance aussi ; une autre description sous la même version ou une empreinte fausse → `409`, rien d'écrit ; un identifiant invalide → `422` | `api/tests/AdminImportReferentielTest.php` |
 
 ### Tests existants liés (non-régression)
 
@@ -289,10 +291,11 @@ Aucune.
   sous une autre forme se convertit d'abord. Le YAML de l'Humanome V18 a son
   convertisseur, sur le poste (A6) ; l'atelier ne lit pas le YAML.
 - **L6** — L'amorçage (A6) publie sans vote : c'est un choix de Christian
-  pour l'Humanome V18 (S5, Q1). La route de production qu'il emprunterait,
-  `POST /api/admin/import-referentiel`, ne compare que l'empreinte, qui laisse
-  les descriptions de côté, et ne refuse pas l'identifiant `respire`
-  (`docs/referentiel-humanome.md` §5).
+  pour l'Humanome V18 (S5, Q1). En production, il passe par
+  `POST /api/admin/import-referentiel`, avec les garde-fous du script pour
+  tout autre identifiant que `respire` ; RESPIRE y garde l'import du
+  déploiement, qui ne compare que l'empreinte et laisse les descriptions de
+  côté (`docs/referentiel-humanome.md` §5).
 - **L3** — Le libellé et la version suivent UC-EPI-04 AN2 : trop longs, ils
   donnent un `500` au lieu d'un `422`.
 - **L4** — La page publique `#/referentiel` ne montre que RESPIRE. (Le

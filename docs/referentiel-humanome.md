@@ -156,22 +156,29 @@ d'amorçage n'y tourne pas. Deux chemins, au choix de Christian.
 Ce chemin exige au moins un épistémiarque membre (S5, P1).
 
 **(b) L'amorçage, sans vote**, par la route du déploiement
-(`POST /api/admin/import-referentiel`, jeton `MIGRATE_TOKEN` de `.env.deploy`) :
+(`POST /api/admin/import-referentiel`, jeton `MIGRATE_TOKEN` de `.env.deploy`).
+Depuis la racine du dépôt :
 
 ```bash
-curl -sS -X POST https://humanome.xyz/api/admin/import-referentiel \
-  -H "X-Migrate-Token: <MIGRATE_TOKEN>" -H 'Content-Type: application/json' \
-  --data-binary @build/referentiels/humanome-v18.0.0-proposition.1.json
+sed -n 's/^[[:space:]]*MIGRATE_TOKEN[[:space:]]*=[[:space:]]*/X-Migrate-Token: /p' .env.deploy \
+  | curl -sS -X POST https://humanome.xyz/api/admin/import-referentiel -H @- \
+      -H 'Content-Type: application/json' \
+      --data-binary @build/referentiels/humanome-v18.0.0-proposition.1.json
 ```
 
+- **Le jeton** passe de `.env.deploy` à curl par un tube (`-H @-` lit l'en-tête
+  sur l'entrée standard, curl 7.55 ou plus) : il n'est ni tapé, ni dans
+  l'historique du shell, ni dans la liste des processus.
 - `{"status":"imported", …}` la première fois, `"unchanged"` ensuite.
-- **Cette route est moins stricte que le script.** Elle ne refuse pas
-  l'identifiant `respire` (le document converti ne le porte jamais) et ne
-  compare que l'empreinte : la même version, d'autres descriptions, y passerait
-  pour « unchanged ».
-  - Vérifier donc d'abord que la version n'y est pas, par
-    `GET /api/referentiels`.
-  - Ne la réenvoyer qu'à l'identique.
+- **La route a les garde-fous du script** pour tout autre identifiant que
+  `respire` (`AmorcageReferentiel`, celui de `amorcer-referentiel.php`) :
+  - un identifiant de la forme de l'atelier ;
+  - idempotente sur le document entier, hors sa provenance ;
+  - la même version avec une autre description, d'autres niveaux ou une
+    autre structure : `409` « … existe déjà (published) avec un autre
+    contenu », jamais « unchanged » ;
+  - une version que tient l'atelier : `409` aussi.
+  - RESPIRE garde le chemin de `deploy.mjs api`, idempotent sur l'empreinte.
 - **Ne pas ajouter le fichier à `refFiles` de `deploy.mjs`** : chaque
   déploiement l'amorcerait, sans geste de Christian.
 - **Pas de retour arrière par l'interface.** Une version publiée est
@@ -245,4 +252,5 @@ que le fichier en vient.
 |---|---|
 | `engine/src/referentiel-humanome.test.js` | Sur la fixture **fictive** `schemas/fixtures/referentiel-humanome-fictif.yaml` : document attendu et valide au schéma ; libellé, `nomCourt`, niveaux, palette, codes ; composition et ordre des rubriques, rien d'inventé ; hors du document ; provenance ; avertissements ; empreinte de l'extracteur ; niveau facette ; refus, chacun à son chemin ; fiches de scan ; le script (écriture, « déjà à jour », refus d'écraser, YAML illisible) |
 | `api/tests/ReferentielAmorcageTest.php` | Empreinte et ordre du serveur sur le document converti ; niveau facette identique à `auNiveau` ; amorçage publié sans vote puis idempotent, servi par les routes publiques ; même contenu sous une autre provenance (nom de fichier, URL) « déjà amorcé » ; autre contenu sous la même version, brouillon de l'atelier, RESPIRE, identifiant ou code invalides refusés ; la ligne de commande |
+| `api/tests/AdminImportReferentielTest.php` | La route de production amorce le document converti avec les mêmes garde-fous : publié, puis « unchanged », sous une autre provenance aussi ; autre description sous la même version ou empreinte fausse : `409` ; identifiant invalide : `422` |
 | `web/src/components/ReferentielChoice.test.jsx` | Le référentiel amorcé est proposé au menu et se charge tel que la base le sert |

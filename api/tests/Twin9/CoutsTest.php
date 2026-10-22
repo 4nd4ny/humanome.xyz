@@ -12,11 +12,13 @@ use Humanome\Tests\TestDb;
 use Humanome\Twin9\CreditService;
 use Humanome\Twin9\DirectCalls;
 use Humanome\Twin9\EngineLoader;
+use Humanome\Twin9\Fournisseurs\Fournisseurs;
 use Humanome\Twin9\ProfilPolicy;
 use Humanome\Twin9\ProfilRepository;
 use Humanome\Twin9\RunCosts;
 use Humanome\Twin9\RunExport;
 use Humanome\Twin9\RunRepository;
+use Humanome\Twin9\TarifsAnthropic;
 use Humanome\Twin9\Twin9Config;
 use Humanome\Twin9\Twin9Exception;
 use Humanome\Worker\Tick;
@@ -35,7 +37,9 @@ use stdClass;
  * budget, and stops at it, its map incomplete, to resume; its owner's credit
  * and its duration stop it the same way; a day's call never eats into what
  * the run keeps for its merge (T8, strategy A); the run's own key pays
- * nothing here; no key is ever written. Each test runs in a process of its
+ * nothing here; no key is ever written. Another provider's call (ADR-012
+ * §6) holds a worst case its model's caps bound, never by batches, and its
+ * owner never pays more than it held. Each test runs in a process of its
  * own.
  */
 #[RunTestsInSeparateProcesses]
@@ -61,6 +65,22 @@ final class CoutsTest extends TestCase
     private const SORTIE = 15000;
 
     private const CREDIT = 1_000_000_000;
+
+    /** Other providers' models, at invented prices (ADR-012 §6: their prices are the administrator's). */
+    private const TIERS = [
+        'openai:modele-fictif-1' => ['prix_usd_mtok' => [0.7, 1.3], 'plafond_sortie' => 30000, 'plafond_reflexion' => 0,
+                                     'duree_max_s' => 30, 'reflexion_param' => 'low'],
+        'mistral:modele-fictif-2' => ['prix_usd_mtok' => [0.3, 0.9], 'plafond_sortie' => 30000,
+                                      'plafond_reflexion' => 500, 'duree_max_s' => 30],
+        'google:gemini-fictif-1' => ['prix_usd_mtok' => [0.4, 1.1], 'plafond_sortie' => 30000, 'plafond_reflexion' => 0,
+                                     'duree_max_s' => 30, 'reflexion_param' => 'LOW'],
+    ];
+
+    /** The readers at OpenAI, the deep stage at Google, the fast one at Anthropic (Sonnet 5.5). */
+    private const MIXTE = [
+        '/etages/lecteurs/fournisseur' => 'openai', '/etages/lecteurs/modele' => 'modele-fictif-1',
+        '/etages/profond/fournisseur' => 'google', '/etages/profond/modele' => 'gemini-fictif-1',
+    ];
 
     private PDO $pdo;
 
@@ -388,6 +408,212 @@ final class CoutsTest extends TestCase
         }
     }
 
+    /**
+     * Another provider's call holds its worst case at its model's price key:
+     * its prompt's bytes and the provider's overhead in, its output budget
+     * and its model's reasoning cap out, never by batches; without its grid
+     * entry, no price. Anthropic's are unchanged.
+     */
+    public function testAThirdPartysWorstCaseCountsItsCaps(): void
+    {
+        $config = new Twin9Config(new SettingsRepository($this->pdo));
+        $config->update(['modeles' => $config->modeles() + self::TIERS]);
+        $couts = new RunCosts($this->pdo, $config);
+        $prompt = str_repeat('é', 500);
+
+        self::assertSame($config->coutMicrousd('claude-sonnet-5-5', 1000, 2000),
+            $couts->pireCas('anthropic', 'claude-sonnet-5-5', $prompt, 2000, false, true), 'Anthropic : inchangé');
+        self::assertSame($config->coutMicrousd('claude-sonnet-5-5', 1000, 2000, parLots: true, avecMarge: false),
+            $couts->pireCas('anthropic', 'claude-sonnet-5-5', $prompt, 2000, true, false));
+        self::assertSame($config->coutMicrousd('mistral:modele-fictif-2', 1000 + 64, 2000 + 500),
+            $couts->pireCas('mistral', 'modele-fictif-2', $prompt, 2000, false, true), 'le surcoût d’entrée, la réflexion');
+        self::assertSame($config->coutMicrousd('mistral:modele-fictif-2', 1000 + 64, 2000 + 500),
+            $couts->pireCas('mistral', 'modele-fictif-2', $prompt, 2000, true, true), 'jamais à moitié prix');
+        self::assertSame($config->coutMicrousd('openai:modele-fictif-1', 1064, 2000, avecMarge: false),
+            $couts->pireCas('openai', 'modele-fictif-1', $prompt, 2000, false, false), 'la réflexion dans le plafond');
+        self::assertNull($couts->pireCas('openai', 'modele-sans-prix', $prompt, 2000, false, true));
+        self::assertNull($couts->pireCas('openai', 'claude-sonnet-5-5', $prompt, 2000, false, true),
+            'le prix d’un modèle d’Anthropic n’est pas celui d’un autre fournisseur');
+        self::assertNull($couts->pireCas('ollama', 'claude-sonnet-5-5', $prompt, 2000, false, true));
+        self::assertSame($config->coutMicrousd('openai:modele-fictif-1', 100, 20),
+            $couts->cout('openai', 'modele-fictif-1', 100, 20, true, true), 'le coût réel, jamais à moitié prix');
+        self::assertSame($config->coutMicrousd('claude-sonnet-5-5', 100, 20, parLots: true),
+            $couts->cout('anthropic', 'claude-sonnet-5-5', 100, 20, true, true));
+    }
+
+    /**
+     * The grid keeps another provider's caps (ADR-012 §6): its key
+     * « provider:model », each cap required and bounded, a reasoning setting
+     * only where the provider has one; none of them on Anthropic's models.
+     * The daily reading of Anthropic's prices leaves them as they are, the
+     * open cartography never sees them.
+     */
+    public function testTheGridKeepsAThirdPartysCaps(): void
+    {
+        $config = new Twin9Config(new SettingsRepository($this->pdo));
+        $avant = $config->modeles();
+        $entree = ['prix_usd_mtok' => [0.7, 1.3], 'plafond_sortie' => 8000, 'plafond_reflexion' => 0, 'duree_max_s' => 30];
+        $refus = [
+            ['openai:modele-fictif-1', ['prix_usd_mtok' => [0.7, 1.3]], 'plafond_sortie requis'],
+            ['openai:modele-fictif-1', ['plafond_sortie' => 0] + $entree, 'plafond_sortie requis'],
+            ['openai:modele-fictif-1', ['plafond_reflexion' => -1] + $entree, 'plafond_reflexion requis'],
+            ['openai:modele-fictif-1', array_diff_key($entree, ['duree_max_s' => 1]), 'duree_max_s requise'],
+            ['openai:modele-fictif-1', ['duree_max_s' => 46] + $entree, 'de 1 à 45 secondes'],
+            ['xai:modele-fictif-3', $entree, 'strictement positif chez xAI'],
+            ['google:gemini-fictif-1', ['plafond_sortie' => 32769] + $entree, '32768 au plus'],
+            ['mistral:modele-fictif-2', $entree + ['reflexion_param' => 'low'], 'que chez OpenAI et Google'],
+            ['openai:modele-fictif-1', $entree + ['reflexion_param' => 'LOW'], 'reflexion_param parmi none, minimal'],
+            ['google:gemini-fictif-1', $entree + ['reflexion_param' => 'low'], 'reflexion_param parmi MINIMAL'],
+            ['claude-sonnet-5-5', ['prix_usd_mtok' => [2, 10], 'plafond_sortie' => 8000],
+             'plafond_sortie ne vaut que pour le modèle d’un autre fournisseur'],
+            ['inconnu:modele-fictif', $entree, 'invalide : fournisseur:modèle attendu'],
+            ['anthropic:claude-sonnet-5-5', $entree, 'invalide : fournisseur:modèle attendu'],
+            ['google:gemini/fictif', $entree, 'invalide : fournisseur:modèle attendu'],
+            ['openrouter:editeur/modele-fictif:free', $entree, 'invalide : fournisseur:modèle attendu'],
+            ['openai:claude-sonnet-5-5', $entree, 'invalide : fournisseur:modèle attendu'],
+            ['openai:modele-fictif-1', $entree + ['plafond' => 1], 'clé inconnue plafond'],
+        ];
+        foreach ($refus as [$cle, $modele, $message]) {
+            try {
+                $config->update(['modeles' => [$cle => $modele] + $avant]);
+                self::fail($cle . ' : ' . $message);
+            } catch (Twin9Exception $e) {
+                self::assertSame(422, $e->getStatusCode(), $cle);
+                self::assertStringContainsString($message, $e->getMessage(), $cle);
+            }
+        }
+        self::assertSame($avant, $config->modeles(), 'rien d’écrit');
+
+        $config->update(['modeles' => $avant + self::TIERS + [
+            'xai:modele-fictif-3' => ['plafond_reflexion' => 4000] + $entree,
+            'openrouter:editeur/modele-fictif' => $entree + ['palier_long' => ['au_dela_de' => 1000, 'prix_usd_mtok' => [1, 2]]],
+        ]]);
+        self::assertEquals(self::TIERS['google:gemini-fictif-1'], $config->modeles()['google:gemini-fictif-1'],
+            'rangé tel quel (MySQL en réordonne les clés)');
+        self::assertSame([], array_filter(array_keys($config->publicView()['modeles_twin6']),
+            static fn (string $id): bool => str_contains($id, ':')), 'jamais la cartographie ouverte');
+
+        $tarifs = [];
+        foreach ($avant as $id => $modele) {
+            $tarifs[$id] = $modele;
+        }
+        $tarifs['claude-sonnet-5-5']['prix_usd_mtok'] = [3, 15];
+        $releve = TarifsAnthropic::appliquer($config->modeles(), $tarifs);
+        self::assertSame(['claude-sonnet-5-5'], array_column($releve['changements'], 'modele'));
+        self::assertSame([], $releve['absents'], 'les modèles des autres fournisseurs ne sont jamais « absents »');
+        foreach ($config->modeles() as $id => $modele) {
+            if (str_contains((string) $id, ':')) {
+                self::assertSame($modele, $releve['modeles'][$id], $id . ' : tel que l’administrateur l’a saisi');
+            }
+        }
+    }
+
+    /**
+     * A run whose calls go to three providers: each request at its
+     * provider's address with that provider's key only, the reasoning
+     * setting of its model's grid entry, its reserve and its cost at its
+     * price key; no key written anywhere, nor in the export.
+     */
+    public function testARunToOtherProvidersSendsEachItsKeyAndWritesNoneAnywhere(): void
+    {
+        $config = new Twin9Config(new SettingsRepository($this->pdo));
+        $config->update(['modeles' => $config->modeles() + self::TIERS]);
+        TestDb::setEnv('OPENAI_API_KEY', 'sk-openai-cle-secrete-3');
+        TestDb::setEnv('GOOGLE_API_KEY', 'goog-cle-secrete-4');
+        $id = $this->nouveauRun(array_replace(self::SONNET, self::MIXTE, ['/budget_usd' => 50.0]));
+        $http = self::fournisseurs();
+
+        $this->jusquALArret($http);
+
+        $runs = new RunRepository($this->pdo);
+        self::assertSame('termine', $runs->statut($id));
+        $cles = ['anthropic' => 'sk-ant-instance-cle-secrete-1', 'openai' => 'sk-openai-cle-secrete-3',
+                 'google' => 'goog-cle-secrete-4'];
+        $atteints = [];
+        $cout = 0;
+        foreach ($http->requests as $r) {
+            $f = self::fournisseurDe($r['url']);
+            $atteints[$f] = true;
+            foreach ($cles as $autre => $cle) {
+                self::assertSame($autre === $f, str_contains((string) json_encode($r['headers']), $cle), "$f : $autre");
+            }
+            $cout += (int) $config->coutMicrousd(Fournisseurs::clePrix($f, self::modeleDe($r)),
+                intdiv(\strlen(FakeMultiHttpClient::prompt($r)), 2), self::SORTIE);
+        }
+        self::assertSame(['anthropic', 'google', 'openai'], self::trie(array_keys($atteints)), 'les trois fournisseurs atteints');
+        foreach ($http->requests as $r) {
+            match (self::fournisseurDe($r['url'])) {
+                'openai' => self::assertSame(['low', false], [$r['body']['reasoning_effort'], $r['body']['store']]),
+                'google' => self::assertSame('LOW', $r['body']['generationConfig']['thinkingConfig']['thinkingLevel']),
+                default => self::assertArrayNotHasKey('reasoning_effort', $r['body']),
+            };
+        }
+        self::assertSame($cout, $runs->compteursDe($id)['cout_microusd'], 'chaque appel à son prix');
+        self::assertSame(self::CREDIT - $cout, (new CreditService($this->pdo))->balance($this->user));
+        $modeles = $this->pdo->query('SELECT DISTINCT model FROM twin9_credit_events WHERE kind = "debit" ORDER BY model')
+            ->fetchAll(PDO::FETCH_COLUMN);
+        self::assertSame(['claude-sonnet-5-5', 'google:gemini-fictif-1', 'openai:modele-fictif-1'], $modeles,
+            'chaque réserve sous la clé de prix de son modèle');
+        $this->aucuneCle();
+        $export = '';
+        (new RunExport($this->pdo))->ecrire($this->user, static function (string $morceau) use (&$export): void {
+            $export .= $morceau;
+        });
+        self::assertStringNotContainsString('cle-secrete', $export);
+    }
+
+    /**
+     * A real cost beyond what its call held — a provider bills more output
+     * than the budget its worst case counted — is the instance's: its owner
+     * pays what the call held, no more; the excess is counted and logged,
+     * its model and amount only.
+     */
+    public function testARealCostBeyondItsReserveIsTheInstances(): void
+    {
+        $config = new Twin9Config(new SettingsRepository($this->pdo));
+        $config->update(['modeles' => $config->modeles() + self::TIERS]);
+        TestDb::setEnv('OPENAI_API_KEY', 'sk-openai-cle-secrete-3');
+        $id = $this->nouveauRun(array_replace(self::SONNET, array_slice(self::MIXTE, 0, 2), ['/budget_usd' => 50.0]));
+        $http = self::fournisseurs(sortieOpenai: 25000);
+        $log = (string) tempnam(sys_get_temp_dir(), 'twin9-log');
+        ini_set('error_log', $log);
+
+        $depassements = 0;
+        for ($n = 0; $n < 30 && (new RunRepository($this->pdo))->statut($id) === 'en_cours'; $n++) {
+            $depassements += (new Tick($this->pdo, ['budgetSeconds' => 2, 'twin9Sender' => new DirectCalls($http),
+                                                    'twin9Pauses' => [0.05, 0.1]]))->run()['twin9Depassements'] ?? 0;
+        }
+        $journal = (string) file_get_contents($log);
+        unlink($log);
+
+        self::assertSame('termine', (new RunRepository($this->pdo))->statut($id));
+        $paye = 0;
+        $reel = 0;
+        $openai = 0;
+        foreach ($http->requests as $r) {
+            $f = self::fournisseurDe($r['url']);
+            $octets = \strlen(FakeMultiHttpClient::prompt($r));
+            $cle = Fournisseurs::clePrix($f, self::modeleDe($r));
+            if ($f === 'openai') {
+                $openai++;
+                $paye += (int) $config->coutMicrousd($cle, $octets + 64, 20000);
+                $reel += (int) $config->coutMicrousd($cle, $octets + 64, 25000);
+            } else {
+                $cout = (int) $config->coutMicrousd($cle, intdiv($octets, 2), self::SORTIE);
+                $paye += $cout;
+                $reel += $cout;
+            }
+        }
+        self::assertGreaterThan(0, $openai);
+        self::assertSame($reel, (new RunRepository($this->pdo))->compteursDe($id)['cout_microusd'],
+            'le journal garde le coût réel');
+        self::assertSame(self::CREDIT - $paye, (new CreditService($this->pdo))->balance($this->user),
+            'son auteur ne paie que ce que ses appels tenaient');
+        self::assertSame($openai, $depassements);
+        self::assertSame($openai, substr_count($journal, '[twin9-couts] run ' . $id . ', modele-fictif-1 : coût réel'));
+        self::assertStringNotContainsString('[appel:', $journal, 'jamais un prompt');
+    }
+
     /** The DoD: no key in the journal, the outputs, the memory, the batches, the ledger nor the export. */
     public function testNoKeyIsWrittenAnywhere(): void
     {
@@ -442,6 +668,66 @@ final class CoutsTest extends TestCase
                 }
             }
         }
+    }
+
+    /**
+     * Each provider answering in its format: half its prompt's bytes in,
+     * 15,000 tokens out (Gemini: 14,900 and 100 of thought); OpenAI
+     * $sortieOpenai tokens out with its prompt's bytes and overhead in, when
+     * given.
+     */
+    private static function fournisseurs(?int $sortieOpenai = null): FakeMultiHttpClient
+    {
+        return new FakeMultiHttpClient(static function (array $r) use ($sortieOpenai): array {
+            $texte = 'vu ' . FakeMultiHttpClient::appel($r);
+            $entree = intdiv(\strlen(FakeMultiHttpClient::prompt($r)), 2);
+            $f = self::fournisseurDe($r['url']);
+            $message = FakeMultiHttpClient::message($texte, self::modeleDe($r),
+                format: ['anthropic' => 'anthropic', 'google' => 'gemini'][$f] ?? 'chat');
+            if ($f === 'anthropic') {
+                $message['usage'] = ['input_tokens' => $entree, 'output_tokens' => self::SORTIE];
+            } elseif ($f === 'google') {
+                $message['usageMetadata'] = ['promptTokenCount' => $entree, 'candidatesTokenCount' => self::SORTIE - 100,
+                                             'thoughtsTokenCount' => 100];
+            } else {
+                $entree = $sortieOpenai === null ? $entree : \strlen(FakeMultiHttpClient::prompt($r)) + 64;
+                $sortie = $sortieOpenai ?? self::SORTIE;
+                $message['usage'] = ['prompt_tokens' => $entree, 'completion_tokens' => $sortie,
+                                     'total_tokens' => $entree + $sortie];
+            }
+
+            return ['body' => $message, 'delai' => 0.02];
+        });
+    }
+
+    /** The provider a request goes to, by its locked address. */
+    private static function fournisseurDe(string $url): string
+    {
+        foreach (Fournisseurs::REGISTRE as $f => $registre) {
+            if (str_starts_with($url, $registre['url'])) {
+                return $f;
+            }
+        }
+        throw new \LogicException('adresse hors du registre');
+    }
+
+    /** A request's model: in its body, or in Gemini's path. @param array<string, mixed> $r */
+    private static function modeleDe(array $r): string
+    {
+        if (isset($r['body']['model'])) {
+            return (string) $r['body']['model'];
+        }
+        preg_match('#/models/([^/:]+):generateContent$#', (string) $r['url'], $m);
+
+        return rawurldecode($m[1] ?? '');
+    }
+
+    /** @param list<string> $valeurs @return list<string> */
+    private static function trie(array $valeurs): array
+    {
+        sort($valeurs);
+
+        return $valeurs;
     }
 
     /** Anthropic, answering each call: half its prompt's bytes in, 15,000 tokens out, from Sonnet 5.5. */

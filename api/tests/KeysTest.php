@@ -101,6 +101,21 @@ final class KeysTest extends AuthTestBase
         self::assertSame(404, $this->request('GET', '/api/keys/anthropic')->getStatusCode());
     }
 
+    /**
+     * Mistral AI, a provider of Twin9's calls (ADR-012), is accepted like the
+     * others; its key is its owner's to read back, never a Twin9 run's
+     * (RunKey: the instance's key only, away from Anthropic).
+     */
+    public function testAMistralKeyIsStoredLikeTheOthers(): void
+    {
+        self::assertContains('mistral', KeyVault::PROVIDERS);
+        self::assertSame(204, $this->putKey('mistral', 'cle-mistral-EXEMPLE-0123')->getStatusCode());
+        $response = $this->request('GET', '/api/keys/mistral');
+        self::assertSame(200, $response->getStatusCode());
+        self::assertSame('cle-mistral-EXEMPLE-0123', self::json($response)['apiKey']);
+        self::assertSame(['mistral'], array_column(self::json($this->request('GET', '/api/keys')), 'provider'));
+    }
+
     public function testValidation(): void
     {
         self::assertSame(422, $this->putKey('skynet')->getStatusCode(), 'unknown provider');

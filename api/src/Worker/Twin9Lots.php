@@ -8,6 +8,7 @@ use Humanome\Twin9\AnthropicBatches;
 use Humanome\Twin9\AnthropicCaller;
 use Humanome\Twin9\BatchApi;
 use Humanome\Twin9\CallJournal;
+use Humanome\Twin9\Fournisseurs\Fournisseurs;
 use Humanome\Twin9\RunCosts;
 use Humanome\Twin9\RunKey;
 use Humanome\Twin9\RunRepository;
@@ -190,8 +191,8 @@ final class Twin9Lots
                 if ($run->bloque !== null) {
                     continue;
                 }
-                $reserve = $this->couts->pireCas($reglage['modele'], $call->prompt, $reglage['budget_sortie'], true,
-                    $run->credits());
+                $reserve = $this->couts->pireCas(Fournisseurs::DEFAUT, $reglage['modele'], $call->prompt,
+                    $reglage['budget_sortie'], true, $run->credits());
                 if ($reserve === null) {
                     return 'aucun prix pour ' . $reglage['modele'] . ' sur cette instance';
                 }
@@ -272,7 +273,8 @@ final class Twin9Lots
                 }
                 (new CallJournal($this->pdo, $lot['run_id']))->rendreLeLot($lot['id']);
                 $this->pdo->prepare('UPDATE twin9_lots SET statut = "annulation" WHERE id = ?')->execute([$lot['id']]);
-                $this->couts->liberer($lot['run_id']); // its calls given back, what they held goes back too
+                // its calls given back, what they held goes back too
+                $compteurs['depassements'] = ($compteurs['depassements'] ?? 0) + $this->couts->liberer($lot['run_id']);
                 $compteurs['annules']++;
                 $lot['statut'] = 'annulation';
             }
@@ -408,8 +410,8 @@ final class Twin9Lots
             $lu = AnthropicCaller::lireMessage($resultat['message']);
             $mesure = ['modele_servi' => $lu['modele_servi'], 'stop_reason' => $lu['stop_reason'],
                        'tokens_in' => $lu['tokens_in'], 'tokens_out' => $lu['tokens_out'],
-                       'cout_microusd' => $this->couts->cout($appel['modele'], $lu['tokens_in'], $lu['tokens_out'],
-                           true, $marge)];
+                       'cout_microusd' => $this->couts->cout(Fournisseurs::DEFAUT, $appel['modele'], $lu['tokens_in'],
+                           $lu['tokens_out'], true, $marge)];
             if ($lu['ok']) {
                 $journal->reponseDuLot($appel['appel'], $lu['texte'], $mesure);
                 $compteurs['reponses']++;

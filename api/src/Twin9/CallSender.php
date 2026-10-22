@@ -7,12 +7,14 @@ namespace Humanome\Twin9;
 use Twin9\Run\Call;
 
 /**
- * Where the slice sends a run's calls (Worker\Twin9Slice): to Anthropic,
- * concurrently (DirectCalls); in the parity tests, to a replay of the oracle.
+ * Where the slice sends a run's calls (Worker\Twin9Slice): to each call's
+ * provider, concurrently (DirectCalls); in the parity tests, to a replay of
+ * the oracle.
  *
  * Calls go by run: two runs may ask calls of the same id. An outcome is what
- * AnthropicCaller::lire() says of a response (ok, refus, tronque, debit and
- * attendre, erreur…), with the run, the call and its duration in seconds.
+ * the provider's caller says of a response (Fournisseurs\Appelant::lire():
+ * ok, refus, tronque, panne, debit with attendre or plafond, erreur…), with
+ * the run, the call and its duration in seconds.
  */
 interface CallSender
 {
@@ -20,7 +22,9 @@ interface CallSender
      * Sends a call; its outcome comes back from wait().
      *
      * @param array{fournisseur: string, voie: string, modele: string, budget_sortie: int, effort: string|null,
-     *              reflexion: string} $reglage as CallSettings::pour() gives it
+     *              reflexion: string, reflexion_param?: string} $reglage as CallSettings::pour() gives it; for
+     *              another provider than Anthropic, with the reasoning setting of its model's grid entry
+     * @param string $cle the key of the call's provider (RunKey::pour() for its `fournisseur`)
      * @param float $fin when the call must be done at the latest (microtime)
      */
     public function send(int $run, Call $call, array $reglage, string $cle, float $fin): void;

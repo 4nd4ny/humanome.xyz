@@ -90,6 +90,27 @@ final class Twin6AppelTest extends CartographeTestCase
         self::assertSame([], $this->http->requests, 'no upstream call on a rejected request');
     }
 
+    /**
+     * Another provider's model of the grid (« provider:model », ADR-012) is
+     * Twin9's: the open cartography never calls it, never prices it — even
+     * funded, even priced — and never sees it in the public prices.
+     */
+    public function testAnotherProvidersModelIsNeverOffered(): void
+    {
+        $config = new Twin9Config(new SettingsRepository(Db::get()));
+        $config->update(['modeles' => $config->modeles() + ['openai:modele-fictif-1' => [
+            'prix_usd_mtok' => [0.7, 1.3], 'plafond_sortie' => 8000, 'plafond_reflexion' => 0, 'duree_max_s' => 30]]]);
+        (new CreditService(Db::get()))->adjust((int) $this->user['id'], 5_000_000, 'test');
+
+        $response = $this->twin6(['model' => 'openai:modele-fictif-1']);
+        self::assertSame(422, $response->getStatusCode());
+        self::assertSame('Modèle non proposé', self::json($response)['error']);
+        self::assertSame([], $this->http->requests);
+        self::assertSame(5_000_000, (new CreditService(Db::get()))->balance((int) $this->user['id']), 'rien de réservé');
+        self::assertArrayNotHasKey('openai:modele-fictif-1', $config->publicView()['modeles_twin6']);
+        self::assertArrayHasKey('claude-sonnet-5', $config->publicView()['modeles_twin6']);
+    }
+
     public function testInsufficientBalanceAnswers402(): void
     {
         $response = $this->twin6();

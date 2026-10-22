@@ -8,6 +8,7 @@ use Humanome\Twin9\BatchApi;
 use Humanome\Twin9\CallJournal;
 use Humanome\Twin9\CallSender;
 use Humanome\Twin9\CallSettings;
+use Humanome\Twin9\Fournisseurs\Fournisseurs;
 use Humanome\Twin9\MapStore;
 use Humanome\Twin9\RunCosts;
 use Humanome\Twin9\RunKey;
@@ -130,7 +131,7 @@ final class Twin9Slice
         $this->dernierDepart = $fin - min(5.0, 0.1 * ($fin - $debut));
         $this->compteurs = ['runs' => 0, 'passes' => 0, 'moteurMs' => 0, 'appels' => 0, 'reponses' => 0, 'pannes' => 0,
                             'tronques' => 0, 'reprises' => 0, 'coupes' => 0, 'termines' => 0, 'echoues' => 0,
-                            'lots' => 0, 'releves' => 0, 'verifications' => 0, 'annules' => 0];
+                            'lots' => 0, 'releves' => 0, 'verifications' => 0, 'annules' => 0, 'depassements' => 0];
         $this->lots->menage($this->dernierDepart, $this->compteurs, $utilisateur);
         foreach ($this->runs->aAvancer($n + self::SURVOLS, $utilisateur) as $id) {
             if ($this->compteurs['runs'] >= $n || microtime(true) >= $this->dernierDepart) {
@@ -174,10 +175,10 @@ final class Twin9Slice
         $this->couper();
         foreach ($this->etats as $run) {
             if ($this->runs->statut($run->id) !== 'en_cours') {
-                $this->couts->liberer($run->id); // cancelled meanwhile: what its calls hold goes back
+                $this->depasse($this->couts->liberer($run->id)); // cancelled meanwhile: what its calls hold goes back
                 continue;
             }
-            $this->couts->regler($run->id);
+            $this->depasse($this->couts->regler($run->id));
             // held back with nothing out any more: it stops, its map incomplete, to resume
             if ($run->bloque !== null && $run->envoyes === 0 && $this->lots->enVol($run->id) === 0) {
                 $this->arreter($run->id, $run->bloque);
@@ -211,7 +212,7 @@ final class Twin9Slice
         $profil = $r['profil'];
         $journal = new CallJournal($this->pdo, $id);
         $this->compteurs['reprises'] += $journal->reprendreLesCoupes(self::TENTATIVES);
-        $this->couts->regler($id);
+        $this->depasse($this->couts->regler($id));
         $plafonds = RunCosts::plafonds($profil, $r['debut']);
         try {
             $moteur = json_decode($r['moteur'], false, 512, JSON_THROW_ON_ERROR);
@@ -279,7 +280,7 @@ final class Twin9Slice
 
             return;
         }
-        $this->couts->liberer($run->id);
+        $this->depasse($this->couts->liberer($run->id));
         // its evaluation (T8): the size of each day of its map — those it took, those its memory keeps —, as the
         // engine reads them; unknown, its costs alone
         try {
@@ -348,17 +349,20 @@ final class Twin9Slice
                 $detenu = $etat['reserve'];
             }
             $reglage = $run->reglages->pour($call->step, $call->id);
+            // the call's provider, decided once: its key, its price, its caller (Fournisseurs\Registre)
+            $fournisseur = $reglage['fournisseur'];
             // a call already holding its worst case leaves with it; a new one holds its own, if it can
             $reserve = null;
             if ($detenu === null) {
                 if ($run->bloque !== null) {
                     continue;
                 }
-                $reserve = $this->couts->pireCas($reglage['modele'], $call->prompt, $reglage['budget_sortie'], false,
-                    $run->credits());
+                $reserve = $this->couts->pireCas($fournisseur, $reglage['modele'], $call->prompt,
+                    $reglage['budget_sortie'], false, $run->credits());
                 if ($reserve === null) {
                     unset($this->etats[$run->id]);
-                    $this->arreter($run->id, 'aucun prix pour ' . $reglage['modele'] . ' sur cette instance');
+                    $this->arreter($run->id, 'aucun prix pour '
+                        . Fournisseurs::clePrix($fournisseur, $reglage['modele']) . ' sur cette instance');
 
                     return;
                 }
@@ -372,15 +376,23 @@ final class Twin9Slice
                     continue;
                 }
             }
-            $cle = $this->cles->pour($run->userId, $run->cle);
+            $cle = $this->cles->pour($run->userId, $run->cle, $fournisseur);
             if ($cle === null) {
-                $run->attente = 'clé Anthropic indisponible';
+                $run->attente = 'clé ' . Fournisseurs::REGISTRE[$fournisseur]['libelle'] . ' indisponible';
                 $run->suspendu = true;
 
                 return;
             }
-            if (!$this->partir($run, $call, $reglage['modele'], $tentative, $reserve)) {
+            if (!$this->partir($run, $call, $fournisseur, $reglage['modele'], $tentative, $reserve)) {
                 continue;
+            }
+            if ($fournisseur !== Fournisseurs::DEFAUT) {
+                // the reasoning setting of its model's grid entry, if the administrator named one (ADR-012 §6)
+                $entree = $this->config->modeles()[Fournisseurs::clePrix($fournisseur, $reglage['modele'])] ?? [];
+                $param = $entree['reflexion_param'] ?? null;
+                if (\is_string($param)) {
+                    $reglage['reflexion_param'] = $param;
+                }
             }
             $this->sender->send($run->id, $call, $reglage, $cle, $this->fin);
             $run->enVol[$call->id] = $tentative;
@@ -391,10 +403,12 @@ final class Twin9Slice
 
     /**
      * A call written as sent, with the worst case it newly holds, debited
-     * from its owner's credits with the instance's key, in one transaction.
-     * False when the credit does not cover it: it does not leave.
+     * from its owner's credits with the instance's key, in one transaction,
+     * under its model's price key. False when the credit does not cover it:
+     * it does not leave.
      */
-    private function partir(Twin9Run $run, Call $call, string $modele, int $tentative, ?int $reserve): bool
+    private function partir(Twin9Run $run, Call $call, string $fournisseur, string $modele, int $tentative,
+                            ?int $reserve): bool
     {
         if ($reserve === null) {
             $run->journal->envoye($call, $modele, $tentative);
@@ -404,7 +418,8 @@ final class Twin9Slice
         $this->pdo->beginTransaction();
         try {
             if ($run->credits()) {
-                $this->couts->debiter($run->userId, $run->id, $call->step, $modele, $reserve);
+                $this->couts->debiter($run->userId, $run->id, $call->step, Fournisseurs::clePrix($fournisseur, $modele),
+                    $reserve);
             }
             $run->journal->envoye($call, $modele, $tentative, null, null, $reserve);
             $this->pdo->commit();
@@ -433,15 +448,15 @@ final class Twin9Slice
         }
         $tentative = $run->enVol[$call->id] ?? 1;
         unset($run->enVol[$call->id]);
-        $modele = $run->reglages->pour($call->step, $call->id)['modele'];
+        $reglage = $run->reglages->pour($call->step, $call->id);
         $mesure = [
             'modele_servi' => $issue['modele_servi'] ?? null,
             'stop_reason' => $issue['stop_reason'] ?? null,
             'tokens_in' => $issue['tokens_in'] ?? null,
             'tokens_out' => $issue['tokens_out'] ?? null,
             'cout_microusd' => isset($issue['tokens_in'])
-                ? $this->couts->cout($modele, (int) $issue['tokens_in'], (int) ($issue['tokens_out'] ?? 0), false,
-                    $run->credits())
+                ? $this->couts->cout($reglage['fournisseur'], $reglage['modele'], (int) $issue['tokens_in'],
+                    (int) ($issue['tokens_out'] ?? 0), false, $run->credits())
                 : null,
             'duree_ms' => (int) round(((float) $issue['duree']) * 1000),
         ];
@@ -452,8 +467,9 @@ final class Twin9Slice
 
             return;
         }
-        if (!empty($issue['refus']) || !empty($issue['tronque'])) {
-            // refused or cut (P0-2): the same prompt would be again, at the same cost — never retried
+        if (!empty($issue['refus']) || !empty($issue['tronque']) || !empty($issue['panne'])) {
+            // refused, cut (P0-2) or stopped otherwise: the same prompt would be again, at the same cost — never
+            // retried
             $run->journal->panne($call, (string) $issue['erreur'], $mesure);
             $run->nouvelles = true;
             $this->compteurs['pannes']++;
@@ -463,9 +479,11 @@ final class Twin9Slice
 
             return;
         }
-        if (!empty($issue['debit']) && ($issue['attendre'] !== null || ($issue['http'] ?? null) === 429)) {
-            // a rate refusal spends no attempt; without Retry-After, a 429 is a spending cap
-            $plafond = $issue['attendre'] === null;
+        // a spending cap or a quota, as the provider's caller reads it; at Anthropic, a 429 without Retry-After
+        $plafond = (bool) ($issue['plafond']
+            ?? (($issue['http'] ?? null) === 429 && ($issue['attendre'] ?? null) === null));
+        if (!empty($issue['debit']) && ($plafond || ($issue['attendre'] ?? null) !== null)) {
+            // a rate refusal spends no attempt
             $run->journal->plusTard($call, microtime(true) + ($plafond ? self::PAUSE_PLAFOND : (float) $issue['attendre']),
                 $tentative - 1);
             if ($plafond) {
@@ -537,6 +555,12 @@ final class Twin9Slice
         if ($this->runs->echouer($id, $raison)) {
             $this->compteurs['echoues']++;
         }
-        $this->couts->liberer($id);
+        $this->depasse($this->couts->liberer($id));
+    }
+
+    /** Real costs beyond what their calls held, which the instance pays (RunCosts::solder()), counted. */
+    private function depasse(int $n): void
+    {
+        $this->compteurs['depassements'] = ($this->compteurs['depassements'] ?? 0) + $n;
     }
 }

@@ -20,7 +20,15 @@ use Humanome\Twin9\Fournisseurs\Fournisseurs;
  *             — the long prompt tier some models bill above a prompt size
  *             (Haiku 5.5, T10); a profile asks a model for its price only.
  *             Anthropic's list prices: TarifsAnthropic reads them again once
- *             a day and writes them over the grid's models (2026-10-21)
+ *             a day and writes them over the grid's models (2026-10-21).
+ *             Another provider's model is keyed « provider:model »
+ *             (Fournisseurs::clePrix(), ADR-012 §6), its prices entered by
+ *             the administrator, never by the daily reading, and carries its
+ *             caps: plafond_sortie (output tokens, > 0; 32,768 at most at
+ *             Google), plafond_reflexion (reasoning tokens its worst case
+ *             adds, ≥ 0; > 0 at xAI), duree_max_s (1..45 seconds), and at
+ *             OpenAI and Google reflexion_param, the lowest reasoning setting
+ *             the model admits (REFLEXION_PARAMS); refused on Anthropic's
  *   runs_par_tick         int, the Twin9 runs a tick advances at most (1..20,
  *                         default 3 — ADR-011 §2)
  *   secondes_par_tranche  int, the length of a tick's slice in seconds
@@ -65,6 +73,23 @@ final class Twin9Config
     private const MARGE_MAX = 5.0;
     private const PACK_MIN_USD = 1.0;
     private const PACK_MAX_USD = 500.0;
+
+    /** The fields of another provider's model entry (ADR-012 §6), refused on Anthropic's. */
+    private const CHAMPS_TIERS = ['plafond_sortie', 'plafond_reflexion', 'duree_max_s', 'reflexion_param'];
+
+    /**
+     * The reasoning settings a model entry may name, by provider: OpenAI's
+     * `reasoning_effort` and Gemini's `thinkingLevel`, as their documentations
+     * list them (2026-10-22). Not every model admits every value: a wrong one
+     * is a 400, which the administrator mends in the grid.
+     */
+    public const REFLEXION_PARAMS = [
+        'openai' => ['none', 'minimal', 'low', 'medium', 'high', 'xhigh', 'max'],
+        'google' => ['MINIMAL', 'LOW', 'MEDIUM', 'HIGH'],
+    ];
+
+    /** Gemini's output tokens of a non-streamed request, at most. */
+    private const SORTIE_MAX_GEMINI = 32768;
 
     public function __construct(private readonly SettingsRepository $settings)
     {
@@ -402,6 +427,9 @@ final class Twin9Config
         $margeTwin6 = (float) $config['marge_twin6'];
         $modelesTwin6 = [];
         foreach ($config['modeles'] as $modelId => $modele) {
+            if (str_contains((string) $modelId, ':')) {
+                continue; // another provider's (ADR-012): Twin9's alone, never the open cartography's
+            }
             [$in, $out] = $modele['prix_usd_mtok'];
             // Twin6 (open cartography) prices at its own +10 % contribution.
             $modelesTwin6[$modelId] = [round((float) $in * $margeTwin6, 4), round((float) $out * $margeTwin6, 4)];
@@ -461,7 +489,14 @@ final class Twin9Config
                     throw new Twin9Exception('Prix invalide : nombre strictement positif attendu', 422);
                 }
             }
-            $inconnues = array_diff(array_keys($modele), ['prix_usd_mtok', 'palier_long']);
+            $tiers = str_contains($modelId, ':');
+            $reserves = $tiers ? [] : array_values(array_intersect(array_keys($modele), self::CHAMPS_TIERS));
+            if ($reserves !== []) {
+                throw new Twin9Exception('Modèle ' . $modelId . ' : ' . implode(', ', $reserves)
+                    . ' ne vaut que pour le modèle d’un autre fournisseur (clé fournisseur:modèle)', 422);
+            }
+            $inconnues = array_diff(array_keys($modele),
+                ['prix_usd_mtok', 'palier_long', ...($tiers ? self::CHAMPS_TIERS : [])]);
             if ($inconnues !== []) {
                 throw new Twin9Exception('Modèle ' . $modelId . ' : ' . (\count($inconnues) === 1 ? 'clé inconnue ' : 'clés inconnues ')
                     . implode(', ', $inconnues), 422);
@@ -477,6 +512,9 @@ final class Twin9Config
                     throw new Twin9Exception('Palier des longs prompts invalide : {au_dela_de, prix_usd_mtok} attendu',
                         422);
                 }
+            }
+            if ($tiers) {
+                self::validerTiers($modelId, $modele);
             }
         }
 
@@ -507,6 +545,53 @@ final class Twin9Config
                 throw new Twin9Exception('Fournisseurs ouverts invalides : ' . Fournisseurs::REGISTRE[$id]['libelle']
                     . ', étiqueté « non » au regard du RGPD, ne s’ouvre que si twin9_fournisseurs_non_rgpd l’est aussi',
                     422);
+            }
+        }
+    }
+
+    /**
+     * Another provider's model entry (ADR-012 §6): its key « provider:model »,
+     * a known provider other than Anthropic and a model of its pattern; its
+     * caps; its reasoning setting where the provider has one.
+     *
+     * @param array<string, mixed> $modele
+     */
+    private static function validerTiers(string $cle, array $modele): void
+    {
+        [$fournisseur, $id] = Fournisseurs::depuisClePrix($cle);
+        if ($fournisseur === Fournisseurs::DEFAUT
+            || preg_match(Fournisseurs::REGISTRE[$fournisseur]['motif_modele'], $id) !== 1) {
+            throw new Twin9Exception('Modèle ' . $cle . ' invalide : fournisseur:modèle attendu, un fournisseur autre '
+                . 'qu’Anthropic et un modèle qui suit son motif', 422);
+        }
+        $sortie = $modele['plafond_sortie'] ?? null;
+        if (!\is_int($sortie) || $sortie <= 0) {
+            throw new Twin9Exception('Modèle ' . $cle . ' : plafond_sortie requis, entier strictement positif', 422);
+        }
+        if ($fournisseur === 'google' && $sortie > self::SORTIE_MAX_GEMINI) {
+            throw new Twin9Exception('Modèle ' . $cle . ' : plafond_sortie de 32768 au plus (requête non streamée '
+                . 'de Gemini)', 422);
+        }
+        $reflexion = $modele['plafond_reflexion'] ?? null;
+        if (!\is_int($reflexion) || $reflexion < 0) {
+            throw new Twin9Exception('Modèle ' . $cle . ' : plafond_reflexion requis, entier positif ou nul', 422);
+        }
+        if ($fournisseur === 'xai' && $reflexion === 0) {
+            throw new Twin9Exception('Modèle ' . $cle . ' : plafond_reflexion strictement positif chez xAI, dont le '
+                . 'raisonnement ne se coupe pas et sort du plafond de sortie', 422);
+        }
+        $duree = $modele['duree_max_s'] ?? null;
+        if (!\is_int($duree) || $duree < 1 || $duree > 45) {
+            throw new Twin9Exception('Modèle ' . $cle . ' : duree_max_s requise, de 1 à 45 secondes', 422);
+        }
+        if (\array_key_exists('reflexion_param', $modele)) {
+            $admis = self::REFLEXION_PARAMS[$fournisseur] ?? null;
+            if ($admis === null) {
+                throw new Twin9Exception('Modèle ' . $cle . ' : reflexion_param ne se règle que chez OpenAI et Google',
+                    422);
+            }
+            if (!\in_array($modele['reflexion_param'], $admis, true)) {
+                throw new Twin9Exception('Modèle ' . $cle . ' : reflexion_param parmi ' . implode(', ', $admis), 422);
             }
         }
     }

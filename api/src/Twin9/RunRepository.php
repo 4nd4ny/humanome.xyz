@@ -783,7 +783,8 @@ final class RunRepository
             if ($row['statut'] === 'panne') {
                 $parEtape[$etape]['pannes'] += (int) $row['n'];
                 $total['pannes'] += (int) $row['n'];
-                // every call is Anthropic's until the other providers' callers (PR C)
+                // read with Anthropic's table until the journal keeps each call's provider (P1-5, voie mixte):
+                // another provider's cut is counted by its slice (Twin9Slice::inscrire), not here yet
                 if (Arret::tronquee('anthropic', $row['stop_reason'] === null ? null : (string) $row['stop_reason'])) {
                     $parEtape[$etape]['tronques'] += (int) $row['n'];
                     $total['tronques'] += (int) $row['n'];

@@ -823,7 +823,10 @@ d'être écrit (`Fournisseurs\Arret::assainir`) : un identifiant court
 vocabulaire commun à tous les fournisseurs : `end` (`end_turn`,
 `stop_sequence`, `tool_use`), `max_tokens`, `context_window`
 (`model_context_window_exceeded`), `refusal`, `other` (`pause_turn`, toute
-valeur inconnue), ou nulle.
+valeur inconnue), ou nulle. Les tables des autres fournisseurs (P1-5) sont
+celles de `schemas/fixtures/arrets/arrets-fournisseurs.json`, que `Arret`
+reflète exactement, comme le moteur JS (`FournisseursTest`) : `CONTINUATION`
+(Gemini) et `model_length` (Mistral AI) y sont des sorties tronquées.
 
 ### 8.1 Les réglages d'un run
 
@@ -858,9 +861,13 @@ le fournisseur de chaque étage, étape ou lecteur (§7.2) ; un run n'atteint
 que ceux que l'administrateur a ouverts (ADR-012) : `twin9_fournisseurs_ouverts`
 dans la configuration Twin9, `["anthropic"]` par défaut, un fournisseur
 étiqueté `non` (Google, xAI, OpenRouter) n'y figurant que si
-`twin9_fournisseurs_non_rgpd` vaut `true` (`false` par défaut). Les
-appelants des autres fournisseurs arrivent avec la voie mixte ; d'ici là,
-n'ouvrir qu'Anthropic.
+`twin9_fournisseurs_non_rgpd` vaut `true` (`false` par défaut). Chaque
+appel direct part chez le fournisseur que nomment ses réglages, par
+l'appelant du registre (`Twin9\Fournisseurs\Registre`), avec la clé de ce
+fournisseur (`RunKey`, ci-dessous). La voie mixte et les gardes de la
+tranche propres aux autres fournisseurs (durée maximale d'un appel, arrêt
+différé, suspensions par fournisseur) arrivent ensuite ; d'ici là, n'ouvrir
+qu'Anthropic.
 
 | `step` du moteur | Étape du profil |
 |---|---|
@@ -875,7 +882,39 @@ n'ouvrir qu'Anthropic.
 La réflexion coupée part sous la forme que le modèle accepte : `disabled`,
 `between_tools` pour Sonnet 5.5 ; « adaptative » part en `adaptive`.
 L'effort, s'il est réglé, part en `output_config.effort`. Jamais de
-température.
+température. Chaque appel direct à Anthropic porte en plus un en-tête
+`traceparent` dont la trace n'est pas échantillonnée (`00-<trace>-<span>-00`,
+identifiants aléatoires) : un export OpenTelemetry « contenu complet »
+configuré sur le compte de la clé ne reçoit rien de l'appel. Les lots et
+`/twin6/appel` ne le portent pas.
+
+Les appels aux autres fournisseurs (ADR-012 §4 ; faits lus sur leurs
+documentations officielles le 2026-10-22) partent à l'adresse verrouillée de
+leur fournisseur (`Fournisseurs::REGISTRE`, `url`), la clé dans un en-tête
+seulement (`authorization: Bearer` ; `x-goog-api-key` chez Google), sans
+température ni `top_p`, ni séquence d'arrêt. OpenAI, Mistral AI, xAI et
+OpenRouter par Chat Completions (`ChatCompletionsAppelant`) : le prompt en
+message utilisateur, le budget de sortie au §8.5 ; `store: false` chez
+OpenAI ; `provider: {data_collection: "deny", allow_fallbacks: false}`
+chez OpenRouter. Google par `generateContent` (`GeminiAppelant`) : le modèle
+dans le chemin, `generationConfig.maxOutputTokens`,
+`generationConfig.thinkingConfig.thinkingLevel` si la grille le règle,
+`store: false` au premier niveau. Chaque réponse se lit dans le même
+vocabulaire (`Fournisseurs\Appelant`) : seule une fin (classe `end`) est
+une réponse ; un refus (`message.refusal`, `content_filter`, un prompt
+bloqué, `SAFETY`…), une sortie tronquée (`length`, `model_length`,
+`MAX_TOKENS`, `CONTINUATION`), tout autre arrêt et une erreur dans une
+réponse 200 (OpenRouter) sont des pannes, jamais rejouées ; une 429 attend
+son `Retry-After`, 10 s sans lui ; une 402, ou une 429 d'OpenAI dont le code
+dit le crédit, le plafond ou le quota épuisé, est un plafond (`plafond`) ;
+une 400 dit que le fournisseur refuse les réglages (`configuration`). Les
+textes des fournisseurs ne sortent jamais : erreurs écrites par le code,
+arrêt brut assaini (§8), modèle servi gardé s'il est un identifiant. La
+clé (`RunKey::pour`, par fournisseur) : celle de l'instance, lue dans la
+variable du registre (`OPENAI_API_KEY`, `MISTRAL_API_KEY`, `GOOGLE_API_KEY`,
+`XAI_API_KEY`, `OPENROUTER_API_KEY`, des secrets de `api/config/app.php`) ;
+une clé personnelle, chez Anthropic seulement, refusée appel par appel pour
+tout autre fournisseur.
 
 ### 8.2 L'empreinte des réglages
 
@@ -1039,6 +1078,42 @@ une suivante le relève.
   modèle, avec les jetons réels). Un run arrêté, annulé ou fini rend tout ce
   que ses appels tiennent encore (`… · remboursement`), sauf les appels d'un
   lot encore chez Anthropic, soldés quand le lot est relevé ou annulé.
+- **Un appel ne débite jamais plus que sa réserve** (ADR-012 §6) : un coût
+  réel au-delà — un fournisseur qui facture plus de sortie que le pire cas
+  n'en comptait, une grille qui a changé entre l'envoi et la réponse — est
+  payé par l'instance, jamais par le crédit de l'auteur. Le journal garde le
+  coût réel (`cout_microusd`) ; l'excédent est compté par tranche
+  (`depassements`, compteur `twin9Depassements` du worker) et journalisé
+  (`[twin9-couts] run <id>, <modèle> : …`, le modèle et les montants
+  seulement). Pour Anthropic, le pire cas majore toujours le coût réel au
+  prix de l'envoi : rien ne change.
+- **Les autres fournisseurs** (ADR-012 §6, P1-5) ont leurs prix dans la même
+  grille, sous la clé `fournisseur:modèle` (`Fournisseurs::clePrix`),
+  saisis par l'administrateur, jamais par le relevé quotidien des prix
+  d'Anthropic (`TarifsAnthropic::appliquer` les laisse tels quels, ni changés
+  ni « absents »), jamais servis à la cartographie ouverte (`publicView`,
+  `/twin6/appel` refuse un modèle à `:`). Une entrée tierce porte, en plus de
+  `prix_usd_mtok` (et d'un `palier_long` facultatif) :
+  `plafond_sortie` (entier > 0 ; 32 768 au plus chez Google, plafond d'une
+  requête non streamée), `plafond_reflexion` (entier ≥ 0 ; > 0 chez xAI, dont
+  le raisonnement ne se coupe pas et sort du plafond de sortie),
+  `duree_max_s` (1 à 45 secondes) et, chez OpenAI et Google seulement,
+  `reflexion_param`, le réglage de raisonnement le plus bas que le modèle
+  admet (`reasoning_effort` : `none`, `minimal`, `low`, `medium`, `high`,
+  `xhigh`, `max` ; `thinkingLevel` : `MINIMAL`, `LOW`, `MEDIUM`, `HIGH`),
+  envoyé avec chaque appel du modèle ; absent, le défaut du modèle.
+  `Twin9Config` refuse ces quatre champs sur un modèle d'Anthropic, une clé
+  dont le préfixe n'est pas un autre fournisseur, un modèle hors du motif de
+  son fournisseur. Le pire cas d'un appel tiers : les octets du prompt plus
+  le surcoût d'entrée du fournisseur (`surcout_entree`, 64 jetons) en
+  entrée, `budget_sortie + plafond_reflexion` en sortie, jamais à moitié
+  prix ; sans entrée de grille, pas de prix. Le budget part dans le champ de
+  plafond de chaque fournisseur (`max_completion_tokens` chez OpenAI et xAI,
+  `max_tokens` chez Mistral AI et OpenRouter, `maxOutputTokens` chez
+  Google) ; le coût réel compte en sortie ce que le fournisseur facture
+  comme tel : la réflexion comprise (les jetons de raisonnement de xAI, hors
+  de ses jetons de complétion ; les pensées de Gemini). La réserve est
+  débitée sous la clé de prix du modèle (`model` du grand-livre).
 - **Les plafonds** viennent de la copie du profil : `budget_usd` et
   `duree_minutes`, `null` pour aucun. Ce qu'un run a engagé — réserves
   tenues, coûts réels soldés — ne dépasse jamais son budget : un appel dont

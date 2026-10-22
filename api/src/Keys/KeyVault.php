@@ -23,8 +23,12 @@ use PDO;
  */
 final class KeyVault
 {
-    /** Providers accepted for storage — mirror of the engine abstraction. */
-    public const PROVIDERS = ['anthropic', 'openai', 'google', 'openrouter', 'xai', 'ollama', 'mock'];
+    /**
+     * Providers accepted for storage — mirror of the engine abstraction, plus
+     * Mistral AI, a provider of Twin9's calls (ADR-012; its personal key is
+     * never used by a Twin9 run, which reaches it with the instance's).
+     */
+    public const PROVIDERS = ['anthropic', 'openai', 'mistral', 'google', 'openrouter', 'xai', 'ollama', 'mock'];
 
     public function __construct(private readonly PDO $pdo, private readonly string $masterKey)
     {

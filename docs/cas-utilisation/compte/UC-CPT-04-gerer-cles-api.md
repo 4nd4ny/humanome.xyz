@@ -128,7 +128,8 @@ personnelle ».
   réservée au propriétaire authentifié et marquée `no-store`.
 - **RG5** — Chaque route n'agit que sur les clés du compte de la session.
 - **RG6** — Fournisseurs : l'interface en propose six ; le coffre accepte en
-  plus `mock` (tests). Ollama n'exige pas de clé dans l'assistant.
+  plus `mistral` (fournisseur des appels Twin9, ADR-012) et `mock` (tests).
+  Ollama n'exige pas de clé dans l'assistant.
 
 ## Données et RGPD
 
@@ -178,7 +179,7 @@ La clé enregistrée ici ne sert pas qu'à l'assistant de run :
 | UC-CPT-04-U04 | `KeyVault::listForUser` | Propriétaire seul, tri, date ISO, pas de clé (RG4) | idem |
 | UC-CPT-04-U05 | `KeyVault::reveal` | Autre compte, fournisseur absent, rotation, blob tronqué → `null` (E5) | idem |
 | UC-CPT-04-U06 | `KeyVault::delete` | Suppression réelle, bornée au compte | idem |
-| UC-CPT-04-U07 | `KeyVault::PROVIDERS` | Six fournisseurs + `mock` (RG6) | idem |
+| UC-CPT-04-U07 | `KeyVault::PROVIDERS` | Six fournisseurs + `mistral` + `mock` (RG6) | idem |
 | UC-CPT-04-U08 | `setLocalKey`, `getLocalKey`, `readLocalKeys` | Table `humanome-keys`, effacement (RG1) | `web/test/usecases/unit/uc-cpt-04-gerer-cles-api.test.jsx` |
 | UC-CPT-04-U09 | idem | Stockage corrompu ou plein toléré | idem |
 | UC-CPT-04-U10 | `syncKeyToServer`, `fetchKeyFromServer` | PUT `keys`, GET `keys/<encodé>` | idem |

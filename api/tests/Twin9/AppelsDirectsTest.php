@@ -4,14 +4,26 @@ declare(strict_types=1);
 
 namespace Humanome\Tests\Twin9;
 
+use Humanome\Packages\SettingsRepository;
+use Humanome\Tests\TestDb;
 use Humanome\Twin9\AnthropicCaller;
 use Humanome\Twin9\CallSettings;
+use Humanome\Twin9\DirectCalls;
+use Humanome\Twin9\EngineLoader;
 use Humanome\Twin9\Evaluations;
+use Humanome\Twin9\Fournisseurs\Appelant;
 use Humanome\Twin9\Fournisseurs\Arret;
+use Humanome\Twin9\Fournisseurs\Fournisseurs;
+use Humanome\Twin9\Fournisseurs\Registre;
 use Humanome\Twin9\MoteurReglages;
 use Humanome\Twin9\ProfilRepository;
+use Humanome\Twin9\RunKey;
+use Humanome\Twin9\Twin9Config;
+use PHPUnit\Framework\Attributes\PreserveGlobalState;
+use PHPUnit\Framework\Attributes\RunInSeparateProcess;
 use PHPUnit\Framework\TestCase;
 use stdClass;
+use Twin9\Run\Call;
 
 /**
  * Twin9's direct calls (T7, ADR-011 §3): each request is the one its step
@@ -20,6 +32,11 @@ use stdClass;
  * reads it, a refusal of the model being a failure and a rate refusal giving
  * its Retry-After; a cut output is a failure too (P0-2), and the stop reason
  * is kept as a short identifier.
+ *
+ * Each call goes to its own provider (ADR-012): its settings name it once,
+ * the key is that provider's (RunKey), the request its caller's at its
+ * locked address (DirectCalls, Fournisseurs\Registre) — each host gets its
+ * own key and never another's.
  */
 final class AppelsDirectsTest extends TestCase
 {
@@ -387,6 +404,132 @@ final class AppelsDirectsTest extends TestCase
         self::assertNotSame(CallSettings::empreinte($a, $a->troncatures, $gabarits),
             CallSettings::empreinte($b, $b->troncatures, $gabarits));
         self::assertNotSame(Evaluations::signature($a, 'a1b2c3d4e5f60718'), Evaluations::signature($b, 'a1b2c3d4e5f60718'));
+    }
+
+    /**
+     * One decision per call: its settings' provider. Its key is that
+     * provider's instance key (RunKey), its request goes to that provider's
+     * address (DirectCalls), each host getting its own fake key, never
+     * another's; each response is read by its provider's caller.
+     */
+    #[RunInSeparateProcess]
+    #[PreserveGlobalState(false)]
+    public function testEachHostGetsItsOwnKeyAndNeverAnothers(): void
+    {
+        self::assertTrue(EngineLoader::load(\dirname(__DIR__) . '/fixtures/twin9-factice'));
+        $cles = [];
+        foreach (Fournisseurs::REGISTRE as $f => $registre) {
+            $cles[$f] = 'cle-' . $f . '-factice-' . bin2hex(random_bytes(4));
+            TestDb::setEnv($registre['env'], $cles[$f]);
+        }
+        $modeles = ['anthropic' => 'claude-haiku-5-5', 'openai' => 'modele-fictif-1', 'mistral' => 'modele-fictif-2',
+                    'google' => 'gemini-fictif-1', 'xai' => 'modele-fictif-3', 'openrouter' => 'editeur/modele-fictif'];
+        $formats = ['anthropic' => 'anthropic', 'google' => 'gemini'];
+        $http = new FakeMultiHttpClient(static function (array $r) use ($modeles, $formats): array {
+            foreach (Fournisseurs::REGISTRE as $f => $registre) {
+                if (str_starts_with($r['url'], $registre['url'])) {
+                    return ['body' => FakeMultiHttpClient::message('vu ' . FakeMultiHttpClient::appel($r), $modeles[$f],
+                        format: $formats[$f] ?? 'chat')];
+                }
+            }
+            throw new \LogicException('hôte hors du registre : ' . $r['url']);
+        });
+        $pdo = $this->createStub(\PDO::class);
+        $runKey = new RunKey($pdo, new Twin9Config(new SettingsRepository($pdo)));
+        $direct = new DirectCalls($http);
+        try {
+            foreach ($modeles as $f => $modele) {
+                $reglage = ['fournisseur' => $f, 'voie' => 'directe', 'modele' => $modele, 'budget_sortie' => 100,
+                            'effort' => null, 'reflexion' => 'coupee'];
+                $direct->send(1, new Call('appel-' . $f, 'greffier', 'greffier', $modele, "[appel:$f] Un prompt."), $reglage,
+                    (string) $runKey->pour(1, 'instance', $f), microtime(true) + 5);
+            }
+            $issues = [];
+            while ($direct->running() > 0) {
+                foreach ($direct->wait(microtime(true) + 5) as $issue) {
+                    $issues[$issue['appel']->id] = $issue;
+                }
+            }
+        } finally {
+            TestDb::restoreEnv();
+        }
+
+        self::assertCount(6, $http->requests);
+        foreach ($http->requests as $r) {
+            $f = substr($r['id'], \strlen('1:appel-'));
+            self::assertSame(parse_url(Fournisseurs::REGISTRE[$f]['url'], PHP_URL_HOST), parse_url($r['url'], PHP_URL_HOST), $f);
+            $entetes = (string) json_encode($r['headers']);
+            foreach ($cles as $autre => $cle) {
+                self::assertSame($autre === $f, str_contains($entetes, $cle), "$f reçoit la clé de $autre ?");
+                self::assertStringNotContainsString($cle, $r['url'] . json_encode($r['body']), "$f : $autre");
+            }
+            self::assertSame("[appel:$f] Un prompt.", FakeMultiHttpClient::prompt($r), $f);
+            self::assertTrue($issues['appel-' . $f]['ok'], $f);
+            self::assertSame('vu ' . $f, $issues['appel-' . $f]['texte'], "$f : lu par l’appelant de son fournisseur");
+            self::assertSame($modeles[$f], $issues['appel-' . $f]['modele_servi'], $f);
+        }
+    }
+
+    /**
+     * The key of a call: the instance's, from its provider's variable; a
+     * personal key at Anthropic only — refused for any other provider,
+     * whatever the vault holds, before anything is read —; an unknown
+     * provider, none.
+     */
+    public function testAPersonalKeyNeverLeavesAnthropic(): void
+    {
+        $pdo = $this->createStub(\PDO::class);
+        $runKey = new RunKey($pdo, new Twin9Config(new SettingsRepository($pdo)));
+        TestDb::setEnv('SODIUM_MASTER_KEY', str_repeat('ab', 32));
+        TestDb::setEnv('OPENAI_API_KEY', 'cle-openai-factice');
+        TestDb::setEnv('MISTRAL_API_KEY', '');
+        try {
+            foreach (array_keys(Fournisseurs::REGISTRE) as $f) {
+                if ($f !== 'anthropic') {
+                    self::assertNull($runKey->pour(7, 'personnelle', $f), "$f : jamais une clé personnelle");
+                }
+            }
+            self::assertSame('cle-openai-factice', $runKey->pour(7, 'instance', 'openai'));
+            self::assertNull($runKey->pour(7, 'instance', 'mistral'), 'sans clé de l’instance, aucune');
+            self::assertNull($runKey->pour(7, 'instance', 'ollama'), 'un fournisseur inconnu');
+        } finally {
+            TestDb::restoreEnv();
+        }
+    }
+
+    /** A request whose address is not its provider's never leaves. */
+    #[RunInSeparateProcess]
+    #[PreserveGlobalState(false)]
+    public function testARequestOutsideItsProvidersAddressNeverLeaves(): void
+    {
+        self::assertTrue(EngineLoader::load(\dirname(__DIR__) . '/fixtures/twin9-factice'));
+        $detourne = new class implements Appelant {
+            public function fournisseur(): string
+            {
+                return 'openai';
+            }
+
+            public function requete(string $cle, array $reglage, string $prompt): array
+            {
+                return ['url' => 'https://ailleurs.example/v1/chat/completions', 'headers' => ['authorization' => 'Bearer ' . $cle],
+                        'body' => '{}'];
+            }
+
+            public function lire(int $status, array $headers, string $body): array
+            {
+                return ['ok' => false, 'erreur' => 'x'];
+            }
+        };
+        $http = new FakeMultiHttpClient(static fn (array $r): array => ['body' => '{}']);
+        $direct = new DirectCalls($http, new Registre(['openai' => $detourne]));
+        try {
+            $direct->send(1, new Call('a', 'greffier', 'greffier', 'm', 'p'), ['fournisseur' => 'openai', 'modele' => 'm',
+                'budget_sortie' => 1, 'effort' => null, 'reflexion' => 'coupee', 'voie' => 'directe'], 'k', microtime(true) + 5);
+            self::fail('une adresse hors du registre');
+        } catch (\LogicException) {
+        }
+        self::assertSame([], $http->requests);
+        self::assertSame(0, $direct->running());
     }
 
     /** The same profile, its keys in another order, as MySQL may give them back. */

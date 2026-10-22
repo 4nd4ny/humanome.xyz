@@ -277,8 +277,10 @@ final class TarifsAnthropic
     /**
      * The grid with the page's prices: each model the page lists gets its
      * prices and its long prompt tier; the others keep theirs and are named in
-     * `absents`. A tier of the grid that the page no longer gives fails the
-     * whole reading (UnexpectedValueException): nothing is written.
+     * `absents`. Another provider's models (« provider:model », ADR-012 §6)
+     * are the administrator's: kept as they are, never absent. A tier of the
+     * grid that the page no longer gives fails the whole reading
+     * (UnexpectedValueException): nothing is written.
      *
      * @param array<string, array<string, mixed>> $modeles the grid (Twin9Config::modeles())
      * @param array<string, array<string, mixed>> $tarifs what lire() gave
@@ -292,6 +294,9 @@ final class TarifsAnthropic
         $absents = [];
         foreach ($modeles as $id => $modele) {
             $id = (string) $id;
+            if (str_contains($id, ':')) {
+                continue;
+            }
             $tarif = $tarifs[$id] ?? $tarifs[Pricing::sansDate($id)] ?? null;
             if (!\is_array($tarif) || !\is_array($modele)) {
                 $absents[] = $id;

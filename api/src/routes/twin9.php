@@ -371,7 +371,8 @@ return function (App $app): void {
         // same way, even if the grid changes while it runs (2026-10-21).
         $grille = (new Twin9Config(new SettingsRepository(Db::get())))->read();
         $modele = \is_string($body['model'] ?? null) ? $body['model'] : '';
-        if (!\is_array($grille['modeles'][$modele] ?? null)) {
+        // Anthropic's models only: another provider's grid entry (« provider:model », ADR-012) is Twin9's
+        if (str_contains($modele, ':') || !\is_array($grille['modeles'][$modele] ?? null)) {
             return $json($response, ['error' => 'Modèle non proposé'], 422);
         }
         $prompt = \is_string($body['prompt'] ?? null) ? $body['prompt'] : '';

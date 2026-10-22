@@ -8,9 +8,11 @@ use Humanome\Llm\HttpClientException;
 use Humanome\Llm\MultiHttpClient;
 
 /**
- * A fake of Anthropic for Twin9's direct calls: each request is answered by
- * a responder after the delay it says, in real time, never past the
+ * A fake of the providers for Twin9's direct calls: each request is answered
+ * by a responder after the delay it says, in real time, never past the
  * request's own timeout. Every request is recorded, its body decoded.
+ * Answers in each provider's format: message() (Anthropic's Messages, Chat
+ * Completions, Gemini's generateContent).
  */
 final class FakeMultiHttpClient implements MultiHttpClient
 {
@@ -27,12 +29,30 @@ final class FakeMultiHttpClient implements MultiHttpClient
     {
     }
 
-    /** A response of the Messages API, answered. @return array<string, mixed> */
-    public static function message(string $texte, string $modele = 'claude-haiku-5-5', string $stop = 'end_turn'): array
+    /**
+     * A response, answered, in a format: the Messages API's (`anthropic`),
+     * Chat Completions' (`chat`), Gemini's (`gemini`); 100 tokens in, 20 out.
+     *
+     * @param string|null $stop the raw stop; null: the format's end
+     * @return array<string, mixed>
+     */
+    public static function message(string $texte, string $modele = 'claude-haiku-5-5', ?string $stop = null,
+                                   string $format = 'anthropic'): array
     {
-        return ['type' => 'message', 'model' => $modele, 'stop_reason' => $stop,
-                'content' => [['type' => 'text', 'text' => $texte]],
-                'usage' => ['input_tokens' => 100, 'output_tokens' => 20]];
+        return match ($format) {
+            'anthropic' => ['type' => 'message', 'model' => $modele, 'stop_reason' => $stop ?? 'end_turn',
+                            'content' => [['type' => 'text', 'text' => $texte]],
+                            'usage' => ['input_tokens' => 100, 'output_tokens' => 20]],
+            'chat' => ['object' => 'chat.completion', 'model' => $modele,
+                       'choices' => [['index' => 0, 'message' => ['role' => 'assistant', 'content' => $texte],
+                                      'finish_reason' => $stop ?? 'stop']],
+                       'usage' => ['prompt_tokens' => 100, 'completion_tokens' => 20, 'total_tokens' => 120]],
+            'gemini' => ['candidates' => [['content' => ['role' => 'model', 'parts' => [['text' => $texte]]],
+                                           'finishReason' => $stop ?? 'STOP']],
+                         'usageMetadata' => ['promptTokenCount' => 100, 'candidatesTokenCount' => 20,
+                                             'totalTokenCount' => 120],
+                         'modelVersion' => $modele],
+        };
     }
 
     public function start(string $id, string $method, string $url, array $headers, ?string $body,
@@ -93,8 +113,17 @@ final class FakeMultiHttpClient implements MultiHttpClient
     /** The call a request is for, which the fake engine's prompts carry. */
     public static function appel(array $requete): string
     {
-        preg_match('/\[appel:([^\]]+)\]/', (string) $requete['body']['messages'][0]['content'], $m);
+        preg_match('/\[appel:([^\]]+)\]/', self::prompt($requete), $m);
 
         return $m[1] ?? '';
+    }
+
+    /** A request's prompt, in its format: the user message, or Gemini's first part. */
+    public static function prompt(array $requete): string
+    {
+        $corps = $requete['body'];
+
+        return (string) (isset($corps['contents']) ? $corps['contents'][0]['parts'][0]['text']
+            : $corps['messages'][0]['content']);
     }
 }

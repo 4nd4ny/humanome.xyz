@@ -50,7 +50,8 @@ vert.
     `executerTwin6` nomme l'étape et joint l'usage du run, appel tronqué compris, et fait d'un refus
     une erreur explicite ; `extractDay` ne refait jamais un appel tronqué ; le fournisseur
     « crédits » compte le coût puis lève ; le banc, le lanceur de runs et le runner Node comptent
-    l'usage de l'appel tronqué ; la démo ne le refait pas et dit « Votre texte est trop long pour
+    l'usage de l'appel tronqué, et le banc l'affiche avec son coût même quand le run échoue
+    (l'erreur emporte l'usage cumulé jusqu'à elle) ; la démo ne le refait pas et dit « Votre texte est trop long pour
     l'essai » ; la relance du dialogue dit « Relance coupée » ; le bac à sable rend `llm-error`.
     Gemini : parts de réflexion exclues, sortie comptée = ce qui est facturé. UC-APP-09 anomalie 1
     corrigée.
@@ -64,7 +65,8 @@ vert.
     `local` —, le transport, le modèle demandé, le budget de sortie résolu, la température, et tire
     `execution` des appels (bornes à horloge injectable, modèle servi, arrêt normalisé et jetons de
     chaque appel ; coût `null` : un document se partage, le montant reste au relevé du compte).
-    `buildMergeDocument` n'ajoute les blocs que s'ils sont fournis : tout autre document (banc,
+    `buildMergeDocument` n'ajoute les blocs qu'avec une configuration (une `execution` seule est
+    ignorée, que le schéma refuserait) : tout autre document (banc,
     Aurora, Twin9, cohortes, corpus) reste en 1.0.0 à l'octet, parité du document inchangée. Schéma :
     `$defs/configurationTwin6` et `$defs/executionTwin6`, facultatifs, règle `voie = lots ⇒
     fournisseur = anthropic`, `execution` seulement avec `configuration` ; validateurs régénérés.
@@ -74,8 +76,8 @@ vert.
     refusés.
   - **Déploiement** : l'API (ses schémas) avant le front — le serveur valide au schéma une
     révision de cartographie, qui serait refusée en 1.1.0.
-  - Tests : moteur 558 (5 échecs locaux préexistants, UC-PRO-08 F19-F22 et F25 : le faux dépôt
-    Twin_v9 ne se crée pas dans cet environnement) ; front 2 773, tous verts (avec `TWIN_V9_DIR`
+  - Tests : moteur 559 (5 échecs locaux préexistants, UC-PRO-08 F19-F22 et F25 : le faux dépôt
+    Twin_v9 ne se crée pas dans cet environnement) ; front 2 778, tous verts (avec `TWIN_V9_DIR`
     et le paquet 1.1.0 construit) ; `ValidationTest` et `ConformiteTest` verts ; corpus 69/69 ;
     parité du document 100 %.
   - **Restent ouverts** : l'empreinte de la configuration n'entre pas dans l'identifiant stable

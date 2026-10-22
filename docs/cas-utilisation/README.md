@@ -102,7 +102,7 @@ rejouant les fixtures : aucun appel réseau réel).
 | [UC-VIS-02](visiteur/UC-VIS-02-consulter-referentiel-public.md) | Consulter le référentiel public de compétences | 17 | 21 | 1 |
 | [UC-VIS-03](visiteur/UC-VIS-03-essayer-cartographie-en-direct.md) | Essayer la cartographie en direct, sans compte | 30 | 27 | 3 |
 | [UC-VIS-04](visiteur/UC-VIS-04-se-reperer-guides-aide.md) | Se repérer : accueil, navigation, guides, aide, confidentialité | 13 | 21 | 2 |
-| [UC-VIS-05](visiteur/UC-VIS-05-interroger-assistant-tuteur.md) | Interroger l'assistant tuteur | 7 | 20 | 1 |
+| [UC-VIS-05](visiteur/UC-VIS-05-interroger-assistant-tuteur.md) | Interroger l'assistant tuteur | 16 | 22 | 0 |
 | [UC-VIS-06](visiteur/UC-VIS-06-choisir-affichage-simple-expert.md) | Choisir l'affichage simple ou expert | 7 | 8 | 0 |
 
 ### Compte (tout utilisateur inscrit)
@@ -201,10 +201,10 @@ rejouant les fixtures : aucun appel réseau réel).
 | [UC-SYS-01](systeme/UC-SYS-01-traiter-file-jobs.md) | Traiter la file de jobs de masse | 28 | 26 | 9 |
 | [UC-SYS-02](systeme/UC-SYS-02-deployer-migrer.md) | Déployer, migrer et importer | 12 | 24 | 5 |
 | [UC-SYS-03](systeme/UC-SYS-03-maintenance-supervision.md) | Maintenance et supervision technique | 8 | 11 | 2 |
-| [UC-SYS-04](systeme/UC-SYS-04-construire-artefacts-derives.md) | Construire les données et artefacts dérivés | 6 | 16 | 3 |
+| [UC-SYS-04](systeme/UC-SYS-04-construire-artefacts-derives.md) | Construire les données et artefacts dérivés | 9 | 19 | 3 |
 | [UC-SYS-05](systeme/UC-SYS-05-sauvegarder-restaurer.md) | Sauvegarder et restaurer la base | 0 | 8 | 6 |
 
-**Total : 60 cas d'utilisation, 1012 tests unitaires et 1178 tests fonctionnels identifiés, 193 anomalies de production documentées.**
+**Total : 60 cas d'utilisation, 1024 tests unitaires et 1183 tests fonctionnels identifiés, 192 anomalies de production documentées.**
 
 Les comptes portent sur les identifiants distincts (`UC-…-Unn`, `UC-…-Fnn`) présents dans les fichiers de tests ; un identifiant paramétré (`it.each`) compte pour un.
 <!-- catalogue:end -->
@@ -234,8 +234,6 @@ une anomalie entièrement corrigée quitte cet index.
 - **[UC-VIS-04](visiteur/UC-VIS-04-se-reperer-guides-aide.md#anomalies-constatées)** — Se repérer : accueil, navigation, guides, aide, confidentialité
   - AN1 — Progression locale des guides écrasée d'un parcours à l'autre
   - AN3 — Note d'aperçu trompeuse pour le profil Employeur
-- **[UC-VIS-05](visiteur/UC-VIS-05-interroger-assistant-tuteur.md#anomalies-constatées)** — Interroger l'assistant tuteur
-  - AN1 — Rubrique non validée, injectée dans la consigne système
 - **[UC-CPT-01](compte/UC-CPT-01-creer-activer-compte.md#anomalies-constatées)** — Créer un compte et l'activer par code email
   - AN1 — Pré-détournement de compte : l'activation ne redéfinit pas le mot de passe
   - AN2 — Empreintes non salées conservées sans limite

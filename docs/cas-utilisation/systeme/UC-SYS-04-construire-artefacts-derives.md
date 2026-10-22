@@ -4,10 +4,10 @@
 |---|---|
 | **Acteur principal** | Mainteneur, depuis son poste (scripts Node lancés à la main) ; chaîne de déploiement qui en rejoue une partie : prebuild du front (`web/package.json`) et `scripts/deploy/stage-api.sh` |
 | **Acteurs secondaires** | Épistémiarques (auteurs des définitions et des fiches, UC-EPI-03) ; API (source de `GET /api/admin/dump-fiches`, UC-SYS-02 A5) ; outil de déploiement `deploy.mjs` (consomme les artefacts, UC-SYS-02) ; GitBook (lit `SUMMARY.md`) |
-| **Portée** | Scripts Node hors navigateur et hors serveur : `scripts/convert/*`, `scripts/extract-referentiel.mjs`, `enrich-referentiel.mjs`, `extract-fiches.mjs`, `generate-fiches.mjs`, `dump-fiches.mjs`, `build-default-prompt-package.mjs`, `build-twin6-package.mjs`, `build-twin6-prompt-package.mjs`, `build-tuteur-digest.mjs`, `build-validators.mjs`, `validate-corpus.mjs`, `build-gitbook-summary.mjs`, `web/scripts/build-viewer.mjs` |
+| **Portée** | Scripts Node hors navigateur et hors serveur : `scripts/convert/*`, `scripts/extract-referentiel.mjs`, `enrich-referentiel.mjs`, `extract-fiches.mjs`, `generate-fiches.mjs`, `dump-fiches.mjs`, `build-default-prompt-package.mjs`, `build-twin6-package.mjs`, `build-twin6-prompt-package.mjs`, `build-tuteur-digest.mjs`, `build-site-map.mjs` (et sa bibliothèque `scripts/lib/site-map.mjs`), `build-validators.mjs`, `validate-corpus.mjs`, `build-gitbook-summary.mjs`, `web/scripts/build-viewer.mjs` |
 | **Niveau** | Sous-fonction technique (construction) |
 | **Cahier des charges** | §5 (« clone déployable » ; système de prompts converti en JavaScript), §8 (référentiel évolutif), §9 (éléments existants à intégrer, pas à recréer) ; ADR-001, ADR-003, ADR-006 ; `docs/contrats.md` (§3 notes de cohérence, §4 décisions 3, 4, 6 et 8), `INSTALL.md` §2 et §5, `docs/deploiement.md` |
-| **Statut** | Implémenté (P1, P8.3, D1/AD-D1, D9, D10, source unique des fiches) — voir « Anomalies constatées » |
+| **Statut** | Implémenté (P1, P8.3, D1/AD-D1, D9, D10, source unique des fiches, carte du site du sprint 11) — voir « Anomalies constatées » |
 
 ## Objectif
 
@@ -38,7 +38,8 @@ et sans jamais retoucher un JSON produit à la main.
   `scripts/data/referentiel-v7-definitions.json`, les trois gabarits publics
   de Twin6 (`scripts/data/twin6/` : `0-mega-prompt.md`, `1-scan-pole.md`,
   `2-kairos-final.md`, versionnés depuis le 2026-10-20 — AN-2 corrigée),
-  `schemas/` (dont `schemas/fixtures/`), `content/formation/`, `docs/`.
+  `schemas/` (dont `schemas/fixtures/`), `content/formation/`,
+  `content/legal/confidentialite.md`, `docs/`.
 - Pour `dump-fiches.mjs` : API joignable et `MIGRATE_TOKEN` (UC-SYS-02).
 - Pour `stage-api.sh` : Composer local, plateforme fixée à PHP 8.2 (étape
   `composer`, hors périmètre : UC-SYS-02).
@@ -58,6 +59,12 @@ et sans jamais retoucher un JSON produit à la main.
   même corpus.
 - Rejouer un script produit des fichiers identiques octet pour octet : les
   imports serveur, idempotents par hash, restent sans effet (UC-SYS-02 A1).
+- La carte du site (RG8) : `scripts/data/tuteur-digest.md` et
+  `scripts/data/site-map.json` pour la release de l'API ; dans `web/public/`,
+  que Vite copie dans `web/dist`, `llms.txt`, `llms-full.txt`,
+  `guides/<parcours>/<chapitre>.md`, `legal/confidentialite.md`, `sitemap.xml`
+  et `robots.txt`. Les deux scripts appellent la même bibliothèque sur les
+  mêmes sources : à commit égal, l'assistant et `llms.txt` disent la même chose.
 - Trois artefacts **versionnés** se régénèrent à la demande :
   `engine/src/validation-compiled.js`, `scripts/data/fiches-v7.json`
   (`extract-fiches.mjs`, `dump-fiches.mjs`) et `SUMMARY.md`.
@@ -75,6 +82,8 @@ et sans jamais retoucher un JSON produit à la main.
   a changé (AN-3), `build-validators.mjs` (validateurs réécrits avant la fumée),
   `extracted-to-day-json.mjs` (journées déjà converties conservées, `index.json`
   non écrit) et `generate-fiches.mjs` (P*.md des pôles précédents déjà écrits).
+- `build-site-map.mjs` calcule toutes ses sorties avant d'en écrire une : une
+  source incohérente ou un réglage invalide l'arrête sans rien écrire (E9).
 - Exception (AN-4) : lancés par un chemin qui traverse un lien symbolique,
   `carto-data-to-merge-json.mjs`, `extracted-to-day-json.mjs`,
   `extract-fiches.mjs` et `build-twin6-prompt-package.mjs` sortent en 0 sans rien
@@ -117,10 +126,12 @@ Ordre réel, reconstitué d'`INSTALL.md` §2 et §6, du `prebuild` de
    statiques Twin6 1.0.0 et 1.1.0 (RG6), puis `web/scripts/build-viewer.mjs` construit le modèle de
    la copie autonome de la cartographie (`public/carto/viewer-template.html`,
    un seul fichier HTML qui s'ouvre en `file://` ; journal de l'interface
-   ultime, D-26) ; Vite construit ensuite le bundle (UC-SYS-02 étape 1).
+   ultime, D-26), enfin `build-site-map.mjs` écrit les fichiers publics de la
+   carte du site (RG8) ; Vite construit ensuite le bundle (UC-SYS-02 étape 1).
 7. **Release API.** `./scripts/deploy/stage-api.sh` copie les sources et les
-   schémas, lance `build-tuteur-digest.mjs` (`scripts/data/tuteur-digest.md`,
-   **avant** la copie de `scripts/data` dans la release — UC-VIS-05), puis
+   schémas, lance `build-tuteur-digest.mjs` (`scripts/data/tuteur-digest.md`
+   et `scripts/data/site-map.json`, **avant** la copie de `scripts/data` dans
+   la release — UC-VIS-05), puis
    `build-default-prompt-package.mjs` (paquet par défaut
    `aurora-v3-reconstruit` 1.0.0 et 1.1.0, RG5), `generate-fiches.mjs` (les P*.md du
    paquet Twin6 ne dépendent donc plus d'un build du front antérieur) et
@@ -159,6 +170,11 @@ Ordre réel, reconstitué d'`INSTALL.md` §2 et §6, du `prebuild` de
   par rôle (titre du front-matter `titre:`, sinon premier `# H1`), documentation
   groupée, toutes les fiches `UC-*.md` par acteur dans l'ordre du catalogue,
   tous les ADR.
+- **A6 — Site de test** (étape 6) : `SITE_URL=https://<hôte> ROBOTS_POLICY=noindex
+  npm run build` : les liens de `llms.txt`, `llms-full.txt` et `sitemap.xml`
+  portent cette adresse, et `robots.txt` ferme tout le site aux robots,
+  `llms.txt` compris. Sans réglage : `https://humanome.xyz` et `index` (le site
+  s'ouvre aux robots, sauf `/api/`, et annonce `sitemap.xml`).
 
 ## Scénarios d'erreur
 
@@ -195,6 +211,14 @@ Ordre réel, reconstitué d'`INSTALL.md` §2 et §6, du `prebuild` de
   erreur(s)` suivi des 8 premières erreurs (`chemin [mot-clé] message`) puis
   « … M erreur(s) supplémentaire(s) » ; « JSON illisible : … » ; « kind inconnu
   ou absent : … » ; bilan « x OK, y KO sur z fichiers », code 1.
+- **E9 — Carte du site incohérente ou mal réglée** (étapes 6-7) : une adresse
+  du catalogue que le routeur résout vers un autre nom → « catalogue des
+  routes : <adresse> se résout vers « x », pas « y » » ; une entrée d'aide
+  absente → « catalogue des routes : aide « x » absente du registre » ;
+  `ROBOTS_POLICY` inconnue → « build-site-map : ROBOTS_POLICY invalide : « x »
+  (attendu : index ou noindex) » ; `SITE_URL` qui n'est pas `http(s)://hôte` →
+  « build-site-map : SITE_URL invalide : … ». Code 1, rien d'écrit
+  (`build-tuteur-digest.mjs` s'arrête de même, sur une trace Node).
 - **E7 — Dérive d'un gabarit du moteur** (étape 7) : une sous-chaîne attendue
   absente (« build-default-prompt-package: expected substring not found »), une
   sentinelle survivante ou un paquet non conforme au schéma arrêtent la
@@ -211,7 +235,9 @@ Ordre réel, reconstitué d'`INSTALL.md` §2 et §6, du `prebuild` de
   `assets-existants/` est en lecture seule ; un artefact bogué se corrige dans
   le convertisseur, jamais dans le JSON produit (`docs/contrats.md` §4.6). Les
   sorties sont gitignorées (`web/public/data/`, `build/`,
-  `scripts/data/tuteur-digest.md`), sauf `validation-compiled.js`,
+  `scripts/data/tuteur-digest.md`, `scripts/data/site-map.json`, et dans
+  `web/public/` : `llms.txt`, `llms-full.txt`, `sitemap.xml`, `robots.txt`,
+  `guides/`, `legal/`), sauf `validation-compiled.js`,
   `fiches-v7.json` et `SUMMARY.md`, versionnés et régénérés à la main.
 - **RG2** — Déterminisme octet pour octet : ni horloge ni aléa (dates de
   publication fixes 2026-07-12 et 2026-07-16 dans les paquets, `generatedAt`
@@ -255,6 +281,33 @@ Ordre réel, reconstitué d'`INSTALL.md` §2 et §6, du `prebuild` de
   2026-10-14 : UC-SYS-04-F06 recompile les validateurs depuis les schémas du
   dépôt et exige qu'ils soient identiques, octet pour octet, au fichier
   versionné (AN-1, corrigée).
+- **RG8** — Carte du site (sprint 11, 2026-10-22) : une seule chaîne,
+  `scripts/lib/site-map.mjs`, et une source par information.
+  - **Sources.** Le catalogue des routes (`web/src/routes-catalogue.js`, une
+    ligne par nom de route, vérifié contre `router.js`, `App.jsx`, le menu et
+    l'aide par UC-VIS-05-U08 à U11) donne les adresses hors menu et leurs
+    modèles. Le menu (`nav.js`, `navGroups` d'un compte qui a tous les rôles en
+    mode expert, puis d'un visiteur) donne l'audience, les badges et les
+    libellés. L'aide (`HELP_ENTRIES`) donne le résumé et les points de chaque
+    page. `content/formation/**` et `content/legal/confidentialite.md`
+    donnent les guides et la confidentialité.
+  - **Liste blanche.** `loadSources` ne lit que `SOURCES` : aucun gabarit,
+    aucun secret.
+  - **Sorties.** Le digest de l'assistant (titres des chapitres seulement,
+    UC-VIS-05 RG4) et `site-map.json` (une page par route, sans corps de
+    chapitre ; l'API y reconnaît la page courante de l'assistant, UC-VIS-05
+    RG1, `docs/contrats.md` §12). Puis `llms.txt` au format llmstxt.org, `llms-full.txt` (l'aide
+    de chaque page, puis chaque chapitre publié, intégral, liens absolus,
+    titres abaissés sous ceux du fichier), un `.md` par chapitre publié (sans
+    front-matter, liens vers l'application absolus, ligne `Source :`).
+    `sitemap.xml` ne liste que des URL réelles, jamais une route `#/…` (un
+    robot ignore le fragment) ; `lastmod` n'y vient que d'un front-matter
+    `maj:`. `robots.txt` suit `ROBOTS_POLICY` (A6).
+  - **Parcours publiés** : `PARCOURS_PUBLIES`, tous ceux du hub `#/guides`
+    par défaut (décision du 2026-10-22), qu'on peut réduire ; le digest liste
+    toujours tous les parcours.
+  - **Déterminisme.** Ni date ni aléa : les sorties sont identiques à l'octet
+    à commit égal (RG2).
 
 ## Données et RGPD
 
@@ -263,7 +316,8 @@ Ordre réel, reconstitué d'`INSTALL.md` §2 et §6, du `prebuild` de
 | Corpus démo (`assets-existants/merge-prototype`) | Données réelles de référence (corpus Aurora v3), publiées comme démonstration ; lecture seule, aucune donnée d'utilisateur de la plateforme |
 | Référentiel, définitions, fiches, gabarits | Contenus de référence publics ; aucune donnée personnelle |
 | `dump-fiches.mjs` | Lit des fiches (contenu de référence) ; jeton en en-tête, jamais dans l'URL ; `.env.deploy` hors dépôt |
-| `SUMMARY.md`, digest tuteur | Titres et routes seulement |
+| `SUMMARY.md` | Titres et routes seulement |
+| Carte du site (digest, `site-map.json`, `llms.txt`, `llms-full.txt`, `.md`, `sitemap.xml`) | Contenus déjà publics : l'aide de chaque page, les guides (embarqués dans le bundle, lisibles sous `#/guides` et sur GitBook), la page de confidentialité ; aucune donnée personnelle. Les publier en fichiers statiques les rend lisibles par les robots, sans élargir leur diffusion. Garde de publication des sorties : UC-SYS-04-F19 |
 | Journaux des scripts | Compteurs, chemins et tailles ; en cas d'échec, courts extraits de contenus de référence : 2 × 30 caractères de fiche (source et régénéré, E4), 120 caractères de gabarit (E7), 200 premiers caractères de la réponse HTTP (E8), début du fichier illisible cité par le message de `JSON.parse` (E6) ; aucune donnée d'utilisateur de la plateforme |
 
 ## Code sollicité
@@ -283,14 +337,19 @@ Ordre réel, reconstitué d'`INSTALL.md` §2 et §6, du `prebuild` de
 | Script | `scripts/dump-fiches.mjs` | Resynchronisation du corpus depuis l'API (A2) |
 | Script | `scripts/build-twin6-package.mjs`, `scripts/build-twin6-prompt-package.mjs` | Paquets Twin6 statique et publié (RG6) |
 | Script | `scripts/build-default-prompt-package.mjs` | Paquet par défaut `aurora-v3-reconstruit` (RG5) |
-| Script | `scripts/build-tuteur-digest.mjs` | Digest de l'assistant tuteur — testé par UC-VIS-05-U07 |
+| Front | `web/src/routes-catalogue.js` — `ROUTE_CATALOGUE`, `AIDE_SANS_ROUTE` ; `web/src/help/registry.js` — `HELP_ENTRIES` | Sources déclaratives de la carte du site (RG8) |
+| Script | `scripts/lib/site-map.mjs` — `loadSources`, `collectSiteMap`, `renderDigest`, `renderLlmsTxt`, `renderLlmsFull`, `renderGuideMarkdown`, `renderSitemap`, `renderRobots`, `absolutizeHashLinks`, `stripFrontMatter` | Carte du site : lecture en liste blanche, fonctions pures (RG8) |
+| Script | `scripts/build-tuteur-digest.mjs` | Digest de l'assistant tuteur et `site-map.json` — testés par UC-VIS-05-U07 et U13 |
+| Script | `scripts/build-site-map.mjs` | Fichiers publics de la carte du site (RG8, A6, E9) |
+| Webroot | `web/public/.htaccess` ; `web/index.html` | `.md` servi en `text/markdown; charset=utf-8`, cache d'une heure pour `.txt`, `.md` et `.xml`, compression ; lien `alternate` vers `/llms.txt` et `<noscript>` vers les fichiers publics (le script anti-FOUC et son hash ne bougent pas) |
 | Script | `scripts/build-gitbook-summary.mjs` | `SUMMARY.md` (A5) |
 | Chaîne | `scripts/deploy/stage-api.sh`, `web/package.json` (`prebuild`), `scripts/deploy/deploy.mjs` | Ordre réel et consommation des artefacts |
 
 ## Jeux de tests
 
 Tous les tests sont dans le moteur (exécutés par la CI de publication, entrées
-versionnées seulement). Les scripts qui s'exécutent dès l'import sont lancés en
+versionnées seulement), sauf UC-SYS-04-U09, qui a besoin du contenu des guides
+tel que le bundle l'embarque (`import.meta.glob`, sous Vite seulement). Les scripts qui s'exécutent dès l'import sont lancés en
 **sous-processus** dans un miroir temporaire (copie des scripts et des entrées
 versionnées dans `os.tmpdir()`, `engine/node_modules` relié en lecture seule) :
 rien n'est écrit dans le dépôt. Les dossiers temporaires sont résolus par
@@ -312,7 +371,10 @@ par le catalogue, comme UC-SYS-01-F22, UC-SYS-02-F19 et UC-PRO-08-F17.
 | UC-SYS-04-U03 | `toMergeDocument` | Corpus réel conforme à `cartographie-merge`, recopie sans renommage, valeurs par défaut, constante requise absente refusée (E1) | idem |
 | UC-SYS-04-U04 | `toDayDocument`, `frenchLabel` | Pôles remis dans l'ordre P1..P7, kairos facultatif, pôle manquant refusé (E1), journée réelle conforme | idem |
 | UC-SYS-04-U05 | `reassembleFiche`, `parsePole` | Règle (b) exacte ; aller-retour octet pour octet sur les 61 fiches du corpus versionné (RG4) | idem |
-| UC-SYS-04-U06 | `stage-api.sh`, `prebuild`, `deploy.mjs` | Ordre réel de la chaîne sur les seules lignes actives (étape commentée ou neutralisée refusée), dont les P*.md régénérés avant le paquet Twin6 ; prérequis manuels non rejoués par `stage-api.sh` ; boucles d'import de `deploy.mjs` (référentiels puis paquets) | idem |
+| UC-SYS-04-U06 | `stage-api.sh`, `prebuild`, `deploy.mjs` | Ordre réel de la chaîne sur les seules lignes actives (étape commentée ou neutralisée refusée), dont les P*.md régénérés avant le paquet Twin6 ; `prebuild` qui finit par `build-site-map.mjs` ; prérequis manuels et `build-site-map` non rejoués par `stage-api.sh` ; boucles d'import de `deploy.mjs` (référentiels puis paquets) | idem |
+| UC-SYS-04-U07 | `stripFrontMatter`, `absolutizeHashLinks`, `absolutizeChapterLinks`, `demoteHeadings`, `siteUrlFrom`, `robotsPolicyFrom` | Front-matter retiré ; lien `](#/…)` rendu absolu, liens http(s), ancres et fichiers inchangés ; liens entre chapitres absolus ; titres abaissés hors des blocs de code ; `SITE_URL` et `ROBOTS_POLICY` par défaut, validés (E9) | `engine/test/usecases/unit/uc-sys-04-carte-du-site.test.js` |
+| UC-SYS-04-U08 | `collectSiteMap`, rendus | Carte synthétique : ordre du menu puis du catalogue, familles des deux sessions fusionnées, libellé du visiteur pour une page publique, catalogue incohérent ou aide absente refusés (E9), aucun corps de chapitre dans la carte ; `llms.txt` sans modèle, route interne ni parcours non publié ; digest marqué ; `.md` publié ; `sitemap.xml` exact ; `robots.txt` des deux politiques (RG8) | idem |
+| UC-SYS-04-U09 | `PARCOURS_PUBLIES`, `FORMATION_PARCOURS`, `FORMATION_META` | Les parcours publiés sont ceux du hub `#/guides`, tous, dans l'ordre du hub (RG8) | `web/test/usecases/unit/uc-sys-04-carte-du-site.test.js` |
 
 ### Tests fonctionnels
 
@@ -334,6 +396,9 @@ par le catalogue, comme UC-SYS-01-F22, UC-SYS-02-F19 et UC-PRO-08-F17.
 | UC-SYS-04-F14 | E8 | CLI + HTTP simulé | 403, réponse incomplète, API injoignable → code 1, corpus intact | idem |
 | UC-SYS-04-F15 | A5 | CLI | `SUMMARY.md` : manuels, toutes les fiches UC par acteur (titre H1), tous les ADR, déterministe ; document absent → nom de fichier ; parcours absent → entrée seule | idem |
 | UC-SYS-04-F16 | AN-4 | CLI | Les quatre scripts à garde CLI lancés par un chemin qui traverse un lien symbolique : code 0, aucune sortie, rien d'écrit (comportement actuel) ; par le chemin réel, ils travaillent | idem |
+| UC-SYS-04-F17 | Nominal, étapes 6-7, A6, E9 | CLI | `build-site-map` et `build-tuteur-digest` dans deux miroirs qui ne contiennent que la liste blanche des sources : journaux exacts, sorties identiques à l'octet (RG2) ; un chapitre périmé disparaît ; `SITE_URL` et `ROBOTS_POLICY=noindex` appliqués ; politique ou adresse invalide → code 1, rien d'écrit | `engine/test/usecases/unit/uc-sys-04-carte-du-site.test.js` |
+| UC-SYS-04-F18 | Nominal, étape 6 | CLI | `llms.txt` au format llmstxt.org (titre, citation, trois sections au moins, items `- [titre](https://…)`, liens locaux vers des fichiers générés, moins de 50 Ko) ; `sitemap.xml` = la racine et les fichiers publiés, sans fragment ; liens `alternate` et `<noscript>` d'`index.html` vers des fichiers générés ; tous les parcours du hub publiés ; une page par route du catalogue dans `site-map.json`, au contrat que lit l'API (`version` 1 ; `route`, `href`, `interne` de chaque page ; `titre` non vide, `resume` et `points` de texte pour une page non interne, `docs/contrats.md` §12) ; la carte fictive des tests PHP (`api/tests/fixtures/tuteur/site-map.json`) de même forme : même version, routes réelles de même nature, mêmes champs et mêmes types | idem |
+| UC-SYS-04-F19 | Nominal, RG8 | CLI | Garde de publication des sorties : aucune clé Anthropic, aucun chemin local absolu, aucun identifiant OVH, aucune variable ni chemin de gabarit Twin9 dans les fichiers générés ; aucun corps de chapitre dans le digest | idem |
 
 ### Tests existants liés (non-régression)
 
@@ -346,7 +411,12 @@ par le catalogue, comme UC-SYS-01-F22, UC-SYS-02-F19 et UC-PRO-08-F17.
 - `web/src/views/promptologue/twin6-prompt-package.test.js` — identité du paquet
   atelier et du paquet statique (local : lit les artefacts générés).
 - `web/test/usecases/unit/uc-vis-05-interroger-assistant-tuteur.test.js` —
-  UC-VIS-05-U07, `build-tuteur-digest.mjs` exécuté dans un miroir temporaire.
+  UC-VIS-05-U07 et U13, `build-tuteur-digest.mjs` exécuté dans un miroir
+  temporaire ; U08 à U12, le catalogue des routes face au routeur, à `App.jsx`,
+  à l'aide, au menu des deux modes et aux liens des contenus.
+- `web/scripts/smoke-dist.mjs` (`npm run test:dist`, après `npm run build`) —
+  `llms.txt`, `llms-full.txt`, `sitemap.xml`, `robots.txt` et
+  `legal/confidentialite.md` présents et non vides dans `web/dist`.
 - `api/tests/FicheParityTest.php`, `api/tests/FicheAdminEndpointsTest.php` —
   parité PHP (`FicheGenerator`) et route `dump-fiches` (aussi UC-SYS-02-F05,
   UC-EPI-03-F13).
@@ -356,7 +426,8 @@ par le catalogue, comme UC-SYS-01-F22, UC-SYS-02-F19 et UC-PRO-08-F17.
 ### Exécuter
 
 ```sh
-cd engine && npx vitest run test/usecases/unit/uc-sys-04-construire-artefacts-derives.test.js test/usecases/unit/uc-sys-04-chaine-artefacts-derives.test.js
+cd engine && npx vitest run test/usecases/unit/uc-sys-04-construire-artefacts-derives.test.js test/usecases/unit/uc-sys-04-chaine-artefacts-derives.test.js test/usecases/unit/uc-sys-04-carte-du-site.test.js
+cd web && npx vitest run test/usecases/unit/uc-sys-04-carte-du-site.test.js
 ```
 
 ## Anomalies constatées
@@ -451,3 +522,18 @@ cd engine && npx vitest run test/usecases/unit/uc-sys-04-construire-artefacts-de
   figé par F16. `validate-corpus.mjs` enregistre encore un
   hook de chargement des `.json` devenu sans objet depuis les validateurs
   précompilés (note d'outillage de `docs/contrats.md` §5 à actualiser).
+- Carte du site : le digest de l'assistant (release de l'API, `stage-api.sh`)
+  et les fichiers publics (`prebuild` du front) sont régénérés par deux chaînes
+  distinctes. Déployés depuis des commits différents, ils peuvent diverger ;
+  la même bibliothèque garantit le même contenu à commit égal seulement.
+- Le service des fichiers publics par OVH (`text/markdown` pour un `.md`,
+  `text/plain; charset=utf-8` pour `llms.txt`, en-têtes de cache) n'est pas
+  vérifié automatiquement : à contrôler après déploiement (`curl -I`). Un
+  `robots.txt` déposé à la main dans `www/` serait écrasé par la
+  synchronisation : lister `www/` avant le premier déploiement. Vite réécrit le
+  lien `alternate` d'`index.html` en `./llms.txt` (base relative) ; à la racine
+  du site, c'est la même adresse.
+- `npm run test:dist` échoue avant ce sprint sur la vue merge retirée (D-38,
+  `#/merge`) : la présence des fichiers de la carte du site est contrôlée et
+  affichée en premier, mais le script reste en échec tant que sa vérification
+  de la vue n'est pas réécrite.

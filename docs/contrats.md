@@ -1968,3 +1968,49 @@ plus contre le chiffre 7. Aucun champ n'est renommé.
   ses niveaux. Les gabarits scan-pôle et kairos de Twin6, versionnés depuis,
   écrivent bien RESPIRE v7 en toutes lettres dans leur version 1.0.0 : la 1.1.0
   les lit dans le référentiel (§8).
+
+## 12. La carte du site (`scripts/data/site-map.json`, sprint 11)
+
+Fichier généré (gitignoré) par `scripts/build-tuteur-digest.mjs`, livré dans
+la release de l'API avec le digest de l'assistant (`stage-api.sh` copie
+`scripts/data/`). Il n'a pas de schéma JSON : il n'est pas échangé entre le
+navigateur et le serveur, seulement lu par le serveur, qui le reçoit du même
+commit. Produit par `collectSiteMap` (`scripts/lib/site-map.mjs`, UC-SYS-04
+RG8), déterministe, sans date et sans corps de chapitre.
+
+- `version` : 1.
+- `site` : `{url, titre, resume}` ; `url` vient de `SITE_URL` (défaut
+  `https://humanome.xyz`), `resume` est l'intro de l'aide de l'accueil.
+- `familles[]` : le menu (`navGroups` d'un compte qui a tous les rôles en mode
+  expert, puis d'un visiteur), `{id, label, intent, audience, roles, items[]}`.
+  Chaque item porte `{href, label, route, section, badge, hint, roles,
+  allRoles, expert, visiteur, connecte}` : `visiteur` et `connecte` disent
+  dans quelle session il paraît, `expert` qu'il n'est listé qu'en mode expert.
+- `pages[]` : **une page par nom de route** du catalogue
+  (`web/src/routes-catalogue.js`), dans l'ordre du menu puis du catalogue,
+  `{route, href, modele, variantes, modeles, titre, resume, points, navLabel,
+  hint, badges, audience, familles, dansMenu, expert, public, interne}`.
+  `route` est le nom que rend `parseHash` (et qu'envoie l'assistant comme
+  rubrique) ; `href` est l'adresse à donner à une personne (un modèle à
+  compléter quand `modele` est vrai) ; `titre`, `resume` et `points` sont
+  l'entrée de l'aide (`HELP_ENTRIES`) : pour une route interne, `titre` et
+  `resume` sont nuls et `points` est vide.
+- `aideSansRoute[]` : `{cle, titre, resume, points}`, les entrées d'aide sans
+  page (le profil employeur des tuiles de l'accueil).
+- `guides[]` : `{parcours, titre, href, publie, chapitres[{slug, titre, ordre,
+  href, fichier, source}]}` ; `fichier` est l'URL du `.md` publié, nulle si le
+  parcours n'est pas dans `PARCOURS_PUBLIES`.
+- `legal[]` : `{cle, titre, maj, href, fichier, source}`.
+- `roles` : les libellés des rôles (`ROLE_LABELS`).
+
+**Ce que l'API en lit** (`POST /api/tuteur`, `api/src/Tuteur/CarteDuSite.php`,
+sprint 11 lot A, UC-VIS-05 RG1) : `version`, qui doit valoir 1, et, de chaque
+page, `route`, `href`, `titre`, `resume`, `points` et `interne`. La rubrique
+qu'envoie l'assistant n'entre dans sa consigne que si c'est le `route` d'une
+page non interne qui a un `titre` : « Elle consulte actuellement : <titre>
+(<href>). », puis le `resume` et les `points` de cette seule page. Un fichier
+absent, illisible, d'une autre version ou sans `pages` vaut absence de carte :
+la rubrique est alors vidée, même un nom de route. Toute évolution de ces
+champs ou de leur sens touche donc aussi l'API (même commit, même release).
+UC-SYS-04-F18 vérifie ce contrat sur la carte générée, et que la carte fictive
+des tests PHP (`api/tests/fixtures/tuteur/site-map.json`) a la même forme.

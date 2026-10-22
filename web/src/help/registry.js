@@ -290,6 +290,13 @@ const BASE = {
   },
 }
 
+/**
+ * Les entrées de base, telles quelles (sans variante de rôle ni de mode) : la
+ * carte du site les publie, titre et intro comme résumé de chaque page, points
+ * comme mini-documentation (scripts/lib/site-map.mjs, sprint 11).
+ */
+export const HELP_ENTRIES = BASE
+
 /** Entrée de repli quand aucune rubrique ne correspond. */
 const FALLBACK = {
   titre: 'Aide',

@@ -1,7 +1,8 @@
 // Assistant tuteur (D9) — bouton à côté du « ? » d'aide + panneau de chat léger.
 // Le tuteur (proxy Haiku côté serveur) explique, selon le profil, ce qu'on peut
 // faire et par où passer. RGPD : le PORTFOLIO n'est JAMAIS envoyé (seulement la
-// question + la rubrique courante) ; l'historique vit en sessionStorage (aucun
+// question, la rubrique courante et la mémoire courte : les 2 derniers échanges
+// du fil, bornés, sprint 11 lot C) ; l'historique vit en sessionStorage (aucun
 // stockage serveur). La bannière annonce clairement que c'est une IA.
 import { useEffect, useRef, useState } from 'react'
 import { askTuteur } from '../lib/tuteur.js'
@@ -61,10 +62,12 @@ export default function TuteurPanel({ route = '', ask = askTuteur }) {
     if (question === '' || busy) return
     setError(null)
     setDraft('')
+    // Le fil AVANT cette question : askTuteur n'en envoie que la mémoire courte.
+    const historique = messages
     setMessages((m) => [...m, { role: 'user', text: question }])
     setBusy(true)
     try {
-      const { text } = await ask({ question, rubrique: route })
+      const { text } = await ask({ question, rubrique: route, historique })
       setMessages((m) => [...m, { role: 'assistant', text: text || 'Je n’ai pas de réponse pour l’instant.' }])
     } catch (err) {
       setError(err?.message ?? 'L’assistant est indisponible pour le moment.')

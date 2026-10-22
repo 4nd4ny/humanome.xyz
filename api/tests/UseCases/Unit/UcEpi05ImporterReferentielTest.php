@@ -244,6 +244,31 @@ final class UcEpi05ImporterReferentielTest extends TestCase
         self::assertSame('fictif-lettre', self::repo()->validateDocument($doc)['id']);
     }
 
+    #[TestDox('UC-EPI-05-U28 — ce que la page Markdown envoie passe le serveur : les documents du contrat (le modèle, la fixture à la forme Humanome relue) se valident à chacun de leurs niveaux, chaque motif déduit se compile en PCRE et y retrouve ses codes')]
+    public function testU28WhatTheMarkdownPageSendsPassesTheServer(): void
+    {
+        // written by web/src/lib/referentiel-markdown.test.js (UC-EPI-05-U27), which keeps it what the page sends
+        $contrat = json_decode((string) file_get_contents(\dirname(__DIR__, 4)
+            . '/schemas/fixtures/markdown/referentiel-markdown-contrat.json'), true, 512, JSON_THROW_ON_ERROR);
+        self::assertCount(3, $contrat['documents']);
+        foreach ($contrat['documents'] as $doc) {
+            self::assertArrayNotHasKey('contentHash', $doc); // the page leaves it to the server
+            $normalized = self::repo()->validateDocument($doc);
+            foreach (array_keys(ReferentielRepository::niveaux($normalized)) as $k) {
+                $auNiveau = self::repo()->validateDocument(ReferentielRepository::auNiveau($normalized, $k));
+                self::assertSame($normalized['niveaux'][$k]['motif'], $auNiveau['niveaux'][0]['motif']);
+            }
+        }
+        self::assertGreaterThanOrEqual(13, \count($contrat['motifs']));
+        foreach ($contrat['motifs'] as ['motif' => $motif, 'codes' => $codes]) {
+            $regex = ReferentielRepository::regexDuMotif($motif);
+            self::assertNotNull($regex, $motif);
+            foreach ($codes as $code) {
+                self::assertSame(1, preg_match($regex, $code), $code . ' / ' . $motif);
+            }
+        }
+    }
+
     #[TestDox('UC-EPI-05-U05 — lecture à un niveau : les facettes deviennent les compétences, sous le pôle de leur capacité ; les niveaux plus larges partent')]
     public function testU05ReadingAtALevel(): void
     {

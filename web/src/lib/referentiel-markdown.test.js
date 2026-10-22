@@ -6,7 +6,9 @@
 // et sur la fixture FICTIVE à la forme Humanome du lot B
 // (schemas/fixtures/referentiel-humanome-fictif*.json).
 import { createHash } from 'node:crypto'
-import { readFileSync } from 'node:fs'
+import { readFileSync, writeFileSync } from 'node:fs'
+import { dirname, join } from 'node:path'
+import { fileURLToPath } from 'node:url'
 import { describe, expect, it } from 'vitest'
 import { fichesDuReferentiel } from '@engine/twin6/fiches.js'
 import { corpsDuHash } from '@engine/referentiel-humanome.js'
@@ -38,6 +40,35 @@ const enLignes = (erreurs) => erreurs.map((e) => (e.ligne === null ? e.message :
 
 /** Le document sans ce que la page saisit ou que le serveur calcule. */
 const corps = ({ poles, competences, source }) => ({ poles, competences, source })
+
+const CAPACITES = ['A', 'B', 'C', 'D', 'E'].flatMap((l) => [1, 2, 3, 4].map((n) => `${l}${n}`))
+/** Des codes d'un niveau et le motif qu'on en déduit (UC-EPI-05-U17). */
+const CAS_DE_MOTIFS = [
+  [CAPACITES, '[A-E][1-4]'],
+  [CAPACITES.flatMap((c) => [`${c}.1`, `${c}.2`, `${c}.3`]), '[A-E][1-4]\\.[1-3]'],
+  [RESPIRE_710.competences.map((c) => c.code), '[1-7]\\.[0-1]\\d'],
+  [['1.01', '1.02', '1.03'], '1\\.0[1-3]'],
+  [['1.00', '2.19', '3.99'], '[1-3]\\.[0-19][09]'],
+  [Array.from({ length: 100 }, (_, i) => `1.${String(i).padStart(2, '0')}`), '1\\.\\d{2}'],
+  [['A1', 'B2', 'D3'], '[A-BD][1-3]'],
+  [['A2', 'A10'], 'A[0-2]{1,2}'],
+  [['c-1', 'c-2'], 'c-[1-2]'],
+  [['X_1', 'Y_2'], '[X-Y]_[1-2]'],
+  [['A1', '1A'], '(?:A1|1A)'],
+  [['seul'], 'seul'],
+]
+/** Des formes trop nombreuses pour 100 caractères : la forme générale d'un code. */
+const DISPARATES = ['A', '1', 'a', 'A.1', '1.A', 'a.a', 'A-1', '1-A', 'a-a', 'A_1', '1_A', 'a_a', 'Aa1', '1aA',
+  'a1A', 'A1a', '1Aa', 'aA1', 'A.a', 'a.A', '1.a', 'a.1', 'A-a', 'a-A', '1-a', 'a-1']
+
+/**
+ * Le contrat de la page avec le serveur (schemas/fixtures/markdown/) : ce que
+ * la page envoie (le modèle, la fixture à la forme Humanome écrite puis relue
+ * en Markdown, ses deux niveaux) et les motifs qu'elle déduit. Le test PHP
+ * UC-EPI-05-U28 en fait valider chaque document et compiler chaque motif en
+ * PCRE par ReferentielRepository.
+ */
+const CONTRAT = join(dirname(fileURLToPath(import.meta.url)), '../../../schemas/fixtures/markdown/referentiel-markdown-contrat.json')
 
 describe('UC-EPI-05 — un référentiel en Markdown', () => {
   it.each([
@@ -90,34 +121,19 @@ describe('UC-EPI-05 — un référentiel en Markdown', () => {
   })
 
   it('UC-EPI-05-U17 — le motif déduit est le plus étroit que suivent tous les codes du niveau', () => {
-    const lettres = ['A', 'B', 'C', 'D', 'E']
-    const capacites = lettres.flatMap((l) => [1, 2, 3, 4].map((n) => `${l}${n}`))
-    const cas = [
-      [capacites, '[A-E][1-4]'],
-      [capacites.flatMap((c) => [`${c}.1`, `${c}.2`, `${c}.3`]), '[A-E][1-4]\\.[1-3]'],
-      [RESPIRE_710.competences.map((c) => c.code), '[1-7]\\.[0-1]\\d'],
-      [['1.01', '1.02', '1.03'], '1\\.0[1-3]'],
-      [['1.00', '2.19', '3.99'], '[1-3]\\.[0-19][09]'],
-      [Array.from({ length: 100 }, (_, i) => `1.${String(i).padStart(2, '0')}`), '1\\.\\d{2}'],
-      [['A1', 'B2', 'D3'], '[A-BD][1-3]'],
-      [['A2', 'A10'], 'A[0-2]{1,2}'],
-      [['c-1', 'c-2'], 'c-[1-2]'],
-      [['X_1', 'Y_2'], '[X-Y]_[1-2]'],
-      [['A1', '1A'], '(?:A1|1A)'],
-      [['seul'], 'seul'],
-    ]
-    for (const [codes, motif] of cas) {
+    for (const [codes, motif] of CAS_DE_MOTIFS) {
       expect(deduireMotif(codes), codes.join(' ')).toBe(motif)
       const regex = new RegExp(`^(?:${motif})$`)
       expect(codes.every((code) => regex.test(code))).toBe(true)
     }
-    expect(new RegExp('^(?:[A-E][1-4])$').test('A9')).toBe(false) // la faute de frappe que l'étroitesse attrape
-    // des formes trop nombreuses pour 100 caractères : la forme générale d'un code
-    const disparates = ['A', '1', 'a', 'A.1', '1.A', 'a.a', 'A-1', '1-A', 'a-a', 'A_1', '1_A', 'a_a', 'Aa1', '1aA',
-      'a1A', 'A1a', '1Aa', 'aA1', 'A.a', 'a.A', '1.a', 'a.1', 'A-a', 'a-A', '1-a', 'a-1']
-    const motif = deduireMotif(disparates)
+    // la faute de frappe que l'étroitesse attrape : A9 parmi A1…E4, refusé à sa ligne par le motif déduit des capacités
+    const texte = `# Pôle 1 — A\n${CAPACITES.map((code) => `## ${code} — x`).join('\n')}\n## A9 — Faute de frappe`
+    expect(enLignes(lireTexte(texte, { ...CHAMPS, niveaux: [{ motif: deduireMotif(CAPACITES) }] }).erreurs)).toEqual([
+      '22 : « A9 » ne suit pas le motif [A-E][1-4] du niveau « compétence »',
+    ])
+    const motif = deduireMotif(DISPARATES)
     expect(motif).toBe('[A-Za-z0-9._-]{1,8}')
-    for (const m of [motif, ...cas.map(([codes]) => deduireMotif(codes))]) {
+    for (const m of [motif, ...CAS_DE_MOTIFS.map(([codes]) => deduireMotif(codes))]) {
       expect(m.length).toBeLessThanOrEqual(100)
       expect(m).not.toContain('(*')
     }
@@ -353,6 +369,25 @@ describe('UC-EPI-05 — un référentiel en Markdown', () => {
     expect(erreurs('A'.repeat(101))).toEqual(['Niveau 1 (« compétence ») : motif de plus de 100 caractères'])
     expect(erreurs('(*ACCEPT)A')).toEqual(['Niveau 1 (« compétence ») : motif illisible : (*ACCEPT)A'])
     expect(erreurs('A\t1')).toEqual(['Niveau 1 (« compétence ») : motif illisible : A\t1'])
+  })
+
+  it('UC-EPI-05-U27 — le contrat avec le serveur (schemas/fixtures/markdown/) est ce que la page envoie et déduit aujourd’hui', () => {
+    const humanome = (fixture) => {
+      const champs = { id: fixture.id, version: fixture.version, label: fixture.label }
+      return lireTexte(referentielEnMarkdown(fixture), champs).document
+    }
+    const contrat = {
+      description: 'Contrat de la page Markdown de l’atelier (web/src/lib/referentiel-markdown.js) avec le serveur '
+        + '(ReferentielRepository) : les documents qu’elle envoie et les motifs qu’elle déduit, que le serveur valide et '
+        + 'compile en PCRE (UC-EPI-05-U27, U28). Écrit par le test U27 (ECRIRE_CONTRAT=1). Référentiels FICTIFS.',
+      documents: [JSON.parse(MODELE_JSON), humanome(HUMANOME), humanome(HUMANOME_FACETTE)],
+      motifs: [...CAS_DE_MOTIFS, [DISPARATES]].map(([codes]) => ({ motif: deduireMotif(codes), codes })),
+    }
+    // un motif d'alternative, celui que deduireMotif écrit pour des formes différentes, en fait partie
+    expect(contrat.motifs.map((m) => m.motif)).toContain('(?:A1|1A)')
+    expect(contrat.documents[1].niveaux).toHaveLength(2)
+    if (process.env.ECRIRE_CONTRAT === '1') writeFileSync(CONTRAT, `${JSON.stringify(contrat, null, 2)}\n`)
+    expect(JSON.parse(readFileSync(CONTRAT, 'utf8'))).toEqual(contrat)
   })
 
   it('UC-EPI-05-U19 — BOM, fins de ligne CRLF, tirets, séparateurs, lignes échappées : le même document', () => {

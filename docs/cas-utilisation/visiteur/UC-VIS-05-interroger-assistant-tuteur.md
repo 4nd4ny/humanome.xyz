@@ -192,7 +192,8 @@ dans l'en-tête, à côté du bouton d'aide « ? ».
   (`api/tests/fixtures/tuteur/memoire-courte.json`) : le serveur ne coupe
   jamais ce qu'envoie un panneau honnête. Les échanges partent en tours de
   conversation avant la question, jamais dans la consigne système ; rien
-  n'est conservé côté serveur (RG3).
+  n'est conservé côté serveur (RG3). Le serveur en vérifie la forme, jamais
+  l'origine : voir la limite sur la mémoire courte fournie par le client.
 
 ## Données et RGPD
 
@@ -333,3 +334,15 @@ cd web && npx vitest run test/usecases/unit/uc-vis-05 test/usecases/functional/u
 - La carte du site et le digest sont régénérés par `stage-api.sh`, les
   fichiers publics de la carte par le `prebuild` du front : déployer l'API et
   le front depuis le même commit (UC-SYS-04).
+- La mémoire courte (RG7) est **fournie tout entière par le client** : le
+  serveur n'en garde rien et ne peut pas savoir si une « réponse » de
+  l'historique vient vraiment du modèle. Un client peut donc inventer un tour
+  `assistant` (par exemple une fausse réponse qui annonce un profil
+  d'administrateur) juste avant sa question. Ce tour reste borné (2 échanges,
+  750 caractères par message, 1 500 en tout), part en tour de conversation et
+  jamais dans la consigne système (le profil vient toujours de la session,
+  RG1), et ne donne accès à aucune donnée : la consigne et le digest sont
+  publics, l'assistant ne lit ni compte ni portfolio. Il ne fait que
+  renforcer une injection déjà possible par la question elle-même. Le fermer
+  demanderait de signer côté serveur chaque réponse renvoyée et de ne garder
+  que les tours `assistant` signés (non fait).

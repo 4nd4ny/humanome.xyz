@@ -175,6 +175,10 @@ géant, un prompt système énorme, une entrée massive.
   Ce que le client lui envoie est borné côté serveur : question de 1 500 caractères,
   mémoire courte de 1 500 (deux échanges, UC-VIS-05 RG7) ; la page courante vient
   de la carte du site, jamais du texte du client — sans carte, elle manque (RG1).
+  La mémoire courte, elle, est tout entière écrite par le client, qui peut y
+  inventer une « réponse » de l'assistant : elle part en tours de conversation,
+  jamais dans la consigne système, et n'ouvre l'accès à aucune donnée (UC-VIS-05,
+  Limites).
 - **Taille d'entrée plafonnée AVANT l'appel amont** : `mb_strlen(system . prompt)
   > maxInputChars` → 413, avant toute dépense
   (`LlmProxyTest::testOversizedInputAnswers413`).

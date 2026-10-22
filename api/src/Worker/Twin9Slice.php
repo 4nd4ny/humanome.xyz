@@ -53,8 +53,9 @@ use Twin9\Run\Pending;
  * it: one has ended, nothing is at Anthropic any more, or calls are still to
  * submit; otherwise the slice only asks Anthropic where its batches stand,
  * and it does not count among the N runs. Played, its pass's calls leave in
- * bounded batches. The batches of runs no longer in progress are cancelled
- * and deleted first.
+ * bounded batches. The batches of runs no longer in progress are collected
+ * first, once ended — cancelled before, for a run its owner cancelled —,
+ * their answers written with their cost, then deleted (Twin9Lots::menage).
  *
  * Each call goes its own route (P1-5, ADR-012): by batches when its provider
  * is Anthropic and its profile's lane « lots », directly otherwise. A run
@@ -75,7 +76,8 @@ use Twin9\Run\Pending;
  * more than thirty minutes by a third party's spending cap, a batch refused,
  * a price missing, the engine failing: the run stops, deferred — nothing
  * more leaves, the calls in flight come back or are cut, written with their
- * cost, then it stops and what its calls hold goes back.
+ * cost, then it stops and what its calls hold goes back; its batch still at
+ * Anthropic is collected once ended, never cancelled (Twin9Lots::menage).
  *
  * A call leaves holding its worst case (T10, RunCosts): debited from its
  * owner's credits with the instance's key, counted against the run's budget.

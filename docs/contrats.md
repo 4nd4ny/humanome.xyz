@@ -950,7 +950,9 @@ direct, dans la même tranche (`Worker\Twin9Slice`).
   (`twin9_appels.plafond_depuis`, gardé d'un essai à l'autre) —, plus rien
   ne part ni ne se rejoue ; ses appels en vol reviennent (ou la fin de
   tranche les coupe) et sont écrits avec leur coût ; puis il s'arrête
-  (`echoue`), et ce que tiennent ses appels revient (§8.5). Aucun texte d'un
+  (`echoue`), et ce que tiennent ses appels revient (§8.5) ; son lot encore
+  chez Anthropic n'est pas annulé : relevé une fois fini, ses réponses
+  écrites et payées (§8.3). Aucun texte d'un
   fournisseur n'entre dans ces raisons.
 
 | `step` du moteur | Étape du profil |
@@ -1050,7 +1052,8 @@ une suivante le relève.
 - **La vie d'un lot** (`twin9_lots`) : `soumission`, la ligne écrite avant
   que le lot parte ; `en_cours`, son identifiant Anthropic connu ; `releve`,
   ses résultats écrits au journal ; `supprime`, supprimé chez Anthropic.
-  `annulation` vaut pour un run qui n'est plus en cours.
+  `annulation` vaut pour un run annulé, son lot annulé chez Anthropic et
+  pas encore relevé (relevé aussi par un run repris entre-temps).
 - **Le relevé.** La tranche demande où en est chaque lot. Un lot fini voit ses
   résultats entrer au journal comme ceux des appels directs
   (`AnthropicCaller::lireMessage`), au coût de l'usage rendu, à moitié prix ;
@@ -1063,8 +1066,17 @@ une suivante le relève.
   minutes autour de son départ, puis, une fois fini, les mêmes `custom_id`.
   Introuvable dix minutes après son départ, il n'est jamais parti, et ses
   appels repartent.
-- **Un run qui n'est plus en cours** (annulé, en échec ou fini) voit ses lots
-  en cours annulés, leurs appels rendus, puis supprimés une fois finis.
+- **Un run qui n'est plus en cours** (annulé, en échec ou fini) : ses lots
+  sont relevés une fois finis, comme ceux d'un run en cours — chaque réponse
+  écrite avec son coût réel et débitée, une requête en erreur, expirée ou
+  annulée rendue (elle repart à une reprise) —, ce que tenaient leurs appels
+  soldé (`RunCosts::liberer`), puis supprimés. Seul un run **annulé** par son
+  auteur voit d'abord son lot en cours annulé chez Anthropic ; les réponses
+  qui arrivent malgré l'annulation sont lues et payées de même. Un run en
+  échec garde son lot chez Anthropic jusqu'à sa fin : une requête traitée est
+  facturée (faits d'API, §8), sa réponse est gardée et payée une fois,
+  jamais supprimée sans être lue (2026-10-22, revue de la voie mixte). Un
+  lot perdu, une fois retrouvé, de même.
 - **Entre deux lots**, le run n'est pas rejoué : la tranche demande seulement
   où en sont ses lots, et il ne compte pas parmi ses N runs. Un run mixte
   (§8.1, P1-5) l'est à chaque tranche, pour ses appels directs ; ses lots,
@@ -1114,7 +1126,7 @@ une suivante le relève.
   son verrou, pour les seuls runs de la session (`Tick` : `twin9Utilisateur`),
   sans les jobs de masse ; elle finit plus tôt quand ces runs n'attendent plus
   rien. Annuler arrête un run en cours
-  (ses lots sont annulés puis supprimés, §8.3) ; reprendre relance un run
+  (ses lots sont annulés, relevés puis supprimés, §8.3) ; reprendre relance un run
   annulé ou arrêté, depuis son journal. Depuis P0-1, le suivi porte
   `configuration_empreinte` (l'empreinte de sa configuration, §8.9 ; nulle
   pour un run d'avant elle), et rien d'autre de ses blocs : la page
@@ -1177,7 +1189,7 @@ une suivante le relève.
   tard : le coût réel reste, le reste revient (`… · réconciliation`, par
   modèle, avec les jetons réels). Un run arrêté, annulé ou fini rend tout ce
   que ses appels tiennent encore (`… · remboursement`), sauf les appels d'un
-  lot encore chez Anthropic, soldés quand le lot est relevé ou annulé.
+  lot encore chez Anthropic, soldés quand le lot est relevé, annulé ou non (§8.3).
 - **Un appel ne débite jamais plus que sa réserve** (ADR-012 §6) : un coût
   réel au-delà — un fournisseur qui facture plus de sortie que le pire cas
   n'en comptait, une grille qui a changé entre l'envoi et la réponse — est

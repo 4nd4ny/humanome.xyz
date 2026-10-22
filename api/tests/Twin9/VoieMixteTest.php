@@ -290,6 +290,72 @@ final class VoieMixteTest extends TestCase
     }
 
     /**
+     * OpenAI refuses a call's settings while the run's batch, submitted at
+     * the head of the same slice, is still at Anthropic: the run stops, and
+     * its batch is never cancelled — collected once ended, each answer
+     * written with its cost and debited, then deleted.
+     */
+    public function testAStoppedRunsBatchInFlightIsCollectedNeverCancelled(): void
+    {
+        $id = $this->nouveauRun();
+        $lots = new FakeBatchApi(static fn (array $r): array => FakeBatchApi::message('vu ' . FakeBatchApi::appel($r)),
+            regards: 2);
+        $http = self::openai(static fn (array $r): ?array => FakeMultiHttpClient::appel($r) === 'journees/J1/tags_b_P1.json'
+            ? ['status' => 400, 'body' => '{"error":{"message":"texte-du-fournisseur-canari"}}'] : null);
+
+        $this->tick($lots, $http);
+        $runs = new RunRepository($this->pdo);
+        self::assertSame('echoue', $runs->statut($id));
+        self::assertSame(['msgbatch_0001'], $lots->restants(), 'son lot encore chez Anthropic');
+
+        for ($n = 0; $n < 6 && $lots->restants() !== []; $n++) {
+            $this->tick($lots, $http);
+        }
+        self::assertSame([], $lots->restants(), 'relevé, puis supprimé');
+        self::assertNotContains('annuler', $lots->operations('msgbatch_0001'), 'jamais annulé');
+        self::assertContains('resultats', $lots->operations('msgbatch_0001'), 'ses résultats lus');
+        $this->assertLotRegle($id);
+    }
+
+    /**
+     * Anthropic has ended the batch of a run stopped meanwhile, every
+     * request answered (billed): its answers are read, written with their
+     * cost and debited — never cancelled unread, never sent again at the
+     * run's resumption.
+     */
+    public function testAnEndedBatchOfAStoppedRunIsDebitedAndNeverSentAgain(): void
+    {
+        $id = $this->nouveauRun();
+        $lots = new FakeBatchApi(static fn (array $r): array => FakeBatchApi::message('vu ' . FakeBatchApi::appel($r)),
+            regards: 0);
+        $refus = true;
+        $http = self::openai(static function (array $r) use (&$refus): ?array {
+            return $refus && FakeMultiHttpClient::appel($r) === 'journees/J1/tags_b_P1.json'
+                ? ['status' => 400, 'body' => '{"error":{"message":"texte-du-fournisseur-canari"}}'] : null;
+        });
+
+        $this->tick($lots, $http);
+        $runs = new RunRepository($this->pdo);
+        self::assertSame('echoue', $runs->statut($id));
+        $lots->etat(self::CLE_ANTHROPIC, 'msgbatch_0001', INF); // Anthropic ends it meanwhile
+
+        $this->tick($lots, $http);
+        self::assertNotContains('annuler', $lots->operations('msgbatch_0001'), 'un lot fini n’est pas annulé');
+        self::assertContains('resultats', $lots->operations('msgbatch_0001'), 'ses résultats lus');
+        self::assertSame([], $lots->restants());
+        $this->assertLotRegle($id);
+
+        // resumed, the grid mended: the batch's answers are read from the journal, never paid again
+        $refus = false;
+        self::assertTrue($runs->reprendre($id, $this->user));
+        $this->jusquAuBout($lots, $http);
+        self::assertSame('termine', $runs->statut($id));
+        $tagsA = array_filter(array_map([FakeBatchApi::class, 'appel'], $lots->requetes),
+            static fn (string $a): bool => str_contains($a, 'tags_a'));
+        self::assertCount(3, $tagsA, 'les lecteurs a soumis une fois');
+    }
+
+    /**
      * A third party's call leaves only if its model's longest call fits in
      * what remains of the slice: held back, it leaves at the head of the
      * next; a model longer than a slice never leaves, and the page says why.
@@ -439,6 +505,26 @@ final class VoieMixteTest extends TestCase
         $this->config->update(['twin9_fournisseurs_ouverts' => ['anthropic', 'openai']]);
         $this->jusquAuBout($lots, $http);
         self::assertSame('termine', (new RunRepository($this->pdo))->statut($id));
+    }
+
+    /**
+     * A stopped run's batch, collected: its Anthropic readers answered,
+     * written with their cost; nothing held any more, nothing left in a
+     * batch; its owner debited what its calls cost, nothing else.
+     */
+    private function assertLotRegle(int $id): void
+    {
+        foreach (['J1', 'J2', 'J3'] as $jour) {
+            $etat = $this->appel($id, "journees/$jour/tags_a_P1.json");
+            self::assertSame('repondu', $etat['statut'], $jour . ' : sa réponse écrite');
+            self::assertGreaterThan(0, (int) $etat['cout_microusd'], $jour . ' : avec son coût');
+        }
+        self::assertSame(0, (int) $this->pdo->query('SELECT COUNT(*) FROM twin9_appels WHERE reserve_microusd IS NOT NULL')
+            ->fetchColumn(), 'plus rien n’est retenu');
+        self::assertSame(0, (int) $this->pdo->query('SELECT COUNT(*) FROM twin9_lots')->fetchColumn());
+        $couts = (int) $this->pdo->query('SELECT SUM(cout_microusd) FROM twin9_appels')->fetchColumn();
+        self::assertSame(self::CREDIT - $couts, (new CreditService($this->pdo))->balance($this->user),
+            'son propriétaire paie ce que ses appels ont coûté, lot compris');
     }
 
     /** A grid entry of the third party's model, at an invented price. @return array<string, mixed> */

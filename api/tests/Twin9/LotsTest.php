@@ -308,7 +308,11 @@ final class LotsTest extends TestCase
         self::assertSame([], $lots->requetes, 'aucun lot ne part');
     }
 
-    /** A run cancelled: its batch in progress is cancelled, then deleted once ended; its calls are given back. */
+    /**
+     * A run cancelled: its batch in progress is cancelled, its results read
+     * once ended (each request cancelled), then deleted; its calls are given
+     * back.
+     */
     public function testACancelledRunCancelsThenDeletesItsBatches(): void
     {
         $id = $this->nouveauRun();
@@ -323,7 +327,7 @@ final class LotsTest extends TestCase
         self::assertSame(6, (int) $this->pdo->query('SELECT COUNT(*) FROM twin9_appels WHERE statut = "attente"')
             ->fetchColumn(), 'les appels du lot annulé sont rendus');
         self::assertSame([], $lots->restants(), 'annulé, puis supprimé une fois fini');
-        self::assertSame(['creer', 'annuler', 'etat', 'supprimer'], $lots->operations('msgbatch_0001'));
+        self::assertSame(['creer', 'annuler', 'etat', 'resultats', 'supprimer'], $lots->operations('msgbatch_0001'));
         self::assertSame(0, (int) $this->pdo->query('SELECT COUNT(*) FROM twin9_lots')->fetchColumn());
         // P0-1: its execution, read in its journal, still counts them in the batch lane, read at their custom_id —
         // given back, they lost their batch (lot_id NULL), and the batch itself is gone
@@ -333,6 +337,32 @@ final class LotsTest extends TestCase
         self::assertSame(['journal', 'annule'], [$execution->source, $execution->statut]);
         self::assertSame(['lots'], array_keys((array) $execution->par_voie), 'aucun appel compté en directe');
         self::assertSame(6, $execution->par_voie->lots->appels);
+    }
+
+    /**
+     * A run cancelled once Anthropic has ended its batch, every request
+     * answered (billed): the cancel comes too late, and the batch's answers
+     * are read, written with their cost and debited — never given back
+     * unread, to be paid again at a resumption.
+     */
+    public function testACancelledRunsEndedBatchIsCollectedNotLost(): void
+    {
+        $id = $this->nouveauRun();
+        $lots = new FakeBatchApi(static fn (array $r): array => FakeBatchApi::message('vu ' . FakeBatchApi::appel($r)),
+            regards: 0);
+        $this->tick($lots);
+        $lots->etat('sk-ant-instance-test', 'msgbatch_0001', INF); // Anthropic ends it meanwhile
+
+        $this->pdo->prepare('UPDATE twin9_runs SET statut = "annule" WHERE id = ?')->execute([$id]);
+        $this->tick($lots);
+        self::assertContains('resultats', $lots->operations('msgbatch_0001'), 'ses résultats lus');
+        self::assertSame([], $lots->restants());
+        self::assertSame(6, (int) $this->pdo->query('SELECT COUNT(*) FROM twin9_appels WHERE statut = "repondu"
+                                                         AND cout_microusd > 0')->fetchColumn(), 'écrits, avec leur coût');
+        self::assertSame(0, (int) $this->pdo->query('SELECT COUNT(*) FROM twin9_appels WHERE reserve_microusd IS NOT NULL')
+            ->fetchColumn());
+        $couts = (int) $this->pdo->query('SELECT SUM(cout_microusd) FROM twin9_appels')->fetchColumn();
+        self::assertSame(1_000_000_000 - $couts, (new CreditService($this->pdo))->balance($this->user), 'débités');
     }
 
     /**

@@ -35,7 +35,11 @@ use Twin9\Run\Call;
  *   its attempt spent (the v9.8's three, then a failure), an expired one too,
  *   its attempt given back. Then the batch is deleted at Anthropic, which
  *   would keep it 29 days otherwise.
- * - The batches of a run no longer in progress are cancelled, then deleted.
+ * - The batches of a run no longer in progress are collected once ended,
+ *   as a run's in progress are, then deleted: stopped (or done), a run's
+ *   batch goes on at Anthropic, which bills each request it processes;
+ *   cancelled by its owner, it is cancelled first, its answers that came
+ *   all the same read and paid. Never deleted unread.
  * - Each call holds its worst case, at half price, when its batch is written
  *   (T10, RunCosts): a batch holds no more than its run's budget and its
  *   owner's credit leave room for, the rest waits for a next one.
@@ -103,7 +107,9 @@ final class Twin9Lots
         $jouer = $attente === self::A_SOUMETTRE;
         $enVol = 0;
         $raison = null;
-        foreach ($this->lots('l.run_id = ? AND l.statut IN ("soumission", "en_cours", "releve")', [$runId]) as $lot) {
+        // a batch being cancelled is a run's that was cancelled, then resumed before its batch ended: collected alike
+        foreach ($this->lots('l.run_id = ? AND l.statut IN ("soumission", "en_cours", "annulation", "releve")', [$runId])
+                 as $lot) {
             $cle = $this->cles->pour($userId, $lot['cle']);
             if ($cle === null || microtime(true) >= $fin) {
                 $raison = $cle === null ? 'clé Anthropic indisponible' : null;
@@ -124,7 +130,7 @@ final class Twin9Lots
                 $lot['statut'] = 'en_cours';
                 $lot['lot'] = $issue;
             }
-            if ($lot['statut'] === 'en_cours') {
+            if ($lot['statut'] === 'en_cours' || $lot['statut'] === 'annulation') {
                 $issue = $this->achever($lot, $cle, $fin, $compteurs);
                 if ($issue === null) {
                     $enVol++;
@@ -245,9 +251,16 @@ final class Twin9Lots
     }
 
     /**
-     * The batches of runs no longer in progress (cancelled, failed, done):
-     * cancelled at Anthropic, their calls given back, then deleted once
-     * ended; a lost one, once found, deleted.
+     * The batches of runs no longer in progress (cancelled, stopped, done).
+     * A run cancelled by its owner has its batch in progress cancelled at
+     * Anthropic; another's goes on — a run stopped resumes from its
+     * journal. Once ended, each is collected as a run in progress's is
+     * (achever(): each answer written with its real cost, a request in
+     * error, expired or cancelled given back, to leave again at a
+     * resumption), what its calls held settled (RunCosts::liberer()), then
+     * deleted: a request Anthropic processed is billed (faits-api §8), its
+     * answer is kept and paid once, never deleted unread. A lost batch,
+     * once found, likewise; never found, its calls given back.
      *
      * @param array<string, int> $compteurs the slice's
      * @param int|null $utilisateur those of one user's runs only, when the page of their run advances them (T9)
@@ -273,33 +286,46 @@ final class Twin9Lots
             }
             if ($lot['statut'] === 'soumission') {
                 $issue = $this->retrouver($lot, $cle, $fin);
+                if ($issue === 'abandonne') {
+                    // never found: its calls given back, what they held goes back too
+                    $this->depasse($compteurs, $this->couts->liberer($lot['run_id']));
+                }
                 if ($issue === 'attendre' || $issue === 'abandonne') {
                     continue;
                 }
-                $lot['statut'] = 'releve'; // found once ended: nothing left to cancel
+                $lot['statut'] = 'en_cours';
                 $lot['lot'] = $issue;
             }
-            if ($lot['statut'] === 'en_cours') {
+            if ($lot['statut'] === 'en_cours' && $lot['run_statut'] === 'annule') {
+                // its owner asked it to stop: cancelled at Anthropic, its answers that came all the same read once
+                // it has ended (400, 404, 409: ended or gone already)
                 $issue = $this->api->annuler($cle, (string) $lot['lot'], $fin);
                 if (!$issue['ok'] && !\in_array($issue['http'] ?? null, [400, 404, 409], true)) {
                     continue; // to cancel at the next slice
                 }
-                (new CallJournal($this->pdo, $lot['run_id']))->rendreLeLot($lot['id']);
                 $this->pdo->prepare('UPDATE twin9_lots SET statut = "annulation" WHERE id = ?')->execute([$lot['id']]);
-                // its calls given back, what they held goes back too
-                $compteurs['depassements'] = ($compteurs['depassements'] ?? 0) + $this->couts->liberer($lot['run_id']);
                 $compteurs['annules']++;
                 $lot['statut'] = 'annulation';
             }
-            if ($lot['statut'] === 'annulation') {
-                $etat = $this->api->etat($cle, (string) $lot['lot'], $fin);
-                $fini = $etat['ok'] ? ($etat['lot']['processing_status'] ?? '') === 'ended' : ($etat['http'] ?? null) === 404;
-                if (!$fini) {
+            if ($lot['statut'] === 'en_cours' || $lot['statut'] === 'annulation') {
+                $issue = $this->achever($lot, $cle, $fin, $compteurs);
+                if ($issue === null) {
+                    continue; // still at Anthropic, or its results to read at the next slice
+                }
+                // its answers written with their cost, its other calls given back: what they held is settled
+                $this->depasse($compteurs, $this->couts->liberer($lot['run_id']));
+                if ($issue === 'rendu') {
                     continue;
                 }
             }
             $this->supprimer($lot, $cle, $fin, false);
         }
+    }
+
+    /** @param array<string, int> $compteurs the slice's: the real costs beyond what their calls held */
+    private function depasse(array &$compteurs, int $n): void
+    {
+        $compteurs['depassements'] = ($compteurs['depassements'] ?? 0) + $n;
     }
 
     /**
@@ -704,10 +730,12 @@ final class Twin9Lots
         return $stmt->fetchColumn() !== false;
     }
 
-    /** A run's batches at Anthropic, or whose submission is under way. */
+    /** A run's batches at Anthropic (being cancelled included), or whose submission is under way. */
     public function enVol(int $runId): int
     {
-        $stmt = $this->pdo->prepare('SELECT COUNT(*) FROM twin9_lots WHERE run_id = ? AND statut IN ("soumission", "en_cours")');
+        $stmt = $this->pdo->prepare(
+            'SELECT COUNT(*) FROM twin9_lots WHERE run_id = ? AND statut IN ("soumission", "en_cours", "annulation")'
+        );
         $stmt->execute([$runId]);
 
         return (int) $stmt->fetchColumn();
@@ -717,13 +745,14 @@ final class Twin9Lots
      * Batches, with their run's owner.
      *
      * @param list<mixed> $params
-     * @return list<array{id: int, run_id: int, user_id: int, lot: string|null, statut: string, cle: string,
-     *                    requetes: int, soumis: float}>
+     * @return list<array{id: int, run_id: int, user_id: int, run_statut: string, lot: string|null, statut: string,
+     *                    cle: string, requetes: int, soumis: float}>
      */
     private function lots(string $ou, array $params, int $max = 1000): array
     {
         $stmt = $this->pdo->prepare(
-            'SELECT l.id, l.run_id, r.user_id, l.lot, l.statut, l.cle, l.requetes, UNIX_TIMESTAMP(l.soumis_at) AS soumis
+            'SELECT l.id, l.run_id, r.user_id, r.statut AS run_statut, l.lot, l.statut, l.cle, l.requetes,
+                    UNIX_TIMESTAMP(l.soumis_at) AS soumis
                FROM twin9_lots l JOIN twin9_runs r ON r.id = l.run_id
               WHERE ' . $ou . ' ORDER BY l.id LIMIT ' . $max
         );
@@ -731,7 +760,8 @@ final class Twin9Lots
 
         return array_map(static fn (array $l): array => [
             'id' => (int) $l['id'], 'run_id' => (int) $l['run_id'], 'user_id' => (int) $l['user_id'],
-            'lot' => $l['lot'] === null ? null : (string) $l['lot'], 'statut' => (string) $l['statut'],
+            'run_statut' => (string) $l['run_statut'], 'lot' => $l['lot'] === null ? null : (string) $l['lot'],
+            'statut' => (string) $l['statut'],
             'cle' => (string) $l['cle'], 'requetes' => (int) $l['requetes'], 'soumis' => (float) $l['soumis'],
         ], $stmt->fetchAll());
     }

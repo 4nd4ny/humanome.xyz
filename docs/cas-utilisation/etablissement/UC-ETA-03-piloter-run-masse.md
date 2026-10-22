@@ -169,7 +169,9 @@ masse ») et clique « Estimer le coût ».
   produite lui est conforme et, pour un autre référentiel que RESPIRE, le
   nomme (`referentiel`) — UC-SYS-01. Le paquet doit savoir le cartographier
   (E7). Une version antérieure d'un référentiel ne se choisit que par l'API
-  (`referentielVersion`).
+  (`referentielVersion`). Une liste sans RESPIRE (une base qui ne l'a pas
+  publié) présélectionne son premier référentiel, qui devient le choix :
+  l'estimation le lit et le lancement l'envoie (`referentielId`).
 
 ## Scénarios d'erreur
 
@@ -313,6 +315,7 @@ tableau reste figé sur le dernier état reçu.
 | UC-ETA-03-F28 | A8, E7 | API | RESPIRE 8.0.0 en six pôles devenue la dernière publiée : défaut refusé au paquet 1.0.0, la 7.0.0 reste choisissable ; un paquet qui lit le référentiel la cartographie (7 appels, six pôles, document sans `referentiel`, conforme) | idem |
 | UC-ETA-03-F29 | A8 | IHM | `<App/>` avec l'index statique : menu « Référentiel » (RESPIRE présélectionné), choix d'un référentiel à neuf pôles → 50 appels estimés, POST avec sa version | `web/test/usecases/functional/uc-eta-03-piloter-run-masse.test.jsx` |
 | UC-ETA-03-F30 | A8 | IHM | `<App/>` sans export statique, les référentiels publiés en base (`GET api/referentiels`, rangés par identifiant) : RESPIRE 7.1.0 (six pôles, fictive) en tête et présélectionnée ; menu non touché, l'estimation la lit (`GET api/referentiels/respire/versions/7.1.0`) → 35 appels, pas les 40 de la copie embarquée ; le référentiel à neuf pôles choisi est lu par `GET api/referentiels/fictif-neuf/versions/1.0.0` → 50 appels estimés, POST avec sa version | idem |
+| UC-ETA-03-F31 | A8 | IHM | Base sans RESPIRE publié (`GET api/referentiels` ne rend que le référentiel à neuf pôles) : présélectionné, menu non touché, l'estimation le lit → 50 appels ; le POST porte `referentielId`/`referentielVersion` | idem |
 
 ### Tests existants liés (non-régression)
 

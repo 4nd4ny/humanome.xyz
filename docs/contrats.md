@@ -1477,7 +1477,10 @@ plus contre le chiffre 7. Aucun champ n'est renommé.
   `GET /api/referentiels/{id}/versions/{semver}`, à défaut l'export statique,
   enfin, pour RESPIRE, la copie embarquée ; sans choix, les parcours chargent
   ainsi la dernière RESPIRE publiée (`{id: 'respire'}`), celle que le menu
-  présélectionne. Une réponse de l'API vide,
+  présélectionne. Une liste sans RESPIRE (une base qui ne l'a pas publié)
+  présélectionne son premier référentiel, et le menu en fait le choix
+  (`onChange`, jamais sous un run en cours) : le parcours charge le
+  référentiel affiché, et la masse l'envoie (`referentielId`). Une réponse de l'API vide,
   malformée, en erreur, ou un document qui n'est pas la version demandée
   cèdent la place à l'export statique. La page publique `#/referentiel`
   (`loadPublishedReferentiel()` sans identifiant) reste statique.

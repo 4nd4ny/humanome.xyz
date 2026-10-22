@@ -192,8 +192,10 @@ Cartographier mes écrits », ou le bouton du tableau de bord `#/espace`).
   sa version (`referentiel: {id, version}`) ; l'identifiant du run l'inclut
   (RG3). Un référentiel voté et publié sur le site est donc proposé sans
   attendre un export statique. Sans API ni index lisibles (copie statique),
-  aucun choix n'est offert : RESPIRE embarqué. Un référentiel qui ne se charge pas : message, « Continuer »
-  inactif.
+  aucun choix n'est offert : RESPIRE embarqué. Une liste sans RESPIRE (une
+  base qui ne l'a pas publié) présélectionne son premier référentiel, qui
+  devient le choix : l'assistant charge celui que le menu montre. Un
+  référentiel qui ne se charge pas : message, « Continuer » inactif.
 
 ## Scénarios d'erreur
 
@@ -421,6 +423,7 @@ Cartographier mes écrits », ou le bouton du tableau de bord `#/espace`).
 | UC-APP-02-F25 | E7 | IHM | Clé personnelle refusée (`401` d'Anthropic) : 2 requêtes par journée (aucune reprise du transport, nouvel essai d'`extractDay`), 6 au total ; les 3 journées listées en échec « extractDay : pôle 1 (…) — anthropic: HTTP 401 — invalid x-api-key » ; aucun appel à `api/llm`, rien d'enregistré | `web/test/usecases/functional/uc-app-02-lancer-cartographie-standard.test.jsx` |
 | UC-APP-02-F26 | A7 | IHM | Index des référentiels publiés : « Référentiel » propose RESPIRE (défaut) et un référentiel lettré ; choisi, il est chargé ; estimation 34 appels ; 18 POST dont les prompts le nomment ; 3 jours + fusion enregistrés avec `referentiel: {id, version}`, documents nommés, 5 domaines ; checkpoints sous l'identifiant qui l'inclut | `web/test/usecases/functional/uc-app-02-lancer-cartographie-standard.test.jsx` |
 | UC-APP-02-F27 | A7 | IHM | Référentiels publiés en base, absents de l'export statique : `GET api/referentiels` (rangés par identifiant) → RESPIRE en tête et par défaut, le lettré proposé ; choisi, il est lu par `GET api/referentiels/fictif-lettre/versions/1.0.0` ; estimation 34 appels ; aucun fichier statique du lettré demandé | idem |
+| UC-APP-02-F28 | A7 | IHM | Base sans RESPIRE publié (`GET api/referentiels` ne rend que le lettré) : le menu le montre et le présélectionne, l'assistant le charge (`GET api/referentiels/fictif-lettre/versions/1.0.0`) → estimation 34 appels, pas celle de RESPIRE embarqué | idem |
 
 ### Tests existants liés (non-régression)
 

@@ -82,6 +82,29 @@ describe('ReferentielChoice', () => {
     clearReferentielCache()
   })
 
+  it('sans RESPIRE au catalogue, le référentiel présélectionné devient le choix : le parcours charge celui que le menu montre (S5)', async () => {
+    const seul = [liste[1]]
+    const onChange = vi.fn()
+    const { rerender } = render(<ReferentielChoice value={null} onChange={onChange} disabled list={async () => seul} />)
+    const select = await screen.findByRole('combobox', { name: 'Référentiel' })
+    expect([...select.options].map((o) => o.textContent)).toEqual(['Fictif lettré'])
+    expect(select.value).toBe('fictif-lettre@1.0.0')
+    // jamais sous un run en cours : le choix suit quand le menu se rouvre
+    expect(onChange).not.toHaveBeenCalled()
+    rerender(<ReferentielChoice value={null} onChange={onChange} list={async () => seul} />)
+    await waitFor(() => expect(onChange).toHaveBeenCalledWith({ id: 'fictif-lettre', version: '1.0.0' }))
+    expect(onChange).toHaveBeenCalledTimes(1)
+    rerender(<ReferentielChoice value={{ id: 'fictif-lettre', version: '1.0.0' }} onChange={onChange} list={async () => seul} />)
+    expect(onChange).toHaveBeenCalledTimes(1)
+    cleanup()
+
+    // avec RESPIRE, le défaut reste le sien, sans choix (null)
+    const sansChoix = vi.fn()
+    render(<ReferentielChoice value={null} onChange={sansChoix} list={async () => liste} />)
+    expect((await screen.findByRole('combobox', { name: 'Référentiel' })).value).toBe('respire@7.1.0')
+    expect(sansChoix).not.toHaveBeenCalled()
+  })
+
   it('montre le choix reçu ; sans API ni index (copie statique), n’offre rien', async () => {
     const { unmount } = render(<ReferentielChoice value={{ id: 'fictif-lettre', version: '1.0.0' }} onChange={() => {}} list={async () => liste} />)
     expect((await screen.findByRole('combobox', { name: 'Référentiel' })).value).toBe('fictif-lettre@1.0.0')

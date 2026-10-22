@@ -3,8 +3,12 @@
 // RESPIRE par défaut — le parcours en lit la structure dans son JSON
 // (data/referentiel.js). La liste vient de la base (API publique, S5), à
 // défaut de l'index statique ; sans l'une ni l'autre (copie statique, hors
-// ligne), aucun choix n'est offert : le parcours garde RESPIRE.
+// ligne), aucun choix n'est offert : le parcours garde RESPIRE. Une liste sans
+// RESPIRE (une base qui ne l'a pas publié) présélectionne la première : elle
+// devient le choix (onChange), pour que le parcours charge le référentiel que
+// le menu montre, jamais RESPIRE en douce.
 import { useEffect, useState } from 'react'
+import { REFERENTIEL_PAR_DEFAUT as RESPIRE } from '@engine/conformite.js'
 import { listPublishedReferentiels } from '../data/referentiel.js'
 
 /** La valeur d'une option : un référentiel à sa dernière version. */
@@ -28,10 +32,18 @@ export default function ReferentielChoice({ value, onChange, disabled = false, l
     }
   }, [list])
 
+  // Sans choix et sans RESPIRE, le défaut des parcours n'est pas au menu : le
+  // premier référentiel devient le choix, sauf sous un run en cours (disabled).
+  const sansRespire = referentiels.length > 0 && !referentiels.some((r) => r.id === RESPIRE)
+  useEffect(() => {
+    if (value || disabled || !sansRespire) return
+    onChange({ id: referentiels[0].id, version: referentiels[0].versions[0].semver })
+  }, [value, disabled, sansRespire, referentiels, onChange])
+
   if (referentiels.length === 0) return null
   const choisi = value
     ? `${value.id}@${value.version}`
-    : valeur(referentiels.find((r) => r.id === 'respire') ?? referentiels[0])
+    : valeur(referentiels.find((r) => r.id === RESPIRE) ?? referentiels[0])
 
   return (
     <label className="referentiel-choice">

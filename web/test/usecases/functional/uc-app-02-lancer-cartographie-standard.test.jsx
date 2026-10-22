@@ -470,6 +470,30 @@ describe('UC-APP-02 — scénarios alternatifs', () => {
     expect((await screen.findByTestId('run-estimate')).textContent).toContain('34 appels au modèle')
     expect(fetchMock.calls.some((c) => c.url.startsWith('data/referentiel/fictif-lettre'))).toBe(false)
   })
+
+  it('UC-APP-02-F28 — A7 : une base sans RESPIRE publié offre et charge le même référentiel, celui que le menu présélectionne', async () => {
+    await seedPortfolio()
+    // Une base de développement amorcée de l'Humanome seul (sans INSTALL §3) :
+    // le menu montre l'autre référentiel, le run ne lit pas RESPIRE en douce.
+    const fetchMock = stubNetwork({
+      extra: [
+        ['api/referentiels', () => jsonResponse(200, [{ id: 'fictif-lettre', label: 'Fictif lettré', versions: ['1.0.0'] }])],
+        ['api/referentiels/fictif-lettre/versions/1.0.0', () => jsonResponse(200, LETTRE)],
+      ],
+    })
+    openWizard()
+    fireEvent.click(await screen.findByRole('radio', { name: /Journal de Maya — 3 journée\(s\)/ }))
+    next()
+    const choix = await screen.findByRole('combobox', { name: 'Référentiel' })
+    expect([...choix.options].map((o) => o.textContent)).toEqual(['Fictif lettré'])
+    expect(choix.value).toBe('fictif-lettre@1.0.0')
+    await waitFor(() => expect(fetchMock.calls.some((c) => c.url === 'api/referentiels/fictif-lettre/versions/1.0.0')).toBe(true))
+    await waitFor(() => expect(screen.getByRole('button', { name: 'Continuer' }).disabled).toBe(false))
+    next()
+    fireEvent.click(await screen.findByRole('radio', { name: /Service humanome/ }))
+    next()
+    expect((await screen.findByTestId('run-estimate')).textContent).toContain('34 appels au modèle')
+  })
 })
 
 describe('UC-APP-02 — scénarios d’erreur', () => {

@@ -48,10 +48,16 @@ final class AnthropicBatchesTest extends TestCase
             ['DELETE', self::LOTS . '/msgbatch_01', null],
         ], array_map(static fn (array $r): array => [$r['method'], $r['url'], $r['body']], $http->requests),
             'jamais l\'adresse que rend l\'API');
+        $traces = [];
         foreach ($http->requests as $r) {
-            self::assertSame(AnthropicCaller::entetes('sk-ant-test'), $r['headers']);
+            // each request, as a direct call, with a trace that is not sampled: an OpenTelemetry export « Full
+            // content » on the key's account receives none of its prompts (spec-v2, ADR-012 §4)
+            self::assertSame(AnthropicCaller::entetes('sk-ant-test'), array_diff_key($r['headers'], ['traceparent' => 1]));
+            self::assertMatchesRegularExpression('/^00-[0-9a-f]{32}-[0-9a-f]{16}-00$/', $r['headers']['traceparent'] ?? '');
+            $traces[] = $r['headers']['traceparent'];
             self::assertLessThanOrEqual(120, $r['timeout']);
         }
+        self::assertCount(\count($traces), array_unique($traces), 'une trace par requête');
     }
 
     /**
@@ -109,6 +115,7 @@ final class AnthropicBatchesTest extends TestCase
         self::assertSame(['POST', 'https://api.anthropic.com/v1/messages'], [$r['method'], $r['url']]);
         self::assertSame(AnthropicCaller::params('claude-haiku-5-5', AnthropicBatches::VERIFICATION, 16000, 'coupee',
             'xhigh'), json_decode((string) $r['body'], true));
+        self::assertMatchesRegularExpression('/^00-[0-9a-f]{32}-[0-9a-f]{16}-00$/', $r['headers']['traceparent'] ?? '');
     }
 
     /** No answer, or one that does not read: the batch may have left all the same. A rate refusal says its wait. */

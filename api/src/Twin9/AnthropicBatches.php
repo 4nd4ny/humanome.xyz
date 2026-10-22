@@ -6,12 +6,16 @@ namespace Humanome\Twin9;
 
 use Humanome\Llm\HttpClient;
 use Humanome\Llm\HttpClientException;
+use Humanome\Twin9\Fournisseurs\AnthropicAppelant;
 
 /**
  * Twin9's batch lane over Anthropic's Message Batches API (ADR-011 §3, T8),
  * at the locked address of ADR-010 §2. Every URL is built here: a results_url
  * the API hands back is never followed, the key going with every request.
- * Each request is bounded by the slice.
+ * Each request is bounded by the slice, and carries a trace that is not
+ * sampled, as a direct call does (AnthropicAppelant::traceparent(), ADR-012
+ * §4): an OpenTelemetry export « Full content » on the key's account
+ * receives none of the batch's prompts nor of its results.
  *
  * Messages stay generic, as AnthropicCaller's: an upstream error text may
  * quote a request, which carries templates and a portfolio. The check of a
@@ -189,7 +193,8 @@ final class AnthropicBatches implements BatchApi
             return ['ok' => false, 'erreur' => 'plus de temps dans la tranche', 'non_envoye' => true];
         }
         try {
-            $reponse = $this->http->request($methode, $url, AnthropicCaller::entetes($cle), $corps, $delai);
+            $reponse = $this->http->request($methode, $url,
+                AnthropicCaller::entetes($cle) + ['traceparent' => AnthropicAppelant::traceparent()], $corps, $delai);
         } catch (HttpClientException $e) {
             return ['ok' => false, 'erreur' => $e->timedOut ? 'délai dépassé' : 'fournisseur injoignable'];
         }

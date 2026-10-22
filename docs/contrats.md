@@ -973,11 +973,15 @@ direct, dans la même tranche (`Worker\Twin9Slice`).
 La réflexion coupée part sous la forme que le modèle accepte : `disabled`,
 `between_tools` pour Sonnet 5.5 ; « adaptative » part en `adaptive`.
 L'effort, s'il est réglé, part en `output_config.effort`. Jamais de
-température. Chaque appel direct à Anthropic porte en plus un en-tête
+température. Chaque requête de Twin9 à Anthropic — appel direct, et chaque
+requête de la voie par lots (vérification, création, état, résultats,
+annulation, suppression, liste ; 2026-10-22) — porte en plus un en-tête
 `traceparent` dont la trace n'est pas échantillonnée (`00-<trace>-<span>-00`,
-identifiants aléatoires) : un export OpenTelemetry « contenu complet »
-configuré sur le compte de la clé ne reçoit rien de l'appel. Les lots et
-`/twin6/appel` ne le portent pas.
+identifiants aléatoires, une trace par requête) : un export OpenTelemetry
+« contenu complet » configuré sur le compte de la clé ne reçoit rien de ses
+prompts (ADR-012 §4). `/twin6/appel` ne le porte pas : ses prompts sont ceux,
+publics, de Twin6. Avec une clé personnelle, les lots restent visibles du
+titulaire dans sa Console (faits d'API, §7) : l'en-tête n'y change rien.
 
 Les appels aux autres fournisseurs (ADR-012 §4 ; faits lus sur leurs
 documentations officielles le 2026-10-22) partent à l'adresse verrouillée de

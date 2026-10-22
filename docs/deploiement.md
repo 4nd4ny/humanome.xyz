@@ -46,6 +46,13 @@ node scripts/deploy/deploy.mjs api
 node scripts/twin9/import-protocole.mjs
 ```
 
+`stage-api.sh` finit par un contrôle : **pas de Python en production**. Un
+`.py` ou un `.pyc` dans la release — sources, moteur Twin9, paquets Composer
+compris — fait échouer la préparation (code 1) : il nomme les fichiers et
+supprime `build/api-release`, que `deploy.mjs api` refuse alors de déployer
+(« run scripts/deploy/stage-api.sh first »). La v9.8 Python reste dans
+`Twin_v9`, hors production (UC-SYS-02, E13).
+
 Le pointeur `current.txt` est écrit **après** l'upload complet de la release :
 un déploiement interrompu ne bascule jamais sur une release partielle. Les
 migrations sont **forward-only** (expand/contract) — jamais de destruction dans

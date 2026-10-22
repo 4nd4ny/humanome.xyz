@@ -1,8 +1,9 @@
-// round() de Python (half-to-even sur la valeur binaire exacte du double),
-// y compris round(x, n) — CPython arrondit sur la représentation décimale
-// EXACTE du double (David Gay) : round(2.675, 2) == 2.67 car 2.675 est en
-// réalité 2.67499999… Idem formatFixed (« %.2f ») : arrondi correct half-even.
-// Plus : pyFloor, pyDivmod, pyMod (signe du diviseur), pyInt (troncature).
+// Formatage fixe « %.Nf » de Python (formatFixed) : arrondi half-to-even sur
+// la représentation décimale EXACTE du double (David Gay) — '%.2f' % 2.675 ==
+// '2.67' car 2.675 est en réalité 2.67499999… Seul formatFixed reste, pour le
+// %f de pyFormat (pyStr.js) : round(), divmod et les autres sémantiques
+// numériques de Python servaient le moteur du navigateur, retiré par T11, et
+// sont partis avec leurs tests le 2026-10-22.
 // BigInt utilisé en interne pour l'arithmétique rationnelle exacte (pur ESM,
 // disponible dans tous les navigateurs cibles) — jamais exposé en sortie.
 
@@ -59,43 +60,6 @@ function scaledRational(x, n) {
 }
 
 /**
- * round() Python.
- * - pyRound(x) : entier le plus proche, moitiés vers le pair (round(2.5) → 2).
- *   Retourne un Number entier (int Python).
- * - pyRound(x, n) : double le plus proche de la valeur décimale exacte de x
- *   arrondie à n décimales (n entier, éventuellement négatif). Retourne un
- *   double (float Python), signe de zéro conservé.
- * @param {number} x
- * @param {number} [ndigits]
- * @returns {number}
- */
-export function pyRound(x, ndigits) {
-  if (ndigits === undefined) {
-    if (!Number.isFinite(x)) {
-      throw new RangeError("pyRound : NaN/Infinity vers int (Python lèverait)");
-    }
-    if (Number.isInteger(x)) return x + 0; // +0 neutralise -0 (int Python)
-    // |x| < 2^52 ici (sinon x serait entier) : x - floor(x) est exact.
-    const f = Math.floor(x);
-    const diff = x - f;
-    if (diff > 0.5) return f + 1;
-    if (diff < 0.5) return f;
-    return f % 2 === 0 ? f : f + 1;
-  }
-  if (!Number.isInteger(ndigits)) {
-    throw new TypeError("pyRound : ndigits entier requis");
-  }
-  if (!Number.isFinite(x) || x === 0) return x; // nan/inf/±0.0 inchangés
-  const { num, den, neg } = scaledRational(x, ndigits);
-  const q = roundHalfEvenRational(num, den);
-  if (q === 0n) return neg ? -0 : 0;
-  // Conversion décimal → double correctement arrondie (ties-to-even) par le
-  // parseur Number de JS : q * 10^-ndigits sans double arrondi.
-  const abs = Number(`${q.toString()}e${-ndigits}`);
-  return neg ? -abs : abs;
-}
-
-/**
  * Formatage fixe « %.<prec>f » de Python (PyOS_double_to_string, arrondi
  * correct half-even sur la valeur exacte du double). prec ≥ 0.
  * '%.1f' % 0.25 → '0.2' ; '%.0f' % 2.5 → '2' ; -0.0 → '-0.0'.
@@ -119,36 +83,4 @@ export function formatFixed(x, prec) {
   if (digits.length <= prec) digits = "0".repeat(prec + 1 - digits.length) + digits;
   const cut = digits.length - prec;
   return (neg ? "-" : "") + digits.slice(0, cut) + "." + digits.slice(cut);
-}
-
-/** math.floor / opérateur // pour un seul argument. */
-export function pyFloor(x) {
-  return Math.floor(x);
-}
-
-/** int(x) Python : troncature vers zéro. */
-export function pyInt(x) {
-  return Math.trunc(x);
-}
-
-/**
- * Modulo Python : le reste a le signe du DIVISEUR (−7 % 3 == 2 ; 7 % −3 == −2).
- * Exact pour les entiers ; pour les floats, identique au float mod Python.
- * @param {number} a @param {number} b
- */
-export function pyMod(a, b) {
-  if (b === 0) throw new RangeError("pyMod : division par zéro");
-  let r = a % b;
-  if (r !== 0 && (r < 0) !== (b < 0)) r += b;
-  return r;
-}
-
-/**
- * divmod(a, b) Python : [quotient plancher, reste au signe du diviseur].
- * @param {number} a @param {number} b
- * @returns {[number, number]}
- */
-export function pyDivmod(a, b) {
-  const r = pyMod(a, b);
-  return [(a - r) / b, r];
 }

@@ -1,0 +1,161 @@
+# Fixture FICTIVE à la forme du YAML Humanome (S5, lot B) : tous les textes,
+# identifiants, dates et décomptes sont inventés. Aucun vrai référentiel n'entre
+# dans le dépôt (api/tests/UseCases/Support/ReferentielsFictifs.php).
+# Deux pôles, trois capacités, des facettes par 3 et par 4 ; le bloc
+# `structure` est faux exprès ; B1 n'a pas de relance ; les rubriques hors du
+# document (charte, contrat, parcours, identifiants, images, provenance) sont là
+# pour vérifier qu'elles n'y entrent pas.
+# Converti par scripts/convertir-humanome.mjs en referentiel-humanome-fictif.json
+# (et -facette.json) : régénérer les deux si ce fichier change.
+schema_version: 9.9.9-fictif
+referentiel:
+  id: fictif-humanome
+  titre: Référentiel Fictif V2
+  version: 2.0.0-proposition.1
+  date: '2026-01-15'
+  langue: fr
+  statut: fixture_de_test
+  licence_source_declaree: CC-BY-SA Éditeur fictif
+  structure:
+    poles: 2
+    competences: 2
+    facettes: 9
+    competences_par_pole:
+    - 1
+    - 1
+    facettes_par_pole:
+    - 4
+    - 5
+    reperes_de_manifestation: 12
+charte:
+  titre: Charte fictive
+  principes:
+  - Un principe fictif, hors du document.
+contrat_d_analyse:
+  statuts: Un contrat fictif, hors du document.
+dimensions:
+- id: fictif.pole_a
+  repere: A
+  titre: Observer le fictif
+  orientation: Ce que cherche le pôle fictif A.
+  image: fictif-pole-A.png
+  competences:
+  - repere: A1
+    titre: Première capacité fictive
+    definition: Définition fictive de A1.
+    finalite: Finalité fictive de A1.
+    savoirs_pratiques: Savoirs fictifs de A1.
+    participation_avec_ia: Participation fictive de A1.
+    frontiere: Frontière fictive de A1.
+    facettes:
+    - cle: une
+      titre: Facette fictive A1.1
+      description: Description fictive de A1.1.
+      manifestations:
+      - Manifestation fictive A1.1 a.
+      - Manifestation fictive A1.1 b.
+      faux_positif: Faux positif fictif de A1.1.
+      id: fictif.a1.une
+      repere: A1.1
+      revision_portee_v17: Révision fictive, hors du document.
+    - cle: deux
+      titre: Facette fictive A1.2
+      description: Description fictive de A1.2.
+      manifestations:
+      - Manifestation fictive A1.2.
+      faux_positif: Faux positif fictif de A1.2.
+      id: fictif.a1.deux
+      repere: A1.2
+    - cle: trois
+      titre: Facette fictive A1.3
+      description: Description fictive de A1.3.
+      manifestations:
+      - Manifestation fictive A1.3.
+      faux_positif: Faux positif fictif de A1.3.
+      id: fictif.a1.trois
+      repere: A1.3
+    situation: Situation fictive de A1.
+    relance: Relance fictive de A1 ?
+    limites:
+    - Limite fictive A1 a.
+    - Limite fictive A1 b.
+    id: fictif.a1
+    ancrage_obligatoire: Ancrage fictif.
+    provenance_v11:
+    - repere: Z9
+      id: fictif.ancien
+  - repere: A2
+    titre: Deuxième capacité fictive
+    definition: Définition fictive de A2.
+    finalite: Finalité fictive de A2.
+    savoirs_pratiques: Savoirs fictifs de A2.
+    participation_avec_ia: Participation fictive de A2.
+    frontiere: Frontière fictive de A2.
+    facettes:
+    - titre: Facette fictive A2.1
+      description: Description fictive de A2.1.
+      manifestations:
+      - Manifestation fictive A2.1.
+      faux_positif: Faux positif fictif de A2.1.
+      repere: A2.1
+    - titre: Facette fictive A2.2
+      description: Description fictive de A2.2.
+      manifestations:
+      - Manifestation fictive A2.2.
+      faux_positif: Faux positif fictif de A2.2.
+      repere: A2.2
+    - titre: Facette fictive A2.3
+      description: Description fictive de A2.3.
+      manifestations:
+      - Manifestation fictive A2.3.
+      faux_positif: Faux positif fictif de A2.3.
+      repere: A2.3
+    - titre: Facette fictive A2.4
+      description: Description fictive de A2.4.
+      manifestations:
+      - Manifestation fictive A2.4.
+      faux_positif: Faux positif fictif de A2.4.
+      repere: A2.4
+    situation: Situation fictive de A2.
+    relance: Relance fictive de A2 ?
+    limites:
+    - Limite fictive A2.
+    ancrage_obligatoire: Ancrage fictif.
+- id: fictif.pole_b
+  repere: B
+  titre: Agir dans le fictif
+  orientation: Ce que cherche le pôle fictif B.
+  image: fictif-pole-B.png
+  competences:
+  - repere: B1
+    titre: Capacité fictive du pôle B
+    definition: Définition fictive de B1.
+    finalite: Finalité fictive de B1.
+    savoirs_pratiques: Savoirs fictifs de B1.
+    participation_avec_ia: Participation fictive de B1.
+    frontiere: Frontière fictive de B1.
+    facettes:
+    - titre: Facette fictive B1.1
+      description: Description fictive de B1.1.
+      manifestations:
+      - Manifestation fictive B1.1.
+      faux_positif: Faux positif fictif de B1.1.
+      repere: B1.1
+    - titre: Facette fictive B1.2
+      description: Description fictive de B1.2.
+      manifestations:
+      - Manifestation fictive B1.2.
+      faux_positif: Faux positif fictif de B1.2.
+      repere: B1.2
+    - titre: Facette fictive B1.3
+      description: Description fictive de B1.3.
+      manifestations:
+      - Manifestation fictive B1.3.
+      faux_positif: Faux positif fictif de B1.3.
+      repere: B1.3
+    situation: Situation fictive de B1.
+    limites:
+    - Limite fictive B1.
+    ancrage_obligatoire: Ancrage fictif.
+parcours:
+- titre: Parcours fictif, hors du document

@@ -23,11 +23,13 @@ describe('TuteurPanel', () => {
     })
     fireEvent.click(screen.getByRole('button', { name: 'Envoyer' }))
 
-    // La question passe la rubrique courante, pas de portfolio.
+    // La question passe la rubrique courante et le fil d'avant (vide ici, la
+    // mémoire courte en est tirée par askTuteur), pas de portfolio.
     await waitFor(() => expect(ask).toHaveBeenCalledTimes(1))
     expect(ask.mock.calls[0][0]).toEqual({
       question: 'Comment cartographier mon texte ?',
       rubrique: 'home',
+      historique: [],
     })
 
     expect(await screen.findByText(/Ouvre #\/essayer/)).toBeTruthy()

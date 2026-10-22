@@ -31,6 +31,13 @@
 // l'empreinte de ses octets, le référentiel choisi (son id, sa version, son
 // empreinte, et d'où le moteur lit ses pôles), l'origine de chaque fiche,
 // l'accès —, le moteur complète le bloc et y joint l'exécution.
+//
+// Mes portfolios (2026-10-22, sprint 1, amélioration 11) : comme Twin9, la page
+// propose les portfolios de ce navigateur (module portfolio) ; en choisir un
+// remplit la zone de saisie, en feuilles « ### AAAA-MM-JJ » (portfolioEnFeuilles).
+//
+// Mode simple (lib/ui-mode.js) : la liste des modèles n'est pas proposée ; le
+// run part sur le modèle cible du paquet, nommé en une ligne.
 
 import { useEffect, useMemo, useRef, useState } from 'react'
 import { ApiUnavailableError, fetchMe } from '../api/client.js'
@@ -46,18 +53,51 @@ import {
 } from '../api/twin6.js'
 import { executerTwin6, fichesPourTwin6, originesDesFiches, twin6CallsFor } from '@engine/twin6/index.js'
 import { sortieMaxAnthropic } from '@engine/providers/limits.js'
+import { REFERENTIEL_PAR_DEFAUT } from '@engine/conformite.js'
 import { listPublishedReferentiels, loadPublishedReferentiel } from '../data/referentiel.js'
 import ReferentielChoice from '../components/ReferentielChoice.jsx'
 import MergeView from './MergeView.jsx'
 import { useSunburstLib } from './view-helpers.js'
 import { downloadJson } from '../lib/download-json.js'
 import { DEMO_MODEL, DEMO_TEXT_MAX_CHARS, createDemoProvider, describeDemoError } from '../lib/demo-llm.js'
+import { createPortfolioStore } from '../lib/portfolio-store.js'
+import { computeDayGroups } from '../lib/run-launcher.js'
+import { useUiMode } from '../lib/ui-mode.js'
 
 /** L'offre d'un visiteur : ni prix, ni solde, ni structure importée (RG9 : le document publié). */
 const OFFRE_VISITEUR = Object.freeze({ modeles: {}, referentiel: [], solde_microusd: 0 })
 
 /** Une feuille datée : la ligne « ### AAAA-MM-JJ » qui ouvre une journée. */
 const FEUILLE_DATEE = /^###\s+\d{4}-\d{2}-\d{2}\b/m
+
+/**
+ * Le texte qu'un portfolio du module portfolio donne à Twin6, en feuilles datées.
+ *
+ * - Son texte a déjà des feuilles « ### AAAA-MM-JJ » : il est repris tel quel
+ *   (c'est le format que lisent les prompts Twin6).
+ * - Sinon, chaque journée datée de son découpage devient une feuille
+ *   « ### AAAA-MM-JJ », suivie de « --- » et du texte de la journée (son en-tête
+ *   d'origine compris, « Lundi 5 janvier 2026 » par exemple) ; les passages non
+ *   datés sont laissés de côté, et comptés.
+ *
+ * @param {{texte?: string, segments?: Array<{date: string | null, texte: string}>} | null} record
+ * @returns {{texte: string, journees: number, nonDates: number}} `texte` vide :
+ *   aucune journée datée
+ */
+export function portfolioEnFeuilles(record) {
+  const brut = typeof record?.texte === 'string' ? record.texte : ''
+  const segments = Array.isArray(record?.segments) ? record.segments : []
+  if (FEUILLE_DATEE.test(brut)) {
+    const feuilles = new Set([...brut.matchAll(/^###\s+(\d{4}-\d{2}-\d{2})\b/gm)].map((m) => m[1]))
+    return { texte: brut, journees: feuilles.size, nonDates: 0 }
+  }
+  const nonDates = segments.filter(
+    (seg) => seg && typeof seg.texte === 'string' && seg.texte.trim() !== '' && typeof seg.date !== 'string',
+  ).length
+  const groupes = computeDayGroups(segments)
+  const texte = groupes.map((g) => `### ${g.iso}\n---\n${g.texte.trim()}`).join('\n\n')
+  return { texte, journees: groupes.length, nonDates }
+}
 
 /** Démo épuisée, pour un compte : ses deux autres voies, pas l'invitation à en créer un. */
 const ESSAI_EPUISE_COMPTE =
@@ -129,6 +169,8 @@ function reserveSortieUsd(model, modeles) {
 }
 
 export default function Twin6OuverteView({ lib: injectedLib, deps = {} }) {
+  // Mode d'affichage (défaut du contexte : expert, la liste des modèles est proposée).
+  const { expert } = useUiMode()
   const fetchMeFn = deps.fetchMeFn ?? fetchMe
   const runEngine = deps.runEngine ?? executerTwin6
   const loadPkg = deps.loadPackage ?? loadTwin6Package
@@ -163,6 +205,41 @@ export default function Twin6OuverteView({ lib: injectedLib, deps = {} }) {
   const [run, setRun] = useState({ status: 'idle', done: 0, total: 0, phase: '', doc: null, referentiel: null, cout: 0, error: '', voie: null, caracteres: 0 })
   const { lib } = useSunburstLib(deps.lib ?? injectedLib)
   const running = useRef(false)
+  // Les portfolios de ce navigateur (IndexedDB, module portfolio) ; [] sans stockage.
+  const [mesPortfolios, setMesPortfolios] = useState([])
+  const [choixPortfolio, setChoixPortfolio] = useState('')
+  const [reprise, setReprise] = useState(null) // {titre, journees, nonDates} du portfolio repris
+
+  useEffect(() => {
+    let alive = true
+    let store
+    try {
+      store = deps.portfolioStore ?? createPortfolioStore()
+    } catch {
+      return undefined
+    }
+    Promise.resolve()
+      .then(() => store.list())
+      .then((list) => alive && setMesPortfolios(Array.isArray(list) ? list : []))
+      .catch(() => alive && setMesPortfolios([]))
+    return () => {
+      alive = false
+    }
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [])
+
+  /** Remplit la zone de saisie avec un portfolio du module portfolio. */
+  function reprendrePortfolio(id) {
+    setChoixPortfolio(id)
+    const record = mesPortfolios.find((p) => p.id === id)
+    if (!record) {
+      setReprise(null)
+      return
+    }
+    const { texte, journees, nonDates } = portfolioEnFeuilles(record)
+    if (texte !== '') setPortfolio(texte)
+    setReprise({ titre: record.titre, journees, nonDates })
+  }
 
   useEffect(() => {
     let alive = true
@@ -205,7 +282,9 @@ export default function Twin6OuverteView({ lib: injectedLib, deps = {} }) {
     if (!ouverte) return undefined
     let alive = true
     setRef({ status: 'loading', doc: null, message: '' })
-    loadReferentiel(choix ? { id: choix.id, version: choix.version, ...callOpts } : callOpts)
+    // Par défaut, la dernière version publiée de RESPIRE, lue comme le menu la
+    // montre : dans la base d'abord (S5).
+    loadReferentiel(choix ? { id: choix.id, version: choix.version, ...callOpts } : { id: REFERENTIEL_PAR_DEFAUT, ...callOpts })
       .then(({ doc }) => alive && setRef({ status: 'ready', doc, message: '' }))
       .catch((e) => alive && setRef({ status: 'error', doc: null, message: messageErreur(e) }))
     return () => {
@@ -235,6 +314,8 @@ export default function Twin6OuverteView({ lib: injectedLib, deps = {} }) {
 
   const hasSavedKey = savedProviders.includes(OWN_KEY_PROVIDER)
   const modeles = res.offer?.modeles ?? {}
+  // Mode simple : le modèle cible du paquet, même si un autre avait été choisi en mode expert.
+  const modele = expert ? model : (res.pkg?.modeleCibleDefaut ?? model)
   const portfolioPret = portfolio.trim().length > 40
   const essai = voie === 'demo'
   // L'essai gratuit borne le portfolio comme l'Essayer borne son texte.
@@ -255,7 +336,7 @@ export default function Twin6OuverteView({ lib: injectedLib, deps = {} }) {
     res.status === 'ready' &&
     moteurRef !== null &&
     nbPoles > 0 &&
-    (essai || !!model) &&
+    (essai || !!modele) &&
     portfolioPret &&
     !tropLongPourEssai &&
     !sansFeuilleDatee &&
@@ -273,7 +354,7 @@ export default function Twin6OuverteView({ lib: injectedLib, deps = {} }) {
     // appel facturable, avec un message vers la recharge.
     if (voie === 'credits') {
       const poids = poidsEstimeUsd(portfolio)
-      const reserve = reserveSortieUsd(model, modeles)
+      const reserve = reserveSortieUsd(modele, modeles)
       const requisMicro = Math.ceil((poids + reserve) * 1_000_000)
       const solde = Number(res.offer?.solde_microusd ?? 0)
       if (solde < requisMicro) {
@@ -330,7 +411,7 @@ export default function Twin6OuverteView({ lib: injectedLib, deps = {} }) {
         referentiel,
         provider,
         // Le proxy de la démo impose son modèle : celui-ci n'est qu'une indication.
-        model: essai ? DEMO_MODEL : model,
+        model: essai ? DEMO_MODEL : modele,
         options: {
           // Chaque étape ouvre un appel : ses caractères repartent de zéro.
           onProgress: (p) =>
@@ -399,6 +480,34 @@ export default function Twin6OuverteView({ lib: injectedLib, deps = {} }) {
 
       {res.status === 'ready' && !resultatPret ? (
         <div className="twin6-formulaire">
+          {mesPortfolios.length > 0 ? (
+            <div className="twin6-mes-portfolios">
+              <label htmlFor="twin6-mes-portfolios">Partir d’un de mes portfolios</label>
+              <select
+                id="twin6-mes-portfolios"
+                value={choixPortfolio}
+                disabled={run.status === 'running'}
+                onChange={(e) => reprendrePortfolio(e.target.value)}
+              >
+                <option value="">— choisir —</option>
+                {mesPortfolios.map((p) => (
+                  <option key={p.id} value={p.id}>
+                    {p.titre}
+                  </option>
+                ))}
+              </select>
+              {reprise ? (
+                <p className="twin6-hint" role="status" data-testid="twin6-reprise">
+                  {reprise.journees === 0
+                    ? `« ${reprise.titre} » n’a aucune journée datée : datez ses journées dans « Mon portfolio ».`
+                    : `« ${reprise.titre} » : ${reprise.journees} journée${reprise.journees > 1 ? 's' : ''} datée${reprise.journees > 1 ? 's' : ''}, en feuilles ### AAAA-MM-JJ` +
+                      (reprise.nonDates > 0
+                        ? ` ; ${reprise.nonDates} passage${reprise.nonDates > 1 ? 's' : ''} non daté${reprise.nonDates > 1 ? 's' : ''} laissé${reprise.nonDates > 1 ? 's' : ''} de côté.`
+                        : '.')}
+                </p>
+              ) : null}
+            </div>
+          ) : null}
           <label htmlFor="twin6-portfolio">Votre portfolio (structuré en feuilles <code>### AAAA-MM-JJ</code>)</label>
           <textarea
             id="twin6-portfolio"
@@ -433,7 +542,11 @@ export default function Twin6OuverteView({ lib: injectedLib, deps = {} }) {
               disabled={run.status === 'running'}
               list={listReferentiels}
             />
-            {essai ? null : (
+            {essai ? null : !expert ? (
+              <p className="twin6-hint" data-testid="twin6-modele-defaut">
+                Modèle : <code>{modele}</code> (par défaut ; le mode expert, au bas du menu, en propose d’autres).
+              </p>
+            ) : (
               <>
                 <label htmlFor="twin6-modele">Modèle</label>
                 <select

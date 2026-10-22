@@ -29,10 +29,10 @@ clique « Se déconnecter ».
 - Connexion : une session serveur (table `sessions`) est liée au compte, sous
   un **identifiant de session neuf** (protection contre la fixation) ; le
   navigateur reçoit un cookie `humanome_sid` (HttpOnly, SameSite=Lax, Secure
-  hors dev) et un jeton CSRF gardé **en mémoire** par le client ; pour un
-  compte porteur d'au moins un rôle, la navigation affiche les familles de ses
-  rôles, l'identité (avatar ou initiales + nom) et « Se déconnecter » (un
-  compte sans aucun rôle garde la navigation d'un visiteur : AN4).
+  hors dev) et un jeton CSRF gardé **en mémoire** par le client ; la
+  navigation affiche « Mon compte », les familles de ses rôles, l'identité
+  (avatar ou initiales + nom) et « Se déconnecter », même pour un compte sans
+  aucun rôle (AN4, corrigée le 2026-10-22).
 - Un événement `login` `{pays, reseau}` est journalisé (pays résolu localement,
   réseau tronqué /24 ou /48) ; le quota de connexion du couple IP + email est
   remis à zéro.
@@ -222,7 +222,7 @@ clique « Se déconnecter ».
 | UC-CPT-02-F20 | E6 | API | Base non configurée : login 503 ; `/me` et logout 401 malgré un cookie valide ; session intacte | idem |
 | UC-CPT-02-F21 | E5, AN1 | IHM | **Anomalie figée** : session expirée côté serveur → 403 CSRF affiché, profil conservé, navigation visiteur | `web/test/usecases/functional/uc-cpt-02-se-connecter-deconnecter.test.jsx` |
 | UC-CPT-02-F22 | A2, AN3 | IHM | **Anomalie figée** : logout refusé depuis le panneau → `#/`, aucun message, toujours connecté | idem |
-| UC-CPT-02-F23 | AN4 | IHM | **Anomalie figée** : compte sans rôle → profil affiché, navigation visiteur sans « Se déconnecter » | idem |
+| UC-CPT-02-F23 | AN4 (corrigée) | IHM | Compte sans rôle → profil affiché, identité et « Se déconnecter » dans le menu ; la déconnexion depuis le menu ramène la navigation de visiteur | idem |
 | UC-CPT-02-F24 | A3 | IHM | `/me` en 500 → « Impossible de vérifier votre session… » | idem |
 | UC-CPT-02-F25 | A3 (limite) | IHM | **Limite figée** : panne partielle (logout perdu, `/me` joignable) → profil « déconnecté », navigation connectée | idem |
 
@@ -269,13 +269,16 @@ cd web && npx vitest run test/usecases --testNamePattern UC-CPT-02
   — qui croit s'être déconnecté, par exemple sur un poste partagé — reste
   connecté (la relecture de `/me` restaure jeton et navigation). Figé par
   UC-CPT-02-F22.
-- **AN4 — Compte connecté sans aucun rôle : navigation de visiteur.** L'état
-  « connecté » de la navigation est déduit de `roles.length > 0`
-  (`App.jsx`), non de la présence d'un utilisateur. Un administrateur peut
-  retirer tous les rôles d'un compte (`UserDirectory::revoke` n'impose aucun
-  minimum) : ce compte, connecté, voit « Compte / Se connecter », sans identité
-  ni « Se déconnecter » dans le panneau. UC-CPT-02-U13 (`navGroups({roles: []})`
-  = visiteur) et F23 figent ce comportement.
+- ~~**AN4 — Compte connecté sans aucun rôle : navigation de visiteur.**~~
+  Corrigée le 2026-10-22. L'état « connecté » de la navigation était déduit de
+  `roles.length > 0` (`App.jsx`), non de la présence d'un utilisateur. Un
+  administrateur peut retirer tous les rôles d'un compte
+  (`UserDirectory::revoke` n'impose aucun minimum) : ce compte, connecté,
+  voyait « Compte / Se connecter », sans identité ni « Se déconnecter » dans le
+  panneau. Le shell passe désormais à `navGroups` un `authenticated` vrai dès
+  qu'un utilisateur de session existe ; UC-CPT-02-U13 garde le défaut de la
+  fonction pure (`navGroups({roles: []})` = visiteur), et F23, inversé, prouve
+  la correction.
 - **AN5 — `ip_hash` : empreinte non salée.** `DbSessionHandler::ipHash()` =
   `sha256(REMOTE_ADDR)` sans sel ni poivre : pour une IPv4, l'adresse se
   retrouve en énumérant 2³² valeurs. « Jamais en clair » est exact à la lettre,

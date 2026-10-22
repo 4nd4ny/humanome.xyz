@@ -6,7 +6,7 @@
 // (nav.js, point 6) doit avoir une entrée d'aide dédiée — pas le repli.
 
 import { describe, expect, it } from 'vitest'
-import { helpFor } from './registry.js'
+import { SIMPLE_MODE_POINT, helpFor } from './registry.js'
 import { navGroups } from '../nav.js'
 
 describe('helpFor — aide par rubrique et par rôle', () => {
@@ -39,10 +39,47 @@ describe('helpFor — aide par rubrique et par rôle', () => {
     expect(helpFor('home', { roles: ['apprenant'] })).toEqual(helpFor('home'))
   })
 
+  it('les parcours au menu « Référentiel », et la page publique (lot E), disent ce qu’est l’Humanome V18 : respire.school, CC-BY-SA (S5, E1, E9)', () => {
+    for (const route of ['espace', 'twin6ouverte', 'etablissement', 'referentiel']) {
+      const point = (helpFor(route).points ?? []).find((p) => p.includes('https://respire.school/referentiel'))
+      expect(point, route).toBeDefined()
+      expect(point).toContain('« Humanome V18 »')
+      expect(point).toContain('CC-BY-SA Harmonia Éducation')
+      expect(point).toContain('« RESPIRE v7 »')
+    }
+  })
+
   it('route inconnue -> entrée de repli « Aide »', () => {
     const entry = helpFor('route-inexistante')
     expect(entry.titre).toBe('Aide')
     expect(entry.intro).toContain('navigation')
+  })
+
+  it('le repli décrit la navigation telle qu’elle est : un tiroir ouvert par « Menu », pas une barre en haut de page', () => {
+    const { intro } = helpFor('route-inexistante')
+    expect(intro).toContain('Menu')
+    expect(intro).toContain('tiroir')
+    expect(intro).not.toContain('haut de page')
+  })
+
+  it('#/configuration (profils Twin9) a son entrée, et non le repli', () => {
+    const entry = helpFor('configuration')
+    expect(entry.titre).toBe('Vos profils Twin9')
+    expect(entry.points.join(' ')).toContain('Mode essai')
+  })
+
+  it('aucune entrée n’annonce de chiffres en dur (plusieurs référentiels coexistent, la démonstration peut changer)', () => {
+    // Toutes les rubriques du routeur (router.js), plus le repli.
+    const routes = [
+      'home', 'cartographie', 'day', 'essayer', 'referentiel', 'portfolio', 'espace', 'account',
+      'cartographe', 'epistemiarque', 'promptologue', 'etablissement', 'admin', 'guides', 'twin9',
+      'employeur', 'twin9atelier', 'configuration', 'twin6ouverte', 'confidentialite', 'share', 'not-found',
+    ]
+    const figures = /\b\d+\s+(compétences|pôles|journées)\b/
+    for (const route of routes) {
+      const { titre, intro, points = [] } = helpFor(route)
+      for (const text of [titre, intro, ...points]) expect(text, route).not.toMatch(figures)
+    }
   })
 
   it('session absente ou sans rôles : ne jette pas, retourne l’entrée de base', () => {
@@ -74,5 +111,32 @@ describe('helpFor — aide par rubrique et par rôle', () => {
 
     const missing = [...routes].filter((route) => helpFor(route).titre === 'Aide')
     expect(missing).toEqual([])
+  })
+})
+
+// Mode simple (lib/ui-mode.js, 2026-10-22) : sur les rubriques dont il masque
+// des réglages, un point dit où les retrouver ; rien en mode expert (défaut),
+// rien ailleurs ; il se cumule avec l'astuce d'un rôle.
+describe('helpFor — mode simple', () => {
+  it('cartographie, espace et Twin6 : le point « mode expert » en mode simple seulement', () => {
+    for (const route of ['cartographie', 'espace', 'twin6ouverte']) {
+      const base = helpFor(route)
+      expect(helpFor(route, { expert: false }).points, route).toEqual([...(base.points ?? []), SIMPLE_MODE_POINT])
+      expect(helpFor(route, { expert: true }), route).toEqual(base)
+      expect(base.points ?? [], route).not.toContain(SIMPLE_MODE_POINT)
+    }
+    expect(SIMPLE_MODE_POINT).toContain('« Mode expert » au bas du menu')
+  })
+
+  it('les autres rubriques n’ont pas ce point (Twin9 : avec le lot 2 seulement)', () => {
+    for (const route of ['home', 'twin9', 'configuration', 'portfolio', 'guides', 'admin', 'not-found']) {
+      expect(helpFor(route, { expert: false }).points ?? [], route).not.toContain(SIMPLE_MODE_POINT)
+    }
+  })
+
+  it('se cumule avec l’astuce du cartographe sur la cartographie', () => {
+    const entry = helpFor('cartographie', { roles: ['cartographe'], expert: false })
+    expect(entry.points.at(-2)).toContain('Ma file de relecture')
+    expect(entry.points.at(-1)).toBe(SIMPLE_MODE_POINT)
   })
 })

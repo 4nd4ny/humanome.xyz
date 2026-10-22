@@ -12,7 +12,7 @@
 // observée ce jour-là (comportement V3), teinte neutre sinon. Aucune couleur
 // de verdict.
 
-import { contributingVariant, hasAnalysis, hasPortfolio } from './model.js'
+import { contributingVariant, hasAnalysis, hasPortfolio, passageCoverage } from './model.js'
 import { TRACE_PROVIDING_STATUSES, resolveParams, traceWeight } from './formulas.js'
 import { addDays, eachDay, mondayOf, monthKey, monthName, schoolYearOf, weekdayIndex } from './dates.js'
 
@@ -112,7 +112,8 @@ export function levelOf(value, thresholds) {
  *   mode: 'volume'|'weights',
  *   thresholds: number[],
  *   cells: Map<string, {date: string, value: number, level: number, active: boolean, hasAnalysis: boolean,
- *     hasPortfolio: boolean, analysisWithoutPortfolio: boolean, poles: number[], tint: string | null}>,
+ *     hasPortfolio: boolean, analysisWithoutPortfolio: boolean, poles: number[], tint: string | null,
+ *     coveredBy: string[]}>,
  * }}
  */
 export function buildHeatmap(dataset, { ref, period, selected = null, params } = {}) {
@@ -121,6 +122,8 @@ export function buildHeatmap(dataset, { ref, period, selected = null, params } =
   const inPeriod = dataset.days.filter((d) => d.date >= period.from && d.date <= period.to)
   const valueOf = (d) => (mode === 'volume' ? d.portfolio?.chars ?? 0 : dayWeightSum(d, params))
   const thresholds = levelThresholds(inPeriod.map(valueOf))
+  // Une journée sans analyse qui contribue, dont des passages sont relevés par l'analyse d'une autre (sprint 4, T2).
+  const coverage = passageCoverage(dataset)
   const cells = new Map()
   for (const d of inPeriod) {
     const analysis = hasAnalysis(d)
@@ -140,6 +143,7 @@ export function buildHeatmap(dataset, { ref, period, selected = null, params } =
       analysisWithoutPortfolio: mode === 'volume' && analysis && !portfolio,
       poles,
       tint: poles.length === 1 ? ref.poleByNum.get(poles[0])?.color ?? null : null,
+      coveredBy: contributingVariant(d) ? [] : (coverage.get(d.date) ?? []).map((c) => c.date),
     })
   }
   return { mode, thresholds, cells }

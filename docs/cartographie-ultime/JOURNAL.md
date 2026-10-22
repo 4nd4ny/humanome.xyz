@@ -373,6 +373,28 @@ passage **approché** est cherché dans la seule journée de la trace (D-39).
 Introuvable : le volet le dit et cite l'extrait du jury (défaut
 d'AuroraCore). Sans portfolio : il invite à l'importer.
 
+**Amendé le 2026-10-22 (sprint 4, T1).** Le lien promis n'existait pas : le
+volet ne comparait la journée affichée qu'à la journée du passage
+(`sourceDate`), jamais à celle de l'analyse qui a retenu la trace. Or une
+analyse peut couvrir plusieurs journées du portfolio : dans la
+démonstration, l'analyse rangée au 10 février retient 175 traces dont le
+passage est écrit du 1er au 9 février, et le volet s'ouvrait sur le 3 février
+sans rien dire du 10. Désormais, quand le volet montre une autre journée que
+celle de l'analyse :
+- la ligne de la trace le dit, « trace de l'analyse du 10 février 2026 »,
+  sauf si cette date est déjà celle que dit « datée du … » (D-66) ; la ligne
+  lue par les lecteurs d'écran aussi (« … Trace de l'analyse du 10 février
+  2026. ») ;
+- un bouton « Ouvrir la journée analysée » ferme le volet et ouvre la modale
+  de cette journée sur la compétence, comme le fait « Pourquoi cette
+  surface ? ». Il vaut aussi pour le cas d'origine (passage retrouvé tel quel
+  dans la feuille d'un autre jour que celui de la trace) : c'est le lien vers
+  la journée de la trace.
+
+L'ordre de recherche ne change pas (`core/passages.js`). Tests :
+`ui/SourceDate.test.jsx`, avec les données fictives `JOUR_MULTI` et
+`PORTFOLIO_MULTI` (`test/fixtures.js`).
+
 ### D-15 — Panneau de détail d'une compétence : traces, verdicts, jury, réponse
 
 - Traces (date, rôle, extrait, « Ouvrir dans le portfolio ») dans l'ordre des
@@ -2565,9 +2587,10 @@ questions (3 et 4) : questions 39 et 40.
     saillant : … ») ; un passage qui n'est qu'une partie de l'extrait, qui le
     dépasse ou qui vient d'une autre feuille reste à part, entier, avec son
     lien ; une journée sans rien d'affichable n'ouvre plus de bloc vide ;
-  - modale du jour : les traces sans leur date (c'est le jour), le verdict
-    sans les chiffres de sa ligne ; une présence établie sans trace retenue
-    le dit sur sa ligne (son groupe dit « présence non établie ») ;
+  - modale du jour : les traces sans leur date (c'est le jour), sauf celle
+    d'un passage écrit un autre jour (amendement du 2026-10-22, plus bas), le
+    verdict sans les chiffres de sa ligne ; une présence établie sans trace
+    retenue le dit sur sa ligne (son groupe dit « présence non établie ») ;
   - rapport imprimé : niveau de preuve dit une fois (précautions de lecture) ;
     en couverture, la légende des pôles sans leurs parts et le soleil sans
     légende d'état (le tableau du profil et les faits les disent) ; la fiche
@@ -2603,6 +2626,31 @@ vérifié — : 18,4 → 17,2 Mo, redéposée sous un nom provisoire puis renomm
 - **au téléphone** (Pixel 7) : aucun défilement horizontal, pièces du Greffier comprises ;
 - seules erreurs : le favicon absent (404, sans lien) et `/api/auth/me` sans compte (401) ;
 - copies de travail effacées : paquet, dossier de déploiement, archives, fichier d'accès.
+
+**Amendé le 2026-10-22 (sprint 4, T1).** « Les traces sans leur date (c'est
+le jour) » reste la règle quand le passage d'une trace est écrit le jour de
+la modale. Mais une analyse peut retenir des passages écrits d'autres jours :
+son document couvre alors plusieurs journées du portfolio, que l'interface
+découpe chacune à part. Taire la date faisait croire que le passage était du
+jour de la modale (dans la démonstration, 175 des 194 traces du 10 février
+sont écrites du 1er au 9). Ces traces disent donc « passage du mar. 3
+févr. » (sans l'année, sauf quand elle change, D-71), et ce libellé ouvre la
+journée du passage. La date vient du détail déjà chargé (`sourceDate`) : rien
+de plus n'est lu (D-67). Dans le panneau d'une compétence, la date de chaque
+trace reste celle de sa journée d'analyse : c'est le volet du portfolio qui
+dit l'écart (D-14 amendée).
+
+Au passage, dans la même modale :
+- une journée qui ne contribue pas dit pourquoi, au lieu de la seule phrase
+  « Pas d'analyse qui contribue pour ce jour. » : « Aucune analyse n'est
+  rangée à ce jour. », « N analyses : choisissez celle qui compte dans le
+  Gestionnaire. » ou « Journée mise à examiner : elle ne compte pas. » ; la
+  ligne « Analyse » de ses faits aussi : aucune, N analyses à arbitrer ou
+  mise « à examiner » ;
+- la provenance dit « run du AAAA-MM-JJ » et non plus « analysée le … » :
+  c'est la date du run, pas celle de la journée analysée ; un run Twin9 se
+  nomme « Twin9 (serveur) » (le libellé que la PR A lui a donné dans `main`,
+  gardé à la fusion de `main` dans cette branche, le 2026-10-22).
 
 ### D-67 — La démonstration lue à la demande **[décidé]**
 
@@ -2905,6 +2953,113 @@ d'indiquer l'année sur les boutons jour suivant et jour précédant. »
   8 mars » et « sam. 14 mars → » ; le 1er janvier 2026, « ← mar. 30 déc.
   2025 » et « ven. 2 janv. → » ; le 30 décembre 2025, « ← lun. 29 déc. » et
   « jeu. 1er janv. 2026 → ».
+
+### D-72 — La journée d'un passage renvoie à l'analyse qui l'a relevé ; l'année sur deux chiffres **[décidé]**
+
+Sprint 4 de la liste de Christian (`TODO_LIST.md`) : « une trace du 3 février
+apparaît dans la journée du 10 », et la journée du 3 dit qu'aucune analyse n'y
+contribue. Cause prouvée (étude du sprint 4) : l'analyse rangée au 10 février
+porte sur un document qui couvre le 1er et les 3 à 10 février, que
+l'interface découpe chacun en sa journée ; 175 de ses 194 traces ont leur
+passage écrit un autre jour. T1 l'a dit dans les écrans qui lisent le détail
+(D-14 et D-66 amendées). T2, fait le 2026-10-22 par délégation, l'écrit dans
+l'index, pour que la journée du passage renvoie à l'analyse :
+
+- **Dans l'index**, une trace dont le passage est écrit un autre jour porte
+  sa date, `at` (champ facultatif, absent sinon ; `docs/contrats.md` §4
+  point 15). Les calculs ne le lisent pas : la trace compte toujours dans la
+  journée de son analyse, le soleil du 3 reste vide.
+- **La modale d'une journée sans analyse qui contribue** garde son message
+  (« Aucune analyse n'est rangée à ce jour. ») et, quand une analyse d'une
+  autre journée a relevé ses passages, une section « Relevé par l'analyse du
+  10 février » : chaque compétence (ordre du référentiel), ses preuves et
+  indices de ce jour, et un lien qui ouvre la journée analysée sur elle —
+  où la trace dit « passage du mar. 3 févr. » (T1). Une phrase le dit :
+  leurs traces comptent dans la cartographie du 10, pas dans celle de ce
+  jour. Tout est lu dans l'index, rien n'est chargé (D-67). Le chemin se lit
+  dans les deux sens.
+- **Gestionnaire** : la ligne du 3 dit « relevée le 10 févr. », celle du 10
+  « couvre 1 autre journée (3 févr.) » — la plage des journées couvertes se
+  lit sans survol, au toucher comme au clavier (« couvre 8 autres journées
+  (1er–9 févr.) » dans la démonstration ; revue du 2026-10-22), le nombre
+  de traces au survol. Ce sont deux anomalies
+  d'information, `couverte-par` et `analyse-multi-journees` : jamais « à
+  traiter », le point du Gestionnaire n'en compte aucune.
+- **Heatmap** : la case du 3 le dit à qui la lit (« passages relevés par
+  l'analyse du 10 févr. ») ; aucun repère graphique (le sprint 9 reprend le
+  dessin).
+- **[choix d'implémentation] Jeux déjà rangés dans le navigateur : une passe
+  unique à l'ouverture, plutôt que « réimportez ».** Réimporter les mêmes
+  fichiers dans le même jeu n'aurait rien changé : une variante garde son
+  identifiant, calculé sur le contenu de l'analyse, et l'import ignore les
+  doublons. La passe lit tous les détails du jeu une fois, dans la même
+  transaction que l'écriture de son index, puis note sa version à la racine
+  (`passageDates`) ; elle ne touche à rien d'autre, ne se refait pas, et ne
+  s'applique pas à un jeu lu à la demande (ses détails sont sur le site) ;
+  si elle échoue, le jeu s'ouvre tel quel. Une archive d'avant reçoit `at`
+  de ses détails à l'import, un index découpé au découpage.
+- **[choix d'implémentation, revue du 2026-10-22] L'import écrit `at` pour
+  tout importeur**, depuis le détail de chaque variante qu'il range
+  (`mergeIntoDataset`) : un run Twin9 (`twin9-run.js` ne garde que `{id,
+  role}`) le reçoit donc dès l'import, dans un jeu neuf comme dans un jeu
+  déjà passé, et le jeu affiché juste après « Ouvrir dans l'interface »
+  l'a sans attendre une réouverture. Avant ce correctif, seule la passe le
+  donnait aux traces Twin9, et seulement dans un jeu pas encore passé : les
+  mêmes données s'affichaient avec ou sans « Relevé par … » selon l'ordre
+  des opérations. La passe ne sert plus qu'aux jeux rangés avant T2 ; sa
+  version (`passageDates`) reste 1 : la branche n'a jamais été déployée,
+  aucun jeu rangé ne porte ce sceau sans l'import corrigé.
+- **[choix d'implémentation] Une variante seule, celle qui contribue,
+  relève** les passages d'une autre journée, et seulement les traces que les
+  calculs retiennent (statut qui fournit des traces, hors court-circuit) :
+  ce que la section annonce est ce qui compte dans la journée analysée. Le
+  côté qui relève compte les mêmes traces (revue du 2026-10-22) : « couvre
+  N autres journées » et `analyse-multi-journees` laissent de côté un
+  verdict court-circuité ou « présence non établie », comme « relevée le
+  … » et `couverte-par`.
+- **Année sur deux chiffres** (`engine/src/portfolio/segment.js`) : le
+  découpage lit `### 02.03.26` comme le 2 mars 2026, comme Twin9
+  (`Twin_v9/php/src/Portfolio.php`, `iso()` : 20AA), et seulement dans les
+  titres où Twin9 la cherche (des points, dans un titre `##` ou `###` en
+  début de ligne, `^#{2,3}` suivi d'un blanc) : une ligne nue, un titre `#`
+  ou `####` à `######`, un titre indenté, `/`, `-`, « 1er.03.26 » et une
+  année sur trois chiffres (Twin9 lit « 12.03.202 » comme 2202) restent du
+  texte. Deux écarts demeurent, connus : Twin9 ne date rien sans au moins
+  deux tels titres, quand l'interface ouvre une journée dès le premier ; une
+  année sur quatre chiffres se lit dans l'interface sous tout niveau de
+  titre (avant ce sprint déjà, étude du sprint 4 §4.1). Sur les cinq
+  portfolios fictifs de Twin9, les journées de l'interface sont désormais
+  les siennes : PLANT-01 (`### 02.03.26` …) donne ses dix journées, au lieu
+  d'un seul bloc daté du jour ; les quatre SYNTH-*, sans date, aucune des
+  deux côtés ; un portfolio synthétique aux titres de tous niveaux donne,
+  des deux côtés, les seules journées de ses titres `##` et `###`. (Revue
+  du 2026-10-22 : la première version lisait aussi l'année sous `#`,
+  `####` à `######` et dans un titre indenté, où Twin9 ne la lit pas.)
+- **Pas fait** :
+  - **T3**, répartir les traces par date de passage : une décision de
+    Christian (le statut et la confiance seraient recopiés d'un verdict
+    rendu sur neuf journées, pas mesurés ; une journée qui a sa propre
+    analyse imposerait un choix ; le kairos et les rapports de pôle restent
+    globaux) ;
+  - T0 (envoyer à Twin9 des en-têtes que l'interface lit pareil), C3 et
+    C4 : avec le lot Twin9 ;
+  - la démonstration publique : son index déployé n'a pas `at` ; il faut la
+    redécouper (`node web/scripts/carto-demo-split.mjs`, qui l'écrit) puis
+    la redéployer. D'ici là, sa journée du 3 février dit « Aucune analyse
+    n'est rangée à ce jour. » sans le lien.
+- Tests : `core/passage-dates.test.js` (16 : importeurs, run Twin9 dans un
+  jeu neuf et dans un jeu déjà passé, identifiant inchangé, couverture,
+  anomalies des deux côtés, court-circuit et présence non établie, plage des
+  journées couvertes, heatmap, archive et index d'avant, passe du magasin) ;
+  `ui/SourceDate.test.jsx` (5 de plus : section et lien de la modale,
+  gestionnaire et sa plage lisible sans survol, trace non retenue, passe à
+  l'ouverture, modale sans lien) ; `engine/src/portfolio/segment.test.js`
+  (années sur deux chiffres, niveaux de titre, et les cinq portfolios de
+  Twin9, lus dans `TWIN_V9_DIR`, sautés sans lui, jamais recopiés ici ; leurs
+  dates, et celles d'un portfolio synthétique aux titres de tous niveaux,
+  vérifiées par le moteur PHP quand il est là) ;
+  `core/portfolio-md.test.js` (un `### 02.03.26` d'un autre jour est
+  neutralisé à l'export).
 
 ---
 
@@ -3953,3 +4108,10 @@ Question posée avec D-70 (2026-10-16) :
 - **2026-10-16** — Remarque de Christian de 20 h 53 (D-71) : les boutons de
   la journée voisine, dans la modale du jour, ne disent plus l'année — sauf
   quand elle change, au passage du 1er janvier.
+- **2026-10-22** — Sprint 4 de la liste de Christian, par délégation : la
+  trace du 3 février « dans la journée du 10 » vient d'une analyse qui couvre
+  plusieurs journées du portfolio. T1 le dit partout où la trace s'affiche
+  (D-14 et D-66 amendées) ; T2 l'écrit dans l'index, et la journée du 3
+  renvoie à l'analyse du 10 ; le découpage lit les années sur deux chiffres
+  comme Twin9 (D-72). T3, répartir les traces par date de passage, reste à
+  décider.

@@ -29,6 +29,11 @@
       "enum": ["demo"],
       "description": "Provenance particulière : « demo » = la démonstration publique du site, rechargeable depuis le site (elle n'entre pas dans l'archive de compte). Absent pour les données de l'apprenant."
     },
+    "passageDates": {
+      "type": "integer",
+      "minimum": 1,
+      "description": "Version de la passe qui a écrit, une fois, la date du passage de chaque trace de l'index (« at ») d'un jeu importé avant elle, lue dans les détails de ses journées (sprint 4, T2). Ajout 4.x facultatif : sans lui, la passe se fait à la prochaine ouverture du jeu."
+    },
     "createdAt": { "type": "string", "description": "Création du jeu (ISO 8601)." },
     "updatedAt": { "type": "string", "description": "Dernière modification du jeu (ISO 8601)." },
     "exportedAt": {
@@ -394,7 +399,11 @@
                   "required": ["id", "role"],
                   "properties": {
                     "id": { "type": "string", "minLength": 1 },
-                    "role": { "enum": ["preuve", "indice"] }
+                    "role": { "enum": ["preuve", "indice"] },
+                    "at": {
+                      "$ref": "#/$defs/isoDate",
+                      "description": "Date du passage de la trace quand elle n'est pas celle de la journée : l'analyse rangée à cette journée a retenu un passage écrit un autre jour du portfolio (la « sourceDate » de son détail). Absent sinon. Les calculs ne le lisent pas ; il relie, sans lire les détails, une journée à l'analyse qui a relevé ses passages (sprint 4, T2 ; ajout 4.x facultatif)."
+                    }
                   }
                 }
               }

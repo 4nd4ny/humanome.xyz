@@ -1,0 +1,85 @@
+{
+  "version": 1,
+  "site": {
+    "url": "https://exemple.invalid",
+    "titre": "Site fictif",
+    "resume": "Résumé fictif du site."
+  },
+  "pages": [
+    {
+      "route": "essayer",
+      "href": "#/essayer",
+      "modele": false,
+      "variantes": [],
+      "modeles": [],
+      "titre": "Essai fictif",
+      "resume": "Résumé fictif de la page d’essai.",
+      "points": [
+        "Premier point fictif.",
+        "Second point fictif."
+      ],
+      "dansMenu": true,
+      "expert": false,
+      "public": true,
+      "interne": false
+    },
+    {
+      "route": "account",
+      "href": "#/compte",
+      "modele": false,
+      "variantes": [
+        "#/compte/credit"
+      ],
+      "modeles": [],
+      "titre": "Compte fictif",
+      "resume": "",
+      "points": [],
+      "dansMenu": true,
+      "expert": false,
+      "public": true,
+      "interne": false
+    },
+    {
+      "route": "day",
+      "href": "#/jour/AAAA-MM-JJ",
+      "modele": true,
+      "variantes": [],
+      "modeles": [],
+      "titre": "Journée fictive",
+      "resume": "Résumé fictif d’une journée.",
+      "points": [],
+      "dansMenu": false,
+      "expert": false,
+      "public": true,
+      "interne": false
+    },
+    {
+      "route": "activer",
+      "href": "#/activer",
+      "modele": false,
+      "variantes": [],
+      "modeles": [],
+      "titre": null,
+      "resume": null,
+      "points": [],
+      "dansMenu": false,
+      "expert": false,
+      "public": false,
+      "interne": true
+    },
+    {
+      "route": "redirect",
+      "href": "#/merge",
+      "modele": false,
+      "variantes": [],
+      "modeles": [],
+      "titre": null,
+      "resume": null,
+      "points": [],
+      "dansMenu": false,
+      "expert": false,
+      "public": false,
+      "interne": true
+    }
+  ]
+}

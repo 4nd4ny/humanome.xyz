@@ -155,4 +155,14 @@ describe('UC-APP-01 — segmentation automatique en journées (étape 4)', () =>
     expect(avecPreambule[0].debut).toBe(0)
     expect(avecPreambule[1].fin).toBe(preambule.length)
   })
+
+  it('UC-APP-01-U22 — année sur deux chiffres, comme Twin9 : dans un titre ## ou ###, en début de ligne, avec des points (étape 4, RG5 ter)', () => {
+    // « ### 02.03.26 » est le 2 mars 2026 (20AA, comme le moteur Twin9).
+    const titres = '# Journal\n### 02.03.26\nAtelier.\n## 4.3.26\nSuite.\n### Lundi 9.03.26 — Bilan\nFin.\n'
+    expect(segmentText(titres, { today: TODAY }).map((s) => s.date)).toEqual(['2026-03-02', '2026-03-04', '2026-03-09'])
+    // Là où Twin9 ne la lit pas, elle reste du texte de la journée en cours.
+    for (const ligne of ['02.03.26', '# 02.03.26', '#### 02.03.26', '###### 02.03.26', '   ### 02.03.26', '### 02/03/26', '### 02-03-26', '### 1er.03.26', '### 12.03.202']) {
+      expect(segmentText(`## 2026-03-01\nAvant.\n${ligne}\nAprès.\n`, { today: TODAY }).map((s) => s.date), ligne).toEqual(['2026-03-01'])
+    }
+  })
 })

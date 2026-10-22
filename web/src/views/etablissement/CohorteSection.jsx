@@ -10,6 +10,7 @@
 
 import { useCallback, useEffect, useRef, useState } from 'react'
 import ReferentielChoice from '../../components/ReferentielChoice.jsx'
+import { REFERENTIEL_PAR_DEFAUT } from '@engine/conformite.js'
 import { listPublishedReferentiels, loadPublishedReferentiel } from '../../data/referentiel.js'
 import {
   cancelRun,
@@ -198,9 +199,11 @@ export default function CohorteSection({
       return
     }
     // Le nombre d'appels d'une journée se lit dans le référentiel du run : un par pôle, plus le kairos.
+    // Sans choix, la dernière version publiée de RESPIRE, lue comme le menu la
+    // montre et comme le serveur la fige : dans la base d'abord (S5).
     let referentiel
     try {
-      const loaded = await getReferentiel(referentielChoice ?? undefined)
+      const loaded = await getReferentiel(referentielChoice ?? { id: REFERENTIEL_PAR_DEFAUT })
       referentiel = loaded?.doc ?? loaded
     } catch (error) {
       setLaunchError(error.message)

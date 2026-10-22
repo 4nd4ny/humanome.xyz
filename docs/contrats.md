@@ -472,6 +472,47 @@ par `scripts/extract-referentiel.mjs`.
       « Relance coupée » ; le bac à sable rend au paquet tiers un
       `llm-error`, jamais le fragment. Aucun n'emploie `allowTruncated`.
 
+15. **Master v4 : la date du passage d'une trace dans l'index, `at`
+    (2026-10-22, sprint 4, T2 ; journal de la cartographie D-72).** Ajout 4.x
+    facultatif. Une analyse rangée à une journée peut retenir des passages
+    écrits d'autres jours du portfolio (dans la démonstration, l'analyse du
+    10 février en retient 175 du 1er au 9) : chaque trace de l'index
+    (`days[].variants[].verdicts[].traces[]`, jusqu'ici `{id, role}`) porte
+    alors `at`, la date de son passage — la `sourceDate` de son détail —, et
+    rien quand c'est la date de la journée (jamais `at: null`). Les calculs ne
+    le lisent pas : la trace compte toujours dans la journée de son analyse
+    (répartir par date de passage, T3, est une décision laissée à
+    Christian). Il permet, sans lire aucun détail (D-67), de dire à la
+    journée du passage quelle analyse l'a relevée.
+    - **Qui l'écrit** : l'import, pour toute variante qui arrive avec son
+      détail, quel que soit l'importeur (`mergeIntoDataset`, qui le lit dans
+      la `sourceDate` des traces du détail) — dans un jeu neuf comme dans un
+      jeu déjà passé (`passageDates` ci-dessous). Les importeurs d'un
+      document-jour, d'une journée Aurora v3 ou d'une feuille de Merge v2
+      (`aurora-day.js`) et d'un master V3 (`v3-master.js`) l'écrivent déjà
+      eux-mêmes ; celui d'un run Twin9 (`twin9-run.js`) ne garde que `{id,
+      role}`, l'import le complète (la `date` de la trace, lue par le
+      greffier, peut différer de celle de la carte) ; AuroraCore et Twin6
+      datent leurs traces de leur journée.
+    - **Ce qui se lit sans lui** : une archive, un index ou un jeu d'avant le
+      reçoivent de leurs détails — à l'import d'une archive
+      (`importArchive`), au découpage (`splitArchive`, la version change
+      donc), et, pour un jeu rangé dans le navigateur avant T2, par une
+      passe unique à son ouverture (`store.addPassageDates` : tous ses
+      détails lus une fois, dans la même transaction que l'écriture de
+      l'index), dont la version est gardée à la racine du jeu,
+      `passageDates` (entier, facultatif, aujourd'hui 1). Cette passe ne
+      sert qu'aux variantes rangées avant que l'import n'écrive `at` : elle
+      ne se refait pas, et une variante importée ensuite l'a déjà. Un jeu lu
+      à la demande n'a pas ses détails ici : il ne passe pas, il se met à
+      jour avec la démonstration (D-57) ; devenu d'ici, il passe à
+      l'ouverture suivante. Une variante garde son
+      identifiant (calculé sur le contenu de l'analyse, pas sur l'index) :
+      réimporter une archive d'avant n'ajoute rien.
+    - Schéma : `at` (`isoDate`) dans la trace résumée, `passageDates` à la
+      racine ; validateurs régénérés. Un lecteur 4.x qui les ignore lit le
+      même jeu.
+
 ## 5. Note d'outillage
 
 `engine/src/validation.js` importe les schémas en imports JSON « nus »
@@ -1692,10 +1733,12 @@ T16, plan validé par Christian le 2026-10-20).
   - Sans évaluation, la référence (§8.5) reste le run de PLANT-01 de T2, fois
     les pôles : elle ignore la taille des fiches d'un autre référentiel.
   - Le moteur ne refuse un référentiel qu'au lancement : sa publication (§9)
-    ne vérifie pas qu'il le lit. Le schéma 2.0.0 admet ainsi des codes faits
-    de chiffres seulement (« 11 »), un pôle sans compétence, un nom de pôle ou
-    de compétence fait d'espaces : publié, voté, un tel référentiel est
-    refusé à chaque aperçu et à chaque lancement.
+    ne vérifie pas qu'il le lit. Le schéma 2.0.0 admet ainsi un pôle sans
+    compétence, un nom de pôle ou de compétence fait d'espaces : publié, voté,
+    un tel référentiel est refusé à chaque aperçu et à chaque lancement. Les
+    codes faits de chiffres seulement (« 11 »), eux, sont refusés à
+    l'enregistrement depuis la revue de S5 (§9, « Les codes ») ; une version
+    publiée avant reste refusée au lancement.
   - La lentille du « Spécialiste du pôle » est écrite dans le code du moteur :
     son empreinte suit son texte, pas une version déclarée comme celle de la
     banque (`PERSONAS_VERSION`).
@@ -1873,6 +1916,13 @@ Le schéma `referentiel` passe en **2.0.0** (`docs/plan-twin9-php.md` de
 - **Les codes** : 1 à 8 caractères (lettres, chiffres, `.`, `_`, `-`, le
   premier lettre ou chiffre), uniques dans tout le référentiel ; 8, la taille
   des colonnes qui les rangent (`cartography_annotations.competence_code`).
+  Jamais faits de chiffres seulement (« 11 ») : le moteur Twin9 refuse une
+  compétence ainsi codée, et tout niveau peut tenir lieu de compétence ; le
+  schéma l'admet, l'intégrité (`validateDocument`, `CHIFFRES_SEULS`) le
+  refuse à tout niveau, à son pointeur, depuis la revue de S5 (2026-10-22),
+  et la page Markdown de l'atelier à sa ligne. Un tel code d'une version
+  enregistrée avant fait refuser ce qui la revalide (soumission, publication,
+  fork).
 - **Les éléments** (`elements` d'une compétence, et d'un élément) :
   `{code, nom, description?, elements?}` ; un élément d'un niveau que le
   référentiel ne déclare pas est refusé. Une description est du texte libre
@@ -1907,10 +1957,18 @@ Le schéma `referentiel` passe en **2.0.0** (`docs/plan-twin9-php.md` de
   fork prend `referentiel` (défaut `respire` ; un identifiant de la même
   forme, la nouvelle version gardant celui de sa source : la colonne ignore
   la casse). `GET /api/referentiels`
-  (public) rend les référentiels publiés : `[{id, label, versions}]`, le
-  libellé de la dernière version, les versions de la plus récente à la plus
-  ancienne. Les lectures publiques de `/api/referentiel` restent celles de
-  RESPIRE.
+  (public) rend les référentiels publiés : `[{id, label, versions, source}]`,
+  le libellé et la provenance (`source`, `null` si elle manque, S5) de la
+  dernière version, les versions de la plus récente à la plus ancienne, les
+  référentiels rangés par identifiant.
+  `GET /api/referentiels/{id}/versions/{semver}` (public, lecture seule, S5)
+  rend le document d'une version **publiée** de tout référentiel, RESPIRE
+  compris, tel que la base le garde (`content`) ; un brouillon, une
+  proposition, un identifiant ou une version inconnus → `404` « Unknown
+  published version ». La colonne ignorant la casse et les espaces finaux, la
+  route refuse aussi (`404`) un identifiant hors de la forme ci-dessus et
+  toute autre graphie de l'identifiant ou de la version. Les lectures
+  publiques de `/api/referentiel` restent celles de RESPIRE.
 - **Le profil Twin9** (§7) : `referentiel.version` peut désigner un brouillon
   (ou une proposition au vote) si le propriétaire du profil en est l'auteur,
   qu'il est épistémiarque ou administrateur (`ProfilPolicy::AUTEURS`) et que
@@ -1929,7 +1987,23 @@ Le schéma `referentiel` passe en **2.0.0** (`docs/plan-twin9-php.md` de
   (`referentiel_version_id`) n'accepte que ses codes ; sans référentiel
   désigné, la forme de RESPIRE (`[1-7].NN`) jusqu'au 2026-10-20 — depuis,
   les codes de la version que lit sa relecture (§11).
-- **Hors T15** : la page publique `#/referentiel` ne montre que RESPIRE ;
+- **L'Humanome V18** (S5, lot B) : le YAML que publie
+  https://respire.school/referentiel se convertit en document de ce schéma
+  sur le poste (`scripts/convertir-humanome.mjs`, `engine/src/referentiel-humanome.js`) :
+  identifiant `humanome`, libellé « Humanome V18 », niveaux `capacité`
+  `[A-E][1-4]` puis `facette` `[A-E][1-4]\.[1-9]`, les capacités pour
+  compétences et leurs facettes pour éléments, des descriptions composées des
+  rubriques du YAML, la couleur de la palette par rang, l'empreinte calculée
+  comme ci-dessus. `scripts/amorcer-referentiel.php` le publie hors vote,
+  idempotent sur le document entier hors `source`, la provenance
+  (`importPublishedDocument` ne compare que l'empreinte), et refuse `respire` ;
+  en production, `POST /api/admin/import-referentiel` applique les mêmes règles
+  (`AmorcageReferentiel`) à tout autre identifiant que `respire`, RESPIRE
+  gardant l'import du déploiement, idempotent sur l'empreinte. Le schéma ne
+  change pas. Règles, procédure en production et écarts relevés dans la
+  source : `docs/referentiel-humanome.md`.
+- **Hors T15** : la page publique `#/referentiel` ne montrait que RESPIRE ;
+  elle montre tout référentiel publié depuis S5, lot E (§10, UC-VIS-02).
   `ReferentielDiff` ignore niveaux et éléments. (La cartographie, qui ne
   lisait que RESPIRE et ses 7 pôles, lit le référentiel de chaque run depuis
   T17, §10 ; le moteur, depuis T16, §8.8.)
@@ -2113,12 +2187,38 @@ plus contre le chiffre 7. Aucun champ n'est renommé.
   | Cartographie ouverte (Twin6) | celle choisie (RESPIRE par défaut) ; pour RESPIRE, la structure de `/api/twin9/meta` (noms de pôle accentués) tant qu'elle a les pôles et les codes de la version choisie ; ses gabarits (paquet 1.1.0) en lisent le nom, les pôles, les compétences et la forme des codes (§8) |
   | Analyse approfondie (Twin9) | celle du profil du run (§8.8) |
   | Relecture : annotations, révisions (`ReviewReferentiel`) | la version stockée ; sinon, parmi les versions publiées du référentiel que nomme le document (RESPIRE à défaut), la plus récente à laquelle il est conforme — une journée de RESPIRE v7 reste relue contre v7 quand une version d'une autre structure paraît —, sinon la dernière ; sans version publiée, refus `422` |
-  | Visionneuses, partage, archive, remise à l'interface (`chargerReferentielDuDocument`) | la version notée ; sinon, parmi les versions publiées du référentiel que nomme le document (index statique), la plus récente à laquelle il est conforme — la règle de la relecture —, à défaut la dernière ; RESPIRE embarqué en repli pour un document qui n'en nomme pas ; un autre référentiel introuvable est dit, jamais lu avec RESPIRE |
+  | Visionneuses, partage, archive, remise à l'interface (`chargerReferentielDuDocument`) | la version notée ; sinon, parmi les versions publiées du référentiel que nomme le document (la base par l'API, l'index statique en repli, S5), la plus récente à laquelle il est conforme — la règle de la relecture —, à défaut la dernière ; RESPIRE embarqué en repli pour un document qui n'en nomme pas ; un autre référentiel introuvable est dit, jamais lu avec RESPIRE |
   | Corpus de démonstration (`#/jour`, `validate-corpus.mjs`) | RESPIRE v7 |
 
-  Le choix d'un référentiel publié (`ReferentielChoice`) lit l'index statique
+  Le choix d'un référentiel publié (`ReferentielChoice`) lit la base
+  (`GET /api/referentiels`, S5, 2026-10-22), à défaut l'index statique
   `data/referentiel/index.json` : la dernière version de chacun, RESPIRE
-  d'abord ; sans index (copie hors ligne), aucun choix n'est offert.
+  d'abord ; sans l'une ni l'autre (copie hors ligne), aucun choix n'est
+  offert. Le document d'une version
+  (`loadPublishedReferentiel({id, version})`) se lit de même :
+  `GET /api/referentiels/{id}/versions/{semver}`, à défaut l'export statique,
+  enfin, pour RESPIRE, la copie embarquée ; sans choix, les parcours chargent
+  ainsi la dernière RESPIRE publiée (`{id: 'respire'}`), celle que le menu
+  présélectionne. Une liste sans RESPIRE (une base qui ne l'a pas publié)
+  présélectionne son premier référentiel, et le menu en fait le choix
+  (`onChange`, jamais sous un run en cours) : le parcours charge le
+  référentiel affiché, et la masse l'envoie (`referentielId`). Sous le menu,
+  la provenance (`source`) du référentiel affiché, s'il n'est pas RESPIRE :
+  d'où il vient et sa licence (S5, E1 et E9 ; l'Humanome V18 est celui de
+  respire.school, sous CC-BY-SA). L'index statique ne la porte pas : en
+  repli, rien ne s'affiche. L'aide des trois parcours (`espace`,
+  `twin6ouverte`, `etablissement`) dit ce qu'est l'Humanome V18, s'il est
+  proposé. Une réponse de l'API vide,
+  malformée, en erreur, ou un document qui n'est pas la version demandée
+  cèdent la place à l'export statique. La page publique `#/referentiel`
+  suit la même règle depuis S5, lot E : elle charge `{id: 'respire'}` par
+  défaut, ou le référentiel que nomme son adresse (`#/referentiel[/<code>]?id=<id>`,
+  RESPIRE sans `id`), propose les autres au même menu (la provenance, elle,
+  sous l'en-tête, depuis le `source` du document), et dit un identifiant
+  qu'elle ne peut charger, RESPIRE affiché à sa place (UC-VIS-02, A7 à A9,
+  E5). Seule la branche sans identifiant (`loadPublishedReferentiel()`,
+  l'interface de cartographie) reste statique. Le lien « Voir dans le
+  référentiel » d'une carte nomme le référentiel de la carte.
 - **Les routes**, ce qui change :
   - `POST /api/etablissement/cohortes/{id}/runs` : `referentielId`,
     `referentielVersion` facultatifs ; version non publiée ou identifiant
@@ -2195,3 +2295,49 @@ plus contre le chiffre 7. Aucun champ n'est renommé.
   ses niveaux. Les gabarits scan-pôle et kairos de Twin6, versionnés depuis,
   écrivent bien RESPIRE v7 en toutes lettres dans leur version 1.0.0 : la 1.1.0
   les lit dans le référentiel (§8).
+
+## 12. La carte du site (`scripts/data/site-map.json`, sprint 11)
+
+Fichier généré (gitignoré) par `scripts/build-tuteur-digest.mjs`, livré dans
+la release de l'API avec le digest de l'assistant (`stage-api.sh` copie
+`scripts/data/`). Il n'a pas de schéma JSON : il n'est pas échangé entre le
+navigateur et le serveur, seulement lu par le serveur, qui le reçoit du même
+commit. Produit par `collectSiteMap` (`scripts/lib/site-map.mjs`, UC-SYS-04
+RG8), déterministe, sans date et sans corps de chapitre.
+
+- `version` : 1.
+- `site` : `{url, titre, resume}` ; `url` vient de `SITE_URL` (défaut
+  `https://humanome.xyz`), `resume` est l'intro de l'aide de l'accueil.
+- `familles[]` : le menu (`navGroups` d'un compte qui a tous les rôles en mode
+  expert, puis d'un visiteur), `{id, label, intent, audience, roles, items[]}`.
+  Chaque item porte `{href, label, route, section, badge, hint, roles,
+  allRoles, expert, visiteur, connecte}` : `visiteur` et `connecte` disent
+  dans quelle session il paraît, `expert` qu'il n'est listé qu'en mode expert.
+- `pages[]` : **une page par nom de route** du catalogue
+  (`web/src/routes-catalogue.js`), dans l'ordre du menu puis du catalogue,
+  `{route, href, modele, variantes, modeles, titre, resume, points, navLabel,
+  hint, badges, audience, familles, dansMenu, expert, public, interne}`.
+  `route` est le nom que rend `parseHash` (et qu'envoie l'assistant comme
+  rubrique) ; `href` est l'adresse à donner à une personne (un modèle à
+  compléter quand `modele` est vrai) ; `titre`, `resume` et `points` sont
+  l'entrée de l'aide (`HELP_ENTRIES`) : pour une route interne, `titre` et
+  `resume` sont nuls et `points` est vide.
+- `aideSansRoute[]` : `{cle, titre, resume, points}`, les entrées d'aide sans
+  page (le profil employeur des tuiles de l'accueil).
+- `guides[]` : `{parcours, titre, href, publie, chapitres[{slug, titre, ordre,
+  href, fichier, source}]}` ; `fichier` est l'URL du `.md` publié, nulle si le
+  parcours n'est pas dans `PARCOURS_PUBLIES`.
+- `legal[]` : `{cle, titre, maj, href, fichier, source}`.
+- `roles` : les libellés des rôles (`ROLE_LABELS`).
+
+**Ce que l'API en lit** (`POST /api/tuteur`, `api/src/Tuteur/CarteDuSite.php`,
+sprint 11 lot A, UC-VIS-05 RG1) : `version`, qui doit valoir 1, et, de chaque
+page, `route`, `href`, `titre`, `resume`, `points` et `interne`. La rubrique
+qu'envoie l'assistant n'entre dans sa consigne que si c'est le `route` d'une
+page non interne qui a un `titre` : « Elle consulte actuellement : <titre>
+(<href>). », puis le `resume` et les `points` de cette seule page. Un fichier
+absent, illisible, d'une autre version ou sans `pages` vaut absence de carte :
+la rubrique est alors vidée, même un nom de route. Toute évolution de ces
+champs ou de leur sens touche donc aussi l'API (même commit, même release).
+UC-SYS-04-F18 vérifie ce contrat sur la carte générée, et que la carte fictive
+des tests PHP (`api/tests/fixtures/tuteur/site-map.json`) a la même forme.

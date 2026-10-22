@@ -6,7 +6,7 @@
   "license": "AGPL-3.0-only",
   "scripts": {
     "dev": "vite",
-    "prebuild": "node ../scripts/generate-fiches.mjs && node ../scripts/build-twin6-package.mjs && node scripts/build-viewer.mjs",
+    "prebuild": "node ../scripts/generate-fiches.mjs && node ../scripts/build-twin6-package.mjs && node scripts/build-viewer.mjs && node ../scripts/build-site-map.mjs",
     "build": "vite build",
     "build:viewer": "node scripts/build-viewer.mjs",
     "preview": "vite preview",

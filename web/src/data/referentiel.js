@@ -1,41 +1,74 @@
-// Public referentiel loading (P4.4). Consultation is STATIC by design: the
-// published versions live as plain JSON under data/referentiel/, exported by
-// api/src/Referentiel/StaticExporter.php — index.json is an ARRAY of
-// {referentielId, semver, label, publishedAt, fichier}, newest version first
-// per referentiel. No PHP call at consultation time. When the fetch is
+// Public referentiel loading (P4.4). The published versions live as plain JSON
+// under data/referentiel/, exported by api/src/Referentiel/StaticExporter.php —
+// index.json is an ARRAY of {referentielId, semver, label, publishedAt,
+// fichier}, newest version first per referentiel. The public consultation
+// was static by design (no PHP call); since S5 it reads the database first
+// (below), the static export being its fallback. When the fetch is
 // impossible (file://, offline copy), the bundled RESPIRE v7 import
 // (data/load.js) is the fallback so the page always renders.
 //
 // Any published referential, not RESPIRE's alone (2026-10-20): a flow loads the
 // one it is given — `{ id, version }` — and lists them to offer a choice
 // (listPublishedReferentiels, components/ReferentielChoice.jsx).
+//
+// The flows read the DATABASE first (S5, 2026-10-22): the static index is
+// exported from a workstation's database and does not follow a version voted
+// and published on the site. Listing a choice and loading `{ id, version }`
+// ask the public, read-only API (GET api/referentiels, GET
+// api/referentiels/{id}/versions/{semver}, published versions only); the static
+// export is their fallback (static copy, API down), RESPIRE's bundled copy the
+// last one. The public page #/referentiel follows the same rule since S5, lot E
+// (ReferentielView loads `{ id }`, RESPIRE's by default). The branch without
+// `id`, which the cartography interface reads (useCartoData), stays static.
+//
+// The API is awaited a few seconds at most (API_TIMEOUT_MS, S5 review,
+// 2026-10-22): an API that neither answers nor fails (PHP-FPM saturated, a
+// MySQL lock) would otherwise hold the public page on « Chargement… » while
+// the static export is there; past the delay, its request is aborted and the
+// static export answers. The catalogue it serves is kept a few seconds
+// (CATALOGUE_TTL_MS): the page that loads a referential, then lists them for
+// its menu, asks for it once.
+import { apiFetch } from '../api/client.js'
 import { getReferentiel } from './load.js'
 
 /** Filenames accepted from index.json (no path traversal, same directory). */
 const SAFE_FILE_RE = /^[A-Za-z0-9._-]+\.json$/
 
+/** Referential ids the API may name (ReferentielRepository::ID_PATTERN). */
+const ID_RE = /^[a-z0-9][a-z0-9._-]{0,63}$/
+
 /** The platform's referential, the default one (and the bundled one). */
 const RESPIRE = 'respire'
+
+/** How long the API's answer is awaited, in ms: past it, the static export answers. */
+export const API_TIMEOUT_MS = 5000
+
+/** How long a catalogue read from the API serves again, in ms; a version published since shows after it. */
+export const CATALOGUE_TTL_MS = 10000
 
 let cache = null
 /** @type {Map<string, {doc: object, origin: 'published' | 'bundled'}>} `${id}@${version}` -> result */
 const parReferentiel = new Map()
+/** @type {{fetchFn: typeof fetch | null, at: number, promise: Promise<Array<object>>} | null} the API catalogue, read or being read */
+let catalogueMemo = null
 
 /** Empties the module cache (used by tests). */
 export function clearReferentielCache() {
   cache = null
   parReferentiel.clear()
+  catalogueMemo = null
 }
 
 /**
  * Loads a published referentiel version. Without an `id`: the latest
- * published RESPIRE, falling back to the bundled one — never rejects, the
- * fallback is part of the contract. With an `id` (and a `version`, else its
- * latest): that version from index.json; RESPIRE falls back to the bundled
- * one when it is that version (or no version is asked), any other rejects
- * with a French message.
+ * published RESPIRE from the static export, falling back to the bundled one —
+ * never rejects, the fallback is part of the contract. With an `id` (and a
+ * `version`, else its latest): that version from the API, else from
+ * index.json; RESPIRE falls back to the bundled one when it is that version
+ * (or no version is asked), any other rejects with a French message.
  *
- * @param {{id?: string, version?: string, fetchFn?: typeof fetch, protocol?: string}} [options] fetchFn, protocol: test seams
+ * @param {{id?: string, version?: string, fetchFn?: typeof fetch, protocol?: string, timeoutMs?: number}} [options]
+ *   fetchFn, protocol, timeoutMs (API_TIMEOUT_MS by default): test seams
  * @returns {Promise<{doc: object, origin: 'published' | 'bundled'}>}
  */
 export async function loadPublishedReferentiel(options = {}) {
@@ -47,24 +80,32 @@ export async function loadPublishedReferentiel(options = {}) {
   }
   const cle = `${id}@${version ?? ''}`
   if (parReferentiel.has(cle)) return parReferentiel.get(cle)
-  const result = await fetchVersion(options, id, version).catch((err) => {
-    const bundled = getReferentiel()
-    if (id === RESPIRE && (!version || version === bundled.version)) return { doc: bundled, origin: 'bundled' }
-    throw new Error(`Le référentiel « ${id} »${version ? ` ${version}` : ''} n'a pas pu être chargé`, { cause: err })
-  })
+  const result = await withinTimeout(options, (signal) => fetchVersionFromApi(options, id, version, signal))
+    .catch(() => fetchVersion(options, id, version))
+    .catch((err) => {
+      const bundled = getReferentiel()
+      if (id === RESPIRE && (!version || version === bundled.version)) return { doc: bundled, origin: 'bundled' }
+      throw new Error(`Le référentiel « ${id} »${version ? ` ${version}` : ''} n'a pas pu être chargé`, { cause: err })
+    })
   parReferentiel.set(cle, result)
   return result
 }
 
 /**
- * The published referentials, from index.json: each with its versions, newest
- * first, RESPIRE first and the others by label. Empty when the index cannot be
- * read (file://, offline copy): only the bundled RESPIRE is then at hand.
+ * The published referentials, from the API (the database), else from
+ * index.json: each with its versions, newest first, RESPIRE first and the
+ * others by label. Read from the API, a version carries its referential's
+ * label and neither file nor date, and the referential its provenance (the
+ * `source` of its latest version: where it comes from, its licence — S5, E1,
+ * E9); index.json has none (null). Empty when neither can be read (file://,
+ * offline copy): only the bundled RESPIRE is then at hand.
  *
- * @param {{fetchFn?: typeof fetch, protocol?: string}} [options] test seams
- * @returns {Promise<Array<{id: string, label: string, versions: Array<{semver: string, label: string, fichier: string, publishedAt: string|null}>}>>}
+ * @param {{fetchFn?: typeof fetch, protocol?: string, timeoutMs?: number}} [options] test seams
+ * @returns {Promise<Array<{id: string, label: string, source: string|null, versions: Array<{semver: string, label: string, fichier: string|null, publishedAt: string|null}>}>>}
  */
 export async function listPublishedReferentiels(options = {}) {
+  const depuisLaBase = await withinTimeout(options, (signal) => catalogueFromApi(options, signal)).catch(() => null)
+  if (depuisLaBase !== null) return trier(depuisLaBase)
   let index
   try {
     index = await fetchIndex(options)
@@ -82,9 +123,111 @@ export async function listPublishedReferentiels(options = {}) {
       publishedAt: e.publishedAt ?? null,
     })
   }
-  return [...parId.entries()]
-    .map(([id, versions]) => ({ id, label: versions[0].label, versions }))
-    .sort((a, b) => (a.id === RESPIRE ? -1 : b.id === RESPIRE ? 1 : a.label.localeCompare(b.label, 'fr')))
+  return trier([...parId.entries()].map(([id, versions]) => ({ id, label: versions[0].label, source: null, versions })))
+}
+
+/** RESPIRE first, the others by label. */
+function trier(referentiels) {
+  return referentiels.sort((a, b) => (a.id === RESPIRE ? -1 : b.id === RESPIRE ? 1 : a.label.localeCompare(b.label, 'fr')))
+}
+
+/** The seams apiFetch understands, and the signal that aborts the request. */
+const seams = (options, signal) => ({ fetchFn: options.fetchFn, protocol: options.protocol, ...(signal ? { signal } : {}) })
+
+/**
+ * `read(signal)`, rejected once `options.timeoutMs` (API_TIMEOUT_MS) has
+ * passed, its request then aborted — whether the fetch heeds the signal or
+ * not: the race settles it.
+ *
+ * @template T
+ * @param {{timeoutMs?: number}} options
+ * @param {(signal: AbortSignal | undefined) => Promise<T>} read
+ * @returns {Promise<T>}
+ */
+async function withinTimeout(options, read) {
+  const ms = options.timeoutMs ?? API_TIMEOUT_MS
+  const controller = typeof AbortController === 'function' ? new AbortController() : null
+  let timer
+  const expiry = new Promise((_, reject) => {
+    timer = setTimeout(() => {
+      controller?.abort()
+      reject(new Error(`referentiel API: no answer within ${ms} ms`))
+    }, ms)
+  })
+  try {
+    return await Promise.race([read(controller?.signal), expiry])
+  } finally {
+    clearTimeout(timer)
+  }
+}
+
+/**
+ * The API catalogue, read once for a few seconds (CATALOGUE_TTL_MS) by the
+ * same fetch — the one being read is shared, a failed one forgotten.
+ *
+ * @returns {Promise<Array<object>>} @throws as readCatalogue
+ */
+function catalogueFromApi(options, signal) {
+  const fetchFn = options.fetchFn ?? null
+  if (catalogueMemo !== null && catalogueMemo.fetchFn === fetchFn && Date.now() - catalogueMemo.at < CATALOGUE_TTL_MS) {
+    return catalogueMemo.promise
+  }
+  const memo = { fetchFn, at: Date.now(), promise: readCatalogue(options, signal) }
+  catalogueMemo = memo
+  memo.promise.catch(() => {
+    if (catalogueMemo === memo) catalogueMemo = null
+  })
+  return memo.promise
+}
+
+/**
+ * GET api/referentiels — `[{id, label, versions: string[], source}]`, versions
+ * newest first — in the shape of listPublishedReferentiels.
+ *
+ * @returns {Promise<Array<object>>} non-empty @throws on any anomaly (API unreachable, error, empty or malformed answer)
+ */
+async function readCatalogue(options, signal) {
+  const catalogue = await apiFetch('referentiels', seams(options, signal))
+  if (!Array.isArray(catalogue)) throw new Error('referentiel catalogue: not a list')
+  const referentiels = []
+  for (const r of catalogue) {
+    if (typeof r?.id !== 'string' || !ID_RE.test(r.id) || !Array.isArray(r.versions)) continue
+    const semvers = r.versions.filter((v) => typeof v === 'string' && v !== '')
+    if (semvers.length === 0) continue
+    const label = typeof r.label === 'string' && r.label !== '' ? r.label : r.id
+    referentiels.push({
+      id: r.id,
+      label,
+      source: typeof r.source === 'string' && r.source !== '' ? r.source : null,
+      versions: semvers.map((semver) => ({ semver, label, fichier: null, publishedAt: null })),
+    })
+  }
+  if (referentiels.length === 0) throw new Error('referentiel catalogue: empty or invalid')
+  return referentiels
+}
+
+/**
+ * GET api/referentiels/{id}/versions/{semver} — without a version, the latest
+ * of the catalogue.
+ *
+ * @returns {Promise<{doc: object, origin: 'published'}>} @throws on any anomaly, an unknown id or version
+ */
+async function fetchVersionFromApi(options, id, version, signal) {
+  if (!ID_RE.test(id)) throw new Error(`referentiel: invalid id ${id}`)
+  let semver = version
+  if (!semver) {
+    const entry = (await catalogueFromApi(options, signal)).find((r) => r.id === id)
+    if (!entry) throw new Error(`referentiel catalogue: no ${id}`)
+    semver = entry.versions[0].semver
+  }
+  const doc = await apiFetch(
+    `referentiels/${encodeURIComponent(id)}/versions/${encodeURIComponent(semver)}`,
+    seams(options, signal),
+  )
+  if (doc?.id !== id || doc?.version !== semver || !Array.isArray(doc.poles) || !Array.isArray(doc.competences)) {
+    throw new Error('referentiel: unexpected document from the API')
+  }
+  return { doc, origin: 'published' }
 }
 
 function fetcher(options) {

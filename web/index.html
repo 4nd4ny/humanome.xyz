@@ -6,6 +6,7 @@
     <meta name="description" content="humanome.xyz — cartographie de compétences humaines (écosystème RESPIRE, Harmonia Éducation)" />
     <meta name="color-scheme" content="light dark" />
     <title>humanome.xyz — Cartographie de compétences humaines</title>
+    <link rel="alternate" type="text/plain" href="/llms.txt" title="Résumé du site pour les IA" />
     <!-- Anti-FOUC : applique le choix de thème stocké AVANT le premier paint.
          Sans choix explicite, on ne pose rien : la media query prefers-color-scheme
          gouverne (le site suit le système). -->
@@ -19,6 +20,10 @@
     </script>
   </head>
   <body>
+    <noscript>
+      <p>humanome.xyz cartographie les compétences humaines à partir d’un journal de bord réflexif ; l’application demande JavaScript.</p>
+      <p>Sans JavaScript : le <a href="/llms.txt">résumé du site</a>, le <a href="/guides/visiteur/01-qu-est-ce-qu-une-cartographie.md">guide du visiteur</a> et la page de <a href="/legal/confidentialite.md">confidentialité</a>, en texte brut.</p>
+    </noscript>
     <div id="root"></div>
     <script type="module" src="/src/main.jsx"></script>
   </body>

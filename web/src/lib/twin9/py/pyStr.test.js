@@ -2,7 +2,7 @@
 // figés ici — script : engine/test/twin9-vectors/gen_vectors.py, retiré avec le
 // moteur du navigateur (T11), dans l'historique de Twin_v9.
 import { describe, expect, it } from "vitest";
-import { PyFloat, pyFloatRepr, pyFormat, pyRepr, pyReprTuple, pyStr } from "./pyStr.js";
+import { PyFloat, pyFloatRepr, pyFormat, pyRepr, pyStr } from "./pyStr.js";
 
 const VECTORS = {
  "floatRepr": [
@@ -355,34 +355,6 @@ const VECTORS = {
    "'accents \u00e9\u00e0\ud83c\udf0d'"
   ]
  ],
- "reprTuple": [
-  [
-   [
-    "a",
-    3
-   ],
-   "('a', 3)"
-  ],
-  [
-   [
-    1
-   ],
-   "(1,)"
-  ],
-  [
-   [],
-   "()"
-  ],
-  [
-   [
-    "x",
-    null,
-    true,
-    2.5
-   ],
-   "('x', None, True, 2.5)"
-  ]
- ],
  "reprList": [
   [
    [
@@ -428,15 +400,10 @@ describe("pyFormat — format % Python (%7.1f, %-5s, %02d, %x…)", () => {
   }
 });
 
-describe("pyRepr / pyReprTuple — repr() Python (str(seed_key) de permutation)", () => {
+describe("pyRepr — repr() Python (chaînes, listes)", () => {
   for (const [s, expected] of VECTORS.reprStr) {
     it(`repr(${JSON.stringify(s)})`, () => {
       expect(pyRepr(s)).toBe(expected);
-    });
-  }
-  for (const [items, expected] of VECTORS.reprTuple) {
-    it(`str(tuple ${JSON.stringify(items)})`, () => {
-      expect(pyReprTuple(items)).toBe(expected);
     });
   }
   for (const [items, expected] of VECTORS.reprList) {
@@ -444,4 +411,9 @@ describe("pyRepr / pyReprTuple — repr() Python (str(seed_key) de permutation)"
       expect(pyStr(items)).toBe(expected);
     });
   }
+  // Les éléments du vecteur de tuple ('x', None, True, 2.5), parti avec
+  // pyReprTuple : les mêmes repr dans une liste (str(list) == repr(list)).
+  it("str(list) de chaîne, None, True et float", () => {
+    expect(pyStr(["x", null, true, 2.5])).toBe("['x', None, True, 2.5]");
+  });
 });

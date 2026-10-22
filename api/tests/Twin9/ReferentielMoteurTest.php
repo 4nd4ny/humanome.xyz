@@ -305,9 +305,11 @@ final class ReferentielMoteurTest extends CartographeTestCase
     }
 
     /**
-     * With the real engine: a referential the platform publishes but the
-     * engine cannot read — its codes digits only — is refused at the preview
-     * and at the launch, 422, the code at fault named; no run is written.
+     * With the real engine: a referential the engine cannot read — its codes
+     * digits only — is refused at the preview and at the launch, 422, the
+     * code at fault named; no run is written. The platform no longer stores
+     * such codes (ReferentielRepository::CHIFFRES_SEULS, S5 review): the
+     * version here is one published before that check, written as it is.
      */
     #[RunInSeparateProcess]
     #[PreserveGlobalState(false)]
@@ -337,7 +339,7 @@ final class ReferentielMoteurTest extends CartographeTestCase
         foreach (['11', '12', '21', '22'] as $code) {
             $doc['competences'][] = ['code' => $code, 'nom' => 'Compétence fictive ' . $code, 'pole' => (int) $code[0]];
         }
-        self::publier($doc);
+        self::publierTelQuel($doc);
         $alice = $this->registerAs('chiffres@example.org', 'Alice');
         (new CreditService(self::$pdo))->adjust($alice['id'], 1_000_000_000, 'crédit des tests');
         $profil = ProfilRepository::v98();
@@ -378,6 +380,18 @@ final class ReferentielMoteurTest extends CartographeTestCase
     {
         (new ReferentielRepository(self::$pdo))->importPublishedDocument(['contentHash' => ContentHash::compute($doc)] + $doc,
             'Publié');
+    }
+
+    /** @param array<string, mixed> $doc a referential, published as it is, without the platform's checks */
+    private static function publierTelQuel(array $doc): void
+    {
+        $normalized = ContentHash::normalize($doc);
+        self::$pdo->prepare(
+            'INSERT INTO referentiel_versions
+                (referentiel_id, semver, label, status, content, content_hash, release_note, published_at)
+             VALUES (?, ?, ?, ?, ?, ?, ?, NOW())'
+        )->execute([$normalized['id'], $normalized['version'], $normalized['label'], 'published',
+            ContentHash::encode($normalized), $normalized['contentHash'], 'Publié avant le contrôle des codes']);
     }
 
     /** @return array<string, mixed> what a reader of the pole reads of it */

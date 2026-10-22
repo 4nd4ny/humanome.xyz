@@ -90,18 +90,6 @@ export function pyRepr(v) {
   throw new TypeError(`pyRepr : type non porté (${typeof v})`);
 }
 
-/**
- * repr() Python d'un tuple : parenthèses, virgule finale pour le singleton.
- * Nécessaire à str(seed_key) quand un tuple transite (permutation).
- * @param {unknown[]} items
- * @returns {string}
- */
-export function pyReprTuple(items) {
-  if (items.length === 0) return "()";
-  if (items.length === 1) return "(" + pyRepr(items[0]) + ",)";
-  return "(" + items.map(pyRepr).join(", ") + ")";
-}
-
 /** repr() d'une chaîne Python (choix de quote + échappements). */
 function reprStr(s) {
   const quote = s.includes("'") && !s.includes('"') ? '"' : "'";

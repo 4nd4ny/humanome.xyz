@@ -31,6 +31,12 @@ const louFiles = () => [
   })),
 ]
 
+// L'outil « Préparer une démo » n'est proposé qu'en mode expert (UC-VIS-06) :
+// le visiteur de ce parcours l'a choisi dans ce navigateur.
+test.beforeEach(async ({ page }) => {
+  await page.addInitScript(() => localStorage.setItem('humanome-mode', 'expert'))
+})
+
 test.beforeAll(() => {
   // Le modèle de la copie autonome (public/carto/viewer-template.html) est un
   // produit de construction : on le reconstruit pour tester le code courant.

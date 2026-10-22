@@ -99,19 +99,20 @@ rejouant les fixtures : aucun appel réseau réel).
 | ID | Cas d'utilisation | Tests unitaires | Tests fonctionnels | Anomalies |
 |---|---|---:|---:|---:|
 | [UC-VIS-01](visiteur/UC-VIS-01-explorer-cartographie-demonstration.md) | Explorer la cartographie de démonstration | 29 | 16 | 4 |
-| [UC-VIS-02](visiteur/UC-VIS-02-consulter-referentiel-public.md) | Consulter le référentiel public de compétences | 11 | 17 | 1 |
+| [UC-VIS-02](visiteur/UC-VIS-02-consulter-referentiel-public.md) | Consulter le référentiel public de compétences | 17 | 21 | 1 |
 | [UC-VIS-03](visiteur/UC-VIS-03-essayer-cartographie-en-direct.md) | Essayer la cartographie en direct, sans compte | 30 | 27 | 3 |
-| [UC-VIS-04](visiteur/UC-VIS-04-se-reperer-guides-aide.md) | Se repérer : accueil, navigation, guides, aide, confidentialité | 13 | 20 | 3 |
-| [UC-VIS-05](visiteur/UC-VIS-05-interroger-assistant-tuteur.md) | Interroger l'assistant tuteur | 7 | 20 | 1 |
+| [UC-VIS-04](visiteur/UC-VIS-04-se-reperer-guides-aide.md) | Se repérer : accueil, navigation, guides, aide, confidentialité | 13 | 21 | 2 |
+| [UC-VIS-05](visiteur/UC-VIS-05-interroger-assistant-tuteur.md) | Interroger l'assistant tuteur | 16 | 22 | 0 |
+| [UC-VIS-06](visiteur/UC-VIS-06-choisir-affichage-simple-expert.md) | Choisir l'affichage simple ou expert | 7 | 8 | 0 |
 
 ### Compte (tout utilisateur inscrit)
 
 | ID | Cas d'utilisation | Tests unitaires | Tests fonctionnels | Anomalies |
 |---|---|---:|---:|---:|
 | [UC-CPT-01](compte/UC-CPT-01-creer-activer-compte.md) | Créer un compte et l'activer par code email | 18 | 25 | 6 |
-| [UC-CPT-02](compte/UC-CPT-02-se-connecter-deconnecter.md) | Se connecter et se déconnecter | 17 | 25 | 5 |
+| [UC-CPT-02](compte/UC-CPT-02-se-connecter-deconnecter.md) | Se connecter et se déconnecter | 17 | 25 | 4 |
 | [UC-CPT-03](compte/UC-CPT-03-gerer-profil.md) | Gérer son profil (nom affiché, avatar) | 18 | 19 | 3 |
-| [UC-CPT-04](compte/UC-CPT-04-gerer-cles-api.md) | Gérer ses clés API personnelles | 14 | 21 | 1 |
+| [UC-CPT-04](compte/UC-CPT-04-gerer-cles-api.md) | Gérer ses clés API personnelles | 14 | 22 | 1 |
 | [UC-CPT-05](compte/UC-CPT-05-suivre-progression-formation.md) | Suivre sa progression de formation | 15 | 17 | 5 |
 | [UC-CPT-06](compte/UC-CPT-06-supprimer-compte.md) | Supprimer son compte (droit à l'effacement) | 10 | 12 | 1 |
 
@@ -119,15 +120,16 @@ rejouant les fixtures : aucun appel réseau réel).
 
 | ID | Cas d'utilisation | Tests unitaires | Tests fonctionnels | Anomalies |
 |---|---|---:|---:|---:|
-| [UC-APP-01](apprenant/UC-APP-01-constituer-portfolio.md) | Constituer son portfolio local | 21 | 29 | 5 |
-| [UC-APP-02](apprenant/UC-APP-02-lancer-cartographie-standard.md) | Lancer une cartographie standard | 41 | 26 | 6 |
-| [UC-APP-03](apprenant/UC-APP-03-consulter-ses-cartographies.md) | Consulter ses cartographies | 13 | 15 | 2 |
+| [UC-APP-01](apprenant/UC-APP-01-constituer-portfolio.md) | Constituer son portfolio local | 22 | 29 | 4 |
+| [UC-APP-02](apprenant/UC-APP-02-lancer-cartographie-standard.md) | Lancer une cartographie standard | 41 | 29 | 6 |
+| [UC-APP-03](apprenant/UC-APP-03-consulter-ses-cartographies.md) | Consulter ses cartographies | 13 | 16 | 2 |
 | [UC-APP-04](apprenant/UC-APP-04-stocker-regler-confidentialite.md) | Stocker une cartographie sur le serveur et régler sa confidentialité | 21 | 27 | 4 |
 | [UC-APP-05](apprenant/UC-APP-05-partager-avec-employeur.md) | Partager une cartographie avec un employeur (par l'interface ; liens déjà créés) | 14 | 15 | 0 |
-| [UC-APP-06](apprenant/UC-APP-06-exporter-importer-archive.md) | Exporter et importer son archive complète | 20 | 17 | 6 |
+| [UC-APP-06](apprenant/UC-APP-06-exporter-importer-archive.md) | Exporter et importer son archive complète | 20 | 18 | 6 |
 | [UC-APP-07](apprenant/UC-APP-07-inviter-cartographe.md) | Inviter un cartographe | 9 | 10 | 1 |
 | [UC-APP-08](apprenant/UC-APP-08-rejoindre-cohorte.md) | Rejoindre une cohorte, déposer son portfolio, quitter | 12 | 25 | 4 |
-**Total : 59 cas d'utilisation, 980 tests unitaires et 1148 tests fonctionnels identifiés, 196 anomalies de production documentées.**
+| [UC-APP-09](apprenant/UC-APP-09-cartographie-ouverte-twin6.md) | Lancer une cartographie ouverte (Twin6) | 39 | 33 | 1 |
+| [UC-APP-10](apprenant/UC-APP-10-analyse-approfondie-twin9.md) | Lancer une analyse approfondie (Twin9) | 17 | 22 | 0 |
 | [UC-APP-11](apprenant/UC-APP-11-gerer-credit-twin9.md) | Gérer son crédit Twin9 (achat, factures, remboursement) | 17 | 29 | 3 |
 | [UC-APP-12](apprenant/UC-APP-12-interface-ipsative-v3.md) | Explorer sa cartographie dans l'interface ipsative V3 (retirée le 2026-10-14) | 29 | 0 | 19 |
 
@@ -170,7 +172,7 @@ rejouant les fixtures : aucun appel réseau réel).
 | [UC-EPI-02](epistemiarque/UC-EPI-02-voter-proposition.md) | Voter sur une proposition | 16 | 21 | 2 |
 | [UC-EPI-03](epistemiarque/UC-EPI-03-enteriner-publier.md) | Entériner et publier (compétence, release du référentiel) | 15 | 20 | 3 |
 | [UC-EPI-04](epistemiarque/UC-EPI-04-editer-version-referentiel.md) | Éditer une version complète du référentiel | 12 | 17 | 2 |
-| [UC-EPI-05](epistemiarque/UC-EPI-05-importer-referentiel.md) | Importer un référentiel d'une autre structure | 10 | 15 | — |
+| [UC-EPI-05](epistemiarque/UC-EPI-05-importer-referentiel.md) | Importer un référentiel d'une autre structure | 28 | 22 | — |
 
 ### Établissement
 
@@ -178,7 +180,7 @@ rejouant les fixtures : aucun appel réseau réel).
 |---|---|---:|---:|---:|
 | [UC-ETA-01](etablissement/UC-ETA-01-gerer-cohorte.md) | Créer et gérer une cohorte | 15 | 15 | 3 |
 | [UC-ETA-02](etablissement/UC-ETA-02-configurer-llm-budget.md) | Configurer le moteur LLM, le budget et le jeton worker | 12 | 14 | 2 |
-| [UC-ETA-03](etablissement/UC-ETA-03-piloter-run-masse.md) | Lancer, suivre et annuler un run de masse | 15 | 29 | 6 |
+| [UC-ETA-03](etablissement/UC-ETA-03-piloter-run-masse.md) | Lancer, suivre et annuler un run de masse | 15 | 31 | 6 |
 | [UC-ETA-04](etablissement/UC-ETA-04-consulter-documents-membre.md) | Consulter les documents produits pour un membre | 9 | 14 | 2 |
 
 ### Administration
@@ -189,7 +191,7 @@ rejouant les fixtures : aucun appel réseau réel).
 | [UC-ADM-02](administration/UC-ADM-02-gerer-golden-prompt.md) | Gérer le Golden Prompt et ses accès | 12 | 22 | 2 |
 | [UC-ADM-03](administration/UC-ADM-03-valider-paquet-defaut-reglages.md) | Valider le paquet par défaut et les réglages | 12 | 14 | 2 |
 | [UC-ADM-04](administration/UC-ADM-04-configurer-demo.md) | Configurer la démo publique | 29 | 23 | 2 |
-| [UC-ADM-05](administration/UC-ADM-05-superviser-twin9.md) | Superviser Twin9 | 19 | 20 | 4 |
+| [UC-ADM-05](administration/UC-ADM-05-superviser-twin9.md) | Superviser Twin9 | 21 | 21 | 4 |
 | [UC-ADM-06](administration/UC-ADM-06-monitoring.md) | Consulter le monitoring | 21 | 17 | 3 |
 
 ### Système et exploitation
@@ -197,12 +199,12 @@ rejouant les fixtures : aucun appel réseau réel).
 | ID | Cas d'utilisation | Tests unitaires | Tests fonctionnels | Anomalies |
 |---|---|---:|---:|---:|
 | [UC-SYS-01](systeme/UC-SYS-01-traiter-file-jobs.md) | Traiter la file de jobs de masse | 28 | 26 | 9 |
-| [UC-SYS-02](systeme/UC-SYS-02-deployer-migrer.md) | Déployer, migrer et importer | 12 | 23 | 5 |
+| [UC-SYS-02](systeme/UC-SYS-02-deployer-migrer.md) | Déployer, migrer et importer | 12 | 24 | 5 |
 | [UC-SYS-03](systeme/UC-SYS-03-maintenance-supervision.md) | Maintenance et supervision technique | 8 | 11 | 2 |
-| [UC-SYS-04](systeme/UC-SYS-04-construire-artefacts-derives.md) | Construire les données et artefacts dérivés | 6 | 16 | 3 |
+| [UC-SYS-04](systeme/UC-SYS-04-construire-artefacts-derives.md) | Construire les données et artefacts dérivés | 9 | 19 | 3 |
 | [UC-SYS-05](systeme/UC-SYS-05-sauvegarder-restaurer.md) | Sauvegarder et restaurer la base | 0 | 8 | 6 |
 
-**Total : 59 cas d'utilisation, 980 tests unitaires et 1148 tests fonctionnels identifiés, 196 anomalies de production documentées.**
+**Total : 60 cas d'utilisation, 1027 tests unitaires et 1187 tests fonctionnels identifiés, 192 anomalies de production documentées.**
 
 Les comptes portent sur les identifiants distincts (`UC-…-Unn`, `UC-…-Fnn`) présents dans les fichiers de tests ; un identifiant paramétré (`it.each`) compte pour un.
 <!-- catalogue:end -->
@@ -231,10 +233,7 @@ une anomalie entièrement corrigée quitte cet index.
   - AN4 — Phase « retry » sans libellé
 - **[UC-VIS-04](visiteur/UC-VIS-04-se-reperer-guides-aide.md#anomalies-constatées)** — Se repérer : accueil, navigation, guides, aide, confidentialité
   - AN1 — Progression locale des guides écrasée d'un parcours à l'autre
-  - AN2 — Compte sans rôle traité en visiteur
   - AN3 — Note d'aperçu trompeuse pour le profil Employeur
-- **[UC-VIS-05](visiteur/UC-VIS-05-interroger-assistant-tuteur.md#anomalies-constatées)** — Interroger l'assistant tuteur
-  - AN1 — Rubrique non validée, injectée dans la consigne système
 - **[UC-CPT-01](compte/UC-CPT-01-creer-activer-compte.md#anomalies-constatées)** — Créer un compte et l'activer par code email
   - AN1 — Pré-détournement de compte : l'activation ne redéfinit pas le mot de passe
   - AN2 — Empreintes non salées conservées sans limite
@@ -246,7 +245,6 @@ une anomalie entièrement corrigée quitte cet index.
   - AN1 — Se déconnecter d'une session expirée ou purgée : `403 CSRF`, affichage incohérent
   - AN2 — `session.use_strict_mode` inopérant
   - AN3 — Déconnexion refusée depuis le panneau : erreur avalée
-  - AN4 — Compte connecté sans aucun rôle : navigation de visiteur
   - AN5 — `ip_hash` : empreinte non salée
 - **[UC-CPT-03](compte/UC-CPT-03-gerer-profil.md#anomalies-constatées)** — Gérer son profil (nom affiché, avatar)
   - AN1 — Échec réseau présenté comme un format refusé
@@ -265,7 +263,6 @@ une anomalie entièrement corrigée quitte cet index.
 - **[UC-APP-01](apprenant/UC-APP-01-constituer-portfolio.md#anomalies-constatées)** — Constituer son portfolio local
   - A-01 — Fins de ligne CRLF : les entêtes Markdown ne découpent pas
   - A-02 — Identifiant Google Docs brut inutilisable depuis le formulaire
-  - A-03 — Bouton « Cartographier » obsolète
   - A-04 — Changement de portfolio pendant la pause de 600 ms : le portfolio ouvert est réenregistré sans modification et la liste garde l'ancien titre du portfolio quitté
   - A-05 — Quitter la vue pendant la pause de 600 ms perd la dernière modification
 - **[UC-APP-02](apprenant/UC-APP-02-lancer-cartographie-standard.md#anomalies-constatées)** — Lancer une cartographie standard

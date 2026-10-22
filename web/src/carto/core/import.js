@@ -15,7 +15,7 @@
 // - les dates restent des chaînes AAAA-MM-JJ.
 
 import { listZipEntries, readZipEntry } from '../../v3/core/zip.js'
-import { REVIEW_STATES, createDay, hasPortfolio, runsInDays, sortedDates, toCount } from './model.js'
+import { REVIEW_STATES, createDay, hasPortfolio, runsInDays, sortedDates, toCount, variantWithPassageDates } from './model.js'
 import { isIsoDate } from './dates.js'
 import { normalizeReferential, referentialErrors, toEmbeddedReferential } from './referential.js'
 import { adaptAuroraDay, dateFromPassages, looksLikeCartoPole, looksLikeKairos, looksLikeSiteDay } from './importers/aurora-day.js'
@@ -388,7 +388,11 @@ export function mergeIntoDataset(dataset, recognized, { now = new Date().toISOSt
       continue
     }
     const hadVariants = day.variants.length > 0
-    day.variants.push(summary)
+    // La date du passage de chaque trace écrite un autre jour (`at`, sprint 4,
+    // T2), lue dans son détail, pour TOUT importeur (un run Twin9 n'écrit que
+    // `{id, role}`) : ici, et non par la passe du magasin, qui ne se refait
+    // pas sur un jeu déjà passé et ne relit pas le jeu affiché après l'import.
+    day.variants.push(detail !== null ? variantWithPassageDates(summary, detail, date) : summary)
     if (detail !== null) patch(date).variants[summary.id] = detail
     counts.variantsAdded++
     if (!hadVariants) {

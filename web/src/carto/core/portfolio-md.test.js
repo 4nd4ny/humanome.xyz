@@ -143,6 +143,21 @@ describe('verser un dialogue au portfolio', () => {
     expect(out.text.startsWith('## 2026-01-05\n\nMatin.')).toBe(true)
   })
 
+  it('année à deux chiffres (sprint 4) : « ### 02.03.26 » ouvre sa journée ; d’un autre jour, dans une feuille, il est neutralisé', () => {
+    expect(boundaryDate('### 02.03.26')).toBe('2026-03-02')
+    expect(boundaryDate('02.03.26')).toBeUndefined() // ligne nue : du texte, comme pour Twin9
+    const exported = {
+      dataset: { reflections: [], portfolio: null },
+      details: {
+        '2026-03-02': { portfolio: { text: '### 02.03.26\n\nMatin.\n\n### 04.03.26\n\nNote recopiée.\n' } },
+        '2026-03-04': { portfolio: { text: '### 04.03.26\n\nSecond jour.\n' } },
+      },
+    }
+    const out = buildPortfolioMarkdown(exported)
+    expect(out.text.startsWith('### 02.03.26\n\nMatin.\n\n— ### 04.03.26\n\nNote recopiée.')).toBe(true)
+    expect(importPortfolioText(out.text).segments.map((s) => s.date)).toEqual(['2026-03-02', '2026-03-04'])
+  })
+
   it('une journée qui ne s’ouvre pas sur son en-tête le reçoit ; un passage sans date reste sans date, en tête du fichier (D-55)', () => {
     const exported = {
       dataset: {

@@ -3,7 +3,7 @@
 | Champ | Valeur |
 |---|---|
 | **Acteur principal** | Épistémiarque (ou administrateur : garde « épistémiarque ou admin ») |
-| **Acteurs secondaires** | Membres épistémiarques (vote, UC-EPI-02 A5) ; espace Decidim (lien facultatif) ; visiteurs et applications qui lisent l'**API** (lectures publiques des versions et du diff) — la page publique `#/referentiel` (UC-VIS-02) lit, elle, l'export statique (L5) |
+| **Acteurs secondaires** | Membres épistémiarques (vote, UC-EPI-02 A5) ; espace Decidim (lien facultatif) ; visiteurs et applications qui lisent l'**API** (lectures publiques des versions et du diff) — la page publique `#/referentiel` (UC-VIS-02) les lit aussi depuis S5, lot E, l'export statique en repli (L5) |
 | **Portée** | API `/api/referentiel/drafts…`, `/api/referentiel/proposals…`, `/api/referentiel[/versions[/{semver}]]`, `/api/referentiel/diff/{from}/{to}` — **aucune IHM** |
 | **Niveau** | Objectif utilisateur (sous-fonction technique en l'absence d'interface) |
 | **Cahier des charges** | §3.5, §4.1 (référentiel historisé, versions immuables) ; migrations 003 (`referentiel_versions`) et 015 (gouvernance au grain document) |
@@ -287,9 +287,10 @@ cd web && npx vitest run test/usecases/unit/uc-epi-04
   atomique : un pôle ou une compétence qu'il ne décrit pas reçoit la fiche
   écrite depuis le document (Twin9, Twin6).
 - **L4** — Aucune route ne supprime un brouillon abandonné.
-- **L5** — La publication ne régénère pas l'export statique lu par la page
-  publique `#/referentiel` (UC-VIS-02 RG4) : `StaticExporter::export` n'est
-  appelé que par `scripts/export-referentiel-static.php`. La version publiée
-  ici n'est visible sur la page qu'après ré-export et redéploiement
-  (UC-EPI-03 étape 8 et L1, UC-SYS-02) ; elle est en revanche servie aussitôt
-  par l'API.
+- **L5** — La publication ne régénère pas l'export statique :
+  `StaticExporter::export` n'est appelé que par
+  `scripts/export-referentiel-static.php`. La version publiée ici n'y entre
+  qu'après ré-export et redéploiement (UC-EPI-03 étape 8 et L1, UC-SYS-02) ;
+  elle est en revanche servie aussitôt par l'API, que lisent les parcours et,
+  depuis S5, lot E, la page publique `#/referentiel` (UC-VIS-02 RG4) :
+  l'export n'y est plus que le repli d'une API qui ne répond pas.

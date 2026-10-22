@@ -1,6 +1,8 @@
 import { afterEach, describe, it, expect, vi } from 'vitest'
 import { cleanup, render, screen, fireEvent, waitFor } from '@testing-library/react'
-import Twin6OuverteView from './Twin6OuverteView.jsx'
+import Twin6OuverteView, { portfolioEnFeuilles } from './Twin6OuverteView.jsx'
+import { UiModeContext } from '../lib/ui-mode.js'
+import { createMemoryAdapter, createPortfolioStore } from '../lib/portfolio-store.js'
 import { ApiError } from '../api/client.js'
 import * as fakeLib from '../test/fake-sunburst-lib.js'
 
@@ -276,7 +278,7 @@ describe('Twin6OuverteView', () => {
     const arg = deps.runEngine.mock.calls[0][0]
     expect(arg.referentiel.poles).toEqual([{ num: 1, nom: 'TÊTE — Penser & Comprendre' }]) // les noms de /meta
     expect(arg.templates.fiches).toEqual({ 1: PKG.templates.fiches[1] }) // la fiche du paquet, telle quelle
-    expect(deps.loadReferentiel.mock.calls[0][0]).toEqual({}) // la dernière version publiée de RESPIRE
+    expect(deps.loadReferentiel.mock.calls[0][0]).toEqual({ id: 'respire' }) // la dernière version publiée de RESPIRE (la base d'abord, S5)
     // Le total des compétences établies est celui de ce référentiel.
     expect(await screen.findAllByText('1 / 1')).toHaveLength(2)
   })
@@ -504,5 +506,78 @@ describe('Twin6OuverteView', () => {
     expect(deps.runEngine).not.toHaveBeenCalled()
     // Le verrou de lancement est relâché : l'utilisateur peut relancer.
     expect(screen.getByRole('button', { name: 'Lancer la cartographie ouverte' })).toHaveProperty('disabled', false)
+  })
+})
+
+// Mode simple du site (lib/ui-mode.js, 2026-10-22) : pas de liste des modèles,
+// le modèle cible du paquet ; rendu seul, la vue reste en mode expert.
+describe('Twin6OuverteView — mode simple', () => {
+  it('ni liste des modèles ni champ « Modèle » : le modèle cible du paquet, nommé et passé au moteur ; le référentiel reste au choix', async () => {
+    const runEngine = vi.fn(async () => ({ document: MERGE_DOC, calls: new Array(8).fill(0) }))
+    const offer = { ...OFFER, modeles: { 'claude-sonnet-5': [2.2, 11], 'claude-haiku-5-5': [1.1, 5.5] } }
+    render(
+      <UiModeContext.Provider value={{ expert: false, setExpert() {} }}>
+        <Twin6OuverteView deps={baseDeps({ runEngine, fetchOffer: async () => offer, listReferentiels: async () => LISTE })} />
+      </UiModeContext.Provider>,
+    )
+    fireEvent.change(await screen.findByLabelText(/Votre portfolio/), { target: { value: PORTFOLIO_COURT } })
+    expect(screen.queryByLabelText('Modèle')).toBeNull()
+    expect(screen.getByTestId('twin6-modele-defaut').textContent).toContain('claude-sonnet-5')
+    expect((await screen.findByRole('combobox', { name: 'Référentiel' })).value).toBe('respire@7.0.0')
+    await waitFor(() => expect(screen.getByRole('button', { name: 'Lancer la cartographie ouverte' }).disabled).toBe(false))
+    fireEvent.click(screen.getByRole('button', { name: 'Lancer la cartographie ouverte' }))
+    await screen.findByText(/Cartographie ouverte terminée/)
+    expect(runEngine.mock.calls[0][0].model).toBe('claude-sonnet-5')
+  })
+
+  it('rendue seule (contexte par défaut) : la liste des modèles est proposée', async () => {
+    render(<Twin6OuverteView deps={baseDeps()} />)
+    fireEvent.change(await screen.findByLabelText(/Votre portfolio/), { target: { value: PORTFOLIO_COURT } })
+    expect(screen.getByLabelText('Modèle').value).toBe('claude-sonnet-5')
+    expect(screen.queryByTestId('twin6-modele-defaut')).toBeNull()
+  })
+})
+
+// Mes portfolios (sprint 1, amélioration 11) : un portfolio du module
+// portfolio remplit la zone de saisie, en feuilles « ### AAAA-MM-JJ ».
+describe('Twin6OuverteView — mes portfolios', () => {
+  it('portfolioEnFeuilles : texte déjà en feuilles repris tel quel ; sinon une feuille par journée datée, les passages non datés comptés et laissés de côté', () => {
+    expect(portfolioEnFeuilles({ texte: PORTFOLIO_COURT, segments: [] })).toEqual({ texte: PORTFOLIO_COURT, journees: 1, nonDates: 0 })
+    const deux = '### 2026-01-05\n---\nUn.\n\n### 2026-01-06\nDeux.\n\n### 2026-01-05\nUn bis.'
+    expect(portfolioEnFeuilles({ texte: deux }).journees).toBe(2)
+    expect(
+      portfolioEnFeuilles({
+        texte: 'brut sans feuille',
+        segments: [
+          { date: null, texte: 'Préambule.' },
+          { date: '2026-01-06', texte: '06/01/2026\nDeux.\n' },
+          { date: '2026-01-05', texte: '05/01/2026\nUn.' },
+          { date: '2026-01-06', texte: 'Deux, suite.' },
+          { date: null, texte: '   ' },
+        ],
+      }),
+    ).toEqual({
+      texte: '### 2026-01-05\n---\n05/01/2026\nUn.\n\n### 2026-01-06\n---\n06/01/2026\nDeux.\n\n\nDeux, suite.',
+      journees: 2,
+      nonDates: 1,
+    })
+    expect(portfolioEnFeuilles({ texte: 'rien', segments: [{ date: null, texte: 'rien' }] })).toEqual({ texte: '', journees: 0, nonDates: 1 })
+    expect(portfolioEnFeuilles(null)).toEqual({ texte: '', journees: 0, nonDates: 0 })
+  })
+
+  it('la liste propose les portfolios de ce navigateur ; en choisir un remplit la zone de saisie ; un magasin illisible ne montre pas de liste', async () => {
+    const portfolioStore = createPortfolioStore(createMemoryAdapter())
+    await portfolioStore.create({ titre: 'Journal', texte: PORTFOLIO_COURT, segments: [] })
+    render(<Twin6OuverteView deps={baseDeps({ portfolioStore })} />)
+    const choix = await screen.findByLabelText('Partir d’un de mes portfolios')
+    fireEvent.change(choix, { target: { value: choix.options[1].value } })
+    expect(screen.getByLabelText(/Votre portfolio/).value).toBe(PORTFOLIO_COURT)
+    expect(screen.getByTestId('twin6-reprise').textContent).toBe('« Journal » : 1 journée datée, en feuilles ### AAAA-MM-JJ.')
+    cleanup()
+
+    const illisible = { list: async () => { throw new Error('IndexedDB indisponible') } }
+    render(<Twin6OuverteView deps={baseDeps({ portfolioStore: illisible })} />)
+    await screen.findByLabelText(/Votre portfolio/)
+    expect(screen.queryByLabelText('Partir d’un de mes portfolios')).toBeNull()
   })
 })

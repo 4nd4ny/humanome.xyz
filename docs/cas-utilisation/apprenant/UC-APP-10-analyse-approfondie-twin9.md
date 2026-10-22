@@ -195,6 +195,16 @@ badge premium) ou ouvre `#/twin9`.
   diffère) et refuse un fournisseur fermé ou sans clé d'instance, un modèle
   tiers sans prix ni plafonds (`422` qui nomme l'étape, affiché). Un run
   « mixte » : « en partie par lots, la durée dépend d'Anthropic ».
+- **A10 — Mode d'affichage** (étape 2, 2026-10-22,
+  [UC-VIS-06](../visiteur/UC-VIS-06-choisir-affichage-simple-expert.md)) :
+  en mode expert, le menu « Ma cartographie » porte « Mes profils Twin9 »
+  (`#/configuration`, jusque-là atteinte seulement par « Régler mes
+  profils ») ; en mode simple, ce lien n'est pas listé, l'adresse reste
+  valide. Le tableau de bord (`#/espace`) mène aux analyses par « Mes
+  analyses approfondies » (UC-APP-03). La page `#/twin9` elle-même ne change
+  pas encore : la liste des profils et « Régler mes profils » ne passeront
+  en mode expert qu'avec le lot 2 du mode expert, après la fusion des lots
+  Twin9 en cours.
 
 ## Scénarios d'erreur
 
@@ -430,6 +440,9 @@ Aucune.
 
 ## Limites
 
+- A10 n'est couvert que par les tests du menu (UC-VIS-04-U13, F20 ; UC-VIS-06-U02,
+  F02) et du tableau de bord (UC-APP-03-F16) : la vue `#/twin9` ne lit pas
+  encore le mode.
 - Le moteur est le dépôt privé `Twin_v9` : sans lui, l'analyse est indisponible
   (E2) et ses tests PHP sur le vrai moteur se sautent ; les tests de ce cas
   tournent sur le moteur factice, public, et l'Anthropic simulé de l'instance.

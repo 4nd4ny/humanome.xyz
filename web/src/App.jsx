@@ -4,6 +4,7 @@ import { getDemoMerge, getReferentiel, loadDay } from './data/load.js'
 import { fetchMe, logout } from './api/client.js'
 import { isCurrentItem, navGroups } from './nav.js'
 import { applyTheme, resolvedTheme, subscribeSystemTheme } from './lib/theme.js'
+import { UiModeContext, defaultMode, storeMode, storedMode } from './lib/ui-mode.js'
 import Help from './help/Help.jsx'
 import HomeView from './views/HomeView.jsx'
 import CartoApp from './carto/ui/CartoApp.jsx'
@@ -49,6 +50,15 @@ function PinIcon() {
     <svg viewBox="0 0 20 20" width="18" height="18" fill="none" aria-hidden="true">
       <circle cx="10" cy="6" r="3.2" stroke="currentColor" strokeWidth="1.4" />
       <path d="M10 9.2v8.3" stroke="currentColor" strokeWidth="1.4" strokeLinecap="round" />
+    </svg>
+  )
+}
+
+/** Croix — referme le tiroir (petits écrans, où la punaise n'est pas offerte). */
+function CloseIcon() {
+  return (
+    <svg viewBox="0 0 20 20" width="18" height="18" fill="none" aria-hidden="true">
+      <path d="M5 5l10 10M15 5 5 15" stroke="currentColor" strokeWidth="1.6" strokeLinecap="round" />
     </svg>
   )
 }
@@ -133,11 +143,36 @@ export default function App({ lib, fetchMeFn = fetchMe }) {
   // roles = [] pour un visiteur ou une copie statique — la nav « Découvrir »
   // reste toujours affichée.
   const [roles, setRoles] = useState([])
+  // Mode d'affichage simple / expert (lib/ui-mode.js, §5ter de
+  // docs/ergonomie-navigation.md) : le choix stocké dans ce navigateur, sinon
+  // le défaut des rôles (expert dès un rôle de travail). Lu paresseusement ;
+  // écrit SEULEMENT au basculement, jamais depuis le défaut dérivé (un
+  // visiteur qui se connecte cartographe passe ainsi en expert). Tant que la
+  // session n'a pas répondu, roles = [] : un cartographe passe de simple à
+  // expert à la réponse de auth/me, tiroir fermé.
+  const [storedChoice, setStoredChoice] = useState(() => storedMode())
+  const expert = (storedChoice ?? defaultMode(roles)) === 'expert'
+  const uiMode = useMemo(
+    () => ({
+      expert,
+      setExpert(next) {
+        const mode = next ? 'expert' : 'simple'
+        setStoredChoice(mode)
+        storeMode(mode)
+      },
+    }),
+    [expert],
+  )
   // Rôles transmis à l'interface de cartographie : l'espace Partage n'est
-  // offert qu'à un compte apprenant (le serveur garde ses propres contrôles).
-  const cartoSession = useMemo(() => ({ roles }), [roles])
+  // offert qu'à un compte apprenant (le serveur garde ses propres contrôles) ;
+  // le mode y masque, en simple, « Comparaison » et la tuile « Réglages ».
+  const cartoSession = useMemo(() => ({ roles, expert }), [roles, expert])
   // Identité minimale pour l'avatar de nav (D6) : {id, displayName, hasAvatar}.
   const [sessionUser, setSessionUser] = useState(null)
+  // « Connecté » = un utilisateur de session, et non « au moins un rôle » : un
+  // compte dont l'admin a retiré le dernier rôle garde « Mon compte » et sa
+  // déconnexion (UC-VIS-04 AN2, UC-CPT-02 AN4, corrigées le 2026-10-22).
+  const authenticated = sessionUser !== null
   const [helpOpen, setHelpOpen] = useState(false)
   // Menu « burger » : la navigation principale vit dans un panneau qui glisse
   // depuis le bord gauche de l'écran (web + mobile), pour libérer la barre.
@@ -252,6 +287,22 @@ export default function App({ lib, fetchMeFn = fetchMe }) {
     edgeDisarmedRef.current = true
     setMenuOpen(false)
     link.blur()
+  }
+
+  /**
+   * Bouton « Fermer le menu » de l'en-tête du panneau. Au doigt, il n'y avait
+   * que le tap à l'extérieur, et sous 921 px la punaise est masquée (pas de
+   * dock possible) : un panneau épinglé sur grand écran restait alors devant
+   * la page, sans Échap sur un téléphone. Même effet qu'Échap : on referme,
+   * on détache, le bord est désarmé et le focus revient au bouton Menu.
+   */
+  function handleCloseClick() {
+    clearHoverTimers()
+    hoverOpenedRef.current = false
+    edgeDisarmedRef.current = true
+    setMenuOpen(false)
+    setPinned(false)
+    burgerRef.current?.focus()
   }
 
   function handlePanelPointerLeave(event) {
@@ -532,7 +583,7 @@ export default function App({ lib, fetchMeFn = fetchMe }) {
       )
       break
     case 'referentiel':
-      view = <ReferentielView focusCode={route.code} />
+      view = <ReferentielView focusCode={route.code} referentielId={route.referentiel ?? null} />
       break
     case 'essayer':
       view = <EssayerView lib={lib} />
@@ -600,11 +651,10 @@ export default function App({ lib, fetchMeFn = fetchMe }) {
       )
       break
     default:
-      view = <HomeView onUserFiles={handleUserFiles} roles={roles} />
+      view = <HomeView onUserFiles={handleUserFiles} roles={roles} authenticated={authenticated} expert={expert} />
   }
 
-  const groups = navGroups({ roles })
-  const authenticated = roles.length > 0
+  const groups = navGroups({ roles, authenticated, expert })
 
   return (
     <div className={`app${pinned ? ' is-menu-docked' : ''}`}>
@@ -621,7 +671,7 @@ export default function App({ lib, fetchMeFn = fetchMe }) {
           </button>
           <Help
             route={route.name}
-            session={{ roles }}
+            session={{ roles, expert }}
             open={helpOpen}
             onToggle={() => setHelpOpen((v) => !v)}
             onClose={() => setHelpOpen(false)}
@@ -688,6 +738,17 @@ export default function App({ lib, fetchMeFn = fetchMe }) {
                 >
                   <PinIcon />
                 </button>
+                {/* Sous 921 px, la punaise est masquée (CSS) : cette croix
+                    la remplace ; au-delà, c'est la croix qui se retire. */}
+                <button
+                  type="button"
+                  className="app-nav-close"
+                  aria-label="Fermer le menu"
+                  title="Fermer le menu"
+                  onClick={handleCloseClick}
+                >
+                  <CloseIcon />
+                </button>
               </div>
               <nav className="app-nav" aria-label="Navigation principale" onClick={handleNavClick}>
                 {groups.map((family) => (
@@ -709,6 +770,29 @@ export default function App({ lib, fetchMeFn = fetchMe }) {
                     ))}
                   </div>
                 ))}
+                {/* Mode d'affichage, pour tous (visiteur compris). Un bouton,
+                    pas un lien : basculer ne referme pas le tiroir
+                    (handleNavClick ne réagit qu'aux liens), l'effet se voit
+                    aussitôt. Pas de role=group : le tiroir n'en compte qu'un
+                    par famille. */}
+                <div className="app-nav-mode">
+                  <button
+                    type="button"
+                    role="switch"
+                    className="app-nav-mode-switch"
+                    aria-checked={expert}
+                    aria-describedby="app-nav-mode-hint"
+                    onClick={() => uiMode.setExpert(!expert)}
+                  >
+                    <span className="app-nav-mode-track" aria-hidden="true">
+                      <span className="app-nav-mode-thumb" />
+                    </span>
+                    Mode expert
+                  </button>
+                  <span className="app-nav-mode-hint" id="app-nav-mode-hint">
+                    profils Twin9, versions de prompt, modèles, comparaison, réglages fins
+                  </span>
+                </div>
                 {authenticated ? (
                   <div className="app-nav-logout">
                     {/* D6 : avatar (ou initiales en repli) près de la déconnexion. */}
@@ -736,7 +820,7 @@ export default function App({ lib, fetchMeFn = fetchMe }) {
       </header>
       {/* L'interface de cartographie occupe toute la largeur disponible. */}
       <main className={`app-main${route.name === 'cartographie' || route.name === 'redirect' ? ' app-main--full' : ''}`}>
-        {view}
+        <UiModeContext.Provider value={uiMode}>{view}</UiModeContext.Provider>
       </main>
       <footer className="app-footer">
         <p>

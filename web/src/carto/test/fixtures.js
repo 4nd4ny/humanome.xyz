@@ -222,6 +222,33 @@ export function louCoreRun() {
 }
 
 /**
+ * Une analyse qui couvre plusieurs journées du portfolio (sprint 4, S4.md §5) :
+ * le document-jour du 10 février retient, pour 6.08, une preuve dont le
+ * passage est écrit sous l'en-tête du 3 février (`feuille`), et un indice du
+ * 10. L'interface découpe PORTFOLIO_MULTI en deux journées : le 3 (portfolio
+ * seul, sans analyse) et le 10 (portfolio et analyse).
+ */
+export const JOUR_MULTI = {
+  kind: 'cartographie-jour', schemaVersion: '1.0', date: '2026-02-10',
+  poles: [{ poleNum: 6,
+    passagesSaillants: [
+      { pid: 'p1', feuille: '2026-02-03', extraitVerbatim: 'Le chat du voisin a ouvert la porte du jardin.' },
+      { pid: 'p2', feuille: '2026-02-10', extraitVerbatim: 'Nous avons rangé la salle ensemble.' }],
+    competences: [{ code: '6.08', pieces: [{ numero: 1, pid: 'p1' }, { numero: 2, pid: 'p2' }],
+      tracesRetenues: [{ pieceId: 1, role: 'preuve' }, { pieceId: 2, role: 'indice' }],
+      verdict: { statut: 'présence établie', confiance: 0.8, nombrePreuves: 1, nombreIndices: 1 } }] }],
+}
+export const PORTFOLIO_MULTI = '### 10.02.2026\n\nNous avons rangé la salle ensemble.\n\n### 3.02.2026\n\nLe chat du voisin a ouvert la porte du jardin.\n'
+
+/** Référentiel réduit augmenté du pôle 6 et de la compétence 6.08 de JOUR_MULTI. */
+export function multiReferential() {
+  const ref = miniReferential()
+  ref.poles.push({ num: 6, nom: 'MONDE — Habiter', couleur: '#f59e0b' })
+  ref.competences.push({ code: '6.08', nom: 'Soin des lieux', pole: 6, description: 'Prendre soin des lieux partagés.' })
+  return ref
+}
+
+/**
  * Jeu de données construit DIRECTEMENT au niveau de l'index (sans import),
  * pour tester les formules : chaque journée a une variante active.
  * @param {Array<{date: string, active?: boolean, verdicts: Array<{code: string, status?: string,

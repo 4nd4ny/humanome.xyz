@@ -24,6 +24,37 @@ import ConsistanceSection from './cartographe/ConsistanceSection.jsx'
 import RelectureSection from './cartographe/RelectureSection.jsx'
 import FormationSection from './espace/FormationSection.jsx'
 
+/**
+ * Onglets de l'espace : `match` dit si la section courante relève de
+ * l'onglet (la relecture d'une cartographie relève de la file, un chapitre
+ * de la formation).
+ */
+const TABS = [
+  { href: '#/cartographe', label: 'File de relecture', match: (s) => s === null || s.startsWith('relecture/') },
+  { href: '#/cartographe/comparer', label: 'Comparer', match: (s) => s === 'comparer' },
+  { href: '#/cartographe/consistance', label: 'Consistance', match: (s) => s === 'consistance' },
+  { href: '#/cartographe/formation', label: 'Formation', match: (s) => s === 'formation' || Boolean(s?.startsWith('formation/')) },
+]
+
+/**
+ * Sous-menu de l'espace, au gabarit des onglets de l'administration :
+ * cibles de 44 px, une ligne qui défile sur petit écran, onglet de la section
+ * courante marqué `aria-current="page"` (sprint 1, amélioration 8).
+ *
+ * @param {{section: string | null}} props
+ */
+function CartographeNav({ section }) {
+  return (
+    <nav className="cartographe-nav" aria-label="Sections de l’espace cartographe">
+      {TABS.map((tab) => (
+        <a key={tab.href} href={tab.href} aria-current={tab.match(section) ? 'page' : undefined}>
+          {tab.label}
+        </a>
+      ))}
+    </nav>
+  )
+}
+
 /** Explication du rôle (cahier §2) montrée à qui n'a pas le rôle. */
 function RoleExplanation() {
   return (
@@ -90,6 +121,8 @@ export default function CartographeView({ section, lib, deps = {}, onOpenInInter
             Espace cartographe
           </a>
         </h1>
+        {/* Formation ouverte à tous : le sous-menu, lui, n'est qu'au cartographe. */}
+        {isCartographe ? <CartographeNav section={section} /> : null}
         <FormationSection
           chapter={chapter}
           parcours="cartographe"
@@ -168,14 +201,7 @@ export default function CartographeView({ section, lib, deps = {}, onOpenInInter
           Connecté en tant que {session.user.displayName ?? session.user.email}.
         </p>
       ) : null}
-      {isCartographe ? (
-        <nav className="cartographe-nav" aria-label="Sections de l’espace cartographe">
-          <a href="#/cartographe">File de relecture</a>
-          <a href="#/cartographe/comparer">Comparer</a>
-          <a href="#/cartographe/consistance">Consistance</a>
-          <a href="#/cartographe/formation">Formation</a>
-        </nav>
-      ) : null}
+      {isCartographe ? <CartographeNav section={section} /> : null}
       {body}
     </div>
   )

@@ -176,7 +176,11 @@ describe('MonitoringSection', () => {
     expect(screen.getByText('2,92 $')).toBeTruthy()
     // Journal des connexions : pays et réseau tronqué, jamais d'IP complète.
     expect(screen.getByText('203.0.113.0/24')).toBeTruthy()
-    expect(within(screen.getByText('root@b.fr').closest('tr')).getByText('OK')).toBeTruthy()
+    // The admins' table (second request) also shows root@b.fr: wait for it, so
+    // the check below never depends on which response arrives first.
+    await screen.findByText('Root Admin')
+    const connexion = screen.getAllByText('root@b.fr').find((el) => el.tagName === 'TD')
+    expect(within(connexion.closest('tr')).getByText('OK')).toBeTruthy()
   })
 
   it('change de période : nouvel appel avec days=7', async () => {

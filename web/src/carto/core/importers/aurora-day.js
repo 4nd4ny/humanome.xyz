@@ -17,7 +17,7 @@
 //   référentiel du jeu, quel que soit son nombre de pôles (2026-10-20) ; sans
 //   référentiel connu, rien n'est supposé.
 
-import { canonicalJson, contentHash, normalizeConfidence, normalizeRole, normalizeStatus, stableId, toCount } from '../model.js'
+import { canonicalJson, contentHash, normalizeConfidence, normalizeRole, normalizeStatus, passageAt, stableId, toCount } from '../model.js'
 import { splitExtract } from '../highlight.js'
 import { isIsoDate } from '../dates.js'
 import { keepKairosMarkdown, keepPoleReportMarkdown } from '../restatement.js'
@@ -138,7 +138,11 @@ export function adaptAuroraDay({ date, poles, kairos = null, provenance, now = n
         const resolved = Boolean(extract)
         if (!resolved) unresolved++
         const anchors = splitExtract(extract)
-        traceSummaries.push({ id, role })
+        // La date du passage : sa `feuille`, qui peut être un autre jour que
+        // celui de la journée (un document qui couvre plusieurs en-têtes) ;
+        // l'index le dit (`at`, sprint 4, T2).
+        const sourceDate = passage?.date ?? date
+        traceSummaries.push({ id, role, ...passageAt(sourceDate, date) })
         traceDetails[id] = {
           role,
           rawRole: nullableStr(t?.role),
@@ -150,7 +154,7 @@ export function adaptAuroraDay({ date, poles, kairos = null, provenance, now = n
           end: anchors.end,
           context: passage?.context || piece?.context || '',
           author: passage?.author ?? null,
-          sourceDate: passage?.date ?? date,
+          sourceDate,
           resolved,
         }
       })

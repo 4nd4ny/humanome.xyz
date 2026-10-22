@@ -97,6 +97,7 @@ moment du prompt correspondant.
 | `/api/referentiel` (dernière version publiée) | GET | ✔ | ✔ | ✔ | ✔ | ✔ | ✔ | ✔ | ✔ |
 | `/api/referentiel/versions`, `/versions/{v}`, diff | GET | ✔ | ✔ | ✔ | ✔ | ✔ | ✔ | ✔ | ✔ |
 | `/api/referentiels` (référentiels publiés, leurs versions, T15) | GET | ✔ | ✔ | ✔ | ✔ | ✔ | ✔ | ✔ | ✔ |
+| `/api/referentiels/{id}/versions/{semver}` (document d'une version **publiée** de tout référentiel, S5 ; brouillon et proposition : `404`, même à leur auteur) | GET | ✔ | ✔ | ✔ | ✔ | ✔ | ✔ | ✔ | ✔ |
 | Brouillons : création, édition, relecture (tous les référentiels depuis T15) | POST/PUT | — | — | — | — | ✔ | — | — | ✔ |
 | Import d'un référentiel d'une autre structure, en brouillon (`/api/referentiel/import`, T15 ; RESPIRE refusé, 409) | POST | — | — | — | — | ✔ | — | — | ✔ |
 | Publication d'une version (immuable) | POST | — | — | — | — | ✔ | — | — | ✔ |

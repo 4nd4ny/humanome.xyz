@@ -108,6 +108,18 @@ L'export statique écrit dans `web/public/data/referentiel/` les versions
 publiées (`respire-v7.0.0.json`, `respire-v7.1.0.json`) et `index.json`, que
 lit la page `#/referentiel`.
 
+Facultatif, l'Humanome V18 de respire.school, depuis son YAML, qui n'est pas
+dans le dépôt (`docs/referentiel-humanome.md` §4) :
+
+```bash
+node scripts/convertir-humanome.mjs "<chemin>/humanome_v18.yaml"   # -> build/referentiels/
+php scripts/amorcer-referentiel.php build/referentiels/humanome-v18.0.0-proposition.1.json
+```
+
+Il est publié sans vote, et les menus des parcours le proposent aussitôt. Un
+export statique lancé ensuite le listerait : ne pas déployer cet index tant
+que la production ne l'a pas.
+
 Lancer l'API dans un terminal à part, l'environnement exporté :
 `php -S localhost:8080 -t api/public`. Vérifier :
 `curl http://localhost:8080/api/health` → `{"status":"ok","db":"ok"}`.
@@ -125,7 +137,16 @@ fiches P1..P7 qu'il régénère : un clone neuf se construit sans rien déposer 
 la main.
 
 Ouvrir http://localhost:5173. Le bundle `web/dist` est aussi ouvrable en
-`file://` (routing par hash, ADR-009) sauf les vues journée (fetch relatif).
+`file://` (routing par hash, ADR-009), sans serveur ni réseau : l'accueil, le
+référentiel (copie embarquée) et la cartographie des fichiers qu'on y ouvre,
+lus dans le navigateur. Ce qui se lit à côté d'`index.html` (fetch relatif)
+demande un serveur et le dit : les vues journée ; la démonstration de la
+cartographie (journal de la cartographie, D-67), qui invite à importer ses
+fichiers ; la copie autonome de l'espace Export et celle de « Préparer une
+démo » (mode expert), dont le modèle (`carto/viewer-template.html`) se lit
+ainsi : elles se préparent sur le site ou via un serveur local, puis
+s'ouvrent hors ligne. `npm run test:dist` le vérifie sur le bundle construit
+(§5), sauf « Préparer une démo » (mode expert, même lecture du modèle).
 
 ## 5. Tests
 
@@ -134,6 +155,7 @@ cd api && composer test                      # API (PHPUnit, MySQL local)
 cd engine && npm test                        # moteur
 cd web && npm test                           # front (Vitest)
 cd web && npm run test:e2e                   # Playwright (API locale, DEMO_PROVIDER=mock)
+cd web && npm run build && npm run test:dist # bundle construit, ouvert en file:// (jsdom, sans réseau)
 node scripts/validate-corpus.mjs             # schémas ↔ données réelles
 cd ../Twin_v9/php && composer install && composer test   # moteur Twin9 (dépôt privé)
 ```

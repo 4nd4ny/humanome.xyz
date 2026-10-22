@@ -113,21 +113,27 @@ export function schoolYearStarting(startYear) {
   return schoolYearOf(`${startYear}-08-01`)
 }
 
-/** « 27 décembre 2025 » */
-export function formatLong(iso) {
+/**
+ * « 27 décembre 2025 » ; « 27 décembre » avec `{ year: false }`, quand
+ * l'année se lit déjà ailleurs.
+ */
+export function formatLong(iso, { year = true } = {}) {
   if (!isIsoDate(iso)) return '—'
   const [y, m, d] = iso.split('-').map(Number)
-  return `${d === 1 ? '1er' : d} ${MONTHS_FR[m - 1]} ${y}`
+  const day = `${d === 1 ? '1er' : d} ${MONTHS_FR[m - 1]}`
+  return year ? `${day} ${y}` : day
 }
 
 /**
  * « sam. 27 déc. 2025 » (libellé compact des listes), « jeu. 1er janv. 2026 » ;
- * « sam. 27 déc. » avec `{ year: false }`, quand l'année se lit déjà ailleurs.
+ * « sam. 27 déc. » avec `{ year: false }`, quand l'année se lit déjà ailleurs ;
+ * « 27 déc. » avec `{ year: false, weekday: false }` (dans une phrase).
  */
-export function formatShort(iso, { year = true } = {}) {
+export function formatShort(iso, { year = true, weekday = true } = {}) {
   if (!isIsoDate(iso)) return '—'
   const [y, m, d] = iso.split('-').map(Number)
-  const day = `${WEEKDAYS_FR[weekdayIndex(iso)].slice(0, 3)}. ${d === 1 ? '1er' : d} ${MONTHS_FR_SHORT[m - 1]}`
+  const dm = `${d === 1 ? '1er' : d} ${MONTHS_FR_SHORT[m - 1]}`
+  const day = weekday ? `${WEEKDAYS_FR[weekdayIndex(iso)].slice(0, 3)}. ${dm}` : dm
   return year ? `${day} ${y}` : day
 }
 

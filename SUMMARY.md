@@ -174,3 +174,4 @@
 * [ADR-010 — Éditeur du module Portfolio : repli sur une textarea améliorée (Sqilium non intégrable)](docs/decisions/ADR-010-editeur-portfolio.md)
 * [ADR-010 — Twin9 : Golden Prompt opérationnel, secret des gabarits, prépaiement](docs/decisions/ADR-010-twin9-golden-prompt.md)
 * [ADR-011 — Moteur Twin9 v9.8 en PHP](docs/decisions/ADR-011-moteur-twin9-php.md)
+* [ADR-012 — Twin9 multi-fournisseur : chaque étape choisit son fournisseur](docs/decisions/ADR-012-multi-fournisseur-twin9.md)

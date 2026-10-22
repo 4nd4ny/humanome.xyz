@@ -1,5 +1,7 @@
 # ADR-011 — Moteur Twin9 v9.8 en PHP
 
+> **Amendé par [ADR-012](ADR-012-multi-fournisseur-twin9.md)** : les appels ne partent plus seulement chez Anthropic : chaque étape et chaque lecteur nomment leur fournisseur, parmi ceux que l'administrateur a ouverts, à l'adresse verrouillée de chacun ; les appels Anthropic gardent les deux voies, ceux des autres partent en direct (§3) ; l'accord nomme les fournisseurs que le run atteint (§5).
+
 ## Statut
 
 Accepté — 2026-10-18 (décisions du propriétaire du 2026-10-17). Amende ADR-001,

@@ -25,7 +25,10 @@
 //      with three versioned day fixtures: the interface opens and draws their
 //      sun, without any request, through the store's IndexedDB adapter (the
 //      one every browser takes; jsdom has no IndexedDB: fake-indexeddb, an
-//      in-memory implementation of the API, stands in for it).
+//      in-memory implementation of the API, stands in for it);
+//   6. export space (#/cartographie/export) of these files: « Télécharger la
+//      copie » reads its template next to index.html, so from a file it says
+//      the copy is prepared on the site or a local server, and tries nothing.
 // Last, once no request has come for a while, a global check: from the
 // bundle's evaluation to the end, no request outside the demo phase (late
 // reads and those between two steps included). Any jsdom error or
@@ -280,6 +283,21 @@ if (check(Boolean(homeInput), 'accueil : sélecteur de fichiers')) {
   const databases = (await window.indexedDB.databases()).map((d) => d.name)
   check(databases.includes(CARTO_DB), `stockage : base IndexedDB ${CARTO_DB} (${databases.join(', ') || 'aucune'})`)
   noRequest()
+
+  // 6. Export space: the standalone copy's template (carto/viewer-template.html)
+  // is read next to index.html, which a file cannot do: it says so.
+  phase = 'export de la copie autonome'
+  go('#/cartographie/export')
+  const copyButton = await waitFor(() => [...doc.querySelectorAll('.carto-export button')].find((b) => text(b) === 'Télécharger la copie'))
+  if (check(Boolean(copyButton), 'export : « Télécharger la copie »')) {
+    copyButton.click()
+    const alert = await waitFor(() => [...doc.querySelectorAll('.carto-export [role="alert"]')].map(text).find(Boolean))
+    check(
+      alert?.includes('se prépare sur le site en ligne ou via un serveur local'),
+      `copie autonome : message « sur le site en ligne ou via un serveur local » (${alert ?? 'aucun message'})`,
+    )
+    noRequest()
+  }
 }
 
 // Global: from the bundle's evaluation to the end, once no request has come

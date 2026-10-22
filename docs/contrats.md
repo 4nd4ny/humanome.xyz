@@ -1414,10 +1414,12 @@ T16, plan validé par Christian le 2026-10-20).
   - Sans évaluation, la référence (§8.5) reste le run de PLANT-01 de T2, fois
     les pôles : elle ignore la taille des fiches d'un autre référentiel.
   - Le moteur ne refuse un référentiel qu'au lancement : sa publication (§9)
-    ne vérifie pas qu'il le lit. Le schéma 2.0.0 admet ainsi des codes faits
-    de chiffres seulement (« 11 »), un pôle sans compétence, un nom de pôle ou
-    de compétence fait d'espaces : publié, voté, un tel référentiel est
-    refusé à chaque aperçu et à chaque lancement.
+    ne vérifie pas qu'il le lit. Le schéma 2.0.0 admet ainsi un pôle sans
+    compétence, un nom de pôle ou de compétence fait d'espaces : publié, voté,
+    un tel référentiel est refusé à chaque aperçu et à chaque lancement. Les
+    codes faits de chiffres seulement (« 11 »), eux, sont refusés à
+    l'enregistrement depuis la revue de S5 (§9, « Les codes ») ; une version
+    publiée avant reste refusée au lancement.
   - La lentille du « Spécialiste du pôle » est écrite dans le code du moteur :
     son empreinte suit son texte, pas une version déclarée comme celle de la
     banque (`PERSONAS_VERSION`).
@@ -1587,6 +1589,13 @@ Le schéma `referentiel` passe en **2.0.0** (`docs/plan-twin9-php.md` de
 - **Les codes** : 1 à 8 caractères (lettres, chiffres, `.`, `_`, `-`, le
   premier lettre ou chiffre), uniques dans tout le référentiel ; 8, la taille
   des colonnes qui les rangent (`cartography_annotations.competence_code`).
+  Jamais faits de chiffres seulement (« 11 ») : le moteur Twin9 refuse une
+  compétence ainsi codée, et tout niveau peut tenir lieu de compétence ; le
+  schéma l'admet, l'intégrité (`validateDocument`, `CHIFFRES_SEULS`) le
+  refuse à tout niveau, à son pointeur, depuis la revue de S5 (2026-10-22),
+  et la page Markdown de l'atelier à sa ligne. Un tel code d'une version
+  enregistrée avant fait refuser ce qui la revalide (soumission, publication,
+  fork).
 - **Les éléments** (`elements` d'une compétence, et d'un élément) :
   `{code, nom, description?, elements?}` ; un élément d'un niveau que le
   référentiel ne déclare pas est refusé. Une description est du texte libre
@@ -1666,7 +1675,8 @@ Le schéma `referentiel` passe en **2.0.0** (`docs/plan-twin9-php.md` de
   gardant l'import du déploiement, idempotent sur l'empreinte. Le schéma ne
   change pas. Règles, procédure en production et écarts relevés dans la
   source : `docs/referentiel-humanome.md`.
-- **Hors T15** : la page publique `#/referentiel` ne montre que RESPIRE ;
+- **Hors T15** : la page publique `#/referentiel` ne montrait que RESPIRE ;
+  elle montre tout référentiel publié depuis S5, lot E (§10, UC-VIS-02).
   `ReferentielDiff` ignore niveaux et éléments. (La cartographie, qui ne
   lisait que RESPIRE et ses 7 pôles, lit le référentiel de chaque run depuis
   T17, §10 ; le moteur, depuis T16, §8.8.)
@@ -1874,7 +1884,14 @@ plus contre le chiffre 7. Aucun champ n'est renommé.
   proposé. Une réponse de l'API vide,
   malformée, en erreur, ou un document qui n'est pas la version demandée
   cèdent la place à l'export statique. La page publique `#/referentiel`
-  (`loadPublishedReferentiel()` sans identifiant) reste statique.
+  suit la même règle depuis S5, lot E : elle charge `{id: 'respire'}` par
+  défaut, ou le référentiel que nomme son adresse (`#/referentiel[/<code>]?id=<id>`,
+  RESPIRE sans `id`), propose les autres au même menu (la provenance, elle,
+  sous l'en-tête, depuis le `source` du document), et dit un identifiant
+  qu'elle ne peut charger, RESPIRE affiché à sa place (UC-VIS-02, A7 à A9,
+  E5). Seule la branche sans identifiant (`loadPublishedReferentiel()`,
+  l'interface de cartographie) reste statique. Le lien « Voir dans le
+  référentiel » d'une carte nomme le référentiel de la carte.
 - **Les routes**, ce qui change :
   - `POST /api/etablissement/cohortes/{id}/runs` : `referentielId`,
     `referentielVersion` facultatifs ; version non publiée ou identifiant

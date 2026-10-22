@@ -43,6 +43,150 @@ réponse. Suivent la PR B (adaptateurs JS, export Twin6) et, A fusionnée, la PR
 
 ## Fait
 
+- 2026-10-22 — **Revue des lots D et E du sprint 5 : les constats confirmés sont corrigés (branche
+  `feat/referentiel-markdown`, non fusionnée).** Seize commits : douze `fix:`, chacun avec le test
+  qui échouait avant lui, deux `test:`, un `style:` sans test (aucun comportement ne change) et ce
+  `docs:`. Le menu de navigation n'a pas changé.
+  - **Codes faits de chiffres seulement** (« ## 1 — Lire ») : la page Markdown les refuse à leur
+    ligne, et le serveur à tout niveau, à son pointeur (`ReferentielRepository::controlerCode`,
+    `CHIFFRES_SEULS`), pour le JSON aussi. Le moteur Twin9 refuse une compétence ainsi codée, et
+    tout niveau peut tenir lieu de compétence ; une version publiée ne se corrige plus. Le test
+    Twin9 qui vérifie ce refus au lancement (`api/tests/Twin9/ReferentielMoteurTest.php`) écrit
+    désormais sa version telle quelle en base, comme une version d'avant le contrôle : le serveur
+    refuse ce qu'il publiait. Le message « code invalide » dit « lettres sans accent ».
+  - **Lecture du Markdown** : les espaces insécables (U+00A0, U+202F) et un « Pôle » décomposé
+    se lisent (texte composé en NFC, blancs `\p{Zs}`, comme `Text::WS` du moteur) ; un texte qui
+    n'est pas en UTF-8 (un « texte brut » Windows-1252) est refusé au lieu d'importer des noms
+    corrompus ; un titre indenté d'une à trois espaces et des « # » de fermeture se lisent comme
+    en CommonMark.
+  - **Aller-retour Markdown → JSON → Markdown** : exact pour un texte composé, aux blancs près
+    autour d'une description ou de la provenance. Une description qui commence par des blancs
+    puis « # » ou par « <!-- » (la couleur d'un pôle), une provenance vide, un nom qui finit par
+    « # » reviennent. Ce que le format ne peut pas écrire (provenance contenant « --> », nom de
+    niveau contenant une virgule, nom sur plusieurs lignes ou entouré de blancs) est refusé à
+    l'export, nommé, au lieu d'être perdu en silence.
+  - **Motifs** : un motif saisi que JavaScript ne lit pas (syntaxe PCRE : possessif, atomique,
+    « (?i) ») n'est plus qu'un avertissement, et le serveur tranche ; `\p{Lu}` se lit (drapeau u).
+  - **Atelier** : l'aperçu compte au niveau choisi (« 3 compétences au niveau « facette » ») et
+    accorde ses nombres ; « Importer le Markdown » est `aria-disabled`, décrit par un résumé
+    visible (« 2 erreurs empêchent l'import »), et l'activer porte le focus sur les erreurs ; les
+    trois champs fautifs sont `aria-invalid` et reliés à leur erreur ; un nouveau fichier repart
+    des noms et motifs de son texte, et le champ fichier se vide.
+  - **Page publique** : l'API est attendue 5 s au plus, puis l'export statique répond (une API
+    qui pend ne bloque plus la page) ; le catalogue n'est demandé qu'une fois ; après un échec, le
+    menu montre le référentiel affiché, et choisir de nouveau celui qui a échoué le redemande ; au
+    clavier, l'option parcourue ne s'affiche qu'à sa validation (Entrée, sortie du menu, une
+    seconde sans touche) ; `fold()` retrouve son échappement `̀-ͯ`.
+  - **Tests** : la fixture de contrat `schemas/fixtures/markdown/referentiel-markdown-contrat.json`
+    (fictive) tient ce que la page envoie et déduit (UC-EPI-05-U27) ; le serveur en valide les
+    documents à chaque niveau et compile les motifs en PCRE (U28). L'assertion tautologique de U17
+    est remplacée. Les tests que la fiche UC-EPI-05 nommait U11 à U13 et F16 à F18 portent enfin
+    leurs identifiants.
+  - Documentation : UC-EPI-05 (statut, garanties, A7, E1, E6, E7, RG2, RG11, L2, code sollicité ;
+    U17, U18, U21 à U28, F19, F20), UC-VIS-02 (garanties, étape 2, A7, A9, E5, RG4, RG6, limites ;
+    U15 à U17), `docs/contrats.md` §9 et §10, le tableau des cas (1 004 et 1 163 identifiants).
+  - **Vérifié** :
+    - front : 2 768 tests verts (261 fichiers, `TWIN_V9_DIR` défini), lancés sur `ad02b32` : seule la
+      documentation a changé depuis ; `npm run build` passe ;
+    - moteur : 573 tests, 568 verts et les 5 échecs locaux connus (UC-PRO-08 F19 à F22, F25) ;
+    - PHP : 1 778 tests par `phpunit-locked.sh` (base `humanome_test_s5de`), les 2 échecs connus dus à PHP 8.5
+      (`AuthActivationTest::testExpiredCodeIsRejected`,
+      `UcCpt02SeConnecterDeconnecterTest::testU17SessionCookieAttributes`) et une dépréciation de
+      PHPUnit, hors des classes touchées (relancées avec `--display-deprecations` : aucune) ;
+    - `check-publiable` ; le recomptage des identifiants distincts égale chaque ligne du tableau et
+      son total ;
+    - chaque `fix:` : son test lancé rouge avant la correction, vert après.
+  - **Non vérifié** : rien dans un navigateur (ni l'atelier, ni la page publique) ; le
+    comportement réel du menu au clavier sous Windows (Chrome, Firefox), que jsdom ne reproduit
+    pas ; rien en production.
+  - **Décisions laissées à Christian** :
+    - le serveur refuse les codes faits de chiffres à tout niveau, y compris par
+      `importPublishedDocument`, l'amorçage et la route d'import admin ; une version déjà
+      enregistrée avec de tels codes ne se soumet, ne se publie ni ne se forke plus ;
+    - le texte Markdown se lit en NFC : un nom décomposé relu composé change d'empreinte ;
+    - un motif que la page ne lit pas n'est qu'un avertissement (« A)|(B » n'est plus signalé
+      avant l'envoi ; le serveur le refuse, par pointeur) ;
+    - les délais : 5 s pour l'API, 10 s de validité du catalogue, 1 s au clavier ; au clavier,
+      la validation par Entrée, sortie ou pause plutôt qu'un bouton « Afficher » ;
+    - le nouvel essai d'un référentiel introuvable en le choisissant de nouveau au menu ;
+    - ce que le Markdown ne peut pas écrire est refusé à l'export plutôt qu'échappé (une virgule
+      dans un nom de niveau, « --> » dans la provenance).
+
+- 2026-10-22 — **Un multi-référentiel simple, suite : écrire un référentiel en Markdown dans
+  l'atelier, et la page publique montre tout référentiel publié (sprint 5, lots D et E ; branche
+  `feat/referentiel-markdown`, non fusionnée).** Trois commits, deux pour le lot D, un pour le lot E.
+  Décisions de Christian, prises par délégation : le lot D tel que S5 §4 (modèles, import Markdown au
+  format des fiches, aperçu, export), sans éditeur riche, sans formulaire pôle par pôle, sans
+  dépendance npm ; pour le lot E, le menu « Référentiel » sur la page publique, qui lit l'API
+  d'abord. Le lot C (choix du référentiel au lancement de Twin9) viendra après la PR
+  multi-fournisseur.
+  - **Lot D, concevoir un référentiel simplement** (atelier, section « Autres référentiels »).
+    - `web/src/lib/referentiel-markdown.js`, sans DOM ni dépendance, lit le texte des fiches de
+      pôle que le moteur écrit (`# Pôle N — Nom`, `## CODE — Nom`, `### CODE — Nom`…) en document
+      `referentiel` 2.1.0, chaque erreur à sa ligne (titre mal formé, niveau sauté, doublon, pôle
+      vide, numérotation, code hors motif ; BOM et CRLF acceptés). L'identifiant, le libellé et la
+      version se saisissent dans trois champs. Le motif de chaque niveau est déduit des codes, le
+      plus étroit compatible (`A1`…`E4` donne `[A-E][1-4]`, RESPIRE `[1-7]\.[0-1]\d`), affiché et
+      modifiable.
+    - L'atelier propose deux modèles à télécharger, Markdown et JSON, le JSON expliqué champ par
+      champ dans la page. Une zone de texte a son aperçu : pôles, compétences, éléments, motifs,
+      erreurs, et l'avertissement qu'un pôle nommé comme un pôle de RESPIRE en reçoit les jurés
+      Twin9. L'import passe par `POST /referentiel/import`, avec ses refus par pointeur. « Exporter
+      en Markdown » vaut pour toute version publiée, RESPIRE compris
+      (`GET /api/referentiels/{id}/versions/{semver}`).
+    - Markdown, puis JSON, puis Markdown : le même texte à l'octet et la même empreinte pour
+      RESPIRE 7.0.0 et 7.1.0 et pour la fixture fictive à la forme Humanome (UC-EPI-05-U15, U16).
+    - UC-EPI-05 : A7 à A9, E6, E7, RG11 à RG13, L2 ; U14 à U20, F19 à F22.
+  - **Lot E, la page publique `#/referentiel` montre tout référentiel publié.**
+    - Le menu « Référentiel » (`ReferentielChoice`) propose chaque référentiel publié à sa
+      dernière version, RESPIRE par défaut. La page lit comme les parcours : la base par l'API
+      publique d'abord, l'export statique en repli, RESPIRE embarqué en dernier. Elle n'est donc
+      plus « zéro PHP », et une version publiée en production s'y voit aussitôt : la limite L1
+      d'UC-VIS-02 ne vaut plus qu'en repli.
+    - Le lien profond `#/referentiel[/<code>]?id=<id>` ouvre un référentiel ; RESPIRE n'a pas
+      d'`id`. Le menu remplace l'adresse, sans entrée d'historique et sans le code d'une
+      compétence ; les permaliens portent l'`id`. Un identifiant introuvable ou hors forme est dit,
+      et RESPIRE s'affiche à sa place ; un lien de l'alerte rend l'adresse sans lui.
+    - La provenance d'un autre référentiel (le `source` du document : d'où il vient, sa licence)
+      s'affiche sous l'en-tête, même en repli sur l'export statique, qui ne la porte pas : c'est
+      l'attribution CC-BY-SA de l'Humanome V18 (S5, E9) que l'entrée des lots A et B renvoyait au
+      lot E. L'aide de la page dit ce qu'est l'Humanome V18.
+    - Les définitions gardent leurs retours à la ligne ; celles de RESPIRE n'en ont pas.
+    - Hors de la page : « Voir dans le référentiel », sous une compétence de la cartographie
+      (`DetailPanel`), mène à la page du référentiel de la carte. Il menait à RESPIRE, où le code
+      d'un autre référentiel était « introuvable ».
+    - Le menu de navigation n'a pas changé : aucune entrée ajoutée.
+    - Documentation : UC-VIS-02 (objectif, préconditions, garanties, étapes 2 et 3, A6 à A9, E5,
+      RG4, RG6, RG7, code sollicité, L1 et limites ; U12 à U14, F18 à F21 ; F12 récrit, la lecture
+      passant par l'API), UC-EPI-05 (garanties, L4), UC-EPI-03 (étapes 7 et 8, L1), UC-EPI-04 (L5),
+      `docs/contrats.md` §9 et §10, `docs/referentiel-humanome.md` §1, le commentaire de
+      `StaticExporter.php`, et le tableau des cas (990 et 1 160 identifiants).
+  - **Vérifié** :
+    - front : 2 755 tests verts (261 fichiers, `TWIN_V9_DIR` défini) ; moteur : 573 tests, 568
+      verts et les 5 échecs locaux connus (UC-PRO-08 F19 à F22, F25) ; `npm run build` passe ;
+      `check-publiable` (crochet de pré-commit) ;
+    - PHP : PHPUnit non lancé, aucun code PHP ne change (un commentaire de `StaticExporter.php`,
+      `php -l` sans erreur) ; la file des suites PHP de la machine était tenue par la suite
+      complète d'une autre session ;
+    - F18 échoue si le menu empile l'adresse dans l'historique au lieu de la remplacer (essayé) ;
+    - dans le navigateur intégré, l'application construite, servie avec l'API sur la base de
+      développement (RESPIRE 7.0.0 et 7.1.0, Humanome V18 amorcé) : le menu ; « Humanome V18 »
+      choisi (adresse `?id=humanome`, 5 pôles, 20 compétences, provenance et licence) ; le lien
+      `#/referentiel/B2?id=humanome` (B2 surligné) ; `?id=inconnu` (l'alerte, RESPIRE).
+  - **Non vérifié** : rien en production ; la page sur un téléphone ; l'e2e Playwright
+    (`web/e2e`) ; le lot D dans un navigateur (ses tests seulement).
+  - **Décisions laissées à Christian** :
+    - la page publique appelle désormais PHP à chaque consultation (`GET /api/referentiels` et
+      `GET /api/referentiels/{id}/versions/{semver}`, le document mis en cache le temps de la
+      page), ce que la règle « zéro PHP » de P4 excluait : c'est la conséquence du choix délégué de
+      l'API d'abord ;
+    - montrer les éléments d'un référentiel (les facettes de l'Humanome) et rendre le Markdown de
+      ses définitions (« **Finalité** » s'y lit tel quel) ;
+    - proposer les versions antérieures sur la page, qui ne montre que la dernière de chaque
+      référentiel (l'historique reste dans l'API) ;
+    - lot D : un formulaire pôle par pôle, si l'usage le demande ; un motif saisi à la main n'est
+      pas gardé dans le Markdown exporté, il se déduit de nouveau.
+
 - 2026-10-22 — **Sprints 1 et 4 de la liste de Christian : l'ergonomie et le « Mode expert »
   (lot 1), puis la journée d'une analyse qui en couvre plusieurs (branche
   `feat/ergonomie-et-journees`, issue de `main` à `fd6a16d`, `main` à `2a5984c` fusionné

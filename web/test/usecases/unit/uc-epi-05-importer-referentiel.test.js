@@ -2,7 +2,7 @@
 // Fiche : docs/cas-utilisation/epistemiarque/UC-EPI-05-importer-referentiel.md
 //
 // Code sollicité appelé directement : le client du référentiel
-// (web/src/views/epistemiarque/api.js : import, catalogue) et le client HTTP
+// (web/src/views/epistemiarque/api.js : import, catalogue, version publiée) et le client HTTP
 // (web/src/api/client.js), qui garde le détail d'un document refusé.
 import { afterEach, describe, expect, it, vi } from 'vitest'
 import { apiFetch, fetchMe, resetApiClient } from '../../../src/api/client.js'
@@ -32,6 +32,17 @@ describe('UC-EPI-05 — client du référentiel', () => {
       ['referentiel/import', { method: 'POST', body: { document: DOCUMENT, niveau: 'capacité' } }],
       ['referentiel/import', { method: 'POST', body: { document: DOCUMENT } }],
       ['referentiels'],
+    ])
+  })
+
+  it('UC-EPI-05-U14 — le document d’une version publiée de tout référentiel, par son identifiant (S5, export en Markdown)', async () => {
+    const apiFetchFn = vi.fn(async () => ({}))
+    const api = createEpistemiarqueApi(apiFetchFn)
+    await api.getPublishedVersion('fictif-lettre', '1.0.0')
+    await api.getPublishedVersion('fictif.lettre', '2.0.0-rc.1+build')
+    expect(apiFetchFn.mock.calls).toEqual([
+      ['referentiels/fictif-lettre/versions/1.0.0'],
+      ['referentiels/fictif.lettre/versions/2.0.0-rc.1%2Bbuild'],
     ])
   })
 

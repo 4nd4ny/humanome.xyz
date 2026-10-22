@@ -18,8 +18,9 @@ vigueur, immuable), puis, quand une ou plusieurs évolutions sont entérinées,
 servi aussitôt par l'API — assemblé à partir des compétences publiées, sans
 second vote. Les runs de masse (UC-ETA-03) l'épinglent aussitôt ; depuis S5
 (2026-10-22), les cartographies standard (UC-APP-02) et ouvertes (UC-APP-09)
-aussi, leurs menus lisant la base ; seule la page publique ne la voit qu'après
-ré-export statique et redéploiement (L1).
+aussi, leurs menus lisant la base, et, depuis S5, lot E, la page publique
+`#/referentiel` (UC-VIS-02) ; l'export statique, leur repli, ne la voit
+qu'après ré-export et redéploiement (L1).
 
 ## Déclencheur
 
@@ -93,11 +94,12 @@ affiche « Majorité atteinte : la compétence peut être entérinée. »
    ouvertes (UC-APP-09), l'estimation des runs de masse et les vues
    cartographe la lisent aussi dans la base (`GET /api/referentiels`,
    `GET /api/referentiels/respire/versions/{semver}`), l'export statique
-   `data/referentiel/index.json` n'étant plus que leur repli ; seule la page
-   publique attend le ré-export et le redéploiement (L1). `GET /api/referentiel/diff/{de}/{à}` la compare aux
-   précédentes.
-8. **Propagation (exploitation)** — la page publique `#/referentiel` lit des
-   fichiers statiques : `php scripts/export-referentiel-static.php [dossier]`
+   `data/referentiel/index.json` n'étant plus que leur repli ; la page
+   publique `#/referentiel` aussi depuis S5, lot E (UC-VIS-02 RG4).
+   `GET /api/referentiel/diff/{de}/{à}` la compare aux précédentes.
+8. **Propagation (exploitation)** — l'export statique, le repli de la page
+   publique `#/referentiel` et des menus des parcours quand l'API ne répond
+   pas (UC-VIS-02 A9) : `php scripts/export-referentiel-static.php [dossier]`
    (StaticExporter) écrit un `respire-v<semver>.json` par version publiée et un
    `index.json` (plus récente d'abord), mis en ligne au déploiement suivant. Les
    fiches de scan des versions **en vigueur** sont régénérées depuis la base
@@ -312,17 +314,19 @@ cd web && npx vitest run test/usecases/unit/uc-epi-03 test/usecases/functional/u
 
 ## Limites
 
-- **L1** — La page publique ne voit une release qu'après ré-export **et**
+- **L1** — L'export statique ne voit une release qu'après ré-export **et**
   redéploiement : `scripts/export-referentiel-static.php` exporte la base à
   laquelle il est connecté (locale), l'hébergement n'a ni SSH ni route
   d'export, et le déploiement pousse les fichiers locaux vers la production
   (pas l'inverse). Une release coupée dans l'atelier de production n'a donc
-  pas de chemin outillé vers la page publique ; elle est en revanche servie
+  pas de chemin outillé vers l'export ; elle est en revanche servie
   aussitôt par l'API (`GET /api/referentiel`, `GET /api/referentiels`) et
   épinglée par les runs de masse (UC-ETA-03) et, depuis S5 (2026-10-22), par
   les cartographies standard et ouvertes (`RunWizard`, `Twin6OuverteView` →
   `loadPublishedReferentiel({id})`, UC-APP-02, UC-APP-09), qui lisent la base
-  d'abord et l'export statique seulement en repli.
+  d'abord et l'export statique seulement en repli ; la page publique
+  `#/referentiel` fait de même depuis S5, lot E (UC-VIS-02 RG4, L1) : elle
+  ne montre l'export en retard que si l'API ne répond pas.
 - **L2** — Le modèle atomique ne connaît que RESPIRE et sa structure semée
   (7 pôles, 61 compétences) : aucune route ne crée, ne retire ni ne déplace
   une compétence atomique, ni un pôle. Une version de RESPIRE d'une autre

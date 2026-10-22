@@ -27,6 +27,9 @@ export function createEpistemiarqueApi(apiFetchFn = apiFetch) {
     /** GET api/referentiels — les référentiels publiés, leur libellé et leurs versions (T15). */
     listCatalogue: () => apiFetchFn('referentiels'),
 
+    /** GET api/referentiels/{id}/versions/{semver} — le document d'une version publiée de tout référentiel (S5). */
+    getPublishedVersion: (id, semver) => apiFetchFn(`referentiels/${e(id)}/versions/${e(semver)}`),
+
     /** POST api/referentiel/import — un référentiel en brouillon, lu au niveau choisi (T15). */
     importReferentiel: (document, niveau = null) =>
       apiFetchFn('referentiel/import', { method: 'POST', body: niveau ? { document, niveau } : { document } }),

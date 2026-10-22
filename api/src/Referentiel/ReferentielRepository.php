@@ -40,6 +40,13 @@ final class ReferentielRepository
     /** The id of an imported referential (T15): lowercase, digits, « . », « _ », « - », 64 characters at most. */
     public const ID_PATTERN = '/^[a-z0-9][a-z0-9._-]{0,63}$/D';
 
+    /**
+     * A code the Twin9 engine refuses for a competence (Twin_v9,
+     * Referentiel::depuisBloc): refused at every level, since any level may
+     * stand for competence (auNiveau). The Markdown page applies the same rule.
+     */
+    public const CHIFFRES_SEULS = '/^[0-9]+$/D';
+
 
     public function __construct(private readonly PDO $pdo)
     {
@@ -832,7 +839,8 @@ final class ReferentielRepository
 
     /**
      * T15: a code follows its level's motif, an element sits at a level the
-     * referential declares, a code is never twice.
+     * referential declares, a code is never twice, nor made of digits only
+     * (CHIFFRES_SEULS).
      *
      * @param array<string, mixed> $noeud a competence (level 0) or an element
      * @param list<array{nom: string, motif: string}> $niveaux
@@ -847,6 +855,10 @@ final class ReferentielRepository
             $errors[$pointeur][] = sprintf('Élément d’un niveau que le référentiel ne déclare pas (il en déclare %d)',
                 \count($niveaux));
             return;
+        }
+        if (preg_match(self::CHIFFRES_SEULS, $noeud['code']) === 1) {
+            $errors[$pointeur . '/code'][] = sprintf(
+                'Code « %s » fait de chiffres seulement : l’analyse approfondie (Twin9) refuse un tel code', $noeud['code']);
         }
         $regex = $regexes[$profondeur];
         $suit = $regex === null ? null : @preg_match($regex, $noeud['code']);

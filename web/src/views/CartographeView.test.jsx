@@ -1,7 +1,7 @@
 // Espace cartographe (P9) : garde de rôle, accueil (invitation, apprentis,
 // file des cartographies à relire), formation parcours cartographe.
 import { afterEach, describe, expect, it, vi } from 'vitest'
-import { cleanup, fireEvent, render, screen, waitFor, within } from '@testing-library/react'
+import { act, cleanup, fireEvent, render, screen, waitFor, within } from '@testing-library/react'
 import CartographeView from './CartographeView.jsx'
 import { resetApiClient } from '../api/client.js'
 import { listChapters } from './espace/formation-content.js'
@@ -195,9 +195,14 @@ describe('CartographeView — sous-menu (sprint 1, amélioration 8)', () => {
   })
 
   it('la formation reste ouverte à tous, mais sans le sous-menu pour qui n’est pas cartographe', async () => {
-    render(<CartographeView section="formation" deps={{ fetchMeFn: apprenant }} />)
+    // La formation s'affiche avant la réponse de la session : on attend que la
+    // session (apprenant) soit lue et appliquée, puis on vérifie l'absence.
+    const fetchMeFn = vi.fn(apprenant)
+    render(<CartographeView section="formation" deps={{ fetchMeFn }} />)
     expect(await screen.findByText('Formation cartographe')).toBeTruthy()
-    await waitFor(() => expect(screen.queryByRole('navigation', { name: 'Sections de l’espace cartographe' })).toBeNull())
+    await waitFor(() => expect(fetchMeFn).toHaveBeenCalled())
+    await act(async () => {})
+    expect(screen.queryByRole('navigation', { name: 'Sections de l’espace cartographe' })).toBeNull()
   })
 })
 

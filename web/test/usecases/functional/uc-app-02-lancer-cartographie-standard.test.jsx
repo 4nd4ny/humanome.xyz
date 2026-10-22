@@ -12,7 +12,7 @@
 // Mode d'affichage (UC-VIS-06) : un compte apprenant seul est en mode SIMPLE
 // par défaut ; les scénarios qui choisissent une version de prompt ou le
 // modèle se jouent en mode EXPERT, posé dans le navigateur avant le montage
-// (beforeEach) ; F27 rejoue le mode simple.
+// (beforeEach) ; F29 rejoue le mode simple.
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
 import { act, cleanup, fireEvent, render, screen, waitFor, within } from '@testing-library/react'
 import App from '../../../src/App.jsx'

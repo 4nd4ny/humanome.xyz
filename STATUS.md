@@ -146,15 +146,20 @@ réponse. Suivent la PR B (adaptateurs JS, export Twin6) et, A fusionnée, la PR
     (UC-PRO-08 F19 à F22 et F25), parité des années sur deux chiffres jouée contre le
     moteur PHP de `TWIN_V9_DIR` (après `npm ci` du moteur : `main` y ajoute `yaml`) ; PHP
     `ValidationTest`, `ConformiteTest`, `CartoPartageTest` et `UcVis04SeRepererTest` verts
-    (46 tests, base `humanome_test_s1`) ; `check-publiable` vert ; lots précédents : e2e
-    navigation-burger, carto-export, carto-soleil, guides-public, au fil des commits.
+    (46 tests, base `humanome_test_s1`) ; `check-publiable` vert. Avant la fusion, au fil
+    des lots : e2e navigation-burger, carto-export, carto-soleil, guides-public. La plage de
+    la démonstration (« couvre 8 autres journées (1er–9 févr.) », 175 traces, toutes
+    établies ou à revoir) recalculée sur son document-jour du 10 février
+    (`web/public/data/demo/jours/2026-02-10.json`), importé dans un jeu neuf.
   - **Non vérifié** : T1 et T2 dans un navigateur (tests DOM seulement) ; les e2e
     `carto-soleil` et `carto-export`, pas relancés pour T1 ni T2 ; la passe dans un vrai
     IndexedDB (testée avec le magasin en mémoire) et sa durée sur une démonstration devenue
-    locale (environ 17 Mo de détails) ; e2e `parcours-apprenant` (API locale) ; la suite PHP
-    complète après la fusion (aucun fichier PHP touché par la revue ; seul le test unitaire
-    `UcVis04SeRepererTest` diffère de `main`). Ouvert, dans `main` déjà : deux tests
-    UC-APP-09-F31 (A4 du sprint 5 et E5), non renumérotés ici.
+    locale (environ 17 Mo de détails) ; e2e `parcours-apprenant` (API locale) ; aucun e2e
+    relancé après la fusion de `main` (qui a touché `global.css`, `help/registry.js`,
+    `RunWizard.jsx`, `Twin6OuverteView.jsx`) ; la suite PHP complète après la fusion (aucun
+    fichier PHP touché par la revue ; seul le test unitaire `UcVis04SeRepererTest` diffère
+    de `main`). Ouvert, dans `main` déjà : deux tests UC-APP-09-F31 (A4 du sprint 5 et E5),
+    non renumérotés ici.
   - **Après les PR Twin9** : le lot 2 du mode expert (liste des profils de `Twin9View`) ;
     S4 T0 (envoyer à Twin9 des en-têtes que l'interface lit pareil), C3 (deux cartes Twin9
     le même jour) et C4 (« établie par faisceau »).
@@ -173,6 +178,9 @@ réponse. Suivent la PR B (adaptateurs JS, export Twin6) et, A fusionnée, la PR
       propre analyse imposerait un choix (l'analyse propre l'emporterait) ; le kairos et
       les rapports de pôle resteraient globaux. Variante minimale : répartir hors ligne la
       seule démonstration, l'interface inchangée.
+    - Le nom d'un run Twin9 dans la provenance : « Twin9 (serveur) », de `main` (PR A),
+      gardé à la fusion plutôt que « Twin9 » (sprint 4, C11) ; une ligne de
+      `SOURCE_LABELS` (`Manager.jsx`) et deux tests à changer s'il préfère l'autre.
     - D4 V2 (le mode retenu par compte, et non par navigateur) : avec le sprint 8 (rôles
       auto-attribués) ; et une seule vue « journée » à garder (`#/jour/<date>` historique
       et `#/cartographie/jour/<date>`).

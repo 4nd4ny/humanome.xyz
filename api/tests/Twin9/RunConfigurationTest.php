@@ -97,7 +97,8 @@ final class RunConfigurationTest extends TestCase
                                                     'model_mini' => 'claude-haiku-5-5'],
                             'rapide' => (object) ['kind' => 'anthropic', 'model' => 'claude-haiku-5-5']],
             $bloc['backends']);
-        self::assertSame(MoteurReglages::ALGORITHME, array_keys($bloc['algorithme']));
+        self::assertSame([...MoteurReglages::ALGORITHME, 'stigmergie'], array_keys($bloc['algorithme']));
+        self::assertEquals((object) ['enabled' => false], $bloc['algorithme']['stigmergie'], 'désactivée, le bloc le dit');
         self::assertSame(['id' => 'fictif', 'version' => '1.0.0', 'label' => 'Fictif',
                           'empreinte' => ReferentielMoteur::empreinte(self::referentiel())], $bloc['referentiel']);
         self::assertEquals(['jeu' => 'v9.8', 'versions' => (object) ['exemple/etape' => 2, 'exemple/lecture' => 1],
@@ -154,6 +155,45 @@ final class RunConfigurationTest extends TestCase
             'son sel y entre');
         $this->expectException(\InvalidArgumentException::class);
         self::bloc(self::v98(), sel: 'pas-un-sel');
+    }
+
+    /**
+     * The greffier's stigmergy, as the engine reads it: off, {enabled:
+     * false}, whatever the profile writes besides; on, the settings the
+     * profile writes, sent to the engine (config.stigmergie). The block is
+     * valid either way, and one launched before it, without the key, stays
+     * valid; turning it on changes its fingerprint.
+     */
+    public function testTheBlockSaysWhetherTheStigmergyWasOn(): void
+    {
+        $eteinte = self::v98();
+        $eteinte->stigmergie = (object) ['enabled' => false, 'evaporation' => 0.5];
+        $bloc = self::bloc($eteinte);
+        self::assertEquals((object) ['enabled' => false], $bloc['algorithme']['stigmergie']);
+        self::assertSame(self::bloc(self::v98())['empreinte'], $bloc['empreinte'], 'désactivée, ses réglages n’y entrent pas');
+
+        $profil = ProfilRepository::validate(ProfilRepository::predefini('stigmergie'));
+        $profil->referentiel = (object) ['id' => 'fictif', 'version' => '1.0.0'];
+        $bloc = self::bloc($profil);
+        self::assertSame(['enabled' => true, 'evaporation' => 0.3, 'exploration' => 0.2, 'graine' => 1, 'lignes' => 5],
+            (array) $bloc['algorithme']['stigmergie']);
+        self::assertEquals(MoteurReglages::depuis($profil)->config->stigmergie, $bloc['algorithme']['stigmergie']);
+        self::assertFalse($bloc['algorithme']['calques']->accumulation);
+        self::assertTrue($bloc['execution_prevue']['rescan']);
+        $json = json_decode(json_encode($bloc, JSON_THROW_ON_ERROR | JSON_PRESERVE_ZERO_FRACTION));
+        self::assertSame([], self::valider($json));
+        self::assertSame($bloc['empreinte'], RunConfiguration::empreinte($json));
+        $autre = clone $profil;
+        $autre->stigmergie = (object) ['enabled' => true, 'evaporation' => 0.4];
+        self::assertNotSame($bloc['empreinte'], self::bloc($autre)['empreinte']);
+
+        // a block of before, without the key: valid; a key the engine does not read: refused
+        unset($json->algorithme->stigmergie);
+        self::assertSame([], self::valider($json));
+        $json->algorithme->stigmergie = (object) ['enabled' => true, 'rho' => 0.3];
+        self::assertNotSame([], self::valider($json));
+        $json->algorithme->stigmergie = (object) ['evaporation' => 0.3];
+        self::assertNotSame([], self::valider($json), 'enabled requis');
     }
 
     /**

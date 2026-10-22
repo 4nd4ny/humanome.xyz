@@ -21,6 +21,13 @@ use stdClass;
  * ReferentielMoteur). The engine reads a backend's kind and a reader's family
  * in its fingerprints, and the families for the college's diversity: an
  * Anthropic profile keeps « anthropic » for both.
+ *
+ * The greffier's stigmergy (Twin_v9's docs/twin9/spec-stigmergie.md §2,
+ * §11.3), a deviation of the PHP engine without counterpart in the v9.8, is
+ * config.stigmergie, a key of the config's first level, never one of
+ * calques: sent only when the profile turns it on, its settings as the
+ * profile writes them, so that the v9.8 profile's config stays the v9.8's,
+ * to the byte (PariteTest, EmpreintesFigeesTest).
  */
 final class MoteurReglages
 {
@@ -45,6 +52,9 @@ final class MoteurReglages
         foreach (self::ALGORITHME as $cle) {
             $config->{$cle} = self::copie($profil->{$cle});
         }
+        if (self::stigmergie($profil)) {
+            $config->stigmergie = self::copie($profil->stigmergie);
+        }
         // execution settings: they change no prompt
         $config->max_workers = $profil->parallelisme->appels_directs;
         $config->parallel_jures = true;
@@ -68,6 +78,12 @@ final class MoteurReglages
         }
 
         return $moteur;
+    }
+
+    /** Whether the profile turns the stigmergy on: its key, an object whose enabled is the boolean true. */
+    public static function stigmergie(stdClass $profil): bool
+    {
+        return ($profil->stigmergie ?? null) instanceof stdClass && ($profil->stigmergie->enabled ?? null) === true;
     }
 
     /**

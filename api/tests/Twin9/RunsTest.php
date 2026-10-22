@@ -760,6 +760,30 @@ final class RunsTest extends CartographeTestCase
     }
 
     /**
+     * An engine without the greffier's stigmergy (the test engine) would
+     * ignore config.stigmergie: a profile that turns it on is neither
+     * previewed nor launched, the v9.8's is.
+     */
+    public function testAnEngineWithoutTheStigmergyLaunchesNoProfileThatTurnsItOn(): void
+    {
+        self::assertFalse(class_exists(\Twin9\Stigmergie::class), 'le moteur factice n’a pas la stigmergie');
+        $alice = $this->registerAs('stigmergie@example.org', 'Alice');
+        $profil = ProfilRepository::predefini('stigmergie');
+        $profil->voie = 'directe';
+        $cree = $this->as_($alice, 'POST', '/api/twin9/profils', ['nom' => 'Stigmergie', 'profil' => $profil]);
+        self::assertSame(201, $cree->getStatusCode(), (string) $cree->getBody());
+
+        foreach (['/api/twin9/runs/apercu', '/api/twin9/runs'] as $route) {
+            $refus = $this->as_($alice, 'POST', $route, $this->lancement(self::json($cree)['id']));
+            self::assertSame(422, $refus->getStatusCode(), $route . ' : ' . $refus->getBody());
+            self::assertSame('Profil refusé — /stigmergie : le moteur de cette instance ne connaît pas la stigmergie '
+                . '(Twin_v9 à mettre à jour)', self::json($refus)['error']);
+        }
+        self::assertSame(0, (int) self::$pdo->query('SELECT COUNT(*) FROM twin9_runs')->fetchColumn());
+        self::assertSame(200, $this->as_($alice, 'POST', '/api/twin9/runs/apercu', $this->lancement(null))->getStatusCode());
+    }
+
+    /**
      * An engine before T16 would ignore the run's referential and read
      * RESPIRE's in its set, whatever the profile names (review of T16): the
      * platform launches nothing with it, nor previews.

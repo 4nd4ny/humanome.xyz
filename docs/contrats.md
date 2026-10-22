@@ -577,7 +577,10 @@ valide et range les profils.
   et laisse au serveur la validation, dont elle affiche le message.
 - **Nombres** : un réglage que le schéma type `number` garde la forme d'un
   flottant (`1.0`, non `1`), quelle que soit la forme reçue : le navigateur
-  ne distingue pas `1` de `1.0`, et la v9.8 lit `1.0` (T13).
+  ne distingue pas `1` de `1.0`, et la v9.8 lit `1.0` (T13). Un réglage
+  qu'il type `integer` seulement est un entier (`5`, non `5.0`, que le
+  schéma admet pourtant comme entier) : les réglages de la stigmergie
+  refusent un flottant là où ils attendent un entier (§7.4).
 - **Règles de l'API** : la réflexion coupée refuse les efforts `xhigh`
   et `max`, pour toute étape où les réglages se combinent ainsi
   (`CallSettings::parEtape`, T13) ; et celles des fournisseurs (ADR-012,
@@ -633,6 +636,16 @@ valide et range les profils.
   par défaut, que sert `GET /api/twin9/configuration` (`defaut`) et que
   prend un run lancé sans profil, est celui de la v9.8 avec le jeu de
   gabarits par défaut.
+- **Profils prédéfinis** (`ProfilRepository::PREDEFINIS`) : des points de
+  départ en lecture seule, qu'un nouveau profil copie, comme celui de la
+  v9.8 ; `GET /api/twin9/configuration` les sert (`predefinis` :
+  `[{id, nom, profil, fournisseurs}]`, chacun avec le jeu de gabarits par
+  défaut et les fournisseurs qu'atteignent ses appels). Un seul aujourd'hui,
+  « Stigmergie (essai) » (`stigmergie`,
+  `api/config/twin9-profil-stigmergie.json`, §7.4), que la page
+  `#/configuration` ne propose qu'en mode expert. Un run se lance avec un
+  profil de son propriétaire ou celui de la v9.8 : un profil prédéfini se
+  copie d'abord.
 
 ### 7.1 Ce que la v9.8 règle, et où le profil le range
 
@@ -798,6 +811,83 @@ Les plafonds déjà réglables dans le `config.json` restent à leur place :
 `calques.max_archives`, `merge.max_histoires`,
 `scan_global.retour_max_caracteres`.
 
+### 7.4 La stigmergie du greffier (sprint 3)
+
+Un écart voulu du moteur PHP, sans équivalent dans la v9.8 ni oracle
+(`docs/twin9/spec-stigmergie.md` de `Twin_v9`, §2 et §11.3) : les passages
+que valident le juge léger ou le tribunal déposent une trace dans la
+mémoire de la carte (`stigmergie/<jour>`, sous `test/` en mode essai), qui
+s'évapore d'une analyse de la journée à l'autre ; seul le greffier la lit,
+dans le bloc des calques de son dossier. Aucun appel en plus.
+
+- **Le réglage** : `stigmergie`, une clé **de premier niveau** du profil,
+  jamais une clé de `calques` (`PariteTest` compare `calques` clé à clé avec
+  l'oracle), **hors de `required`**, de valeur par défaut
+  `{"enabled": false}` : un profil rangé avant elle la reçoit à sa
+  complétion (`ProfilRepository::validate`), rien de plus. Le profil v9.8
+  la porte, explicitement désactivée.
+
+  | Clé | Type | Bornes du schéma | Absente |
+  |---|---|---|---|
+  | `enabled` | booléen, requis dans l'objet | — | — |
+  | `evaporation` | `number` | [0,2 ; 1] | 0,3, la valeur du moteur |
+  | `exploration` | `number` | [0 ; 1] | 0,2 |
+  | `graine` | `integer` | — | 1 |
+  | `lignes` | `integer` | [0 ; 10] | 5 |
+
+  Les quatre réglages n'ont pas de valeur par défaut au schéma : absents,
+  ils prennent celle du moteur (`Stigmergie::DEFAUTS`), que leur
+  description dit et que `ProfilTest` compare au moteur de `TWIN_V9_DIR`.
+  Les types sont stricts : le moteur ne convertit rien, une chaîne, un
+  booléen ou un flottant pour un entier ferait échouer le run ; l'API
+  ramène un flottant sans partie décimale à un entier là où le schéma
+  attend un entier (§7, « Nombres »). Le plancher de l'évaporation est
+  celui que conseille la spécification du moteur : en dessous de 0,2, une
+  trace peut disparaître d'un coup quand son analyse sort des 16 que lit un
+  run.
+- **Ce que reçoit le moteur** (`MoteurReglages`, §8.1) : `config.stigmergie`,
+  l'objet du profil recopié tel quel, **seulement si `enabled` est le
+  booléen `true`** ; sinon aucune clé, et la config du profil v9.8 reste
+  celle de la v9.8 à l'octet (`PariteTest`, `EmpreintesFigeesTest`
+  inchangés). Ni `CallSettings::empreinte` (§8.2) ni
+  `Evaluations::signature` (§8.7) ne la comptent : elle n'ajoute aucun
+  appel. Le moteur la compte dans l'empreinte de la journée : l'activer, ou
+  changer ses réglages, fait relire les journées de la carte, ce que
+  l'aperçu montre.
+- **Ce que la plateforme admet** (`ProfilPolicy::admettre`, à
+  l'enregistrement, à l'aperçu et au lancement) : activée, elle demande
+  `calques.accumulation` à `false` — les calques archivés votent déjà au
+  consensus, les traces y compteraient deux fois — ; sinon « Profil refusé
+  — /stigmergie : la stigmergie demande calques.accumulation à false ; les
+  calques archivés votent déjà au consensus, ses traces y compteraient deux
+  fois ». Le renforcement d'une analyse à l'autre demande `rescan` : sans
+  lui, une journée inchangée est reprise de la mémoire, sans nouvelle
+  analyse. Un moteur qui n'a pas la stigmergie (`Twin9\Stigmergie`)
+  l'ignorerait : l'aperçu et le lancement d'un profil qui l'active sont
+  alors refusés (« Profil refusé — /stigmergie : le moteur de cette
+  instance ne connaît pas la stigmergie (Twin_v9 à mettre à jour) »).
+- **Le profil d'essai** « Stigmergie (essai) »
+  (`api/config/twin9-profil-stigmergie.json`) : le profil v9.8, la
+  stigmergie activée avec les valeurs du moteur écrites
+  (`{"enabled": true, "evaporation": 0.3, "exploration": 0.2, "graine": 1,
+  "lignes": 5}`), `calques.accumulation` à `false` et `rescan` à `true` ;
+  rien d'autre (`ProfilTest` le vérifie, et le suit quand le profil v9.8
+  change). Il reste en mode complet : le mode essai ne lit que le premier
+  pôle et la première journée, où le greffier n'est souvent pas convoqué.
+- **La page `#/configuration`** ne règle la stigmergie qu'en mode expert
+  (`lib/ui-mode.js`) ; en mode simple sa partie est masquée, sauf dans un
+  profil qui l'active. Elle dit à côté du réglage ce que le serveur
+  refuserait (l'accumulation des calques) et ce que fait `rescan`.
+- **Ce que le moteur produit**, que la plateforme lit sans code nouveau :
+  le journal `stigmergie/<jour>` de la mémoire de la carte (exporté et
+  purgé avec elle), le bloc `stigmergie` en dernière clé de
+  `carto_jour.json` (spec du moteur, §9), et `configuration.algorithme.stigmergie`
+  dans le bloc de configuration du run (§8.9). L'affichage des traces est
+  un lot à part (S3-3). `StigmergieTest` mène deux runs d'une carte par le
+  tick, sur le scénario 16-test-mode de l'oracle : la première analyse fait
+  les appels de l'oracle et dépose, la seconde, sous `rescan`, relit la
+  première.
+
 ## 8. Le moteur Twin9 et la plateforme (T7)
 
 Un run Twin9 s'exécute sur le serveur, par tranches (ADR-011 §2). La
@@ -917,7 +1007,8 @@ passe un lecteur (`haiku#1`…), du type de son fournisseur résolu et de sa
 famille (déclarée, sinon celle de son fournisseur), avec sa graine
 (`stable_hash("haiku|passe1")` modulo 2³¹−1) et son sel (`|passe1`) ; les
 options `jours`, `rescan`, `test` (le mode essai) et `memoire` ; `referentiel`, le référentiel du run
-tiré de la base à sa version (T16, §8.8). Le profil v9.8 donne ainsi les réglages
+tiré de la base à sa version (T16, §8.8) ; et `config.stigmergie`, la
+stigmergie du greffier du profil, **seulement si elle est activée** (§7.4). Le profil v9.8 donne ainsi les réglages
 du scénario `02-cloud` de l'oracle, au type des backends près (`mock` sous
 `--mock`), et un run qu'ils conduisent est celui de l'oracle, appel par appel
 (`PariteTest::testTheV98ProfileDrivesTheEngine`). Les autres tests de parité
@@ -1784,7 +1875,10 @@ refusée ; fixture inventée `schemas/fixtures/twin9-configuration-exemple.json`
     l'appel part (`budget_sortie` est le `max_tokens` envoyé) ;
   - `college` (`nom`, `famille`, `passes`, `poids`), `backends`
     (`tribunal`, `rapide` : `kind`, `model`, `model_mini`), `algorithme`
-    (les paramètres de `MoteurReglages::ALGORITHME`) ;
+    (les paramètres de `MoteurReglages::ALGORITHME`, et `stigmergie` : la
+    stigmergie du greffier telle que le moteur la lit, `config.stigmergie`
+    quand elle est activée, `{"enabled": false}` sinon, §7.4 ; absente du
+    bloc d'un run lancé avant elle, qui reste valide) ;
   - `referentiel` (`id`, `version`, `label`, `empreinte`) et `gabarits`
     (`jeu`, `versions`, `empreinte`), jamais le bloc du référentiel (fiches,
     préambules) ni un gabarit ;

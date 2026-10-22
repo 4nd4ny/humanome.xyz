@@ -29,7 +29,10 @@ use stdClass;
  * instance, with its instance key, and another provider's model priced with
  * its caps. A profile may name a provider not open yet: it is saved, not
  * launched. The default profile, the v9.8's, takes the instance's default
- * set.
+ * set, as the presets do (ProfilRepository::PREDEFINIS). The greffier's
+ * stigmergy refuses the archived layers in the consensus (Twin_v9's
+ * docs/twin9/spec-stigmergie.md, Q3): they vote there already, its traces
+ * would count twice.
  */
 final class ProfilPolicy
 {
@@ -50,6 +53,26 @@ final class ProfilPolicy
     }
 
     /**
+     * The presets (ProfilRepository::PREDEFINIS), each with the instance's
+     * default template set, as the default profile: what a new profile
+     * copies.
+     *
+     * @return list<array{id: string, nom: string, profil: stdClass}>
+     */
+    public function predefinis(): array
+    {
+        $defaut = (new TemplateSets($this->pdo))->defaut();
+        $predefinis = [];
+        foreach (ProfilRepository::PREDEFINIS as $id => $nom) {
+            $profil = ProfilRepository::predefini($id);
+            $profil->gabarits = $defaut;
+            $predefinis[] = ['id' => $id, 'nom' => $nom, 'profil' => $profil];
+        }
+
+        return $predefinis;
+    }
+
+    /**
      * @param int $userId the profile's owner, whose template sets it may choose
      * @throws Twin9Exception 422 naming the choice refused
      */
@@ -58,6 +81,11 @@ final class ProfilPolicy
         if ($profil->cle === 'personnelle' && !$this->config->clePersoOuverte()) {
             throw new Twin9Exception('Profil refusé — /cle : les clés personnelles ne sont pas ouvertes sur cette instance',
                 422);
+        }
+        // the archived layers vote at the consensus already: the stigmergy's traces would count twice (Q3)
+        if (MoteurReglages::stigmergie($profil) && ($profil->calques->accumulation ?? true) !== false) {
+            throw new Twin9Exception('Profil refusé — /stigmergie : la stigmergie demande calques.accumulation à false ; '
+                . 'les calques archivés votent déjà au consensus, ses traces y compteraient deux fois', 422);
         }
         $combinaisons = (new CallSettings($profil))->combinaisons();
         // the holder of a key reads what is sent with it: a third party gets the platform's prompts with the

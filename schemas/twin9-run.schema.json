@@ -264,10 +264,23 @@
           "additionalProperties": false,
           "required": ["seuils_consensus", "juge_leger", "jury", "premiere_impression", "calques", "merge",
                        "scan_global", "troncatures"],
-          "description": "Les paramètres d'algorithme du profil, sous leurs noms du config.json de la v9.8 (MoteurReglages::ALGORITHME).",
+          "description": "Les paramètres d'algorithme du profil, sous leurs noms du config.json de la v9.8 (MoteurReglages::ALGORITHME), et la stigmergie du greffier.",
           "properties": {
             "seuils_consensus": true, "juge_leger": true, "jury": true, "premiere_impression": true, "calques": true,
-            "merge": true, "scan_global": true, "troncatures": true
+            "merge": true, "scan_global": true, "troncatures": true,
+            "stigmergie": {
+              "type": "object",
+              "additionalProperties": false,
+              "required": ["enabled"],
+              "description": "La stigmergie du greffier telle que le moteur la lit (config.stigmergie, spec-stigmergie.md de Twin_v9) : ses réglages, tels que le profil les écrit, quand elle est activée ; {\"enabled\": false} sinon. Absente du bloc d'un run lancé avant elle.",
+              "properties": {
+                "enabled": { "type": "boolean" },
+                "evaporation": { "type": "number" },
+                "exploration": { "type": "number" },
+                "graine": { "type": "integer" },
+                "lignes": { "type": "integer" }
+              }
+            }
           }
         },
         "referentiel": {

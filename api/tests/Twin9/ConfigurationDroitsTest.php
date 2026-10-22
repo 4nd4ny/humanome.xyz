@@ -105,6 +105,76 @@ final class ConfigurationDroitsTest extends CartographeTestCase
             ['profil' => ProfilRepository::v98()])->getStatusCode());
     }
 
+    /**
+     * The presets (the stigmergy's trial) are read by everyone, with the
+     * instance's default template set as the default profile, each with the
+     * providers its calls reach, and changed by no one: a new profile copies
+     * one, and its copy is admitted.
+     */
+    public function testThePresetsAreReadOnly(): void
+    {
+        $compte = $this->registerAs('essai@example.org', 'Essai');
+        $reponse = (string) $this->as_($compte, 'GET', '/api/twin9/configuration')->getBody();
+        $configuration = json_decode($reponse, true, 512, JSON_THROW_ON_ERROR);
+
+        self::assertSame([['id' => 'stigmergie', 'nom' => 'Stigmergie (essai)']], array_map(
+            static fn (array $p): array => ['id' => $p['id'], 'nom' => $p['nom']], $configuration['predefinis']));
+        $essai = $configuration['predefinis'][0];
+        self::assertSame(['id', 'nom', 'profil', 'fournisseurs'], array_keys($essai));
+        $attendu = json_decode(json_encode(ProfilRepository::predefini('stigmergie')), true);
+        $attendu['gabarits'] = $configuration['defaut']['gabarits'];
+        self::assertEquals($attendu, $essai['profil']);
+        self::assertSame([['id' => 'anthropic', 'libelle' => 'Anthropic', 'rgpd' => 'sous_conditions', 'voie' => 'lots']],
+            $essai['fournisseurs']);
+
+        // copied as the page copies it, its objects objects
+        $page = json_decode($reponse, false, 512, JSON_THROW_ON_ERROR);
+        $copie = $this->as_($compte, 'POST', '/api/twin9/profils', ['nom' => 'Mon essai', 'profil' => $page->predefinis[0]->profil]);
+        self::assertSame(201, $copie->getStatusCode());
+        self::assertTrue(self::json($copie)['profil']['stigmergie']['enabled']);
+        self::assertSame($configuration['predefinis'],
+            self::json($this->as_($compte, 'GET', '/api/twin9/configuration'))['predefinis'], 'le profil prédéfini reste tel quel');
+        self::assertSame(['Mon essai'],
+            array_column(self::json($this->as_($compte, 'GET', '/api/twin9/configuration'))['profils'], 'nom'));
+    }
+
+    /**
+     * The greffier's stigmergy refuses the archived layers in the consensus,
+     * at the registration as at the launch (ProfilPolicy::admettre): they
+     * vote there already, its traces would count twice (Twin_v9's
+     * spec-stigmergie.md, Q3). Off, it refuses nothing.
+     */
+    public function testTheStigmergyRefusesTheArchivedLayersInTheConsensus(): void
+    {
+        $compte = $this->registerAs('stigmergie@example.org', 'Stigmergie');
+        $profil = ProfilRepository::v98();
+        $profil->stigmergie = (object) ['enabled' => true];
+
+        $refuse = $this->as_($compte, 'POST', '/api/twin9/profils', ['nom' => 'Double compte', 'profil' => $profil]);
+        self::assertSame(422, $refuse->getStatusCode());
+        self::assertSame('Profil refusé — /stigmergie : la stigmergie demande calques.accumulation à false ; les calques '
+            . 'archivés votent déjà au consensus, ses traces y compteraient deux fois', self::json($refuse)['error']);
+        self::assertSame([], self::json($this->as_($compte, 'GET', '/api/twin9/configuration'))['profils']);
+
+        $profil->calques->accumulation = false;
+        $cree = $this->as_($compte, 'POST', '/api/twin9/profils', ['nom' => 'Stigmergie', 'profil' => $profil]);
+        self::assertSame(201, $cree->getStatusCode());
+        $id = self::json($cree)['id'];
+        $profil->calques->accumulation = true;
+        self::assertSame(422, $this->as_($compte, 'PUT', "/api/twin9/profils/$id", ['profil' => $profil])->getStatusCode());
+
+        // off, the archived layers vote as in the v9.8, its settings kept for later
+        $profil->stigmergie = (object) ['enabled' => false, 'evaporation' => 0.5];
+        self::assertSame(200, $this->as_($compte, 'PUT', "/api/twin9/profils/$id", ['profil' => $profil])->getStatusCode());
+
+        $politique = new ProfilPolicy(self::$pdo, new Twin9Config(new SettingsRepository(self::$pdo)));
+        $userId = (int) self::$pdo->query("SELECT id FROM users WHERE email = 'stigmergie@example.org'")->fetchColumn();
+        $profil->stigmergie->enabled = true;
+        $this->expectException(Twin9Exception::class);
+        $this->expectExceptionMessage('Profil refusé — /stigmergie');
+        $politique->admettre(ProfilRepository::validate($profil), $userId);
+    }
+
     public function testEachAccountSetsTheBudgetAndDurationOfItsRuns(): void
     {
         $compte = $this->registerAs('budget@example.org', 'Budget');

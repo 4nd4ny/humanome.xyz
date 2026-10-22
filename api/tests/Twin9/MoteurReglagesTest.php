@@ -95,4 +95,55 @@ final class MoteurReglagesTest extends TestCase
         self::assertSame(['editeur', 'anthropic', 'maison'],
             array_map(static fn (\stdClass $l): string => MoteurReglages::famille($valide, $l), $valide->college));
     }
+
+    /**
+     * The greffier's stigmergy (Twin_v9's docs/twin9/spec-stigmergie.md §2):
+     * off, the config has no key stigmergie — the v9.8 profile's config is
+     * the v9.8's —, whatever settings the profile writes besides; on, the
+     * profile's object is copied as it is, a key of the config's first
+     * level, never one of calques: its integers integers, its numbers
+     * floats, in the JSON the engine reads.
+     */
+    public function testTheStigmergyIsSentOnlyWhenItIsOn(): void
+    {
+        $v98 = MoteurReglages::depuis(ProfilRepository::validate(ProfilRepository::v98()));
+        self::assertObjectNotHasProperty('stigmergie', $v98->config);
+
+        $eteinte = ProfilRepository::v98();
+        $eteinte->stigmergie = (object) ['enabled' => false, 'evaporation' => 0.5, 'exploration' => 0.1, 'graine' => 7,
+                                         'lignes' => 3];
+        $moteur = MoteurReglages::depuis(ProfilRepository::validate($eteinte));
+        self::assertObjectNotHasProperty('stigmergie', $moteur->config);
+        self::assertEquals($v98, $moteur, 'désactivée, la config du moteur est celle du profil v9.8');
+
+        $profil = ProfilRepository::v98();
+        $profil->calques->accumulation = false;
+        $profil->stigmergie = (object) ['enabled' => true, 'evaporation' => 1, 'exploration' => 0.25, 'graine' => 7.0,
+                                        'lignes' => 3];
+        $valide = ProfilRepository::validate($profil);
+        $moteur = MoteurReglages::depuis($valide);
+        self::assertEquals($valide->stigmergie, $moteur->config->stigmergie);
+        self::assertNotSame($valide->stigmergie, $moteur->config->stigmergie, 'une copie, jamais le profil lui-même');
+        self::assertSame(['enabled' => true, 'evaporation' => 1.0, 'exploration' => 0.25, 'graine' => 7, 'lignes' => 3],
+            (array) $moteur->config->stigmergie);
+        self::assertObjectNotHasProperty('stigmergie', $moteur->config->calques);
+        self::assertStringContainsString('"stigmergie":{"enabled":true,"evaporation":1.0,"exploration":0.25,"graine":7,'
+            . '"lignes":3}', json_encode($moteur->config, JSON_THROW_ON_ERROR | JSON_PRESERVE_ZERO_FRACTION));
+
+        // only its own settings: the engine takes its defaults for the others
+        $profil->stigmergie = (object) ['enabled' => true];
+        self::assertEquals((object) ['enabled' => true],
+            MoteurReglages::depuis(ProfilRepository::validate($profil))->config->stigmergie);
+    }
+
+    /** The trial preset drives the engine with the stigmergy on, the archived layers out of the consensus, every day read again. */
+    public function testTheStigmergyPresetTurnsItOn(): void
+    {
+        $moteur = MoteurReglages::depuis(ProfilRepository::validate(ProfilRepository::predefini('stigmergie')));
+
+        self::assertSame(['enabled' => true, 'evaporation' => 0.3, 'exploration' => 0.2, 'graine' => 1, 'lignes' => 5],
+            (array) $moteur->config->stigmergie);
+        self::assertFalse($moteur->config->calques->accumulation);
+        self::assertTrue($moteur->rescan);
+    }
 }

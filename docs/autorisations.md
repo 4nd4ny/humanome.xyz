@@ -231,6 +231,7 @@ fixe ce qui vaut pour toute l'instance. Chaque ligne de la matrice a son test da
 | Ses profils : créer, lire, modifier, supprimer | — | ✔ les siens | ✔ les siens |
 | Le profil d'un autre | — | — (404) | — (404) |
 | Le profil v9.8, par défaut | — | lecture (une modification en fait une copie, la sienne) | idem |
+| Les profils prédéfinis (« Stigmergie (essai) », proposé en mode expert) | — | lecture (on le copie dans un nouveau profil, le sien) | idem |
 | Le budget et la durée de ses runs | — | ✔ | ✔ |
 | Sa clé : celle de l'instance ou la sienne | — | ✔ ; la sienne si l'administrateur l'a ouverte, et chez Anthropic seulement (ADR-012) | idem |
 | Le fournisseur de chaque étage, étape ou lecteur de ses profils (ADR-012) | — | ✔ parmi les six du registre ; un fournisseur que l'administrateur n'a pas ouvert s'enregistre, mais ne s'estime ni ne se lance | idem |
@@ -257,6 +258,8 @@ lisant le référentiel du profil (`RunsTest.php`,
 ont les leurs : leur ouverture (`testTheProvidersAreOpenedByTheAdministrator`),
 les clés d'instance que lit l'administrateur seul (`testTheAdministratorReadsWhichInstanceKeysAreSet`),
 les fournisseurs de chaque profil que l'accord nomme (`testTheConfigurationNamesEachProfilesProviders`),
+les profils prédéfinis (`testThePresetsAreReadOnly`), la stigmergie, que
+l'accumulation des calques fait refuser (`testTheStigmergyRefusesTheArchivedLayersInTheConsensus`),
 un profil qui nomme un fournisseur fermé (`testAProviderNotOpenYetIsSavedNotLaunched`),
 la clé personnelle, Anthropic seulement
 (`testThePersonalKeyOnlyWhereTheAdministratorOpenedIt`), et le lancement
@@ -264,7 +267,7 @@ refusé (`RunsTest.php`, `testAProviderNotOpenLaunchesNothing`).
 
 | Route | Méthode | Accès |
 |---|---|---|
-| `/api/twin9/configuration` | GET | Compte : ses profils (sans leur document), le profil par défaut (celui de la v9.8, avec le jeu de gabarits par défaut), les référentiels publiés et leurs versions, ses propres brouillons (T15), les jeux de gabarits qu'il peut choisir, sa clé personnelle (ouverte, enregistrée) |
+| `/api/twin9/configuration` | GET | Compte : ses profils (sans leur document), le profil par défaut (celui de la v9.8, avec le jeu de gabarits par défaut), les profils prédéfinis (`predefinis`, de même), les référentiels publiés et leurs versions, ses propres brouillons (T15), les jeux de gabarits qu'il peut choisir, sa clé personnelle (ouverte, enregistrée) |
 | `/api/twin9/profils` | POST | Compte, + CSRF. Le profil doit être valide (schéma, règles de l'API, dont celles des fournisseurs) et admis (référentiel publié, ou son brouillon en mode essai, T15 ; jeu qu'il peut choisir ; clé personnelle ouverte, et seulement pour un profil tout Anthropic) |
 | `/api/twin9/profils/{id}` | GET/PUT/DELETE | Son propriétaire, + CSRF sur PUT et DELETE ; 404 pour tout autre |
 

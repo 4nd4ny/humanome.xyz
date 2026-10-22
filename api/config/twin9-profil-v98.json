@@ -80,6 +80,9 @@
     "enabled": false,
     "retour_max_caracteres": 30000
   },
+  "stigmergie": {
+    "enabled": false
+  },
   "troncatures": {
     "journee": {
       "justification_tag": 400,

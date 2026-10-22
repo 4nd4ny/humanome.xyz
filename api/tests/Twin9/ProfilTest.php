@@ -138,6 +138,10 @@ final class ProfilTest extends TestCase
         yield 'dans un lecteur' => [static function (stdClass $p): void { $p->college[0]->seed = 7; }];
         yield 'dans le jury' => [static function (stdClass $p): void { $p->jury->taille = 4; }];
         yield 'une troncature' => [static function (stdClass $p): void { $p->troncatures->journee->titre = 80; }];
+        yield 'dans la stigmergie' => [static function (stdClass $p): void { $p->stigmergie->rho = 0.3; }];
+        yield 'la stigmergie dans les calques' => [static function (stdClass $p): void {
+            $p->calques->stigmergie = (object) ['enabled' => false];
+        }];
     }
 
     /** @param callable(stdClass): void $change */
@@ -180,6 +184,24 @@ final class ProfilTest extends TestCase
         yield 'zéro journée' => ['/jours', 0];
         yield 'version du schéma' => ['/schemaVersion', '2.0.0'];
         yield 'autre document' => ['/kind', 'referentiel'];
+        // the stigmergy (Twin_v9's spec-stigmergie.md §2): the engine converts nothing, a string or a float for an
+        // integer would fail the run; ρ below 0.2 lets a trace vanish at once
+        yield 'stigmergie sans enabled' => ['/stigmergie', (object) ['evaporation' => 0.3]];
+        yield 'stigmergie en booléen' => ['/stigmergie', true];
+        yield 'enabled en chaîne' => ['/stigmergie', (object) ['enabled' => 'true']];
+        yield 'enabled en entier' => ['/stigmergie', (object) ['enabled' => 1]];
+        yield 'évaporation sous 0,2' => ['/stigmergie', (object) ['enabled' => true, 'evaporation' => 0.1]];
+        yield 'évaporation nulle' => ['/stigmergie', (object) ['enabled' => true, 'evaporation' => 0]];
+        yield 'évaporation au-delà de 1' => ['/stigmergie', (object) ['enabled' => true, 'evaporation' => 1.5]];
+        yield 'évaporation en chaîne' => ['/stigmergie', (object) ['enabled' => true, 'evaporation' => '0.3']];
+        yield 'exploration négative' => ['/stigmergie', (object) ['enabled' => true, 'exploration' => -0.1]];
+        yield 'exploration au-delà de 1' => ['/stigmergie', (object) ['enabled' => true, 'exploration' => 1.01]];
+        yield 'exploration booléenne' => ['/stigmergie', (object) ['enabled' => true, 'exploration' => true]];
+        yield 'graine fractionnaire' => ['/stigmergie', (object) ['enabled' => true, 'graine' => 1.5]];
+        yield 'graine en chaîne' => ['/stigmergie', (object) ['enabled' => true, 'graine' => '1']];
+        yield 'lignes au-delà de 10' => ['/stigmergie', (object) ['enabled' => true, 'lignes' => 11]];
+        yield 'lignes négatives' => ['/stigmergie', (object) ['enabled' => true, 'lignes' => -1]];
+        yield 'lignes en liste' => ['/stigmergie', (object) ['enabled' => true, 'lignes' => [5]]];
     }
 
     #[DataProvider('invalidValues')]
@@ -214,6 +236,114 @@ final class ProfilTest extends TestCase
         self::assertSame(800, $complet->troncatures->tribunal->prescription);
         self::assertSame(1.0, $complet->college[0]->poids);
         self::assertObjectNotHasProperty('voie', $profil, 'the profile given is left untouched');
+    }
+
+    /**
+     * The greffier's stigmergy, off by default (Twin_v9's spec-stigmergie.md
+     * §2): the v9.8 profile says so; a profile stored before it, without the
+     * key, gets {enabled: false}, nothing more — its settings have no
+     * default in the schema, the engine's apply.
+     */
+    public function testTheStigmergyIsOffByDefault(): void
+    {
+        self::assertEquals((object) ['enabled' => false], ProfilRepository::v98()->stigmergie);
+        self::assertNotContains('stigmergie', self::schema()->required, 'hors de required');
+
+        $avant = ProfilRepository::v98();
+        unset($avant->stigmergie);
+        $complet = ProfilRepository::validate($avant);
+        self::assertEquals((object) ['enabled' => false], $complet->stigmergie);
+        self::assertEquals(ProfilRepository::validate(ProfilRepository::v98()), $complet);
+
+        $allumee = ProfilRepository::v98();
+        $allumee->stigmergie = (object) ['enabled' => true];
+        self::assertEquals((object) ['enabled' => true], ProfilRepository::validate($allumee)->stigmergie);
+
+        // the bounds, reached
+        $allumee->stigmergie = (object) ['enabled' => true, 'evaporation' => 0.2, 'exploration' => 0, 'graine' => -3,
+                                         'lignes' => 0];
+        self::assertSame(['enabled' => true, 'evaporation' => 0.2, 'exploration' => 0.0, 'graine' => -3, 'lignes' => 0],
+            (array) ProfilRepository::validate($allumee)->stigmergie);
+        $allumee->stigmergie = (object) ['enabled' => true, 'evaporation' => 1, 'exploration' => 1, 'lignes' => 10];
+        self::assertSame(['enabled' => true, 'evaporation' => 1.0, 'exploration' => 1.0, 'lignes' => 10],
+            (array) ProfilRepository::validate($allumee)->stigmergie);
+    }
+
+    /**
+     * What the schema says of the stigmergy is what the engine does
+     * (Stigmergie::DEFAUTS, LIGNES_MAX): its settings, absent, take the
+     * engine's values, which their descriptions give; the preset writes
+     * them. Without the engine's stigmergy, this test skips.
+     */
+    public function testTheStigmergysValuesAreTheEngines(): void
+    {
+        if (!EngineLoader::load() || !class_exists(\Twin9\Stigmergie::class)) {
+            self::markTestSkipped('Twin_v9 absent (TWIN_V9_DIR), ou sans la stigmergie');
+        }
+        $noeud = self::schema()->properties->stigmergie;
+        $ecrites = [];
+        foreach (\Twin9\Stigmergie::DEFAUTS as $cle => $valeur) {
+            self::assertSame(1, preg_match('/Absent : ([0-9,]+), la valeur du moteur/', $noeud->properties->{$cle}->description,
+                $m), $cle);
+            $ecrites[$cle] = str_contains($m[1], ',') ? (float) str_replace(',', '.', $m[1]) : (int) $m[1];
+            self::assertObjectNotHasProperty('default', $noeud->properties->{$cle}, "$cle : la valeur du moteur, pas du schéma");
+        }
+        self::assertSame(\Twin9\Stigmergie::DEFAUTS, $ecrites);
+        self::assertSame(\Twin9\Stigmergie::LIGNES_MAX, $noeud->properties->lignes->maximum);
+        self::assertSame(\Twin9\Stigmergie::DEFAUTS, array_diff_key((array) ProfilRepository::predefini('stigmergie')->stigmergie,
+            ['enabled' => true]));
+    }
+
+    /**
+     * An integer the schema wants is an integer, whatever form it came in:
+     * the schema admits 5.0 as an integer, the engine's stigmergy does not
+     * (Stigmergie::reglages(): TypeError); as a number stays a float.
+     */
+    public function testAnIntegerStaysAnInteger(): void
+    {
+        $profil = ProfilRepository::v98();
+        $profil->stigmergie = (object) ['enabled' => true, 'graine' => 5.0, 'lignes' => 4.0];
+        $profil->jury->graine = 2.0;
+        $profil->jours = 3.0;
+        $profil->troncatures->journee->calques_extrait = 240.0;
+
+        $valide = ProfilRepository::validate($profil);
+        self::assertSame([5, 4, 2, 3, 240], [$valide->stigmergie->graine, $valide->stigmergie->lignes, $valide->jury->graine,
+                                             $valide->jours, $valide->troncatures->journee->calques_extrait]);
+        self::assertSame(1.0, $valide->college[0]->poids);
+        self::assertStringContainsString('"graine":5,"lignes":4', json_encode($valide->stigmergie, JSON_PRESERVE_ZERO_FRACTION));
+    }
+
+    /**
+     * The trial preset of the stigmergy, a starting point a new profile
+     * copies: valid, and the v9.8 profile but for the stigmergy on with the
+     * engine's values written, the archived layers out of the consensus
+     * (Q3) and every day read again (rescan: the reinforcement asks for it,
+     * spec-stigmergie.md §11.3) — the v9.8 profile changed, the preset
+     * follows.
+     */
+    public function testTheStigmergyPresetIsTheV98ProfileWithTheStigmergyOn(): void
+    {
+        self::assertSame(['stigmergie' => 'Stigmergie (essai)'], ProfilRepository::PREDEFINIS);
+        $essai = ProfilRepository::predefini('stigmergie');
+        self::assertEquals($essai, ProfilRepository::validate($essai), 'complet et valide');
+
+        $v98 = self::feuilles(ProfilRepository::v98());
+        $feuilles = self::feuilles($essai);
+        $diff = [];
+        foreach ($feuilles + $v98 as $pointer => $_) {
+            if (($v98[$pointer] ?? null) !== ($feuilles[$pointer] ?? null)) {
+                $diff[$pointer] = $feuilles[$pointer] ?? null;
+            }
+        }
+        ksort($diff);
+        self::assertSame(['/calques/accumulation' => false, '/rescan' => true, '/stigmergie/enabled' => true,
+                          '/stigmergie/evaporation' => 0.3, '/stigmergie/exploration' => 0.2, '/stigmergie/graine' => 1,
+                          '/stigmergie/lignes' => 5], $diff);
+        self::assertNotSame($essai, ProfilRepository::predefini('stigmergie'), 'une copie à chaque appel');
+
+        $this->expectException(\InvalidArgumentException::class);
+        ProfilRepository::predefini('v98');
     }
 
     /** @return iterable<string, array{0: string}> */
@@ -572,6 +702,24 @@ final class ProfilTest extends TestCase
             $node = $node->{$key};
         }
         $node->{$last} = $value;
+    }
+
+    /**
+     * A document's leaves, by JSON pointer.
+     *
+     * @return array<string, mixed>
+     */
+    private static function feuilles(mixed $valeur, string $pointer = ''): array
+    {
+        if (!$valeur instanceof stdClass && !\is_array($valeur)) {
+            return [$pointer => $valeur];
+        }
+        $out = [];
+        foreach ((array) $valeur as $cle => $enfant) {
+            $out += self::feuilles($enfant, $pointer . '/' . $cle);
+        }
+
+        return $out;
     }
 
     /** @return array<string, int> the leaves of the truncations, by group/name */

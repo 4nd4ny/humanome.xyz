@@ -42,7 +42,9 @@ use stdClass;
  * The engine reads the run's referential from its settings, drawn from the
  * base at the version its profile freezes (T16, ReferentielMoteur): any
  * referential published, or a draft its author tries; the attestation keeps
- * its fingerprint.
+ * its fingerprint. A profile with the greffier's stigmergy on is launched
+ * only by an engine that has it (Twin9\Stigmergie): another one would ignore
+ * it.
  *
  * A launch takes the days its owner's credit, or its budget, lets in with
  * its merge (T8, the strategy A): the first days of the portfolio, as long as
@@ -515,6 +517,12 @@ final class Lancement
         [$profil, $nom] = $this->profil($userId, $profilId, $politique);
         $politique->admettre($profil, $userId);
         $politique->admettreAuLancement($profil);
+        // an engine without the stigmergy would ignore config.stigmergie: the run, its configuration saying it on,
+        // would be the v9.8's
+        if (MoteurReglages::stigmergie($profil) && !class_exists(\Twin9\Stigmergie::class)) {
+            throw new Twin9Exception('Profil refusé — /stigmergie : le moteur de cette instance ne connaît pas la '
+                . 'stigmergie (Twin_v9 à mettre à jour)', 422);
+        }
         if ($profil->cle === 'personnelle' && !$politique->choix($userId)['cle_perso_enregistree']) {
             throw new Twin9Exception('Profil refusé — /cle : aucune clé Anthropic personnelle n’est enregistrée', 422);
         }

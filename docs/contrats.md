@@ -1992,6 +1992,6 @@ qu'envoie l'assistant n'entre dans sa consigne que si c'est le `route` d'une
 page non interne qui a un `titre` : « Elle consulte actuellement : <titre>
 (<href>). », puis le `resume` et les `points` de cette seule page. Un fichier
 absent, illisible, d'une autre version ou sans `pages` vaut absence de carte :
-la rubrique n'est alors gardée que si elle a la forme d'un nom de route. Toute
+la rubrique est alors vidée, même un nom de route. Toute
 évolution de ces champs ou de leur sens touche donc aussi l'API (même commit,
 même release).

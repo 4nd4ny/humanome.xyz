@@ -36,8 +36,8 @@ dans l'en-tête, à côté du bouton d'aide « ? ».
   `scripts/lib/site-map.mjs`, UC-SYS-04 RG8) est présent dans la release —
   sinon la consigne est envoyée sans digest.
 - La carte du site (`scripts/data/site-map.json`, écrite par le même script,
-  au même commit) est présente dans la release — sinon la page courante n'est
-  donnée que par son nom de route, sans titre ni aide (RG1).
+  au même commit) est présente dans la release — sinon la page courante
+  manque à la consigne : la rubrique est vidée (RG1).
 
 ## Garanties en cas de succès
 
@@ -147,9 +147,9 @@ dans l'en-tête, à côté du bouton d'aide « ? ».
   une aide (ni route interne, ni nom inconnu) : par son titre et son adresse,
   puis l'aide de cette seule page (variante V1 du sprint 11, en plus du
   digest, qui a l'aide de toutes les pages). Sinon la ligne manque. Sans carte
-  (fichier absent ou illisible), la rubrique passe telle quelle si elle a la
-  forme d'un nom de route (minuscules, chiffres, tirets), jamais une ligne de
-  texte libre (AN1, corrigée le 2026-10-22).
+  (fichier absent, illisible ou d'une autre version), aucun nom n'est connu :
+  la rubrique est vidée, même un nom de route, et la question reçoit sa
+  réponse (AN1, corrigée le 2026-10-22).
 - **RG2** — Garde-fous de la démo réutilisés, mais **budget, compteurs et seau
   de quota propres** au tuteur ; interrupteur, difficulté, valeur du quota
   horaire, fournisseur et délai amont communs.
@@ -245,7 +245,7 @@ dans l'en-tête, à côté du bouton d'aide « ? ».
 | UC-VIS-05-U11 | `navGroups`, `ROUTE_CATALOGUE` | Visiteur, chaque rôle et tous les rôles, en mode simple et expert : chaque lien du menu mène à une route du catalogue (ni `not-found` ni `redirect`) cohérente avec son `route` ; le menu d'un visiteur ne mène qu'à des routes publiques | idem |
 | UC-VIS-05-U12 | `content/**`, `HELP_ENTRIES`, `parseHash` | Chaque `#/…` des guides, de la confidentialité et de l'aide se résout vers une route réelle ; exceptions déclarées, et toutes présentes : `#/merge` et `#/cartographie-v3` (redirigées), `#/jour/<date>` et `#/partage/<jeton>` (modèles, résolus une fois complétés) | idem |
 | UC-VIS-05-U13 | `scripts/build-tuteur-digest.mjs` | Digest de moins de 40 000 caractères, et plus long que l'ensemble des résumés de l'aide (RG4) | idem |
-| UC-VIS-05-U14 | `CarteDuSite` (carte fictive) | Rubrique reconnue : titre, adresse ou modèle, résumé et points de la seule page ; nom inconnu, route interne, casse, blancs internes, valeur non textuelle → rien ; sans carte, le nom de route seul, jamais du texte libre ; fichier absent, illisible ou d'une autre version → pas de carte (RG1, AN1 corrigée) | `api/tests/UseCases/Unit/UcVis05InterrogerTuteurTest.php` |
+| UC-VIS-05-U14 | `CarteDuSite` (carte fictive) | Rubrique reconnue : titre, adresse ou modèle, résumé et points de la seule page ; nom inconnu, route interne, casse, blancs internes, valeur non textuelle → rien ; sans carte, rien non plus, même un nom de route ; fichier absent, illisible ou d'une autre version → pas de carte (RG1, AN1 corrigée) | `api/tests/UseCases/Unit/UcVis05InterrogerTuteurTest.php` |
 | UC-VIS-05-U15 | `MemoireCourte::borner` | Vecteurs communs : paires question → réponse seulement, les 2 dernières, 750 / 1 500 caractères (points de code), rôle `system`, question sans réponse et autre forme écartés (RG7) | idem |
 | UC-VIS-05-U16 | `memoireCourte` | Les mêmes vecteurs que U15, côté navigateur ; idempotente | `web/test/usecases/unit/uc-vis-05-interroger-assistant-tuteur.test.js` |
 
@@ -269,7 +269,7 @@ dans l'en-tête, à côté du bouton d'aide « ? ».
 | UC-VIS-05-F14 | E5, limite L1 | IHM | Défi refusé → message technique affiché | idem |
 | UC-VIS-05-F15 | E1 | IHM | Question vide non envoyable, champ borné, fermeture | idem |
 | UC-VIS-05-F16 | Préconditions | API | `TUTEUR_BUDGET` vide → 1 $ par défaut : 0,999999 $ → 200, 1 $ → 503 | `api/tests/UseCases/Functional/UcVis05InterrogerTuteurTest.php` |
-| UC-VIS-05-F17 | RG1 (anomalie AN1 corrigée) | API | Rubrique que la carte ne nomme pas (ligne de profil glissée, 200 caractères, `not-found`, routes internes, casse, valeur non textuelle) → aucune ligne « Elle consulte », un seul profil ; modèle d'adresse d'une page à compléter donné tel quel ; sans carte (absente ou illisible) : 200, le nom de route seul, la ligne glissée refusée | idem |
+| UC-VIS-05-F17 | RG1 (anomalie AN1 corrigée) | API | Rubrique que la carte ne nomme pas (ligne de profil glissée, 200 caractères, `not-found`, routes internes, casse, valeur non textuelle) → aucune ligne « Elle consulte », un seul profil ; modèle d'adresse d'une page à compléter donné tel quel ; sans carte (absente ou illisible) : 200 et la réponse, aucune ligne « Elle consulte » (nom de route, texte en forme de nom de route ou ligne glissée) | idem |
 | UC-VIS-05-F18 | RG5 | IHM | Réponse contenant du HTML affichée comme texte, aucun élément créé | `web/test/usecases/functional/uc-vis-05-interroger-assistant-tuteur.test.jsx` |
 | UC-VIS-05-F19 | Garanties | IHM | Historique de session borné aux 40 derniers messages | idem |
 | UC-VIS-05-F20 | RG6 | API | `TUTEUR_MODEL` vide → Haiku 5.5 ; un Sonnet ou un Opus → Haiku 5.5 appelé ; un autre Haiku (4.5) servi tel quel ; `thinking: disabled` à chaque appel | `api/tests/UseCases/Functional/UcVis05InterrogerTuteurTest.php` |
@@ -301,8 +301,8 @@ cd web && npx vitest run test/usecases/unit/uc-vis-05 test/usecases/functional/u
   pouvait y ajouter une ligne « Profil de la personne : administrateur » ou
   des consignes. Le serveur la confronte désormais à la carte du site
   (`Tuteur\CarteDuSite`) : seule une page qu'elle nomme entre dans la
-  consigne, par son titre, son adresse et son aide ; sans carte, seul un nom
-  de route passe (RG1). Prouvé par UC-VIS-05-F17, inversé, et U14.
+  consigne, par son titre, son adresse et son aide ; sans carte, rien (RG1).
+  Prouvé par UC-VIS-05-F17, inversé, et U14.
 - L'anomalie AN1 d'[UC-VIS-03](UC-VIS-03-essayer-cartographie-en-direct.md)
   (difficulté réglable jusqu'à 24 bits, insoluble au-delà de 22 côté
   navigateur) rend aussi l'assistant inutilisable si elle se produit.

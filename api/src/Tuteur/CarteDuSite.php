@@ -21,14 +21,11 @@ use Humanome\Env;
  * a line to the system prompt.
  *
  * Read per request, like the digest. A missing, unreadable or malformed file
- * is no error: the tutor answers as it did before the map, the route name
- * alone — and only something shaped like a route name.
+ * is no error: the tutor answers without the page — no name is known then, so
+ * the `rubrique` is dropped, even one shaped like a route name.
  */
 final class CarteDuSite
 {
-    /** A route name of web/src/router.js: lowercase letters, digits, hyphens. */
-    private const FORME_DE_ROUTE = '/^[a-z][a-z0-9-]{0,63}\z/';
-
     /**
      * @param array<string, array{href: string, titre: string, resume: string, points: list<string>}> $pages
      *   by route name: the pages that have help
@@ -111,23 +108,18 @@ final class CarteDuSite
 
     /**
      * The system prompt's lines for the page the person is on: none when
-     * $rubrique (what the client sent, any value) names no page.
+     * there is no map, or when $rubrique (what the client sent, any value)
+     * names no page of it.
      *
      * @return list<string>
      */
     public static function lignesRubrique(?self $carte, mixed $rubrique): array
     {
-        if (!\is_string($rubrique)) {
+        // No map, no known name: nothing the client sent reaches the prompt.
+        if ($carte === null || !\is_string($rubrique)) {
             return [];
         }
-        $rubrique = trim($rubrique);
-        if ($carte === null) {
-            // No map: the route name, as before the map — never free text.
-            return preg_match(self::FORME_DE_ROUTE, $rubrique) === 1
-                ? ['Elle consulte actuellement : ' . $rubrique . '.']
-                : [];
-        }
-        $page = $carte->page($rubrique);
+        $page = $carte->page(trim($rubrique));
         if ($page === null) {
             return [];
         }

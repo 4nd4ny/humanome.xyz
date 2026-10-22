@@ -146,7 +146,7 @@ describe('UC-EPI-05 — un référentiel en Markdown', () => {
       '6 : niveau sauté : « #### » ici, « ### » au plus',
       '7 : titre mal formé « ## A2 Sans tiret » (attendu « ## CODE — Nom »)',
       '8 : code en double « A1 » (déjà ligne 5)',
-      '9 : code invalide « ABCDEFGHI » : 1 à 8 caractères, lettres, chiffres, « . », « _ » ou « - », le premier lettre ou chiffre',
+      '9 : code invalide « ABCDEFGHI » : 1 à 8 caractères, lettres sans accent (A à Z, a à z), chiffres, « . », « _ » ou « - », le premier lettre ou chiffre',
       '10 : pôle 3 : les pôles se numérotent 1, 2, 3… dans l’ordre, le pôle 2 est attendu ici',
       '12 : titre de pôle mal formé « # Pôle sans numéro » (attendu « # Pôle 3 — Nom »)',
       '12 : le pôle 3 « Pôle sans numéro » n’a aucune compétence (« ## CODE — Nom »)',
@@ -156,6 +156,10 @@ describe('UC-EPI-05 — un référentiel en Markdown', () => {
     const refuse = analyserMarkdown('# Pôle 1 — A\n## A1 sans tiret\n### A1.1 — Fine\n#### A1.1.1 — Plus fine\n# Pôle 2 — B\n## B1 — Bonne')
     expect(enLignes(refuse.erreurs)).toEqual(['2 : titre mal formé « ## A1 sans tiret » (attendu « ## CODE — Nom »)'])
     expect(refuse.competences).toEqual([{ code: 'B1', nom: 'Bonne', pole: 2 }])
+    // une lettre accentuée est une lettre pour qui écrit : le message dit lesquelles vont
+    expect(enLignes(analyserMarkdown('# Pôle 1 — A\n## É1 — Entendre\n## A1 — x').erreurs)).toEqual([
+      '2 : code invalide « É1 » : 1 à 8 caractères, lettres sans accent (A à Z, a à z), chiffres, « . », « _ » ou « - », le premier lettre ou chiffre',
+    ])
     expect(enLignes(analyserMarkdown('').erreurs)).toEqual(['aucun pôle : « # Pôle 1 — Nom » ouvre le premier'])
     expect(enLignes(analyserMarkdown('<!-- source : jamais refermé\n# Pôle 1 — A\n## A1 — x').erreurs)).toEqual([
       '1 : commentaire jamais refermé (« --> » manque)',

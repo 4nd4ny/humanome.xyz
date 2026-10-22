@@ -9,6 +9,7 @@
 
 import { useEffect, useMemo, useRef, useState } from 'react'
 import { calendarGrid, moveFocus } from '../core/heatmap.js'
+import { analysesLabel } from '../core/model.js'
 import { daysBetween, formatLong, weekdayName } from '../core/dates.js'
 import { heatColor, themed } from './colors.js'
 import { usePalette } from './palette.js'
@@ -34,6 +35,8 @@ export function cellLabel(date, cell, { mode, t, observed }) {
   else parts.push(`poids des traces ${nf.format(cell.value)}`)
   parts.push(`niveau ${cell.level} sur 5`)
   if (!cell.hasAnalysis) parts.push('sans analyse')
+  // Sprint 4, T2 : ses passages comptent dans l'analyse d'une autre journée.
+  if (cell.coveredBy?.length) parts.push(`passages relevés par ${analysesLabel(cell.coveredBy, date)}`)
   parts.push(cell.active ? 'cochée' : 'décochée')
   if (observed) parts.push('compétence sélectionnée observée')
   if (t === date) parts.push('date t')

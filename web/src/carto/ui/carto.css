@@ -1613,6 +1613,14 @@ kbd {
 .carto-verdict-list li.is-focus {
   background: var(--info-bg);
 }
+.carto-covered h3 {
+  font-size: 0.95rem;
+  margin: 0.9rem 0 0.2rem;
+}
+.carto-covered .carto-verdict-list .carto-link-btn {
+  margin-left: 0;
+  font-size: inherit;
+}
 .carto-why h3 {
   font-size: 0.95rem;
   margin: 0.9rem 0 0.3rem;

@@ -665,6 +665,7 @@ export default function CartoApp({ route = {}, deps = {}, slots = {}, mode = 'si
             reinforced={Boolean(prefs.reinforced)}
             onClose={closeDay}
             onNavigate={(d) => openDay(d, route.focus ?? undefined)}
+            onOpenDay={openDay}
             trapActive={!ui.reader}
             renderVerdict={(v, variant) => (
               <DayVerdictDetail

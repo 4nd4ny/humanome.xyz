@@ -9,6 +9,10 @@
 // jour. », la trace 1 de 6.08 ne disait que son rôle dans la modale du 10, et
 // le volet ouvert sur le 3 ne mentionnait pas le 10. Ces assertions sont
 // inversées ici : elles échouent sur le code d'avant T1.
+//
+// T2 (plus bas) : l'index dit la date du passage de chaque trace (`at`) ; la
+// modale du 3 renvoie à l'analyse du 10, le gestionnaire le dit aussi, et un
+// jeu rangé avant T2 le reçoit une fois, à son ouverture.
 import { useEffect, useState } from 'react'
 import { cleanup, fireEvent, render, screen, waitFor, within } from '@testing-library/react'
 import { afterEach, beforeEach, describe, expect, it } from 'vitest'
@@ -154,6 +158,73 @@ describe('sprint 4 — une analyse qui couvre plusieurs journées du portfolio (
     await waitFor(() => expect(window.location.hash).toBe('#/cartographie/jour/2026-02-10?focus=6.08'))
     const dialog = await screen.findByRole('dialog', { name: /10 février 2026/ })
     expect(dialog.querySelector('.carto-pole.is-focus .carto-code').textContent).toBe('6.08')
+  })
+})
+
+/** L'index tel qu'une version d'avant T2 le rangeait : aucune trace ne porte `at`. */
+function withoutAt(ds) {
+  const out = structuredClone(ds)
+  for (const d of out.days) for (const v of d.variants) for (const verdict of v.verdicts) for (const t of verdict.traces) delete t.at
+  return out
+}
+
+describe('sprint 4 — la journée du passage renvoie à l’analyse qui l’a relevé (T2)', () => {
+  const covered = (dialog) => within(dialog).queryByRole('region', { name: /^Relevé par l’analyse du / })
+
+  it('modale du 3 : « Relevé par l’analyse du 10 février », 6.08 et sa preuve ; le lien ouvre le 10 sur 6.08', async () => {
+    window.location.hash = '#/cartographie/jour/2026-02-03'
+    await mount(await storeMulti())
+    const dialog = await screen.findByRole('dialog', { name: /3 février 2026/ })
+    // La journée n'a toujours pas d'analyse à elle (T3 n'est pas fait) : le message reste.
+    expect(within(dialog).getByText('Aucune analyse n’est rangée à ce jour.')).toBeTruthy()
+    const section = covered(dialog)
+    expect(section).toBeTruthy()
+    expect(within(section).getByRole('heading').textContent).toBe('Relevé par l’analyse du 10 février')
+    expect(section.textContent).toContain('leurs traces comptent dans la cartographie du 10 février, pas dans celle de ce jour')
+    expect([...section.querySelectorAll('li')].map((li) => li.textContent)).toEqual(['6.08 Soin des lieux · 1 preuve, 0 indice'])
+    const link = within(section).getByRole('button', { name: '6.08 Soin des lieux' })
+    expect(link.getAttribute('title')).toBe('Ouvrir la cartographie du 10 février 2026 sur 6.08')
+    fireEvent.click(link)
+    await waitFor(() => expect(window.location.hash).toBe('#/cartographie/jour/2026-02-10?focus=6.08'))
+    const ten = await screen.findByRole('dialog', { name: /10 février 2026/ })
+    expect(ten.querySelector('.carto-pole.is-focus .carto-code').textContent).toBe('6.08')
+    // Le 10 a son analyse : pas de section.
+    expect(covered(ten)).toBeNull()
+  })
+
+  it('gestionnaire : le 3 « relevée le 10 févr. », le 10 « couvre 1 autre journée », sans point d’anomalie', async () => {
+    await mount(await storeMulti())
+    const rows = [...document.querySelectorAll('.carto-day-list li.carto-day')]
+    const row = (date) => rows.find((li) => li.querySelector('.carto-day-date').textContent === date)
+    const three = row('mar. 3 févr. 2026').querySelector('.carto-day-ind')
+    expect(within(three).getByText('relevée le 10 févr.').getAttribute('title')).toBe('Passages relevés par l’analyse du 10 févr.')
+    expect(within(three).queryByText('!')).toBeNull()
+    const ten = row('mar. 10 févr. 2026').querySelector('.carto-day-ind')
+    expect(within(ten).getByText('couvre 1 autre journée').getAttribute('title')).toBe('Analyse du 10 févr. : 1 trace de passages écrits d’autres jours (passages du 3 févr.)')
+    expect(document.querySelector('.carto-dot')).toBeNull()
+  })
+
+  it('un jeu rangé avant T2 reçoit at à son ouverture, une fois : la modale du 3 renvoie au 10', async () => {
+    const store = createCartoStore({ adapter: createMemoryAdapter() })
+    const res = await importMulti()
+    await store.commit(res)
+    await store.saveDataset(withoutAt(res.dataset))
+    window.location.hash = '#/cartographie/jour/2026-02-03'
+    await mount(store)
+    const dialog = await screen.findByRole('dialog', { name: /3 février 2026/ })
+    await waitFor(() => expect(covered(dialog)).toBeTruthy())
+    const stored = await store.loadDataset('ds-multi')
+    expect(stored.passageDates).toBe(1)
+    expect(stored.days.find((d) => d.date === '2026-02-10').variants[0].verdicts[0].traces[0].at).toBe('2026-02-03')
+  })
+
+  it('sans lien à suivre (DayModal seul), les compétences sont nommées sans bouton', async () => {
+    const { dataset } = await importMulti()
+    const params = resolveParams({})
+    render(<DayModal dataset={dataset} refl={normalizeReferential(multiReferential())} params={params} geometry={sunGeometry(params)} activeDates={['2026-02-03', '2026-02-10']} date="2026-02-03" onClose={() => {}} onNavigate={() => {}} />)
+    const section = within(screen.getByRole('dialog')).getByRole('region', { name: 'Relevé par l’analyse du 10 février' })
+    expect(within(section).queryAllByRole('button')).toHaveLength(0)
+    expect(section.querySelector('li').textContent).toBe('6.08 Soin des lieux · 1 preuve, 0 indice')
   })
 })
 

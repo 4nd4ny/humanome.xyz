@@ -15,6 +15,9 @@
 //     markers[], comparisons[], reflections[] (carnet du dialogue, P7),
 //     narratives[], metrics, preferences
 //
+//   Une trace de l'index est {id, role}, et `at` quand son passage est écrit
+//   un autre jour que celui de son analyse (sprint 4, T2 : plus bas).
+//
 //   détail d'une journée (chargé à la demande, un enregistrement par date)
 //     portfolio     texte du portfolio de ce jour
 //     variants{id}  extraits verbatim, ancres de surlignage, jury, pédagogue,
@@ -24,9 +27,9 @@
 // l'affichage (traces, portfolio, réflexions du jury).
 
 import { sha256Hex } from '../../v3/core/ids.js'
-import { isIsoDate } from './dates.js'
+import { formatShort, isIsoDate } from './dates.js'
 import { toEmbeddedReferential } from './referential.js'
-import { DEFAULT_PARAMS } from './formulas.js'
+import { DEFAULT_PARAMS, TRACE_PROVIDING_STATUSES } from './formulas.js'
 
 export const KIND = 'competency-map-master'
 export const SCHEMA_VERSION = '4.0.0'
@@ -343,8 +346,107 @@ export function activeDates(dataset) {
   return new Set(dataset.days.filter((d) => d.active).map((d) => d.date))
 }
 
-/** Anomalies d'une journée recalculées depuis son état (variantes, portfolio). */
-export function dayAnomalies(day, { portfolioImported = false } = {}) {
+// ---------------------------------------------------------------------------
+// Passages écrits un autre jour que celui de leur analyse (sprint 4, T2)
+//
+// Une analyse rangée à une journée peut retenir des passages écrits d'autres
+// jours du portfolio : son document couvrait plusieurs en-têtes de date, que
+// l'interface découpe chacun en sa journée. Dans l'index, une telle trace le
+// dit par un champ facultatif, `at` : la date de son passage (la `sourceDate`
+// de son détail), absent quand c'est celle de la journée. Les calculs ne le
+// lisent pas — la trace compte dans la journée de son analyse —, il relie
+// sans rien lire de plus (D-67) la journée du passage à l'analyse qui l'a
+// relevé.
+
+/** Version de la passe qui écrit `at` dans l'index d'un jeu rangé ici (store `addPassageDates`). */
+export const PASSAGE_DATES = 1
+
+/**
+ * Le champ `at` d'une trace de l'index : la date de son passage quand ce
+ * n'est pas celle de sa journée ; rien sinon (pas même `at: undefined`).
+ * @param {unknown} sourceDate date du passage (détail de la trace)
+ * @param {string} date journée de l'analyse
+ * @returns {{at?: string}}
+ */
+export function passageAt(sourceDate, date) {
+  return isIsoDate(sourceDate) && sourceDate !== date ? { at: sourceDate } : {}
+}
+
+/**
+ * Dates des passages d'une variante écrits un autre jour que le sien.
+ * @returns {Set<string>}
+ */
+export function coveredDates(variant) {
+  const out = new Set()
+  for (const v of variant?.verdicts ?? []) for (const t of v.traces ?? []) if (isIsoDate(t?.at)) out.add(t.at)
+  return out
+}
+
+/**
+ * Pour chaque date de passage, les analyses d'autres journées qui y ont
+ * relevé des traces : la variante qui contribue de chaque journée et, par
+ * compétence, ses preuves et indices de cette date — les traces que les
+ * calculs retiennent (statut qui fournit des traces, hors court-circuit).
+ * Lu dans l'index seul.
+ * @param {object} dataset
+ * @returns {Map<string, Array<{date: string, variantId: string, codes: Array<{code: string, proofs: number, hints: number}>}>>}
+ *   par date de passage, les analyses dans l'ordre des journées ; leurs compétences dans l'ordre de l'analyse
+ */
+export function passageCoverage(dataset) {
+  const out = new Map()
+  for (const day of dataset?.days ?? []) {
+    const variant = contributingVariant(day)
+    if (!variant) continue
+    const byDate = new Map() // date du passage → Map(code → {code, proofs, hints})
+    for (const v of variant.verdicts ?? []) {
+      if (v.courtCircuit || !TRACE_PROVIDING_STATUSES.has(v.status)) continue
+      for (const t of v.traces ?? []) {
+        if (!isIsoDate(t?.at) || t.at === day.date) continue
+        if (!byDate.has(t.at)) byDate.set(t.at, new Map())
+        const codes = byDate.get(t.at)
+        if (!codes.has(v.code)) codes.set(v.code, { code: v.code, proofs: 0, hints: 0 })
+        codes.get(v.code)[t.role === 'preuve' ? 'proofs' : 'hints']++
+      }
+    }
+    for (const [at, codes] of byDate) {
+      if (!out.has(at)) out.set(at, [])
+      out.get(at).push({ date: day.date, variantId: variant.id, codes: [...codes.values()] })
+    }
+  }
+  for (const list of out.values()) list.sort((a, b) => (a.date < b.date ? -1 : a.date > b.date ? 1 : 0))
+  return out
+}
+
+/** « 10 févr. » ; l'année seulement quand elle n'est pas celle de `ref`. */
+const dayMonth = (iso, ref) => formatShort(iso, { weekday: false, year: iso.slice(0, 4) !== ref.slice(0, 4) })
+
+/** « l'analyse du 10 févr. », « les analyses du 10 févr. et du 17 févr. » */
+export function analysesLabel(dates, ref) {
+  const each = dates.map((d) => `du ${dayMonth(d, ref)}`)
+  if (each.length <= 1) return `l’analyse ${each[0] ?? ''}`.trim()
+  return `les analyses ${each.slice(0, -1).join(', ')} et ${each.at(-1)}`
+}
+
+/** Anomalie « analyse-multi-journees » d'une variante de la journée `date`, ou null. */
+export function multiDayAnomaly(date, variant) {
+  const at = []
+  for (const v of variant.verdicts ?? []) for (const t of v.traces ?? []) if (isIsoDate(t?.at) && t.at !== date) at.push(t.at)
+  if (at.length === 0) return null
+  const dates = [...new Set(at)].sort()
+  const span = dates.length === 1 ? `passages du ${dayMonth(dates[0], date)}` : `${dates.length} journées, du ${dayMonth(dates[0], date)} au ${dayMonth(dates.at(-1), date)}`
+  return {
+    severity: 'info',
+    code: 'analyse-multi-journees',
+    message: `Analyse du ${dayMonth(date, date)} : ${at.length} trace${at.length > 1 ? 's' : ''} de passages écrits d’autres jours (${span})`,
+  }
+}
+
+/**
+ * Anomalies d'une journée recalculées depuis son état (variantes, portfolio).
+ * `coverage` (`passageCoverage(dataset)`) : une journée sans analyse qui
+ * contribue dit quelles analyses d'autres journées ont relevé ses passages.
+ */
+export function dayAnomalies(day, { portfolioImported = false, coverage = null } = {}) {
   const out = []
   if (day.variants.length > 1 && day.variantChoice === 'pending') {
     out.push({ severity: 'arbitrate', code: 'variantes-a-arbitrer', message: `${day.variants.length} variantes : choisir celle qui contribue` })
@@ -357,6 +459,16 @@ export function dayAnomalies(day, { portfolioImported = false } = {}) {
   }
   if (!hasAnalysis(day) && hasPortfolio(day)) {
     out.push({ severity: 'info', code: 'sans-analyse', message: 'Portfolio sans analyse' })
+  }
+  // Sprint 4, T2 : une analyse qui a relevé des passages d'autres journées, et
+  // la journée de ces passages quand elle n'a pas d'analyse qui contribue.
+  for (const v of day.variants) {
+    const a = multiDayAnomaly(day.date, v)
+    if (a) out.push(a)
+  }
+  const covering = contributingVariant(day) ? [] : (coverage?.get(day.date) ?? [])
+  if (covering.length > 0) {
+    out.push({ severity: 'info', code: 'couverte-par', message: `Passages relevés par ${analysesLabel(covering.map((c) => c.date), day.date)}` })
   }
   for (const v of day.variants) for (const a of v.anomalies ?? []) out.push(a)
   return out
@@ -373,7 +485,7 @@ export function todoCount(dataset) {
   return pendingAnomalyCount(dataset) + (dataset.portfolio?.undated?.length ?? 0) + blocking
 }
 
-/** Nombre d'anomalies « à traiter » (Bloquant ou À arbitrer) d'un jeu de données. */
+/** Nombre d'anomalies « à traiter » (Bloquant ou À arbitrer) d'un jeu de données ; celles du sprint 4 (T2) sont des informations, jamais comptées. */
 export function pendingAnomalyCount(dataset) {
   let n = 0
   const portfolioImported = Boolean(dataset.portfolio)
@@ -410,6 +522,59 @@ export function datasetErrors(doc) {
     }
   }
   return errors
+}
+
+/**
+ * Une variante de l'index dont les traces disent la date de leur passage
+ * (`at`), lue dans son détail : `verdicts[code].traces[id].sourceDate`. Une
+ * trace que le détail ne date pas (détail absent, date illisible) garde ce
+ * qu'elle avait. Pure.
+ * @param {object} summary variante de l'index
+ * @param {object | null | undefined} detail son détail (`detail.variants[id]`)
+ * @param {string} date journée de la variante
+ * @returns {object} la même variante s'il n'y avait rien à changer
+ */
+export function variantWithPassageDates(summary, detail, date) {
+  if (!detail?.verdicts || !Array.isArray(summary?.verdicts)) return summary
+  let changed = false
+  const verdicts = summary.verdicts.map((v) => {
+    const traces = detail.verdicts[v?.code]?.traces
+    if (!traces || !Array.isArray(v.traces)) return v
+    let touched = false
+    const next = v.traces.map((t) => {
+      const sourceDate = traces[t?.id]?.sourceDate
+      if (!isIsoDate(sourceDate)) return t
+      const { at, ...rest } = t
+      const want = passageAt(sourceDate, date)
+      if (at === want.at) return t
+      touched = true
+      return { ...rest, ...want }
+    })
+    if (!touched) return v
+    changed = true
+    return { ...v, traces: next }
+  })
+  return changed ? { ...summary, verdicts } : summary
+}
+
+/**
+ * L'index d'un jeu dont les traces disent la date de leur passage (`at`), lue
+ * dans les détails de ses journées (sprint 4, T2). Pure.
+ * @param {object} dataset index
+ * @param {(date: string) => object | null | undefined} detailOf détail d'une journée ({variants: {id: …}})
+ * @returns {object} le même index s'il n'y avait rien à changer
+ */
+export function withPassageDates(dataset, detailOf) {
+  let changed = false
+  const days = (dataset?.days ?? []).map((day) => {
+    const detail = detailOf(day.date)
+    if (!detail?.variants || !Array.isArray(day.variants)) return day
+    const variants = day.variants.map((v) => variantWithPassageDates(v, detail.variants[v.id], day.date))
+    if (variants.every((v, i) => v === day.variants[i])) return day
+    changed = true
+    return { ...day, variants }
+  })
+  return changed ? { ...dataset, days } : dataset
 }
 
 /**

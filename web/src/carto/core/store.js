@@ -20,6 +20,7 @@
 // chose à elle, le jeu devient d'ici, complet (`materialize`).
 
 import { NEED_ALL, assembleDay, expandNeed, isLocalBase, partPath, withOverlay } from './split.js'
+import { PASSAGE_DATES, withPassageDates } from './model.js'
 
 const DB_NAME = 'humanome-carto-v4'
 const DB_VERSION = 1
@@ -259,6 +260,28 @@ export function createCartoStore({ adapter, fetchFn } = {}) {
     async loadDataset(datasetId) {
       const rec = await a.transaction(['datasets'], 'readonly', (t) => t.get('datasets', datasetId))
       return rec?.dataset ?? null
+    },
+
+    /**
+     * L'index d'un jeu rangé ici, après une passe UNIQUE (sprint 4, T2) : un
+     * jeu importé avant que l'index ne dise la date du passage de ses traces
+     * (`at`) la reçoit, lue dans les détails de ses journées — une lecture de
+     * tous ses détails, une fois, dans une seule transaction avec l'écriture
+     * de l'index ; `passageDates` en garde la version. Sans effet sur un jeu
+     * lu à la demande (ses détails sont sur le site : une démonstration
+     * intacte se met à jour d'elle-même, D-57) ni sur un jeu déjà passé.
+     * @returns {Promise<object | null>} l'index rangé, ou null (absent)
+     */
+    async addPassageDates(datasetId) {
+      return a.transaction(['datasets', 'details'], 'readwrite', async (t) => {
+        const rec = await t.get('datasets', datasetId)
+        const ds = rec?.dataset ?? null
+        if (!ds || ds.remote || (ds.passageDates ?? 0) >= PASSAGE_DATES) return ds
+        const details = new Map((await t.range('details', rangeOf(datasetId))).map((r) => [r.date, r.detail]))
+        const next = { ...withPassageDates(ds, (date) => details.get(date)), passageDates: PASSAGE_DATES }
+        await t.put('datasets', { key: datasetId, dataset: next })
+        return next
+      })
     },
 
     /** Enregistre l'INDEX seul (cases cochées, étiquettes, ensembles, revues…). */

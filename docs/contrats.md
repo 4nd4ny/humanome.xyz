@@ -467,6 +467,39 @@ par `scripts/extract-referentiel.mjs`.
       « Relance coupée » ; le bac à sable rend au paquet tiers un
       `llm-error`, jamais le fragment. Aucun n'emploie `allowTruncated`.
 
+15. **Master v4 : la date du passage d'une trace dans l'index, `at`
+    (2026-10-22, sprint 4, T2 ; journal de la cartographie D-72).** Ajout 4.x
+    facultatif. Une analyse rangée à une journée peut retenir des passages
+    écrits d'autres jours du portfolio (dans la démonstration, l'analyse du
+    10 février en retient 175 du 1er au 9) : chaque trace de l'index
+    (`days[].variants[].verdicts[].traces[]`, jusqu'ici `{id, role}`) porte
+    alors `at`, la date de son passage — la `sourceDate` de son détail —, et
+    rien quand c'est la date de la journée (jamais `at: null`). Les calculs ne
+    le lisent pas : la trace compte toujours dans la journée de son analyse
+    (répartir par date de passage, T3, est une décision laissée à
+    Christian). Il permet, sans lire aucun détail (D-67), de dire à la
+    journée du passage quelle analyse l'a relevée.
+    - **Qui l'écrit** : les importeurs d'un document-jour, d'une journée
+      Aurora v3 ou d'une feuille de Merge v2 (`aurora-day.js`) et d'un master
+      V3 (`v3-master.js`). L'import d'un run Twin9 (`twin9-run.js`) l'écrira
+      avec le lot Twin9 à venir ; AuroraCore et Twin6 datent déjà leurs
+      traces de leur journée.
+    - **Ce qui se lit sans lui** : une archive, un index ou un jeu d'avant le
+      reçoivent de leurs détails — à l'import d'une archive
+      (`importArchive`), au découpage (`splitArchive`, la version change
+      donc), et, pour un jeu rangé dans le navigateur, par une passe unique
+      à son ouverture (`store.addPassageDates` : tous ses détails lus une
+      fois, dans la même transaction que l'écriture de l'index), dont la
+      version est gardée à la racine du jeu, `passageDates` (entier,
+      facultatif, aujourd'hui 1). Un jeu lu à la demande n'a pas ses détails
+      ici : il ne passe pas, il se met à jour avec la démonstration (D-57) ;
+      devenu d'ici, il passe à l'ouverture suivante. Une variante garde son
+      identifiant (calculé sur le contenu de l'analyse, pas sur l'index) :
+      réimporter une archive d'avant n'ajoute rien.
+    - Schéma : `at` (`isoDate`) dans la trace résumée, `passageDates` à la
+      racine ; validateurs régénérés. Un lecteur 4.x qui les ignore lit le
+      même jeu.
+
 ## 5. Note d'outillage
 
 `engine/src/validation.js` importe les schémas en imports JSON « nus »

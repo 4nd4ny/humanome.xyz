@@ -65,6 +65,12 @@ Règles :
 - **Fonctionne partout à l'identique** : `file://` (archive locale, démo hors
   ligne, clone consulté sans serveur), statique OVH sans aucune réécriture
   `.htaccess`, et n'importe quel hébergeur du « clone déployable » (§5).
+  Note du 2026-10-22 : depuis le retrait de la vue merge (journal de la
+  cartographie, D-38), le bundle n'affiche plus de démonstration hors ligne :
+  celle de l'interface se lit à côté d'`index.html` (D-67). En `file://`, il
+  ouvre les fichiers de la personne, et la copie autonome d'un jeu, exportée
+  de l'interface, s'ouvre avec ses données (INSTALL.md §4,
+  `npm run test:dist`).
 - **Deep-links partageables** (§3.2) : une URL suffit à rouvrir exactement la même
   vue — un jour précis, une compétence en focus — y compris dans un lien envoyé à
   un employeur ou à son cartographe.

@@ -414,9 +414,18 @@ par le catalogue, comme UC-SYS-01-F22, UC-SYS-02-F19 et UC-PRO-08-F17.
   UC-VIS-05-U07 et U13, `build-tuteur-digest.mjs` exécuté dans un miroir
   temporaire ; U08 à U12, le catalogue des routes face au routeur, à `App.jsx`,
   à l'aide, au menu des deux modes et aux liens des contenus.
-- `web/scripts/smoke-dist.mjs` (`npm run test:dist`, après `npm run build`) —
-  `llms.txt`, `llms-full.txt`, `sitemap.xml`, `robots.txt` et
-  `legal/confidentialite.md` présents et non vides dans `web/dist`.
+- `web/scripts/smoke-dist.mjs` (`npm run test:dist`, après `npm run build` ;
+  local, il lit `web/dist`) — `llms.txt`, `llms-full.txt`, `sitemap.xml`,
+  `robots.txt` et `legal/confidentialite.md` présents et non vides dans
+  `web/dist` ; script d'entrée classique, en chemin relatif ; puis le bundle
+  construit, ouvert en `file://` dans jsdom, chaque requête comptée et refusée
+  comme un navigateur la refuse en `file://` : accueil rendu avec sa CSS ;
+  référentiel embarqué (61 compétences) ; message `file://` de la vue journée ;
+  écran d'import de la cartographie, dont la démonstration (lue sur le site)
+  ne tente que `data/demo/…` et invite à importer ses fichiers ; trois
+  journées de `schemas/fixtures/` ouvertes depuis l'accueil, dessinées en
+  soleil (7 pôles, 12 compétences, 3 jours). Hors la démonstration, aucune
+  requête ; aucune erreur de page (INSTALL.md §4).
 - `api/tests/FicheParityTest.php`, `api/tests/FicheAdminEndpointsTest.php` —
   parité PHP (`FicheGenerator`) et route `dump-fiches` (aussi UC-SYS-02-F05,
   UC-EPI-03-F13).
@@ -533,7 +542,10 @@ cd web && npx vitest run test/usecases/unit/uc-sys-04-carte-du-site.test.js
   synchronisation : lister `www/` avant le premier déploiement. Vite réécrit le
   lien `alternate` d'`index.html` en `./llms.txt` (base relative) ; à la racine
   du site, c'est la même adresse.
-- `npm run test:dist` échoue avant ce sprint sur la vue merge retirée (D-38,
-  `#/merge`) : la présence des fichiers de la carte du site est contrôlée et
-  affichée en premier, mais le script reste en échec tant que sa vérification
-  de la vue n'est pas réécrite.
+- `npm run test:dist` ne passe pas par `#/merge` (vue retirée, D-38) : jsdom 25
+  refuse tout `history.replaceState` sous `file://` (il compare les chemins
+  des deux adresses par référence), là où un navigateur accepte un changement
+  de fragment ; la redirection est couverte par les tests du routeur et
+  d'`App`. Il fournit à jsdom des API que tout navigateur visé possède
+  (`TextEncoder`, `TextDecoder`, `structuredClone`, `Blob.arrayBuffer`) et ne
+  vérifie ni la mise en page ni le rendu d'un vrai navigateur.

@@ -43,6 +43,46 @@ réponse. Suivent la PR B (adaptateurs JS, export Twin6) et, A fusionnée, la PR
 
 ## Fait
 
+- 2026-10-22 — **`npm run test:dist` remis au vert sur ce que le bundle promet en `file://`
+  (branche `fix/smoke-dist`, issue de `main` à `36d4509` ; non fusionnée, rien déployé).** Le
+  script ouvrait encore `#/merge`, retirée en D-38 : sous jsdom, la redirection appelle
+  `history.replaceState`, que jsdom 25 refuse pour toute adresse `file://` (il compare les
+  chemins des deux adresses par référence), puis « sunburst never rendered ». Ce n'était pas un
+  défaut de l'application : dans Chromium, `dist/index.html#/merge` ouvert en `file://` arrive
+  sur `#/cartographie`, sans erreur (vérifié par un script ponctuel, hors dépôt). Application
+  inchangée.
+  - **Fait** (`ff21083`, `fix:`) : `web/scripts/smoke-dist.mjs` garde ses contrôles statiques
+    (les cinq fichiers de la carte du site, script d'entrée classique en chemin relatif), puis
+    ouvre le bundle construit en `file://` dans jsdom, chaque requête (fetch, XHR) comptée et
+    refusée comme un navigateur la refuse : accueil rendu avec sa CSS, référentiel embarqué
+    (61 compétences), message `file://` de la vue journée, écran d'import de la cartographie,
+    dont la démonstration ne tente que `data/demo/…` et invite à importer ses fichiers ; enfin
+    trois journées versionnées (`schemas/fixtures/cartographie-jour-2026-01-0{5,6,7}.json`)
+    ouvertes depuis « Ouvrir mes fichiers de cartographie » de l'accueil : l'interface les
+    dessine (7 pôles, les 12 compétences attendues, 3 journées). Hors la démonstration, aucune
+    requête ; toute erreur de page fait échouer. Les API que jsdom n'a pas et que tout
+    navigateur visé possède (`TextEncoder`, `TextDecoder`, `structuredClone`,
+    `Blob.arrayBuffer`) sont fournies par le script. Documentation (`docs:`) : INSTALL.md §4 dit
+    ce qui s'ouvre en `file://` et ce qui demande un serveur (vues journée, démonstration),
+    §5 cite `npm run build && npm run test:dist` ; fiches UC-SYS-04 (ce que vérifie le script,
+    sa limite) et UC-VIS-01 (préconditions, limite `file://` de la démonstration) ; note datée
+    dans ADR-009 ; note des dettes techniques mise à jour.
+  - **Vérifié** : `npm run build` puis `npm run test:dist` vert (28 contrôles). Mutations, une à
+    une, rebâties puis annulées, chacune rouge : `classicScriptTags` retiré de
+    `vite.config.js` (script module), `base: '/'` (chemin absolu), garde `file:` d'`apiFetch`
+    retirée (`api/auth/me` tenté à l'accueil), garde `file:` de `loadDay` retirée (message et
+    requête de la vue journée), garde `file:` du lecteur du référentiel retirée (requêtes au
+    référentiel et à l'ouverture des fichiers, que seul le compteur voyait : le soleil se
+    dessinait), import vidé (aucun soleil), `dist/llms.txt` effacé. Suite web 2 876 tests verts
+    (267 fichiers) ; moteur et PHP non concernés, non relancés. `check-publiable` vert (crochet
+    de commit).
+  - **Non vérifié** : le script ne passe pas par `#/merge` (limite de jsdom ci-dessus ; la
+    redirection est couverte par les tests du routeur et d'`App`) ; ni la mise en page ni un
+    vrai navigateur (jsdom) ; il n'est pas en CI (il lit `web/dist`).
+  - **Décisions laissées à Christian** : la « démo hors ligne » qu'ADR-009 promettait n'existe
+    plus dans le bundle depuis D-38 (la démonstration de l'interface se lit sur le site, D-67) ;
+    hors ligne, seule la copie autonome exportée d'un jeu s'ouvre avec ses données. L'embarquer
+    à nouveau, ou s'en tenir là, reste à décider ; la documentation dit l'état actuel.
 - 2026-10-22 — **Sprint 11, correctifs de la revue (branche `feat/carte-du-site` ; non fusionnée,
   rien déployé).** Quatre constats confirmés de la relecture du sprint, corrigés un par un.
   - **Rubrique sans carte** (`2b89b1d`, `fix:`) : sans carte du site (fichier absent, illisible
@@ -3579,8 +3619,12 @@ réponse. Suivent la PR B (adaptateurs JS, export Twin6) et, A fusionnée, la PR
   clair/sombre n'était pas réappliqué au chargement. **Corrigé et déployé le 2026-10-14**
   (journal carto, question 30, D-47) : son hash est dans `script-src`, gardé par
   `web/src/anti-fouc.test.js`.
-- `npm run test:dist` (`web/scripts/smoke-dist.mjs`) vise encore la vue merge retirée en D-38
-  (`#/merge`, `svg.sunburst`) : il échoue depuis ; à réécrire pour l'interface ultime.
+- `npm run test:dist` (`web/scripts/smoke-dist.mjs`) visait encore la vue merge retirée en D-38
+  (`#/merge`, `svg.sunburst`) et échouait depuis : **réécrit le 2026-10-22** (branche
+  `fix/smoke-dist`, non fusionnée ; entrée du jour) pour ce que le bundle promet en `file://`
+  (INSTALL.md §4). Reste à trancher : la « démo hors ligne » d'ADR-009 n'existe plus dans le
+  bundle depuis D-38 (la démonstration de l'interface se lit sur le site, D-67) ; hors ligne,
+  seule la copie autonome exportée d'un jeu s'ouvre avec ses données.
 - `deploy.mjs api` téléverse la release fichier par fichier sur une seule connexion (~4 min
   pour 723 fichiers) : trop long pour un shell distant limité à 180 s. Le déploiement du
   2026-10-14 a suivi les mêmes étapes avec un téléversement reprenable et parallèle (outil

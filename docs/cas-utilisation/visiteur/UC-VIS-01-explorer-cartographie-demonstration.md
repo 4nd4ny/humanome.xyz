@@ -60,7 +60,10 @@ journée (`#/jour/<iso>`, éventuellement `?focus=<code>`).
 - Le site statique est servi en HTTP(S) : le corpus de démonstration
   (`data/demo/jours/index.json` + un document `cartographie-jour` par journée)
   est à côté de `index.html` (ADR-003). Sur une copie ouverte en `file://`,
-  seule la vue journée signale explicitement l'impossibilité.
+  la vue journée et la démonstration de l'interface de cartographie
+  signalent explicitement l'impossibilité (la seconde invite à importer ses
+  fichiers) ; contrôlé sur le bundle construit par `npm run test:dist`
+  ([UC-SYS-04](../systeme/UC-SYS-04-construire-artefacts-derives.md)).
 - Les données de démonstration sont des **artefacts dérivés**, non versionnés
   (`web/public/data/` est ignoré par git) : ils sont générés localement, en
   exécutant les scripts de conversion avant le build, à partir des sources de
@@ -526,8 +529,10 @@ cd web && npx vitest run test/usecases/unit/uc-vis-01 test/usecases/functional/u
   (`#/jour/…`) est le corpus de RESPIRE v7 et se lit avec la copie embarquée
   de RESPIRE v7, sa version.
 
-- Sur `file://`, l'interface V3 ne peut pas charger le corpus (E1) ; seul le
-  référentiel a un repli embarqué.
+- Sur `file://`, la démonstration ne peut pas se charger (elle se lit à côté
+  d'`index.html` ; journal de la cartographie, D-67) ; seul le référentiel a
+  un repli embarqué. Une cartographie s'y ouvre à partir de ses propres
+  fichiers.
 - Les annotations et revues faites sur la démonstration (UC-APP-12) restent en
   mémoire et sont perdues au rechargement.
 - Limites des tests (jsdom) : la mise en page CSS n'est pas appliquée — le

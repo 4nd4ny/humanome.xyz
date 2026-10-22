@@ -435,18 +435,33 @@ export function deduireMotif(codes) {
   return motif.length <= MOTIF_MAX && liste.every((code) => regex.test(code)) ? motif : MOTIF_LARGE
 }
 
-/** Les erreurs d'un motif saisi : vide, trop long, illisible (comme ReferentielRepository::regexDuMotif). */
+/**
+ * L'expression d'un motif, ou son erreur. Erreurs : ce que le serveur refuse
+ * aussi (ReferentielRepository::regexDuMotif, le schéma) — vide, plus de 100
+ * caractères, un caractère de contrôle, un verbe « (*… ». Le serveur et le
+ * moteur lisent le motif en PCRE (/uD) ; la page le lit en JavaScript, avec le
+ * drapeau u d'abord (« \p{Lu} »), sans lui sinon (« \_ »). Un motif que
+ * JavaScript ne lit pas (un quantificateur possessif, un groupe atomique,
+ * « (?i) » : de la syntaxe PCRE) n'est pas une erreur ici : `regex` null, ses
+ * codes ne sont pas vérifiés, et le serveur tranche à l'import (un refus
+ * s'affiche par pointeur, E1).
+ *
+ * @returns {{regex: RegExp|null}|{erreur: string}}
+ */
 function regexDuMotif(motif) {
   if (motif === '') return { erreur: 'motif vide' }
   if (motif.length > MOTIF_MAX) return { erreur: `motif de plus de ${MOTIF_MAX} caractères` }
   // eslint-disable-next-line no-control-regex
   if (/[\x00-\x1f]/.test(motif) || motif.includes('(*')) return { erreur: `motif illisible : ${motif}` }
-  try {
-    new RegExp(motif) // eslint-disable-line no-new
-    return { regex: new RegExp(`^(?:${motif})$`) }
-  } catch {
-    return { erreur: `motif illisible : ${motif}` }
+  for (const drapeaux of ['u', '']) {
+    try {
+      new RegExp(motif, drapeaux) // eslint-disable-line no-new
+      return { regex: new RegExp(`^(?:${motif})$`, drapeaux) }
+    } catch {
+      // l'autre lecture, puis le serveur
+    }
   }
+  return { regex: null }
 }
 
 /**
@@ -496,6 +511,14 @@ export function referentielDepuisMarkdown(texte, champs = {}) {
     const { regex, erreur: illisible } = regexDuMotif(niveau.motif)
     if (illisible !== undefined) {
       erreur(`Niveau ${k + 1} (« ${niveau.nom} ») : ${illisible}`)
+      return
+    }
+    if (regex === null) {
+      avertissements.push({
+        ligne: null,
+        message: `Niveau ${k + 1} (« ${niveau.nom} ») : la page ne sait pas lire le motif ${niveau.motif} ; `
+          + 'le serveur, qui le lit en PCRE, le vérifiera à l’import',
+      })
       return
     }
     for (const { code, ligne } of analyse.codes[k]) {

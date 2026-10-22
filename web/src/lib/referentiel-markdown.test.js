@@ -172,10 +172,15 @@ describe('UC-EPI-05 — un référentiel en Markdown', () => {
     expect(enLignes(lireTexte(bon, { ...CHAMPS, niveaux: [{ nom: 'capacité', motif: '[A-E][1-4]' }] }).erreurs)).toEqual([
       '7 : « A9 » ne suit pas le motif [A-E][1-4] du niveau « capacité »',
     ])
-    expect(enLignes(lireTexte(bon, { ...CHAMPS, niveaux: [{ motif: 'A)|(B' }, { nom: 'compétence', motif: '' }] }).erreurs)).toEqual([
-      'Niveau 1 (« compétence ») : motif illisible : A)|(B',
+    const casse = lireTexte(bon, { ...CHAMPS, niveaux: [{ motif: 'A)|(B' }, { nom: 'compétence', motif: '' }] })
+    expect(enLignes(casse.erreurs)).toEqual([
       'Niveau 2 : un autre niveau s’appelle déjà « compétence »',
       'Niveau 2 (« compétence ») : motif vide',
+    ])
+    // un motif que JavaScript ne lit pas n'est qu'un avertissement (UC-EPI-05-U26) : le serveur, qui le lit en PCRE, refuse
+    // celui-ci (« Motif illisible », ReferentielRepository::regexDuMotif) à son pointeur
+    expect(enLignes(casse.avertissements)).toEqual([
+      'Niveau 1 (« compétence ») : la page ne sait pas lire le motif A)|(B ; le serveur, qui le lit en PCRE, le vérifiera à l’import',
     ])
     expect(enLignes(lireTexte(bon, { ...CHAMPS, niveaux: [{ motif: '(*ACCEPT)A' }, { nom: ' ' }] }).erreurs)).toEqual([
       'Niveau 1 (« compétence ») : motif illisible : (*ACCEPT)A',
@@ -326,6 +331,28 @@ describe('UC-EPI-05 — un référentiel en Markdown', () => {
     expect(enLignes(lireTexte('# Pôle 1 — A\n## A1 — x', { ...CHAMPS, niveaux: [{ nom: 'capacité, large' }] }).erreurs)).toEqual([
       'Niveau 1 : un nom de niveau ne contient ni virgule ni « --> » (le commentaire « niveaux » sépare les noms par des virgules)',
     ])
+  })
+
+  it('UC-EPI-05-U26 — un motif saisi que PCRE lit mais pas JavaScript (possessif, atomique, (?i)) : un avertissement, l’import reste possible, le serveur tranche ; \\p{Lu} se lit', () => {
+    const texte = '# Pôle 1 — A\n## A1 — x\n## B2 — y'
+    const pcre = (motif) => `Niveau 1 (« compétence ») : la page ne sait pas lire le motif ${motif} ; le serveur, qui le lit en PCRE, le vérifiera à l’import`
+    for (const motif of ['[A-E]\\d{1,2}+', '(?>[A-E]\\d)', '(?i)[a-e]\\d']) {
+      const lu = lireTexte(texte, { ...CHAMPS, niveaux: [{ motif }] })
+      expect(lu.erreurs, motif).toEqual([])
+      expect(enLignes(lu.avertissements)).toEqual([pcre(motif)])
+      expect(lu.document.niveaux[0].motif).toBe(motif)
+    }
+    // une propriété Unicode se lit (drapeau u), et les codes la suivent ou non
+    expect(lireTexte(texte, { ...CHAMPS, niveaux: [{ motif: '\\p{Lu}\\d' }] }).erreurs).toEqual([])
+    expect(enLignes(lireTexte(`${texte}\n## c3 — z`, { ...CHAMPS, niveaux: [{ motif: '\\p{Lu}\\d' }] }).erreurs)).toEqual([
+      '4 : « c3 » ne suit pas le motif \\p{Lu}\\d du niveau « compétence »',
+    ])
+    // ce que le serveur refuse aussi reste une erreur : vide, plus de 100 caractères, verbe (*…), caractère de contrôle
+    const erreurs = (motif) => enLignes(lireTexte(texte, { ...CHAMPS, niveaux: [{ motif }] }).erreurs)
+    expect(erreurs('')).toEqual(['Niveau 1 (« compétence ») : motif vide'])
+    expect(erreurs('A'.repeat(101))).toEqual(['Niveau 1 (« compétence ») : motif de plus de 100 caractères'])
+    expect(erreurs('(*ACCEPT)A')).toEqual(['Niveau 1 (« compétence ») : motif illisible : (*ACCEPT)A'])
+    expect(erreurs('A\t1')).toEqual(['Niveau 1 (« compétence ») : motif illisible : A\t1'])
   })
 
   it('UC-EPI-05-U19 — BOM, fins de ligne CRLF, tirets, séparateurs, lignes échappées : le même document', () => {

@@ -1,5 +1,6 @@
 // UC-APP-02 — Lancer une cartographie standard : tests UNITAIRES (moteur),
-// voie « Clé personnelle » (scénario A1, erreurs E3/E4/E7, RG9, anomalie A-06).
+// voie « Clé personnelle » (scénario A1, erreurs E3/E4/E7, RG9, anomalie A-06,
+// corrigée en partie le 2026-10-22).
 // Fiche : docs/cas-utilisation/apprenant/UC-APP-02-lancer-cartographie-standard.md
 //
 // Les adaptateurs de fournisseurs (engine/src/providers/{anthropic,openai,
@@ -13,6 +14,7 @@ import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
 import { readFileSync } from 'node:fs'
 import {
   MAX_RETRY_AFTER_MS,
+  OutputTruncatedError,
   ProviderError,
   SUPPORTED_PROVIDERS,
   createProvider,
@@ -139,6 +141,9 @@ describe('UC-APP-02 — clé personnelle : format de chaque fournisseur (A1, RG9
       text: '{"poleNum":"1"}',
       usage: { inputTokens: 1200, outputTokens: 340 },
       model: 'gpt-4o-mini-2024-07-18',
+      stopReason: 'end',
+      stopReasonRaw: 'stop',
+      truncated: false,
     })
     expect(calls[0].url).toBe('https://api.openai.com/v1/chat/completions')
     expect(calls[0].init.method).toBe('POST')
@@ -159,7 +164,9 @@ describe('UC-APP-02 — clé personnelle : format de chaque fournisseur (A1, RG9
     // Appel tel que le fait extractDay (ni system ni temperature) ; réponse vide.
     const empty = await provider.complete({ model: 'gpt-4o-mini', prompt: 'Pôle 2' })
     expect(calls[1].body).toEqual({ model: 'gpt-4o-mini', messages: [{ role: 'user', content: 'Pôle 2' }], max_tokens: 4096 })
-    expect(empty).toEqual({ text: '', usage: { inputTokens: 0, outputTokens: 0 }, model: 'gpt-4o-mini' })
+    expect(empty).toEqual({
+      text: '', usage: { inputTokens: 0, outputTokens: 0 }, model: 'gpt-4o-mini', stopReason: null, stopReasonRaw: null, truncated: false,
+    })
   })
 
   it('UC-APP-02-U30 — xAI et OpenRouter : même format compatible OpenAI, seule l’URL de base change ; identifiant de modèle à barre oblique transmis tel quel', async () => {
@@ -176,7 +183,9 @@ describe('UC-APP-02 — clé personnelle : format de chaque fournisseur (A1, RG9
       const result = await provider.complete({ model, prompt: 'Pôle 3', maxTokens: 8192 })
 
       expect(provider.name).toBe(id)
-      expect(result).toEqual({ text: `réponse ${id}`, usage: { inputTokens: 50, outputTokens: 7 }, model })
+      expect(result).toEqual({
+        text: `réponse ${id}`, usage: { inputTokens: 50, outputTokens: 7 }, model, stopReason: null, stopReasonRaw: null, truncated: false,
+      })
       expect(calls).toHaveLength(1)
       expect(calls[0].url).toBe(url)
       expect(calls[0].init.headers).toEqual({ 'content-type': 'application/json', authorization: `Bearer ${key}` })
@@ -188,7 +197,7 @@ describe('UC-APP-02 — clé personnelle : format de chaque fournisseur (A1, RG9
     const { calls, fetchFn } = fakeFetch([
       [200, {
         candidates: [{ content: { role: 'model', parts: [{ text: '{"pole' }, { text: 'Num":"1"}' }] }, finishReason: 'STOP' }],
-        // thoughtsTokenCount (réflexion des modèles 2.5) : non compté — comportement ACTUEL, voir « Limites ».
+        // thoughtsTokenCount (réflexion) : compté en sortie, facturé comme elle (2026-10-22).
         usageMetadata: { promptTokenCount: 900, candidatesTokenCount: 120, thoughtsTokenCount: 700, totalTokenCount: 1720 },
         modelVersion: 'gemini-2.5-flash-001',
       }],
@@ -203,8 +212,11 @@ describe('UC-APP-02 — clé personnelle : format de chaque fournisseur (A1, RG9
 
     expect(result).toEqual({
       text: '{"poleNum":"1"}',
-      usage: { inputTokens: 900, outputTokens: 120 },
+      usage: { inputTokens: 900, outputTokens: 120 + 700 },
       model: 'gemini-2.5-flash-001',
+      stopReason: 'end',
+      stopReasonRaw: 'STOP',
+      truncated: false,
     })
     expect(calls[0].url).toBe(
       'https://generativelanguage.googleapis.com/v1beta/models/gemini-2.5-flash:generateContent',
@@ -217,7 +229,7 @@ describe('UC-APP-02 — clé personnelle : format de chaque fournisseur (A1, RG9
       systemInstruction: { parts: [{ text: 'Consigne' }] },
     })
 
-    // Un identifiant de modèle ne peut pas injecter de paramètre d'URL ; réponse bloquée = texte vide.
+    // Un identifiant de modèle ne peut pas injecter de paramètre d'URL ; réponse bloquée = texte vide, refus.
     const blocked = await provider.complete({ model: 'gemini-2.5-flash?alt=sse', prompt: 'Pôle 2' })
     expect(calls[1].url).toBe(
       'https://generativelanguage.googleapis.com/v1beta/models/gemini-2.5-flash%3Falt%3Dsse:generateContent',
@@ -226,7 +238,14 @@ describe('UC-APP-02 — clé personnelle : format de chaque fournisseur (A1, RG9
       contents: [{ role: 'user', parts: [{ text: 'Pôle 2' }] }],
       generationConfig: { maxOutputTokens: 4096 },
     })
-    expect(blocked).toEqual({ text: '', usage: { inputTokens: 0, outputTokens: 0 }, model: 'gemini-2.5-flash?alt=sse' })
+    expect(blocked).toEqual({
+      text: '',
+      usage: { inputTokens: 0, outputTokens: 0 },
+      model: 'gemini-2.5-flash?alt=sse',
+      stopReason: 'refusal',
+      stopReasonRaw: 'SAFETY',
+      truncated: false,
+    })
   })
 
   it('UC-APP-02-U32 — Ollama (local) : POST http://localhost:11434/api/chat sans en-tête d’authentification — une clé saisie n’est jamais envoyée — stream: false, num_predict ; compteurs prompt_eval_count/eval_count', async () => {
@@ -244,7 +263,9 @@ describe('UC-APP-02 — clé personnelle : format de chaque fournisseur (A1, RG9
 
     const result = await provider.complete({ model: 'llama3.1', system: 'Consigne', prompt: 'Pôle 4', maxTokens: 8192 })
 
-    expect(result).toEqual({ text: '{"poleNum":"4"}', usage: { inputTokens: 812, outputTokens: 97 }, model: 'llama3.1:8b' })
+    expect(result).toEqual({
+      text: '{"poleNum":"4"}', usage: { inputTokens: 812, outputTokens: 97 }, model: 'llama3.1:8b', stopReason: null, stopReasonRaw: null, truncated: false,
+    })
     expect(calls[0].url).toBe('http://localhost:11434/api/chat')
     expect(calls[0].init.headers).toEqual({ 'content-type': 'application/json' })
     expect(JSON.stringify(calls[0].init)).not.toContain('cle-saisie-par-erreur')
@@ -294,6 +315,9 @@ describe('UC-APP-02 — clé personnelle : format de chaque fournisseur (A1, RG9
       text: '{"a":1}',
       usage: { inputTokens: 1500, outputTokens: 420 },
       model: 'claude-sonnet-4-6-20260101',
+      stopReason: 'end',
+      stopReasonRaw: 'end_turn',
+      truncated: false,
     })
     expect(calls[0].url).toBe('https://api.anthropic.com/v1/messages')
     expect(calls[0].init.method).toBe('POST')
@@ -320,7 +344,9 @@ describe('UC-APP-02 — clé personnelle : format de chaque fournisseur (A1, RG9
       system: 'Consigne',
       temperature: 0,
     })
-    expect(empty).toEqual({ text: '', usage: { inputTokens: 0, outputTokens: 0 }, model: 'claude-sonnet-4-6' })
+    expect(empty).toEqual({
+      text: '', usage: { inputTokens: 0, outputTokens: 0 }, model: 'claude-sonnet-4-6', stopReason: null, stopReasonRaw: null, truncated: false,
+    })
   })
 })
 
@@ -484,29 +510,36 @@ describe('UC-APP-02 — clé personnelle : erreurs typées et reprises (A1, E4, 
   })
 })
 
-describe('UC-APP-02 — clé personnelle : anomalie A-06 (troncature non signalée)', () => {
-  it('UC-APP-02-U36 — comportement ACTUEL : les adaptateurs directs ne remontent pas la fin par budget de sortie (stopReason absent) ; extractDay ne peut pas dire « réponse tronquée » en clé personnelle', async () => {
+describe('UC-APP-02 — clé personnelle : anomalie A-06 (troncature non signalée), corrigée en partie le 2026-10-22', () => {
+  it('UC-APP-02-U36 — les adaptateurs directs Anthropic, OpenAI et Google lèvent une sortie tronquée (OutputTruncatedError, un seul appel, usage porté) ; Ollama, sans valeur d’arrêt vérifiée, la rend encore comme un fragment (comportement ACTUEL) ; extractDay dit « réponse tronquée » en clé personnelle sans refaire l’appel', async () => {
     const truncatedAnswers = [
-      ['anthropic', 'sk-ant-test', { content: [{ type: 'text', text: '{"poleNum":' }], stop_reason: 'max_tokens', usage: { input_tokens: 1, output_tokens: 8192 } }],
-      ['openai', 'sk-test-openai', { choices: [{ message: { content: '{"poleNum":' }, finish_reason: 'length' }], usage: { prompt_tokens: 1, completion_tokens: 8192 } }],
-      ['google', 'goog-test', { candidates: [{ content: { parts: [{ text: '{"poleNum":' }] }, finishReason: 'MAX_TOKENS' }] }],
-      ['ollama', undefined, { message: { content: '{"poleNum":' }, done_reason: 'length', eval_count: 8192 }],
+      ['anthropic', 'sk-ant-test', 'max_tokens', { content: [{ type: 'text', text: '{"poleNum":' }], stop_reason: 'max_tokens', usage: { input_tokens: 1, output_tokens: 8192 } }],
+      ['openai', 'sk-test-openai', 'length', { choices: [{ message: { content: '{"poleNum":' }, finish_reason: 'length' }], usage: { prompt_tokens: 1, completion_tokens: 8192 } }],
+      ['google', 'goog-test', 'MAX_TOKENS', { candidates: [{ content: { parts: [{ text: '{"poleNum":' }] }, finishReason: 'MAX_TOKENS' }], usageMetadata: { promptTokenCount: 1, candidatesTokenCount: 8192 } }],
     ]
-    for (const [id, key, body] of truncatedAnswers) {
-      const { fetchFn } = fakeFetch([[200, body]])
-      const result = await createProvider({ provider: id, apiKey: key, fetchFn }).complete({ model: 'm', prompt: 'Pôle 1' })
-      expect(result.text).toBe('{"poleNum":')
-      expect(result).not.toHaveProperty('stopReason') // comportement ACTUEL (A-06)
+    for (const [id, key, raw, body] of truncatedAnswers) {
+      const { calls, fetchFn } = fakeFetch([[200, body]])
+      const failure = await caught(createProvider({ provider: id, apiKey: key, fetchFn }).complete({ model: 'm', prompt: 'Pôle 1', maxTokens: 8192 }))
+      expect(failure).toBeInstanceOf(OutputTruncatedError)
+      expect(failure).toMatchObject({ provider: id, stopReason: 'max_tokens', stopReasonRaw: raw, usage: { inputTokens: 1, outputTokens: 8192 }, status: 200, retryable: false })
+      expect(failure.message).toBe('réponse tronquée : budget de sortie atteint (max_tokens = 8192) — ' + `${id}/m`)
+      expect(calls).toHaveLength(1)
     }
-    // Le transport proxy, lui, relaie le signal (même contrat que le Service humanome).
-    const relayed = fakeFetch([[200, { text: '{"poleNum":', stopReason: 'max_tokens' }]])
-    const viaProxy = await createProvider({ provider: 'anthropic', transport: 'proxy', fetchFn: relayed.fetchFn })
-      .complete({ model: 'm', prompt: 'Pôle 1' })
-    expect(viaProxy.stopReason).toBe('max_tokens')
+    // Ollama : done_reason absent de la table vérifiée → other ; le fragment passe (A-06, reste ouvert).
+    const ollama = fakeFetch([[200, { message: { content: '{"poleNum":' }, done_reason: 'length', eval_count: 8192 }]])
+    const local = await createProvider({ provider: 'ollama', fetchFn: ollama.fetchFn }).complete({ model: 'm', prompt: 'Pôle 1' })
+    expect(local).toMatchObject({ text: '{"poleNum":', stopReason: 'other', stopReasonRaw: 'length', truncated: false })
 
-    // Conséquence dans extractDay : même journée tronquée (réponse coupée à 60 %).
+    // Le transport proxy lève de même.
+    const relayed = fakeFetch([[200, { text: '{"poleNum":', stopReason: 'max_tokens' }]])
+    const viaProxy = await caught(createProvider({ provider: 'anthropic', transport: 'proxy', fetchFn: relayed.fetchFn })
+      .complete({ model: 'm', prompt: 'Pôle 1' }))
+    expect(viaProxy).toBeInstanceOf(OutputTruncatedError)
+
+    // Conséquence dans extractDay : même journée tronquée (réponse coupée à 60 %), en direct comme en proxy.
     const full = JSON.stringify(dayDoc('2026-01-05').poles[0])
     const cut = full.slice(0, Math.floor(full.length * 0.6))
+    const tronquee = 'extractDay : pôle 1 (2026-01-05) — réponse tronquée (budget de sortie atteint) — réduisez le texte de la journée'
     const direct = fakeFetch([[200, { content: [{ type: 'text', text: cut }], stop_reason: 'max_tokens' }]])
     const directErr = await caught(extractDay({
       dayText: 'Journée.',
@@ -515,9 +548,9 @@ describe('UC-APP-02 — clé personnelle : anomalie A-06 (troncature non signal�
       provider: createProvider({ provider: 'anthropic', apiKey: 'sk-ant-test', fetchFn: direct.fetchFn }),
       model: 'claude-sonnet-4-6',
     }))
-    expect(directErr.message).toMatch(/^extractDay : pôle 1 \(2026-01-05\) — réponse sans tableau competences \(objet /)
-    expect(directErr.message).not.toContain('tronquée')
-    expect(direct.calls).toHaveLength(2)
+    expect(directErr.message).toBe(tronquee)
+    expect(directErr.cause).toBeInstanceOf(OutputTruncatedError)
+    expect(direct.calls).toHaveLength(1) // jamais refait : un second appel serait payé, et coupé
 
     const proxied = fakeFetch([[200, { text: cut, stopReason: 'max_tokens' }]])
     const proxyErr = await caught(extractDay({
@@ -527,8 +560,7 @@ describe('UC-APP-02 — clé personnelle : anomalie A-06 (troncature non signal�
       provider: createProvider({ provider: 'anthropic', transport: 'proxy', fetchFn: proxied.fetchFn }),
       model: 'claude-sonnet-4-6',
     }))
-    expect(proxyErr.message).toBe(
-      'extractDay : pôle 1 (2026-01-05) — réponse tronquée (budget de sortie atteint) — réduisez le texte de la journée',
-    )
+    expect(proxyErr.message).toBe(tronquee)
+    expect(proxied.calls).toHaveLength(1)
   })
 })

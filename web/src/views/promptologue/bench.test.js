@@ -1,6 +1,9 @@
 // Banc d'essai (P10.4) — logique pure : routage moteur/sandbox, résumés,
 // consistance multi-run (engine compareRuns), rapport A/B.
 import { describe, expect, it, vi } from 'vitest'
+import { createMockProvider } from '@engine/providers/mock.js'
+import { OutputTruncatedError } from '@engine/providers/errors.js'
+import { isOutputTruncated } from '@engine/providers/index.js'
 import jourFixture from '../../../../schemas/fixtures/cartographie-jour-2026-01-05.json'
 import jour2Fixture from '../../../../schemas/fixtures/cartographie-jour-2026-01-06.json'
 import pkgFixture from '../../../../schemas/fixtures/prompt-package-exemple.json'
@@ -151,6 +154,24 @@ describe('runVersionOnDays — branche Twin6 (portfolio entier -> merge)', () =>
   it('dayGroupsToPortfolio assemble des feuilles ### AAAA-MM-JJ', () => {
     const portfolio = dayGroupsToPortfolio(DAYS)
     expect(portfolio).toBe('### 2026-01-05\n\nJournée 1.\n\n### 2026-01-06\n\nJournée 2.')
+  })
+
+  it('une troncature lève hors du vrai executerTwin6 : l’erreur emporte l’usage du banc (mesures comprises), appel tronqué compris', async () => {
+    const provider = createMockProvider({
+      responses: '```json\n{"poleNum": 1, "competences": []}\n```',
+      usage: { inputTokens: 100, outputTokens: 400 },
+      stopReason: (_params, i) => (i === 1 ? 'max_tokens' : 'end'),
+    })
+    const err = await runVersionOnDays({
+      pkg: twin6Pkg,
+      dayGroups: DAYS,
+      referentiel: referentielFixture,
+      provider,
+      model: 'test',
+    }).catch((e) => e)
+    expect(err.message).toMatch(/sortie tronquée \(max_tokens\) à l'étape scan-pole\/2/)
+    expect(err.usageRun).toEqual({ inputTokens: 200, outputTokens: 800, mesures: 2 })
+    expect(provider.callCount).toBe(2)
   })
 
   it('exécute executerTwin6 sur le portfolio entier et renvoie un résultat merge', async () => {
@@ -730,6 +751,68 @@ describe('runVersionOnDays — usage réel cumulé (D16)', () => {
       sandboxRunner: vi.fn(),
     })
     expect(result.usage).toEqual({ inputTokens: 400, outputTokens: 160, mesures: 4 })
+  })
+
+  it('une sortie tronquée (OutputTruncatedError) est comptée — l’appel est payé — puis l’erreur passe', async () => {
+    const provider = createMockProvider({
+      responses: '{"frag',
+      usage: { inputTokens: 100, outputTokens: 4096 },
+      stopReason: (_params, i) => (i === 1 ? 'max_tokens' : 'end'),
+    })
+    let seen = null
+    const extractDayFn = vi.fn(async ({ provider: p, date }) => {
+      await p.complete({ model: 'test', prompt: 'a' })
+      seen = await p.complete({ model: 'test', prompt: 'b' }).catch((e) => e)
+      return { ...structuredClone(jourFixture), date }
+    })
+    const result = await runVersionOnDays({
+      pkg: BUILTIN_PACKAGE,
+      dayGroups: [DAYS[0]],
+      referentiel: referentielFixture,
+      provider,
+      model: 'test',
+      extractDayFn,
+      sandboxRunner: vi.fn(),
+    })
+    expect(seen).toBeInstanceOf(OutputTruncatedError)
+    expect(result.usage).toEqual({ inputTokens: 200, outputTokens: 8192, mesures: 2 })
+    expect(provider.callCount).toBe(2)
+  })
+
+  it('un pôle tronqué : le vrai extractDay relève l’erreur, qui emporte l’usage du run, appel tronqué compris', async () => {
+    const provider = createMockProvider({
+      // Pôle 1 abouti, pôle 2 coupé : les deux appels sont payés.
+      responses: (_params, i) => (i === 0 ? JSON.stringify(jourFixture.poles[0]) : '{"frag'),
+      usage: { inputTokens: 100, outputTokens: 400 },
+      stopReason: (_params, i) => (i === 1 ? 'max_tokens' : 'end'),
+    })
+    const err = await runVersionOnDays({
+      pkg: BUILTIN_PACKAGE,
+      dayGroups: [DAYS[0]],
+      referentiel: referentielFixture,
+      provider,
+      model: 'test',
+    }).catch((e) => e)
+    expect(err.message).toMatch(/^extractDay : pôle 2 \(2026-01-05\)/)
+    expect(isOutputTruncated(err.cause)).toBe(true)
+    expect(err.usageRun).toEqual({ inputTokens: 200, outputTokens: 800, mesures: 2 })
+    expect(provider.callCount).toBe(2)
+  })
+
+  it('tout échec du run emporte son usage : un pôle illisible deux fois a payé ses deux appels', async () => {
+    const provider = createMockProvider({
+      responses: 'pas du JSON',
+      usage: { inputTokens: 100, outputTokens: 400 },
+    })
+    const err = await runVersionOnDays({
+      pkg: BUILTIN_PACKAGE,
+      dayGroups: [DAYS[0]],
+      referentiel: referentielFixture,
+      provider,
+      model: 'test',
+    }).catch((e) => e)
+    expect(err.message).toMatch(/^extractDay : pôle 1 \(2026-01-05\)/)
+    expect(err.usageRun).toEqual({ inputTokens: 200, outputTokens: 800, mesures: 2 })
   })
 
   it('fournisseur muet sur usage -> compteurs à zéro, mesures 0', async () => {

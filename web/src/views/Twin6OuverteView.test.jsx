@@ -35,6 +35,7 @@ const MERGE_DOC = {
 
 const PKG = {
   id: 'twin6-ouverte', version: '1.0.0', modeleCibleDefaut: 'claude-sonnet-5',
+  sha256: 'abcdef0123456789'.repeat(4), // inventée
   templates: { scanPole: 'SCAN ${POLE}', kairos: 'KAIROS', fiches: { 1: '# Pôle 1 — TÊTE\n\n## 1.01 — Pensée\n' } },
 }
 const OFFER = {
@@ -47,7 +48,7 @@ const OFFER = {
 
 // La version publiée de RESPIRE, FICTIVE : la même structure que /meta (un pôle, une compétence).
 const RESPIRE = {
-  id: 'respire', version: '7.0.0', label: 'RESPIRE v7',
+  id: 'respire', version: '7.0.0', label: 'RESPIRE v7', contentHash: '0123456789abcdef'.repeat(4), // inventée
   poles: [{ num: 1, nom: 'TETE — Penser & Comprendre' }],
   competences: [{ code: '1.01', nom: 'Pensée', pole: 1, description: 'Douter avec méthode.' }],
 }
@@ -128,6 +129,11 @@ describe('Twin6OuverteView', () => {
     expect(arg.model).toBe('demo') // une indication : le proxy impose son modèle
     // Sans /meta, le run lit le document publié de RESPIRE (RG9).
     expect(arg.referentiel.poles).toEqual([{ num: 1, nom: 'TETE — Penser & Comprendre' }])
+    // La configuration du document : l'essai (la voie « demo » de la vue), la structure lue dans le document.
+    expect(arg.options.configuration).toMatchObject({
+      acces: 'essai',
+      referentiel: { id: 'respire', version: '7.0.0', contentHash: RESPIRE.contentHash, structure: 'document' },
+    })
     expect(deps.makeOwnKeyProvider).not.toHaveBeenCalled()
     expect((await screen.findByText(/Cartographie ouverte terminée/)).textContent).toBe(
       'Cartographie ouverte terminée (essai gratuit).',
@@ -185,6 +191,7 @@ describe('Twin6OuverteView', () => {
 
     await waitFor(() => expect(deps.runEngine).toHaveBeenCalledTimes(1))
     expect(deps.runEngine.mock.calls[0][0].provider).toBe(makeDemoProvider.mock.results[0].value.provider)
+    expect(deps.runEngine.mock.calls[0][0].options.configuration.acces).toBe('essai')
     expect(deps.makeOwnKeyProvider).not.toHaveBeenCalled()
   })
 
@@ -213,6 +220,17 @@ describe('Twin6OuverteView', () => {
     expect(arg.portfolio).toContain('réparé l’horloge')
     expect(arg.referentiel.poles).toEqual([{ num: 1, nom: 'TÊTE — Penser & Comprendre' }])
     expect(arg.referentiel.competences).toEqual([{ code: '1.01', nom: 'Pensée', pole: 1 }])
+    // Ce que la vue seule sait de la configuration du run (docs/contrats.md §4 point 8) : le
+    // paquet et l'empreinte de ses octets, le référentiel choisi (son document fait foi ; ses
+    // pôles lus dans /meta), l'origine de la fiche, l'accès ; le moteur complète le reste.
+    expect(arg.options.configuration).toEqual({
+      paquet: { id: 'twin6-ouverte', version: '1.0.0', sha256: PKG.sha256 },
+      referentiel: { id: 'respire', version: '7.0.0', contentHash: RESPIRE.contentHash, structure: 'meta' },
+      fiches: { 1: 'paquet' },
+      acces: 'credits',
+    })
+    // Les bornes de l'exécution suivent l'horloge de generatedAt.
+    expect(arg.options.now).toBe(deps.now)
 
     // Résultat rendu (le sunburst réutilise MergeView).
     expect(await screen.findByText(/Cartographie ouverte terminée/)).toBeDefined()
@@ -281,6 +299,11 @@ describe('Twin6OuverteView', () => {
     expect(arg.referentiel).toBe(LETTRE)
     expect(Object.keys(arg.templates.fiches)).toEqual(['1', '2'])
     expect(arg.templates.fiches[1]).toBe('# Pôle 1 — A · Percevoir\n\n## A1 — Voir\n\nCe que voir veut dire.\n')
+    // Sa structure et ses fiches viennent de son document ; il ne porte pas d'empreinte : null, non devinée.
+    expect(arg.options.configuration).toMatchObject({
+      referentiel: { id: 'fictif-lettre', version: '1.0.0', contentHash: null, structure: 'document' },
+      fiches: { 1: 'document', 2: 'document' },
+    })
   })
 
   it('une version de RESPIRE d’une autre structure que /meta : le moteur lit son document', async () => {
@@ -295,6 +318,11 @@ describe('Twin6OuverteView', () => {
     fireEvent.click(screen.getByRole('button', { name: 'Lancer la cartographie ouverte' }))
     await waitFor(() => expect(deps.runEngine).toHaveBeenCalledTimes(1))
     expect(deps.runEngine.mock.calls[0][0].referentiel).toBe(six)
+    // La version choisie (8.0.0), lue dans son document ; la fiche du pôle 1 reste celle du paquet.
+    expect(deps.runEngine.mock.calls[0][0].options.configuration).toMatchObject({
+      referentiel: { id: 'respire', version: '8.0.0', structure: 'document' },
+      fiches: { 1: 'paquet', 2: 'document' },
+    })
   })
 
   it('un référentiel choisi qui ne se charge pas : message, lancement impossible', async () => {
@@ -348,6 +376,11 @@ describe('Twin6OuverteView', () => {
     await waitFor(() => expect(deps.revealKey).toHaveBeenCalledWith('anthropic', expect.anything()))
     await waitFor(() => expect(deps.makeOwnKeyProvider).toHaveBeenCalled())
     expect(deps.makeOwnKeyProvider.mock.calls[0][0]).toMatchObject({ apiKey: 'sk-ant-stored-key' })
+    await waitFor(() => expect(deps.runEngine).toHaveBeenCalledTimes(1))
+    // L'accès, sans rien de la clé.
+    const { configuration } = deps.runEngine.mock.calls[0][0].options
+    expect(configuration.acces).toBe('cle_perso')
+    expect(JSON.stringify(configuration)).not.toContain('sk-ant')
   })
 
   // Exigence : « sinon saisie manuelle + lien vers le profil » — sans clé

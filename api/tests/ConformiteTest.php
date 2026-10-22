@@ -180,6 +180,19 @@ final class ConformiteTest extends TestCase
             Conformite::verifier('cartographie-merge', $fusion, $ref)['errors']);
     }
 
+    /**
+     * A Twin6 merge carrying its configuration and execution (1.1.0, 2026-10-22)
+     * conforms like the bare one: the blocks name no pole and no code.
+     */
+    public function testATwin6MergeWithItsBlocksConformsLikeTheBareOne(): void
+    {
+        $blocs = self::lire('twin6/configuration-execution.json');
+        $fusion = ['schemaVersion' => '1.1.0'] + self::lire('cartographie-merge-3-jours.json')
+            + ['configuration' => $blocs['configuration'], 'execution' => $blocs['execution']];
+        self::assertSame(['valid' => true, 'errors' => []],
+            Conformite::verifier('cartographie-merge', $fusion, self::lire('referentiel-respire-v7.json')));
+    }
+
     /** Twin of the JS case: off-schema inputs read the same on both sides. */
     public function testOffSchemaCasesReadAsInJs(): void
     {

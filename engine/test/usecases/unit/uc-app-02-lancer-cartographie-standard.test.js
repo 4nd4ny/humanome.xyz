@@ -396,7 +396,7 @@ describe('UC-APP-02 — fournisseurs (étape 4, A1)', () => {
 
     const result = await proxy.complete({ model: 'demo', prompt: 'Pôle 1', maxTokens: 8192 })
 
-    expect(result).toMatchObject({ text: 'ok', model: 'mock', stopReason: 'end_turn' })
+    expect(result).toMatchObject({ text: 'ok', model: 'mock', stopReason: 'end', stopReasonRaw: 'end_turn' })
     expect(waits).toEqual([2000])
     expect(calls.map((c) => c.url)).toEqual(['api/llm', 'api/llm'])
     expect(JSON.parse(calls[1].init.body)).toEqual({

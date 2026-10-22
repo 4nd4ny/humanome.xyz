@@ -1,6 +1,7 @@
 import { describe, expect, it, vi } from 'vitest'
 import { createHash } from 'node:crypto'
-import { ProviderError } from '@engine/providers/errors.js'
+import { OutputTruncatedError, ProviderError } from '@engine/providers/errors.js'
+import { extractDay } from '@engine/pipeline/extract.js'
 import { leadingZeroBits } from './pow.js'
 import {
   DEMO_CHALLENGE_URL,
@@ -191,6 +192,36 @@ describe('createDemoProvider', () => {
     } finally {
       vi.useRealTimers()
     }
+  })
+
+  it('sortie tronquée relayée (200, stopReason max_tokens) : OutputTruncatedError, aucun nouvel essai, ni ici ni par extractDay', async () => {
+    const { fetchFn, posts } = makeFetch({
+      difficultyBits: 0,
+      llm: () =>
+        jsonResponse(200, { text: '{"poleNum":"1","competences":[', usage: { inputTokens: 9, outputTokens: 64000 }, model: 'demo-haiku', stopReason: 'max_tokens' }),
+    })
+    const { provider } = createDemoProvider({ fetchFn })
+
+    const error = await provider.complete({ model: 'demo', prompt: 'a' }).catch((e) => e)
+    expect(error).toBeInstanceOf(OutputTruncatedError)
+    expect(error).toMatchObject({ status: 200, usage: { inputTokens: 9, outputTokens: 64000 } })
+    expect(posts).toHaveLength(1)
+
+    // Dans l'Essayer : la journée échoue au premier pôle, sans second POST, avec le message dédié.
+    const referentiel = {
+      poles: [{ num: 1, nom: 'Pôle fictif' }],
+      competences: [{ code: '1.01', nom: 'Capacité fictive', pole: 1 }],
+    }
+    const failure = await extractDay({ dayText: 'Une journée.', date: '2026-10-22', referentiel, provider, model: 'demo', kairosOptional: true })
+      .catch((e) => e)
+    expect(posts).toHaveLength(2) // un POST pour l'appel direct ci-dessus, un pour le pôle
+    expect(describeDemoError(failure)).toEqual({
+      kind: 'tronque',
+      canRetry: false,
+      message:
+        'Votre texte est trop long pour l’essai : la réponse du modèle a été coupée avant la fin. ' +
+        'Raccourcissez-le, puis relancez l’analyse.',
+    })
   })
 
   it('un second 5xx après le retry unique est propagé (pas de boucle)', async () => {

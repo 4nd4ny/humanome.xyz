@@ -159,6 +159,57 @@ réponse. Suivent la PR B (adaptateurs JS, export Twin6) et, A fusionnée, la PR
     `mes-analyses`. À savoir, sans changement : avec une clé personnelle Anthropic, les résultats
     des lots se lisent dans la Console du titulaire de la clé.
 
+- 2026-10-22 — **P0, PR B : arrêts normalisés, sortie tronquée explicite, configuration du
+  document Twin6 (branche `feat/p0-arrets-js-twin6`, indépendante de la PR A).** Spécification
+  `spec-v2` (PR B : lots C5 et C6 du plan), faits d'API relevés le 2026-10-22 sur les seules
+  documentations officielles.
+  - **C5 — pourquoi une génération s'arrête** (`docs/contrats.md` §4 point 14). Tout résultat de
+    `complete()` porte une classe d'arrêt (`end`, `max_tokens`, `context_window`, `refusal`,
+    `other`, ou `null`), sa valeur brute et `truncated`. La table est partagée avec le PHP à venir
+    (`schemas/fixtures/arrets/arrets-fournisseurs.json`) et ne retient que les valeurs vérifiées :
+    toute autre vaut `other` — Ollama n'en a aucune, une réponse Ollama coupée n'est donc pas encore
+    détectée (UC-APP-02 A-06 reste ouverte). Une sortie tronquée est payée et n'est qu'un fragment :
+    `complete()` lève une `OutputTruncatedError` (statut 200, jamais réessayée, fragment non
+    énumérable, message sans contenu), sauf `allowTruncated`. Décision pour chaque consommateur :
+    `executerTwin6` nomme l'étape et joint l'usage du run, appel tronqué compris, et fait d'un refus
+    une erreur explicite ; `extractDay` ne refait jamais un appel tronqué ; le fournisseur
+    « crédits » compte le coût puis lève ; le banc, le lanceur de runs et le runner Node comptent
+    l'usage de l'appel tronqué, et le banc l'affiche avec son coût même quand le run échoue
+    (l'erreur emporte l'usage cumulé jusqu'à elle) ; la démo ne le refait pas et dit « Votre texte est trop long pour
+    l'essai » ; la relance du dialogue dit « Relance coupée » ; le bac à sable rend `llm-error`.
+    Gemini : parts de réflexion exclues, sortie comptée = ce qui est facturé. UC-APP-09 anomalie 1
+    corrigée.
+  - **C6 — le document Twin6 dit comment il a été produit** (`cartographie-merge` 1.1.0, §4
+    point 8). La vue passe au moteur le paquet et l'empreinte SHA-256 de ses **octets servis**
+    (calculée par `loadTwin6Package` avant toute lecture du JSON), le référentiel choisi (id,
+    version, `contentHash`, et d'où le moteur lit ses pôles), l'origine de chaque fiche
+    (`originesDesFiches`) et l'accès (`cle_perso`, `credits`, `essai`) ; `executerTwin6` complète,
+    par liste blanche, le fournisseur et son tag RGPD — nouveau registre `PROVIDER_INFO` :
+    Anthropic et OpenAI `sous_conditions`, Mistral `oui`, Google, xAI et OpenRouter `non`, Ollama
+    `local` —, le transport, le modèle demandé, le budget de sortie résolu, la température, et tire
+    `execution` des appels (bornes à horloge injectable, modèle servi, arrêt normalisé et jetons de
+    chaque appel ; coût `null` : un document se partage, le montant reste au relevé du compte).
+    `buildMergeDocument` n'ajoute les blocs qu'avec une configuration (une `execution` seule est
+    ignorée, que le schéma refuserait) : tout autre document (banc,
+    Aurora, Twin9, cohortes, corpus) reste en 1.0.0 à l'octet, parité du document inchangée. Schéma :
+    `$defs/configurationTwin6` et `$defs/executionTwin6`, facultatifs, règle `voie = lots ⇒
+    fournisseur = anthropic`, `execution` seulement avec `configuration` ; validateurs régénérés.
+    L'importeur de la cartographie lit le modèle servi et garde la configuration, réduite à sa
+    liste blanche, en provenance. Fixtures inventées partagées JS/PHP
+    (`schemas/fixtures/twin6/`) : blocs valides greffés sur la fusion de trois jours, et huit cas
+    refusés.
+  - **Déploiement** : l'API (ses schémas) avant le front — le serveur valide au schéma une
+    révision de cartographie, qui serait refusée en 1.1.0.
+  - Tests : moteur 559 (5 échecs locaux préexistants, UC-PRO-08 F19-F22 et F25 : le faux dépôt
+    Twin_v9 ne se crée pas dans cet environnement) ; front 2 778, tous verts (avec `TWIN_V9_DIR`
+    et le paquet 1.1.0 construit) ; `ValidationTest` et `ConformiteTest` verts ; corpus 69/69 ;
+    parité du document 100 %.
+  - **Restent ouverts** : l'empreinte de la configuration n'entre pas dans l'identifiant stable
+    d'une variante importée (deux runs aux compteurs identiques mais aux modèles différents se
+    confondent encore) ; le nom du fichier exporté lit `source.journal_id` au lieu de
+    `source.journalId` (toujours `cartographie-twin6-ouverte.json`, figé par un test) ; la PR C
+    reflétera `PROVIDER_INFO` et la table des arrêts côté PHP.
+
 - 2026-10-22 — **Deux tâches planifiées depuis un autre hébergement OVH ; les prix relevés aussi
   par `worker.php` (branche `fix/tarifs-worker-cli`, empilée sur `docs/deploiement-2026-10-21`).**
   Christian (00 h 05) : « J'ai la possibilité de définir un cron depuis un autre site avec l'offre

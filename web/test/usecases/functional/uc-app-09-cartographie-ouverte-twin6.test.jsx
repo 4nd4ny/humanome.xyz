@@ -18,6 +18,7 @@ import { TWIN6_PACKAGE_URL } from '../../../src/api/twin6.js'
 import { formatUsd } from '../../../src/api/twin9.js'
 import { clearReferentielCache } from '../../../src/data/referentiel.js'
 import { downloadJson } from '../../../src/lib/download-json.js'
+import { validateDocument } from '@engine/validation.js'
 import * as fakeLib from '../../../src/test/fake-sunburst-lib.js'
 import {
   REFERENTIEL_LETTRE_FICTIF,
@@ -206,6 +207,35 @@ describe('UC-APP-09 — l’apprenant lance une cartographie ouverte', () => {
     // Le document est de RESPIRE : il ne nomme pas de référentiel, ses pôles portent les noms de /meta.
     expect(docExporte).not.toHaveProperty('referentiel')
     expect(docExporte.domains[0].id).toBe('TÊTE — Penser & Comprendre')
+    // Et il dit comment il a été produit (2026-10-22, contrats §4 point 8) : en 1.1.0, le paquet et
+    // l'empreinte des octets servis, le référentiel (pôles lus dans /meta ; le document fictif ne porte
+    // pas d'empreinte), l'accès, le fournisseur et son tag, le budget de sortie ; chaque appel, son arrêt.
+    expect(docExporte.schemaVersion).toBe('1.1.0')
+    expect(docExporte.configuration).toEqual({
+      schema: 'twin6-configuration/1',
+      moteur: 'twin6',
+      paquet: {
+        id: TWIN6_PACKAGE.id,
+        version: TWIN6_PACKAGE.version,
+        sha256: createHash('sha256').update(JSON.stringify(TWIN6_PACKAGE)).digest('hex'),
+      },
+      referentiel: { id: 'respire', version: '7.0.0', contentHash: null, structure: 'meta' },
+      fiches: Object.fromEntries([1, 2, 3, 4, 5, 6, 7].map((n) => [String(n), 'paquet'])),
+      fournisseur: 'anthropic',
+      voie: 'directe',
+      acces: 'credits',
+      transport: 'proxy',
+      modele: 'claude-sonnet-5',
+      maxTokens: 128000,
+      temperature: null,
+      rgpd: 'sous_conditions',
+    })
+    expect(docExporte.execution.appels.map((a) => [a.etape, a.stopReason, a.stopReasonRaw])).toEqual(
+      [1, 2, 3, 4, 5, 6, 7].map((n) => [`scan-pole/${n}`, 'end', 'end_turn']).concat([['kairos', 'end', 'end_turn']]),
+    )
+    expect(docExporte.execution.usage).toEqual({ inputTokens: 8000, outputTokens: 1600 })
+    expect(docExporte.execution.modelesServis).toEqual(['claude-sonnet-5'])
+    expect(validateDocument('cartographie-merge', docExporte).errors).toEqual([])
 
     // Étapes 5-6 : 7 scan-pole (pôles 1→7, la fiche du paquet telle quelle) puis le kairos,
     // chacun avec le CSRF de la session.
@@ -476,14 +506,54 @@ describe('UC-APP-09 — l’apprenant lance une cartographie ouverte', () => {
     expect(screen.getByRole('button', { name: 'Lancer la cartographie ouverte' }).disabled).toBe(false)
   })
 
-  it('UC-APP-09-F08 — E5 : sortie tronquée (stop max_tokens) → échec explicite, pas de document partiel', async () => {
-    stubFetch(routes({ 'POST twin6/appel': (url, init) => appelOk(url, init, { stopReason: 'max_tokens' }) }))
+  it('UC-APP-09-F08 — E5 : sortie tronquée (stop max_tokens) → échec explicite nommant l’étape, ce que le run a débité appel tronqué compris, pas de document partiel', async () => {
+    // Le premier appel abouti, le second tronqué : facturé (un 200), à un autre
+    // coût, pour que le montant affiché dise s'il compte l'appel tronqué — et
+    // une seule fois : sous le centime, formatUsd montre quatre décimales.
+    let n = 0
+    const { calls } = stubFetch(
+      routes({
+        'POST twin6/appel': (url, init) => {
+          n += 1
+          return n === 1 ? appelOk(url, init) : appelOk(url, init, { stopReason: 'max_tokens', cout_microusd: 2100 })
+        },
+      }),
+    )
     openTwin6()
     await saisirPortfolio()
     await lancer()
 
-    expect((await screen.findByRole('alert')).textContent).toContain('sortie tronquée (max_tokens)')
+    const alerte = (await screen.findByRole('alert')).textContent
+    expect(alerte).toMatch(/^executerTwin6: sortie tronquée \(max_tokens\) à l'étape scan-pole\/2 — /)
+    const debite = `(${formatUsd(6602 + 2100)} débités pour ce run.)`
+    expect(alerte.slice(-debite.length)).toBe(debite)
+    expect(appelsTwin6(calls)).toHaveLength(2)
+    expect(screen.queryByText(/Cartographie ouverte terminée/)).toBeNull()
     expect(screen.queryByTestId('twin6-export')).toBeNull()
+    expect(screen.getByRole('button', { name: 'Lancer la cartographie ouverte' }).disabled).toBe(false)
+  })
+
+  it('UC-APP-09-F31 — E5 : le fournisseur refuse de répondre (stop refusal relayé) → run arrêté à cette étape, ce que le run a débité refus compris, pas de document', async () => {
+    let n = 0
+    const { calls } = stubFetch(
+      routes({
+        'POST twin6/appel': (url, init) => {
+          n += 1
+          return n === 1 ? appelOk(url, init) : appelOk(url, init, { text: '', stopReason: 'refusal', cout_microusd: 2100 })
+        },
+      }),
+    )
+    openTwin6()
+    await saisirPortfolio()
+    await lancer()
+
+    expect((await screen.findByRole('alert')).textContent).toBe(
+      `executerTwin6: le fournisseur a refusé de répondre à l'étape scan-pole/2 (${formatUsd(6602 + 2100)} débités pour ce run.)`,
+    )
+    expect(appelsTwin6(calls)).toHaveLength(2)
+    expect(screen.queryByText(/Cartographie ouverte terminée/)).toBeNull()
+    expect(screen.queryByTestId('twin6-export')).toBeNull()
+    expect(screen.getByRole('button', { name: 'Lancer la cartographie ouverte' }).disabled).toBe(false)
   })
 
   it('UC-APP-09-F09 — E6 : paquet de prompts public introuvable, ou offre /api/twin9/meta illisible → erreur de chargement, formulaire absent', async () => {

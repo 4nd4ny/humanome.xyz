@@ -304,3 +304,54 @@ describe('twin9-run', () => {
     expect(validateDocument('archive-export', archive({ ...run, configuration, execution: null })).valid).toBe(false)
   })
 })
+
+// Les blocs « configuration » et « execution » d'un document Twin6 (cartographie-merge
+// 1.1.0, 2026-10-22, docs/contrats.md §4 point 8), sur les fixtures partagées avec
+// PHP (schemas/fixtures/twin6, valeurs inventées). PHP twin : api/tests/ValidationTest.php.
+describe('validateDocument — configuration et exécution d’un run Twin6 (1.1.0)', () => {
+  const lire = (nom) => JSON.parse(readFileSync(new URL(`../../schemas/fixtures/${nom}`, import.meta.url), 'utf8'))
+  const blocs = () => {
+    const { configuration, execution } = lire('twin6/configuration-execution.json')
+    return { configuration, execution }
+  }
+  /** La fusion de trois jours, en 1.1.0, avec les blocs. */
+  const configure = () => ({ ...lire('cartographie-merge-3-jours.json'), schemaVersion: '1.1.0', ...blocs() })
+  const poser = (doc, chemin, valeur) => {
+    const parent = chemin.slice(0, -1).reduce((o, k) => o[k], doc)
+    parent[chemin.at(-1)] = valeur
+  }
+  const retirer = (doc, chemin) => {
+    const parent = chemin.slice(0, -1).reduce((o, k) => o[k], doc)
+    delete parent[chemin.at(-1)]
+  }
+
+  it('accepts the merge of three days carrying both blocks, and an archive that embeds it', () => {
+    expect(validateDocument('cartographie-merge', configure()).errors).toEqual([])
+    const archive = lire('archive-export-exemple.json')
+    archive.cartographies[0].document = configure()
+    expect(validateDocument('archive-export', archive).errors).toEqual([])
+  })
+
+  it('keeps the blocks optional: the fixture without them is valid as it is', () => {
+    expect(validateDocument('cartographie-merge', lire('cartographie-merge-3-jours.json')).errors).toEqual([])
+    const { execution: _e, ...sansExecution } = configure()
+    expect(validateDocument('cartographie-merge', sansExecution).errors).toEqual([])
+  })
+
+  it('accepts batches when the provider is Anthropic (the rule: lots ⇒ anthropic)', () => {
+    const lots = configure()
+    lots.configuration.voie = 'lots'
+    expect(validateDocument('cartographie-merge', lots).errors).toEqual([])
+  })
+
+  for (const cas of lire('twin6/configuration-invalides.json').cas) {
+    it(`refuses ${cas.cas}`, () => {
+      const doc = configure()
+      for (const [chemin, valeur] of cas.poser ?? []) poser(doc, chemin, valeur)
+      for (const chemin of cas.retirer ?? []) retirer(doc, chemin)
+      const res = validateDocument('cartographie-merge', doc)
+      expect(res.valid).toBe(false)
+      expect(res.errors.some((e) => e.path === cas.erreur || e.path.startsWith(`${cas.erreur}/`)), JSON.stringify(res.errors)).toBe(true)
+    })
+  }
+})

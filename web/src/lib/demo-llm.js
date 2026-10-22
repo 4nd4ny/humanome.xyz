@@ -24,6 +24,9 @@
 //   (`onProgression`) and hands the engine the JSON the route would have
 //   answered; a call cut short (the delay, the provider) was counted on the
 //   day's budget for what it produced, and is not retried here;
+// - an answer cut by the model's limits (OutputTruncatedError, 2026-10-22)
+//   is a 200: counted, never retried (neither here nor by the engine), and
+//   told apart by describeDemoError;
 // - RGPD (cahier §6.5): nothing is logged nor stored anywhere in this module.
 
 import { createProvider } from '@engine/providers/index.js'
@@ -263,6 +266,14 @@ function httpInfo(error) {
   return null
 }
 
+/** @returns {boolean} true when the error (or a cause) is a cut answer (OutputTruncatedError) */
+function isTruncation(error) {
+  for (let err = error; err; err = err.cause) {
+    if (err.code === 'sortie_tronquee') return true
+  }
+  return false
+}
+
 /** @returns {boolean} true when the error (or a cause) is an AbortError */
 export function isAbortError(error) {
   for (let err = error; err; err = err.cause) {
@@ -275,7 +286,7 @@ export function isAbortError(error) {
  * Maps a demo run failure to a user-facing French message (P6.4).
  *
  * @param {unknown} error anything thrown by prime()/extractDay()
- * @returns {{kind: 'quota'|'unavailable'|'llm', message: string, canRetry: boolean}}
+ * @returns {{kind: 'quota'|'unavailable'|'tronque'|'llm', message: string, canRetry: boolean}}
  */
 export function describeDemoError(error) {
   const info = httpInfo(error)
@@ -299,6 +310,17 @@ export function describeDemoError(error) {
       message:
         'La démo est épuisée pour aujourd’hui ou momentanément désactivée. ' +
         'Revenez un peu plus tard — ou créez un compte pour cartographier sans ces limites.',
+    }
+  }
+  // A cut answer (status 200, found anywhere in the cause chain: extractDay and
+  // executerTwin6 wrap it): the same text would be cut again.
+  if (isTruncation(error)) {
+    return {
+      kind: 'tronque',
+      canRetry: false,
+      message:
+        'Votre texte est trop long pour l’essai : la réponse du modèle a été coupée avant la fin. ' +
+        'Raccourcissez-le, puis relancez l’analyse.',
     }
   }
   const detail = error instanceof Error ? error.message : String(error)

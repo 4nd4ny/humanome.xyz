@@ -65,11 +65,14 @@ masse ») et clique « Estimer le coût ».
    sont cochés ; la case d'un membre sans dépôt est désactivée.
 2. Le premier paquet publié de la liste est présélectionné (menu « Paquet de
    prompts ») ; le menu « Référentiel » offre les référentiels publiés (la
-   dernière version de chacun, lue dans l'index statique
-   `data/referentiel/index.json`), RESPIRE présélectionné — sans index, le
-   menu n'apparaît pas et le run cartographie RESPIRE.
+   dernière version de chacun, lue dans la base par l'API publique
+   `GET /api/referentiels`, à défaut dans l'index statique
+   `data/referentiel/index.json`, S5), RESPIRE présélectionné — sans l'une ni
+   l'autre, le menu n'apparaît pas et le run cartographie RESPIRE.
 3. Il clique « Estimer le coût » : le site charge le document du référentiel
-   choisi et calcule localement (moteur) le nombre de membres et de journées,
+   choisi (sans choix, la dernière version de RESPIRE publiée en base, celle
+   que le serveur figera ; `GET /api/referentiels/{id}/versions/{semver}`,
+   l'export statique en repli) et calcule localement (moteur) le nombre de membres et de journées,
    `(pôles du référentiel + 1) × journées` appels LLM (un par pôle, plus le
    kairos — 8 pour RESPIRE v7 ; la fusion est calculée plus tard côté client,
    sans LLM), les
@@ -244,7 +247,8 @@ tableau reste figé sur le dernier état reçu.
 | Couche | Élément | Rôle |
 |---|---|---|
 | Front | `web/src/views/etablissement/CohorteSection.jsx` — sélection, choix du référentiel, `computeEstimate` (référentiel choisi chargé ; taille moyenne d'une journée = Σ tailles / Σ journées, repli 3 000 ; modèle configuré sinon `SERVICE_MODEL`), `confirmLaunch` (`referentielId`/`referentielVersion` seulement sur choix ; `membres` omis quand tous les déposants sont cochés), polling (`POLL_INTERVAL_MS`, erreurs ignorées), `RunProgress` (bouton d'annulation si run `active` ou jobs `queued`/`running`), `onCancel` | Assistant de lancement, suivi, annulation |
-| Front | `web/src/components/ReferentielChoice.jsx` ; `web/src/data/referentiel.js` — `listPublishedReferentiels`, `loadPublishedReferentiel` | Menu « Référentiel » (dernière version de chaque référentiel publié, RESPIRE par défaut), document du référentiel choisi |
+| Front | `web/src/components/ReferentielChoice.jsx` ; `web/src/data/referentiel.js` — `listPublishedReferentiels`, `loadPublishedReferentiel` | Menu « Référentiel » (dernière version de chaque référentiel publié, RESPIRE par défaut), document du référentiel choisi : la base par l'API publique d'abord, l'export statique en repli (S5) |
+| API | `api/src/routes/referentiel.php` — `GET /referentiels`, `GET /referentiels/{id}/versions/{semver}` | Référentiels publiés et document d'une version publiée, publics, en lecture seule |
 | Front | `web/src/views/etablissement/etablissement-api.js` — `estimateMassRun`, `SERVICE_MODEL`, `fetchPublishedPackages`, `launchRun`, `fetchRun`, `cancelRun`, `JOB_STATUS_LABELS` | Estimation, appels, normalisation du tableau |
 | Moteur | `engine/src/providers/estimate.js` — `callsPerDayFor`, `getModelPricing`, `CHARS_PER_TOKEN_FR`, `PRICING_DISCLAIMER` | Appels d'une journée selon le référentiel, table de prix indicative |
 | API | `api/src/routes/etablissement.php` — `POST …/cohortes/{id}/runs`, `GET …/runs/{runId}`, `POST …/runs/{runId}/annuler` | Validation, résolution du référentiel, versions, enfilage, audit |
@@ -273,7 +277,7 @@ tableau reste figé sur le dernier état reçu.
 | UC-ETA-03-U12 | `JOB_STATUS_LABELS`, `POLL_INTERVAL_MS`, `SERVICE_MODEL` | Six statuts libellés, 5 s, modèle de référence | idem |
 | UC-ETA-03-U13 | `CohorteSection` (isolée, `fetchFn`) — `computeEstimate` | Taille moyenne tirée des dépôts (1.12 $), repli 3 000 sans taille (1.13 $), modèle configuré prioritaire | idem |
 | UC-ETA-03-U14 | `CohorteSection` (isolée) — `RunProgress` | Bouton « Annuler le run » : run `active` ou jobs en file → présent ; `done`, `cancelled`, `budget_exceeded` sans file → absent | idem |
-| UC-ETA-03-U15 | `CohorteSection` (isolée, `getReferentiel`, `listReferentiels`) — choix du référentiel | RESPIRE par défaut (référentiel chargé sans argument : sa dernière version publiée, 40 appels) ; autre choix → estimation effacée, rechargée à ses pôles (50 appels), POST avec `referentielId`/`referentielVersion` (A8, RG4) | idem |
+| UC-ETA-03-U15 | `CohorteSection` (isolée, `getReferentiel`, `listReferentiels`) — choix du référentiel | RESPIRE par défaut (référentiel chargé par `{id: 'respire'}` : sa dernière version publiée, la base d'abord, S5 ; 40 appels) ; autre choix → estimation effacée, rechargée à ses pôles (50 appels), POST avec `referentielId`/`referentielVersion` (A8, RG4) | idem |
 
 ### Tests fonctionnels
 
@@ -308,6 +312,7 @@ tableau reste figé sur le dernier état reçu.
 | UC-ETA-03-F27 | E7, E1 | API | Version non publiée, identifiant inconnu, paquet 1.0.0 face à neuf pôles → `422` explicites ; `referentielVersion` sans identifiant, identifiant ou version non textuels → `422 fields` ; aucun run | idem |
 | UC-ETA-03-F28 | A8, E7 | API | RESPIRE 8.0.0 en six pôles devenue la dernière publiée : défaut refusé au paquet 1.0.0, la 7.0.0 reste choisissable ; un paquet qui lit le référentiel la cartographie (7 appels, six pôles, document sans `referentiel`, conforme) | idem |
 | UC-ETA-03-F29 | A8 | IHM | `<App/>` avec l'index statique : menu « Référentiel » (RESPIRE présélectionné), choix d'un référentiel à neuf pôles → 50 appels estimés, POST avec sa version | `web/test/usecases/functional/uc-eta-03-piloter-run-masse.test.jsx` |
+| UC-ETA-03-F30 | A8 | IHM | `<App/>` sans export statique, les référentiels publiés en base (`GET api/referentiels`, rangés par identifiant) : RESPIRE 7.1.0 (six pôles, fictive) en tête et présélectionnée ; menu non touché, l'estimation la lit (`GET api/referentiels/respire/versions/7.1.0`) → 35 appels, pas les 40 de la copie embarquée ; le référentiel à neuf pôles choisi est lu par `GET api/referentiels/fictif-neuf/versions/1.0.0` → 50 appels estimés, POST avec sa version | idem |
 
 ### Tests existants liés (non-régression)
 
@@ -400,9 +405,10 @@ cd web && npx vitest run test/usecases/unit/uc-eta-03 test/usecases/functional/u
 - Le polling continue toutes les 5 s tant que la page reste ouverte, même
   après la fin du run.
 - Le menu « Référentiel » n'offre que la dernière version de chaque
-  référentiel publié, et seulement si l'index statique des référentiels est
-  servi (`data/referentiel/index.json`) ; une version antérieure se choisit
-  par l'API (`referentielVersion`).
-- L'estimation lit le référentiel dans les fichiers statiques publiés, le
-  serveur dans la base : les deux coïncident tant que l'export statique suit
-  les publications (UC-EPI-03).
+  référentiel publié, lue dans la base (`GET /api/referentiels`), ou dans
+  l'index statique quand l'API ne répond pas ; une version antérieure se
+  choisit par l'API (`referentielVersion`).
+- Depuis S5, l'estimation lit le référentiel dans la base, comme le serveur,
+  y compris par défaut (la dernière RESPIRE publiée en base). Sur une copie
+  où l'API ne répond pas, elle retombe sur l'export statique, puis sur la
+  copie embarquée de RESPIRE.

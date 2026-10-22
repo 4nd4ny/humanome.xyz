@@ -4,7 +4,7 @@
 |---|---|
 | **Acteur principal** | Épistémiarque (ou administrateur : garde « épistémiarque ou admin ») |
 | **Acteurs secondaires** | Membres épistémiarques (vote, UC-EPI-02 A5) ; chaque compte, qui choisit un référentiel publié dans son profil Twin9 (UC-APP-10, page Configuration) ou au lancement d'une cartographie standard, ouverte ou de masse ; l'auteur d'un brouillon, pour ses runs d'essai |
-| **Portée** | Atelier `#/epistemiarque/referentiels` (section « Autres référentiels ») ; API `POST /api/referentiel/import`, `GET /api/referentiels`, et le cycle du grain document (`/api/referentiel/drafts…`, `/api/referentiel/proposals…`, UC-EPI-04) |
+| **Portée** | Atelier `#/epistemiarque/referentiels` (section « Autres référentiels ») ; API `POST /api/referentiel/import`, `GET /api/referentiels`, `GET /api/referentiels/{id}/versions/{semver}`, et le cycle du grain document (`/api/referentiel/drafts…`, `/api/referentiel/proposals…`, UC-EPI-04) |
 | **Niveau** | Objectif utilisateur |
 | **Cahier des charges** | §3.5, §4.1 ; T15 (dépôt `Twin_v9`, `docs/plan-twin9-php.md`, lot 4c, première tâche) ; schéma `referentiel` 2.1.0 (`docs/contrats.md` §9 et §11) |
 | **Statut** | Implémenté (T15) ; le moteur lit le référentiel du run depuis T16, la cartographie depuis T17 (`docs/contrats.md` §10) |
@@ -35,11 +35,16 @@ exemple converti depuis sa source, et veut le proposer aux membres.
   (`created_by`), lu au niveau choisi : les éléments de ce niveau sont ses
   compétences, chacune sous le pôle de sa compétence d'origine, ses éléments
   plus fins dessous ; ses `niveaux` commencent au niveau choisi.
-- Après le vote et la publication, la version est servie (`GET /api/referentiels`)
-  et proposée à chaque compte : dans son profil Twin9 et, depuis le 2026-10-20,
-  au choix du référentiel de la cartographie standard, de la cartographie
-  ouverte (Twin6) et des cartographies de masse. Ses fiches de scan
-  s'écrivent depuis son document, sans rien à générer (RG10).
+- Après le vote et la publication, la version est servie (`GET /api/referentiels`
+  la liste, `GET /api/referentiels/{id}/versions/{semver}` son document, à
+  tous, en lecture seule) et proposée à chaque compte : dans son profil Twin9
+  et, depuis le 2026-10-20, au choix du référentiel de la cartographie
+  standard, de la cartographie ouverte (Twin6) et des cartographies de masse.
+  Depuis S5 (2026-10-22), ces trois menus la lisent dans la base, dès sa
+  publication : plus besoin d'un export statique ni d'un redéploiement. Ses
+  fiches de scan s'écrivent depuis son document, sans rien à générer (RG10).
+- Un brouillon ou une proposition ne sont jamais servis par ces routes, pas
+  même à leur auteur (ils ne servent que ses runs d'essai, RG7).
 
 ## Garanties minimales (en cas d'échec)
 
@@ -182,7 +187,8 @@ exemple converti depuis sa source, et veut le proposer aux membres.
 | Front | `web/src/views/epistemiarque/ReferentielsSection.jsx`, `web/src/views/EpistemiarqueView.jsx` (section `referentiels`, lien de l'atelier) | Import, niveau, lecture, vote, publication |
 | Front | `web/src/views/epistemiarque/api.js` — `importReferentiel`, `listCatalogue`, `getDraft` ; `web/src/api/client.js` (`ApiError.errors`) | Client, détail d'un refus |
 | Front | `web/src/views/ConfigurationView.jsx` | Brouillons proposés en version |
-| API | `api/src/routes/referentiel.php` — `POST /referentiel/import`, `GET /referentiels`, listes de tous les référentiels, fork d'un autre | Orchestration |
+| API | `api/src/routes/referentiel.php` — `POST /referentiel/import`, `GET /referentiels`, `GET /referentiels/{id}/versions/{semver}` (S5), listes de tous les référentiels, fork d'un autre | Orchestration, lectures publiques des versions publiées |
+| Front | `web/src/data/referentiel.js` — `listPublishedReferentiels`, `loadPublishedReferentiel` ; `web/src/components/ReferentielChoice.jsx` | Menus des parcours : la base par l'API publique d'abord, l'export statique en repli (S5) |
 | Domaine | `api/src/Referentiel/ReferentielRepository.php` — `importDraft`, `auNiveau`, `niveaux`, `regexDuMotif`, `validateDocument`, `catalogue`, `brouillonsDe`, `findVersion`, `editableVersions` | Import, contrôles, lectures |
 | Domaine | `api/src/Referentiel/ContentHash.php` | Niveaux et éléments gardés hors de l'empreinte |
 | Domaine | `api/src/Twin9/ProfilPolicy.php`, `api/src/Twin9/Lancement.php`, `api/src/Twin9/ReferentielMoteur.php` | RG7, RG8, RG10 |
@@ -235,6 +241,8 @@ exemple converti depuis sa source, et veut le proposer aux membres.
 - `api/tests/Twin9/ReferentielMoteurTest.php` — le référentiel que lit le moteur (RG8, RG10) : fiches de RESPIRE prises dans la base, celles d'un autre écrites depuis son document, ordre naturel des codes ; avec le vrai moteur, un référentiel qu'il ne lit pas est refusé au lancement.
 - `api/tests/AnnotationsTest.php` — `testACartographyOfAnotherReferentialTakesItsCodes` (RG9).
 - `web/src/views/ConfigurationView.test.jsx` — les brouillons proposés en version.
+- `api/tests/ReferentielApiTest.php` — `testAnyPublishedReferentialIsServedByIdAndVersion` (S5) : une version publiée de tout référentiel servie à tous par son identifiant ; brouillon, proposition (même à leur auteur), identifiant ou version inconnus, autre graphie (casse, espace final) → `404` ; lecture seule (`405`) ; le catalogue ne liste que la publiée.
+- `web/src/data/referentiel.test.js` (« API d'abord, export statique en repli ») ; `web/src/components/ReferentielChoice.test.jsx` ; UC-APP-02-F27, UC-APP-09-F31, UC-ETA-03-F30 — les menus des parcours lisent la base.
 - UC-EPI-03 (coupe de release : complétude, la structure de la dernière version publiée), UC-EPI-04 (grain document), `ReferentielApiTest`, `ReferentielImportExportTest`, `CompetenceReleaseTest`, `engine/test/usecases/unit/uc-sys-04-chaine-artefacts-derives.test.js` (validateurs compilés).
 
 ### Exécuter

@@ -73,16 +73,19 @@ Cartographier mes écrits », ou le bouton du tableau de bord `#/espace`).
 
 1. L'apprenant ouvre l'assistant. L'espace vérifie la session
    (`GET api/auth/me`) ; l'assistant charge RESPIRE, sa dernière version
-   publiée (`data/referentiel/index.json` puis le fichier de la version ; repli
-   sur la copie embarquée), les portfolios locaux et les versions de prompt
+   publiée, celle que le menu « Référentiel » présélectionne : dans la base
+   (`GET api/referentiels` puis `GET api/referentiels/respire/versions/{semver}`,
+   S5), à défaut dans l'export statique (`data/referentiel/index.json` puis le
+   fichier de la version), enfin la copie embarquée ; les portfolios locaux et les versions de prompt
    (`GET api/prompt-packages/default` puis `GET api/prompt-packages`).
 2. **Portfolio** : il choisit un portfolio ; chaque entrée affiche son nombre
    de journées (segments datés regroupés par date, textes d'une même date
    concaténés, tri chronologique ; segments non datés ignorés). « Continuer »
    n'est actif qu'avec au moins une journée.
 3. **Version de prompt** : le sélecteur « Référentiel » propose les
-   référentiels publiés (index statique), RESPIRE à sa dernière version par
-   défaut (un autre : A7) ; le paquet embarqué `aurora-v3-reconstruit@1.1.0`
+   référentiels publiés en base (`GET api/referentiels`, public ; l'index
+   statique `data/referentiel/index.json` en repli, S5), RESPIRE en tête et à
+   sa dernière version par défaut (un autre : A7) ; le paquet embarqué `aurora-v3-reconstruit@1.1.0`
    est proposé en tête et présélectionné, suivi des versions publiées ;
    l'apprenant garde ou change la version. « Continuer » attend que le
    référentiel soit chargé.
@@ -181,13 +184,15 @@ Cartographier mes écrits », ou le bouton du tableau de bord `#/espace`).
   chacun des pôles du référentiel sur la période… »), pour tout référentiel.
 - **A7 — Autre référentiel publié** (étape 3, 2026-10-20) : l'apprenant choisit
   dans « Référentiel » un autre référentiel publié (ou une autre structure de
-  RESPIRE). L'assistant le charge (`data/referentiel/index.json` puis son
-  fichier) ; l'estimation, les appels (un par pôle + kairos), les prompts (nom,
+  RESPIRE). L'assistant le charge depuis la base
+  (`GET api/referentiels/{id}/versions/{semver}`, versions publiées seulement ;
+  à défaut, `data/referentiel/index.json` puis son fichier) ; l'estimation, les appels (un par pôle + kairos), les prompts (nom,
   pôles, codes, codes d'exemple), la validation et la fusion suivent sa
   structure ; ses documents le nomment (`referentiel`) et sont enregistrés avec
   sa version (`referentiel: {id, version}`) ; l'identifiant du run l'inclut
-  (RG3). Sans index lisible (copie statique), aucun choix n'est offert : RESPIRE
-  embarqué. Un référentiel qui ne se charge pas : message, « Continuer »
+  (RG3). Un référentiel voté et publié sur le site est donc proposé sans
+  attendre un export statique. Sans API ni index lisibles (copie statique),
+  aucun choix n'est offert : RESPIRE embarqué. Un référentiel qui ne se charge pas : message, « Continuer »
   inactif.
 
 ## Scénarios d'erreur
@@ -319,7 +324,8 @@ Cartographier mes écrits », ou le bouton du tableau de bord `#/espace`).
 |---|---|---|
 | Front | `web/src/views/EspaceView.jsx` | Session, dispatch de `#/espace/nouveau-run` |
 | Front | `web/src/components/RunWizard.jsx` ; `web/src/components/ReferentielChoice.jsx` | Assistant en 5 étapes, choix du référentiel publié (A7), exécution, enregistrement |
-| Front | `web/src/data/referentiel.js` — `loadPublishedReferentiel`, `listPublishedReferentiels` | RESPIRE publié (repli embarqué) ou le référentiel choisi, liste des référentiels publiés |
+| Front | `web/src/data/referentiel.js` — `loadPublishedReferentiel`, `listPublishedReferentiels` | RESPIRE publié (repli embarqué) ou le référentiel choisi, liste des référentiels publiés : la base par l'API publique d'abord, l'export statique en repli (S5) |
+| API | `api/src/routes/referentiel.php` — `GET /referentiels`, `GET /referentiels/{id}/versions/{semver}` | Référentiels publiés et document d'une version publiée, publics, en lecture seule (A7) |
 | Front | `web/src/lib/run-launcher.js` — `computeDayGroups`, `fetchPromptPackages`, `buildEstimate`, `createProviderBundle`, `makeRunId`, `executeRun`, `buildLocalNarratives`, clés locales et synchronisation | Logique non-UI du lancement, résumés locaux du merge, validation de la fusion (schéma puis conformité) |
 | Front | `web/src/lib/demo-llm.js` — `createDemoProvider`, `describeDemoError` ; `web/src/lib/pow.js` | Service humanome : défi, preuve de travail, messages |
 | Front | `web/src/lib/carto-store.js` (via `carto-store-bridge.js`) | Enregistrement local des résultats |
@@ -414,6 +420,7 @@ Cartographier mes écrits », ou le bouton du tableau de bord `#/espace`).
 | UC-APP-02-F24 | E5 (anomalie A-05) | API | **Comportement actuel** : quota par défaut (20/h) → un run de 3 journées bloqué au 21e appel, `Retry-After` 30/60/120/240 | `api/tests/UseCases/Functional/UcApp02LancerCartographieStandardTest.php` |
 | UC-APP-02-F25 | E7 | IHM | Clé personnelle refusée (`401` d'Anthropic) : 2 requêtes par journée (aucune reprise du transport, nouvel essai d'`extractDay`), 6 au total ; les 3 journées listées en échec « extractDay : pôle 1 (…) — anthropic: HTTP 401 — invalid x-api-key » ; aucun appel à `api/llm`, rien d'enregistré | `web/test/usecases/functional/uc-app-02-lancer-cartographie-standard.test.jsx` |
 | UC-APP-02-F26 | A7 | IHM | Index des référentiels publiés : « Référentiel » propose RESPIRE (défaut) et un référentiel lettré ; choisi, il est chargé ; estimation 34 appels ; 18 POST dont les prompts le nomment ; 3 jours + fusion enregistrés avec `referentiel: {id, version}`, documents nommés, 5 domaines ; checkpoints sous l'identifiant qui l'inclut | `web/test/usecases/functional/uc-app-02-lancer-cartographie-standard.test.jsx` |
+| UC-APP-02-F27 | A7 | IHM | Référentiels publiés en base, absents de l'export statique : `GET api/referentiels` (rangés par identifiant) → RESPIRE en tête et par défaut, le lettré proposé ; choisi, il est lu par `GET api/referentiels/fictif-lettre/versions/1.0.0` ; estimation 34 appels ; aucun fichier statique du lettré demandé | idem |
 
 ### Tests existants liés (non-régression)
 

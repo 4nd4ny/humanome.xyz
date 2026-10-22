@@ -18,6 +18,14 @@
 // premier pôle, où tout autre commentaire est ignoré. L'identifiant, le libellé
 // et la version ne sont pas dans le texte : la page les demande.
 //
+// Le texte se lit composé (NFC), comme il s'affiche : un « Pôle » décomposé
+// (o suivi de U+0302, d'un copier-coller) est un « Pôle ». Une espace
+// insécable (U+00A0, U+202F, celle d'un traitement de texte ou d'une page web)
+// sépare les mots d'un titre comme une autre, comme le lit le moteur Twin9
+// (Text::WS). Un caractère « \uFFFD » est celui d'un fichier qui n'est pas en
+// UTF-8 (un « texte brut » Windows-1252) : le texte est refusé, pas importé
+// avec des noms corrompus.
+//
 // Dans une description, une ligne qui se lirait comme un titre (« # … ») ou un
 // séparateur (« --- ») s'écrit précédée d'une barre oblique inverse (« \# … »),
 // que la lecture retire : l'aller-retour est exact pour tout texte.
@@ -64,14 +72,17 @@ const MOTIF_MAX = 100
 /** Le motif de repli, quand les codes d'un niveau n'ont pas de forme commune courte. */
 const MOTIF_LARGE = '[A-Za-z0-9._-]{1,8}'
 
-/** Un titre : 1 à 6 « # », puis une espace ou la fin de la ligne. */
-const TITRE_RE = /^(#{1,6})(?:[ \t]+(.*?))?[ \t]*$/
-const POLE_RE = /^P[ôo]le[ \t]+(\d+)[ \t]+[—–-][ \t]+(.+)$/iu
-const NOEUD_RE = /^(\S+)[ \t]+[—–-][ \t]+(.+)$/u
-const SEPARATEUR_RE = /^-{3,}[ \t]*$/
+// Les blancs d'un titre : tabulation ou espace, insécables comprises (\p{Zs}).
+/** Un titre : 1 à 6 « # », puis un blanc ou la fin de la ligne. */
+const TITRE_RE = /^(#{1,6})(?:[\t\p{Zs}]+(.*?))?[\t\p{Zs}]*$/u
+const POLE_RE = /^P[ôo]le[\t\p{Zs}]+(\d+)[\t\p{Zs}]+[—–-][\t\p{Zs}]+(.+)$/iu
+const NOEUD_RE = /^(\S+)[\t\p{Zs}]+[—–-][\t\p{Zs}]+(.+)$/u
+const SEPARATEUR_RE = /^-{3,}[\t\p{Zs}]*$/u
 /** Une ligne de description qui se lirait comme un titre ou un séparateur, échappée ou non. */
-const ECHAPPABLE_RE = /^\\*(?:#{1,6}(?:[ \t]|$)|-{3,}[ \t]*$)/
-const ECHAPPEE_RE = /^\\+(?:#{1,6}(?:[ \t]|$)|-{3,}[ \t]*$)/
+const ECHAPPABLE_RE = /^\\*(?:#{1,6}(?:[\t\p{Zs}]|$)|-{3,}[\t\p{Zs}]*$)/u
+const ECHAPPEE_RE = /^\\+(?:#{1,6}(?:[\t\p{Zs}]|$)|-{3,}[\t\p{Zs}]*$)/u
+/** Le caractère de remplacement d'un octet que le décodage UTF-8 n'a pas lu. */
+const ILLISIBLE = '\uFFFD'
 const COULEUR_COMMENTAIRE_RE = /^<!--\s*couleur\s*:\s*(.*?)\s*-->$/iu
 const EN_TETE_RE = /^<!--\s*(source|niveaux)\s*:\s*([\s\S]*?)\s*-->$/iu
 
@@ -83,8 +94,12 @@ export class ErreurMarkdown extends Error {
   }
 }
 
-/** Le texte sans BOM, ses fins de ligne en « \n ». */
-const normaliser = (texte) => String(texte ?? '').replace(/^﻿/, '').replace(/\r\n?/g, '\n')
+/** Le texte sans BOM, ses fins de ligne en « \n », composé (NFC). */
+const normaliser = (texte) =>
+  String(texte ?? '')
+    .replace(/^\uFEFF/, '')
+    .replace(/\r\n?/g, '\n')
+    .normalize('NFC')
 
 const echapper = (description) =>
   description
@@ -147,6 +162,17 @@ export function analyserMarkdown(texte) {
   let cible = null // ce que décrivent les lignes de texte : {objet, tampon, pole}
   let commentaire = null // un commentaire de l'en-tête sur plusieurs lignes : {debut, lignes}
   let texteAvant = false
+
+  // un fichier qui n'est pas en UTF-8 : dit une fois, à sa première ligne touchée
+  const illisibles = lignes.flatMap((ligne, i) => (ligne.includes(ILLISIBLE) ? [i + 1] : []))
+  if (illisibles.length > 0) {
+    const autres = illisibles.length - 1
+    erreur(
+      illisibles[0],
+      `caractère illisible « ${ILLISIBLE} »${autres > 0 ? ` (ici et sur ${autres} autre${autres > 1 ? 's' : ''} ligne${autres > 1 ? 's' : ''})` : ''}`
+        + ' : le texte n’est pas en UTF-8 ; réenregistrez le fichier en UTF-8',
+    )
+  }
 
   const clore = () => {
     if (cible === null) return

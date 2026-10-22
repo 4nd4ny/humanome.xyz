@@ -228,6 +228,29 @@ describe('UC-EPI-05 — un référentiel en Markdown', () => {
     expect(lireTexte('# Pôle 1 — Savoirs\n## 1.01 — Lire\n## 1-2 — Écrire\n## 01a — Compter\n### 0.1 — Fin').erreurs).toEqual([])
   })
 
+  it('UC-EPI-05-U23 — espaces insécables, « Pôle » décomposé (NFD) : lus comme le texte qu’on voit ; un texte qui n’est pas en UTF-8 est dit', () => {
+    const attendu = lireTexte('# Pôle 1 — A · Pôle\n\nLe pôle.\n\n## A1 — Une\n').document
+    // l'espace insécable (U+00A0) ou fine insécable (U+202F) d'un texte collé depuis un traitement de texte ou une page web
+    for (const espace of ['\u00a0', '\u202f']) {
+      const texte = `#${espace}Pôle${espace}1${espace}—${espace}A · Pôle\n\nLe pôle.\n\n##${espace}A1${espace}—${espace}Une\n`
+      expect(lireTexte(texte).erreurs, JSON.stringify(espace)).toEqual([])
+      expect(lireTexte(texte).document).toEqual(attendu)
+    }
+    // « Pôle » et les noms décomposés (o suivi de U+0302) : relus composés (NFC), comme ils s'affichent
+    const nfd = '# Po\u0302le 1 — A · Po\u0302le\n\nLe po\u0302le.\n\n## A1 — Une\n'
+    expect(lireTexte(nfd).erreurs).toEqual([])
+    expect(lireTexte(nfd).document).toEqual(attendu)
+
+    // un fichier en Windows-1252 lu en UTF-8 : ses lettres accentuées deviennent « \uFFFD »
+    const octets = Buffer.from('# Pole 1 - \xc9couter\n## A1 - D\xe9couvrir\n## A2 - Cr\xe9er\n', 'latin1')
+    const lu = new TextDecoder('utf-8').decode(octets)
+    expect(lu).toContain('\uFFFD')
+    expect(enLignes(lireTexte(lu).erreurs)).toEqual([
+      '1 : caractère illisible « \uFFFD » (ici et sur 2 autres lignes) : le texte n’est pas en UTF-8 ; réenregistrez le fichier en UTF-8',
+    ])
+    expect(lireTexte(lu).document).toBeNull()
+  })
+
   it('UC-EPI-05-U19 — BOM, fins de ligne CRLF, tirets, séparateurs, lignes échappées : le même document', () => {
     const lf = '# Pôle 1 — A · Pôle\n\nLe pôle.\n\n## A1 — Une\n\nLa première.\n\n---\n\n## A2 — Deux\n'
     const attendu = lireTexte(lf).document
@@ -237,7 +260,7 @@ describe('UC-EPI-05 — un référentiel en Markdown', () => {
       { code: 'A2', nom: 'Deux', pole: 1 },
     ])
     expect(attendu.source).toBe(SOURCE_PAR_DEFAUT)
-    expect(lireTexte(`﻿${lf}`).document).toEqual(attendu)
+    expect(lireTexte(`\uFEFF${lf}`).document).toEqual(attendu)
     expect(lireTexte(lf.replace(/\n/g, '\r\n')).document).toEqual(attendu)
     expect(lireTexte(lf.replace(/\n/g, '\r')).document).toEqual(attendu)
     // « – » et « - » pour « — », sans « --- », d'autres lignes vides : même lecture

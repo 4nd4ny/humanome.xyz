@@ -224,7 +224,7 @@ describe('ReferentielView', () => {
     ]
     const replaceHash = vi.fn()
     render(<ReferentielView load={loader} list={lister} replaceHash={replaceHash} referentielId="autre" />)
-    expect((await screen.findByRole('alert')).textContent).toContain('« autre » n’a pas pu être chargé')
+    expect((await screen.findByRole('alert')).textContent).toContain('«\u00a0autre\u00a0» n’a pas pu être chargé')
     expect(screen.getByText(/RESPIRE v7\.1\.0 — version 7\.1\.0/)).toBeDefined()
     // le menu montre le référentiel affiché, pas celui qui a échoué
     await waitFor(() => expect(screen.getByRole('combobox', { name: 'Référentiel' }).value).toBe('respire@7.1.0'))

@@ -124,9 +124,11 @@ de l'accueil.
   annulation, ni sur un appel **coupé** (`code: "coupe"`, E7), déjà compté pour
   ce qu'il a produit et qui le serait à nouveau (2026-10-21). (2) `extractDay`
   refait **une** fois, aussitôt, chaque appel pôle ou kairos en échec, **quel
-  que soit le statut**. Un `429` ou un `503` au POST coûte donc 2 POST (2 défis,
-  2 unités de quota) ; un 5xx persistant jusqu'à 4 POST par pôle (anomalie
-  AN2) ; un appel coupé à chaque essai, 2 (UC-VIS-03-U29).
+  que soit le statut** — sauf une réponse tronquée par la limite de sortie du
+  modèle, jamais refaite (2026-10-22, UC-VIS-03-U20). Un `429` ou un `503` au
+  POST coûte donc 2 POST (2 défis, 2 unités de quota) ; un 5xx persistant
+  jusqu'à 4 POST par pôle (anomalie AN2) ; un appel coupé à chaque essai, 2
+  (UC-VIS-03-U29) ; une réponse tronquée, 1.
 - **A5 — Annulation** (étape 4) : « Annuler l'analyse » interrompt l'appel en
   cours ; « Analyse annulée. Votre texte est toujours là, rien n'a été
   conservé. »
@@ -185,7 +187,12 @@ de l'accueil.
   `code: "coupe"`, et arrivent en événement `erreur` au navigateur qui suit le
   flux. Réponse inexploitable d'un pôle après le nouvel essai du moteur →
   « L'analyse a échoué en cours de route (détail technique : extractDay :
-  pôle n …) », « Réessayer », texte conservé.
+  pôle n …) », « Réessayer », texte conservé. Réponse **coupée** par la
+  limite de sortie du modèle (`stopReason: max_tokens` relayé, 2026-10-22) :
+  comptée, jamais refaite (ni par la démo, ni par le moteur) → « Votre texte
+  est trop long pour l'essai : la réponse du modèle a été coupée avant la
+  fin. Raccourcissez-le, puis relancez l'analyse. », sans « Réessayer »,
+  texte conservé (UC-VIS-03-U20 ; message : `web/src/lib/demo-llm.test.js`).
 
 ## Règles de gestion
 
@@ -232,7 +239,8 @@ de l'accueil.
 - **RG5** — Intention : pas de réessai automatique contre un quota (429) ni un
   budget (503), un seul pour un incident transitoire. Réalité : le
   fournisseur de la démo respecte cette intention (sauf `429` `pow_reused`),
-  mais `extractDay` refait une fois tout appel en échec (anomalie AN2).
+  mais `extractDay` refait une fois tout appel en échec (anomalie AN2), sauf
+  une réponse tronquée (2026-10-22).
 - **RG6** — Réponse en flux (2026-10-21, Christian : « Si on passe en appel en
   flux, alors on voit la réponse arriver au fur et à mesure ? […] Si oui,
   alors c'est mon choix ») : l'appel au fournisseur est diffusé (`stream`), le
@@ -269,7 +277,7 @@ de l'accueil.
 | Front | `web/src/lib/demo-llm.js` — `fetchChallenge`, `createDemoProvider`, `describeDemoError`, `localIsoToday`, `DEMO_TEXT_MIN_CHARS`/`MAX`, `UPSTREAM_RETRY_DELAY_MS` | Défi par appel, champ piège, nouvel essai unique du fournisseur (A4), messages, date locale |
 | Front | `web/src/lib/pow.js` — `solvePow`, `leadingZeroBits`, `MAX_DIFFICULTY_BITS` | Preuve de travail côté navigateur |
 | Moteur | `engine/src/providers/index.js` — `createProvider` (transport `proxy`) | Appel du proxy, sans clé, sans nouvel essai automatique **au niveau du fournisseur** (`maxAttempts: 1`) |
-| Moteur | `engine/src/pipeline/extract.js` — `extractDay`, `buildExtractionPrompt` | Un appel par pôle du référentiel + kairos facultatif, un nouvel essai immédiat de tout appel en échec (AN2), validation au schéma puis à la conformité au référentiel (voir aussi UC-APP-02) ; gabarit du prompt (AN3) |
+| Moteur | `engine/src/pipeline/extract.js` — `extractDay`, `buildExtractionPrompt` | Un appel par pôle du référentiel + kairos facultatif, un nouvel essai immédiat de tout appel en échec (AN2) sauf une réponse tronquée, validation au schéma puis à la conformité au référentiel (voir aussi UC-APP-02) ; gabarit du prompt (AN3) |
 | API | `GET /api/llm/status`, `GET /api/llm/challenge`, `POST /api/llm` — `api/src/routes/llm.php` | Orchestration des gardes |
 | Domaine | `api/src/Llm/PowChallenge.php` — `issue`, `verify`, `secretFromEnv`, `leadingZeroBits` | Preuve de travail sans état |
 | Domaine | `api/src/Llm/UsageCounters.php` — `reserve`, `settle`, `release`, `today`, `isExhausted` | Coupe-circuit journalier : réservation du pire cas, règlement au réel |
@@ -308,7 +316,7 @@ de l'accueil.
 | UC-VIS-03-U17 | `createProvider` (`maxAttempts: 1`) | Couche fournisseur seule : 429 sans nouvel essai, `Retry-After` porté (ne couvre pas RG5 de bout en bout, voir U22) | idem |
 | UC-VIS-03-U18 | `extractDay` | 7 pôles + kairos → document valide au schéma | idem |
 | UC-VIS-03-U19 | `extractDay` (`kairosOptional`) | Kairos inexploitable → `null`, « skipped » (A3) | idem |
-| UC-VIS-03-U20 | `extractDay` | `stopReason: max_tokens` → échec explicite après un nouvel essai | idem |
+| UC-VIS-03-U20 | `extractDay` | `stopReason: max_tokens` relayé → `OutputTruncatedError`, échec explicite du pôle **sans** nouvel essai (1 POST, 2026-10-22) | idem |
 | UC-VIS-03-U21 | `createDemoProvider` | Nouvel essai unique après 2,5 s (phase `retry`, défi neuf) sur 504, erreur réseau, défi expiré ; aucun sur 429, 503, preuve invalide, annulation (A4) | `web/test/usecases/unit/uc-vis-03-essayer-cartographie-en-direct.test.js` |
 | UC-VIS-03-U22 | `createDemoProvider` + `extractDay` | **Comportement actuel figé** — anomalie AN2 : 429 ou 503 au POST → 2 POST, 504 persistant → 4 POST | idem |
 | UC-VIS-03-U23 | `buildExtractionPrompt`, `buildKairosExtractionPrompt`, `DEMO_TEXT_MAX_CHARS` | Anomalie AN3 **corrigée** : au maximum de la page, chaque appel — les 7 pôles et le kairos — tient sous l'ancien plafond serveur de 20 000 | idem |
@@ -379,7 +387,8 @@ cd engine && npx vitest run test/usecases/unit/uc-vis-03
   requis…) ». Comportement actuel figé par UC-VIS-03-U15 et F19.
 - **AN2 — Le moteur réessaie contre le quota et le budget.** `extractDay`
   (`engine/src/pipeline/extract.js`) refait une fois tout appel pôle ou kairos
-  en échec, quel que soit le statut, ce qui annule l'intention de
+  en échec, quel que soit le statut (une réponse tronquée exceptée depuis le
+  2026-10-22), ce qui annule l'intention de
   `createDemoProvider` (« automatic retries are DISABLED… a 429 here means the
   demo quota, hammering it would be abuse »). Sur un `429` de quota ou un
   `503` de budget, le navigateur renvoie aussitôt un second POST, sans

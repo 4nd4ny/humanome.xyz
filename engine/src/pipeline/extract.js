@@ -38,6 +38,7 @@
 
 import { validateDocument } from '../validation.js'
 import { validateDocumentPourReferentiel, REFERENTIEL_PAR_DEFAUT } from '../conformite.js'
+import { isOutputTruncated, isTruncatedResult, truncationError } from '../providers/stop.js'
 import { nomCourtReferentiel, codesExemples } from '../referentiel.js'
 import { formatDateFr } from './narrative-prompts.js'
 
@@ -636,6 +637,13 @@ export function computeAuditPole(competences) {
   }
 }
 
+/** Le message d'un pôle dont la réponse est tronquée, avec la consigne utile. */
+function messageTroncature(err) {
+  return err.stopReason === 'context_window'
+    ? 'réponse tronquée (fenêtre de contexte du modèle pleine) — réduisez le texte de la journée'
+    : 'réponse tronquée (budget de sortie atteint) — réduisez le texte de la journée'
+}
+
 /**
  * Extraction complète d'une journée : un appel par pôle du référentiel + 1
  * appel kairos, puis assemblage et validation du document `cartographie-jour`
@@ -664,7 +672,9 @@ export function computeAuditPole(competences) {
  *   appelé après chaque appel réussi (done = appels terminés, total = pôles + 1)
  * @returns {Promise<object>} document `cartographie-jour` validé
  * @throws {Error} appel/parse en échec (contexte pôle + date dans le message),
- *   ou document final invalide au schéma ou non conforme au référentiel
+ *   ou document final invalide au schéma ou non conforme au référentiel ; une
+ *   sortie tronquée n'est jamais refaite (sa cause : l'OutputTruncatedError,
+ *   qui porte l'usage de l'appel payé)
  */
 export async function extractDay({
   dayText,
@@ -703,18 +713,24 @@ export async function extractDay({
   let done = 0
   const poles = []
 
-  // Une génération LLM peut être défectueuse de façon STOCHASTIQUE (JSON
-  // malformé, fragment, troncature) : un second essai propre suffit presque
-  // toujours. Jamais plus d'un retry — au-delà, l'échec est structurel.
-  const attemptPole = async (num, prompt) => {
+  // Un appel. Une réponse tronquée échoue bruyamment : elle se lit en un
+  // FRAGMENT (typiquement un objet compétence intérieur) qui empoisonne le
+  // document. Le fournisseur la lève (OutputTruncatedError, createProvider) ;
+  // un fournisseur injecté (tests, enveloppes) peut seulement la signaler.
+  const complete = async (prompt) => {
     const res = await provider.complete({ model, prompt, maxTokens, temperature, signal })
-    if (res.stopReason === 'max_tokens') {
-      // Fail loudly: a truncated response parses into a FRAGMENT (typically
-      // one inner competence object) and poisons the final document.
-      throw new Error(
-        'réponse tronquée (budget de sortie atteint) — réduisez le texte de la journée',
-      )
-    }
+    if (isTruncatedResult(res)) throw truncationError(res, { provider: provider.name ?? null, maxTokens })
+    return res
+  }
+
+  // Une génération LLM peut être défectueuse de façon STOCHASTIQUE (JSON
+  // malformé, fragment) : un second essai propre suffit presque toujours.
+  // Jamais plus d'un retry — au-delà, l'échec est structurel. Sauf une sortie
+  // tronquée : maxTokens vaut le maximum du modèle (limits.js), un second
+  // appel serait le plus souvent coupé et payé de nouveau ; elle n'est jamais
+  // refaite.
+  const attemptPole = async (num, prompt) => {
+    const res = await complete(prompt)
     const pole = parseExtractionResponse(res.text)
     if (pole === null) {
       throw new Error('réponse null, objet pôle attendu')
@@ -793,6 +809,9 @@ export async function extractDay({
         pole = await attemptPole(num, prompt)
         break
       } catch (err) {
+        if (isOutputTruncated(err)) {
+          throw new Error(`extractDay : pôle ${num} (${date}) — ${messageTroncature(err)}`, { cause: err })
+        }
         if (attempt >= 2 || signal?.aborted) {
           const message = err instanceof Error ? err.message : String(err)
           throw new Error(`extractDay : pôle ${num} (${date}) — ${message}`, { cause: err })
@@ -833,10 +852,7 @@ export async function extractDay({
 
   const attemptKairos = async () => {
     const prompt = buildKairosExtractionPrompt({ referentiel, dayText, date })
-    const res = await provider.complete({ model, prompt, maxTokens, temperature, signal })
-    if (res.stopReason === 'max_tokens') {
-      throw new Error('réponse kairos tronquée (budget de sortie atteint)')
-    }
+    const res = await complete(prompt)
     const parsed = parseExtractionResponse(res.text)
     // Validation immédiate contre les pôles déjà validés : un kairos
     // incomplet, ou qui relie des codes que le référentiel ne connaît pas,
@@ -858,12 +874,16 @@ export async function extractDay({
       kairos = await attemptKairos()
       break
     } catch (err) {
-      if (attempt < 2 && !signal?.aborted) continue // un seul retry stochastique
+      const tronque = isOutputTruncated(err)
+      // Un seul retry stochastique ; jamais sur une sortie tronquée (payée).
+      if (attempt < 2 && !tronque && !signal?.aborted) continue
       // Les documents de pôle portent la valeur ; le schéma accepte
       // kairos: null. En mode kairosOptional (démo publique), un échec de la
       // synthèse transversale dégrade le résultat au lieu de perdre le run.
       if (!kairosOptional || signal?.aborted) {
-        const message = err instanceof Error ? err.message : String(err)
+        const message = tronque
+          ? `réponse kairos tronquée (${err.stopReason === 'context_window' ? 'fenêtre de contexte du modèle pleine' : 'budget de sortie atteint'})`
+          : err instanceof Error ? err.message : String(err)
         throw new Error(`extractDay : kairos (${date}) — ${message}`, { cause: err })
       }
       kairos = null

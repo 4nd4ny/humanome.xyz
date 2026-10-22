@@ -28,6 +28,7 @@ import {
   createProvider,
   extractDay,
   getModelPricing,
+  isOutputTruncated,
   sleep,
   SUPPORTED_PROVIDERS,
 } from '../../engine/src/index.js'
@@ -471,12 +472,23 @@ export function createRunner({
     })
 
     // Enveloppe comptable : additionne l'usage réel déclaré par le provider
-    // (extractDay ne retourne que le document).
+    // (extractDay ne retourne que le document). Une sortie tronquée lève
+    // (OutputTruncatedError, jamais refaite par extractDay) : payée, elle est
+    // comptée avant de laisser passer l'erreur.
     const usage = { inputTokens: 0, outputTokens: 0 }
     const countingProvider = {
       name: provider.name,
       async complete(params) {
-        const res = await provider.complete(params)
+        let res
+        try {
+          res = await provider.complete(params)
+        } catch (err) {
+          if (isOutputTruncated(err)) {
+            usage.inputTokens += err.usage?.inputTokens ?? 0
+            usage.outputTokens += err.usage?.outputTokens ?? 0
+          }
+          throw err
+        }
         usage.inputTokens += res.usage?.inputTokens ?? 0
         usage.outputTokens += res.usage?.outputTokens ?? 0
         return res

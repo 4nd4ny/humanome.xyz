@@ -221,6 +221,27 @@ describe('P7 — aucune donnée envoyée sans consentement explicite', () => {
     expect(screen.queryByText('Relance en cours…')).toBeNull()
   })
 
+  it('une relance coupée par la limite du modèle (sortie tronquée) est dite comme telle, sans fragment gardé', async () => {
+    const { llm, complete } = fakeLlm()
+    complete.mockImplementationOnce(async () => {
+      const err = new Error('réponse tronquée : budget de sortie atteint (max_tokens = 300) — ollama/llama3.1')
+      err.code = 'sortie_tronquee'
+      throw err
+    })
+    render(<Harness store={await louStore()} llm={llm} />)
+    await firstQuestion()
+    fireEvent.change(screen.getByLabelText('Votre réponse'), { target: { value: 'Une réponse.' } })
+    fireEvent.click(screen.getByRole('button', { name: 'Répondre' }))
+    fireEvent.click(screen.getByRole('checkbox', { name: /J’accepte que, pour chaque relance que je demande/ }))
+    fireEvent.click(await screen.findByRole('button', { name: /Demander une relance/ }))
+    expect((await screen.findByRole('alert')).textContent).toBe(
+      'Relance coupée : la réponse du modèle a dépassé la longueur prévue pour une relance. Aucune relance n’a été gardée ; réessayez, ou choisissez un autre modèle.',
+    )
+    // Pas d'allowTruncated : le fournisseur n'est jamais prié de rendre un fragment.
+    expect(complete.mock.calls[0][0]).not.toHaveProperty('allowTruncated')
+    expect(screen.queryByText(/Relance proposée par/)).toBeNull()
+  })
+
   it('copie autonome : ni relance, ni carnet enregistré', async () => {
     const { llm } = fakeLlm()
     render(<Harness store={await louStore()} llm={llm} mode="viewer" />)

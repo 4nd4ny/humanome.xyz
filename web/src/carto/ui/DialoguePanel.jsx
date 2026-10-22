@@ -312,6 +312,16 @@ export function DialoguePanel({ dataset, refl, state, data, params, readOnly = f
       setAnswers((a) => ({ ...a, [thread.id]: { ...a[thread.id], relaunch: { text, model: `${llmProvider.label} — ${result?.model ?? llmSettings.model}` } } }))
     } catch (err) {
       if (gen !== generation.current) return
+      // Réponse coupée par la limite du modèle (OutputTruncatedError du moteur,
+      // 2026-10-22) : une relance est UNE question, la moitié d'une question
+      // n'en est pas une — pas d'allowTruncated, on le dit.
+      if (err?.code === 'sortie_tronquee') {
+        setStatus({
+          kind: 'error',
+          text: 'Relance coupée : la réponse du modèle a dépassé la longueur prévue pour une relance. Aucune relance n’a été gardée ; réessayez, ou choisissez un autre modèle.',
+        })
+        return
+      }
       // Appel qui n'aboutit pas : bloqué par le navigateur (politique de
       // sécurité du site, qui l'arrête AVANT tout envoi) ou fournisseur
       // injoignable. Une coupure en cours de route ne se distingue pas d'un

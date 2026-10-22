@@ -1,5 +1,12 @@
 import { describe, it, expect, vi } from 'vitest'
-import { createProvider, ProviderError, DEFAULT_MAX_TOKENS, SUPPORTED_PROVIDERS } from './index.js'
+import {
+  createProvider,
+  ProviderError,
+  OutputTruncatedError,
+  DEFAULT_MAX_TOKENS,
+  SUPPORTED_PROVIDERS,
+  PROVIDER_INFO
+} from './index.js'
 
 // ---------------------------------------------------------------------------
 // Outillage : fetch mocké (aucun appel réseau réel dans toute la suite).
@@ -38,7 +45,8 @@ describe('anthropic (Messages API, transport direct)', () => {
   const payload = {
     content: [{ type: 'text', text: 'Bonjour !' }],
     usage: { input_tokens: 12, output_tokens: 7 },
-    model: 'claude-haiku-4-5'
+    model: 'claude-haiku-4-5',
+    stop_reason: 'end_turn'
   }
 
   it('construit la bonne requête (URL, headers navigateur, body)', async () => {
@@ -74,7 +82,10 @@ describe('anthropic (Messages API, transport direct)', () => {
     expect(result).toEqual({
       text: 'Bonjour !',
       usage: { inputTokens: 12, outputTokens: 7 },
-      model: 'claude-haiku-4-5'
+      model: 'claude-haiku-4-5',
+      stopReason: 'end',
+      stopReasonRaw: 'end_turn',
+      truncated: false
     })
   })
 
@@ -109,7 +120,7 @@ describe('openai (chat completions, transport direct)', () => {
   it('construit la bonne requête et parse la réponse', async () => {
     const fetchFn = makeFetch(
       jsonResponse({
-        choices: [{ message: { role: 'assistant', content: 'Réponse.' } }],
+        choices: [{ message: { role: 'assistant', content: 'Réponse.' }, finish_reason: 'stop' }],
         usage: { prompt_tokens: 20, completion_tokens: 5 },
         model: 'gpt-4o-mini'
       })
@@ -136,7 +147,10 @@ describe('openai (chat completions, transport direct)', () => {
     expect(result).toEqual({
       text: 'Réponse.',
       usage: { inputTokens: 20, outputTokens: 5 },
-      model: 'gpt-4o-mini'
+      model: 'gpt-4o-mini',
+      stopReason: 'end',
+      stopReasonRaw: 'stop',
+      truncated: false
     })
   })
 })
@@ -145,7 +159,9 @@ describe('google (generateContent, transport direct)', () => {
   it('construit la bonne requête — clé en header x-goog-api-key, jamais dans l’URL', async () => {
     const fetchFn = makeFetch(
       jsonResponse({
-        candidates: [{ content: { role: 'model', parts: [{ text: 'Texte ' }, { text: 'généré' }] } }],
+        candidates: [
+          { content: { role: 'model', parts: [{ text: 'Texte ' }, { text: 'généré' }] }, finishReason: 'STOP' }
+        ],
         usageMetadata: { promptTokenCount: 30, candidatesTokenCount: 9 },
         modelVersion: 'gemini-2.5-flash-002'
       })
@@ -173,7 +189,10 @@ describe('google (generateContent, transport direct)', () => {
     expect(result).toEqual({
       text: 'Texte généré',
       usage: { inputTokens: 30, outputTokens: 9 },
-      model: 'gemini-2.5-flash-002'
+      model: 'gemini-2.5-flash-002',
+      stopReason: 'end',
+      stopReasonRaw: 'STOP',
+      truncated: false
     })
   })
 })
@@ -209,7 +228,8 @@ describe('ollama (api/chat local, transport direct)', () => {
         model: 'llama3.1:8b',
         message: { role: 'assistant', content: 'Réponse locale.' },
         prompt_eval_count: 40,
-        eval_count: 12
+        eval_count: 12,
+        done_reason: 'stop'
       })
     )
     const provider = createProvider({ provider: 'ollama', fetchFn })
@@ -233,10 +253,14 @@ describe('ollama (api/chat local, transport direct)', () => {
       stream: false,
       options: { num_predict: 500 }
     })
+    // Ollama's done_reason is not in the verified table (stop.js): 'other'.
     expect(result).toEqual({
       text: 'Réponse locale.',
       usage: { inputTokens: 40, outputTokens: 12 },
-      model: 'llama3.1:8b'
+      model: 'llama3.1:8b',
+      stopReason: 'other',
+      stopReasonRaw: 'stop',
+      truncated: false
     })
   })
 
@@ -285,7 +309,9 @@ describe('transport proxy', () => {
       text: 'Réponse via proxy.',
       usage: { inputTokens: 100, outputTokens: 25 },
       model: 'claude-haiku-4-5',
-      stopReason: null
+      stopReason: null,
+      stopReasonRaw: null,
+      truncated: false
     })
   })
 
@@ -312,6 +338,309 @@ describe('transport proxy', () => {
     const provider = createProvider({ provider: 'google', transport: 'proxy', fetchFn })
     await provider.complete({ model: 'gemini-2.5-flash', prompt: 'p' })
     expect(fetchFn.calls[0].body.system).toBeNull()
+  })
+})
+
+// ---------------------------------------------------------------------------
+// Arrêt normalisé et sortie tronquée (P0-3) : contrat commun aux adaptateurs
+// ---------------------------------------------------------------------------
+
+// Une réponse coupée par fournisseur, avec un fragment NON vide.
+const TRUNCATED = {
+  anthropic: {
+    body: {
+      content: [{ type: 'text', text: '{"poleNum": "1", "compet' }],
+      usage: { input_tokens: 120, output_tokens: 2000 },
+      model: 'claude-haiku-4-5',
+      stop_reason: 'max_tokens'
+    },
+    raw: 'max_tokens'
+  },
+  openai: {
+    body: {
+      choices: [{ message: { content: '{"poleNum": "1", "compet' }, finish_reason: 'length' }],
+      usage: { prompt_tokens: 120, completion_tokens: 2000 },
+      model: 'gpt-x'
+    },
+    raw: 'length'
+  },
+  xai: {
+    body: {
+      choices: [{ message: { content: '{"poleNum": "1", "compet' }, finish_reason: 'length' }],
+      usage: { prompt_tokens: 120, completion_tokens: 2000 },
+      model: 'grok-x'
+    },
+    raw: 'length'
+  },
+  openrouter: {
+    body: {
+      choices: [{ message: { content: '{"poleNum": "1", "compet' }, finish_reason: 'length' }],
+      usage: { prompt_tokens: 120, completion_tokens: 2000 },
+      model: 'vendor/model-x'
+    },
+    raw: 'length'
+  },
+  google: {
+    body: {
+      candidates: [{ content: { parts: [{ text: '{"poleNum": "1", "compet' }] }, finishReason: 'MAX_TOKENS' }],
+      usageMetadata: { promptTokenCount: 120, candidatesTokenCount: 2000 },
+      modelVersion: 'gemini-x'
+    },
+    raw: 'MAX_TOKENS'
+  }
+}
+
+describe('sortie tronquée : contrat par adaptateur (transport direct)', () => {
+  for (const [provider, { body, raw }] of Object.entries(TRUNCATED)) {
+    it(`${provider} : fragment rejeté (OutputTruncatedError), fetch appelé une fois, usage présent`, async () => {
+      const fetchFn = makeFetch(jsonResponse(body))
+      const handle = createProvider({ provider, apiKey: 'k-test', fetchFn, sleepFn: noSleep })
+      const failure = await handle.complete({ model: 'm', prompt: 'p', maxTokens: 2000 }).catch((e) => e)
+
+      expect(failure).toBeInstanceOf(OutputTruncatedError)
+      expect(failure).toBeInstanceOf(ProviderError)
+      expect(failure).toMatchObject({
+        name: 'OutputTruncatedError',
+        code: 'sortie_tronquee',
+        status: 200,
+        retryable: false,
+        provider,
+        stopReason: 'max_tokens',
+        stopReasonRaw: raw,
+        limit: 'sortie',
+        usage: { inputTokens: 120, outputTokens: 2000 },
+        maxTokens: 2000,
+        textLength: '{"poleNum": "1", "compet'.length
+      })
+      expect(failure.message).toMatch(/^réponse tronquée : budget de sortie atteint \(max_tokens = 2000\) — /)
+      // Jamais de contenu dans le message ni dans le JSON de l'erreur.
+      expect(failure.message).not.toContain('poleNum')
+      expect(JSON.stringify(failure)).not.toContain('poleNum')
+      expect(Object.keys(failure)).not.toContain('fragment')
+      expect(failure.fragment).toBe('{"poleNum": "1", "compet')
+      expect(fetchFn).toHaveBeenCalledTimes(1)
+    })
+
+    it(`${provider} : allowTruncated rend le fragment avec truncated: true`, async () => {
+      const fetchFn = makeFetch(jsonResponse(body))
+      const handle = createProvider({ provider, apiKey: 'k-test', fetchFn })
+      const result = await handle.complete({ model: 'm', prompt: 'p', allowTruncated: true })
+      expect(result).toMatchObject({
+        text: '{"poleNum": "1", "compet',
+        stopReason: 'max_tokens',
+        stopReasonRaw: raw,
+        truncated: true,
+        usage: { inputTokens: 120, outputTokens: 2000 }
+      })
+      expect(fetchFn).toHaveBeenCalledTimes(1)
+    })
+  }
+
+  it('anthropic : fenêtre de contexte pleine → context_window, limite « contexte »', async () => {
+    const fetchFn = makeFetch(
+      jsonResponse({
+        content: [{ type: 'text', text: 'début' }],
+        usage: { input_tokens: 990000, output_tokens: 10 },
+        model: 'claude-x',
+        stop_reason: 'model_context_window_exceeded'
+      })
+    )
+    const handle = createProvider({ provider: 'anthropic', apiKey: 'k', fetchFn })
+    const failure = await handle.complete({ model: 'claude-x', prompt: 'p' }).catch((e) => e)
+    expect(failure).toBeInstanceOf(OutputTruncatedError)
+    expect(failure).toMatchObject({
+      stopReason: 'context_window',
+      stopReasonRaw: 'model_context_window_exceeded',
+      limit: 'contexte'
+    })
+    expect(failure.message).toBe('réponse tronquée : fenêtre de contexte du modèle pleine — anthropic/claude-x')
+  })
+
+  it('anthropic : un refus est classé, pas levé (texte vide, stopReason refusal)', async () => {
+    const fetchFn = makeFetch(
+      jsonResponse({
+        content: [],
+        usage: { input_tokens: 5, output_tokens: 0 },
+        model: 'm',
+        stop_reason: 'refusal',
+        stop_details: { type: 'refusal', category: null, explanation: 'texte du fournisseur' }
+      })
+    )
+    const result = await createProvider({ provider: 'anthropic', apiKey: 'k', fetchFn }).complete({ model: 'm', prompt: 'p' })
+    expect(result).toEqual({
+      text: '',
+      usage: { inputTokens: 5, outputTokens: 0 },
+      model: 'm',
+      stopReason: 'refusal',
+      stopReasonRaw: 'refusal',
+      truncated: false
+    })
+  })
+
+  it('anthropic : tool_use (outil forcé de la démo et des crédits) est une fin normale', async () => {
+    const fetchFn = makeFetch(
+      jsonResponse({ content: [{ type: 'text', text: 'ok' }], usage: {}, model: 'm', stop_reason: 'tool_use' })
+    )
+    const result = await createProvider({ provider: 'anthropic', apiKey: 'k', fetchFn }).complete({ model: 'm', prompt: 'p' })
+    expect(result).toMatchObject({ stopReason: 'end', stopReasonRaw: 'tool_use', truncated: false })
+  })
+
+  it('openai : message.refusal non nul → refusal, son texte n’est jamais rendu', async () => {
+    const fetchFn = makeFetch(
+      jsonResponse({
+        choices: [{ message: { content: null, refusal: 'texte du fournisseur' }, finish_reason: 'stop' }],
+        usage: { prompt_tokens: 3, completion_tokens: 4 },
+        model: 'gpt-x'
+      })
+    )
+    const result = await createProvider({ provider: 'openai', apiKey: 'k', fetchFn }).complete({ model: 'gpt-x', prompt: 'p' })
+    expect(result).toEqual({
+      text: '',
+      usage: { inputTokens: 3, outputTokens: 4 },
+      model: 'gpt-x',
+      stopReason: 'refusal',
+      stopReasonRaw: 'stop',
+      truncated: false
+    })
+    expect(JSON.stringify(result)).not.toContain('texte du fournisseur')
+  })
+
+  it('openai : content_filter → refusal ; tool_calls → other', async () => {
+    const answer = (finish) =>
+      jsonResponse({ choices: [{ message: { content: '' }, finish_reason: finish }], usage: {}, model: 'm' })
+    const fetchFn = makeFetch(answer('content_filter'), answer('tool_calls'))
+    const handle = createProvider({ provider: 'openai', apiKey: 'k', fetchFn })
+    expect((await handle.complete({ model: 'm', prompt: 'p' })).stopReason).toBe('refusal')
+    expect((await handle.complete({ model: 'm', prompt: 'p' })).stopReason).toBe('other')
+  })
+
+  it('xai lit sa propre table (end_turn → end) ; openrouter la sienne (error → other)', async () => {
+    const answer = (finish) =>
+      jsonResponse({ choices: [{ message: { content: 'ok' }, finish_reason: finish }], usage: {}, model: 'm' })
+    const xai = createProvider({ provider: 'xai', apiKey: 'k', fetchFn: makeFetch(answer('end_turn')) })
+    expect(await xai.complete({ model: 'm', prompt: 'p' })).toMatchObject({ stopReason: 'end', stopReasonRaw: 'end_turn' })
+    const openai = createProvider({ provider: 'openai', apiKey: 'k', fetchFn: makeFetch(answer('end_turn')) })
+    expect(await openai.complete({ model: 'm', prompt: 'p' })).toMatchObject({ stopReason: 'other' })
+    const or = createProvider({ provider: 'openrouter', apiKey: 'k', fetchFn: makeFetch(answer('error')) })
+    expect(await or.complete({ model: 'm', prompt: 'p' })).toMatchObject({ stopReason: 'other', stopReasonRaw: 'error' })
+  })
+
+  it('google : parts thought:true exclues du texte ; sortie = candidats + réflexion', async () => {
+    const fetchFn = makeFetch(
+      jsonResponse({
+        candidates: [
+          {
+            content: {
+              parts: [
+                { text: 'je réfléchis…', thought: true },
+                { text: '{"ok":' },
+                { text: 'true}' }
+              ]
+            },
+            finishReason: 'STOP'
+          }
+        ],
+        usageMetadata: { promptTokenCount: 10, candidatesTokenCount: 6, thoughtsTokenCount: 40 },
+        modelVersion: 'gemini-x'
+      })
+    )
+    const result = await createProvider({ provider: 'google', apiKey: 'k', fetchFn }).complete({ model: 'gemini-x', prompt: 'p' })
+    expect(result).toEqual({
+      text: '{"ok":true}',
+      usage: { inputTokens: 10, outputTokens: 46 },
+      model: 'gemini-x',
+      stopReason: 'end',
+      stopReasonRaw: 'STOP',
+      truncated: false
+    })
+  })
+
+  it('google : prompt bloqué (aucun candidat, promptFeedback.blockReason) → refusal', async () => {
+    const fetchFn = makeFetch(
+      jsonResponse({ promptFeedback: { blockReason: 'OTHER' }, usageMetadata: { promptTokenCount: 10 } })
+    )
+    const result = await createProvider({ provider: 'google', apiKey: 'k', fetchFn }).complete({ model: 'g', prompt: 'p' })
+    expect(result).toMatchObject({ text: '', stopReason: 'refusal', stopReasonRaw: 'OTHER', truncated: false })
+  })
+
+  it('google : CONTINUATION (plafond par requête non streamée) est une sortie tronquée', async () => {
+    const fetchFn = makeFetch(
+      jsonResponse({ candidates: [{ content: { parts: [{ text: 'début' }] }, finishReason: 'CONTINUATION' }] })
+    )
+    const failure = await createProvider({ provider: 'google', apiKey: 'k', fetchFn })
+      .complete({ model: 'g', prompt: 'p' })
+      .catch((e) => e)
+    expect(failure).toBeInstanceOf(OutputTruncatedError)
+    expect(failure).toMatchObject({ stopReason: 'max_tokens', stopReasonRaw: 'CONTINUATION' })
+  })
+
+  it('ollama : done_reason non vérifié → other, la réponse n’est PAS levée (troncature non détectée)', async () => {
+    const fetchFn = makeFetch(jsonResponse({ message: { content: '{"poleNum":' }, done_reason: 'length', model: 'm' }))
+    const result = await createProvider({ provider: 'ollama', fetchFn }).complete({ model: 'm', prompt: 'p' })
+    expect(result).toMatchObject({ text: '{"poleNum":', stopReason: 'other', stopReasonRaw: 'length', truncated: false })
+  })
+
+  it('une valeur brute qui n’est pas un identifiant court n’est ni gardée ni classée', async () => {
+    const fetchFn = makeFetch(
+      jsonResponse({ content: [{ type: 'text', text: 'ok' }], usage: {}, model: 'm', stop_reason: 'fin de réponse : voir ici' })
+    )
+    const result = await createProvider({ provider: 'anthropic', apiKey: 'k', fetchFn }).complete({ model: 'm', prompt: 'p' })
+    expect(result).toMatchObject({ stopReason: 'other', stopReasonRaw: 'other', truncated: false })
+  })
+})
+
+describe('sortie tronquée : voie relais (proxy)', () => {
+  for (const [provider, relayed] of [
+    ['anthropic', 'max_tokens'],
+    ['openai', 'length'],
+    ['google', 'MAX_TOKENS'],
+    ['openai', 'max_tokens'] // déjà normalisé par le serveur (OpenAiCompatibleProvider.php)
+  ]) {
+    it(`${provider} relayant « ${relayed} » : OutputTruncatedError, un seul POST`, async () => {
+      const fetchFn = makeFetch(
+        jsonResponse({ text: '{"poleNum":', usage: { inputTokens: 9, outputTokens: 8192 }, model: 'srv', stopReason: relayed })
+      )
+      const handle = createProvider({ provider, transport: 'proxy', fetchFn, sleepFn: noSleep })
+      const failure = await handle.complete({ model: 'demo', prompt: 'p', maxTokens: 8192 }).catch((e) => e)
+      expect(failure).toBeInstanceOf(OutputTruncatedError)
+      expect(failure).toMatchObject({
+        provider,
+        model: 'srv',
+        stopReason: 'max_tokens',
+        stopReasonRaw: relayed,
+        usage: { inputTokens: 9, outputTokens: 8192 },
+        status: 200,
+        retryable: false
+      })
+      expect(fetchFn).toHaveBeenCalledTimes(1)
+    })
+  }
+
+  it('relais : allowTruncated rend le fragment ; une chaîne vide (mock serveur) vaut null', async () => {
+    const fetchFn = makeFetch(
+      jsonResponse({ text: 'frag', usage: {}, model: 'srv', stopReason: 'max_tokens' }),
+      jsonResponse({ text: 'ok', usage: {}, model: 'srv', stopReason: '' })
+    )
+    const handle = createProvider({ provider: 'anthropic', transport: 'proxy', fetchFn })
+    expect(await handle.complete({ model: 'demo', prompt: 'p', allowTruncated: true })).toMatchObject({
+      text: 'frag',
+      stopReason: 'max_tokens',
+      truncated: true
+    })
+    expect(await handle.complete({ model: 'demo', prompt: 'p' })).toMatchObject({
+      text: 'ok',
+      stopReason: null,
+      stopReasonRaw: null,
+      truncated: false
+    })
+  })
+
+  it('relais : allowTruncated ne part jamais dans le corps POSTé', async () => {
+    const fetchFn = makeFetch(jsonResponse({ text: 'ok', stopReason: 'end_turn' }))
+    const handle = createProvider({ provider: 'anthropic', transport: 'proxy', fetchFn })
+    const result = await handle.complete({ model: 'demo', prompt: 'p', allowTruncated: true })
+    expect(result).toMatchObject({ stopReason: 'end', stopReasonRaw: 'end_turn' })
+    expect(fetchFn.calls[0].body).not.toHaveProperty('allowTruncated')
   })
 })
 
@@ -461,6 +790,27 @@ describe('validation createProvider / complete', () => {
       'openrouter',
       'ollama'
     ])
+  })
+
+  it('le registre des fournisseurs : chaque fournisseur supporté, plus Mistral (sans adaptateur), son tag RGPD et ses voies', () => {
+    for (const id of SUPPORTED_PROVIDERS) expect(PROVIDER_INFO, id).toHaveProperty(id)
+    expect(Object.keys(PROVIDER_INFO)).toEqual(['anthropic', 'openai', 'mistral', 'google', 'xai', 'openrouter', 'ollama'])
+    expect(SUPPORTED_PROVIDERS).not.toContain('mistral')
+    expect(Object.fromEntries(Object.entries(PROVIDER_INFO).map(([id, info]) => [id, info.rgpd]))).toEqual({
+      anthropic: 'sous_conditions',
+      openai: 'sous_conditions',
+      mistral: 'oui',
+      google: 'non',
+      xai: 'non',
+      openrouter: 'non',
+      ollama: 'local'
+    })
+    // Anthropic seul a des lots ; tous ont la voie directe.
+    for (const [id, info] of Object.entries(PROVIDER_INFO)) {
+      expect(info.voies, id).toEqual(id === 'anthropic' ? ['directe', 'lots'] : ['directe'])
+      expect(info.libelle, id).toMatch(/\S/)
+    }
+    expect(Object.isFrozen(PROVIDER_INFO.anthropic)).toBe(true)
   })
 
   it('rejette un fournisseur inconnu', () => {

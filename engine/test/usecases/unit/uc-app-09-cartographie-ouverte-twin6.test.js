@@ -26,7 +26,7 @@ import {
 import { CHARS_PER_TOKEN_FR } from '../../../src/providers/estimate.js'
 import { sortieMaxAnthropic } from '../../../src/providers/limits.js'
 import { twin6ToMergeDocument } from '../../../src/twin6/mapper.js'
-import { createProvider } from '../../../src/providers/index.js'
+import { createProvider, OutputTruncatedError } from '../../../src/providers/index.js'
 import { validateDocument } from '../../../src/validation.js'
 import { validateDocumentPourReferentiel } from '../../../src/conformite.js'
 import { gabaritsTwin6 } from '../../../../scripts/twin6-gabarits.mjs'
@@ -420,7 +420,7 @@ describe('UC-APP-09 — tout référentiel (2026-10-20)', () => {
 })
 
 describe('UC-APP-09 — voie « clé perso » : provider direct navigateur', () => {
-  it('UC-APP-09-U11 — appel DIRECT à api.anthropic.com avec la clé de l’utilisateur ; la réponse ne porte PAS stopReason (comportement actuel, cf. anomalie)', async () => {
+  it('UC-APP-09-U11 — appel DIRECT à api.anthropic.com avec la clé de l’utilisateur ; une sortie tronquée lève OutputTruncatedError, usage porté, un seul appel (anomalie 1 corrigée le 2026-10-22)', async () => {
     const fetchFn = vi.fn(async () => ({
       ok: true,
       status: 200,
@@ -432,15 +432,22 @@ describe('UC-APP-09 — voie « clé perso » : provider direct navigateur', () 
       }),
     }))
     const provider = createProvider({ provider: 'anthropic', transport: 'direct', apiKey: 'sk-ant-perso-fictive', fetchFn })
-    const res = await provider.complete({ model: 'claude-sonnet-5', prompt: 'Scanne le pôle 1', maxTokens: 8192 })
+    const failure = await provider.complete({ model: 'claude-sonnet-5', prompt: 'Scanne le pôle 1', maxTokens: 8192 }).catch((e) => e)
 
     const [url, init] = fetchFn.mock.calls[0]
     expect(url).toBe('https://api.anthropic.com/v1/messages')
     expect(init.headers['x-api-key']).toBe('sk-ant-perso-fictive')
     expect(init.headers['anthropic-dangerous-direct-browser-access']).toBe('true')
-    expect(res.usage).toEqual({ inputTokens: 10, outputTokens: 8192 })
-    // ANOMALIE figée : stop_reason n'est pas relayé → la garde « tronquée »
-    // d'executerTwin6 ne se déclenche pas sur la voie clé perso.
-    expect(res.stopReason).toBeUndefined()
+    expect(fetchFn).toHaveBeenCalledTimes(1)
+    // stop_reason est lu : la garde « tronquée » joue aussi sur la voie clé perso.
+    expect(failure).toBeInstanceOf(OutputTruncatedError)
+    expect(failure).toMatchObject({ stopReason: 'max_tokens', stopReasonRaw: 'max_tokens', usage: { inputTokens: 10, outputTokens: 8192 } })
+
+    // Dans executerTwin6 : échec explicite dès le premier pôle, l'appel payé compté.
+    const run = await executerTwin6({ portfolio: PORTFOLIO, templates: TEMPLATES, referentiel: REFERENTIEL, provider, model: 'claude-sonnet-5' })
+      .catch((e) => e)
+    expect(run.message).toMatch(/^executerTwin6: sortie tronquée \(max_tokens\) à l'étape scan-pole\/1 — /)
+    expect(run.usageRun).toEqual({ inputTokens: 10, outputTokens: 8192 })
+    expect(fetchFn).toHaveBeenCalledTimes(2)
   })
 })

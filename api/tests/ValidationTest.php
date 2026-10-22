@@ -172,6 +172,82 @@ final class ValidationTest extends TestCase
         self::assertArrayHasKey('/days/0/variants/0/verdicts/0/traces/0/role', $result['errors']);
     }
 
+    /**
+     * The « configuration » and « execution » blocks of a Twin6 document
+     * (cartographie-merge 1.1.0, 2026-10-22, docs/contrats.md §4 point 8), on the
+     * fixtures shared with JS (schemas/fixtures/twin6, invented values): grafted
+     * onto the merge of three days, alone or embedded by an account archive.
+     * JS twin: engine/src/validation.test.js.
+     */
+    public function testAcceptsATwin6MergeCarryingItsConfigurationAndExecution(): void
+    {
+        self::assertSame([], Validation::validate('cartographie-merge', $this->configuredMerge())['errors']);
+
+        $archive = $this->fixture('archive-export-exemple.json');
+        $archive->cartographies[0]->document = $this->configuredMerge();
+        self::assertSame([], Validation::validate('archive-export', $archive)['errors']);
+
+        // Both blocks are optional; batches are fine with Anthropic.
+        self::assertSame([], Validation::validate('cartographie-merge', $this->fixture('cartographie-merge-3-jours.json'))['errors']);
+        $lots = $this->configuredMerge();
+        $lots->configuration->voie = 'lots';
+        self::assertSame([], Validation::validate('cartographie-merge', $lots)['errors']);
+    }
+
+    public function testRefusesEachInvalidTwin6CaseUnderItsPointer(): void
+    {
+        $cases = $this->fixture('twin6/configuration-invalides.json')->cas;
+        self::assertNotEmpty($cases);
+        foreach ($cases as $case) {
+            $doc = $this->configuredMerge();
+            foreach ($case->poser ?? [] as [$path, $value]) {
+                self::parentOf($doc, $path)->{(string) end($path)} = $value;
+            }
+            foreach ($case->retirer ?? [] as $path) {
+                unset(self::parentOf($doc, $path)->{(string) end($path)});
+            }
+
+            $result = Validation::validate('cartographie-merge', $doc);
+
+            self::assertFalse($result['valid'], $case->cas);
+            $pointers = array_map('strval', array_keys($result['errors']));
+            $under = array_filter($pointers, static fn (string $p): bool => $case->erreur === '/'
+                ? $p === '' || $p === '/'
+                : $p === $case->erreur || str_starts_with($p, $case->erreur . '/'));
+            self::assertNotEmpty($under, $case->cas . ' : ' . implode(', ', $pointers));
+        }
+    }
+
+    /** The merge of three days in 1.1.0, carrying the Twin6 blocks of the shared fixture. */
+    private function configuredMerge(): object
+    {
+        $doc = $this->fixture('cartographie-merge-3-jours.json');
+        $blocks = $this->fixture('twin6/configuration-execution.json');
+        $doc->schemaVersion = '1.1.0';
+        $doc->configuration = $blocks->configuration;
+        $doc->execution = $blocks->execution;
+
+        return $doc;
+    }
+
+    /**
+     * The object that holds the last key of a path (an object property or a list index each step).
+     *
+     * @param list<string|int> $path
+     */
+    private static function parentOf(object $doc, array $path): object
+    {
+        $node = $doc;
+        foreach (\array_slice($path, 0, -1) as $key) {
+            $node = \is_array($node) ? $node[$key] : $node->{(string) $key};
+        }
+        if (!\is_object($node)) {
+            throw new \LogicException('the fixture path must end on an object property');
+        }
+
+        return $node;
+    }
+
     private function fixture(string $name): object
     {
         $path = dirname(__DIR__, 2) . '/schemas/fixtures/' . $name;

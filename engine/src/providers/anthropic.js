@@ -4,6 +4,8 @@
 // anthropic-dangerous-direct-browser-access is required by Anthropic for
 // browser-originated calls.
 
+import { classifyStop } from './stop.js'
+
 export const ANTHROPIC_BASE_URL = 'https://api.anthropic.com'
 export const ANTHROPIC_VERSION = '2023-06-01'
 
@@ -41,7 +43,8 @@ export const anthropicAdapter = {
         inputTokens: data.usage?.input_tokens ?? 0,
         outputTokens: data.usage?.output_tokens ?? 0
       },
-      model: data.model ?? requestedModel
+      model: data.model ?? requestedModel,
+      ...classifyStop('anthropic', data.stop_reason)
     }
   }
 }

@@ -182,6 +182,9 @@ export default function BancEssaiSection({ api, user, deps = {} }) {
   const [refImport, setRefImport] = useState(null) // {run, fileName}
   const [running, setRunning] = useState(null) // {text}
   const [error, setError] = useState(null)
+  // Ce qu'un run qui a échoué a consommé ({usage, model}) : l'erreur le porte
+  // (runVersionOnDays, usageRun), aucun résultat ne l'aurait affiché.
+  const [errorUsage, setErrorUsage] = useState(null)
   const [notice, setNotice] = useState(null) // statut neutre (interruption…)
   const [result, setResult] = useState(null) // {mode, ...}
   const abortRef = useRef(null)
@@ -420,8 +423,10 @@ export default function BancEssaiSection({ api, user, deps = {} }) {
       const run = normalizeReferenceImport(JSON.parse(text), { referentiel: refDocA ?? getReferentielFn() })
       setRefImport({ run, fileName: file.name })
       setError(null)
+      setErrorUsage(null)
     } catch (err) {
       setError(err?.message ?? String(err))
+      setErrorUsage(null)
     }
   }
 
@@ -438,10 +443,14 @@ export default function BancEssaiSection({ api, user, deps = {} }) {
     const controller = new AbortController()
     abortRef.current = controller
     setError(null)
+    setErrorUsage(null)
     setNotice(null)
     setRunning({ text: 'Préparation…' })
     multiRunsRef.current = null
     abSalvageRef.current = null
+    // Modèle de tarification du run en cours : un run qui échoue chiffre ce
+    // qu'il a consommé au tarif de SA branche (A/B à double fournisseur).
+    let tarifEnCours = null
     try {
       const { label, dayGroups: allDays } = await resolveDayGroups()
       const dayGroups = filterDayGroups(allDays, daySel)
@@ -521,6 +530,7 @@ export default function BancEssaiSection({ api, user, deps = {} }) {
         setRunning({ text: 'Exécution…' })
         const pkg = await resolvePackage(selA)
         const alertes = [detectReferentielEnDur(pkg)].filter((d) => d.enDur).map((d) => d.motif)
+        tarifEnCours = bundleA.estimationModel
         const run = await runFn({
           ...baseParams,
           pkg,
@@ -546,6 +556,7 @@ export default function BancEssaiSection({ api, user, deps = {} }) {
         for (let i = 0; i < nRuns; i++) {
           const prefix = `Run ${i + 1}/${nRuns} — `
           setRunning({ text: `${prefix}exécution…` })
+          tarifEnCours = bundleA.estimationModel
           runs.push(
             await runFn({
               ...baseParams,
@@ -595,6 +606,7 @@ export default function BancEssaiSection({ api, user, deps = {} }) {
                 ? `Branche ${branche.nom} — run ${i + 1}/${nRunsAb} — `
                 : `Branche ${branche.nom} — `
             setRunning({ text: `${prefix}exécution…` })
+            tarifEnCours = branche.bundle.estimationModel
             branche.runs.push(
               await runFn({
                 ...baseParams,
@@ -651,6 +663,7 @@ export default function BancEssaiSection({ api, user, deps = {} }) {
         if (usesTwin6Engine(pkgA)) throw new Error(TWIN6_MODE_NOTE)
         const alertes = [detectReferentielEnDur(pkgA)].filter((d) => d.enDur).map((d) => d.motif)
         setRunning({ text: 'Exécution de la version testée…' })
+        tarifEnCours = bundleA.estimationModel
         const runA = await runFn({
           ...baseParams,
           pkg: pkgA,
@@ -768,6 +781,8 @@ export default function BancEssaiSection({ api, user, deps = {} }) {
         }
       } else {
         setError(err?.message ?? String(err))
+        const usageRun = err?.usageRun
+        if (usageRun && (usageRun.mesures ?? 0) > 0) setErrorUsage({ usage: usageRun, model: tarifEnCours })
       }
     } finally {
       setRunning(null)
@@ -1341,6 +1356,14 @@ export default function BancEssaiSection({ api, user, deps = {} }) {
           {error}
         </p>
       ) : null}
+      {error && errorUsage ? (
+        <UsageLine
+          usage={errorUsage.usage}
+          model={errorUsage.model}
+          label="Tokens réels consommés avant l’échec"
+          testId="banc-usage-echec"
+        />
+      ) : null}
 
       {result?.alertes?.length > 0 ? (
         <p className="banc-alerte" role="note">
@@ -1459,13 +1482,16 @@ function AbMultiResult({ abMulti, competenceNames }) {
   )
 }
 
-/** Ligne « tokens réels + coût réel » d'un run (mesure autoritaire vs estimation). */
-function UsageLine({ usage, model }) {
+/**
+ * Ligne « tokens réels + coût réel » d'un run (mesure autoritaire vs estimation),
+ * ou de ce qu'un run qui a échoué a consommé avant de lever.
+ */
+function UsageLine({ usage, model, label = 'Tokens réels', testId = 'banc-usage' }) {
   if (!usage || (usage.mesures ?? 0) === 0) return null
   const cost = realCostUsd(usage, model)
   return (
-    <p data-testid="banc-usage">
-      Tokens réels : {formatTokens(usage.inputTokens)} entrée /{' '}
+    <p data-testid={testId}>
+      {label} : {formatTokens(usage.inputTokens)} entrée /{' '}
       {formatTokens(usage.outputTokens)} sortie
       {cost !== null
         ? ` — coût réel ${cost} $ (table de prix indicative)`

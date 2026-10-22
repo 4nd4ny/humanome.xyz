@@ -26,7 +26,7 @@ schémas ; les deux runtimes sont testés (`engine/src/validation.test.js`,
 |---|---|---|
 | `referentiel.schema.json` | `referentiel` | Référentiel de compétences de toute structure depuis T15 (§9) : des pôles numérotés de 1 à N, les niveaux qu'il déclare avec le motif de leurs codes, ses compétences et leurs éléments plus fins ; RESPIRE v7 (7 pôles, 61 compétences « P.NN ») garde sa structure par une clause du schéma. Versionné semver + `contentHash` SHA-256, édité par les épistémiarques, historisé (cahier §4.1). Document réel : `web/public/data/referentiel/respire-v7.json`. |
 | `cartographie-jour.schema.json` | `cartographie-jour` | Résultat de la cartographie d'UNE feuille de portfolio (une journée) : 7 pôles (pièces, examen adversarial du pédagogue, verdicts, rapport narratif) + synthèse kairos. Documents réels : `web/public/data/demo/jours/<date>.json` (59 feuilles). |
-| `cartographie-merge.schema.json` | `cartographie-merge` | Agrégat chronologique de TOUTES les feuilles (merge évolutif v3) : séries temporelles par pôle et par compétence, archétypes, profil ipsatif, narratifs HTML. Source du sunburst. Document réel : `web/public/data/demo/merge.json`. |
+| `cartographie-merge.schema.json` | `cartographie-merge` | Agrégat chronologique de TOUTES les feuilles (merge évolutif v3) : séries temporelles par pôle et par compétence, archétypes, profil ipsatif, narratifs HTML. Source du sunburst. Document réel : `web/public/data/demo/merge.json`. Depuis la 1.1.0 (2026-10-22), un document de la cartographie ouverte Twin6 porte en plus sa `configuration` et son `execution` (§4, point 8). |
 | `prompt-package.schema.json` | `prompt-package` | Paquet promptologue : textes de prompts + variables + code JS d'orchestration (sandbox Web Worker) + métadonnées (version, auteur, modèle cible, référentiel compatible, changelog). |
 | `competency-map-master.schema.json` | `competency-map-master` | Archive de l'interface de cartographie (`#/cartographie`, master v4, `schemaVersion` 4.x) : référentiel embarqué, journées et variantes (verdicts résumés), détail par journée (extraits, ancres, jury, portfolio du jour), délibérations de run, état de l'apprenant (cases, étiquettes, choix de variante, ensembles, réponses au jury, repères, notes, carnet du dialogue, préférences). Produite par l'espace Export de l'interface et embarquée par l'archive de compte. Fixture : `schemas/fixtures/carto/competency-map-master-exemple.json`, sortie EXACTE de l'interface (`web/scripts/carto-master-fixture.mjs`). |
 | `archive-export.schema.json` | `archive-export` | Format pivot de portabilité (ADR-006) : archive autoporteuse embarquant portfolios en texte intégral, référentiels et prompt-packages COMPLETS, cartographies produites, jeux de l'interface de cartographie (`jeuxCartographie`, depuis la 1.1.0), analyses approfondies Twin9 du compte (`analysesTwin9`, depuis la 1.2.0, §8.5) et journal d'audit. Sert l'export/suppression RGPD, l'import de compte et le seed d'instance. Référence les 5 autres schémas par `$ref` sur leur `$id` absolu. |
@@ -36,7 +36,9 @@ schémas ; les deux runtimes sont testés (`engine/src/validation.test.js`,
 Chaque document porte `schemaVersion` (semver du schéma d'enveloppe : « 1.0.0 »
 partout, sauf l'archive de compte, « 1.1.0 » depuis le 2026-10-14 et « 1.2.0 »
 depuis T10, un référentiel d'une autre structure que RESPIRE, « 2.0.0 »
-depuis T15 (RESPIRE reste en 1.0.0, valide tel quel), et le master
+depuis T15 (RESPIRE reste en 1.0.0, valide tel quel), une cartographie
+fusionnée qui porte sa configuration (Twin6), « 1.1.0 » depuis le 2026-10-22
+(toute autre reste en 1.0.0, à l'octet), et le master
 de l'interface de cartographie, « 4.x ») et `kind` (discriminant, `const` dans
 chaque schéma) — c'est la clé de dispatch de `validateDocument(kind, data)` des
 deux runtimes.
@@ -214,6 +216,70 @@ par `scripts/extract-referentiel.mjs`.
      (`scripts/twin6-gabarits.mjs`) : un gabarit qui a dérivé arrête la
      construction. `#/twin6-ouverte` sert la 1.1.0 ; son méga-prompt, que le
      moteur n'exécute pas, reste le protocole manuel de RESPIRE v7.
+   - **Sortie tronquée, refus (2026-10-22, point 14).** Sur toutes les
+     voies (clé personnelle, crédits, essai), une sortie tronquée arrête le
+     run au premier appel concerné : « executerTwin6: sortie tronquée
+     (max_tokens) à l'étape … », sans nouvel essai ; l'erreur porte
+     l'étape, l'usage du run (l'appel tronqué, payé, compris) et ses
+     appels. Un refus du fournisseur l'arrête de même (« le fournisseur a
+     refusé de répondre à l'étape … »). Chaque appel consigne son arrêt
+     (`calls[].stopReason`, `stopReasonRaw`).
+   - **Le document dit comment il a été produit (2026-10-22, P0-1c :
+     `cartographie-merge` 1.1.0).** Un run lancé depuis `#/twin6-ouverte`
+     exporte deux blocs de plus, juste après `source` :
+     `configuration` (`twin6-configuration/1`) et `execution`
+     (`twin6-execution/1`), décrits par `$defs/configurationTwin6` et
+     `$defs/executionTwin6` du schéma. Seul un document qui les porte passe
+     en `schemaVersion` 1.1.0 ; sans eux (banc d'essai, runs Aurora,
+     Twin9, cohortes, corpus), `buildMergeDocument` rend le document d'hier
+     à l'octet (`scripts/parity/parity-document.mjs` inchangé).
+     - `configuration` : la vue pose ce qu'elle seule sait — `paquet`
+       (`id`, `version`, et `sha256`, l'empreinte hexadécimale des
+       **octets servis** du paquet, calculée avant toute lecture du JSON :
+       avec le référentiel et l'origine des fiches, elle détermine les
+       prompts envoyés, à version du moteur égale), `referentiel` (`id`,
+       `version`, `contentHash` du document publié choisi — `null` pour un
+       document qui n'en porte pas —, et `structure` : `meta` quand le
+       moteur lit les pôles de RESPIRE dans `/api/twin9/meta`, `document`
+       sinon), `fiches` (numéro du pôle → `paquet` ou `document`, selon que
+       sa fiche est celle du paquet ou écrite depuis le document), `acces`
+       (`cle_perso`, `credits` ou `essai` ; la voie « demo » de la vue
+       s'écrit `essai`). `executerTwin6` complète, par liste blanche :
+       `fournisseur` (le registre `PROVIDER_INFO` de
+       `engine/src/providers/index.js` ; un fournisseur qu'il ne connaît
+       pas vaut `null`), `voie` (toujours `directe` : Twin6 enchaîne ses
+       appels depuis le navigateur), `transport` (`direct` ou `proxy`),
+       `modele` (le modèle demandé : `demo` pour l'essai), `maxTokens` (le
+       budget de sortie résolu), `temperature` (`null` sans réglage) et
+       `rgpd`, le tag du fournisseur au registre : `sous_conditions` pour
+       Anthropic et OpenAI, `oui` pour Mistral, `non` pour Google, xAI et
+       OpenRouter, `local` pour Ollama. Aucune clé, aucun gabarit, rien qui
+       dérive d'une clé. Le schéma refuse `voie: lots` pour un autre
+       fournisseur qu'Anthropic (règle commune avec Twin9).
+     - `execution` : `debut` et `fin` (UTC sans fuseau, comme
+       `generatedAt` ; horloge injectable `options.now`), et pour chaque
+       appel son étape (`scan-pole/N`, `kairos`), le modèle **servi** (celui
+       que nomme la réponse : l'essai impose le sien), l'arrêt normalisé
+       (`stopReason`, une classe du point 14, et `stopReasonRaw`, un
+       identifiant court ou `null`) et ses jetons ; puis l'usage total et
+       `modelesServis`. `coutMicrousd` vaut `null` : le moteur ne connaît
+       pas le montant débité, qui reste au relevé du compte — un document
+       se partage. `execution` n'existe pas sans `configuration`
+       (`dependentRequired`) : `buildMergeDocument` ignore une `execution`
+       qu'on lui passe seule, et le document reste en 1.0.0.
+     - **Importeur** (`web/src/carto/core/importers/merge.js`) : la
+       provenance de chaque variante prend pour `model` le premier modèle
+       servi (à défaut le modèle demandé) et garde `configuration` réduite à
+       sa liste blanche de champs scalaires (sans `fiches` ni coût).
+     - Fixtures partagées JS/PHP (valeurs inventées) :
+       `schemas/fixtures/twin6/configuration-execution.json`, greffée sur
+       `cartographie-merge-3-jours.json`, et les cas refusés de
+       `configuration-invalides.json` (`engine/src/validation.test.js`,
+       `api/tests/ValidationTest.php`). L'archive de compte, qui fait `$ref`
+       vers ce schéma, accepte un document configuré tel quel.
+       **Déploiement** : l'API (ses schémas) avant le front, sans quoi un
+       document 1.1.0 que le serveur valide au schéma (une révision de
+       cartographie, `annotations.php`) y serait refusé.
 
 9. **Archive de compte 1.1.0 : les jeux de l'interface de cartographie
    (2026-10-14, journal de la cartographie D-25, question 10 : « tout
@@ -339,6 +405,67 @@ par `scripts/extract-referentiel.mjs`.
     ouverts leurs contenus, ceux du moteur. Absente quand le compte n'a aucun
     run ; jamais réimportée : un run se relance. Ajout rétro-compatible en
     lecture, comme la 1.1.0.
+
+14. **Pourquoi une génération s'arrête : un vocabulaire pour tous les
+    fournisseurs, et une sortie tronquée est une erreur (P0-3,
+    2026-10-22).** Chaque fournisseur dit à sa façon pourquoi il s'arrête
+    (`stop_reason` d'Anthropic, `finish_reason` des API compatibles OpenAI,
+    `finishReason` de Gemini, `done_reason` d'Ollama). Le moteur JS n'en lit
+    qu'une **classe** : `end` (réponse finie), `max_tokens` (budget de
+    sortie atteint), `context_window` (fenêtre de contexte pleine), `refusal`
+    (refus du fournisseur ou du modèle), `other` (tout le reste, y compris
+    une valeur que personne n'a vérifiée), ou `null` (aucun arrêt donné).
+    `max_tokens` garde son nom, que testent les gardes existantes.
+    - **La table est partagée** : `schemas/fixtures/arrets/arrets-fournisseurs.json`
+      (`format`, `brut`, `classe` ; `format` est l'identifiant du
+      fournisseur, car les fournisseurs compatibles OpenAI n'ont pas les
+      mêmes valeurs documentées). N'y figurent que les valeurs relevées sur
+      les documentations officielles le 2026-10-22 ; `engine/src/providers/stop.js`
+      la reflète exactement (`stop.test.js` vérifie dans les deux sens), le
+      PHP la lira. **Ollama n'a aucune valeur vérifiée** : tous ses arrêts
+      valent `other`, une réponse Ollama coupée n'est pas encore détectée.
+      Le relais du serveur rend la valeur brute d'Anthropic ou une valeur
+      déjà normalisée : la classification est idempotente sur les classes.
+      Une valeur brute qui n'est pas un identifiant court
+      (`^[A-Za-z_]{1,32}$`) n'est jamais gardée : elle devient `other`.
+      Deux décisions : un appel d'outil Anthropic (`tool_use`) est une fin
+      normale (la démo et les crédits forcent un outil) ; `CONTINUATION` de
+      Gemini (plafond d'une requête non streamée) vaut `max_tokens`. Le refus
+      d'OpenAI (`message.refusal`) et le prompt bloqué de Gemini
+      (`promptFeedback.blockReason`) donnent `refusal`, sans que leur texte
+      ne sorte jamais de l'adaptateur.
+    - **Le résultat de `complete()`** (accès direct, relais, fournisseur
+      « crédits », mock) : `{text, usage, model, stopReason, stopReasonRaw,
+      truncated}`, `truncated` valant vrai pour `max_tokens` et
+      `context_window`. Gemini : les parts de réflexion (`thought: true`)
+      sont exclues du texte, et la sortie comptée est
+      `candidatesTokenCount + thoughtsTokenCount`, ce qui est facturé.
+    - **Une sortie tronquée est une erreur.** Elle est payée et son texte est
+      un fragment : `complete()` lève une `OutputTruncatedError`
+      (`engine/src/providers/errors.js` : `code: 'sortie_tronquee'`,
+      `status: 200`, `retryable: false`, `stopReason`, `stopReasonRaw`,
+      `limit` — `sortie` ou `contexte` —, `usage`, `maxTokens`,
+      `textLength`), en dehors des reprises : aucun second appel. Le
+      fragment n'est gardé que dans une propriété non énumérable, et le
+      message ne porte aucun contenu. Un appelant qui veut le fragment passe
+      `allowTruncated: true`. Le fournisseur « crédits » de Twin6 compte le
+      coût de l'appel (`onCout`) avant de lever. Un refus est classé, jamais
+      levé : l'appelant décide.
+    - **Ce que fait chaque appelant** : `executerTwin6` lève une erreur qui
+      nomme l'étape et joint `etape`, `usageRun` (l'appel tronqué compris) et
+      `calls`, et fait d'un refus une erreur explicite (`code: 'refus'`) ;
+      `extractDay` ne refait jamais un appel tronqué (un second appel, au
+      maximum de sortie du modèle, serait coupé et payé de nouveau), garde
+      sa consigne « réduisez le texte de la journée », et un kairos tronqué
+      se dégrade en `null` sous `kairosOptional` ; le banc d'essai, le
+      lanceur de runs et le runner Node comptent l'usage de l'appel tronqué,
+      et le banc le montre même quand le run échoue : `runVersionOnDays`
+      joint à l'erreur l'usage cumulé jusqu'à elle (`usageRun`, avec ses
+      `mesures`), que l'IHM affiche avec son coût sous le message ;
+      la démo ne le refait pas (statut 200) et dit « Votre texte est trop
+      long pour l'essai » ; la relance du dialogue de la cartographie dit
+      « Relance coupée » ; le bac à sable rend au paquet tiers un
+      `llm-error`, jamais le fragment. Aucun n'emploie `allowTruncated`.
 
 ## 5. Note d'outillage
 

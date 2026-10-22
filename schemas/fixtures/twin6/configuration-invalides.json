@@ -1,0 +1,124 @@
+{
+  "$comment": "Cas que le schéma cartographie-merge refuse, appliqués à une copie de configuration-execution.json greffée sur cartographie-merge-3-jours.json : « poser » donne des [chemin, valeur], « retirer » des chemins ; « erreur » est le pointeur JSON sous lequel une erreur au moins est attendue (ou la racine, « / »). Tests : engine/src/validation.test.js, api/tests/ValidationTest.php.",
+  "cas": [
+    {
+      "cas": "des lots chez un autre fournisseur qu’Anthropic",
+      "poser": [
+        [
+          [
+            "configuration",
+            "voie"
+          ],
+          "lots"
+        ],
+        [
+          [
+            "configuration",
+            "fournisseur"
+          ],
+          "openai"
+        ],
+        [
+          [
+            "configuration",
+            "rgpd"
+          ],
+          "sous_conditions"
+        ]
+      ],
+      "erreur": "/configuration"
+    },
+    {
+      "cas": "un tag RGPD inconnu",
+      "poser": [
+        [
+          [
+            "configuration",
+            "rgpd"
+          ],
+          "peut-etre"
+        ]
+      ],
+      "erreur": "/configuration/rgpd"
+    },
+    {
+      "cas": "un accès qui garde le nom interne de la vue",
+      "poser": [
+        [
+          [
+            "configuration",
+            "acces"
+          ],
+          "demo"
+        ]
+      ],
+      "erreur": "/configuration/acces"
+    },
+    {
+      "cas": "une empreinte du paquet qui n’est pas un sha256 hexadécimal minuscule",
+      "poser": [
+        [
+          [
+            "configuration",
+            "paquet",
+            "sha256"
+          ],
+          "ABCDEF0123456789ABCDEF0123456789ABCDEF0123456789ABCDEF0123456789"
+        ]
+      ],
+      "erreur": "/configuration/paquet/sha256"
+    },
+    {
+      "cas": "une clé hors liste blanche dans la configuration",
+      "poser": [
+        [
+          [
+            "configuration",
+            "cle"
+          ],
+          "valeur-fictive"
+        ]
+      ],
+      "erreur": "/configuration"
+    },
+    {
+      "cas": "un arrêt non normalisé",
+      "poser": [
+        [
+          [
+            "execution",
+            "appels",
+            0,
+            "stopReason"
+          ],
+          "end_turn"
+        ]
+      ],
+      "erreur": "/execution/appels/0/stopReason"
+    },
+    {
+      "cas": "une valeur brute qui n’est pas un identifiant court",
+      "poser": [
+        [
+          [
+            "execution",
+            "appels",
+            0,
+            "stopReasonRaw"
+          ],
+          "une phrase du fournisseur"
+        ]
+      ],
+      "erreur": "/execution/appels/0/stopReasonRaw"
+    },
+    {
+      "cas": "une exécution sans configuration",
+      "retirer": [
+        [
+          "configuration"
+        ]
+      ],
+      "erreur": "/"
+    }
+  ]
+}

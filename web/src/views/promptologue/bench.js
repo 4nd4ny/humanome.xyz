@@ -15,7 +15,7 @@
 import { extractDay, restreindreReferentiel } from '@engine/pipeline/extract.js'
 import { validateDocumentPourReferentiel } from '@engine/conformite.js'
 import { compareRuns } from '@engine/consistency.js'
-import { getModelPricing } from '@engine/providers/index.js'
+import { getModelPricing, isOutputTruncated } from '@engine/providers/index.js'
 import { callsPerDayFor } from '@engine/providers/estimate.js'
 import { executerTwin6 } from '@engine/twin6/index.js'
 import { fichesPourTwin6 } from '@engine/twin6/fiches.js'
@@ -584,6 +584,9 @@ export function validatePartialJour(kind, doc, referentiel) {
  * @param {typeof runPackageInSandbox} [params.sandboxRunner] couture de test
  * @returns {Promise<{pkg: {id: string, version: string}, engine: boolean,
  *   days: Array<{iso: string, document: object}>, llmCalls: number, durationMs: number}>}
+ *   un run qui échoue lève : l'erreur porte alors `usageRun`, l'usage réel
+ *   cumulé jusqu'à elle ({inputTokens, outputTokens, mesures}, appel tronqué
+ *   compris), que le résultat n'aurait pas rendu
  */
 export async function runVersionOnDays({
   pkg,
@@ -603,22 +606,45 @@ export async function runVersionOnDays({
   // Enveloppe UNIQUE du provider, pour couvrir uniformément les trois chemins
   // (moteur, sandbox, Twin6) : température injectée, et usage RÉEL cumulé
   // (compteurs {inputTokens, outputTokens} renvoyés par chaque fournisseur —
-  // la mesure autoritaire, par opposition aux estimations pré-run).
+  // la mesure autoritaire, par opposition aux estimations pré-run). Une sortie
+  // tronquée lève (OutputTruncatedError, sans allowTruncated : le banc compare
+  // des documents, un fragment n'en est pas un) ; l'appel est payé, son usage
+  // est compté avant de laisser passer l'erreur.
   const usage = { inputTokens: 0, outputTokens: 0, mesures: 0 }
+  const compter = (u) => {
+    if (u && typeof u === 'object') {
+      usage.inputTokens += Number(u.inputTokens) || 0
+      usage.outputTokens += Number(u.outputTokens) || 0
+      usage.mesures += 1
+    }
+  }
   const provider = {
     complete: async (params) => {
       const withTemp =
         temperature === undefined || temperature === null
           ? params
           : { ...params, temperature }
-      const res = await rawProvider.complete(withTemp)
-      if (res?.usage && typeof res.usage === 'object') {
-        usage.inputTokens += Number(res.usage.inputTokens) || 0
-        usage.outputTokens += Number(res.usage.outputTokens) || 0
-        usage.mesures += 1
+      let res
+      try {
+        res = await rawProvider.complete(withTemp)
+      } catch (err) {
+        if (isOutputTruncated(err)) compter(err.usage)
+        throw err
       }
+      compter(res?.usage)
       return res
     },
+  }
+  // Un run qui échoue lève sans rendre son résultat : l'erreur emporte l'usage
+  // cumulé jusqu'à elle (appels déjà payés, appel tronqué compris), que l'IHM
+  // affiche. Il remplace l'usageRun d'executerTwin6, qui ne compte pas les mesures.
+  const avecUsage = async (etape) => {
+    try {
+      return await etape()
+    } catch (err) {
+      if (err !== null && typeof err === 'object') err.usageRun = { ...usage }
+      throw err
+    }
   }
 
   // Périmètre restreint : calculé UNE fois ici pour router (le moteur refait
@@ -638,7 +664,7 @@ export async function runVersionOnDays({
     const portfolio = dayGroupsToPortfolio(dayGroups)
     const totalCalls = callsPerDayFor(referentiel)
     let calls = 0
-    const { document } = await executerTwin6Fn({
+    const { document } = await avecUsage(() => executerTwin6Fn({
       portfolio,
       templates,
       referentiel,
@@ -656,7 +682,7 @@ export async function runVersionOnDays({
           }
         },
       },
-    })
+    }))
     return {
       pkg: { id: pkg.id, version: pkg.version },
       engine: true,
@@ -681,7 +707,7 @@ export async function runVersionOnDays({
     report(llmCalls)
     let document
     if (engine) {
-      document = await extractDayFn({
+      document = await avecUsage(() => extractDayFn({
         dayText: texte,
         date: iso,
         referentiel,
@@ -695,9 +721,9 @@ export async function runVersionOnDays({
           llmCalls += 1
           report(llmCalls)
         },
-      })
+      }))
     } else {
-      const result = await sandboxRunner({
+      const result = await avecUsage(() => sandboxRunner({
         pkg,
         dayText: texte,
         date: iso,
@@ -711,7 +737,7 @@ export async function runVersionOnDays({
         maxTokens,
         signal,
         onLlmCall: ({ calls }) => report(llmCalls + calls),
-      })
+      }))
       llmCalls += result.llmCalls
       document = result.document
       // Même marqueur que le moteur (extractDay) : sans lui, l'export du run

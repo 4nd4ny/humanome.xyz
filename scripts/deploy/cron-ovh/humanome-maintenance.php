@@ -48,7 +48,6 @@ curl_setopt_array($ch, [
 $corps = curl_exec($ch);
 $statut = (int) curl_getinfo($ch, CURLINFO_RESPONSE_CODE);
 $erreur = curl_error($ch);
-curl_close($ch);
 
 if ($statut === 200) {
     echo 'maintenance : ' . trim((string) $corps) . "\n";

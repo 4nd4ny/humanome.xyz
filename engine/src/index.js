@@ -19,6 +19,7 @@ export {
   isOutputTruncated,
   STOP_CLASSES,
   SUPPORTED_PROVIDERS,
+  PROVIDER_INFO,
   DEFAULT_MAX_TOKENS,
   DEFAULT_PROXY_URL,
   withRetry,

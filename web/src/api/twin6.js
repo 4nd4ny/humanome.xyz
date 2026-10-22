@@ -20,21 +20,37 @@ import { ApiError, apiFetch } from './client.js'
 import { ACCEPT_RELAIS } from './relais.js'
 import { classifyStop, createProvider, throwIfTruncated } from '@engine/providers/index.js'
 import { fetchTwin9Meta, referentielPourMoteur } from './twin9.js'
+import { sha256Bytes } from '../lib/pow.js'
 
 /** Paquet de prompts open source (servi statiquement, téléchargeable). */
 export const TWIN6_PACKAGE_URL = 'data/twin6/twin6-ouverte-1.1.0.json'
 
+/** L'empreinte SHA-256 d'octets, en hexadécimal minuscule. */
+function sha256Hex(bytes) {
+  return Array.from(sha256Bytes(bytes), (b) => b.toString(16).padStart(2, '0')).join('')
+}
+
 /**
  * Charge le paquet PUBLIC de prompts Twin6 (scanPole, kairos, les fiches des
  * pôles de RESPIRE v7, P1..P7) dans la forme attendue par le moteur
- * (twin6.executerTwin6).
+ * (twin6.executerTwin6), avec l'empreinte SHA-256 des octets servis (2026-10-22) :
+ * le document exporté la consigne (bloc `configuration`), et elle certifie les
+ * gabarits lus, à l'octet — elle se calcule avant toute lecture du JSON.
  *
  * @param {{fetchFn?: typeof fetch, url?: string}} [opts]
+ * @returns {Promise<{id, version, nom, licence, modeleCibleDefaut, sha256: string,
+ *   templates: {scanPole: string, kairos: string, fiches: object}}>}
  */
 export async function loadTwin6Package({ fetchFn = fetch, url = TWIN6_PACKAGE_URL } = {}) {
   const res = await fetchFn(url)
   if (!res.ok) throw new Error(`Paquet Twin6 introuvable (${res.status})`)
-  const pkg = await res.json()
+  const octets = new Uint8Array(await res.arrayBuffer())
+  let pkg
+  try {
+    pkg = JSON.parse(new TextDecoder().decode(octets))
+  } catch {
+    pkg = null
+  }
   if (!pkg?.scanPole || !pkg?.kairos || !pkg?.fiches) {
     throw new Error('Paquet Twin6 invalide (scanPole/kairos/fiches attendus)')
   }
@@ -44,6 +60,7 @@ export async function loadTwin6Package({ fetchFn = fetch, url = TWIN6_PACKAGE_UR
     nom: pkg.nom,
     licence: pkg.licence,
     modeleCibleDefaut: pkg.modeleCibleDefaut ?? 'claude-sonnet-5',
+    sha256: sha256Hex(octets),
     templates: { scanPole: pkg.scanPole, kairos: pkg.kairos, fiches: pkg.fiches },
   }
 }
@@ -73,6 +90,8 @@ export const RELAIS_INTERROMPU_CREDITS =
 export function makeCreditsProvider({ onCout, onProgression, fetchFn } = {}) {
   return {
     name: 'twin6-credits',
+    // Le fournisseur des appels (la configuration du document le consigne) : Anthropic seul.
+    fournisseur: 'anthropic',
     transport: 'proxy',
     async complete({ model, prompt, maxTokens, system = null, signal, allowTruncated } = {}) {
       let data

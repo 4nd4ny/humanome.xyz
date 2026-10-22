@@ -20,15 +20,24 @@
 // du paquet pour RESPIRE v7, écrites depuis le document pour tout autre
 // pôle). La sortie LLM est du JSON ; on l'extrait de façon tolérante (fences
 // ```json, préambule).
+//
+// Le document exporté peut dire comment il a été produit (2026-10-22,
+// docs/contrats.md §4 point 8) : quand l'appelant passe `options.configuration`
+// (le paquet et l'empreinte de ses octets, le référentiel, l'origine des
+// fiches, l'accès), executerTwin6 la complète de ce que lui seul sait — le
+// fournisseur et son tag RGPD, le transport, le modèle, le budget de sortie
+// résolu, la température — et y joint `execution`, tirée des appels. Sans
+// elle, le document reste celui d'hier, à l'octet.
 
 import { twin6ToMergeDocument } from './mapper.js'
 import { rendreGabaritTwin6, variablesTwin6 } from './variables.js'
 import { sortieMaxAnthropic } from '../providers/limits.js'
 import { ProviderError } from '../providers/errors.js'
-import { isOutputTruncated, isTruncatedResult, truncationError } from '../providers/stop.js'
+import { PROVIDER_INFO } from '../providers/index.js'
+import { STOP_CLASSES, classifyStop, isOutputTruncated, isTruncatedResult, truncationError } from '../providers/stop.js'
 
 // Les fiches d'un pôle pour tout référentiel (WP1, 2026-10-20), exposées avec le pipeline.
-export { fichesDuReferentiel, fichesPourTwin6 } from './fiches.js'
+export { fichesDuReferentiel, fichesPourTwin6, originesDesFiches } from './fiches.js'
 // Les variables par lesquelles les gabarits 1.1.0 lisent le référentiel (2026-10-20).
 export { formatCodeTwin6, rendreGabaritTwin6, variablesTwin6 } from './variables.js'
 
@@ -90,6 +99,95 @@ export function extractJson(text) {
   return JSON.parse(candidate.slice(start, end + 1))
 }
 
+/** Horodatage sans fuseau, le motif de `generatedAt` (AAAA-MM-JJThh:mm:ss). */
+function horodatage(date) {
+  return date.toISOString().slice(0, 19)
+}
+
+/** Un compte de jetons : un entier positif, 0 sinon. */
+function jetons(n) {
+  return Number.isInteger(n) && n >= 0 ? n : 0
+}
+
+/** Les champs nommés d'un objet, chacun null quand il manque. */
+function champs(objet, noms) {
+  return Object.fromEntries(noms.map((nom) => [nom, objet?.[nom] ?? null]))
+}
+
+/**
+ * Le bloc `configuration` d'un document Twin6 (schéma `twin6-configuration/1`) :
+ * ce que l'appelant seul sait — le paquet (avec l'empreinte sha256 de ses octets
+ * servis), le référentiel, l'origine de chaque fiche, l'accès —, complété de ce
+ * que l'exécution seule sait. Liste blanche : rien d'autre n'en sort, aucune clé.
+ * Un fournisseur que le registre ne connaît pas (un double de test) est null,
+ * son tag aussi : le bloc ne devine pas.
+ *
+ * @param {{paquet?: object, referentiel?: object, fiches?: Record<string,string>,
+ *   acces?: 'cle_perso'|'credits'|'essai'}} donnees ce que l'appelant passe
+ * @param {{provider: {name?: string, fournisseur?: string, transport?: string},
+ *   model: string, maxTokens: number, temperature?: number}} run
+ */
+export function configurationTwin6(donnees, { provider, model, maxTokens, temperature }) {
+  const id = provider?.fournisseur ?? provider?.name ?? null
+  const info = typeof id === 'string' && Object.hasOwn(PROVIDER_INFO, id) ? PROVIDER_INFO[id] : null
+  const fiches = {}
+  for (const [num, origine] of Object.entries(donnees?.fiches ?? {})) fiches[String(num)] = origine
+  return {
+    schema: 'twin6-configuration/1',
+    moteur: 'twin6',
+    paquet: champs(donnees?.paquet, ['id', 'version', 'sha256']),
+    referentiel: champs(donnees?.referentiel, ['id', 'version', 'contentHash', 'structure']),
+    fiches,
+    fournisseur: info ? id : null,
+    // Twin6 enchaîne ses appels depuis le navigateur : jamais de lots.
+    voie: 'directe',
+    acces: donnees?.acces ?? null,
+    transport: provider?.transport === 'direct' || provider?.transport === 'proxy' ? provider.transport : null,
+    modele: model,
+    maxTokens,
+    temperature: typeof temperature === 'number' ? temperature : null,
+    rgpd: info?.rgpd ?? null,
+  }
+}
+
+/**
+ * L'arrêt d'un appel tel que le document l'exporte : une classe normalisée (un
+ * fournisseur injecté qui rend sa valeur brute est classé), et la valeur brute
+ * seulement si c'est un identifiant court (sinon « other »), comme le journal PHP.
+ */
+function arretExporte(fournisseur, stopReason, stopReasonRaw) {
+  const classe = stopReason === null || stopReason === undefined || stopReason === ''
+    ? null
+    : STOP_CLASSES.includes(stopReason) ? stopReason : classifyStop(fournisseur, stopReason).stopReason
+  return { stopReason: classe, stopReasonRaw: classifyStop(fournisseur, stopReasonRaw).stopReasonRaw }
+}
+
+/**
+ * Le bloc `execution` d'un document Twin6 (schéma `twin6-execution/1`), tiré des
+ * appels du run : leur étape, le modèle servi, l'arrêt, les jetons ; le modèle
+ * servi, que seule la réponse connaît (l'essai impose le sien) ; le coût reste
+ * null : le moteur ne le connaît pas, et un document se partage — le montant
+ * débité reste au relevé du compte.
+ *
+ * @param {Array<{etape: string, usage: ?object, model: ?string, stopReason: ?string,
+ *   stopReasonRaw: ?string}>} calls les appels d'executerTwin6
+ * @param {{debut: string, fin: string, fournisseur: ?string}} bornes
+ */
+export function executionTwin6(calls, { debut, fin, fournisseur }) {
+  const usage = { inputTokens: 0, outputTokens: 0 }
+  const modelesServis = []
+  const appels = calls.map((c) => {
+    const inputTokens = jetons(c.usage?.inputTokens)
+    const outputTokens = jetons(c.usage?.outputTokens)
+    usage.inputTokens += inputTokens
+    usage.outputTokens += outputTokens
+    const modele = typeof c.model === 'string' && c.model !== '' ? c.model : null
+    if (modele !== null && !modelesServis.includes(modele)) modelesServis.push(modele)
+    return { etape: c.etape, modele, ...arretExporte(fournisseur, c.stopReason, c.stopReasonRaw), inputTokens, outputTokens }
+  })
+  return { schema: 'twin6-execution/1', debut, fin, appels, usage, modelesServis, coutMicrousd: null }
+}
+
 /**
  * Exécute une Cartographie ouverte Twin6 de bout en bout.
  *
@@ -101,9 +199,14 @@ export function extractJson(text) {
  *   référentiel employé (un scan par pôle ; un autre que RESPIRE nomme le document, T17).
  * @param {{complete: Function, name?: string}} args.provider handle de createProvider().
  * @param {string} args.model identifiant de modèle.
- * @param {object} [args.options] { maxTokens, temperature, signal, onProgress, meta } — maxTokens :
- *   par défaut tout ce que le modèle peut rendre (sortieMaxAnthropic, 2026-10-21 : une réponse
- *   coupée est payée et perdue ; le proxy de la démo impose de toute façon le sien).
+ * @param {object} [args.options] { maxTokens, temperature, signal, onProgress, meta, configuration,
+ *   now } — maxTokens : par défaut tout ce que le modèle peut rendre (sortieMaxAnthropic,
+ *   2026-10-21 : une réponse coupée est payée et perdue ; le proxy de la démo impose de toute façon
+ *   le sien). configuration : {paquet: {id, version, sha256}, referentiel: {id, version,
+ *   contentHash, structure}, fiches: {num: 'paquet'|'document'}, acces} — présente, le document
+ *   porte les blocs `configuration` (complétée, configurationTwin6) et `execution`
+ *   (executionTwin6), en schemaVersion 1.1.0 ; absente, il reste en 1.0.0, à l'octet. now : horloge
+ *   injectable (() => Date) des bornes `debut` et `fin` de l'exécution.
  * @returns {Promise<{document: object, cartoPoles: Array, kairos: object,
  *   usage: {inputTokens:number, outputTokens:number}, calls: Array}>}
  *   calls : {etape, usage, model, stopReason, stopReasonRaw} par appel.
@@ -127,6 +230,9 @@ export async function executerTwin6({ portfolio, templates, referentiel, provide
   }
 
   const { maxTokens = sortieMaxAnthropic(model), temperature, signal, onProgress, meta = {} } = options
+  const donneesConfiguration =
+    options.configuration !== null && typeof options.configuration === 'object' ? options.configuration : null
+  const now = options.now ?? (() => new Date())
   const poleNums = referentiel.poles.map((p) => p.num).sort((a, b) => a - b)
   // Les variables du référentiel (gabarits 1.1.0) ; sans elles (1.0.0), rien ne change.
   const variables = variablesTwin6(referentiel)
@@ -204,6 +310,7 @@ export async function executerTwin6({ portfolio, templates, referentiel, provide
   }
 
   // Phase 1 — un scan-pole par pôle du référentiel, dans l'ordre de leurs numéros.
+  const debut = donneesConfiguration ? horodatage(now()) : null
   const cartoPoles = []
   for (const num of poleNums) {
     const fiche = templates.fiches[num] ?? templates.fiches[String(num)]
@@ -225,7 +332,14 @@ export async function executerTwin6({ portfolio, templates, referentiel, provide
   done += 1
   onProgress?.({ phase: 'done', done, total })
 
-  // Phase 3 — mapping vers le document du viewer.
-  const document = twin6ToMergeDocument(cartoPoles, kairos, referentiel, meta)
+  // Phase 3 — mapping vers le document du viewer, avec la configuration et
+  // l'exécution du run quand l'appelant en a passé une (sinon, `meta` tel quel).
+  let metaDocument = meta
+  if (donneesConfiguration) {
+    const configuration = configurationTwin6(donneesConfiguration, { provider, model, maxTokens, temperature })
+    const execution = executionTwin6(calls, { debut, fin: horodatage(now()), fournisseur: configuration.fournisseur })
+    metaDocument = { ...meta, configuration, execution }
+  }
+  const document = twin6ToMergeDocument(cartoPoles, kairos, referentiel, metaDocument)
   return { document, cartoPoles, kairos, usage, calls }
 }

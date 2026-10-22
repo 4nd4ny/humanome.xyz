@@ -1,0 +1,114 @@
+{
+  "$comment": "Blocs « configuration » et « execution » d’un document Twin6 (cartographie-merge 1.1.0, docs/contrats.md §4 point 8). Valeurs INVENTÉES (empreintes comprises) ; les tests les greffent sur cartographie-merge-3-jours.json. Cas invalides : configuration-invalides.json.",
+  "configuration": {
+    "schema": "twin6-configuration/1",
+    "moteur": "twin6",
+    "paquet": {
+      "id": "twin6-ouverte",
+      "version": "1.1.0",
+      "sha256": "abcdef0123456789abcdef0123456789abcdef0123456789abcdef0123456789"
+    },
+    "referentiel": {
+      "id": "respire",
+      "version": "7.0.0",
+      "contentHash": "0123456789abcdef0123456789abcdef0123456789abcdef0123456789abcdef",
+      "structure": "meta"
+    },
+    "fiches": {
+      "1": "paquet",
+      "2": "paquet",
+      "3": "paquet",
+      "4": "paquet",
+      "5": "paquet",
+      "6": "paquet",
+      "7": "paquet"
+    },
+    "fournisseur": "anthropic",
+    "voie": "directe",
+    "acces": "credits",
+    "transport": "proxy",
+    "modele": "claude-sonnet-5",
+    "maxTokens": 128000,
+    "temperature": null,
+    "rgpd": "sous_conditions"
+  },
+  "execution": {
+    "schema": "twin6-execution/1",
+    "debut": "2026-01-07T21:00:00",
+    "fin": "2026-01-07T21:04:12",
+    "appels": [
+      {
+        "etape": "scan-pole/1",
+        "modele": "claude-sonnet-5",
+        "stopReason": "end",
+        "stopReasonRaw": "tool_use",
+        "inputTokens": 4100,
+        "outputTokens": 1500
+      },
+      {
+        "etape": "scan-pole/2",
+        "modele": "claude-sonnet-5",
+        "stopReason": "end",
+        "stopReasonRaw": "tool_use",
+        "inputTokens": 4110,
+        "outputTokens": 1505
+      },
+      {
+        "etape": "scan-pole/3",
+        "modele": "claude-sonnet-5",
+        "stopReason": "end",
+        "stopReasonRaw": "tool_use",
+        "inputTokens": 4120,
+        "outputTokens": 1510
+      },
+      {
+        "etape": "scan-pole/4",
+        "modele": "claude-sonnet-5",
+        "stopReason": "end",
+        "stopReasonRaw": "tool_use",
+        "inputTokens": 4130,
+        "outputTokens": 1515
+      },
+      {
+        "etape": "scan-pole/5",
+        "modele": "claude-sonnet-5",
+        "stopReason": "end",
+        "stopReasonRaw": "tool_use",
+        "inputTokens": 4140,
+        "outputTokens": 1520
+      },
+      {
+        "etape": "scan-pole/6",
+        "modele": "claude-sonnet-5",
+        "stopReason": "end",
+        "stopReasonRaw": "tool_use",
+        "inputTokens": 4150,
+        "outputTokens": 1525
+      },
+      {
+        "etape": "scan-pole/7",
+        "modele": "claude-sonnet-5",
+        "stopReason": "end",
+        "stopReasonRaw": "tool_use",
+        "inputTokens": 4160,
+        "outputTokens": 1530
+      },
+      {
+        "etape": "kairos",
+        "modele": "claude-sonnet-5",
+        "stopReason": "end",
+        "stopReasonRaw": "tool_use",
+        "inputTokens": 9100,
+        "outputTokens": 2400
+      }
+    ],
+    "usage": {
+      "inputTokens": 38010,
+      "outputTokens": 13005
+    },
+    "modelesServis": [
+      "claude-sonnet-5"
+    ],
+    "coutMicrousd": null
+  }
+}

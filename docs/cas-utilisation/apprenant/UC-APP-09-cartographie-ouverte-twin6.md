@@ -67,6 +67,12 @@ page Essayer (UC-VIS-03), ou par l'adresse.
 
 - Un document `cartographie-merge` est produit **dans le navigateur** et rendu
   par `MergeView` (sunburst, feuilles de portfolio) ; il est exportable en JSON.
+  Depuis le 2026-10-22, il dit comment il a été produit (`schemaVersion` 1.1.0) :
+  bloc `configuration` (paquet et empreinte sha256 de ses octets servis,
+  référentiel, origine des fiches, accès, fournisseur et son tag RGPD,
+  transport, modèle demandé, budget de sortie) et bloc `execution` (bornes,
+  étape, modèle servi, arrêt et jetons de chaque appel), sans clé ni coût
+  (`docs/contrats.md` §4 point 8).
 - Voie crédits : le solde est débité du **coût réel** de chacun des appels
   (un par pôle du référentiel, plus le kairos : 8 pour RESPIRE v7), à la
   contribution Twin6 (×1,10), et rien d'autre.
@@ -477,7 +483,7 @@ page Essayer (UC-VIS-03), ou par l'adresse.
 
 | ID | Scénario | Niveau | Vérifie | Fichier |
 |---|---|---|---|---|
-| UC-APP-09-F01 | Nominal | IHM | `<App/>` : RESPIRE par défaut, « 8 appels au modèle (7 pôles + synthèse) » ; progression « étape 1/8 » et contribution cumulée pendant le run ; 8 appels via `/api/twin6/appel` avec CSRF, la fiche du paquet telle quelle, contribution finale, secteurs du sunburst, export JSON (`cartographie-merge` sans `referentiel`, noms de pôle de `/meta`, `.json`, aucun envoi réseau) ; « Compétences établies » sur les compétences du référentiel du run (anomalie 3 corrigée) ; portfolio envoyé nulle part ailleurs | `web/test/usecases/functional/uc-app-09-cartographie-ouverte-twin6.test.jsx` |
+| UC-APP-09-F01 | Nominal | IHM | `<App/>` : RESPIRE par défaut, « 8 appels au modèle (7 pôles + synthèse) » ; progression « étape 1/8 » et contribution cumulée pendant le run ; 8 appels via `/api/twin6/appel` avec CSRF, la fiche du paquet telle quelle, contribution finale, secteurs du sunburst, export JSON (`cartographie-merge` sans `referentiel`, noms de pôle de `/meta`, `.json`, aucun envoi réseau ; en 1.1.0 avec sa `configuration` — sha256 des octets servis du paquet, comparé à `node:crypto` — et son `execution`, valide au schéma) ; « Compétences établies » sur les compétences du référentiel du run (anomalie 3 corrigée) ; portfolio envoyé nulle part ailleurs | `web/test/usecases/functional/uc-app-09-cartographie-ouverte-twin6.test.jsx` |
 | UC-APP-09-F02 | A1, RG5 | IHM | Clé saisie, solde nul : 8 appels directs au fournisseur, aucun passage par l'API, aucun garde-fou de solde | idem |
 | UC-APP-09-F03 | A2 | IHM | Clé du profil révélée une fois, 8 appels directs avec elle, aucun appel à `/api/twin6/appel` (voie crédits câblée en échec), « (avec votre clé) » | idem |
 | UC-APP-09-F04 | E1 | IHM | Anonyme : l'essai gratuit seul, invitation à se connecter pour les autres voies ; ni offre ni clés lues | idem |

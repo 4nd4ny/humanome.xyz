@@ -74,3 +74,21 @@ export function fichesPourTwin6(referentiel, fichesDuPaquet = {}) {
   }
   return fiches
 }
+
+/**
+ * D'où vient chaque fiche qu'un run a lue (le bloc `configuration` du document
+ * Twin6, 2026-10-22) : « paquet », le texte même du paquet pour ce pôle, sinon
+ * « document », écrite depuis le document du référentiel.
+ *
+ * @param {Record<string, string>} fiches numéro du pôle -> fiche lue (fichesPourTwin6)
+ * @param {Record<string, string>} [fichesDuPaquet] numéro du pôle -> fiche du paquet
+ * @returns {Record<string, 'paquet'|'document'>} numéro du pôle -> origine
+ */
+export function originesDesFiches(fiches, fichesDuPaquet = {}) {
+  const origines = {}
+  for (const [num, texte] of Object.entries(fiches)) {
+    const duPaquet = fichesDuPaquet[num] ?? fichesDuPaquet[Number(num)]
+    origines[num] = typeof duPaquet === 'string' && duPaquet === texte ? 'paquet' : 'document'
+  }
+  return origines
+}

@@ -412,6 +412,59 @@ describe('formats Merge et métriques', () => {
     expect(res.report.some((r) => r.code === 'merge-sans-extraits' && r.severity === 'warning')).toBe(true)
     expect(res.dataset.narratives.map((n) => n.kind).sort()).toEqual(['competence-evolutive', 'kairos-evolutif', 'pole-evolutif'])
     expect(res.dataset.narratives[0].sourceDates).toEqual(['2025-12-22', '2025-12-23'])
+    // Sans configuration (1.0.0) : ni modèle, ni configuration en provenance.
+    expect(v.provenance.model).toBeNull()
+    expect(v.provenance).not.toHaveProperty('configuration')
+  })
+
+  it('document Twin6 1.1.0 : le modèle servi et la configuration en provenance, par liste blanche (2026-10-22)', async () => {
+    const configuration = {
+      schema: 'twin6-configuration/1',
+      moteur: 'twin6',
+      paquet: { id: 'twin6-ouverte', version: '1.1.0', sha256: 'abcdef0123456789'.repeat(4), gabarit: 'texte du gabarit' },
+      referentiel: { id: 'respire', version: '7.0.0', contentHash: null, structure: 'meta' },
+      fiches: { 1: 'paquet' },
+      fournisseur: 'anthropic',
+      voie: 'directe',
+      acces: 'credits',
+      transport: 'proxy',
+      modele: 'claude-sonnet-5',
+      maxTokens: 128000,
+      temperature: null,
+      rgpd: 'sous_conditions',
+      cle: 'valeur-fictive', // hors liste blanche (un fichier édité à la main)
+    }
+    const doc = {
+      kind: 'cartographie-merge',
+      schemaVersion: '1.1.0',
+      configuration,
+      execution: { schema: 'twin6-execution/1', modelesServis: ['claude-sonnet-5-20261001'], coutMicrousd: 52816, appels: [] },
+      feuilles: [{ iso: '2025-12-22' }],
+      domains: [{ id: 'TÊTE', competences: [{ code: '1.01', parFeuille: [{ date: '2025-12-22', statut: 'présence établie', preuves: 1, indices: 0, confiance: 0.7 }] }] }],
+    }
+    const res = await importFiles([json('merge.json', doc)], empty(), { now: NOW })
+    const v = contributingVariant(res.dataset.days.find((d) => d.date === '2025-12-22'))
+    expect(v.provenance.model).toBe('claude-sonnet-5-20261001')
+    expect(v.provenance.configuration).toEqual({
+      moteur: 'twin6',
+      paquet: { id: 'twin6-ouverte', version: '1.1.0', sha256: 'abcdef0123456789'.repeat(4) },
+      referentiel: { id: 'respire', version: '7.0.0', contentHash: null, structure: 'meta' },
+      fournisseur: 'anthropic',
+      voie: 'directe',
+      acces: 'credits',
+      transport: 'proxy',
+      modele: 'claude-sonnet-5',
+      maxTokens: 128000,
+      temperature: null,
+      rgpd: 'sous_conditions',
+    })
+    const provenance = JSON.stringify(v.provenance)
+    for (const absent of ['valeur-fictive', 'texte du gabarit', '52816']) expect(provenance).not.toContain(absent)
+
+    // Sans modèle servi, le modèle demandé.
+    const { execution: _e, ...sansExecution } = doc
+    const res2 = await importFiles([json('merge.json', sansExecution)], empty(), { now: NOW })
+    expect(contributingVariant(res2.dataset.days[0]).provenance.model).toBe('claude-sonnet-5')
   })
 
   it('métriques metrics[date][champ] ; valeurs illisibles ignorées, jamais mises à 0', async () => {

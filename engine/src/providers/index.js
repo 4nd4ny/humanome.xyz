@@ -64,6 +64,25 @@ const ADAPTERS = {
 
 export const SUPPORTED_PROVIDERS = Object.freeze(Object.keys(ADAPTERS))
 
+/**
+ * What the platform says of each provider, adapter or not (Mistral has none
+ * here yet: its browser path is not verified). `rgpd` is the provider's data
+ * protection tag, recorded in the configuration of a run (a Twin6 document,
+ * docs/contrats.md §4 point 8): 'oui' (EU provider), 'sous_conditions'
+ * (outside the EU, under contractual guarantees), 'non' (no guarantee the
+ * platform relies on), 'local' (the model runs on the user's machine).
+ * `voies`: the ways a call can reach it — Anthropic alone has batches.
+ */
+export const PROVIDER_INFO = Object.freeze({
+  anthropic: Object.freeze({ libelle: 'Anthropic', rgpd: 'sous_conditions', voies: Object.freeze(['directe', 'lots']) }),
+  openai: Object.freeze({ libelle: 'OpenAI', rgpd: 'sous_conditions', voies: Object.freeze(['directe']) }),
+  mistral: Object.freeze({ libelle: 'Mistral', rgpd: 'oui', voies: Object.freeze(['directe']) }),
+  google: Object.freeze({ libelle: 'Google', rgpd: 'non', voies: Object.freeze(['directe']) }),
+  xai: Object.freeze({ libelle: 'xAI', rgpd: 'non', voies: Object.freeze(['directe']) }),
+  openrouter: Object.freeze({ libelle: 'OpenRouter', rgpd: 'non', voies: Object.freeze(['directe']) }),
+  ollama: Object.freeze({ libelle: 'Ollama (local)', rgpd: 'local', voies: Object.freeze(['directe']) })
+})
+
 function stripTrailingSlash(url) {
   return url.endsWith('/') ? url.slice(0, -1) : url
 }

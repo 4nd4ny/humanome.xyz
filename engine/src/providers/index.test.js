@@ -4,7 +4,8 @@ import {
   ProviderError,
   OutputTruncatedError,
   DEFAULT_MAX_TOKENS,
-  SUPPORTED_PROVIDERS
+  SUPPORTED_PROVIDERS,
+  PROVIDER_INFO
 } from './index.js'
 
 // ---------------------------------------------------------------------------
@@ -789,6 +790,27 @@ describe('validation createProvider / complete', () => {
       'openrouter',
       'ollama'
     ])
+  })
+
+  it('le registre des fournisseurs : chaque fournisseur supporté, plus Mistral (sans adaptateur), son tag RGPD et ses voies', () => {
+    for (const id of SUPPORTED_PROVIDERS) expect(PROVIDER_INFO, id).toHaveProperty(id)
+    expect(Object.keys(PROVIDER_INFO)).toEqual(['anthropic', 'openai', 'mistral', 'google', 'xai', 'openrouter', 'ollama'])
+    expect(SUPPORTED_PROVIDERS).not.toContain('mistral')
+    expect(Object.fromEntries(Object.entries(PROVIDER_INFO).map(([id, info]) => [id, info.rgpd]))).toEqual({
+      anthropic: 'sous_conditions',
+      openai: 'sous_conditions',
+      mistral: 'oui',
+      google: 'non',
+      xai: 'non',
+      openrouter: 'non',
+      ollama: 'local'
+    })
+    // Anthropic seul a des lots ; tous ont la voie directe.
+    for (const [id, info] of Object.entries(PROVIDER_INFO)) {
+      expect(info.voies, id).toEqual(id === 'anthropic' ? ['directe', 'lots'] : ['directe'])
+      expect(info.libelle, id).toMatch(/\S/)
+    }
+    expect(Object.isFrozen(PROVIDER_INFO.anthropic)).toBe(true)
   })
 
   it('rejette un fournisseur inconnu', () => {

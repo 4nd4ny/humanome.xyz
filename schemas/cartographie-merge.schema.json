@@ -2,13 +2,13 @@
   "$schema": "https://json-schema.org/draft/2020-12/schema",
   "$id": "https://humanome.xyz/schemas/cartographie-merge.schema.json",
   "title": "Cartographie — document merge évolutif",
-  "description": "Document « cartographie-merge » : cartographie chronologique agrégée de TOUTES les feuilles d'un portfolio (merge évolutif v3), produit par scripts/convert/carto-data-to-merge-json.mjs à partir du carto-data.js hérité. L'enveloppe (schemaVersion, kind, generatedAt, source, periode, narratifs, reserved) est construite par le convertisseur ; domains, profilMeta, profilIpsatif et feuilles sont les constantes amont recopiées telles quelles, sans renommage de champ. Schéma déduit du corpus démo (web/public/data/demo/merge.json, 59 feuilles).",
+  "description": "Document « cartographie-merge » : cartographie chronologique agrégée de TOUTES les feuilles d'un portfolio (merge évolutif v3), produit par scripts/convert/carto-data-to-merge-json.mjs à partir du carto-data.js hérité. L'enveloppe (schemaVersion, kind, generatedAt, source, periode, narratifs, reserved) est construite par le convertisseur ; domains, profilMeta, profilIpsatif et feuilles sont les constantes amont recopiées telles quelles, sans renommage de champ. Schéma déduit du corpus démo (web/public/data/demo/merge.json, 59 feuilles). Version 1.1.0 (2026-10-22) : un document produit par la cartographie ouverte Twin6 peut porter deux blocs facultatifs, « configuration » (ce qui l'a produit) et « execution » (comment le run s'est déroulé) ; un document qui les porte est en schemaVersion « 1.1.0 », tout autre reste en « 1.0.0 », inchangé (docs/contrats.md §4 point 8).",
   "type": "object",
   "properties": {
     "schemaVersion": {
       "type": "string",
       "pattern": "^\\d+\\.\\d+\\.\\d+$",
-      "description": "Version sémantique du schéma d'enveloppe. Valeur observée : « 1.0.0 »."
+      "description": "Version sémantique du schéma d'enveloppe. « 1.0.0 » ; « 1.1.0 » pour un document qui porte les blocs « configuration » et « execution » (Twin6, 2026-10-22)."
     },
     "kind": {
       "const": "cartographie-merge",
@@ -39,6 +39,14 @@
       },
       "required": ["protocole", "journalId"],
       "additionalProperties": false
+    },
+    "configuration": {
+      "$ref": "#/$defs/configurationTwin6",
+      "description": "Facultatif (1.1.0). Ce qui a produit le document : le paquet de prompts et l'empreinte de ses octets, le référentiel, l'origine des fiches, le fournisseur, l'accès, le modèle demandé et ses réglages. Jamais une clé ni une donnée dérivée d'une clé."
+    },
+    "execution": {
+      "$ref": "#/$defs/executionTwin6",
+      "description": "Facultatif (1.1.0), et seulement avec « configuration ». Comment le run s'est déroulé : ses bornes, chacun de ses appels (étape, modèle servi, arrêt normalisé, jetons), les modèles servis."
     },
     "periode": {
       "type": "object",
@@ -149,8 +157,148 @@
     "narratifs",
     "reserved"
   ],
+  "dependentRequired": {
+    "execution": ["configuration"]
+  },
   "additionalProperties": false,
   "$defs": {
+    "fournisseurLlm": {
+      "enum": ["anthropic", "openai", "mistral", "google", "xai", "openrouter", "ollama", null],
+      "description": "Fournisseur d'un modèle (registre PROVIDER_INFO, engine/src/providers/index.js). null : un fournisseur que le registre ne connaît pas."
+    },
+    "classeArret": {
+      "enum": ["end", "max_tokens", "context_window", "refusal", "other", null],
+      "description": "Pourquoi une génération s'est arrêtée, en une classe commune à tous les fournisseurs (engine/src/providers/stop.js) : fin, budget de sortie atteint, fenêtre de contexte pleine, refus, autre ; null sans raison donnée."
+    },
+    "configurationTwin6": {
+      "type": "object",
+      "description": "Bloc « configuration » d'un run Twin6 (« twin6-configuration/1 »), posé par la vue (paquet, référentiel, fiches, accès) et complété par le moteur (fournisseur, transport, modèle, budget de sortie, température, tag RGPD).",
+      "properties": {
+        "schema": { "const": "twin6-configuration/1" },
+        "moteur": { "const": "twin6" },
+        "paquet": {
+          "type": "object",
+          "description": "Le paquet de prompts lu : son identifiant, sa version, et l'empreinte SHA-256 (hexadécimal minuscule) des octets servis.",
+          "properties": {
+            "id": { "type": "string", "minLength": 1, "maxLength": 128 },
+            "version": { "type": "string", "pattern": "^\\d+\\.\\d+\\.\\d+$" },
+            "sha256": { "type": "string", "pattern": "^[0-9a-f]{64}$" }
+          },
+          "required": ["id", "version", "sha256"],
+          "additionalProperties": false
+        },
+        "referentiel": {
+          "type": "object",
+          "description": "Le référentiel employé (son document publié) ; « structure » dit d'où le moteur a lu ses pôles : « meta » (la structure importée, RESPIRE) ou « document ». contentHash null : un document qui n'en porte pas.",
+          "properties": {
+            "id": { "type": "string", "pattern": "^[a-z0-9][a-z0-9._-]{0,63}$" },
+            "version": { "type": "string", "minLength": 1, "maxLength": 64 },
+            "contentHash": { "type": ["string", "null"], "pattern": "^[0-9a-f]{64}$" },
+            "structure": { "enum": ["meta", "document"] }
+          },
+          "required": ["id", "version", "contentHash", "structure"],
+          "additionalProperties": false
+        },
+        "fiches": {
+          "type": "object",
+          "description": "L'origine de la fiche de chaque pôle (numéro du pôle) : « paquet », le texte du paquet, ou « document », écrite depuis le document du référentiel.",
+          "propertyNames": { "pattern": "^[1-9][0-9]{0,2}$" },
+          "additionalProperties": { "enum": ["paquet", "document"] }
+        },
+        "fournisseur": { "$ref": "#/$defs/fournisseurLlm" },
+        "voie": {
+          "enum": ["directe", "lots"],
+          "description": "« directe » (Twin6, toujours) ou « lots » (Anthropic seul)."
+        },
+        "acces": {
+          "enum": ["cle_perso", "credits", "essai"],
+          "description": "Qui paie : la clé de l'apprenant, ses crédits, ou l'essai gratuit."
+        },
+        "transport": {
+          "enum": ["direct", "proxy", null],
+          "description": "« direct » : du navigateur au fournisseur ; « proxy » : par le serveur."
+        },
+        "modele": {
+          "type": "string",
+          "minLength": 1,
+          "maxLength": 128,
+          "description": "Le modèle demandé (« demo » pour l'essai, dont le serveur impose le sien : le modèle servi est dans « execution »)."
+        },
+        "maxTokens": { "type": "integer", "minimum": 1, "description": "Le budget de sortie envoyé à chaque appel." },
+        "temperature": { "type": ["number", "null"] },
+        "rgpd": {
+          "enum": ["oui", "sous_conditions", "non", "local", null],
+          "description": "Le tag RGPD du fournisseur au registre (PROVIDER_INFO)."
+        }
+      },
+      "required": ["schema", "moteur", "paquet", "referentiel", "fiches", "fournisseur", "voie", "acces", "transport", "modele", "maxTokens", "temperature", "rgpd"],
+      "additionalProperties": false,
+      "if": {
+        "properties": { "voie": { "const": "lots" } },
+        "required": ["voie"]
+      },
+      "then": {
+        "properties": { "fournisseur": { "const": "anthropic" } }
+      }
+    },
+    "executionTwin6": {
+      "type": "object",
+      "description": "Bloc « execution » d'un run Twin6 (« twin6-execution/1 »), tiré des appels par le moteur.",
+      "properties": {
+        "schema": { "const": "twin6-execution/1" },
+        "debut": {
+          "type": "string",
+          "pattern": "^\\d{4}-\\d{2}-\\d{2}T\\d{2}:\\d{2}:\\d{2}$",
+          "description": "Début du run (UTC, sans fuseau, comme generatedAt)."
+        },
+        "fin": {
+          "type": "string",
+          "pattern": "^\\d{4}-\\d{2}-\\d{2}T\\d{2}:\\d{2}:\\d{2}$",
+          "description": "Fin du dernier appel (UTC, sans fuseau)."
+        },
+        "appels": {
+          "type": "array",
+          "items": {
+            "type": "object",
+            "properties": {
+              "etape": { "type": "string", "pattern": "^(scan-pole/[1-9][0-9]{0,2}|kairos)$" },
+              "modele": { "type": ["string", "null"], "maxLength": 128, "description": "Le modèle servi, tel que la réponse le nomme." },
+              "stopReason": { "$ref": "#/$defs/classeArret" },
+              "stopReasonRaw": {
+                "type": ["string", "null"],
+                "pattern": "^[A-Za-z_]{1,32}$",
+                "description": "La valeur du fournisseur telle quelle, un identifiant court (sinon « other »)."
+              },
+              "inputTokens": { "type": "integer", "minimum": 0 },
+              "outputTokens": { "type": "integer", "minimum": 0 }
+            },
+            "required": ["etape", "modele", "stopReason", "stopReasonRaw", "inputTokens", "outputTokens"],
+            "additionalProperties": false
+          }
+        },
+        "usage": {
+          "type": "object",
+          "properties": {
+            "inputTokens": { "type": "integer", "minimum": 0 },
+            "outputTokens": { "type": "integer", "minimum": 0 }
+          },
+          "required": ["inputTokens", "outputTokens"],
+          "additionalProperties": false
+        },
+        "modelesServis": {
+          "type": "array",
+          "items": { "type": "string", "minLength": 1, "maxLength": 128 },
+          "uniqueItems": true
+        },
+        "coutMicrousd": {
+          "type": ["integer", "null"],
+          "minimum": 0,
+          "description": "null : le moteur ne connaît pas le montant débité, qui reste au relevé du compte (un document se partage)."
+        }
+      },
+      "required": ["schema", "debut", "fin", "appels", "usage", "modelesServis", "coutMicrousd"],
+      "additionalProperties": false
+    },
     "dateIso": {
       "type": "string",
       "pattern": "^\\d{4}-\\d{2}-\\d{2}$",

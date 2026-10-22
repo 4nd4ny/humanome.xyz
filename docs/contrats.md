@@ -1951,3 +1951,36 @@ plus contre le chiffre 7. Aucun champ n'est renommé.
   ses niveaux. Les gabarits scan-pôle et kairos de Twin6, versionnés depuis,
   écrivent bien RESPIRE v7 en toutes lettres dans leur version 1.0.0 : la 1.1.0
   les lit dans le référentiel (§8).
+
+## 12. La carte du site (`scripts/data/site-map.json`, sprint 11)
+
+Fichier généré (gitignoré) par `scripts/build-tuteur-digest.mjs`, livré dans
+la release de l'API avec le digest de l'assistant (`stage-api.sh` copie
+`scripts/data/`). Il n'a pas de schéma JSON : il n'est pas échangé entre le
+navigateur et le serveur, seulement lu par le serveur, qui le reçoit du même
+commit. Produit par `collectSiteMap` (`scripts/lib/site-map.mjs`, UC-SYS-04
+RG8), déterministe, sans date et sans corps de chapitre.
+
+- `version` : 1.
+- `site` : `{url, titre, resume}` ; `url` vient de `SITE_URL` (défaut
+  `https://humanome.xyz`), `resume` est l'intro de l'aide de l'accueil.
+- `familles[]` : le menu (`navGroups` d'un compte qui a tous les rôles en mode
+  expert, puis d'un visiteur), `{id, label, intent, audience, roles, items[]}`.
+  Chaque item porte `{href, label, route, section, badge, hint, roles,
+  allRoles, expert, visiteur, connecte}` : `visiteur` et `connecte` disent
+  dans quelle session il paraît, `expert` qu'il n'est listé qu'en mode expert.
+- `pages[]` : **une page par nom de route** du catalogue
+  (`web/src/routes-catalogue.js`), dans l'ordre du menu puis du catalogue,
+  `{route, href, modele, variantes, modeles, titre, resume, points, navLabel,
+  hint, badges, audience, familles, dansMenu, expert, public, interne}`.
+  `route` est le nom que rend `parseHash` (et qu'envoie l'assistant comme
+  rubrique) ; `href` est l'adresse à donner à une personne (un modèle à
+  compléter quand `modele` est vrai) ; `titre`, `resume` et `points` sont
+  l'entrée de l'aide (`HELP_ENTRIES`), nuls pour une route interne.
+- `aideSansRoute[]` : `{cle, titre, resume, points}`, les entrées d'aide sans
+  page (le profil employeur des tuiles de l'accueil).
+- `guides[]` : `{parcours, titre, href, publie, chapitres[{slug, titre, ordre,
+  href, fichier, source}]}` ; `fichier` est l'URL du `.md` publié, nulle si le
+  parcours n'est pas dans `PARCOURS_PUBLIES`.
+- `legal[]` : `{cle, titre, maj, href, fichier, source}`.
+- `roles` : les libellés des rôles (`ROLE_LABELS`).

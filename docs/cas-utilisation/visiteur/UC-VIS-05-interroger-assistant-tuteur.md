@@ -32,8 +32,9 @@ dans l'en-tête, à côté du bouton d'aide « ? ».
 - Le budget journalier **du tuteur** (`TUTEUR_BUDGET`, 1 $ si absent, vide ou
   `0` ; 2 M de tokens) n'est pas épuisé.
 - Le digest de documentation (`scripts/data/tuteur-digest.md`, généré par
-  `scripts/build-tuteur-digest.mjs`) est présent dans la release — sinon la
-  consigne est envoyée sans digest.
+  `scripts/build-tuteur-digest.mjs` depuis la carte du site,
+  `scripts/lib/site-map.mjs`, UC-SYS-04 RG8) est présent dans la release —
+  sinon la consigne est envoyée sans digest.
 
 ## Garanties en cas de succès
 
@@ -135,9 +136,19 @@ dans l'en-tête, à côté du bouton d'aide « ? ».
   horaire, fournisseur et délai amont communs.
 - **RG3** — Aucune conversation n'est stockée côté serveur ; le portfolio n'est
   jamais envoyé.
-- **RG4** — Le digest ne contient que le plan du site (routes par famille) et
-  les **titres** des chapitres des guides — jamais leur contenu ni d'élément
-  confidentiel ; il est déterministe.
+- **RG4** — Le digest contient le plan du site, l'aide publique de chaque page
+  et les **titres** des chapitres des guides — jamais leur corps ni d'élément
+  confidentiel (sprint 11, 2026-10-22). Le plan du site, ce sont les routes par
+  famille du menu, « Compte » compris dans ses deux variantes (« Se
+  connecter » pour un visiteur, « Profil et rôles » et « Crédit et factures »
+  une fois connecté), les liens du mode expert marqués comme tels (le mode est
+  un réglage d'affichage, jamais un droit), puis les adresses hors menu et les
+  modèles d'adresse du catalogue des routes (`#/jour/AAAA-MM-JJ`,
+  `#/partage/<jeton reçu>`…). L'aide de chaque page, c'est son titre, son
+  adresse, son résumé et ses points (`HELP_ENTRIES`), la même qu'affiche le
+  bouton « ? ». Le générateur ne lit qu'une liste blanche de sources ; le
+  digest est déterministe et borné à 40 000 caractères (environ 12 000 tokens
+  par question).
 - **RG5** — Rendu en texte simple (pas de parseur Markdown, surface XSS nulle).
 - **RG6** — Un Haiku seulement (2026-10-21, comme la démo, UC-ADM-04 RG9 :
   « Sonnet et Opus disponibles uniquement pour les comptes ayant acheté
@@ -174,7 +185,9 @@ dans l'en-tête, à côté du bouton d'aide « ? ».
 | Domaine | `api/src/ClientIp.php` — `bucketIdentity` | Identité du seau (/64 en IPv6) |
 | Middleware | `api/src/Middleware/CsrfMiddleware.php` — `EXEMPT_PATHS` | Exemption CSRF de `/api/tuteur` (A1) |
 | Base | `scripts/migrations/020_tuteur_usage.sql` | Compteurs quotidiens du tuteur |
-| Build | `scripts/build-tuteur-digest.mjs` | Digest de navigation (RG4) |
+| Front | `web/src/routes-catalogue.js` — `ROUTE_CATALOGUE`, `AIDE_SANS_ROUTE` | Une ligne par nom de route du routeur : adresses hors menu, modèles, entrée d'aide (RG4) |
+| Front | `web/src/help/registry.js` — `HELP_ENTRIES` ; `web/src/nav.js` — `navGroups` | Résumé et points de chaque page ; menu des deux sessions et des deux modes |
+| Build | `scripts/build-tuteur-digest.mjs`, `scripts/lib/site-map.mjs` — `loadSources`, `collectSiteMap`, `renderDigest` | Digest de navigation (RG4) et `scripts/data/site-map.json` (UC-SYS-04 RG8) |
 
 ## Jeux de tests
 
@@ -188,7 +201,13 @@ dans l'en-tête, à côté du bouton d'aide « ? ».
 | UC-VIS-05-U04 | `Pricing::estimateUsd` | Modèle du tuteur tarifé, le plafond peut couper | idem |
 | UC-VIS-05-U05 | `askTuteur` | Défi, preuve, corps exact (ni rôle ni portfolio) | `web/test/usecases/unit/uc-vis-05-interroger-assistant-tuteur.test.js` |
 | UC-VIS-05-U06 | `stripLightMarkdown` | Texte simple, listes et routes conservées (RG5) | idem |
-| UC-VIS-05-U07 | `scripts/build-tuteur-digest.mjs` | Toutes les routes et tous les chapitres, déterministe, titres seulement (RG4) — exécuté dans un miroir temporaire | idem |
+| UC-VIS-05-U07 | `scripts/build-tuteur-digest.mjs` | Toutes les routes du menu (famille « Compte » des deux sessions, liens du mode expert marqués), adresses hors menu et modèles, aide de chaque page (titre, résumé, points), tous les chapitres ; déterministe, titres seulement (RG4) ; `site-map.json` écrit à côté, une page par route — exécuté dans un miroir temporaire | idem |
+| UC-VIS-05-U08 | `ROUTE_CATALOGUE`, `parseHash` | Une ligne par nom de route du routeur (sauf `not-found`), noms uniques ; chaque exemple, variante et exemple de modèle se résout vers son nom | idem |
+| UC-VIS-05-U09 | `ROUTE_CATALOGUE`, `App.jsx` (lu comme texte) | Chaque `case` du switch de rendu est au catalogue ; chaque route du catalogue a son cas, sauf l'accueil (`default`) | idem |
+| UC-VIS-05-U10 | `ROUTE_CATALOGUE`, `HELP_ENTRIES` | Chaque route non interne a son entrée d'aide (titre, résumé) ; chaque entrée est une route ou un profil sans route (`employeur`) | idem |
+| UC-VIS-05-U11 | `navGroups`, `ROUTE_CATALOGUE` | Visiteur, chaque rôle et tous les rôles, en mode simple et expert : chaque lien du menu mène à une route du catalogue (ni `not-found` ni `redirect`) cohérente avec son `route` ; le menu d'un visiteur ne mène qu'à des routes publiques | idem |
+| UC-VIS-05-U12 | `content/**`, `HELP_ENTRIES`, `parseHash` | Chaque `#/…` des guides, de la confidentialité et de l'aide se résout vers une route réelle ; exceptions déclarées, et toutes présentes : `#/merge` et `#/cartographie-v3` (redirigées), `#/jour/<date>` et `#/partage/<jeton>` (modèles, résolus une fois complétés) | idem |
+| UC-VIS-05-U13 | `scripts/build-tuteur-digest.mjs` | Digest de moins de 40 000 caractères, et plus long que l'ensemble des résumés de l'aide (RG4) | idem |
 
 ### Tests fonctionnels
 

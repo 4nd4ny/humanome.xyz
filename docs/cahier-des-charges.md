@@ -163,7 +163,7 @@ Le cœur du site est un **logiciel de cartographie de compétences**, aujourd'hu
   - Vision long terme : serveur local avec 8 GPU NVIDIA reliés en NVLink (ex. cartes de la classe H200), budget estimé 500k–1M CHF, pour exécuter des modèles frontière open source en interne et réduire les coûts marginaux vers zéro pour l'utilisateur final.
 - **Frontend :** interfaces JSX/HTML/JS déjà développées pour la visualisation individuelle et la navigation chronologique (fusion à réaliser, cf. §4.4). Responsive mobile + version imprimable.
 - **Éditeur de portfolio collaboratif :** réutilisation d'un projet open source existant plutôt que développement natif (v1 : éditeur texte simple).
-- **Système de prompts :** actuellement en Python, à convertir en JavaScript pour intégration web ; éditable en ligne par les promptologues (texte + code).
+- **Système de prompts :** actuellement en Python, à convertir en JavaScript pour intégration web ; éditable en ligne par les promptologues (texte + code). *(Note du 2026-10-22 : converti. Moteur JavaScript en juillet 2026 — `engine/` (P5) et Twin9 (ADR-010) —, puis moteur PHP pour Twin9, exécuté sur le serveur (ADR-011) ; la v9.8 Python de Twin9 reste l'étalon de l'oracle, dans le dépôt Twin_v9, hors production.)*
 - **Code source :** l'ensemble (hors Golden Prompt et cartographies privées) publié en open source sur GitHub, avec logique de « clone déployable » : n'importe qui doit pouvoir réimporter référentiel, profil, portfolios et cartographies pour redémarrer sa propre instance de la plateforme.
 
 ---
@@ -208,7 +208,7 @@ Le cœur du site est un **logiciel de cartographie de compétences**, aujourd'hu
 
 - Interface JSX de navigation chronologique dans l'historique des cartographies (« merge »).
 - Page HTML/JavaScript de cartographie d'une journée de portfolio.
-- Prompts de cartographie (plusieurs versions, travaillées depuis plusieurs mois), actuellement en Python.
+- Prompts de cartographie (plusieurs versions, travaillées depuis plusieurs mois), actuellement en Python. *(Note du 2026-10-22 : convertis — en JavaScript en juillet 2026, puis en PHP pour Twin9 (ADR-011) ; la v9.8 Python reste l'étalon, dans le dépôt Twin_v9, hors production.)*
 - Référentiel de compétences RESPIRE v7 en version prototype.
 - Espace Decidim participatif « Harmonia Éducation ».
 

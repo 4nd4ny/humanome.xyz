@@ -27,7 +27,7 @@ Créer un dossier vide `humanome/`, y exécuter `git init`, puis y déposer :
 | `docs/cahier-des-charges.md` | Le cahier des charges v0.1 (ce document source) |
 | `assets-existants/visualisation-chrono/` | L'artifact JSX de navigation chronologique (« merge ») |
 | `assets-existants/carto-jour/` | La page HTML/JavaScript de cartographie d'une journée |
-| `assets-existants/prompts-python/` | Toutes les versions des prompts de cartographie (Python) |
+| `assets-existants/prompts-python/` | Toutes les versions des prompts de cartographie (Python) *(note du 2026-10-22 : ce dossier n'a jamais été versé — absent dès l'inventaire de P0, `docs/inventaire-assets.md`, puis du dépôt et de son historique ; la v9.8 Python de Twin9 vit dans le dépôt Twin_v9)* |
 | `assets-existants/referentiel/` | RESPIRE v7 : version condensée Aurora + version complète si disponible |
 | `assets-existants/exemples-json/` | Cartographies JSON réelles (journalières et mergées si possible) |
 | `assets-existants/golden-prompt/` | ⚠️ **Optionnel et hors git** — P0 l'ajoute au `.gitignore` ; vérifie avant tout push |

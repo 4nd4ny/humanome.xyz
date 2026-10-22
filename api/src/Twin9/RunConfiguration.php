@@ -125,7 +125,7 @@ final class RunConfiguration
                 'memoire' => (bool) ($moteur->memoire ?? true),
             ],
             'fournisseurs' => (object) $fournisseurs,
-            'appels' => $reglages->resume(),
+            'appels' => self::tables($reglages->resume()),
             'college' => $college,
             'backends' => ['tribunal' => (object) $backend($moteur->config->backend_tribunal ?? null),
                            'rapide' => (object) $backend($moteur->config->backend_rapide ?? null)],
@@ -213,6 +213,25 @@ final class RunConfiguration
         ksort($prix, SORT_STRING);
 
         return $prix;
+    }
+
+    /**
+     * The call settings' tables as JSON objects, whatever their keys: a
+     * reader named « 0 » (the profile's pattern admits it) would otherwise
+     * make the readers a list, `[…]`, which the contract refuses — the
+     * block, the account's archive and the map's importer with it.
+     * CallSettings::empreinte() keeps its own: it is the memory's.
+     *
+     * @param array<string, mixed> $appels CallSettings::resume()
+     * @return array<string, mixed>
+     */
+    private static function tables(array $appels): array
+    {
+        foreach (['etages', 'etapes', 'second_ressort', 'lecteurs'] as $table) {
+            $appels[$table] = (object) $appels[$table];
+        }
+
+        return $appels;
     }
 
     private static function texte(mixed $valeur): ?string

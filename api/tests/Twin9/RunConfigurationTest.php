@@ -59,18 +59,25 @@ final class RunConfigurationTest extends TestCase
             array_keys($bloc));
         self::assertSame('twin9-configuration/1', $bloc['schema']);
         self::assertSame('2026-01-05 09:00:00', $bloc['lance_at']);
-        // each call's settings as it is sent: CallSettings::resume(), which says every one parEtape() gives
+        // each call's settings as it is sent: CallSettings::resume(), its tables objects, which says every one
+        // parEtape() gives
         $reglages = new CallSettings($profil);
-        self::assertSame($reglages->resume(), $bloc['appels']);
-        $tous = [...array_values($bloc['appels']['etages']), ...array_values($bloc['appels']['etapes']),
-                 ...array_values($bloc['appels']['second_ressort']), ...array_values($bloc['appels']['lecteurs']),
-                 $bloc['appels']['defaut']];
+        $resume = $reglages->resume();
+        self::assertSame(['etages', 'etapes', 'second_ressort', 'lecteurs', 'defaut'], array_keys($bloc['appels']));
+        foreach (['etages', 'etapes', 'second_ressort', 'lecteurs'] as $table) {
+            self::assertInstanceOf(stdClass::class, $bloc['appels'][$table], $table);
+            self::assertSame($resume[$table], (array) $bloc['appels'][$table], $table);
+        }
+        self::assertSame($resume['defaut'], $bloc['appels']['defaut']);
+        $tous = [...array_values((array) $bloc['appels']['etages']), ...array_values((array) $bloc['appels']['etapes']),
+                 ...array_values((array) $bloc['appels']['second_ressort']),
+                 ...array_values((array) $bloc['appels']['lecteurs']), $bloc['appels']['defaut']];
         foreach ($reglages->parEtape() as $etape => $reglage) {
             self::assertContains($reglage, $tous, $etape);
         }
         self::assertSame(['fournisseur' => 'anthropic', 'voie' => 'lots', 'modele' => 'claude-sonnet-5-5',
                           'budget_sortie' => 16000, 'effort' => null, 'reflexion' => 'coupee'],
-            $bloc['appels']['etages']['profond']);
+            $bloc['appels']['etages']->profond);
         self::assertEquals((object) ['anthropic' => ['libelle' => 'Anthropic', 'rgpd' => 'sous_conditions', 'voie' => 'lots']],
             $bloc['fournisseurs']);
         self::assertSame(['id' => 12, 'nom' => 'Mon profil', 'mode' => 'complet', 'empreinte_reglages' => 'aaaabbbbccccdddd',
@@ -139,6 +146,28 @@ final class RunConfigurationTest extends TestCase
         $direct = self::v98();
         $direct->voie = 'directe';
         self::assertNotSame($bloc['empreinte'], self::bloc($direct)['empreinte'], 'la voie y entre, contrairement aux réglages');
+    }
+
+    /**
+     * A reader named « 0 », which the profile's pattern admits: the readers
+     * stay an object (`{"0": …}`, never a list), the block valid — the
+     * account's archive, which references it, with it —, its fingerprint
+     * the same read again.
+     */
+    public function testAReaderNamedZeroKeepsTheReadersAnObject(): void
+    {
+        $brut = ProfilRepository::v98();
+        $brut->college[0]->nom = '0';
+        $profil = ProfilRepository::validate($brut);
+        $profil->referentiel = (object) ['id' => 'fictif', 'version' => '1.0.0'];
+        self::assertTrue(array_is_list((new CallSettings($profil))->resume()['lecteurs']), 'une liste, en PHP');
+
+        $bloc = self::bloc($profil);
+        $json = json_encode($bloc, JSON_THROW_ON_ERROR | JSON_UNESCAPED_UNICODE | JSON_PRESERVE_ZERO_FRACTION);
+        self::assertStringContainsString('"lecteurs":{"0":{"fournisseur":"anthropic"', $json);
+        $relu = json_decode($json, false, 512, JSON_THROW_ON_ERROR);
+        self::assertSame([], self::valider($relu));
+        self::assertSame($bloc['empreinte'], RunConfiguration::empreinte($relu), 'relu tel que le run le garde');
     }
 
     /** The engine's versions are those the caller read, under its guards: none, null; a wrong type, null. */

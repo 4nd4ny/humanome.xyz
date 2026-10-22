@@ -1274,7 +1274,9 @@ refusée ; fixture inventée `schemas/fixtures/twin9-configuration-exemple.json`
     (`CallSettings::combinaisons()`), `{libelle, rgpd, voie}` (`mixte` s'il
     a les deux voies) ;
   - `appels` : `CallSettings::resume()` — `etages`, `etapes`,
-    `second_ressort`, `lecteurs`, `defaut` —, chaque réglage
+    `second_ressort`, `lecteurs` (chacune un **objet**, quelles que soient
+    ses clés : un lecteur nommé « 0 », que le motif du profil admet, n'en
+    fait pas une liste), `defaut` —, chaque réglage
     `{fournisseur, voie, modele, budget_sortie, effort, reflexion}` tel que
     l'appel part (`budget_sortie` est le `max_tokens` envoyé) ;
   - `college` (`nom`, `famille`, `passes`, `poids`), `backends`

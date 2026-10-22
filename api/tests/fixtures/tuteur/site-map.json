@@ -44,9 +44,7 @@
       "href": "#/jour/AAAA-MM-JJ",
       "modele": true,
       "variantes": [],
-      "modeles": [
-        "#/jour/AAAA-MM-JJ"
-      ],
+      "modeles": [],
       "titre": "Journée fictive",
       "resume": "Résumé fictif d’une journée.",
       "points": [],
@@ -63,7 +61,7 @@
       "modeles": [],
       "titre": null,
       "resume": null,
-      "points": null,
+      "points": [],
       "dansMenu": false,
       "expert": false,
       "public": false,
@@ -77,7 +75,7 @@
       "modeles": [],
       "titre": null,
       "resume": null,
-      "points": null,
+      "points": [],
       "dansMenu": false,
       "expert": false,
       "public": false,

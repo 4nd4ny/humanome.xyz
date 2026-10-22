@@ -1976,7 +1976,8 @@ RG8), déterministe, sans date et sans corps de chapitre.
   `route` est le nom que rend `parseHash` (et qu'envoie l'assistant comme
   rubrique) ; `href` est l'adresse à donner à une personne (un modèle à
   compléter quand `modele` est vrai) ; `titre`, `resume` et `points` sont
-  l'entrée de l'aide (`HELP_ENTRIES`), nuls pour une route interne.
+  l'entrée de l'aide (`HELP_ENTRIES`) : pour une route interne, `titre` et
+  `resume` sont nuls et `points` est vide.
 - `aideSansRoute[]` : `{cle, titre, resume, points}`, les entrées d'aide sans
   page (le profil employeur des tuiles de l'accueil).
 - `guides[]` : `{parcours, titre, href, publie, chapitres[{slug, titre, ordre,
@@ -1992,6 +1993,7 @@ qu'envoie l'assistant n'entre dans sa consigne que si c'est le `route` d'une
 page non interne qui a un `titre` : « Elle consulte actuellement : <titre>
 (<href>). », puis le `resume` et les `points` de cette seule page. Un fichier
 absent, illisible, d'une autre version ou sans `pages` vaut absence de carte :
-la rubrique est alors vidée, même un nom de route. Toute
-évolution de ces champs ou de leur sens touche donc aussi l'API (même commit,
-même release).
+la rubrique est alors vidée, même un nom de route. Toute évolution de ces
+champs ou de leur sens touche donc aussi l'API (même commit, même release).
+UC-SYS-04-F18 vérifie ce contrat sur la carte générée, et que la carte fictive
+des tests PHP (`api/tests/fixtures/tuteur/site-map.json`) a la même forme.

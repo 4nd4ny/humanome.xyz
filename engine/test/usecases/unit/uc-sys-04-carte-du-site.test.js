@@ -422,7 +422,7 @@ describe('UC-SYS-04 — carte du site : générateurs en sous-processus (miroirs
     }
   }, TIMEOUT)
 
-  it('UC-SYS-04-F18 — Nominal (7) : llms.txt au format llmstxt.org (titre, citation, au moins trois sections, items « - [titre](https://…) », liens locaux vers des fichiers générés, moins de 50 Ko) ; sitemap.xml = les fichiers publiés ; index.html ne pointe que vers eux ; tous les parcours du hub publiés ; chaque route du catalogue dans site-map.json', () => {
+  it('UC-SYS-04-F18 — Nominal (7) : llms.txt au format llmstxt.org (titre, citation, au moins trois sections, items « - [titre](https://…) », liens locaux vers des fichiers générés, moins de 50 Ko) ; sitemap.xml = les fichiers publiés ; index.html ne pointe que vers eux ; tous les parcours du hub publiés ; chaque route du catalogue dans site-map.json, au contrat que lit l’API (version 1, types des champs de Tuteur\\CarteDuSite) ; la carte fictive des tests PHP a la même forme', () => {
     const { dir, files } = generated()
     const llms = files['web/public/llms.txt']
     const lines = llms.split('\n')
@@ -477,6 +477,41 @@ describe('UC-SYS-04 — carte du site : générateurs en sous-processus (miroirs
       expect(page.href.startsWith('#/'), page.route).toBe(true)
     }
     expect(readFileSync(join(dir, 'scripts/data/site-map.json'), 'utf8').endsWith('}\n')).toBe(true)
+
+    // Contrat avec l'API (docs/contrats.md §12) : exactement ce que lit
+    // Tuteur\CarteDuSite::depuisJson. Une autre version vaudrait absence de
+    // carte côté PHP, un champ renommé une page sans titre ou sans aide, en
+    // silence : les tests PHP ne lisent que la carte fictive.
+    expect(map.version).toBe(1)
+    expect(Array.isArray(map.pages)).toBe(true)
+    for (const page of map.pages) {
+      expect(typeof page.route).toBe('string')
+      expect(typeof page.href, page.route).toBe('string')
+      expect(typeof page.interne, page.route).toBe('boolean')
+      if (page.interne) continue
+      expect(typeof page.titre, page.route).toBe('string')
+      expect(page.titre.trim(), page.route).not.toBe('')
+      expect(typeof page.resume, page.route).toBe('string')
+      expect(Array.isArray(page.points), page.route).toBe(true)
+      for (const point of page.points) expect(typeof point, page.route).toBe('string')
+    }
+    // La carte fictive des tests PHP (api/tests/fixtures/tuteur/site-map.json)
+    // a la forme de la carte générée : même version ; ses pages portent des
+    // noms de route réels (titres et aide inventés), de même nature (interne,
+    // modèle, modèles d'adresse), et chacun de leurs champs existe, du même
+    // type, sur la page générée.
+    const fixture = JSON.parse(readFileSync(join(REPO, 'api/tests/fixtures/tuteur/site-map.json'), 'utf8'))
+    expect(fixture.version).toBe(map.version)
+    const kind = (v) => (v === null ? 'null' : Array.isArray(v) ? 'array' : typeof v)
+    for (const page of fixture.pages) {
+      const real = map.pages.find((p) => p.route === page.route)
+      expect(real, page.route).toBeTruthy()
+      expect([page.interne, page.modele, page.modeles], page.route).toEqual([real.interne, real.modele, real.modeles])
+      for (const [key, value] of Object.entries(page)) {
+        expect(Object.hasOwn(real, key), `${page.route}.${key}`).toBe(true)
+        expect(kind(value), `${page.route}.${key}`).toBe(kind(real[key]))
+      }
+    }
   }, TIMEOUT)
 
   it('UC-SYS-04-F19 — Garde de publication des sorties (9) : aucun fichier généré (public, digest, site-map.json) ne porte de clé Anthropic, de chemin local absolu, d’identifiant d’hébergement OVH, de variable de gabarit ni de chemin de gabarit Twin9 ; le digest ne recopie le corps d’aucun chapitre', () => {

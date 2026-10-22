@@ -3047,13 +3047,17 @@ l'index, pour que la journée du passage renvoie à l'analyse :
     redécouper (`node web/scripts/carto-demo-split.mjs`, qui l'écrit) puis
     la redéployer. D'ici là, sa journée du 3 février dit « Aucune analyse
     n'est rangée à ce jour. » sans le lien.
-- Tests : `core/passage-dates.test.js` (13 : importeurs, identifiant
-  inchangé, couverture, anomalies, heatmap, archive et index d'avant, passe
-  du magasin) ; `ui/SourceDate.test.jsx` (4 de plus : section et lien de la
-  modale, gestionnaire, passe à l'ouverture, modale sans lien) ;
-  `engine/src/portfolio/segment.test.js` (années sur deux chiffres, et les
-  cinq portfolios de Twin9, lus dans `TWIN_V9_DIR`, sautés sans lui, jamais
-  recopiés ici ; leurs dates vérifiées par le moteur PHP quand il est là) ;
+- Tests : `core/passage-dates.test.js` (16 : importeurs, run Twin9 dans un
+  jeu neuf et dans un jeu déjà passé, identifiant inchangé, couverture,
+  anomalies des deux côtés, court-circuit et présence non établie, plage des
+  journées couvertes, heatmap, archive et index d'avant, passe du magasin) ;
+  `ui/SourceDate.test.jsx` (5 de plus : section et lien de la modale,
+  gestionnaire et sa plage lisible sans survol, trace non retenue, passe à
+  l'ouverture, modale sans lien) ; `engine/src/portfolio/segment.test.js`
+  (années sur deux chiffres, niveaux de titre, et les cinq portfolios de
+  Twin9, lus dans `TWIN_V9_DIR`, sautés sans lui, jamais recopiés ici ; leurs
+  dates, et celles d'un portfolio synthétique aux titres de tous niveaux,
+  vérifiées par le moteur PHP quand il est là) ;
   `core/portfolio-md.test.js` (un `### 02.03.26` d'un autre jour est
   neutralisé à l'export).
 

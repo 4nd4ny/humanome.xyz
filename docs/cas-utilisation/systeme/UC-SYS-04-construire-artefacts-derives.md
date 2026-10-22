@@ -295,7 +295,8 @@ Ordre réel, reconstitué d'`INSTALL.md` §2 et §6, du `prebuild` de
     aucun secret.
   - **Sorties.** Le digest de l'assistant (titres des chapitres seulement,
     UC-VIS-05 RG4) et `site-map.json` (une page par route, sans corps de
-    chapitre). Puis `llms.txt` au format llmstxt.org, `llms-full.txt` (l'aide
+    chapitre ; l'API y reconnaît la page courante de l'assistant, UC-VIS-05
+    RG1, `docs/contrats.md` §12). Puis `llms.txt` au format llmstxt.org, `llms-full.txt` (l'aide
     de chaque page, puis chaque chapitre publié, intégral, liens absolus,
     titres abaissés sous ceux du fichier), un `.md` par chapitre publié (sans
     front-matter, liens vers l'application absolus, ligne `Source :`).

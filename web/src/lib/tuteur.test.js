@@ -1,5 +1,5 @@
 // Client de l'assistant tuteur (D9) : défi PoW + POST /api/tuteur, sans jamais
-// envoyer le portfolio (question + rubrique seulement).
+// envoyer le portfolio (question, rubrique et mémoire courte seulement).
 import { describe, expect, it, vi } from 'vitest'
 import { askTuteur } from './tuteur.js'
 
@@ -23,17 +23,19 @@ describe('askTuteur', () => {
     expect(solvePowFn).toHaveBeenCalledWith(expect.objectContaining({ challenge: 'C.123', difficultyBits: 8 }))
     expect(posted.path).toBe('tuteur')
     expect(posted.opts.method).toBe('POST')
-    // Corps : question + rubrique + PoW + honeypot vide ; PAS de portfolio.
-    // Le corps ne contient QUE ces champs (aucune clé de portfolio/cartographie).
+    // Corps : question + rubrique + mémoire courte (vide ici) + PoW + honeypot
+    // vide ; PAS de portfolio. Le corps ne contient QUE ces champs (aucune clé
+    // de portfolio/cartographie).
     expect(posted.opts.body).toEqual({
       question: 'Comment cartographier mon texte ?',
       rubrique: 'home',
+      historique: [],
       challenge: 'C.123',
       nonce: '4242',
       website: '',
     })
     expect(Object.keys(posted.opts.body).sort()).toEqual([
-      'challenge', 'nonce', 'question', 'rubrique', 'website',
+      'challenge', 'historique', 'nonce', 'question', 'rubrique', 'website',
     ])
     expect(out.text).toContain('#/essayer')
   })

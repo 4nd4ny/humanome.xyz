@@ -2,7 +2,8 @@
 // Fiche : docs/cas-utilisation/visiteur/UC-VIS-05-interroger-assistant-tuteur.md
 //
 // Code sollicité appelé directement : client askTuteur (défi partagé avec la
-// démo, preuve de travail, POST api/tuteur sans rôle ni portfolio), rendu
+// démo, preuve de travail, POST api/tuteur sans rôle ni portfolio, avec la
+// mémoire courte memoireCourte, sur les vecteurs communs avec le serveur), rendu
 // texte simple des réponses (stripLightMarkdown), catalogue des routes de la
 // carte du site (routes-catalogue.js), confronté au routeur, au `switch`
 // d'App.jsx (lu comme texte), au menu des deux modes et à l'aide, et
@@ -16,7 +17,7 @@ import { cpSync, existsSync, mkdirSync, mkdtempSync, readdirSync, readFileSync, 
 import { tmpdir } from 'node:os'
 import { join, resolve } from 'node:path'
 import { describe, expect, it, vi } from 'vitest'
-import { askTuteur } from '../../../src/lib/tuteur.js'
+import { askTuteur, memoireCourte } from '../../../src/lib/tuteur.js'
 import { stripLightMarkdown } from '../../../src/components/TuteurPanel.jsx'
 import { FAMILIES, ROLE_LABELS, navGroups } from '../../../src/nav.js'
 import { parseHash } from '../../../src/router.js'
@@ -56,22 +57,51 @@ function buildDigestInMirror() {
 }
 
 describe('UC-VIS-05 — client du tuteur', () => {
-  it('UC-VIS-05-U05 — askTuteur : défi de la démo, preuve résolue, POST tuteur {question, rubrique, challenge, nonce, website: ""} — ni rôle ni portfolio', async () => {
+  it('UC-VIS-05-U05 — askTuteur : défi de la démo, preuve résolue, POST tuteur {question, rubrique, historique, challenge, nonce, website: ""} — ni rôle ni portfolio ; du fil de l’onglet, seule la mémoire courte part', async () => {
     const fetchChallengeFn = vi.fn().mockResolvedValue({ challenge: 'v1.1.aa.bb', difficultyBits: 8, expiresAt: 1 })
     const solvePowFn = vi.fn().mockResolvedValue({ nonce: '417', attempts: 418 })
-    const apiFetchFn = vi.fn().mockResolvedValue({ text: 'Ouvrez #/essayer.', model: 'claude-haiku-4-5-20251001', usage: {} })
+    const apiFetchFn = vi.fn().mockResolvedValue({ text: 'Ouvrez #/essayer.', model: 'claude-haiku-5-5', usage: {} })
 
     const answer = await askTuteur({ question: 'Par où commencer ?', rubrique: 'home' }, { apiFetchFn, fetchChallengeFn, solvePowFn })
 
-    expect(answer).toEqual({ text: 'Ouvrez #/essayer.', model: 'claude-haiku-4-5-20251001' })
+    expect(answer).toEqual({ text: 'Ouvrez #/essayer.', model: 'claude-haiku-5-5' })
     expect(solvePowFn).toHaveBeenCalledWith({ challenge: 'v1.1.aa.bb', difficultyBits: 8, signal: undefined })
     const [path, init] = apiFetchFn.mock.calls[0]
     expect(path).toBe('tuteur')
     expect(init.method).toBe('POST')
-    expect(init.body).toEqual({ question: 'Par où commencer ?', rubrique: 'home', challenge: 'v1.1.aa.bb', nonce: '417', website: '' })
+    expect(init.body).toEqual({ question: 'Par où commencer ?', rubrique: 'home', historique: [], challenge: 'v1.1.aa.bb', nonce: '417', website: '' })
+    // Le fil de l'onglet : trois échanges et une question restée sans réponse ;
+    // seuls les deux derniers échanges partent.
+    const fil = [
+      { role: 'user', text: 'Q1 ?' },
+      { role: 'assistant', text: 'R1.' },
+      { role: 'user', text: 'Q2 ?' },
+      { role: 'assistant', text: 'R2.' },
+      { role: 'user', text: 'Q3 ?' },
+      { role: 'assistant', text: 'R3.' },
+      { role: 'user', text: 'Question sans réponse ?' },
+    ]
+    await askTuteur({ question: 'Et ensuite ?', rubrique: 'guides', historique: fil }, { apiFetchFn, fetchChallengeFn, solvePowFn })
+    expect(apiFetchFn.mock.calls[1][1].body.historique).toEqual(fil.slice(2, 6))
+    expect(Object.keys(apiFetchFn.mock.calls[1][1].body).sort()).toEqual(['challenge', 'historique', 'nonce', 'question', 'rubrique', 'website'])
     // Réponse sans texte exploitable : chaîne vide (le panneau affiche un repli).
     apiFetchFn.mockResolvedValueOnce({ text: null })
     expect((await askTuteur({ question: 'x' }, { apiFetchFn, fetchChallengeFn, solvePowFn })).text).toBe('')
+  })
+
+  it('UC-VIS-05-U16 — memoireCourte (lot C) : seules des paires question → réponse de texte, les 2 dernières, 750 caractères par message (points de code), 1 500 en tout ; rôle system, question sans réponse et toute autre forme écartés — mêmes vecteurs que le serveur (U15), qui ne coupe donc jamais ce que le panneau envoie', () => {
+    const { vecteurs } = JSON.parse(readFileSync(join(repoRoot, 'api', 'tests', 'fixtures', 'tuteur', 'memoire-courte.json'), 'utf8'))
+    const texte = (t) => (Array.isArray(t) ? t.map(([morceau, fois]) => morceau.repeat(fois)).join('') : t)
+    const deplier = (h) => (Array.isArray(h) ? h.map((m) => (m && typeof m === 'object' && 'text' in m ? { ...m, text: texte(m.text) } : m)) : h)
+    expect(vecteurs.length).toBeGreaterThanOrEqual(10)
+    for (const { nom, historique, attendu } of vecteurs) {
+      expect(memoireCourte(deplier(historique)), nom).toEqual(attendu.map((m) => ({ role: m.role, text: texte(m.text) })))
+    }
+    // Idempotente : ce qu'elle rend repasse tel quel (le serveur relit la même chose).
+    const long = [{ role: 'user', text: 'é'.repeat(900) }, { role: 'assistant', text: '😀'.repeat(800) }]
+    const once = memoireCourte(long)
+    expect(memoireCourte(once)).toEqual(once)
+    expect([...once[1].text]).toHaveLength(750)
   })
 
   it('UC-VIS-05-U06 — stripLightMarkdown : gras et code retirés, listes et routes conservées (texte simple, pas de HTML)', () => {

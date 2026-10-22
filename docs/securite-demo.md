@@ -171,7 +171,10 @@ géant, un prompt système énorme, une entrée massive.
   couches, sinon Haiku 5.5, et la page d'administration nomme le modèle refusé ; un
   PUT qui en propose un reçoit un 422 (UC-ADM-04-U28, F23). Le `.env` de production
   de juillet, qui nomme Sonnet 5, ne s'applique donc plus. Même règle pour le tuteur
-  (`TUTEUR_MODEL`, UC-VIS-05-F20).
+  (`TUTEUR_MODEL`, UC-VIS-05-F20), sur Haiku 5.5 par défaut depuis le 2026-10-22.
+  Ce que le client lui envoie est borné côté serveur : question de 1 500 caractères,
+  mémoire courte de 1 500 (deux échanges, UC-VIS-05 RG7) ; la page courante vient
+  de la carte du site, jamais du texte du client (RG1).
 - **Taille d'entrée plafonnée AVANT l'appel amont** : `mb_strlen(system . prompt)
   > maxInputChars` → 413, avant toute dépense
   (`LlmProxyTest::testOversizedInputAnswers413`).

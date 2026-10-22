@@ -59,16 +59,22 @@ final class AnthropicProvider
      *   demo/Twin9). When false, the model answers in FREE TEXT — required by
      *   the tutor assistant (D9), which wants prose, not a JSON document (a
      *   forced empty-schema tool otherwise yields « [] »).
+     * @param list<array{role: 'user'|'assistant', content: string}> $precedents
+     *   earlier turns of the conversation, sent before $prompt: the tutor's
+     *   short memory (sprint 11, Tuteur\MemoireCourte, already bounded and
+     *   alternating from a `user` turn). None for every other caller, whose
+     *   payload is unchanged.
      *
      * @return array{text: string, usage: array{inputTokens: int, outputTokens: int}, model: string}
      *
      * @throws UpstreamException   on non-2xx upstream status
      * @throws HttpClientException on network failure
      */
-    public function complete(string $model, ?string $system, string $prompt, int $maxTokens, bool $forceJsonDocument = true): array
+    public function complete(string $model, ?string $system, string $prompt, int $maxTokens, bool $forceJsonDocument = true,
+                             array $precedents = []): array
     {
         $payload = ['model' => $model, 'max_tokens' => $maxTokens]
-            + self::requestBody($system, $prompt, $forceJsonDocument);
+            + self::requestBody($system, $prompt, $forceJsonDocument, false, $precedents);
 
         $response = $this->http->request(
             'POST',
@@ -182,12 +188,14 @@ final class AnthropicProvider
      * What a call sends besides its model and output: thinking, the forced
      * tool, the system prompt, the message — the same for the call and for
      * its count, but for how a streamed call delivers the tool's JSON
-     * ($flux: eager_input_streaming), which changes no token.
+     * ($flux: eager_input_streaming), which changes no token. $precedents:
+     * the earlier turns complete() may send before the message.
      *
+     * @param list<array{role: 'user'|'assistant', content: string}> $precedents
      * @return array<string, mixed>
      */
     private static function requestBody(?string $system, string $prompt, bool $forceJsonDocument,
-                                        bool $flux = false): array
+                                        bool $flux = false, array $precedents = []): array
     {
         $body = [
             // Some models reason by default; thinking tokens count against
@@ -197,7 +205,7 @@ final class AnthropicProvider
             'thinking' => ['type' => 'disabled'],
             // No temperature: rejected as deprecated by current models
             // (« `temperature` is deprecated for this model », observed live).
-            'messages' => [['role' => 'user', 'content' => $prompt]],
+            'messages' => array_merge($precedents, [['role' => 'user', 'content' => $prompt]]),
         ];
         if ($forceJsonDocument) {
             // Forced generic tool use: free-text generations showed a high

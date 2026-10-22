@@ -1984,3 +1984,14 @@ RG8), déterministe, sans date et sans corps de chapitre.
   parcours n'est pas dans `PARCOURS_PUBLIES`.
 - `legal[]` : `{cle, titre, maj, href, fichier, source}`.
 - `roles` : les libellés des rôles (`ROLE_LABELS`).
+
+**Ce que l'API en lit** (`POST /api/tuteur`, `api/src/Tuteur/CarteDuSite.php`,
+sprint 11 lot A, UC-VIS-05 RG1) : `version`, qui doit valoir 1, et, de chaque
+page, `route`, `href`, `titre`, `resume`, `points` et `interne`. La rubrique
+qu'envoie l'assistant n'entre dans sa consigne que si c'est le `route` d'une
+page non interne qui a un `titre` : « Elle consulte actuellement : <titre>
+(<href>). », puis le `resume` et les `points` de cette seule page. Un fichier
+absent, illisible, d'une autre version ou sans `pages` vaut absence de carte :
+la rubrique n'est alors gardée que si elle a la forme d'un nom de route. Toute
+évolution de ces champs ou de leur sens touche donc aussi l'API (même commit,
+même release).

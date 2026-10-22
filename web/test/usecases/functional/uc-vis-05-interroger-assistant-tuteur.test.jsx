@@ -47,7 +47,7 @@ afterEach(() => {
 })
 
 describe('UC-VIS-05 — le visiteur interroge l’assistant', () => {
-  it('UC-VIS-05-F10 — nominal : 💬 → avertissement IA, question, « L’assistant écrit… », défi résolu, réponse en texte simple ; seule la question et la rubrique partent', async () => {
+  it('UC-VIS-05-F10 — nominal : 💬 → avertissement IA, question, « L’assistant écrit… », défi résolu, réponse en texte simple ; seules partent la question, la rubrique et la mémoire courte (vide à la première question)', async () => {
     let reply
     const server = fakeDemoServer({
       createHash,
@@ -73,9 +73,9 @@ describe('UC-VIS-05 — le visiteur interroge l’assistant', () => {
     expect(panel.getByText('Où trouver la pensée critique ?').className).toContain('tuteur-msg-user')
     expect(server.rejected).toEqual([])
     expect(server.posts).toEqual([
-      expect.objectContaining({ question: 'Où trouver la pensée critique ?', rubrique: 'referentiel', website: '' }),
+      expect.objectContaining({ question: 'Où trouver la pensée critique ?', rubrique: 'referentiel', historique: [], website: '' }),
     ])
-    expect(Object.keys(server.posts[0]).sort()).toEqual(['challenge', 'nonce', 'question', 'rubrique', 'website'])
+    expect(Object.keys(server.posts[0]).sort()).toEqual(['challenge', 'historique', 'nonce', 'question', 'rubrique', 'website'])
     // Historique de SESSION de l'onglet (jamais serveur, jamais localStorage).
     expect(JSON.parse(sessionStorage.getItem('humanome-tuteur'))).toHaveLength(2)
     expect(JSON.stringify({ ...localStorage })).not.toContain('pensée critique')
@@ -175,6 +175,42 @@ describe('UC-VIS-05 — le visiteur interroge l’assistant', () => {
     expect(stored).toHaveLength(40)
     expect(stored.at(-1)).toEqual({ role: 'assistant', text: 'Réponse 46.' })
     expect(stored[0].text).toBe('message 7') // 45 + 2 = 47 messages, les 7 premiers sont tombés
+  })
+
+  it('UC-VIS-05-F22 — RG7 : mémoire courte — une relance emporte les 2 derniers échanges du fil (pas le plus ancien, pas la question restée sans réponse après un refus, une longue réponse coupée à 750 caractères), et rien d’autre ; le fil reste dans l’onglet', async () => {
+    const reponses = ['Commencez par #/essayer.', 'Puis créez un compte : #/compte.', 'r'.repeat(900)]
+    const server = fakeDemoServer({
+      createHash,
+      difficultyBits: 2,
+      answer: (body, n) =>
+        n === 4 ? jsonResponse(503, { error: 'L’assistant a atteint son budget du jour, revenez demain.' }) : answer(reponses[n - 1] ?? 'Ouvrez #/guides.')(),
+    })
+    openApp('#/essayer')
+    const panel = openAssistant()
+    await ask(panel, 'Par où commencer ?')
+    await waitFor(() => expect(panel.getByText(reponses[0])).toBeDefined())
+    await ask(panel, 'Et pour garder mes textes ?')
+    await waitFor(() => expect(panel.getByText(reponses[1])).toBeDefined())
+    await ask(panel, 'Et pour une longue réponse ?')
+    await waitFor(() => expect(panel.getByText(reponses[2])).toBeDefined())
+    await ask(panel, 'Question refusée ?')
+    expect((await panel.findByRole('alert')).textContent).toBe('L’assistant a atteint son budget du jour, revenez demain.')
+    await ask(panel, 'Et ensuite ?')
+    await waitFor(() => expect(panel.getByText('Ouvrez #/guides.')).toBeDefined())
+
+    expect(server.posts.map((post) => post.historique.length)).toEqual([0, 2, 4, 4, 4])
+    expect(server.posts[4]).toMatchObject({ question: 'Et ensuite ?', rubrique: 'essayer' })
+    expect(server.posts[4].historique).toEqual([
+      { role: 'user', text: 'Et pour garder mes textes ?' },
+      { role: 'assistant', text: reponses[1] },
+      { role: 'user', text: 'Et pour une longue réponse ?' },
+      { role: 'assistant', text: `${'r'.repeat(749)}…` },
+    ])
+    expect(JSON.stringify(server.posts[4])).not.toContain('Question refusée')
+    expect(JSON.stringify(server.posts[4])).not.toContain('Par où commencer')
+    // Le fil complet reste dans l'onglet (sessionStorage), jamais dans localStorage.
+    expect(JSON.parse(sessionStorage.getItem('humanome-tuteur'))).toHaveLength(9)
+    expect(JSON.stringify({ ...localStorage })).not.toContain('garder mes textes')
   })
 
   it('UC-VIS-05-F15 — E1 : question vide non envoyable ; saisie bornée à 1 500 caractères', () => {

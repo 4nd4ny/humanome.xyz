@@ -208,7 +208,7 @@ Le cœur du site est un **logiciel de cartographie de compétences**, aujourd'hu
 
 - Interface JSX de navigation chronologique dans l'historique des cartographies (« merge »).
 - Page HTML/JavaScript de cartographie d'une journée de portfolio.
-- Prompts de cartographie (plusieurs versions, travaillées depuis plusieurs mois), actuellement en Python. *(Note du 2026-10-22 : de ces prompts Python, seule la v9.8 de Twin9 a été portée, en JavaScript en juillet 2026 (ADR-010), puis en PHP (ADR-011) ; elle reste l'étalon de l'oracle, gelée dans le dépôt Twin_v9, hors production. Les autres n'ont jamais été versés au dépôt : `engine/` (P5) a été rétro-conçu depuis les artefacts.)*
+- Prompts de cartographie (plusieurs versions, travaillées depuis plusieurs mois), actuellement en Python. *(Note du 2026-10-22 : de ces prompts Python, seule la v9.8 de Twin9 a été portée, en JavaScript en juillet 2026 (ADR-010), puis en PHP (ADR-011) ; elle reste l'étalon de l'oracle, gelée dans le dépôt Twin_v9, hors production. Les autres n'ont jamais été versés à humanome.xyz : `engine/` (P5) a été rétro-conçu depuis les artefacts.)*
 - Référentiel de compétences RESPIRE v7 en version prototype.
 - Espace Decidim participatif « Harmonia Éducation ».
 

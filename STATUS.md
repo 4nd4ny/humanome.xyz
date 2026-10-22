@@ -50,7 +50,7 @@ réponse. Suivent la PR B (adaptateurs JS, export Twin6) et, A fusionnée, la PR
   `Twin_v9` : la v9.8, étalon de l'oracle, gelée au tag `v9.8-reference` (décision 1 du Sprint 2,
   prise par délégation). Les lots A à C l'ont documenté dans `Twin_v9` (README, tag,
   `ReferenceTest`), où ils sont fusionnés ; la moitié humanome.xyz du lot B, l'amendement de
-  l'ADR-011, manquait : ce lot la fait, et nettoie ce qui restait ici. Six commits, dont quatre
+  l'ADR-011, manquait : ce lot la fait, et nettoie ce qui restait ici. Sept commits, dont cinq
   pour la revue ; `Twin_v9` n'est pas modifié.
   - **ADR-011 §1 amendé** (et sa ligne Statut), sans rien écrire au-dessus de « ## Statut », où
     l'ADR-012 de `feat/twin9-multi-fournisseur` pose son bandeau (`git merge-tree` avec cette
@@ -101,7 +101,10 @@ réponse. Suivent la PR B (adaptateurs JS, export Twin6) et, A fusionnée, la PR
     - **Revue.** Quatre constats, tous de documentation : l'ADR-011, la note du cahier sur
       `engine/`, l'étape 7 d'UC-SYS-04, et des renvois de cette entrée à des documents hors
       dépôt. Corrigés par des commits `docs:` : aucun test ne peut échouer avant une
-      correction de texte. Les suites ci-dessus ont été relancées après, mêmes nombres.
+      correction de texte. Relancés après ces corrections : le front (2 711 tests verts,
+      259 fichiers), le moteur (557 verts, mêmes 5 échecs d'UC-PRO-08), `npm run build` et
+      `check-publiable` ; pas les contrôles de sorties ni le vrai `stage-api.sh`, qu'aucun
+      texte ne touche.
   - Non vérifié : le contenu réellement déployé sur l'OVH (pas d'accès FTP) ; F26 sous Linux
     (CI), lancé seulement sur le Mac.
   - Laissé à Christian, deux questions du Sprint 2 :

@@ -216,14 +216,20 @@ export default function ReferentielsSection({ api, canVote }) {
     })
 
   const lireMarkdown = async (event) => {
-    const file = event.target.files?.[0] ?? null
+    const champ = event.target
+    const file = champ.files?.[0] ?? null
     if (!file) return
     setNote(null)
     try {
       const texte = await file.text()
-      setMd((m) => ({ ...m, texte }))
+      // un autre texte : ses noms et ses motifs sont les siens, pas ceux saisis pour le précédent ;
+      // l'identifiant, le libellé et la version restent
+      setMd((m) => ({ ...m, texte, niveaux: [], niveau: '' }))
     } catch {
       setNote({ erreur: true, texte: `« ${file.name} » ne se lit pas.` })
+    } finally {
+      // vidé, le champ signale le même fichier choisi de nouveau (corrigé entre-temps)
+      champ.value = ''
     }
   }
 

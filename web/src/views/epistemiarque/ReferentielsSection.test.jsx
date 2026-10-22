@@ -100,6 +100,39 @@ describe('ReferentielsSection — le Markdown', () => {
     expect(screen.queryAllByRole('status')).toEqual([])
   })
 
+  it('un nouveau fichier Markdown repart des noms et des motifs de son texte (identifiant, libellé, version gardés) ; le même fichier se choisit de nouveau', async () => {
+    await ouvrir()
+    await remplir(DEUX_NIVEAUX)
+    await saisir('Motif du niveau 1', 'A[1-9]')
+    await saisir('Nom du niveau 2', 'grain')
+    fireEvent.change(within(formulaire()).getByLabelText('Niveau qui tient lieu de compétence'), { target: { value: 'grain' } })
+
+    // un autre texte, aux codes d'une autre forme
+    const texte = '# Pôle 1 — A · Pôle\n\n## 1.01 — Une\n\n### 1.01.a — Fine\n'
+    const fichier = new File([texte], 'autre.md', { type: 'text/markdown' })
+    fichier.text = async () => texte
+    const champ = within(formulaire()).getByLabelText('Fichier Markdown')
+    // le champ vidé après la lecture : le même fichier, corrigé puis choisi de nouveau, se relit
+    let vide = false
+    Object.defineProperty(champ, 'value', {
+      configurable: true,
+      get: () => '',
+      set: (valeur) => {
+        if (valeur === '') vide = true
+      },
+    })
+    await act(async () => {
+      fireEvent.change(champ, { target: { files: [fichier] } })
+    })
+    expect(within(formulaire()).getByLabelText('Texte Markdown du référentiel').value).toBe(texte)
+    expect(within(formulaire()).getByLabelText('Motif du niveau 1').value).toBe('1\\.01')
+    expect(within(formulaire()).getByLabelText('Nom du niveau 2').value).toBe('élément')
+    expect(within(formulaire()).getByLabelText('Niveau qui tient lieu de compétence').value).toBe('compétence')
+    expect(within(formulaire()).queryByRole('list', { name: 'Erreurs du Markdown' })).toBeNull()
+    expect(within(formulaire()).getByLabelText('Identifiant').value).toBe('fictif-md')
+    expect(vide).toBe(true)
+  })
+
   it('un fichier Markdown illisible est dit ; le texte en cours reste', async () => {
     await ouvrir()
     await saisir('Texte Markdown du référentiel', DEUX_NIVEAUX)

@@ -206,7 +206,10 @@ final class PurgeExportTest extends CartographeTestCase
      * P0-1: a run of before the configuration — done, its execution never
      * frozen; in progress, without a configuration — never makes the
      * account's archive invalid: its blocks are left out, whole or absent;
-     * a run without a call yet has its execution's tables as objects.
+     * a run without a call yet has its execution's tables as objects. Nor
+     * does a run a previous release ended (a rollback, ADR-008), its
+     * execution column left with the resumptions this one wrote there: not
+     * a frozen block, never served as one.
      */
     public function testAnOldRunNeverMakesTheArchiveInvalid(): void
     {
@@ -214,6 +217,10 @@ final class PurgeExportTest extends CartographeTestCase
         $profil = $this->profil($alice);
         $ancien = $this->lancer($alice, $profil, 'journal-ancien.md');
         $this->jusquAuBout($alice, $ancien);
+        $rendu = $this->lancer($alice, $profil, 'journal-rendu.md');
+        $this->jusquAuBout($alice, $rendu);
+        self::$pdo->exec('UPDATE twin9_runs SET execution = \'{"reprises":[{"at":"2026-01-06 10:00:00","budget_usd":2.5}]}\'
+                           WHERE id = ' . $rendu);
         $enCours = $this->lancer($alice, $profil, 'journal-en-cours.md');
         $this->journal($enCours, 'Un appel répondu.');
         self::$pdo->exec("UPDATE twin9_runs SET configuration = NULL, execution = NULL WHERE id IN ($ancien, $enCours)");
@@ -221,10 +228,14 @@ final class PurgeExportTest extends CartographeTestCase
 
         $texte = (string) $this->as_($alice, 'GET', '/api/twin9/mes-analyses')->getBody();
         $export = json_decode($texte, false, 512, JSON_THROW_ON_ERROR);
-        [$a, $b, $c] = $export->runs;
-        self::assertSame([$ancien, $enCours, $neuf], [$a->id, $b->id, $c->id]);
+        [$a, $r, $b, $c] = $export->runs;
+        self::assertSame([$ancien, $rendu, $enCours, $neuf], [$a->id, $r->id, $b->id, $c->id]);
         self::assertObjectNotHasProperty('configuration', $a);
         self::assertObjectNotHasProperty('execution', $a, 'fini avant elle : son exécution n’a pas été figée');
+        self::assertSame('termine', $r->statut);
+        self::assertObjectHasProperty('configuration', $r);
+        self::assertObjectNotHasProperty('execution', $r, 'fini par la release précédente : ses reprises seules');
+        self::assertNull(self::json($this->as_($alice, 'GET', "/api/twin9/runs/$rendu/resultats"))['run']['execution']);
         self::assertObjectNotHasProperty('configuration', $b);
         self::assertSame(['journal', true, 1], [$b->execution->source, $b->execution->partiel, $b->execution->appels->total],
             'lancé avant elle : partielle');

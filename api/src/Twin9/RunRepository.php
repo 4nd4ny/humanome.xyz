@@ -668,9 +668,11 @@ final class RunRepository
 
     /**
      * A run's execution block (P0-1, RunExecution), its objects objects: as
-     * frozen once it is done (null when that failed, or for a run done
-     * before migration 031); otherwise from its journal, with the
-     * resumptions it keeps. Null for an unknown run.
+     * frozen once it is done (null when that failed, for a run done before
+     * migration 031, or one a previous release ended — rolled back to
+     * (ADR-008), it leaves the column as it found it, its resumptions only:
+     * figee()); otherwise from its journal, with the resumptions it keeps.
+     * Null for an unknown run.
      */
     public function execution(int $id): ?stdClass
     {
@@ -686,8 +688,7 @@ final class RunRepository
             return null;
         }
         if ($run['statut'] === 'termine') {
-            return $run['execution'] === null ? null : json_decode((string) $run['execution'], false, 512,
-                JSON_THROW_ON_ERROR);
+            return self::figee($run['execution']);
         }
         $configuration = $run['configuration'] === null ? null : self::unpack((string) $run['configuration']);
         $bloc = (new RunExecution($this->pdo))->bloc($id, 'journal', [
@@ -704,6 +705,21 @@ final class RunRepository
         ], $this->compteurs($id));
 
         return json_decode(json_encode($bloc, self::JSON), false, 512, JSON_THROW_ON_ERROR);
+    }
+
+    /**
+     * A run's execution column read as its frozen block (terminer()): the
+     * block only when it is one — of its schema, frozen —; null otherwise,
+     * the resumptions alone a previous release left there included, which
+     * no reader takes for an execution (its results, the export, the
+     * account's archive, which would be invalid).
+     */
+    private static function figee(mixed $json): ?stdClass
+    {
+        $bloc = $json === null ? null : json_decode((string) $json, false, 512, JSON_THROW_ON_ERROR);
+
+        return $bloc instanceof stdClass && ($bloc->schema ?? null) === RunExecution::SCHEMA
+            && ($bloc->source ?? null) === 'fige' ? $bloc : null;
     }
 
     /**

@@ -1318,7 +1318,12 @@ refusée ; fixture inventée `schemas/fixtures/twin9-configuration-exemple.json`
   `anthropic` tant qu'aucun autre n'est câblé. Toute table par nom est un
   **objet**, vide ou non (`{}`, jamais `[]`). Figer ne retient jamais un
   run : en cas d'échec (sous SAVEPOINT), le run finit, son exécution reste
-  nulle, et seule la classe de l'exception est journalisée.
+  nulle, et seule la classe de l'exception est journalisée. Un run fini
+  n'a d'exécution que si sa colonne porte un bloc figé (`schema`
+  `twin9-execution/1`, `source: "fige"`, `RunRepository::figee`) : un run
+  qu'une release précédente a fini, après un retour arrière (ADR-008), y
+  laisse les reprises qu'avait écrites celle-ci, et son exécution est nulle
+  — jamais servie, ni exportée, comme un bloc.
 - **Qui les lit.** Le propriétaire, entières, dans `resultats.run` (§8.4)
   et dans l'export (§8.5), où chacune est omise quand elle est nulle. Un
   cartographe lié (visibilité `cartographe`) les lit sans ce que paie le

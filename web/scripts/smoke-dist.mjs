@@ -23,7 +23,9 @@
 //      tries data/demo/… and says to import one's own files instead;
 //   5. back to the home page, then « Ouvrir mes fichiers de cartographie »
 //      with three versioned day fixtures: the interface opens and draws their
-//      sun, without any request.
+//      sun, without any request, through the store's IndexedDB adapter (the
+//      one every browser takes; jsdom has no IndexedDB: fake-indexeddb, an
+//      in-memory implementation of the API, stands in for it).
 // Last, once no request has come for a while, a global check: from the
 // bundle's evaluation to the end, no request outside the demo phase (late
 // reads and those between two steps included). Any jsdom error or
@@ -39,6 +41,7 @@ import { existsSync, readFileSync, statSync } from 'node:fs'
 import { resolve, dirname, join } from 'node:path'
 import { fileURLToPath, pathToFileURL } from 'node:url'
 import { JSDOM, VirtualConsole } from 'jsdom'
+import { IDBFactory, IDBKeyRange } from 'fake-indexeddb'
 
 const webRoot = resolve(dirname(fileURLToPath(import.meta.url)), '..')
 const distDir = join(webRoot, 'dist')
@@ -130,7 +133,11 @@ window.XMLHttpRequest = class {
 }
 
 // Standard APIs that every target browser has and jsdom 25 lacks (they are
-// Node globals, which a jsdom window does not see).
+// Node globals, which a jsdom window does not see). IndexedDB: without it,
+// the cartography store (carto/core/store.js, defaultAdapter) would take its
+// in-memory adapter, which no browser takes.
+window.indexedDB = new IDBFactory()
+window.IDBKeyRange = IDBKeyRange
 window.TextEncoder ??= TextEncoder
 window.TextDecoder ??= TextDecoder
 window.structuredClone ??= structuredClone
@@ -246,6 +253,7 @@ if (check(Boolean(demoButton), 'cartographie : « Explorer la démonstration »'
 // fixtures: the interface opens (#/cartographie) and draws their sun. The
 // fixtures observe these 12 competences, in all 7 RESPIRE poles, over 3 days.
 const FIXTURES = ['2026-01-05', '2026-01-06', '2026-01-07'].map((d) => `cartographie-jour-${d}.json`)
+const CARTO_DB = 'humanome-carto-v4' // carto/core/store.js, DB_NAME
 const EXPECTED_CODES = ['1.01', '1.03', '2.01', '2.02', '2.06', '3.04', '3.07', '4.05', '5.01', '5.03', '6.07', '7.01']
 phase = 'retour à l’accueil'
 go('#/')
@@ -269,6 +277,8 @@ if (check(Boolean(homeInput), 'accueil : sélecteur de fichiers')) {
     `soleil : ${codes.length} compétences des fixtures (attendu ${EXPECTED_CODES.length}${codes.join(' ') === EXPECTED_CODES.join(' ') ? '' : ` : ${EXPECTED_CODES.join(' ')} ; lu : ${codes.join(' ') || 'aucune'}`})`,
   )
   check(text(doc.querySelector('[data-tile="sun"] .carto-sun-center')).includes('3 j.'), 'soleil : 3 journées')
+  const databases = (await window.indexedDB.databases()).map((d) => d.name)
+  check(databases.includes(CARTO_DB), `stockage : base IndexedDB ${CARTO_DB} (${databases.join(', ') || 'aucune'})`)
   noRequest()
 }
 

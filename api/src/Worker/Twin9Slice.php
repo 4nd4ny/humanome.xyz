@@ -24,9 +24,11 @@ use Twin9\Run\Pending;
  * 1): at most N runs advance within the slice. Each pass replays a run from
  * its start, its answers taken from the journal, its days done from the
  * memory; the calls it waits for leave, concurrently, and each answer is
- * written as it comes back; a new pass follows as soon as a call may leave
- * again. A call is written to the journal before it leaves and after it
- * comes back; no transaction stays open while one waits.
+ * written as it comes back; a place an answer frees goes to a call the last
+ * pass already knows, and a new pass is played, its calls sent at once, only
+ * when those cannot fill it (P0-4, Twin9Run::aRejouer). A call is written to
+ * the journal before it leaves and after it comes back; no transaction stays
+ * open while one waits.
  *
  * Attempts are the v9.8's (three, two then four seconds apart), within the
  * slice: a rate refusal waits its Retry-After without spending one, a 429
@@ -140,12 +142,19 @@ final class Twin9Slice
 
         while ($this->etats !== [] && microtime(true) < $this->fin) {
             foreach ($this->etats as $run) {
-                if ($run->aJouer()) {
+                if ($run->passes === 0) {
                     $this->passer($run);
                 }
             }
             foreach ($this->etats as $run) {
                 $this->envoyer($run);
+                // the calls known could not fill the places the answers freed (P0-4): a pass, and its calls leave now
+                if (isset($this->etats[$run->id]) && $run->aRejouer()) {
+                    $this->passer($run);
+                    if (isset($this->etats[$run->id])) {
+                        $this->envoyer($run);
+                    }
+                }
             }
             $reveil = $this->reveil();
             if ($this->sender->running() === 0) {
@@ -258,7 +267,9 @@ final class Twin9Slice
 
             return;
         } finally {
-            $this->compteurs['moteurMs'] += intdiv(hrtime(true) - $debut, 1_000_000);
+            $ms = intdiv(hrtime(true) - $debut, 1_000_000);
+            $run->moteurMs += $ms;
+            $this->compteurs['moteurMs'] += $ms;
         }
         unset($this->etats[$run->id]);
         $this->couts->liberer($run->id);
@@ -277,10 +288,14 @@ final class Twin9Slice
         }
     }
 
-    /** The calls of a run that may leave now: directly, or into its batches once a pass. */
+    /**
+     * The calls of a run that may leave now: directly, or into its batches
+     * once a pass. Directly, whether they took every place (Twin9Run::$plein).
+     */
     private function envoyer(Twin9Run $run): void
     {
         $run->reveil = null;
+        $run->plein = false;
         if ($run->suspendu || microtime(true) >= $this->dernierDepart) {
             return;
         }
@@ -303,6 +318,8 @@ final class Twin9Slice
         $jours = $run->joursDeFront();
         foreach ($run->attendus as $call) {
             if (\count($run->enVol) >= $run->appelsDirects) {
+                $run->plein = true;
+
                 return;
             }
             $jour = Twin9Run::jour($call->id);

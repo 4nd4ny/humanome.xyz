@@ -396,6 +396,44 @@ final class TrancheTest extends TestCase
     }
 
     /**
+     * P0-4: a pass is played again only when the calls already known cannot
+     * fill the places the answers free. Two places, the answers one at a
+     * time: fewer passes than calls — before, each answer brought one —, the
+     * same calls, each once, and the outputs of a run that sends every call
+     * of a pass at once, byte for byte.
+     */
+    public function testAPassIsPlayedAgainOnlyWhenTheKnownCallsCannotFillAPlace(): void
+    {
+        $reference = $this->nouveauRun([], ['/parallelisme/appels_directs' => 32], sortie: 'twin9/runs/rejeu');
+        $this->jusquAuBout(new FakeMultiHttpClient(static fn (array $r): array =>
+            ['body' => FakeMultiHttpClient::message('vu ' . FakeMultiHttpClient::appel($r))]));
+
+        $id = $this->nouveauRun([], ['/parallelisme/appels_directs' => 2], user: $this->utilisateur('deux@example.test'),
+            sortie: 'twin9/runs/rejeu');
+        $n = 0;
+        // each call a little longer than the one before: two calls in flight never end together
+        $http = new FakeMultiHttpClient(static function (array $r) use (&$n): array {
+            return ['body' => FakeMultiHttpClient::message('vu ' . FakeMultiHttpClient::appel($r)), 'delai' => 0.02 * ++$n];
+        });
+        $runs = new RunRepository($this->pdo);
+        $passes = 0;
+        $appels = 0;
+        for ($t = 0; $t < 10 && $runs->statut($id) === 'en_cours'; $t++) {
+            $c = (new Tick($this->pdo, ['budgetSeconds' => 5, 'twin9Sender' => new DirectCalls($http)]))->run();
+            $passes += $c['twin9Passes'];
+            $appels += $c['twin9Appels'];
+        }
+
+        self::assertSame('termine', $runs->statut($id));
+        $envoyes = array_map([FakeMultiHttpClient::class, 'appel'], $http->requests);
+        self::assertCount(13, $envoyes);
+        self::assertSame(array_values(array_unique($envoyes)), $envoyes, 'aucun appel en double');
+        self::assertSame(13, $appels);
+        self::assertLessThan($appels, $passes, 'une passe par réponse, avant P0-4');
+        self::assertSame($runs->sorties($reference), $runs->sorties($id), 'les sorties, à l\'octet');
+    }
+
+    /**
      * One run at a time on a map: the second waits for the first, then takes
      * its days back from the memory, the same settings being the same
      * fingerprint; other call settings play the days again.
@@ -445,9 +483,9 @@ final class TrancheTest extends TestCase
         self::fail("le run n'est pas allé au bout en $max tranches");
     }
 
-    /** @param array<string, mixed> $moteur @param array<string, mixed> $profil */
+    /** @param array<string, mixed> $moteur @param array<string, mixed> $profil @param string|null $sortie the run's output, drawn at random by default */
     private function nouveauRun(array $moteur = [], array $profil = [], ?int $user = null, ?array $gabarits = null,
-                         string $portfolio = self::PORTFOLIO): int
+                         string $portfolio = self::PORTFOLIO, ?string $sortie = null): int
     {
         return (new RunRepository($this->pdo))->creer(
             $user ?? $this->user,
@@ -458,6 +496,7 @@ final class TrancheTest extends TestCase
             'journal-factice',
             $gabarits ?? self::GABARITS,
             new \DateTimeImmutable('2026-10-18T12:00:00+00:00'),
+            $sortie,
         );
     }
 

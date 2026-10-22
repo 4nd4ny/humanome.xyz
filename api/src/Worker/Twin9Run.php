@@ -23,7 +23,18 @@ final class Twin9Run
     /** Answers arrived since the last pass. */
     public bool $nouvelles = false;
 
+    /**
+     * By direct calls: its last sending took every place while calls it
+     * knows were still to look at (P0-4); false as each sending starts, and
+     * when it sends nothing (suspended, past the last departure, by batches).
+     */
+    public bool $plein = false;
+
+    /** Its passes in this slice. */
     public int $passes = 0;
+
+    /** The engine's time of its passes in this slice, in milliseconds. */
+    public int $moteurMs = 0;
 
     /** What holds the run back, for its page; null: nothing. */
     public ?string $attente = null;
@@ -83,10 +94,30 @@ final class Twin9Run
         return $this->limite !== null && microtime(true) >= $this->limite;
     }
 
-    /** Whether to play a pass: none yet, or answers arrived and a call may leave. */
-    public function aJouer(): bool
+    /**
+     * Whether to play a pass again (P0-4): answers arrived since the last
+     * one, and the calls it already knows did not fill every place — its
+     * last sending left one empty, or it sends nothing now (suspended, held
+     * back, past the last departure), which lets the final pass come. The
+     * slice plays it at once and sends its calls in the same round; a run's
+     * first pass of a slice is the slice's to play. While the calls known
+     * fill the places, no pass is played: as many calls are in flight, only
+     * the order of their departures changes — a day done enters the memory a
+     * little later, the oldest days are no longer served first.
+     *
+     * A variant, ready should a latency show (chains whose next calls wait
+     * for the known ones to run out): count the answers since the last pass
+     * (Twin9Slice::inscrire) and replay as well once half the places have
+     * turned over —
+     *     return $this->reponses > 0
+     *         && (!$this->plein || $this->reponses >= max(1, intdiv($this->appelsDirects, 2)));
+     * a bound of about two passes per appelsDirects answers. (`plein` is read
+     * right after the sending that sets it, all places taken then: a term
+     * on the calls in flight alone would never add a pass.)
+     */
+    public function aRejouer(): bool
     {
-        return $this->passes === 0 || ($this->nouvelles && \count($this->enVol) < $this->appelsDirects);
+        return $this->nouvelles && !$this->plein;
     }
 
     /**

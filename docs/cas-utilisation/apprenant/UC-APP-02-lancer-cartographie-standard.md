@@ -148,7 +148,8 @@ Cartographier mes écrits », ou le bouton du tableau de bord `#/espace`).
   3 tentatives au total sur 429/5xx/erreur réseau (`Retry-After` respecté,
   plafonné à 5 min ; sinon attente de 250–500 ms puis de 500–1 000 ms),
   aucune sur une autre erreur HTTP (E7), soit, avec le nouvel essai
-  d'`extractDay`, jusqu'à 6 requêtes par pôle. « Interrompre » abandonne
+  d'`extractDay`, jusqu'à 6 requêtes par pôle ; une réponse tronquée n'est
+  jamais refaite (une requête, 2026-10-22). « Interrompre » abandonne
   aussi l'attente avant reprise. Un refus de la synchronisation bloque le
   lancement (E6).
 - **A2 — API injoignable ou en erreur** (étapes 1 et 3) : API absente (échec
@@ -331,7 +332,7 @@ Cartographier mes écrits », ou le bouton du tableau de bord `#/espace`).
 | Front | `web/src/lib/run-launcher.js` — `computeDayGroups`, `fetchPromptPackages`, `buildEstimate`, `createProviderBundle`, `makeRunId`, `executeRun`, `buildLocalNarratives`, clés locales et synchronisation | Logique non-UI du lancement, résumés locaux du merge, validation de la fusion (schéma puis conformité) |
 | Front | `web/src/lib/demo-llm.js` — `createDemoProvider`, `describeDemoError` ; `web/src/lib/pow.js` | Service humanome : défi, preuve de travail, messages |
 | Front | `web/src/lib/carto-store.js` (via `carto-store-bridge.js`) | Enregistrement local des résultats |
-| Moteur | `engine/src/pipeline/extract.js` — `extractDay` ; `engine/src/conformite.js` — `validateDocumentPourReferentiel` | Un appel par pôle du référentiel + kairos, validation (schéma puis conformité), nouvel essai |
+| Moteur | `engine/src/pipeline/extract.js` — `extractDay` ; `engine/src/conformite.js` — `validateDocumentPourReferentiel` | Un appel par pôle du référentiel + kairos, validation (schéma puis conformité), nouvel essai (jamais sur une réponse tronquée) |
 | Moteur | `engine/src/conformite.js` ; `engine/src/referentiel.js` — `nomCourtReferentiel`, `codesExemples` ; `engine/src/providers/estimate.js` — `callsPerDayFor`, `mergeNarrativeCallsFor` | Conformité au référentiel ; nom et codes d'exemple des prompts ; nombre d'appels par référentiel |
 | Moteur | `engine/src/runs/run.js`, `journal.js`, `memory.js`, `indexeddb.js` | Checkpoints, échec, interruption, reprise, journal |
 | Moteur | `engine/src/pipeline/merge.js`, `merge-document.js` ; `engine/src/validation.js` | Fusion chronologique, document merge, schémas |

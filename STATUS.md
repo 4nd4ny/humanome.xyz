@@ -43,6 +43,81 @@ réponse. Suivent la PR B (adaptateurs JS, export Twin6) et, A fusionnée, la PR
 
 ## Fait
 
+- 2026-10-22 — **Un multi-référentiel simple, suite : écrire un référentiel en Markdown dans
+  l'atelier, et la page publique montre tout référentiel publié (sprint 5, lots D et E ; branche
+  `feat/referentiel-markdown`, non fusionnée).** Trois commits, deux pour le lot D, un pour le lot E.
+  Décisions de Christian, prises par délégation : le lot D tel que S5 §4 (modèles, import Markdown au
+  format des fiches, aperçu, export), sans éditeur riche, sans formulaire pôle par pôle, sans
+  dépendance npm ; pour le lot E, le menu « Référentiel » sur la page publique, qui lit l'API
+  d'abord. Le lot C (choix du référentiel au lancement de Twin9) viendra après la PR
+  multi-fournisseur.
+  - **Lot D, concevoir un référentiel simplement** (atelier, section « Autres référentiels »).
+    - `web/src/lib/referentiel-markdown.js`, sans DOM ni dépendance, lit le texte des fiches de
+      pôle que le moteur écrit (`# Pôle N — Nom`, `## CODE — Nom`, `### CODE — Nom`…) en document
+      `referentiel` 2.1.0, chaque erreur à sa ligne (titre mal formé, niveau sauté, doublon, pôle
+      vide, numérotation, code hors motif ; BOM et CRLF acceptés). L'identifiant, le libellé et la
+      version se saisissent dans trois champs. Le motif de chaque niveau est déduit des codes, le
+      plus étroit compatible (`A1`…`E4` donne `[A-E][1-4]`, RESPIRE `[1-7]\.[0-1]\d`), affiché et
+      modifiable.
+    - L'atelier propose deux modèles à télécharger, Markdown et JSON, le JSON expliqué champ par
+      champ dans la page. Une zone de texte a son aperçu : pôles, compétences, éléments, motifs,
+      erreurs, et l'avertissement qu'un pôle nommé comme un pôle de RESPIRE en reçoit les jurés
+      Twin9. L'import passe par `POST /referentiel/import`, avec ses refus par pointeur. « Exporter
+      en Markdown » vaut pour toute version publiée, RESPIRE compris
+      (`GET /api/referentiels/{id}/versions/{semver}`).
+    - Markdown, puis JSON, puis Markdown : le même texte à l'octet et la même empreinte pour
+      RESPIRE 7.0.0 et 7.1.0 et pour la fixture fictive à la forme Humanome (UC-EPI-05-U15, U16).
+    - UC-EPI-05 : A7 à A9, E6, E7, RG11 à RG13, L2 ; U14 à U20, F19 à F22.
+  - **Lot E, la page publique `#/referentiel` montre tout référentiel publié.**
+    - Le menu « Référentiel » (`ReferentielChoice`) propose chaque référentiel publié à sa
+      dernière version, RESPIRE par défaut. La page lit comme les parcours : la base par l'API
+      publique d'abord, l'export statique en repli, RESPIRE embarqué en dernier. Elle n'est donc
+      plus « zéro PHP », et une version publiée en production s'y voit aussitôt : la limite L1
+      d'UC-VIS-02 ne vaut plus qu'en repli.
+    - Le lien profond `#/referentiel[/<code>]?id=<id>` ouvre un référentiel ; RESPIRE n'a pas
+      d'`id`. Le menu remplace l'adresse, sans entrée d'historique et sans le code d'une
+      compétence ; les permaliens portent l'`id`. Un identifiant introuvable ou hors forme est dit,
+      et RESPIRE s'affiche à sa place ; un lien de l'alerte rend l'adresse sans lui.
+    - La provenance d'un autre référentiel (le `source` du document : d'où il vient, sa licence)
+      s'affiche sous l'en-tête, même en repli sur l'export statique, qui ne la porte pas : c'est
+      l'attribution CC-BY-SA de l'Humanome V18 (S5, E9) que l'entrée des lots A et B renvoyait au
+      lot E. L'aide de la page dit ce qu'est l'Humanome V18.
+    - Les définitions gardent leurs retours à la ligne ; celles de RESPIRE n'en ont pas.
+    - Hors de la page : « Voir dans le référentiel », sous une compétence de la cartographie
+      (`DetailPanel`), mène à la page du référentiel de la carte. Il menait à RESPIRE, où le code
+      d'un autre référentiel était « introuvable ».
+    - Le menu de navigation n'a pas changé : aucune entrée ajoutée.
+    - Documentation : UC-VIS-02 (objectif, préconditions, garanties, étapes 2 et 3, A6 à A9, E5,
+      RG4, RG6, RG7, code sollicité, L1 et limites ; U12 à U14, F18 à F21 ; F12 récrit, la lecture
+      passant par l'API), UC-EPI-05 (garanties, L4), UC-EPI-03 (étapes 7 et 8, L1), UC-EPI-04 (L5),
+      `docs/contrats.md` §9 et §10, `docs/referentiel-humanome.md` §1, le commentaire de
+      `StaticExporter.php`, et le tableau des cas (990 et 1 160 identifiants).
+  - **Vérifié** :
+    - front : 2 755 tests verts (261 fichiers, `TWIN_V9_DIR` défini) ; moteur : 573 tests, 568
+      verts et les 5 échecs locaux connus (UC-PRO-08 F19 à F22, F25) ; `npm run build` passe ;
+      `check-publiable` (crochet de pré-commit) ;
+    - PHP : PHPUnit non lancé, aucun code PHP ne change (un commentaire de `StaticExporter.php`,
+      `php -l` sans erreur) ; la file des suites PHP de la machine était tenue par la suite
+      complète d'une autre session ;
+    - F18 échoue si le menu empile l'adresse dans l'historique au lieu de la remplacer (essayé) ;
+    - dans le navigateur intégré, l'application construite, servie avec l'API sur la base de
+      développement (RESPIRE 7.0.0 et 7.1.0, Humanome V18 amorcé) : le menu ; « Humanome V18 »
+      choisi (adresse `?id=humanome`, 5 pôles, 20 compétences, provenance et licence) ; le lien
+      `#/referentiel/B2?id=humanome` (B2 surligné) ; `?id=inconnu` (l'alerte, RESPIRE).
+  - **Non vérifié** : rien en production ; la page sur un téléphone ; l'e2e Playwright
+    (`web/e2e`) ; le lot D dans un navigateur (ses tests seulement).
+  - **Décisions laissées à Christian** :
+    - la page publique appelle désormais PHP à chaque consultation (`GET /api/referentiels` et
+      `GET /api/referentiels/{id}/versions/{semver}`, le document mis en cache le temps de la
+      page), ce que la règle « zéro PHP » de P4 excluait : c'est la conséquence du choix délégué de
+      l'API d'abord ;
+    - montrer les éléments d'un référentiel (les facettes de l'Humanome) et rendre le Markdown de
+      ses définitions (« **Finalité** » s'y lit tel quel) ;
+    - proposer les versions antérieures sur la page, qui ne montre que la dernière de chaque
+      référentiel (l'historique reste dans l'API) ;
+    - lot D : un formulaire pôle par pôle, si l'usage le demande ; un motif saisi à la main n'est
+      pas gardé dans le Markdown exporté, il se déduit de nouveau.
+
 - 2026-10-22 — **Sprint 2, lot D : plus rien de Python dans humanome.xyz, et la production le
   vérifie (branche `chore/sans-python`, non fusionnée).** Le Sprint 2 (liste de travail de
   Christian, hors dépôt) demandait s'il restait du Python, s'il servait, et pourquoi il n'était pas

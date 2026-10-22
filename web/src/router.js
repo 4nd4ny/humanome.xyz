@@ -8,6 +8,8 @@
 //   #/jour/<iso>?focus=<c>  idem with a competence code highlighted
 //   #/referentiel           public referentiel (its poles -> its competences)
 //   #/referentiel/<code>    idem, permalink to one competence (scroll + highlight)
+//   #/referentiel[/<code>]?id=<id>  idem for another published referential than
+//                           RESPIRE (S5, lot E); RESPIRE, the default, has no `id`
 //   #/essayer               public live demo: paste a text, map it (P6, cahier §3.1)
 //   #/portfolio             portfolio module: local-only texts, day segmentation (P7)
 //   #/compte                account area (session checked when the route mounts)
@@ -38,7 +40,7 @@ export function isValidIsoDate(value) {
  *   | {name: 'cartographie'}
  *   | {name: 'redirect', to: string}
  *   | {name: 'day', date: string, focus: string | null}
- *   | {name: 'referentiel', code: string | null}
+ *   | {name: 'referentiel', code: string | null, referentiel?: string}
  *   | {name: 'essayer'}
  *   | {name: 'portfolio'}
  *   | {name: 'account'}
@@ -163,9 +165,12 @@ export function parseHash(hash) {
     }
   }
 
-  if (path === '/referentiel') return { name: 'referentiel', code: null }
+  // Référentiel public : #/referentiel[/<code>], ?id=<id> pour un autre
+  // référentiel publié que RESPIRE (S5, lot E) — la clé `referentiel` n'est
+  // présente que pour lui ; la vue dit un identifiant qu'elle ne peut charger.
+  if (path === '/referentiel') return withReferentiel({ name: 'referentiel', code: null }, query)
   const refMatch = /^\/referentiel\/([^/]+)$/.exec(path)
-  if (refMatch) return { name: 'referentiel', code: decodeURIComponent(refMatch[1]) }
+  if (refMatch) return withReferentiel({ name: 'referentiel', code: decodeURIComponent(refMatch[1]) }, query)
 
   const dayMatch = /^\/jour\/([^/]+)$/.exec(path)
   if (dayMatch) {
@@ -189,13 +194,30 @@ export function dayHash(date, focus = null) {
   return `#/jour/${date}${focus ? `?focus=${encodeURIComponent(focus)}` : ''}`
 }
 
+/** The platform's referential: the public page's default, named by no `id`. */
+const DEFAULT_REFERENTIEL = 'respire'
+
+/**
+ * Adds the referential named by `?id=` to a referentiel route, unless it is
+ * absent, empty or RESPIRE (the default).
+ * @param {{name: 'referentiel', code: string | null}} route
+ * @param {string} query the hash's query string
+ */
+function withReferentiel(route, query) {
+  const id = new URLSearchParams(query).get('id')
+  return id && id !== DEFAULT_REFERENTIEL ? { ...route, referentiel: id } : route
+}
+
 /**
  * Builds the canonical hash for the public referentiel view.
  * @param {string | null} [code] competence code to permalink (e.g. '1.01')
- * @returns {string} '#/referentiel' or '#/referentiel/<code>'
+ * @param {string | null} [referentiel] id of another published referential
+ *   than RESPIRE (S5, lot E); RESPIRE's hash names none
+ * @returns {string} '#/referentiel', '#/referentiel/<code>', idem + '?id=<id>'
  */
-export function referentielHash(code = null) {
-  return code ? `#/referentiel/${encodeURIComponent(code)}` : '#/referentiel'
+export function referentielHash(code = null, referentiel = null) {
+  const path = code ? `#/referentiel/${encodeURIComponent(code)}` : '#/referentiel'
+  return referentiel && referentiel !== DEFAULT_REFERENTIEL ? `${path}?id=${encodeURIComponent(referentiel)}` : path
 }
 
 /**

@@ -9,7 +9,10 @@ use RuntimeException;
 
 /**
  * Static export of every published referentiel version (plan M3: the public
- * consultation page reads these files — zero PHP at consultation time).
+ * consultation page read these files — zero PHP at consultation time). Since
+ * S5 the page and the flows read the database first through the public API
+ * (GET /api/referentiels, /api/referentiels/{id}/versions/{semver}): these
+ * files are their fallback when the API does not answer.
  *
  * Output in $outDir:
  *   - one <referentielId>-v<semver>.json per published version (schema-valid

@@ -1,41 +1,81 @@
-import { useEffect, useMemo, useState } from 'react'
-import { loadPublishedReferentiel } from '../data/referentiel.js'
+import { useCallback, useEffect, useMemo, useState } from 'react'
+import { REFERENTIEL_PAR_DEFAUT as RESPIRE } from '@engine/conformite.js'
+import ReferentielChoice from '../components/ReferentielChoice.jsx'
+import { listPublishedReferentiels, loadPublishedReferentiel } from '../data/referentiel.js'
 import { getReferentiel } from '../data/load.js'
 import { referentielHash } from '../router.js'
 
+/** Le menu remplace l'adresse : choisir un référentiel n'empile pas d'historique. */
+const remplacerAdresse = (hash) => window.location.replace(hash)
+
 /**
  * Référentiel public (P4.4, cahier §4.1/§3.5) : arbre pôles -> compétences
- * de la version publiée, tels qu'elle les déclare (RESPIRE v7 : 7 pôles, 61
- * compétences), aux couleurs des pôles, recherche plein-texte client (code +
- * nom, insensible aux accents), permalien par compétence
- * (#/referentiel/<code> : défilement + surbrillance), et bandeau sobre vers
- * l'espace participatif Decidim — qui nourrit et critique le référentiel,
- * sans le remplacer.
+ * de la version publiée, tels qu'elle les déclare, aux couleurs des pôles,
+ * recherche plein-texte client (code, nom et définition, insensible aux
+ * accents), permalien par compétence (#/referentiel/<code> : défilement +
+ * surbrillance), et bandeau sobre vers l'espace participatif Decidim — qui
+ * nourrit et critique le référentiel, sans le remplacer.
  *
- * @param {{focusCode?: string | null,
- *   load?: typeof loadPublishedReferentiel}} props `load` est une couture de test.
+ * Tout référentiel publié (S5, lot E) : le menu « Référentiel »
+ * (ReferentielChoice) les propose, chacun à sa dernière version, RESPIRE par
+ * défaut ; l'adresse nomme un autre par `?id=<id>` (lien profond, permaliens
+ * compris), et le menu la remplace. Un référentiel se lit comme dans les
+ * parcours (data/referentiel.js, `{id}`) : la base par l'API publique
+ * d'abord, l'export statique en repli, RESPIRE embarqué en dernier. Un
+ * identifiant qui ne se charge pas est dit, et RESPIRE s'affiche à sa place.
+ * La provenance d'un autre référentiel que RESPIRE (son `source` : d'où il
+ * vient, sa licence — S5, E9) s'affiche sous l'en-tête, quelle que soit la
+ * source de lecture.
+ *
+ * @param {{focusCode?: string | null, referentielId?: string | null,
+ *   load?: typeof loadPublishedReferentiel, list?: typeof listPublishedReferentiels,
+ *   replaceHash?: (hash: string) => void}} props `load`, `list` et `replaceHash` sont des coutures de test.
  */
-export default function ReferentielView({ focusCode = null, load = loadPublishedReferentiel }) {
+export default function ReferentielView({
+  focusCode = null,
+  referentielId = null,
+  load = loadPublishedReferentiel,
+  list = listPublishedReferentiels,
+  replaceHash = remplacerAdresse,
+}) {
+  // Le référentiel demandé par l'adresse ; null : RESPIRE, le défaut.
+  const choix = referentielId && referentielId !== RESPIRE ? referentielId : null
   const [data, setData] = useState(null)
   const [query, setQuery] = useState('')
 
   useEffect(() => {
     let alive = true
-    load()
-      .then((result) => {
-        if (alive) setData(result)
-      })
-      .catch(() => {
-        // loadPublishedReferentiel ne rejette jamais ; ceinture et bretelles
-        // pour un chargeur injecté : on retombe sur le référentiel embarqué.
-        if (alive) setData({ doc: getReferentiel(), origin: 'bundled' })
-      })
+    const show = (result, introuvable) => {
+      if (alive) setData({ ...result, choix, introuvable })
+    }
+    // loadPublishedReferentiel ne rejette jamais pour RESPIRE sans version ;
+    // ceinture et bretelles pour un chargeur injecté : le référentiel embarqué.
+    const respire = () => load({ id: RESPIRE }).catch(() => ({ doc: getReferentiel(), origin: 'bundled' }))
+    if (choix === null) {
+      respire().then((result) => show(result, false))
+    } else {
+      load({ id: choix })
+        .then((result) => show(result, false))
+        .catch(() => respire().then((result) => show(result, true)))
+    }
     return () => {
       alive = false
     }
-  }, [load])
+  }, [load, choix])
+
+  const choisir = useCallback(
+    (referentiel) => {
+      if ((referentiel.id === RESPIRE ? null : referentiel.id) !== choix) {
+        replaceHash(referentielHash(null, referentiel.id))
+      }
+    },
+    [choix, replaceHash],
+  )
 
   const doc = data?.doc ?? null
+  // Le document affiché est-il celui que demande l'adresse ? Sinon, le
+  // suivant se charge : l'ancien reste affiché, sans alerte.
+  const aJour = data !== null && data.choix === choix
 
   // Défilement vers la compétence permaliée une fois l'arbre rendu.
   useEffect(() => {
@@ -73,18 +113,30 @@ export default function ReferentielView({ focusCode = null, load = loadPublished
   const total = (doc.competences ?? []).length
   // L'exemple de la recherche : le premier code du référentiel affiché (« 1.01 » pour RESPIRE).
   const exemple = (doc.competences ?? [])[0]?.code ?? null
+  const introuvable = aJour && data.introuvable
   const focusKnown =
     focusCode === null || (doc.competences ?? []).some((c) => c.code === focusCode)
+  const provenance =
+    doc.id !== RESPIRE && typeof doc.source === 'string' && doc.source !== '' ? doc.source : null
 
   return (
-    <div className="referentiel">
+    <div className="referentiel" aria-busy={aJour ? undefined : 'true'}>
       <header className="ref-header">
         <h1>Référentiel de compétences</h1>
+        <div className="ref-choice">
+          <ReferentielChoice
+            value={choix ? { id: choix } : null}
+            onChange={choisir}
+            list={list}
+            provenance={false}
+          />
+        </div>
         <p className="ref-version">
           {doc.label ?? doc.id} — version {doc.version} · {(doc.poles ?? []).length} pôles,{' '}
           {total} compétences. Public en lecture, édité par les épistémiarques, versionné :
           aucune version publiée n’est modifiée en place.
         </p>
+        {provenance ? <p className="ref-source">Provenance : {provenance}</p> : null}
       </header>
 
       <aside className="ref-decidim">
@@ -97,7 +149,13 @@ export default function ReferentielView({ focusCode = null, load = loadPublished
         </a>
       </aside>
 
-      {!focusKnown ? (
+      {introuvable ? (
+        <p className="load-error" role="alert">
+          Le référentiel «&nbsp;{choix}&nbsp;» n’a pas pu être chargé :{' '}
+          {/* le menu montre déjà RESPIRE : ce lien rend l'adresse sans l'identifiant introuvable */}
+          <a href={referentielHash()}>RESPIRE</a> s’affiche à sa place.
+        </p>
+      ) : aJour && !focusKnown ? (
         <p className="load-error" role="alert">
           Compétence «&nbsp;{focusCode}&nbsp;» introuvable dans cette version du référentiel.
         </p>
@@ -145,7 +203,7 @@ export default function ReferentielView({ focusCode = null, load = loadPublished
                   >
                     <a
                       className="ref-competence-code"
-                      href={referentielHash(competence.code)}
+                      href={referentielHash(competence.code, doc.id)}
                       aria-current={focused ? 'true' : undefined}
                       title={`Lien direct vers la compétence ${competence.code}`}
                     >
@@ -175,6 +233,6 @@ function competenceDomId(code) {
 function fold(text) {
   return String(text)
     .normalize('NFD')
-    .replace(/[\u0300-\u036f]/g, '')
+    .replace(/[̀-ͯ]/g, '')
     .toLowerCase()
 }

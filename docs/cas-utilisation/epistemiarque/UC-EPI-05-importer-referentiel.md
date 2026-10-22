@@ -48,6 +48,9 @@ de pôle, en partant d'un modèle ou d'un référentiel publié exporté (A7 à 
   Depuis S5 (2026-10-22), ces trois menus la lisent dans la base, dès sa
   publication : plus besoin d'un export statique ni d'un redéploiement. Ses
   fiches de scan s'écrivent depuis son document, sans rien à générer (RG10).
+  La page publique `#/referentiel` la montre aussi depuis S5, lot E : au menu
+  « Référentiel », à l'adresse `#/referentiel?id=<id>`, avec sa provenance
+  (UC-VIS-02, A7 à A9).
 - Un brouillon ou une proposition ne sont jamais servis par ces routes, pas
   même à leur auteur (ils ne servent que ses runs d'essai, RG7).
 - Un texte Markdown importé (A7) devient le même brouillon que le JSON qu'il
@@ -388,6 +391,7 @@ de pôle, en partant d'un modèle ou d'un référentiel publié exporté (A7 à 
 - `web/src/views/ConfigurationView.test.jsx` — les brouillons proposés en version.
 - `api/tests/ReferentielApiTest.php` — `testAnyPublishedReferentialIsServedByIdAndVersion` (S5) : une version publiée de tout référentiel servie à tous par son identifiant ; brouillon, proposition (même à leur auteur), identifiant ou version inconnus, autre graphie (casse, espace final) → `404` ; lecture seule (`405`) ; le catalogue ne liste que la publiée.
 - `web/src/data/referentiel.test.js` (« API d'abord, export statique en repli ») ; `web/src/components/ReferentielChoice.test.jsx` ; UC-APP-02-F27, UC-APP-09-F31, UC-ETA-03-F30 — les menus des parcours lisent la base.
+- UC-VIS-02-U12 à U14, F18 à F21 (S5, lot E) — la page publique montre un référentiel publié autre que RESPIRE, lu dans la base, avec sa provenance, par le menu ou un lien profond ; un identifiant introuvable est dit (L4).
 - UC-EPI-03 (coupe de release : complétude, la structure de la dernière version publiée), UC-EPI-04 (grain document), `ReferentielApiTest`, `ReferentielImportExportTest`, `CompetenceReleaseTest`, `engine/test/usecases/unit/uc-sys-04-chaine-artefacts-derives.test.js` (validateurs compilés).
 - `web/src/views/epistemiarque/ReferentielsSection.test.jsx` (S5, lot D) — le détail de la section : l'aperçu suit chaque frappe, un nom de niveau saisi nomme le choix et le document, l'aperçu n'est ni une alerte ni un statut, un avertissement n'empêche pas l'import, un fichier illisible est dit, un export sans téléchargement possible ou trop profond est dit, rien à exporter sans référentiel publié.
 
@@ -431,8 +435,13 @@ Aucune.
   côté (`docs/referentiel-humanome.md` §5).
 - **L3** — Le libellé et la version suivent UC-EPI-04 AN2 : trop longs, ils
   donnent un `500` au lieu d'un `422`.
-- **L4** — La page publique `#/referentiel` ne montre que RESPIRE. (Le
-  moteur lit le référentiel du run depuis T16, la cartographie depuis T17 :
-  la carte d'un run s'ouvre avec lui.)
+- **L4** — La page publique `#/referentiel` montre tout référentiel publié
+  depuis S5, lot E (UC-VIS-02, A7 à A9) : chacun à sa dernière version
+  seulement, ses compétences sans leurs éléments, les définitions en texte
+  (le Markdown n'y est pas rendu). Un brouillon ou une proposition n'y
+  paraissent jamais, pas même pour leur auteur. (Le moteur lit le
+  référentiel du run depuis T16, la cartographie depuis T17 : la carte d'un
+  run s'ouvre avec lui, et son lien « Voir dans le référentiel » mène à sa
+  page.)
 - **L5** — La comparaison de deux versions (`ReferentielDiff`) ignore les
   niveaux et les éléments.

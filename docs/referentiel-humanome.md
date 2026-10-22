@@ -31,7 +31,10 @@ conversion a relevé dans la source.
     donne la provenance de la dernière version de chaque référentiel.
   - L'aide (« ? ») de ces parcours dit que l'Humanome V18 est le référentiel
     de respire.school, sous CC-BY-SA Harmonia Éducation, et non RESPIRE v7.
-  - L'attribution sur la page publique viendra avec elle (lot E).
+  - La page publique `#/referentiel` le propose au même menu depuis S5,
+    lot E (`#/referentiel?id=humanome`) et affiche sa provenance sous
+    l'en-tête, licence comprise (UC-VIS-02, RG7) ; son aide dit la même
+    chose que celle des parcours.
 
 ## 2. Décisions de Christian (22 octobre 2026)
 

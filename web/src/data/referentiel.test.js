@@ -262,7 +262,7 @@ describe('API d’abord, export statique en repli (S5)', () => {
     expect(horsForme.mock.calls.some(([url]) => url.startsWith('api/'))).toBe(false)
   })
 
-  it('sans identifiant, la page publique reste statique : aucune requête à l’API', async () => {
+  it('sans identifiant (l’interface de cartographie ; la page publique lit `{ id }` depuis le lot E), l’export statique seul : aucune requête à l’API', async () => {
     const fetchFn = reseau({ 'api/referentiels': apiResponse(catalogue) })
     expect((await loadPublishedReferentiel({ fetchFn })).doc).toEqual(publishedDoc)
     expect(fetchFn.mock.calls.map(([url]) => url)).toEqual(['data/referentiel/index.json', 'data/referentiel/respire-v8.0.0.json'])

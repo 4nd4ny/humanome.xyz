@@ -1,10 +1,12 @@
 // UC-VIS-02 — Consulter le référentiel public : tests UNITAIRES (front).
 // Fiche : docs/cas-utilisation/visiteur/UC-VIS-02-consulter-referentiel-public.md
 //
-// Code sollicité appelé directement : routes #/referentiel[/<code>] et
-// permaliens, chargeur du référentiel publié (export STATIQUE produit par
-// api/src/Referentiel/StaticExporter.php : index.json + un fichier par
-// version) avec ses gardes et son repli sur le référentiel embarqué.
+// Code sollicité appelé directement : routes #/referentiel[/<code>][?id=<id>]
+// et permaliens (S5, lot E : tout référentiel publié), chargeur de l'export
+// STATIQUE (produit par api/src/Referentiel/StaticExporter.php : index.json +
+// un fichier par version) avec ses gardes et son repli sur le référentiel
+// embarqué — le repli de la page, qui lit la base par l'API d'abord
+// (`loadPublishedReferentiel({ id })`, src/data/referentiel.test.js).
 import { afterEach, describe, expect, it, vi } from 'vitest'
 import { parseHash, referentielHash } from '../../../src/router.js'
 import { clearReferentielCache, loadPublishedReferentiel } from '../../../src/data/referentiel.js'
@@ -31,6 +33,24 @@ describe('UC-VIS-02 — routes et permaliens', () => {
     expect(referentielHash()).toBe('#/referentiel')
     expect(referentielHash('7.03')).toBe('#/referentiel/7.03')
     expect(parseHash(referentielHash('a b'))).toEqual({ name: 'referentiel', code: 'a b' })
+  })
+
+  it('UC-VIS-02-U12 — lien profond ?id=<id> vers un autre référentiel publié (S5, lot E) ; RESPIRE, le défaut, sans identifiant', () => {
+    expect(parseHash('#/referentiel?id=fictif-humanome')).toEqual({ name: 'referentiel', code: null, referentiel: 'fictif-humanome' })
+    expect(parseHash('#/referentiel/A1?id=fictif-humanome')).toEqual({ name: 'referentiel', code: 'A1', referentiel: 'fictif-humanome' })
+    expect(parseHash('#/referentiel/A1.2?id=humanome&x=1')).toEqual({ name: 'referentiel', code: 'A1.2', referentiel: 'humanome' })
+    // RESPIRE, un identifiant vide ou un autre paramètre : la page par défaut, sans clé `referentiel`
+    expect(parseHash('#/referentiel?id=respire')).toEqual({ name: 'referentiel', code: null })
+    expect(parseHash('#/referentiel/1.01?id=')).toEqual({ name: 'referentiel', code: '1.01' })
+    expect(parseHash('#/referentiel?focus=1.01')).toEqual({ name: 'referentiel', code: null })
+    // un identifiant quelconque passe tel quel : la vue dit celui qu'elle ne peut charger (UC-VIS-02-F21)
+    expect(parseHash('#/referentiel?id=..%2Fx')).toEqual({ name: 'referentiel', code: null, referentiel: '../x' })
+    expect(referentielHash(null, 'fictif-humanome')).toBe('#/referentiel?id=fictif-humanome')
+    expect(referentielHash('A1', 'fictif-humanome')).toBe('#/referentiel/A1?id=fictif-humanome')
+    expect(referentielHash('7.03', 'respire')).toBe('#/referentiel/7.03')
+    expect(referentielHash(null, null)).toBe('#/referentiel')
+    expect(referentielHash('a b', 'x y')).toBe('#/referentiel/a%20b?id=x%20y')
+    expect(parseHash(referentielHash('a b', 'x y'))).toEqual({ name: 'referentiel', code: 'a b', referentiel: 'x y' })
   })
 
   // ANOMALIE AN1 de la fiche — test qui FIGE le comportement ACTUEL :

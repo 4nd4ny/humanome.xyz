@@ -39,8 +39,8 @@ describe('helpFor — aide par rubrique et par rôle', () => {
     expect(helpFor('home', { roles: ['apprenant'] })).toEqual(helpFor('home'))
   })
 
-  it('les parcours au menu « Référentiel » disent ce qu’est l’Humanome V18 : respire.school, CC-BY-SA (S5, E1, E9)', () => {
-    for (const route of ['espace', 'twin6ouverte', 'etablissement']) {
+  it('les parcours au menu « Référentiel », et la page publique (lot E), disent ce qu’est l’Humanome V18 : respire.school, CC-BY-SA (S5, E1, E9)', () => {
+    for (const route of ['espace', 'twin6ouverte', 'etablissement', 'referentiel']) {
       const point = (helpFor(route).points ?? []).find((p) => p.includes('https://respire.school/referentiel'))
       expect(point, route).toBeDefined()
       expect(point).toContain('« Humanome V18 »')

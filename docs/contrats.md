@@ -1625,7 +1625,8 @@ Le schéma `referentiel` passe en **2.0.0** (`docs/plan-twin9-php.md` de
   gardant l'import du déploiement, idempotent sur l'empreinte. Le schéma ne
   change pas. Règles, procédure en production et écarts relevés dans la
   source : `docs/referentiel-humanome.md`.
-- **Hors T15** : la page publique `#/referentiel` ne montre que RESPIRE ;
+- **Hors T15** : la page publique `#/referentiel` ne montrait que RESPIRE ;
+  elle montre tout référentiel publié depuis S5, lot E (§10, UC-VIS-02).
   `ReferentielDiff` ignore niveaux et éléments. (La cartographie, qui ne
   lisait que RESPIRE et ses 7 pôles, lit le référentiel de chaque run depuis
   T17, §10 ; le moteur, depuis T16, §8.8.)
@@ -1833,7 +1834,14 @@ plus contre le chiffre 7. Aucun champ n'est renommé.
   proposé. Une réponse de l'API vide,
   malformée, en erreur, ou un document qui n'est pas la version demandée
   cèdent la place à l'export statique. La page publique `#/referentiel`
-  (`loadPublishedReferentiel()` sans identifiant) reste statique.
+  suit la même règle depuis S5, lot E : elle charge `{id: 'respire'}` par
+  défaut, ou le référentiel que nomme son adresse (`#/referentiel[/<code>]?id=<id>`,
+  RESPIRE sans `id`), propose les autres au même menu (la provenance, elle,
+  sous l'en-tête, depuis le `source` du document), et dit un identifiant
+  qu'elle ne peut charger, RESPIRE affiché à sa place (UC-VIS-02, A7 à A9,
+  E5). Seule la branche sans identifiant (`loadPublishedReferentiel()`,
+  l'interface de cartographie) reste statique. Le lien « Voir dans le
+  référentiel » d'une carte nomme le référentiel de la carte.
 - **Les routes**, ce qui change :
   - `POST /api/etablissement/cohortes/{id}/runs` : `referentielId`,
     `referentielVersion` facultatifs ; version non publiée ou identifiant

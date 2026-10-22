@@ -99,7 +99,7 @@ rejouant les fixtures : aucun appel réseau réel).
 | ID | Cas d'utilisation | Tests unitaires | Tests fonctionnels | Anomalies |
 |---|---|---:|---:|---:|
 | [UC-VIS-01](visiteur/UC-VIS-01-explorer-cartographie-demonstration.md) | Explorer la cartographie de démonstration | 29 | 16 | 4 |
-| [UC-VIS-02](visiteur/UC-VIS-02-consulter-referentiel-public.md) | Consulter le référentiel public de compétences | 11 | 17 | 1 |
+| [UC-VIS-02](visiteur/UC-VIS-02-consulter-referentiel-public.md) | Consulter le référentiel public de compétences | 14 | 21 | 1 |
 | [UC-VIS-03](visiteur/UC-VIS-03-essayer-cartographie-en-direct.md) | Essayer la cartographie en direct, sans compte | 30 | 27 | 3 |
 | [UC-VIS-04](visiteur/UC-VIS-04-se-reperer-guides-aide.md) | Se repérer : accueil, navigation, guides, aide, confidentialité | 13 | 20 | 3 |
 | [UC-VIS-05](visiteur/UC-VIS-05-interroger-assistant-tuteur.md) | Interroger l'assistant tuteur | 7 | 20 | 1 |
@@ -203,7 +203,7 @@ rejouant les fixtures : aucun appel réseau réel).
 | [UC-SYS-04](systeme/UC-SYS-04-construire-artefacts-derives.md) | Construire les données et artefacts dérivés | 6 | 16 | 3 |
 | [UC-SYS-05](systeme/UC-SYS-05-sauvegarder-restaurer.md) | Sauvegarder et restaurer la base | 0 | 8 | 6 |
 
-**Total : 59 cas d'utilisation, 987 tests unitaires et 1156 tests fonctionnels identifiés, 196 anomalies de production documentées.**
+**Total : 59 cas d'utilisation, 990 tests unitaires et 1160 tests fonctionnels identifiés, 196 anomalies de production documentées.**
 
 Les comptes portent sur les identifiants distincts (`UC-…-Unn`, `UC-…-Fnn`) présents dans les fichiers de tests ; un identifiant paramétré (`it.each`) compte pour un.
 <!-- catalogue:end -->

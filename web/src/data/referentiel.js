@@ -1,8 +1,9 @@
-// Public referentiel loading (P4.4). The public consultation is STATIC by
-// design: the published versions live as plain JSON under data/referentiel/,
-// exported by api/src/Referentiel/StaticExporter.php — index.json is an ARRAY
-// of {referentielId, semver, label, publishedAt, fichier}, newest version
-// first per referentiel. No PHP call at consultation time. When the fetch is
+// Public referentiel loading (P4.4). The published versions live as plain JSON
+// under data/referentiel/, exported by api/src/Referentiel/StaticExporter.php —
+// index.json is an ARRAY of {referentielId, semver, label, publishedAt,
+// fichier}, newest version first per referentiel. The public consultation
+// was static by design (no PHP call); since S5 it reads the database first
+// (below), the static export being its fallback. When the fetch is
 // impossible (file://, offline copy), the bundled RESPIRE v7 import
 // (data/load.js) is the fallback so the page always renders.
 //
@@ -16,7 +17,9 @@
 // ask the public, read-only API (GET api/referentiels, GET
 // api/referentiels/{id}/versions/{semver}, published versions only); the static
 // export is their fallback (static copy, API down), RESPIRE's bundled copy the
-// last one. The public page — the branch without `id` — stays static.
+// last one. The public page #/referentiel follows the same rule since S5, lot E
+// (ReferentielView loads `{ id }`, RESPIRE's by default). The branch without
+// `id`, which the cartography interface reads (useCartoData), stays static.
 import { apiFetch } from '../api/client.js'
 import { getReferentiel } from './load.js'
 

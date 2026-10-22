@@ -476,26 +476,28 @@ function regexDuMotif(motif) {
  *   niveaux?: Array<{nom?: string, motif?: string}|undefined>}} [champs] `niveaux` : le nom
  *   ou le motif saisis pour le niveau k, en place de ceux du texte
  * @returns {{document: object|null, analyse: ReturnType<typeof analyserMarkdown>,
- *   niveaux: Array<{nom: string, motif: string}>, erreurs: Array<{ligne: number|null, message: string}>,
- *   avertissements: Array<{ligne: number|null, message: string}>}}
+ *   niveaux: Array<{nom: string, motif: string}>,
+ *   erreurs: Array<{ligne: number|null, message: string, champ?: 'id'|'version'|'label'}>,
+ *   avertissements: Array<{ligne: number|null, message: string}>}} `champ` : celui des trois de la page qu'une erreur vise
  */
 export function referentielDepuisMarkdown(texte, champs = {}) {
   const analyse = analyserMarkdown(texte)
   const erreurs = [...analyse.erreurs]
   const avertissements = []
   const erreur = (message, ligne = null) => erreurs.push({ ligne, message })
+  const erreurDuChamp = (champ, message) => erreurs.push({ ligne: null, message, champ })
 
   const id = String(champs.id ?? '').trim()
   const version = String(champs.version ?? '').trim()
   const label = String(champs.label ?? '').trim()
-  if (id === '') erreur('Identifiant : requis')
-  else if (id === RESPIRE) erreur('Identifiant : RESPIRE s’édite compétence par compétence dans son atelier, il ne s’importe pas')
-  else if (!ID_RE.test(id)) erreur('Identifiant : minuscules, chiffres, « . », « _ » ou « - », le premier lettre ou chiffre, 64 caractères au plus')
-  if (version === '') erreur('Version : requise')
-  else if (!SEMVER_RE.test(version)) erreur('Version : un semver, par exemple 1.0.0')
-  else if (version.length > VERSION_MAX) erreur(`Version : ${VERSION_MAX} caractères au plus`)
-  if (label === '') erreur('Libellé : requis')
-  else if (label.length > LIBELLE_MAX) erreur(`Libellé : ${LIBELLE_MAX} caractères au plus`)
+  if (id === '') erreurDuChamp('id', 'Identifiant : requis')
+  else if (id === RESPIRE) erreurDuChamp('id', 'Identifiant : RESPIRE s’édite compétence par compétence dans son atelier, il ne s’importe pas')
+  else if (!ID_RE.test(id)) erreurDuChamp('id', 'Identifiant : minuscules, chiffres, « . », « _ » ou « - », le premier lettre ou chiffre, 64 caractères au plus')
+  if (version === '') erreurDuChamp('version', 'Version : requise')
+  else if (!SEMVER_RE.test(version)) erreurDuChamp('version', 'Version : un semver, par exemple 1.0.0')
+  else if (version.length > VERSION_MAX) erreurDuChamp('version', `Version : ${VERSION_MAX} caractères au plus`)
+  if (label === '') erreurDuChamp('label', 'Libellé : requis')
+  else if (label.length > LIBELLE_MAX) erreurDuChamp('label', `Libellé : ${LIBELLE_MAX} caractères au plus`)
 
   const saisis = Array.isArray(champs.niveaux) ? champs.niveaux : []
   const niveaux = analyse.niveaux.map((deduit, k) => ({

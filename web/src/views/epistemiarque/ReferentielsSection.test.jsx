@@ -92,7 +92,7 @@ describe('ReferentielsSection — le Markdown', () => {
     ).toBe(
       'Ligne 1 : pôle 1 « TÊTE et mains » : son premier mot (TETE) est celui d’un pôle de RESPIRE ; l’analyse approfondie (Twin9) lui donnera les jurés de ce pôle de RESPIRE',
     )
-    expect(within(formulaire()).getByRole('button', { name: 'Importer le Markdown' }).disabled).toBe(false)
+    expect(within(formulaire()).getByRole('button', { name: 'Importer le Markdown' }).getAttribute('aria-disabled')).toBeNull()
 
     await saisir('Texte Markdown du référentiel', '## T1 — Sans pôle\n')
     expect(within(formulaire()).getByRole('list', { name: 'Erreurs du Markdown' })).toBeDefined()

@@ -309,7 +309,9 @@ describe('UC-EPI-05 — concevoir un référentiel en Markdown (S5, lot D)', () 
     const api = docApi()
     await ouvrir(MEMBRE, api)
     const importerMd = within(formulaireMarkdown()).getByRole('button', { name: 'Importer le Markdown' })
-    expect(importerMd.disabled).toBe(true)
+    // indisponible, mais pas retiré de l'ordre de tabulation (aria-disabled, pas disabled) : on y arrive, et on entend pourquoi
+    expect(importerMd.getAttribute('aria-disabled')).toBe('true')
+    expect(importerMd.disabled).toBe(false)
 
     const fichier = new File([MARKDOWN], 'fictif.md', { type: 'text/markdown' })
     fichier.text = async () => MARKDOWN // jsdom ne fournit pas File.text
@@ -323,10 +325,25 @@ describe('UC-EPI-05 — concevoir un référentiel en Markdown (S5, lot D)', () 
     ).toEqual(['1 · A · Pôle fictif — 2 compétences', '2 · B · Second pôle — 1 compétence'])
     // sans les trois champs, rien ne part : la page dit ce qui manque
     expect(erreursDuMarkdown()).toEqual(['Identifiant : requis', 'Version : requise', 'Libellé : requis'])
-    expect(importerMd.disabled).toBe(true)
+    expect(importerMd.getAttribute('aria-disabled')).toBe('true')
+    // le bouton dit pourquoi (un résumé visible), chaque champ fautif son erreur
+    const resume = document.getElementById(importerMd.getAttribute('aria-describedby'))
+    expect(resume.textContent).toBe('3 erreurs empêchent l’import : elles sont listées ci-dessus.')
+    for (const [champ, message] of [['Identifiant', 'Identifiant : requis'], ['Version', 'Version : requise'], ['Libellé', 'Libellé : requis']]) {
+      const saisie = within(formulaireMarkdown()).getByLabelText(champ)
+      expect(saisie.getAttribute('aria-invalid'), champ).toBe('true')
+      expect(document.getElementById(saisie.getAttribute('aria-describedby')).textContent).toBe(message)
+    }
+    // l'import refusé porte le focus sur la liste des erreurs ; rien ne part
+    await cliquer(importerMd)
+    expect(document.activeElement).toBe(within(formulaireMarkdown()).getByRole('list', { name: 'Erreurs du Markdown' }))
+    expect(api.importReferentiel).not.toHaveBeenCalled()
 
     await remplirLesChamps()
     expect(erreursDuMarkdown()).toEqual([])
+    expect(importerMd.getAttribute('aria-disabled')).toBeNull()
+    expect(importerMd.getAttribute('aria-describedby')).toBeNull()
+    expect(within(formulaireMarkdown()).getByLabelText('Version').getAttribute('aria-invalid')).toBeNull()
     expect(within(formulaireMarkdown()).getByLabelText('Nom du niveau 1').value).toBe('capacité')
     expect(within(formulaireMarkdown()).getByLabelText('Motif du niveau 1').value).toBe('[A-B][1-2]')
     expect(within(formulaireMarkdown()).getByLabelText('Motif du niveau 2').value).toBe('[A-B][1-2]\\.1')
@@ -367,7 +384,7 @@ describe('UC-EPI-05 — concevoir un référentiel en Markdown (S5, lot D)', () 
       'Ligne 20 : le pôle 2 « B · Vide » n’a aucune compétence (« ## CODE — Nom »)',
       'Ligne 24 : code en double « A1 » (déjà ligne 8)',
     ])
-    expect(within(formulaireMarkdown()).getByRole('button', { name: 'Importer le Markdown' }).disabled).toBe(true)
+    expect(within(formulaireMarkdown()).getByRole('button', { name: 'Importer le Markdown' }).getAttribute('aria-disabled')).toBe('true')
     expect(screen.queryByRole('alert')).toBeNull() // l'aperçu n'est pas une alerte
 
     // un motif saisi que le texte ne suit pas, puis le motif déduit repris
@@ -386,7 +403,7 @@ describe('UC-EPI-05 — concevoir un référentiel en Markdown (S5, lot D)', () 
       '/competences/1/code : « A2 » ne suit pas le motif [A-E][1-4] du niveau « capacité »',
     )
     expect(within(formulaireMarkdown()).getByLabelText('Texte Markdown du référentiel').value).toBe(MARKDOWN)
-    expect(within(formulaireMarkdown()).getByRole('button', { name: 'Importer le Markdown' }).disabled).toBe(false)
+    expect(within(formulaireMarkdown()).getByRole('button', { name: 'Importer le Markdown' }).getAttribute('aria-disabled')).toBeNull()
     expect(api.listDrafts).toHaveBeenCalledTimes(1)
   })
 

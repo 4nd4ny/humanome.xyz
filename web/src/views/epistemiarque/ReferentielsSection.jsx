@@ -12,8 +12,15 @@
 // les motifs déduits de ses codes, modifiables, puis importé par la même route
 // que le JSON ; enfin tout référentiel publié, RESPIRE compris, exporté en
 // Markdown pour partir d'un existant.
+//
+// Accessibilité de l'import Markdown (revue de S5) : tant qu'une erreur le
+// bloque, « Importer le Markdown » est indisponible (aria-disabled, pas
+// disabled : il reste dans l'ordre de tabulation), décrit par un résumé
+// visible (« 2 erreurs empêchent l'import ») ; l'activer porte le focus sur la
+// liste des erreurs. Un champ fautif (identifiant, libellé, version) est
+// marqué aria-invalid et relié à son erreur.
 
-import { useCallback, useEffect, useMemo, useState } from 'react'
+import { useCallback, useEffect, useId, useMemo, useRef, useState } from 'react'
 import { ApiError, ApiUnavailableError } from '../../api/client.js'
 import { downloadBlob } from '../../lib/download-json.js'
 import {
@@ -119,6 +126,8 @@ export default function ReferentielsSection({ api, canVote }) {
   const [apercu, setApercu] = useState(null)
   const [md, setMd] = useState(MARKDOWN_VIDE)
   const [exporte, setExporte] = useState('')
+  const idMd = useId()
+  const listeErreurs = useRef(null)
 
   useEffect(() => {
     let vivant = true
@@ -201,6 +210,14 @@ export default function ReferentielsSection({ api, canVote }) {
   const nomsMd = lecture ? lecture.niveaux.map((n) => n.nom) : []
   const niveauMd = nomsMd.includes(md.niveau) ? md.niveau : (nomsMd[0] ?? '')
   const compte = lecture ? apercuAuNiveau(lecture.analyse, Math.max(0, nomsMd.indexOf(niveauMd))) : null
+  const idErreur = (i) => `${idMd}-erreur-${i}`
+  const idResume = `${idMd}-resume`
+  /** Les attributs d'un des trois champs : marqué et relié à son erreur, s'il en a une. */
+  const etatDuChamp = (champ) => {
+    const i = lecture ? lecture.erreurs.findIndex((e) => e.champ === champ) : -1
+    return i < 0 ? {} : { 'aria-invalid': 'true', 'aria-describedby': idErreur(i) }
+  }
+  const bloque = lecture !== null && lecture.document === null
 
   const changerMd = (champ) => (event) => {
     const valeur = event.target.value
@@ -235,7 +252,12 @@ export default function ReferentielsSection({ api, canVote }) {
 
   const importerMarkdown = async (event) => {
     event.preventDefault()
-    if (!lecture?.document || occupe) return
+    if (occupe) return
+    if (!lecture?.document) {
+      // l'import refusé : la raison, au focus
+      listeErreurs.current?.focus()
+      return
+    }
     setOccupe(true)
     setNote(null)
     try {
@@ -510,13 +532,13 @@ export default function ReferentielsSection({ api, canVote }) {
         </label>
         <div className="epi-md-champs">
           <label>
-            Identifiant <input value={md.id} onChange={changerMd('id')} placeholder="mon-referentiel" />
+            Identifiant <input value={md.id} onChange={changerMd('id')} placeholder="mon-referentiel" {...etatDuChamp('id')} />
           </label>
           <label>
-            Libellé <input value={md.label} onChange={changerMd('label')} placeholder="Mon référentiel" />
+            Libellé <input value={md.label} onChange={changerMd('label')} placeholder="Mon référentiel" {...etatDuChamp('label')} />
           </label>
           <label>
-            Version <input value={md.version} onChange={changerMd('version')} placeholder="1.0.0" />
+            Version <input value={md.version} onChange={changerMd('version')} placeholder="1.0.0" {...etatDuChamp('version')} />
           </label>
         </div>
         {lecture && (
@@ -571,9 +593,11 @@ export default function ReferentielsSection({ api, canVote }) {
               </label>
             )}
             {lecture.erreurs.length > 0 && (
-              <ul className="epi-md-erreurs" aria-label="Erreurs du Markdown">
+              <ul className="epi-md-erreurs" aria-label="Erreurs du Markdown" ref={listeErreurs} tabIndex={-1}>
                 {lecture.erreurs.map((e, i) => (
-                  <li key={i}>{aSaLigne(e)}</li>
+                  <li key={i} id={idErreur(i)}>
+                    {aSaLigne(e)}
+                  </li>
                 ))}
               </ul>
             )}
@@ -586,7 +610,17 @@ export default function ReferentielsSection({ api, canVote }) {
             )}
           </div>
         )}
-        <button type="submit" disabled={!lecture?.document || occupe}>
+        {bloque && (
+          <p id={idResume} className="epi-hint">
+            {`${nombre(lecture.erreurs.length, 'erreur empêche', 'erreurs empêchent')} l’import : `
+              + `${lecture.erreurs.length > 1 ? 'elles sont listées' : 'elle est dite'} ci-dessus.`}
+          </p>
+        )}
+        <button
+          type="submit"
+          aria-disabled={!lecture?.document || occupe ? 'true' : undefined}
+          aria-describedby={bloque ? idResume : undefined}
+        >
           Importer le Markdown
         </button>
       </form>

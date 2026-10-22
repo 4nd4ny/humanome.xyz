@@ -67,6 +67,20 @@ export function useFocusTrap(containerRef, active, onEscape) {
   }, [containerRef, active, onEscape])
 }
 
+/**
+ * Pourquoi aucune analyse ne contribue pour cette journée : trois situations
+ * distinctes, et non plus une seule phrase (sprint 4, C7).
+ * @param {object | undefined} day journée sans variante qui contribue
+ * @returns {{fact: string, message: string}} ligne « Analyse » et phrase sous les verdicts
+ */
+export function noContribution(day) {
+  const n = day?.variants?.length ?? 0
+  if (n === 0) return { fact: 'aucune', message: 'Aucune analyse n’est rangée à ce jour.' }
+  if (day.variantChoice === 'examine') return { fact: 'mise « à examiner »', message: 'Journée mise à examiner : elle ne compte pas.' }
+  if (n > 1) return { fact: `${n} analyses à arbitrer`, message: `${n} analyses : choisissez celle qui compte dans le Gestionnaire.` }
+  return { fact: 'à choisir', message: 'L’analyse de ce jour ne compte pas : choisissez-la dans le Gestionnaire.' }
+}
+
 const STATUS_GROUPS = [
   ['observed', 'Compétences observées ce jour'],
   ['not_established', 'Examinées sans trace retenue (présence non établie)'],
@@ -93,6 +107,7 @@ export function DayModal({ date, dataset, refl, params, geometry, activeDates, f
   useFocusTrap(ref, trapActive, onClose)
   const day = dataset.days.find((d) => d.date === date)
   const variant = day ? contributingVariant(day) : null
+  const none = variant ? null : noContribution(day)
   const state = useMemo(() => computeDayState(dataset, date, { ref: refl, params }), [dataset, date, refl, params])
   const layout = useMemo(() => layoutSun(state, refl, geometry, { minThickness: params?.minThicknessPx ?? 2, minArc: params?.minArcPx ?? 2 }), [state, refl, geometry, params])
   const nav = activeDates.includes(date) ? activeDates : [...activeDates, date].sort()
@@ -157,7 +172,7 @@ export function DayModal({ date, dataset, refl, params, geometry, activeDates, f
               </div>
               <div>
                 <dt>Analyse</dt>
-                <dd>{variant ? provenanceLabel(variant) : day?.variants.length ? 'variante à choisir ou « à examiner »' : 'aucune'}</dd>
+                <dd>{variant ? provenanceLabel(variant) : none.fact}</dd>
               </div>
               {day?.tags.length ? (
                 <div>
@@ -219,7 +234,7 @@ export function DayModal({ date, dataset, refl, params, geometry, activeDates, f
                 </details>
               ) : null,
             )}
-            {!variant ? <p className="carto-muted">Pas d’analyse qui contribue pour ce jour.</p> : null}
+            {none ? <p className="carto-muted">{none.message}</p> : null}
             {typeof children === 'function' ? children({ date, state, variant }) : null}
           </div>
         </div>

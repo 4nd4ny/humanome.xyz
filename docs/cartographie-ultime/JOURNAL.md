@@ -373,6 +373,28 @@ passage **approché** est cherché dans la seule journée de la trace (D-39).
 Introuvable : le volet le dit et cite l'extrait du jury (défaut
 d'AuroraCore). Sans portfolio : il invite à l'importer.
 
+**Amendé le 2026-10-22 (sprint 4, T1).** Le lien promis n'existait pas : le
+volet ne comparait la journée affichée qu'à la journée du passage
+(`sourceDate`), jamais à celle de l'analyse qui a retenu la trace. Or une
+analyse peut couvrir plusieurs journées du portfolio : dans la
+démonstration, l'analyse rangée au 10 février retient 175 traces dont le
+passage est écrit du 1er au 9 février, et le volet s'ouvrait sur le 3 février
+sans rien dire du 10. Désormais, quand le volet montre une autre journée que
+celle de l'analyse :
+- la ligne de la trace le dit, « trace de l'analyse du 10 février 2026 »,
+  sauf si cette date est déjà celle que dit « datée du … » (D-66) ; la ligne
+  lue par les lecteurs d'écran aussi (« … Trace de l'analyse du 10 février
+  2026. ») ;
+- un bouton « Ouvrir la journée analysée » ferme le volet et ouvre la modale
+  de cette journée sur la compétence, comme le fait « Pourquoi cette
+  surface ? ». Il vaut aussi pour le cas d'origine (passage retrouvé tel quel
+  dans la feuille d'un autre jour que celui de la trace) : c'est le lien vers
+  la journée de la trace.
+
+L'ordre de recherche ne change pas (`core/passages.js`). Tests :
+`ui/SourceDate.test.jsx`, avec les données fictives `JOUR_MULTI` et
+`PORTFOLIO_MULTI` (`test/fixtures.js`).
+
 ### D-15 — Panneau de détail d'une compétence : traces, verdicts, jury, réponse
 
 - Traces (date, rôle, extrait, « Ouvrir dans le portfolio ») dans l'ordre des
@@ -2565,9 +2587,10 @@ questions (3 et 4) : questions 39 et 40.
     saillant : … ») ; un passage qui n'est qu'une partie de l'extrait, qui le
     dépasse ou qui vient d'une autre feuille reste à part, entier, avec son
     lien ; une journée sans rien d'affichable n'ouvre plus de bloc vide ;
-  - modale du jour : les traces sans leur date (c'est le jour), le verdict
-    sans les chiffres de sa ligne ; une présence établie sans trace retenue
-    le dit sur sa ligne (son groupe dit « présence non établie ») ;
+  - modale du jour : les traces sans leur date (c'est le jour), sauf celle
+    d'un passage écrit un autre jour (amendement du 2026-10-22, plus bas), le
+    verdict sans les chiffres de sa ligne ; une présence établie sans trace
+    retenue le dit sur sa ligne (son groupe dit « présence non établie ») ;
   - rapport imprimé : niveau de preuve dit une fois (précautions de lecture) ;
     en couverture, la légende des pôles sans leurs parts et le soleil sans
     légende d'état (le tableau du profil et les faits les disent) ; la fiche
@@ -2603,6 +2626,30 @@ vérifié — : 18,4 → 17,2 Mo, redéposée sous un nom provisoire puis renomm
 - **au téléphone** (Pixel 7) : aucun défilement horizontal, pièces du Greffier comprises ;
 - seules erreurs : le favicon absent (404, sans lien) et `/api/auth/me` sans compte (401) ;
 - copies de travail effacées : paquet, dossier de déploiement, archives, fichier d'accès.
+
+**Amendé le 2026-10-22 (sprint 4, T1).** « Les traces sans leur date (c'est
+le jour) » reste la règle quand le passage d'une trace est écrit le jour de
+la modale. Mais une analyse peut retenir des passages écrits d'autres jours :
+son document couvre alors plusieurs journées du portfolio, que l'interface
+découpe chacune à part. Taire la date faisait croire que le passage était du
+jour de la modale (dans la démonstration, 175 des 194 traces du 10 février
+sont écrites du 1er au 9). Ces traces disent donc « passage du mar. 3
+févr. » (sans l'année, sauf quand elle change, D-71), et ce libellé ouvre la
+journée du passage. La date vient du détail déjà chargé (`sourceDate`) : rien
+de plus n'est lu (D-67). Dans le panneau d'une compétence, la date de chaque
+trace reste celle de sa journée d'analyse : c'est le volet du portfolio qui
+dit l'écart (D-14 amendée).
+
+Au passage, dans la même modale :
+- une journée qui ne contribue pas dit pourquoi, au lieu de la seule phrase
+  « Pas d'analyse qui contribue pour ce jour. » : « Aucune analyse n'est
+  rangée à ce jour. », « N analyses : choisissez celle qui compte dans le
+  Gestionnaire. » ou « Journée mise à examiner : elle ne compte pas. » ; la
+  ligne « Analyse » de ses faits aussi : aucune, N analyses à arbitrer ou
+  mise « à examiner » ;
+- la provenance dit « run du AAAA-MM-JJ » et non plus « analysée le … » :
+  c'est la date du run, pas celle de la journée analysée ; un run Twin9 se
+  nomme « Twin9 ».
 
 ### D-67 — La démonstration lue à la demande **[décidé]**
 

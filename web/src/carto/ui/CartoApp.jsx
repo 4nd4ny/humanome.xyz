@@ -679,6 +679,7 @@ export default function CartoApp({ route = {}, deps = {}, slots = {}, mode = 'si
                 update={data.update}
                 onOpenTrace={openTrace}
                 onOpenPassage={openPassage}
+                onOpenDay={openDay}
               />
             )}
           >
@@ -710,6 +711,11 @@ export default function CartoApp({ route = {}, deps = {}, slots = {}, mode = 'si
             reducedMotion={reducedMotion}
             onClose={closeReader}
             onIndex={(index) => dispatch({ type: 'readerIndex', index })}
+            onOpenDay={(d, code) => {
+              // Comme « Pourquoi cette surface ? » : le volet se ferme, la journée s'ouvre.
+              closeReader()
+              openDay(d, code)
+            }}
           />
         ) : null}
       </div>

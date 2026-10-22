@@ -2010,6 +2010,9 @@ kbd {
   line-height: 1.4;
   color: var(--ink-faint);
 }
+.carto-reader-note .carto-link-btn {
+  margin-left: 0;
+}
 .carto-reader-occ {
   display: flex;
   align-items: center;

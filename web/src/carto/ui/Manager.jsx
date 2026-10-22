@@ -499,7 +499,8 @@ export function provenanceLabel(v) {
   if (p.run) parts.push(p.run)
   if (p.model) parts.push(p.model)
   if (p.prompt) parts.push(p.prompt)
-  if (p.analysedAt) parts.push(`analysée le ${String(p.analysedAt).slice(0, 10)}`)
+  // La date du run, et non celle de la journée analysée (sprint 4, C10).
+  if (p.analysedAt) parts.push(`run du ${String(p.analysedAt).slice(0, 10)}`)
   parts.push(`${v.verdicts.length} verdicts`)
   return parts.join(' — ')
 }
@@ -511,6 +512,7 @@ export const SOURCE_LABELS = {
   'merge-v2': 'Merge v2',
   'site-merge': 'fusion du site',
   'v3-master': 'master V3',
+  twin9: 'Twin9',
   archive: 'archive',
 }
 

@@ -44,17 +44,26 @@ réponse. Suivent la PR B (adaptateurs JS, export Twin6) et, A fusionnée, la PR
 ## Fait
 
 - 2026-10-22 — **Sprint 2, lot D : plus rien de Python dans humanome.xyz, et la production le
-  vérifie (branche `chore/sans-python`, non fusionnée).** Le Sprint 2 (`TODO_LIST.md`) demandait
-  s'il restait du Python, s'il servait, et pourquoi il n'était pas converti. humanome.xyz n'en
-  contenait déjà plus aucun fichier ; tout le Python est dans `Twin_v9` : la v9.8, étalon de
-  l'oracle, gelée au tag `v9.8-reference` (décision 1 du Sprint 2, prise par délégation), et
-  documentée par les lots A à C (README, tag, `ReferenceTest`), fusionnés dans `Twin_v9`. Ce lot
-  nettoie ce qui restait ici. Deux commits ; `Twin_v9` n'est pas modifié.
+  vérifie (branche `chore/sans-python`, non fusionnée).** Le Sprint 2 (liste de travail de
+  Christian, hors dépôt) demandait s'il restait du Python, s'il servait, et pourquoi il n'était pas
+  converti. humanome.xyz n'en contenait déjà plus aucun fichier ; tout le Python est dans
+  `Twin_v9` : la v9.8, étalon de l'oracle, gelée au tag `v9.8-reference` (décision 1 du Sprint 2,
+  prise par délégation). Les lots A à C l'ont documenté dans `Twin_v9` (README, tag,
+  `ReferenceTest`), où ils sont fusionnés ; la moitié humanome.xyz du lot B, l'amendement de
+  l'ADR-011, manquait : ce lot la fait, et nettoie ce qui restait ici. Six commits, dont quatre
+  pour la revue ; `Twin_v9` n'est pas modifié.
+  - **ADR-011 §1 amendé** (et sa ligne Statut), sans rien écrire au-dessus de « ## Statut », où
+    l'ADR-012 de `feat/twin9-multi-fournisseur` pose son bandeau (`git merge-tree` avec cette
+    branche : aucun conflit). L'amendement remplace « si elle évolue, l'oracle se régénère » : la
+    v9.8 est gelée au tag `v9.8-reference` ; l'algorithme évolue dans le moteur PHP, chaque
+    changement étant un écart voulu listé dans `OracleTest`, avec son test ; l'oracle n'est
+    régénéré que si la v9.8 change, ce que `ReferenceTest` détecte.
   - **Documentation.** `docs/cahier-des-charges.md` §5 (« Système de prompts ») et §9 : une
     note datée, *ajoutée* sans rien réécrire, puisque le cahier est la spécification de
-    Christian. Les prompts ont été convertis : en JavaScript en juillet 2026 (`engine/`, P5 ;
-    Twin9, ADR-010), puis Twin9 en PHP (ADR-011) ; la v9.8 Python reste l'étalon, dans
-    `Twin_v9`, hors production. `docs/plan-prompts.md` (prérequis) : `assets-existants/prompts-python/`
+    Christian. Seul Twin9 a été converti : le pipeline Python de cartographie n'ayant jamais été
+    livré, `engine/` (P5, juillet 2026) a été rétro-conçu depuis les artefacts ; Twin9 a été
+    porté depuis sa v9.8 Python, en JavaScript (ADR-010), puis en PHP (ADR-011) ; la v9.8 reste
+    l'étalon, dans `Twin_v9`, hors production. `docs/plan-prompts.md` (prérequis) : `assets-existants/prompts-python/`
     n'a jamais été versé. Il manque à l'inventaire de P0, au dossier `assets-existants/` du poste
     et aux 416 commits accessibles de toutes les branches. `CLAUDE.md`, contraintes d'hébergement :
     « Pas de Python, ni en production ni dans la CI ».
@@ -72,7 +81,7 @@ réponse. Suivent la PR B (adaptateurs JS, export Twin6) et, A fusionnée, la PR
     release (sources, moteur Twin9, `scripts/data`, `vendor/`) fait échouer la préparation,
     code 1. Le script nomme les fichiers et supprime `build/api-release` : `deploy.mjs api`
     refuse alors de déployer. UC-SYS-02 : E13, F26 (le script lancé sur une copie jetable, avec de faux
-    `node`, `composer` et `git`) ; `docs/deploiement.md`.
+    `node`, `composer` et `git`) ; UC-SYS-04, étape 7 et Limites ; `docs/deploiement.md`.
   - Vérifié :
     - **Suites.** Front 2 711 tests verts (259 fichiers, `TWIN_V9_DIR` défini). Sur `main`, la même
       suite en comptait 2 794 : les 83 tests des exports retirés partent. Dans `src/lib/twin9` :
@@ -89,16 +98,24 @@ réponse. Suivent la PR B (adaptateurs JS, export Twin6) et, A fusionnée, la PR
       aucun Python.
     - **`check-publiable`** : OK (crochet de pré-commit).
     - **PHPUnit** : non lancé, le lot ne touche aucun PHP.
+    - **Revue.** Quatre constats, tous de documentation : l'ADR-011, la note du cahier sur
+      `engine/`, l'étape 7 d'UC-SYS-04, et des renvois de cette entrée à des documents hors
+      dépôt. Corrigés par des commits `docs:` : aucun test ne peut échouer avant une
+      correction de texte. Les suites ci-dessus ont été relancées après, mêmes nombres.
   - Non vérifié : le contenu réellement déployé sur l'OVH (pas d'accès FTP) ; F26 sous Linux
     (CI), lancé seulement sur le Mac.
-  - Laissé à Christian : les questions 2 et 3 du Sprint 2 (§ 9) :
+  - Laissé à Christian, deux questions du Sprint 2 :
     - garder ou supprimer `bench9.py`, `tests/tests.py` et `genere_protocole.py` dans `Twin_v9` ;
     - l'outil local `--donnees-reelles` sert-il encore hors de la plateforme ?
   - Laissé tel quel :
     - `docs/plan-prompts.md:266` (le prompt de P5) et `docs/inventaire-assets.md:84`, des
       journaux de construction, citent encore `assets-existants/prompts-python/` ;
     - le compteur d'UC-SYS-02 dans `docs/cas-utilisation/README.md` ne compte pas F26, puisque
-      la PR #25 répare ce tableau.
+      la PR #25 répare ce tableau ;
+    - le corps du commit `5f417e0` dit encore que les prompts ont été convertis (`engine/`,
+      P5) : l'historique n'est pas réécrit. Écrits avant ce lot, l'ADR-001 (« portage JavaScript des
+      prompts Python ») et l'en-tête d'UC-SYS-04 (« système de prompts converti en JavaScript »)
+      gardent la même formule.
 
 - 2026-10-22 — **Twin9, P0 : un run garde sa configuration et son exécution, une sortie tronquée
   est une panne, la voie directe ne rejoue plus une passe à chaque réponse (branche

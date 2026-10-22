@@ -30,11 +30,17 @@
 // « # » (quatre font du code, donc du texte), et une suite finale de « # »
 // précédée d'un blanc (« ## A1 — Nom ## ») n'est pas du nom.
 //
-// Dans une description, une ligne qui se lirait comme un titre (« # … ») ou un
-// séparateur (« --- ») s'écrit précédée d'une barre oblique inverse (« \# … »),
+// Dans une description, une ligne qui se lirait comme un titre (« # … »), un
+// séparateur (« --- ») ou un commentaire (« <!-- … », celui de la couleur sous
+// le titre d'un pôle) s'écrit précédée d'une barre oblique inverse (« \# … »),
 // que la lecture retire ; un nom qui finit par « # » précédé d'un blanc
 // (« Langage C # ») s'écrit « Langage C \# », dont la lecture retire la barre.
-// L'aller-retour est exact pour tout texte.
+// L'aller-retour est exact pour un texte composé (NFC), aux blancs près qui
+// entourent une description ou la provenance (la fiche du moteur les retire).
+// Ce que le Markdown ne peut pas écrire — un nom sur plusieurs lignes ou
+// entouré de blancs, un nom de niveau qui contient une virgule ou « --> », une
+// provenance qui contient « --> » — est refusé à l'écriture (ErreurMarkdown),
+// nommé, jamais perdu en silence.
 //
 // Le motif de chaque niveau se DÉDUIT de ses codes, le plus étroit compatible
 // (deduireMotif) ; la page l'affiche et le laisse modifier. Le moteur ne s'en
@@ -90,8 +96,10 @@ const POLE_RE = /^P[ôo]le[\t\p{Zs}]+(\d+)[\t\p{Zs}]+[—–-][\t\p{Zs}]+(.+)$/i
 const NOEUD_RE = /^(\S+)[\t\p{Zs}]+[—–-][\t\p{Zs}]+(.+)$/u
 const SEPARATEUR_RE = /^ {0,3}-{3,}[\t\p{Zs}]*$/u
 /** Une ligne de description qui se lirait comme un titre ou un séparateur, échappée ou non. */
-const ECHAPPABLE_RE = /^\\*(?: {0,3}#{1,6}(?:[\t\p{Zs}]|$)| {0,3}-{3,}[\t\p{Zs}]*$)/u
-const ECHAPPEE_RE = /^\\+(?: {0,3}#{1,6}(?:[\t\p{Zs}]|$)| {0,3}-{3,}[\t\p{Zs}]*$)/u
+const ECHAPPABLE_RE = /^\\*(?: {0,3}#{1,6}(?:[\t\p{Zs}]|$)| {0,3}-{3,}[\t\p{Zs}]*$|<!--)/u
+const ECHAPPEE_RE = /^\\+(?: {0,3}#{1,6}(?:[\t\p{Zs}]|$)| {0,3}-{3,}[\t\p{Zs}]*$|<!--)/u
+/** Ce qu'un nom de niveau ne contient pas : le commentaire « niveaux » les sépare par des virgules. */
+const NOM_DE_NIVEAU_INTERDIT_RE = /,|-->/
 /** Le caractère de remplacement d'un octet que le décodage UTF-8 n'a pas lu. */
 const ILLISIBLE = '\uFFFD'
 const COULEUR_COMMENTAIRE_RE = /^<!--\s*couleur\s*:\s*(.*?)\s*-->$/iu
@@ -481,6 +489,9 @@ export function referentielDepuisMarkdown(texte, champs = {}) {
   }))
   niveaux.forEach((niveau, k) => {
     if (niveau.nom === '') erreur(`Niveau ${k + 1} : nom requis`)
+    else if (NOM_DE_NIVEAU_INTERDIT_RE.test(niveau.nom)) {
+      erreur(`Niveau ${k + 1} : un nom de niveau ne contient ni virgule ni « --> » (le commentaire « niveaux » sépare les noms par des virgules)`)
+    }
     else if (niveaux.findIndex((autre) => autre.nom === niveau.nom) < k) erreur(`Niveau ${k + 1} : un autre niveau s’appelle déjà « ${niveau.nom} »`)
     const { regex, erreur: illisible } = regexDuMotif(niveau.motif)
     if (illisible !== undefined) {
@@ -532,11 +543,23 @@ const profondeurDe = (noeud) =>
 /** Un nom qui se lirait avec des « # » de fermeture, échappé. */
 const echapperNom = (nom) => String(nom).replace(DIESES_FINAUX_RE, '$1\\$2')
 
-/** Le nœud (pôle, compétence, élément) : son nom, sa description et ceux de ses éléments échappés. */
+/**
+ * Le nœud (pôle, compétence, élément) : son nom, sa description et ceux de
+ * ses éléments échappés. La description est tronquée avant d'être échappée :
+ * la fiche la tronque, et c'est la ligne qu'elle écrira qui doit l'être.
+ *
+ * @throws {ErreurMarkdown} un nom qu'un titre n'écrit pas
+ */
 function echappe(noeud) {
   const copie = { ...noeud }
-  if (typeof noeud.nom === 'string') copie.nom = echapperNom(noeud.nom)
-  if (typeof noeud.description === 'string') copie.description = echapper(noeud.description)
+  if (typeof noeud.nom === 'string') {
+    if (/[\r\n]/.test(noeud.nom) || noeud.nom !== noeud.nom.trim()) {
+      const qui = typeof noeud.code === 'string' ? `de ${noeud.code}` : `du pôle ${noeud.num}`
+      throw new ErreurMarkdown(`Le nom ${qui} (« ${noeud.nom} ») ne s’écrit pas dans un titre Markdown : ni saut de ligne, ni blanc autour`)
+    }
+    copie.nom = echapperNom(noeud.nom)
+  }
+  if (typeof noeud.description === 'string') copie.description = echapper(noeud.description.trim())
   if (Array.isArray(noeud.elements)) copie.elements = noeud.elements.map(echappe)
   return copie
 }
@@ -550,7 +573,7 @@ function echappe(noeud) {
  *
  * @param {object} document
  * @returns {string}
- * @throws {ErreurMarkdown} un élément plus fin que « ###### »
+ * @throws {ErreurMarkdown} un élément plus fin que « ###### », un nom ou une provenance que le Markdown n'écrit pas
  */
 export function referentielEnMarkdown(document) {
   const competences = Array.isArray(document?.competences) ? document.competences : []
@@ -560,10 +583,20 @@ export function referentielEnMarkdown(document) {
   }
   const fiches = fichesDuReferentiel({ poles: poles.map(echappe), competences: competences.map(echappe) })
   const tete = []
-  if (typeof document.source === 'string' && document.source.trim() !== '') {
-    tete.push(`<!-- source : ${document.source.trim().replace(/-->/g, '-- >')} -->`)
+  if (typeof document.source === 'string') {
+    if (document.source.includes('-->')) {
+      throw new ErreurMarkdown('La provenance contient « --> », qui fermerait son commentaire : le Markdown ne l’écrit pas')
+    }
+    // vide, elle s'écrit aussi : relue sans commentaire, elle serait celle par défaut
+    const source = document.source.trim()
+    tete.push(source === '' ? '<!-- source : -->' : `<!-- source : ${source} -->`)
   }
   const noms = (Array.isArray(document.niveaux) ? document.niveaux : []).map((n) => String(n?.nom ?? ''))
+  noms.forEach((nom, k) => {
+    if (nom === '' || nom !== nom.trim() || /[\r\n]/.test(nom) || NOM_DE_NIVEAU_INTERDIT_RE.test(nom)) {
+      throw new ErreurMarkdown(`Le nom du niveau ${k + 1} (« ${nom} ») ne s’écrit pas en Markdown : ni virgule, ni « --> », ni saut de ligne, ni blanc autour`)
+    }
+  })
   if (noms.some((nom, k) => nom !== nomParDefaut(k))) tete.push(`<!-- niveaux : ${noms.join(', ')} -->`)
   const corps = poles.map((pole) => {
     const fiche = fiches[String(pole.num)]

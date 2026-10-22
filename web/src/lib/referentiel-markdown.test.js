@@ -283,6 +283,51 @@ describe('UC-EPI-05 — un référentiel en Markdown', () => {
     expect(referentielEnMarkdown(lireTexte(texte).document)).toBe(texte)
   })
 
+  it('UC-EPI-05-U25 — l’aller-retour d’un publié : une description qui commence par des blancs puis « # » ou par un commentaire, une provenance vide reviennent ; ce que le Markdown ne peut écrire est refusé, nommé', () => {
+    const base = lireTexte('# Pôle 1 — A\n\n## A1 — x\n\n## A2 — y\n').document
+    const doc = structuredClone(base)
+    doc.competences[0].description = '  # pas un titre\nsuite'
+    doc.poles[0].description = '<!-- couleur : #123456 --> premier'
+    doc.competences[1].description = '<!-- un commentaire -->'
+    doc.source = ''
+    const texte = referentielEnMarkdown(doc)
+    expect(texte.startsWith('<!-- source : -->\n\n# Pôle 1 — A\n\n\\<!-- couleur : #123456 --> premier\n')).toBe(true)
+    const relu = lireTexte(texte)
+    expect(relu.erreurs).toEqual([])
+    // les blancs en tête d'une description ne s'écrivent pas (la fiche la tronque), le reste revient
+    const attendu = structuredClone(doc)
+    attendu.competences[0].description = '# pas un titre\nsuite'
+    expect(relu.document).toEqual(attendu)
+    expect(referentielEnMarkdown(relu.document)).toBe(texte)
+    // la couleur du pôle, puis une description qui commence comme elle
+    const colore = structuredClone(attendu)
+    colore.poles[0].couleur = '#2563eb'
+    expect(lireTexte(referentielEnMarkdown(colore)).document).toEqual(colore)
+
+    // ce que le Markdown ne peut écrire : refusé à l'export, nommé, plutôt que perdu en silence
+    const exporter = (modifier) => {
+      const d = structuredClone(base)
+      modifier(d)
+      return () => referentielEnMarkdown(d)
+    }
+    expect(exporter((d) => { d.source = 'a --> b' })).toThrow(
+      new ErreurMarkdown('La provenance contient « --> », qui fermerait son commentaire : le Markdown ne l’écrit pas'),
+    )
+    expect(exporter((d) => { d.niveaux = [{ nom: 'capacité, au sens large', motif: 'A\\d' }] })).toThrow(
+      new ErreurMarkdown('Le nom du niveau 1 (« capacité, au sens large ») ne s’écrit pas en Markdown : ni virgule, ni « --> », ni saut de ligne, ni blanc autour'),
+    )
+    expect(exporter((d) => { d.competences[0].nom = 'ligne 1\nligne 2' })).toThrow(
+      new ErreurMarkdown('Le nom de A1 (« ligne 1\nligne 2 ») ne s’écrit pas dans un titre Markdown : ni saut de ligne, ni blanc autour'),
+    )
+    expect(exporter((d) => { d.poles[0].nom = ' A' })).toThrow(
+      new ErreurMarkdown('Le nom du pôle 1 («  A ») ne s’écrit pas dans un titre Markdown : ni saut de ligne, ni blanc autour'),
+    )
+    // un nom de niveau saisi ne prend pas de virgule : le commentaire « niveaux » les sépare
+    expect(enLignes(lireTexte('# Pôle 1 — A\n## A1 — x', { ...CHAMPS, niveaux: [{ nom: 'capacité, large' }] }).erreurs)).toEqual([
+      'Niveau 1 : un nom de niveau ne contient ni virgule ni « --> » (le commentaire « niveaux » sépare les noms par des virgules)',
+    ])
+  })
+
   it('UC-EPI-05-U19 — BOM, fins de ligne CRLF, tirets, séparateurs, lignes échappées : le même document', () => {
     const lf = '# Pôle 1 — A · Pôle\n\nLe pôle.\n\n## A1 — Une\n\nLa première.\n\n---\n\n## A2 — Deux\n'
     const attendu = lireTexte(lf).document

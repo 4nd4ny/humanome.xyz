@@ -9,7 +9,8 @@
     "attestation": null,
     "configuration": {
       "schema": "twin9-configuration/1",
-      "empreinte": "44ebff476ea997e8",
+      "empreinte": "ad519cee3a0b8405",
+      "sel": "0f1e2d3c4b5a69788796a5b4c3d2e1f0",
       "lance_at": "2026-01-05 09:00:00",
       "moteur": {
         "commit": "abc1234",

@@ -1257,8 +1257,8 @@ refusée ; fixture inventée `schemas/fixtures/twin9-configuration-exemple.json`
   verrou d'admission, après que l'admission a fixé les journées (`jours` est
   celui que lit le moteur) ; une reprise ne la change pas. Construite champ
   par champ (liste blanche), elle porte :
-  - `schema` (`twin9-configuration/1`), `empreinte`, `lance_at` (l'horloge du
-    run) ;
+  - `schema` (`twin9-configuration/1`), `empreinte`, `sel` (16 octets tirés
+    au hasard au lancement, en hexadécimal), `lance_at` (l'horloge du run) ;
   - `moteur` : `commit`, `protocole` (`Journee::VERSION_PROTOCOLE`),
     `personas` (`{version, empreinte}` de la banque des jurés), `scan`
     (`Arpenteur::VERSION_SCAN`) — lus par l'appelant (`Lancement`), chacun
@@ -1294,9 +1294,14 @@ refusée ; fixture inventée `schemas/fixtures/twin9-configuration-exemple.json`
     relevé.
 
   Son `empreinte` vaut `substr(sha256(json(canonique(bloc sans empreinte ni
-  lance_at))), 0, 16)`, clés triées à toute profondeur, `1.0` gardé flottant :
-  relue depuis ce que garde le run, elle est la même. Le suivi n'en sert que
-  cette empreinte (`configuration_empreinte`, §8.4).
+  lance_at))), 0, 16)`, clés triées à toute profondeur, `1.0` gardé flottant,
+  son `sel` compris : relue depuis ce que garde le run, elle est la même. Le
+  suivi n'en sert que cette empreinte (`configuration_empreinte`, §8.4). Le
+  **sel** n'est lu que du propriétaire : un cartographe lié lit la même
+  empreinte, mais sans ce que le bloc lui cache (`prix`, la clé, les
+  plafonds), qui tient en peu de valeurs (deux clés, une marge au centième,
+  des montants ronds, un relevé daté de la veille) ; sans le sel, il les
+  retrouverait par essais, en recalculant l'empreinte de chaque candidat.
 - **L'exécution** (`Twin9\RunExecution`) dit comment le run s'est déroulé :
   `schema` (`twin9-execution/1`), `source` (`fige` : figée par `terminer()`,
   avant que le journal ne parte ; `journal` : calculée à la demande depuis le
@@ -1331,7 +1336,8 @@ refusée ; fixture inventée `schemas/fixtures/twin9-configuration-exemple.json`
   cartographe lié (visibilité `cartographe`) les lit sans ce que paie le
   propriétaire ni comment : ni `prix`, ni `execution_prevue.plafonds`, ni
   `execution_prevue.cle`, ni aucun `cout_microusd`, ni le `budget_usd` des
-  reprises. L'administrateur n'en voit rien (§8.4 : des compteurs).
+  reprises ; ni le `sel` de l'empreinte. L'administrateur n'en voit rien
+  (§8.4 : des compteurs).
 - **La page du run** (`web/src/views/twin9/ConfigurationDuRun.jsx`) : le
   suivi n'en portant que l'empreinte, « Configuration » lit les deux blocs
   dans les résultats quand on l'ouvre, et de nouveau quand le statut du run
@@ -1350,9 +1356,9 @@ refusée ; fixture inventée `schemas/fixtures/twin9-configuration-exemple.json`
   réglage), referentiel {id, version, label, empreinte}, gabarits {jeu}}` et
   `execution {statut, source, partiel, passes, appels {total, repondus,
   pannes, tronques, refus}, par_fournisseur, par_voie {appels, pannes,
-  tronques}}`. Jamais `prix`, `execution_prevue` (clé, plafonds), un coût,
-  des jetons, les reprises, l'admission de l'attestation ni l'empreinte du
-  jeu de gabarits. Chaque journée du run porte `provenance.model`
+  tronques}}`. Jamais `prix`, `execution_prevue` (clé, plafonds), le `sel`,
+  un coût, des jetons, les reprises, l'admission de l'attestation ni
+  l'empreinte du jeu de gabarits. Chaque journée du run porte `provenance.model`
   (« profond: …, rapide: …, lecteurs: … », le fournisseur devant un modèle
   tiers), `provenance.prompt` (« gabarits <jeu> »), `configurationRef` et
   `configuration {empreinte, fournisseurs, voies}` ; `variantId` et `digest`

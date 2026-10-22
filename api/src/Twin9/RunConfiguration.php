@@ -12,6 +12,11 @@ use stdClass;
  * was launched with, built once at launch and never changed after — a
  * resumption included (twin9_runs.configuration, migration 031).
  *
+ * Its fingerprint covers a salt drawn at launch, which only its owner
+ * reads: a cartographe they linked reads the fingerprint without what the
+ * block hides from them (the prices, the key, the caps), and without the
+ * salt could find those again by trying candidates — they are few.
+ *
  * A whitelist, field by field: the engine's versions; the profile, its
  * settings' fingerprint and its evaluations' signature; how it was to run
  * (the lane of Anthropic's calls, the key, the parallelism, the caps, the
@@ -30,6 +35,9 @@ final class RunConfiguration
 {
     /** The block's schema, which a change of its shape changes (schemas/twin9-run.schema.json). */
     public const SCHEMA = 'twin9-configuration/1';
+
+    /** The salt of a block: 16 random bytes, in hex, drawn by the caller at launch (Lancement). */
+    public const SEL = '/^[0-9a-f]{32}$/';
 
     /** The share of the price a call in a batch costs (the Message Batches API's, T8). */
     public const REMISE_LOTS = 0.5;
@@ -51,12 +59,16 @@ final class RunConfiguration
      * @param array<string, mixed>|null $releve the last reading of Anthropic's prices (TarifsAnthropic::etat())
      * @param array{commit?: string|null, protocole?: string|null, personas?: array{version: string, empreinte: string}|null,
      *              scan?: string|null} $versions the engine's, read by the caller; null when the engine has none
+     * @param string $sel the block's salt (SEL), drawn by the caller: bin2hex(random_bytes(16))
      * @return array<string, mixed>
      */
     public static function depuis(stdClass $profil, ?int $profilId, string $nom, stdClass $moteur, array $jeu,
                                   array $referentiel, string $empreinteReglages, array $grille, ?array $releve,
-                                  array $versions, \DateTimeImmutable $horloge): array
+                                  array $versions, \DateTimeImmutable $horloge, string $sel): array
     {
+        if (preg_match(self::SEL, $sel) !== 1) {
+            throw new \InvalidArgumentException('Sel de configuration invalide');
+        }
         $reglages = new CallSettings($profil);
         $combinaisons = $reglages->combinaisons();
         $empreinteJeu = Lancement::empreinte($jeu['gabarits']);
@@ -95,6 +107,7 @@ final class RunConfiguration
         $bloc = [
             'schema' => self::SCHEMA,
             'empreinte' => '',
+            'sel' => $sel,
             'lance_at' => $horloge->format('Y-m-d H:i:s'),
             'moteur' => [
                 'commit' => self::texte($versions['commit'] ?? null),
@@ -153,8 +166,9 @@ final class RunConfiguration
 
     /**
      * The block's fingerprint: of all of it but its fingerprint and its
-     * launch's date, keys sorted at every depth, its numbers as written (1.0
-     * stays a float) — the same when read again from what the run keeps.
+     * launch's date — its salt included —, keys sorted at every depth, its
+     * numbers as written (1.0 stays a float) — the same when read again from
+     * what the run keeps.
      *
      * @param array<string, mixed>|stdClass $bloc
      */
@@ -169,12 +183,13 @@ final class RunConfiguration
     /**
      * The block as a cartographe the run's owner linked reads it (its
      * results, visibility « cartographe »): without what its owner pays nor
-     * how — the prices, the caps, the key.
+     * how — the prices, the caps, the key —, nor its salt, without which its
+     * fingerprint, the same as its owner's, tells nothing of them.
      */
     public static function pourCartographe(stdClass $bloc): stdClass
     {
         $copie = self::copie($bloc);
-        unset($copie->prix);
+        unset($copie->prix, $copie->sel);
         if (($copie->execution_prevue ?? null) instanceof stdClass) {
             unset($copie->execution_prevue->plafonds, $copie->execution_prevue->cle);
         }

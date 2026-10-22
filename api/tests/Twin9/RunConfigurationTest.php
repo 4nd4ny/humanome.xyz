@@ -34,6 +34,9 @@ final class RunConfigurationTest extends TestCase
         'exemple/lecture' => 'Lis {$TEXTE}',
     ];
 
+    /** An invented salt, as Lancement draws one. */
+    private const SEL = '00112233445566778899aabbccddeeff';
+
     /** An invented fiche of the invented referential. */
     private const FICHE = 'Fiche FICTIVE de la capacité A1, jamais recopiée.';
 
@@ -54,10 +57,11 @@ final class RunConfigurationTest extends TestCase
         $bloc = self::bloc($profil);
         $json = json_encode($bloc, JSON_THROW_ON_ERROR | JSON_UNESCAPED_UNICODE | JSON_PRESERVE_ZERO_FRACTION);
 
-        self::assertSame(['schema', 'empreinte', 'lance_at', 'moteur', 'profil', 'execution_prevue', 'fournisseurs',
-                          'appels', 'college', 'backends', 'algorithme', 'referentiel', 'gabarits', 'prix'],
-            array_keys($bloc));
+        self::assertSame(['schema', 'empreinte', 'sel', 'lance_at', 'moteur', 'profil', 'execution_prevue',
+                          'fournisseurs', 'appels', 'college', 'backends', 'algorithme', 'referentiel', 'gabarits',
+                          'prix'], array_keys($bloc));
         self::assertSame('twin9-configuration/1', $bloc['schema']);
+        self::assertSame(self::SEL, $bloc['sel']);
         self::assertSame('2026-01-05 09:00:00', $bloc['lance_at']);
         // each call's settings as it is sent: CallSettings::resume(), its tables objects, which says every one
         // parEtape() gives
@@ -146,6 +150,10 @@ final class RunConfigurationTest extends TestCase
         $direct = self::v98();
         $direct->voie = 'directe';
         self::assertNotSame($bloc['empreinte'], self::bloc($direct)['empreinte'], 'la voie y entre, contrairement aux réglages');
+        self::assertNotSame($bloc['empreinte'], self::bloc(self::v98(), sel: str_repeat('ab', 16))['empreinte'],
+            'son sel y entre');
+        $this->expectException(\InvalidArgumentException::class);
+        self::bloc(self::v98(), sel: 'pas-un-sel');
     }
 
     /**
@@ -181,17 +189,33 @@ final class RunConfigurationTest extends TestCase
                 'personas' => ['version' => 'personas-exemple', 'empreinte' => '1a2b'], 'scan' => 7])['moteur']);
     }
 
-    /** A cartographe reads neither the prices, nor the caps, nor the key. */
+    /**
+     * A cartographe reads neither the prices, nor the caps, nor the key, nor
+     * the salt; the fingerprint they read, their owner's, does not let them
+     * find those again by trying candidates: what they read, the hidden
+     * fields guessed right, still misses the salt.
+     */
     public function testACartographeReadsNeitherPricesNorCapsNorTheKey(): void
     {
         $bloc = json_decode(json_encode(self::bloc(self::v98()), JSON_PRESERVE_ZERO_FRACTION), false);
         $lu = RunConfiguration::pourCartographe($bloc);
 
         self::assertObjectNotHasProperty('prix', $lu);
+        self::assertObjectNotHasProperty('sel', $lu);
         self::assertSame(['voie_anthropic', 'parallelisme', 'jours', 'rescan', 'memoire'],
             array_keys((array) $lu->execution_prevue));
         self::assertObjectHasProperty('prix', $bloc, 'le bloc du propriétaire reste entier');
+        self::assertSame($bloc->empreinte, $lu->empreinte, 'la même empreinte que son propriétaire');
         self::assertSame([], self::valider($lu));
+
+        // a search that guessed every hidden field right: the margin's prices, the key, the caps
+        $devine = json_decode(json_encode($lu, JSON_PRESERVE_ZERO_FRACTION), false);
+        $devine->prix = $bloc->prix;
+        $devine->execution_prevue->cle = $bloc->execution_prevue->cle;
+        $devine->execution_prevue->plafonds = $bloc->execution_prevue->plafonds;
+        self::assertNotSame($bloc->empreinte, RunConfiguration::empreinte($devine), 'sans le sel, rien ne se vérifie');
+        $devine->sel = $bloc->sel;
+        self::assertSame($bloc->empreinte, RunConfiguration::empreinte($devine), 'le sel seul lui manquait');
     }
 
     /**
@@ -291,14 +315,15 @@ final class RunConfigurationTest extends TestCase
     }
 
     /** @param array<string, mixed> $versions */
-    private static function bloc(stdClass $profil, string $horloge = '2026-01-05 09:00:00', array $versions = []): array
+    private static function bloc(stdClass $profil, string $horloge = '2026-01-05 09:00:00', array $versions = [],
+                                 string $sel = self::SEL): array
     {
         return RunConfiguration::depuis($profil, 12, 'Mon profil', MoteurReglages::depuis($profil, self::referentiel()),
             ['gabarits' => self::GABARITS, 'versions' => ['exemple/lecture' => 1, 'exemple/etape' => 2]],
             self::referentiel(), 'aaaabbbbccccdddd', self::GRILLE,
             ['jour' => '2026-01-05', 'statut' => 'echec', 'erreur' => 'texte du fournisseur', 'releve_at' => 1,
              'source' => 'https://prix.exemple.test', 'changements' => ['claude-inutilise' => 'x']],
-            $versions, new \DateTimeImmutable($horloge));
+            $versions, new \DateTimeImmutable($horloge), $sel);
     }
 
     /** The v9.8 profile, its referential the invented one, frozen at its version as a launch freezes it. */

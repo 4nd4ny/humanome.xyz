@@ -219,10 +219,10 @@ final class RunsTest extends CartographeTestCase
         self::assertSame(200, $lu->getStatusCode());
         self::assertSame('cartographe', self::json($lu)['lecteur']);
         // P0-1: the run's configuration and execution, without what its owner pays nor how — no price, cost, cap,
-        // resumption's budget nor key —; its owner reads them whole
+        // resumption's budget nor key —, nor the salt of its fingerprint; its owner reads them whole
         $sien = json_encode(self::json($this->as_($alice, 'GET', "/api/twin9/runs/$id/resultats"))['run']);
         $duCarto = json_encode(self::json($lu)['run']);
-        foreach (['"prix":', '"plafonds":', '"cle":', '"cout_microusd":', '"budget_usd":'] as $champ) {
+        foreach (['"prix":', '"plafonds":', '"cle":', '"cout_microusd":', '"budget_usd":', '"sel":'] as $champ) {
             self::assertStringContainsString($champ, $sien, 'le propriétaire : ' . $champ);
             self::assertStringNotContainsString($champ, $duCarto, 'le cartographe : ' . $champ);
         }
@@ -293,6 +293,7 @@ final class RunsTest extends CartographeTestCase
 
         self::assertSame($configuration->empreinte, $lance['configuration_empreinte']);
         self::assertSame($configuration->empreinte, RunConfiguration::empreinte($configuration), 'relue, la même');
+        self::assertMatchesRegularExpression(RunConfiguration::SEL, $configuration->sel, 'son sel, tiré au lancement');
         self::assertArrayNotHasKey('configuration', $lance, 'le suivi n’en sert que l’empreinte');
         self::assertArrayNotHasKey('execution', $lance);
         $copie = $repo->charger($id);

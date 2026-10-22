@@ -117,12 +117,17 @@
     "configuration": {
       "type": "object",
       "additionalProperties": false,
-      "description": "Configuration d'un run Twin9 (Twin9\\RunConfiguration, P0-1) : écrite au lancement, jamais modifiée, une reprise comprise. « empreinte » hache tout le bloc sauf elle-même et « lance_at » (clés triées, 1.0 gardé flottant). « prix » (tels que facturés, marge comprise avec la clé de l'instance), « execution_prevue.plafonds » et « execution_prevue.cle » manquent pour un cartographe lié.",
+      "description": "Configuration d'un run Twin9 (Twin9\\RunConfiguration, P0-1) : écrite au lancement, jamais modifiée, une reprise comprise. « empreinte » hache tout le bloc sauf elle-même et « lance_at » (clés triées, 1.0 gardé flottant), son « sel » compris. « sel », « prix » (tels que facturés, marge comprise avec la clé de l'instance), « execution_prevue.plafonds » et « execution_prevue.cle » manquent pour un cartographe lié.",
       "required": ["schema", "empreinte", "lance_at", "moteur", "profil", "execution_prevue", "fournisseurs", "appels",
                    "college", "backends", "algorithme", "referentiel", "gabarits"],
       "properties": {
         "schema": { "const": "twin9-configuration/1" },
         "empreinte": { "$ref": "#/$defs/empreinte" },
+        "sel": {
+          "type": "string",
+          "pattern": "^[0-9a-f]{32}$",
+          "description": "Tiré au hasard au lancement, compris dans l'empreinte, lu du seul propriétaire : sans lui, l'empreinte que lit un cartographe lié ne laisse pas retrouver, par essais, ce qui lui est caché."
+        },
         "lance_at": { "$ref": "#/$defs/date" },
         "moteur": {
           "type": "object",

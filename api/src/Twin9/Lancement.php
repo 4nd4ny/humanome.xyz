@@ -125,7 +125,7 @@ final class Lancement
             // its configuration (P0-1), here only: $moteur is captured by value, the one the admission redrew lives
             // in this closure
             $configuration = RunConfiguration::depuis($profil, $profilId, $nom, $moteur, $jeu, $referentiel,
-                $empreinteReglages, $grille, $releve, $versions, $horloge);
+                $empreinteReglages, $grille, $releve, $versions, $horloge, bin2hex(random_bytes(16)));
 
             return [$runs->creer($userId, $profil, $moteur, trim($portfolioNom), $portfolio, $plateforme->journal(),
                 $jeu['gabarits'], $horloge, $sortie, $reserve, $engagement, $configuration), $admission, $reserve,

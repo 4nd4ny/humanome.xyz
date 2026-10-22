@@ -233,8 +233,8 @@ describe('importTwin9Run (T9)', () => {
 // P0-1 (docs/contrats.md §8.9) : le run porte sa configuration et son exécution. Le jeu, qui se partage et
 // s'archive, n'en garde qu'une liste blanche — ni prix, ni coût, ni plafond, ni clé, ni l'admission.
 describe('importTwin9Run : la configuration du run (P0-1)', () => {
-  /** Ce que le jeu ne doit jamais garder d'un run : ce que paie son propriétaire, et comment. */
-  const INTERDITS = ['"prix"', '"grille"', '"remise_lots"', '"cle"', '"plafonds"', '"budget_usd"', '"cout_microusd"', '"jetons', '"execution_prevue"', '"algorithme"', '"versions"', '"reprises"', 'reserve_microusd', 'engagement_microusd', 'fedcba9876543210']
+  /** Ce que le jeu ne doit jamais garder d'un run : ce que paie son propriétaire, et comment ; ni le sel de son empreinte. */
+  const INTERDITS = ['"prix"', '"grille"', '"remise_lots"', '"cle"', '"plafonds"', '"budget_usd"', '"cout_microusd"', '"jetons', '"execution_prevue"', '"algorithme"', '"versions"', '"reprises"', 'reserve_microusd', 'engagement_microusd', 'fedcba9876543210', '"sel"', exemple.run.configuration.sel]
 
   /** Le run de doc(), configuré, son attestation avec son admission, et une journée que seule la fusion donne. */
   const configure = () => {
@@ -270,7 +270,7 @@ describe('importTwin9Run : la configuration du run (P0-1)', () => {
         model: 'profond: claude-exemple-profond, rapide: claude-exemple-rapide, lecteurs: claude-exemple-rapide',
         prompt: 'gabarits jeu-exemple',
         configurationRef: 'twin9:7|configuration',
-        configuration: { empreinte: '44ebff476ea997e8', fournisseurs: ['anthropic'], voies: ['lots'] },
+        configuration: { empreinte: 'ad519cee3a0b8405', fournisseurs: ['anthropic'], voies: ['lots'] },
       })
     }
     // le libellé de provenance de l'interface les dit
@@ -288,7 +288,7 @@ describe('importTwin9Run : la configuration du run (P0-1)', () => {
       kind: 'twin9-run-meta',
       run: 'twin9:7',
       configuration: {
-        empreinte: '44ebff476ea997e8',
+        empreinte: 'ad519cee3a0b8405',
         fournisseurs: { anthropic: { libelle: 'Anthropic', rgpd: 'sous_conditions', voie: 'lots' } },
         appels: conf.appels,
         referentiel: conf.referentiel,
@@ -352,7 +352,7 @@ describe('importTwin9Run : la configuration du run (P0-1)', () => {
     expect(result.report.filter((x) => x.severity === 'blocking')).toEqual([])
     await store.commit(result)
     const archive = buildArchive(await store.exportAll('ds-twin9'), { now: '2026-10-22T10:00:00Z' })
-    expect(archive.runDetails['twin9:7|configuration'].configuration.empreinte).toBe('44ebff476ea997e8')
+    expect(archive.runDetails['twin9:7|configuration'].configuration.empreinte).toBe('ad519cee3a0b8405')
     const texte = JSON.stringify(archive)
     for (const interdit of INTERDITS) expect(texte, interdit).not.toContain(interdit)
   })

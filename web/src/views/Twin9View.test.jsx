@@ -534,7 +534,7 @@ describe('Twin9View — la page du run (T9)', () => {
 // P0-1 (docs/contrats.md §8.9) : la configuration du run, à côté de son attestation. Le suivi n'en porte que
 // l'empreinte ; les blocs se lisent dans les résultats, à l'ouverture de « Configuration ».
 describe('Twin9View — la configuration du run (P0-1)', () => {
-  const configure = (extra = {}) => ({ ...fini(), configuration_empreinte: '44ebff476ea997e8', ...extra })
+  const configure = (extra = {}) => ({ ...fini(), configuration_empreinte: 'ad519cee3a0b8405', ...extra })
   const resultats = (execution = exemple.run.execution) =>
     jsonResponse(200, {
       run: { id: 7, journal: 'mon-journal', statut: 'termine', configuration: exemple.run.configuration, execution },
@@ -572,7 +572,7 @@ describe('Twin9View — la configuration du run (P0-1)', () => {
 
     const [config, execution] = details.querySelectorAll('dl')
     expect(lignes(config)).toEqual({
-      Empreinte: '44ebff476ea997e8',
+      Empreinte: 'ad519cee3a0b8405',
       'Lancé le': '2026-01-05 09:00:00',
       Fournisseurs: 'Anthropic RGPD : sous conditions, par lots',
       'Jeu de gabarits': 'jeu-exemple@fedcba9876543210',

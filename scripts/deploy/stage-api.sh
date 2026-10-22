@@ -61,4 +61,15 @@ git -C "$repo" describe --always --dirty 2>/dev/null > "$stage/VERSION" || echo 
 # local PHP.
 composer install --no-dev --optimize-autoloader --no-interaction --quiet --working-dir="$stage"
 
+# No Python in production: the release is PHP, schemas and data; the v9.8 Python
+# reference stays in Twin_v9, out of production. Checked last, vendor/ included;
+# a .py or .pyc fails the stage and removes it, so `deploy.mjs api` finds no
+# release to upload.
+python_files="$(cd "$stage" && find . \( -name '*.py' -o -name '*.pyc' \) | sed 's|^\./||' | sort)"
+if [ -n "$python_files" ]; then
+  printf 'stage failed: Python in the release (no Python in production), release removed:\n%s\n' "$python_files" >&2
+  rm -rf "$stage"
+  exit 1
+fi
+
 echo "staged release $(cat "$stage/VERSION") in $stage ($(find "$stage" -type f | wc -l | tr -d ' ') files)"

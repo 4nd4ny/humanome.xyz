@@ -12,10 +12,12 @@
 // serveur HTTP local (127.0.0.1, port éphémère) qui journalise les requêtes
 // et répond ce que le test a scripté. Identifiants et jetons factices.
 // stage-twin9.mjs (T18) est exécuté de même, sur un FAUX dépôt Twin_v9 (git
-// local, sources fictives) : aucun moteur réel n'est lu.
+// local, sources fictives) : aucun moteur réel n'est lu. stage-api.sh aussi,
+// copié dans un dossier temporaire, avec de faux node, composer et git devant
+// le PATH, pour son contrôle final « pas de Python en production » (F26).
 import { execFileSync, spawn, spawnSync } from 'node:child_process'
 import { createHash } from 'node:crypto'
-import { cpSync, existsSync, mkdirSync, mkdtempSync, readFileSync, readdirSync, rmSync, writeFileSync } from 'node:fs'
+import { cpSync, existsSync, mkdirSync, mkdtempSync, readFileSync, readdirSync, rmSync, statSync, writeFileSync } from 'node:fs'
 import { createServer } from 'node:http'
 import { tmpdir } from 'node:os'
 import { dirname, join } from 'node:path'
@@ -643,5 +645,107 @@ describe('UC-SYS-02 — le moteur Twin9 dans la release (T18)', () => {
     const sansArgument = stage(twin, [])
     expect(sansArgument.status).toBe(1)
     expect(sansArgument.stderr).toBe('stage-twin9: usage: node scripts/deploy/stage-twin9.mjs <stage dir>\n')
+  }, TIMEOUT)
+})
+
+describe('UC-SYS-02 — stage-api.sh : pas de Python en production', () => {
+  it('UC-SYS-02-F26 — E13 : stage-api.sh (copie jetable, Node, Composer et git simulés) refuse une release qui contient un .py ou un .pyc — des sources, du moteur Twin9 ou d’un paquet Composer : vérifié après composer install, code 1, les fichiers nommés, la release supprimée (deploy.mjs api n’a rien à téléverser) ; sans Python, la release est préparée', () => {
+    const root = mkdtempSync(join(tmpdir(), 'uc-sys-02-stage-api-'))
+    tempDirs.push(root)
+    const ecrire = (rel, texte, mode = 0o644) => {
+      mkdirSync(dirname(join(root, rel)), { recursive: true })
+      writeFileSync(join(root, rel), texte, { mode })
+    }
+    // Le script, octet pour octet, et ce qu'il copie : tout FICTIF.
+    ecrire('scripts/deploy/stage-api.sh', readFileSync(join(REPO, 'scripts/deploy/stage-api.sh'), 'utf8'), 0o755)
+    ecrire('api/src/Noyau.php', '<?php // source FICTIVE (test)\n')
+    ecrire('api/public/index.php', '<?php // front FICTIF (test)\n')
+    ecrire('api/composer.json', '{}\n')
+    ecrire('api/composer.lock', '{}\n')
+    ecrire('schemas/exemple.schema.json', '{}\n')
+    ecrire('schemas/twin9-protocole-contrat.json', '{}\n')
+    // Faux node, composer et git, devant le PATH : rien n'est construit, rien
+    // n'est téléchargé. node ne fait que poser le moteur (FICTIF) quand
+    // stage-twin9.mjs est appelé, plus FAKE_TWIN_PY s'il est donné ; composer
+    // pose vendor/autoload.php, plus FAKE_VENDOR_PYC ; git échoue (VERSION « unknown »).
+    ecrire('fake-bin/node', [
+      '#!/bin/sh',
+      'echo "node ${1##*/}" >> "$FAKE_LOG"',
+      'case "$1" in */stage-twin9.mjs)',
+      '  mkdir -p "$2/Twin_v9/php/src"',
+      '  echo "<?php // moteur FICTIF" > "$2/Twin_v9/php/src/Plateforme.php"',
+      '  if [ -n "$FAKE_TWIN_PY" ]; then echo "# FICTIF" > "$2/Twin_v9/$FAKE_TWIN_PY"; fi ;;',
+      'esac',
+      '',
+    ].join('\n'), 0o755)
+    ecrire('fake-bin/composer', [
+      '#!/bin/sh',
+      'echo "composer $1" >> "$FAKE_LOG"',
+      'for a in "$@"; do case "$a" in --working-dir=*) dir="${a#--working-dir=}" ;; esac; done',
+      'mkdir -p "$dir/vendor" && echo "<?php // autoload FICTIF" > "$dir/vendor/autoload.php"',
+      'if [ -n "$FAKE_VENDOR_PYC" ]; then mkdir -p "$(dirname "$dir/vendor/$FAKE_VENDOR_PYC")" && echo x > "$dir/vendor/$FAKE_VENDOR_PYC"; fi',
+      '',
+    ].join('\n'), 0o755)
+    ecrire('fake-bin/git', '#!/bin/sh\nexit 1\n', 0o755)
+
+    const release = join(root, 'build/api-release')
+    const log = join(root, 'fake-calls.log')
+    const stageApi = (extraEnv = {}) => {
+      rmSync(log, { force: true })
+      const run = spawnSync('bash', [join(root, 'scripts/deploy/stage-api.sh')], {
+        encoding: 'utf8',
+        env: { PATH: `${join(root, 'fake-bin')}:${process.env.PATH ?? ''}`, FAKE_LOG: log, ...extraEnv },
+      })
+      return { status: run.status, stdout: run.stdout, stderr: run.stderr, calls: existsSync(log) ? readFileSync(log, 'utf8').trim().split('\n') : [] }
+    }
+    const appels = [
+      'node stage-twin9.mjs',
+      'node build-tuteur-digest.mjs',
+      'node build-default-prompt-package.mjs',
+      'node generate-fiches.mjs',
+      'node build-twin6-prompt-package.mjs',
+      'composer install',
+    ]
+    const refus = (run, fichiers) => {
+      expect(run.status).toBe(1)
+      expect(run.stdout).toBe('')
+      expect(run.stderr).toBe(`stage failed: Python in the release (no Python in production), release removed:\n${fichiers.join('\n')}\n`)
+      expect(run.calls).toEqual(appels) // composer install fait : le contrôle vient en dernier
+      expect(existsSync(release)).toBe(false)
+    }
+
+    // Sans Python : la release est préparée, rien n'est refusé.
+    const ok = stageApi()
+    expect(ok.stderr).toBe('')
+    expect(ok.status).toBe(0)
+    expect(ok.calls).toEqual(appels)
+    expect(ok.stdout).toBe(`staged release unknown in ${release} (9 files)\n`)
+    const fichiers = readdirSync(release, { recursive: true }).map(String).filter((p) => statSync(join(release, p)).isFile())
+    expect(fichiers.sort()).toEqual([
+      'Twin_v9/php/src/Plateforme.php',
+      'VERSION',
+      'composer.json',
+      'composer.lock',
+      'public/index.php',
+      'schemas/exemple.schema.json',
+      'schemas/twin9-protocole-contrat.json',
+      'src/Noyau.php',
+      'vendor/autoload.php',
+    ])
+    expect(readFileSync(join(release, 'VERSION'), 'utf8')).toBe('unknown\n')
+
+    // Un .py des sources et un .pyc d'un paquet Composer (posé PAR composer
+    // install) : les deux nommés, triés, chemins relatifs à la release.
+    ecrire('api/src/outil.py', '# FICTIF\n')
+    refus(stageApi({ FAKE_VENDOR_PYC: 'paquet/__pycache__/outil.cpython-313.pyc' }), [
+      'src/outil.py',
+      'vendor/paquet/__pycache__/outil.cpython-313.pyc',
+    ])
+    rmSync(join(root, 'api/src/outil.py'))
+    // Un .py venu avec le moteur Twin9.
+    refus(stageApi({ FAKE_TWIN_PY: 'twin9.py' }), ['Twin_v9/twin9.py'])
+    // Le Python retiré, la release se prépare de nouveau.
+    expect(stageApi().status).toBe(0)
+    expect(existsSync(join(release, 'VERSION'))).toBe(true)
   }, TIMEOUT)
 })

@@ -163,7 +163,7 @@ Le cœur du site est un **logiciel de cartographie de compétences**, aujourd'hu
   - Vision long terme : serveur local avec 8 GPU NVIDIA reliés en NVLink (ex. cartes de la classe H200), budget estimé 500k–1M CHF, pour exécuter des modèles frontière open source en interne et réduire les coûts marginaux vers zéro pour l'utilisateur final.
 - **Frontend :** interfaces JSX/HTML/JS déjà développées pour la visualisation individuelle et la navigation chronologique (fusion à réaliser, cf. §4.4). Responsive mobile + version imprimable.
 - **Éditeur de portfolio collaboratif :** réutilisation d'un projet open source existant plutôt que développement natif (v1 : éditeur texte simple).
-- **Système de prompts :** actuellement en Python, à convertir en JavaScript pour intégration web ; éditable en ligne par les promptologues (texte + code).
+- **Système de prompts :** actuellement en Python, à convertir en JavaScript pour intégration web ; éditable en ligne par les promptologues (texte + code). *(Note du 2026-10-22 : seul Twin9 a été converti. Le pipeline Python de cartographie n'a jamais été livré : le moteur JavaScript `engine/` (P5, juillet 2026) a été rétro-conçu depuis les artefacts observables. Twin9 a été porté depuis sa v9.8 Python, en JavaScript en juillet 2026 (ADR-010), puis en PHP, exécuté sur le serveur (ADR-011) ; la v9.8 Python reste l'étalon de l'oracle, gelée dans le dépôt Twin_v9, hors production.)*
 - **Code source :** l'ensemble (hors Golden Prompt et cartographies privées) publié en open source sur GitHub, avec logique de « clone déployable » : n'importe qui doit pouvoir réimporter référentiel, profil, portfolios et cartographies pour redémarrer sa propre instance de la plateforme.
 
 ---
@@ -208,7 +208,7 @@ Le cœur du site est un **logiciel de cartographie de compétences**, aujourd'hu
 
 - Interface JSX de navigation chronologique dans l'historique des cartographies (« merge »).
 - Page HTML/JavaScript de cartographie d'une journée de portfolio.
-- Prompts de cartographie (plusieurs versions, travaillées depuis plusieurs mois), actuellement en Python.
+- Prompts de cartographie (plusieurs versions, travaillées depuis plusieurs mois), actuellement en Python. *(Note du 2026-10-22 : de ces prompts Python, seule la v9.8 de Twin9 a été portée, en JavaScript en juillet 2026 (ADR-010), puis en PHP (ADR-011) ; elle reste l'étalon de l'oracle, gelée dans le dépôt Twin_v9, hors production. Les autres n'ont jamais été versés à humanome.xyz : `engine/` (P5) a été rétro-conçu depuis les artefacts.)*
 - Référentiel de compétences RESPIRE v7 en version prototype.
 - Espace Decidim participatif « Harmonia Éducation ».
 

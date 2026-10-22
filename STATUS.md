@@ -43,6 +43,83 @@ réponse. Suivent la PR B (adaptateurs JS, export Twin6) et, A fusionnée, la PR
 
 ## Fait
 
+- 2026-10-22 — **Sprint 2, lot D : plus rien de Python dans humanome.xyz, et la production le
+  vérifie (branche `chore/sans-python`, non fusionnée).** Le Sprint 2 (liste de travail de
+  Christian, hors dépôt) demandait s'il restait du Python, s'il servait, et pourquoi il n'était pas
+  converti. humanome.xyz n'en contenait déjà plus aucun fichier ; tout le Python est dans
+  `Twin_v9` : la v9.8, étalon de l'oracle, gelée au tag `v9.8-reference` (décision 1 du Sprint 2,
+  prise par délégation). Les lots A à C l'ont documenté dans `Twin_v9` (README, tag,
+  `ReferenceTest`), où ils sont fusionnés ; la moitié humanome.xyz du lot B, l'amendement de
+  l'ADR-011, manquait : ce lot la fait, et nettoie ce qui restait ici. Sept commits, dont cinq
+  pour la revue ; `Twin_v9` n'est pas modifié.
+  - **ADR-011 §1 amendé** (et sa ligne Statut), sans rien écrire au-dessus de « ## Statut », où
+    l'ADR-012 de `feat/twin9-multi-fournisseur` pose son bandeau (`git merge-tree` avec cette
+    branche : aucun conflit). L'amendement remplace « si elle évolue, l'oracle se régénère » : la
+    v9.8 est gelée au tag `v9.8-reference` ; l'algorithme évolue dans le moteur PHP, chaque
+    changement étant un écart voulu listé dans `OracleTest`, avec son test ; l'oracle n'est
+    régénéré que si la v9.8 change, ce que `ReferenceTest` détecte.
+  - **Documentation.** `docs/cahier-des-charges.md` §5 (« Système de prompts ») et §9 : une
+    note datée, *ajoutée* sans rien réécrire, puisque le cahier est la spécification de
+    Christian. Seul Twin9 a été converti : le pipeline Python de cartographie n'ayant jamais été
+    livré, `engine/` (P5, juillet 2026) a été rétro-conçu depuis les artefacts ; Twin9 a été
+    porté depuis sa v9.8 Python, en JavaScript (ADR-010), puis en PHP (ADR-011) ; la v9.8 reste
+    l'étalon, dans `Twin_v9`, hors production. `docs/plan-prompts.md` (prérequis) : `assets-existants/prompts-python/`
+    n'a jamais été versé. Il manque à l'inventaire de P0, au dossier `assets-existants/` du poste
+    et aux 416 commits accessibles de toutes les branches. `CLAUDE.md`, contraintes d'hébergement :
+    « Pas de Python, ni en production ni dans la CI ».
+  - **`web/src/lib/twin9/py/` réduit à ce que lit le parseur des fiches de pôle**
+    (`referentiel.js`) : `PY_WS_CLASS`, `pyStrip`, `pyFormat` et leurs dépendances (`pyStr`,
+    `pyRepr`, `pyFloatRepr`, `PyFloat`, `formatFixed`). Partent, avec leurs tests, quatorze
+    exports morts, vestiges du moteur du navigateur (T11) : `pyRound`, `pyFloor`, `pyInt`,
+    `pyMod`, `pyDivmod`, `pyReprTuple`, `pyIsSpace`, `pyLStrip`, `pyRStrip`, `pySplitlines`,
+    `universalNewlines`, `cpLen`, `cpSlice`, `u16ToCpIndexer`. Chaque nom et chaque chemin de
+    module a d'abord été cherché dans tout le dépôt, imports dynamiques et scripts compris : aucun
+    usage hors de son fichier et de ses tests. Le test exhaustif de `PY_WS_CLASS` (U+0000 à
+    U+3100), qui prenait `pyIsSpace` pour oracle, compare désormais à la liste des 29 points de
+    code ; un test pareil couvre `pyStrip`.
+  - **`stage-api.sh` refuse le Python.** Après `composer install`, un `.py` ou un `.pyc` dans la
+    release (sources, moteur Twin9, `scripts/data`, `vendor/`) fait échouer la préparation,
+    code 1. Le script nomme les fichiers et supprime `build/api-release` : `deploy.mjs api`
+    refuse alors de déployer. UC-SYS-02 : E13, F26 (le script lancé sur une copie jetable, avec de faux
+    `node`, `composer` et `git`) ; UC-SYS-04, étape 7 et Limites ; `docs/deploiement.md`.
+  - Vérifié :
+    - **Suites.** Front 2 711 tests verts (259 fichiers, `TWIN_V9_DIR` défini). Sur `main`, la même
+      suite en comptait 2 794 : les 83 tests des exports retirés partent. Dans `src/lib/twin9` :
+      99 tests au lieu de 182. Moteur : 557 tests verts, F26 comprise, et les 5 échecs locaux
+      connus d'UC-PRO-08 (F19 à F22, F25).
+    - **F26 voit les fautes.** Elle échoue sans le contrôle, et s'il précède Composer.
+    - **Mêmes sorties qu'avant.** `import-protocole.mjs --dry-run` donne une sortie identique
+      (22 gabarits, 7 pôles). `parsePole`, sur les 7 fichiers de pôle de la v9.8, donne la même
+      empreinte (61 compétences). `extract-fiches.mjs` : parité 7 sur 7, `fiches-v7.json`
+      inchangé. `generate-fiches.mjs` : les 7 `P*.md`, identiques octet pour octet à ceux du code
+      d'avant. `web/public/data/` est ignoré par git : un `git status` vide n'aurait rien prouvé.
+    - **Construction et préparation.** `npm run build` passe. Le vrai `stage-api.sh` a tourné en
+      local : release de 809 fichiers (moteur `9eea3a1`, `vendor/` compris), contrôle passé,
+      aucun Python.
+    - **`check-publiable`** : OK (crochet de pré-commit).
+    - **PHPUnit** : non lancé, le lot ne touche aucun PHP.
+    - **Revue.** Quatre constats, tous de documentation : l'ADR-011, la note du cahier sur
+      `engine/`, l'étape 7 d'UC-SYS-04, et des renvois de cette entrée à des documents hors
+      dépôt. Corrigés par des commits `docs:` : aucun test ne peut échouer avant une
+      correction de texte. Relancés après ces corrections : le front (2 711 tests verts,
+      259 fichiers), le moteur (557 verts, mêmes 5 échecs d'UC-PRO-08), `npm run build` et
+      `check-publiable` ; pas les contrôles de sorties ni le vrai `stage-api.sh`, qu'aucun
+      texte ne touche.
+  - Non vérifié : le contenu réellement déployé sur l'OVH (pas d'accès FTP) ; F26 sous Linux
+    (CI), lancé seulement sur le Mac.
+  - Laissé à Christian, deux questions du Sprint 2 :
+    - garder ou supprimer `bench9.py`, `tests/tests.py` et `genere_protocole.py` dans `Twin_v9` ;
+    - l'outil local `--donnees-reelles` sert-il encore hors de la plateforme ?
+  - Laissé tel quel :
+    - `docs/plan-prompts.md:266` (le prompt de P5) et `docs/inventaire-assets.md:84`, des
+      journaux de construction, citent encore `assets-existants/prompts-python/` ;
+    - le compteur d'UC-SYS-02 dans `docs/cas-utilisation/README.md` ne compte pas F26, puisque
+      la PR #25 répare ce tableau ;
+    - le corps du commit `5f417e0` dit encore que les prompts ont été convertis (`engine/`,
+      P5) : l'historique n'est pas réécrit. Écrits avant ce lot, l'ADR-001 (« portage JavaScript des
+      prompts Python ») et l'en-tête d'UC-SYS-04 (« système de prompts converti en JavaScript »)
+      gardent la même formule.
+
 - 2026-10-22 — **Revue des lots A et B du sprint 5 : quatre constats corrigés (branche
   `feat/referentiels-simples`).**
   - **L'amorçage, idempotent pour de bon.** Le même YAML (même sha256) converti sous un autre nom

@@ -96,7 +96,8 @@ Le mainteneur lance `./scripts/deploy/stage-api.sh` puis
    manifeste est écrit **en dernier** ; manifeste absent ou illisible → envoi
    complet sans suppression ; `--dry-run` liste sans rien transférer).
 2. `stage-api.sh` prépare `build/api-release/` et les paquets de prompts publiés ;
-   il y embarque le moteur Twin9 par `stage-twin9.mjs` (A8).
+   il y embarque le moteur Twin9 par `stage-twin9.mjs` (A8). Il finit, après
+   `composer install`, par vérifier que la release ne contient aucun Python (E13).
 3. `deploy.mjs api` téléverse la release dans
    `app/releases/<AAAAMMJJ-HHMMSS UTC>-<version>/` (version = contenu de
    `VERSION`, caractères hors `[A-Za-z0-9._-]` remplacés par `_` : le nom
@@ -283,6 +284,14 @@ Le mainteneur lance `./scripts/deploy/stage-api.sh` puis
   .env.deploy ») → code 1 ; `build/api-release` absent
   (« … run scripts/deploy/stage-api.sh first ») ou `web/dist` absent
   (« Missing local dir: web/dist (build first?) ») → code 1, aucun transfert.
+- **E13 — Python dans la release** (étape 2, 2026-10-22) : un `.py` ou un
+  `.pyc` dans `build/api-release/` — sources, moteur Twin9, `scripts/data` ou
+  paquet Composer, le contrôle venant après `composer install` — fait échouer
+  `stage-api.sh` : « stage failed: Python in the release (no Python in
+  production), release removed: », puis les fichiers, chemins relatifs à la
+  release, triés ; code 1, et `build/api-release` supprimé, si bien que
+  `deploy.mjs api` refuse ensuite de déployer (E12). Pas de Python en
+  production : la v9.8 Python de Twin9 reste dans `Twin_v9`, hors production.
 
 ## Règles de gestion
 
@@ -333,7 +342,7 @@ Le mainteneur lance `./scripts/deploy/stage-api.sh` puis
 
 | Couche | Élément | Rôle |
 |---|---|---|
-| Outil | `scripts/deploy/deploy.mjs` — `main` (cibles `static`, `api`, `rollback`, `releases` ; codes 1/2), `loadEnvDeploy`, `buildLocalIndex`/`readRemoteManifest` (synchro par manifeste), `uploadTree`, `ftpSession`, `deployApi`, `listReleases`, `rollbackApi`, `releasesCommand` ; `scripts/deploy/stage-api.sh` | Upload FTP, pointeur, élagage, séquence distante, smoke (moteur Twin9 compris, F24), rollback — `deploy.mjs` est exécuté en sous-processus sur une copie, avec un faux module `basic-ftp` et un site local (F19 à F22, F24) ; pas de test unitaire : il n'exporte aucune fonction et lance `main()` dès l'import ; côté serveur, la séquence HTTP est rejouée par F01/F02 ; `stage-api.sh` n'est pas exécuté (voir Limites) |
+| Outil | `scripts/deploy/deploy.mjs` — `main` (cibles `static`, `api`, `rollback`, `releases` ; codes 1/2), `loadEnvDeploy`, `buildLocalIndex`/`readRemoteManifest` (synchro par manifeste), `uploadTree`, `ftpSession`, `deployApi`, `listReleases`, `rollbackApi`, `releasesCommand` ; `scripts/deploy/stage-api.sh` | Upload FTP, pointeur, élagage, séquence distante, smoke (moteur Twin9 compris, F24), rollback — `deploy.mjs` est exécuté en sous-processus sur une copie, avec un faux module `basic-ftp` et un site local (F19 à F22, F24) ; pas de test unitaire : il n'exporte aucune fonction et lance `main()` dès l'import ; côté serveur, la séquence HTTP est rejouée par F01/F02 ; `stage-api.sh` n'est exécuté que sur une copie, Node, Composer et git simulés, pour son contrôle final « pas de Python » (E13, F26 ; voir Limites) |
 | Outil | `scripts/deploy/stage-twin9.mjs` | Le moteur Twin9 dans la release, et ses refus (A8) — exécuté en sous-processus sur un faux dépôt `Twin_v9` (F25) |
 | Domaine | `api/src/Twin9/EngineLoader.php` — `directory`, `load`, `commit` | Le moteur de la release, trouvé sans `TWIN_V9_DIR` (U12, F23) |
 | API | `GET /api/health` — `api/src/routes/system.php` | `twin9: {moteur, zlib}` (F23) |
@@ -394,6 +403,7 @@ Le mainteneur lance `./scripts/deploy/stage-api.sh` puis
 | UC-SYS-02-F23 | A8 | CLI (front-controller, disposition jetable) | Release qui embarque un moteur (le moteur factice des tests) : servie par `www/api/index.php`, sans `TWIN_V9_DIR`, `/api/health` → `"twin9":{"moteur":true,"zlib":true}` ; moteur retiré → `moteur: false` | `api/tests/UseCases/Functional/UcSys02DeployerMigrerTest.php` |
 | UC-SYS-02-F24 | A8, étape 9 | CLI `deploy.mjs` + site local | Release avec `Twin_v9/COMMIT` : le moteur part sous `app/releases/<nom>/`, rien sous `www/` que le front-controller ; santé sans `twin9`, sans zlib ou sans moteur → code 1 : la release en ligne (celle de `current.txt`), le commit, les causes à vérifier, le retour arrière facultatif ; chargé → commit embarqué, suite (gabarits du même commit), « api deploy done » | `engine/test/usecases/unit/uc-sys-02-outil-deploiement.test.js` |
 | UC-SYS-02-F25 | A8, étape 2 | CLI `stage-twin9.mjs` + faux dépôt git | `php/src` du commit (sous-dossiers compris) et `COMMIT` copiés, rien d'autre — ni un fichier ignoré de la copie de travail ; refus sans rien copier : moteur ou gabarits absents, dossier hors git ou imbriqué dans un dépôt, moteur modifié, gabarit non suivi même masqué par `status.showUntrackedFiles=no` ; changement hors de `php/` accepté ; argument manquant | idem |
+| UC-SYS-02-F26 | E13, étape 2 | CLI `stage-api.sh` (copie jetable, faux `node`, `composer` et `git`) | Sans Python : release préparée (9 fichiers, `VERSION` « unknown »), les cinq scripts Node puis `composer install` appelés dans l'ordre ; un `.py` des sources et un `.pyc` posé par `composer install` dans `vendor/`, puis un `.py` venu avec le moteur Twin9 → code 1, stdout vide, message et fichiers triés sur la sortie d'erreur, `build/api-release` supprimé ; le Python retiré, la release se prépare de nouveau | idem |
 
 ### Tests existants liés (non-régression)
 
@@ -493,9 +503,10 @@ cd engine && npx vitest run test/usecases/unit/uc-sys-02
   interrompu) et les réponses du vrai site ; côté serveur, la séquence HTTP
   des étapes 4 à 9 est rejouée par UC-SYS-02-F01/F02, le front-controller par
   F10 et les scripts CLI par F11 et F15 à F18. `stage-api.sh` (Composer, Node,
-  réécriture de `build/`) n'est pas exécuté : l'étape 2 est décrite d'après
-  le script, sauf le moteur Twin9, que `stage-twin9.mjs` embarque et que F25
-  exécute.
+  réécriture de `build/`) n'est exécuté que sur une copie, Node, Composer et
+  git simulés (F26) : l'étape 2 est décrite d'après le script, sauf le moteur
+  Twin9, que `stage-twin9.mjs` embarque et que F25 exécute, et le contrôle
+  final « pas de Python » (E13), que F26 exécute.
 - Fenêtre de déploiement : entre l'écriture de `current.txt` (étape 3) et la
   fin des migrations (étape 4), la nouvelle release sert des requêtes sur
   l'ancien schéma. Le mode expand/contract (RG3) protège l'**ancienne**

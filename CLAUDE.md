@@ -34,6 +34,8 @@ Spécification complète : `docs/cahier-des-charges.md` ; plan de construction :
 - Pas de Docker en développement : PHP et MySQL 8 locaux. PHP local (8.5 sur le Mac) ≠ cible 8.2 :
   Composer fixe la plateforme à 8.2 (`api/composer.json`) et la CI lance les tests sous 8.2, la
   version d'OVH. Les fichiers `docker-compose` restent pour qui s'en sert.
+- Pas de Python, ni en production ni dans la CI ; la v9.8 Python vit dans Twin_v9, hors production,
+  comme étalon de l'oracle. `stage-api.sh` refuse une release qui contient un `.py` ou un `.pyc`.
 
 ## Principes RGPD non négociables (cahier §6)
 

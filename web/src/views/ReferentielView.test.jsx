@@ -208,4 +208,47 @@ describe('ReferentielView', () => {
     await waitFor(() => expect(replaceHash).toHaveBeenCalledWith('#/referentiel?id=fictif-humanome'))
     expect(replaceHash).toHaveBeenCalledTimes(1)
   })
+
+  it('UC-VIS-02-U16 — un référentiel qui ne se charge pas : le menu montre celui qui s’affiche (RESPIRE) ; le choisir de nouveau réessaie', async () => {
+    const respire = { ...fixture, id: 'respire', label: 'RESPIRE v7.1.0', version: '7.1.0' }
+    const autre = { ...fixture, id: 'autre', label: 'Autre', version: '1.0.0' }
+    let echecs = 1 // une erreur 500 passagère de la route de version, l'export statique ne l'ayant pas
+    const loader = vi.fn(async ({ id }) => {
+      if (id === 'respire') return { doc: respire, origin: 'published' }
+      if (echecs-- > 0) throw new Error('Le référentiel « autre » n’a pas pu être chargé')
+      return { doc: autre, origin: 'published' }
+    })
+    const lister = async () => [
+      { id: 'respire', label: 'RESPIRE v7.1.0', source: null, versions: [{ semver: '7.1.0', label: 'RESPIRE v7.1.0' }] },
+      { id: 'autre', label: 'Autre', source: null, versions: [{ semver: '1.0.0', label: 'Autre' }] },
+    ]
+    const replaceHash = vi.fn()
+    render(<ReferentielView load={loader} list={lister} replaceHash={replaceHash} referentielId="autre" />)
+    expect((await screen.findByRole('alert')).textContent).toContain('« autre » n’a pas pu être chargé')
+    expect(screen.getByText(/RESPIRE v7\.1\.0 — version 7\.1\.0/)).toBeDefined()
+    // le menu montre le référentiel affiché, pas celui qui a échoué
+    await waitFor(() => expect(screen.getByRole('combobox', { name: 'Référentiel' }).value).toBe('respire@7.1.0'))
+
+    // le choisir de nouveau le redemande (l'adresse, elle, le nomme déjà)
+    fireEvent.change(screen.getByRole('combobox', { name: 'Référentiel' }), { target: { value: 'autre@1.0.0' } })
+    await screen.findByText(/Autre — version 1\.0\.0/)
+    expect(loader.mock.calls.filter(([{ id }]) => id === 'autre')).toHaveLength(2)
+    expect(screen.queryByRole('alert')).toBeNull()
+    expect(screen.getByRole('combobox', { name: 'Référentiel' }).value).toBe('autre@1.0.0')
+    expect(replaceHash).not.toHaveBeenCalled()
+  })
+
+  it('UC-VIS-02-U16 — une base sans RESPIRE publié et un identifiant introuvable : le menu ne prétend pas montrer un autre référentiel que celui affiché', async () => {
+    const replaceHash = vi.fn()
+    const loader = vi.fn(async ({ id }) => {
+      if (id === 'respire') return { doc: { ...fixture, id: 'respire', label: 'RESPIRE embarqué', version: '7.0.0' }, origin: 'bundled' }
+      throw new Error(`Le référentiel « ${id} » n’a pas pu être chargé`)
+    })
+    const lister = async () => [{ id: humanome.id, label: humanome.label, source: null, versions: [{ semver: humanome.version, label: humanome.label }] }]
+    render(<ReferentielView load={loader} list={lister} replaceHash={replaceHash} referentielId="inconnu" />)
+    await screen.findByRole('alert')
+    // RESPIRE, affiché, n'est pas au menu : comme sans identifiant, le premier référentiel publié devient le choix
+    await waitFor(() => expect(replaceHash).toHaveBeenCalledWith('#/referentiel?id=fictif-humanome'))
+    expect(replaceHash).toHaveBeenCalledTimes(1)
+  })
 })

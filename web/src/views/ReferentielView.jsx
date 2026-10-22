@@ -1,4 +1,4 @@
-import { useCallback, useEffect, useMemo, useState } from 'react'
+import { useCallback, useEffect, useMemo, useRef, useState } from 'react'
 import { REFERENTIEL_PAR_DEFAUT as RESPIRE } from '@engine/conformite.js'
 import ReferentielChoice from '../components/ReferentielChoice.jsx'
 import { listPublishedReferentiels, loadPublishedReferentiel } from '../data/referentiel.js'
@@ -22,7 +22,9 @@ const remplacerAdresse = (hash) => window.location.replace(hash)
  * compris), et le menu la remplace. Un référentiel se lit comme dans les
  * parcours (data/referentiel.js, `{id}`) : la base par l'API publique
  * d'abord, l'export statique en repli, RESPIRE embarqué en dernier. Un
- * identifiant qui ne se charge pas est dit, et RESPIRE s'affiche à sa place.
+ * identifiant qui ne se charge pas est dit, et RESPIRE s'affiche à sa place ;
+ * le menu montre alors RESPIRE, le référentiel affiché, et y choisir de
+ * nouveau celui qui a échoué le redemande.
  * La provenance d'un autre référentiel que RESPIRE (son `source` : d'où il
  * vient, sa licence — S5, E9) s'affiche sous l'en-tête, quelle que soit la
  * source de lecture.
@@ -42,11 +44,13 @@ export default function ReferentielView({
   const choix = referentielId && referentielId !== RESPIRE ? referentielId : null
   const [data, setData] = useState(null)
   const [query, setQuery] = useState('')
+  // Le numéro de l'essai : choisir de nouveau un référentiel qui n'a pas pu être chargé le redemande.
+  const [essai, setEssai] = useState(0)
 
   useEffect(() => {
     let alive = true
     const show = (result, introuvable) => {
-      if (alive) setData({ ...result, choix, introuvable })
+      if (alive) setData({ ...result, choix, essai, introuvable })
     }
     // loadPublishedReferentiel ne rejette jamais pour RESPIRE sans version ;
     // ceinture et bretelles pour un chargeur injecté : le référentiel embarqué.
@@ -61,12 +65,19 @@ export default function ReferentielView({
     return () => {
       alive = false
     }
-  }, [load, choix])
+  }, [load, choix, essai])
+
+  // Lu par `choisir` sans en changer l'identité (le menu en dépend dans un effet).
+  const dataRef = useRef(data)
+  dataRef.current = data
 
   const choisir = useCallback(
     (referentiel) => {
-      if ((referentiel.id === RESPIRE ? null : referentiel.id) !== choix) {
+      const id = referentiel.id === RESPIRE ? null : referentiel.id
+      if (id !== choix) {
         replaceHash(referentielHash(null, referentiel.id))
+      } else if (id !== null && dataRef.current?.choix === choix && dataRef.current.introuvable) {
+        setEssai((n) => n + 1) // celui qui n'a pas pu être chargé, demandé de nouveau : réessayé
       }
     },
     [choix, replaceHash],
@@ -74,8 +85,9 @@ export default function ReferentielView({
 
   const doc = data?.doc ?? null
   // Le document affiché est-il celui que demande l'adresse ? Sinon, le
-  // suivant se charge : l'ancien reste affiché, sans alerte.
-  const aJour = data !== null && data.choix === choix
+  // suivant se charge (ou se charge de nouveau) : l'ancien reste affiché, sans alerte.
+  const aJour = data !== null && data.choix === choix && data.essai === essai
+  const introuvable = aJour && data.introuvable
 
   // Défilement vers la compétence permaliée une fois l'arbre rendu.
   useEffect(() => {
@@ -113,7 +125,6 @@ export default function ReferentielView({
   const total = (doc.competences ?? []).length
   // L'exemple de la recherche : le premier code du référentiel affiché (« 1.01 » pour RESPIRE).
   const exemple = (doc.competences ?? [])[0]?.code ?? null
-  const introuvable = aJour && data.introuvable
   const focusKnown =
     focusCode === null || (doc.competences ?? []).some((c) => c.code === focusCode)
   const provenance =
@@ -125,7 +136,8 @@ export default function ReferentielView({
         <h1>Référentiel de compétences</h1>
         <div className="ref-choice">
           <ReferentielChoice
-            value={choix ? { id: choix } : null}
+            // le référentiel affiché : RESPIRE (null) à la place d'un introuvable
+            value={choix && !introuvable ? { id: choix } : null}
             onChange={choisir}
             list={list}
             provenance={false}
@@ -152,7 +164,7 @@ export default function ReferentielView({
       {introuvable ? (
         <p className="load-error" role="alert">
           Le référentiel «&nbsp;{choix}&nbsp;» n’a pas pu être chargé :{' '}
-          {/* le menu montre déjà RESPIRE : ce lien rend l'adresse sans l'identifiant introuvable */}
+          {/* le menu montre RESPIRE, affiché : ce lien rend l'adresse sans l'identifiant introuvable */}
           <a href={referentielHash()}>RESPIRE</a> s’affiche à sa place.
         </p>
       ) : aJour && !focusKnown ? (

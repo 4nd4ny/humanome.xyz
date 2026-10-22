@@ -4,10 +4,10 @@
 |---|---|
 | **Acteur principal** | Épistémiarque (ou administrateur : garde « épistémiarque ou admin ») |
 | **Acteurs secondaires** | Membres épistémiarques (vote, UC-EPI-02 A5) ; chaque compte, qui choisit un référentiel publié dans son profil Twin9 (UC-APP-10, page Configuration) ou au lancement d'une cartographie standard, ouverte ou de masse ; l'auteur d'un brouillon, pour ses runs d'essai |
-| **Portée** | Atelier `#/epistemiarque/referentiels` (section « Autres référentiels ») ; API `POST /api/referentiel/import`, `GET /api/referentiels`, `GET /api/referentiels/{id}/versions/{semver}`, et le cycle du grain document (`/api/referentiel/drafts…`, `/api/referentiel/proposals…`, UC-EPI-04) |
+| **Portée** | Atelier `#/epistemiarque/referentiels` (section « Autres référentiels ») ; API `POST /api/referentiel/import`, `GET /api/referentiels`, `GET /api/referentiels/{id}/versions/{semver}`, et le cycle du grain document (`/api/referentiel/drafts…`, `/api/referentiel/proposals…`, UC-EPI-04) ; hors vote, l'amorçage de l'Humanome V18 converti de son YAML (`scripts/convertir-humanome.mjs`, `scripts/amorcer-referentiel.php`, S5, A6) |
 | **Niveau** | Objectif utilisateur |
 | **Cahier des charges** | §3.5, §4.1 ; T15 (dépôt `Twin_v9`, `docs/plan-twin9-php.md`, lot 4c, première tâche) ; schéma `referentiel` 2.1.0 (`docs/contrats.md` §9 et §11) |
-| **Statut** | Implémenté (T15) ; le moteur lit le référentiel du run depuis T16, la cartographie depuis T17 (`docs/contrats.md` §10) |
+| **Statut** | Implémenté (T15) ; le moteur lit le référentiel du run depuis T16, la cartographie depuis T17 (`docs/contrats.md` §10) ; conversion et amorçage de l'Humanome V18 depuis S5 (A6) |
 
 ## Objectif
 
@@ -21,7 +21,9 @@ sans que RESPIRE change.
 
 Un épistémiarque dispose du référentiel au format JSON du schéma
 `referentiel` (2.1.0 ; un document écrit pour 2.0.0 y reste valide), par
-exemple converti depuis sa source, et veut le proposer aux membres.
+exemple converti depuis sa source, et veut le proposer aux membres. Le YAML
+de l'Humanome V18 (https://respire.school/referentiel) se convertit par
+`scripts/convertir-humanome.mjs` (A6, `docs/referentiel-humanome.md`).
 
 ## Préconditions
 
@@ -93,6 +95,19 @@ exemple converti depuis sa source, et veut le proposer aux membres.
   essai (page Configuration : « version (brouillon, run d'essai) ») ; nul
   autre, et pas en mode complet. Depuis T16, le moteur lit le référentiel
   du run, le brouillon compris (RG8).
+- **A6 — L'Humanome V18, converti et amorcé hors vote** (S5, décision de
+  Christian du 2026-10-22 ; `docs/referentiel-humanome.md`). Sur le poste :
+  `node scripts/convertir-humanome.mjs <humanome_v18.yaml>` écrit le document
+  au niveau capacité (20 compétences, les 64 facettes en éléments ; `--niveau
+  facette` en option) dans `build/referentiels/`, en avertissant des écarts
+  entre l'en-tête `structure` du YAML et son contenu ; puis
+  `php scripts/amorcer-referentiel.php <document.json>` le publie sans vote,
+  idempotent sur le document entier. Il refuse RESPIRE, un identifiant
+  invalide, une version déjà en base avec un autre contenu ou tenue par
+  l'atelier. La version est ensuite servie par les routes publiques et
+  proposée par les menus des parcours, comme une version votée. En
+  production, sans shell : par l'atelier (étapes 1 à 5), ou par
+  `POST /api/admin/import-referentiel`, moins stricte (`docs/referentiel-humanome.md` §5).
 
 ## Scénarios d'erreur
 
@@ -193,6 +208,8 @@ exemple converti depuis sa source, et veut le proposer aux membres.
 | Domaine | `api/src/Referentiel/ContentHash.php` | Niveaux et éléments gardés hors de l'empreinte |
 | Domaine | `api/src/Twin9/ProfilPolicy.php`, `api/src/Twin9/Lancement.php`, `api/src/Twin9/ReferentielMoteur.php` | RG7, RG8, RG10 |
 | Moteur | `engine/src/twin6/fiches.js` — `fichesDuReferentiel`, `fichesPourTwin6` | Fiches de Twin6 écrites depuis le document (RG10) |
+| Moteur | `engine/src/referentiel-humanome.js` — `convertirHumanome`, `corpsDuHash` | Le YAML de l'Humanome en document du schéma (A6) |
+| Script | `scripts/convertir-humanome.mjs` (paquet `yaml`, dépendance de développement du moteur) ; `scripts/amorcer-referentiel.php` — `AmorcageReferentiel::amorcer` | Conversion sur le poste ; amorçage hors vote, idempotent (A6) |
 | API | `api/src/routes/annotations.php` | RG9 |
 | Contrat | `schemas/referentiel.schema.json` (2.1.0), `engine/src/validation-compiled.js` | Format |
 
@@ -212,6 +229,9 @@ exemple converti depuis sa source, et veut le proposer aux membres.
 | UC-EPI-05-U08 | `createEpistemiarqueApi` | `importReferentiel` (niveau facultatif), `listCatalogue` | `web/test/usecases/unit/uc-epi-05-importer-referentiel.test.js` |
 | UC-EPI-05-U09 | `apiFetch` | Un refus garde son détail par pointeur (`errors`), une autre erreur non | idem |
 | UC-EPI-05-U10 | `createDraft` | La nouvelle version garde l'identifiant de sa source, quelle que soit la graphie demandée (casse, espace final) | `api/tests/UseCases/Unit/UcEpi05ImporterReferentielTest.php` |
+| UC-EPI-05-U11 | `convertirHumanome` | Sur la fixture fictive à la forme Humanome : document attendu, valide au schéma ; libellé, `nomCourt`, niveaux déduits, palette, codes ; rubriques composées dans l'ordre, absentes omises, hors du document ce que le schéma ne représente pas ; provenance ; avertissements (`structure`, rubriques) ; empreinte de l'extracteur ; niveau facette ; refus à leur chemin ; fiches de scan (A6) | `engine/src/referentiel-humanome.test.js` |
+| UC-EPI-05-U12 | `scripts/convertir-humanome.mjs` | Écrit le document attendu ; relancé, « déjà à jour » ; refuse d'écraser une version tirée d'un autre fichier, un YAML illisible ou refusé, un niveau inconnu (A6) | idem |
+| UC-EPI-05-U13 | `ContentHash`, `auNiveau` | Le document converti a l'empreinte et l'ordre du serveur ; son niveau facette est celui d'`auNiveau` (A6) | `api/tests/ReferentielAmorcageTest.php` |
 
 ### Tests fonctionnels
 
@@ -232,6 +252,8 @@ exemple converti depuis sa source, et veut le proposer aux membres.
 | UC-EPI-05-F13 | A4 | IHM | Un administrateur non membre : pas de vote, publication possible | idem |
 | UC-EPI-05-F14 | Étape 1 | IHM | Le lien de l'atelier ; section vide dite | idem |
 | UC-EPI-05-F15 | Étape 4 | IHM | « Voir » : le document au vote, pôle par pôle, avant le vote ; « Masquer » ; un brouillon aussi | idem |
+| UC-EPI-05-F16 | A6 | API | Amorçage publié sans vote puis « déjà amorcé », servi par `GET /api/referentiels` et par sa version ; autre contenu sous la même version (description, niveaux, structure), brouillon de l'atelier, RESPIRE, identifiant ou code invalides refusés, rien d'écrit ; la ligne de commande | `api/tests/ReferentielAmorcageTest.php` |
+| UC-EPI-05-F17 | A6 | IHM | Le référentiel amorcé est proposé au menu des parcours et se charge tel que la base le sert | `web/src/components/ReferentielChoice.test.jsx` |
 
 ### Tests existants liés (non-régression)
 
@@ -248,8 +270,9 @@ exemple converti depuis sa source, et veut le proposer aux membres.
 ### Exécuter
 
 ```sh
-(cd api && vendor/bin/phpunit --filter 'UcEpi05|testADraftServesOnlyItsAuthorsTestRuns|testARunReadsRespireOnly|testACartographyOfAnotherReferential' --testdox)
-cd web && npx vitest run test/usecases/unit/uc-epi-05 test/usecases/functional/uc-epi-05
+(cd api && vendor/bin/phpunit --filter 'UcEpi05|ReferentielAmorcageTest|testADraftServesOnlyItsAuthorsTestRuns|testARunReadsRespireOnly|testACartographyOfAnotherReferential' --testdox)
+(cd engine && npx vitest run src/referentiel-humanome.test.js)
+cd web && npx vitest run test/usecases/unit/uc-epi-05 test/usecases/functional/uc-epi-05 src/components/ReferentielChoice.test.jsx
 ```
 
 ## Anomalies constatées
@@ -262,8 +285,13 @@ Aucune.
   comme pour toute écriture du grain document : le message nomme le code
   fautif.
 - **L2** — L'import lit du JSON au format du schéma : un référentiel publié
-  sous une autre forme (le Markdown ou le YAML de l'Humanome V18, par
-  exemple) se convertit d'abord.
+  sous une autre forme se convertit d'abord. Le YAML de l'Humanome V18 a son
+  convertisseur, sur le poste (A6) ; l'atelier ne lit pas le YAML.
+- **L6** — L'amorçage (A6) publie sans vote : c'est un choix de Christian
+  pour l'Humanome V18 (S5, Q1). La route de production qu'il emprunterait,
+  `POST /api/admin/import-referentiel`, ne compare que l'empreinte, qui laisse
+  les descriptions de côté, et ne refuse pas l'identifiant `respire`
+  (`docs/referentiel-humanome.md` §5).
 - **L3** — Le libellé et la version suivent UC-EPI-04 AN2 : trop longs, ils
   donnent un `500` au lieu d'un `422`.
 - **L4** — La page publique `#/referentiel` ne montre que RESPIRE. (Le

@@ -108,6 +108,18 @@ L'export statique écrit dans `web/public/data/referentiel/` les versions
 publiées (`respire-v7.0.0.json`, `respire-v7.1.0.json`) et `index.json`, que
 lit la page `#/referentiel`.
 
+Facultatif, l'Humanome V18 de respire.school, depuis son YAML, qui n'est pas
+dans le dépôt (`docs/referentiel-humanome.md` §4) :
+
+```bash
+node scripts/convertir-humanome.mjs "<chemin>/humanome_v18.yaml"   # -> build/referentiels/
+php scripts/amorcer-referentiel.php build/referentiels/humanome-v18.0.0-proposition.1.json
+```
+
+Il est publié sans vote, et les menus des parcours le proposent aussitôt. Un
+export statique lancé ensuite le listerait : ne pas déployer cet index tant
+que la production ne l'a pas.
+
 Lancer l'API dans un terminal à part, l'environnement exporté :
 `php -S localhost:8080 -t api/public`. Vérifier :
 `curl http://localhost:8080/api/health` → `{"status":"ok","db":"ok"}`.

@@ -60,6 +60,7 @@
 * Spécification & référence
   * [Cahier des charges — humanome.xyz](docs/cahier-des-charges.md)
   * [Contrats de données (P1)](docs/contrats.md)
+  * [Le référentiel Humanome V18 (respire.school)](docs/referentiel-humanome.md)
   * [Inventaire des assets existants](docs/inventaire-assets.md)
   * [Offre employeur — moteur de recherche de compétences](docs/offre-employeur.md)
   * [Ergonomie de la navigation — humanome.xyz](docs/ergonomie-navigation.md)

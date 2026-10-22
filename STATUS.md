@@ -35,6 +35,79 @@ vert.
 
 ## Fait
 
+- 2026-10-22 — **Un multi-référentiel simple : les menus lisent la base, et l'Humanome V18 de
+  respire.school entre (sprint 5, lots A et B ; branche `feat/referentiels-simples`).** Christian
+  (TODO, sprint 5) : « Je ne vois pas https://respire.school/referentiel par exemple dans les choix
+  possibles. C'est à ajouter impérativement. »
+  - **Le diagnostic** (analyse S5) : la plateforme sait cartographier tout référentiel (T15 à
+    T17), mais respire.school publie l'**Humanome V18** (`humanome`, 5 pôles lettrés, 20 capacités,
+    64 facettes), pas le RESPIRE v7 de la plateforme. Son YAML n'entrait pas dans l'atelier, qui ne
+    lit que du JSON. Et les menus des parcours lisaient l'index statique, exporté de la base de
+    développement d'un poste : même publié en production, un référentiel n'y serait pas apparu.
+  - **Lot A, les menus lisent la base.**
+    - `GET /api/referentiels/{id}/versions/{semver}`, public, en lecture seule, sert une version
+      **publiée** de tout référentiel : jamais un brouillon ni une proposition, ni une autre graphie
+      (`404`).
+    - `web/src/data/referentiel.js` lit l'API d'abord (catalogue et document), puis l'export
+      statique, puis le RESPIRE embarqué. La page publique `#/referentiel` reste statique.
+    - Les cartographies standard, ouverte (Twin6) et de masse proposent donc un référentiel dès sa
+      publication, sans export ni redéploiement.
+    - UC-APP-02, UC-APP-09, UC-ETA-03, UC-EPI-03, UC-EPI-05, UC-PRO-06, UC-EMP-01, UC-CAR-06,
+      `docs/contrats.md` §9 et §11, `docs/autorisations.md`.
+  - **Lot B, l'Humanome V18.** Décisions de Christian, prises par délégation : amorçage plutôt que
+    vote (Q1), niveau capacité (Q2), rubriques du YAML sans rien inventer (Q3), palette fixe par
+    rang (Q4), pas de jury propre (Q5), l'en-tête faux signalé (Q6).
+    - **Le convertisseur** : `engine/src/referentiel-humanome.js`, sans DOM, et
+      `scripts/convertir-humanome.mjs`.
+      - Le paquet `yaml` 2.9.1 (ISC, sans dépendance) est une dépendance de développement du
+        moteur : rien ne part sur l'OVH.
+      - Il donne `humanome` 18.0.0-proposition.1, « Humanome V18 », les capacités pour
+        compétences et les facettes pour éléments. Le niveau facette est en option.
+      - Les descriptions sont composées des rubriques du YAML, en gras, jamais en titres :
+        définition, finalité, savoirs pratiques, participation avec l'IA, frontière, limites,
+        situation, relance, ancrage obligatoire ; pour une facette, manifestations et faux positif.
+      - `source` porte la provenance : page, fichier, sha256, convertisseur, licence CC-BY-SA.
+      - Il écrit dans `build/referentiels/`, jamais déployé, et refuse `respire`.
+    - **L'amorçage** : `scripts/amorcer-referentiel.php` publie hors vote.
+      - Il est idempotent sur le document **entier** : `importPublishedDocument` ne compare que
+        l'empreinte, qui laisse les descriptions de côté.
+      - Il refuse RESPIRE, une version déjà en base avec un autre contenu ou tenue par l'atelier.
+    - **Les tests** portent sur une fixture **fictive** (`schemas/fixtures/referentiel-humanome-fictif.yaml`
+      et les deux documents qu'en tire le script) : aucun vrai référentiel dans le dépôt.
+    - **La documentation** : `docs/referentiel-humanome.md` (règles, procédure locale et de
+      production, écarts de la source, mesures), UC-EPI-05 (A6, L2, L6, U11 à U13, F16, F17),
+      `docs/contrats.md` §9, `INSTALL.md` §3.
+  - **Fait sur le poste.** La base de développement (`humanome`) était vide : migrations, RESPIRE
+    7.0.0 et 7.1.0 (`INSTALL.md` §3), puis l'Humanome converti de la copie de `humanotwin`.
+    - Le second amorçage dit « déjà amorcé ».
+    - Par `php -S` : `GET /api/referentiels` liste « Humanome V18 » et RESPIRE, et la version
+      servie est le document converti, à l'identique (5 pôles, 20 compétences, 64 éléments).
+    - L'export statique n'a pas été relancé.
+  - **Relevé dans la source (Q6)** : son en-tête `referentiel.structure` annonce 18 capacités,
+    57 facettes, `[3,4,4,4,3]` et `[9,14,12,12,10]` par pôle et 114 manifestations. Le contenu en
+    compte 20, 64, `[4,4,4,4,4]`, `[12,14,12,12,14]` et 128. Le convertisseur compte dans le contenu
+    et avertit.
+  - **Mesures** : la fiche de scan d'un pôle Humanome pèse 17,4 à 20,3 Ko, contre 12,9 à 19,2 Ko
+    pour RESPIRE. Twin9 réserve d'après la taille réelle des fiches.
+  - **Vérifié** : PHP 1 734 tests, les 2 échecs connus dus à PHP 8.5 (`AuthActivationTest::
+    testExpiredCodeIsRejected`, `UcCpt02…::testU17SessionCookieAttributes`) ; moteur 430 tests, les
+    5 échecs locaux connus (UC-PRO-08 F19 à F22, F25) ; front 2 769 verts (6 ignorés) ;
+    `check-publiable` propre.
+  - **Non vérifié** :
+    - le fichier converti n'a pas été comparé à l'octet à celui de respire.school, qui n'a pas été
+      téléchargé : même identifiant, même version, même date ;
+    - rien en production ;
+    - aucun run Twin6 ni Twin9 sur l'Humanome, à 0 appel ;
+    - les menus n'ont pas été ouverts dans un navigateur : tests et routes seulement.
+  - **Décisions laissées à Christian** :
+    - en production, l'atelier (vote) ou la route d'amorçage (`docs/referentiel-humanome.md` §5,
+      moins stricte que le script) ;
+    - signaler l'en-tête faux à Stéphane ;
+    - le contrat de lecture de l'Humanome, que le schéma ne porte pas (S5, E8) ;
+    - un jury pour ses pôles, plus tard (Q5).
+    - Viennent dans une PR suivante : le choix du référentiel au lancement de Twin9 (lot C) et la
+      création simple d'un référentiel (lot D).
+
 - 2026-10-21 — **Prix d'Anthropic relevés chaque jour, sortie sans plafond, Haiku seul pour la
   démo (branche `feat/tarifs-et-sorties`, empilée sur `feat/demo-un-dollar`).** Christian :
   « Corrige la surfacturation de Sonnet et prévois une mise à jour quotidienne de la grille de

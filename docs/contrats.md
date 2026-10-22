@@ -1266,6 +1266,18 @@ Le schéma `referentiel` passe en **2.0.0** (`docs/plan-twin9-php.md` de
   (`referentiel_version_id`) n'accepte que ses codes ; sans référentiel
   désigné, la forme de RESPIRE (`[1-7].NN`) jusqu'au 2026-10-20 — depuis,
   les codes de la version que lit sa relecture (§11).
+- **L'Humanome V18** (S5, lot B) : le YAML que publie
+  https://respire.school/referentiel se convertit en document de ce schéma
+  sur le poste (`scripts/convertir-humanome.mjs`, `engine/src/referentiel-humanome.js`) :
+  identifiant `humanome`, libellé « Humanome V18 », niveaux `capacité`
+  `[A-E][1-4]` puis `facette` `[A-E][1-4]\.[1-9]`, les capacités pour
+  compétences et leurs facettes pour éléments, des descriptions composées des
+  rubriques du YAML, la couleur de la palette par rang, l'empreinte calculée
+  comme ci-dessus. `scripts/amorcer-referentiel.php` le publie hors vote,
+  idempotent sur le document entier (`importPublishedDocument` ne compare que
+  l'empreinte), et refuse `respire`. Le schéma ne change pas. Règles,
+  procédure en production et écarts relevés dans la source :
+  `docs/referentiel-humanome.md`.
 - **Hors T15** : la page publique `#/referentiel` ne montre que RESPIRE ;
   `ReferentielDiff` ignore niveaux et éléments. (La cartographie, qui ne
   lisait que RESPIRE et ses 7 pôles, lit le référentiel de chaque run depuis

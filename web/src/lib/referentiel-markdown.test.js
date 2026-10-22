@@ -201,6 +201,29 @@ describe('UC-EPI-05 — un référentiel en Markdown', () => {
     expect(lireTexte(bon, { ...CHAMPS, id: '' }).document).toBeNull()
   })
 
+  it('UC-EPI-05-U21 — un code fait de chiffres seulement est refusé à sa ligne, à tout niveau : l’analyse approfondie (Twin9) le refuse', () => {
+    const texte = [
+      '# Pôle 1 — Savoirs', //    1
+      '## 1 — Lire', //           2
+      '### 1.1 — Déchiffrer', //  3 (sous un titre refusé : pas d'autre erreur)
+      '## 2 — Écrire', //         4
+      '## A3 — Compter', //       5
+      '### 31 — Additionner', //  6 (un élément peut tenir lieu de compétence : refusé aussi)
+      '### A3.2 — Soustraire', // 7
+    ].join('\n')
+    const refus = (code) =>
+      `code « ${code} » fait de chiffres seulement : l’analyse approfondie (Twin9) refuse un tel code ; ajoutez-y une lettre ou un point`
+    expect(enLignes(analyserMarkdown(texte).erreurs)).toEqual([`2 : ${refus('1')}`, `4 : ${refus('2')}`, `6 : ${refus('31')}`])
+    expect(lireTexte(texte).document).toBeNull()
+    // le cas du constat : des pôles numérotés « ## 1 — … », sans rien d'autre à redire
+    expect(enLignes(lireTexte('# Pôle 1 — Savoirs\n## 1 — Lire\n## 2 — Écrire').erreurs)).toEqual([
+      `2 : ${refus('1')}`,
+      `3 : ${refus('2')}`,
+    ])
+    // un chiffre avec une lettre, un point ou un tiret suffit
+    expect(lireTexte('# Pôle 1 — Savoirs\n## 1.01 — Lire\n## 1-2 — Écrire\n## 01a — Compter\n### 0.1 — Fin').erreurs).toEqual([])
+  })
+
   it('UC-EPI-05-U19 — BOM, fins de ligne CRLF, tirets, séparateurs, lignes échappées : le même document', () => {
     const lf = '# Pôle 1 — A · Pôle\n\nLe pôle.\n\n## A1 — Une\n\nLa première.\n\n---\n\n## A2 — Deux\n'
     const attendu = lireTexte(lf).document

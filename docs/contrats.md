@@ -1373,10 +1373,12 @@ T16, plan validé par Christian le 2026-10-20).
   - Sans évaluation, la référence (§8.5) reste le run de PLANT-01 de T2, fois
     les pôles : elle ignore la taille des fiches d'un autre référentiel.
   - Le moteur ne refuse un référentiel qu'au lancement : sa publication (§9)
-    ne vérifie pas qu'il le lit. Le schéma 2.0.0 admet ainsi des codes faits
-    de chiffres seulement (« 11 »), un pôle sans compétence, un nom de pôle ou
-    de compétence fait d'espaces : publié, voté, un tel référentiel est
-    refusé à chaque aperçu et à chaque lancement.
+    ne vérifie pas qu'il le lit. Le schéma 2.0.0 admet ainsi un pôle sans
+    compétence, un nom de pôle ou de compétence fait d'espaces : publié, voté,
+    un tel référentiel est refusé à chaque aperçu et à chaque lancement. Les
+    codes faits de chiffres seulement (« 11 »), eux, sont refusés à
+    l'enregistrement depuis la revue de S5 (§9, « Les codes ») ; une version
+    publiée avant reste refusée au lancement.
   - La lentille du « Spécialiste du pôle » est écrite dans le code du moteur :
     son empreinte suit son texte, pas une version déclarée comme celle de la
     banque (`PERSONAS_VERSION`).
@@ -1546,6 +1548,13 @@ Le schéma `referentiel` passe en **2.0.0** (`docs/plan-twin9-php.md` de
 - **Les codes** : 1 à 8 caractères (lettres, chiffres, `.`, `_`, `-`, le
   premier lettre ou chiffre), uniques dans tout le référentiel ; 8, la taille
   des colonnes qui les rangent (`cartography_annotations.competence_code`).
+  Jamais faits de chiffres seulement (« 11 ») : le moteur Twin9 refuse une
+  compétence ainsi codée, et tout niveau peut tenir lieu de compétence ; le
+  schéma l'admet, l'intégrité (`validateDocument`, `CHIFFRES_SEULS`) le
+  refuse à tout niveau, à son pointeur, depuis la revue de S5 (2026-10-22),
+  et la page Markdown de l'atelier à sa ligne. Un tel code d'une version
+  enregistrée avant fait refuser ce qui la revalide (soumission, publication,
+  fork).
 - **Les éléments** (`elements` d'une compétence, et d'un élément) :
   `{code, nom, description?, elements?}` ; un élément d'un niveau que le
   référentiel ne déclare pas est refusé. Une description est du texte libre

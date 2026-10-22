@@ -216,6 +216,34 @@ final class UcEpi05ImporterReferentielTest extends TestCase
         }
     }
 
+    #[TestDox('UC-EPI-05-U22 — un code fait de chiffres seulement est refusé à son pointeur, à tout niveau : l’analyse approfondie (Twin9) ne lit pas une compétence ainsi codée, et tout niveau peut tenir lieu de compétence')]
+    public function testU22ACodeOfDigitsOnlyIsRefused(): void
+    {
+        $refus = static fn (string $code): string => sprintf(
+            'Code « %s » fait de chiffres seulement : l’analyse approfondie (Twin9) refuse un tel code', $code);
+
+        // a competence: its motif admits it, the check still refuses it
+        $doc = ReferentielsFictifs::neufPoles();
+        $doc['niveaux'][0]['motif'] = '(?:[1-9]\.\d{2}|\d{3})';
+        $doc['competences'][0]['code'] = '101';
+        $errors = self::errors($doc);
+        self::assertSame([[$refus('101')]], array_values($errors), json_encode($errors, JSON_UNESCAPED_UNICODE));
+        self::assertStringEndsWith('/code', (string) array_key_first($errors));
+
+        // an element, which a reading at its level would make a competence
+        $doc = ReferentielsFictifs::lettre();
+        $doc['niveaux'][1]['motif'] = '(?:[A-E][1-4]\.[1-9]|\d{2})';
+        $doc['competences'][0]['elements'][0]['code'] = '11';
+        self::assertSame(['/competences/0/elements/0/code' => [$refus('11')]], self::errors($doc));
+
+        // a digit with a letter, a dot or a dash is a code like any other
+        $doc = ReferentielsFictifs::lettre();
+        $doc['niveaux'][1]['motif'] = '(?:[A-E][1-4]\.[1-9]|\d-\d|0\d[a-z])';
+        $doc['competences'][0]['elements'][0]['code'] = '1-1';
+        $doc['competences'][0]['elements'][1]['code'] = '01a';
+        self::assertSame('fictif-lettre', self::repo()->validateDocument($doc)['id']);
+    }
+
     #[TestDox('UC-EPI-05-U05 — lecture à un niveau : les facettes deviennent les compétences, sous le pôle de leur capacité ; les niveaux plus larges partent')]
     public function testU05ReadingAtALevel(): void
     {

@@ -53,6 +53,8 @@ const SEMVER_RE =
   /^(0|[1-9]\d*)\.(0|[1-9]\d*)\.(0|[1-9]\d*)(?:-((?:0|[1-9]\d*|\d*[a-zA-Z-][0-9a-zA-Z-]*)(?:\.(?:0|[1-9]\d*|\d*[a-zA-Z-][0-9a-zA-Z-]*))*))?(?:\+([0-9a-zA-Z-]+(?:\.[0-9a-zA-Z-]+)*))?$/
 /** Le code du schéma : 1 à 8 caractères, le premier lettre ou chiffre. */
 const CODE_RE = /^[A-Za-z0-9][A-Za-z0-9._-]{0,7}$/
+/** Un code que le moteur Twin9 refuse (ReferentielRepository::CHIFFRES_SEULS). */
+const CHIFFRES_SEULS_RE = /^[0-9]+$/
 const COULEUR_RE = /^#[0-9a-fA-F]{6}$/
 /** Au-delà, le serveur répond 500 au lieu de 422 (UC-EPI-04 AN2) : refusé ici. */
 const LIBELLE_MAX = 190
@@ -250,6 +252,12 @@ export function analyserMarkdown(texte) {
     const code = m[1]
     if (!CODE_RE.test(code)) {
       erreur(n, `code invalide « ${code} » : 1 à 8 caractères, lettres, chiffres, « . », « _ » ou « - », le premier lettre ou chiffre`)
+      continue
+    }
+    // le moteur Twin9 refuse une compétence ainsi codée (Twin_v9, Referentiel::depuisBloc), et
+    // tout niveau peut tenir lieu de compétence : refusé à tout niveau, comme le fait le serveur
+    if (CHIFFRES_SEULS_RE.test(code)) {
+      erreur(n, `code « ${code} » fait de chiffres seulement : l’analyse approfondie (Twin9) refuse un tel code ; ajoutez-y une lettre ou un point`)
       continue
     }
     if (vus.has(code)) {
@@ -534,7 +542,8 @@ Modèle de référentiel en Markdown (atelier des épistémiarques, humanome.xyz
 plus fin de la compétence au-dessus, et ainsi de suite, sans sauter de niveau.
 Le texte sous un titre le décrit ; « --- » entre deux fiches est facultatif.
 Un code a 1 à 8 caractères (lettres, chiffres, « . », « _ », « - »), unique dans
-tout le référentiel ; la page déduit des codes le motif de chaque niveau.
+tout le référentiel, jamais fait de chiffres seulement (« 1 » ne va pas, « A1 »
+ou « 1.01 » vont) ; la page déduit des codes le motif de chaque niveau.
 Les commentaires « source », « niveaux » et « couleur » sont facultatifs.
 Un pôle dont le premier mot est, en capitales, celui d’un pôle de RESPIRE
 (TÊTE, CŒUR, MAIN, ÂME, RACINES, CITÉ, FLAMBEAU) reçoit dans l’analyse

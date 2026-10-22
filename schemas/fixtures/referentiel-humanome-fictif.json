@@ -1,0 +1,109 @@
+{
+  "schemaVersion": "2.1.0",
+  "kind": "referentiel",
+  "id": "fictif-humanome",
+  "version": "2.0.0-proposition.1",
+  "label": "Fictif V2",
+  "contentHash": "e8a50de412da04843a376d1fe57f60ccf798aa5c4e003b71e702800fce21eb69",
+  "source": "« Référentiel Fictif V2 » 2.0.0-proposition.1 du 2026-01-15, https://example.invalid/referentiel-humanome-fictif.yaml. Converti depuis referentiel-humanome-fictif.yaml (sha256 47810adcb5bc7214f1faa01b0dd7d0df3879baed58a8ce6fa7966f03276efa6e) par scripts/convertir-humanome.mjs 1.0.0, niveau capacité. Licence : CC-BY-SA Éditeur fictif.",
+  "niveaux": [
+    {
+      "nom": "capacité",
+      "motif": "[A-B][1-2]"
+    },
+    {
+      "nom": "facette",
+      "motif": "[A-B][1-2]\\.[1-9]"
+    }
+  ],
+  "poles": [
+    {
+      "num": 1,
+      "nom": "A · Observer le fictif",
+      "couleur": "#2563eb",
+      "description": "Ce que cherche le pôle fictif A."
+    },
+    {
+      "num": 2,
+      "nom": "B · Agir dans le fictif",
+      "couleur": "#10b981",
+      "description": "Ce que cherche le pôle fictif B."
+    }
+  ],
+  "competences": [
+    {
+      "code": "A1",
+      "nom": "Première capacité fictive",
+      "pole": 1,
+      "description": "Définition fictive de A1.\n\n**Finalité** : Finalité fictive de A1.\n\n**Savoirs pratiques** : Savoirs fictifs de A1.\n\n**Participation avec l’IA** : Participation fictive de A1.\n\n**Frontière** : Frontière fictive de A1.\n\n**Limites** :\n\n- Limite fictive A1 a.\n- Limite fictive A1 b.\n\n**Situation** : Situation fictive de A1.\n\n**Relance** : Relance fictive de A1 ?\n\n**Ancrage obligatoire** : Ancrage fictif.",
+      "elements": [
+        {
+          "code": "A1.1",
+          "nom": "Facette fictive A1.1",
+          "description": "Description fictive de A1.1.\n\n**Manifestations** :\n\n- Manifestation fictive A1.1 a.\n- Manifestation fictive A1.1 b.\n\n**Faux positif** : Faux positif fictif de A1.1."
+        },
+        {
+          "code": "A1.2",
+          "nom": "Facette fictive A1.2",
+          "description": "Description fictive de A1.2.\n\n**Manifestations** :\n\n- Manifestation fictive A1.2.\n\n**Faux positif** : Faux positif fictif de A1.2."
+        },
+        {
+          "code": "A1.3",
+          "nom": "Facette fictive A1.3",
+          "description": "Description fictive de A1.3.\n\n**Manifestations** :\n\n- Manifestation fictive A1.3.\n\n**Faux positif** : Faux positif fictif de A1.3."
+        }
+      ]
+    },
+    {
+      "code": "A2",
+      "nom": "Deuxième capacité fictive",
+      "pole": 1,
+      "description": "Définition fictive de A2.\n\n**Finalité** : Finalité fictive de A2.\n\n**Savoirs pratiques** : Savoirs fictifs de A2.\n\n**Participation avec l’IA** : Participation fictive de A2.\n\n**Frontière** : Frontière fictive de A2.\n\n**Limites** :\n\n- Limite fictive A2.\n\n**Situation** : Situation fictive de A2.\n\n**Relance** : Relance fictive de A2 ?\n\n**Ancrage obligatoire** : Ancrage fictif.",
+      "elements": [
+        {
+          "code": "A2.1",
+          "nom": "Facette fictive A2.1",
+          "description": "Description fictive de A2.1.\n\n**Manifestations** :\n\n- Manifestation fictive A2.1.\n\n**Faux positif** : Faux positif fictif de A2.1."
+        },
+        {
+          "code": "A2.2",
+          "nom": "Facette fictive A2.2",
+          "description": "Description fictive de A2.2.\n\n**Manifestations** :\n\n- Manifestation fictive A2.2.\n\n**Faux positif** : Faux positif fictif de A2.2."
+        },
+        {
+          "code": "A2.3",
+          "nom": "Facette fictive A2.3",
+          "description": "Description fictive de A2.3.\n\n**Manifestations** :\n\n- Manifestation fictive A2.3.\n\n**Faux positif** : Faux positif fictif de A2.3."
+        },
+        {
+          "code": "A2.4",
+          "nom": "Facette fictive A2.4",
+          "description": "Description fictive de A2.4.\n\n**Manifestations** :\n\n- Manifestation fictive A2.4.\n\n**Faux positif** : Faux positif fictif de A2.4."
+        }
+      ]
+    },
+    {
+      "code": "B1",
+      "nom": "Capacité fictive du pôle B",
+      "pole": 2,
+      "description": "Définition fictive de B1.\n\n**Finalité** : Finalité fictive de B1.\n\n**Savoirs pratiques** : Savoirs fictifs de B1.\n\n**Participation avec l’IA** : Participation fictive de B1.\n\n**Frontière** : Frontière fictive de B1.\n\n**Limites** :\n\n- Limite fictive B1.\n\n**Situation** : Situation fictive de B1.\n\n**Ancrage obligatoire** : Ancrage fictif.",
+      "elements": [
+        {
+          "code": "B1.1",
+          "nom": "Facette fictive B1.1",
+          "description": "Description fictive de B1.1.\n\n**Manifestations** :\n\n- Manifestation fictive B1.1.\n\n**Faux positif** : Faux positif fictif de B1.1."
+        },
+        {
+          "code": "B1.2",
+          "nom": "Facette fictive B1.2",
+          "description": "Description fictive de B1.2.\n\n**Manifestations** :\n\n- Manifestation fictive B1.2.\n\n**Faux positif** : Faux positif fictif de B1.2."
+        },
+        {
+          "code": "B1.3",
+          "nom": "Facette fictive B1.3",
+          "description": "Description fictive de B1.3.\n\n**Manifestations** :\n\n- Manifestation fictive B1.3.\n\n**Faux positif** : Faux positif fictif de B1.3."
+        }
+      ]
+    }
+  ]
+}

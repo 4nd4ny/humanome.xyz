@@ -31,8 +31,9 @@ Le promptologue ouvre **Rétrospective** dans la navigation de l'atelier
   (opt-in, UC-APP-04), idéalement avec la version du référentiel qui l'a
   produite.
 - Une version plus récente de **ce** référentiel publiée (UC-EPI-03/04 ; pour
-  un autre référentiel que RESPIRE, inscrite à l'index publié
-  `data/referentiel/index.json`).
+  un autre référentiel que RESPIRE, lue dans la base par l'API publique
+  `GET /api/referentiels`, à défaut dans l'index publié
+  `data/referentiel/index.json`, S5).
 - Le texte de la journée disponible dans un portfolio local du navigateur
   (UC-APP-01), ou à portée de main pour être collé.
 
@@ -63,8 +64,8 @@ Le promptologue ouvre **Rétrospective** dans la navigation de l'atelier
    retient le **référentiel de l'original** : celui stocké avec la
    cartographie (`referentiel {id, version}`), à défaut celui que nomme le
    document (`referentiel`, absent : RESPIRE), version alors inconnue ; pour un
-   autre référentiel que RESPIRE, ses versions publiées se lisent dans l'index
-   (`listPublishedReferentiels`). Le document est une `cartographie-jour` ; la section cherche le texte de **cette date** dans
+   autre référentiel que RESPIRE, ses versions publiées se lisent dans la base,
+   à défaut dans l'index (`listPublishedReferentiels`). Le document est une `cartographie-jour` ; la section cherche le texte de **cette date** dans
    les portfolios locaux (`findLocalDayText`, segments de la date concaténés)
    et l'affiche : « Journée du *AAAA-MM-JJ* — texte retrouvé dans « *titre* »
    (local). »
@@ -171,7 +172,7 @@ Le promptologue ouvre **Rétrospective** dans la navigation de l'atelier
 | Front | `web/src/views/promptologue/RetroSection.jsx` | Sélection, référentiel de l'original et sa base, texte local, lancement, tableau |
 | Front | `web/src/views/promptologue/retro.js` — `compareRetroDocs`, `findLocalDayText`, `newerReferentielVersions` | Logique pure |
 | Front | `web/src/views/promptologue/api.js` — `listCartographies`, `getCartography`, `listReferentielVersions`, `getReferentielVersion` | Appels API |
-| Front | `web/src/data/referentiel.js` — `listPublishedReferentiels`, `loadPublishedReferentiel` | Versions et document d'un autre référentiel que RESPIRE (index publié) |
+| Front | `web/src/data/referentiel.js` — `listPublishedReferentiels`, `loadPublishedReferentiel` | Versions et document d'un autre référentiel que RESPIRE (la base par l'API publique, l'index publié en repli, S5) |
 | Front | `web/src/lib/run-launcher.js` — `createProviderBundle` ; `web/src/lib/portfolio-store.js` | Fournisseur ; portfolios locaux |
 | Moteur | `engine/src/pipeline/extract.js` — `extractDay`, `buildExtractionPrompt`, `buildKairosExtractionPrompt` | Régénération avec le référentiel choisi : sa structure (un appel par pôle), le code et le nom des compétences seulement (AN-3) |
 | API | `GET /api/cartographies`, `GET /api/cartographies/{id}` — `api/src/routes/cartographies.php` (rôle `apprenant`) | Cartographies du propriétaire |

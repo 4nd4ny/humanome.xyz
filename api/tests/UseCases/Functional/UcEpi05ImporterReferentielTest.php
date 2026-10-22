@@ -81,12 +81,14 @@ final class UcEpi05ImporterReferentielTest extends EpiSupport
         self::assertSame(['fictif-lettre'], array_column(self::json($this->as_($this->alix, 'GET', '/api/referentiel/drafts')), 'referentielId'));
         $this->voteAndPublish($draft['id']);
 
-        self::assertSame([
-            ['id' => 'fictif-lettre', 'label' => 'Fictif lettré', 'versions' => ['1.0.0']],
-            ['id' => 'respire', 'label' => 'RESPIRE v7', 'versions' => ['7.0.0']],
-        ], self::json($this->anonymous('GET', '/api/referentiels')));
         // RESPIRE's public reads stay RESPIRE's
-        self::assertSame('respire', self::json($this->anonymous('GET', '/api/referentiel'))['id']);
+        $respire = self::json($this->anonymous('GET', '/api/referentiel'));
+        self::assertSame('respire', $respire['id']);
+        // listed with the provenance of its latest version, which the flows' menus show (S5)
+        self::assertSame([
+            ['id' => 'fictif-lettre', 'label' => 'Fictif lettré', 'versions' => ['1.0.0'], 'source' => ReferentielsFictifs::lettre()['source']],
+            ['id' => 'respire', 'label' => 'RESPIRE v7', 'versions' => ['7.0.0'], 'source' => $respire['source']],
+        ], self::json($this->anonymous('GET', '/api/referentiels')));
     }
 
     #[TestDox('UC-EPI-05-F02 — DoD : un référentiel à 9 pôles s’enregistre, se vote et se publie')]
@@ -97,8 +99,8 @@ final class UcEpi05ImporterReferentielTest extends EpiSupport
         self::assertSame(['1.01', '9.02'], [$draft['content']['competences'][0]['code'], $draft['content']['competences'][17]['code']]);
         $this->voteAndPublish($draft['id']);
 
-        self::assertContains(['id' => 'fictif-neuf', 'label' => 'Fictif à neuf pôles', 'versions' => ['1.0.0']],
-            self::json($this->anonymous('GET', '/api/referentiels')));
+        self::assertContains(['id' => 'fictif-neuf', 'label' => 'Fictif à neuf pôles', 'versions' => ['1.0.0'],
+            'source' => ReferentielsFictifs::neufPoles()['source']], self::json($this->anonymous('GET', '/api/referentiels')));
     }
 
     #[TestDox('UC-EPI-05-F03 — A1 : au niveau facette, les 40 facettes deviennent les compétences, sous le pôle de leur capacité')]

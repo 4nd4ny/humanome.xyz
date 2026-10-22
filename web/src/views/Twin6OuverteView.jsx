@@ -46,6 +46,7 @@ import {
 } from '../api/twin6.js'
 import { executerTwin6, fichesPourTwin6, originesDesFiches, twin6CallsFor } from '@engine/twin6/index.js'
 import { sortieMaxAnthropic } from '@engine/providers/limits.js'
+import { REFERENTIEL_PAR_DEFAUT } from '@engine/conformite.js'
 import { listPublishedReferentiels, loadPublishedReferentiel } from '../data/referentiel.js'
 import ReferentielChoice from '../components/ReferentielChoice.jsx'
 import MergeView from './MergeView.jsx'
@@ -205,7 +206,9 @@ export default function Twin6OuverteView({ lib: injectedLib, deps = {} }) {
     if (!ouverte) return undefined
     let alive = true
     setRef({ status: 'loading', doc: null, message: '' })
-    loadReferentiel(choix ? { id: choix.id, version: choix.version, ...callOpts } : callOpts)
+    // Par défaut, la dernière version publiée de RESPIRE, lue comme le menu la
+    // montre : dans la base d'abord (S5).
+    loadReferentiel(choix ? { id: choix.id, version: choix.version, ...callOpts } : { id: REFERENTIEL_PAR_DEFAUT, ...callOpts })
       .then(({ doc }) => alive && setRef({ status: 'ready', doc, message: '' }))
       .catch((e) => alive && setRef({ status: 'error', doc: null, message: messageErreur(e) }))
     return () => {

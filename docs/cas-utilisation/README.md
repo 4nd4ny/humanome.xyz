@@ -120,14 +120,15 @@ rejouant les fixtures : aucun appel réseau réel).
 | ID | Cas d'utilisation | Tests unitaires | Tests fonctionnels | Anomalies |
 |---|---|---:|---:|---:|
 | [UC-APP-01](apprenant/UC-APP-01-constituer-portfolio.md) | Constituer son portfolio local | 21 | 29 | 5 |
-| [UC-APP-02](apprenant/UC-APP-02-lancer-cartographie-standard.md) | Lancer une cartographie standard | 41 | 26 | 6 |
+| [UC-APP-02](apprenant/UC-APP-02-lancer-cartographie-standard.md) | Lancer une cartographie standard | 41 | 28 | 6 |
 | [UC-APP-03](apprenant/UC-APP-03-consulter-ses-cartographies.md) | Consulter ses cartographies | 13 | 15 | 2 |
 | [UC-APP-04](apprenant/UC-APP-04-stocker-regler-confidentialite.md) | Stocker une cartographie sur le serveur et régler sa confidentialité | 21 | 27 | 4 |
 | [UC-APP-05](apprenant/UC-APP-05-partager-avec-employeur.md) | Partager une cartographie avec un employeur (par l'interface ; liens déjà créés) | 14 | 15 | 0 |
 | [UC-APP-06](apprenant/UC-APP-06-exporter-importer-archive.md) | Exporter et importer son archive complète | 20 | 17 | 6 |
 | [UC-APP-07](apprenant/UC-APP-07-inviter-cartographe.md) | Inviter un cartographe | 9 | 10 | 1 |
 | [UC-APP-08](apprenant/UC-APP-08-rejoindre-cohorte.md) | Rejoindre une cohorte, déposer son portfolio, quitter | 12 | 25 | 4 |
-**Total : 59 cas d'utilisation, 980 tests unitaires et 1147 tests fonctionnels identifiés, 196 anomalies de production documentées.**
+| [UC-APP-09](apprenant/UC-APP-09-cartographie-ouverte-twin6.md) | Lancer une cartographie ouverte (Twin6) | 39 | 30 | 1 |
+| [UC-APP-10](apprenant/UC-APP-10-analyse-approfondie-twin9.md) | Lancer une analyse approfondie (Twin9) | 16 | 21 | 0 |
 | [UC-APP-11](apprenant/UC-APP-11-gerer-credit-twin9.md) | Gérer son crédit Twin9 (achat, factures, remboursement) | 17 | 29 | 3 |
 | [UC-APP-12](apprenant/UC-APP-12-interface-ipsative-v3.md) | Explorer sa cartographie dans l'interface ipsative V3 (retirée le 2026-10-14) | 29 | 0 | 19 |
 
@@ -178,7 +179,7 @@ rejouant les fixtures : aucun appel réseau réel).
 |---|---|---:|---:|---:|
 | [UC-ETA-01](etablissement/UC-ETA-01-gerer-cohorte.md) | Créer et gérer une cohorte | 15 | 15 | 3 |
 | [UC-ETA-02](etablissement/UC-ETA-02-configurer-llm-budget.md) | Configurer le moteur LLM, le budget et le jeton worker | 12 | 14 | 2 |
-| [UC-ETA-03](etablissement/UC-ETA-03-piloter-run-masse.md) | Lancer, suivre et annuler un run de masse | 15 | 29 | 6 |
+| [UC-ETA-03](etablissement/UC-ETA-03-piloter-run-masse.md) | Lancer, suivre et annuler un run de masse | 15 | 31 | 6 |
 | [UC-ETA-04](etablissement/UC-ETA-04-consulter-documents-membre.md) | Consulter les documents produits pour un membre | 9 | 14 | 2 |
 
 ### Administration
@@ -197,12 +198,12 @@ rejouant les fixtures : aucun appel réseau réel).
 | ID | Cas d'utilisation | Tests unitaires | Tests fonctionnels | Anomalies |
 |---|---|---:|---:|---:|
 | [UC-SYS-01](systeme/UC-SYS-01-traiter-file-jobs.md) | Traiter la file de jobs de masse | 28 | 26 | 9 |
-| [UC-SYS-02](systeme/UC-SYS-02-deployer-migrer.md) | Déployer, migrer et importer | 12 | 23 | 5 |
+| [UC-SYS-02](systeme/UC-SYS-02-deployer-migrer.md) | Déployer, migrer et importer | 12 | 24 | 5 |
 | [UC-SYS-03](systeme/UC-SYS-03-maintenance-supervision.md) | Maintenance et supervision technique | 8 | 11 | 2 |
 | [UC-SYS-04](systeme/UC-SYS-04-construire-artefacts-derives.md) | Construire les données et artefacts dérivés | 6 | 16 | 3 |
 | [UC-SYS-05](systeme/UC-SYS-05-sauvegarder-restaurer.md) | Sauvegarder et restaurer la base | 0 | 8 | 6 |
 
-**Total : 59 cas d'utilisation, 980 tests unitaires et 1147 tests fonctionnels identifiés, 196 anomalies de production documentées.**
+**Total : 59 cas d'utilisation, 980 tests unitaires et 1152 tests fonctionnels identifiés, 196 anomalies de production documentées.**
 
 Les comptes portent sur les identifiants distincts (`UC-…-Unn`, `UC-…-Fnn`) présents dans les fichiers de tests ; un identifiant paramétré (`it.each`) compte pour un.
 <!-- catalogue:end -->

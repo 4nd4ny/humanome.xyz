@@ -4,6 +4,7 @@ declare(strict_types=1);
 
 namespace Humanome\Twin9;
 
+use Humanome\Twin9\Fournisseurs\Fournisseurs;
 use stdClass;
 
 /**
@@ -11,11 +12,15 @@ use stdClass;
  * docs/contrats.md §7.1 and §8.1): the engine reads nothing else, and no
  * config.json. The effective config and roster are the v9.8's once its
  * options are applied: the profile's algorithm parameters under their
- * config.json names; the backends of the two stages, whose models are the
- * stages' (the platform's CallSettings decides what each call is sent with);
- * the college's readers, each pass a reader of its own, as twin9.py expands
- * them (`_charger_roster`); the options jours, rescan, test and memoire;
- * and the run's referential, drawn from the base (T16, ReferentielMoteur).
+ * config.json names; the backends of the two stages, whose providers and
+ * models are the stages' (the platform's CallSettings decides what each call
+ * is sent with); the college's readers, each pass a reader of its own, as
+ * twin9.py expands them (`_charger_roster`), each of its provider and of its
+ * family, declared or its provider's (ADR-012); the options jours, rescan,
+ * test and memoire; and the run's referential, drawn from the base (T16,
+ * ReferentielMoteur). The engine reads a backend's kind and a reader's family
+ * in its fingerprints, and the families for the college's diversity: an
+ * Anthropic profile keeps « anthropic » for both.
  */
 final class MoteurReglages
 {
@@ -25,8 +30,8 @@ final class MoteurReglages
         'troncatures',
     ];
 
-    /** Every call of a platform run goes to Anthropic. */
-    public const KIND = 'anthropic';
+    /** The kind of a backend or a reader that names no provider: Anthropic's. */
+    public const KIND = Fournisseurs::DEFAUT;
 
     /**
      * @param stdClass $profil a complete, valid profile (ProfilRepository::validate)
@@ -44,9 +49,11 @@ final class MoteurReglages
         $config->max_workers = $profil->parallelisme->appels_directs;
         $config->parallel_jures = true;
         // the deep analysis (tribunal, second instance, rereadings, Arpenteur) and the quick one
-        $config->backend_tribunal = (object) ['kind' => self::KIND, 'model' => $profil->etages->profond->modele,
+        $config->backend_tribunal = (object) ['kind' => self::kind($profil->etages->profond),
+                                              'model' => $profil->etages->profond->modele,
                                               'model_mini' => $profil->etages->rapide->modele];
-        $config->backend_rapide = (object) ['kind' => self::KIND, 'model' => $profil->etages->rapide->modele];
+        $config->backend_rapide = (object) ['kind' => self::kind($profil->etages->rapide),
+                                            'model' => $profil->etages->rapide->modele];
 
         $moteur = (object) [
             'config' => $config,
@@ -73,12 +80,14 @@ final class MoteurReglages
     private static function roster(stdClass $profil): array
     {
         $roster = [];
+        $reglages = new CallSettings($profil);
         foreach ($profil->college as $lecteur) {
+            $reglage = $reglages->pour('tagger', self::appel($lecteur));
             $entree = [
                 'name' => $lecteur->nom,
-                'kind' => self::KIND,
+                'kind' => $reglage['fournisseur'],
                 'model' => $lecteur->modele ?? $profil->etages->lecteurs->modele,
-                'family' => $lecteur->famille,
+                'family' => self::famille($profil, $lecteur),
                 'weight' => (float) $lecteur->poids,
                 'enabled' => true,
             ];
@@ -94,6 +103,33 @@ final class MoteurReglages
         }
 
         return $roster;
+    }
+
+    /**
+     * A reader's family: the one its profile declares, else its provider's
+     * (Fournisseurs::familleDefaut(): OpenRouter's vendor), never null — the
+     * engine sorts the families.
+     */
+    public static function famille(stdClass $profil, stdClass $lecteur): string
+    {
+        if (isset($lecteur->famille)) {
+            return (string) $lecteur->famille;
+        }
+        $reglage = (new CallSettings($profil))->pour('tagger', self::appel($lecteur));
+
+        return Fournisseurs::familleDefaut($reglage['fournisseur'], $reglage['modele']);
+    }
+
+    /** A stage's provider, Anthropic when it names none. */
+    private static function kind(stdClass $etage): string
+    {
+        return (string) ($etage->fournisseur ?? self::KIND);
+    }
+
+    /** The id of a reading call of a reader, as CallSettings reads it back: its first pole. */
+    private static function appel(stdClass $lecteur): string
+    {
+        return '/tags_' . $lecteur->nom . '_P1.json';
     }
 
     /** stable_hash(s) % (2**31 - 1), as twin9.py seeds a pass: the first 12 hex digits of the MD5. */

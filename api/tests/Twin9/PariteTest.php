@@ -336,14 +336,20 @@ final class PariteTest extends TestCase
         return [$scenario, $moteur, self::$dir . '/' . $option('--portfolio'), (string) $option('--out')];
     }
 
-    /** The profile of the parity runs: the v9.8's, directly (every call of a pass at once) or by batches. */
+    /**
+     * The profile of the parity runs: the v9.8's, directly (every call of a
+     * pass at once) or by batches. A profile sends 32 direct calls at once
+     * at most (ADR-012): the parity runs' bound is set on the validated
+     * copy, as the run keeps it, beyond what a profile may ask.
+     */
     private static function profil(bool $parLots = false): \stdClass
     {
         $profil = ProfilRepository::v98();
         $profil->voie = $parLots ? 'lots' : 'directe';
+        $profil = ProfilRepository::validate($profil);
         $profil->parallelisme->appels_directs = 10000;
 
-        return ProfilRepository::validate($profil);
+        return $profil;
     }
 
     /** Whether TWIN_V9_DIR holds the engine, of T16 or after (php/protocole), and its oracle. */

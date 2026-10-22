@@ -6,7 +6,9 @@ namespace Humanome\Tests\Twin9;
 
 use Humanome\Twin9\AnthropicCaller;
 use Humanome\Twin9\CallSettings;
+use Humanome\Twin9\Evaluations;
 use Humanome\Twin9\Fournisseurs\Arret;
+use Humanome\Twin9\MoteurReglages;
 use Humanome\Twin9\ProfilRepository;
 use PHPUnit\Framework\TestCase;
 use stdClass;
@@ -305,6 +307,86 @@ final class AppelsDirectsTest extends TestCase
         $fiche = $bloc;
         $fiche['poles'][0]['competences'][0]['fiche'] .= ' : une fiche changée';
         self::assertNotSame($avec, CallSettings::empreinte($profil, null, $gabarits, $fiche));
+    }
+
+    /**
+     * A provider named where it is inherited anyway — Anthropic on a stage,
+     * a step's stage's, the readers' stage's on a reader — changes none of
+     * the fingerprints, nor the engine's settings (ADR-012): the v9.8
+     * profile, Anthropic written everywhere, keeps its memory and its
+     * forecasts.
+     */
+    public function testAnInheritedProviderLeavesTheFingerprints(): void
+    {
+        $gabarits = ['lourd/20-greffier' => 'g', 'tagger/P1' => 'fiche'];
+        $empreintes = static fn (stdClass $p): array => [
+            CallSettings::empreinte($p, $p->troncatures, $gabarits),
+            Evaluations::signature($p, 'a1b2c3d4e5f60718'),
+            json_encode(MoteurReglages::depuis($p), JSON_THROW_ON_ERROR | JSON_PRESERVE_ZERO_FRACTION),
+        ];
+        $nu = ProfilRepository::v98();
+        $nu->etapes->greffier = (object) ['budget_sortie' => 1000];
+        $ecrit = ProfilRepository::v98();
+        foreach ($ecrit->etages as $etage) {
+            $etage->fournisseur = 'anthropic';
+        }
+        $ecrit->college[0]->fournisseur = 'anthropic';
+        $ecrit->etapes->greffier = (object) ['fournisseur' => 'anthropic', 'budget_sortie' => 1000];
+        $ecritValide = ProfilRepository::validate($ecrit);
+
+        self::assertSame($empreintes(ProfilRepository::validate($nu)), $empreintes($ecritValide));
+        self::assertSame('anthropic', $ecritValide->etages->profond->fournisseur, 'le profil lui-même le garde');
+
+        // the same at another provider: the step names its stage's provider, the reader the readers' stage's
+        $mistral = static function (bool $ecrit): stdClass {
+            $p = ProfilRepository::v98();
+            foreach (['lecteurs', 'profond'] as $etage) {
+                $p->etages->{$etage} = (object) ['fournisseur' => 'mistral', 'modele' => 'modele-fictif',
+                                                 'budget_sortie' => 900, 'reflexion' => 'coupee'];
+            }
+            $p->etapes->accusation = (object) (['budget_sortie' => 800] + ($ecrit ? ['fournisseur' => 'mistral'] : []));
+            if ($ecrit) {
+                $p->college[0]->fournisseur = 'mistral';
+            }
+
+            return ProfilRepository::validate($p);
+        };
+        self::assertSame($empreintes($mistral(false)), $empreintes($mistral(true)));
+        self::assertNotSame($empreintes(ProfilRepository::validate($nu))[0], $empreintes($mistral(false))[0]);
+    }
+
+    /**
+     * The second instance keeps the provider it names: over a step of
+     * another provider than its stage's, naming the stage's is not inheriting
+     * it. Two profiles whose calls go to two providers never share a
+     * fingerprint, and the memory never takes one's day back for the other.
+     */
+    public function testTheSecondInstancesProviderStaysInTheFingerprints(): void
+    {
+        $profil = static function (bool $nomme): stdClass {
+            $p = ProfilRepository::v98();
+            foreach (['lecteurs', 'rapide', 'profond'] as $etage) {
+                $p->etages->{$etage} = (object) ['fournisseur' => 'mistral', 'modele' => 'modele-fictif',
+                                                 'budget_sortie' => 900, 'reflexion' => 'coupee'];
+            }
+            $p->etapes->jures = (object) ['fournisseur' => 'openai', 'modele' => 'modele-fictif-o'];
+            $p->etapes->second_ressort = (object) (['modele' => 'modele-fictif-2'] + ($nomme ? ['fournisseur' => 'mistral'] : []));
+
+            return ProfilRepository::validate($p);
+        };
+        $a = $profil(true);
+        $b = $profil(false);
+
+        self::assertSame(['mistral', 'modele-fictif-2'],
+            array_values(array_intersect_key((new CallSettings($a))->pour('jure', 'second_ressort/1.01/23-historien.md'),
+                ['fournisseur' => 0, 'modele' => 0])));
+        self::assertSame(['openai', 'modele-fictif-2'],
+            array_values(array_intersect_key((new CallSettings($b))->pour('jure', 'second_ressort/1.01/23-historien.md'),
+                ['fournisseur' => 0, 'modele' => 0])), 'sans fournisseur, le second ressort suit celui de l’étape');
+        $gabarits = ['tagger/P1' => 'fiche'];
+        self::assertNotSame(CallSettings::empreinte($a, $a->troncatures, $gabarits),
+            CallSettings::empreinte($b, $b->troncatures, $gabarits));
+        self::assertNotSame(Evaluations::signature($a, 'a1b2c3d4e5f60718'), Evaluations::signature($b, 'a1b2c3d4e5f60718'));
     }
 
     /** The same profile, its keys in another order, as MySQL may give them back. */

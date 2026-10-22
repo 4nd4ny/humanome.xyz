@@ -4,6 +4,7 @@ declare(strict_types=1);
 
 namespace Humanome\Twin9;
 
+use Humanome\Twin9\Fournisseurs\Fournisseurs;
 use Humanome\Validation;
 use JsonException;
 use PDO;
@@ -30,8 +31,12 @@ use stdClass;
  * form (1.0, not 1), as Python reads the v9.8's config.json, whatever form
  * the page sent it in (T13).
  *
- * Beyond the schema, the API's own rule (T13): thinking cut refuses the
- * efforts xhigh and max, for any step the settings resolve to.
+ * Beyond the schema, the API's own rules: thinking cut refuses the efforts
+ * xhigh and max, for any step the settings resolve to (T13); and the
+ * providers' (ADR-012): an object that names a provider other than the one
+ * it inherits names its model too — the second instance, whatever provider
+ * it names —, each call's model follows its provider's pattern, and a call
+ * that leaves Anthropic carries no effort, not even its stage's.
  */
 final class ProfilRepository
 {
@@ -44,6 +49,14 @@ final class ProfilRepository
 
     /** The efforts the API refuses with thinking cut. */
     private const EFFORTS_REFLECHIS = ['xhigh', 'max'];
+
+    /** What a refused model id should look like, by provider (the registry's patterns, said); the others': */
+    private const MOTIFS_LISIBLES = [
+        'anthropic' => '« claude-… »',
+        'google' => 'ni « / » ni « : »',
+        'openrouter' => '« éditeur/modèle », sans suffixe « : »',
+    ];
+    private const MOTIF_LISIBLE = '« claude-… » est réservé à Anthropic';
 
     public function __construct(private readonly PDO $pdo)
     {
@@ -104,6 +117,7 @@ final class ProfilRepository
             $noms[$lecteur->nom] = true;
         }
 
+        self::fournisseurs($profil);
         foreach ((new CallSettings($profil))->parEtape() as $etape => $reglage) {
             if ($reglage['reflexion'] === 'coupee' && \in_array($reglage['effort'], self::EFFORTS_REFLECHIS, true)) {
                 throw new Twin9Exception('Profil invalide — ' . $etape . ' : l\'effort « ' . $reglage['effort']
@@ -112,6 +126,53 @@ final class ProfilRepository
         }
 
         return $profil;
+    }
+
+    /**
+     * The providers' rules (ADR-012), on a profile the schema admits: what
+     * each object names, then what each call resolves to (CallSettings).
+     *
+     * @throws Twin9Exception 422 naming the step
+     */
+    private static function fournisseurs(stdClass $profil): void
+    {
+        $herite = static fn (string $etage): string
+            => (string) ($profil->etages->{$etage}->fournisseur ?? Fournisseurs::DEFAUT);
+        $objets = [];
+        foreach ((array) $profil->etapes as $etape => $reglage) {
+            // the second instance spans both stages: whatever provider it names, it names the model
+            $objets[(string) $etape] = $etape === 'second_ressort'
+                ? [$reglage, null, 'un fournisseur nommé au second ressort']
+                : [$reglage, $herite(CallSettings::ETAGES[$etape]), 'un autre fournisseur que celui de son étage'];
+        }
+        foreach ($profil->college as $lecteur) {
+            $objets['lecteur ' . $lecteur->nom] = [$lecteur, $herite('lecteurs'),
+                                                   'un autre fournisseur que celui de l’étage des lecteurs'];
+        }
+        foreach ($objets as $nom => [$reglage, $fournisseur, $quoi]) {
+            if (isset($reglage->fournisseur) && $reglage->fournisseur !== $fournisseur && !isset($reglage->modele)) {
+                throw new Twin9Exception('Profil invalide — ' . $nom . ' : ' . $quoi . ' ('
+                    . self::libelle((string) $reglage->fournisseur) . ') demande son modèle, dans le même réglage', 422);
+            }
+        }
+
+        foreach ((new CallSettings($profil))->parEtape() as $etape => $reglage) {
+            $fournisseur = $reglage['fournisseur'];
+            if (preg_match(Fournisseurs::REGISTRE[$fournisseur]['motif_modele'], $reglage['modele']) !== 1) {
+                throw new Twin9Exception('Profil invalide — ' . $etape . ' : « ' . $reglage['modele'] . ' » n’est pas '
+                    . 'un identifiant de modèle chez ' . self::libelle($fournisseur) . ' ('
+                    . (self::MOTIFS_LISIBLES[$fournisseur] ?? self::MOTIF_LISIBLE) . ')', 422);
+            }
+            if ($fournisseur !== Fournisseurs::DEFAUT && $reglage['effort'] !== null) {
+                throw new Twin9Exception('Profil invalide — ' . $etape . ' : l’effort est propre à Anthropic ; un appel '
+                    . 'chez ' . self::libelle($fournisseur) . ' n’en a aucun, pas même celui de son étage', 422);
+            }
+        }
+    }
+
+    private static function libelle(string $fournisseur): string
+    {
+        return (string) (Fournisseurs::REGISTRE[$fournisseur]['libelle'] ?? $fournisseur);
     }
 
     /** Stores a valid profile for its owner; the new profile's id. */

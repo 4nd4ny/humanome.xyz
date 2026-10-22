@@ -4,12 +4,16 @@ declare(strict_types=1);
 
 namespace Humanome\Tests\Twin9;
 
+use Humanome\Packages\SettingsRepository;
 use Humanome\Referentiel\ReferentielRepository;
 use Humanome\Tests\CartographeTestCase;
 use Humanome\Tests\TestDb;
 use Humanome\Tests\UseCases\Support\ReferentielsFictifs;
+use Humanome\Twin9\ProfilPolicy;
 use Humanome\Twin9\ProfilRepository;
 use Humanome\Twin9\ProtocoleRepository;
+use Humanome\Twin9\Twin9Config;
+use Humanome\Twin9\Twin9Exception;
 use stdClass;
 
 /**
@@ -19,8 +23,8 @@ use stdClass;
  * referential (T15: its own drafts for its test runs, while it writes them)
  * and template set (T14: the v9.8's, the default, its own copies in the
  * atelier); the administrator sets the instance's prices, its default
- * template set, and opens the personal keys; the instance's key comes from
- * the environment, never from the interface.
+ * template set, opens the personal keys and the providers (ADR-012); the
+ * instance's key comes from the environment, never from the interface.
  */
 final class ConfigurationDroitsTest extends CartographeTestCase
 {
@@ -133,6 +137,16 @@ final class ConfigurationDroitsTest extends CartographeTestCase
         self::assertSame(201, $this->as_($compte, 'POST', '/api/twin9/profils', ['nom' => 'Perso', 'profil' => $profil])
             ->getStatusCode());
         self::assertTrue(self::json($this->as_($compte, 'GET', '/api/twin9/configuration'))['cle_perso_ouverte']);
+
+        // the holder of a key reads what is sent with it: another provider than Anthropic, the instance's keys only
+        $profil->etapes->greffier = (object) ['fournisseur' => 'mistral', 'modele' => 'modele-fictif'];
+        $tiers = $this->as_($compte, 'POST', '/api/twin9/profils', ['nom' => 'Perso tiers', 'profil' => $profil]);
+        self::assertSame(422, $tiers->getStatusCode());
+        self::assertSame('Profil refusé — /cle : la clé personnelle ne sert que chez Anthropic ; un profil qui appelle '
+            . 'Mistral AI ne part qu’avec les clés de l’instance', self::json($tiers)['error']);
+        $profil->cle = 'instance';
+        self::assertSame(201, $this->as_($compte, 'POST', '/api/twin9/profils', ['nom' => 'Perso tiers', 'profil' => $profil])
+            ->getStatusCode());
     }
 
     /** One's personal key itself: in one's own vault; the page only learns whether it is there. */
@@ -292,6 +306,83 @@ final class ConfigurationDroitsTest extends CartographeTestCase
             ['marge' => 2, 'runs_par_tick' => 5, 'secondes_par_tranche' => 30])->getStatusCode());
         $config = self::json($this->as_($admin, 'GET', '/api/twin9/admin/config'));
         self::assertSame([2, 5, 30], [$config['marge'], $config['runs_par_tick'], $config['secondes_par_tranche']]);
+    }
+
+    /**
+     * The providers a run may reach: the administrator's to open, Anthropic
+     * alone by default; one tagged « non » at the GDPR only while the second
+     * switch is on (ADR-012).
+     */
+    public function testTheProvidersAreOpenedByTheAdministrator(): void
+    {
+        self::$pdo->exec("DELETE FROM settings WHERE name = 'twin9_config'");
+        $compte = $this->registerAs('fournisseurs@example.org', 'Simple');
+        $admin = $this->registerAs('ouvre-fournisseurs@example.org', 'Admin', ['admin']);
+        $config = fn (): array => self::json($this->as_($admin, 'GET', '/api/twin9/admin/config'));
+        $mettre = fn (array $reglages): int => $this->as_($admin, 'PUT', '/api/twin9/admin/config', $reglages)
+            ->getStatusCode();
+
+        foreach ([['twin9_fournisseurs_ouverts' => ['anthropic', 'mistral']], ['twin9_fournisseurs_non_rgpd' => true]]
+                 as $reglages) {
+            self::assertSame(403, $this->as_($compte, 'PUT', '/api/twin9/admin/config', $reglages)->getStatusCode());
+        }
+        self::assertSame([['anthropic'], false], [$config()['twin9_fournisseurs_ouverts'],
+                                                 $config()['twin9_fournisseurs_non_rgpd']]);
+
+        self::assertSame(200, $mettre(['twin9_fournisseurs_ouverts' => ['anthropic', 'mistral']]));
+        $refus = $this->as_($admin, 'PUT', '/api/twin9/admin/config', ['twin9_fournisseurs_ouverts' => ['anthropic', 'google']]);
+        self::assertSame(422, $refus->getStatusCode());
+        self::assertSame('Fournisseurs ouverts invalides : Google (Gemini), étiqueté « non » au regard du RGPD, ne '
+            . 's’ouvre que si twin9_fournisseurs_non_rgpd l’est aussi', self::json($refus)['error']);
+        foreach ([['twin9_fournisseurs_ouverts' => ['anthropic', 'ollama']],
+                  ['twin9_fournisseurs_ouverts' => ['anthropic', 'anthropic']],
+                  ['twin9_fournisseurs_ouverts' => 'anthropic'],
+                  ['twin9_fournisseurs_ouverts' => ['un' => 'anthropic']],
+                  ['twin9_fournisseurs_non_rgpd' => 'oui']] as $invalide) {
+            self::assertSame(422, $mettre($invalide), json_encode($invalide));
+        }
+        self::assertSame(['anthropic', 'mistral'], $config()['twin9_fournisseurs_ouverts'], 'rien n’est gardé d’un refus');
+
+        self::assertSame(200, $mettre(['twin9_fournisseurs_non_rgpd' => true,
+                                       'twin9_fournisseurs_ouverts' => ['anthropic', 'mistral', 'google']]));
+        self::assertSame(422, $mettre(['twin9_fournisseurs_non_rgpd' => false]), 'Google ouvert le garde ouvert');
+        self::assertSame(200, $mettre(['twin9_fournisseurs_non_rgpd' => false, 'twin9_fournisseurs_ouverts' => ['anthropic']]));
+        self::assertSame([['anthropic'], false], [$config()['twin9_fournisseurs_ouverts'],
+                                                 $config()['twin9_fournisseurs_non_rgpd']]);
+    }
+
+    /**
+     * A profile may name a provider the instance has not opened: it is
+     * saved, as one's own choice; it is not launched until the
+     * administrator opens it (ADR-012).
+     */
+    public function testAProviderNotOpenYetIsSavedNotLaunched(): void
+    {
+        self::$pdo->exec("DELETE FROM settings WHERE name = 'twin9_config'");
+        $compte = $this->registerAs('mixte@example.org', 'Mixte');
+        $profil = ProfilRepository::v98();
+        $profil->etapes->greffier = (object) ['fournisseur' => 'mistral', 'modele' => 'modele-fictif'];
+
+        $cree = $this->as_($compte, 'POST', '/api/twin9/profils', ['nom' => 'Mixte', 'profil' => $profil]);
+        self::assertSame(201, $cree->getStatusCode(), (string) $cree->getBody());
+        self::assertSame('mistral', self::json($cree)['profil']['etapes']['greffier']['fournisseur']);
+
+        $config = new Twin9Config(new SettingsRepository(self::$pdo));
+        $politique = new ProfilPolicy(self::$pdo, $config);
+        $valide = ProfilRepository::validate($profil);
+        try {
+            $politique->admettreAuLancement($valide);
+            self::fail('lancé chez un fournisseur fermé');
+        } catch (Twin9Exception $e) {
+            self::assertSame(422, $e->getStatusCode());
+            self::assertSame('Profil refusé — greffier : le fournisseur Mistral AI n’est pas encore ouvert sur cette '
+                . 'instance', $e->getMessage());
+        }
+        $politique->admettreAuLancement(ProfilRepository::validate(ProfilRepository::v98()));
+
+        $config->update(['twin9_fournisseurs_ouverts' => ['anthropic', 'mistral']]);
+        $politique->admettreAuLancement($valide);
+        self::assertSame(['anthropic', 'mistral'], $config->fournisseursActifs());
     }
 
     /** The instance's key: set at installation (ANTHROPIC_API_KEY), never through the interface, never shown. */

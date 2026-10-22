@@ -271,20 +271,22 @@ final class Evaluations
 
     /**
      * @return array<string, mixed> the mode, the referential, its version and its fingerprint (T16), the template
-     *         set and its fingerprint, the models and the performance (stages, steps, readers), the algorithm's
+     *         set and its fingerprint, the models and the performance (stages, steps, readers: a provider named
+     *         where it is inherited anyway left out, CallSettings::sansFournisseurHerite()), the algorithm's
      *         parameters
      */
     private static function comparables(stdClass $profil, string $jeu, string $referentiel): array
     {
+        $appels = CallSettings::sansFournisseurHerite($profil);
         $lecteurs = [];
-        foreach ($profil->college ?? [] as $lecteur) {
+        foreach ($appels['college'] as $lecteur) {
             $lecteurs[] = array_intersect_key((array) $lecteur, array_flip(self::LECTEUR));
         }
         $reglages = ['mode' => (string) $profil->mode, 'referentiel' => (string) ($profil->referentiel->id ?? ''),
                      'version_referentiel' => (string) ($profil->referentiel->version ?? ''),
                      'empreinte_referentiel' => $referentiel,
                      'gabarits' => (string) ($profil->gabarits ?? ''), 'empreinte_gabarits' => $jeu,
-                     'etages' => $profil->etages, 'etapes' => $profil->etapes ?? new stdClass(), 'lecteurs' => $lecteurs];
+                     'etages' => $appels['etages'], 'etapes' => $appels['etapes'], 'lecteurs' => $lecteurs];
         foreach (self::ALGORITHME as $cle) {
             $reglages[$cle] = $profil->{$cle} ?? null;
         }

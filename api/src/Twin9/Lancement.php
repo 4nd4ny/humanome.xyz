@@ -428,6 +428,7 @@ final class Lancement
         $politique = new ProfilPolicy($this->pdo, $this->config);
         [$profil, $nom] = $this->profil($userId, $profilId, $politique);
         $politique->admettre($profil, $userId);
+        $politique->admettreAuLancement($profil);
         if ($profil->cle === 'personnelle' && !$politique->choix($userId)['cle_perso_enregistree']) {
             throw new Twin9Exception('Profil refusé — /cle : aucune clé Anthropic personnelle n’est enregistrée', 422);
         }

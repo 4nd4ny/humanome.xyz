@@ -210,7 +210,7 @@ function Reglage({ chemin, profil, defaut, onChange, contexte, niveau = 0 }) {
             </fieldset>
           ))}
           <button type="button" className="admin-button-secondary"
-            onClick={() => onChange(chemin, [...(valeur ?? []), { nom: '', famille: '' }])}>
+            onClick={() => onChange(chemin, [...(valeur ?? []), { nom: '' }])}>
             Ajouter un lecteur
           </button>
         </>

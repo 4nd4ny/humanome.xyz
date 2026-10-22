@@ -2,19 +2,30 @@
   "$schema": "https://json-schema.org/draft/2020-12/schema",
   "$id": "https://humanome.xyz/schemas/twin9-profil.schema.json",
   "title": "Profil d'un run Twin9",
-  "description": "Décrit un run Twin9 de bout en bout (planning du moteur PHP, docs/plan-twin9-php.md de Twin_v9, lot 4a) : chaque paramètre d'algorithme du config.json de la v9.8, ses backends exceptés, et les options de sa ligne de commande qui règlent l'algorithme, troncatures comprises ; le collège des lecteurs ; pour chaque autre étape, le modèle Claude, le budget de sortie, l'effort et la réflexion, l'étage servant de valeur par défaut ; la voie, le parallélisme, le budget, la durée, la clé, le jeu de gabarits et le référentiel. Toute clé inconnue est refusée ; aucune température, que les modèles 5.5 refusent. Correspondance avec la v9.8 : docs/contrats.md §7.",
+  "description": "Décrit un run Twin9 de bout en bout (planning du moteur PHP, docs/plan-twin9-php.md de Twin_v9, lot 4a) : chaque paramètre d'algorithme du config.json de la v9.8, ses backends exceptés, et les options de sa ligne de commande qui règlent l'algorithme, troncatures comprises ; le collège des lecteurs ; pour chaque autre étape, le fournisseur, le modèle, le budget de sortie, l'effort et la réflexion, l'étage servant de valeur par défaut ; la voie, le parallélisme, le budget, la durée, la clé, le jeu de gabarits et le référentiel. Toute clé inconnue est refusée ; aucune température, que les modèles 5.5 refusent. Correspondance avec la v9.8 : docs/contrats.md §7.",
   "type": "object",
   "additionalProperties": false,
   "$defs": {
+    "fournisseur": {
+      "enum": [
+        "anthropic",
+        "openai",
+        "mistral",
+        "google",
+        "xai",
+        "openrouter"
+      ],
+      "description": "Fournisseur des appels (registre Twin9\\Fournisseurs\\Fournisseurs ; un test vérifie l'égalité), sans valeur par défaut : absent, c'est celui dont le réglage hérite — Anthropic pour un étage, son étage pour une étape, l'étage des lecteurs pour un lecteur. Un objet qui pose un autre fournisseur que celui dont il hérite pose aussi son modèle. Un run n'atteint que les fournisseurs que l'administrateur a ouverts (ADR-012)."
+    },
     "modele": {
       "type": "string",
-      "pattern": "^claude-[a-z0-9][a-z0-9.-]*$",
-      "description": "Identifiant d'un modèle Claude de l'API Anthropic, par exemple « claude-haiku-5-5 »."
+      "pattern": "^[a-z0-9][a-z0-9._:/-]{0,79}$",
+      "description": "Identifiant du modèle chez son fournisseur, 80 caractères au plus, par exemple « claude-haiku-5-5 » chez Anthropic. L'API vérifie qu'il suit le motif de ce fournisseur : « claude-… » chez Anthropic et nulle part ailleurs ; ni « / » ni « : » chez Google ; « éditeur/modèle », sans suffixe « : », chez OpenRouter."
     },
     "budget_sortie": {
       "type": "integer",
       "minimum": 1,
-      "description": "Budget de sortie de l'appel (max_tokens), réflexion comprise."
+      "description": "Budget de sortie de l'appel : max_tokens chez Anthropic, réflexion comprise ; chez un autre fournisseur, son plafond de sortie, qui compte ou non le raisonnement selon le fournisseur (ADR-012)."
     },
     "effort": {
       "enum": [
@@ -24,25 +35,28 @@
         "xhigh",
         "max"
       ],
-      "description": "Effort (output_config.effort). Absent : celui du modèle."
+      "description": "Effort d'un appel Anthropic (output_config.effort). Absent : celui du modèle. Les autres fournisseurs n'en reçoivent pas : un appel qui part ailleurs que chez Anthropic n'en a aucun, pas même hérité de son étage."
     },
     "reflexion": {
       "enum": [
         "coupee",
         "adaptative"
       ],
-      "description": "Réflexion : « coupee » sous la forme que le modèle accepte (disabled pour Haiku 5.5, between_tools pour Sonnet 5.5), ou « adaptative »."
+      "description": "Réflexion d'un appel Anthropic : « coupee » sous la forme que le modèle accepte (disabled pour Haiku 5.5, between_tools pour Sonnet 5.5), ou « adaptative ». Chez un autre fournisseur, aucun paramètre d'Anthropic ne part : son raisonnement suit l'entrée de la grille de l'instance pour ce modèle (ADR-012)."
     },
     "reglage_etage": {
       "type": "object",
       "additionalProperties": false,
-      "description": "Réglage d'un étage, valeur par défaut de ses étapes.",
+      "description": "Réglage d'un étage, valeur par défaut de ses étapes ; son fournisseur, absent, est Anthropic.",
       "required": [
         "modele",
         "budget_sortie",
         "reflexion"
       ],
       "properties": {
+        "fournisseur": {
+          "$ref": "#/$defs/fournisseur"
+        },
         "modele": {
           "$ref": "#/$defs/modele"
         },
@@ -63,6 +77,9 @@
       "description": "Ce qu'une étape change au réglage de son étage ; le reste vient de l'étage.",
       "required": [],
       "properties": {
+        "fournisseur": {
+          "$ref": "#/$defs/fournisseur"
+        },
         "modele": {
           "$ref": "#/$defs/modele"
         },
@@ -82,8 +99,7 @@
       "additionalProperties": false,
       "description": "Un lecteur du collège.",
       "required": [
-        "nom",
-        "famille"
+        "nom"
       ],
       "properties": {
         "nom": {
@@ -94,7 +110,11 @@
         "famille": {
           "type": "string",
           "minLength": 1,
-          "description": "Famille déclarée : deux lecteurs d'une même famille ne comptent que pour une dans l'exigence de diversité."
+          "description": "Famille déclarée : deux lecteurs d'une même famille ne comptent que pour une dans l'exigence de diversité. Absente : son fournisseur, ou chez OpenRouter l'éditeur du modèle (le préfixe de son identifiant)."
+        },
+        "fournisseur": {
+          "$ref": "#/$defs/fournisseur",
+          "description": "Absent : celui de l'étage des lecteurs ; un autre que celui-là pose aussi le modèle du lecteur."
         },
         "modele": {
           "$ref": "#/$defs/modele",
@@ -285,7 +305,7 @@
         "lots"
       ],
       "default": "lots",
-      "description": "Appels directs, ou API Message Batches d'Anthropic, à moitié prix."
+      "description": "Voie des appels Anthropic : directs, ou par l'API Message Batches d'Anthropic, à moitié prix. Les appels aux autres fournisseurs partent toujours en direct."
     },
     "parallelisme": {
       "type": "object",
@@ -298,14 +318,15 @@
         "appels_directs": {
           "type": "integer",
           "minimum": 1,
+          "maximum": 32,
           "default": 6,
-          "description": "Appels directs simultanés (remplace max_workers et parallel_jures)."
+          "description": "Appels directs simultanés (remplace max_workers et parallel_jures), 32 au plus."
         },
         "journees": {
           "type": "integer",
           "minimum": 1,
           "default": 10,
-          "description": "Journées menées de front par appels directs ; par lots, toutes le sont."
+          "description": "Journées menées de front quand aucun appel ne part par lots ; dès qu'un appel part par lots (Anthropic, voie « lots »), toutes le sont."
         }
       }
     },
@@ -333,7 +354,7 @@
         "personnelle"
       ],
       "default": "instance",
-      "description": "La clé Anthropic de l'instance, ou la clé personnelle de l'utilisateur."
+      "description": "La clé de l'instance, pour chaque fournisseur du profil ; ou la clé personnelle de l'utilisateur, chez Anthropic seulement : un profil qui appelle un autre fournisseur n'admet que les clés de l'instance."
     },
     "gabarits": {
       "type": "string",

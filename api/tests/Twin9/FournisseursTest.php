@@ -8,21 +8,22 @@ use Humanome\Twin9\AnthropicCaller;
 use Humanome\Twin9\CallSettings;
 use Humanome\Twin9\Fournisseurs\Fournisseurs;
 use Humanome\Twin9\ProfilRepository;
+use Humanome\Twin9\Twin9Config;
 use PHPUnit\Framework\TestCase;
 
 /**
  * The providers' registry (P1-5): six providers known, Anthropic alone open
- * and alone with a batch lane, each with its locked endpoint, its key's
- * variable and its GDPR tag; the price grid's keys, bare for Anthropic,
- * « provider:model » otherwise.
+ * by default and alone with a batch lane, each with its locked endpoint, its
+ * key's variable and its GDPR tag; the providers the instance opened; the
+ * price grid's keys, bare for Anthropic, « provider:model » otherwise.
  */
 final class FournisseursTest extends TestCase
 {
-    public function testSixProvidersAreKnownAndAnthropicAloneIsOpen(): void
+    public function testSixProvidersAreKnownAndAnthropicAloneIsOpenByDefault(): void
     {
         self::assertSame(['anthropic', 'openai', 'mistral', 'google', 'xai', 'openrouter'],
             array_keys(Fournisseurs::REGISTRE));
-        self::assertSame(['anthropic'], Fournisseurs::actifs());
+        self::assertSame(['anthropic'], Fournisseurs::actifs(Twin9Config::defaults()));
         self::assertSame('anthropic', Fournisseurs::DEFAUT);
         self::assertSame(['anthropic'], array_keys(array_filter(Fournisseurs::REGISTRE,
             static fn (array $f): bool => $f['lots'])), 'les lots : Anthropic seul');
@@ -40,6 +41,37 @@ final class FournisseursTest extends TestCase
         self::assertSame(['anthropic' => 'sous_conditions', 'openai' => 'sous_conditions', 'mistral' => 'oui',
                           'google' => 'non', 'xai' => 'non', 'openrouter' => 'non'],
             array_map(static fn (array $f): string => $f['rgpd'], Fournisseurs::REGISTRE));
+    }
+
+    /**
+     * The providers open are the instance's setting, in the registry's
+     * order; one tagged « non » only while its switch is on, whatever is
+     * stored; an unknown id never (ADR-012).
+     */
+    public function testTheProvidersOpenAreTheInstancesSetting(): void
+    {
+        $config = static fn (array $ouverts, bool $nonRgpd): array => ['twin9_fournisseurs_ouverts' => $ouverts,
+                                                                         'twin9_fournisseurs_non_rgpd' => $nonRgpd];
+
+        self::assertSame(['anthropic', 'mistral'], Fournisseurs::actifs($config(['mistral', 'anthropic'], false)));
+        self::assertSame(['anthropic', 'mistral'], Fournisseurs::actifs($config(['google', 'mistral', 'anthropic'], false)),
+            'Google, étiqueté « non », reste fermé tant que l’interrupteur l’est');
+        self::assertSame(['anthropic', 'mistral', 'google'],
+            Fournisseurs::actifs($config(['google', 'mistral', 'anthropic'], true)));
+        self::assertSame(['openai'], Fournisseurs::actifs($config(['openai', 'ollama'], true)), 'Twin6 seulement');
+        self::assertSame([], Fournisseurs::actifs($config([], true)), 'Anthropic aussi se ferme');
+        self::assertSame([], Fournisseurs::actifs([]));
+        self::assertSame([], Fournisseurs::actifs(['twin9_fournisseurs_ouverts' => 'anthropic']));
+    }
+
+    /** The profile's providers are the registry's. */
+    public function testTheProfileSchemaKnowsTheRegistrysProviders(): void
+    {
+        $schema = json_decode((string) file_get_contents(\dirname(__DIR__, 3) . '/schemas/twin9-profil.schema.json'),
+            true, 512, JSON_THROW_ON_ERROR);
+
+        self::assertSame(array_keys(Fournisseurs::REGISTRE), $schema['$defs']['fournisseur']['enum']);
+        self::assertArrayNotHasKey('default', $schema['$defs']['fournisseur'], 'absent, il s’hérite');
     }
 
     public function testTheAnthropicEndpointIsTheCallersLockedOne(): void

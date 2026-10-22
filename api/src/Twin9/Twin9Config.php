@@ -6,6 +6,7 @@ namespace Humanome\Twin9;
 
 use Humanome\Env;
 use Humanome\Packages\SettingsRepository;
+use Humanome\Twin9\Fournisseurs\Fournisseurs;
 
 /**
  * Twin9 platform configuration, persisted as JSON in the `settings` table
@@ -24,6 +25,11 @@ use Humanome\Packages\SettingsRepository;
  *                         default 3 — ADR-011 §2)
  *   secondes_par_tranche  int, the length of a tick's slice in seconds
  *                         (5..45, default 40 — OVH: 45 s at most)
+ *   twin9_fournisseurs_ouverts   list of the providers a Twin9 run may reach
+ *                         (Fournisseurs::REGISTRE ids, default ['anthropic'] —
+ *                         ADR-012)
+ *   twin9_fournisseurs_non_rgpd  bool, whether a provider tagged « non » may be
+ *                         opened (default false: closed)
  *
  * publicView() is the ONLY shape the front ever sees of it: the Twin6 prices
  * WITH margin applied (the raw list price and the margin stay admin-only).
@@ -122,6 +128,10 @@ final class Twin9Config
             ],
             'runs_par_tick' => 3,
             'secondes_par_tranche' => 40,
+            // The providers a run may reach (ADR-012): Anthropic alone until the administrator opens another;
+            // one tagged « non » (Google, xAI, OpenRouter) only once the second switch is on — closed by default.
+            'twin9_fournisseurs_ouverts' => [Fournisseurs::DEFAUT],
+            'twin9_fournisseurs_non_rgpd' => false,
         ];
     }
 
@@ -235,6 +245,16 @@ final class Twin9Config
     public function clePersoOuverte(): bool
     {
         return (bool) $this->read()['twin9_cle_perso_ouverte'];
+    }
+
+    /**
+     * The providers a run may reach on this instance (ADR-012).
+     *
+     * @return list<string>
+     */
+    public function fournisseursActifs(): array
+    {
+        return Fournisseurs::actifs($this->read());
     }
 
     /** The Twin9 runs a tick advances at most (ADR-011 §2). */
@@ -467,6 +487,27 @@ final class Twin9Config
         $secondes = $config['secondes_par_tranche'];
         if (!\is_int($secondes) || $secondes < 5 || $secondes > 45) {
             throw new Twin9Exception('Durée de tranche hors bornes (5 à 45 secondes)', 422);
+        }
+
+        if (!\is_bool($config['twin9_fournisseurs_non_rgpd'])) {
+            throw new Twin9Exception('Champ twin9_fournisseurs_non_rgpd invalide : booléen attendu', 422);
+        }
+        $ouverts = $config['twin9_fournisseurs_ouverts'];
+        if (!\is_array($ouverts) || !array_is_list($ouverts)) {
+            throw new Twin9Exception('Fournisseurs ouverts invalides : liste d’identifiants attendue', 422);
+        }
+        foreach ($ouverts as $i => $id) {
+            if (!\is_string($id) || !Fournisseurs::connu($id)) {
+                throw new Twin9Exception('Fournisseurs ouverts invalides : fournisseur inconnu', 422);
+            }
+            if (array_search($id, $ouverts, true) !== $i) {
+                throw new Twin9Exception('Fournisseurs ouverts invalides : ' . $id . ' figure deux fois', 422);
+            }
+            if (Fournisseurs::REGISTRE[$id]['rgpd'] === 'non' && $config['twin9_fournisseurs_non_rgpd'] !== true) {
+                throw new Twin9Exception('Fournisseurs ouverts invalides : ' . Fournisseurs::REGISTRE[$id]['libelle']
+                    . ', étiqueté « non » au regard du RGPD, ne s’ouvre que si twin9_fournisseurs_non_rgpd l’est aussi',
+                    422);
+            }
         }
     }
 }

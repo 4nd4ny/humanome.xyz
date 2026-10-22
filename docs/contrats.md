@@ -519,11 +519,12 @@ valide et range les profils.
 - **Valeurs par défaut** : un réglage absent prend la valeur que le schéma
   lui donne (`default`), comme la v9.8 lit son `config.json` avec
   `.get(clé, défaut)` ; un réglage sans valeur par défaut est obligatoire
-  (le collège, les étages, la famille d'un lecteur…). Le profil rangé est
-  complet : le moteur n'a rien à deviner. Le validateur PHP (opis) ne
-  vérifie pas `required` pour une propriété dotée d'un `default` (option
-  `allowDefaults`) : `ProfilRepository` complète donc le profil avant de le
-  valider.
+  (le collège, les étages, le modèle d'un étage…), sauf s'il est
+  facultatif : le fournisseur, qui s'hérite (§7.2), la famille d'un lecteur
+  (ADR-012). Le profil rangé est complet : le moteur n'a rien à deviner.
+  Le validateur PHP (opis) ne vérifie pas `required` pour une propriété
+  dotée d'un `default` (option `allowDefaults`) : `ProfilRepository`
+  complète donc le profil avant de le valider.
 - **Objets JSON** : un profil voyage décodé en objets (`stdClass`) ou en
   texte JSON, jamais en tableau PHP, où `{}` et `[]` se confondraient (§6,
   UC-CAR-04). MySQL réordonne les clés d'un profil rangé (§6, UC-ADM-05) ;
@@ -536,17 +537,29 @@ valide et range les profils.
 - **Nombres** : un réglage que le schéma type `number` garde la forme d'un
   flottant (`1.0`, non `1`), quelle que soit la forme reçue : le navigateur
   ne distingue pas `1` de `1.0`, et la v9.8 lit `1.0` (T13).
-- **Règle de l'API** (T13) : la réflexion coupée refuse les efforts `xhigh`
+- **Règles de l'API** : la réflexion coupée refuse les efforts `xhigh`
   et `max`, pour toute étape où les réglages se combinent ainsi
-  (`CallSettings::parEtape`) ; le profil est refusé, l'étape nommée.
+  (`CallSettings::parEtape`, T13) ; et celles des fournisseurs (ADR-012,
+  §7.2) : un réglage qui nomme un autre fournisseur que celui dont il hérite
+  nomme aussi son modèle, au second ressort tout fournisseur nommé le
+  demande ; le modèle de chaque appel suit le motif de son fournisseur
+  (`motif_modele` du registre) ; un appel qui part ailleurs que chez
+  Anthropic n'a pas d'effort, pas même celui de son étage. Le profil est
+  refusé, l'étape nommée.
 - **Choix admis** (`ProfilPolicy`, T13) : un référentiel publié et, s'il est
   donné, une de ses versions publiées ; un jeu de gabarits que son
   propriétaire peut choisir (T14, §8.6 : le jeu v9.8, le jeu par défaut, ses
   copies tant qu'il est de l'atelier) ; la clé personnelle là où
-  l'administrateur l'a ouverte. Les droits sont au chapitre « Configuration
-  Twin9 » de `docs/autorisations.md`. Le profil par défaut, que sert
-  `GET /api/twin9/configuration` (`defaut`) et que prend un run lancé sans
-  profil, est celui de la v9.8 avec le jeu de gabarits par défaut.
+  l'administrateur l'a ouverte, et chez Anthropic seulement : un profil dont
+  un appel part ailleurs n'admet que les clés de l'instance (ADR-012 §5) ;
+  un prix pour chaque modèle Anthropic. Au lancement s'y ajoute
+  (`ProfilPolicy::admettreAuLancement`) : chaque fournisseur que ses appels
+  atteignent est ouvert sur l'instance (§8.1) ; un profil qui en nomme un
+  autre s'enregistre, mais ne s'estime ni ne se lance. Les droits sont au
+  chapitre « Configuration Twin9 » de `docs/autorisations.md`. Le profil
+  par défaut, que sert `GET /api/twin9/configuration` (`defaut`) et que
+  prend un run lancé sans profil, est celui de la v9.8 avec le jeu de
+  gabarits par défaut.
 
 ### 7.1 Ce que la v9.8 règle, et où le profil le range
 
@@ -554,7 +567,7 @@ valide et range les profils.
 |---|---|
 | `seuils_consensus`, `juge_leger`, `jury`, `premiere_impression`, `calques`, `merge`, `scan_global` | mêmes clés, mêmes valeurs dans le profil v9.8 (`ProfilTest` le vérifie sur le `config.json` de `TWIN_V9_DIR`) |
 | `max_workers`, `parallel_jures` | `parallelisme.appels_directs` : réglages d'exécution, sans effet sur aucun prompt |
-| `backend_tribunal`, `backend_rapide` | `etages.profond`, `etages.rapide` (modèle Claude, budget de sortie, effort, réflexion) |
+| `backend_tribunal`, `backend_rapide` | `etages.profond`, `etages.rapide` (fournisseur, modèle, budget de sortie, effort, réflexion) |
 | `backend_tribunal_local` | sans objet : le backend local de `--donnees-reelles` ; l'accord de l'apprenant le remplace (ADR-011) |
 
 | Option de `twin9.py` | Profil |
@@ -572,10 +585,12 @@ valide et range les profils.
 
 S'y ajoutent ce que la plateforme règle : `mode` (« test » : la première
 journée du portfolio et le premier pôle du référentiel ; « complet » par
-défaut), `voie` (« directe » ou « lots »), `parallelisme.journees` (journées
-menées de front par appels directs ; par lots, toutes le sont, §8.7),
+défaut), `voie` (celle des appels Anthropic, « directe » ou « lots » ; les
+autres fournisseurs partent toujours en direct), `parallelisme.appels_directs`
+(32 au plus), `parallelisme.journees` (journées menées de front quand aucun
+appel ne part par lots ; dès qu'un appel part par lots, toutes le sont, §8.7),
 `budget_usd` et `duree_minutes` (`null` : aucun plafond),
-`cle` (« instance » ou « personnelle »), `gabarits` (l'identifiant du jeu :
+`cle` (« instance » ou « personnelle », Anthropic seulement), `gabarits` (l'identifiant du jeu :
 « v9.8 », valeur du schéma, ou le nom d'une copie, §8.6) et `referentiel`
 (`id`, et `version`, `null` pour la dernière publiée, figée dans la copie du
 profil au lancement).
@@ -583,12 +598,29 @@ profil au lancement).
 ### 7.2 Étages et étapes
 
 Chaque étage (`etages.lecteurs`, `etages.rapide`, `etages.profond`) donne un
-modèle Claude, un budget de sortie (`max_tokens`, réflexion comprise), un
-effort facultatif (absent : celui du modèle) et une réflexion : « coupee »,
-sous la forme que le modèle accepte (`disabled` pour Haiku 5.5,
-`between_tools` pour Sonnet 5.5), ou « adaptative ». Un lecteur du collège
-et une étape (`etapes.<étape>`) ne portent que ce qu'ils changent à leur
-étage. Les étapes, et l'étage qu'elles suivent comme dans la v9.8 :
+fournisseur (absent : Anthropic), un modèle, un budget de sortie
+(`max_tokens` chez Anthropic, réflexion comprise), un effort facultatif
+(absent : celui du modèle) et une réflexion : « coupee », sous la forme que
+le modèle accepte (`disabled` pour Haiku 5.5, `between_tools` pour Sonnet
+5.5), ou « adaptative ». Un lecteur du collège et une étape
+(`etapes.<étape>`) ne portent que ce qu'ils changent à leur étage.
+
+Le fournisseur (ADR-012) est l'un des six du registre
+`Twin9\Fournisseurs\Fournisseurs` : `anthropic`, `openai`, `mistral`,
+`google`, `xai`, `openrouter` ; le schéma ne lui donne pas de valeur par
+défaut. Absent, il s'hérite : Anthropic pour un étage, son étage pour une
+étape, l'étage des lecteurs pour un lecteur. Qui nomme un autre fournisseur
+que celui dont il hérite nomme aussi son modèle, dans le même objet. Le
+schéma admet tout identifiant de 80 caractères au plus
+(`^[a-z0-9][a-z0-9._:/-]{0,79}$`) ; l'API vérifie, appel par appel, le motif
+du fournisseur : `claude-…` chez Anthropic et nulle part ailleurs, ni `/` ni
+`:` chez Google, un slug `éditeur/modèle` sans suffixe `:` chez OpenRouter.
+L'effort et la réflexion sont des réglages d'Anthropic : un appel qui part
+ailleurs n'a pas d'effort, et son raisonnement suit l'entrée de la grille de
+l'instance pour son modèle. La famille d'un lecteur, absente, est son
+fournisseur, ou chez OpenRouter l'éditeur du modèle.
+
+Les étapes, et l'étage qu'elles suivent comme dans la v9.8 :
 
 | Étape | Étage | Appels |
 |---|---|---|
@@ -613,7 +645,9 @@ et une étape (`etapes.<étape>`) ne portent que ce qu'ils changent à leur
 Les deux gardiens sont deux étapes, puisque la v9.8 les place sur deux
 étages. Le second ressort rejoue le procès d'une journée sur un faisceau :
 sans réglage, chacun de ses appels suit son étape (accusation, jurés…) ;
-un réglage de `second_ressort` vaut pour tous.
+un réglage de `second_ressort` vaut pour tous. Il couvre des étapes des deux
+étages, et de leurs fournisseurs : un fournisseur qu'il nomme, quel qu'il
+soit, demande son modèle.
 
 ### 7.3 Les troncatures
 
@@ -799,13 +833,14 @@ réglages de la v9.8 que lit le moteur (`moteur`). Au lancement (T9, §8.4),
 `MoteurReglages` les tire de la copie du profil et du référentiel qu'elle
 nomme (T16), de rien d'autre : les
 paramètres d'algorithme sous leurs noms du `config.json`, troncatures
-comprises ; `backend_tribunal` et `backend_rapide`, de type `anthropic`, aux
-modèles des étages profond et rapide (le rapide servant aussi de
-`model_mini`) ; `max_workers`, l'appel direct simultané du profil, et
-`parallel_jures`, vrai ; le collège développé comme le fait `twin9.py`, chaque
-passe un lecteur (`haiku#1`…), avec sa graine (`stable_hash("haiku|passe1")`
-modulo 2³¹−1) et son sel (`|passe1`) ; les options `jours`, `rescan`,
-`test` (le mode essai) et `memoire` ; `referentiel`, le référentiel du run
+comprises ; `backend_tribunal` et `backend_rapide`, du type du fournisseur
+de leur étage (`anthropic` quand il n'en nomme pas), aux modèles des étages
+profond et rapide (le rapide servant aussi de `model_mini`) ; `max_workers`,
+l'appel direct simultané du profil, et `parallel_jures`, vrai ; le collège développé comme le fait `twin9.py`, chaque
+passe un lecteur (`haiku#1`…), du type de son fournisseur résolu et de sa
+famille (déclarée, sinon celle de son fournisseur), avec sa graine
+(`stable_hash("haiku|passe1")` modulo 2³¹−1) et son sel (`|passe1`) ; les
+options `jours`, `rescan`, `test` (le mode essai) et `memoire` ; `referentiel`, le référentiel du run
 tiré de la base à sa version (T16, §8.8). Le profil v9.8 donne ainsi les réglages
 du scénario `02-cloud` de l'oracle, au type des backends près (`mock` sous
 `--mock`), et un run qu'ils conduisent est celui de l'oracle, appel par appel
@@ -818,10 +853,14 @@ Chaque appel part avec les réglages de son étape (`CallSettings`) : l'étape
 du moteur (`Call::step`, la tâche de la v9.8) donne l'étape du profil, puis
 son étage, comme au §7.2. Ces réglages nomment aussi le fournisseur de
 l'appel et sa voie, appel par appel : `lots` si le fournisseur est Anthropic et
-que le profil a choisi `voie: lots`, `directe` sinon. Le profil ne nomme pas
-encore de fournisseur (le schéma le refuse) : tout appel part chez Anthropic,
-dans la voie du profil (registre `Twin9\Fournisseurs\Fournisseurs`, où seul
-Anthropic est ouvert).
+que le profil a choisi `voie: lots`, `directe` sinon. Le profil peut nommer
+le fournisseur de chaque étage, étape ou lecteur (§7.2) ; un run n'atteint
+que ceux que l'administrateur a ouverts (ADR-012) : `twin9_fournisseurs_ouverts`
+dans la configuration Twin9, `["anthropic"]` par défaut, un fournisseur
+étiqueté `non` (Google, xAI, OpenRouter) n'y figurant que si
+`twin9_fournisseurs_non_rgpd` vaut `true` (`false` par défaut). Les
+appelants des autres fournisseurs arrivent avec la voie mixte ; d'ici là,
+n'ouvrir qu'Anthropic.
 
 | `step` du moteur | Étape du profil |
 |---|---|
@@ -849,7 +888,15 @@ lecteurs, les troncatures, les gabarits du jeu (hors `merge/` : la mémoire ne
 garde pas les relectures) et, depuis T16, le référentiel que lit le moteur
 (`ReferentielMoteur::empreinte`, §8.8 : ses fiches, préambules, noms, motif et
 libellé). Un run sans référentiel — d'avant T16, ses fiches dans son jeu —
-garde son empreinte. Les sorties gardent l'empreinte de la v9.8.
+garde son empreinte. Un fournisseur nommé là où il s'hérite de toute façon
+— Anthropic sur un étage, celui de son étage sur une étape, celui de l'étage
+des lecteurs sur un lecteur — n'y entre pas
+(`CallSettings::sansFournisseurHerite`), ni dans la signature des évaluations
+(§8.7) : un profil tout Anthropic garde ses empreintes, que
+`EmpreintesFigeesTest` fige. Celui du second ressort y entre toujours, sans
+quoi deux profils dont les appels partent chez deux fournisseurs
+partageraient une empreinte (ADR-012 §2). Les sorties gardent l'empreinte de
+la v9.8.
 
 ### 8.3 La voie par lots (T8)
 

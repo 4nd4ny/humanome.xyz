@@ -91,7 +91,7 @@ final class RunConfiguration
 
         $college = [];
         foreach ($profil->college as $lecteur) {
-            $college[] = ['nom' => (string) $lecteur->nom, 'famille' => (string) $lecteur->famille,
+            $college[] = ['nom' => (string) $lecteur->nom, 'famille' => MoteurReglages::famille($profil, $lecteur),
                           'passes' => (int) $lecteur->passes, 'poids' => (float) $lecteur->poids];
         }
         $backend = static fn (mixed $b): array => array_intersect_key((array) $b, ['kind' => 0, 'model' => 0,

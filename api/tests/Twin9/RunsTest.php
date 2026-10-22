@@ -5,6 +5,7 @@ declare(strict_types=1);
 namespace Humanome\Tests\Twin9;
 
 use Humanome\Llm\LlmRuntime;
+use Humanome\Packages\SettingsRepository;
 use Humanome\Referentiel\ContentHash;
 use Humanome\Referentiel\ReferentielRepository;
 use Humanome\Tests\CartographeTestCase;
@@ -18,6 +19,7 @@ use Humanome\Twin9\ProtocoleRepository;
 use Humanome\Twin9\ReferentielMoteur;
 use Humanome\Twin9\RunConfiguration;
 use Humanome\Twin9\RunRepository;
+use Humanome\Twin9\Twin9Config;
 use Humanome\Validation;
 use PHPUnit\Framework\Attributes\PreserveGlobalState;
 use PHPUnit\Framework\Attributes\RunTestsInSeparateProcesses;
@@ -598,6 +600,43 @@ final class RunsTest extends CartographeTestCase
             self::assertSame($id, json_decode($charge['moteur'])->referentiel->id);
         }
         self::assertNotSame($repo->charger($runs['respire'])['carte_id'], $repo->charger($runs['fictif-lettre'])['carte_id']);
+    }
+
+    /**
+     * A run reaches only the providers the instance opened (ADR-012): a
+     * profile that names another one is saved, but neither previewed nor
+     * launched; Anthropic closed, the v9.8's is not either, until it opens
+     * again. Nothing is ever sent to a provider not opened.
+     */
+    public function testAProviderNotOpenLaunchesNothing(): void
+    {
+        $alice = $this->registerAs('ferme@example.org', 'Alice');
+        $profil = ProfilRepository::v98();
+        $profil->voie = 'directe';
+        $profil->etapes->greffier = (object) ['fournisseur' => 'mistral', 'modele' => 'modele-fictif'];
+        $cree = $this->as_($alice, 'POST', '/api/twin9/profils', ['nom' => 'Mixte', 'profil' => $profil]);
+        self::assertSame(201, $cree->getStatusCode(), (string) $cree->getBody());
+        $mixte = self::json($cree)['id'];
+        $direct = $this->profil($alice);
+
+        foreach (['/api/twin9/runs/apercu', '/api/twin9/runs'] as $route) {
+            $refus = $this->as_($alice, 'POST', $route, $this->lancement($mixte));
+            self::assertSame(422, $refus->getStatusCode(), $route . ' : ' . $refus->getBody());
+            self::assertSame('Profil refusé — greffier : le fournisseur Mistral AI n’est pas encore ouvert sur cette '
+                . 'instance', self::json($refus)['error']);
+        }
+
+        $config = new Twin9Config(new SettingsRepository(self::$pdo));
+        $config->update(['twin9_fournisseurs_ouverts' => []]);
+        $refus = $this->as_($alice, 'POST', '/api/twin9/runs', $this->lancement($direct));
+        self::assertSame(422, $refus->getStatusCode());
+        self::assertSame('Profil refusé — lecteurs : le fournisseur Anthropic n’est pas encore ouvert sur cette instance',
+            self::json($refus)['error']);
+        self::assertSame(0, (int) self::$pdo->query('SELECT COUNT(*) FROM twin9_runs')->fetchColumn());
+
+        $config->update(['twin9_fournisseurs_ouverts' => ['anthropic']]);
+        $lance = $this->as_($alice, 'POST', '/api/twin9/runs', $this->lancement($direct));
+        self::assertSame(201, $lance->getStatusCode(), (string) $lance->getBody());
     }
 
     /**

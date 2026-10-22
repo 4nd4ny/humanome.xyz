@@ -48,16 +48,17 @@ describe('ReferentielsSection — le Markdown', () => {
     const api = await ouvrir()
     expect(within(formulaire()).queryByText(/^Aperçu/)).toBeNull()
     await remplir('# Pôle 1 — A · Pôle\n\n## A1 — Une\n')
-    expect(within(formulaire()).getByText('Aperçu : 1 pôles, 1 compétences.')).toBeDefined()
+    expect(within(formulaire()).getByText('Aperçu : 1 pôle, 1 compétence.')).toBeDefined()
     expect(within(formulaire()).queryByLabelText('Niveau qui tient lieu de compétence')).toBeNull()
 
     await saisir('Texte Markdown du référentiel', DEUX_NIVEAUX)
-    expect(within(formulaire()).getByText('Aperçu : 1 pôles, 2 compétences, 2 éléments plus fins.')).toBeDefined()
+    expect(within(formulaire()).getByText('Aperçu : 1 pôle, 2 compétences au niveau « compétence », 2 éléments plus fins.')).toBeDefined()
     expect(within(formulaire()).getByLabelText('Nom du niveau 2').value).toBe('élément')
     await saisir('Nom du niveau 2', 'grain')
     const niveau = within(formulaire()).getByLabelText('Niveau qui tient lieu de compétence')
     expect(within(niveau).getAllByRole('option').map((o) => o.value)).toEqual(['compétence', 'grain'])
     fireEvent.change(niveau, { target: { value: 'grain' } })
+    expect(within(formulaire()).getByText('Aperçu : 1 pôle, 2 compétences au niveau « grain ».')).toBeDefined()
     await act(async () => {
       fireEvent.click(within(formulaire()).getByRole('button', { name: 'Importer le Markdown' }))
     })
@@ -67,6 +68,20 @@ describe('ReferentielsSection — le Markdown', () => {
       { nom: 'grain', motif: 'A[1-2]\\.1' },
     ])
     expect(choisi).toBe('grain')
+  })
+
+  it('l’aperçu compte au niveau choisi, celui qui tient lieu de compétence, nommé ; singulier et pluriel', async () => {
+    await ouvrir()
+    // une capacité et ses trois facettes (la forme de l'Humanome)
+    await remplir('<!-- niveaux : capacité, facette -->\n# Pôle 1 — A · Pôle\n## A1 — Une\n### A1.1 — f\n### A1.2 — g\n### A1.3 — h\n')
+    const pôles = () =>
+      within(within(formulaire()).getByRole('list', { name: 'Pôles lus' })).getAllByRole('listitem').map((li) => li.textContent)
+    expect(within(formulaire()).getByText('Aperçu : 1 pôle, 1 compétence au niveau « capacité », 3 éléments plus fins.')).toBeDefined()
+    expect(pôles()).toEqual(['1 · A · Pôle — 1 compétence'])
+    // au niveau facette, le serveur fera des facettes les compétences : l'aperçu le dit avant l'import
+    fireEvent.change(within(formulaire()).getByLabelText('Niveau qui tient lieu de compétence'), { target: { value: 'facette' } })
+    expect(within(formulaire()).getByText('Aperçu : 1 pôle, 3 compétences au niveau « facette ».')).toBeDefined()
+    expect(pôles()).toEqual(['1 · A · Pôle — 3 compétences'])
   })
 
   it('l’aperçu n’est ni une alerte ni un statut ; un avertissement n’empêche pas l’import', async () => {

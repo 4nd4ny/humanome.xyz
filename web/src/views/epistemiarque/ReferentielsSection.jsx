@@ -59,6 +59,31 @@ const aSaLigne = (e) => (e.ligne === null ? e.message : `Ligne ${e.ligne} : ${e.
 const elementsDe = (noeuds) =>
   noeuds.reduce((n, noeud) => n + (Array.isArray(noeud.elements) ? noeud.elements.length + elementsDe(noeud.elements) : 0), 0)
 
+/** Les nœuds k niveaux sous ceux-ci (0 : eux-mêmes) : ceux que le serveur fera compétences au niveau k. */
+const auNiveau = (noeuds, k) =>
+  k === 0 ? noeuds : noeuds.flatMap((noeud) => auNiveau(Array.isArray(noeud.elements) ? noeud.elements : [], k - 1))
+
+/** « 1 pôle », « 2 pôles ». */
+const nombre = (n, singulier, pluriel = `${singulier}s`) => `${n} ${n > 1 ? pluriel : singulier}`
+
+/**
+ * L'aperçu du texte au niveau k, celui qui tient lieu de compétence : ses
+ * nœuds deviennent les compétences, sous le pôle de leur compétence d'origine
+ * (ReferentielRepository::auNiveau), comme le brouillon que créera le serveur.
+ */
+function apercuAuNiveau(analyse, k) {
+  const parPole = new Map(analyse.poles.map((pole) => [pole.num, 0]))
+  let competences = 0
+  let plusFins = 0
+  for (const competence of analyse.competences) {
+    const ici = auNiveau([competence], k)
+    parPole.set(competence.pole, (parPole.get(competence.pole) ?? 0) + ici.length)
+    competences += ici.length
+    plusFins += elementsDe(ici)
+  }
+  return { parPole, competences, plusFins }
+}
+
 function messageDe(error) {
   if (error instanceof ApiUnavailableError) return error.message
   if (error instanceof ApiError) return error.serverMessage ?? error.message
@@ -175,6 +200,7 @@ export default function ReferentielsSection({ api, canVote }) {
   )
   const nomsMd = lecture ? lecture.niveaux.map((n) => n.nom) : []
   const niveauMd = nomsMd.includes(md.niveau) ? md.niveau : (nomsMd[0] ?? '')
+  const compte = lecture ? apercuAuNiveau(lecture.analyse, Math.max(0, nomsMd.indexOf(niveauMd))) : null
 
   const changerMd = (champ) => (event) => {
     const valeur = event.target.value
@@ -490,16 +516,14 @@ export default function ReferentielsSection({ api, canVote }) {
         {lecture && (
           <div className="epi-md-apercu">
             <p>
-              {`Aperçu : ${lecture.analyse.poles.length} pôles, ${lecture.analyse.competences.length} compétences`}
-              {elementsDe(lecture.analyse.competences) > 0 &&
-                `, ${elementsDe(lecture.analyse.competences)} éléments plus fins`}
-              .
+              {`Aperçu : ${nombre(lecture.analyse.poles.length, 'pôle')}, ${nombre(compte.competences, 'compétence')}`
+                + (nomsMd.length > 1 ? ` au niveau « ${niveauMd} »` : '')
+                + (compte.plusFins > 0 ? `, ${nombre(compte.plusFins, 'élément plus fin', 'éléments plus fins')}` : '')
+                + '.'}
             </p>
             <ul className="epi-list" aria-label="Pôles lus">
               {lecture.analyse.poles.map((pole) => (
-                <li key={pole.num}>
-                  {`${pole.num} · ${pole.nom} — ${lecture.analyse.competences.filter((c) => c.pole === pole.num).length} compétences`}
-                </li>
+                <li key={pole.num}>{`${pole.num} · ${pole.nom} — ${nombre(compte.parPole.get(pole.num) ?? 0, 'compétence')}`}</li>
               ))}
             </ul>
             {lecture.niveaux.map((n, k) => (

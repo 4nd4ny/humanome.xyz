@@ -3,11 +3,11 @@
 | Champ | Valeur |
 |---|---|
 | **Acteur principal** | Apprenant (tout compte connecté) |
-| **Acteurs secondaires** | Moteur Twin9 (dépôt privé `4nd4ny/Twin_v9`, chargé depuis `TWIN_V9_DIR`, ADR-011) ; fournisseur LLM (Anthropic : appels directs ou API Message Batches) ; tick du serveur (`POST /api/admin/worker-tick`) ; cartographe lié (lecture des résultats, s'il y est autorisé) ; administrateur (offre, contribution, promotion — UC-ADM-05 ; compteurs des runs) ; atelier (jeux de gabarits — UC-PRO-08) |
+| **Acteurs secondaires** | Moteur Twin9 (dépôt privé `4nd4ny/Twin_v9`, chargé depuis `TWIN_V9_DIR`, ADR-011) ; fournisseurs LLM (Anthropic : appels directs ou API Message Batches ; depuis P1-5, ceux que l'administrateur ouvre — OpenAI, Mistral AI, Google, xAI, OpenRouter —, en direct, ADR-012) ; tick du serveur (`POST /api/admin/worker-tick`) ; cartographe lié (lecture des résultats, s'il y est autorisé) ; administrateur (offre, contribution, promotion — UC-ADM-05 ; compteurs des runs) ; atelier (jeux de gabarits — UC-PRO-08) |
 | **Portée** | humanome.xyz — vues `#/twin9` et `#/twin9/<id>`, routes `/api/twin9/runs…` (`api/src/routes/twin9-runs.php`), profils de `#/configuration` (`/api/twin9/configuration`, `/api/twin9/profils`), ouverture dans l'interface de cartographie (`#/cartographie`) |
 | **Niveau** | Objectif utilisateur |
 | **Cahier des charges** | §3.2, §4.3 (découpage journalier + fusion), §4.4, §6 (RGPD), §7 (Golden Prompt payant) ; ADR-004, ADR-007, ADR-010, ADR-011 ; `docs/contrats.md` §8 |
-| **Statut** | Implémenté (T9, T10, T8 stratégie A, T16, T17 ; P0-1 : configuration et exécution du run, 2026-10-22) ; le moteur du navigateur et son proxy `POST /api/twin9/appel` sont retirés depuis T11 |
+| **Statut** | Implémenté (T9, T10, T8 stratégie A, T16, T17 ; P0-1 : configuration et exécution du run, 2026-10-22 ; P1-5 : un fournisseur par étage, étape et lecteur, l'accord qui les nomme, 2026-10-22) ; le moteur du navigateur et son proxy `POST /api/twin9/appel` sont retirés depuis T11 |
 
 ## Objectif
 
@@ -71,15 +71,19 @@ badge premium) ou ouvre `#/twin9`.
 
 1. L'apprenant ouvre `#/twin9`. La vue lit `GET /api/twin9/runs` (`disponible`
    et ses runs, sans portfolio ni résultat), `GET /api/twin9/configuration`
-   (ses profils) et sa bibliothèque locale de portfolios (IndexedDB,
-   UC-APP-01).
+   (ses profils, et pour chacun et pour le profil v9.8 les fournisseurs
+   qu'atteignent ses appels, avec leur voie et leur étiquette RGPD) et sa
+   bibliothèque locale de portfolios (IndexedDB, UC-APP-01).
 2. Il choisit un profil (« Profil v9.8 », par défaut, ou un des siens ; « Régler
    mes profils » mène à `#/configuration`), un portfolio de sa bibliothèque ou
    un fichier (`.md`, `.txt`) et, s'il le veut, « Mon cartographe peut lire les
    résultats » (A5).
 3. Il coche l'**accord** : son portfolio et l'état de l'analyse restent sur le
-   serveur jusqu'à ce qu'il les efface ; le texte part chez Anthropic ; par
-   lots, Anthropic garde le lot jusqu'à sa suppression, 29 jours au plus.
+   serveur jusqu'à ce qu'il les efface ; le texte part chez les fournisseurs
+   que l'accord nomme, chacun avec sa voie et son étiquette RGPD — pour le
+   profil v9.8, « Anthropic (par lots ; RGPD : sous conditions), le
+   fournisseur du modèle » ; par lots, Anthropic garde le lot jusqu'à sa
+   suppression, 29 jours au plus (RG1, A9).
 4. L'accord donné, la vue demande l'**aperçu** (`POST /api/twin9/runs/apercu
    {profil, portfolio}`, rien n'est gardé) et l'affiche : les journées à
    instruire (« 2 journées à instruire. » au premier run), le coût estimé — en
@@ -88,7 +92,7 @@ badge premium) ou ouvre `#/twin9`.
    les pôles du référentiel (RG4) ; les plafonds du profil ; ce que le crédit
    ou le budget admet (A2, E5).
 5. « Lancer l'analyse » envoie `POST /api/twin9/runs {profil, portfolio,
-   accord: true, visibilite}` avec le jeton CSRF. Le serveur revalide et admet
+   accord: {fournisseurs: [ids]}, visibilite}` avec le jeton CSRF. Le serveur revalide et admet
    le profil, fige la version de son référentiel, prend l'instantané du jeu de
    gabarits, admet les journées (RG5), crée le run `en_cours` et son
    attestation, et renvoie son suivi (`201`) ; la vue ouvre `#/twin9/<id>`.
@@ -140,8 +144,10 @@ badge premium) ou ouvre `#/twin9`.
   l'aperçu le dit, le run prend celles-là, les autres attendent une prochaine
   analyse ; l'attestation le garde.
 - **A3 — Annuler, reprendre** (étape 6) : « Annuler » (`POST
-  /api/twin9/runs/<id>/annuler`) arrête le run en cours, rend ses réserves,
-  annule ses lots chez Anthropic ; « Reprendre » (`POST …/reprendre`) relance
+  /api/twin9/runs/<id>/annuler`) arrête le run en cours et rend aussitôt ce
+  que tiennent ses appels hors vol ; le tick paie au coût réel ses appels en
+  vol une fois revenus, annule ses lots chez Anthropic et en relève les
+  réponses ; « Reprendre » (`POST …/reprendre`) relance
   un run annulé ou arrêté depuis son journal : ce qui est fait n'est pas
   refait.
 - **A4 — Arrêt par un plafond** (étape 6) : le budget, la durée du profil ou le
@@ -168,7 +174,28 @@ badge premium) ou ouvre `#/twin9`.
 - **A8 — Mode essai** (étape 2) : un profil en mode essai ne lit que la
   première journée et le premier pôle ; « essai » dans « Mes analyses » et
   dans l'attestation.
-- **A9 — Mode d'affichage** (étape 2, 2026-10-22,
+- **A9 — Plusieurs fournisseurs** (étapes 2-5, P1-5, ADR-012) : sur
+  `#/configuration`, chaque étage, étape et lecteur choisit son fournisseur —
+  absent, il hérite du sien (« hérité : Anthropic ») ; son étiquette RGPD se lit
+  à côté, sans le focus ; un fournisseur que l'instance n'a pas ouvert, ou dont
+  elle n'a pas la clé, ne se choisit pas (« indisponible sur cette instance »,
+  jamais pourquoi). Changer de fournisseur emporte la famille d'un lecteur qui
+  suivait l'ancien, un modèle qu'il n'admet pas (un étage, qui en exige un, le
+  demande), l'effort d'Anthropic ; ce que le serveur refuserait — un modèle
+  hors du motif du fournisseur, un effort qu'hériterait un appel parti
+  ailleurs, la clé personnelle avec un autre fournisseur — se dit à côté du
+  réglage. La voie ne règle que les appels Anthropic, et son explication reste
+  visible : par lots à moitié prix, en différé ; les autres fournisseurs
+  toujours en direct ; sans appel Anthropic, elle est sans effet. Au
+  lancement, l'accord nomme les fournisseurs du profil choisi, leur voie et
+  leur étiquette (un fournisseur étiqueté « non » est dit à éviter pour des
+  journaux d'élèves réels) ; donné, il ne vaut que pour eux : un profil qui en
+  atteint d'autres, ou par une autre voie, le redemande avant tout aperçu. Le
+  serveur compare la liste envoyée à celle des appels du profil (`422` si elle
+  diffère) et refuse un fournisseur fermé ou sans clé d'instance, un modèle
+  tiers sans prix ni plafonds (`422` qui nomme l'étape, affiché). Un run
+  « mixte » : « en partie par lots, la durée dépend d'Anthropic ».
+- **A10 — Mode d'affichage** (étape 2, 2026-10-22,
   [UC-VIS-06](../visiteur/UC-VIS-06-choisir-affichage-simple-expert.md)) :
   en mode expert, le menu « Ma cartographie » porte « Mes profils Twin9 »
   (`#/configuration`, jusque-là atteinte seulement par « Régler mes
@@ -214,7 +241,11 @@ badge premium) ou ouvre `#/twin9`.
 ## Règles de gestion
 
 - **RG1 — Accord** : demandé à chaque lancement, daté (`accord_at`) ; sans lui
-  rien ne part. Le portfolio et l'état restent sur le serveur jusqu'à la
+  rien ne part. Il nomme les fournisseurs qu'atteignent les appels du profil,
+  avec leur voie et leur étiquette RGPD, avant tout aperçu (l'aperçu emporte
+  déjà le portfolio) ; il ne vaut que pour cette liste, que le lancement
+  envoie et que le run garde dans sa configuration (`accord.fournisseurs`) ;
+  `true` reste admis pour un profil tout Anthropic (ADR-012). Le portfolio et l'état restent sur le serveur jusqu'à la
   suppression du compte, qui les purge (UC-CPT-06, lots chez Anthropic
   compris) ; l'archive du compte les exporte (UC-APP-06).
 - **RG2 — Profil** : revalidé et admis à chaque aperçu et à chaque lancement
@@ -295,9 +326,9 @@ badge premium) ou ouvre `#/twin9`.
 
 | Donnée | Traitement |
 |---|---|
-| Portfolio | Envoyé au lancement avec l'accord ; gardé sur le serveur, compressé, avec l'état du run, jusqu'à la suppression du compte ; jamais renvoyé par le suivi ni les résultats ; part chez Anthropic, qui garde un lot 29 jours au plus |
+| Portfolio | Envoyé au lancement avec l'accord ; gardé sur le serveur, compressé, avec l'état du run, jusqu'à la suppression du compte ; jamais renvoyé par le suivi ni les résultats ; part chez les fournisseurs que l'accord nomme — Anthropic, qui garde un lot 29 jours au plus ; les autres, ouverts par l'administrateur, en direct, selon leur conservation (`docs/rgpd-registre.md` §13) |
 | Gabarits et fiches | En base ; jamais transmis au navigateur ; le filtre de fuite protège les résultats |
-| Clé personnelle | Chiffrée (ADR-004), utilisée sur le serveur seulement |
+| Clé personnelle | Chiffrée (ADR-004), utilisée sur le serveur seulement, chez Anthropic seulement (ADR-012) |
 | Grand-livre | Montants, modèle, jetons, libellé du run et de l'étape — jamais de contenu |
 | Évaluation d'un run fini | Tailles et coûts de ses journées et de sa fusion, rien d'autre ; anonyme une fois le compte supprimé (T8) |
 | Audit anti-fuite | `{run, fuites}` seulement |
@@ -308,7 +339,8 @@ badge premium) ou ouvre `#/twin9`.
 | Couche | Élément | Rôle |
 |---|---|---|
 | Front | `web/src/router.js` — `parseHash` ; `web/src/nav.js` — `navGroups` | Routes `#/twin9` et `#/twin9/<id>` ; entrée « Analyse approfondie » (premium) |
-| Front | `web/src/views/Twin9View.jsx` — `Lancer`, `Apercu`, `PageDuRun` | Choix, accord, aperçu, lancement ; suivi, avance, annulation, reprise sous un nouveau budget, visibilité, ouverture dans la cartographie, attestation |
+| Front | `web/src/views/Twin9View.jsx` — `Lancer`, `Apercu`, `PageDuRun`, `phraseFournisseurs` | Choix, accord qui nomme les fournisseurs (A9), aperçu, lancement ; suivi, avance, annulation, reprise sous un nouveau budget, visibilité, ouverture dans la cartographie, attestation |
+| Front | `web/src/views/ConfigurationView.jsx` ; `web/src/views/configuration/profilSchema.js` — `fournisseurDe`, `fournisseurHerite`, `fournisseursDuProfil`, `suivreLeFournisseur`, `modeleAdmis` | Le fournisseur de chaque étage, étape et lecteur, son étiquette, la voie, ce que le serveur refuserait (A9) |
 | Front | `web/src/views/twin9/ConfigurationDuRun.jsx` — `ConfigurationDuRun`, `VueConfiguration` | « Configuration » de la page du run : lecture à l'ouverture, réglages par rôle, exécution (RG13) |
 | Front | `web/src/api/twin9.js` — `fetchRuns`, `fetchConfiguration`, `apercuRun`, `lancerRun`, `fetchRun`, `avancerRuns`, `annulerRun`, `reprendreRun`, `rendreRunVisible`, `fetchResultats`, `formatUsd` | Client des runs |
 | Front | `web/src/lib/interface-handoff.js` — `twin9RunFiles` | Document `twin9-run` remis à l'interface de cartographie |
@@ -318,7 +350,8 @@ badge premium) ou ouvre `#/twin9`.
 | API | `api/src/Middleware/CsrfMiddleware.php` | Jeton CSRF des écritures (E1) — logique unitaire couverte par UC-CPT-02-U07 |
 | Domaine | `api/src/Twin9/Lancement.php` — `lancer`, `apercu`, `empreinte` | Lancement, aperçu, estimation, admission ; jeu d'avant T16 (RG12) |
 | Domaine | `api/src/Twin9/ReferentielMoteur.php` — `bloc` | Le référentiel du run tel que le moteur le lit, ses fiches (RG12) |
-| Domaine | `api/src/Twin9/ProfilPolicy.php` — `admettre` | Ce qu'un profil peut choisir sur l'instance |
+| Domaine | `api/src/Twin9/ProfilPolicy.php` — `admettre`, `admettreAuLancement`, `choix` | Ce qu'un profil peut choisir sur l'instance ; les fournisseurs disponibles (A9) |
+| API | `GET /api/twin9/configuration` — `api/src/routes/twin9-configuration.php` ; `Lancement::fournisseurs` | Les fournisseurs de chaque profil et du profil v9.8, pour l'accord (A9) |
 | Domaine | `api/src/Twin9/RunRepository.php` — `duProprietaire`, `suivi`, `annuler`, `reprendre`, `rendreVisible`, `acces` | Liste, suivi, actions du propriétaire |
 | Domaine | `api/src/Twin9/RunCosts.php`, `api/src/Twin9/CreditService.php` | Réserves, réconciliation, remboursements |
 | Domaine | `api/src/Twin9/Resultats.php` — `lire` ; `api/src/Twin9/LeakFilter.php` | Résultats filtrés, mémoire, référentiel du run |
@@ -347,6 +380,7 @@ badge premium) ou ouvre `#/twin9`.
 | UC-APP-10-U13 | `Lancement::empreinte` | Empreinte d'un jeu de gabarits stable, indépendante de l'ordre, sensible au contenu | idem |
 | UC-APP-10-U14 | `VueConfiguration` | Chaque rôle (fournisseur, étiquette RGPD, voie, modèle, budget de sortie), jeu, référentiel, clé ; exécution par fournisseur et par voie, passes, coût ; conseil des sorties tronquées (étapes nommées d'après les compteurs, journée ou fusion, coût du remède : toute la carte instruite de nouveau) ; d'où viennent les comptes (figés, en cours, arrêté) ; les blocs filtrés d'un cartographe lié (la vue réutilisée) : ni clé ni coût ; un run d'avant P0-1 : son exécution partielle seule (RG13) | `web/test/usecases/unit/uc-app-10-analyse-approfondie-twin9.test.jsx` |
 | UC-APP-10-U15 | `importTwin9Run` | Configuration et exécution gardées par liste blanche sous « <run>\|configuration », non comptées comme une délibération ; modèles et jeu de gabarits de chaque journée ; ni prix, ni coût, ni plafond, ni clé (RG14) | idem |
+| UC-APP-10-U17 | `Twin9View` (`Lancer`) | L'accord nomme chaque fournisseur du profil, sa voie et son étiquette RGPD, avant tout aperçu ; un fournisseur « non » dit à éviter ; un autre profil le redemande ; un serveur qui ne nomme pas les fournisseurs : Anthropic ; le lancement envoie `{fournisseurs}` (RG1, A9) | `web/test/usecases/unit/uc-app-10-analyse-approfondie-twin9.test.jsx` |
 | UC-APP-10-U16 | `ETAPES_DU_MOTEUR` | Les étapes du moteur que comptent les compteurs du run, rapportées à celles du profil comme `CallSettings::ETAPES` les range (lu dans le code PHP) : le conseil des sorties tronquées nomme celles de la page des profils (RG13) | idem |
 
 ### Tests fonctionnels
@@ -373,6 +407,7 @@ badge premium) ou ouvre `#/twin9`.
 | UC-APP-10-F17 | E1, E2 | IHM | Visiteur : invite à se connecter ; instance sans moteur : message, sans formulaire | idem |
 | UC-APP-10-F18 | A2, E5 | IHM | Admission partielle dite ; refus : message, « Recharger », aucun lancement possible | idem |
 | UC-APP-10-F19 | A3, A4, A5 | IHM | Annuler, reprendre ; arrêté par le budget, reprise sous un nouveau budget ; case du cartographe | idem |
+| UC-APP-10-F22 | A9, RG1, E4 | IHM | `<App/>` : un profil Anthropic et Mistral AI ; l'accord nomme les deux, leur voie et leur étiquette, avant tout aperçu ; le lancement envoie `{fournisseurs: [anthropic, mistral]}` (CSRF) ; un fournisseur non ouvert fait refuser le lancement (`422`), message affiché, la page reste | `web/test/usecases/functional/uc-app-10-analyse-approfondie-twin9.test.jsx` |
 | UC-APP-10-F21 | Nominal (étapes 7-8), RG13, RG14 | IHM | `<App/>` : la page d'un run fini ouvre sa configuration, lue dans ses résultats à l'ouverture seulement, à côté de l'attestation inchangée ; le conseil de la sortie tronquée nomme son étape et dit le coût du remède ; ouvert dans la cartographie, le jeu garde la configuration par liste blanche, chaque journée dit ses modèles et son jeu, rien d'un prix, d'un coût ni de la clé | `web/test/usecases/functional/uc-app-10-analyse-approfondie-twin9.test.jsx` |
 
 ### Tests existants liés (non-régression)
@@ -385,7 +420,9 @@ badge premium) ou ouvre `#/twin9`.
 - `api/tests/Twin9/PurgeExportTest.php` — purge du compte, lots chez Anthropic, export.
 - `api/tests/Twin9MetaTest.php` — le proxy du moteur du navigateur est parti (T11).
 - `api/tests/Twin9/RunConfigurationTest.php`, `api/tests/Twin9/RunsTest.php`, `api/tests/Twin9/PurgeExportTest.php` — configuration et exécution d'un run (P0-1) : liste blanche, vue du cartographe, tables vides en objets, reprises, export d'un run ancien.
-- `web/src/views/Twin9View.test.jsx` — lancement, aperçu, admission, page du run, carte incomplète, référentiels (T17) ; « Configuration » (P0-1) : lue à l'ouverture seulement, l'exécution partielle seule d'un run d'avant elle, relue à chaque ouverture d'un run en cours et quand il finit, erreur dans le bloc.
+- `web/src/views/Twin9View.test.jsx` — lancement, aperçu, admission, page du run, carte incomplète, référentiels (T17) ; « Configuration » (P0-1) : lue à l'ouverture seulement, l'exécution partielle seule d'un run d'avant elle, relue à chaque ouverture d'un run en cours et quand il finit, erreur dans le bloc ; l'accord qui nomme les fournisseurs, tient pour les mêmes, tombe pour d'autres, la durée d'un run mixte (A9).
+- `web/src/views/ConfigurationView.test.jsx`, `web/src/views/configuration/profilSchema.test.js` — le fournisseur de chaque réglage : hérité, étiquette visible, indisponible non choisi, famille, modèle et effort qui suivent, ce que le serveur refuserait dit à côté, la voie expliquée, la clé personnelle chez Anthropic seulement ; l'héritage, les fournisseurs atteints et les tables recopiées du PHP (étages des étapes, libellés, étiquettes, motifs de modèle) comparés au code PHP (A9).
+- `api/tests/Twin9/ConfigurationDroitsTest.php` — `testTheConfigurationNamesEachProfilesProviders` (les fournisseurs de chaque profil et du profil v9.8, avant tout aperçu), `testAProviderNotOpenYetIsSavedNotLaunched` ; `api/tests/Twin9/RunsTest.php` — l'accord comparé aux fournisseurs du run, gardé dans sa configuration (A9).
 - `web/src/carto/core/importers/twin9-run.test.js`, `web/src/lib/twin9/mapper.test.js` — jeu de cartographie d'un run, dossiers ; configuration par liste blanche, variantes inchangées avec ou sans elle, jeu exporté sans prix ni clé (P0-1).
 - `web/src/lib/archive.test.js` — l'archive du compte avec la configuration et l'exécution d'un run, sans elles pour un run ancien, invalide avec une clé inconnue (P0-1).
 - `web/e2e/twin9-run.e2e.js`, `web/e2e/twin9-referentiels.e2e.js` — de bout en bout, en local (`docs/tests-e2e.md`).
@@ -403,7 +440,7 @@ Aucune.
 
 ## Limites
 
-- A9 n'est couvert que par les tests du menu (UC-VIS-04-U13, F20 ; UC-VIS-06-U02,
+- A10 n'est couvert que par les tests du menu (UC-VIS-04-U13, F20 ; UC-VIS-06-U02,
   F02) et du tableau de bord (UC-APP-03-F16) : la vue `#/twin9` ne lit pas
   encore le mode.
 - Le moteur est le dépôt privé `Twin_v9` : sans lui, l'analyse est indisponible

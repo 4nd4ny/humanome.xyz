@@ -4,12 +4,26 @@ declare(strict_types=1);
 
 namespace Humanome\Tests\Twin9;
 
+use Humanome\Packages\SettingsRepository;
+use Humanome\Tests\TestDb;
 use Humanome\Twin9\AnthropicCaller;
 use Humanome\Twin9\CallSettings;
+use Humanome\Twin9\DirectCalls;
+use Humanome\Twin9\EngineLoader;
+use Humanome\Twin9\Evaluations;
+use Humanome\Twin9\Fournisseurs\Appelant;
 use Humanome\Twin9\Fournisseurs\Arret;
+use Humanome\Twin9\Fournisseurs\Fournisseurs;
+use Humanome\Twin9\Fournisseurs\Registre;
+use Humanome\Twin9\MoteurReglages;
 use Humanome\Twin9\ProfilRepository;
+use Humanome\Twin9\RunKey;
+use Humanome\Twin9\Twin9Config;
+use PHPUnit\Framework\Attributes\PreserveGlobalState;
+use PHPUnit\Framework\Attributes\RunInSeparateProcess;
 use PHPUnit\Framework\TestCase;
 use stdClass;
+use Twin9\Run\Call;
 
 /**
  * Twin9's direct calls (T7, ADR-011 §3): each request is the one its step
@@ -18,6 +32,11 @@ use stdClass;
  * reads it, a refusal of the model being a failure and a rate refusal giving
  * its Retry-After; a cut output is a failure too (P0-2), and the stop reason
  * is kept as a short identifier.
+ *
+ * Each call goes to its own provider (ADR-012): its settings name it once,
+ * the key is that provider's (RunKey), the request its caller's at its
+ * locked address (DirectCalls, Fournisseurs\Registre) — each host gets its
+ * own key and never another's.
  */
 final class AppelsDirectsTest extends TestCase
 {
@@ -305,6 +324,212 @@ final class AppelsDirectsTest extends TestCase
         $fiche = $bloc;
         $fiche['poles'][0]['competences'][0]['fiche'] .= ' : une fiche changée';
         self::assertNotSame($avec, CallSettings::empreinte($profil, null, $gabarits, $fiche));
+    }
+
+    /**
+     * A provider named where it is inherited anyway — Anthropic on a stage,
+     * a step's stage's, the readers' stage's on a reader — changes none of
+     * the fingerprints, nor the engine's settings (ADR-012): the v9.8
+     * profile, Anthropic written everywhere, keeps its memory and its
+     * forecasts.
+     */
+    public function testAnInheritedProviderLeavesTheFingerprints(): void
+    {
+        $gabarits = ['lourd/20-greffier' => 'g', 'tagger/P1' => 'fiche'];
+        $empreintes = static fn (stdClass $p): array => [
+            CallSettings::empreinte($p, $p->troncatures, $gabarits),
+            Evaluations::signature($p, 'a1b2c3d4e5f60718'),
+            json_encode(MoteurReglages::depuis($p), JSON_THROW_ON_ERROR | JSON_PRESERVE_ZERO_FRACTION),
+        ];
+        $nu = ProfilRepository::v98();
+        $nu->etapes->greffier = (object) ['budget_sortie' => 1000];
+        $ecrit = ProfilRepository::v98();
+        foreach ($ecrit->etages as $etage) {
+            $etage->fournisseur = 'anthropic';
+        }
+        $ecrit->college[0]->fournisseur = 'anthropic';
+        $ecrit->etapes->greffier = (object) ['fournisseur' => 'anthropic', 'budget_sortie' => 1000];
+        $ecritValide = ProfilRepository::validate($ecrit);
+
+        self::assertSame($empreintes(ProfilRepository::validate($nu)), $empreintes($ecritValide));
+        self::assertSame('anthropic', $ecritValide->etages->profond->fournisseur, 'le profil lui-même le garde');
+
+        // the same at another provider: the step names its stage's provider, the reader the readers' stage's
+        $mistral = static function (bool $ecrit): stdClass {
+            $p = ProfilRepository::v98();
+            foreach (['lecteurs', 'profond'] as $etage) {
+                $p->etages->{$etage} = (object) ['fournisseur' => 'mistral', 'modele' => 'modele-fictif',
+                                                 'budget_sortie' => 900, 'reflexion' => 'coupee'];
+            }
+            $p->etapes->accusation = (object) (['budget_sortie' => 800] + ($ecrit ? ['fournisseur' => 'mistral'] : []));
+            if ($ecrit) {
+                $p->college[0]->fournisseur = 'mistral';
+            }
+
+            return ProfilRepository::validate($p);
+        };
+        self::assertSame($empreintes($mistral(false)), $empreintes($mistral(true)));
+        self::assertNotSame($empreintes(ProfilRepository::validate($nu))[0], $empreintes($mistral(false))[0]);
+    }
+
+    /**
+     * The second instance keeps the provider it names: over a step of
+     * another provider than its stage's, naming the stage's is not inheriting
+     * it. Two profiles whose calls go to two providers never share a
+     * fingerprint, and the memory never takes one's day back for the other.
+     */
+    public function testTheSecondInstancesProviderStaysInTheFingerprints(): void
+    {
+        $profil = static function (bool $nomme): stdClass {
+            $p = ProfilRepository::v98();
+            foreach (['lecteurs', 'rapide', 'profond'] as $etage) {
+                $p->etages->{$etage} = (object) ['fournisseur' => 'mistral', 'modele' => 'modele-fictif',
+                                                 'budget_sortie' => 900, 'reflexion' => 'coupee'];
+            }
+            $p->etapes->jures = (object) ['fournisseur' => 'openai', 'modele' => 'modele-fictif-o'];
+            $p->etapes->second_ressort = (object) (['modele' => 'modele-fictif-2'] + ($nomme ? ['fournisseur' => 'mistral'] : []));
+
+            return ProfilRepository::validate($p);
+        };
+        $a = $profil(true);
+        $b = $profil(false);
+
+        self::assertSame(['mistral', 'modele-fictif-2'],
+            array_values(array_intersect_key((new CallSettings($a))->pour('jure', 'second_ressort/1.01/23-historien.md'),
+                ['fournisseur' => 0, 'modele' => 0])));
+        self::assertSame(['openai', 'modele-fictif-2'],
+            array_values(array_intersect_key((new CallSettings($b))->pour('jure', 'second_ressort/1.01/23-historien.md'),
+                ['fournisseur' => 0, 'modele' => 0])), 'sans fournisseur, le second ressort suit celui de l’étape');
+        $gabarits = ['tagger/P1' => 'fiche'];
+        self::assertNotSame(CallSettings::empreinte($a, $a->troncatures, $gabarits),
+            CallSettings::empreinte($b, $b->troncatures, $gabarits));
+        self::assertNotSame(Evaluations::signature($a, 'a1b2c3d4e5f60718'), Evaluations::signature($b, 'a1b2c3d4e5f60718'));
+    }
+
+    /**
+     * One decision per call: its settings' provider. Its key is that
+     * provider's instance key (RunKey), its request goes to that provider's
+     * address (DirectCalls), each host getting its own fake key, never
+     * another's; each response is read by its provider's caller.
+     */
+    #[RunInSeparateProcess]
+    #[PreserveGlobalState(false)]
+    public function testEachHostGetsItsOwnKeyAndNeverAnothers(): void
+    {
+        self::assertTrue(EngineLoader::load(\dirname(__DIR__) . '/fixtures/twin9-factice'));
+        $cles = [];
+        foreach (Fournisseurs::REGISTRE as $f => $registre) {
+            $cles[$f] = 'cle-' . $f . '-factice-' . bin2hex(random_bytes(4));
+            TestDb::setEnv($registre['env'], $cles[$f]);
+        }
+        $modeles = ['anthropic' => 'claude-haiku-5-5', 'openai' => 'modele-fictif-1', 'mistral' => 'modele-fictif-2',
+                    'google' => 'gemini-fictif-1', 'xai' => 'modele-fictif-3', 'openrouter' => 'editeur/modele-fictif'];
+        $formats = ['anthropic' => 'anthropic', 'google' => 'gemini'];
+        $http = new FakeMultiHttpClient(static function (array $r) use ($modeles, $formats): array {
+            foreach (Fournisseurs::REGISTRE as $f => $registre) {
+                if (str_starts_with($r['url'], $registre['url'])) {
+                    return ['body' => FakeMultiHttpClient::message('vu ' . FakeMultiHttpClient::appel($r), $modeles[$f],
+                        format: $formats[$f] ?? 'chat')];
+                }
+            }
+            throw new \LogicException('hôte hors du registre : ' . $r['url']);
+        });
+        $pdo = $this->createStub(\PDO::class);
+        $runKey = new RunKey($pdo, new Twin9Config(new SettingsRepository($pdo)));
+        $direct = new DirectCalls($http);
+        try {
+            foreach ($modeles as $f => $modele) {
+                $reglage = ['fournisseur' => $f, 'voie' => 'directe', 'modele' => $modele, 'budget_sortie' => 100,
+                            'effort' => null, 'reflexion' => 'coupee'];
+                $direct->send(1, new Call('appel-' . $f, 'greffier', 'greffier', $modele, "[appel:$f] Un prompt."), $reglage,
+                    (string) $runKey->pour(1, 'instance', $f), microtime(true) + 5);
+            }
+            $issues = [];
+            while ($direct->running() > 0) {
+                foreach ($direct->wait(microtime(true) + 5) as $issue) {
+                    $issues[$issue['appel']->id] = $issue;
+                }
+            }
+        } finally {
+            TestDb::restoreEnv();
+        }
+
+        self::assertCount(6, $http->requests);
+        foreach ($http->requests as $r) {
+            $f = substr($r['id'], \strlen('1:appel-'));
+            self::assertSame(parse_url(Fournisseurs::REGISTRE[$f]['url'], PHP_URL_HOST), parse_url($r['url'], PHP_URL_HOST), $f);
+            $entetes = (string) json_encode($r['headers']);
+            foreach ($cles as $autre => $cle) {
+                self::assertSame($autre === $f, str_contains($entetes, $cle), "$f reçoit la clé de $autre ?");
+                self::assertStringNotContainsString($cle, $r['url'] . json_encode($r['body']), "$f : $autre");
+            }
+            self::assertSame("[appel:$f] Un prompt.", FakeMultiHttpClient::prompt($r), $f);
+            self::assertTrue($issues['appel-' . $f]['ok'], $f);
+            self::assertSame('vu ' . $f, $issues['appel-' . $f]['texte'], "$f : lu par l’appelant de son fournisseur");
+            self::assertSame($modeles[$f], $issues['appel-' . $f]['modele_servi'], $f);
+        }
+    }
+
+    /**
+     * The key of a call: the instance's, from its provider's variable; a
+     * personal key at Anthropic only — refused for any other provider,
+     * whatever the vault holds, before anything is read —; an unknown
+     * provider, none.
+     */
+    public function testAPersonalKeyNeverLeavesAnthropic(): void
+    {
+        $pdo = $this->createStub(\PDO::class);
+        $runKey = new RunKey($pdo, new Twin9Config(new SettingsRepository($pdo)));
+        TestDb::setEnv('SODIUM_MASTER_KEY', str_repeat('ab', 32));
+        TestDb::setEnv('OPENAI_API_KEY', 'cle-openai-factice');
+        TestDb::setEnv('MISTRAL_API_KEY', '');
+        try {
+            foreach (array_keys(Fournisseurs::REGISTRE) as $f) {
+                if ($f !== 'anthropic') {
+                    self::assertNull($runKey->pour(7, 'personnelle', $f), "$f : jamais une clé personnelle");
+                }
+            }
+            self::assertSame('cle-openai-factice', $runKey->pour(7, 'instance', 'openai'));
+            self::assertNull($runKey->pour(7, 'instance', 'mistral'), 'sans clé de l’instance, aucune');
+            self::assertNull($runKey->pour(7, 'instance', 'ollama'), 'un fournisseur inconnu');
+        } finally {
+            TestDb::restoreEnv();
+        }
+    }
+
+    /** A request whose address is not its provider's never leaves. */
+    #[RunInSeparateProcess]
+    #[PreserveGlobalState(false)]
+    public function testARequestOutsideItsProvidersAddressNeverLeaves(): void
+    {
+        self::assertTrue(EngineLoader::load(\dirname(__DIR__) . '/fixtures/twin9-factice'));
+        $detourne = new class implements Appelant {
+            public function fournisseur(): string
+            {
+                return 'openai';
+            }
+
+            public function requete(string $cle, array $reglage, string $prompt): array
+            {
+                return ['url' => 'https://ailleurs.example/v1/chat/completions', 'headers' => ['authorization' => 'Bearer ' . $cle],
+                        'body' => '{}'];
+            }
+
+            public function lire(int $status, array $headers, string $body): array
+            {
+                return ['ok' => false, 'erreur' => 'x'];
+            }
+        };
+        $http = new FakeMultiHttpClient(static fn (array $r): array => ['body' => '{}']);
+        $direct = new DirectCalls($http, new Registre(['openai' => $detourne]));
+        try {
+            $direct->send(1, new Call('a', 'greffier', 'greffier', 'm', 'p'), ['fournisseur' => 'openai', 'modele' => 'm',
+                'budget_sortie' => 1, 'effort' => null, 'reflexion' => 'coupee', 'voie' => 'directe'], 'k', microtime(true) + 5);
+            self::fail('une adresse hors du registre');
+        } catch (\LogicException) {
+        }
+        self::assertSame([], $http->requests);
+        self::assertSame(0, $direct->running());
     }
 
     /** The same profile, its keys in another order, as MySQL may give them back. */

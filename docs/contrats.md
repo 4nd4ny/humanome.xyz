@@ -560,11 +560,12 @@ valide et range les profils.
 - **Valeurs par défaut** : un réglage absent prend la valeur que le schéma
   lui donne (`default`), comme la v9.8 lit son `config.json` avec
   `.get(clé, défaut)` ; un réglage sans valeur par défaut est obligatoire
-  (le collège, les étages, la famille d'un lecteur…). Le profil rangé est
-  complet : le moteur n'a rien à deviner. Le validateur PHP (opis) ne
-  vérifie pas `required` pour une propriété dotée d'un `default` (option
-  `allowDefaults`) : `ProfilRepository` complète donc le profil avant de le
-  valider.
+  (le collège, les étages, le modèle d'un étage…), sauf s'il est
+  facultatif : le fournisseur, qui s'hérite (§7.2), la famille d'un lecteur
+  (ADR-012). Le profil rangé est complet : le moteur n'a rien à deviner.
+  Le validateur PHP (opis) ne vérifie pas `required` pour une propriété
+  dotée d'un `default` (option `allowDefaults`) : `ProfilRepository`
+  complète donc le profil avant de le valider.
 - **Objets JSON** : un profil voyage décodé en objets (`stdClass`) ou en
   texte JSON, jamais en tableau PHP, où `{}` et `[]` se confondraient (§6,
   UC-CAR-04). MySQL réordonne les clés d'un profil rangé (§6, UC-ADM-05) ;
@@ -577,17 +578,61 @@ valide et range les profils.
 - **Nombres** : un réglage que le schéma type `number` garde la forme d'un
   flottant (`1.0`, non `1`), quelle que soit la forme reçue : le navigateur
   ne distingue pas `1` de `1.0`, et la v9.8 lit `1.0` (T13).
-- **Règle de l'API** (T13) : la réflexion coupée refuse les efforts `xhigh`
+- **Règles de l'API** : la réflexion coupée refuse les efforts `xhigh`
   et `max`, pour toute étape où les réglages se combinent ainsi
-  (`CallSettings::parEtape`) ; le profil est refusé, l'étape nommée.
+  (`CallSettings::parEtape`, T13) ; et celles des fournisseurs (ADR-012,
+  §7.2) : un réglage qui nomme un autre fournisseur que celui dont il hérite
+  nomme aussi son modèle, au second ressort tout fournisseur nommé le
+  demande ; le modèle de chaque appel suit le motif de son fournisseur
+  (`motif_modele` du registre) ; un appel qui part ailleurs que chez
+  Anthropic n'a pas d'effort, pas même celui de son étage. Le profil est
+  refusé, l'étape nommée.
 - **Choix admis** (`ProfilPolicy`, T13) : un référentiel publié et, s'il est
   donné, une de ses versions publiées ; un jeu de gabarits que son
   propriétaire peut choisir (T14, §8.6 : le jeu v9.8, le jeu par défaut, ses
   copies tant qu'il est de l'atelier) ; la clé personnelle là où
-  l'administrateur l'a ouverte. Les droits sont au chapitre « Configuration
-  Twin9 » de `docs/autorisations.md`. Le profil par défaut, que sert
-  `GET /api/twin9/configuration` (`defaut`) et que prend un run lancé sans
-  profil, est celui de la v9.8 avec le jeu de gabarits par défaut.
+  l'administrateur l'a ouverte, et chez Anthropic seulement : un profil dont
+  un appel part ailleurs n'admet que les clés de l'instance (ADR-012 §5) ;
+  un prix pour chaque modèle Anthropic. Au lancement, à l'aperçu et à la
+  reprise s'y ajoute (`ProfilPolicy::admettreAuLancement`), pour chaque
+  fournisseur que ses appels atteignent (`CallSettings::atteints()` : ses
+  étapes et ses lecteurs) : il est **disponible** — ouvert sur l'instance
+  (§8.1) et, hors d'Anthropic, avec sa clé d'instance ; un seul message pour
+  les deux, « Profil refusé — <étape> : le fournisseur <F> n’est pas
+  disponible sur cette instance », pour que personne n'apprenne quelles clés
+  l'instance détient ; la clé d'Anthropic n'est pas exigée (elle se lit à
+  chaque appel, un run sans elle attend) — ; hors d'Anthropic, son modèle a
+  son prix et ses plafonds dans la grille (« aucun prix pour
+  <fournisseur:modèle> »), un budget de sortie dans son `plafond_sortie`, et
+  une durée maximale (`duree_max_s`) que la tranche **la plus courte** que
+  sert l'instance lui laisse en tête (`ProfilPolicy::dureeAdmise` : la
+  tranche, réserve du tick ôtée, moins la marge de son dernier départ — 35 s
+  pour une tranche de 40 s, 21 s pour les 25 s de cron-job.org), la règle
+  même de la tranche ; la plus courte est celle de l'instance
+  (`secondes_par_tranche`, celle de la page d'un run), ou celle que demande
+  le déclencheur (`budgetSeconds` de `POST /api/admin/worker-tick`, gardé
+  dans le réglage `twin9_tranche_declencheur` quand il change, 2026-10-22),
+  si elle est plus courte ; `GET /api/twin9/admin/config` rend l'une
+  (`secondes_declencheur`) et ce qu'elle laisse (`duree_max_admise`). Un
+  modèle au pire cas insuffisant est refusé de même (§8.5). Un profil qui ne passe pas s'enregistre,
+  mais ne s'estime, ne se lance ni ne reprend. `GET
+  /api/twin9/configuration` porte `fournisseurs` : chaque fournisseur du
+  registre, `{id, libelle, rgpd, disponible}`, un booléen sans sa cause ; et,
+  pour l'accord du lancement, qui les nomme avant tout aperçu (l'aperçu
+  emporte déjà le portfolio), les fournisseurs qu'atteignent les appels de
+  chaque profil (`profils[].fournisseurs`) et du profil par défaut
+  (`defaut_fournisseurs`) : `[{id, libelle, rgpd, voie}]` dans l'ordre du
+  registre, comme l'aperçu (`Lancement::fournisseurs`, `voie` : `lots`,
+  `directe` ou `mixte`) ; `null` pour un profil rangé que le schéma n'admet
+  plus (son lancement est refusé de toute façon). La page `#/configuration`
+  les recalcule en direct depuis le profil édité (`fournisseursDuProfil`,
+  `web/src/views/configuration/profilSchema.js`, dont l'étage de chaque
+  étape, les libellés, les étiquettes et les motifs de modèle sont comparés
+  aux fichiers PHP par un test). Les droits sont au
+  chapitre « Configuration Twin9 » de `docs/autorisations.md`. Le profil
+  par défaut, que sert `GET /api/twin9/configuration` (`defaut`) et que
+  prend un run lancé sans profil, est celui de la v9.8 avec le jeu de
+  gabarits par défaut.
 
 ### 7.1 Ce que la v9.8 règle, et où le profil le range
 
@@ -595,7 +640,7 @@ valide et range les profils.
 |---|---|
 | `seuils_consensus`, `juge_leger`, `jury`, `premiere_impression`, `calques`, `merge`, `scan_global` | mêmes clés, mêmes valeurs dans le profil v9.8 (`ProfilTest` le vérifie sur le `config.json` de `TWIN_V9_DIR`) |
 | `max_workers`, `parallel_jures` | `parallelisme.appels_directs` : réglages d'exécution, sans effet sur aucun prompt |
-| `backend_tribunal`, `backend_rapide` | `etages.profond`, `etages.rapide` (modèle Claude, budget de sortie, effort, réflexion) |
+| `backend_tribunal`, `backend_rapide` | `etages.profond`, `etages.rapide` (fournisseur, modèle, budget de sortie, effort, réflexion) |
 | `backend_tribunal_local` | sans objet : le backend local de `--donnees-reelles` ; l'accord de l'apprenant le remplace (ADR-011) |
 
 | Option de `twin9.py` | Profil |
@@ -613,10 +658,12 @@ valide et range les profils.
 
 S'y ajoutent ce que la plateforme règle : `mode` (« test » : la première
 journée du portfolio et le premier pôle du référentiel ; « complet » par
-défaut), `voie` (« directe » ou « lots »), `parallelisme.journees` (journées
-menées de front par appels directs ; par lots, toutes le sont, §8.7),
+défaut), `voie` (celle des appels Anthropic, « directe » ou « lots » ; les
+autres fournisseurs partent toujours en direct), `parallelisme.appels_directs`
+(32 au plus), `parallelisme.journees` (journées menées de front quand aucun
+appel ne part par lots ; dès qu'un appel part par lots, toutes le sont, §8.7),
 `budget_usd` et `duree_minutes` (`null` : aucun plafond),
-`cle` (« instance » ou « personnelle »), `gabarits` (l'identifiant du jeu :
+`cle` (« instance » ou « personnelle », Anthropic seulement), `gabarits` (l'identifiant du jeu :
 « v9.8 », valeur du schéma, ou le nom d'une copie, §8.6) et `referentiel`
 (`id`, et `version`, `null` pour la dernière publiée, figée dans la copie du
 profil au lancement).
@@ -624,12 +671,29 @@ profil au lancement).
 ### 7.2 Étages et étapes
 
 Chaque étage (`etages.lecteurs`, `etages.rapide`, `etages.profond`) donne un
-modèle Claude, un budget de sortie (`max_tokens`, réflexion comprise), un
-effort facultatif (absent : celui du modèle) et une réflexion : « coupee »,
-sous la forme que le modèle accepte (`disabled` pour Haiku 5.5,
-`between_tools` pour Sonnet 5.5), ou « adaptative ». Un lecteur du collège
-et une étape (`etapes.<étape>`) ne portent que ce qu'ils changent à leur
-étage. Les étapes, et l'étage qu'elles suivent comme dans la v9.8 :
+fournisseur (absent : Anthropic), un modèle, un budget de sortie
+(`max_tokens` chez Anthropic, réflexion comprise), un effort facultatif
+(absent : celui du modèle) et une réflexion : « coupee », sous la forme que
+le modèle accepte (`disabled` pour Haiku 5.5, `between_tools` pour Sonnet
+5.5), ou « adaptative ». Un lecteur du collège et une étape
+(`etapes.<étape>`) ne portent que ce qu'ils changent à leur étage.
+
+Le fournisseur (ADR-012) est l'un des six du registre
+`Twin9\Fournisseurs\Fournisseurs` : `anthropic`, `openai`, `mistral`,
+`google`, `xai`, `openrouter` ; le schéma ne lui donne pas de valeur par
+défaut. Absent, il s'hérite : Anthropic pour un étage, son étage pour une
+étape, l'étage des lecteurs pour un lecteur. Qui nomme un autre fournisseur
+que celui dont il hérite nomme aussi son modèle, dans le même objet. Le
+schéma admet tout identifiant de 80 caractères au plus
+(`^[a-z0-9][a-z0-9._:/-]{0,79}$`) ; l'API vérifie, appel par appel, le motif
+du fournisseur : `claude-…` chez Anthropic et nulle part ailleurs, ni `/` ni
+`:` chez Google, un slug `éditeur/modèle` sans suffixe `:` chez OpenRouter.
+L'effort et la réflexion sont des réglages d'Anthropic : un appel qui part
+ailleurs n'a pas d'effort, et son raisonnement suit l'entrée de la grille de
+l'instance pour son modèle. La famille d'un lecteur, absente, est son
+fournisseur, ou chez OpenRouter l'éditeur du modèle.
+
+Les étapes, et l'étage qu'elles suivent comme dans la v9.8 :
 
 | Étape | Étage | Appels |
 |---|---|---|
@@ -654,7 +718,9 @@ et une étape (`etapes.<étape>`) ne portent que ce qu'ils changent à leur
 Les deux gardiens sont deux étapes, puisque la v9.8 les place sur deux
 étages. Le second ressort rejoue le procès d'une journée sur un faisceau :
 sans réglage, chacun de ses appels suit son étape (accusation, jurés…) ;
-un réglage de `second_ressort` vaut pour tous.
+un réglage de `second_ressort` vaut pour tous. Il couvre des étapes des deux
+étages, et de leurs fournisseurs : un fournisseur qu'il nomme, quel qu'il
+soit, demande son modèle.
 
 ### 7.3 Les troncatures
 
@@ -830,7 +896,10 @@ d'être écrit (`Fournisseurs\Arret::assainir`) : un identifiant court
 vocabulaire commun à tous les fournisseurs : `end` (`end_turn`,
 `stop_sequence`, `tool_use`), `max_tokens`, `context_window`
 (`model_context_window_exceeded`), `refusal`, `other` (`pause_turn`, toute
-valeur inconnue), ou nulle.
+valeur inconnue), ou nulle. Les tables des autres fournisseurs (P1-5) sont
+celles de `schemas/fixtures/arrets/arrets-fournisseurs.json`, que `Arret`
+reflète exactement, comme le moteur JS (`FournisseursTest`) : `CONTINUATION`
+(Gemini) et `model_length` (Mistral AI) y sont des sorties tronquées.
 
 ### 8.1 Les réglages d'un run
 
@@ -840,13 +909,14 @@ réglages de la v9.8 que lit le moteur (`moteur`). Au lancement (T9, §8.4),
 `MoteurReglages` les tire de la copie du profil et du référentiel qu'elle
 nomme (T16), de rien d'autre : les
 paramètres d'algorithme sous leurs noms du `config.json`, troncatures
-comprises ; `backend_tribunal` et `backend_rapide`, de type `anthropic`, aux
-modèles des étages profond et rapide (le rapide servant aussi de
-`model_mini`) ; `max_workers`, l'appel direct simultané du profil, et
-`parallel_jures`, vrai ; le collège développé comme le fait `twin9.py`, chaque
-passe un lecteur (`haiku#1`…), avec sa graine (`stable_hash("haiku|passe1")`
-modulo 2³¹−1) et son sel (`|passe1`) ; les options `jours`, `rescan`,
-`test` (le mode essai) et `memoire` ; `referentiel`, le référentiel du run
+comprises ; `backend_tribunal` et `backend_rapide`, du type du fournisseur
+de leur étage (`anthropic` quand il n'en nomme pas), aux modèles des étages
+profond et rapide (le rapide servant aussi de `model_mini`) ; `max_workers`,
+l'appel direct simultané du profil, et `parallel_jures`, vrai ; le collège développé comme le fait `twin9.py`, chaque
+passe un lecteur (`haiku#1`…), du type de son fournisseur résolu et de sa
+famille (déclarée, sinon celle de son fournisseur), avec sa graine
+(`stable_hash("haiku|passe1")` modulo 2³¹−1) et son sel (`|passe1`) ; les
+options `jours`, `rescan`, `test` (le mode essai) et `memoire` ; `referentiel`, le référentiel du run
 tiré de la base à sa version (T16, §8.8). Le profil v9.8 donne ainsi les réglages
 du scénario `02-cloud` de l'oracle, au type des backends près (`mock` sous
 `--mock`), et un run qu'ils conduisent est celui de l'oracle, appel par appel
@@ -859,10 +929,92 @@ Chaque appel part avec les réglages de son étape (`CallSettings`) : l'étape
 du moteur (`Call::step`, la tâche de la v9.8) donne l'étape du profil, puis
 son étage, comme au §7.2. Ces réglages nomment aussi le fournisseur de
 l'appel et sa voie, appel par appel : `lots` si le fournisseur est Anthropic et
-que le profil a choisi `voie: lots`, `directe` sinon. Le profil ne nomme pas
-encore de fournisseur (le schéma le refuse) : tout appel part chez Anthropic,
-dans la voie du profil (registre `Twin9\Fournisseurs\Fournisseurs`, où seul
-Anthropic est ouvert).
+que le profil a choisi `voie: lots`, `directe` sinon. Le profil peut nommer
+le fournisseur de chaque étage, étape ou lecteur (§7.2) ; un run n'atteint
+que ceux que l'administrateur a ouverts (ADR-012) : `twin9_fournisseurs_ouverts`
+dans la configuration Twin9, `["anthropic"]` par défaut, un fournisseur
+étiqueté `non` (Google, xAI, OpenRouter) n'y figurant que si
+`twin9_fournisseurs_non_rgpd` vaut `true` (`false` par défaut). `GET` et
+`PUT /api/twin9/admin/config` portent en plus, en lecture seule comme
+`releve_tarifs`, `fournisseurs` : chaque fournisseur du registre,
+`{id, libelle, rgpd, lots, env, cle_instance}` — `env`, le nom de la
+variable de la clé de l'instance, `cle_instance`, si elle est posée, un
+booléen, jamais la clé (`Fournisseurs::pourAdministrateur`) ; un `PUT` qui
+l'envoie est refusé (clé inconnue). La page d'administration
+(`#/admin/twin9`, UC-ADM-05) ouvre les fournisseurs et tarifie leurs
+modèles avec leurs plafonds. Chaque
+appel direct part chez le fournisseur que nomment ses réglages, par
+l'appelant du registre (`Twin9\Fournisseurs\Registre`), avec la clé de ce
+fournisseur (`RunKey`, ci-dessous). Le journal garde le fournisseur de
+chaque appel (`twin9_appels.fournisseur`, migration
+`032_twin9_fournisseurs.sql`, `anthropic` pour une ligne d'avant) : sa clé
+de prix, la table de son arrêt et les comptes par fournisseur le lisent.
+
+**La voie mixte** (P1-5) : dans un même run, les appels d'Anthropic partent
+par lots (si le profil dit `voie: lots`) et ceux des autres fournisseurs en
+direct, dans la même tranche (`Worker\Twin9Slice`).
+
+- Un run qui a une route directe est **ouvert à chaque tranche**, ses lots
+  relevés d'abord ; un run tout par lots ne l'est que quand ses lots
+  l'appellent (§8.3). Il mène toutes ses journées de front, ses appels
+  directs bornés par `appels_directs`.
+- Ses lots partent **une fois par tranche au plus**, en tête de tranche,
+  avant ses appels directs : tous les appels par lots que sa première passe
+  connaît (`Twin9Lots::candidats`, ceux de voie `lots` seulement) ; ceux
+  qu'une passe suivante révèle partent à la tranche suivante. Pendant chaque
+  requête synchrone des lots (vérification, création), bornée par le
+  dernier départ de la tranche, la tranche lit les réponses directes en vol
+  (`sender->wait(maintenant)`). La boucle directe ne part jamais avec un
+  appel par lots. La sentinelle `lots à soumettre` reste une valeur exacte
+  de `attente`, jamais composée.
+- **Suspensions** par fournisseur, ou pour les lots : une clé absente, un
+  plafond de dépense, un fournisseur fermé ne retiennent que les appels de
+  ce fournisseur ; une clé OpenAI absente ne retient pas le lot d'Anthropic.
+  La page du run lit les raisons, jointes par « ; ».
+- **La garde** est relue à l'ouverture de chaque tranche, et pour tout
+  fournisseur qu'un appel nomme : un fournisseur que l'instance n'ouvre plus,
+  une clé personnelle vers un tiers, une clé d'instance tierce absente
+  suspendent ce fournisseur ; le run attend. Sa page dit « fournisseur OpenAI
+  indisponible sur cette instance », les mêmes mots pour un fournisseur fermé
+  et pour une clé d'instance absente (ou refusée) : personne n'apprend quelles
+  clés l'instance détient (§8.4, `docs/autorisations.md`), l'administrateur
+  lit l'un et l'autre sur sa page (2026-10-22) ; « clé personnelle refusée
+  chez … » pour la clé de l'auteur lui-même.
+- **Durée d'un appel tiers** : il ne part que si la durée maximale de son
+  modèle (`duree_max_s` de la grille, 30 s à défaut) tient dans ce qui reste
+  de la tranche — coupé, il peut être facturé quand même (OpenRouter le
+  documente) ; il part en tête de la tranche suivante (compteur
+  `twin9Gardes` du worker). Un modèle plus long que ce que la tranche lui
+  laisse en tête (`Twin9Slice::dureeAdmise`) — un run lancé avant que le
+  déclencheur ne raccourcisse ses tranches — ne part pas dans cette
+  tranche : ses appels seuls attendent (les autres modèles du même
+  fournisseur partent), et la page dit qu'il attend une tranche plus longue,
+  que donne sa page ouverte ; retenu ainsi **plus de 30 minutes**
+  (`twin9_runs.retenu_depuis`, migration `033_twin9_retenue.sql`, remis à
+  zéro par une tranche qui ne retient rien et par une reprise), le run
+  s'arrête, sa réserve rendue (2026-10-22 ; avant, tout le fournisseur
+  restait suspendu et le run en cours sans fin, son engagement gardé).
+  Chaque coupure d'un appel par la fin d'une
+  tranche est comptée dans le journal (`twin9_appels.coupures`), puis par
+  fournisseur dans les compteurs et l'exécution (§8.5, §8.9).
+- **Repos commun** : après une 429 d'un fournisseur (ou son plafond), la
+  clé de l'instance se repose de ce fournisseur pour tous les runs de la
+  tranche, le temps que dit son `Retry-After` (60 s pour un plafond).
+- **Arrêt différé** : quand un run doit s'arrêter alors que des appels
+  directs sont en vol — un tiers qui refuse les réglages d'un appel (HTTP
+  400 : « OpenAI refuse les réglages de l'appel au modèle … (HTTP 400) : le
+  run s'arrête, à reprendre une fois ses réglages ou ceux de la grille
+  corrigés », l'appel refusé attendant sans perdre de tentative), un lot
+  refusé, un prix absent, le moteur en échec, un run retenu **plus de
+  30 minutes** par le plafond de dépense d'un tiers, ou par le refus de la
+  clé de l'instance chez un tiers (`twin9_appels.plafond_depuis`, gardé d'un
+  essai à l'autre) —, plus rien
+  ne part ni ne se rejoue ; ses appels en vol reviennent (ou la fin de
+  tranche les coupe) et sont écrits avec leur coût ; puis il s'arrête
+  (`echoue`), et ce que tiennent ses appels revient (§8.5) ; son lot encore
+  chez Anthropic n'est pas annulé : relevé une fois fini, ses réponses
+  écrites et payées (§8.3). Aucun texte d'un
+  fournisseur n'entre dans ces raisons.
 
 | `step` du moteur | Étape du profil |
 |---|---|
@@ -877,7 +1029,50 @@ Anthropic est ouvert).
 La réflexion coupée part sous la forme que le modèle accepte : `disabled`,
 `between_tools` pour Sonnet 5.5 ; « adaptative » part en `adaptive`.
 L'effort, s'il est réglé, part en `output_config.effort`. Jamais de
-température.
+température. Chaque requête de Twin9 à Anthropic — appel direct, et chaque
+requête de la voie par lots (vérification, création, état, résultats,
+annulation, suppression, liste ; 2026-10-22) — porte en plus un en-tête
+`traceparent` dont la trace n'est pas échantillonnée (`00-<trace>-<span>-00`,
+identifiants aléatoires, une trace par requête) : un export OpenTelemetry
+« contenu complet » configuré sur le compte de la clé ne reçoit rien de ses
+prompts (ADR-012 §4). `/twin6/appel` ne le porte pas : ses prompts sont ceux,
+publics, de Twin6. Avec une clé personnelle, les lots restent visibles du
+titulaire dans sa Console (faits d'API, §7) : l'en-tête n'y change rien.
+
+Les appels aux autres fournisseurs (ADR-012 §4 ; faits lus sur leurs
+documentations officielles le 2026-10-22) partent à l'adresse verrouillée de
+leur fournisseur (`Fournisseurs::REGISTRE`, `url`), la clé dans un en-tête
+seulement (`authorization: Bearer` ; `x-goog-api-key` chez Google), sans
+température ni `top_p`, ni séquence d'arrêt. OpenAI, Mistral AI, xAI et
+OpenRouter par Chat Completions (`ChatCompletionsAppelant`) : le prompt en
+message utilisateur, le budget de sortie au §8.5 ; `store: false` chez
+OpenAI ; `provider: {data_collection: "deny", allow_fallbacks: false}`
+chez OpenRouter. Google par `generateContent` (`GeminiAppelant`) : le modèle
+dans le chemin, `generationConfig.maxOutputTokens`,
+`generationConfig.thinkingConfig.thinkingLevel` si la grille le règle,
+`store: false` au premier niveau. Chaque réponse se lit dans le même
+vocabulaire (`Fournisseurs\Appelant`) : seule une fin (classe `end`) est
+une réponse ; un refus (`message.refusal`, `content_filter`, un prompt
+bloqué, `SAFETY`…), une sortie tronquée (`length`, `model_length`,
+`MAX_TOKENS`, `CONTINUATION`), tout autre arrêt et une erreur dans une
+réponse 200 (OpenRouter) sont des pannes, jamais rejouées ; une 429 attend
+son `Retry-After`, 10 s sans lui ; une 402, ou une 429 d'OpenAI dont le code
+dit le crédit, le plafond ou le quota épuisé, est un plafond (`plafond`) ;
+une 400 dit que le fournisseur refuse les réglages (`configuration`) ; une
+401 ou une 403, qu'il refuse la clé de l'instance (`cle_refusee` : révoquée,
+mal recopiée) — l'appel attend comme sur un plafond, sans perdre de
+tentative, la clé de l'instance se repose de ce fournisseur pour toute la
+tranche, la page du run le dit indisponible sans dire pourquoi, le worker le
+compte (`twin9ClesRefusees`) ; trente minutes ainsi, le run s'arrête, sa
+réserve rendue (2026-10-22 ; avant, chaque appel tombait en panne après trois
+tentatives, et la carte sortait sans ce fournisseur). Les
+textes des fournisseurs ne sortent jamais : erreurs écrites par le code,
+arrêt brut assaini (§8), modèle servi gardé s'il est un identifiant. La
+clé (`RunKey::pour`, par fournisseur) : celle de l'instance, lue dans la
+variable du registre (`OPENAI_API_KEY`, `MISTRAL_API_KEY`, `GOOGLE_API_KEY`,
+`XAI_API_KEY`, `OPENROUTER_API_KEY`, des secrets de `api/config/app.php`) ;
+une clé personnelle, chez Anthropic seulement, refusée appel par appel pour
+tout autre fournisseur.
 
 ### 8.2 L'empreinte des réglages
 
@@ -890,7 +1085,15 @@ lecteurs, les troncatures, les gabarits du jeu (hors `merge/` : la mémoire ne
 garde pas les relectures) et, depuis T16, le référentiel que lit le moteur
 (`ReferentielMoteur::empreinte`, §8.8 : ses fiches, préambules, noms, motif et
 libellé). Un run sans référentiel — d'avant T16, ses fiches dans son jeu —
-garde son empreinte. Les sorties gardent l'empreinte de la v9.8.
+garde son empreinte. Un fournisseur nommé là où il s'hérite de toute façon
+— Anthropic sur un étage, celui de son étage sur une étape, celui de l'étage
+des lecteurs sur un lecteur — n'y entre pas
+(`CallSettings::sansFournisseurHerite`), ni dans la signature des évaluations
+(§8.7) : un profil tout Anthropic garde ses empreintes, que
+`EmpreintesFigeesTest` fige. Celui du second ressort y entre toujours, sans
+quoi deux profils dont les appels partent chez deux fournisseurs
+partageraient une empreinte (ADR-012 §2). Les sorties gardent l'empreinte de
+la v9.8.
 
 ### 8.3 La voie par lots (T8)
 
@@ -921,7 +1124,8 @@ une suivante le relève.
 - **La vie d'un lot** (`twin9_lots`) : `soumission`, la ligne écrite avant
   que le lot parte ; `en_cours`, son identifiant Anthropic connu ; `releve`,
   ses résultats écrits au journal ; `supprime`, supprimé chez Anthropic.
-  `annulation` vaut pour un run qui n'est plus en cours.
+  `annulation` vaut pour un run annulé, son lot annulé chez Anthropic et
+  pas encore relevé (relevé aussi par un run repris entre-temps).
 - **Le relevé.** La tranche demande où en est chaque lot. Un lot fini voit ses
   résultats entrer au journal comme ceux des appels directs
   (`AnthropicCaller::lireMessage`), au coût de l'usage rendu, à moitié prix ;
@@ -929,15 +1133,34 @@ une suivante le relève.
   Une requête en erreur repart dans un lot suivant, sa tentative comptée
   (trois, puis la panne) ; une requête expirée aussi, sa tentative rendue.
   Le lot est ensuite supprimé chez Anthropic.
+- **La soumission** a, pour la création d'un lot, au moins le temps d'une
+  soumission (le quart de la tranche, huit secondes au plus) avant le
+  dernier départ de la tranche, qui borne la requête : venue plus tard
+  (après une longue vérification), elle attend la tranche suivante. Une
+  création qui n'a pas pu partir quand même (plus une seconde : aucune
+  requête, `non_envoye`) n'est pas un lot perdu : ses appels attendent, leur
+  tentative rendue, et partent à la tranche suivante (2026-10-22).
 - **Un lot perdu**, parti sans que sa réponse arrive, est cherché parmi les
   lots de l'espace de la clé : même nombre de requêtes, créé dans les dix
   minutes autour de son départ, puis, une fois fini, les mêmes `custom_id`.
   Introuvable dix minutes après son départ, il n'est jamais parti, et ses
   appels repartent.
-- **Un run qui n'est plus en cours** (annulé, en échec ou fini) voit ses lots
-  en cours annulés, leurs appels rendus, puis supprimés une fois finis.
+- **Un run qui n'est plus en cours** (annulé, en échec ou fini) : ses lots
+  sont relevés une fois finis, comme ceux d'un run en cours — chaque réponse
+  écrite avec son coût réel et débitée, une requête en erreur, expirée ou
+  annulée rendue (elle repart à une reprise) —, ce que tenaient leurs appels
+  soldé (`RunCosts::liberer`), puis supprimés. Seul un run **annulé** par son
+  auteur voit d'abord son lot en cours annulé chez Anthropic ; les réponses
+  qui arrivent malgré l'annulation sont lues et payées de même. Un run en
+  échec garde son lot chez Anthropic jusqu'à sa fin : une requête traitée est
+  facturée (faits d'API, §8), sa réponse est gardée et payée une fois,
+  jamais supprimée sans être lue (2026-10-22, revue de la voie mixte). Un
+  lot perdu, une fois retrouvé, de même.
 - **Entre deux lots**, le run n'est pas rejoué : la tranche demande seulement
-  où en sont ses lots, et il ne compte pas parmi ses N runs.
+  où en sont ses lots, et il ne compte pas parmi ses N runs. Un run mixte
+  (§8.1, P1-5) l'est à chaque tranche, pour ses appels directs ; ses lots,
+  qui ne portent que ses appels d'Anthropic, partent une fois par tranche
+  au plus, en tête.
 
 ### 8.4 Lancer, suivre, lire (T9)
 
@@ -957,7 +1180,20 @@ une suivante le relève.
   tête du dépôt `TWIN_V9_DIR`, sinon
   la première ligne de son fichier `COMMIT`, sinon nul). Il garde aussi sa
   visibilité (`privee` ou `cartographe`) et la date de l'accord (`accord_at`),
-  sans lequel rien ne part. Depuis P0-1, il garde aussi sa **configuration**
+  sans lequel rien ne part. Depuis la voie mixte (P1-5, ADR-012), l'accord
+  nomme les fournisseurs : `accord: {fournisseurs: [ids]}`, comparé à ceux
+  qu'atteignent les appels du run (`CallSettings::fournisseurs()`, l'aperçu
+  les donne), `422` « Accord requis : il nomme les fournisseurs auxquels ce
+  run envoie votre portfolio — … » s'ils diffèrent ; `true` reste admis pour
+  un profil tout Anthropic. La page de lancement (`#/twin9`) envoie toujours
+  la liste, même d'Anthropic seul : son texte d'accord nomme chaque
+  fournisseur, sa voie et son étiquette RGPD, lus dans la configuration
+  (`profils[].fournisseurs`, `defaut_fournisseurs`, §7) avant tout aperçu, et
+  l'accord donné tombe quand le profil choisi en atteint d'autres ou par une
+  autre voie. La liste, triée, est gardée dans la
+  configuration (`accord.fournisseurs`, §8.9). Une reprise relit la garde
+  de ses fournisseurs (§7.2, `admettreAuLancement`) : un fournisseur fermé
+  depuis, ou sans sa clé d'instance, la refuse en `422`. Depuis P0-1, il garde aussi sa **configuration**
   (§8.9), écrite au lancement et jamais modifiée, distincte de l'attestation.
 - **Le suivi** (`GET /api/twin9/runs/{id}`) lit le journal : appels par état,
   journées finies (cartes du jour écrites), fusion faite, lots chez Anthropic,
@@ -969,7 +1205,15 @@ une suivante le relève.
   son verrou, pour les seuls runs de la session (`Tick` : `twin9Utilisateur`),
   sans les jobs de masse ; elle finit plus tôt quand ces runs n'attendent plus
   rien. Annuler arrête un run en cours
-  (ses lots sont annulés puis supprimés, §8.3) ; reprendre relance un run
+  (ses lots sont annulés, relevés puis supprimés, §8.3) : la route rend
+  aussitôt ce que tiennent ses appels qu'aucune tranche n'a en vol (un appel
+  en attente rendu, une issue soldée au coût réel :
+  `RunCosts::libererHorsVol`) ; la tranche qui le tient n'envoie plus rien (le
+  statut est relu avant chaque départ), ses appels en vol reviennent, écrits
+  avec leur coût, et sa fin solde ce qu'ils tiennent au coût réel ; un appel
+  laissé envoyé par un tick mort l'est en tête du tick suivant
+  (`RunRepository::aSolder`, 2026-10-22). Un appel parti à l'instant même de
+  l'annulation, sa réserve déjà rendue, est payé par l'instance ; reprendre relance un run
   annulé ou arrêté, depuis son journal. Depuis P0-1, le suivi porte
   `configuration_empreinte` (l'empreinte de sa configuration, §8.9 ; nulle
   pour un run d'avant elle), et rien d'autre de ses blocs : la page
@@ -1032,7 +1276,63 @@ une suivante le relève.
   tard : le coût réel reste, le reste revient (`… · réconciliation`, par
   modèle, avec les jetons réels). Un run arrêté, annulé ou fini rend tout ce
   que ses appels tiennent encore (`… · remboursement`), sauf les appels d'un
-  lot encore chez Anthropic, soldés quand le lot est relevé ou annulé.
+  lot encore chez Anthropic, soldés quand le lot est relevé, annulé ou non (§8.3).
+- **Un appel ne débite jamais plus que sa réserve** (ADR-012 §6) : un coût
+  réel au-delà — un fournisseur qui facture plus de sortie que le pire cas
+  n'en comptait, une grille qui a changé entre l'envoi et la réponse — est
+  payé par l'instance, jamais par le crédit de l'auteur, ni par son budget :
+  ce qu'un appel soldé engage (`RunCosts::impute`, que lisent le budget du
+  run, ce que ses autres runs peuvent encore dépenser et la reprise) est son
+  coût réel plafonné au pire cas qu'il tenait (`pire_cas_microusd`) avec la
+  clé de l'instance — son coût réel avec la clé de l'auteur, qui le paie à
+  son fournisseur. Les compteurs gardent les deux : `cout_microusd`, le coût
+  réel, et `facture_microusd`, ce que le run a coûté à son auteur, que le
+  suivi rend en `cout.depense_microusd` (2026-10-22 ; un run fini avant,
+  son coût réel). Le journal garde le
+  coût réel (`cout_microusd`) ; l'excédent est compté par tranche
+  (`depassements`, compteur `twin9Depassements` du worker) et journalisé
+  (`[twin9-couts] run <id>, <clé de prix> : …`, le modèle et les montants
+  seulement). Le modèle d'un autre fournisseur est alors **marqué « pire cas
+  insuffisant »** (réglage `twin9_pire_cas_insuffisant`, à part de
+  `twin9_config` : le worker l'écrit, une sauvegarde de l'administrateur ne
+  l'écrase pas) avec les plafonds de son entrée de grille, le plus grand
+  excédent, ses appels et depuis quand ; `GET /api/twin9/admin/config` le
+  rend (`pire_cas_insuffisants`, qu'aucun `PUT` ne prend), la page
+  d'administration le signale sur la ligne du modèle, et le lancement (comme
+  la reprise) refuse ce modèle en `422` tant que ses plafonds
+  (`plafond_sortie`, `plafond_reflexion`) n'ont pas changé : corrigés, la
+  marque ne tient plus (2026-10-22). Un modèle d'Anthropic n'est jamais
+  marqué. Depuis la voie mixte, les soldes du grand-livre
+  (réconciliation, remboursement) sont rangés, comme les réserves, sous la
+  clé de prix de chaque appel (`fournisseur:modèle` hors d'Anthropic). Pour Anthropic, le pire cas majore toujours le coût réel au
+  prix de l'envoi : rien ne change.
+- **Les autres fournisseurs** (ADR-012 §6, P1-5) ont leurs prix dans la même
+  grille, sous la clé `fournisseur:modèle` (`Fournisseurs::clePrix`),
+  saisis par l'administrateur, jamais par le relevé quotidien des prix
+  d'Anthropic (`TarifsAnthropic::appliquer` les laisse tels quels, ni changés
+  ni « absents »), jamais servis à la cartographie ouverte (`publicView`,
+  `/twin6/appel` refuse un modèle à `:`). Une entrée tierce porte, en plus de
+  `prix_usd_mtok` (et d'un `palier_long` facultatif) :
+  `plafond_sortie` (entier > 0 ; 32 768 au plus chez Google, plafond d'une
+  requête non streamée), `plafond_reflexion` (entier ≥ 0 ; > 0 chez xAI, dont
+  le raisonnement ne se coupe pas et sort du plafond de sortie),
+  `duree_max_s` (1 à 45 secondes) et, chez OpenAI et Google seulement,
+  `reflexion_param`, le réglage de raisonnement le plus bas que le modèle
+  admet (`reasoning_effort` : `none`, `minimal`, `low`, `medium`, `high`,
+  `xhigh`, `max` ; `thinkingLevel` : `MINIMAL`, `LOW`, `MEDIUM`, `HIGH`),
+  envoyé avec chaque appel du modèle ; absent, le défaut du modèle.
+  `Twin9Config` refuse ces quatre champs sur un modèle d'Anthropic, une clé
+  dont le préfixe n'est pas un autre fournisseur, un modèle hors du motif de
+  son fournisseur. Le pire cas d'un appel tiers : les octets du prompt plus
+  le surcoût d'entrée du fournisseur (`surcout_entree`, 64 jetons) en
+  entrée, `budget_sortie + plafond_reflexion` en sortie, jamais à moitié
+  prix ; sans entrée de grille, pas de prix. Le budget part dans le champ de
+  plafond de chaque fournisseur (`max_completion_tokens` chez OpenAI et xAI,
+  `max_tokens` chez Mistral AI et OpenRouter, `maxOutputTokens` chez
+  Google) ; le coût réel compte en sortie ce que le fournisseur facture
+  comme tel : la réflexion comprise (les jetons de raisonnement de xAI, hors
+  de ses jetons de complétion ; les pensées de Gemini). La réserve est
+  débitée sous la clé de prix du modèle (`model` du grand-livre).
 - **Les plafonds** viennent de la copie du profil : `budget_usd` et
   `duree_minutes`, `null` pour aucun. Ce qu'un run a engagé — réserves
   tenues, coûts réels soldés — ne dépasse jamais son budget : un appel dont
@@ -1053,19 +1353,28 @@ une suivante le relève.
 - **Les compteurs** d'un run fini gagnent `journees` (les journées qu'il a
   instruites) et `duree_s` (ses secondes actives, période par période :
   `twin9_runs.actif_s`), et, depuis P0-2 (§8), `tronques`, au total et dans
-  `par_etape` : les pannes d'une sortie tronquée.
+  `par_etape` : les pannes d'une sortie tronquée. Depuis la voie mixte
+  (P1-5), chaque arrêt se lit dans la table de son fournisseur, et ils
+  gagnent `coupures` (les coupures par la fin d'une tranche) et
+  `par_fournisseur` (`{appels, pannes, tronques, coupures, cout_microusd}`
+  par fournisseur).
 - **L'aperçu** (`POST /api/twin9/runs/apercu`, `{profil, portfolio}`, ce que
   demande un lancement, l'accord excepté ; rien n'est gardé) rend
-  `{journal, mode, voie, cle, journees: {total, nouvelles, changees},
+  `{journal, mode, voie, cle, fournisseurs, journees: {total, nouvelles, changees},
   estimation: {cout_usd, min_usd, max_usd, reserve_usd, duree_s,
   evaluations | reference, poles}, admission: {journees, total, limite,
   instruites, en_attente, changees_en_attente, autres_usd, refus},
   plafonds: {budget_usd, duree_minutes}, credit_usd}`. L'estimation et
   l'admission sont au §8.7 (T8). À défaut d'évaluation, la référence est le
   vrai run de PLANT-01 de T2, en mode essai, 0,1344 $ et 94 s, fois les
-  pôles du référentiel pour un run complet, à moitié prix par lots, la
-  marge avec la clé de l'instance ; par lots, la durée est nulle (celle
-  d'Anthropic). `credit_usd`, avec la clé de l'instance.
+  pôles du référentiel pour un run complet, à moitié prix quand tous ses
+  appels partent par lots, la marge avec la clé de l'instance ; dès qu'une
+  route part par lots, la durée est nulle (celle d'Anthropic). Le pire cas
+  d'un appel se compte par combinaison, au prix de son fournisseur et par
+  sa route (`RunCosts::pireCasDe`). `fournisseurs` (P1-5) : ceux
+  qu'atteignent ses appels, `[{id, libelle, rgpd, voie}]` (`voie` : `lots`,
+  `directe` ou `mixte`), que l'accord nomme. `credit_usd`, avec la clé de
+  l'instance.
 - **Une carte incomplète** : la page d'un run arrêté avec des journées finies
   l'ouvre dans la cartographie. Le document `twin9-run` porte alors
   `incomplete: true`, et `carto_evolutive` peut être nul ; l'import le dit
@@ -1184,8 +1493,12 @@ crédit, ou le budget, permet de finir avec leur fusion.
   (le plus grand pire cas qu'un appel d'une journée, de la fusion, a
   réservé avant de partir, T10 ; `twin9_appels.pire_cas_microusd` le garde
   une fois l'appel réglé) ; `duree_s` (ses secondes actives) ; `reglages`
-  (`voie`, `cle`, `marge` — le facteur que ses coûts comprennent, 1 avec la
-  clé personnelle —, et ce que les prévisions comparent : `mode`,
+  (`voie` — depuis la voie mixte, celle par laquelle le run est passé :
+  `directe`, `lots` ou `mixte`, `CallSettings::voieEffective()` —, `cle`,
+  `marge` — le facteur que ses coûts comprennent, 1 avec la clé
+  personnelle —, `part_anthropique` — depuis la voie mixte, `{journee,
+  fusion}`, la part d'Anthropic dans le coût de ses journées et de sa
+  fusion, nulle sans coût —, et ce que les prévisions comparent : `mode`,
   `referentiel`, `version_referentiel` et `empreinte_referentiel` (T16 :
   celle du référentiel que lit le moteur, §8.8 ; vide pour un run d'avant,
   qui lisait les fiches de son jeu), `gabarits` et
@@ -1202,8 +1515,12 @@ crédit, ou le budget, permet de finir avec leur fusion.
   contenu. L'export du compte porte l'évaluation avec son run (§8.5).
 - **La prévision** (`Evaluations::modele`, `Evaluations::selon`) lit les 200
   dernières évaluations de même signature, chacune convertie à la voie et à
-  la marge du run prévu (moitié prix par lots ; sa marge retirée, celle du
-  run prévu appliquée). Une journée instruite coûte une part fixe — les
+  la marge du run prévu (sa marge retirée, celle du run prévu appliquée ;
+  par lots, seule la part d'Anthropic de chaque phase change de prix,
+  `Evaluations::facteur` : d'une évaluation par lots ou mixte vers un run
+  direct, `1 + a` ; d'une évaluation directe vers un run par lots,
+  `1 − a/2` ; une ligne d'avant la voie mixte, tout Anthropic, `a = 1` :
+  le double, ou la moitié). Une journée instruite coûte une part fixe — les
   fiches de son pôle font l'essentiel de chaque prompt de lecture — et une
   part par Ko, ni l'une ni l'autre négative : la droite des moindres carrés
   par les journées instruites (leur taille, leur coût ; une journée en
@@ -1221,8 +1538,10 @@ crédit, ou le budget, permet de finir avec leur fusion.
   d'appel du run réservent sur un prompt deux fois plus grand que le plus
   grand gabarit du jeu ou le plus grand pôle que lisent ses lecteurs (T16 :
   son préambule et ses fiches, §8.8), avec la plus grande journée à
-  instruire (la carte, pour la fusion). Par appels directs, les secondes
-  actives d'un run par journée instruite, fusion comprise, en moyenne. Sans
+  instruire (la carte, pour la fusion), chaque combinaison au prix de son
+  fournisseur et par sa route. Des runs passés par appels directs seuls
+  (voie `directe`), les secondes actives par journée instruite, fusion
+  comprise, en moyenne. Sans
   évaluation, la référence
   (§8.5) : par journée instruite, une journée pour la fusion, et une journée
   pour le pire cas d'un appel de chacune, au moins ce que disent ses
@@ -1451,8 +1770,12 @@ refusée ; fixture inventée `schemas/fixtures/twin9-configuration-exemple.json`
     (`instance` ou `personnelle`, jamais la clé), `parallelisme`,
     `plafonds {budget_usd, duree_minutes}`, `jours`, `rescan`, `memoire` ;
   - `fournisseurs` : chaque fournisseur qu'atteignent ses appels
-    (`CallSettings::combinaisons()`), `{libelle, rgpd, voie}` (`mixte` s'il
-    a les deux voies) ;
+    (`CallSettings::combinaisons()` : ses étapes et ses lecteurs, jamais
+    l'étage des lecteurs seul ni une étape que le profil ne connaît pas),
+    `{libelle, rgpd, voie}` (`mixte` s'il a les deux voies) ;
+  - `accord` (depuis la voie mixte, P1-5) : `{fournisseurs}`, ceux que
+    nommait l'accord de son propriétaire, triés ; absent d'un run lancé
+    avant ;
   - `appels` : `CallSettings::resume()` — `etages`, `etapes`,
     `second_ressort`, `lecteurs` (chacune un **objet**, quelles que soient
     ses clés : un lecteur nommé « 0 », que le motif du profil admet, n'en
@@ -1497,16 +1820,20 @@ refusée ; fixture inventée `schemas/fixtures/twin9-configuration-exemple.json`
   `partiel` le dise), `appels {total, repondus, pannes,
   tronques, refus, tentatives}`, `jetons {entree, sortie}`, `cout_microusd`,
   `lots`, puis `par_voie`, `par_fournisseur`, `par_modele` (chacun
-  `{appels, pannes, tronques, jetons_entree, jetons_sortie, cout_microusd}`),
-  `servis` (modèles servis par modèle demandé), `arrets` (les classes d'arrêt
+  `{appels, pannes, tronques, coupures, jetons_entree, jetons_sortie,
+  cout_microusd}` ; `coupures`, les coupures par la fin d'une tranche,
+  depuis la voie mixte, absentes d'un bloc figé avant elle ; `par_modele`
+  sous la clé de prix), `servis` (modèles servis par modèle demandé, sous sa
+  clé de prix), `arrets` (les classes d'arrêt
   du §8 : `end`, `max_tokens`, `context_window`, `refusal`, `other`),
   `moteur {commit_debut, commit_fin}` (`commit_fin` nul tant qu'il n'est pas
   fini) et `reprises[] {at, budget_usd}` (chaque reprise ajoute la sienne,
   dans la transaction de la reprise ; avant la fin, la colonne
   `twin9_runs.execution` ne garde qu'elles). Ses totaux sont ceux de
   `compteurs` (§8.5). La voie se lit à `custom_id` (qu'un appel d'un lot
-  garde, `lot_id` repassant à NULL avec son lot) ; le fournisseur vaut
-  `anthropic` tant qu'aucun autre n'est câblé. Toute table par nom est un
+  garde, `lot_id` repassant à NULL avec son lot) ; le fournisseur, à
+  `twin9_appels.fournisseur` (`anthropic` pour une ligne d'avant la
+  migration 032), et l'arrêt dans la table de ce fournisseur. Toute table par nom est un
   **objet**, vide ou non (`{}`, jamais `[]`). Figer ne retient jamais un
   run : en cas d'échec (sous SAVEPOINT), le run finit, son exécution reste
   nulle, et seule la classe de l'exception est journalisée. Un run fini

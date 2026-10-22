@@ -14,8 +14,9 @@ use stdClass;
  * reader of the college over the readers' stage; a setting of second_ressort
  * over every call of the second instance. Each call is routed by its own
  * settings: by batches when its provider is Anthropic and the profile's lane
- * is « lots », directly otherwise. A profile names no provider yet (the
- * schema refuses it): every call goes to Anthropic.
+ * is « lots », directly otherwise. A stage that names no provider is
+ * Anthropic's; a step, a reader or the second instance that names none takes
+ * the one beneath it (ADR-012).
  */
 final class CallSettings
 {
@@ -45,7 +46,7 @@ final class CallSettings
     ];
 
     /** The stage each step of the profile follows, as in the v9.8. */
-    private const ETAGES = [
+    public const ETAGES = [
         'premiere_impression' => 'rapide',
         'greffier' => 'rapide',
         'juge_leger' => 'rapide',
@@ -66,6 +67,13 @@ final class CallSettings
     ];
 
     private const CHAMPS = ['fournisseur', 'modele', 'budget_sortie', 'effort', 'reflexion'];
+
+    /**
+     * The entries of parEtape() no call of the engine is sent with: the
+     * readers' stage itself — each reader of the college is its own entry,
+     * the stage only what it inherits — and a step the profile does not know.
+     */
+    private const NON_ATTEINTS = ['lecteurs', 'autre étape'];
 
     public function __construct(private readonly stdClass $profil)
     {
@@ -120,9 +128,24 @@ final class CallSettings
     }
 
     /**
+     * What the calls of the run are sent with, by step, as parEtape() gives
+     * it, but for what no call of the engine reaches (NON_ATTEINTS): the
+     * readers' stage itself and a step the profile does not know.
+     *
+     * @return array<string, array{fournisseur: string, voie: 'lots'|'directe', modele: string, budget_sortie: int,
+     *                             effort: string|null, reflexion: string}>
+     */
+    public function atteints(): array
+    {
+        return array_diff_key($this->parEtape(), array_flip(self::NON_ATTEINTS));
+    }
+
+    /**
      * Every combination of provider, lane, model and settings a call of the
-     * run may be sent with (parEtape(), once each), of one lane when it is
-     * given. The batch lane checks its own before the run's first batch (T8).
+     * run is sent with (atteints(), once each), of one lane when it is given.
+     * The batch lane checks its own before the run's first batch (T8); the
+     * launch, the consent and the slice's guard read the providers they
+     * reach (fournisseurs()).
      *
      * @param 'lots'|'directe'|null $voie
      * @return list<array{fournisseur: string, voie: 'lots'|'directe', modele: string, budget_sortie: int,
@@ -131,13 +154,41 @@ final class CallSettings
     public function combinaisons(?string $voie = null): array
     {
         $uniques = [];
-        foreach ($this->parEtape() as $reglage) {
+        foreach ($this->atteints() as $reglage) {
             if ($voie === null || $reglage['voie'] === $voie) {
                 $uniques[json_encode($reglage, JSON_THROW_ON_ERROR)] = $reglage;
             }
         }
 
         return array_values($uniques);
+    }
+
+    /**
+     * The providers the run's calls reach (combinaisons()), of one lane when
+     * it is given, in the registry's order.
+     *
+     * @param 'lots'|'directe'|null $voie
+     * @return list<string>
+     */
+    public function fournisseurs(?string $voie = null): array
+    {
+        $atteints = array_flip(array_column($this->combinaisons($voie), 'fournisseur'));
+
+        return array_values(array_filter(array_keys(Fournisseurs::REGISTRE),
+            static fn (string $f): bool => isset($atteints[$f])));
+    }
+
+    /**
+     * The run's lane as it goes (P1-5): « lots » when every call it sends goes
+     * by batches, « directe » when none does, « mixte » otherwise.
+     *
+     * @return 'lots'|'directe'|'mixte'
+     */
+    public function voieEffective(): string
+    {
+        $voies = array_unique(array_column($this->combinaisons(), 'voie'));
+
+        return \count($voies) > 1 ? 'mixte' : ($voies === ['lots'] ? 'lots' : 'directe');
     }
 
     /**
@@ -180,15 +231,17 @@ final class CallSettings
      * the memory does not keep them), and the referential the engine reads
      * (T16: its fiches, preambles, names, motif, label), lest the memory take
      * back a day judged against other fiches. A run without one — launched
-     * before T16, its fiches in its set — keeps its fingerprint.
+     * before T16, its fiches in its set — keeps its fingerprint. A provider
+     * named where it is inherited anyway leaves it (sansFournisseurHerite()).
      *
      * @param array<string, string> $gabarits the template set, by name
      * @param mixed $referentiel the referential in the engine's settings (ReferentielMoteur::bloc()), or null
      */
     public static function empreinte(stdClass $profil, mixed $troncatures, array $gabarits, mixed $referentiel = null): string
     {
+        $reglages = self::sansFournisseurHerite($profil);
         $lecteurs = [];
-        foreach ($profil->college as $lecteur) {
+        foreach ($reglages['college'] as $lecteur) {
             $lecteurs[(string) $lecteur->nom] = array_intersect_key((array) $lecteur, array_flip(self::CHAMPS));
         }
         ksort($gabarits, SORT_STRING);
@@ -199,7 +252,7 @@ final class CallSettings
             }
         }
 
-        $champs = ['etages' => $profil->etages, 'etapes' => $profil->etapes, 'lecteurs' => $lecteurs,
+        $champs = ['etages' => $reglages['etages'], 'etapes' => $reglages['etapes'], 'lecteurs' => $lecteurs,
                    'troncatures' => $troncatures, 'gabarits' => hash_final($jeu)];
         if ($referentiel !== null) {
             $champs['referentiel'] = ReferentielMoteur::empreinte($referentiel);
@@ -207,6 +260,50 @@ final class CallSettings
 
         return substr(hash('sha256', json_encode(self::canonique($champs),
             JSON_THROW_ON_ERROR | JSON_UNESCAPED_UNICODE | JSON_PRESERVE_ZERO_FRACTION)), 0, 16);
+    }
+
+    /**
+     * The call settings of a profile as its fingerprints read them
+     * (empreinte(), Evaluations::signature()): its stages, its steps and its
+     * readers, without a provider that only repeats the one they inherit —
+     * Anthropic for a stage, its stage's for a step, the readers' stage's for
+     * a reader —, so that naming it changes nothing (ADR-012); a step left
+     * without setting stays, an empty object. The second instance keeps the
+     * provider it names: it spans steps of both stages, of several providers,
+     * and no single one of them is what it inherits.
+     *
+     * @return array{etages: stdClass, etapes: stdClass, college: list<stdClass>} copies: the profile is left untouched
+     */
+    public static function sansFournisseurHerite(stdClass $profil): array
+    {
+        $herite = static fn (string $etage): mixed => $profil->etages->{$etage}->fournisseur ?? Fournisseurs::DEFAUT;
+        $sans = static function (mixed $reglage, mixed $herite): void {
+            if ($reglage instanceof stdClass && isset($reglage->fournisseur) && $reglage->fournisseur === $herite) {
+                unset($reglage->fournisseur);
+            }
+        };
+        $etages = self::copie($profil->etages);
+        foreach ((array) $etages as $reglage) {
+            $sans($reglage, Fournisseurs::DEFAUT);
+        }
+        $etapes = self::copie($profil->etapes ?? new stdClass());
+        foreach ((array) $etapes as $etape => $reglage) {
+            if ($etape !== 'second_ressort') {
+                $sans($reglage, $herite(self::ETAGES[$etape] ?? 'profond'));
+            }
+        }
+        $college = self::copie($profil->college ?? []);
+        foreach ($college as $lecteur) {
+            $sans($lecteur, $herite('lecteurs'));
+        }
+
+        return ['etages' => $etages, 'etapes' => $etapes, 'college' => $college];
+    }
+
+    /** A deep copy: a fingerprint's settings never share an object with the profile. */
+    private static function copie(mixed $valeur): mixed
+    {
+        return unserialize(serialize($valeur));
     }
 
     /**

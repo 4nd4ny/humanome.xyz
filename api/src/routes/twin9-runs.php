@@ -12,11 +12,13 @@ declare(strict_types=1);
  *   GET  /api/twin9/runs                     own runs, and whether Twin9 runs on this instance
  *   POST /api/twin9/runs/apercu              {profil, portfolio}: the days new or changed, the estimated cost and
  *                                            duration, the caps, before a launch (T10)
- *   POST /api/twin9/runs                     {profil: id|null, portfolio: {nom, texte}, accord, visibilite?} -> 201
+ *   POST /api/twin9/runs                     {profil: id|null, portfolio: {nom, texte}, accord: {fournisseurs: [ids]}
+ *                                            (true for a profile all Anthropic), visibilite?} -> 201
  *   POST /api/twin9/runs/avancer             the page advances its owner's runs (never the tick's token)
  *   GET  /api/twin9/runs/{id}                its progress, read in its journal, and its cost (owner)
  *   POST /api/twin9/runs/{id}/annuler        stop it (owner)
- *   POST /api/twin9/runs/{id}/reprendre      resume it, cancelled or stopped, {budget_usd?} a new budget (owner)
+ *   POST /api/twin9/runs/{id}/reprendre      resume it, cancelled or stopped, {budget_usd?} a new budget (owner);
+ *                                            its providers available again (ProfilPolicy::admettreAuLancement)
  *   PUT  /api/twin9/runs/{id}/visibilite     {visibilite: privee|cartographe} (owner)
  *   GET  /api/twin9/runs/{id}/resultats      its results, filtered (owner; a linked cartographe if visible)
  *   GET  /api/twin9/mes-analyses             the account's runs, journals, outputs and maps, which its archive
@@ -35,6 +37,7 @@ use Humanome\Middleware\RequireRole;
 use Humanome\Packages\SettingsRepository;
 use Humanome\Twin9\EngineLoader;
 use Humanome\Twin9\Lancement;
+use Humanome\Twin9\ProfilPolicy;
 use Humanome\Twin9\Resultats;
 use Humanome\Twin9\RunConfiguration;
 use Humanome\Twin9\RunCosts;
@@ -152,8 +155,9 @@ return function (App $app): void {
             $c = $corps($request);
             [$profil, $portfolio] = $choix($c);
             $visibilite = $c['visibilite'] ?? 'privee';
+            // the consent as sent: {fournisseurs: [ids]}, or true for a profile all Anthropic (Lancement)
             $id = $lancement()->lancer($userId, $profil, $portfolio['nom'], $portfolio['texte'],
-                ($c['accord'] ?? false) === true, \is_string($visibilite) ? $visibilite : '');
+                $c['accord'] ?? false, \is_string($visibilite) ? $visibilite : '');
 
             return $json($response, $suivi($id), 201);
         }
@@ -192,8 +196,10 @@ return function (App $app): void {
             if (!(new RunRepository(Db::get()))->annuler($id, $userId)) {
                 throw new Twin9Exception('Ce run n’est pas en cours', 409);
             }
-            // what its calls hold goes back; its batches at Anthropic, once the tick has cancelled them
-            (new RunCosts(Db::get(), new Twin9Config(new SettingsRepository(Db::get()))))->liberer($id);
+            // what its calls hold that no slice has in flight goes back now; a call still sent, at the slice that
+            // has it in flight — written with its cost when it comes back — or at the next tick (Twin9Slice); its
+            // batches, once collected (Twin9Lots)
+            (new RunCosts(Db::get(), new Twin9Config(new SettingsRepository(Db::get()))))->libererHorsVol($id);
 
             return $json($response, $suivi($id));
         }
@@ -212,6 +218,12 @@ return function (App $app): void {
                     throw new Twin9Exception('Budget invalide : un nombre de dollars positif, ou null pour aucun', 422);
                 }
                 $plafonds['budget_usd'] = $budget;
+            }
+            // the guard of its providers, read again (ADR-012): one closed since, or without its key, keeps it stopped
+            $copie = (new RunRepository(Db::get()))->tete($id);
+            if ($copie !== null && \in_array($copie['statut'], ['annule', 'echoue'], true)) {
+                (new ProfilPolicy(Db::get(), new Twin9Config(new SettingsRepository(Db::get()))))
+                    ->admettreAuLancement($copie['profil']);
             }
             if (!(new RunRepository(Db::get()))->reprendre($id, $userId, $plafonds)) {
                 throw new Twin9Exception('Seul un run annulé ou arrêté reprend', 409);

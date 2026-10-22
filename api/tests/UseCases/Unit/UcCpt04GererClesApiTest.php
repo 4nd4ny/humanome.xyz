@@ -167,7 +167,7 @@ final class UcCpt04GererClesApiTest extends TestCase
         self::assertSame('xai-cle-bob-123', $vault->reveal($bob, 'xai'));
     }
 
-    #[TestDox('UC-CPT-04-U07 — fournisseurs acceptés par le coffre : les six de l’interface + « mock » (tests)')]
+    #[TestDox('UC-CPT-04-U07 — fournisseurs acceptés par le coffre : les six de l’interface + « mock » (tests) ; aucune clé Mistral AI, qu’aucun parcours n’emploie')]
     public function testU07Providers(): void
     {
         self::assertSame(['anthropic', 'openai', 'google', 'openrouter', 'xai', 'ollama', 'mock'], KeyVault::PROVIDERS);

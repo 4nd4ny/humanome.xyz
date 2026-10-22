@@ -225,7 +225,8 @@ L'administrateur-promptologue ouvre « Faire évoluer » → « Atelier Twin9 »
 - **RG8 — Garde-fou de publication** (`scripts/check-publiable.mjs`, dépôt
   miroité en public) : sur les fichiers **suivis** par git, tout chemin sous
   `golden-twin9/`, `twin9-oracles/` ou `golden-prompt/` est refusé quel que soit
-  son contenu, comme un `.env` réel, un cache `.pyc`, une clé Anthropic, un
+  son contenu, comme un `.env` réel, un cache `.pyc`, une clé Anthropic (ou
+  d'un autre fournisseur de Twin9 : OpenAI, OpenRouter, xAI, Google), un
   secret PayPal, un mot de passe hors fichiers de test, un chemin local absolu ou
   un identifiant d'hébergement ; sortie `1` avec la liste « [règle]
   fichier:ligne », sans recopier le contenu ; sortie `0` sinon. Voir Limites.
@@ -278,7 +279,7 @@ L'administrateur-promptologue ouvre « Faire évoluer » → « Atelier Twin9 »
 | Domaine | `api/src/Twin9/Twin9Config.php` — `setReferentiel` | Structure du référentiel (import) |
 | Contrat | `schemas/twin9-protocole-contrat.json` (livré avec la release, `scripts/deploy/stage-api.sh`) | Variables fournies à chaque gabarit (RG10) |
 | Script | `scripts/twin9/import-protocole.mjs` ; `scripts/deploy/twin9-checkout.mjs` — `cleanCommit` | Acteur technique de A4 : lecture de `TWIN_V9_DIR`, structure du référentiel lue par `parsePole` (`web/src/lib/twin9/referentiel.js`), commit d'un dépôt propre comparé à la release préparée, envoi avec `X-Migrate-Token` — script sans export, exécuté dès son chargement : couvert fonctionnellement seulement, en sous-processus (UC-PRO-08-F19 à F22, F25) |
-| Script | `scripts/check-publiable.mjs` (+ `.githooks/pre-commit`, `.github/workflows/publiable.yml`) | Garde anti-fuite : aucun gabarit Twin9 ni secret dans les fichiers suivis (RG8) — script sans export, exécuté dès son chargement : couvert fonctionnellement seulement, en sous-processus (UC-PRO-08-F17, F18) |
+| Script | `scripts/check-publiable.mjs` (+ `.githooks/pre-commit`, `.github/workflows/publiable.yml`) | Garde anti-fuite : aucun gabarit Twin9 ni secret dans les fichiers suivis (RG8) — script sans export, exécuté dès son chargement : couvert fonctionnellement seulement, en sous-processus (UC-PRO-08-F17, F18, F26) |
 
 ## Jeux de tests
 
@@ -286,7 +287,7 @@ Les deux scripts techniques (`check-publiable.mjs`, `import-protocole.mjs`)
 s'exécutent dès leur chargement et n'exportent rien : ils sont rejoués par leur
 interface en ligne de commande, en **sous-processus**, sur des dossiers
 temporaires fictifs (`os.tmpdir()`) — tests fonctionnels de niveau « CLI »
-(UC-PRO-08-F17 à F22, F25), rangés avec les tests du moteur
+(UC-PRO-08-F17 à F22, F25, F26), rangés avec les tests du moteur
 (`engine/test/usecases/unit/`, exécutés par la CI de publication) comme ceux
 de UC-SYS-04. L'effet d'une copie sur le prompt d'un run (UC-PRO-08-F09) se
 rejoue avec le moteur factice, chargé dans un processus à part, comme les
@@ -340,6 +341,7 @@ autres tests de runs.
 | UC-PRO-08-F23 | A6 | IHM | Sans copie, le jeu v9.8 ouvert en lecture ; « Copier » → POST avec CSRF → la copie ouverte, éditable | `web/test/usecases/functional/uc-pro-08-editer-gabarits-twin9.test.jsx` |
 | UC-PRO-08-F24 | A5, E7 | IHM | Liste des jeux (lecture seule, la sienne, le défaut) ; la copie d'un autre ouverte en lecture : ni « Enregistrer » ni « Restaurer », aucune écriture | idem |
 | UC-PRO-08-F25 | A4 (T18) | CLI + HTTP simulé | Import en version figée, faux `Twin_v9` en dépôt git : sans release préparée, envoyé, commit journalisé, avertissement « not compared » ; release préparée du même commit : envoyé sans avertissement ; d'un autre commit : sortie 1 ; gabarit modifié, gabarit non suivi, fichier de pôle non suivi, dossier hors git, dossier imbriqué dans un dépôt : sortie 1 ; aucun envoi sur un refus | `engine/test/usecases/unit/uc-pro-08-editer-gabarits-twin9.test.js` |
+| UC-PRO-08-F26 | RG8 | CLI | `scripts/check-publiable.mjs` : clés des autres fournisseurs de Twin9 refusées — OpenAI (`sk-proj-…`), OpenRouter (`sk-or-v1-…`), xAI (`xai-…`), Google (`AIza…`, 39 caractères) quel que soit son dernier caractère, « - » compris, devant un guillemet ou en fin de ligne (2026-10-22 : `\b` n'y trouvait pas de frontière) ; les clés factices courtes des fixtures et une suite plus longue passent | `engine/test/usecases/unit/uc-pro-08-editer-gabarits-twin9.test.js` |
 
 ### Tests existants liés (non-régression)
 

@@ -140,13 +140,17 @@ function resultats() {
   }
 }
 
+/** Anthropic, par lots : ce que la configuration dit du profil v9.8 (ADR-012). */
+const ANTHROPIC = { id: 'anthropic', libelle: 'Anthropic', rgpd: 'sous_conditions', voie: 'lots' }
+
 /** Les routes d'un compte apprenant qui a une bibliothèque, un profil et du crédit. */
 function routes(overrides = {}) {
   return {
     'GET auth/me': meResponse(['apprenant']),
     'GET twin9/runs': jsonResponse(200, { disponible: true, runs: [] }),
     'GET twin9/configuration': jsonResponse(200, {
-      profils: [{ id: 3, nom: 'Direct', updated_at: '2026-10-20 09:00:00' }],
+      profils: [{ id: 3, nom: 'Direct', updated_at: '2026-10-20 09:00:00', fournisseurs: [{ ...ANTHROPIC, voie: 'directe' }] }],
+      defaut_fournisseurs: [ANTHROPIC],
       referentiels: [{ id: 'respire', versions: ['7.0.0'], brouillons: [] }],
       gabarits: ['v9.8'],
       cle_perso_ouverte: false,
@@ -216,7 +220,12 @@ describe('UC-APP-10 — l’apprenant lance une analyse approfondie, la suit et 
     fireEvent.click(lancer)
     await waitFor(() => expect(window.location.hash).toBe('#/twin9/7'))
     const [lance] = ecritures(calls, 'POST twin9/runs')
-    expect(bodyOf(lance)).toEqual({ profil: 3, portfolio: { nom: 'Mon journal.md', texte: PORTFOLIO }, accord: true, visibilite: 'privee' })
+    expect(bodyOf(lance)).toEqual({
+      profil: 3,
+      portfolio: { nom: 'Mon journal.md', texte: PORTFOLIO },
+      accord: { fournisseurs: ['anthropic'] },
+      visibilite: 'privee',
+    })
     expect(lance.init.headers['X-CSRF-Token']).toBe(CSRF)
 
     // Étape 6 : la page le fait avancer tant qu'il est en cours (CSRF), puis le dit fini.
@@ -319,8 +328,11 @@ describe('UC-APP-10 — l’apprenant lance une analyse approfondie, la suit et 
     expect(avant.textContent).toContain('Coût estimé (1 journée) : 3,39 $')
     expect(screen.getByRole('button', { name: 'Lancer l’analyse' }).disabled).toBe(false)
 
-    // E5 : avec le profil « Direct », le crédit ne couvre rien ; la page dit ce qu'il faudrait.
+    // E5 : avec le profil « Direct », le crédit ne couvre rien ; la page dit ce qu'il faudrait. Ses appels Anthropic
+    // partent en direct, ceux du profil v9.8 par lots : l'accord, qui nomme les voies, est à redonner (ADR-012).
     fireEvent.change(screen.getByLabelText('Profil'), { target: { value: '3' } })
+    expect(screen.getByRole('checkbox', { name: /J’accepte que mon portfolio/ }).checked).toBe(false)
+    fireEvent.click(screen.getByRole('checkbox', { name: /J’accepte que mon portfolio/ }))
     const alerte = await screen.findByRole('alert')
     expect(alerte.textContent).toBe(`${refus}. Recharger`)
     expect(within(alerte).getByRole('link', { name: 'Recharger' }).getAttribute('href')).toBe('#/compte/credit')
@@ -331,6 +343,42 @@ describe('UC-APP-10 — l’apprenant lance une analyse approfondie, la suit et 
     expect(calls.some((c) => c.key === 'POST twin9/runs')).toBe(false)
     expect(window.location.hash).toBe('#/twin9')
     expect(calls.filter((c) => c.key === 'POST twin9/runs/apercu').map((c) => bodyOf(c).profil)).toEqual([null, 3])
+  })
+
+  it('UC-APP-10-F22 — A9 : un profil multi-fournisseur ; l’accord nomme ses fournisseurs, leur voie et leur étiquette RGPD, avant tout aperçu, et le lancement envoie leur liste ; un fournisseur que l’instance n’a pas ouvert fait refuser le lancement, message affiché', async () => {
+    const refus = 'Profil refusé — greffier : le fournisseur Mistral AI n’est pas disponible sur cette instance'
+    const mistral = { id: 'mistral', libelle: 'Mistral AI', rgpd: 'oui', voie: 'directe' }
+    const { calls } = stubFetch(
+      routes({
+        'GET twin9/configuration': jsonResponse(200, {
+          profils: [{ id: 5, nom: 'Mixte', updated_at: '2026-10-22 09:00:00', fournisseurs: [ANTHROPIC, mistral] }],
+          defaut_fournisseurs: [ANTHROPIC],
+          referentiels: [{ id: 'respire', versions: ['7.0.0'], brouillons: [] }],
+          gabarits: ['v9.8'],
+          cle_perso_ouverte: false,
+          cle_perso_enregistree: false,
+        }),
+        'POST twin9/runs': jsonResponse(422, { error: refus }),
+      }),
+    )
+    await openApp('#/twin9', { portfolio: PORTFOLIO })
+    await screen.findByRole('button', { name: 'Lancer l’analyse' })
+    fireEvent.change(screen.getByLabelText('Profil'), { target: { value: '5' } })
+    const accord = screen.getByRole('checkbox', { name: /J’accepte que mon portfolio/ })
+    expect(accord.closest('label').textContent).toContain(
+      'Le texte part chez les fournisseurs des modèles de ce profil : Anthropic (par lots ; RGPD : sous conditions) et ' +
+        'Mistral AI (en direct ; RGPD : oui). Par lots, Anthropic garde le lot jusqu’à sa suppression, 29 jours au plus.',
+    )
+    expect(ecritures(calls, 'POST twin9/runs/apercu')).toHaveLength(0)
+    fireEvent.click(accord)
+    await screen.findByRole('region', { name: 'Avant de lancer' })
+
+    fireEvent.click(screen.getByRole('button', { name: 'Lancer l’analyse' }))
+    expect((await screen.findByRole('alert')).textContent).toBe(refus)
+    const [lance] = ecritures(calls, 'POST twin9/runs')
+    expect(bodyOf(lance).accord).toEqual({ fournisseurs: ['anthropic', 'mistral'] })
+    expect(lance.init.headers['X-CSRF-Token']).toBe(CSRF)
+    expect(window.location.hash).toBe('#/twin9')
   })
 
   it('UC-APP-10-F19 — A3 : annuler puis reprendre un run en cours ; A4 : arrêté par son budget, il reprend sous un nouveau budget et va au bout ; A5 : la case du cartographe règle qui lit ses résultats (jeton CSRF à chaque écriture)', async () => {

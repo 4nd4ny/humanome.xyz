@@ -308,7 +308,11 @@ final class LotsTest extends TestCase
         self::assertSame([], $lots->requetes, 'aucun lot ne part');
     }
 
-    /** A run cancelled: its batch in progress is cancelled, then deleted once ended; its calls are given back. */
+    /**
+     * A run cancelled: its batch in progress is cancelled, its results read
+     * once ended (each request cancelled), then deleted; its calls are given
+     * back.
+     */
     public function testACancelledRunCancelsThenDeletesItsBatches(): void
     {
         $id = $this->nouveauRun();
@@ -323,7 +327,7 @@ final class LotsTest extends TestCase
         self::assertSame(6, (int) $this->pdo->query('SELECT COUNT(*) FROM twin9_appels WHERE statut = "attente"')
             ->fetchColumn(), 'les appels du lot annulé sont rendus');
         self::assertSame([], $lots->restants(), 'annulé, puis supprimé une fois fini');
-        self::assertSame(['creer', 'annuler', 'etat', 'supprimer'], $lots->operations('msgbatch_0001'));
+        self::assertSame(['creer', 'annuler', 'etat', 'resultats', 'supprimer'], $lots->operations('msgbatch_0001'));
         self::assertSame(0, (int) $this->pdo->query('SELECT COUNT(*) FROM twin9_lots')->fetchColumn());
         // P0-1: its execution, read in its journal, still counts them in the batch lane, read at their custom_id —
         // given back, they lost their batch (lot_id NULL), and the batch itself is gone
@@ -333,6 +337,93 @@ final class LotsTest extends TestCase
         self::assertSame(['journal', 'annule'], [$execution->source, $execution->statut]);
         self::assertSame(['lots'], array_keys((array) $execution->par_voie), 'aucun appel compté en directe');
         self::assertSame(6, $execution->par_voie->lots->appels);
+    }
+
+    /**
+     * A run cancelled once Anthropic has ended its batch, every request
+     * answered (billed): the cancel comes too late, and the batch's answers
+     * are read, written with their cost and debited — never given back
+     * unread, to be paid again at a resumption.
+     */
+    public function testACancelledRunsEndedBatchIsCollectedNotLost(): void
+    {
+        $id = $this->nouveauRun();
+        $lots = new FakeBatchApi(static fn (array $r): array => FakeBatchApi::message('vu ' . FakeBatchApi::appel($r)),
+            regards: 0);
+        $this->tick($lots);
+        $lots->etat('sk-ant-instance-test', 'msgbatch_0001', INF); // Anthropic ends it meanwhile
+
+        $this->pdo->prepare('UPDATE twin9_runs SET statut = "annule" WHERE id = ?')->execute([$id]);
+        $this->tick($lots);
+        self::assertContains('resultats', $lots->operations('msgbatch_0001'), 'ses résultats lus');
+        self::assertSame([], $lots->restants());
+        self::assertSame(6, (int) $this->pdo->query('SELECT COUNT(*) FROM twin9_appels WHERE statut = "repondu"
+                                                         AND cout_microusd > 0')->fetchColumn(), 'écrits, avec leur coût');
+        self::assertSame(0, (int) $this->pdo->query('SELECT COUNT(*) FROM twin9_appels WHERE reserve_microusd IS NOT NULL')
+            ->fetchColumn());
+        $couts = (int) $this->pdo->query('SELECT SUM(cout_microusd) FROM twin9_appels')->fetchColumn();
+        self::assertSame(1_000_000_000 - $couts, (new CreditService($this->pdo))->balance($this->user), 'débités');
+    }
+
+    /**
+     * A creation whose bound leaves no second never leaves: no request, so
+     * no batch to look for — its calls wait again, their attempt given
+     * back, and leave in a batch at the next slice, never « lost ».
+     */
+    public function testACreationThatNeverLeftIsNeverLookedFor(): void
+    {
+        $id = $this->nouveauRun();
+        $lots = (new FakeBatchApi(static fn (array $r): array => FakeBatchApi::message('vu ' . FakeBatchApi::appel($r)),
+            regards: 0))->incident(1, 'sans_temps');
+
+        $this->tick($lots);
+        self::assertNotSame(Twin9Lots::PERDU, $this->attente($id), 'rien à retrouver chez Anthropic');
+        self::assertSame(Twin9Lots::A_SOUMETTRE, $this->attente($id));
+        self::assertSame(0, (int) $this->pdo->query('SELECT COUNT(*) FROM twin9_lots')->fetchColumn());
+        self::assertSame(['attente'], $this->pdo->query('SELECT DISTINCT statut FROM twin9_appels')->fetchAll(PDO::FETCH_COLUMN));
+        self::assertSame(['0'], array_map('strval', $this->pdo->query('SELECT DISTINCT tentatives FROM twin9_appels')
+            ->fetchAll(PDO::FETCH_COLUMN)), 'leur tentative rendue');
+
+        $this->tick($lots);
+        self::assertSame(['msgbatch_0002'], $lots->restants(), 'parti à la tranche suivante');
+        $this->jusquAuBout($lots);
+        self::assertSame('termine', (new RunRepository($this->pdo))->statut($id));
+    }
+
+    /**
+     * A batch leaves only while its creation has, before the slice's last
+     * departure that bounds it, the time a submission needs (a quarter of
+     * the slice, eight seconds at most): a submission come late, after a
+     * long check, waits for the next slice instead of a creation cut short.
+     */
+    public function testALateSubmissionWaitsForTheNextSlice(): void
+    {
+        $id = $this->nouveauRun();
+        $t0 = microtime(true);
+        // the check ends 5 s into a slice of 8 (7.2 s once its reserve is kept): 1.8 s before its end, 1.48 s before
+        // its last departure
+        $lots = new FakeBatchApi(static fn (array $r): array => FakeBatchApi::message('vu ' . FakeBatchApi::appel($r)),
+            regards: 0, verifieur: static function () use ($t0): array {
+                usleep(max(0, (int) (($t0 + 5.0 - microtime(true)) * 1_000_000)));
+
+                return ['ok' => true, 'http' => 200];
+            });
+        $interdit = new FakeMultiHttpClient(static function (): array {
+            throw new \LogicException('aucun appel direct dans la voie par lots');
+        });
+        $tick = fn (): array => (new Tick($this->pdo, ['budgetSeconds' => 8, 'twin9Lots' => $lots,
+                                                       'twin9Sender' => new DirectCalls($interdit)]))->run();
+
+        $tick();
+        foreach ($lots->delais as $delai) {
+            self::assertGreaterThanOrEqual(1.75, $delai, 'une création a toujours le temps d’une soumission');
+        }
+        $tick();
+        self::assertNotSame([], $lots->restants(), 'le lot part à la tranche suivante');
+        foreach ($lots->delais as $delai) {
+            self::assertGreaterThanOrEqual(1.75, $delai);
+        }
+        self::assertSame('en_cours', (new RunRepository($this->pdo))->statut($id));
     }
 
     /**

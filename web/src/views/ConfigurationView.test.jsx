@@ -241,3 +241,169 @@ describe('ConfigurationView (T13)', { timeout: 15000 }, () => {
     expect((await screen.findByRole('link', { name: 'Connectez-vous' })).getAttribute('href')).toBe('#/compte')
   })
 })
+
+/** Les fournisseurs de l'instance (ProfilPolicy::choix) : Anthropic et Mistral AI disponibles, les autres non. */
+const FOURNISSEURS = [
+  { id: 'anthropic', libelle: 'Anthropic', rgpd: 'sous_conditions', disponible: true },
+  { id: 'openai', libelle: 'OpenAI', rgpd: 'sous_conditions', disponible: false },
+  { id: 'mistral', libelle: 'Mistral AI', rgpd: 'oui', disponible: true },
+  { id: 'google', libelle: 'Google (Gemini)', rgpd: 'non', disponible: false },
+  { id: 'xai', libelle: 'xAI (Grok)', rgpd: 'non', disponible: false },
+  { id: 'openrouter', libelle: 'OpenRouter', rgpd: 'non', disponible: false },
+]
+
+/** La page ouverte sur un profil enregistré (id 7). */
+async function ouvrirProfil(profil, extra = {}, routes = {}) {
+  const ouverte = await ouvrir({
+    'GET api/twin9/configuration': jsonResponse(
+      200,
+      configuration({ fournisseurs: FOURNISSEURS, profils: [{ id: 7, nom: 'Mixte', updated_at: '2026-10-22 10:00:00' }], ...extra }),
+    ),
+    'GET api/twin9/profils/7': jsonResponse(200, { id: 7, nom: 'Mixte', profil }),
+    ...routes,
+  })
+  await waitFor(() => expect(barre().getByLabelText('Nom du profil').value).toBe('Mixte'))
+  return ouverte
+}
+
+const visible = (element) => element.closest('.config-aide') === null
+const options = (select) => [...select.options].map((o) => [o.value, o.textContent, o.disabled])
+
+describe('ConfigurationView — un fournisseur par étage, étape et lecteur (ADR-012)', { timeout: 15000 }, () => {
+  it('un réglage sans fournisseur hérite du sien, dit son étiquette RGPD sans le focus, et n’offre que les fournisseurs disponibles', async () => {
+    const { vue } = await ouvrir({ 'GET api/twin9/configuration': jsonResponse(200, configuration({ fournisseurs: FOURNISSEURS })) })
+    const greffier = vue.container.querySelector('#config-etapes-greffier-fournisseur')
+    expect(options(greffier)).toEqual([
+      ['', 'hérité : Anthropic', false],
+      ['anthropic', 'Anthropic', false],
+      ['openai', 'OpenAI (indisponible sur cette instance)', true],
+      ['mistral', 'Mistral AI', false],
+      ['google', 'Google (Gemini) (indisponible sur cette instance)', true],
+      ['xai', 'xAI (Grok) (indisponible sur cette instance)', true],
+      ['openrouter', 'OpenRouter (indisponible sur cette instance)', true],
+    ])
+    expect(vue.container.querySelector('#config-etapes-second_ressort-fournisseur').options[0].textContent).toBe(
+      'hérité : celui de chaque étape',
+    )
+    expect(vue.container.querySelector('#config-college-0-fournisseur').options[0].textContent).toBe('hérité : Anthropic')
+    const pastille = champ(vue, 'etapes/greffier/fournisseur').querySelector('.twin9-rgpd')
+    expect(pastille.textContent).toBe('RGPD : sous conditions')
+    expect(visible(pastille)).toBe(true)
+
+    fireEvent.change(greffier, { target: { value: 'mistral' } })
+    expect(champ(vue, 'etapes/greffier/fournisseur').querySelector('.twin9-rgpd').textContent).toBe('RGPD : oui')
+    // une étape qui change de fournisseur nomme son modèle : la page le dit, à côté, avant le serveur
+    const avertissement = champ(vue, 'etapes/greffier/fournisseur').querySelector('.config-avertissement')
+    expect(avertissement.textContent).toBe('Choisissez le modèle Mistral AI de ce réglage : il change de fournisseur.')
+    expect(visible(avertissement)).toBe(true)
+    fireEvent.change(vue.container.querySelector('#config-etapes-greffier-modele'), { target: { value: 'claude-haiku-5-5' } })
+    expect(champ(vue, 'etapes/greffier/fournisseur').querySelector('.config-avertissement')).toBeNull()
+    expect(champ(vue, 'etapes/greffier/modele').querySelector('.config-avertissement').textContent).toBe(
+      '« claude-haiku-5-5 » n’est pas un identifiant de modèle Mistral AI.',
+    )
+    fireEvent.change(vue.container.querySelector('#config-etapes-greffier-modele'), { target: { value: 'modele-fictif' } })
+    expect(champ(vue, 'etapes/greffier/modele').querySelector('.config-avertissement')).toBeNull()
+
+    // le résumé du profil : ce que l'accord du lancement nommera
+    const resume = vue.container.querySelector('[aria-label="Fournisseurs de ce profil"]')
+    expect(resume.querySelector('p').textContent).toBe(
+      'Ce profil envoie son texte à : Anthropic RGPD : sous conditions (par lots) · Mistral AI RGPD : oui (en direct).',
+    )
+  })
+
+  it('un fournisseur que nomme le profil se voit, même indisponible : le profil s’enregistre, il ne se lance pas', async () => {
+    const profil = structuredClone(v98)
+    profil.etapes = { greffier: { fournisseur: 'google', modele: 'modele-fictif' } }
+    const { vue } = await ouvrirProfil(profil)
+    const greffier = vue.container.querySelector('#config-etapes-greffier-fournisseur')
+    expect(greffier.value).toBe('google')
+    expect(options(greffier)[4]).toEqual(['google', 'Google (Gemini) (indisponible sur cette instance)', false])
+    expect(champ(vue, 'etapes/greffier/fournisseur').querySelector('.twin9-rgpd').textContent).toBe('RGPD : non')
+    expect(champ(vue, 'etapes/greffier/fournisseur').querySelector('.config-avertissement').textContent).toBe(
+      'Google (Gemini) n’est pas disponible sur cette instance : le profil s’enregistre, il ne se lance pas.',
+    )
+    expect(vue.container.querySelector('[aria-label="Fournisseurs de ce profil"]').textContent).toContain(
+      'Google (Gemini) RGPD : non (en direct, indisponible sur cette instance)',
+    )
+  })
+
+  it('un lecteur qui change de fournisseur perd la famille qui suivait l’ancien et un modèle qu’il n’admet pas ; l’enregistrement les omet', async () => {
+    let envoye = null
+    const profil = structuredClone(v98)
+    profil.college[0] = { ...profil.college[0], modele: 'claude-haiku-5-5', effort: 'low', reflexion: 'adaptative' }
+    const { vue } = await ouvrirProfil(profil, {}, {
+      'PUT api/twin9/profils/7': (init) => {
+        envoye = JSON.parse(init.body)
+        return jsonResponse(200, { id: 7, nom: envoye.nom, profil: envoye.profil })
+      },
+    })
+    fireEvent.change(vue.container.querySelector('#config-college-0-fournisseur'), { target: { value: 'mistral' } })
+    const famille = vue.container.querySelector('#config-college-0-famille')
+    expect([famille.value, famille.placeholder]).toEqual(['', 'par défaut : mistral'])
+    expect(vue.container.querySelector('#config-college-0-modele').value).toBe('')
+    expect(vue.container.querySelector('#config-college-0-effort').value).toBe('')
+    // la réflexion d'Anthropic ne part pas chez un autre : la page le dit sans le focus
+    const reflexion = champ(vue, 'college/0/reflexion').querySelector('.config-explication')
+    expect(reflexion.textContent).toBe(
+      'Chez Mistral AI, ce réglage d’Anthropic ne part pas : le raisonnement suit l’entrée de la grille de l’instance pour ce modèle.',
+    )
+    fireEvent.change(vue.container.querySelector('#config-college-0-modele'), { target: { value: 'modele-fictif' } })
+    fireEvent.click(barre().getByRole('button', { name: 'Enregistrer' }))
+    expect(await annonce('status')).toBe('Profil enregistré.')
+    expect(envoye.profil.college).toEqual([
+      { nom: 'haiku', poids: 1.0, passes: 3, reflexion: 'adaptative', fournisseur: 'mistral', modele: 'modele-fictif' },
+    ])
+  })
+
+  it('un étage garde un modèle à choisir chez son nouveau fournisseur ; l’effort de l’étage qu’hériterait un appel ailleurs se signale', async () => {
+    const { vue } = await ouvrir({ 'GET api/twin9/configuration': jsonResponse(200, configuration({ fournisseurs: FOURNISSEURS })) })
+    fireEvent.change(vue.container.querySelector('#config-etages-rapide-effort'), { target: { value: 'low' } })
+    fireEvent.change(vue.container.querySelector('#config-etapes-greffier-fournisseur'), { target: { value: 'mistral' } })
+    fireEvent.change(vue.container.querySelector('#config-etapes-greffier-modele'), { target: { value: 'modele-fictif' } })
+    expect(champ(vue, 'etages/rapide/effort').querySelector('.config-avertissement').textContent).toBe(
+      'Des appels de cet étage partent chez Mistral AI : ils hériteraient de cet effort, que l’API refuse hors d’Anthropic. ' +
+        'Retirez-le de l’étage, ou posez-le étape par étape.',
+    )
+
+    fireEvent.change(vue.container.querySelector('#config-etages-rapide-fournisseur'), { target: { value: 'mistral' } })
+    expect(vue.container.querySelector('#config-etages-rapide-modele').value).toBe('')
+    expect(vue.container.querySelector('#config-etages-rapide-effort').value).toBe('')
+    expect(champ(vue, 'etages/rapide/modele').querySelector('.config-avertissement').textContent).toBe('Choisissez un modèle Mistral AI.')
+    fireEvent.change(vue.container.querySelector('#config-etages-rapide-fournisseur'), { target: { value: '' } })
+    expect(vue.container.querySelector('#config-etages-rapide-modele').value).toBe('claude-haiku-5-5')
+  })
+
+  it('explique la voie sans le focus ; sans appel Anthropic, elle est sans effet', async () => {
+    const { vue } = await ouvrir()
+    const explication = champ(vue, 'voie').querySelector('.config-explication')
+    expect(visible(explication)).toBe(true)
+    expect(explication.textContent).toContain('Par lots, le défaut : les appels Anthropic passent par son API Message Batches')
+    expect(explication.textContent).toContain('Les appels aux autres fournisseurs partent toujours en direct')
+    expect(vue.container.querySelector('#config-voie').disabled).toBe(false)
+    cleanup()
+
+    const profil = structuredClone(v98)
+    for (const etage of ['lecteurs', 'rapide', 'profond']) profil.etages[etage] = { ...profil.etages[etage], fournisseur: 'mistral', modele: 'modele-fictif' }
+    profil.college[0] = { nom: 'haiku', poids: 1.0, passes: 3 }
+    const tiers = await ouvrirProfil(profil)
+    expect(tiers.vue.container.querySelector('#config-voie').disabled).toBe(true)
+    expect(champ(tiers.vue, 'voie').querySelector('.config-explication').textContent).toBe(
+      'Sans effet : ce profil n’appelle pas Anthropic, tous ses appels partent en direct.',
+    )
+  })
+
+  it('la clé personnelle ne sert que chez Anthropic : un profil qui appelle un autre fournisseur ne la propose pas, et le dit', async () => {
+    const profil = structuredClone(v98)
+    profil.etapes = { greffier: { fournisseur: 'mistral', modele: 'modele-fictif' } }
+    profil.cle = 'personnelle'
+    const { vue } = await ouvrirProfil(profil, { cle_perso_ouverte: true, cle_perso_enregistree: true })
+    const cle = vue.container.querySelector('#config-cle')
+    expect(within(cle).getByRole('option', { name: 'Ma clé personnelle' }).disabled).toBe(false) // celle que nomme le profil
+    expect(champ(vue, 'cle').querySelector('.config-avertissement').textContent).toBe(
+      'La clé personnelle ne sert que chez Anthropic : ce profil appelle aussi Mistral AI, il ne part qu’avec les clés de l’instance.',
+    )
+    fireEvent.change(cle, { target: { value: 'instance' } })
+    expect(within(cle).getByRole('option', { name: 'Ma clé personnelle' }).disabled).toBe(true)
+    expect(champ(vue, 'cle').querySelector('.config-avertissement')).toBeNull()
+  })
+})

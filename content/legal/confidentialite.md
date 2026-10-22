@@ -1,6 +1,6 @@
 ---
 titre: Confidentialité et protection des données
-maj: 2026-07-12
+maj: 2026-10-22
 ---
 
 # Confidentialité et protection des données
@@ -62,7 +62,7 @@ lien de partage, ou en supprimant votre compte.
 - **Versions partagées** : conservées jusqu'à ce que vous les retiriez (effacement immédiat), que vous publiiez une nouvelle version à leur place (l'ancienne est effacée, le lien reste) ou que vous supprimiez votre compte. Retirer votre attestation de majorité les efface aussitôt du serveur, avec leurs liens. Les pages partagées ne sont pas indexées par les moteurs de recherche. Une demande de publication garantie est effacée à son usage, à son annulation ou au bout de 30 jours.
 - **Sessions** : un cookie de session strictement nécessaire, expirant après une période d'inactivité ; l'enregistrement serveur de la session disparaît avec votre compte.
 - **Compteurs anti-abus** : fenêtres courtes (à l'heure ou à la journée), à identifiants hachés, sans lien avec votre profil.
-- **Analyses approfondies Twin9** : votre portfolio et l'état de chaque analyse restent sur le serveur jusqu'à ce que vous les effaciez — la suppression de votre compte les efface ; chez Anthropic, un lot de requêtes est supprimé dès que ses réponses sont relevées, et n'y reste jamais plus de 29 jours.
+- **Analyses approfondies Twin9** : votre portfolio et l'état de chaque analyse restent sur le serveur jusqu'à ce que vous les effaciez — la suppression de votre compte les efface ; chez Anthropic, un lot de requêtes est supprimé dès que ses réponses sont relevées, et n'y reste jamais plus de 29 jours ; chez un autre fournisseur, ce qu'il conserve est dit plus bas (« Analyse approfondie Twin9 »).
 
 ## Vos droits
 
@@ -83,13 +83,18 @@ mode d'usage, le texte transmis et le destinataire changent :
 - **Assistant tuteur** : l'assistant (bouton « 💬 ») transmet à **Anthropic** (modèle Claude Haiku) **uniquement votre question et la rubrique que vous consultez** — jamais votre portfolio ni vos cartographies. **Aucune conversation n'est stockée côté serveur** (compteurs anonymes seulement) ; l'historique n'existe que dans votre navigateur, le temps de la session.
 - **Clé personnelle** : si vous enregistrez votre propre clé d'API, **vous choisissez** votre fournisseur (Anthropic, OpenAI, Google, etc.). Le texte est transmis au fournisseur que vous avez sélectionné, sous votre propre relation contractuelle avec lui.
 - **Établissement** : le traitement utilise soit la **clé de l'établissement**, soit la clé de la plateforme, selon la configuration choisie par l'établissement ; le texte est transmis au fournisseur correspondant.
-- **Analyse approfondie Twin9** : votre portfolio est transmis à **Anthropic** (modèles Claude), avec la clé de la plateforme ou votre propre clé ; par lots, Anthropic garde chaque lot de requêtes jusqu'à sa suppression, 29 jours au plus (détails ci-dessous).
+- **Analyse approfondie Twin9** : votre portfolio est transmis aux **fournisseurs des modèles de votre profil** — **Anthropic** (modèles Claude) par défaut ; OpenAI, Mistral AI, Google (Gemini), xAI (Grok) ou OpenRouter seulement si l'administrateur de la plateforme les a ouverts et si votre profil les choisit —, que l'accord demandé à chaque lancement nomme. Avec la clé de la plateforme, ou votre propre clé chez Anthropic seulement ; par lots, Anthropic garde chaque lot de requêtes jusqu'à sa suppression, 29 jours au plus (détails ci-dessous).
 - **Dialogue d'accompagnement** (espace Dialogue de la cartographie) : il fonctionne **sans modèle de langage**, entièrement dans votre navigateur. Si vous choisissez d'activer les relances et donnez votre accord, chaque relance que vous demandez transmet **uniquement la question, votre réponse et le passage cité**, directement depuis votre navigateur, au fournisseur que vous avez choisi (avec votre propre clé) ou à Ollama sur votre ordinateur — jamais par nos serveurs. Vos réponses restent dans votre carnet, dans votre navigateur.
 
-Ces fournisseurs agissent comme sous-traitants pour le seul temps du traitement.
-Nous ne leur transmettons jamais votre mot de passe ni vos identifiants de
-compte, et nous ne stockons pas votre texte au-delà de ce que vous avez
-explicitement autorisé.
+Ces fournisseurs agissent comme sous-traitants : ils traitent le texte pour
+produire la réponse, puis le conservent selon leurs propres règles — Anthropic
+efface requêtes et réponses dans les 30 jours (davantage en cas de signalement
+d'abus ; 29 jours au plus pour un lot), et les autres fournisseurs de l'analyse
+approfondie selon les durées décrites plus bas. Plusieurs sont établis hors de
+l'Union européenne (voir « Transferts hors de l'Union européenne »). Nous ne
+leur transmettons jamais votre mot de passe ni vos identifiants de compte, et
+nous ne stockons pas votre texte au-delà de ce que vous avez explicitement
+autorisé.
 
 ### Analyse approfondie Twin9
 
@@ -107,14 +112,59 @@ journal des appels, résultats et mémoire de vos cartes. Nos journaux technique
 n'en gardent que des compteurs (nombre d'appels, jetons, coût, durée — jamais de
 contenu).
 
-Le texte de votre portfolio est transmis au fournisseur du modèle,
-**Anthropic** (modèles Claude), avec la clé de la plateforme ou votre propre
-clé. Par la **voie par lots**, Anthropic garde chaque lot de requêtes jusqu'à ce
-que notre serveur le supprime, dès ses réponses relevées ; un lot qui n'aurait
-pas été supprimé n'y reste jamais plus de **29 jours**. La suppression de votre
-compte annule et supprime aussi vos lots encore chez Anthropic ; un lot envoyé
-avec votre propre clé dont l'annulation n'est pas finie à ce moment-là, votre clé
-partant avec votre compte, est effacé par Anthropic dans ce même délai.
+Le texte de votre portfolio est transmis aux fournisseurs des modèles que votre
+profil choisit, étape par étape : **Anthropic** (modèles Claude) par défaut,
+avec la clé de la plateforme ou votre propre clé. Par la **voie par lots**,
+Anthropic garde chaque lot de requêtes jusqu'à ce que notre serveur le supprime,
+dès ses réponses relevées ; un lot qui n'aurait pas été supprimé n'y reste jamais
+plus de **29 jours**. La suppression de votre compte annule et supprime aussi vos
+lots encore chez Anthropic ; un lot envoyé avec votre propre clé dont
+l'annulation n'est pas finie à ce moment-là, votre clé partant avec votre
+compte, est effacé par Anthropic dans ce même délai.
+
+D'autres fournisseurs ne reçoivent votre texte que si l'administrateur de la
+plateforme les a ouverts **et** si votre profil les choisit ; l'accord que vous
+donnez à chaque lancement les nomme, avec leur voie et leur étiquette RGPD, et
+vaut pour eux seuls. Ils sont appelés **en direct** (jamais par lots), avec la
+clé de la plateforme seulement — jamais avec votre propre clé — et selon ce que
+disent leurs documentations officielles (relevées le 22 octobre 2026) :
+
+- **OpenAI** : appelé sans conservation des réponses (`store: false`) ; ses
+  journaux de lutte contre les abus peuvent garder requêtes et réponses jusqu'à
+  30 jours.
+- **Mistral AI** : sa documentation ne donne pas de durée de conservation
+  standard pour son API ; la conservation nulle s'y obtient sur demande.
+- **Google (Gemini)** : seule l'offre payante, la seule permise pour des
+  utilisateurs de l'Espace économique européen, et sans journalisation des
+  échanges (`store: false`) ; Google garde requêtes et réponses 55 jours pour la
+  lutte contre les abus.
+- **xAI (Grok)** : requêtes et réponses conservées 30 jours pour audit, sans
+  entraînement des modèles.
+- **OpenRouter** : un intermédiaire qui transmet la requête au fournisseur du
+  modèle ; nous lui demandons de n'employer que des fournisseurs qui ne
+  collectent pas les données, sans repli vers un autre ; la conservation est
+  alors celle du fournisseur final.
+
+#### Transferts hors de l'Union européenne
+
+Anthropic, OpenAI, Google, xAI et OpenRouter sont des entreprises américaines :
+le texte qui leur est transmis peut être traité hors de l'Union européenne,
+notamment aux États-Unis. Pour chacun, le pays où il est traité et la garantie
+qui encadre ce transfert (décision d'adéquation, dont le cadre de protection des
+données UE–États-Unis, ou clauses contractuelles types) **n'ont pas encore été
+vérifiés** ; ils le seront avant qu'un fournisseur autre qu'Anthropic soit
+ouvert, et cette page le dira. Mistral AI est une entreprise française ; le lieu
+où elle traite le texte n'est pas encore vérifié non plus. OpenRouter, un
+intermédiaire, transmet en outre la requête au fournisseur du modèle : le pays
+dépend alors de ce dernier. Avec votre propre clé, c'est votre relation
+contractuelle avec votre fournisseur qui s'applique.
+
+Chaque fournisseur porte une **étiquette RGPD** — « oui » (Mistral AI), « sous
+conditions » (Anthropic, OpenAI), « non » (Google, xAI, OpenRouter) — tirée d'une
+recherche de juillet 2026 : elle est indicative et ne vaut pas avis juridique.
+Un fournisseur étiqueté « non » ne s'ouvre que sur décision expresse de
+l'administrateur, par un réglage distinct ; il est à éviter pour des journaux
+d'élèves réels.
 
 Les résultats d'une analyse ne sont lus que par vous, et par le cartographe
 auquel vous êtes lié si vous le décidez (« Mon cartographe peut lire les

@@ -64,7 +64,9 @@ use Humanome\Packages\SettingsRepository;
 use Humanome\Twin9\AnthropicCaller;
 use Humanome\Twin9\CreditService;
 use Humanome\Twin9\FactureService;
+use Humanome\Twin9\Fournisseurs\Fournisseurs;
 use Humanome\Twin9\PayPalClient;
+use Humanome\Twin9\ProfilPolicy;
 use Humanome\Twin9\ProtocoleRepository;
 use Humanome\Twin9\SoldeInsuffisantException;
 use Humanome\Twin9\TarifsAnthropic;
@@ -267,14 +269,25 @@ return function (App $app): void {
 
     // GET /api/twin9/admin/config — effective config (admin shape: raw list
     // prices + margin; the front only ever sees Twin9Config::publicView()),
-    // and the state of the daily reading of Anthropic's prices
-    // (releve_tarifs, TarifsAnthropic; null before the first), which no PUT
-    // takes.
+    // the state of the daily reading of Anthropic's prices (releve_tarifs,
+    // TarifsAnthropic; null before the first), and the providers of a Twin9
+    // call with their GDPR tag and whether the instance's key is set
+    // (fournisseurs, ADR-012: a boolean, never the key), and the third
+    // parties' models whose worst case fell short (pire_cas_insuffisants,
+    // RunCosts::solder()), the slices the external trigger asks
+    // (secondes_declencheur, null before it ran) and what the shortest slice
+    // leaves a third party's call (duree_max_admise, whole seconds, the
+    // launch's rule), which no PUT takes.
     $app->get('/twin9/admin/config', $wrap(function (Request $request, Response $response) use ($json): Response {
         $settings = new SettingsRepository(Db::get());
 
-        return $json($response, (new Twin9Config($settings))->read()
-            + ['releve_tarifs' => TarifsAnthropic::etat($settings)]);
+        $config = new Twin9Config($settings);
+
+        return $json($response, $config->read()
+            + ['releve_tarifs' => TarifsAnthropic::etat($settings), 'fournisseurs' => Fournisseurs::pourAdministrateur(),
+               'pire_cas_insuffisants' => (object) $config->pireCasInsuffisants(),
+               'secondes_declencheur' => $config->secondesDeclencheur(),
+               'duree_max_admise' => (int) floor(ProfilPolicy::dureeAdmise($config))]);
     }))->add($admin);
 
     // PUT /api/twin9/admin/config {champs partiels} — 422 out of bounds
@@ -285,9 +298,13 @@ return function (App $app): void {
             return $json($response, ['error' => 'Corps JSON invalide : objet attendu'], 400);
         }
         $settings = new SettingsRepository(Db::get());
+        $config = new Twin9Config($settings);
 
-        return $json($response, (new Twin9Config($settings))->update($body)
-            + ['releve_tarifs' => TarifsAnthropic::etat($settings)]);
+        return $json($response, $config->update($body)
+            + ['releve_tarifs' => TarifsAnthropic::etat($settings), 'fournisseurs' => Fournisseurs::pourAdministrateur(),
+               'pire_cas_insuffisants' => (object) $config->pireCasInsuffisants(),
+               'secondes_declencheur' => $config->secondesDeclencheur(),
+               'duree_max_admise' => (int) floor(ProfilPolicy::dureeAdmise($config))]);
     }))->add($admin);
 
     // ==================================================================
@@ -371,7 +388,8 @@ return function (App $app): void {
         // same way, even if the grid changes while it runs (2026-10-21).
         $grille = (new Twin9Config(new SettingsRepository(Db::get())))->read();
         $modele = \is_string($body['model'] ?? null) ? $body['model'] : '';
-        if (!\is_array($grille['modeles'][$modele] ?? null)) {
+        // Anthropic's models only: another provider's grid entry (« provider:model », ADR-012) is Twin9's
+        if (str_contains($modele, ':') || !\is_array($grille['modeles'][$modele] ?? null)) {
             return $json($response, ['error' => 'Modèle non proposé'], 422);
         }
         $prompt = \is_string($body['prompt'] ?? null) ? $body['prompt'] : '';

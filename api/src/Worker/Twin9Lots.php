@@ -8,6 +8,7 @@ use Humanome\Twin9\AnthropicBatches;
 use Humanome\Twin9\AnthropicCaller;
 use Humanome\Twin9\BatchApi;
 use Humanome\Twin9\CallJournal;
+use Humanome\Twin9\Fournisseurs\Fournisseurs;
 use Humanome\Twin9\RunCosts;
 use Humanome\Twin9\RunKey;
 use Humanome\Twin9\RunRepository;
@@ -34,12 +35,20 @@ use Twin9\Run\Call;
  *   its attempt spent (the v9.8's three, then a failure), an expired one too,
  *   its attempt given back. Then the batch is deleted at Anthropic, which
  *   would keep it 29 days otherwise.
- * - The batches of a run no longer in progress are cancelled, then deleted.
+ * - The batches of a run no longer in progress are collected once ended,
+ *   as a run's in progress are, then deleted: stopped (or done), a run's
+ *   batch goes on at Anthropic, which bills each request it processes;
+ *   cancelled by its owner, it is cancelled first, its answers that came
+ *   all the same read and paid. Never deleted unread.
  * - Each call holds its worst case, at half price, when its batch is written
  *   (T10, RunCosts): a batch holds no more than its run's budget and its
  *   owner's credit leave room for, the rest waits for a next one.
  * - The batches of an account erased, submitted with the instance's key, are
  *   cancelled and deleted from twin9_lots_a_effacer.
+ * - In a mixed run (P1-5), only Anthropic's calls go by batches, at most
+ *   one submission a run and a slice, at its head, before its direct calls
+ *   leave; while its requests wait, the slice reads the direct calls in
+ *   flight. A suspension of another provider never holds its batches back.
  *
  * No transaction stays open while Anthropic answers. Logging: counters only.
  */
@@ -98,7 +107,9 @@ final class Twin9Lots
         $jouer = $attente === self::A_SOUMETTRE;
         $enVol = 0;
         $raison = null;
-        foreach ($this->lots('l.run_id = ? AND l.statut IN ("soumission", "en_cours", "releve")', [$runId]) as $lot) {
+        // a batch being cancelled is a run's that was cancelled, then resumed before its batch ended: collected alike
+        foreach ($this->lots('l.run_id = ? AND l.statut IN ("soumission", "en_cours", "annulation", "releve")', [$runId])
+                 as $lot) {
             $cle = $this->cles->pour($userId, $lot['cle']);
             if ($cle === null || microtime(true) >= $fin) {
                 $raison = $cle === null ? 'clé Anthropic indisponible' : null;
@@ -119,7 +130,7 @@ final class Twin9Lots
                 $lot['statut'] = 'en_cours';
                 $lot['lot'] = $issue;
             }
-            if ($lot['statut'] === 'en_cours') {
+            if ($lot['statut'] === 'en_cours' || $lot['statut'] === 'annulation') {
                 $issue = $this->achever($lot, $cle, $fin, $compteurs);
                 if ($issue === null) {
                     $enVol++;
@@ -138,41 +149,56 @@ final class Twin9Lots
     }
 
     /**
-     * The calls a run waits for, into bounded batches; before its first
-     * batch, its settings are checked.
+     * The calls a run waits for by batches, into bounded batches; before its
+     * first batch, its settings are checked. Each request to Anthropic is
+     * bounded by the slice's last departure, and before each one the slice
+     * reads the direct calls in flight ($pendant: Twin9Slice), which would
+     * otherwise wait for it. A batch leaves only while its creation has,
+     * before that bound, the time a submission needs (a quarter of the
+     * slice, eight seconds at most); a creation that could not leave all the
+     * same (no second left: no request) is no batch to look for — its calls
+     * wait for the next slice.
      *
      * @param array<string, int> $compteurs the slice's
+     * @param (\Closure(): void)|null $pendant reads the direct calls in flight, between two requests
      * @return string|null why the run fails (the API refuses its settings or its batch), or null
      */
-    public function soumettre(Twin9Run $run, float $debut, float $dernierDepart, float $fin, array &$compteurs): ?string
+    public function soumettre(Twin9Run $run, float $debut, float $dernierDepart, float $fin, array &$compteurs,
+                              ?\Closure $pendant = null): ?string
     {
         $avantLaFin = min(self::TEMPS_SOUMISSION, 0.25 * ($fin - $debut));
-        $run->soumis = true;
+        // a request waits until the slice's last departure at the latest: the direct calls in flight then have the
+        // rest of it to come back; a batch leaves only while its creation has, before that bound, the time a
+        // submission needs — come later, it waits for the next slice instead of a creation cut short
+        $borne = $dernierDepart;
+        $dernier = $borne - $avantLaFin;
+        $pendant ??= static function (): void {
+        };
+        $run->passeSoumise = max(1, $run->passes);
         if ($run->horsDuree()) {
             $run->bloque = RunCosts::DUREE;
-            $run->attente = $this->enVol($run->id) > 0 ? self::EN_COURS : null;
+            $run->attenteLots = $this->enVol($run->id) > 0 ? self::EN_COURS : null;
 
             return null;
         }
         $candidats = $this->candidats($run);
         if ($candidats === []) {
-            $run->attente = $this->enVol($run->id) > 0 ? self::EN_COURS : null;
+            $run->attenteLots = $this->enVol($run->id) > 0 ? self::EN_COURS : null;
 
             return null;
         }
         $cle = $this->cles->pour($run->userId, $run->cle);
         if ($cle === null) {
-            $run->attente = 'clé Anthropic indisponible';
-            $run->suspendu = true;
+            $run->suspendre('lots', 'clé Anthropic indisponible');
 
             return null;
         }
         // a tick that dies before its batches have left leaves its run to play again
         $this->pdo->prepare('UPDATE twin9_runs SET attente = ? WHERE id = ?')->execute([self::A_SOUMETTRE, $run->id]);
-        $run->attente = self::A_SOUMETTRE;
+        $run->attenteLots = self::A_SOUMETTRE;
         if (!$this->dejaSoumis($run->id)) {
-            $refus = $this->verifier($run, $cle, $dernierDepart, $fin, $compteurs);
-            if ($refus !== null || $run->suspendu) {
+            $refus = $this->verifier($run, $cle, $dernierDepart, $borne, $compteurs, $pendant);
+            if ($refus !== null || $run->suspendu('lots')) {
                 return $refus;
             }
         }
@@ -190,8 +216,8 @@ final class Twin9Lots
                 if ($run->bloque !== null) {
                     continue;
                 }
-                $reserve = $this->couts->pireCas($reglage['modele'], $call->prompt, $reglage['budget_sortie'], true,
-                    $run->credits());
+                $reserve = $this->couts->pireCas(Fournisseurs::DEFAUT, $reglage['modele'], $call->prompt,
+                    $reglage['budget_sortie'], true, $run->credits());
                 if ($reserve === null) {
                     return 'aucun prix pour ' . $reglage['modele'] . ' sur cette instance';
                 }
@@ -208,8 +234,8 @@ final class Twin9Lots
                                       $reglage['budget_sortie'], $reglage['reflexion'], $reglage['effort'])],
                 JSON_THROW_ON_ERROR | JSON_UNESCAPED_UNICODE);
             if ($membres !== [] && \strlen(self::ENVELOPPE) + \strlen($corps) + 1 + \strlen($ligne) > $this->octets) {
-                $refus = $this->envoyer($run, $cle, $corps, $membres, $fin - $avantLaFin, $fin, $compteurs);
-                if ($refus !== null || $run->suspendu) {
+                $refus = $this->envoyer($run, $cle, $corps, $membres, $dernier, $borne, $compteurs, $pendant);
+                if ($refus !== null || $run->suspendu('lots')) {
                     return $refus;
                 }
                 $corps = '';
@@ -222,18 +248,25 @@ final class Twin9Lots
                 $solde = $solde === null ? null : $solde - $reserve;
             }
         }
-        $refus = $this->envoyer($run, $cle, $corps, $membres, $fin - $avantLaFin, $fin, $compteurs);
-        if ($refus === null && !$run->suspendu) {
-            $run->attente = $this->enVol($run->id) > 0 ? self::EN_COURS : null;
+        $refus = $this->envoyer($run, $cle, $corps, $membres, $dernier, $borne, $compteurs, $pendant);
+        if ($refus === null && !$run->suspendu('lots')) {
+            $run->attenteLots = $this->enVol($run->id) > 0 ? self::EN_COURS : null;
         }
 
         return $refus;
     }
 
     /**
-     * The batches of runs no longer in progress (cancelled, failed, done):
-     * cancelled at Anthropic, their calls given back, then deleted once
-     * ended; a lost one, once found, deleted.
+     * The batches of runs no longer in progress (cancelled, stopped, done).
+     * A run cancelled by its owner has its batch in progress cancelled at
+     * Anthropic; another's goes on — a run stopped resumes from its
+     * journal. Once ended, each is collected as a run in progress's is
+     * (achever(): each answer written with its real cost, a request in
+     * error, expired or cancelled given back, to leave again at a
+     * resumption), what its calls held settled (RunCosts::liberer()), then
+     * deleted: a request Anthropic processed is billed (faits-api §8), its
+     * answer is kept and paid once, never deleted unread. A lost batch,
+     * once found, likewise; never found, its calls given back.
      *
      * @param array<string, int> $compteurs the slice's
      * @param int|null $utilisateur those of one user's runs only, when the page of their run advances them (T9)
@@ -259,32 +292,46 @@ final class Twin9Lots
             }
             if ($lot['statut'] === 'soumission') {
                 $issue = $this->retrouver($lot, $cle, $fin);
+                if ($issue === 'abandonne') {
+                    // never found: its calls given back, what they held goes back too
+                    $this->depasse($compteurs, $this->couts->liberer($lot['run_id']));
+                }
                 if ($issue === 'attendre' || $issue === 'abandonne') {
                     continue;
                 }
-                $lot['statut'] = 'releve'; // found once ended: nothing left to cancel
+                $lot['statut'] = 'en_cours';
                 $lot['lot'] = $issue;
             }
-            if ($lot['statut'] === 'en_cours') {
+            if ($lot['statut'] === 'en_cours' && $lot['run_statut'] === 'annule') {
+                // its owner asked it to stop: cancelled at Anthropic, its answers that came all the same read once
+                // it has ended (400, 404, 409: ended or gone already)
                 $issue = $this->api->annuler($cle, (string) $lot['lot'], $fin);
                 if (!$issue['ok'] && !\in_array($issue['http'] ?? null, [400, 404, 409], true)) {
                     continue; // to cancel at the next slice
                 }
-                (new CallJournal($this->pdo, $lot['run_id']))->rendreLeLot($lot['id']);
                 $this->pdo->prepare('UPDATE twin9_lots SET statut = "annulation" WHERE id = ?')->execute([$lot['id']]);
-                $this->couts->liberer($lot['run_id']); // its calls given back, what they held goes back too
                 $compteurs['annules']++;
                 $lot['statut'] = 'annulation';
             }
-            if ($lot['statut'] === 'annulation') {
-                $etat = $this->api->etat($cle, (string) $lot['lot'], $fin);
-                $fini = $etat['ok'] ? ($etat['lot']['processing_status'] ?? '') === 'ended' : ($etat['http'] ?? null) === 404;
-                if (!$fini) {
+            if ($lot['statut'] === 'en_cours' || $lot['statut'] === 'annulation') {
+                $issue = $this->achever($lot, $cle, $fin, $compteurs);
+                if ($issue === null) {
+                    continue; // still at Anthropic, or its results to read at the next slice
+                }
+                // its answers written with their cost, its other calls given back: what they held is settled
+                $this->depasse($compteurs, $this->couts->liberer($lot['run_id']));
+                if ($issue === 'rendu') {
                     continue;
                 }
             }
             $this->supprimer($lot, $cle, $fin, false);
         }
+    }
+
+    /** @param array<string, int> $compteurs the slice's: the real costs beyond what their calls held */
+    private function depasse(array &$compteurs, int $n): void
+    {
+        $compteurs['depassements'] = ($compteurs['depassements'] ?? 0) + $n;
     }
 
     /**
@@ -408,8 +455,8 @@ final class Twin9Lots
             $lu = AnthropicCaller::lireMessage($resultat['message']);
             $mesure = ['modele_servi' => $lu['modele_servi'], 'stop_reason' => $lu['stop_reason'],
                        'tokens_in' => $lu['tokens_in'], 'tokens_out' => $lu['tokens_out'],
-                       'cout_microusd' => $this->couts->cout($appel['modele'], $lu['tokens_in'], $lu['tokens_out'],
-                           true, $marge)];
+                       'cout_microusd' => $this->couts->cout(Fournisseurs::DEFAUT, $appel['modele'], $lu['tokens_in'],
+                           $lu['tokens_out'], true, $marge)];
             if ($lu['ok']) {
                 $journal->reponseDuLot($appel['appel'], $lu['texte'], $mesure);
                 $compteurs['reponses']++;
@@ -503,20 +550,25 @@ final class Twin9Lots
 
     /**
      * Each combination of model and settings the run sends by batches, by a
-     * minimal direct call.
+     * minimal direct call; before each, the slice reads the direct calls in
+     * flight ($pendant).
      *
+     * @param float $borne when a check must be done at the latest
      * @param array<string, int> $compteurs
+     * @param \Closure(): void $pendant
      * @return string|null why the run fails, or null
      */
-    private function verifier(Twin9Run $run, string $cle, float $dernierDepart, float $fin, array &$compteurs): ?string
+    private function verifier(Twin9Run $run, string $cle, float $dernierDepart, float $borne, array &$compteurs,
+                              \Closure $pendant): ?string
     {
         foreach ($run->reglages->combinaisons('lots') as $reglage) {
+            $pendant();
             if (microtime(true) >= $dernierDepart) {
-                $run->suspendu = true;
+                $run->suspendre('lots');
 
                 return null;
             }
-            $issue = $this->api->verifier($cle, $reglage, $fin);
+            $issue = $this->api->verifier($cle, $reglage, $borne);
             $compteurs['verifications']++;
             if ($issue['ok']) {
                 continue;
@@ -525,9 +577,8 @@ final class Twin9Lots
             if ($http === 400) {
                 return 'l\'API refuse les réglages de ' . $reglage['modele'] . ' : ' . ($issue['erreur'] ?? 'HTTP 400');
             }
-            $run->attente = $http === 401 || $http === 403 ? 'clé Anthropic refusée'
-                : 'vérification des réglages : ' . ($issue['erreur'] ?? 'fournisseur indisponible');
-            $run->suspendu = true;
+            $run->suspendre('lots', $http === 401 || $http === 403 ? 'clé Anthropic refusée'
+                : 'vérification des réglages : ' . ($issue['erreur'] ?? 'fournisseur indisponible'));
 
             return null;
         }
@@ -545,17 +596,19 @@ final class Twin9Lots
      * @param list<array{0: Call, 1: string, 2: int, 3: int|null}> $membres each call, its model, its attempt and the
      *                                                                       worst case it newly holds
      * @param float $dernier the latest a batch may leave in this slice
+     * @param float $borne when its submission must be answered at the latest
      * @param array<string, int> $compteurs
+     * @param \Closure(): void $pendant reads the direct calls in flight (Twin9Slice)
      * @return string|null why the run fails, or null
      */
-    private function envoyer(Twin9Run $run, string $cle, string $corps, array $membres, float $dernier, float $fin,
-                             array &$compteurs): ?string
+    private function envoyer(Twin9Run $run, string $cle, string $corps, array $membres, float $dernier, float $borne,
+                             array &$compteurs, \Closure $pendant): ?string
     {
         if ($membres === []) {
             return null;
         }
         if (microtime(true) > $dernier) {
-            $run->suspendu = true;
+            $run->suspendre('lots');
 
             return null;
         }
@@ -578,7 +631,7 @@ final class Twin9Lots
             $this->pdo->rollBack();
             $run->journal->oublier();
             $run->bloque = RunCosts::CREDIT;
-            $run->suspendu = true;
+            $run->suspendre('lots');
 
             return null;
         } catch (\Throwable $e) {
@@ -587,7 +640,9 @@ final class Twin9Lots
             throw $e;
         }
         $run->envoyes += \count($membres);
-        $issue = $this->api->creer($cle, $corps, $fin);
+        // its row and its calls written, the transaction closed: the direct calls in flight are read first
+        $pendant();
+        $issue = $this->api->creer($cle, $corps, max(microtime(true) + 0.1, $borne));
         if ($issue['ok']) {
             $this->pdo->prepare('UPDATE twin9_lots SET lot = ?, statut = "en_cours" WHERE id = ?')
                 ->execute([(string) $issue['lot']['id'], $lotId]);
@@ -597,22 +652,28 @@ final class Twin9Lots
             return null;
         }
         $http = $issue['http'] ?? null;
-        $run->suspendu = true;
-        if ($http === null) {
-            $run->attente = self::PERDU;
+        $run->suspendre('lots');
+        if ($http === null && empty($issue['non_envoye'])) {
+            $run->attenteLots = self::PERDU;
 
             return null;
         }
+        // refused, or never sent (its bound left no second: no request, no batch to look for): its calls wait again
         $run->journal->rendreLeLot($lotId);
         $this->pdo->prepare('DELETE FROM twin9_lots WHERE id = ?')->execute([$lotId]);
+        if ($http === null) {
+            $run->envoyes -= \count($membres);
+
+            return null; // still to submit (A_SOUMETTRE), at the next slice
+        }
         if ($http === 401 || $http === 403) {
-            $run->attente = 'clé Anthropic refusée';
+            $run->attenteLots = 'clé Anthropic refusée';
         } elseif ($http === 429 || $http === 529) {
-            $run->attente = 'débit du fournisseur';
+            $run->attenteLots = 'débit du fournisseur';
         } elseif ($http >= 400 && $http < 500) {
             return 'lot refusé par l\'API (HTTP ' . $http . ')';
         } else {
-            $run->attente = 'fournisseur indisponible';
+            $run->attenteLots = 'fournisseur indisponible';
         }
 
         return null;
@@ -638,8 +699,10 @@ final class Twin9Lots
     }
 
     /**
-     * The calls of a run's pass that go into batches: those of the days it
-     * leads abreast, neither answered, failed, nor in a batch already.
+     * The calls of a run's pass that go into batches: Anthropic's, its lane
+     * « lots » (CallSettings::pour()) — another provider's leave directly —,
+     * of the days it leads abreast, neither answered, failed, nor in a batch
+     * already.
      *
      * @return list<array{0: Call, 1: int, 2: int|null}> each call with its attempt and the worst case it holds
      */
@@ -650,7 +713,8 @@ final class Twin9Lots
         $vus = [];
         foreach ($run->attendus as $call) {
             $jour = Twin9Run::jour($call->id);
-            if (isset($vus[$call->id]) || ($jour !== null && !isset($jours[$jour]))) {
+            if (isset($vus[$call->id]) || ($jour !== null && !isset($jours[$jour]))
+                || $run->reglages->pour($call->step, $call->id)['voie'] !== 'lots') {
                 continue;
             }
             $vus[$call->id] = true;
@@ -678,10 +742,12 @@ final class Twin9Lots
         return $stmt->fetchColumn() !== false;
     }
 
-    /** A run's batches at Anthropic, or whose submission is under way. */
+    /** A run's batches at Anthropic (being cancelled included), or whose submission is under way. */
     public function enVol(int $runId): int
     {
-        $stmt = $this->pdo->prepare('SELECT COUNT(*) FROM twin9_lots WHERE run_id = ? AND statut IN ("soumission", "en_cours")');
+        $stmt = $this->pdo->prepare(
+            'SELECT COUNT(*) FROM twin9_lots WHERE run_id = ? AND statut IN ("soumission", "en_cours", "annulation")'
+        );
         $stmt->execute([$runId]);
 
         return (int) $stmt->fetchColumn();
@@ -691,13 +757,14 @@ final class Twin9Lots
      * Batches, with their run's owner.
      *
      * @param list<mixed> $params
-     * @return list<array{id: int, run_id: int, user_id: int, lot: string|null, statut: string, cle: string,
-     *                    requetes: int, soumis: float}>
+     * @return list<array{id: int, run_id: int, user_id: int, run_statut: string, lot: string|null, statut: string,
+     *                    cle: string, requetes: int, soumis: float}>
      */
     private function lots(string $ou, array $params, int $max = 1000): array
     {
         $stmt = $this->pdo->prepare(
-            'SELECT l.id, l.run_id, r.user_id, l.lot, l.statut, l.cle, l.requetes, UNIX_TIMESTAMP(l.soumis_at) AS soumis
+            'SELECT l.id, l.run_id, r.user_id, r.statut AS run_statut, l.lot, l.statut, l.cle, l.requetes,
+                    UNIX_TIMESTAMP(l.soumis_at) AS soumis
                FROM twin9_lots l JOIN twin9_runs r ON r.id = l.run_id
               WHERE ' . $ou . ' ORDER BY l.id LIMIT ' . $max
         );
@@ -705,7 +772,8 @@ final class Twin9Lots
 
         return array_map(static fn (array $l): array => [
             'id' => (int) $l['id'], 'run_id' => (int) $l['run_id'], 'user_id' => (int) $l['user_id'],
-            'lot' => $l['lot'] === null ? null : (string) $l['lot'], 'statut' => (string) $l['statut'],
+            'run_statut' => (string) $l['run_statut'], 'lot' => $l['lot'] === null ? null : (string) $l['lot'],
+            'statut' => (string) $l['statut'],
             'cle' => (string) $l['cle'], 'requetes' => (int) $l['requetes'], 'soumis' => (float) $l['soumis'],
         ], $stmt->fetchAll());
     }

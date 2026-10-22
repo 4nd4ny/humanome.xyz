@@ -60,4 +60,39 @@ final class MoteurReglagesTest extends TestCase
                                       'family' => 'anthropic', 'weight' => 2.0, 'enabled' => true]], $moteur->roster);
         self::assertNotSame($profil->jury, $moteur->config->jury, 'une copie, jamais le profil lui-même');
     }
+
+    /**
+     * A backend's kind is its stage's provider, a reader's its own, resolved
+     * as its calls are (CallSettings); a reader's family is the one it
+     * declares, else its provider's — OpenRouter's vendor, the slug's prefix
+     * (ADR-012). The models are invented.
+     */
+    public function testAMixedProfileGivesEachBackendAndReaderItsProvider(): void
+    {
+        $profil = ProfilRepository::v98();
+        $profil->etages->profond = (object) ['fournisseur' => 'mistral', 'modele' => 'modele-fictif',
+                                             'budget_sortie' => 8000, 'reflexion' => 'coupee'];
+        $profil->etages->lecteurs = (object) ['fournisseur' => 'openrouter', 'modele' => 'editeur/modele-fictif',
+                                              'budget_sortie' => 8000, 'reflexion' => 'coupee'];
+        $profil->college = [
+            (object) ['nom' => 'herite', 'passes' => 2],
+            (object) ['nom' => 'claude', 'fournisseur' => 'anthropic', 'modele' => 'claude-haiku-5-5'],
+            (object) ['nom' => 'declare', 'fournisseur' => 'openai', 'modele' => 'modele-fictif-2', 'famille' => 'maison'],
+        ];
+        $valide = ProfilRepository::validate($profil);
+        $moteur = MoteurReglages::depuis($valide);
+
+        self::assertEquals((object) ['kind' => 'mistral', 'model' => 'modele-fictif', 'model_mini' => 'claude-haiku-5-5'],
+            $moteur->config->backend_tribunal);
+        self::assertEquals((object) ['kind' => 'anthropic', 'model' => 'claude-haiku-5-5'], $moteur->config->backend_rapide);
+        $lus = array_map(static fn (\stdClass $m): array => [$m->name, $m->kind, $m->model, $m->family], $moteur->roster);
+        self::assertSame([
+            ['herite#1', 'openrouter', 'editeur/modele-fictif', 'editeur'],
+            ['herite#2', 'openrouter', 'editeur/modele-fictif', 'editeur'],
+            ['claude', 'anthropic', 'claude-haiku-5-5', 'anthropic'],
+            ['declare', 'openai', 'modele-fictif-2', 'maison'],
+        ], $lus);
+        self::assertSame(['editeur', 'anthropic', 'maison'],
+            array_map(static fn (\stdClass $l): string => MoteurReglages::famille($valide, $l), $valide->college));
+    }
 }

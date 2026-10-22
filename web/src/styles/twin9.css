@@ -136,26 +136,5 @@
   padding: 0.4rem 0.75rem;
 }
 
-/* Étiquette RGPD d'un fournisseur (registre ; pas un avis juridique). */
-.twin9-rgpd {
-  text-transform: none;
-  letter-spacing: 0;
-}
-
-.twin9-rgpd-oui {
-  color: var(--ok);
-  border-color: var(--ok-border);
-  background: var(--ok-bg);
-}
-
-.twin9-rgpd-sous_conditions {
-  color: var(--warn);
-  border-color: var(--warn-border);
-  background: var(--warn-bg);
-}
-
-.twin9-rgpd-non {
-  color: var(--danger);
-  border-color: var(--danger-border);
-  background: var(--danger-bg);
-}
+/* L'étiquette RGPD d'un fournisseur (.twin9-rgpd) vit dans global.css : la configuration et
+   l'administration la montrent aussi. */

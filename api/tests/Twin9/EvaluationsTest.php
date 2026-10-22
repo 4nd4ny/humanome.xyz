@@ -284,6 +284,49 @@ final class EvaluationsTest extends TestCase
     }
 
     /**
+     * The mixed lane (P1-5): an evaluation keeps the lane its run went by
+     * (directe, lots or mixte) and the share of Anthropic in each phase's
+     * cost; only that share converts — by batches to a direct run, 1 + a;
+     * direct to a run by batches, 1 − a/2 —, a row of before the mixed lane
+     * as before (a = 1: twice, or half). The seconds of a day come from the
+     * runs gone by direct calls alone.
+     */
+    public function testOnlyAnthropicsShareOfAPhaseConvertsToAnotherLane(): void
+    {
+        $evaluations = new Evaluations($this->pdo);
+        $this->inserer('a1a1a1a1a1a1a1a1', ['voie' => 'mixte', 'marge' => 1.0,
+                                             'part_anthropique' => ['journee' => 0.5, 'fusion' => 1.0]],
+            [['ko' => 1.0, 'cout_microusd' => 100], ['ko' => 2.0, 'cout_microusd' => 200]], 400, 50, 500, 700);
+
+        $memeVoie = $evaluations->modele('a1a1a1a1a1a1a1a1', true, 1.0);
+        self::assertEqualsWithDelta(['fixe' => 0.0, 'par_ko' => 100.0], array_intersect_key($memeVoie['journee'],
+            ['fixe' => 1, 'par_ko' => 1]), 0.0001, 'la même voie : rien ne change');
+        self::assertNull($memeVoie['secondes_par_journee'], 'un run mixte attend ses lots : sa durée ne dit rien');
+        $direct = $evaluations->modele('a1a1a1a1a1a1a1a1', false, 1.0);
+        self::assertEqualsWithDelta(['fixe' => 0.0, 'par_ko' => 150.0], array_intersect_key($direct['journee'],
+            ['fixe' => 1, 'par_ko' => 1]), 0.0001, 'la moitié d’Anthropic au plein tarif : 1 + 0,5');
+        self::assertEqualsWithDelta(['journee' => 750.0, 'fusion' => 1400.0], $direct['pire_cas'], 0.0001,
+            'la fusion tout Anthropic : deux fois');
+
+        // by direct calls, a quarter of Anthropic: to a run by batches, 1 − 0.125; its seconds counted
+        $this->inserer('b2b2b2b2b2b2b2b2', ['voie' => 'directe', 'marge' => 1.0,
+                                             'part_anthropique' => ['journee' => 0.25, 'fusion' => null]],
+            [['ko' => 1.0, 'cout_microusd' => 800]], 0, 30, 1000, null);
+        $parLots = $evaluations->modele('b2b2b2b2b2b2b2b2', true, 1.0);
+        self::assertEqualsWithDelta(1000.0 * 0.875, $parLots['pire_cas']['journee'], 0.0001);
+        self::assertSame(30.0, $parLots['secondes_par_journee']);
+        // a row of before the mixed lane, by batches: half its cost converts, as before
+        $this->inserer('c3c3c3c3c3c3c3c3', ['voie' => 'lots', 'marge' => 1.0], [['ko' => 1.0, 'cout_microusd' => 100]], 0, 1,
+            100, null);
+        self::assertEqualsWithDelta(200.0, $evaluations->modele('c3c3c3c3c3c3c3c3', false, 1.0)['pire_cas']['journee'],
+            0.0001);
+        self::assertSame([1.0, 1.5, 0.875, 2.0, 0.5, 1.0],
+            [Evaluations::facteur(true, true, 0.3), Evaluations::facteur(true, false, 0.5),
+             Evaluations::facteur(false, true, 0.25), Evaluations::facteur(true, false, null),
+             Evaluations::facteur(false, true, null), Evaluations::facteur(false, true, 0.0)]);
+    }
+
+    /**
      * @param array<string, mixed> $reglages
      * @param list<array{ko: float|null, cout_microusd: int|null, panne?: bool}> $journees
      * @param int|null $run its run; null: one of its own, beyond any run of the test

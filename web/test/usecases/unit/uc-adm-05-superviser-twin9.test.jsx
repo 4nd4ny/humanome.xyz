@@ -298,3 +298,110 @@ describe('UC-ADM-05 — relevé quotidien des prix (Twin9Section isolée, 2026-1
     expect(within(bloc).getByRole('alert').textContent).toContain('échec (page des prix : HTTP 503). La grille garde ses prix')
   })
 })
+
+/** Ce que GET twin9/admin/config dit des fournisseurs (Fournisseurs::pourAdministrateur) : la clé de Mistral AI posée. */
+const FOURNISSEURS = [
+  { id: 'anthropic', libelle: 'Anthropic', rgpd: 'sous_conditions', lots: true, env: 'ANTHROPIC_API_KEY', cle_instance: true },
+  { id: 'openai', libelle: 'OpenAI', rgpd: 'sous_conditions', lots: false, env: 'OPENAI_API_KEY', cle_instance: false },
+  { id: 'mistral', libelle: 'Mistral AI', rgpd: 'oui', lots: false, env: 'MISTRAL_API_KEY', cle_instance: true },
+  { id: 'google', libelle: 'Google (Gemini)', rgpd: 'non', lots: false, env: 'GOOGLE_API_KEY', cle_instance: false },
+  { id: 'xai', libelle: 'xAI (Grok)', rgpd: 'non', lots: false, env: 'XAI_API_KEY', cle_instance: false },
+  { id: 'openrouter', libelle: 'OpenRouter', rgpd: 'non', lots: false, env: 'OPENROUTER_API_KEY', cle_instance: false },
+]
+
+const MULTI = {
+  ...CONFIG,
+  twin9_fournisseurs_ouverts: ['anthropic'],
+  twin9_fournisseurs_non_rgpd: false,
+  fournisseurs: FOURNISSEURS,
+  modeles: {
+    ...CONFIG.modeles,
+    // relue de MySQL : ses clés dans un autre ordre que celui du formulaire
+    'mistral:modele-fictif': { duree_max_s: 30, plafond_sortie: 8000, prix_usd_mtok: [0.4, 2], plafond_reflexion: 0 },
+  },
+}
+
+const ouvert = (id) => document.querySelector(`#twin9-fournisseur-${id}`)
+
+describe('UC-ADM-05 — fournisseurs des appels Twin9 (ADR-012, Twin9Section isolée)', () => {
+  it('UC-ADM-05-U20 — chaque fournisseur, son étiquette RGPD, sa voie, la présence de la clé de l’instance (jamais la clé) ; ouvrir Mistral AI → {twin9_fournisseurs_ouverts} seul ; un fournisseur « non » attend le second interrupteur, que refermer referme avec lui', async () => {
+    const fetchFn = monter(MULTI)
+    await screen.findByText('Fournisseurs des appels Twin9')
+    const ligne = (id) => document.querySelector(`[data-fournisseur="${id}"]`).textContent
+    expect(ligne('anthropic')).toBe(' Anthropic RGPD : sous conditions · par lots ou en direct · clé de l’instance (ANTHROPIC_API_KEY) : posée')
+    expect(ligne('google')).toBe(' Google (Gemini) RGPD : non · en direct · clé de l’instance (GOOGLE_API_KEY) : absente')
+    expect([ouvert('anthropic').checked, ouvert('mistral').checked, ouvert('google').disabled, ouvert('mistral').disabled]).toEqual([
+      true, false, true, false,
+    ])
+    await enregistrer()
+    expect(puts(fetchFn)).toEqual([]) // rien de modifié, l'offre relue dans un autre ordre comprise
+
+    fireEvent.click(ouvert('mistral'))
+    await enregistrer()
+    expect(puts(fetchFn)).toEqual([{ twin9_fournisseurs_ouverts: ['anthropic', 'mistral'] }])
+    cleanup()
+
+    const second = monter(MULTI)
+    await screen.findByText('Fournisseurs des appels Twin9')
+    fireEvent.click(screen.getByLabelText(/Permettre d’ouvrir les fournisseurs étiquetés « non »/))
+    expect(ouvert('google').disabled).toBe(false)
+    fireEvent.click(ouvert('google'))
+    fireEvent.click(ouvert('anthropic'))
+    await enregistrer()
+    expect(puts(second)).toEqual([{ twin9_fournisseurs_ouverts: ['google'], twin9_fournisseurs_non_rgpd: true }])
+
+    // refermer l'interrupteur referme les fournisseurs « non » ouverts : le serveur refuserait l'un sans l'autre
+    fireEvent.click(screen.getByLabelText(/Permettre d’ouvrir les fournisseurs étiquetés « non »/))
+    expect([ouvert('google').checked, ouvert('google').disabled]).toEqual([false, true])
+  })
+
+  it('UC-ADM-05-U21 — le modèle d’un autre fournisseur : sa clé « fournisseur:modèle », ses plafonds et son réglage de raisonnement ; ajouté avec 30 s ; plafonds invalides → message, aucun PUT', async () => {
+    const fetchFn = monter(MULTI)
+    await screen.findByText('Offre de modèles')
+    const ligne = screen.getByDisplayValue('modele-fictif').closest('li')
+    expect(within(ligne).getByLabelText('Fournisseur').value).toBe('mistral')
+    expect(within(ligne).getByLabelText('Plafond de sortie (jetons)').value).toBe('8000')
+    expect(within(ligne).queryByLabelText('Réglage de raisonnement')).toBeNull() // OpenAI et Google seulement
+    const anthropic = screen.getByDisplayValue('claude-haiku-4-5-20251001').closest('li')
+    expect(within(anthropic).queryByLabelText('Plafond de sortie (jetons)')).toBeNull()
+
+    fireEvent.change(within(ligne).getByLabelText('Plafond de sortie (jetons)'), { target: { value: '16000' } })
+    await enregistrer()
+    expect(puts(fetchFn)).toEqual([
+      {
+        modeles: {
+          'claude-haiku-4-5-20251001': { prix_usd_mtok: [1, 5] },
+          'mistral:modele-fictif': { duree_max_s: 30, plafond_sortie: 16000, prix_usd_mtok: [0.4, 2], plafond_reflexion: 0 },
+        },
+      },
+    ])
+
+    fireEvent.click(screen.getByRole('button', { name: 'Ajouter un modèle' }))
+    const i = 2
+    fireEvent.change(document.querySelector(`#twin9-modele-fournisseur-${i}`), { target: { value: 'openai' } })
+    fireEvent.change(document.querySelector(`#twin9-modele-id-${i}`), { target: { value: 'modele-openai-fictif' } })
+    fireEvent.change(document.querySelector(`#twin9-modele-prixin-${i}`), { target: { value: '1' } })
+    fireEvent.change(document.querySelector(`#twin9-modele-prixout-${i}`), { target: { value: '4' } })
+    expect(document.querySelector(`#twin9-modele-duree-${i}`).value).toBe('30')
+    await enregistrer()
+    expect(screen.getByRole('alert').textContent).toBe(
+      'Plafond de sortie invalide pour « openai:modele-openai-fictif » : entier strictement positif attendu.',
+    )
+    fireEvent.change(document.querySelector(`#twin9-modele-plafond-sortie-${i}`), { target: { value: '4000' } })
+    fireEvent.change(document.querySelector(`#twin9-modele-duree-${i}`), { target: { value: '50' } })
+    await enregistrer()
+    expect(screen.getByRole('alert').textContent).toBe('Durée maximale invalide pour « openai:modele-openai-fictif » : de 1 à 45 secondes.')
+    expect(puts(fetchFn)).toHaveLength(1)
+
+    fireEvent.change(document.querySelector(`#twin9-modele-duree-${i}`), { target: { value: '20' } })
+    fireEvent.change(document.querySelector(`#twin9-modele-reflexion-${i}`), { target: { value: 'minimal' } })
+    await enregistrer()
+    expect(puts(fetchFn)[1].modeles['openai:modele-openai-fictif']).toEqual({
+      prix_usd_mtok: [1, 4],
+      plafond_sortie: 4000,
+      plafond_reflexion: 0,
+      duree_max_s: 20,
+      reflexion_param: 'minimal',
+    })
+  })
+})

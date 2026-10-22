@@ -145,6 +145,7 @@ final class UcCpt04GererClesApiTest extends CartographeTestCase
     {
         $cases = [
             [['provider' => 'mistral', 'apiKey' => 'sk-12345678'], ['provider']],
+            [['provider' => 'deepseek', 'apiKey' => 'sk-12345678'], ['provider']],
             [['provider' => 'openai', 'apiKey' => 'sk-1234'], ['apiKey']],
             [['provider' => 'openai', 'apiKey' => str_repeat('k', 4097)], ['apiKey']],
             [['provider' => 'openai', 'apiKey' => "sk-1234\n5678"], ['apiKey']],

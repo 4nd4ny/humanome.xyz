@@ -6,6 +6,7 @@ namespace Humanome\Twin9;
 
 use Humanome\Env;
 use Humanome\Packages\SettingsRepository;
+use Humanome\Twin9\Fournisseurs\Fournisseurs;
 
 /**
  * Twin9 platform configuration, persisted as JSON in the `settings` table
@@ -19,11 +20,24 @@ use Humanome\Packages\SettingsRepository;
  *             — the long prompt tier some models bill above a prompt size
  *             (Haiku 5.5, T10); a profile asks a model for its price only.
  *             Anthropic's list prices: TarifsAnthropic reads them again once
- *             a day and writes them over the grid's models (2026-10-21)
+ *             a day and writes them over the grid's models (2026-10-21).
+ *             Another provider's model is keyed « provider:model »
+ *             (Fournisseurs::clePrix(), ADR-012 §6), its prices entered by
+ *             the administrator, never by the daily reading, and carries its
+ *             caps: plafond_sortie (output tokens, > 0; 32,768 at most at
+ *             Google), plafond_reflexion (reasoning tokens its worst case
+ *             adds, ≥ 0; > 0 at xAI), duree_max_s (1..45 seconds), and at
+ *             OpenAI and Google reflexion_param, the lowest reasoning setting
+ *             the model admits (REFLEXION_PARAMS); refused on Anthropic's
  *   runs_par_tick         int, the Twin9 runs a tick advances at most (1..20,
  *                         default 3 — ADR-011 §2)
  *   secondes_par_tranche  int, the length of a tick's slice in seconds
  *                         (5..45, default 40 — OVH: 45 s at most)
+ *   twin9_fournisseurs_ouverts   list of the providers a Twin9 run may reach
+ *                         (Fournisseurs::REGISTRE ids, default ['anthropic'] —
+ *                         ADR-012)
+ *   twin9_fournisseurs_non_rgpd  bool, whether a provider tagged « non » may be
+ *                         opened (default false: closed)
  *
  * publicView() is the ONLY shape the front ever sees of it: the Twin6 prices
  * WITH margin applied (the raw list price and the margin stay admin-only).
@@ -39,6 +53,19 @@ use Humanome\Packages\SettingsRepository;
 final class Twin9Config
 {
     public const SETTING_KEY = 'twin9_config';
+
+    /**
+     * The third parties' models whose worst case fell short (RunCosts::
+     * solder()), kept apart from 'twin9_config': the worker writes them, an
+     * administrator's save never clobbers them, nor they it.
+     */
+    public const PIRE_CAS_KEY = 'twin9_pire_cas_insuffisant';
+
+    /**
+     * The slice the external trigger asks (POST /api/admin/worker-tick), kept
+     * apart from 'twin9_config' as the route writes it: {secondes, at}.
+     */
+    public const DECLENCHEUR_KEY = 'twin9_tranche_declencheur';
 
     /**
      * Referentiel STRUCTURE (pole num/nom + competence code/nom) the client
@@ -59,6 +86,23 @@ final class Twin9Config
     private const MARGE_MAX = 5.0;
     private const PACK_MIN_USD = 1.0;
     private const PACK_MAX_USD = 500.0;
+
+    /** The fields of another provider's model entry (ADR-012 §6), refused on Anthropic's. */
+    private const CHAMPS_TIERS = ['plafond_sortie', 'plafond_reflexion', 'duree_max_s', 'reflexion_param'];
+
+    /**
+     * The reasoning settings a model entry may name, by provider: OpenAI's
+     * `reasoning_effort` and Gemini's `thinkingLevel`, as their documentations
+     * list them (2026-10-22). Not every model admits every value: a wrong one
+     * is a 400, which the administrator mends in the grid.
+     */
+    public const REFLEXION_PARAMS = [
+        'openai' => ['none', 'minimal', 'low', 'medium', 'high', 'xhigh', 'max'],
+        'google' => ['MINIMAL', 'LOW', 'MEDIUM', 'HIGH'],
+    ];
+
+    /** Gemini's output tokens of a non-streamed request, at most. */
+    private const SORTIE_MAX_GEMINI = 32768;
 
     public function __construct(private readonly SettingsRepository $settings)
     {
@@ -122,6 +166,10 @@ final class Twin9Config
             ],
             'runs_par_tick' => 3,
             'secondes_par_tranche' => 40,
+            // The providers a run may reach (ADR-012): Anthropic alone until the administrator opens another;
+            // one tagged « non » (Google, xAI, OpenRouter) only once the second switch is on — closed by default.
+            'twin9_fournisseurs_ouverts' => [Fournisseurs::DEFAUT],
+            'twin9_fournisseurs_non_rgpd' => false,
         ];
     }
 
@@ -148,6 +196,68 @@ final class Twin9Config
         }
 
         return $config;
+    }
+
+    /**
+     * Marks another provider's model whose worst case fell short — a call's
+     * real cost beyond its reserve, which the instance paid (ADR-012 §6):
+     * with the caps its grid entry has now, the largest excess, its calls
+     * so marked and since when. The mark holds as long as those caps stay as
+     * they are (pireCasInsuffisants()): the administrator mends them, it
+     * lapses. An Anthropic model is never marked: its worst case bounds its
+     * real cost at its sending's price (an excess there is a price changed
+     * meanwhile). Marks that no longer hold go at the next write.
+     *
+     * @param int $excedent the largest excess of these calls, in micro-USD
+     * @param int $appels the calls whose real cost went beyond their reserve
+     */
+    public function marquerPireCasInsuffisant(string $cle, int $excedent, int $appels = 1): void
+    {
+        $config = $this->read();
+        $entree = $config['modeles'][$cle] ?? null;
+        if (!str_contains($cle, ':') || !\is_array($entree)) {
+            return;
+        }
+        $marques = self::marquesActives($config, $this->settings->get(self::PIRE_CAS_KEY) ?? []);
+        $avant = $marques[$cle] ?? null;
+        $marques[$cle] = [
+            'plafond_sortie' => $entree['plafond_sortie'] ?? null,
+            'plafond_reflexion' => $entree['plafond_reflexion'] ?? null,
+            'excedent_max_microusd' => max($excedent, (int) ($avant['excedent_max_microusd'] ?? 0)),
+            'appels' => (int) ($avant['appels'] ?? 0) + $appels,
+            'depuis' => $avant['depuis'] ?? gmdate('Y-m-d\TH:i:s\Z'),
+        ];
+        ksort($marques, SORT_STRING);
+        $this->settings->set(self::PIRE_CAS_KEY, $marques);
+    }
+
+    /**
+     * The marks that hold (marquerPireCasInsuffisant()): their model still
+     * in the grid, its caps those of the mark — for the administrator's page,
+     * and refused at launch (ProfilPolicy::admettreAuLancement()).
+     *
+     * @return array<string, array{plafond_sortie: int|null, plafond_reflexion: int|null,
+     *                             excedent_max_microusd: int, appels: int, depuis: string}>
+     */
+    public function pireCasInsuffisants(): array
+    {
+        return self::marquesActives($this->read(), $this->settings->get(self::PIRE_CAS_KEY) ?? []);
+    }
+
+    /**
+     * @param array<string, mixed> $config Twin9Config::read()
+     * @param array<string, mixed> $marques as stored
+     * @return array<string, array<string, mixed>>
+     */
+    private static function marquesActives(array $config, array $marques): array
+    {
+        return array_filter($marques, static function (mixed $marque, string|int $cle) use ($config): bool {
+            $entree = $config['modeles'][$cle] ?? null;
+
+            return \is_array($marque) && \is_array($entree)
+                && ($marque['plafond_sortie'] ?? null) === ($entree['plafond_sortie'] ?? null)
+                && ($marque['plafond_reflexion'] ?? null) === ($entree['plafond_reflexion'] ?? null);
+        }, ARRAY_FILTER_USE_BOTH);
     }
 
     /**
@@ -237,6 +347,16 @@ final class Twin9Config
         return (bool) $this->read()['twin9_cle_perso_ouverte'];
     }
 
+    /**
+     * The providers a run may reach on this instance (ADR-012).
+     *
+     * @return list<string>
+     */
+    public function fournisseursActifs(): array
+    {
+        return Fournisseurs::actifs($this->read());
+    }
+
     /** The Twin9 runs a tick advances at most (ADR-011 §2). */
     public function runsParTick(): int
     {
@@ -247,6 +367,36 @@ final class Twin9Config
     public function secondesParTranche(): int
     {
         return (int) $this->read()['secondes_par_tranche'];
+    }
+
+    /**
+     * Keeps the length of the slices the external trigger asks (its
+     * budgetSeconds: cron-job.org's 25 s, docs/deploiement.md), written
+     * only when it changes: a launch is measured on the shortest slice the
+     * instance serves (secondesServies()).
+     */
+    public function noterTrancheDuDeclencheur(int $secondes): void
+    {
+        if ($this->secondesDeclencheur() !== $secondes) {
+            $this->settings->set(self::DECLENCHEUR_KEY, ['secondes' => $secondes, 'at' => gmdate('Y-m-d\TH:i:s\Z')]);
+        }
+    }
+
+    /** The slices the external trigger last asked, in seconds; null before it ran. */
+    public function secondesDeclencheur(): ?int
+    {
+        $declencheur = $this->settings->get(self::DECLENCHEUR_KEY);
+
+        return \is_int($declencheur['secondes'] ?? null) ? $declencheur['secondes'] : null;
+    }
+
+    /**
+     * The shortest slice the instance serves, in seconds: its own
+     * (secondes_par_tranche, a run's page's), or its trigger's if shorter.
+     */
+    public function secondesServies(): int
+    {
+        return min($this->secondesParTranche(), $this->secondesDeclencheur() ?? PHP_INT_MAX);
     }
 
     /** @return list<array{montant_usd: float|int, libelle: string}> */
@@ -382,6 +532,9 @@ final class Twin9Config
         $margeTwin6 = (float) $config['marge_twin6'];
         $modelesTwin6 = [];
         foreach ($config['modeles'] as $modelId => $modele) {
+            if (str_contains((string) $modelId, ':')) {
+                continue; // another provider's (ADR-012): Twin9's alone, never the open cartography's
+            }
             [$in, $out] = $modele['prix_usd_mtok'];
             // Twin6 (open cartography) prices at its own +10 % contribution.
             $modelesTwin6[$modelId] = [round((float) $in * $margeTwin6, 4), round((float) $out * $margeTwin6, 4)];
@@ -441,7 +594,14 @@ final class Twin9Config
                     throw new Twin9Exception('Prix invalide : nombre strictement positif attendu', 422);
                 }
             }
-            $inconnues = array_diff(array_keys($modele), ['prix_usd_mtok', 'palier_long']);
+            $tiers = str_contains($modelId, ':');
+            $reserves = $tiers ? [] : array_values(array_intersect(array_keys($modele), self::CHAMPS_TIERS));
+            if ($reserves !== []) {
+                throw new Twin9Exception('Modèle ' . $modelId . ' : ' . implode(', ', $reserves)
+                    . ' ne vaut que pour le modèle d’un autre fournisseur (clé fournisseur:modèle)', 422);
+            }
+            $inconnues = array_diff(array_keys($modele),
+                ['prix_usd_mtok', 'palier_long', ...($tiers ? self::CHAMPS_TIERS : [])]);
             if ($inconnues !== []) {
                 throw new Twin9Exception('Modèle ' . $modelId . ' : ' . (\count($inconnues) === 1 ? 'clé inconnue ' : 'clés inconnues ')
                     . implode(', ', $inconnues), 422);
@@ -458,6 +618,9 @@ final class Twin9Config
                         422);
                 }
             }
+            if ($tiers) {
+                self::validerTiers($modelId, $modele);
+            }
         }
 
         $runs = $config['runs_par_tick'];
@@ -467,6 +630,74 @@ final class Twin9Config
         $secondes = $config['secondes_par_tranche'];
         if (!\is_int($secondes) || $secondes < 5 || $secondes > 45) {
             throw new Twin9Exception('Durée de tranche hors bornes (5 à 45 secondes)', 422);
+        }
+
+        if (!\is_bool($config['twin9_fournisseurs_non_rgpd'])) {
+            throw new Twin9Exception('Champ twin9_fournisseurs_non_rgpd invalide : booléen attendu', 422);
+        }
+        $ouverts = $config['twin9_fournisseurs_ouverts'];
+        if (!\is_array($ouverts) || !array_is_list($ouverts)) {
+            throw new Twin9Exception('Fournisseurs ouverts invalides : liste d’identifiants attendue', 422);
+        }
+        foreach ($ouverts as $i => $id) {
+            if (!\is_string($id) || !Fournisseurs::connu($id)) {
+                throw new Twin9Exception('Fournisseurs ouverts invalides : fournisseur inconnu', 422);
+            }
+            if (array_search($id, $ouverts, true) !== $i) {
+                throw new Twin9Exception('Fournisseurs ouverts invalides : ' . $id . ' figure deux fois', 422);
+            }
+            if (Fournisseurs::REGISTRE[$id]['rgpd'] === 'non' && $config['twin9_fournisseurs_non_rgpd'] !== true) {
+                throw new Twin9Exception('Fournisseurs ouverts invalides : ' . Fournisseurs::REGISTRE[$id]['libelle']
+                    . ', étiqueté « non » au regard du RGPD, ne s’ouvre que si twin9_fournisseurs_non_rgpd l’est aussi',
+                    422);
+            }
+        }
+    }
+
+    /**
+     * Another provider's model entry (ADR-012 §6): its key « provider:model »,
+     * a known provider other than Anthropic and a model of its pattern; its
+     * caps; its reasoning setting where the provider has one.
+     *
+     * @param array<string, mixed> $modele
+     */
+    private static function validerTiers(string $cle, array $modele): void
+    {
+        [$fournisseur, $id] = Fournisseurs::depuisClePrix($cle);
+        if ($fournisseur === Fournisseurs::DEFAUT
+            || preg_match(Fournisseurs::REGISTRE[$fournisseur]['motif_modele'], $id) !== 1) {
+            throw new Twin9Exception('Modèle ' . $cle . ' invalide : fournisseur:modèle attendu, un fournisseur autre '
+                . 'qu’Anthropic et un modèle qui suit son motif', 422);
+        }
+        $sortie = $modele['plafond_sortie'] ?? null;
+        if (!\is_int($sortie) || $sortie <= 0) {
+            throw new Twin9Exception('Modèle ' . $cle . ' : plafond_sortie requis, entier strictement positif', 422);
+        }
+        if ($fournisseur === 'google' && $sortie > self::SORTIE_MAX_GEMINI) {
+            throw new Twin9Exception('Modèle ' . $cle . ' : plafond_sortie de 32768 au plus (requête non streamée '
+                . 'de Gemini)', 422);
+        }
+        $reflexion = $modele['plafond_reflexion'] ?? null;
+        if (!\is_int($reflexion) || $reflexion < 0) {
+            throw new Twin9Exception('Modèle ' . $cle . ' : plafond_reflexion requis, entier positif ou nul', 422);
+        }
+        if ($fournisseur === 'xai' && $reflexion === 0) {
+            throw new Twin9Exception('Modèle ' . $cle . ' : plafond_reflexion strictement positif chez xAI, dont le '
+                . 'raisonnement ne se coupe pas et sort du plafond de sortie', 422);
+        }
+        $duree = $modele['duree_max_s'] ?? null;
+        if (!\is_int($duree) || $duree < 1 || $duree > 45) {
+            throw new Twin9Exception('Modèle ' . $cle . ' : duree_max_s requise, de 1 à 45 secondes', 422);
+        }
+        if (\array_key_exists('reflexion_param', $modele)) {
+            $admis = self::REFLEXION_PARAMS[$fournisseur] ?? null;
+            if ($admis === null) {
+                throw new Twin9Exception('Modèle ' . $cle . ' : reflexion_param ne se règle que chez OpenAI et Google',
+                    422);
+            }
+            if (!\in_array($modele['reflexion_param'], $admis, true)) {
+                throw new Twin9Exception('Modèle ' . $cle . ' : reflexion_param parmi ' . implode(', ', $admis), 422);
+            }
         }
     }
 }

@@ -33,8 +33,10 @@ interface BatchApi
     /**
      * Submits a batch, its body ({"requests": [...]}) as written.
      *
-     * @return array{ok: bool, lot?: array<string, mixed>, http?: int, attendre?: float|null, erreur?: string}
-     *         without `http`, no answer came back: the batch may exist at Anthropic all the same
+     * @return array{ok: bool, lot?: array<string, mixed>, http?: int, attendre?: float|null, erreur?: string,
+     *               non_envoye?: true}
+     *         without `http`, no answer came back: the batch may exist at Anthropic all the same — unless
+     *         `non_envoye` says no request left (its bound left no second)
      */
     public function creer(string $cle, string $corps, float $fin): array;
 

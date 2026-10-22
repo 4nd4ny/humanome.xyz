@@ -9,8 +9,10 @@ declare(strict_types=1);
  * « Configuration Twin9 »); the administrator's settings (prices, margin,
  * personal keys, slices) stay at /api/twin9/admin/config.
  *
- *   GET    /api/twin9/configuration  the page's start: own profiles (no document), the default profile (the
- *                                     v9.8's, with the instance's default template set), the choices
+ *   GET    /api/twin9/configuration  the page's start: own profiles (no document; each with the providers its
+ *                                     calls reach, which a launch's consent names before any preview,
+ *                                     ADR-012), the default profile (the v9.8's, with the instance's default
+ *                                     template set) and its providers, the choices
  *   POST   /api/twin9/profils        {nom, profil} -> 201 {id, nom, profil}
  *   GET    /api/twin9/profils/{id}   own profile -> {id, nom, profil}
  *   PUT    /api/twin9/profils/{id}   {nom?, profil} -> {id, nom, profil}
@@ -25,6 +27,7 @@ declare(strict_types=1);
 use Humanome\Auth\Session;
 use Humanome\Db;
 use Humanome\Packages\SettingsRepository;
+use Humanome\Twin9\Lancement;
 use Humanome\Twin9\ProfilPolicy;
 use Humanome\Twin9\ProfilRepository;
 use Humanome\Twin9\Twin9Config;
@@ -103,11 +106,34 @@ return function (App $app): void {
         return ['id' => $profil['id'], 'nom' => $profil['nom'], 'profil' => $profil['profil']];
     };
 
+    /**
+     * The providers a profile's calls reach, each with its label, its GDPR
+     * tag and its lane (Lancement::fournisseurs()): the launch page names
+     * them in its consent before any preview, the portfolio not sent yet
+     * (ADR-012). Null for a stored profile the schema no longer admits: its
+     * launch is refused anyway.
+     *
+     * @return list<array{id: string, libelle: string, rgpd: string, voie: string}>|null
+     */
+    $fournisseurs = static function (stdClass $profil): ?array {
+        try {
+            return Lancement::fournisseurs(ProfilRepository::validate($profil));
+        } catch (Twin9Exception) {
+            return null;
+        }
+    };
+
     $app->get('/twin9/configuration', $wrap(
-        function (Request $request, Response $response, array $args, int $userId) use ($json, $politique): Response {
+        function (Request $request, Response $response, array $args, int $userId) use ($json, $politique, $fournisseurs): Response {
+            $profils = new ProfilRepository(Db::get());
+            $documents = $profils->documentsDe($userId);
+            $defaut = $politique()->defaut();
+
             return $json($response, [
-                'profils' => (new ProfilRepository(Db::get()))->listForUser($userId),
-                'defaut' => $politique()->defaut(),
+                'profils' => array_map(static fn (array $p): array => $p + ['fournisseurs' => isset($documents[$p['id']])
+                    ? $fournisseurs($documents[$p['id']]) : null], $profils->listForUser($userId)),
+                'defaut' => $defaut,
+                'defaut_fournisseurs' => $fournisseurs($defaut),
             ] + $politique()->choix($userId));
         }
     ));

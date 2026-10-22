@@ -119,13 +119,13 @@ const LIBELLES = {
   lecteurs: 'Lecteurs',
   rapide: 'Analyse rapide',
   profond: 'Analyse profonde',
-  voie: 'Voie',
+  voie: 'Voie des appels Anthropic',
   parallelisme: 'Parallélisme',
   appels_directs: 'Appels directs simultanés',
   journees: 'Journées menées de front (appels directs)',
   budget_usd: 'Budget (USD)',
   duree_minutes: 'Durée (minutes)',
-  cle: 'Clé Anthropic',
+  cle: 'Clés',
   gabarits: 'Jeu de gabarits',
   referentiel: 'Référentiel',
   id: 'Référentiel',
@@ -141,6 +141,7 @@ const LIBELLES = {
   merge: 'Fusion',
   scan_global: 'Arpenteur',
   troncatures: 'Troncatures',
+  fournisseur: 'Fournisseur',
   modele: 'Modèle',
   budget_sortie: 'Budget de sortie',
   effort: 'Effort',
@@ -163,7 +164,59 @@ export function libelle(cle, node) {
   return texte.charAt(0).toUpperCase() + texte.slice(1)
 }
 
+/**
+ * Les fournisseurs d'un appel Twin9, dans l'ordre du registre
+ * (Twin9\Fournisseurs\Fournisseurs, ADR-012), et leurs libellés : ceux du
+ * registre, qu'un test compare.
+ */
+export const FOURNISSEURS = schema.$defs.fournisseur.enum
+export const FOURNISSEUR_DEFAUT = 'anthropic'
+export const LIBELLES_FOURNISSEURS = {
+  anthropic: 'Anthropic',
+  openai: 'OpenAI',
+  mistral: 'Mistral AI',
+  google: 'Google (Gemini)',
+  xai: 'xAI (Grok)',
+  openrouter: 'OpenRouter',
+}
+
+/** L'étiquette RGPD de chaque fournisseur, celle du registre (un test la compare) : la page la lit au serveur d'abord. */
+export const RGPD_FOURNISSEURS = {
+  anthropic: 'sous_conditions',
+  openai: 'sous_conditions',
+  mistral: 'oui',
+  google: 'non',
+  xai: 'non',
+  openrouter: 'non',
+}
+
+/**
+ * Les réglages de raisonnement qu'une entrée de la grille peut nommer
+ * (reflexion_param), par fournisseur : ceux de Twin9Config::REFLEXION_PARAMS
+ * (un test les compare), `reasoning_effort` d'OpenAI et `thinkingLevel` de
+ * Gemini ; tous les modèles n'admettent pas toutes les valeurs.
+ */
+export const REFLEXION_PARAMS = {
+  openai: ['none', 'minimal', 'low', 'medium', 'high', 'xhigh', 'max'],
+  google: ['MINIMAL', 'LOW', 'MEDIUM', 'HIGH'],
+}
+
+/** La clé d'un modèle dans la grille des prix (Fournisseurs::clePrix) : l'identifiant nu chez Anthropic, « fournisseur:modèle » sinon. */
+export function clePrix(fournisseur, modele) {
+  return fournisseur === 'anthropic' ? modele : `${fournisseur}:${modele}`
+}
+
+/** Le fournisseur et le modèle d'une clé de la grille (Fournisseurs::depuisClePrix) : une clé nue est d'Anthropic. */
+export function depuisClePrix(cle) {
+  const i = cle.indexOf(':')
+  const fournisseur = i > 0 ? cle.slice(0, i) : null
+  return fournisseur !== null && fournisseur !== 'anthropic' && Object.hasOwn(LIBELLES_FOURNISSEURS, fournisseur)
+    ? [fournisseur, cle.slice(i + 1)]
+    : ['anthropic', cle]
+}
+
 const CHOIX = {
+  ...LIBELLES_FOURNISSEURS,
   test: 'Essai',
   complet: 'Complet',
   directe: 'Directe',
@@ -187,4 +240,150 @@ export function lisible(valeur) {
   if (typeof valeur === 'boolean') return valeur ? 'oui' : 'non'
   if (typeof valeur === 'object') return JSON.stringify(valeur)
   return libelleChoix(valeur)
+}
+
+// ---- Fournisseurs (ADR-012) ----------------------------------------------------
+
+/**
+ * L'étiquette RGPD d'un fournisseur, lisible. Ce n'est pas un avis juridique : la
+ * recherche du comparatif des plateformes (juillet 2026), que le registre reprend.
+ */
+const RGPD = { oui: 'oui', sous_conditions: 'sous conditions', non: 'non', local: 'local' }
+
+/** « RGPD : sous conditions ». */
+export function libelleRgpd(rgpd) {
+  return `RGPD : ${RGPD[rgpd] ?? rgpd}`
+}
+
+/** La voie d'un fournisseur, lisible : « par lots », « en direct ». */
+export function libelleVoie(voie) {
+  return { lots: 'par lots', directe: 'en direct', mixte: 'par lots et en direct' }[voie] ?? voie
+}
+
+/** Les étapes du profil, dans l'ordre du schéma (le second ressort compris). */
+export const ETAPES = Object.keys(schema.properties.etapes.properties)
+
+/** L'étage d'une étape, que sa description nomme (« Greffier (étage rapide). ») ; null si elle n'en nomme pas. */
+export function etageDeLEtape(cle) {
+  const description = resoudre(schema.properties.etapes.properties[cle])?.description ?? ''
+  return /\(étage (\w+)\)/.exec(description)?.[1] ?? null
+}
+
+/** L'objet d'un réglage d'appel (étage, étape, lecteur) qui porte la feuille d'un chemin ; null sinon. */
+export function objetDe(chemin) {
+  if (chemin.length !== 3) return null
+  const [partie, nom] = chemin
+  if (partie === 'etages' || partie === 'etapes') return typeof nom === 'string' ? [partie, nom] : null
+  if (partie === 'college') return typeof nom === 'number' ? [partie, nom] : null
+  return null
+}
+
+/**
+ * Le fournisseur dont hérite un objet qui n'en nomme pas : Anthropic pour un
+ * étage, celui de son étage pour une étape, celui de l'étage des lecteurs pour
+ * un lecteur. Null au second ressort, qui recouvre des étapes des deux étages :
+ * chacune garde le sien.
+ */
+export function fournisseurHerite(profil, objet) {
+  const [partie, nom] = objet
+  if (partie === 'etages') return FOURNISSEUR_DEFAUT
+  if (partie === 'college') return fournisseurDe(profil, ['etages', 'lecteurs'])
+  const etage = etageDeLEtape(nom)
+  return nom === 'second_ressort' || etage === null ? null : fournisseurDe(profil, ['etages', etage])
+}
+
+/** Le fournisseur effectif d'un objet : le sien, sinon celui dont il hérite. */
+export function fournisseurDe(profil, objet) {
+  return lire(profil, [...objet, 'fournisseur']) ?? fournisseurHerite(profil, objet)
+}
+
+/**
+ * Les fournisseurs qu'atteignent les appels d'un profil, dans l'ordre du
+ * registre, chacun avec sa voie : par lots pour Anthropic quand le profil le
+ * dit, en direct sinon (CallSettings::fournisseurs() côté serveur) — chaque
+ * lecteur du collège, chaque étape, chaque étape au second ressort ; l'étage
+ * des lecteurs seul n'est appelé par personne.
+ *
+ * @returns {Array<{id: string, voie: 'lots'|'directe'}>}
+ */
+export function fournisseursDuProfil(profil) {
+  const atteints = new Set()
+  ;(profil?.college ?? []).forEach((_, i) => atteints.add(fournisseurDe(profil, ['college', i])))
+  const second = lire(profil, ['etapes', 'second_ressort', 'fournisseur'])
+  for (const etape of ETAPES.filter((e) => e !== 'second_ressort')) {
+    const f = fournisseurDe(profil, ['etapes', etape])
+    atteints.add(f)
+    atteints.add(second ?? f)
+  }
+  return FOURNISSEURS.filter((f) => atteints.has(f)).map((id) => ({
+    id,
+    voie: id === FOURNISSEUR_DEFAUT && profil?.voie === 'lots' ? 'lots' : 'directe',
+  }))
+}
+
+/**
+ * Le motif des identifiants de modèle de chaque fournisseur, ceux du registre
+ * (un test les compare) : « claude-… » chez Anthropic et nulle part ailleurs ;
+ * ni « / » ni « : » chez Google ; « éditeur/modèle », sans suffixe, chez
+ * OpenRouter.
+ */
+export const MOTIFS_MODELE = {
+  anthropic: /^claude-[a-z0-9][a-z0-9.-]{0,72}$/,
+  openai: /^(?!claude-)[a-z0-9][a-z0-9._-]{0,79}$/,
+  mistral: /^(?!claude-)[a-z0-9][a-z0-9._-]{0,79}$/,
+  google: /^[a-z0-9][a-z0-9.-]{0,79}$/,
+  xai: /^(?!claude-)[a-z0-9][a-z0-9._-]{0,79}$/,
+  openrouter: /^(?=.{3,80}$)[a-z0-9][a-z0-9._-]*\/[a-z0-9][a-z0-9._-]*$/,
+}
+
+/** Un identifiant de modèle que ce fournisseur admet. */
+export function modeleAdmis(fournisseur, modele) {
+  const motif = MOTIFS_MODELE[fournisseur]
+  return typeof modele === 'string' && motif !== undefined && motif.test(modele)
+}
+
+/** La famille d'un lecteur qui n'en nomme pas : l'éditeur du modèle chez OpenRouter, son fournisseur sinon. */
+export function familleDefaut(fournisseur, modele) {
+  return fournisseur === 'openrouter' && typeof modele === 'string' && modele.includes('/') ? modele.split('/')[0] : fournisseur
+}
+
+/** Le modèle effectif d'un objet : le sien, sinon celui de son étage (au second ressort : aucun). */
+export function modeleDe(profil, objet) {
+  const propre = lire(profil, [...objet, 'modele'])
+  if (propre !== undefined) return propre
+  const [partie, nom] = objet
+  if (partie === 'college') return lire(profil, ['etages', 'lecteurs', 'modele'])
+  if (partie === 'etapes') {
+    const etage = etageDeLEtape(nom)
+    return nom === 'second_ressort' || etage === null ? undefined : lire(profil, ['etages', etage, 'modele'])
+  }
+  return undefined
+}
+
+/**
+ * Le profil après qu'un objet a changé de fournisseur (`avant` → `profil`) :
+ * la famille d'un lecteur suit, si elle était celle de l'ancien fournisseur
+ * (elle part, et le serveur en déduit la nouvelle) ; un modèle que le nouveau
+ * fournisseur n'admet pas est retiré d'une étape ou d'un lecteur, et remplacé
+ * à l'étage, où il est requis (par celui du profil v9.8 chez Anthropic, à
+ * choisir ailleurs) ; l'effort, propre à Anthropic, part avec lui.
+ */
+export function suivreLeFournisseur(avant, profil, objet, defaut) {
+  const ancien = fournisseurDe(avant, objet)
+  const nouveau = fournisseurDe(profil, objet)
+  if (ancien === nouveau) return profil
+  let suite = profil
+  if (objet[0] === 'college') {
+    const famille = lire(suite, [...objet, 'famille'])
+    if (famille === '' || famille === ancien || famille === familleDefaut(ancien, modeleDe(avant, objet))) {
+      suite = ecrire(suite, [...objet, 'famille'], undefined)
+    }
+  }
+  const modele = lire(suite, [...objet, 'modele'])
+  if (nouveau !== null && modele !== undefined && !modeleAdmis(nouveau, modele)) {
+    const remplacant = nouveau === FOURNISSEUR_DEFAUT ? (lire(defaut, [...objet, 'modele']) ?? '') : ''
+    suite = ecrire(suite, [...objet, 'modele'], objet[0] === 'etages' ? remplacant : undefined)
+  }
+  if (nouveau !== null && nouveau !== FOURNISSEUR_DEFAUT) suite = ecrire(suite, [...objet, 'effort'], undefined)
+  return suite
 }

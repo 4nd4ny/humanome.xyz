@@ -92,6 +92,32 @@ const CONTENT_RULES = [
     re: /sk-ant-[A-Za-z0-9]{2,}-[A-Za-z0-9_-]{16,}/,
     why: 'clé API Anthropic en clair',
   },
+  // Les clés des autres fournisseurs de Twin9 (ADR-012). Seul le format Google
+  // est fixé par la spécification ; les autres motifs exigent une longue suite
+  // après le préfixe, pour ne jamais prendre une clé factice courte
+  // (sk-proj-…, sk-or-v1-…, xai-…). Mistral n'a pas de préfixe : aucun motif.
+  {
+    id: 'cle-openai',
+    re: /\bsk-(?:proj|svcacct|admin)-[A-Za-z0-9_-]{40,}/,
+    why: 'clé API OpenAI en clair',
+  },
+  {
+    id: 'cle-openrouter',
+    re: /\bsk-or-v1-[0-9a-f]{64}\b/,
+    why: 'clé API OpenRouter en clair',
+  },
+  {
+    id: 'cle-xai',
+    re: /\bxai-[A-Za-z0-9]{40,}\b/,
+    why: 'clé API xAI en clair',
+  },
+  {
+    id: 'cle-google',
+    // bornée par des gardes explicites, pas par \b : une clé peut finir par « - », qui n'est pas un caractère de
+    // mot — \b n'y trouvait aucune frontière devant un guillemet, une espace ou la fin de la ligne (2026-10-22)
+    re: /(?<![0-9A-Za-z_-])AIza[0-9A-Za-z_-]{35}(?![0-9A-Za-z_-])/,
+    why: 'clé API Google en clair',
+  },
   {
     id: 'secret-paypal',
     re: /PAYPAL_SECRET\s*[:=]\s*["']?[^\s"'#]+/,

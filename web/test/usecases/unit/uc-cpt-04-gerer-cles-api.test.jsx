@@ -102,13 +102,14 @@ describe('UC-CPT-04 — synchronisation serveur (opt-in)', () => {
 })
 
 describe('UC-CPT-04 — fournisseurs', () => {
-  it('UC-CPT-04-U12 — profil et assistant proposent les mêmes six fournisseurs, tous acceptés par le coffre serveur (KeyVault.php lu)', () => {
+  it('UC-CPT-04-U12 — profil et assistant proposent les mêmes six fournisseurs, tous acceptés par le coffre serveur (KeyVault.php lu) ; ni le profil ni le coffre ne prennent une clé Mistral AI, qu’aucun parcours n’emploie', () => {
     const profileIds = KEY_PROVIDERS.map((p) => p.id)
     const wizardIds = PROVIDERS.map((p) => p.id)
     const vault = serverProviders()
     expect(vault).toContain('mock')
     expect([...profileIds].sort()).toEqual([...wizardIds].sort())
     expect(profileIds).toHaveLength(6)
+    expect(vault).not.toContain('mistral')
     for (const id of profileIds) expect(vault).toContain(id)
     expect(profileIds).not.toContain('mock')
     // Ollama tourne en local : aucune clé à gérer dans l'assistant.

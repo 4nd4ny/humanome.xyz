@@ -4,6 +4,7 @@ declare(strict_types=1);
 
 namespace Humanome\Twin9;
 
+use Humanome\Twin9\Fournisseurs\Fournisseurs;
 use PDO;
 use stdClass;
 
@@ -22,7 +23,11 @@ use stdClass;
  *
  * The forecasts (modele(), selon()) read the latest evaluations of the same
  * settings (signature()), each converted to the lane and the key of the run
- * foreseen: half price by batches, the margin with the instance's key. A day
+ * foreseen: half price by batches, the margin with the instance's key. Since
+ * the mixed lane (P1-5), an evaluation keeps the lane its run went by
+ * (directe, lots or mixte) and the share of Anthropic in the cost of its
+ * days and of its merge: only Anthropic's calls go by batches, so only that
+ * share is converted (a row of before, all Anthropic, a share of 1). A day
  * instructed costs a fixed part — its pole's fiches fill most of each reading
  * prompt — and a part by kilobyte, a merge the same by the kilobytes of the
  * map it reads, neither part below zero (droite()): between the sizes
@@ -86,25 +91,31 @@ final class Evaluations
                               int $dureeS, string $referentiel = ''): void
     {
         $stmt = $this->pdo->prepare(
-            'SELECT appel, statut, COALESCE(cout_microusd, 0), pire_cas_microusd FROM twin9_appels WHERE run_id = ?'
+            'SELECT appel, statut, COALESCE(cout_microusd, 0), pire_cas_microusd, fournisseur FROM twin9_appels
+              WHERE run_id = ?'
         );
         $stmt->execute([$runId]);
         $parJour = [];
         $pannes = [];
         $pireCas = ['journee' => null, 'fusion' => null];
+        // each phase's cost, and Anthropic's in it (P1-5)
+        $parts = ['journee' => [0, 0], 'fusion' => [0, 0]];
         $total = 0;
-        foreach ($stmt->fetchAll(PDO::FETCH_NUM) as [$appel, $statut, $cout, $pire]) {
+        foreach ($stmt->fetchAll(PDO::FETCH_NUM) as [$appel, $statut, $cout, $pire, $fournisseur]) {
             $total += (int) $cout;
             $jour = preg_match('#^journees/([^/]+)/#', (string) $appel, $m) === 1 ? $m[1] : null;
+            $cote = $jour === null ? 'fusion' : 'journee';
             if ($jour !== null) {
                 $parJour[$jour] = ($parJour[$jour] ?? 0) + (int) $cout;
                 $pannes[$jour] = ($pannes[$jour] ?? false) || $statut === 'panne';
             }
             if ($pire !== null) {
-                $cote = $jour === null ? 'fusion' : 'journee';
                 $pireCas[$cote] = max($pireCas[$cote] ?? 0, (int) $pire);
             }
+            $parts[$cote][0] += (int) $cout;
+            $parts[$cote][1] += $fournisseur === Fournisseurs::DEFAUT ? (int) $cout : 0;
         }
+        $part = array_map(static fn (array $p): ?float => $p[0] > 0 ? round($p[1] / $p[0], 4) : null, $parts);
         $journee = static fn (?float $ko, ?int $cout, bool $panne): array
             => ['ko' => $ko, 'cout_microusd' => $cout] + ($panne ? ['panne' => true] : []);
         $journees = [];
@@ -121,21 +132,23 @@ final class Evaluations
                                             cout_microusd, duree_s)
              VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)'
         )->execute([$runId, $userId, self::signature($profil, $jeu, $referentiel),
-                    json_encode(self::reglages($profil, $jeu, $marge, $referentiel), self::JSON),
+                    json_encode(self::reglages($profil, $jeu, $marge, $referentiel, $part), self::JSON),
                     json_encode($journees, self::JSON), $coutJournees, $total - $coutJournees, $pireCas['journee'],
                     $pireCas['fusion'], $total, $dureeS]);
     }
 
     /**
      * What the latest evaluations of a signature say (RECENTES), each
-     * converted to a lane and a margin (half price by batches; its own margin
-     * out, this one in): what a day instructed costs by its size, and a merge
-     * by the size of the map it reads (droite()) — a day where a call failed
-     * left out —; the largest worst case a call of a day, and of a merge,
-     * held; and, by direct calls, the active seconds of a run by day
-     * instructed, its merge included, on average. Null for what no
+     * converted to a lane and a margin (its own margin out, this one in; by
+     * batches, Anthropic's share of each phase at half price — facteur()):
+     * what a day instructed costs by its size, and a merge by the size of
+     * the map it reads (droite()) — a day where a call failed left out —;
+     * the largest worst case a call of a day, and of a merge, held; and, of
+     * the runs gone by direct calls alone, the active seconds of a run by
+     * day instructed, its merge included, on average. Null for what no
      * evaluation says.
      *
+     * @param bool $parLots the lane of the run foreseen's Anthropic calls (its profile's « voie »)
      * @return array{evaluations: int, journee: array<string, float>|null, fusion: array<string, float>|null,
      *               pire_cas: array{journee: float|null, fusion: float|null},
      *               secondes_par_journee: float|null}|null in micro-USD; null: no evaluation
@@ -156,9 +169,13 @@ final class Evaluations
         $secondes = [0, 0];
         foreach ($lignes as $ligne) {
             $reglages = json_decode((string) $ligne['reglages'], true, 64, JSON_THROW_ON_ERROR);
-            $lots = ($reglages['voie'] ?? '') === 'lots';
-            $facteur = $marge / max(0.000001, (float) ($reglages['marge'] ?? 1.0))
-                * ($lots === $parLots ? 1.0 : ($parLots ? 0.5 : 2.0));
+            // its Anthropic calls went by batches: its lane « lots », or « mixte » (P1-5)
+            $lots = \in_array($reglages['voie'] ?? '', ['lots', 'mixte'], true);
+            $facteurs = [];
+            foreach (['journee', 'fusion'] as $cote) {
+                $facteurs[$cote] = $marge / max(0.000001, (float) ($reglages['marge'] ?? 1.0))
+                    * self::facteur($lots, $parLots, $reglages['part_anthropique'][$cote] ?? null);
+            }
             $carte = 0.0;
             $instruites = 0;
             foreach (json_decode((string) $ligne['journees'], true, 64, JSON_THROW_ON_ERROR) as $jour) {
@@ -169,16 +186,16 @@ final class Evaluations
                 $carte += (float) $jour['ko'];
                 // a day where a call failed is mapped again: its cost is not a day's
                 if ($jour['cout_microusd'] !== null && !($jour['panne'] ?? false)) {
-                    $points['journee'][] = [(float) $jour['ko'], $jour['cout_microusd'] * $facteur];
+                    $points['journee'][] = [(float) $jour['ko'], $jour['cout_microusd'] * $facteurs['journee']];
                 }
             }
             if ($carte > 0) {
-                $points['fusion'][] = [round($carte, 2), (int) $ligne['cout_fusion_microusd'] * $facteur];
+                $points['fusion'][] = [round($carte, 2), (int) $ligne['cout_fusion_microusd'] * $facteurs['fusion']];
             }
             foreach (['journee', 'fusion'] as $cote) {
                 $pire = $ligne['pire_cas_' . $cote . '_microusd'];
                 if ($pire !== null) {
-                    $pireCas[$cote] = max($pireCas[$cote] ?? 0.0, (int) $pire * $facteur);
+                    $pireCas[$cote] = max($pireCas[$cote] ?? 0.0, (int) $pire * $facteurs[$cote]);
                 }
             }
             if (!$lots && $instruites > 0) {
@@ -192,6 +209,24 @@ final class Evaluations
                 'fusion' => $points['fusion'] === [] ? null : self::droite($points['fusion']),
                 'pire_cas' => $pireCas,
                 'secondes_par_journee' => $secondes[1] > 0 ? (float) $secondes[0] / $secondes[1] : null];
+    }
+
+    /**
+     * What converts a phase's cost from an evaluation's lane to the run
+     * foreseen's: the same lane, nothing; only Anthropic's share $a goes by
+     * batches — by batches to a direct run, 1 + a; direct to a run by
+     * batches, 1 − a/2 —; a row of before the mixed lane, all Anthropic,
+     * a = 1: twice, or half.
+     *
+     * @param bool $lots the evaluation's Anthropic calls went by batches
+     * @param bool $parLots the run foreseen's go by batches
+     * @param mixed $part the evaluation's share of Anthropic in the phase's cost, or null (1)
+     */
+    public static function facteur(bool $lots, bool $parLots, mixed $part): float
+    {
+        $a = is_numeric($part) ? max(0.0, min(1.0, (float) $part)) : 1.0;
+
+        return $lots === $parLots ? 1.0 : ($parLots ? 1.0 - $a / 2 : 1.0 + $a);
     }
 
     /**
@@ -262,29 +297,37 @@ final class Evaluations
                 'ecart_max' => max(0.0, ...$ecarts), 'ko_min' => $bas, 'ko_max' => $haut];
     }
 
-    /** @return array<string, mixed> its lane, key and margin, with what the forecasts compare */
-    private static function reglages(stdClass $profil, string $jeu, float $marge, string $referentiel): array
+    /**
+     * @param array{journee: float|null, fusion: float|null} $part the share of Anthropic in each phase's cost
+     * @return array<string, mixed> its lane as it went (directe, lots or mixte, CallSettings::voieEffective()),
+     *         its key and margin, the share of Anthropic in each phase's cost, with what the forecasts compare
+     */
+    private static function reglages(stdClass $profil, string $jeu, float $marge, string $referentiel,
+                                     array $part): array
     {
-        return ['voie' => (string) $profil->voie, 'cle' => (string) $profil->cle, 'marge' => $marge]
+        return ['voie' => (new CallSettings($profil))->voieEffective(), 'cle' => (string) $profil->cle,
+                'marge' => $marge, 'part_anthropique' => $part]
             + self::comparables($profil, $jeu, $referentiel);
     }
 
     /**
      * @return array<string, mixed> the mode, the referential, its version and its fingerprint (T16), the template
-     *         set and its fingerprint, the models and the performance (stages, steps, readers), the algorithm's
+     *         set and its fingerprint, the models and the performance (stages, steps, readers: a provider named
+     *         where it is inherited anyway left out, CallSettings::sansFournisseurHerite()), the algorithm's
      *         parameters
      */
     private static function comparables(stdClass $profil, string $jeu, string $referentiel): array
     {
+        $appels = CallSettings::sansFournisseurHerite($profil);
         $lecteurs = [];
-        foreach ($profil->college ?? [] as $lecteur) {
+        foreach ($appels['college'] as $lecteur) {
             $lecteurs[] = array_intersect_key((array) $lecteur, array_flip(self::LECTEUR));
         }
         $reglages = ['mode' => (string) $profil->mode, 'referentiel' => (string) ($profil->referentiel->id ?? ''),
                      'version_referentiel' => (string) ($profil->referentiel->version ?? ''),
                      'empreinte_referentiel' => $referentiel,
                      'gabarits' => (string) ($profil->gabarits ?? ''), 'empreinte_gabarits' => $jeu,
-                     'etages' => $profil->etages, 'etapes' => $profil->etapes ?? new stdClass(), 'lecteurs' => $lecteurs];
+                     'etages' => $appels['etages'], 'etapes' => $appels['etapes'], 'lecteurs' => $lecteurs];
         foreach (self::ALGORITHME as $cle) {
             $reglages[$cle] = $profil->{$cle} ?? null;
         }

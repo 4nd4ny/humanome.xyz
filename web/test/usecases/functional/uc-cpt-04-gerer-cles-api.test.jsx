@@ -193,6 +193,16 @@ describe('UC-CPT-04 — section « Clés API personnelles » du profil', () => {
   })
 })
 
+describe('UC-CPT-04 — les clés et Twin9 (ADR-012)', () => {
+  it('UC-CPT-04-F22 — A6 : la section dit que Twin9 n’emploie qu’une clé personnelle Anthropic ; elle ne propose aucune clé Mistral AI, qu’aucun parcours n’emploie (minimisation)', async () => {
+    const { section } = await openKeysSection()
+    await section.findByText('Aucune clé enregistrée.')
+    expect(section.getByText(/Pour l’analyse approfondie Twin9, une clé personnelle ne sert que chez Anthropic/)).toBeDefined()
+    const options = Array.from(section.getByLabelText('Fournisseur').querySelectorAll('option')).map((o) => o.value)
+    expect(options).not.toContain('mistral')
+  })
+})
+
 describe('UC-CPT-04 — clé dans l’assistant de run', () => {
   it('UC-CPT-04-F15 — A1 : sans compte, la clé mémorisée localement est pré-remplie, sert au run et ne part jamais vers humanome', async () => {
     const api = installFakeAccountApi()

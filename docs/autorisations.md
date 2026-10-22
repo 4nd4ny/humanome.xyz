@@ -232,7 +232,8 @@ fixe ce qui vaut pour toute l'instance. Chaque ligne de la matrice a son test da
 | Le profil d'un autre | — | — (404) | — (404) |
 | Le profil v9.8, par défaut | — | lecture (une modification en fait une copie, la sienne) | idem |
 | Le budget et la durée de ses runs | — | ✔ | ✔ |
-| Sa clé : celle de l'instance ou la sienne | — | ✔ ; la sienne si l'administrateur l'a ouverte | idem |
+| Sa clé : celle de l'instance ou la sienne | — | ✔ ; la sienne si l'administrateur l'a ouverte, et chez Anthropic seulement (ADR-012) | idem |
+| Le fournisseur de chaque étage, étape ou lecteur de ses profils (ADR-012) | — | ✔ parmi les six du registre ; un fournisseur que l'administrateur n'a pas ouvert s'enregistre, mais ne s'estime ni ne se lance | idem |
 | Sa clé personnelle elle-même (son coffre, `#/compte`) | — | ✔ | ✔ |
 | Le référentiel de ses runs | — | parmi les publiés ; avec `epistemiarque`, ses propres brouillons aussi, pour ses runs d'essai (T15), tant qu'il l'est | idem (un `admin` écrit aussi des brouillons) |
 | Le jeu de gabarits de ses runs (T14) | — | le jeu v9.8 ou le jeu par défaut | idem ; avec `promptologue` (atelier), ses copies aussi, tant qu'il en est |
@@ -240,8 +241,10 @@ fixe ce qui vaut pour toute l'instance. Chaque ligne de la matrice a son test da
 | Copier le jeu v9.8, éditer sa copie, ses versions, son retour arrière (T14) | — | — | `admin` ∧ `promptologue` : ✔ la sienne ; la copie d'un autre se lit (403 en écriture) ; `admin` seul : — (403) |
 | Le jeu de gabarits par défaut, celui du profil par défaut (T14) | — | — (403) | ✔ (`#/admin/twin9`, `/api/twin9/admin/jeux/defaut`) |
 | Prix, marge, ouverture des clés personnelles | — | — (403) | ✔ (`#/admin/twin9`, `/api/twin9/admin/config`) |
+| Ouverture des fournisseurs (`twin9_fournisseurs_ouverts`, Anthropic seul par défaut) et des fournisseurs étiquetés « non » au regard du RGPD (`twin9_fournisseurs_non_rgpd`, fermé par défaut), prix et plafonds de leurs modèles — ADR-012 | — | — (403) | ✔ (`#/admin/twin9`, `/api/twin9/admin/config`) |
+| Savoir quelles clés d'instance sont posées | — | — : la page de configuration ne lit qu'un booléen `disponible` par fournisseur, sans sa cause | ✔ (`fournisseurs[].cle_instance` de `/api/twin9/admin/config`, un booléen, jamais la clé) |
 | Runs par tick, durée d'une tranche (T7) | — | — (403) | ✔ (`/api/twin9/admin/config`, pas encore à l'écran) |
-| La clé de l'instance | — | — | à l'installation (`ANTHROPIC_API_KEY`, `docs/deploiement.md`), jamais par l'interface |
+| La clé de l'instance | — | — | à l'installation (`ANTHROPIC_API_KEY` et, pour les autres fournisseurs, `OPENAI_API_KEY`, `MISTRAL_API_KEY`, `GOOGLE_API_KEY`, `XAI_API_KEY`, `OPENROUTER_API_KEY` : `api/.env.example`), jamais par l'interface |
 
 Les jeux de gabarits des promptologues (T14) y ont leurs lignes, testées dans
 `ConfigurationDroitsTest.php` (le jeu de ses runs), `Twin9ProtocoleTest.php` et
@@ -250,12 +253,19 @@ défaut) ; les brouillons de référentiel (T15) y ont la leur, testée dans
 `ConfigurationDroitsTest.php` (`testADraftServesOnlyItsAuthorsTestRuns`) ;
 depuis T16, un run sur un autre référentiel que RESPIRE part, son moteur
 lisant le référentiel du profil (`RunsTest.php`,
-`testARunReadsTheReferentialItsProfileNames`).
+`testARunReadsTheReferentialItsProfileNames`). Les fournisseurs (ADR-012)
+ont les leurs : leur ouverture (`testTheProvidersAreOpenedByTheAdministrator`),
+les clés d'instance que lit l'administrateur seul (`testTheAdministratorReadsWhichInstanceKeysAreSet`),
+les fournisseurs de chaque profil que l'accord nomme (`testTheConfigurationNamesEachProfilesProviders`),
+un profil qui nomme un fournisseur fermé (`testAProviderNotOpenYetIsSavedNotLaunched`),
+la clé personnelle, Anthropic seulement
+(`testThePersonalKeyOnlyWhereTheAdministratorOpenedIt`), et le lancement
+refusé (`RunsTest.php`, `testAProviderNotOpenLaunchesNothing`).
 
 | Route | Méthode | Accès |
 |---|---|---|
 | `/api/twin9/configuration` | GET | Compte : ses profils (sans leur document), le profil par défaut (celui de la v9.8, avec le jeu de gabarits par défaut), les référentiels publiés et leurs versions, ses propres brouillons (T15), les jeux de gabarits qu'il peut choisir, sa clé personnelle (ouverte, enregistrée) |
-| `/api/twin9/profils` | POST | Compte, + CSRF. Le profil doit être valide (schéma, règles de l'API) et admis (référentiel publié, ou son brouillon en mode essai, T15 ; jeu qu'il peut choisir ; clé personnelle ouverte) |
+| `/api/twin9/profils` | POST | Compte, + CSRF. Le profil doit être valide (schéma, règles de l'API, dont celles des fournisseurs) et admis (référentiel publié, ou son brouillon en mode essai, T15 ; jeu qu'il peut choisir ; clé personnelle ouverte, et seulement pour un profil tout Anthropic) |
 | `/api/twin9/profils/{id}` | GET/PUT/DELETE | Son propriétaire, + CSRF sur PUT et DELETE ; 404 pour tout autre |
 
 ### Runs Twin9 (T9, `#/twin9`)
@@ -269,7 +279,7 @@ l'export, dans `PurgeExportTest.php` (T10).
 | Ce que l'on fait | Visiteur | Compte | Cartographe lié | `admin` |
 |---|---|---|---|---|
 | Voir avant de lancer les journées à instruire, le coût et la durée estimés (rien n'est gardé) | — (401) | ✔ avec un de ses profils ou celui de la v9.8 | comme tout compte | comme tout compte |
-| Lancer un run : un de ses profils ou celui de la v9.8, son portfolio, son accord | — (401) | ✔ (accord exigé, 422 sans lui) | comme tout compte | comme tout compte |
+| Lancer un run : un de ses profils ou celui de la v9.8, son portfolio, son accord | — (401) | ✔ (accord exigé, qui nomme les fournisseurs du run, 422 sans lui ou s'il en nomme d'autres ; 422 si le profil atteint un fournisseur que l'administrateur n'a pas ouvert, ou sans sa clé d'instance, ou un modèle tiers sans prix ni plafonds) | comme tout compte | comme tout compte |
 | Lancer avec le profil d'un autre | — | — (404) | — (404) | — (404) |
 | Suivre ses runs, les annuler, les reprendre (sous un nouveau budget), régler leur visibilité | — (401) | ✔ les siens | — (404) | — (404) |
 | Exporter ses runs, leurs journaux et la mémoire de ses cartes | — (401) | ✔ les siens | — | — |
@@ -281,10 +291,10 @@ l'export, dans `PurgeExportTest.php` (T10).
 |---|---|---|
 | `/api/twin9/runs` | GET | Compte : ses runs (sans portfolio ni résultat), et si Twin9 tourne sur l'instance |
 | `/api/twin9/runs/apercu` | POST | Compte, + CSRF : `{profil, portfolio}` ; les journées nouvelles ou changées, le coût et la durée estimés, les plafonds, son crédit ; 404 pour le profil d'un autre ; rien n'est gardé |
-| `/api/twin9/runs` | POST | Compte, + CSRF : `{profil, portfolio: {nom, texte}, accord, visibilite}` ; le profil est revalidé et admis (`ProfilPolicy` : modèles au prix de l'instance compris), son référentiel figé ; jusqu'à T16, un autre référentiel que RESPIRE est refusé (422), à l'aperçu aussi |
+| `/api/twin9/runs` | POST | Compte, + CSRF : `{profil, portfolio: {nom, texte}, accord: {fournisseurs}, visibilite}` (`accord: true` pour un profil tout Anthropic) ; le profil est revalidé et admis (`ProfilPolicy` : modèles au prix de l'instance compris), son référentiel figé ; jusqu'à T16, un autre référentiel que RESPIRE est refusé (422), à l'aperçu aussi |
 | `/api/twin9/runs/avancer` | POST | Compte, + CSRF : une tranche, de la durée de celles du tick et sous son verrou, pour ses seuls runs |
 | `/api/twin9/runs/{id}` | GET | Son propriétaire : sa progression, lue dans son journal ; 404 pour tout autre |
-| `/api/twin9/runs/{id}/annuler`, `/reprendre` | POST | Son propriétaire, + CSRF ; `/reprendre` accepte `{budget_usd}`, un nouveau budget ; 409 hors de l'état voulu |
+| `/api/twin9/runs/{id}/annuler`, `/reprendre` | POST | Son propriétaire, + CSRF ; `/reprendre` accepte `{budget_usd}`, un nouveau budget, et relit la garde de ses fournisseurs (422 pour un fournisseur fermé depuis ou sans sa clé d'instance) ; 409 hors de l'état voulu |
 | `/api/twin9/runs/{id}/visibilite` | PUT | Son propriétaire, + CSRF : `privee` ou `cartographe` |
 | `/api/twin9/runs/{id}/resultats` | GET | Son propriétaire ; le cartographe lié si le run lui est visible, la configuration et l'exécution du run sans prix, coût, plafond ni clé (P0-1, `docs/contrats.md` §8.9) ; 404 pour tout autre, administrateur compris |
 | `/api/twin9/mes-analyses` | GET | Compte : ses runs (copie du profil, portfolio, journal, sorties, filtrés) et la mémoire de ses cartes, pour l'archive de compte |

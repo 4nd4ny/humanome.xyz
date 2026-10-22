@@ -108,8 +108,9 @@ describe('ApiKeysSection', () => {
   })
 
   // Exigence : fournisseurs anthropic/openai/google/openrouter/xai/ollama —
-  // exactement ceux-là, sans le fournisseur de test « mock ».
-  it('le select Fournisseur propose exactement les 6 fournisseurs de l’exigence (sans mock)', async () => {
+  // exactement ceux-là, sans le fournisseur de test « mock », ni Mistral AI,
+  // dont aucun parcours n'emploie la clé (minimisation).
+  it('le select Fournisseur propose exactement les 6 fournisseurs de l’exigence (sans mock ni Mistral AI)', async () => {
     render(<ApiKeysSection deps={fakeDeps({ listKeys: vi.fn(async () => []) })} />)
     await screen.findByText('Aucune clé enregistrée.')
 
@@ -123,5 +124,15 @@ describe('ApiKeysSection', () => {
       'xAI (Grok)',
       'Ollama (local)',
     ])
+  })
+
+  it('dit que Twin9 n’emploie qu’une clé personnelle Anthropic, et donne le début d’une clé de chaque fournisseur', async () => {
+    render(<ApiKeysSection deps={fakeDeps({ listKeys: vi.fn(async () => []) })} />)
+    await screen.findByText('Aucune clé enregistrée.')
+    expect(screen.getByText(/Pour l’analyse approfondie Twin9, une clé personnelle ne sert que chez Anthropic/)).toBeTruthy()
+    const cle = screen.getByLabelText('Clé API')
+    expect(cle.placeholder).toBe('ex. sk-ant-…')
+    fireEvent.change(screen.getByLabelText('Fournisseur'), { target: { value: 'google' } })
+    expect(cle.placeholder).toBe('ex. AIza…')
   })
 })

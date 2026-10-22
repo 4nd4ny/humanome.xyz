@@ -48,6 +48,36 @@ final class AdminSettingsTest extends AdminTestCase
         self::assertArrayNotHasKey('value', $secrets['ANTHROPIC_API_KEY']);
     }
 
+    /**
+     * The instance's key at each provider of Twin9's calls (ADR-012) is a
+     * secret: configured or not, never its value, whichever is set.
+     */
+    public function testEachProvidersInstanceKeyIsASecret(): void
+    {
+        $admin = $this->registerAdmin();
+        $variables = ['ANTHROPIC_API_KEY', 'OPENAI_API_KEY', 'MISTRAL_API_KEY', 'GOOGLE_API_KEY', 'XAI_API_KEY',
+                      'OPENROUTER_API_KEY'];
+        self::assertSame($variables, array_values(array_map(static fn (array $f): string => $f['env'],
+            \Humanome\Twin9\Fournisseurs\Fournisseurs::REGISTRE)), 'une variable par fournisseur du registre');
+        foreach ($variables as $i => $variable) {
+            TestDb::setEnv($variable, $i % 2 === 0 ? 'cle-factice-test-' . $i : '');
+        }
+        try {
+            $reponse = $this->as_($admin, 'GET', '/api/admin/settings');
+            $secrets = self::json($reponse)['config']['secrets'];
+            foreach ($variables as $i => $variable) {
+                self::assertSame(['env' => $variable, 'secret' => true, 'configured' => $i % 2 === 0],
+                    array_intersect_key($secrets[$variable], ['env' => 1, 'secret' => 1, 'configured' => 1]), $variable);
+                self::assertArrayNotHasKey('value', $secrets[$variable], $variable);
+            }
+            self::assertStringNotContainsString('cle-factice', (string) $reponse->getBody());
+        } finally {
+            foreach ($variables as $variable) {
+                TestDb::setEnv($variable, ''); // the class restores the originals (AuthTestBase)
+            }
+        }
+    }
+
     public function testSetDefaultPackage(): void
     {
         $admin = $this->registerAdmin();

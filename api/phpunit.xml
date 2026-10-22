@@ -32,5 +32,14 @@
              run together with or without the legacy suite, hence 2 GB.
              Test-runner-only setting; production php.ini is untouched. -->
         <ini name="memory_limit" value="2048M"/>
+        <!-- No real key ever reaches a test (ADR-012): the providers' keys
+             are emptied whatever the shell exports; a test that needs one
+             sets a fake (TestDb::setEnv). -->
+        <env name="ANTHROPIC_API_KEY" value="" force="true"/>
+        <env name="OPENAI_API_KEY" value="" force="true"/>
+        <env name="MISTRAL_API_KEY" value="" force="true"/>
+        <env name="GOOGLE_API_KEY" value="" force="true"/>
+        <env name="XAI_API_KEY" value="" force="true"/>
+        <env name="OPENROUTER_API_KEY" value="" force="true"/>
     </php>
 </phpunit>

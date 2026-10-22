@@ -180,6 +180,79 @@ describe('UC-ADM-05 — l’administrateur supervise Twin9', () => {
     expect(screen.queryByRole('heading', { name: 'Twin9 — supervision' })).toBeNull()
   })
 
+  it('UC-ADM-05-F21 — A7, A8 : ouvrir Mistral AI aux runs et tarifer un de ses modèles avec ses plafonds → un PUT (CSRF) ; la clé de l’instance se lit posée ou absente, jamais montrée ; Google ne s’ouvre qu’avec le second interrupteur, et un plafond de sortie que Gemini n’admet pas est refusé par le serveur, message affiché', async () => {
+    const fournisseurs = [
+      { id: 'anthropic', libelle: 'Anthropic', rgpd: 'sous_conditions', lots: true, env: 'ANTHROPIC_API_KEY', cle_instance: true },
+      { id: 'openai', libelle: 'OpenAI', rgpd: 'sous_conditions', lots: false, env: 'OPENAI_API_KEY', cle_instance: false },
+      { id: 'mistral', libelle: 'Mistral AI', rgpd: 'oui', lots: false, env: 'MISTRAL_API_KEY', cle_instance: true },
+      { id: 'google', libelle: 'Google (Gemini)', rgpd: 'non', lots: false, env: 'GOOGLE_API_KEY', cle_instance: false },
+      { id: 'xai', libelle: 'xAI (Grok)', rgpd: 'non', lots: false, env: 'XAI_API_KEY', cle_instance: false },
+      { id: 'openrouter', libelle: 'OpenRouter', rgpd: 'non', lots: false, env: 'OPENROUTER_API_KEY', cle_instance: false },
+    ]
+    const multi = { ...CONFIG, twin9_fournisseurs_ouverts: ['anthropic'], twin9_fournisseurs_non_rgpd: false, fournisseurs }
+    const refus = 'Modèle google:modele-fictif : plafond_sortie de 32768 au plus (requête non streamée de Gemini)'
+    let tour = 0
+    const { calls } = stubFetch(
+      routes({
+        'GET twin9/admin/config': jsonResponse(200, multi),
+        'PUT twin9/admin/config': (url, init) =>
+          tour++ === 0 ? jsonResponse(200, { ...multi, ...JSON.parse(init.body) }) : jsonResponse(422, { error: refus }),
+      }),
+    )
+    openSupervision()
+    await screen.findByText('Fournisseurs des appels Twin9')
+    expect(document.querySelector('[data-fournisseur="mistral"]').textContent).toContain('clé de l’instance (MISTRAL_API_KEY) : posée')
+    expect(document.querySelector('[data-fournisseur="openai"]').textContent).toContain('clé de l’instance (OPENAI_API_KEY) : absente')
+
+    fireEvent.click(screen.getByLabelText('Mistral AI'))
+    fireEvent.click(screen.getByRole('button', { name: 'Ajouter un modèle' }))
+    fireEvent.change(document.querySelector('#twin9-modele-fournisseur-1'), { target: { value: 'mistral' } })
+    fireEvent.change(document.querySelector('#twin9-modele-id-1'), { target: { value: 'modele-fictif' } })
+    fireEvent.change(document.querySelector('#twin9-modele-prixin-1'), { target: { value: '0.4' } })
+    fireEvent.change(document.querySelector('#twin9-modele-prixout-1'), { target: { value: '2' } })
+    fireEvent.change(document.querySelector('#twin9-modele-plafond-sortie-1'), { target: { value: '16000' } })
+    await enregistrer()
+    expect(await screen.findByText('Réglages Twin9 enregistrés.')).toBeDefined()
+    const [put] = putsConfig(calls)
+    expect(bodyOf(put)).toEqual({
+      twin9_fournisseurs_ouverts: ['anthropic', 'mistral'],
+      modeles: {
+        'claude-sonnet-5': { prix_usd_mtok: [3, 15] },
+        'mistral:modele-fictif': { prix_usd_mtok: [0.4, 2], plafond_sortie: 16000, plafond_reflexion: 0, duree_max_s: 30 },
+      },
+    })
+    expect(put.init.headers['X-CSRF-Token']).toBeTruthy()
+
+    // un fournisseur « non » ne s'ouvre qu'avec le second interrupteur, que refermer referme avec lui
+    expect(screen.getByLabelText('Google (Gemini)').disabled).toBe(true)
+    fireEvent.click(screen.getByLabelText(/Permettre d’ouvrir les fournisseurs étiquetés « non »/))
+    fireEvent.click(screen.getByLabelText('Google (Gemini)'))
+    fireEvent.click(screen.getByLabelText(/Permettre d’ouvrir les fournisseurs étiquetés « non »/))
+    expect(screen.getByLabelText('Google (Gemini)').checked).toBe(false)
+    fireEvent.click(screen.getByLabelText(/Permettre d’ouvrir les fournisseurs étiquetés « non »/))
+    fireEvent.click(screen.getByLabelText('Google (Gemini)'))
+    // un modèle Gemini au-delà de ce qu'une requête non streamée admet : le serveur refuse, la page le dit et garde la saisie
+    fireEvent.click(screen.getByRole('button', { name: 'Ajouter un modèle' }))
+    fireEvent.change(document.querySelector('#twin9-modele-fournisseur-2'), { target: { value: 'google' } })
+    fireEvent.change(document.querySelector('#twin9-modele-id-2'), { target: { value: 'modele-fictif' } })
+    fireEvent.change(document.querySelector('#twin9-modele-prixin-2'), { target: { value: '1' } })
+    fireEvent.change(document.querySelector('#twin9-modele-prixout-2'), { target: { value: '5' } })
+    fireEvent.change(document.querySelector('#twin9-modele-plafond-sortie-2'), { target: { value: '40000' } })
+    fireEvent.change(document.querySelector('#twin9-modele-reflexion-2'), { target: { value: 'LOW' } })
+    await enregistrer()
+    expect((await screen.findByRole('alert')).textContent).toBe(refus)
+    expect(screen.getByLabelText('Google (Gemini)').checked).toBe(true)
+    const second = bodyOf(putsConfig(calls)[1])
+    expect([second.twin9_fournisseurs_ouverts, second.twin9_fournisseurs_non_rgpd]).toEqual([['anthropic', 'mistral', 'google'], true])
+    expect(second.modeles['google:modele-fictif']).toEqual({
+      prix_usd_mtok: [1, 5],
+      plafond_sortie: 40000,
+      plafond_reflexion: 0,
+      duree_max_s: 30,
+      reflexion_param: 'LOW',
+    })
+  })
+
   it('UC-ADM-05-F18 — jeu de gabarits par défaut (T14) : l’administrateur choisit la copie d’un promptologue → PUT avec CSRF → confirmation ; jeu disparu entre-temps → message du serveur', async () => {
     let reponse = (init) => jsonResponse(200, { defaut: JSON.parse(init.body).jeu })
     const { calls } = stubFetch(routes({ 'PUT twin9/admin/jeux/defaut': (url, init) => reponse(init) }))

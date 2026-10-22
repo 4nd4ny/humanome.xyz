@@ -153,6 +153,59 @@ describe('Twin9Section — réglages', () => {
   })
 })
 
+describe('Twin9Section — pire cas insuffisant (ADR-012 §6)', () => {
+  it('signale le modèle tiers dont un appel a coûté plus que sa réserve, sur sa ligne de la grille', async () => {
+    const tiers = {
+      prix_usd_mtok: [0.7, 1.3],
+      plafond_sortie: 30000,
+      plafond_reflexion: 0,
+      duree_max_s: 10,
+    }
+    await renderReady({
+      ...baseRoutes,
+      'GET api/twin9/admin/config': jsonResponse(200, {
+        ...CONFIG,
+        modeles: { ...CONFIG.modeles, 'openai:modele-fictif-9': tiers },
+        pire_cas_insuffisants: {
+          'openai:modele-fictif-9': {
+            plafond_sortie: 30000,
+            plafond_reflexion: 0,
+            excedent_max_microusd: 7800,
+            appels: 2,
+            depuis: '2026-10-22T10:00:00Z',
+          },
+        },
+      }),
+    })
+
+    const alerte = screen.getByTestId('twin9-pire-cas-openai:modele-fictif-9')
+    expect(alerte.getAttribute('role')).toBe('alert')
+    expect(alerte.textContent).toMatch(/Pire cas insuffisant/)
+    expect(alerte.textContent).toMatch(/2 appels/)
+    expect(alerte.textContent).toMatch(/0,0078 \$/)
+    expect(alerte.textContent).toMatch(/refusé au lancement/)
+    expect(screen.queryByTestId('twin9-pire-cas-modele-fictif-a')).toBeNull()
+  })
+})
+
+describe('Twin9Section — durée d’un appel et tranche du déclencheur', () => {
+  it('dit ce que laisse la tranche la plus courte servie, et propose au plus cette durée', async () => {
+    await renderReady({
+      ...baseRoutes,
+      'GET api/twin9/admin/config': jsonResponse(200, { ...CONFIG, secondes_declencheur: 25, duree_max_admise: 21 }),
+    })
+
+    const aide = screen.getByTestId('twin9-duree-admise')
+    expect(aide.textContent).toMatch(/déclencheur demande des tranches de 25 s/)
+    expect(aide.textContent).toMatch(/21 s au départ d’un appel/)
+    fireEvent.click(screen.getByRole('button', { name: 'Ajouter un modèle' }))
+    const fournisseurs = screen.getAllByLabelText('Fournisseur')
+    fireEvent.change(fournisseurs[fournisseurs.length - 1], { target: { value: 'openai' } })
+    const durees = screen.getAllByLabelText('Durée maximale d’un appel (s)')
+    expect(durees[durees.length - 1].value).toBe('21')
+  })
+})
+
 describe('Twin9Section — comptes (supervision)', () => {
   it('affiche la table des comptes avec cumuls en USD', async () => {
     await renderReady(baseRoutes)

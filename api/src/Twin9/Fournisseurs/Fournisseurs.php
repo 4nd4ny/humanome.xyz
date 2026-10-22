@@ -4,6 +4,8 @@ declare(strict_types=1);
 
 namespace Humanome\Twin9\Fournisseurs;
 
+use Humanome\Env;
+
 /**
  * The providers a Twin9 call may be sent to (P1-5), and what the platform
  * knows of each: its label, its GDPR tag (not a legal opinion: the platform
@@ -13,16 +15,15 @@ namespace Humanome\Twin9\Fournisseurs;
  * of its API, the pattern of its model ids (80 characters at most: the
  * journal's columns) and the input tokens it may add to a prompt's.
  *
- * Only Anthropic is open (actifs()): no other provider is wired to a caller
- * yet, and a call of a profile always goes to Anthropic (CallSettings).
+ * A profile may name any of them (schemas/twin9-profil.schema.json); a run
+ * reaches only those the administrator opened (actifs(): the instance's
+ * setting twin9_fournisseurs_ouverts, Anthropic alone by default), a provider
+ * tagged « non » only while twin9_fournisseurs_non_rgpd allows it (ADR-012).
  */
 final class Fournisseurs
 {
     /** The provider of a stage, a step or a reader that names none. */
     public const DEFAUT = 'anthropic';
-
-    /** The providers open on this instance: Anthropic alone, until the other callers are wired. */
-    private const OUVERTS = ['anthropic'];
 
     public const REGISTRE = [
         'anthropic' => [
@@ -60,13 +61,49 @@ final class Fournisseurs
     ];
 
     /**
-     * The providers a profile may use on this instance.
+     * The providers a run may reach on this instance, in the registry's
+     * order: those the administrator opened (twin9_fournisseurs_ouverts), a
+     * provider tagged « non » only while twin9_fournisseurs_non_rgpd is on —
+     * whatever the stored value says, an unknown id never.
      *
+     * @param array<string, mixed> $config the instance's effective configuration (Twin9Config::read())
      * @return list<string>
      */
-    public static function actifs(): array
+    public static function actifs(array $config): array
     {
-        return self::OUVERTS;
+        $ouverts = \is_array($config['twin9_fournisseurs_ouverts'] ?? null) ? $config['twin9_fournisseurs_ouverts'] : [];
+        $nonRgpd = ($config['twin9_fournisseurs_non_rgpd'] ?? false) === true;
+        $actifs = [];
+        foreach (self::REGISTRE as $id => $fournisseur) {
+            if (\in_array($id, $ouverts, true) && ($nonRgpd || $fournisseur['rgpd'] !== 'non')) {
+                $actifs[] = $id;
+            }
+        }
+
+        return $actifs;
+    }
+
+    /**
+     * What the administrator's page shows of each provider, in the
+     * registry's order (ADR-012): its label, its GDPR tag, whether it has a
+     * batch lane, the environment variable of the instance's key and
+     * whether it is set — a boolean, never the key. The administrator's
+     * alone: a user's page reads whether a provider is available, never why
+     * (ProfilPolicy::choix()).
+     *
+     * @return list<array{id: string, libelle: string, rgpd: string, lots: bool, env: string, cle_instance: bool}>
+     */
+    public static function pourAdministrateur(): array
+    {
+        $fournisseurs = [];
+        foreach (self::REGISTRE as $id => $fournisseur) {
+            $fournisseurs[] = ['id' => $id, 'libelle' => (string) $fournisseur['libelle'],
+                               'rgpd' => (string) $fournisseur['rgpd'], 'lots' => (bool) $fournisseur['lots'],
+                               'env' => (string) $fournisseur['env'],
+                               'cle_instance' => Env::get((string) $fournisseur['env']) !== ''];
+        }
+
+        return $fournisseurs;
     }
 
     /** Whether the platform knows this provider. */

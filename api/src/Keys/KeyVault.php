@@ -23,7 +23,13 @@ use PDO;
  */
 final class KeyVault
 {
-    /** Providers accepted for storage — mirror of the engine abstraction. */
+    /**
+     * Providers accepted for storage — mirror of the engine abstraction. Not
+     * Mistral AI, though a provider of Twin9's calls (ADR-012): no path uses
+     * its key — a Twin9 run reaches it with the instance's, the assistant
+     * has no adapter for it —, and a secret without a purpose is not
+     * collected (RGPD art. 5.1.c, 2026-10-22).
+     */
     public const PROVIDERS = ['anthropic', 'openai', 'google', 'openrouter', 'xai', 'ollama', 'mock'];
 
     public function __construct(private readonly PDO $pdo, private readonly string $masterKey)

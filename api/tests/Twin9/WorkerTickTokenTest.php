@@ -4,8 +4,10 @@ declare(strict_types=1);
 
 namespace Humanome\Tests\Twin9;
 
+use Humanome\Packages\SettingsRepository;
 use Humanome\Tests\AuthTestBase;
 use Humanome\Tests\TestDb;
+use Humanome\Twin9\Twin9Config;
 use Humanome\Worker\Tick;
 
 /**
@@ -69,6 +71,23 @@ final class WorkerTickTokenTest extends AuthTestBase
             ['X-Migrate-Token' => self::TICK])->getStatusCode());
         self::assertSame(200, $this->request('POST', '/api/admin/worker-tick', ['budgetSeconds' => 1],
             ['X-Migrate-Token' => self::MIGRATE])->getStatusCode(), 'le jeton des migrations l\'ouvre toujours');
+    }
+
+    /**
+     * The trigger's slice is kept, for a launch to be measured on it
+     * (ProfilPolicy): the budget it asks, else the instance's; written
+     * only when it changes.
+     */
+    public function testTheTriggersSliceIsKept(): void
+    {
+        $lu = static fn (): ?array => (new SettingsRepository(self::$pdo))->get('twin9_tranche_declencheur');
+        self::$pdo->exec("DELETE FROM settings WHERE name = 'twin9_tranche_declencheur'"); // the class's other ticks
+        self::assertNull($lu());
+        $this->request('POST', '/api/admin/worker-tick', ['budgetSeconds' => 3], ['X-Worker-Tick-Token' => self::TICK]);
+        self::assertSame(3, $lu()['secondes']);
+        $this->request('POST', '/api/admin/worker-tick', [], ['X-Worker-Tick-Token' => self::TICK]);
+        self::assertSame((new Twin9Config(new SettingsRepository(self::$pdo)))->secondesParTranche(), $lu()['secondes'],
+            'sans budget demandé, la tranche de l’instance');
     }
 
     public function testTheTickTokenOpensNoOtherRouteThanTheMaintenance(): void

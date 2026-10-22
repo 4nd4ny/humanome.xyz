@@ -187,15 +187,30 @@ final class Tick
             array_filter(['pauses' => $this->twin9Pauses, 'octets' => $this->twin9Octets, 'fenetre' => $this->twin9Fenetre],
                 static fn ($v): bool => $v !== null),
         );
-        $reserve = min(1.0, max(0.25, 0.1 * $this->budgetSeconds));
         $counters = [];
         foreach ($slice->advanceUntil($this->twin9Runs ?? $config->runsParTick(), $this->startedAt,
-            $this->startedAt + $this->budgetSeconds - $reserve, $this->twin9Utilisateur) as $name => $value) {
+            $this->startedAt + self::longueurTwin9($this->budgetSeconds), $this->twin9Utilisateur) as $name => $value) {
             $counters['twin9' . ucfirst($name)] = $value;
         }
         $this->twin9Ran = $counters['twin9Runs'] > 0;
 
         return $counters;
+    }
+
+    /** The tick's budget, in seconds: the one asked, else the configured one (45 at most). */
+    public function budgetSeconds(): int
+    {
+        return $this->budgetSeconds;
+    }
+
+    /**
+     * The length of the Twin9 slice of a tick of this budget, in seconds: the
+     * budget less the reserve the slice keeps to wind down in (a tenth,
+     * between a quarter of a second and one).
+     */
+    public static function longueurTwin9(int $budgetSeconds): float
+    {
+        return $budgetSeconds - min(1.0, max(0.25, 0.1 * $budgetSeconds));
     }
 
     /**

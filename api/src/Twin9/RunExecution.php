@@ -11,11 +11,12 @@ use stdClass;
 
 /**
  * A Twin9 run's execution block (P0-1, docs/contrats.md §8.9): how it went,
- * read in its journal — its calls in total and by lane, provider and model,
- * their stops in one vocabulary (Arret), their tokens and costs, the models
- * served for each model asked; its batches, its passes and the engine's
- * time, its active duration, the engine's commit at its launch and at its
- * end, its resumptions.
+ * read in its journal — its calls in total and by lane, provider and model
+ * (its price key: Fournisseurs::clePrix()), their stops in one vocabulary
+ * (Arret, each in its provider's table), the cuts the slices' ends made,
+ * their tokens and costs, the models served for each model asked; its
+ * batches, its passes and the engine's time, its active duration, the
+ * engine's commit at its launch and at its end, its resumptions.
  *
  * Frozen when the run ends (`source: "fige"`, RunRepository::terminer(),
  * before its journal goes); computed from the journal for a run in
@@ -55,8 +56,8 @@ final class RunExecution
     }
 
     /**
-     * The journal of a run, grouped by lane, model asked, model served,
-     * status and stop.
+     * The journal of a run, grouped by lane, provider, model asked, model
+     * served, status and stop.
      *
      * @return list<array<string, mixed>>
      */
@@ -65,12 +66,13 @@ final class RunExecution
         // the lane by custom_id, which a batch's call keeps (lot_id goes back to NULL with its batch); the model
         // sent, else the engine's
         $stmt = $this->pdo->prepare(
-            'SELECT IF(custom_id IS NULL, "directe", "lots") AS voie_appel, COALESCE(modele_envoye, modele) AS modele_appel,
-                    modele_servi, statut, stop_reason, COUNT(*) AS n, SUM(jetons_entree) AS entree,
-                    SUM(jetons_sortie) AS sortie, SUM(cout_microusd) AS cout
+            'SELECT IF(custom_id IS NULL, "directe", "lots") AS voie_appel, fournisseur,
+                    COALESCE(modele_envoye, modele) AS modele_appel, modele_servi, statut, stop_reason, COUNT(*) AS n,
+                    SUM(coupures) AS coupures, SUM(jetons_entree) AS entree, SUM(jetons_sortie) AS sortie,
+                    SUM(cout_microusd) AS cout
                FROM twin9_appels WHERE run_id = ?
-              GROUP BY voie_appel, modele_appel, modele_servi, statut, stop_reason
-              ORDER BY voie_appel, modele_appel, modele_servi, statut, stop_reason'
+              GROUP BY voie_appel, fournisseur, modele_appel, modele_servi, statut, stop_reason
+              ORDER BY voie_appel, fournisseur, modele_appel, modele_servi, statut, stop_reason'
         );
         $stmt->execute([$id]);
 
@@ -97,15 +99,15 @@ final class RunExecution
         $refus = 0;
         foreach ($lignes as $l) {
             $n = (int) $l['n'];
-            // every call is Anthropic's until the other providers' callers (PR C)
-            $fournisseur = Fournisseurs::DEFAUT;
-            $modele = (string) $l['modele_appel'];
-            $classe = Arret::classe('anthropic', $l['stop_reason'] === null ? null : (string) $l['stop_reason']);
+            // a line written before the journal kept its provider is Anthropic's (migration 032)
+            $fournisseur = (string) ($l['fournisseur'] ?? Fournisseurs::DEFAUT);
+            $modele = Fournisseurs::clePrix($fournisseur, (string) $l['modele_appel']);
+            $classe = Arret::classe($fournisseur, $l['stop_reason'] === null ? null : (string) $l['stop_reason']);
             $panne = $l['statut'] === 'panne';
             $tronque = $panne && \in_array($classe, Arret::TRONQUEES, true);
             self::compter($parVoie, (string) $l['voie_appel'], $l, $panne, $tronque);
             self::compter($parFournisseur, $fournisseur, $l, $panne, $tronque);
-            self::compter($parModele, Fournisseurs::clePrix($fournisseur, $modele), $l, $panne, $tronque);
+            self::compter($parModele, $modele, $l, $panne, $tronque);
             if ($l['modele_servi'] !== null) {
                 $servi = (string) $l['modele_servi'];
                 $servis[$modele][$servi] = ($servis[$modele][$servi] ?? 0) + $n;
@@ -154,7 +156,7 @@ final class RunExecution
 
     /**
      * A line of the journal in a breakdown: its calls, failures, cut outputs,
-     * tokens and cost under its key.
+     * cuts by the slices' ends, tokens and cost under its key.
      *
      * @param array<string, array<string, int>> $table
      * @param array<string, mixed> $ligne
@@ -162,11 +164,12 @@ final class RunExecution
     private static function compter(array &$table, string $cle, array $ligne, bool $panne, bool $tronque): void
     {
         $n = (int) $ligne['n'];
-        $table[$cle] ??= ['appels' => 0, 'pannes' => 0, 'tronques' => 0, 'jetons_entree' => 0, 'jetons_sortie' => 0,
-                          'cout_microusd' => 0];
+        $table[$cle] ??= ['appels' => 0, 'pannes' => 0, 'tronques' => 0, 'coupures' => 0, 'jetons_entree' => 0,
+                          'jetons_sortie' => 0, 'cout_microusd' => 0];
         $table[$cle]['appels'] += $n;
         $table[$cle]['pannes'] += $panne ? $n : 0;
         $table[$cle]['tronques'] += $tronque ? $n : 0;
+        $table[$cle]['coupures'] += (int) ($ligne['coupures'] ?? 0);
         $table[$cle]['jetons_entree'] += (int) $ligne['entree'];
         $table[$cle]['jetons_sortie'] += (int) $ligne['sortie'];
         $table[$cle]['cout_microusd'] += (int) $ligne['cout'];

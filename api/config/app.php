@@ -62,6 +62,13 @@ return [
         // Uniquement l'état « configuré ou non » — jamais la valeur.
         'MIGRATE_TOKEN' => $secret('MIGRATE_TOKEN', 'Jeton du script de déploiement (POST /api/admin/migrate, ADR-008).'),
         'ANTHROPIC_API_KEY' => $secret('ANTHROPIC_API_KEY', 'Clé plateforme du proxy LLM (démo + provider « humanome »). Jamais exposée.'),
+        // Clés de l'instance chez les autres fournisseurs des appels Twin9 (ADR-012) : lues au départ de
+        // chaque appel d'un fournisseur ouvert (twin9_fournisseurs_ouverts), jamais une clé personnelle.
+        'OPENAI_API_KEY' => $secret('OPENAI_API_KEY', 'Clé de l’instance chez OpenAI, pour les appels Twin9 qui y partent (ADR-012). Jamais exposée.'),
+        'MISTRAL_API_KEY' => $secret('MISTRAL_API_KEY', 'Clé de l’instance chez Mistral AI, pour les appels Twin9 qui y partent (ADR-012). Jamais exposée.'),
+        'GOOGLE_API_KEY' => $secret('GOOGLE_API_KEY', 'Clé de l’instance chez Google (Gemini), de l’offre payante : les conditions de Google l’exigent pour des utilisateurs de l’EEE (ADR-012). Jamais exposée.'),
+        'XAI_API_KEY' => $secret('XAI_API_KEY', 'Clé de l’instance chez xAI, pour les appels Twin9 qui y partent (ADR-012). Jamais exposée.'),
+        'OPENROUTER_API_KEY' => $secret('OPENROUTER_API_KEY', 'Clé de l’instance chez OpenRouter, pour les appels Twin9 qui y partent (ADR-012). Jamais exposée.'),
         'POW_SECRET' => $secret('POW_SECRET', 'Secret HMAC de la preuve de travail anti-abus de la démo (P6).'),
         'SODIUM_MASTER_KEY' => $secret('SODIUM_MASTER_KEY', 'Clé maîtresse libsodium des clés API chiffrées au repos (AD-4).'),
     ],

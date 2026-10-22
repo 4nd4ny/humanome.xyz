@@ -5,6 +5,7 @@ declare(strict_types=1);
 namespace Humanome\Twin9;
 
 use Humanome\Twin9\Fournisseurs\Arret;
+use Humanome\Twin9\Fournisseurs\Fournisseurs;
 use PDO;
 use Twin9\Run\Call;
 use Twin9\Run\Journal;
@@ -27,7 +28,9 @@ use Twin9\Run\Journal;
  * for RunCosts to settle.
  *
  * The stop reason is kept raw, a short identifier only (Arret::assainir):
- * never a provider's text.
+ * never a provider's text; it reads in its provider's table, which the
+ * journal keeps with each call (P1-5), with the cuts the slice's end made
+ * and since when it meets a spending cap.
  */
 final class CallJournal implements Journal
 {
@@ -77,26 +80,30 @@ final class CallJournal implements Journal
     }
 
     /**
-     * Before a call leaves, directly or in a batch: its row, its attempt
-     * counted, and the worst case it holds — $reserve, newly held, or the one
-     * it already holds (null); a worst case newly held is kept once settled
-     * (pire_cas_microusd), for its run's evaluation (T8).
+     * Before a call leaves, directly or in a batch: its row, its provider,
+     * its attempt counted, and the worst case it holds — $reserve, newly
+     * held, or the one it already holds (null); a worst case newly held is
+     * kept once settled (pire_cas_microusd), for its run's evaluation (T8).
+     * Its cuts and the time it has met a spending cap are kept from one try
+     * to the next.
+     *
+     * @param string $fournisseur its provider (CallSettings::pour()), an id of Fournisseurs::REGISTRE
      */
     public function envoye(Call $call, string $modele, int $tentative, ?int $lotId = null, ?string $customId = null,
-                           ?int $reserve = null): void
+                           ?int $reserve = null, string $fournisseur = Fournisseurs::DEFAUT): void
     {
         $this->pdo->prepare(
-            'INSERT INTO twin9_appels (run_id, appel, etape, modele, modele_envoye, sha256, statut, lot_id, custom_id,
-                    tentatives, reprise_at, reponse, panne, reserve_microusd, pire_cas_microusd, envoye_at)
-             VALUES (?, ?, ?, ?, ?, ?, "envoye", ?, ?, ?, NULL, NULL, NULL, ?, ?, NOW(3))
+            'INSERT INTO twin9_appels (run_id, appel, etape, modele, modele_envoye, fournisseur, sha256, statut, lot_id,
+                    custom_id, tentatives, reprise_at, reponse, panne, reserve_microusd, pire_cas_microusd, envoye_at)
+             VALUES (?, ?, ?, ?, ?, ?, ?, "envoye", ?, ?, ?, NULL, NULL, NULL, ?, ?, NOW(3))
              ON DUPLICATE KEY UPDATE etape = VALUES(etape), modele = VALUES(modele),
-                    modele_envoye = VALUES(modele_envoye), sha256 = VALUES(sha256), statut = "envoye",
-                    lot_id = VALUES(lot_id), custom_id = VALUES(custom_id), tentatives = VALUES(tentatives),
-                    reprise_at = NULL, reponse = NULL, panne = NULL,
+                    modele_envoye = VALUES(modele_envoye), fournisseur = VALUES(fournisseur), sha256 = VALUES(sha256),
+                    statut = "envoye", lot_id = VALUES(lot_id), custom_id = VALUES(custom_id),
+                    tentatives = VALUES(tentatives), reprise_at = NULL, reponse = NULL, panne = NULL,
                     reserve_microusd = COALESCE(VALUES(reserve_microusd), reserve_microusd),
                     pire_cas_microusd = COALESCE(VALUES(pire_cas_microusd), pire_cas_microusd), envoye_at = NOW(3)'
-        )->execute([$this->runId, $call->id, $call->step, $call->model, $modele, $call->sha256, $lotId, $customId,
-                    $tentative, $reserve, $reserve]);
+        )->execute([$this->runId, $call->id, $call->step, $call->model, $modele, $fournisseur, $call->sha256, $lotId,
+                    $customId, $tentative, $reserve, $reserve]);
         $this->rows[$call->id] = ['statut' => 'envoye', 'sha256' => $call->sha256, 'tentatives' => $tentative,
                                   'reprise_at' => null, 'panne' => null, 'blob' => null, 'reponse' => null,
                                   'reserve' => $reserve ?? $this->rows[$call->id]['reserve'] ?? null];
@@ -132,13 +139,49 @@ final class CallJournal implements Journal
                                   'reserve' => $this->rows[$call->id]['reserve'] ?? null];
     }
 
-    /** After: the call leaves again later, its attempts as given. */
-    public function plusTard(Call $call, float $repriseAt, int $tentatives): void
+    /**
+     * After: the call leaves again later, its attempts as given — cut by
+     * the slice's end ($coupe), counted among its cuts. It no longer meets a
+     * spending cap.
+     */
+    public function plusTard(Call $call, float $repriseAt, int $tentatives, bool $coupe = false): void
     {
         $this->pdo->prepare(
-            'UPDATE twin9_appels SET statut = "attente", tentatives = ?, reprise_at = FROM_UNIXTIME(?)
+            'UPDATE twin9_appels SET statut = "attente", tentatives = ?, reprise_at = FROM_UNIXTIME(?),
+                    plafond_depuis = NULL, coupures = coupures + ?
+              WHERE run_id = ? AND appel = ?'
+        )->execute([$tentatives, sprintf('%.3F', $repriseAt), $coupe ? 1 : 0, $this->runId, $call->id]);
+        $this->attendre($call, $repriseAt, $tentatives);
+    }
+
+    /**
+     * After: the call met its provider's spending cap (a 402, a quota
+     * spent, at Anthropic a 429 without Retry-After), or a third party's
+     * refusal of the instance's key (a 401, a 403): it leaves again later,
+     * its attempts as given, and the time it has met the cap since its first
+     * refusal is kept from one try to the next.
+     *
+     * @return float the seconds since it first met the cap, by the database's clock
+     */
+    public function plafond(Call $call, float $repriseAt, int $tentatives): float
+    {
+        $this->pdo->prepare(
+            'UPDATE twin9_appels SET statut = "attente", tentatives = ?, reprise_at = FROM_UNIXTIME(?),
+                    plafond_depuis = COALESCE(plafond_depuis, NOW(3))
               WHERE run_id = ? AND appel = ?'
         )->execute([$tentatives, sprintf('%.3F', $repriseAt), $this->runId, $call->id]);
+        $this->attendre($call, $repriseAt, $tentatives);
+        $stmt = $this->pdo->prepare(
+            'SELECT TIMESTAMPDIFF(MICROSECOND, plafond_depuis, NOW(3)) FROM twin9_appels WHERE run_id = ? AND appel = ?'
+        );
+        $stmt->execute([$this->runId, $call->id]);
+
+        return max(0.0, (float) $stmt->fetchColumn() / 1_000_000);
+    }
+
+    /** The row of a call that waits, as the journal keeps it until it is read again. */
+    private function attendre(Call $call, float $repriseAt, int $tentatives): void
+    {
         $this->rows[$call->id] = ['statut' => 'attente', 'sha256' => $call->sha256, 'tentatives' => $tentatives,
                                   'reprise_at' => $repriseAt, 'panne' => null, 'blob' => null, 'reponse' => null,
                                   'reserve' => $this->rows[$call->id]['reserve'] ?? null];
@@ -261,7 +304,7 @@ final class CallJournal implements Journal
         $this->pdo->prepare(
             'UPDATE twin9_appels SET statut = ?, reponse = ?, panne = ?, modele_servi = ?, stop_reason = ?,
                     jetons_entree = ?, jetons_sortie = ?, cout_microusd = ?, duree_ms = ?, reprise_at = NULL,
-                    repondu_at = NOW(3)
+                    plafond_depuis = NULL, repondu_at = NOW(3)
               WHERE run_id = ? AND appel = ?'
         )->execute([
             $statut,

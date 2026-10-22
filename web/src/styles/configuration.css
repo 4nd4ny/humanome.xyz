@@ -145,6 +145,37 @@
   height: 1.25rem;
 }
 
+/* Ce qui se lit sans le focus : la voie, un réglage d'Anthropic qui ne part pas
+   chez un autre fournisseur, ce que le serveur refuserait (ADR-012). */
+.config-explication,
+.config-avertissement {
+  grid-column: 1 / -1;
+  margin: 0;
+  font-size: 0.85rem;
+}
+
+.config-explication {
+  color: var(--ink-soft);
+}
+
+.config-avertissement {
+  color: var(--warn);
+  border-left: 3px solid var(--warn-border);
+  padding-left: 0.5rem;
+}
+
+.config-commande .twin9-rgpd {
+  margin-left: 0.35rem;
+}
+
+.config-fournisseurs {
+  margin: 0.75rem 0;
+}
+
+.config-fournisseurs p {
+  margin: 0.25rem 0;
+}
+
 /* L'aide se montre au moment où l'on règle, pas avant. */
 .config-aide {
   display: none;

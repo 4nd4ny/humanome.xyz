@@ -931,6 +931,31 @@ body:has([aria-modal='true'], .portfolio-editor-fullscreen)
   background: var(--premium-bg);
 }
 
+/* Étiquette RGPD d'un fournisseur Twin9 (registre ; pas un avis juridique) : la page
+   d'un run, la configuration des profils, l'administration (ADR-012). */
+.twin9-rgpd {
+  text-transform: none;
+  letter-spacing: 0;
+}
+
+.twin9-rgpd-oui {
+  color: var(--ok);
+  border-color: var(--ok-border);
+  background: var(--ok-bg);
+}
+
+.twin9-rgpd-sous_conditions {
+  color: var(--warn);
+  border-color: var(--warn-border);
+  background: var(--warn-bg);
+}
+
+.twin9-rgpd-non {
+  color: var(--danger);
+  border-color: var(--danger-border);
+  background: var(--danger-bg);
+}
+
 /* Offre employeur À VENIR (D3) : présentation seulement, pas encore disponible. */
 .value-badge-avenir {
   color: var(--muted);
@@ -5216,6 +5241,7 @@ body:has([aria-modal='true'], .portfolio-editor-fullscreen)
   line-height: 1.5;
 }
 
+/* Une clé qu'aucun parcours n'emploie encore (Mistral AI, ADR-012). */
 .account-keys-list {
   list-style: none;
   margin: 0.75rem 0;

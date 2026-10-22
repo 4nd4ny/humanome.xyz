@@ -209,11 +209,12 @@ const BASE = {
       'procédure calculée décide, rien n’est affirmé sans une citation exacte. Elle passe par notre ' +
       'système de prompts et un modèle que vous choisissez — d’où un coût, payé d’avance.',
     points: [
-      'Avec votre accord, votre portfolio et l’état de l’analyse restent sur notre serveur jusqu’à ce que vous les effaciez ; le texte part chez Anthropic, qui garde un lot de requêtes jusqu’à sa suppression, 29 jours au plus.',
+      'Avec votre accord, votre portfolio et l’état de l’analyse restent sur notre serveur jusqu’à ce que vous les effaciez ; le texte part chez les fournisseurs des modèles de votre profil — Anthropic par défaut, qui garde un lot de requêtes jusqu’à sa suppression, 29 jours au plus —, que l’accord nomme avec leur voie et leur étiquette RGPD.',
+      'Chaque étape de votre profil choisit son fournisseur parmi ceux que l’administrateur a ouverts ; les appels Anthropic partent par lots, à moitié prix, ou en direct, ceux des autres fournisseurs toujours en direct. Les étiquettes RGPD (oui, sous conditions, non) sont indicatives, pas un avis juridique.',
       'Avant de lancer, la page dit les journées à instruire — un portfolio déjà analysé n’instruit que ses journées nouvelles ou changées —, le coût et la durée estimés.',
       'L’analyse tourne sur le serveur ; sa page la suit et la fait avancer. Vous pouvez l’annuler, la reprendre, et l’ouvrir dans la cartographie, délibérations comprises.',
       'Un budget et une durée, réglés dans votre profil, l’arrêtent avant de les dépasser : sa carte est alors incomplète, et vous la reprenez sous un nouveau budget.',
-      'Rechargez votre crédit par PayPal, ou utilisez votre propre clé API — dans les deux cas notre système de prompts reste protégé.',
+      'Rechargez votre crédit par PayPal, ou utilisez votre propre clé Anthropic, quand l’administrateur l’ouvre, pour un profil qui n’appelle qu’Anthropic — dans les deux cas notre système de prompts reste protégé.',
       'Une facture récapitulative mensuelle est disponible dans « Mon compte ».',
     ],
   },

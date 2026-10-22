@@ -2,6 +2,8 @@
 
 > **Amendé par [ADR-011](ADR-011-moteur-twin9-php.md)** : le moteur PHP s'exécute sur le serveur et appelle Anthropic en direct ou par lots (§1) ; le coût moyen par journée remplace le devis par run simulé (§3) ; l'accord de l'apprenant garde son portfolio et l'état du run sur le serveur, à la place de la garde `--donnees-reelles` (§5).
 
+> **Amendé par [ADR-012](ADR-012-multi-fournisseur-twin9.md)** : l'adresse verrouillée vaut pour chaque fournisseur que l'administrateur a ouvert, une par fournisseur, et le modèle de menace gagne leurs lignes (§2) ; le roster multi-fournisseur est exposé, avec les seules clés de l'instance : la clé personnelle ne sert que chez Anthropic (§4).
+
 Date : 2026-07-13 · Statut : accepté, §1 révisé le 2026-10-17, §1 et §2 le 2026-10-20
 
 > **Révision du 2026-10-17 (§1).** L'algorithme ne voyage plus : le moteur

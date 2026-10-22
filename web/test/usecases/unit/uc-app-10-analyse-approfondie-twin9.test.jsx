@@ -298,6 +298,58 @@ describe('UC-APP-10 — Twin9View : avant de lancer', () => {
   })
 })
 
+describe('UC-APP-10 — Twin9View : l’accord nomme les fournisseurs (ADR-012)', () => {
+  const anthropic = { id: 'anthropic', libelle: 'Anthropic', rgpd: 'sous_conditions', voie: 'lots' }
+  const openrouter = { id: 'openrouter', libelle: 'OpenRouter', rgpd: 'non', voie: 'directe' }
+
+  it('UC-APP-10-U17 — chaque fournisseur du profil, sa voie et son étiquette RGPD, avant tout aperçu ; un autre profil le redemande ; le lancement envoie leur liste ; un serveur qui ne la donne pas : Anthropic', async () => {
+    let envoye = null
+    const apercus = []
+    const fetchFn = routedFetch({
+      'GET api/twin9/runs': jsonResponse(200, { disponible: true, runs: [] }),
+      'GET api/twin9/configuration': jsonResponse(200, {
+        profils: [{ id: 3, nom: 'Mixte', fournisseurs: [anthropic, openrouter] }, { id: 4, nom: 'Ancien' }],
+        defaut_fournisseurs: [anthropic],
+      }),
+      'POST api/twin9/runs/apercu': (init) => {
+        apercus.push(JSON.parse(init.body).profil)
+        return jsonResponse(200, apercu())
+      },
+      'POST api/twin9/runs': (init) => {
+        envoye = JSON.parse(init.body)
+        return jsonResponse(201, { id: 7 })
+      },
+    })
+    render(<Twin9View deps={{ fetchFn, store: await bibliotheque(), navigate: vi.fn() }} />)
+    const accord = async () => (await screen.findByRole('checkbox', { name: /J’accepte que mon portfolio/ })).closest('label')
+    expect((await accord()).textContent).toContain('Le texte part chez Anthropic (par lots ; RGPD : sous conditions), le fournisseur du modèle.')
+
+    fireEvent.change(screen.getByLabelText('Profil'), { target: { value: '3' } })
+    expect((await accord()).textContent).toContain(
+      'Le texte part chez les fournisseurs des modèles de ce profil : Anthropic (par lots ; RGPD : sous conditions) et ' +
+        'OpenRouter (en direct ; RGPD : non). Par lots, Anthropic garde le lot jusqu’à sa suppression, 29 jours au plus. ' +
+        'OpenRouter est étiqueté « non » au regard du RGPD : à éviter pour les journaux d’élèves réels.',
+    )
+    expect(apercus).toEqual([]) // rien ne part avant l'accord
+    fireEvent.click(within(await accord()).getByRole('checkbox'))
+    await screen.findByRole('region', { name: 'Avant de lancer' })
+
+    // un profil que le serveur ne décrit pas (avant ADR-012) : Anthropic, sa voie tue ; l'accord est à redonner
+    fireEvent.change(screen.getByLabelText('Profil'), { target: { value: '4' } })
+    expect(within(await accord()).getByRole('checkbox').checked).toBe(false)
+    expect((await accord()).textContent).toContain('Le texte part chez Anthropic (RGPD : sous conditions), le fournisseur du modèle.')
+    expect(screen.queryByRole('region', { name: 'Avant de lancer' })).toBeNull()
+
+    fireEvent.change(screen.getByLabelText('Profil'), { target: { value: '3' } })
+    fireEvent.click(within(await accord()).getByRole('checkbox'))
+    await waitFor(() => expect(screen.getByRole('button', { name: 'Lancer l’analyse' }).disabled).toBe(false))
+    fireEvent.click(screen.getByRole('button', { name: 'Lancer l’analyse' }))
+    await waitFor(() => expect(envoye).not.toBeNull())
+    expect(envoye.accord).toEqual({ fournisseurs: ['anthropic', 'openrouter'] })
+    expect(apercus).toEqual([3, 3])
+  })
+})
+
 describe('UC-APP-10 — Twin9View : la page d’un run arrêté', () => {
   it('UC-APP-10-U06 — arrêté par son budget : nouveau budget (au-delà de la dépense, ou vide pour aucun), reprise `{budget_usd}` ; par le crédit : « Recharger mon crédit », reprise sans budget (A4)', async () => {
     const corps = []

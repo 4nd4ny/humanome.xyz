@@ -16,8 +16,13 @@ namespace Humanome\Twin9\Fournisseurs;
  * provider writes leaves through the journal or the export, and a value cut
  * to the column's 32 characters is never classed as another.
  *
- * Only Anthropic's table is known here (its seven values, Messages API);
- * the other formats come with their callers.
+ * The tables are keyed by provider id — the Chat Completions providers do
+ * not share their values — and mirror schemas/fixtures/arrets/
+ * arrets-fournisseurs.json exactly, as the engine's (engine/src/providers/
+ * stop.js) does: only the raw values checked on the providers' official
+ * documentation (2026-10-22). A value they do not know, or a provider they
+ * do not know, is `other`; Gemini's CONTINUATION (a non-streamed answer cut
+ * at the request's cap) and Mistral's model_length are cuts like the others.
  */
 final class Arret
 {
@@ -27,7 +32,7 @@ final class Arret
     /** A raw value kept as it is: a short identifier. */
     private const MOTIF = '/^[A-Za-z_]{1,32}$/';
 
-    /** @var array<string, array<string, string>> by format: raw value => class */
+    /** @var array<string, array<string, string>> by provider: raw value => class */
     private const TABLES = [
         'anthropic' => [
             'end_turn' => 'end',
@@ -37,6 +42,57 @@ final class Arret
             'model_context_window_exceeded' => 'context_window',
             'refusal' => 'refusal',
             'pause_turn' => 'other',
+        ],
+        'openai' => [
+            'stop' => 'end',
+            'length' => 'max_tokens',
+            'content_filter' => 'refusal',
+            'tool_calls' => 'other',
+            'function_call' => 'other',
+        ],
+        'xai' => [
+            'stop' => 'end',
+            'end_turn' => 'end',
+            'length' => 'max_tokens',
+        ],
+        'openrouter' => [
+            'stop' => 'end',
+            'length' => 'max_tokens',
+            'content_filter' => 'refusal',
+            'tool_calls' => 'other',
+            'error' => 'other',
+        ],
+        'mistral' => [
+            'stop' => 'end',
+            'length' => 'max_tokens',
+            'model_length' => 'context_window',
+            'tool_calls' => 'other',
+            'error' => 'other',
+        ],
+        'google' => [
+            'STOP' => 'end',
+            'MAX_TOKENS' => 'max_tokens',
+            'CONTINUATION' => 'max_tokens',
+            'SAFETY' => 'refusal',
+            'RECITATION' => 'refusal',
+            'BLOCKLIST' => 'refusal',
+            'PROHIBITED_CONTENT' => 'refusal',
+            'SPII' => 'refusal',
+            'IMAGE_SAFETY' => 'refusal',
+            'IMAGE_PROHIBITED_CONTENT' => 'refusal',
+            'IMAGE_RECITATION' => 'refusal',
+            'FINISH_REASON_UNSPECIFIED' => 'other',
+            'LANGUAGE' => 'other',
+            'OTHER' => 'other',
+            'MALFORMED_FUNCTION_CALL' => 'other',
+            'IMAGE_OTHER' => 'other',
+            'NO_IMAGE' => 'other',
+            'UNEXPECTED_TOOL_CALL' => 'other',
+            'TOO_MANY_TOOL_CALLS' => 'other',
+            'MISSING_THOUGHT_SIGNATURE' => 'other',
+            'MALFORMED_RESPONSE' => 'other',
+            'ESCALATION' => 'other',
+            'PUP_LIMITED_DISABLED' => 'other',
         ],
     ];
 
@@ -57,8 +113,9 @@ final class Arret
     }
 
     /**
-     * The class of a raw value in a format: `other` for a value the table
-     * does not know, null for an absent one. A class classes as itself.
+     * The class of a raw value of a provider (its id, the shared table's
+     * « format »): `other` for a value its table does not know, null for an
+     * absent one. A class classes as itself.
      */
     public static function classe(string $format, ?string $brut): ?string
     {
@@ -74,7 +131,7 @@ final class Arret
         return \in_array($brut, self::CLASSES, true) ? $brut : 'other';
     }
 
-    /** Whether a raw value in a format says the output was cut. */
+    /** Whether a raw value of a provider says the output was cut. */
     public static function tronquee(string $format, ?string $brut): bool
     {
         return \in_array(self::classe($format, $brut), self::TRONQUEES, true);

@@ -41,9 +41,12 @@ final class FakeBatchApi implements BatchApi
     /** @var array<string, int> every batch created, by id: its size in bytes */
     public array $tailles = [];
 
+    /** @var list<float> each creation asked: the seconds its bound left it */
+    public array $delais = [];
+
     private int $creations = 0;
 
-    /** @var array<int, string> by creation (1 = the first): 'tue', 'tue_apres' or 'perdu' */
+    /** @var array<int, string> by creation (1 = the first): 'tue', 'tue_apres', 'perdu' or 'sans_temps' */
     private array $incidents = [];
 
     /**
@@ -60,7 +63,8 @@ final class FakeBatchApi implements BatchApi
     /**
      * The n-th creation goes wrong: 'tue', the tick dies before the batch
      * leaves; 'tue_apres', it dies once the batch has left; 'perdu', the
-     * batch leaves and its answer is lost.
+     * batch leaves and its answer is lost; 'sans_temps', its bound leaves no
+     * second, and no request leaves (AnthropicBatches: « plus de temps »).
      */
     public function incident(int $n, string $quoi): self
     {
@@ -98,10 +102,16 @@ final class FakeBatchApi implements BatchApi
 
     public function creer(string $cle, string $corps, float $fin): array
     {
+        $this->delais[] = $fin - microtime(true);
         $n = ++$this->creations;
         $incident = $this->incidents[$n] ?? null;
         if ($incident === 'tue') {
             throw new \RuntimeException('tick tué');
+        }
+        if ($incident === 'sans_temps') {
+            $this->journal[] = ['creer', ''];
+
+            return ['ok' => false, 'erreur' => 'plus de temps dans la tranche', 'non_envoye' => true];
         }
         $requetes = json_decode($corps, true, 512, JSON_THROW_ON_ERROR)['requests'];
         $id = sprintf('msgbatch_%04d', $n);

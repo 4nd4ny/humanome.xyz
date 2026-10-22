@@ -4,6 +4,7 @@ declare(strict_types=1);
 
 namespace Humanome\Tests\Twin9;
 
+use Humanome\Packages\SettingsRepository;
 use Humanome\Referentiel\ReferentielRepository;
 use Humanome\Tests\CartographeTestCase;
 use Humanome\Tests\TestDb;
@@ -12,6 +13,7 @@ use Humanome\Twin9\Evaluations;
 use Humanome\Twin9\Lancement;
 use Humanome\Twin9\ProfilRepository;
 use Humanome\Twin9\ProtocoleRepository;
+use Humanome\Twin9\Twin9Config;
 use PHPUnit\Framework\Attributes\PreserveGlobalState;
 use PHPUnit\Framework\Attributes\RunTestsInSeparateProcesses;
 
@@ -289,6 +291,49 @@ final class ApercuTest extends CartographeTestCase
     private function credit(array $user, int $microusd): void
     {
         self::$pdo->prepare('UPDATE twin9_credits SET balance_microusd = ? WHERE user_id = ?')->execute([$microusd, $user['id']]);
+    }
+
+    /**
+     * A mixed profile's forecast (P1-5): each combination at its provider's
+     * price, by its own route — another provider's worst case at its grid
+     * price, never by batches —; the reference at half price only when
+     * every call goes by batches; no duration as soon as one route goes by
+     * batches. A profile whose lane says « lots » but whose calls all leave
+     * Anthropic goes directly: full price, and its duration.
+     */
+    public function testAMixedForecastPricesEachCombinationByItsRoute(): void
+    {
+        TestDb::setEnv('OPENAI_API_KEY', 'cle-openai-factice-apercu');
+        $config = new Twin9Config(new SettingsRepository(self::$pdo));
+        // an invented price, high enough for its worst case to outweigh the reference's
+        $config->update(['twin9_fournisseurs_ouverts' => ['anthropic', 'openai'],
+                         'modeles' => $config->modeles() + ['openai:modele-fictif-1' => [
+                             'prix_usd_mtok' => [1000, 1000], 'plafond_sortie' => 30000, 'plafond_reflexion' => 0,
+                             'duree_max_s' => 1]]]);
+        $alice = $this->registerAs('mixte@example.org', 'Alice');
+        $parJour = Lancement::REFERENCE_MICROUSD * 7 * 1.2;
+        $openai = (object) ['fournisseur' => 'openai', 'modele' => 'modele-fictif-1'];
+
+        $mixte = $this->apercu($alice, $this->profil($alice, 'Mixte', ['voie' => 'lots',
+            'etapes' => (object) ['greffier' => $openai]]), self::PORTFOLIO);
+        self::assertSame(['anthropic' => 'lots', 'openai' => 'directe'],
+            array_column($mixte['fournisseurs'], 'voie', 'id'));
+        self::assertSame(round($parJour * 3 / 1_000_000, 6), $mixte['estimation']['cout_usd'],
+            'pas à moitié prix : un de ses appels part en direct');
+        self::assertNull($mixte['estimation']['duree_s'], 'une route par lots : la durée est celle d’Anthropic');
+        self::assertGreaterThan(16000 * 1000 * 1.2 / 1_000_000 + $parJour / 1_000_000, $mixte['estimation']['reserve_usd'],
+            'le pire cas de son appel chez OpenAI, au prix de la grille, avec la marge');
+
+        $etage = (object) ['fournisseur' => 'openai', 'modele' => 'modele-fictif-1', 'budget_sortie' => 16000,
+                           'reflexion' => 'coupee'];
+        $tiers = $this->apercu($alice, $this->profil($alice, 'Tiers', ['voie' => 'lots',
+            'etages' => (object) ['lecteurs' => $etage, 'rapide' => clone $etage, 'profond' => clone $etage]]),
+            self::PORTFOLIO);
+        self::assertSame([['id' => 'openai', 'libelle' => 'OpenAI', 'rgpd' => 'sous_conditions', 'voie' => 'directe']],
+            $tiers['fournisseurs']);
+        self::assertSame(round($parJour * 3 / 1_000_000, 6), $tiers['estimation']['cout_usd']);
+        self::assertSame(Lancement::REFERENCE_SECONDES * 7 * 2, $tiers['estimation']['duree_s'],
+            'sans appel d’Anthropic, tout part en direct : sa durée');
     }
 
     /** The preview keeps nothing, and asks what a launch asks, but the consent. */

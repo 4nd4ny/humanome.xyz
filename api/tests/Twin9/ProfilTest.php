@@ -6,6 +6,7 @@ namespace Humanome\Tests\Twin9;
 
 use Humanome\MigrationRunner;
 use Humanome\Tests\TestDb;
+use Humanome\Twin9\CallSettings;
 use Humanome\Twin9\EngineLoader;
 use Humanome\Twin9\ProfilRepository;
 use Humanome\Twin9\Twin9Exception;
@@ -159,10 +160,14 @@ final class ProfilTest extends TestCase
         yield 'effort' => ['/etages/profond/effort', 'extreme'];
         yield 'réflexion' => ['/etages/rapide/reflexion', 'desactivee'];
         yield 'modèle hors Claude' => ['/etages/lecteurs/modele', 'gpt-4o'];
+        yield 'modèle en majuscules' => ['/etages/rapide/modele', 'Claude-haiku-5-5'];
+        yield 'modèle de 81 caractères' => ['/etages/rapide/modele', 'claude-' . str_repeat('a', 74)];
+        yield 'fournisseur inconnu' => ['/etages/rapide/fournisseur', 'ollama'];
         yield 'budget de sortie nul' => ['/etages/rapide/budget_sortie', 0];
         yield 'collège vide' => ['/college', []];
-        yield 'lecteur sans famille' => ['/college', [(object) ['nom' => 'haiku', 'passes' => 3]]];
+        yield 'famille vide' => ['/college', [(object) ['nom' => 'haiku', 'famille' => '']]];
         yield 'nom de lecteur avec dièse' => ['/college', [(object) ['nom' => 'haiku#1', 'famille' => 'anthropic']]];
+        yield 'appels directs au-delà de 32' => ['/parallelisme/appels_directs', 33];
         yield 'zéro passe du juge léger' => ['/juge_leger/passes', 0];
         yield 'seuil hors de [0, 1]' => ['/seuils_consensus/conf_min', 1.5];
         yield 'mode de jury' => ['/jury/mode', 'majorite'];
@@ -218,7 +223,6 @@ final class ProfilTest extends TestCase
         yield 'un étage' => ['/etages/rapide'];
         yield 'le modèle d’un étage' => ['/etages/profond/modele'];
         yield 'le jury entier' => ['/jury'];
-        yield 'la famille d’un lecteur' => ['/college/0/famille'];
     }
 
     #[DataProvider('settingsWithoutDefault')]
@@ -235,6 +239,117 @@ final class ProfilTest extends TestCase
 
         $this->expectExceptionMessage('Profil invalide');
         ProfilRepository::validate($profil);
+    }
+
+    /**
+     * A profile names the provider of a stage, a step, a reader or the
+     * second instance, or inherits it (ADR-012): the schema gives it no
+     * default, a reader's family is optional, and each call resolves to its
+     * provider and its model.
+     */
+    public function testAProfileNamesItsProviders(): void
+    {
+        $profil = self::mixte();
+
+        $valide = ProfilRepository::validate($profil);
+        self::assertObjectNotHasProperty('fournisseur', $valide->etages->lecteurs, 'aucune valeur par défaut injectée');
+        self::assertObjectNotHasProperty('fournisseur', $valide->college[0]);
+        self::assertObjectNotHasProperty('famille', $valide->college[1]);
+        $s = new CallSettings($valide);
+        self::assertSame(['mistral', 'modele-fictif'], self::fm($s->pour('accusation', 'x')));
+        self::assertSame(['mistral', 'modele-fictif'], self::fm($s->pour('defense', 'x')),
+            'le fournisseur de son étage, sans modèle');
+        self::assertSame(['openai', 'modele-fictif-2'], self::fm($s->pour('greffier', 'x')));
+        self::assertSame(['anthropic', 'claude-haiku-5-5'], self::fm($s->pour('leger', 'x')));
+        self::assertSame(['openrouter', 'editeur/modele-fictif'], self::fm($s->pour('greffier', 'second_ressort/x')));
+        self::assertSame(['google', 'modele-fictif-3'], self::fm($s->pour('tagger', 'journees/J/tags_lecteur-b_P2.json')));
+        self::assertSame(['anthropic', 'claude-haiku-5-5'], self::fm($s->pour('tagger', 'journees/J/tags_haiku#1_P1.json')));
+        self::assertSame('directe', $s->pour('greffier', 'x')['voie'], 'hors Anthropic, toujours en direct');
+        self::assertSame('lots', $s->pour('leger', 'x')['voie']);
+    }
+
+    /** @return iterable<string, array{0: callable(stdClass): void, 1: string}> */
+    public static function providerRules(): iterable
+    {
+        yield 'une étape change de fournisseur sans modèle' => [static function (stdClass $p): void {
+            $p->etapes->greffier = (object) ['fournisseur' => 'openai'];
+        }, 'greffier : un autre fournisseur que celui de son étage (OpenAI) demande son modèle, dans le même réglage'];
+        yield 'un lecteur change de fournisseur sans modèle' => [static function (stdClass $p): void {
+            $p->college[0]->fournisseur = 'mistral';
+        }, 'lecteur haiku : un autre fournisseur que celui de l’étage des lecteurs (Mistral AI) demande son modèle'];
+        yield 'le second ressort nomme un fournisseur sans modèle, même celui de son étage' => [
+            static function (stdClass $p): void {
+                $p->etapes->second_ressort = (object) ['fournisseur' => 'anthropic'];
+            }, 'second_ressort : un fournisseur nommé au second ressort (Anthropic) demande son modèle'];
+        yield 'un modèle Claude ailleurs' => [static function (stdClass $p): void {
+            $p->etapes->greffier = (object) ['fournisseur' => 'openai', 'modele' => 'claude-sonnet-5-5'];
+        }, 'greffier : « claude-sonnet-5-5 » n’est pas un identifiant de modèle chez OpenAI (« claude-… » est réservé '
+            . 'à Anthropic)'];
+        yield 'un modèle d’ailleurs chez Anthropic' => [static function (stdClass $p): void {
+            $p->etapes->president = (object) ['modele' => 'modele-fictif'];
+        }, 'president : « modele-fictif » n’est pas un identifiant de modèle chez Anthropic (« claude-… »)'];
+        yield 'un étage d’un autre fournisseur garde un modèle Claude' => [static function (stdClass $p): void {
+            $p->etages->profond->fournisseur = 'mistral';
+        }, '« claude-sonnet-5-5 » n’est pas un identifiant de modèle chez Mistral AI'];
+        yield 'un lecteur hérite d’un fournisseur qui ne sert pas son modèle' => [static function (stdClass $p): void {
+            $p->etages->lecteurs = (object) ['fournisseur' => 'xai', 'modele' => 'modele-fictif', 'budget_sortie' => 100,
+                                             'reflexion' => 'coupee'];
+            $p->college[0]->modele = 'claude-haiku-5-5';
+        }, 'lecteur haiku : « claude-haiku-5-5 » n’est pas un identifiant de modèle chez xAI (Grok)'];
+        yield 'un suffixe OpenRouter' => [static function (stdClass $p): void {
+            $p->etapes->greffier = (object) ['fournisseur' => 'openrouter', 'modele' => 'editeur/modele-fictif:free'];
+        }, 'chez OpenRouter (« éditeur/modèle », sans suffixe « : »)'];
+        yield 'un slug OpenRouter sans éditeur' => [static function (stdClass $p): void {
+            $p->etapes->greffier = (object) ['fournisseur' => 'openrouter', 'modele' => 'modele-fictif'];
+        }, 'chez OpenRouter'];
+        yield 'un modèle Gemini dans un chemin' => [static function (stdClass $p): void {
+            $p->etapes->greffier = (object) ['fournisseur' => 'google', 'modele' => 'editeur/modele-fictif'];
+        }, 'chez Google (Gemini) (ni « / » ni « : »)'];
+        yield 'un modèle Gemini avec un deux-points' => [static function (stdClass $p): void {
+            $p->etapes->greffier = (object) ['fournisseur' => 'google', 'modele' => 'modele:fictif'];
+        }, 'chez Google (Gemini)'];
+        yield 'un effort hors Anthropic' => [static function (stdClass $p): void {
+            $p->etapes->greffier = (object) ['fournisseur' => 'mistral', 'modele' => 'modele-fictif', 'effort' => 'low'];
+        }, 'greffier : l’effort est propre à Anthropic ; un appel chez Mistral AI n’en a aucun'];
+        yield 'un effort hérité de son étage hors Anthropic' => [static function (stdClass $p): void {
+            $p->etages->rapide->effort = 'low';
+            $p->etapes->greffier = (object) ['fournisseur' => 'mistral', 'modele' => 'modele-fictif'];
+        }, 'greffier : l’effort est propre à Anthropic ; un appel chez Mistral AI n’en a aucun, pas même celui de son étage'];
+        yield 'un effort au second ressort d’une étape tierce' => [static function (stdClass $p): void {
+            $p->etapes->greffier = (object) ['fournisseur' => 'mistral', 'modele' => 'modele-fictif'];
+            $p->etapes->second_ressort = (object) ['effort' => 'low'];
+        }, 'greffier au second ressort : l’effort est propre à Anthropic'];
+    }
+
+    /** @param callable(stdClass): void $change */
+    #[DataProvider('providerRules')]
+    public function testTheProvidersRules(callable $change, string $message): void
+    {
+        $profil = ProfilRepository::v98();
+        $change($profil);
+
+        try {
+            ProfilRepository::validate($profil);
+            self::fail('profil admis');
+        } catch (Twin9Exception $e) {
+            self::assertSame(422, $e->getStatusCode());
+            self::assertStringStartsWith('Profil invalide — ', $e->getMessage());
+            self::assertStringContainsString($message, $e->getMessage());
+        }
+    }
+
+    /** A provider named where it is inherited anyway needs no model; a family, absent, is its provider's. */
+    public function testAnInheritedProviderNeedsNoModel(): void
+    {
+        $profil = ProfilRepository::v98();
+        $profil->etages->rapide->fournisseur = 'anthropic';
+        $profil->etapes->greffier = (object) ['fournisseur' => 'anthropic', 'budget_sortie' => 1000];
+        $profil->college[0]->fournisseur = 'anthropic';
+        unset($profil->college[0]->famille);
+
+        $valide = ProfilRepository::validate($profil);
+        self::assertSame('anthropic', $valide->etapes->greffier->fournisseur);
+        self::assertObjectNotHasProperty('famille', $valide->college[0]);
     }
 
     public function testAProfileIsStoredReadAndChangedByItsOwner(): void
@@ -345,6 +460,33 @@ final class ProfilTest extends TestCase
         self::$pdo->prepare('DELETE FROM users WHERE id = ?')->execute([$ada]);
 
         self::assertNull($this->profils->get($id));
+    }
+
+    /**
+     * A mixed profile, its providers' models invented: the deep stage at
+     * Mistral, the greffier at OpenAI, the second instance at OpenRouter, a
+     * reader of its own at Google, without family; the rest Anthropic's.
+     */
+    private static function mixte(): stdClass
+    {
+        $profil = ProfilRepository::v98();
+        $profil->etages->profond = (object) ['fournisseur' => 'mistral', 'modele' => 'modele-fictif',
+                                             'budget_sortie' => 8000, 'reflexion' => 'coupee'];
+        $profil->etapes->greffier = (object) ['fournisseur' => 'openai', 'modele' => 'modele-fictif-2'];
+        $profil->etapes->defense = (object) ['fournisseur' => 'mistral'];
+        $profil->etapes->second_ressort = (object) ['fournisseur' => 'openrouter', 'modele' => 'editeur/modele-fictif'];
+        $profil->college[] = (object) ['nom' => 'lecteur-b', 'fournisseur' => 'google', 'modele' => 'modele-fictif-3'];
+
+        return $profil;
+    }
+
+    /**
+     * @param array{fournisseur: string, modele: string} $reglage
+     * @return array{0: string, 1: string}
+     */
+    private static function fm(array $reglage): array
+    {
+        return [$reglage['fournisseur'], $reglage['modele']];
     }
 
     private static function user(string $name): int

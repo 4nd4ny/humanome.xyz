@@ -207,6 +207,22 @@ describe('CreditView — recharge PayPal', () => {
     expect(indispo.textContent).toContain('clé Anthropic privée') // clé privée reste utilisable
     expect(screen.queryByRole('button', { name: 'Recharger' })).toBe(null)
   })
+
+  it('la clé Anthropic privée ne vaut que pour un profil qui n’appelle qu’Anthropic (ADR-012 §5)', async () => {
+    renderCredit({
+      overrides: { 'twin9/meta': json(200, { ...META, paypalConfigured: false, cle_privee_disponible: true }) },
+    })
+    const enregistree = (await screen.findByTestId('recharge-indispo')).textContent
+    expect(enregistree).toContain('pour un profil qui n’appelle qu’Anthropic')
+    expect(enregistree).toContain('un profil qui appelle un autre fournisseur part avec les clés de la plateforme et débite le crédit')
+    cleanup()
+
+    renderCredit({
+      overrides: { 'twin9/meta': json(200, { ...META, paypalConfigured: false, cle_privee_disponible: false }) },
+    })
+    const proposee = (await screen.findByTestId('recharge-indispo')).textContent
+    expect(proposee).toContain('aucun débit de crédit pour un profil qui n’appelle qu’Anthropic')
+  })
 })
 
 describe('CreditView — grand-livre : libellés des types d’événements', () => {

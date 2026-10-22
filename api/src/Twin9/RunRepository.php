@@ -182,9 +182,10 @@ final class RunRepository
         }
         $profil = self::unpack((string) $row['reglages'])->profil;
 
+        // what its calls cost its owner (RunCosts::facture()): with the instance's key, never beyond what each held
         $stmt = $this->pdo->prepare(
-            'SELECT statut, COUNT(*) AS n, SUM(COALESCE(cout_microusd, 0)) AS cout FROM twin9_appels WHERE run_id = ?
-              GROUP BY statut'
+            'SELECT statut, COUNT(*) AS n, SUM(COALESCE(' . RunCosts::facture('', ($profil->cle ?? 'instance') === 'instance')
+                . ', 0)) AS cout FROM twin9_appels WHERE run_id = ? GROUP BY statut'
         );
         $stmt->execute([$id]);
         $appels = ['envoye' => 0, 'attente' => 0, 'repondu' => 0, 'panne' => 0];
@@ -246,10 +247,12 @@ final class RunRepository
                 'lots' => $lots,
                 'runs_avant' => $avant,
             ],
-            // what it cost its owner so far (the real cost of its calls, margin included with the instance's
-            // key), and its caps (T10)
+            // what it cost its owner so far (the cost of its calls, margin included with the instance's key — never
+            // beyond what each held: the excess is the instance's, RunCosts::facture()), and its caps (T10); a run
+            // done before the counters kept it, its real cost
             'cout' => [
-                'depense_microusd' => (int) ($compteurs['cout_microusd'] ?? $depense),
+                'depense_microusd' => (int) ($compteurs === null ? $depense
+                    : ($compteurs['facture_microusd'] ?? $compteurs['cout_microusd'] ?? $depense)),
                 'budget_usd' => $profil->budget_usd ?? null,
                 'duree_minutes' => $profil->duree_minutes ?? null,
             ],
@@ -277,14 +280,62 @@ final class RunRepository
     }
 
     /**
-     * Its owner stops a run in progress: the tick no longer advances it, and
-     * cancels then deletes its batches at Anthropic (Twin9Lots). Its journal
-     * stays, for a resumption. False when it was not in progress.
+     * Since when a run's calls are held back by a model longer than the
+     * slices it gets (twin9_runs.retenu_depuis, migration 033): kept while
+     * $retenu, cleared otherwise.
+     *
+     * @return float the seconds since, by the database's clock; 0 when not held
+     */
+    public function retenu(int $id, bool $retenu): float
+    {
+        $this->pdo->prepare('UPDATE twin9_runs SET retenu_depuis = IF(?, COALESCE(retenu_depuis, NOW(3)), NULL)
+                              WHERE id = ?')->execute([$retenu ? 1 : 0, $id]);
+        if (!$retenu) {
+            return 0.0;
+        }
+        $stmt = $this->pdo->prepare('SELECT TIMESTAMPDIFF(MICROSECOND, retenu_depuis, NOW(3)) FROM twin9_runs WHERE id = ?');
+        $stmt->execute([$id]);
+
+        return max(0.0, (float) $stmt->fetchColumn() / 1_000_000);
+    }
+
+    /**
+     * The runs no longer in progress (cancelled, stopped) whose calls still
+     * hold a worst case outside a batch at Anthropic: cancelled between two
+     * slices, or left so by a tick that died. The slice settles them
+     * (RunCosts::liberer()) before any other work, under the worker's lock:
+     * none of their calls is in flight then.
+     *
+     * @param int|null $userId those of one user only (the page of their run, T9)
+     * @return list<int>
+     */
+    public function aSolder(int $n, ?int $userId = null): array
+    {
+        $stmt = $this->pdo->prepare(
+            'SELECT r.id FROM twin9_runs r
+              WHERE r.statut IN ("annule", "echoue")' . ($userId === null ? '' : ' AND r.user_id = ?') . '
+                AND EXISTS (SELECT 1 FROM twin9_appels a
+                             WHERE a.run_id = r.id AND a.reserve_microusd IS NOT NULL
+                               AND NOT (a.statut = "envoye" AND a.lot_id IS NOT NULL))
+              ORDER BY r.id LIMIT ' . max(1, $n)
+        );
+        $stmt->execute($userId === null ? [] : [$userId]);
+
+        return array_map(intval(...), $stmt->fetchAll(PDO::FETCH_COLUMN));
+    }
+
+    /**
+     * Its owner stops a run in progress: the tick no longer advances it,
+     * cancels its batches at Anthropic and collects them (Twin9Lots); what
+     * its calls hold that no slice has in flight goes back at once (the
+     * route: RunCosts::libererHorsVol()), its calls in flight once back, at
+     * their real cost (Twin9Slice). Its journal stays, for a resumption.
+     * False when it was not in progress.
      */
     public function annuler(int $id, int $userId): bool
     {
         $stmt = $this->pdo->prepare(
-            'UPDATE twin9_runs SET statut = "annule", attente = NULL, finished_at = NOW(), ' . self::ACTIF . '
+            'UPDATE twin9_runs SET statut = "annule", attente = NULL, retenu_depuis = NULL, finished_at = NOW(), ' . self::ACTIF . '
               WHERE id = ? AND user_id = ? AND statut = "en_cours"'
         );
         $stmt->execute([$id, $userId]);
@@ -336,13 +387,14 @@ final class RunRepository
             $execution->reprises[] = ['at' => (string) $row['maintenant'], 'budget_usd' => $copie->profil->budget_usd ?? null];
             // what it has committed, and what the owner's other runs in progress leave free
             $stmt = $this->pdo->prepare(
-                'SELECT COALESCE(SUM(COALESCE(reserve_microusd, cout_microusd, 0)), 0) FROM twin9_appels WHERE run_id = ?'
+                'SELECT COALESCE(SUM(' . RunCosts::impute() . '), 0) FROM twin9_appels WHERE run_id = ?'
             );
             $stmt->execute([$id]);
             $engage = (int) $stmt->fetchColumn();
             ['solde' => $solde, 'autres' => $autres] = $this->disponible($userId, $id);
             $this->pdo->prepare(
-                'UPDATE twin9_runs SET statut = "en_cours", attente = NULL, finished_at = NULL, debut_at = NOW(),
+                'UPDATE twin9_runs SET statut = "en_cours", attente = NULL, retenu_depuis = NULL, finished_at = NULL,
+                        debut_at = NOW(),
                         reglages = COALESCE(?, reglages), engagement_microusd = LEAST(engagement_microusd, ?),
                         execution = ?
                   WHERE id = ?'
@@ -560,7 +612,8 @@ final class RunRepository
             // its batches deleted at Anthropic go with the journal; one still there waits for the tick
             $this->pdo->prepare('DELETE FROM twin9_lots WHERE run_id = ? AND statut = "supprime"')->execute([$id]);
             $this->pdo->prepare(
-                'UPDATE twin9_runs SET statut = "termine", attente = NULL, compteurs = ?, execution = ?, finished_at = ?, '
+                'UPDATE twin9_runs SET statut = "termine", attente = NULL, retenu_depuis = NULL, compteurs = ?, execution = ?,
+                        finished_at = ?, '
                     . self::ACTIF . ' WHERE id = ?'
             )->execute([json_encode($compteurs, JSON_THROW_ON_ERROR | JSON_UNESCAPED_UNICODE), $execution,
                         (string) $run['maintenant'], $id]);
@@ -588,7 +641,7 @@ final class RunRepository
         $stmt = $this->pdo->prepare(
             'SELECT (SELECT COALESCE(MAX(balance_microusd), 0) FROM twin9_credits WHERE user_id = ?),
                     (SELECT COALESCE(SUM(GREATEST(0, CAST(r.engagement_microusd AS SIGNED)
-                              - (SELECT COALESCE(SUM(COALESCE(a.reserve_microusd, a.cout_microusd, 0)), 0)
+                              - (SELECT COALESCE(SUM(' . RunCosts::impute('a.') . '), 0)
                                    FROM twin9_appels a WHERE a.run_id = r.id))), 0)
                        FROM twin9_runs r
                       WHERE r.user_id = ? AND r.statut = "en_cours" AND r.engagement_microusd > 0 AND r.id <> ?)'
@@ -629,7 +682,7 @@ final class RunRepository
     public function echouer(int $id, string $raison): bool
     {
         $stmt = $this->pdo->prepare(
-            'UPDATE twin9_runs SET statut = "echoue", attente = ?, finished_at = NOW(), ' . self::ACTIF . '
+            'UPDATE twin9_runs SET statut = "echoue", attente = ?, retenu_depuis = NULL, finished_at = NOW(), ' . self::ACTIF . '
               WHERE id = ? AND statut = "en_cours"'
         );
         $stmt->execute([mb_substr($raison, 0, 255), $id]);
@@ -741,14 +794,22 @@ final class RunRepository
     /**
      * The counters a run keeps of its journal: calls, attempts, failures —
      * those of an output cut, by its budget or by the model's context, also
-     * counted apart (`tronques`, P0-2) —, tokens, cost and time, by step, the
-     * models served and its batches; the days it instructed and how long it
-     * was active.
+     * counted apart (`tronques`, P0-2), each stop read in its provider's
+     * table —, the cuts the slices' ends made (`coupures`), tokens, cost and
+     * time, by step and by provider (P1-5), the models served and its
+     * batches; the days it instructed and how long it was active. Its cost
+     * is the real one (`cout_microusd`); what it cost its owner apart
+     * (`facture_microusd`, RunCosts::facture(): never beyond what each call
+     * held with the instance's key, the excess being the instance's).
      *
      * @return array<string, mixed>
      */
     private function compteurs(int $id): array
     {
+        $stmt = $this->pdo->prepare('SELECT reglages FROM twin9_runs WHERE id = ?');
+        $stmt->execute([$id]);
+        $reglages = $stmt->fetchColumn();
+        $credits = $reglages === false || (self::unpack((string) $reglages)->profil->cle ?? 'instance') === 'instance';
         $stmt = $this->pdo->prepare('SELECT COUNT(*) FROM twin9_lots WHERE run_id = ?');
         $stmt->execute([$id]);
         $lots = (int) $stmt->fetchColumn();
@@ -765,36 +826,52 @@ final class RunRepository
         $stmt->execute([$id]);
         $dureeS = (int) $stmt->fetchColumn();
         $stmt = $this->pdo->prepare(
-            'SELECT etape, statut, stop_reason, COUNT(*) AS n, SUM(tentatives) AS tentatives,
-                    SUM(jetons_entree) AS entree, SUM(jetons_sortie) AS sortie, SUM(cout_microusd) AS cout,
+            'SELECT etape, fournisseur, statut, stop_reason, COUNT(*) AS n, SUM(tentatives) AS tentatives,
+                    SUM(coupures) AS coupures, SUM(jetons_entree) AS entree, SUM(jetons_sortie) AS sortie,
+                    SUM(cout_microusd) AS cout, SUM(' . RunCosts::facture('', $credits) . ') AS facture,
                     SUM(duree_ms) AS duree
-               FROM twin9_appels WHERE run_id = ? GROUP BY etape, statut, stop_reason ORDER BY etape, statut'
+               FROM twin9_appels WHERE run_id = ? GROUP BY etape, fournisseur, statut, stop_reason
+              ORDER BY etape, fournisseur, statut'
         );
         $stmt->execute([$id]);
-        $total = ['appels' => 0, 'pannes' => 0, 'tronques' => 0, 'tentatives' => 0, 'jetons_entree' => 0,
-                  'jetons_sortie' => 0, 'cout_microusd' => 0, 'duree_ms' => 0];
+        $total = ['appels' => 0, 'pannes' => 0, 'tronques' => 0, 'tentatives' => 0, 'coupures' => 0,
+                  'jetons_entree' => 0, 'jetons_sortie' => 0, 'cout_microusd' => 0, 'facture_microusd' => 0,
+                  'duree_ms' => 0];
         $parEtape = [];
+        $parFournisseur = [];
         foreach ($stmt->fetchAll() as $row) {
             $etape = (string) $row['etape'];
+            $fournisseur = (string) $row['fournisseur'];
+            $n = (int) $row['n'];
             $parEtape[$etape] ??= ['appels' => 0, 'pannes' => 0, 'tronques' => 0, 'cout_microusd' => 0];
-            $parEtape[$etape]['appels'] += (int) $row['n'];
+            $parFournisseur[$fournisseur] ??= ['appels' => 0, 'pannes' => 0, 'tronques' => 0, 'coupures' => 0,
+                                               'cout_microusd' => 0];
+            $parEtape[$etape]['appels'] += $n;
             $parEtape[$etape]['cout_microusd'] += (int) $row['cout'];
-            $total['appels'] += (int) $row['n'];
+            $parFournisseur[$fournisseur]['appels'] += $n;
+            $parFournisseur[$fournisseur]['coupures'] += (int) $row['coupures'];
+            $parFournisseur[$fournisseur]['cout_microusd'] += (int) $row['cout'];
+            $total['appels'] += $n;
             if ($row['statut'] === 'panne') {
-                $parEtape[$etape]['pannes'] += (int) $row['n'];
-                $total['pannes'] += (int) $row['n'];
-                // every call is Anthropic's until the other providers' callers (PR C)
-                if (Arret::tronquee('anthropic', $row['stop_reason'] === null ? null : (string) $row['stop_reason'])) {
-                    $parEtape[$etape]['tronques'] += (int) $row['n'];
-                    $total['tronques'] += (int) $row['n'];
+                $parEtape[$etape]['pannes'] += $n;
+                $parFournisseur[$fournisseur]['pannes'] += $n;
+                $total['pannes'] += $n;
+                // its stop, in its provider's table (the journal keeps each call's)
+                if (Arret::tronquee($fournisseur, $row['stop_reason'] === null ? null : (string) $row['stop_reason'])) {
+                    $parEtape[$etape]['tronques'] += $n;
+                    $parFournisseur[$fournisseur]['tronques'] += $n;
+                    $total['tronques'] += $n;
                 }
             }
             $total['tentatives'] += (int) $row['tentatives'];
+            $total['coupures'] += (int) $row['coupures'];
             $total['jetons_entree'] += (int) $row['entree'];
             $total['jetons_sortie'] += (int) $row['sortie'];
             $total['cout_microusd'] += (int) $row['cout'];
+            $total['facture_microusd'] += (int) $row['facture'];
             $total['duree_ms'] += (int) $row['duree'];
         }
+        ksort($parFournisseur, SORT_STRING);
         $stmt = $this->pdo->prepare(
             'SELECT modele_servi, COUNT(*) FROM twin9_appels WHERE run_id = ? AND modele_servi IS NOT NULL
               GROUP BY modele_servi ORDER BY modele_servi'
@@ -802,6 +879,7 @@ final class RunRepository
         $stmt->execute([$id]);
 
         return $total + ['lots' => $lots, 'journees' => $journees, 'duree_s' => $dureeS, 'par_etape' => $parEtape,
+                         'par_fournisseur' => $parFournisseur,
                          'modeles_servis' => array_map(intval(...), $stmt->fetchAll(PDO::FETCH_KEY_PAIR))];
     }
 

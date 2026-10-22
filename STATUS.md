@@ -37,11 +37,193 @@ empilée sur #20). Le soir même, le site est basculé sur l'OVH pour la démons
 Christian.
 
 Le 2026-10-22, le plan « P0 et multi-fournisseur » de Twin9 commence par sa PR A
-(`feat/twin9-p0-configuration`, non fusionnée) : chaque run garde sa configuration et son exécution
+(`feat/twin9-p0-configuration`, #26) : chaque run garde sa configuration et son exécution
 et les affiche, une sortie tronquée est une panne, la voie directe ne rejoue plus une passe à chaque
-réponse. Suivent la PR B (adaptateurs JS, export Twin6) et, A fusionnée, la PR C (multi-fournisseur).
+réponse. Suivent la PR B (adaptateurs JS, export Twin6, #24) et la PR C (multi-fournisseur,
+`feat/twin9-multi-fournisseur`, non poussée) : chaque étape d'un run Twin9 peut partir chez un
+autre fournisseur qu'Anthropic, que l'administrateur ouvre (entrée du 2026-10-22 ci-dessous).
 
 ## Fait
+
+- 2026-10-22 — **Twin9 multi-fournisseur : corrections de la revue de la PR C (même branche
+  `feat/twin9-multi-fournisseur`).** Dix-sept constats confirmés (deux en double),
+  treize commits `fix:`, chacun avec le test qui échouait avant lui, et trois `docs:`. `Twin_v9`
+  n'est pas modifié ; un profil tout Anthropic garde ses empreintes (`EmpreintesFigeesTest`,
+  `PariteTest`). Sa conduite change sur ces points seulement : l'en-tête `traceparent` des requêtes
+  de lots ; le lot d'un run en échec relevé au lieu d'annulé ; la garde de départ d'un lot
+  (`borne − avantLaFin`) ; le solde d'un run annulé (aussitôt hors vol, au tick pour ses appels en
+  vol) ; le libellé d'un Anthropic fermé (« indisponible sur cette instance »).
+  - `058e372` — **un run arrêté garde son lot** (constats 1 et 5) : le lot d'un run en échec n'est
+    plus annulé ni supprimé sans être lu ; `Twin9Lots::menage` le relève une fois fini (réponses
+    écrites avec leur coût, débitées), solde, puis supprime ; seul un run **annulé** voit son lot
+    annulé, et ses réponses venues malgré l'annulation sont lues et payées. Un lot en annulation
+    compte en vol, et un run repris entre-temps le relève.
+  - `5f44330` — **annuler pendant des appels directs** (constat 2, préexistant) : la tranche relit
+    le statut avant chaque départ, garde le run tant que ses appels sont en vol (écrits avec leur
+    coût), solde à sa fin au coût réel ; un run annulé entre deux tranches, ou laissé par un tick
+    mort, est soldé en tête du tick suivant (`RunRepository::aSolder`). Puis `c5157e9` : la
+    route rend aussitôt ce qu'aucune tranche n'a en vol (`RunCosts::libererHorsVol`) — sans
+    déclencheur, la page d'un run annulé ne lance plus de tick, et le crédit serait resté retenu.
+  - `538b876` — **l'excédent payé par l'instance ne pèse plus sur l'auteur** (constat 4) : budget,
+    `disponible`, reprise lisent `RunCosts::impute` (coût réel plafonné au pire cas tenu, avec la
+    clé de l'instance) ; compteurs `facture_microusd` à côté de `cout_microusd`, rendu par le suivi
+    (`cout.depense_microusd`). Sans migration : le pire cas tenu est déjà gardé.
+  - `ed7dc9d` — **« pire cas insuffisant »** (constat 3) : la marque est gardée (réglage
+    `twin9_pire_cas_insuffisant`, à part de `twin9_config`), montrée sur la ligne du modèle dans
+    `#/admin/twin9` et rendue par `GET /api/twin9/admin/config` ; le lancement la refuse tant que
+    les plafonds du modèle n'ont pas changé — **au-delà de la spécification**, qui ne demandait
+    que la marque (parade de la critique 2 n° 3).
+  - `913eb7b` — la page du crédit ne promet plus qu'une clé Anthropic privée exempte tout run
+    Twin9 du débit (constat 15).
+  - `886dab2` — la page d'un run dit « fournisseur X indisponible sur cette instance » pour un
+    fournisseur fermé comme pour une clé d'instance absente (constat 10).
+  - `cb4caf1` — **une clé d'instance refusée par un tiers** (401, 403 ; constat 7) : l'appel
+    attend comme sur un plafond, sans tentative perdue ni panne, la page le dit indisponible, le
+    worker le compte (`twin9ClesRefusees`) ; trente minutes ainsi, le run s'arrête, sa réserve
+    rendue. La voie directe d'Anthropic est laissée telle quelle (pas de symétrie : un profil tout
+    Anthropic ne change pas).
+  - `11d9842` — la création d'un lot garde le temps d'une soumission avant le dernier départ qui
+    la borne ; une création jamais partie (`non_envoye`) n'est plus un « lot perdu » (constat 8).
+  - `7963697` — chaque requête de la voie par lots porte le `traceparent` non échantillonné
+    (constats 9 et 12) ; `docs/contrats.md` dit comme l'ADR-012.
+  - `c7d0eaa` — **la tranche du déclencheur** (constat 6) : la route du tick garde la durée que
+    demande cron-job.org (réglage `twin9_tranche_declencheur`) ; le lancement se mesure sur la
+    tranche la plus courte servie (21 s au départ d'un appel sous 25 s, au lieu de 35) ;
+    l'administration la dit et ne propose pas plus ; dans une tranche trop courte, seul le modèle
+    trop long attend (pas tout le fournisseur), la page dit d'ouvrir le run ; trente minutes
+    ainsi (migration `033_twin9_retenue.sql`, `twin9_runs.retenu_depuis`), le run s'arrête, sa
+    réserve rendue. `docs/deploiement.md` : le profil mixte sous 25 s.
+  - `5a15618` — `check-publiable` reconnaît une clé Google qui finit par « - » (constat 11 ;
+    test UC-PRO-08-F26, qui couvre aussi les clés OpenAI, OpenRouter et xAI).
+  - `ebe2ec6` — le coffre ne prend plus de clé Mistral AI, qu'aucun parcours n'emploie (constat
+    17, minimisation) : la décision (4) ci-dessous est tranchée ainsi ; jamais déployée, aucune
+    clé à purger.
+  - `aee09ff` — politique de confidentialité et registre : ce que chaque fournisseur conserve, et
+    les **transferts hors UE** (constat 13) — pays de traitement et garantie **non vérifiés**,
+    Anthropic compris : rien n'en est affirmé.
+  - **Ordre des commits de la PR C** (constat 14, historique seulement) : de `00281a9` à
+    `9564e4a`, un administrateur pouvait ouvrir un tiers (par l'API) et y envoyer un portfolio
+    avant que la politique, le registre et l'accord lié aux fournisseurs n'arrivent (`b18086e`),
+    contre la règle « même commit » de la spécification. L'arbre final est conforme ; l'historique
+    publié ne se réécrit pas : **fusionner la PR en squash**, pour que `main` n'ait aucun commit
+    déployable qui l'enfreigne (à dire dans la PR).
+  - **Badge RGPD de la page des clés** (constat 16, C9 du plan) : retiré du périmètre,
+    volontairement. L'étiquette décrit les conditions des clés de l'instance ; une clé personnelle
+    tierce ne sert jamais à Twin9 (ADR-012 §5) : la poser à côté d'une clé personnelle
+    présenterait une garantie qui ne vaut pas pour elle.
+  - Point ouvert : `Twin9Lots::menage` traite au plus 20 lots par tick, par ordre d'identifiant ; le
+    lot d'un run en échec y reste désormais jusqu'à sa fin chez Anthropic (24 h au plus), une
+    requête d'état par tick. Au-delà de vingt lots ainsi en attente, un lot plus récent (à annuler,
+    ou perdu) attendrait son tour : sans effet à l'échelle d'aujourd'hui, à revoir s'il le faut.
+  - À dire à Christian : les garanties des transferts hors UE sont à établir, fournisseur par
+    fournisseur, avant d'ouvrir un tiers (Anthropic compris, déjà en production) ; le refus au
+    lancement d'un modèle au pire cas insuffisant va au-delà de la spécification ; sous le
+    déclencheur de 25 s, la durée maximale d'un appel tiers admise est de 21 s.
+  - Vérifié, sur l'arbre de `c5157e9` (PHP 8.5.12, MySQL 8.0 locaux, base `humanome_test_c`) :
+    PHP `Tests: 1843, Assertions: 20207`, les 2 échecs connus de PHP 8.5 seuls
+    (`AuthActivationTest::testExpiredCodeIsRejected`, `UcCpt02…::testU17SessionCookieAttributes`),
+    1 dépréciation, aucun test sauté ; `PariteTest` et `EmpreintesFigeesTest` verts (13 tests, vrai
+    moteur `../Twin_v9`) ; front 2 820 tests verts (260 fichiers) et moteur 562 tests, 557 verts et
+    les 5 échecs locaux connus d'UC-PRO-08 (F19 à F22, F25), sur `aee09ff` (`c5157e9` ne touche ni
+    l'un ni l'autre) ; `check-publiable` OK. Un test du front
+    (UC-ADM-05-F01) a dépassé une fois son délai sous charge, vert seul et aux passages suivants.
+  - Non vérifié : PHP 8.2 (la CI) ; aucun appel réel à un fournisseur (la porte payante C10 reste à
+    faire) ; la tranche du déclencheur n'est gardée que par la route HTTP du tick (pas par
+    `scripts/worker.php`, dont la tranche est celle de l'instance).
+
+- 2026-10-22 — **Twin9 multi-fournisseur : chaque étage, étape et lecteur choisit son fournisseur,
+  l'administrateur les ouvre, l'accord les nomme (branche `feat/twin9-multi-fournisseur`, PR C du
+  plan « P0 et multi-fournisseur »).** Spécification `spec-v2` (PR C : lots C7, C8a,
+  C8b, C9), faits d'API relevés le 2026-10-22 sur les seules documentations officielles. Huit
+  commits : ADR-012, C7, C8a, C8b, le lancement, C9, cette entrée et une précision du registre RGPD. `Twin_v9` n'est pas modifié ; un profil tout Anthropic garde
+  exactement ses empreintes (`EmpreintesFigeesTest`, `PariteTest`).
+  - **ADR-012** amende ADR-010 §2 et §4 et ADR-011 §3 : six fournisseurs connus (Anthropic, OpenAI,
+    Mistral AI, Google, xAI, OpenRouter), une adresse verrouillée chacun, la route par appel, la
+    clé personnelle chez Anthropic seulement, les prix tiers saisis à la main, l'étiquette RGPD et
+    l'accord qui nomme les fournisseurs.
+  - **C7 — le profil nomme le fournisseur de chaque appel, l'instance les ouvre.** `fournisseur`
+    sans défaut sur étages, étapes, lecteurs et second ressort (hérité : Anthropic, l'étage,
+    l'étage des lecteurs) ; motif de modèle par fournisseur (80 caractères ; OpenRouter sans
+    suffixe `:`), un changement de fournisseur nomme son modèle, aucun effort hors d'Anthropic ;
+    `famille` facultative ; `appels_directs` ≤ 32 ; le fournisseur hérité sort des empreintes,
+    jamais celui du second ressort (test de collision). Réglages d'instance
+    `twin9_fournisseurs_ouverts` (`["anthropic"]`) et `twin9_fournisseurs_non_rgpd` (`false`),
+    à l'administrateur ; un profil qui nomme un fournisseur fermé s'enregistre, ne se lance pas ;
+    clé personnelle refusée dès qu'un appel quitte Anthropic.
+  - **C8a — un appelant par fournisseur, sa clé, ses plafonds.** `AnthropicAppelant` (en-tête
+    `traceparent` non échantillonné), `ChatCompletionsAppelant` (OpenAI `store:false` et
+    `max_completion_tokens`, Mistral, xAI, OpenRouter `data_collection: deny` sans repli),
+    `GeminiAppelant` (`store:false`, parts de réflexion écartées) ; un vocabulaire d'arrêt ;
+    aucun texte d'un fournisseur ne sort (test « canari » par appelant) ; chaque hôte reçoit sa
+    clé factice, jamais une autre. Grille `fournisseur:modèle` avec `plafond_sortie`,
+    `plafond_reflexion`, `duree_max_s`, `reflexion_param` ; débit plafonné à la réserve, l'excédent
+    à l'instance (`depassements`). Coffre : `mistral` (retiré par la revue, `ebe2ec6`) ; cinq clés d'instance en `$secret` ;
+    `phpunit.xml` vide les six `*_API_KEY` ; `check-publiable` reconnaît les vraies clés Google,
+    OpenAI, OpenRouter et xAI.
+  - **C8b — la voie mixte.** Anthropic par lots (si le profil le dit) et les autres en direct dans
+    la même tranche : un lot au plus par run et par tranche, en tête ; suspensions par fournisseur
+    ou pour les lots ; garde relue à l'ouverture de chaque tranche ; un appel tiers ne part que si
+    sa `duree_max_s` tient dans la tranche ; repos commun après un 429 ; arrêt différé (rien ne
+    part, les appels en vol reviennent ou sont coupés, journalisés avec leur coût). Migration
+    `032_twin9_fournisseurs.sql` (fournisseur, coupures, plafond de chaque appel).
+  - **Lancement** : l'accord `{fournisseurs: [ids]}` comparé aux fournisseurs qu'atteignent les
+    appels (`422` sinon), gardé dans la configuration ; contrôle propre au lancement et à la
+    reprise (fournisseur disponible, un seul message, prix et plafonds) ; prévision par route ;
+    évaluations à la voie effective et à la part d'Anthropic.
+  - **C9 — l'interface et les textes.** Page `#/configuration` : le fournisseur de chaque étage,
+    étape et lecteur (« hérité : … », « celui de chaque étape » au second ressort), son étiquette
+    RGPD visible sans le focus, les fournisseurs indisponibles non choisis (celui que nomme le
+    profil se voit) ; changer de fournisseur emporte la famille d'un lecteur qui le suivait, un
+    modèle qu'il n'admet pas (un étage en redemande un) et l'effort ; ce que le serveur
+    refuserait est dit à côté (modèle hors motif, effort d'étage hérité ailleurs, clé
+    personnelle avec un tiers) ; la voie expliquée en clair, sans effet sans appel Anthropic ;
+    un résumé « Ce profil envoie son texte à… ». Page `#/twin9` : l'accord nomme chaque
+    fournisseur, sa voie et son étiquette avant tout aperçu, dit un fournisseur « non » à éviter
+    pour des journaux d'élèves réels, tombe quand le profil en atteint d'autres ou par une autre
+    voie, et part en `{fournisseurs}` ; un run mixte « en partie par lots ». Pour cela,
+    `GET /api/twin9/configuration` donne les fournisseurs de chaque profil
+    (`profils[].fournisseurs`) et du profil v9.8 (`defaut_fournisseurs`), comme l'aperçu.
+    `#/admin/twin9` : chaque fournisseur, son étiquette, sa voie, la clé de l'instance posée ou
+    absente (`fournisseurs` en lecture seule : un booléen, jamais la clé), l'ouverture et le second
+    interrupteur (le refermer referme les fournisseurs « non »), la grille d'un modèle tiers et
+    ses plafonds ; « contribution sur les prix des fournisseurs » ; le relevé dit qu'il ne touche
+    qu'Anthropic. Clés : Mistral AI proposé (retiré par la revue), l'exemple de clé de chaque fournisseur, et le message
+    « pour l'analyse approfondie Twin9, une clé personnelle ne sert que chez Anthropic ». Textes :
+    politique de confidentialité (destinataires, conservation de chacun d'après sa documentation,
+    étiquettes indicatives), registre RGPD §6, §8, §12, §13, aide de Twin9, `docs/contrats.md` §7,
+    §8.1, §8.4, `docs/autorisations.md`, fiches UC-ADM-05 (A7, A8, RG10, RG11, U20, U21, F21),
+    UC-CPT-04 (A6, U12, F22), UC-APP-10 (A9, RG1, U17, F22).
+  - Non signalé par la page, refusé par le serveur (`422` qui nomme l'étape) : l'effort propre d'une
+    étape quand le second ressort part chez un autre fournisseur.
+  - Vérifié, sur l'arbre du commit de C9 (PHP 8.5.12 et MySQL 8.0 locaux, base
+    `humanome_test_c`) : PHP `Tests: 1826, Assertions: 20049`, les 2 échecs connus de PHP 8.5 seuls
+    (`AuthActivationTest::testExpiredCodeIsRejected`, `UcCpt02…::testU17SessionCookieAttributes`),
+    1 dépréciation, aucun test sauté (`PariteTest` compris, vrai moteur `../Twin_v9`) ; front 2 817 tests verts (260 fichiers ; 2 794 avant C9) ;
+    moteur 561 tests, 556 verts et les 5 échecs locaux connus d'UC-PRO-08 (F19 à F22, F25) ;
+    `check-publiable` OK.
+  - Non vérifié : la syntaxe sous PHP 8.2 (la CI le dira) ; un vrai navigateur (jsdom seulement) et
+    le bout en bout (Playwright) ; aucun appel réel à un fournisseur : la porte payante du plan
+    (C10 : un run par lots puis en direct chez Anthropic, puis un appel par fournisseur tiers ouvert,
+    Mistral et OpenAI d'abord, puis un run mixte, budget de 2 $) reste à faire, au feu vert de
+    Christian ; le catalogue des cas (`docs/cas-utilisation/README.md`) n'est pas recompté : la copie
+    de la branche est abîmée depuis la fusion `cc5fc1a` (les lignes UC-APP-09 et UC-APP-10 remplacées
+    par une ligne de total), `main` a la bonne ; à recompter en fusionnant `main`, qui a reçu depuis
+    #26 (la PR A), #25, #27 et #28.
+  - À décider (Christian) : (1) la garde RGPD — aujourd'hui un fournisseur étiqueté « non » ne
+    s'ouvre que derrière `twin9_fournisseurs_non_rgpd`, ou seulement exiger l'accord qui le nomme ;
+    (2) à savoir, sans changement : avec une clé personnelle Anthropic, les résultats des lots sont
+    visibles dans la Console du titulaire de la clé (les gabarits rendus compris) ; (3) un effort
+    posé sur un étage empêche toute étape de cet étage de partir ailleurs qu'Anthropic (le serveur
+    refuse l'effort hérité, la page le dit) : garder, ou ne pas transmettre l'effort d'un étage à un
+    appel tiers ; (4) ~~la clé Mistral AI de « Mon compte » ne sert encore à aucun parcours
+    (l'assistant n'a pas d'adaptateur Mistral, Twin9 n'emploie qu'une clé personnelle Anthropic) :
+    la garder ainsi annoncée, ou la retirer~~ — retirée par la revue (`ebe2ec6`, minimisation) ; (5) l'accord retombe aussi quand seule la voie
+    d'Anthropic change (par lots ↔ en direct : la conservation du lot change) ; (6) à vérifier à la
+    pose des clés d'instance, que le code ne peut pas imposer et dont dépendent la politique de
+    confidentialité et les étiquettes : la clé Google de l'offre payante (conditions de Gemini pour
+    l'EEE) ; chez Mistral AI, l'usage des données pour l'entraînement coupé (Admin > Privacy,
+    « Anonymous improvement data ») ou une offre payante ; chez OpenRouter, « Input & Output
+    Logging » et « Use of Inputs/Outputs » laissés désactivés sur le compte de la clé.
 
 - 2026-10-22 — **`npm run test:dist`, correctifs de la relecture (branche `fix/smoke-dist` ;
   non fusionnée, rien déployé).** Sept constats confirmés de la relecture de l'entrée suivante,

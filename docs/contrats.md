@@ -643,7 +643,17 @@ avec ses appels. **Effet sur le moteur** : après une panne, le moteur peut
 redemander l'artefact sous `<id>#2` (un greffier, par exemple) ; ce second
 appel, facturé lui aussi, a toutes les chances d'être coupé de même. Le
 remède n'est donc pas de relancer le run tel quel : **augmentez le
-`budget_sortie` de l'étape** dans le profil (§7.2), puis relancez.
+`budget_sortie` de l'étape** dans le profil (§7.2), puis relancez. **Ce
+remède a un coût** : le budget de sortie entre dans l'empreinte des réglages
+(§8.2, `CallSettings::empreinte` hache étages et étapes) ; l'empreinte
+changée, le run suivant instruit de nouveau, et paie, **toutes** les
+journées de la carte que porte le portfolio, pas seulement celle en panne
+— l'aperçu du lancement le dit (« N journées sur M à instruire (… changées) »)
+et en prévoit le coût. Un appel tronqué de la fusion (relectures,
+arpenteur) n'est d'aucune journée : la fusion se refait à chaque run. La
+page du run nomme les étapes des sorties tronquées quand les compteurs
+d'un run fini les donnent (`compteurs.par_etape`, ses étapes du moteur
+rapportées à celles du profil), et le dit.
 
 L'arrêt brut reste dans `twin9_appels.stop_reason`, **assaini** avant
 d'être écrit (`Fournisseurs\Arret::assainir`) : un identifiant court
@@ -1342,15 +1352,23 @@ refusée ; fixture inventée `schemas/fixtures/twin9-configuration-exemple.json`
   `execution_prevue.cle`, ni aucun `cout_microusd`, ni le `budget_usd` des
   reprises ; ni le `sel` de l'empreinte. L'administrateur n'en voit rien
   (§8.4 : des compteurs).
-- **La page du run** (`web/src/views/twin9/ConfigurationDuRun.jsx`) : le
-  suivi n'en portant que l'empreinte, « Configuration » lit les deux blocs
-  dans les résultats quand on l'ouvre, et de nouveau quand le statut du run
-  change ; elle dit chaque réglage de `appels` (rôle, fournisseur et son
-  étiquette RGPD, voie, modèle, budget de sortie), le jeu de gabarits, le
-  référentiel, la clé, puis l'exécution (appels, pannes, tronqués par
-  fournisseur et par voie, passes, coût). Chaque ligne tient à la présence
-  de son champ : sans `cle` ni `cout_microusd` (un cartographe lié), elle
-  manque.
+- **La page du run** (`web/src/views/twin9/ConfigurationDuRun.jsx`), celle
+  de son seul propriétaire (le suivi répond 404 à tout autre) : le suivi
+  n'en portant que l'empreinte, « Configuration », présente pour **tout**
+  run, lit les deux blocs dans les résultats quand on l'ouvre, de nouveau à
+  chaque ouverture tant que le run est en cours (ses comptes avancent ;
+  jamais au rythme du suivi : les résultats portent les sorties), et quand
+  son statut change ; elle dit chaque réglage de `appels` (rôle,
+  fournisseur et son étiquette RGPD, voie, modèle, budget de sortie), le jeu
+  de gabarits, le référentiel, la clé, puis l'exécution (appels, pannes,
+  tronqués par fournisseur et par voie, passes, coût), d'où viennent ses
+  comptes (figés ; lus dans le journal d'un run en cours, ou arrêté), et le
+  conseil des sorties tronquées (§8). Un run lancé avant P0-1 n'a pas de
+  configuration : elle le dit, et montre son exécution, partielle (un run
+  en cours au déploiement de la migration 031). Un cartographe lié lit les
+  blocs filtrés dans les résultats (l'API) ; la vue, chaque ligne tenant à
+  la présence de son champ (sans `cle` ni `cout_microusd`, elle manque),
+  s'y prête si on la réutilise, mais aucune page ne la lui montre.
 - **Le jeu de cartographie** (`importTwin9Run`, document `twin9-run`, §8.4)
   se partage et s'archive : il ne garde des deux blocs qu'une **liste
   blanche**, champ par champ et en valeurs simples, sous la clé

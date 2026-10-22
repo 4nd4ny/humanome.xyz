@@ -12,6 +12,9 @@
 // suivre et les lire. Depuis P0-1 : la configuration et l'exécution du run
 // (VueConfiguration, pour son propriétaire et pour un cartographe lié) et
 // ce que l'importeur du run en garde dans le jeu (liste blanche).
+import { readFileSync } from 'node:fs'
+import { dirname, resolve } from 'node:path'
+import { fileURLToPath } from 'node:url'
 import { afterEach, describe, expect, it, vi } from 'vitest'
 import { cleanup, fireEvent, render, screen, waitFor, within } from '@testing-library/react'
 import { parseHash } from '../../../src/router.js'
@@ -32,7 +35,7 @@ import {
 import { twin9RunFiles } from '../../../src/lib/interface-handoff.js'
 import { createMemoryAdapter, createPortfolioStore } from '../../../src/lib/portfolio-store.js'
 import Twin9View from '../../../src/views/Twin9View.jsx'
-import { VueConfiguration } from '../../../src/views/twin9/ConfigurationDuRun.jsx'
+import { ETAPES_DU_MOTEUR, VueConfiguration } from '../../../src/views/twin9/ConfigurationDuRun.jsx'
 import { importTwin9Run } from '../../../src/carto/core/importers/twin9-run.js'
 import { jsonResponse } from '../support/twin.js'
 // un run configuré, tel que ses résultats le rendent à son propriétaire (P0-1) : valeurs inventées
@@ -383,10 +386,40 @@ describe('UC-APP-10 — la configuration et l’exécution d’un run (P0-1)', (
     expect(termes(container, 'dl:last-of-type > dt')).toEqual(['Appels', 'Passes du moteur', 'Lots', 'Coût'])
     expect(termes(container, 'table caption')).toEqual(['Réglages des appels', 'Par fournisseur', 'Par voie'])
     expect(termes(container, 'table:last-of-type thead th')).toEqual(['Voie', 'Appels', 'Pannes', 'dont tronqués', 'Coût'])
-    expect(container.querySelector('.twin9-conseil').textContent).toContain('Augmentez le budget de sortie de son étape')
+    // le conseil des sorties tronquées (P0-2) : sans les compteurs d'un run fini, ni l'étape ni la phase ne sont
+    // connues ; le remède dit son coût — un autre budget de sortie change l'empreinte des réglages
+    const conseil = container.querySelector('.twin9-conseil').textContent
+    expect(conseil).toContain('Une sortie tronquée a été comptée en panne.')
+    expect(conseil).toContain('Une journée dont un appel est en panne n’entre pas dans la mémoire de la carte')
+    expect(conseil).toContain('augmentez le budget de sortie de son étape')
+    expect(conseil).toContain('change l’empreinte des réglages, et au prochain run toutes les journées de la carte sont instruites de nouveau, et payées, pas seulement celles d’une panne')
     // jamais un prix : la grille n'est pas affichée
     expect(container.textContent).not.toMatch(/USD\/MTok|remise|1,5 \$|7,5 \$/)
     cleanup()
+
+    // les compteurs du run fini nomment les étapes, comme la page des profils : une journée, ou la fusion
+    const conseilDe = (parEtape, tronques = 1) => {
+      const execution = { ...exemple.run.execution, appels: { ...exemple.run.execution.appels, tronques } }
+      const { container: c } = render(<VueConfiguration configuration={exemple.run.configuration} execution={execution} parEtape={parEtape} />)
+      const texte = c.querySelector('.twin9-conseil').textContent
+      cleanup()
+      return texte
+    }
+    const greffier = conseilDe({ greffier: { appels: 3, pannes: 1, tronques: 1 }, president: { appels: 2, pannes: 0, tronques: 0 } })
+    expect(greffier).toContain('Une sortie tronquée a été comptée en panne (étape « Greffier »).')
+    expect(greffier).toContain('augmentez le budget de sortie de l’étape « Greffier »')
+    expect(greffier).toContain('Une journée dont un appel est en panne')
+    expect(greffier).not.toContain('fusion')
+    const fusion = conseilDe({ merge_rapporteur: { appels: 1, pannes: 1, tronques: 1 } })
+    expect(fusion).toContain('(étape « Relectures »)')
+    expect(fusion).toContain('Un appel de la fusion n’est d’aucune journée : la fusion se refait à chaque run.')
+    expect(fusion).not.toContain('Une journée dont')
+    expect(fusion).toContain('toutes les journées de la carte sont instruites de nouveau')
+    const deux = conseilDe({ jure2: { appels: 4, pannes: 1, tronques: 1 }, tagger: { appels: 6, pannes: 1, tronques: 1 }, condense: { appels: 1, pannes: 1, tronques: 1 } }, 3)
+    expect(deux).toContain('3 sorties tronquées ont été comptées en panne (étapes « Jurés, second tour », « Lecteurs », « Arpenteur »).')
+    expect(deux).toContain('Une journée dont un appel est en panne')
+    expect(deux).toContain('la fusion se refait à chaque run')
+    expect(deux).toContain('Pour qu’elles ne soient plus tronquées, augmentez le budget de sortie de ces étapes (Régler mes profils)')
 
     const lu = pourCartographe()
     const { container: c2 } = render(<VueConfiguration configuration={lu.configuration} execution={lu.execution} />)
@@ -397,10 +430,23 @@ describe('UC-APP-10 — la configuration et l’exécution d’un run (P0-1)', (
     cleanup()
 
     // un run d'avant P0-1 : son exécution seule, marquée partielle
-    const { container: c3 } = render(<VueConfiguration configuration={null} execution={{ ...lu.execution, partiel: true, source: 'journal' }} />)
+    const { container: c3 } = render(<VueConfiguration configuration={null} execution={{ ...lu.execution, partiel: true, source: 'journal', statut: 'en_cours' }} />)
     expect(c3.textContent).toContain('Ce run a été lancé avant que sa configuration soit gardée.')
-    expect(c3.textContent).toContain('Lue dans son journal')
+    expect(c3.textContent).toContain('Lue dans son journal à l’ouverture : le run n’est pas fini, et ses comptes avancent ; refermez puis rouvrez « Configuration » pour les relire.')
     expect(c3.textContent).toContain('ses passes et le temps du moteur sont incomplets')
+    cleanup()
+
+    // un run arrêté : ses comptes, lus dans son journal, ne bougent plus
+    const { container: c4 } = render(<VueConfiguration configuration={lu.configuration} execution={{ ...lu.execution, source: 'journal', statut: 'annule' }} />)
+    expect(c4.querySelector('.twin9-config-source').textContent).toBe('Lue dans son journal : le run est arrêté, ses comptes ne bougent plus tant qu’il ne reprend pas.')
+  })
+
+  it('UC-APP-10-U14 — les étapes que nomme le conseil des sorties tronquées sont celles du moteur, comme CallSettings::ETAPES les range', () => {
+    const php = readFileSync(resolve(dirname(fileURLToPath(import.meta.url)), '../../../../api/src/Twin9/CallSettings.php'), 'utf8')
+    const bloc = /public const ETAPES = \[([\s\S]*?)\];/.exec(php)[1]
+    const etapes = Object.fromEntries([...bloc.matchAll(/'(\w+)' => '(\w+)'/g)].map((m) => [m[1], m[2]]))
+    expect(Object.keys(etapes).length).toBeGreaterThan(15)
+    expect(ETAPES_DU_MOTEUR).toEqual(etapes)
   })
 
   it('UC-APP-10-U15 — importTwin9Run : la configuration et l’exécution gardées par liste blanche sous « <run>|configuration » (ni prix, ni coût, ni plafond, ni clé), non comptées comme une délibération ; chaque journée dit ses modèles et son jeu de gabarits', () => {

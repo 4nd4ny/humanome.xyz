@@ -109,16 +109,19 @@ badge premium) ou ouvre `#/twin9`.
    T16, qui n'a pas gardé de référentiel).
 8. La page garde l'attestation du run (profil, référentiel et version, jeu de
    gabarits et empreinte, moteur, admission, date de l'accord) ; « Mes
-   analyses » liste ses runs. À côté, « Configuration » (P0-1, un run lancé
-   depuis : son suivi porte `configuration_empreinte`), ouverte, lit une fois
-   `GET /api/twin9/runs/<id>/resultats` — de nouveau quand le statut du run
-   change — et dit chaque rôle (étage, étape, étape au second ressort,
+   analyses » liste ses runs. À côté, « Configuration » (P0-1 ; son suivi
+   n'en porte que `configuration_empreinte`), ouverte, lit
+   `GET /api/twin9/runs/<id>/resultats` — de nouveau à chaque ouverture tant
+   que le run est en cours, et quand son statut change — et dit chaque rôle
+   (étage, étape, étape au second ressort,
    lecteur du collège) avec son fournisseur et son étiquette RGPD, sa voie,
    son modèle et son budget de sortie ; le jeu de gabarits
    (`jeu@empreinte`), le référentiel (`id@version`), la clé ; puis
    l'exécution : appels, pannes dont sorties tronquées (avec le conseil
-   d'augmenter le budget de sortie de leur étape), par fournisseur et par
-   voie, passes du moteur, lots, coût (RG13). Ouvert dans la cartographie
+   d'augmenter le budget de sortie de leur étape, qu'il nomme quand le run
+   est fini, et ce que coûte ce remède : toute la carte instruite de
+   nouveau), par fournisseur et par voie, passes du moteur, lots, coût
+   (RG13). Ouvert dans la cartographie
    (étape 7), chaque journée dit ses modèles et son jeu de gabarits, et le
    jeu garde la configuration par liste blanche (RG14).
 
@@ -251,10 +254,20 @@ badge premium) ou ouvre `#/twin9`.
   comprise ; l'exécution est figée quand le run finit, lue dans son journal
   sinon (« partielle » pour un run lancé avant elle). Le suivi, interrogé
   sans cesse, n'en porte que l'empreinte : la page lit les deux blocs dans
-  les résultats, à l'ouverture seulement. Une sortie tronquée est une panne
-  (§8) : sa journée sera instruite de nouveau. Un cartographe lié les lit
-  sans prix, coût, plafond ni clé ; chaque ligne de la vue tient à la
-  présence de son champ. Un run d'avant P0-1 n'a pas de « Configuration ».
+  les résultats, à l'ouverture seulement — à chaque ouverture tant que le
+  run est en cours, ses comptes avançant —, jamais au rythme du suivi. Une
+  sortie tronquée est une panne (§8) : la journée d'un appel en panne
+  n'entre pas dans la mémoire, et sera instruite de nouveau ; un appel de la
+  fusion n'est d'aucune journée. Le remède, un budget de sortie plus grand,
+  change l'empreinte des réglages : au run suivant, toutes les journées de
+  la carte sont instruites de nouveau, et payées ; la page le dit, et nomme
+  les étapes en cause d'après les compteurs d'un run fini. Un cartographe lié
+  les lit, sans prix, coût, plafond, clé ni sel, dans les résultats (l'API) :
+  la page du run n'est que celle de son propriétaire ; chaque ligne de la vue
+  tient à la présence de son champ. Un run d'avant P0-1 n'a pas de
+  configuration : « Configuration » le dit, et montre son exécution,
+  partielle, quand il en a une (un run en cours au déploiement de la
+  migration 031).
 - **RG14 — Ce que le jeu de cartographie en garde** (`importTwin9Run`) : une
   liste blanche, champ par champ — l'empreinte, les fournisseurs (libellé,
   étiquette RGPD, voie), les réglages de chaque appel, le référentiel
@@ -322,7 +335,7 @@ badge premium) ou ouvre `#/twin9`.
 | UC-APP-10-U11 | `RunRepository::suivi` | Ce qui retient un run en mots (premier tour, run précédent de la même carte) ; ni portfolio ni sortie | idem |
 | UC-APP-10-U12 | `Resultats::lire` | Seules les sorties publiques ; récitation expurgée, audit en compteur ; référentiel sans fiche ni description (RG9, RG11) | idem |
 | UC-APP-10-U13 | `Lancement::empreinte` | Empreinte d'un jeu de gabarits stable, indépendante de l'ordre, sensible au contenu | idem |
-| UC-APP-10-U14 | `VueConfiguration` | Chaque rôle (fournisseur, étiquette RGPD, voie, modèle, budget de sortie), jeu, référentiel, clé ; exécution par fournisseur et par voie, passes, coût, conseil des sorties tronquées ; un cartographe lié : ni clé ni coût ; un run d'avant P0-1 : son exécution partielle seule (RG13) | `web/test/usecases/unit/uc-app-10-analyse-approfondie-twin9.test.jsx` |
+| UC-APP-10-U14 | `VueConfiguration`, `ETAPES_DU_MOTEUR` | Chaque rôle (fournisseur, étiquette RGPD, voie, modèle, budget de sortie), jeu, référentiel, clé ; exécution par fournisseur et par voie, passes, coût ; conseil des sorties tronquées (étapes nommées d'après les compteurs, journée ou fusion, coût du remède : toute la carte instruite de nouveau) ; d'où viennent les comptes (figés, en cours, arrêté) ; les blocs filtrés d'un cartographe lié (la vue réutilisée) : ni clé ni coût ; un run d'avant P0-1 : son exécution partielle seule ; les étapes du moteur, celles de `CallSettings::ETAPES` (RG13) | `web/test/usecases/unit/uc-app-10-analyse-approfondie-twin9.test.jsx` |
 | UC-APP-10-U15 | `importTwin9Run` | Configuration et exécution gardées par liste blanche sous « <run>\|configuration », non comptées comme une délibération ; modèles et jeu de gabarits de chaque journée ; ni prix, ni coût, ni plafond, ni clé (RG14) | idem |
 
 ### Tests fonctionnels
@@ -349,7 +362,7 @@ badge premium) ou ouvre `#/twin9`.
 | UC-APP-10-F17 | E1, E2 | IHM | Visiteur : invite à se connecter ; instance sans moteur : message, sans formulaire | idem |
 | UC-APP-10-F18 | A2, E5 | IHM | Admission partielle dite ; refus : message, « Recharger », aucun lancement possible | idem |
 | UC-APP-10-F19 | A3, A4, A5 | IHM | Annuler, reprendre ; arrêté par le budget, reprise sous un nouveau budget ; case du cartographe | idem |
-| UC-APP-10-F21 | Nominal (étapes 7-8), RG13, RG14 | IHM | `<App/>` : la page d'un run fini ouvre sa configuration, lue dans ses résultats à l'ouverture seulement, à côté de l'attestation inchangée ; ouvert dans la cartographie, le jeu garde la configuration par liste blanche, chaque journée dit ses modèles et son jeu, rien d'un prix, d'un coût ni de la clé | `web/test/usecases/functional/uc-app-10-analyse-approfondie-twin9.test.jsx` |
+| UC-APP-10-F21 | Nominal (étapes 7-8), RG13, RG14 | IHM | `<App/>` : la page d'un run fini ouvre sa configuration, lue dans ses résultats à l'ouverture seulement, à côté de l'attestation inchangée ; le conseil de la sortie tronquée nomme son étape et dit le coût du remède ; ouvert dans la cartographie, le jeu garde la configuration par liste blanche, chaque journée dit ses modèles et son jeu, rien d'un prix, d'un coût ni de la clé | `web/test/usecases/functional/uc-app-10-analyse-approfondie-twin9.test.jsx` |
 
 ### Tests existants liés (non-régression)
 
@@ -361,7 +374,7 @@ badge premium) ou ouvre `#/twin9`.
 - `api/tests/Twin9/PurgeExportTest.php` — purge du compte, lots chez Anthropic, export.
 - `api/tests/Twin9MetaTest.php` — le proxy du moteur du navigateur est parti (T11).
 - `api/tests/Twin9/RunConfigurationTest.php`, `api/tests/Twin9/RunsTest.php`, `api/tests/Twin9/PurgeExportTest.php` — configuration et exécution d'un run (P0-1) : liste blanche, vue du cartographe, tables vides en objets, reprises, export d'un run ancien.
-- `web/src/views/Twin9View.test.jsx` — lancement, aperçu, admission, page du run, carte incomplète, référentiels (T17) ; « Configuration » (P0-1) : absente d'un run d'avant elle, lue à l'ouverture seulement, relue quand le run finit, erreur dans le bloc.
+- `web/src/views/Twin9View.test.jsx` — lancement, aperçu, admission, page du run, carte incomplète, référentiels (T17) ; « Configuration » (P0-1) : lue à l'ouverture seulement, l'exécution partielle seule d'un run d'avant elle, relue à chaque ouverture d'un run en cours et quand il finit, erreur dans le bloc.
 - `web/src/carto/core/importers/twin9-run.test.js`, `web/src/lib/twin9/mapper.test.js` — jeu de cartographie d'un run, dossiers ; configuration par liste blanche, variantes inchangées avec ou sans elle, jeu exporté sans prix ni clé (P0-1).
 - `web/src/lib/archive.test.js` — l'archive du compte avec la configuration et l'exécution d'un run, sans elles pour un run ancien, invalide avec une clé inconnue (P0-1).
 - `web/e2e/twin9-run.e2e.js`, `web/e2e/twin9-referentiels.e2e.js` — de bout en bout, en local (`docs/tests-e2e.md`).

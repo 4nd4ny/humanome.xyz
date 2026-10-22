@@ -543,15 +543,15 @@ function PageDuRun({ id, deps, onOpenInInterface }) {
           </dl>
         </details>
       ) : null}
-      {/* sa configuration (P0-1) : le suivi n'en porte que l'empreinte, les blocs se lisent dans ses résultats */}
-      {run.configuration_empreinte ? (
-        <ConfigurationDuRun
-          version={run.statut}
-          charger={() =>
-            fetchResultats(id, { fetchFn }).then((r) => ({ configuration: r.run?.configuration ?? null, execution: r.run?.execution ?? null }))
-          }
-        />
-      ) : null}
+      {/* sa configuration et son exécution (P0-1) : le suivi n'en porte que l'empreinte, les blocs se lisent dans ses
+          résultats ; un run lancé avant elle, sans configuration, y montre son exécution partielle */}
+      <ConfigurationDuRun
+        version={run.statut}
+        parEtape={run.compteurs?.par_etape ?? null}
+        charger={() =>
+          fetchResultats(id, { fetchFn }).then((r) => ({ configuration: r.run?.configuration ?? null, execution: r.run?.execution ?? null }))
+        }
+      />
     </article>
   )
 }

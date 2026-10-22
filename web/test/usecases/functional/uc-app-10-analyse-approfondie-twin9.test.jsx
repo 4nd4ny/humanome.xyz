@@ -433,7 +433,12 @@ describe('UC-APP-10 — l’apprenant lance une analyse approfondie, la suit et 
     r.run = { ...r.run, configuration: exemple.run.configuration, execution: exemple.run.execution }
     const { calls } = stubFetch(
       routes({
-        'GET twin9/runs/7': jsonResponse(200, { ...fini(), configuration_empreinte: exemple.run.configuration.empreinte }),
+        // ses compteurs par étape nomment celle de la sortie tronquée
+        'GET twin9/runs/7': jsonResponse(200, {
+          ...fini(),
+          compteurs: { ...fini().compteurs, par_etape: { greffier: { appels: 2, pannes: 1, tronques: 1, cout_microusd: 900 } } },
+          configuration_empreinte: exemple.run.configuration.empreinte,
+        }),
         'GET twin9/runs/7/resultats': jsonResponse(200, r),
       }),
     )
@@ -451,7 +456,11 @@ describe('UC-APP-10 — l’apprenant lance une analyse approfondie, la suit et 
     expect(ligne('Clé')).toBe('celle de l’instance')
     expect(ligne('Appels')).toBe('9 : 8 répondus, 1 en panne dont 1 sortie tronquée')
     expect(ligne('Coût')).toBe('0,0042 $')
-    expect(configuration.querySelector('.twin9-conseil').textContent).toContain('Augmentez le budget de sortie de son étape')
+    // le conseil nomme l'étape, et dit le coût du remède : toute la carte instruite de nouveau
+    const conseil = configuration.querySelector('.twin9-conseil').textContent
+    expect(conseil).toContain('Une sortie tronquée a été comptée en panne (étape « Greffier »).')
+    expect(conseil).toContain('augmentez le budget de sortie de l’étape « Greffier »')
+    expect(conseil).toContain('toutes les journées de la carte sont instruites de nouveau, et payées, pas seulement celles d’une panne')
 
     // ouvert dans la cartographie : chaque journée dit ses modèles et son jeu ; ni prix, ni coût, ni plafond, ni clé dans le jeu
     fireEvent.click(screen.getByRole('button', { name: 'Ouvrir dans la cartographie' }))

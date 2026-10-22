@@ -95,7 +95,8 @@ final class AppelsDirectsTest extends TestCase
                                       'reflexion' => 'adaptative'],
                             (object) ['nom' => 'autre', 'famille' => 'x', 'modele' => 'claude-sonnet-5-5']];
         $s = new CallSettings(ProfilRepository::validate($profil));
-        $haiku = ['modele' => 'claude-haiku-5-5', 'budget_sortie' => 16000, 'effort' => null, 'reflexion' => 'coupee'];
+        $haiku = ['fournisseur' => 'anthropic', 'voie' => 'lots', 'modele' => 'claude-haiku-5-5', 'budget_sortie' => 16000,
+                  'effort' => null, 'reflexion' => 'coupee'];
         $sonnet = array_replace($haiku, ['modele' => 'claude-sonnet-5-5']);
 
         self::assertSame(array_replace($haiku, ['reflexion' => 'adaptative']),
@@ -114,6 +115,85 @@ final class AppelsDirectsTest extends TestCase
         self::assertSame(array_replace($haiku, ['modele' => 'claude-opus-4-8', 'budget_sortie' => 1000]),
             $s->pour('greffier', 'second_ressort/1.01/20-greffier.md'));
         self::assertSame($sonnet, $s->pour('inconnue', 'x'), 'l\'étage profond à défaut');
+        self::assertSame(['fournisseur', 'voie', 'modele', 'budget_sortie', 'effort', 'reflexion'],
+            array_keys($s->pour('jure', 'x')));
+    }
+
+    /** A step the profile does not know reads the deep stage, without indexing the stages by null (PHP 8.5). */
+    public function testAnUnknownStepReadsTheDeepStageCleanly(): void
+    {
+        $s = new CallSettings(ProfilRepository::validate(ProfilRepository::v98()));
+        set_error_handler(static function (int $niveau, string $message): never {
+            throw new \ErrorException($message, 0, $niveau);
+        });
+        try {
+            self::assertSame('claude-sonnet-5-5', $s->pour('inconnue', 'x')['modele']);
+            self::assertSame('claude-sonnet-5-5', $s->pour('', '')['modele']);
+        } finally {
+            restore_error_handler();
+        }
+    }
+
+    /**
+     * Each call is routed by its own settings: by batches when it goes to
+     * Anthropic and the profile chose them, directly otherwise. Every call
+     * of a profile goes to Anthropic: its lane is the profile's.
+     */
+    public function testEachCallIsRoutedByItsOwnSettings(): void
+    {
+        $lots = new CallSettings(ProfilRepository::validate(ProfilRepository::v98()));
+        $profil = ProfilRepository::v98();
+        $profil->voie = 'directe';
+        $direct = new CallSettings(ProfilRepository::validate($profil));
+
+        foreach ([[$lots, 'lots'], [$direct, 'directe']] as [$s, $voie]) {
+            foreach ($s->parEtape() as $etape => $reglage) {
+                self::assertSame(['anthropic', $voie], [$reglage['fournisseur'], $reglage['voie']], $etape);
+            }
+            self::assertSame($s->combinaisons(), $s->combinaisons($voie));
+            self::assertSame([], $s->combinaisons($voie === 'lots' ? 'directe' : 'lots'));
+        }
+        self::assertSame(array_map(static fn (array $r): array => array_replace($r, ['voie' => 'directe']),
+            $lots->combinaisons()), $direct->combinaisons(), 'les mêmes réglages, une autre voie');
+    }
+
+    /**
+     * The summary of a run's calls: each stage as the profile sets it — a
+     * step's setting never shows in its stage —, each step, each under the
+     * second instance, each reader, and a step the profile does not know.
+     */
+    public function testTheSummaryOfTheCalls(): void
+    {
+        $profil = ProfilRepository::v98();
+        $profil->voie = 'directe';
+        $profil->etapes = (object) [
+            'greffier' => (object) ['budget_sortie' => 1000],
+            'second_ressort' => (object) ['modele' => 'claude-opus-4-8'],
+        ];
+        $profil->college[0]->reflexion = 'adaptative';
+        $s = new CallSettings(ProfilRepository::validate($profil));
+        $resume = $s->resume();
+        $haiku = ['fournisseur' => 'anthropic', 'voie' => 'directe', 'modele' => 'claude-haiku-5-5',
+                  'budget_sortie' => 16000, 'effort' => null, 'reflexion' => 'coupee'];
+        $sonnet = array_replace($haiku, ['modele' => 'claude-sonnet-5-5']);
+
+        self::assertSame(['etages', 'etapes', 'second_ressort', 'lecteurs', 'defaut'], array_keys($resume));
+        self::assertSame(['lecteurs' => $haiku, 'rapide' => $haiku, 'profond' => $sonnet], $resume['etages'],
+            'l\'étage rapide garde son budget, que le greffier surcharge');
+        self::assertSame(array_values(array_unique(CallSettings::ETAPES)), array_keys($resume['etapes']));
+        self::assertSame(array_keys($resume['etapes']), array_keys($resume['second_ressort']));
+        self::assertSame(array_replace($haiku, ['budget_sortie' => 1000]), $resume['etapes']['greffier']);
+        self::assertSame($haiku, $resume['etapes']['juge_leger']);
+        self::assertSame($sonnet, $resume['etapes']['relectures']);
+        self::assertSame(array_replace($haiku, ['modele' => 'claude-opus-4-8', 'budget_sortie' => 1000]),
+            $resume['second_ressort']['greffier']);
+        self::assertSame(array_replace($sonnet, ['modele' => 'claude-opus-4-8']), $resume['second_ressort']['jures']);
+        self::assertSame(['haiku' => array_replace($haiku, ['reflexion' => 'adaptative'])], $resume['lecteurs']);
+        self::assertSame($sonnet, $resume['defaut']);
+        foreach ($s->combinaisons() as $reglage) {
+            self::assertContains($reglage, [...array_values($resume['etages']), ...array_values($resume['etapes']),
+                ...array_values($resume['second_ressort']), ...array_values($resume['lecteurs']), $resume['defaut']]);
+        }
     }
 
     /** Every step the engine names has its step in the profile. */

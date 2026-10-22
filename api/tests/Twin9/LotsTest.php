@@ -137,7 +137,7 @@ final class LotsTest extends TestCase
         $verifs = array_keys(array_filter($lots->journal, static fn (array $o): bool => $o[0] === 'verifier'));
         self::assertNotSame([], $verifs);
         self::assertLessThan($premier, max($verifs), 'les réglages se vérifient avant le premier lot, et seulement là');
-        $combinaisons = (new CallSettings($this->profil()))->combinaisons();
+        $combinaisons = (new CallSettings($this->profil()))->combinaisons('lots');
         self::assertSame($combinaisons, array_map(static fn (array $v): array => array_diff_key($v, ['cle' => 1]),
             $lots->verifications), 'un appel direct minimal par combinaison de modèle et de réglages');
         self::assertSame(['faisceaux', 'journees/J1', 'journees/J2', 'journees/J3'], $this->cles($id));

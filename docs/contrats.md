@@ -629,7 +629,12 @@ flottant, comme en Python, où il n'est pas `1` (`JSON_PRESERVE_ZERO_FRACTION`).
 
 Chaque appel part avec les réglages de son étape (`CallSettings`) : l'étape
 du moteur (`Call::step`, la tâche de la v9.8) donne l'étape du profil, puis
-son étage, comme au §7.2.
+son étage, comme au §7.2. Ces réglages nomment aussi le fournisseur de
+l'appel et sa voie, appel par appel : `lots` si le fournisseur est Anthropic et
+que le profil a choisi `voie: lots`, `directe` sinon. Le profil ne nomme pas
+encore de fournisseur (le schéma le refuse) : tout appel part chez Anthropic,
+dans la voie du profil (registre `Twin9\Fournisseurs\Fournisseurs`, où seul
+Anthropic est ouvert).
 
 | `step` du moteur | Étape du profil |
 |---|---|
@@ -682,9 +687,9 @@ une suivante le relève.
 - **La vérification.** Avant le premier lot d'un run, un appel direct minimal
   (une phrase fixe, `AnthropicBatches::VERIFICATION`) part pour chaque
   combinaison de modèle, budget de sortie, effort et réflexion que le profil
-  peut employer (`CallSettings::combinaisons`). Un refus (HTTP 400) arrête le
-  run, avec la raison que donne l'API ; une erreur du fournisseur le fait
-  attendre.
+  peut employer par lots (`CallSettings::combinaisons('lots')`). Un refus
+  (HTTP 400) arrête le run, avec la raison que donne l'API ; une erreur du
+  fournisseur le fait attendre.
 - **La vie d'un lot** (`twin9_lots`) : `soumission`, la ligne écrite avant
   que le lot parte ; `en_cours`, son identifiant Anthropic connu ; `releve`,
   ses résultats écrits au journal ; `supprime`, supprimé chez Anthropic.

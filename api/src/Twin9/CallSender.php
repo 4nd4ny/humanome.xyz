@@ -19,7 +19,8 @@ interface CallSender
     /**
      * Sends a call; its outcome comes back from wait().
      *
-     * @param array{modele: string, budget_sortie: int, effort: string|null, reflexion: string} $reglage
+     * @param array{fournisseur: string, voie: string, modele: string, budget_sortie: int, effort: string|null,
+     *              reflexion: string} $reglage as CallSettings::pour() gives it
      * @param float $fin when the call must be done at the latest (microtime)
      */
     public function send(int $run, Call $call, array $reglage, string $cle, float $fin): void;

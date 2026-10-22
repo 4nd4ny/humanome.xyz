@@ -18,9 +18,12 @@ passe l'oracle complet dans `Twin_v9`, le profil est ici, les runs tournent sur 
 tranches, par appels directs ou par lots, se lancent, se suivent, se lisent et se paient — la base
 commune et la stratégie A de T8 comprises —, sur des jeux de gabarits et des référentiels de toute
 structure, que le moteur lit (T16) et que la cartographie affiche (T17) ; le moteur du navigateur
-est retiré (T11, fusionné le 2026-10-20). T18, la démonstration sur l'OVH, est préparé et
-fusionné (#19, le 2026-10-21, après l'import des gabarits sans Python, #18) : restent les gestes de
-Christian, son feu vert au déploiement et la recette (`docs/recette-twin9.md`).
+est retiré (T11, fusionné le 2026-10-20). T18, la démonstration sur l'OVH, est préparé,
+fusionné (#19, le 2026-10-21, après l'import des gabarits sans Python, #18) et **déployé le
+2026-10-21** au feu vert de Christian (`health` → `7b198cc`, moteur Twin9 `9eea3a1` chargé ; entrée
+« Déploiement » du jour) : restent les tâches planifiées — deux relais depuis un autre
+hébergement OVH, plutôt que cron-job.org (entrée du 2026-10-22) —, dont Christian s'occupe, et la
+recette (`docs/recette-twin9.md`).
 
 Hors planning, à la demande de Christian (2026-10-20) : le référentiel dynamique — RESPIRE n'a
 plus de structure imposée, et tous les parcours lisent la structure du référentiel qu'ils emploient
@@ -30,8 +33,8 @@ importés). Entrées du 2026-10-20. Puis, le 2026-10-21 : la démo à 1 $ par jo
 l'essai gratuit de la cartographie ouverte (#20) ; les prix d'Anthropic relevés chaque jour (Sonnet 5
 n'est plus surfacturé), la sortie des appels sans plafond, Haiku seul pour la démo et les appels en
 flux — la réponse arrive à mesure, un appel coupé est facturé pour ce qu'il a produit (#21,
-empilée sur #20). Suite annoncée par Christian : basculer le site sur l'OVH pour la démonstration, à son feu
-vert.
+empilée sur #20). Le soir même, le site est basculé sur l'OVH pour la démonstration, au feu vert de
+Christian.
 
 ## Fait
 
@@ -85,6 +88,84 @@ vert.
     confondent encore) ; le nom du fichier exporté lit `source.journal_id` au lieu de
     `source.journalId` (toujours `cartographie-twin6-ouverte.json`, figé par un test) ; la PR C
     reflétera `PROVIDER_INFO` et la table des arrêts côté PHP.
+
+- 2026-10-22 — **Deux tâches planifiées depuis un autre hébergement OVH ; les prix relevés aussi
+  par `worker.php` (branche `fix/tarifs-worker-cli`, empilée sur `docs/deploiement-2026-10-21`).**
+  Christian (00 h 05) : « J'ai la possibilité de définir un cron depuis un autre site avec l'offre
+  OVH perso qui invoque un script PHP et non distant. Est-ce que ce serait jouable ? » ; puis
+  (00 h 36) : « Oui, met aussi à jour les prix. Une fois par jour ça suffit. Je peux lancer deux
+  crons distincts. »
+  - **Jouable, sans `worker.php`** : une tâche planifiée d'OVH ne lance qu'un fichier de son
+    propre hébergement, et `worker.php` a besoin du code, du `.env`, de la base et du moteur
+    d'humanome.xyz (il n'est d'ailleurs pas dans la release). Deux relais
+    (`scripts/deploy/cron-ovh/`) appellent les routes d'humanome.xyz, comme cron-job.org :
+    `humanome-tick.php` chaque heure — une tâche OVH part au plus une fois par heure et s'arrête
+    à 60 minutes : le tick chaque minute pendant 55 minutes, tranches de 40 s faute de service qui
+    raccroche à 30 s —, `humanome-maintenance.php` chaque jour. Essayés contre l'API locale :
+    compteurs, jeton refusé (code 1), serveur injoignable (le tick continue, code 0).
+  - **La maintenance par le jeton du tick** : la route accepte aussi `X-Worker-Tick-Token`, pour
+    que la seconde tâche ne tienne pas le jeton des migrations (qui migre, importe et donne des
+    rôles) ; elle ne purge que ce qui a expiré. Le jeton du tick, qui n'ouvrait que le tick
+    (ADR-011), ouvre ces deux routes. UC-SYS-03 A4, F11 ; `WorkerTickTokenTest`.
+  - **Les prix par le cron** (`fix:`) : le relevé quotidien n'était que dans la route du tick ;
+    `TarifsAnthropic::releverApresTranche`, appelé par la route et par `php scripts/worker.php`,
+    le fait pour les deux (une fois par jour UTC, comme avant). UC-SYS-01-F26 : le script en
+    sous-processus, la page injoignable par un mandataire qui refuse la connexion (aucun réseau).
+  - **À déployer** : le relais du tick marche avec la production d'aujourd'hui ; celui de la
+    maintenance y reçoit `403` tant que cette branche n'est pas déployée (feu vert de Christian).
+    `deploiement.md`, « Depuis un autre hébergement OVH » : installation et vérification.
+
+- 2026-10-21 — **Déploiement sur humanome.xyz : `main` (`7b198cc`) et le moteur Twin9 (T18).**
+  Christian (22 h 40) : « Tu as mon feu vert pour déployer les deux repository humanome.xyz et
+  Twin_v9 sur le serveur OVH. Je m'occuperai du cron plus tard. »
+  - **Avant** : la production tournait `v1.1.0-106-gc6a0231` (14 octobre). Sa base — celle que
+    nomme `~/app/shared/.env`, que Christian venait de mettre à jour ; d'après lui, la seule base
+    disponible, sur l'hébergement d'harmonia.education — tenait déjà les tables d'humanome,
+    migrations 001 à 023 ; les nouvelles ne créent ou ne modifient que des tables `twin9_*` (et la grille de
+    `settings`), aucune collision possible avec les tables d'harmonia. Disque : 79 Mo sur 100
+    (panel, relevé par Christian).
+  - **Ce qui est parti** : release API `20261021-205251-7b198cc` (803 fichiers, 4,9 Mo, moteur
+    `Twin_v9` `9eea3a1` embarqué) ; `migrate` → 024 à 030 appliquées, 23 déjà là ; référentiels
+    7.0.0 et 7.1.0 et compétences (61) inchangés ; paquets `aurora-v3-reconstruit` 1.1.0 et
+    `twin6-ouverte` 1.1.0 importés, les 1.0.0 inchangés ; `health` →
+    `{"status":"ok","version":"7b198cc","db":"ok","twin9":{"moteur":true,"zlib":true}}`. Gabarits
+    du même commit (`import-protocole.mjs`) : 22 importés, 18 inchangés, 7 retirés (les fiches de
+    pôle, qui viennent de la base depuis T16) ; le second import : 22 inchangés, 0 retiré. Front :
+    4 envois (bundle, gabarit de la copie autonome, `twin6-ouverte-1.1.0.json`, `index.html`),
+    4 retraits (l'ancien bundle et les trois gabarits Twin6 publics, versionnés dans
+    `scripts/data/twin6/` et servis par le paquet depuis #16). Les deux exports statiques du
+    référentiel restent ceux de la production : l'export local n'en diffère que par la mise en
+    forme et les dates de publication de la base locale, comme le 14 octobre.
+  - **Comment** : comme le 14 octobre, le FTP ne se joint que depuis la VM Linux du Mac ; les
+    artefacts sont construits dans le conteneur et remis par le dossier partagé
+    (`13. Cartographie/deploiement-2026-10-21/`, archive vérifiée par son empreinte). Composer y
+    installe depuis les sources (le proxy refuse les archives de GitHub, 403) : chaque dépendance
+    est refaite par `git archive` de son commit verrouillé — ce que GitHub sert comme archive —,
+    puis `composer dump-autoload --no-dev --optimize` (2 026 fichiers et 29 Mo sans cela). Les
+    identifiants FTP et le jeton des migrations sont lus par les scripts dans le `.env.deploy` de
+    la copie de Christian, jamais affichés. D'abord, sans effet : `migrate` sur la release en
+    ligne, qui n'avait rien en attente (`skipped: 23`) — le jeton est le bon. Le shell de la VM
+    coupe toute commande à 180 s et tue ses processus : la release est partie par un outil
+    ponctuel hors dépôt, reprenable et parallèle (six connexions ; 126 dossiers, puis 803 fichiers
+    en 85 s), vérifiée fichier par fichier (tailles), puis les étapes de `deploy.mjs api`
+    (`www/api`, `current.txt` en dernier, migrations, imports, santé) ; l'API avant le front, qui
+    a suivi par `deploy.mjs static` après un `--dry-run` relu. L'outil a été répété de bout en
+    bout contre un serveur FTP local et l'API locale, sur une base au niveau de la production
+    (023) : coupure et reprise, fichier corrompu repris, bascule, migrations, imports.
+  - **Un tick à la main**, avec le `WORKER_TICK_TOKEN` du `.env.deploy` : 200 (le jeton du tick est
+    le bon pour cron-job.org), aucun run ni appel, `"tarifs": "ok"` : la grille stockée est
+    relevée sur la page des prix d'Anthropic — la correction de Sonnet 5 attendait ce premier tick.
+  - **Vérifié en ligne** : santé et état ; en-têtes de l'API (`default-src 'none'`,
+    `X-Frame-Options: DENY`) ; nouveau bundle servi, l'ancien en 404 ; Chromium, depuis le
+    conteneur : accueil, Essayer, cartographie ouverte, référentiel, guides et cartographie se
+    chargent, sans autre erreur que `401 /api/auth/me` (visiteur anonyme) et `/favicon.ico`
+    (absent du bundle). Aucun appel payant : le flux en ligne (recette 5.3b, 5.3c) attend
+    l'accord de Christian.
+  - **Releases gardées** : `v1.1.0-20` (juillet), `v1.1.0-106` (14 octobre ; retour arrière :
+    `deploy.mjs rollback`) et la nouvelle ; rien à élaguer.
+  - **Restent** : la tâche cron-job.org (Christian) — sans elle, un run par lots n'avance que sa
+    page ouverte, et les prix ne se relèvent plus après ce tick ; la recette
+    (`docs/recette-twin9.md`) ; l'archive du dossier partagé, à effacer à la main.
 
 - 2026-10-21 — **Prix d'Anthropic relevés chaque jour, sortie sans plafond, Haiku seul pour la
   démo (branche `feat/tarifs-et-sorties`, empilée sur `feat/demo-un-dollar`).** Christian :
@@ -2772,7 +2853,12 @@ vert.
 - `deploy.mjs api` téléverse la release fichier par fichier sur une seule connexion (~4 min
   pour 723 fichiers) : trop long pour un shell distant limité à 180 s. Le déploiement du
   2026-10-14 a suivi les mêmes étapes avec un téléversement reprenable et parallèle (outil
-  ponctuel, hors dépôt) ; à intégrer à `deploy.mjs` si ce mode de déploiement se répète.
+  ponctuel, hors dépôt) ; à intégrer à `deploy.mjs` si ce mode de déploiement se répète. Il
+  s'est répété le 2026-10-21 (six connexions : 803 fichiers en 85 s, après plus de deux minutes
+  pour créer les 126 dossiers un par un) : à décider.
+- `stage-api.sh` n'embarque ni `scripts/worker.php` ni `scripts/maintenance.php` : sur une offre
+  OVH avec cron, où `deploiement.md` conseille de les planifier, il faudrait d'abord les ajouter à
+  la release (relevé le 2026-10-22 ; les relais `scripts/deploy/cron-ovh/` s'en passent).
 - Partage historique (`#/espace`, jour / merge / twin9) **retiré sur la branche
   `feat/ultimate-cartography`** (décision du 2026-10-14, journal carto D-43 : plus de nouveau
   lien, `422 share_retired`). Les liens déjà créés restent servis jusqu'à leur échéance — y

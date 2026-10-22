@@ -113,7 +113,8 @@ L'administrateur ouvre « Administrer » → « Supervision Twin9 » (`#/admin/t
 - **A6 — Relevé quotidien des prix** (2026-10-21, sans geste de
   l'administrateur ; Christian : « Corrige la surfacturation de Sonnet et
   prévois une mise à jour quotidienne de la grille de tarification ») : après sa
-  tranche, le déclencheur du worker (`POST /api/admin/worker-tick`) lit la page
+  tranche, le déclencheur du worker (`POST /api/admin/worker-tick`, et le cron
+  `php scripts/worker.php` depuis le 2026-10-22, UC-SYS-01-F26) lit la page
   des prix d'Anthropic (sa version markdown), une fois par jour UTC, et récrit
   les prix et le palier long des modèles de l'offre que son tableau « Model
   pricing » donne (RG9). La grille de juillet, qui facturait Sonnet 5 à 3 $ /

@@ -96,7 +96,11 @@ journalisant que des compteurs.
 7. Le tick enchaîne les jobs jusqu'à épuisement du budget de temps (40 s par
    défaut) ou d'appels, libère le verrou et écrit ses compteurs sur une ligne
    JSON : `{locked, elapsedMs, jobsTouched, jobsCompleted, jobsFailed,
-   jobsReleased, calls, callErrors, budgetBlocked}` (code de sortie 0).
+   jobsReleased, calls, callErrors, budgetBlocked}` (code de sortie 0). Une
+   fois par jour UTC, là où `ANTHROPIC_API_KEY` est posée, il relève d'abord
+   les prix d'Anthropic, comme la route du tick (UC-ADM-05, RG9 ; depuis le
+   2026-10-22) : `tarifs` (`ok`, `echec`) s'ajoute aux compteurs, et un échec
+   ne fait pas échouer le tick (F26).
 
 ## Scénarios alternatifs
 
@@ -372,6 +376,7 @@ journalisant que des compteurs.
 | UC-SYS-01-F23 | A11, anomalie | CLI runner (vrais signaux) | SIGINT ×1 pendant un job → job posté, reste du lot `running`, aucune pause ; SIGINT ×1 pendant la réservation → lot entier `running`, aucun appel LLM ; SIGTERM ×2 pendant la pause de 30 s → sortie immédiate, code 0 ; SIGINT ×2 pendant un appel LLM → rien posté, code 0 en `--loop` (« erreur API transitoire »), comportement actuel : code 1 en `--once` | idem |
 | UC-SYS-01-F24 | E7, RG9 | CLI runner | `--once` + `503` → 1 sans nouvel essai ; `--loop 1` : `503`, coupure réseau, `404` retentés après la pause, puis `401` → 3 ; job `humanome` sans `--provider` → 4, rien posté ; arguments invalides → 2 ; `--help` → 0 | idem |
 | UC-SYS-01-F25 | A2, E3, RG10 | API runner | Run sur un autre référentiel publié (cinq pôles lettrés) : la réservation sert SON document ; une journée de RESPIRE → `422` non conforme (`/referentiel`) ; une journée conforme qui le nomme → `done` | `api/tests/UseCases/Functional/UcSys01TraiterFileJobsTest.php` |
+| UC-SYS-01-F26 | Nominal (étape 7), UC-ADM-05 RG9 | CLI | Le cron relève aussi les prix une fois par jour, là où la clé de la plateforme est posée : page injoignable (mandataire refusé, aucun réseau) → `tarifs: echec` noté dans le réglage, code 0 ; pas de nouvel essai avant une heure ; sans clé, aucun relevé | idem |
 
 ### Tests existants liés (non-régression)
 

@@ -27,7 +27,6 @@ use Humanome\Env;
 use Humanome\Etablissement\CohorteRepository;
 use Humanome\Etablissement\ConfigRepository;
 use Humanome\Keys\KeyVault;
-use Humanome\Llm\LlmRuntime;
 use Humanome\Referentiel\Conformite;
 use Humanome\Referentiel\ReferentielRepository;
 use Humanome\Twin9\TarifsAnthropic;
@@ -340,18 +339,12 @@ return function (App $app): void {
 
             return $json($response, ['error' => 'Tick failed, see server log'], 500);
         }
-        // Anthropic's prices, after the slice, once a UTC day (TarifsAnthropic):
-        // where the platform's key is set — an instance that bills no call on
-        // it has nothing to price. Its failure never fails the tick.
-        if (Env::get('ANTHROPIC_API_KEY') !== '') {
-            try {
-                $tarifs = TarifsAnthropic::releverSiDu(Db::get(), LlmRuntime::httpClient());
-                if ($tarifs !== null) {
-                    $counters['tarifs'] = (string) $tarifs['statut'];
-                }
-            } catch (\Throwable $e) {
-                error_log('[worker-tick] tarifs: ' . $e->getMessage());
-            }
+        // Anthropic's prices, after the slice, once a UTC day, where the
+        // platform's key is set — as the cron does (scripts/worker.php). Its
+        // failure never fails the tick.
+        $tarifs = TarifsAnthropic::releverApresTranche(Db::get());
+        if ($tarifs !== null) {
+            $counters['tarifs'] = $tarifs;
         }
         error_log('[worker-tick] ' . json_encode($counters)); // counters only
 

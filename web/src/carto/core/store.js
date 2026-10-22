@@ -270,6 +270,9 @@ export function createCartoStore({ adapter, fetchFn } = {}) {
      * de l'index ; `passageDates` en garde la version. Sans effet sur un jeu
      * lu à la demande (ses détails sont sur le site : une démonstration
      * intacte se met à jour d'elle-même, D-57) ni sur un jeu déjà passé.
+     * Elle ne sert qu'aux jeux rangés avant T2 : depuis, l'import écrit `at`
+     * lui-même, pour tout importeur (`mergeIntoDataset`), y compris dans un
+     * jeu déjà passé.
      * @returns {Promise<object | null>} l'index rangé, ou null (absent)
      */
     async addPassageDates(datasetId) {

@@ -479,21 +479,29 @@ par `scripts/extract-referentiel.mjs`.
     (répartir par date de passage, T3, est une décision laissée à
     Christian). Il permet, sans lire aucun détail (D-67), de dire à la
     journée du passage quelle analyse l'a relevée.
-    - **Qui l'écrit** : les importeurs d'un document-jour, d'une journée
-      Aurora v3 ou d'une feuille de Merge v2 (`aurora-day.js`) et d'un master
-      V3 (`v3-master.js`). L'import d'un run Twin9 (`twin9-run.js`) l'écrira
-      avec le lot Twin9 à venir ; AuroraCore et Twin6 datent déjà leurs
-      traces de leur journée.
+    - **Qui l'écrit** : l'import, pour toute variante qui arrive avec son
+      détail, quel que soit l'importeur (`mergeIntoDataset`, qui le lit dans
+      la `sourceDate` des traces du détail) — dans un jeu neuf comme dans un
+      jeu déjà passé (`passageDates` ci-dessous). Les importeurs d'un
+      document-jour, d'une journée Aurora v3 ou d'une feuille de Merge v2
+      (`aurora-day.js`) et d'un master V3 (`v3-master.js`) l'écrivent déjà
+      eux-mêmes ; celui d'un run Twin9 (`twin9-run.js`) ne garde que `{id,
+      role}`, l'import le complète (la `date` de la trace, lue par le
+      greffier, peut différer de celle de la carte) ; AuroraCore et Twin6
+      datent leurs traces de leur journée.
     - **Ce qui se lit sans lui** : une archive, un index ou un jeu d'avant le
       reçoivent de leurs détails — à l'import d'une archive
       (`importArchive`), au découpage (`splitArchive`, la version change
-      donc), et, pour un jeu rangé dans le navigateur, par une passe unique
-      à son ouverture (`store.addPassageDates` : tous ses détails lus une
-      fois, dans la même transaction que l'écriture de l'index), dont la
-      version est gardée à la racine du jeu, `passageDates` (entier,
-      facultatif, aujourd'hui 1). Un jeu lu à la demande n'a pas ses détails
-      ici : il ne passe pas, il se met à jour avec la démonstration (D-57) ;
-      devenu d'ici, il passe à l'ouverture suivante. Une variante garde son
+      donc), et, pour un jeu rangé dans le navigateur avant T2, par une
+      passe unique à son ouverture (`store.addPassageDates` : tous ses
+      détails lus une fois, dans la même transaction que l'écriture de
+      l'index), dont la version est gardée à la racine du jeu,
+      `passageDates` (entier, facultatif, aujourd'hui 1). Cette passe ne
+      sert qu'aux variantes rangées avant que l'import n'écrive `at` : elle
+      ne se refait pas, et une variante importée ensuite l'a déjà. Un jeu lu
+      à la demande n'a pas ses détails ici : il ne passe pas, il se met à
+      jour avec la démonstration (D-57) ; devenu d'ici, il passe à
+      l'ouverture suivante. Une variante garde son
       identifiant (calculé sur le contenu de l'analyse, pas sur l'index) :
       réimporter une archive d'avant n'ajoute rien.
     - Schéma : `at` (`isoDate`) dans la trace résumée, `passageDates` à la

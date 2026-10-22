@@ -51,6 +51,47 @@ function withoutAt(ds) {
 }
 const hasAt = (ds) => ds.days.some((d) => d.variants.some((v) => v.verdicts.some((x) => x.traces.some((t) => 'at' in t))))
 
+/**
+ * Un run Twin9 fictif (S4 §5, T2) : sa carte du 10 février retient une preuve
+ * dont la pièce est datée du 3 (`date` de la trace, lue par le greffier) et un
+ * indice du 10. Son importeur ne garde que `{id, role}` dans l'index ; la date
+ * est dans le détail (`sourceDate`).
+ */
+const twin9Run = () => ({
+  kind: 'twin9-run',
+  run: { id: 9, journal: 'multi', finished_at: '2026-10-19 10:05:00' },
+  referentiel: { poles: [{ num: 6, nom: 'MONDE — Habiter' }], competences: [{ code: '6.08', nom: 'Soin des lieux', pole: 6 }] },
+  carto_evolutive: {
+    journal_id: 'multi',
+    competences: { '6.08': { code: '6.08', attestations: [{ jour_index: 0, journee: '2026-02-10', date: '2026-02-10', confiance: 0.8, score_preuves: 1, score_indices: 1 }], signaux: [] } },
+    histoires: {},
+    rapports_poles: {},
+    kairos_evolutif: '',
+  },
+  journees: {
+    '2026-02-10': {
+      journee: '2026-02-10',
+      date: '2026-02-10',
+      verdicts: {
+        '6.08': {
+          code: '6.08',
+          nom: 'Soin des lieux',
+          statut: 'présence établie',
+          score_preuves: 1,
+          score_indices: 1,
+          confiance: 0.8,
+          etage: 'tribunal',
+          traces_probantes: [
+            { piece: 1, extrait: 'Le chat du voisin a ouvert la porte du jardin.', date: '2026-02-03', type: 'journal', role: 'preuve' },
+            { piece: 2, extrait: 'Nous avons rangé la salle ensemble.', date: '2026-02-10', type: 'journal', role: 'indice' },
+          ],
+        },
+      },
+    },
+  },
+  memoire: [],
+})
+
 describe('importeurs : la date du passage dans l’index', () => {
   it('document-jour : la preuve écrite le 3 porte at, l’indice du 10 n’a pas le champ', async () => {
     const { dataset } = await importMulti()
@@ -90,6 +131,29 @@ describe('importeurs : la date du passage dans l’index', () => {
     const [v] = importV3Master(master, { now: NOW }).variants
     expect(v.summary.verdicts[0].traces.map((t) => t.at ?? null)).toEqual(['2026-02-03', null])
     expect(Object.values(v.detail.verdicts['6.08'].traces).map((t) => t.sourceDate)).toEqual(['2026-02-03', '2026-02-10'])
+  })
+
+  // L'import écrit `at` depuis le détail, quel que soit l'importeur : dans un
+  // jeu déjà passé (`passageDates`), la passe du magasin ne se refait pas, et
+  // le jeu affiché juste après l'import (« Ouvrir dans l'interface ») n'est
+  // pas relu par elle.
+  it('run Twin9 : la preuve écrite le 3 porte at dès l’import, dans un jeu neuf comme dans un jeu déjà passé', async () => {
+    const run = () => ({ path: 'twin9-run-9.json', text: JSON.stringify(twin9Run()) })
+    const fresh = await importFiles([run()], empty('ds-twin9'), { now: NOW })
+    expect(traces608(fresh.dataset).map((t) => t.at ?? null)).toEqual(['2026-02-03', null])
+
+    const store = createCartoStore({ adapter: createMemoryAdapter() })
+    await store.commit(await importFiles([{ path: 'portfolio.md', text: PORTFOLIO_MULTI }], empty(), { now: NOW }))
+    const passed = await store.addPassageDates('ds-multi')
+    expect(passed.passageDates).toBe(PASSAGE_DATES)
+    const res = await importFiles([run()], passed, { now: LATER })
+    expect(traces608(res.dataset).map((t) => t.at ?? null)).toEqual(['2026-02-03', null])
+    await store.commit(res)
+    const reopened = await store.addPassageDates('ds-multi')
+    expect(traces608(reopened).map((t) => t.at ?? null)).toEqual(['2026-02-03', null])
+    // La journée du 3 renvoie à l'analyse Twin9 du 10.
+    const coverage = passageCoverage(reopened)
+    expect(dayAnomalies(day(reopened, '2026-02-03'), { portfolioImported: true, coverage })).toContainEqual({ severity: 'info', code: 'couverte-par', message: 'Passages relevés par l’analyse du 10 févr.' })
   })
 
   it('passageAt : rien quand la date est la journée ou illisible (pas même at: undefined)', () => {

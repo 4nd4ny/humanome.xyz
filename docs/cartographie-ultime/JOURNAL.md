@@ -2994,6 +2994,17 @@ l'index, pour que la journée du passage renvoie à l'analyse :
   s'applique pas à un jeu lu à la demande (ses détails sont sur le site) ;
   si elle échoue, le jeu s'ouvre tel quel. Une archive d'avant reçoit `at`
   de ses détails à l'import, un index découpé au découpage.
+- **[choix d'implémentation, revue du 2026-10-22] L'import écrit `at` pour
+  tout importeur**, depuis le détail de chaque variante qu'il range
+  (`mergeIntoDataset`) : un run Twin9 (`twin9-run.js` ne garde que `{id,
+  role}`) le reçoit donc dès l'import, dans un jeu neuf comme dans un jeu
+  déjà passé, et le jeu affiché juste après « Ouvrir dans l'interface »
+  l'a sans attendre une réouverture. Avant ce correctif, seule la passe le
+  donnait aux traces Twin9, et seulement dans un jeu pas encore passé : les
+  mêmes données s'affichaient avec ou sans « Relevé par … » selon l'ordre
+  des opérations. La passe ne sert plus qu'aux jeux rangés avant T2 ; sa
+  version (`passageDates`) reste 1 : la branche n'a jamais été déployée,
+  aucun jeu rangé ne porte ce sceau sans l'import corrigé.
 - **[choix d'implémentation] Une variante seule, celle qui contribue,
   relève** les passages d'une autre journée, et seulement les traces que les
   calculs retiennent (statut qui fournit des traces, hors court-circuit) :
@@ -3014,8 +3025,8 @@ l'index, pour que la journée du passage renvoie à l'analyse :
     rendu sur neuf journées, pas mesurés ; une journée qui a sa propre
     analyse imposerait un choix ; le kairos et les rapports de pôle restent
     globaux) ;
-  - `at` à l'import d'un run Twin9 (`twin9-run.js`), T0 (envoyer à Twin9
-    des en-têtes que l'interface lit pareil), C3 et C4 : avec le lot Twin9 ;
+  - T0 (envoyer à Twin9 des en-têtes que l'interface lit pareil), C3 et
+    C4 : avec le lot Twin9 ;
   - la démonstration publique : son index déployé n'a pas `at` ; il faut la
     redécouper (`node web/scripts/carto-demo-split.mjs`, qui l'écrit) puis
     la redéployer. D'ici là, sa journée du 3 février dit « Aucune analyse

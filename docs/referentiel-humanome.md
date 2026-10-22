@@ -50,7 +50,7 @@ au disque, et `scripts/convertir-humanome.mjs`, qui lit le fichier, le parse
 | `id` | `referentiel.id` | Tel quel : `humanome`. Refus de `respire` et de tout identifiant hors de `[a-z0-9][a-z0-9._-]{0,63}` |
 | `version` | `referentiel.version` | Telle quelle : `18.0.0-proposition.1`. Refus si elle manque ou n'est pas un semver |
 | `label` | `referentiel.titre` | Le titre sans « Référentiel » ni sa version finale, puis « V » et la majeure : `Humanome V18` |
-| `source` | — | Titre, version et date ; l'URL (`--url`, sinon la page https://respire.school/referentiel) ; le nom du fichier converti et son sha256 ; le convertisseur, sa version et le niveau ; la licence |
+| `source` | — | Titre, version et date ; l'URL (`--url`, sinon la page https://respire.school/referentiel) ; le nom du fichier converti et son sha256 ; le convertisseur, sa version et le niveau ; la licence. Sans `--url`, l'URL est celle de la page qui publie le référentiel (l'attribution), pas l'origine vérifiée du fichier : c'est le sha256 qui identifie le fichier converti |
 | `niveaux` | — | `capacité` `[A-E][1-4]`, puis `facette` `[A-E][1-4]\.[1-9]` : lettres et rangs déduits du contenu, puis vérifiés sur chaque code |
 | `poles[]` | `dimensions[]` | `num` = rang de la lettre (A=1 … E=5 ; refus si les lettres ne se suivent pas depuis A) ; `nom` = `A · titre` ; `description` = `orientation` ; `couleur` = `POLE_PALETTE` au rang du pôle |
 | `competences[]` | `dimensions[].competences[]` | `code` = `repere` (une lettre du pôle, un chiffre) ; `nom` = `titre` ; `pole` = rang ; `description` (voir ci-dessous) |
@@ -124,6 +124,11 @@ php scripts/amorcer-referentiel.php build/referentiels/humanome-v18.0.0-proposit
     base avec un autre contenu est refusée : une version publiée est immuable,
     il en faut une nouvelle. Une version que tient l'atelier (brouillon,
     proposition) est refusée aussi.
+  - Seul `source`, la provenance, reste hors de la comparaison. Le même YAML
+    converti sous un autre nom (le `humanome_v18.yaml` de respire.school
+    après la copie de `humanotwin`), avec une autre `--url` ou par une autre
+    version du convertisseur est la même version. La ligne publiée garde la
+    provenance du premier amorçage.
   - Relancé, il dit « déjà amorcé ».
 - **Ensuite**, sans export statique ni redéploiement, la version est servie
   par `GET /api/referentiels` et `GET /api/referentiels/humanome/versions/18.0.0-proposition.1`,
@@ -201,7 +206,9 @@ Sur la copie de `humanotwin` (sha256
 **Provenance.** Le fichier converti est la copie de `humanotwin` : même
 identifiant, même version, même date que celui de respire.school. Il n'a pas
 été comparé à l'octet au fichier en ligne, qui n'a pas été téléchargé. Le
-sha256 du fichier converti est écrit dans `source`.
+sha256 du fichier converti est écrit dans `source`, avec l'URL de la page
+respire.school/referentiel, faute de `--url` : l'attribution, pas la preuve
+que le fichier en vient.
 
 ## 7. Ce que donne le document converti
 
@@ -237,5 +244,5 @@ sha256 du fichier converti est écrit dans `source`.
 | Fichier | Vérifie |
 |---|---|
 | `engine/src/referentiel-humanome.test.js` | Sur la fixture **fictive** `schemas/fixtures/referentiel-humanome-fictif.yaml` : document attendu et valide au schéma ; libellé, `nomCourt`, niveaux, palette, codes ; composition et ordre des rubriques, rien d'inventé ; hors du document ; provenance ; avertissements ; empreinte de l'extracteur ; niveau facette ; refus, chacun à son chemin ; fiches de scan ; le script (écriture, « déjà à jour », refus d'écraser, YAML illisible) |
-| `api/tests/ReferentielAmorcageTest.php` | Empreinte et ordre du serveur sur le document converti ; niveau facette identique à `auNiveau` ; amorçage publié sans vote puis idempotent, servi par les routes publiques ; autre contenu sous la même version, brouillon de l'atelier, RESPIRE, identifiant ou code invalides refusés ; la ligne de commande |
+| `api/tests/ReferentielAmorcageTest.php` | Empreinte et ordre du serveur sur le document converti ; niveau facette identique à `auNiveau` ; amorçage publié sans vote puis idempotent, servi par les routes publiques ; même contenu sous une autre provenance (nom de fichier, URL) « déjà amorcé » ; autre contenu sous la même version, brouillon de l'atelier, RESPIRE, identifiant ou code invalides refusés ; la ligne de commande |
 | `web/src/components/ReferentielChoice.test.jsx` | Le référentiel amorcé est proposé au menu et se charge tel que la base le sert |

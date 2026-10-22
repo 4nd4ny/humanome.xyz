@@ -24,7 +24,10 @@ declare(strict_types=1);
  *  - idempotent on the WHOLE document, not only on its contentHash, which
  *    leaves descriptions, levels and elements out: the same version already
  *    published with other descriptions is a conflict (a published version is
- *    immutable — a new semver is needed), never a silent « unchanged ».
+ *    immutable — a new semver is needed), never a silent « unchanged ». Only
+ *    `source`, the provenance prose, is left out of the comparison: the same
+ *    YAML converted under another file name or --url is the same version,
+ *    and the published row keeps the provenance of its first seeding.
  *
  * Output: one line. Exit code 0 (seeded, or already there), 1 (refused).
  */
@@ -74,7 +77,7 @@ final class AmorcageReferentiel
         if ($existing !== null) {
             if ($existing['referentielId'] === $id
                 && $existing['status'] === 'published'
-                && ContentHash::encode($existing['content']) === ContentHash::encode($normalized)) {
+                && self::sansProvenance($existing['content']) === self::sansProvenance($normalized)) {
                 return [
                     'status' => 'unchanged',
                     'id' => $existing['id'],
@@ -103,6 +106,20 @@ final class AmorcageReferentiel
             'label' => (string) $normalized['label'],
             'contentHash' => $result['contentHash'],
         ];
+    }
+
+    /**
+     * What a published version holds: the whole canonical document but its
+     * `source`, the provenance prose (file name, URL, converter), which a
+     * re-conversion of the same YAML may word otherwise.
+     *
+     * @param array<string, mixed> $doc a normalized document
+     */
+    private static function sansProvenance(array $doc): string
+    {
+        unset($doc['source']);
+
+        return ContentHash::encode($doc);
     }
 }
 

@@ -102,9 +102,10 @@ de l'Humanome V18 (https://respire.school/referentiel) se convertit par
   facette` en option) dans `build/referentiels/`, en avertissant des écarts
   entre l'en-tête `structure` du YAML et son contenu ; puis
   `php scripts/amorcer-referentiel.php <document.json>` le publie sans vote,
-  idempotent sur le document entier. Il refuse RESPIRE, un identifiant
-  invalide, une version déjà en base avec un autre contenu ou tenue par
-  l'atelier. La version est ensuite servie par les routes publiques et
+  idempotent sur le document entier, hors sa provenance (`source` : le même
+  YAML sous un autre nom de fichier ou une autre URL est la même version).
+  Il refuse RESPIRE, un identifiant invalide, une version déjà en base avec
+  un autre contenu ou tenue par l'atelier. La version est ensuite servie par les routes publiques et
   proposée par les menus des parcours, comme une version votée. En
   production, sans shell : par l'atelier (étapes 1 à 5), ou par
   `POST /api/admin/import-referentiel`, moins stricte (`docs/referentiel-humanome.md` §5).
@@ -252,7 +253,7 @@ de l'Humanome V18 (https://respire.school/referentiel) se convertit par
 | UC-EPI-05-F13 | A4 | IHM | Un administrateur non membre : pas de vote, publication possible | idem |
 | UC-EPI-05-F14 | Étape 1 | IHM | Le lien de l'atelier ; section vide dite | idem |
 | UC-EPI-05-F15 | Étape 4 | IHM | « Voir » : le document au vote, pôle par pôle, avant le vote ; « Masquer » ; un brouillon aussi | idem |
-| UC-EPI-05-F16 | A6 | API | Amorçage publié sans vote puis « déjà amorcé », servi par `GET /api/referentiels` et par sa version ; autre contenu sous la même version (description, niveaux, structure), brouillon de l'atelier, RESPIRE, identifiant ou code invalides refusés, rien d'écrit ; la ligne de commande | `api/tests/ReferentielAmorcageTest.php` |
+| UC-EPI-05-F16 | A6 | API | Amorçage publié sans vote puis « déjà amorcé », servi par `GET /api/referentiels` et par sa version ; même contenu sous une autre provenance « déjà amorcé », la première gardée ; autre contenu sous la même version (description, niveaux, structure), brouillon de l'atelier, RESPIRE, identifiant ou code invalides refusés, rien d'écrit ; la ligne de commande | `api/tests/ReferentielAmorcageTest.php` |
 | UC-EPI-05-F17 | A6 | IHM | Le référentiel amorcé est proposé au menu des parcours et se charge tel que la base le sert | `web/src/components/ReferentielChoice.test.jsx` |
 
 ### Tests existants liés (non-régression)

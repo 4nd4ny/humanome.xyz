@@ -142,6 +142,38 @@ final class ReferentielAmorcageTest extends ReferentielTestCase
         AmorcageReferentiel::amorcer(Db::get(), $faux);
     }
 
+    /**
+     * The same YAML converted under another file name (respire.school's
+     * « humanome_v18.yaml » after humanotwin's copy) or with another --url
+     * changes only `source`, the provenance prose: the same version, so the
+     * seed says « unchanged » and the published row keeps its first provenance.
+     */
+    public function testSeedingTheSameContentUnderAnotherProvenanceIsUnchanged(): void
+    {
+        $doc = self::fixture();
+        $first = AmorcageReferentiel::amorcer(Db::get(), $doc);
+
+        $renomme = $doc;
+        $renomme['source'] = str_replace(
+            ['Converti depuis referentiel-humanome-fictif.yaml', 'https://example.invalid/referentiel-humanome-fictif.yaml'],
+            ['Converti depuis humanome_v18.yaml', 'https://example.invalid/ailleurs/humanome_v18.yaml'],
+            $doc['source'],
+        );
+        self::assertStringContainsString('humanome_v18.yaml (sha256', $renomme['source']);
+        self::assertStringContainsString('ailleurs/humanome_v18.yaml.', $renomme['source']);
+        $autreConvertisseur = $doc;
+        $autreConvertisseur['source'] = str_replace('convertir-humanome.mjs 1.0.0', 'convertir-humanome.mjs 1.0.1', $doc['source']);
+        foreach (['renamed file and url' => $renomme, 'converter version' => $autreConvertisseur] as $cas => $autre) {
+            self::assertNotSame($doc['source'], $autre['source'], $cas);
+            $again = AmorcageReferentiel::amorcer(Db::get(), $autre);
+            self::assertSame(['unchanged', $first['id'], $doc['contentHash']],
+                [$again['status'], $again['id'], $again['contentHash']], $cas);
+        }
+        self::assertSame(1, self::versions());
+        self::assertSame($doc, self::body($this->request('GET', '/referentiels/' . self::ID . '/versions/' . self::VERSION)),
+            'the published row keeps the provenance of the first seeding');
+    }
+
     /** A draft of the same version (the atelier's path) is not published over. */
     public function testSeedingRefusesAVersionTheAtelierHolds(): void
     {

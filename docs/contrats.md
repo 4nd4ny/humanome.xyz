@@ -1274,8 +1274,8 @@ Le schéma `referentiel` passe en **2.0.0** (`docs/plan-twin9-php.md` de
   compétences et leurs facettes pour éléments, des descriptions composées des
   rubriques du YAML, la couleur de la palette par rang, l'empreinte calculée
   comme ci-dessus. `scripts/amorcer-referentiel.php` le publie hors vote,
-  idempotent sur le document entier (`importPublishedDocument` ne compare que
-  l'empreinte), et refuse `respire`. Le schéma ne change pas. Règles,
+  idempotent sur le document entier hors `source`, la provenance
+  (`importPublishedDocument` ne compare que l'empreinte), et refuse `respire`. Le schéma ne change pas. Règles,
   procédure en production et écarts relevés dans la source :
   `docs/referentiel-humanome.md`.
 - **Hors T15** : la page publique `#/referentiel` ne montre que RESPIRE ;

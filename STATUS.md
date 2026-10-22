@@ -47,19 +47,23 @@ autre fournisseur qu'Anthropic, que l'administrateur ouvre (entrée du 2026-10-2
 
 - 2026-10-22 — **Twin9 multi-fournisseur : corrections de la revue de la PR C (même branche
   `feat/twin9-multi-fournisseur`, non poussée).** Dix-sept constats confirmés (deux en double),
-  douze commits `fix:`, chacun avec le test qui échouait avant lui, et deux `docs:`. `Twin_v9`
-  n'est pas modifié ; un profil tout Anthropic garde ses empreintes et sa conduite (seuls changent
-  l'en-tête `traceparent` des requêtes de lots et le solde des runs annulés ou arrêtés).
+  treize commits `fix:`, chacun avec le test qui échouait avant lui, et trois `docs:`. `Twin_v9`
+  n'est pas modifié ; un profil tout Anthropic garde ses empreintes (`EmpreintesFigeesTest`,
+  `PariteTest`). Sa conduite change sur ces points seulement : l'en-tête `traceparent` des requêtes
+  de lots ; le lot d'un run en échec relevé au lieu d'annulé ; la garde de départ d'un lot
+  (`borne − avantLaFin`) ; le solde d'un run annulé (aussitôt hors vol, au tick pour ses appels en
+  vol) ; le libellé d'un Anthropic fermé (« indisponible sur cette instance »).
   - `058e372` — **un run arrêté garde son lot** (constats 1 et 5) : le lot d'un run en échec n'est
     plus annulé ni supprimé sans être lu ; `Twin9Lots::menage` le relève une fois fini (réponses
     écrites avec leur coût, débitées), solde, puis supprime ; seul un run **annulé** voit son lot
     annulé, et ses réponses venues malgré l'annulation sont lues et payées. Un lot en annulation
     compte en vol, et un run repris entre-temps le relève.
-  - `5f44330` — **annuler pendant des appels directs** (constat 2, préexistant) : la route ne
-    rend plus rien ; la tranche relit le statut avant chaque départ, garde le run tant que ses
-    appels sont en vol (écrits avec leur coût), solde à sa fin au coût réel ; un run annulé entre
-    deux tranches, ou laissé par un tick mort, est soldé en tête du tick suivant
-    (`RunRepository::aSolder`).
+  - `5f44330` — **annuler pendant des appels directs** (constat 2, préexistant) : la tranche relit
+    le statut avant chaque départ, garde le run tant que ses appels sont en vol (écrits avec leur
+    coût), solde à sa fin au coût réel ; un run annulé entre deux tranches, ou laissé par un tick
+    mort, est soldé en tête du tick suivant (`RunRepository::aSolder`). Puis `c5157e9` : la
+    route rend aussitôt ce qu'aucune tranche n'a en vol (`RunCosts::libererHorsVol`) — sans
+    déclencheur, la page d'un run annulé ne lance plus de tick, et le crédit serait resté retenu.
   - `538b876` — **l'excédent payé par l'instance ne pèse plus sur l'auteur** (constat 4) : budget,
     `disponible`, reprise lisent `RunCosts::impute` (coût réel plafonné au pire cas tenu, avec la
     clé de l'instance) ; compteurs `facture_microusd` à côté de `cout_microusd`, rendu par le suivi
@@ -107,16 +111,21 @@ autre fournisseur qu'Anthropic, que l'administrateur ouvre (entrée du 2026-10-2
     volontairement. L'étiquette décrit les conditions des clés de l'instance ; une clé personnelle
     tierce ne sert jamais à Twin9 (ADR-012 §5) : la poser à côté d'une clé personnelle
     présenterait une garantie qui ne vaut pas pour elle.
+  - Point ouvert : `Twin9Lots::menage` traite au plus 20 lots par tick, par ordre d'identifiant ; le
+    lot d'un run en échec y reste désormais jusqu'à sa fin chez Anthropic (24 h au plus), une
+    requête d'état par tick. Au-delà de vingt lots ainsi en attente, un lot plus récent (à annuler,
+    ou perdu) attendrait son tour : sans effet à l'échelle d'aujourd'hui, à revoir s'il le faut.
   - À dire à Christian : les garanties des transferts hors UE sont à établir, fournisseur par
     fournisseur, avant d'ouvrir un tiers (Anthropic compris, déjà en production) ; le refus au
     lancement d'un modèle au pire cas insuffisant va au-delà de la spécification ; sous le
     déclencheur de 25 s, la durée maximale d'un appel tiers admise est de 21 s.
-  - Vérifié, sur l'arbre de `aee09ff` (PHP 8.5.12, MySQL 8.0 locaux, base `humanome_test_c`) :
-    PHP `Tests: 1842, Assertions: 20203`, les 2 échecs connus de PHP 8.5 seuls
+  - Vérifié, sur l'arbre de `c5157e9` (PHP 8.5.12, MySQL 8.0 locaux, base `humanome_test_c`) :
+    PHP `Tests: 1843, Assertions: 20207`, les 2 échecs connus de PHP 8.5 seuls
     (`AuthActivationTest::testExpiredCodeIsRejected`, `UcCpt02…::testU17SessionCookieAttributes`),
     1 dépréciation, aucun test sauté ; `PariteTest` et `EmpreintesFigeesTest` verts (13 tests, vrai
-    moteur `../Twin_v9`) ; front 2 820 tests verts (260 fichiers) ; moteur 562 tests, 557 verts et
-    les 5 échecs locaux connus d'UC-PRO-08 (F19 à F22, F25) ; `check-publiable` OK. Un test du front
+    moteur `../Twin_v9`) ; front 2 820 tests verts (260 fichiers) et moteur 562 tests, 557 verts et
+    les 5 échecs locaux connus d'UC-PRO-08 (F19 à F22, F25), sur `aee09ff` (`c5157e9` ne touche ni
+    l'un ni l'autre) ; `check-publiable` OK. Un test du front
     (UC-ADM-05-F01) a dépassé une fois son délai sous charge, vert seul et aux passages suivants.
   - Non vérifié : PHP 8.2 (la CI) ; aucun appel réel à un fournisseur (la porte payante C10 reste à
     faire) ; la tranche du déclencheur n'est gardée que par la route HTTP du tick (pas par

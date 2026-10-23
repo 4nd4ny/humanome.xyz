@@ -13,17 +13,32 @@ import { fetchEcole, frDate, poserCleEcole, retirerCleEcole, saveEcole } from '.
 /** Des micro-dollars, en dollars au centime, pour un champ. */
 const enDollars = (microusd) => String(Math.round(Number(microusd) / 10_000) / 100)
 
+/** Un nombre au centième près (une surtaxe au centième, un montant au centime). */
+const auCentieme = (x) => Math.abs(x * 100 - Math.round(x * 100)) < 1e-9
+
+/** Le plafond par élève, au plus (Ecoles::PLAFOND_MAX_MICROUSD : 100 000 $). */
+const PLAFOND_MAX_USD = 100_000
+
+/** La longueur d'une clé, au plus (EcoleCles::LONGUEUR_MAX). */
+const CLE_MAX = 400
+
+/** Les champs d'un refus du serveur (422 {error, fields}) que la section montre sous leur champ. */
+const CHAMPS = ['surtaxePct', 'plafondEleveUsd', 'cle']
+
 /**
  * @param {{fetchFn?: typeof fetch}} props seam de test
  */
 export default function EcoleSection({ fetchFn }) {
   const [ecole, setEcole] = useState(null)
-  const [erreur, setErreur] = useState(null)
+  const [erreurChargement, setErreurChargement] = useState(null)
   const [surtaxe, setSurtaxe] = useState('')
   const [plafond, setPlafond] = useState('')
   const [cle, setCle] = useState('')
   const [occupe, setOccupe] = useState(false)
-  const [info, setInfo] = useState(null)
+  // le retour d'une action, montré près de son formulaire : {zone: 'reglages' | 'cle', erreur, info}
+  const [retour, setRetour] = useState(null)
+  // les messages d'un champ, sous ce champ (refus sur place, ou 422 du serveur)
+  const [champs, setChamps] = useState({})
   const [retraitArme, setRetraitArme] = useState(false)
 
   const charger = useCallback(async () => {
@@ -32,9 +47,9 @@ export default function EcoleSection({ fetchFn }) {
       setEcole(e)
       setSurtaxe(String(e.surtaxePct))
       setPlafond(enDollars(e.plafondEleveMicrousd))
-      setErreur(null)
+      setErreurChargement(null)
     } catch (err) {
-      setErreur(err.message)
+      setErreurChargement(err.message)
     }
   }, [fetchFn])
 
@@ -42,45 +57,73 @@ export default function EcoleSection({ fetchFn }) {
     charger()
   }, [charger])
 
-  async function agir(action, message) {
+  /** Une action d'une zone : son retour près d'elle ; un 422 dit chaque champ sous le sien. */
+  async function agir(zone, action, message, apres = () => {}) {
     setOccupe(true)
-    setErreur(null)
-    setInfo(null)
+    setRetour(null)
+    setChamps({})
     try {
       await action()
+      apres()
       await charger()
-      setInfo(message)
+      setRetour({ zone, erreur: null, info: message })
     } catch (err) {
-      setErreur(err.message)
+      const fields = err?.fields && typeof err.fields === 'object' ? err.fields : {}
+      const parChamp = Object.fromEntries(
+        Object.entries(fields).filter(([nom, texte]) => CHAMPS.includes(nom) && typeof texte === 'string'),
+      )
+      const autres = Object.entries(fields)
+        .filter(([nom, texte]) => !CHAMPS.includes(nom) && typeof texte === 'string')
+        .map(([, texte]) => texte)
+      setChamps(parChamp)
+      // « Validation échouée » seul ne dit rien : le message du champ, sous lui, suffit
+      const dits = Object.keys(parChamp).length > 0 && autres.length === 0
+      setRetour({ zone, erreur: dits ? null : [err.message, ...autres].join(' — '), info: null })
     } finally {
       setOccupe(false)
     }
+  }
+
+  /** Les messages refusés sur place : rien ne part. */
+  function refuser(messages) {
+    setRetour(null)
+    setChamps(messages)
+    return Object.keys(messages).length > 0
   }
 
   function enregistrer(event) {
     event.preventDefault()
     const surtaxePct = Number(surtaxe)
     const plafondEleveUsd = Number(plafond)
-    if (!Number.isFinite(surtaxePct) || surtaxePct < (ecole?.surtaxeMin ?? 3.5) || surtaxePct > (ecole?.surtaxeMax ?? 10)) {
-      setErreur('La surtaxe se choisit entre 3,5 % et 10 %.')
-      return
+    const min = ecole?.surtaxeMin ?? 3.5
+    const max = ecole?.surtaxeMax ?? 10
+    const messages = {}
+    if (surtaxe.trim() === '' || !Number.isFinite(surtaxePct) || surtaxePct < min || surtaxePct > max) {
+      messages.surtaxePct = 'La surtaxe se choisit entre 3,5 % et 10 %.'
+    } else if (!auCentieme(surtaxePct)) {
+      messages.surtaxePct = 'La surtaxe se choisit au centième (par exemple 4,25).'
     }
-    if (!Number.isFinite(plafondEleveUsd) || plafondEleveUsd < 0) {
-      setErreur('Le plafond par élève est un montant en dollars, 0 ou plus.')
-      return
+    if (plafond.trim() === '' || !Number.isFinite(plafondEleveUsd) || plafondEleveUsd < 0
+      || plafondEleveUsd > PLAFOND_MAX_USD || !auCentieme(plafondEleveUsd)) {
+      messages.plafondEleveUsd = 'Le plafond par élève est un montant en dollars, de 0 à 100 000, au centime.'
     }
-    agir(() => saveEcole({ surtaxePct, plafondEleveUsd }, fetchFn), 'Réglages de l’école enregistrés.')
+    if (refuser(messages)) return
+    agir('reglages', () => saveEcole({ surtaxePct, plafondEleveUsd }, fetchFn), 'Réglages de l’école enregistrés.')
   }
 
   function poser(event) {
     event.preventDefault()
-    if (cle.trim() === '') {
-      setErreur('Saisissez la clé Anthropic de l’école.')
-      return
-    }
     const valeur = cle.trim()
-    setCle('') // la clé ne reste pas affichée
-    agir(() => poserCleEcole(valeur, fetchFn), 'Clé de l’école enregistrée, chiffrée : elle ne sera plus jamais affichée.')
+    let message = null
+    if (valeur === '') {
+      message = 'Saisissez la clé Anthropic de l’école.'
+    } else if (/[\u0000-\u0020\u007f]/.test(valeur) || valeur.length > CLE_MAX) {
+      message = `La clé se saisit sans espace, d’un seul tenant (${CLE_MAX} caractères au plus).`
+    }
+    if (refuser(message === null ? {} : { cle: message })) return
+    // la clé ne reste pas affichée une fois enregistrée ; refusée, elle reste à corriger
+    agir('cle', () => poserCleEcole(valeur, fetchFn),
+      'Clé de l’école enregistrée, chiffrée : elle ne sera plus jamais affichée.', () => setCle(''))
   }
 
   function retirer() {
@@ -89,16 +132,40 @@ export default function EcoleSection({ fetchFn }) {
       return
     }
     setRetraitArme(false)
-    agir(() => retirerCleEcole(fetchFn), 'Clé de l’école retirée.')
+    agir('cle', () => retirerCleEcole(fetchFn), 'Clé de l’école retirée.')
   }
+
+  /** Les attributs d'un champ et son message, sous lui. */
+  const champ = (id, nom) => ({
+    id,
+    'aria-invalid': champs[nom] ? 'true' : undefined,
+    'aria-describedby': champs[nom] ? `${id}-erreur` : undefined,
+  })
+  const messageDe = (id, nom) =>
+    champs[nom] ? (
+      <p id={`${id}-erreur`} className="etab-ecole-champ-erreur" role="alert">
+        {champs[nom]}
+      </p>
+    ) : null
+  /** Le retour d'une zone, près de son formulaire. */
+  const retourDe = (zone) =>
+    retour?.zone !== zone ? null : retour.erreur ? (
+      <p role="alert" className="load-error">
+        {retour.erreur}
+      </p>
+    ) : retour.info ? (
+      <p role="status" className="account-notice">
+        {retour.info}
+      </p>
+    ) : null
 
   if (ecole === null) {
     return (
       <section className="espace-bloc" aria-label="Mon école">
         <h2>Mon école</h2>
-        {erreur ? (
+        {erreurChargement ? (
           <p role="alert" className="load-error">
-            {erreur}
+            {erreurChargement}
           </p>
         ) : (
           <p role="status">Chargement…</p>
@@ -126,23 +193,28 @@ export default function EcoleSection({ fetchFn }) {
       <form className="etab-ecole-reglages" onSubmit={enregistrer} noValidate>
         <label htmlFor="etab-plafond">Plafond par élève et par mois (USD)</label>
         <input
-          id="etab-plafond"
+          {...champ('etab-plafond', 'plafondEleveUsd')}
           type="number"
           min="0"
+          max={PLAFOND_MAX_USD}
           step="0.01"
+          inputMode="decimal"
           value={plafond}
           onChange={(event) => setPlafond(event.target.value)}
         />
+        {messageDe('etab-plafond', 'plafondEleveUsd')}
         <label htmlFor="etab-surtaxe">Surtaxe sur la clé de l’instance (%)</label>
         <input
-          id="etab-surtaxe"
+          {...champ('etab-surtaxe', 'surtaxePct')}
           type="number"
           min={ecole.surtaxeMin}
           max={ecole.surtaxeMax}
           step="0.01"
+          inputMode="decimal"
           value={surtaxe}
           onChange={(event) => setSurtaxe(event.target.value)}
         />
+        {messageDe('etab-surtaxe', 'surtaxePct')}
         <p className="privacy-note">
           Sans clé de l’école, les usages payants de vos élèves sont débités de votre crédit au coût réel, plus votre
           surtaxe — de 3,5 % (les frais de PayPal et de Stripe) à 10 %, à votre choix. Une analyse en cours garde la
@@ -151,6 +223,7 @@ export default function EcoleSection({ fetchFn }) {
         <button type="submit" className="button button-primary" disabled={occupe}>
           Enregistrer les réglages
         </button>
+        {retourDe('reglages')}
       </form>
 
       <div className="etab-ecole-cle">
@@ -163,16 +236,17 @@ export default function EcoleSection({ fetchFn }) {
             </button>
           </p>
         ) : ecole.chiffrementDisponible ? (
-          <form className="etab-ecole-cle-form" onSubmit={poser}>
+          <form className="etab-ecole-cle-form" onSubmit={poser} noValidate>
             <label htmlFor="etab-cle">Clé Anthropic</label>
             <input
-              id="etab-cle"
+              {...champ('etab-cle', 'cle')}
               type="password"
               autoComplete="off"
               placeholder="sk-ant-…"
               value={cle}
               onChange={(event) => setCle(event.target.value)}
             />
+            {messageDe('etab-cle', 'cle')}
             <button type="submit" className="button" disabled={occupe}>
               Enregistrer la clé
             </button>
@@ -180,6 +254,7 @@ export default function EcoleSection({ fetchFn }) {
         ) : (
           <p role="status">Le chiffrement des clés n’est pas configuré sur ce serveur.</p>
         )}
+        {retourDe('cle')}
         <p className="privacy-note">
           Seule une école garde sa clé sur nos serveurs, pour ses élèves : chiffrée, jamais réaffichée ni renvoyée,
           retirée quand vous le voulez. Avec elle, les analyses de vos élèves partent chez Anthropic sur votre compte :
@@ -233,16 +308,6 @@ export default function EcoleSection({ fetchFn }) {
         </p>
       </div>
 
-      {erreur ? (
-        <p role="alert" className="load-error">
-          {erreur}
-        </p>
-      ) : null}
-      {info ? (
-        <p role="status" className="account-notice">
-          {info}
-        </p>
-      ) : null}
     </section>
   )
 }

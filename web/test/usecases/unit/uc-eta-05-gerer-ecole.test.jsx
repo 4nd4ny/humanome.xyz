@@ -23,6 +23,7 @@ import {
 import ChoixPayeur from '../../../src/views/twin9/ChoixPayeur.jsx'
 import EcoleSection from '../../../src/views/etablissement/EcoleSection.jsx'
 import { ecolePage, fakeFetch, jsonResponse, noContent } from '../support/eta.js'
+import { declOf, globalCssRules } from '../support/global-css.js'
 
 afterEach(() => cleanup())
 
@@ -153,5 +154,83 @@ describe('UC-ETA-05 — la section « Mon école » (EcoleSection)', () => {
     render(<EcoleSection fetchFn={sans.fetchMock} />)
     expect(await screen.findByText('Le chiffrement des clés n’est pas configuré sur ce serveur.')).toBeDefined()
     expect(screen.queryByLabelText('Clé Anthropic')).toBeNull()
+  })
+
+  it('UC-ETA-05-U22 — saisies refusées sur place : surtaxe au millième, plafond au millième ou au-delà de 100 000 $, clé avec un espace → message sous le champ, sans appel, la clé saisie gardée ; un refus du serveur (422) dit son champ, pas « Validation échouée » seul', async () => {
+    let refus = null
+    const net = fakeFetch({
+      'GET api/etablissement/ecole': () => jsonResponse(200, ecolePage()),
+      'PUT api/etablissement/ecole': () => jsonResponse(422, refus),
+      'PUT api/etablissement/ecole/cle': () => jsonResponse(422, refus),
+    })
+    render(<EcoleSection fetchFn={net.fetchMock} />)
+    const surtaxe = await screen.findByLabelText('Surtaxe sur la clé de l’instance (%)')
+    const plafond = screen.getByLabelText('Plafond par élève et par mois (USD)')
+    const enregistrer = screen.getByRole('button', { name: 'Enregistrer les réglages' })
+    const message = (champ) => document.getElementById(champ.getAttribute('aria-describedby'))?.textContent ?? ''
+
+    fireEvent.change(surtaxe, { target: { value: '3.555' } })
+    fireEvent.click(enregistrer)
+    expect(message(surtaxe)).toContain('au centième')
+    expect(surtaxe.getAttribute('aria-invalid')).toBe('true')
+    for (const valeur of ['12.345', '200000']) {
+      fireEvent.change(surtaxe, { target: { value: '5' } })
+      fireEvent.change(plafond, { target: { value: valeur } })
+      fireEvent.click(enregistrer)
+      expect(message(plafond)).toContain('de 0 à 100 000')
+    }
+    expect(net.callsTo('PUT api/etablissement/ecole')).toHaveLength(0)
+
+    const cle = screen.getByLabelText('Clé Anthropic')
+    fireEvent.change(cle, { target: { value: 'sk-ant ecole-fictive' } })
+    fireEvent.click(screen.getByRole('button', { name: 'Enregistrer la clé' }))
+    expect(message(cle)).toContain('sans espace')
+    expect(cle.value).toBe('sk-ant ecole-fictive')
+    expect(net.callsTo('PUT api/etablissement/ecole/cle')).toHaveLength(0)
+
+    // the server refuses all the same: its field's message, under the field; the key typed stays
+    refus = { error: 'Validation échouée', fields: { cle: 'Clé invalide : une clé non vide, sans espace, de 400 caractères au plus' } }
+    fireEvent.change(cle, { target: { value: 'sk-ant-ecole-fictive' } })
+    fireEvent.click(screen.getByRole('button', { name: 'Enregistrer la clé' }))
+    await waitFor(() => expect(message(cle)).toBe('Clé invalide : une clé non vide, sans espace, de 400 caractères au plus'))
+    expect(cle.value).toBe('sk-ant-ecole-fictive')
+    refus = { error: 'Validation échouée', fields: { plafondEleveUsd: 'Plafond par élève invalide : un montant en dollars, de 0 à 100 000, au centième' } }
+    fireEvent.change(plafond, { target: { value: '10' } })
+    fireEvent.click(enregistrer)
+    await waitFor(() => expect(message(plafond)).toContain('Plafond par élève invalide'))
+  })
+
+  it('UC-ETA-05-U23 — chaque retour s’affiche près de son formulaire (les réglages sous les réglages, la clé sous la clé), pas en bas de la section ; les deux formulaires ont leurs règles CSS (libellés en bloc, champs bordés, largeur bornée à 375 px)', async () => {
+    const page = ecolePage({ plafondEleveMicrousd: 5_000_000, eleves: [
+      { userId: 12, displayName: 'Maya', cohortes: ['BTS'], membre: true, moisMicrousd: 0, totalMicrousd: 0 },
+    ] })
+    const net = fakeFetch({
+      'GET api/etablissement/ecole': () => jsonResponse(200, page),
+      'PUT api/etablissement/ecole': () => jsonResponse(200, page),
+      'PUT api/etablissement/ecole/cle': () => jsonResponse(503, { error: 'Chiffrement des clés non configuré sur ce serveur' }),
+    })
+    render(<EcoleSection fetchFn={net.fetchMock} />)
+    fireEvent.click(await screen.findByRole('button', { name: 'Enregistrer les réglages' }))
+    const ok = await screen.findByText('Réglages de l’école enregistrés.')
+    const titreCle = screen.getByRole('heading', { name: 'Clé Anthropic de l’école' })
+    const tableau = screen.getByTestId('etab-eleves')
+    // before the key's block: the school sees it without scrolling
+    expect(ok.compareDocumentPosition(titreCle) & Node.DOCUMENT_POSITION_FOLLOWING).toBeTruthy()
+
+    fireEvent.change(screen.getByLabelText('Clé Anthropic'), { target: { value: 'sk-ant-ecole-fictive' } })
+    fireEvent.click(screen.getByRole('button', { name: 'Enregistrer la clé' }))
+    const erreur = await screen.findByText('Chiffrement des clés non configuré sur ce serveur')
+    expect(erreur.getAttribute('role')).toBe('alert')
+    expect(titreCle.compareDocumentPosition(erreur) & Node.DOCUMENT_POSITION_FOLLOWING).toBeTruthy()
+    expect(erreur.compareDocumentPosition(tableau) & Node.DOCUMENT_POSITION_FOLLOWING).toBeTruthy()
+
+    const regles = globalCssRules()
+    for (const formulaire of ['.etab-ecole-reglages', '.etab-ecole-cle-form']) {
+      expect(declOf(regles, `${formulaire} label`).display).toBe('block')
+      const champ = declOf(regles, `${formulaire} input`)
+      expect(champ.border).toBe('1px solid var(--line)')
+      expect(champ.width).toBe('min(28rem, 100%)')
+      expect(champ['box-sizing'] ?? 'border-box').toBe('border-box')
+    }
   })
 })

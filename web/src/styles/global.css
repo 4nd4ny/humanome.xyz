@@ -3817,6 +3817,47 @@ body:has([aria-modal='true'], .portfolio-editor-fullscreen)
   width: min(28rem, 100%);
 }
 
+/* « Mon école » (ADR-013, lot S6b) : ses deux formulaires, libellés en bloc et
+   champs bornés, lisibles à 375 px ; chaque message sous son champ. */
+.etab-ecole-reglages,
+.etab-ecole-cle-form {
+  margin-bottom: 0.75rem;
+}
+
+.etab-ecole-reglages label,
+.etab-ecole-cle-form label {
+  display: block;
+  margin: 0.4rem 0 0.15rem;
+  font-size: 0.9rem;
+  color: var(--ink-soft);
+}
+
+.etab-ecole-reglages input,
+.etab-ecole-cle-form input {
+  box-sizing: border-box;
+  width: min(28rem, 100%);
+  padding: 0.35rem 0.5rem;
+  border: 1px solid var(--line);
+  border-radius: 6px;
+  font: inherit;
+}
+
+.etab-ecole-reglages input[aria-invalid='true'],
+.etab-ecole-cle-form input[aria-invalid='true'] {
+  border-color: var(--danger);
+}
+
+.etab-ecole-reglages button,
+.etab-ecole-cle-form button {
+  margin-top: 0.6rem;
+}
+
+.etab-ecole-champ-erreur {
+  margin: 0.2rem 0 0;
+  font-size: 0.85rem;
+  color: var(--danger);
+}
+
 .etab-run-estimate {
   margin-top: 0.75rem;
   padding: 0.6rem 0.8rem;

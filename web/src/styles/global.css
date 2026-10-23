@@ -3485,7 +3485,7 @@ body:has([aria-modal='true'], .portfolio-editor-fullscreen)
   min-height: 7rem;
   margin-top: 0.5rem;
   padding: 0.5rem 0.7rem;
-  border: 1px solid var(--line);
+  border: 1px solid var(--line-strong);
   border-radius: 6px;
   resize: vertical;
   font: inherit;
@@ -5602,7 +5602,7 @@ body:has([aria-modal='true'], .portfolio-editor-fullscreen)
 .epi-comp-desc {
   margin-left: 3.2rem;
   padding: 0.4rem 0.6rem;
-  border: 1px solid var(--line);
+  border: 1px solid var(--line-strong);
   border-radius: 8px;
   background: var(--surface-2);
   color: var(--ink-soft);

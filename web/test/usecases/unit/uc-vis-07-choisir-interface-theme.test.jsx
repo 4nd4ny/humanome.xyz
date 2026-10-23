@@ -31,7 +31,7 @@ import {
 } from '../../../src/lib/theme.js'
 import DisplaySelects from '../../../src/components/DisplaySelects.jsx'
 import { contrast } from '../../../src/carto/ui/colors.js'
-import { SITE_SHEETS, THEMES, declOf, globalCssRules, resolveColor, sheetRules, tokensOf } from '../support/global-css.js'
+import { SITE_SHEETS, THEMES, declOf, globalCssRules, jsxClasses, resolveColor, sheetRules, tokensOf } from '../support/global-css.js'
 
 const here = dirname(fileURLToPath(import.meta.url))
 const html = readFileSync(resolve(here, '../../../index.html'), 'utf8')
@@ -509,33 +509,48 @@ describe('UC-VIS-07 — contrastes en usage : les règles des feuilles du site, 
     }
   })
 
-  it('UC-VIS-07-U11 — commandes : la bordure de chaque champ (input, select, textarea) est --line-strong, ou la couleur d’état d’un champ invalide, jamais le filet décoratif --line ; elle atteint 3:1 sur le fond, la carte et la surface secondaire dans les neuf contextes (RG4)', () => {
+  it('UC-VIS-07-U11 — commandes : la bordure de chaque champ (input, select, textarea, visé par sa balise ou par une classe que le JSX lui pose) est --line-strong, ou la couleur d’état d’un champ invalide, ou, posé sur la surface claire de la visualisation (lecteur de timeline), son encre douce ; jamais le filet décoratif --line ni un mélange ; elle atteint 3:1 sur le fond, la carte et la surface secondaire (la surface de la visualisation pour le lecteur) dans les neuf contextes (RG4)', () => {
     const rules = globalCssRules()
     const FIELD = /(^|[\s>+~(,])(input|select|textarea)(?![\w-])|\.[\w-]*-(input|textarea)(?![\w-])/
+    // Les classes que le JSX pose sur un champ : une règle qui ne vise le
+    // champ que par elle (.timeline-speed, .epi-comp-desc) est aussi lue.
+    const classes = [...jsxClasses(/^(input|select|textarea)$/).keys()]
+    expect(classes).toContain('timeline-speed')
+    const BY_CLASS = new RegExp(`\\.(${classes.join('|')})(?![\\w-])`)
     const failures = []
     let fields = 0
     const deliberate = []
+    const onViz = []
     for (const sheet of SITE_SHEETS) {
       for (const rule of sheetRules(sheet)) {
-        if (rule.media?.includes('print') || !FIELD.test(rule.selector)) continue
+        if (rule.media?.includes('print') || !(FIELD.test(rule.selector) || BY_CLASS.test(rule.selector))) continue
+        if ('clip' in rule.decl || 'clip-path' in rule.decl) continue // masqué à l'écran (champ de fichier sous son libellé)
         for (const prop of ['border', 'border-color', 'border-top', 'border-right', 'border-bottom', 'border-left']) {
           const value = rule.decl[prop]
           if (value === undefined) continue
           const where = `${sheet} ${rule.selector} : ${prop} ${value}`
-          if (/^(0|none)$/.test(value) || /\btransparent\b/.test(value)) {
+          if (/^(0|none)$/.test(value) || (!/color-mix\(/.test(value) && /\btransparent\b/.test(value))) {
             deliberate.push(where) // champ sans cadre à dessein (éditeur plein cadre, titre éditable au repos)
             continue
           }
           fields++
           const color = colorIn(value)
           const invalid = /aria-invalid|:invalid/.test(rule.selector) && color === 'var(--danger)'
-          if (color !== 'var(--line-strong)' && !invalid) failures.push(where)
+          // Le lecteur de timeline vit sur la surface claire de la visualisation (timeline.css).
+          const viz = sheet === 'src/styles/timeline.css' && color === 'var(--viz-ink-soft)'
+          if (viz) onViz.push(where)
+          if (/color-mix\(/.test(value) || (color !== 'var(--line-strong)' && !invalid && !viz)) failures.push(where)
         }
       }
     }
     expect(failures).toEqual([])
-    expect(fields).toBeGreaterThanOrEqual(35) // 36 au lot S9-3
+    expect(fields).toBeGreaterThanOrEqual(37) // 36 au lot S9-3, 39 aux correctifs du sprint 9
     expect(deliberate.length).toBeLessThanOrEqual(2) // l'éditeur du portfolio, le titre éditable de la cartographie
+    expect(onViz).toHaveLength(1) // la liste « Vitesse de lecture » du lecteur
+    for (const theme of THEMES) {
+      const [ink, surface] = ['var(--viz-ink-soft)', 'var(--viz-surface)'].map((v) => resolveColor(rules, v, theme))
+      expect(contrast(ink, surface), `${theme.name} : --viz-ink-soft sur --viz-surface`).toBeGreaterThanOrEqual(3)
+    }
     for (const theme of THEMES) {
       for (const [border, surfaces] of [
         ['--line-strong', ['--paper', '--card', '--surface-2']],

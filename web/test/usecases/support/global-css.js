@@ -8,11 +8,12 @@
 // (sheetRules) : couples texte et fond, anneaux de focus, bordures de champ.
 // jsdom ne calcule aucune mise en page : ces tests lisent les règles, ils ne
 // mesurent rien.
-import { readFileSync } from 'node:fs'
-import { dirname, resolve } from 'node:path'
+import { readFileSync, readdirSync } from 'node:fs'
+import { dirname, join, resolve } from 'node:path'
 import { fileURLToPath } from 'node:url'
 
 const CSS = resolve(dirname(fileURLToPath(import.meta.url)), '../../../src/styles/global.css')
+const SRC = resolve(dirname(fileURLToPath(import.meta.url)), '../../../src')
 
 const DARK = '(prefers-color-scheme: dark)'
 const SYSTEM_DARK = ":root:not([data-theme='light'])"
@@ -201,4 +202,62 @@ export const SITE_SHEETS = [
 /** Règles terminales d'une feuille du site (chemin depuis web/). */
 export function sheetRules(sheet) {
   return leafRules(readFileSync(resolve(dirname(fileURLToPath(import.meta.url)), '../../..', sheet), 'utf8'))
+}
+
+/** Fichiers JSX du site (web/src), tests exclus. */
+function jsxFiles(dir) {
+  return readdirSync(dir, { withFileTypes: true }).flatMap((entry) => {
+    const path = join(dir, entry.name)
+    if (entry.isDirectory()) return jsxFiles(path)
+    return /\.jsx$/.test(entry.name) && !/\.test\.jsx$/.test(entry.name) ? [path] : []
+  })
+}
+
+/** Texte entre l'accolade ouvrante `open` et sa fermante (accolades équilibrées). */
+function balanced(text, open) {
+  let depth = 0
+  for (let i = open; i < text.length; i++) {
+    if (text[i] === '{') depth++
+    else if (text[i] === '}' && --depth === 0) return text.slice(open + 1, i)
+  }
+  return text.slice(open + 1)
+}
+
+/**
+ * Classes que le JSX du site (web/src, hors tests) pose sur les éléments dont
+ * la balise répond à `tags` (par exemple /^(input|select|textarea)$/) : un
+ * className littéral, ou les mots des chaînes de son expression (gabarits
+ * compris, interpolations ôtées). Sert aux tests qui suivent un élément jusque
+ * dans les règles qui le visent par sa classe (`.timeline-speed` pour un select).
+ * @returns {Map<string, Set<string>>} classe → balises
+ */
+export function jsxClasses(tags) {
+  const out = new Map()
+  for (const file of jsxFiles(SRC)) {
+    const source = readFileSync(file, 'utf8')
+    for (const m of source.matchAll(/<([a-z][\w]*)\b/g)) {
+      if (!tags.test(m[1])) continue
+      // Les attributs, jusqu'au « > » de la balise hors accolades (« => » d'un gestionnaire).
+      let depth = 0
+      let end = m.index + m[0].length
+      for (; end < source.length; end++) {
+        const ch = source[end]
+        if (ch === '{') depth++
+        else if (ch === '}') depth--
+        else if (ch === '>' && depth === 0) break
+      }
+      const attrs = source.slice(m.index, end)
+      const at = attrs.search(/\sclassName=/)
+      if (at < 0) continue
+      const start = attrs.indexOf('=', at) + 1
+      const value = attrs[start] === '{' ? balanced(attrs, start) : attrs.slice(start, attrs.indexOf(attrs[start], start + 1) + 1)
+      const strings = [...value.matchAll(/(["'`])((?:(?!\1)[^\\]|\\.)*)\1/g)].map((s) => s[2].replace(/\$\{[^}]*\}/g, ' '))
+      for (const word of strings.join(' ').split(/\s+/)) {
+        if (!/^[a-z][\w-]*$/i.test(word)) continue
+        if (!out.has(word)) out.set(word, new Set())
+        out.get(word).add(m[1])
+      }
+    }
+  }
+  return out
 }

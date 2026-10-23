@@ -63,11 +63,13 @@
   cursor: not-allowed;
 }
 
+/* Un champ : sa limite à 3:1 sur la surface (l'encre douce pleine, 7,6:1 ;
+   le mélange à 50 % tombait à 2,3:1), comme les champs du site (UC-VIS-07-U11). */
 .timeline-speed {
   margin-left: auto;
   height: 2.2rem;
   padding: 0 0.4rem;
-  border: 1px solid color-mix(in srgb, var(--viz-ink-soft) 50%, transparent);
+  border: 1px solid var(--viz-ink-soft);
   border-radius: 8px;
   /* D4 — même correctif que les boutons : surface + couleur explicites. */
   background: var(--viz-surface);

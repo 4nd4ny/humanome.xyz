@@ -45,6 +45,82 @@ autre fournisseur qu'Anthropic, que l'administrateur ouvre (entrée du 2026-10-2
 
 ## Fait
 
+- 2026-10-22 — **Sprint 7, lot S7a : le plafond mensuel des crédits offerts et la liste d'attente
+  des inscriptions (branche `feat/plafond-offerts`, rien déployé).** TODO : « La somme totale des
+  crédits offerts par mois ne doit pas dépasser 20 USD pour tous les utilisateurs anonymes et
+  enregistrés du site. Après, mettre les inscriptions sur liste d'attente. » Jusqu'ici l'instance
+  offrait jusqu'à 60 $ par mois environ (1 $ par jour pour `POST /api/llm`, 1 $ pour le tuteur).
+  Trois commits — `a850b52` (S7a-1), `27d00d7` et celui de cette entrée (S7a-2), qui rend aussi
+  vrai pour toute levée le premier mot du courriel de levée —, décisions de Christian prises par
+  délégation (2026-10-22). Le lot S7b (école de
+  rattachement, crédits restants, consentement RESPIRE) n'est pas fait : il attend le registre des
+  écoles (sprint 6). `Twin_v9`, `api/src/Twin9/*`, `api/src/Worker/*`, les rôles et les menus ne
+  sont pas touchés ; aucun appel LLM réel.
+  - `a850b52` (S7a-1) — **un grand livre mensuel unique** (migration 034, `free_credit_monthly`,
+    `Llm\FreeCreditLedger`) : chaque appel offert — l'Essayer, l'essai Twin6, le « Service
+    humanome », le banc, le tuteur — réserve son pire cas sur le mois par un `UPDATE` conditionnel
+    avant de partir, en plus des budgets du jour, qui restent, puis le règle au coût réel ; une
+    réponse en cours n'est jamais coupée. Au plafond : `503 « Les crédits offerts de ce mois sont
+    épuisés ; revenez le 1er novembre. »` (`offerts_epuises`). Mois UTC (`gmdate`, comme les
+    budgets du jour, jamais `CURDATE()`/`NOW()`) : il s'ouvre le 1er à 1 h ou 2 h, heure de Paris.
+    Plafond `monthlyFreeUsd`, 20 $ par défaut (`OFFERTS_MENSUEL_USD`, réglable dans
+    `#/admin/reglages`, avec le grand livre du mois). Ne comptent pas : ce que paie un crédit
+    acheté, une clé personnelle ou d'école ; aucun crédit d'accueil n'existe.
+  - `27d00d7` (S7a-2) — **la liste d'attente des inscriptions** (`Auth\Waitlist`,
+    `Auth\ActivationMail`, `users.waitlisted_at` de la migration 034). Une inscription attend dès
+    que le plafond moins ce que le mois a **dépensé** ne couvre plus le plus petit appel de
+    l'Essayer (son pire cas à l'entrée nulle : le surcoût de la requête et toute la sortie du
+    modèle, au tarif de la grille ; 0,064 $ pour Haiku 5.5) : sous ce seuil, plus aucun appel de
+    l'Essayer ne passe. Le compte est créé (rôle `apprenant`), sans code : un courriel et la
+    réponse (`201 {status: "waitlisted"}`) le disent ; la connexion répond `403 {code:
+    "waitlisted"}`, le renvoi et l'activation ne donnent rien ; les comptes existants ne sont pas
+    touchés. Levée au 1er du mois UTC suivant, dans l'ordre d'inscription, par lots de 50 — à la
+    première requête d'authentification du mois, au tick (`POST /api/admin/worker-tick` et
+    `scripts/worker.php`, compteur `listeAttenteLevees`) ou à l'ouverture de la liste —, et par
+    l'administrateur, un par un ou tous (`#/admin/reglages`, sous le grand livre :
+    `GET /api/admin/waitlist`, `POST /api/admin/waitlist/{id}/lift`, `POST /api/admin/waitlist/lift`) ;
+    le compte levé reçoit son code (« Votre inscription sur humanome.xyz sort de la liste
+    d'attente », vrai aussi pour une levée par l'administrateur en cours de mois). Le monitoring compte la liste (« dont n en liste d'attente »).
+    L'écran d'administration vit dans les Réglages, à côté du plafond, sans changer de menu : la
+    fiche UC-ADM-04 (A9, RG11) y tient lieu de fiche « monitoring » pour la levée, UC-ADM-06 (RG7)
+    n'a que le compteur, le monitoring restant en lecture seule. Contrat : `docs/contrats.md`
+    §13.1 ; `docs/autorisations.md`, `docs/administration.md`, registre RGPD (§1 bis : le code
+    différé, la date effacée à la levée) et vérification RGPD mis à jour ; la politique de
+    confidentialité ne détaille pas les données d'inscription : inchangée.
+  - **Vérifié** (PHP 8.5.12, MySQL 8.0 locaux, base `humanome_test_s7a`, `TWIN_V9_DIR` = t9-s2) :
+    PHP `Tests: 1923, Assertions: 21427`, les 2 échecs connus de PHP 8.5 seuls
+    (`AuthActivationTest::testExpiredCodeIsRejected`, `UcCpt02…::testU17SessionCookieAttributes`),
+    1 dépréciation (suite lancée vers 8 h 40 : les échecs UTC/heure locale
+    d'`UcAdm06MonitoringTest` entre 0 h et 2 h ne se sont pas présentés), `PariteTest` compris —
+    sur l'arbre d'avant les deux dernières retouches (la branche de la connexion d'un compte en
+    attente simplifiée, même comportement ; le premier mot du courriel de levée) ; sur l'arbre
+    final, les classes touchées relancées (`UcCpt01`, `UcCpt02`, `AuthActivationTest`,
+    `AuthRoutesTest`, `UcAdm04`, `UcAdm06`, `WorkerRouteTest`) : `Tests: 140`, les 2 mêmes
+    échecs seuls ; front 3 011 tests verts (274 fichiers, 9 sautés :
+    les 3 001 de la phase D, plus 3 de S7a-1 et 7 de S7a-2 ; le « 3 015 » de la fiche de travail
+    ne se réconcilie pas avec ce compte) ; moteur 593 tests, 585 verts, 8 sautés ;
+    `npm run build` puis `npm run test:dist` vert ;
+    `check-publiable` OK. Tests nouveaux : UC-CPT-01-U19 à U24 et F26 à F30 (horloge figée du
+    31 octobre au 1er novembre UTC, seuil au micro-dollar, réserve en vol, plafond 0, ordre et lots,
+    un seul courriel par levée, le tick), UC-ADM-04-U32, U33, F25, F26, UC-ADM-06-U22, U23.
+    Catalogue des cas recompté : 1 052 U, 1 207 F (UC-CPT-01 : 24 U, 30 F ; UC-ADM-04 : 33 U,
+    26 F ; UC-ADM-06 : 23 U, 17 F).
+  - **Non vérifié** : PHP 8.2 (la CI) ; un vrai navigateur (jsdom seulement) ; un vrai courriel
+    (`PhpMailMailer`, jamais exercé) ; `scripts/worker.php` lancé en ligne de commande (sa levée
+    est le code de la route, testée par UC-CPT-01-F29) ; la levée concurrente vraiment parallèle
+    (l'`UPDATE` conditionnel est testé en séquence) ; rien n'est déployé.
+  - **À décider (Christian)** : (1) le critère de la liste d'attente — ce que le mois a dépensé
+    sous le seuil du plus petit appel de l'Essayer — laisse au tuteur, au pire cas plus petit,
+    quelques questions dans cette bande, et le statut public peut dire `remainingThisMonth: true`
+    alors que les inscriptions attendent : le garder, ou fermer aussi le tuteur à ce seuil ?
+    (2) relever le plafond en cours de mois rouvre les inscriptions mais ne lève pas la liste
+    d'elle-même : la lever automatiquement ? (3) la levée de 0 h UTC envoie un code de 30 minutes,
+    mort au matin : le courriel renvoie à « Renvoyer le code » ; préférer un courriel sans code ?
+    (4) un compte en liste d'attente ne peut pas se supprimer lui-même (il ne se connecte pas),
+    comme un compte jamais activé (UC-CPT-01, AN3) ; (5) reste de S7a-1 : le fournisseur
+    `humanome` des établissements (cartographie de masse, `Worker/Tick`) part sur la clé de
+    l'instance sans être compté ici (`docs/contrats.md` §13).
+
 - 2026-10-22 — **Phase D : corrections de la revue (même branche `feat/phase-d-twin9`, rien
   déployé).** Douze constats confirmés, dont deux paires en double (la graine,
   « non conservées ») : dix défauts, huit commits `fix:`, chacun avec le test qui échouait avant

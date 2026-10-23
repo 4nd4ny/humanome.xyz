@@ -414,6 +414,9 @@ final class UcCpt01CreerActiverCompteTest extends TestCase
         self::assertStringContainsString('/#/activer?email=ada%40example.org&code=' . $code, $levee['body']);
         self::assertStringContainsString('Ce code expire dans 30 minutes', $levee['body']);
         self::assertStringContainsString('« Renvoyer le code »', $levee['body']);
+        // Vrai au 1er du mois comme pour une levée par l'administrateur en cours de mois, plafond atteint.
+        self::assertStringContainsString('Votre inscription sur humanome.xyz sort de la liste d\'attente.', $levee['body']);
+        self::assertStringNotContainsString('renouvel', $levee['body']);
         self::assertStringContainsString('/#/compte', $levee['body']);
     }
 }

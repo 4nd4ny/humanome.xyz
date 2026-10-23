@@ -411,3 +411,7 @@ cd web && npx vitest run test/usecases --testNamePattern UC-CPT-01
   l'email expire 30 minutes plus tard : le titulaire passe alors par la
   connexion (A3) et « Renvoyer le code ». L'email de la liste d'attente part
   dans la transaction, comme celui du code, sans relire son booléen.
+- UC-CPT-01-F28 date des attentes « du mois dernier » contre l'horloge réelle
+  de la route : lancé à cheval sur le 1er du mois à 0 h UTC, les comptes mis
+  en attente « ce mois-ci » deviendraient dus eux aussi (une fenêtre de
+  quelques secondes, comme celle, connue, d'UC-ADM-06 entre 0 h et 2 h).

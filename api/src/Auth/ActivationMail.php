@@ -42,7 +42,7 @@ final class ActivationMail
             ? [
                 'Bonjour,',
                 '',
-                'Les crédits offerts de humanome.xyz sont renouvelés : votre inscription sort de la liste d\'attente.',
+                'Votre inscription sur humanome.xyz sort de la liste d\'attente.',
                 'Pour activer votre compte, votre code de confirmation est :',
             ]
             : [

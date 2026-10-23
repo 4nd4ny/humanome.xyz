@@ -267,10 +267,11 @@ test('le référentiel choisi au lancement : le profil v9.8 sur le référentiel
     await expect(page.getByLabel('Profil', { exact: true })).toHaveValue('')
     const menu = page.getByLabel('Référentiel', { exact: true })
     // le référentiel du profil n'est proposé qu'une fois, « Celui du profil » (la base de développement peut en publier d'autres)
-    await expect(menu.locator('option').first()).toHaveText('Celui du profil (RESPIRE v7)')
+    // libellé de la dernière version publiée de RESPIRE (7.0.0 ou 7.1.0 selon la base, INSTALL.md §3)
+    await expect(menu.locator('option').first()).toHaveText(/^Celui du profil \(RESPIRE v7(\.\d+)?\)$/)
     const options = await menu.locator('option').allTextContents()
     expect(options).toEqual(expect.arrayContaining(['Fictif lettré', 'Fictif à neuf pôles']))
-    expect(options).not.toContain('RESPIRE v7')
+    expect(options.filter((o) => /^RESPIRE v7/.test(o))).toEqual([])
     await menu.selectOption({ label: 'Fictif lettré' })
     await page.getByLabel('Fichier du portfolio').setInputFiles(fichier)
     await page.getByRole('checkbox', { name: /J’accepte que mon portfolio/ }).check()
@@ -299,7 +300,9 @@ test('le référentiel choisi au lancement : le profil v9.8 sur le référentiel
     expect(config.status).toBe(200)
     const profil = { ...config.body.defaut, voie: 'directe', referentiel: { id: 'respire', version: '7.0.0' } }
     expect((await apiCall(page, 'POST', 'twin9/profils', { nom: 'RESPIRE direct e2e', profil })).status).toBe(201)
-    await page.goto('/#/twin9')
+    // la page est déjà sur #/twin9 : un goto vers le même fragment ne remonte pas la vue, qui ne relirait
+    // pas ses profils ; on recharge pour qu'elle relise /twin9/configuration
+    await page.reload()
     await page.getByLabel('Profil', { exact: true }).selectOption({ label: 'RESPIRE direct e2e' })
     await page.getByLabel('Référentiel', { exact: true }).selectOption({ label: 'Fictif lettré' })
     await page.getByLabel('Fichier du portfolio').setInputFiles(fichier)

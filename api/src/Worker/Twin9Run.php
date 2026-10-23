@@ -88,7 +88,8 @@ final class Twin9Run
     public int $envoyes = 0;
 
     /**
-     * @param string $cle "instance" (its owner's credits pay, margin included) or "personnelle"
+     * @param string $cle "instance" (its owner's credits pay, margin included) or "personnelle" (a run launched on
+     *                    it before ADR-013, which ends on it)
      * @param bool $routeLots some of its calls go by batches: Anthropic's, its profile's lane « lots » (P1-5)
      * @param int|null $budget its budget in micro-USD (T10); null: none
      * @param float|null $limite when its duration ends (unix time); null: none

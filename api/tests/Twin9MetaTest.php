@@ -5,7 +5,6 @@ declare(strict_types=1);
 namespace Humanome\Tests;
 
 use Humanome\Db;
-use Humanome\Keys\KeyVault;
 use Humanome\Llm\LlmRuntime;
 use Humanome\Packages\SettingsRepository;
 use Humanome\Twin9\CreditService;
@@ -15,8 +14,10 @@ use Humanome\Twin9\Twin9Config;
 /**
  * GET /api/twin9/meta (ADR-010 §2/§3) — what the credit page and the open
  * cartography (Twin6) read: the Twin6 offer, the packs, PayPal's
- * availability, the referential's structure, the own balance and whether a
- * private key is stored. Never a template, never a fiche.
+ * availability, the referential's structure, the own balance and whether
+ * the account may buy — a school only (ADR-013 §5) —, with why not. Never a
+ * template, never a fiche; since ADR-013, nor whether a private key is
+ * stored, which no run reads any more.
  *
  * T11 removed the browser's engine and its proxy, POST /api/twin9/appel: the
  * meta no longer lists the steps, the Twin9 offer or the pipeline's settings,
@@ -80,25 +81,34 @@ final class Twin9MetaTest extends CartographeTestCase
 
         // Exactly these fields: the steps, the Twin9 offer, the pipeline's
         // settings and the enabled flag left with the browser's engine (T11),
-        // the promotion's state, which no view read, on 2026-10-20.
+        // the promotion's state, which no view read, on 2026-10-20, whether a
+        // private key is stored with the personal lane (ADR-013).
         self::assertSame(['modeles_twin6', 'packs', 'referentiel', 'paypalConfigured',
-            'solde_microusd', 'cle_privee_disponible'], array_keys($body));
+            'solde_microusd', 'peut_acheter', 'achat_pourquoi'], array_keys($body));
         // Twin6 (open) prices at its own +10 % contribution (list [2, 10] × 1.1), margin itself absent.
         self::assertSame([2.2, 11], $body['modeles_twin6']['claude-sonnet-5']); // 11.0 travels as 11 in JSON
         self::assertSame([10, 20, 50, 100, 200, 500], array_column($body['packs'], 'montant_usd'));
         self::assertSame([], $body['referentiel']); // none imported
         self::assertFalse($body['paypalConfigured']);
         self::assertSame(2_500_000, $body['solde_microusd']);
-        self::assertFalse($body['cle_privee_disponible']);
+        // a learner does not buy; the balance it has is its to spend down (ADR-013 §2 c, e)
+        self::assertFalse($body['peut_acheter']);
+        self::assertStringStartsWith('Pour ne pas avoir à vérifier l’âge des apprenants, seules les écoles achètent',
+            $body['achat_pourquoi']);
 
         // THE secrecy assertion: nothing of the template leaves, not even its name.
         self::assertStringNotContainsString('perroquet', (string) $response->getBody());
         self::assertStringNotContainsString('fictif/01-essai', (string) $response->getBody());
 
-        $masterKey = KeyVault::masterKeyFromEnv();
-        self::assertNotNull($masterKey);
-        (new KeyVault(Db::get(), $masterKey))->store($this->user['id'], 'anthropic', 'sk-ant-user-private-key');
-        self::assertTrue(self::json($this->as_($this->user, 'GET', '/api/twin9/meta'))['cle_privee_disponible']);
+        // a key stored before: the meta says nothing of it
+        StoredKeys::seed(Db::get(), $this->user['id'], 'anthropic', 'sk-ant-user-private-key');
+        self::assertArrayNotHasKey('cle_privee_disponible', self::json($this->as_($this->user, 'GET', '/api/twin9/meta')));
+
+        // a school may buy, without a why
+        $ecole = $this->registerAs('ecole@example.org', 'École', ['etablissement']);
+        $deLEcole = self::json($this->as_($ecole, 'GET', '/api/twin9/meta'));
+        self::assertTrue($deLEcole['peut_acheter']);
+        self::assertNull($deLEcole['achat_pourquoi']);
     }
 
     public function testFichesAreNeverExposed(): void

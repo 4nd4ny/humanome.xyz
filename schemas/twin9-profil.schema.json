@@ -354,7 +354,7 @@
         "personnelle"
       ],
       "default": "instance",
-      "description": "La clé de l'instance, pour chaque fournisseur du profil ; ou la clé personnelle de l'utilisateur, chez Anthropic seulement : un profil qui appelle un autre fournisseur n'admet que les clés de l'instance."
+      "description": "La clé de l'instance, pour chaque fournisseur du profil. « personnelle » (la clé de l'utilisateur, chez Anthropic seulement) reste lisible, pour les profils et les runs gardés, mais ne sert plus : refusée à l'enregistrement, au lancement et à la reprise depuis l'ADR-013 (un run du serveur ne peut pas garder la clé du navigateur)."
     },
     "gabarits": {
       "type": "string",

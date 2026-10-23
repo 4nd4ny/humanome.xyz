@@ -4,22 +4,21 @@ declare(strict_types=1);
 
 namespace Humanome\Tests\UseCases\Functional;
 
-use Humanome\Keys\KeyVault;
 use Humanome\Llm\LlmRuntime;
-use Humanome\Packages\SettingsRepository;
 use Humanome\Referentiel\ContentHash;
 use Humanome\Referentiel\ReferentielRepository;
 use Humanome\Tests\CartographeTestCase;
+use Humanome\Tests\StoredKeys;
 use Humanome\Tests\TestDb;
 use Humanome\Tests\Twin9\FakeMultiHttpClient;
 use Humanome\Tests\UseCases\Support\ReferentielsFictifs;
 use Humanome\Tests\UseCases\Support\RunsTwin9Factices;
 use Humanome\Twin9\CreditService;
 use Humanome\Twin9\Lancement;
+use Humanome\Twin9\ProfilPolicy;
 use Humanome\Twin9\ProfilRepository;
 use Humanome\Twin9\ReferentielMoteur;
 use Humanome\Twin9\RunRepository;
-use Humanome\Twin9\Twin9Config;
 use PHPUnit\Framework\Attributes\PreserveGlobalState;
 use PHPUnit\Framework\Attributes\RunTestsInSeparateProcesses;
 use PHPUnit\Framework\Attributes\TestDox;
@@ -306,28 +305,53 @@ final class UcApp10AnalyseApprofondieTwin9Test extends CartographeTestCase
         self::assertSame('cartographe', self::json($second)['visibilite']);
     }
 
-    #[TestDox('UC-APP-10-F07 — A6 : clé personnelle (promotion ouverte, clé enregistrée) — estimation sans contribution, le crédit nul ne borne rien ; run au bout, crédit intact, aucun événement au grand-livre')]
+    #[TestDox('UC-APP-10-F07 — A6 : clé personnelle (ADR-013) — un profil enregistré avant, à clé personnelle, est refusé à l’aperçu et au lancement, même avec une clé gardée ; un run lancé dessus avant va au bout sur elle sans rien débiter ; arrêté, il ne reprend pas')]
     public function testF07APersonalKeyDebitsNothing(): void
     {
         TestDb::setEnv('SODIUM_MASTER_KEY', str_repeat('ab', 32));
-        (new Twin9Config(new SettingsRepository(self::$pdo)))->update(['twin9_cle_perso_ouverte' => true]);
         $lea = $this->registerAs('cle@example.org', 'Léa');
-        (new KeyVault(self::$pdo, (string) KeyVault::masterKeyFromEnv()))->store($lea['id'], 'anthropic', 'sk-ant-perso-fictive');
-        $profil = $this->profilDirect($lea, 'Ma clé', ['cle' => 'personnelle']);
+        StoredKeys::seed(self::$pdo, $lea['id'], 'anthropic', 'sk-ant-perso-fictive');
+        $ancien = $this->profilAncien($lea, 'Ma clé', ['cle' => 'personnelle']);
+        foreach (['/api/twin9/runs/apercu', '/api/twin9/runs'] as $route) {
+            $refus = $this->as_($lea, 'POST', $route, $this->lancement($ancien));
+            self::assertSame(422, $refus->getStatusCode(), $route);
+            self::assertSame(['error' => ProfilPolicy::CLE_PERSONNELLE_REFUSEE], self::json($refus));
+        }
+        self::assertSame(0, self::runs());
 
-        $apercu = $this->apercu($lea, $profil);
-        self::assertSame(['personnelle', null], [$apercu['cle'], $apercu['credit_usd']]);
-        self::assertSame(round(self::parJour(1.0) * 3 / 1_000_000, 6), $apercu['estimation']['cout_usd'], 'sans contribution');
-        self::assertSame([null, null, 2], [$apercu['admission']['limite'], $apercu['admission']['refus'],
-                                          $apercu['admission']['instruites']]);
-
-        $suivi = $this->jusquAuBout($lea, $this->lancer($lea, $profil)['id']);
+        // a run launched on it before ADR-013 (its copy rewritten as it was then): it ends on it, debiting nothing
+        $this->crediter($lea, 1_000_000_000);
+        $instance = $this->profilDirect($lea);
+        $id = $this->lancer($lea, $instance)['id'];
+        self::surLaClePersonnelle($id);
+        $suivi = $this->jusquAuBout($lea, $id);
         self::assertSame('termine', $suivi['statut']);
         self::assertGreaterThan(0, $suivi['cout']['depense_microusd'], 'son coût, celui d’Anthropic');
-        self::assertSame(0, (new CreditService(self::$pdo))->balance($lea['id']));
-        $stmt = self::$pdo->prepare('SELECT COUNT(*) FROM twin9_credit_events WHERE user_id = ?');
+        self::assertSame(1_000_000_000, (new CreditService(self::$pdo))->balance($lea['id']));
+        $stmt = self::$pdo->prepare('SELECT COUNT(*) FROM twin9_credit_events WHERE user_id = ? AND kind <> "adjust"');
         $stmt->execute([$lea['id']]);
-        self::assertSame(0, (int) $stmt->fetchColumn(), 'aucun événement au grand-livre');
+        self::assertSame(0, (int) $stmt->fetchColumn(), 'aucun débit au grand-livre');
+
+        // stopped, it no longer resumes
+        $autre = $this->lancer($lea, $instance, "## 2026-02-01\nUn autre jour.\n")['id'];
+        self::surLaClePersonnelle($autre);
+        self::assertSame(200, $this->as_($lea, 'POST', "/api/twin9/runs/$autre/annuler", [])->getStatusCode());
+        $reprise = $this->as_($lea, 'POST', "/api/twin9/runs/$autre/reprendre", []);
+        self::assertSame(422, $reprise->getStatusCode());
+        self::assertSame(['error' => ProfilPolicy::CLE_PERSONNELLE_REFUSEE], self::json($reprise));
+        self::assertSame('annule', (new RunRepository(self::$pdo))->statut($autre));
+    }
+
+    /** A run's copy of its profile as a launch of before ADR-013 wrote it: on the personal key. */
+    private static function surLaClePersonnelle(int $id): void
+    {
+        $stmt = self::$pdo->prepare('SELECT reglages FROM twin9_runs WHERE id = ?');
+        $stmt->execute([$id]);
+        $reglages = json_decode(RunRepository::uncompress((string) $stmt->fetchColumn()), false, 512, JSON_THROW_ON_ERROR);
+        $reglages->profil->cle = 'personnelle';
+        self::$pdo->prepare('UPDATE twin9_runs SET reglages = ? WHERE id = ?')->execute([
+            RunRepository::compress(json_encode($reglages, JSON_UNESCAPED_UNICODE | JSON_UNESCAPED_SLASHES
+                | JSON_PRESERVE_ZERO_FRACTION | JSON_THROW_ON_ERROR)), $id]);
     }
 
     #[TestDox('UC-APP-10-F08 — A7 : un autre référentiel publié — le run va au bout, ses résultats portent ses pôles et ses compétences, sans fiche ni description')]
@@ -598,7 +622,7 @@ final class UcApp10AnalyseApprofondieTwin9Test extends CartographeTestCase
         self::assertSame(0, self::runs());
     }
 
-    #[TestDox('UC-APP-10-F12 — E3 / E4 : accord absent, portfolio invalide, profil invalide ou d’un autre, profil refusé (clé personnelle absente) → 422 ou 404 qui nomme le refus ; aucun run')]
+    #[TestDox('UC-APP-10-F12 — E3 / E4 : accord absent, portfolio invalide, profil invalide ou d’un autre, profil refusé (clé personnelle, ADR-013) → 422 ou 404 qui nomme le refus ; aucun run')]
     public function testF12RefusedLaunches(): void
     {
         $lea = $this->registerAs('refus@example.org', 'Léa');
@@ -627,14 +651,12 @@ final class UcApp10AnalyseApprofondieTwin9Test extends CartographeTestCase
             self::assertSame(['error' => $message], self::json($refus));
         }
 
-        // Un profil refusé : sa clé personnelle, ouverte par la promotion, n'est pas enregistrée.
-        (new Twin9Config(new SettingsRepository(self::$pdo)))->update(['twin9_cle_perso_ouverte' => true]);
-        $perso = $this->profilDirect($lea, 'Ma clé', ['cle' => 'personnelle']);
+        // Un profil refusé : enregistré avant l'ADR-013 sur la clé personnelle, qui ne sert plus.
+        $perso = $this->profilAncien($lea, 'Ma clé', ['cle' => 'personnelle']);
         foreach (['/api/twin9/runs/apercu', '/api/twin9/runs'] as $route) {
             $refus = $this->as_($lea, 'POST', $route, $this->lancement($perso));
             self::assertSame(422, $refus->getStatusCode(), $route);
-            self::assertSame(['error' => 'Profil refusé — /cle : aucune clé Anthropic personnelle n’est enregistrée'],
-                self::json($refus));
+            self::assertSame(['error' => ProfilPolicy::CLE_PERSONNELLE_REFUSEE], self::json($refus));
         }
         self::assertSame(0, self::runs());
     }

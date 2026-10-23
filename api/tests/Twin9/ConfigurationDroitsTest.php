@@ -7,6 +7,7 @@ namespace Humanome\Tests\Twin9;
 use Humanome\Packages\SettingsRepository;
 use Humanome\Referentiel\ReferentielRepository;
 use Humanome\Tests\CartographeTestCase;
+use Humanome\Tests\StoredKeys;
 use Humanome\Tests\TestDb;
 use Humanome\Tests\UseCases\Support\ReferentielsFictifs;
 use Humanome\Twin9\Fournisseurs\Fournisseurs;
@@ -190,8 +191,13 @@ final class ConfigurationDroitsTest extends CartographeTestCase
             ->getStatusCode());
     }
 
-    /** The personal key, only where the administrator opened it. */
-    public function testThePersonalKeyOnlyWhereTheAdministratorOpenedIt(): void
+    /**
+     * The personal key no longer serves a server run (ADR-013 §6): refused at
+     * the registration, whatever the providers, nor may the administrator
+     * open it any more; a profile saved with it before stays saved, its
+     * change refused until its owner chooses another key.
+     */
+    public function testThePersonalKeyIsRefusedAndNoLongerOpens(): void
     {
         $compte = $this->registerAs('cle@example.org', 'Clé');
         $admin = $this->registerAs('ouvre@example.org', 'Admin', ['admin']);
@@ -200,42 +206,49 @@ final class ConfigurationDroitsTest extends CartographeTestCase
 
         $refuse = $this->as_($compte, 'POST', '/api/twin9/profils', ['nom' => 'Perso', 'profil' => $profil]);
         self::assertSame(422, $refuse->getStatusCode());
-        self::assertStringContainsString('/cle', self::json($refuse)['error']);
-        self::assertFalse(self::json($this->as_($compte, 'GET', '/api/twin9/configuration'))['cle_perso_ouverte']);
-
-        self::assertSame(200, $this->as_($admin, 'PUT', '/api/twin9/admin/config', ['twin9_cle_perso_ouverte' => true])
+        self::assertSame(ProfilPolicy::CLE_PERSONNELLE_REFUSEE, self::json($refuse)['error']);
+        $promo = $this->as_($admin, 'PUT', '/api/twin9/admin/config', ['twin9_cle_perso_ouverte' => true]);
+        self::assertSame(422, $promo->getStatusCode());
+        self::assertSame('Clé de configuration inconnue : twin9_cle_perso_ouverte', self::json($promo)['error']);
+        self::assertSame(422, $this->as_($compte, 'POST', '/api/twin9/profils', ['nom' => 'Perso', 'profil' => $profil])
             ->getStatusCode());
-        self::assertSame(201, $this->as_($compte, 'POST', '/api/twin9/profils', ['nom' => 'Perso', 'profil' => $profil])
-            ->getStatusCode());
-        self::assertTrue(self::json($this->as_($compte, 'GET', '/api/twin9/configuration'))['cle_perso_ouverte']);
 
-        // the holder of a key reads what is sent with it: another provider than Anthropic, the instance's keys only
+        // with another provider, the same refusal
         $profil->etapes->greffier = (object) ['fournisseur' => 'mistral', 'modele' => 'modele-fictif'];
         $tiers = $this->as_($compte, 'POST', '/api/twin9/profils', ['nom' => 'Perso tiers', 'profil' => $profil]);
-        self::assertSame(422, $tiers->getStatusCode());
-        self::assertSame('Profil refusé — /cle : la clé personnelle ne sert que chez Anthropic ; un profil qui appelle '
-            . 'Mistral AI ne part qu’avec les clés de l’instance', self::json($tiers)['error']);
+        self::assertSame(ProfilPolicy::CLE_PERSONNELLE_REFUSEE, self::json($tiers)['error']);
         $profil->cle = 'instance';
         self::assertSame(201, $this->as_($compte, 'POST', '/api/twin9/profils', ['nom' => 'Perso tiers', 'profil' => $profil])
             ->getStatusCode());
+
+        // saved before ADR-013: still there, its change refused until another key is chosen
+        $ancien = ProfilRepository::v98();
+        $ancien->cle = 'personnelle';
+        self::$pdo->prepare('INSERT INTO twin9_profils (user_id, nom, profil) VALUES (?, ?, ?)')
+            ->execute([$compte['id'], 'Ancien', json_encode($ancien, JSON_THROW_ON_ERROR)]);
+        $id = (int) self::$pdo->lastInsertId();
+        $lu = $this->as_($compte, 'GET', '/api/twin9/profils/' . $id);
+        self::assertSame(200, $lu->getStatusCode());
+        self::assertSame('personnelle', self::json($lu)['profil']['cle']);
+        self::assertSame(422, $this->as_($compte, 'PUT', '/api/twin9/profils/' . $id, ['nom' => 'Ancien', 'profil' => $ancien])
+            ->getStatusCode());
+        $ancien->cle = 'instance';
+        self::assertSame(200, $this->as_($compte, 'PUT', '/api/twin9/profils/' . $id, ['nom' => 'Ancien', 'profil' => $ancien])
+            ->getStatusCode());
     }
 
-    /** One's personal key itself: in one's own vault; the page only learns whether it is there. */
-    public function testEachAccountKeepsItsOwnPersonalKey(): void
+    /** The configuration page no longer learns whether a personal key is open or stored: no run reads one. */
+    public function testTheConfigurationSaysNothingOfAPersonalKey(): void
     {
         TestDb::setEnv('SODIUM_MASTER_KEY', str_repeat('5a', 32));
         $alice = $this->registerAs('coffre@example.org', 'Coffre');
-        $voisin = $this->registerAs('voisin@example.org', 'Voisin');
-        $cle = ['provider' => 'anthropic', 'apiKey' => 'sk-ant-api03-coffre-de-test'];
+        StoredKeys::seed(self::$pdo, $alice['id'], 'anthropic', 'sk-ant-api03-coffre-de-test');
 
-        $this->cookieSid = null;
-        self::assertContains($this->request('PUT', '/api/keys', $cle)->getStatusCode(), [401, 403]);
-
-        self::assertSame(204, $this->as_($alice, 'PUT', '/api/keys', $cle)->getStatusCode());
         $configuration = $this->as_($alice, 'GET', '/api/twin9/configuration');
-        self::assertTrue(self::json($configuration)['cle_perso_enregistree']);
+        self::assertSame(200, $configuration->getStatusCode());
+        self::assertArrayNotHasKey('cle_perso_ouverte', self::json($configuration));
+        self::assertArrayNotHasKey('cle_perso_enregistree', self::json($configuration));
         self::assertStringNotContainsString('coffre-de-test', (string) $configuration->getBody());
-        self::assertFalse(self::json($this->as_($voisin, 'GET', '/api/twin9/configuration'))['cle_perso_enregistree']);
     }
 
     /** A published referential, its latest version or a published one. */

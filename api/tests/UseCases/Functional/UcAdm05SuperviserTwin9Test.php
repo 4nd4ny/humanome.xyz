@@ -5,16 +5,17 @@ declare(strict_types=1);
 namespace Humanome\Tests\UseCases\Functional;
 
 use Humanome\Db;
-use Humanome\Keys\KeyVault;
 use Humanome\Llm\LlmRuntime;
 use Humanome\Tests\CartographeTestCase;
 use Humanome\Tests\LlmFakeHttpClient;
+use Humanome\Tests\StoredKeys;
 use Humanome\Tests\TestDb;
 use Humanome\Tests\UseCases\Support\RunsTwin9Factices;
 use Humanome\Tests\UseCases\Support\TwinSupport;
 use Humanome\Twin9\CreditService;
 use Humanome\Env;
 use Humanome\Twin9\Lancement;
+use Humanome\Twin9\ProfilPolicy;
 use Humanome\Twin9\TarifsAnthropic;
 use Humanome\Twin9\Twin9Config;
 use PHPUnit\Framework\Attributes\PreserveGlobalState;
@@ -117,55 +118,56 @@ final class UcAdm05SuperviserTwin9Test extends CartographeTestCase
         self::assertSame(1_000_000_000 - 5000, (new CreditService(Db::get()))->balance($this->apprenant['id']));
     }
 
-    #[TestDox('UC-ADM-05-F10 — A1 : promotion « Twin9 avec sa clé » ouverte puis refermée → un profil à clé personnelle est refusé, admis et estimé sans contribution, puis refusé au lancement ; pendant la promotion, un profil à la clé de l’instance s’estime toujours avec contribution')]
+    #[TestDox('UC-ADM-05-F10 — A1 : la promotion « Twin9 avec sa clé » a disparu avec la voie personnelle (ADR-013) → l’administrateur ne peut plus l’ouvrir (422, clé inconnue) ; un profil à clé personnelle est refusé à l’enregistrement, même avec une clé gardée, et un profil enregistré avant est refusé à l’aperçu et au lancement, avec un message clair')]
     #[RunInSeparateProcess]
     #[PreserveGlobalState(false)]
     public function testF10PromoWindow(): void
     {
         $this->moteurFactice();
-        (new KeyVault(Db::get(), (string) KeyVault::masterKeyFromEnv()))->store($this->apprenant['id'], 'anthropic', 'sk-ant-perso-fictive');
+        StoredKeys::seed(Db::get(), $this->apprenant['id'], 'anthropic', 'sk-ant-perso-fictive');
         $refuse = $this->creerProfil($this->apprenant, 'Ma clé', ['cle' => 'personnelle']);
         self::assertSame(422, $refuse->getStatusCode());
-        self::assertSame('Profil refusé — /cle : les clés personnelles ne sont pas ouvertes sur cette instance', self::json($refuse)['error']);
+        self::assertSame(ProfilPolicy::CLE_PERSONNELLE_REFUSEE, self::json($refuse)['error']);
 
-        self::assertTrue(self::json($this->config(['twin9_cle_perso_ouverte' => true]))['twin9_cle_perso_ouverte']);
-        self::assertTrue(self::json($this->as_($this->apprenant, 'GET', '/api/twin9/configuration'))['cle_perso_ouverte']);
-        self::assertArrayNotHasKey('twin9_cle_perso_ouverte', self::json($this->as_($this->apprenant, 'GET', '/api/twin9/meta')), 'la promotion a quitté /meta (2026-10-20) : la page Configuration la lit dans /api/twin9/configuration');
-        $perso = $this->profilDirect($this->apprenant, 'Ma clé', ['cle' => 'personnelle']);
-        // Sa clé paie, sans contribution ; son crédit, nul, ne borne rien.
-        $apercu = $this->apercu($this->apprenant, $perso);
-        self::assertSame(self::estimation(1.0), $apercu['estimation']['cout_usd']);
-        self::assertNull($apercu['admission']['refus']);
+        $promo = $this->config(['twin9_cle_perso_ouverte' => true]);
+        self::assertSame(422, $promo->getStatusCode());
+        self::assertSame('Clé de configuration inconnue : twin9_cle_perso_ouverte', self::json($promo)['error']);
+        self::assertArrayNotHasKey('twin9_cle_perso_ouverte', self::json($this->as_($this->admin, 'GET', '/api/twin9/admin/config')));
+        self::assertArrayNotHasKey('cle_perso_ouverte', self::json($this->as_($this->apprenant, 'GET', '/api/twin9/configuration')));
 
-        // Promotion ouverte : un profil à la clé de l'instance, lui, s'estime toujours avec contribution.
+        $ancien = $this->profilAncien($this->apprenant, 'Ma clé', ['cle' => 'personnelle']);
+        foreach (['/api/twin9/runs/apercu' => $this->lancement($ancien), '/api/twin9/runs' => $this->lancement($ancien)] as $route => $corps) {
+            $r = $this->as_($this->apprenant, 'POST', $route, $corps);
+            self::assertSame(422, $r->getStatusCode(), $route);
+            self::assertSame(ProfilPolicy::CLE_PERSONNELLE_REFUSEE, self::json($r)['error'], $route);
+        }
+        self::assertSame([], self::json($this->as_($this->apprenant, 'GET', '/api/twin9/runs'))['runs']);
+
+        // un profil à la clé de l'instance, lui, s'estime toujours avec contribution
         (new CreditService(Db::get()))->topup($this->apprenant['id'], 1_000_000_000, 'ORDER-ADM-05-PROMO');
         $instance = $this->profilDirect($this->apprenant, 'Instance');
         self::assertSame(self::estimation(1.2), $this->apercu($this->apprenant, $instance)['estimation']['cout_usd']);
-
-        $this->config(['twin9_cle_perso_ouverte' => false]);
-        $lance = $this->as_($this->apprenant, 'POST', '/api/twin9/runs', $this->lancement($perso));
-        self::assertSame(422, $lance->getStatusCode());
-        self::assertSame('Profil refusé — /cle : les clés personnelles ne sont pas ouvertes sur cette instance', self::json($lance)['error']);
-        self::assertSame([], self::json($this->as_($this->apprenant, 'GET', '/api/twin9/runs'))['runs']);
     }
 
-    #[TestDox('UC-ADM-05-F11 — A2 : grille de packs remplacée → offre /meta et montant de l’ordre PayPal suivent ; limite figée : un pack est désigné par sa POSITION')]
+    #[TestDox('UC-ADM-05-F11 — A2 : grille de packs remplacée → offre /meta et montant de l’ordre PayPal d’une école suivent ; limite figée : un pack est désigné par sa POSITION')]
     public function testF11PacksDriveTheOffer(): void
     {
+        // seule une école achète (ADR-013 §2 e)
+        $ecole = $this->registerAs('ecole@example.org', 'École fictive', ['etablissement']);
         $this->config(['packs' => [['montant_usd' => 15, 'libelle' => 'Pack essai — 15 $'], ['montant_usd' => 500, 'libelle' => 'Pack établissement — 500 $']]]);
-        self::assertSame([15, 500], array_column(self::json($this->as_($this->apprenant, 'GET', '/api/twin9/meta'))['packs'], 'montant_usd'));
+        self::assertSame([15, 500], array_column(self::json($this->as_($ecole, 'GET', '/api/twin9/meta'))['packs'], 'montant_usd'));
 
         TwinSupport::queuePaypalToken($this->http);
         TwinSupport::queuePaypalOrderCreated($this->http, 'ORDER-500');
-        self::assertSame(200, $this->as_($this->apprenant, 'POST', '/api/twin9/credit/paypal/creer', ['pack_index' => 1])->getStatusCode());
+        self::assertSame(200, $this->as_($ecole, 'POST', '/api/twin9/credit/paypal/creer', ['pack_index' => 1])->getStatusCode());
         self::assertSame('500.00', json_decode((string) $this->http->requests[1]['body'], true)['purchase_units'][0]['amount']['value']);
-        self::assertSame(422, $this->as_($this->apprenant, 'POST', '/api/twin9/credit/paypal/creer', ['pack_index' => 2])->getStatusCode());
+        self::assertSame(422, $this->as_($ecole, 'POST', '/api/twin9/credit/paypal/creer', ['pack_index' => 2])->getStatusCode());
 
-        // LIMITE figée : l'ordre ne porte que pack_index. Une page apprenant chargée
-        // avec l'ancienne grille (index 0 = 10 $) crée désormais un ordre de 15 $.
+        // LIMITE figée : l'ordre ne porte que pack_index. Une page chargée avec
+        // l'ancienne grille (index 0 = 10 $) crée désormais un ordre de 15 $.
         TwinSupport::queuePaypalToken($this->http);
         TwinSupport::queuePaypalOrderCreated($this->http, 'ORDER-15');
-        self::assertSame(200, $this->as_($this->apprenant, 'POST', '/api/twin9/credit/paypal/creer', ['pack_index' => 0])->getStatusCode());
+        self::assertSame(200, $this->as_($ecole, 'POST', '/api/twin9/credit/paypal/creer', ['pack_index' => 0])->getStatusCode());
         self::assertSame('15.00', json_decode((string) $this->http->requests[3]['body'], true)['purchase_units'][0]['amount']['value']);
         self::assertSame(10, Twin9Config::defaults()['packs'][0]['montant_usd']);
     }
@@ -211,12 +213,12 @@ final class UcAdm05SuperviserTwin9Test extends CartographeTestCase
         self::assertNotContains('admin@example.org', array_column($comptes, 'email'), 'sans activité : absent');
     }
 
-    #[TestDox('UC-ADM-05-F14 — E1 : supervision réservée à l’admin — visiteur 401 ; apprenant, promptologue, établissement 403 ; la promo n’est pas ouverte')]
+    #[TestDox('UC-ADM-05-F14 — E1 : supervision réservée à l’admin — visiteur 401 ; apprenant, promptologue, établissement 403 ; la configuration est inchangée')]
     public function testF14AdminOnly(): void
     {
         $promptologue = $this->registerAs('prompto@example.org', 'Prompto', ['promptologue']);
         $ecole = $this->registerAs('ecole@example.org', 'École', ['etablissement']);
-        $routes = [['GET', '/api/twin9/admin/config', null], ['PUT', '/api/twin9/admin/config', ['twin9_cle_perso_ouverte' => true]], ['GET', '/api/twin9/admin/comptes', null]];
+        $routes = [['GET', '/api/twin9/admin/config', null], ['PUT', '/api/twin9/admin/config', ['marge' => 4.0]], ['GET', '/api/twin9/admin/comptes', null]];
         foreach ($routes as [$method, $path, $body]) {
             $this->cookieSid = null;
             self::assertSame(401, $this->request($method, $path, $body)->getStatusCode(), $path);
@@ -224,7 +226,7 @@ final class UcAdm05SuperviserTwin9Test extends CartographeTestCase
                 self::assertSame(403, $this->as_($user, $method, $path, $body)->getStatusCode(), $path);
             }
         }
-        self::assertFalse(self::json($this->as_($this->apprenant, 'GET', '/api/twin9/configuration'))['cle_perso_ouverte']);
+        self::assertSame(1.2, self::json($this->as_($this->admin, 'GET', '/api/twin9/admin/config'))['marge']);
     }
 
     #[TestDox('UC-ADM-05-F15 — E2 : corps scalaire → 400 ; liste JSON → 422 (clé « 0 ») ou 200 si vide ; clé inconnue ou valeur hors bornes → 422 avec message ; rien n’est modifié')]
@@ -266,12 +268,11 @@ final class UcAdm05SuperviserTwin9Test extends CartographeTestCase
         $avant = self::json($this->as_($this->admin, 'GET', '/api/twin9/admin/config'));
         foreach ([[], ['X-CSRF-Token' => 'jeton-faux']] as $entetes) {
             $this->cookieSid = $this->admin['sid'];
-            $response = $this->request('PUT', '/api/twin9/admin/config', ['twin9_cle_perso_ouverte' => true, 'marge' => 4.0], $entetes);
+            $response = $this->request('PUT', '/api/twin9/admin/config', ['marge' => 4.0], $entetes);
             self::assertSame(403, $response->getStatusCode());
             self::assertSame(['error' => 'Jeton CSRF absent ou invalide'], self::json($response));
         }
         self::assertEquals($avant, self::json($this->as_($this->admin, 'GET', '/api/twin9/admin/config')));
-        self::assertFalse(self::json($this->as_($this->apprenant, 'GET', '/api/twin9/configuration'))['cle_perso_ouverte']);
     }
 
     #[TestDox('UC-ADM-05-F16 — cause de l’anomalie du formulaire : une config relue après enregistrement a ses clés réordonnées par MySQL')]

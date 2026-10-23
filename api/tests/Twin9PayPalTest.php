@@ -11,8 +11,11 @@ use Humanome\Twin9\CreditService;
 /**
  * T3b (ADR-010 §3) — PayPal Orders v2 redirect flow: order creation,
  * server-to-server capture, idempotence by order id, and the credit ledger
- * route. HTTP is fully mocked (LlmRuntime seam): no network in the suite,
- * no real PayPal credential anywhere.
+ * route. Since ADR-013 (§2 e), only a school buys: the buyer here is an
+ * account with the `etablissement` habilitation; a learner is refused before
+ * PayPal is asked, and keeps refunding its balance. HTTP is fully mocked
+ * (LlmRuntime seam): no network in the suite, no real PayPal credential
+ * anywhere.
  */
 final class Twin9PayPalTest extends CartographeTestCase
 {
@@ -36,7 +39,7 @@ final class Twin9PayPalTest extends CartographeTestCase
         $this->http = new LlmFakeHttpClient();
         LlmRuntime::setHttpClient($this->http);
 
-        $this->user = $this->registerAs('ada@example.org', 'Ada', ['apprenant']);
+        $this->user = $this->registerAs('ada@example.org', 'Ada', ['etablissement']);
     }
 
     protected function tearDown(): void
@@ -110,6 +113,36 @@ final class Twin9PayPalTest extends CartographeTestCase
         self::assertSame(401, $this->request('POST', '/api/twin9/credit/paypal/creer', ['pack_index' => 0])->getStatusCode());
         self::assertSame(401, $this->request('POST', '/api/twin9/credit/paypal/capturer', ['order_id' => 'X'])->getStatusCode());
         self::assertSame(401, $this->request('GET', '/api/twin9/credit')->getStatusCode());
+    }
+
+    /** R2: a learner buys nothing — refused before PayPal is asked, nothing recorded, nothing credited. */
+    public function testALearnerBuysNothing(): void
+    {
+        $eleve = $this->registerAs('eleve@example.org', 'Élève', ['apprenant', 'cartographe']);
+        self::$pdo->prepare('INSERT INTO user_declared_roles (user_id, role) VALUES (?, ?)')->execute([$eleve['id'], 'architecte']);
+        foreach ([['/api/twin9/credit/paypal/creer', ['pack_index' => 0]],
+                  ['/api/twin9/credit/paypal/capturer', ['order_id' => 'ORDER-ELEVE']]] as [$route, $body]) {
+            $response = $this->as_($eleve, 'POST', $route, $body);
+            self::assertSame(403, $response->getStatusCode(), $route);
+            self::assertSame('Seule une école achète des crédits.', self::json($response)['error']);
+            self::assertStringContainsString('vérifier l’âge des apprenants', self::json($response)['detail']);
+        }
+        self::assertSame([], $this->http->requests, 'nothing reaches PayPal');
+        self::assertSame(0, (int) self::$pdo->query('SELECT COUNT(*) FROM twin9_paypal_orders')->fetchColumn());
+        self::assertSame(0, (new CreditService(Db::get()))->balance($eleve['id']));
+    }
+
+    /** The capture reads the habilitation again: a school that lost it since its order captures nothing. */
+    public function testCapturerRereadsTheHabilitation(): void
+    {
+        (new CreditService(Db::get()))->recordPaypalOrder($this->user['id'], 'ORDER-RETIRE');
+        self::setRoles($this->user['id'], ['apprenant']);
+
+        $response = $this->as_($this->user, 'POST', '/api/twin9/credit/paypal/capturer', ['order_id' => 'ORDER-RETIRE']);
+
+        self::assertSame(403, $response->getStatusCode());
+        self::assertSame([], $this->http->requests, 'never captured');
+        self::assertSame(0, (new CreditService(Db::get()))->balance($this->user['id']));
     }
 
     public function testCreerValidatesPackIndex(): void

@@ -5,6 +5,7 @@ declare(strict_types=1);
 namespace Humanome\Tests\UseCases\Functional;
 
 use Humanome\Tests\CartographeTestCase;
+use Humanome\Tests\StoredKeys;
 use Humanome\Tests\TestDb;
 use PHPUnit\Framework\Attributes\TestDox;
 use Psr\Http\Message\ResponseInterface;
@@ -43,7 +44,8 @@ final class UcCpt06SupprimerCompteTest extends CartographeTestCase
     {
         self::assertSame(200, $this->as_($user, 'PUT', '/api/auth/me/avatar', ['avatar' => self::PNG_B64, 'mime' => 'image/png'])->getStatusCode());
         self::assertSame(200, $this->as_($user, 'PUT', '/api/training/progress', ['parcours' => 'apprenant', 'chapitre' => '01-pourquoi-un-portfolio-reflexif', 'completed' => true])->getStatusCode());
-        self::assertSame(204, $this->as_($user, 'PUT', '/api/keys', ['provider' => 'anthropic', 'apiKey' => $key])->getStatusCode());
+        // une clé gardée avant l'ADR-013 (aucune route n'en écrit plus)
+        StoredKeys::seed(self::$pdo, $user['id'], 'anthropic', $key);
         $cartoId = $this->createCarto($user, ['visibility' => 'publique', 'titre' => 'Journée du 5 janvier', 'document' => self::jourDocument()]);
         // Un lien créé avant le retrait de l'ancien partage (D-43).
         $share = self::legacyShareLink($cartoId, self::LINK_PASSWORD, 90, $user['id']);

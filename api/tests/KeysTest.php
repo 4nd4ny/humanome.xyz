@@ -4,12 +4,17 @@ declare(strict_types=1);
 
 namespace Humanome\Tests;
 
+use Humanome\Auth\Users;
+use Humanome\Keys\KeyRefused;
 use Humanome\Keys\KeyVault;
 
 /**
- * P8 — encrypted per-user LLM API keys (AD-4): encryption round-trip through
- * the API, list without key material, owner-only reveal, real deletion,
- * explicit 503 when SODIUM_MASTER_KEY is absent or malformed.
+ * The API keys on the server since ADR-013 (§5; P8, AD-4 before): a user's
+ * keys stay in their browser — PUT answers 410 to every account and writes
+ * nothing —, the vault keeps a school's only; the keys stored before are
+ * listed « à supprimer », revealed to their owner alone (no-store) to be
+ * copied into the browser, and really deleted; explicit 503 when
+ * SODIUM_MASTER_KEY is absent or malformed.
  */
 final class KeysTest extends AuthTestBase
 {
@@ -28,6 +33,17 @@ final class KeysTest extends AuthTestBase
         $this->csrf = (string) self::json($response)['csrfToken'];
     }
 
+    private function maya(): int
+    {
+        return (int) self::$pdo->query("SELECT id FROM users WHERE email = 'maya@example.org'")->fetchColumn();
+    }
+
+    /** A key Maya stored before ADR-013. */
+    private function stored(string $provider = 'anthropic', string $apiKey = self::API_KEY): void
+    {
+        StoredKeys::seed(self::$pdo, $this->maya(), $provider, $apiKey, (string) hex2bin(self::MASTER_KEY_HEX));
+    }
+
     private function putKey(string $provider = 'anthropic', string $apiKey = self::API_KEY): \Psr\Http\Message\ResponseInterface
     {
         return $this->request('PUT', '/api/keys', [
@@ -36,54 +52,76 @@ final class KeysTest extends AuthTestBase
         ], ['X-CSRF-Token' => $this->csrf]);
     }
 
-    public function testEncryptionRoundTripThroughTheApi(): void
+    private function rows(): int
     {
-        self::assertSame(204, $this->putKey()->getStatusCode());
+        return (int) self::$pdo->query('SELECT COUNT(*) FROM user_api_keys')->fetchColumn();
+    }
 
-        // At rest: ciphertext only — the clear key appears nowhere in the row.
+    /** R1: no account's key is written by the API any more — a learner's nor a school's. */
+    public function testPutAnswers410ToEveryAccountAndWritesNothing(): void
+    {
+        $response = $this->putKey();
+        self::assertSame(410, $response->getStatusCode());
+        self::assertSame(KeyVault::REFUS, self::json($response)['error']);
+        self::assertStringContainsString('Seule une école', self::json($response)['detail']);
+        self::assertSame(0, $this->rows());
+
+        // a school too: its key for its learners is written in its establishment space (lot S6b)
+        Users::assignRole(self::$pdo, $this->maya(), 'etablissement');
+        $response = $this->putKey();
+        self::assertSame(410, $response->getStatusCode());
+        self::assertStringContainsString('espace établissement', self::json($response)['detail']);
+        self::assertSame(0, $this->rows());
+        self::assertStringNotContainsString(self::API_KEY, (string) $response->getBody());
+    }
+
+    /** The body is never read: an invalid one, a Mistral AI key included, gets the same 410. */
+    public function testPutRefusesBeforeAnyValidation(): void
+    {
+        self::assertNotContains('mistral', KeyVault::PROVIDERS);
+        foreach ([['mistral', 'cle-mistral-EXEMPLE-0123'], ['skynet', self::API_KEY], ['anthropic', 'court'],
+                  ['anthropic', "avec\ncontrole"]] as [$provider, $key]) {
+            self::assertSame(410, $this->putKey($provider, $key)->getStatusCode(), $provider);
+        }
+        self::assertSame([], self::json($this->request('GET', '/api/keys')));
+    }
+
+    /** A key stored before: ciphertext at rest, revealed to its owner in clear, never cached. */
+    public function testAStoredKeyIsRevealedToItsOwnerToBeCopied(): void
+    {
+        $this->stored();
+
         $blob = self::$pdo->query('SELECT encrypted_key FROM user_api_keys')->fetchColumn();
         self::assertIsString($blob);
         self::assertStringNotContainsString(self::API_KEY, $blob);
-        self::assertGreaterThan(SODIUM_CRYPTO_SECRETBOX_NONCEBYTES, \strlen($blob));
 
-        // AD-4 synchronization: the authenticated owner gets the clear key back.
         $response = $this->request('GET', '/api/keys/anthropic');
         self::assertSame(200, $response->getStatusCode());
         self::assertSame(self::API_KEY, self::json($response)['apiKey']);
-
-        // The cleartext secret must never be cached (browser disk / shared proxy).
         self::assertStringContainsString('no-store', $response->getHeaderLine('Cache-Control'));
     }
 
-    public function testEachEntryGetsItsOwnNonce(): void
-    {
-        $this->putKey('anthropic');
-        $this->putKey('openai', 'sk-openai-EXEMPLE-0123456789');
-
-        $blobs = self::$pdo->query('SELECT encrypted_key FROM user_api_keys ORDER BY provider')
-            ->fetchAll(\PDO::FETCH_COLUMN);
-        $nonces = array_map(
-            static fn (string $blob): string => substr($blob, 0, SODIUM_CRYPTO_SECRETBOX_NONCEBYTES),
-            $blobs,
-        );
-        self::assertNotSame($nonces[0], $nonces[1], 'nonce must be per entry');
-    }
-
+    /** The list says what is still stored, « à supprimer », and since when it was notified — never a key. */
     public function testListNeverContainsKeyMaterial(): void
     {
-        $this->putKey();
+        $this->stored();
 
         $response = $this->request('GET', '/api/keys');
         self::assertSame(200, $response->getStatusCode());
         $list = self::json($response);
         self::assertSame('anthropic', $list[0]['provider']);
-        self::assertSame(['provider', 'createdAt'], array_keys($list[0]));
+        self::assertSame(['provider', 'createdAt', 'avisPurgeAt'], array_keys($list[0]));
+        self::assertNull($list[0]['avisPurgeAt']);
         self::assertStringNotContainsString(self::API_KEY, (string) $response->getBody());
+
+        StoredKeys::seed(self::$pdo, $this->maya(), 'openai', 'sk-openai-EXEMPLE-0123456789',
+            (string) hex2bin(self::MASTER_KEY_HEX), '2026-10-20 09:30:00');
+        self::assertSame('2026-10-20T09:30:00', self::json($this->request('GET', '/api/keys'))[1]['avisPurgeAt']);
     }
 
     public function testRevealIsOwnerOnly(): void
     {
-        $this->putKey();
+        $this->stored();
 
         $this->cookieSid = null;
         $this->register('other@example.org', self::PASSWORD, 'Other');
@@ -94,31 +132,11 @@ final class KeysTest extends AuthTestBase
 
     public function testDeleteRemovesTheEntry(): void
     {
-        $this->putKey();
+        $this->stored();
         self::assertSame(204, $this->request('DELETE', '/api/keys/anthropic', null, ['X-CSRF-Token' => $this->csrf])->getStatusCode());
-        self::assertSame(0, (int) self::$pdo->query('SELECT COUNT(*) FROM user_api_keys')->fetchColumn());
+        self::assertSame(0, $this->rows());
         self::assertSame(404, $this->request('DELETE', '/api/keys/anthropic', null, ['X-CSRF-Token' => $this->csrf])->getStatusCode());
         self::assertSame(404, $this->request('GET', '/api/keys/anthropic')->getStatusCode());
-    }
-
-    /**
-     * A Mistral AI key is not collected (data minimisation, RGPD art. 5.1.c):
-     * no path uses one — a Twin9 run reaches Mistral AI with the instance's
-     * key only (ADR-012 §5), the cartography assistant has no Mistral
-     * adapter.
-     */
-    public function testAMistralKeyIsNotCollected(): void
-    {
-        self::assertNotContains('mistral', KeyVault::PROVIDERS);
-        self::assertSame(422, $this->putKey('mistral', 'cle-mistral-EXEMPLE-0123')->getStatusCode());
-        self::assertSame([], self::json($this->request('GET', '/api/keys')));
-    }
-
-    public function testValidation(): void
-    {
-        self::assertSame(422, $this->putKey('skynet')->getStatusCode(), 'unknown provider');
-        self::assertSame(422, $this->putKey('anthropic', 'court')->getStatusCode(), 'key too short');
-        self::assertSame(422, $this->putKey('anthropic', "avec\ncontrole")->getStatusCode(), 'control chars');
     }
 
     /**
@@ -126,7 +144,7 @@ final class KeysTest extends AuthTestBase
      * key IS configured here (setUp), so a failure cannot be confused with
      * the 503 « stockage non configuré » branch. Without a session cookie the
      * CSRF middleware passes through (no ambient credentials) — the guard
-     * itself must answer 401.
+     * itself must answer 401, before the 410 of PUT.
      */
     public function testAuthenticationRequiredWithoutSession(): void
     {
@@ -146,7 +164,7 @@ final class KeysTest extends AuthTestBase
 
     public function testMissingMasterKeyIsAnExplicit503EverywhereOnKeys(): void
     {
-        $this->putKey(); // stored while configured
+        $this->stored(); // stored while configured
 
         TestDb::setEnv('SODIUM_MASTER_KEY', '');
         foreach ([
@@ -174,23 +192,46 @@ final class KeysTest extends AuthTestBase
 
     public function testRotatedMasterKeyFailsClosed(): void
     {
-        $this->putKey();
+        $this->stored();
         TestDb::setEnv('SODIUM_MASTER_KEY', strrev(self::MASTER_KEY_HEX));
 
         $response = $this->request('GET', '/api/keys/anthropic');
         self::assertSame(404, $response->getStatusCode(), 'undecryptable blob must not 500 nor leak');
     }
 
-    public function testVaultUnitRoundTrip(): void
+    /** The vault keeps a school's keys only (ADR-013 §1, R1): a learner's is refused, nothing written. */
+    public function testTheVaultKeepsASchoolsKeyOnly(): void
     {
-        $master = (string) hex2bin(self::MASTER_KEY_HEX);
-        $vault = new KeyVault(self::$pdo, $master);
-        $userId = (int) self::$pdo->query('SELECT id FROM users LIMIT 1')->fetchColumn();
+        $vault = new KeyVault(self::$pdo, (string) hex2bin(self::MASTER_KEY_HEX));
+        $maya = $this->maya();
 
-        $vault->store($userId, 'google', 'AIza-EXEMPLE-0123456789');
-        self::assertSame('AIza-EXEMPLE-0123456789', $vault->reveal($userId, 'google'));
-        self::assertNull($vault->reveal($userId, 'openai'));
-        self::assertTrue($vault->delete($userId, 'google'));
-        self::assertFalse($vault->delete($userId, 'google'));
+        self::assertFalse($vault->accepte($maya));
+        try {
+            $vault->store($maya, 'google', 'AIza-EXEMPLE-0123456789');
+            self::fail('a learner\'s key must be refused');
+        } catch (KeyRefused $e) {
+            self::assertSame(KeyVault::REFUS, $e->getMessage());
+        }
+        self::assertSame(0, $this->rows());
+
+        // a declared role opens nothing (ADR-013 §2 h): only the habilitation the administrator grants
+        self::$pdo->prepare('INSERT INTO user_declared_roles (user_id, role) VALUES (?, ?)')->execute([$maya, 'architecte']);
+        self::assertFalse($vault->accepte($maya));
+
+        Users::assignRole(self::$pdo, $maya, 'etablissement');
+        self::assertTrue($vault->accepte($maya));
+        $vault->store($maya, 'google', 'AIza-EXEMPLE-0123456789');
+        $vault->store($maya, 'anthropic', self::API_KEY);
+        self::assertSame('AIza-EXEMPLE-0123456789', $vault->reveal($maya, 'google'));
+        self::assertNull($vault->reveal($maya, 'openai'));
+
+        $nonces = array_map(
+            static fn (string $blob): string => substr($blob, 0, SODIUM_CRYPTO_SECRETBOX_NONCEBYTES),
+            self::$pdo->query('SELECT encrypted_key FROM user_api_keys ORDER BY provider')->fetchAll(\PDO::FETCH_COLUMN),
+        );
+        self::assertNotSame($nonces[0], $nonces[1], 'nonce must be per entry');
+
+        self::assertTrue($vault->delete($maya, 'google'));
+        self::assertFalse($vault->delete($maya, 'google'));
     }
 }

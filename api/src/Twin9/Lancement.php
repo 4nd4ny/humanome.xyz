@@ -552,9 +552,6 @@ final class Lancement
             throw new Twin9Exception('Profil refusé — /stigmergie : le moteur de cette instance ne connaît pas la '
                 . 'stigmergie (Twin_v9 à mettre à jour)', 422);
         }
-        if ($profil->cle === 'personnelle' && !$politique->choix($userId)['cle_perso_enregistree']) {
-            throw new Twin9Exception('Profil refusé — /cle : aucune clé Anthropic personnelle n’est enregistrée', 422);
-        }
         // the referential's version, frozen in the run's copy of its profile
         $profil->referentiel->version ??= (new ReferentielRepository($this->pdo))
             ->publishedSemvers()[$profil->referentiel->id][0];

@@ -45,10 +45,13 @@ use Humanome\Twin9\Fournisseurs\Fournisseurs;
  * Gone on 2026-10-20, with the browser's engine they served (T11): the
  * switch `enabled` and the protocol settings `pipeline` the import wrote, the
  * offer's model tiers (`etages`) the supervision edited, the rate
- * `appels_par_minute` that bounded the open cartography's paid calls. A value
- * of them still stored is ignored on read and leaves at the next save. No
- * migration erases them yet: that is a contraction, which waits until the
- * release that stops reading them is stable (ADR-008; STATUS.md).
+ * `appels_par_minute` that bounded the open cartography's paid calls. Gone
+ * on 2026-10-22 with the personal lane of Twin9 (ADR-013 §6): the promotion
+ * `twin9_cle_perso_ouverte`, a free Twin9 on the user's own key — no new run
+ * leaves on a personal key. A value of them still stored is ignored on read
+ * and leaves at the next save. No migration erases them yet: that is a
+ * contraction, which waits until the release that stops reading them is
+ * stable (ADR-008; STATUS.md).
  */
 final class Twin9Config
 {
@@ -121,12 +124,6 @@ final class Twin9Config
             // is why packs start at 10 USD (see 'packs').
             'marge' => 1.2,
             'marge_twin6' => 1.1,
-            // PROMO (owner idea 2026-07-15): when true, a run with the user's
-            // OWN API key may use Twin9 for FREE (no contribution) — a
-            // promotional window to let people feel the quality before buying
-            // tokens. Off by default: Twin9 own-key is otherwise refused (the
-            // proprietary prompt only travels via our metered/credited path).
-            'twin9_cle_perso_ouverte' => false,
             // Owner choice (2026-07-16): recharge grid 10/20/50/100/200/500 USD
             // (« Pas d'abonnement, mais une recharge de 10$ 20$ 50$ 100$ 200$
             // 500$ le cas échéant »). No subscription; a large portfolio can
@@ -336,15 +333,6 @@ final class Twin9Config
         return $protocole === 'twin6'
             ? (float) $config['marge_twin6']
             : (float) $config['marge'];
-    }
-
-    /**
-     * PROMO flag: may a run with the user's OWN API key use Twin9 for free?
-     * Off by default (Twin9 own-key refused); an admin opens it for a window.
-     */
-    public function clePersoOuverte(): bool
-    {
-        return (bool) $this->read()['twin9_cle_perso_ouverte'];
     }
 
     /**
@@ -559,10 +547,6 @@ final class Twin9Config
                 throw new Twin9Exception($label . ' hors bornes (entre 1 et 5)', 422);
             }
         }
-        if (!\is_bool($config['twin9_cle_perso_ouverte'])) {
-            throw new Twin9Exception('Champ twin9_cle_perso_ouverte invalide : booléen attendu', 422);
-        }
-
         if (!\is_array($config['packs']) || $config['packs'] === [] || !array_is_list($config['packs'])) {
             throw new Twin9Exception('Packs invalides : liste non vide attendue', 422);
         }

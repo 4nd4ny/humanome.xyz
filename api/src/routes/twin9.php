@@ -41,8 +41,9 @@ declare(strict_types=1);
  *   GET  /api/twin9/facture?annee=&mois=   monthly recap invoice (own account)
  *   GET  /api/twin9/depenses               spend tracking per month (own account)
  *   GET  /api/twin9/admin/comptes          admin: balances/totals of all accounts
- *   POST /api/twin9/credit/paypal/creer    {pack_index} -> {approve_url, order_id}
- *   POST /api/twin9/credit/paypal/capturer {order_id} -> {solde_microusd}
+ *   POST /api/twin9/credit/paypal/creer    {pack_index} -> {approve_url, order_id} — a school only (ADR-013)
+ *   POST /api/twin9/credit/paypal/capturer {order_id} -> {solde_microusd} — a school only (ADR-013)
+ *   POST /api/twin9/credit/rembourser      {montant_microusd?} -> refund of the own balance, any account
  *
  * {name} is hierarchical ('lourd/20-greffier'): the routes use a greedy
  * {name:.+} pattern, and the /versions routes are registered FIRST so
@@ -53,7 +54,7 @@ use Humanome\Auth\RateLimiter;
 use Humanome\Auth\Session;
 use Humanome\Db;
 use Humanome\Env;
-use Humanome\Keys\KeyVault;
+use Humanome\Etablissement\Ecole;
 use Humanome\Llm\AnthropicFlux;
 use Humanome\Llm\HttpClientException;
 use Humanome\Llm\LlmRuntime;
@@ -540,10 +541,12 @@ return function (App $app): void {
     // GET /api/twin9/meta — what the credit page and the open cartography
     // (Twin6) read: the Twin6 offer (margined prices), the packs, whether
     // PayPal is configured, the referential's structure, the own balance and
-    // whether a private key is stored. NEVER content. Since T11 it no longer
-    // lists the steps, the Twin9 offer or the pipeline's settings, which only
-    // the browser's engine read; since 2026-10-20, nor the promotion's state,
-    // which no view read (the configuration page has it, ProfilPolicy).
+    // whether this account may buy (a school only, ADR-013 §5: the server
+    // says it, the page does not guess it from the roles). NEVER content.
+    // Since T11 it no longer lists the steps, the Twin9 offer or the
+    // pipeline's settings, which only the browser's engine read; since
+    // 2026-10-20, nor the promotion's state; since ADR-013, nor whether a
+    // private key is stored, which no run reads any more.
     // ------------------------------------------------------------------
     $app->get('/twin9/meta', $wrap(function (Request $request, Response $response) use ($json, $sessionUserId): Response {
         $userId = $sessionUserId();
@@ -553,10 +556,7 @@ return function (App $app): void {
 
         $config = new Twin9Config(new SettingsRepository(Db::get()));
         $view = $config->publicView();
-
-        $masterKey = KeyVault::masterKeyFromEnv();
-        $clePrivee = $masterKey !== null
-            && (new KeyVault(Db::get(), $masterKey))->reveal($userId, 'anthropic') !== null;
+        $ecole = Ecole::est(Db::get(), $userId);
 
         return $json($response, [
             'modeles_twin6' => $view['modeles_twin6'],
@@ -567,7 +567,9 @@ return function (App $app): void {
             'referentiel' => $config->referentiel(),
             'paypalConfigured' => $view['paypalConfigured'],
             'solde_microusd' => (new CreditService(Db::get()))->balance($userId),
-            'cle_privee_disponible' => $clePrivee,
+            // a school buys; another account spends its remaining balance down, and is told why (ADR-013 §2 c, e)
+            'peut_acheter' => $ecole,
+            'achat_pourquoi' => $ecole ? null : Ecole::ACHAT_POURQUOI,
         ]);
     }));
 
@@ -644,14 +646,19 @@ return function (App $app): void {
 
     // ------------------------------------------------------------------
     // POST /api/twin9/credit/paypal/creer {pack_index} — create the PayPal
-    // order for one pack. NO intermediate state stored: the capture creates
-    // the (idempotent) ledger event, an abandoned order simply expires at
-    // PayPal's.
+    // order for one pack, for a school only (ADR-013 §2 e, R2: a private
+    // person does not buy, so that nobody has to check a learner's age):
+    // 403 to another account, before PayPal is ever asked. NO intermediate
+    // state stored: the capture creates the (idempotent) ledger event, an
+    // abandoned order simply expires at PayPal's.
     // ------------------------------------------------------------------
     $app->post('/twin9/credit/paypal/creer', $wrap(function (Request $request, Response $response) use ($json, $parseBody, $sessionUserId, $paypalReturnUrl, $paypalCancelUrl): Response {
         $userId = $sessionUserId();
         if ($userId === null) {
             return $json($response, ['error' => 'Authentification requise'], 401);
+        }
+        if (!Ecole::est(Db::get(), $userId)) {
+            return $json($response, ['error' => Ecole::ACHAT_REFUSE, 'detail' => Ecole::ACHAT_POURQUOI], 403);
         }
         // Rate limit (2026-07-15 review, finding LOW): each call spends the
         // platform's live PayPal credentials — cap the loop.
@@ -690,12 +697,18 @@ return function (App $app): void {
     // ------------------------------------------------------------------
     // POST /api/twin9/credit/paypal/capturer {order_id} — capture after the
     // redirect back, then credit the CAPTURED amount (PayPal's figure ×1e6
-    // micro-USD, never a client-provided one). Idempotent by order id.
+    // micro-USD, never a client-provided one). Idempotent by order id. The
+    // habilitation is read again (ADR-013 §5): an account no longer a school
+    // since its order was created captures nothing — its order, never
+    // captured, expires at PayPal's.
     // ------------------------------------------------------------------
     $app->post('/twin9/credit/paypal/capturer', $wrap(function (Request $request, Response $response) use ($json, $parseBody, $sessionUserId): Response {
         $userId = $sessionUserId();
         if ($userId === null) {
             return $json($response, ['error' => 'Authentification requise'], 401);
+        }
+        if (!Ecole::est(Db::get(), $userId)) {
+            return $json($response, ['error' => Ecole::ACHAT_REFUSE, 'detail' => Ecole::ACHAT_POURQUOI], 403);
         }
         $rl = new RateLimiter(Db::get(), PAYPAL_PAR_MINUTE, 60);
         if ($rl->hit('twin9:paypal:capturer:' . $userId) > PAYPAL_PAR_MINUTE) {
@@ -743,7 +756,8 @@ return function (App $app): void {
     // ------------------------------------------------------------------
     // POST /api/twin9/credit/rembourser {montant_microusd?} — refund unused
     // balance ON REQUEST (never automatic: by default users keep their balance
-    // for next time). Refunds against the user's own captures, most recent
+    // for next time). Open to every account, a school or not: a balance
+    // bought before ADR-013 is spent down or refunded as before (§2 c). Refunds against the user's own captures, most recent
     // first, in whole cents (µUSD dust below one cent stays as balance), each
     // capped at its remaining room. Idempotent per portion (PayPal-Request-Id).
     // ------------------------------------------------------------------

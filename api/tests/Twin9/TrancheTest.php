@@ -4,9 +4,9 @@ declare(strict_types=1);
 
 namespace Humanome\Tests\Twin9;
 
-use Humanome\Keys\KeyVault;
 use Humanome\MigrationRunner;
 use Humanome\Packages\SettingsRepository;
+use Humanome\Tests\StoredKeys;
 use Humanome\Tests\TestDb;
 use Humanome\Twin9\CallSettings;
 use Humanome\Twin9\CreditService;
@@ -150,13 +150,15 @@ final class TrancheTest extends TestCase
         self::assertSame(14, (new RunRepository($this->pdo))->compteursDe($id)['tentatives']);
     }
 
-    /** Two runs advance in the same slices, each with its own settings, templates and key. */
+    /**
+     * Two runs advance in the same slices, each with its own settings, templates and key — the personal one
+     * of a run launched on it before ADR-013, which ends on it.
+     */
     public function testTwoRunsAtOnceKeepTheirSettingsAndTheirKeys(): void
     {
         TestDb::setEnv('SODIUM_MASTER_KEY', str_repeat('ab', 32));
-        (new Twin9Config(new SettingsRepository($this->pdo)))->update(['twin9_cle_perso_ouverte' => true]);
         $autre = $this->utilisateur('autre@example.test');
-        (new KeyVault($this->pdo, (string) KeyVault::masterKeyFromEnv()))->store($autre, 'anthropic', 'sk-ant-perso-test');
+        StoredKeys::seed($this->pdo, $autre, 'anthropic', 'sk-ant-perso-test');
         $a = $this->nouveauRun(['lecteurs' => ['a']], ['/etapes/greffier' => (object) ['effort' => 'low']],
             gabarits: self::prefixes('A'));
         $b = $this->nouveauRun(['lecteurs' => ['x', 'y']], [

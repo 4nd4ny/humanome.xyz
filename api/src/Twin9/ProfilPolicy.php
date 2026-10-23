@@ -6,7 +6,6 @@ namespace Humanome\Twin9;
 
 use Humanome\Auth\Users;
 use Humanome\Env;
-use Humanome\Keys\KeyVault;
 use Humanome\Referentiel\ReferentielRepository;
 use Humanome\Twin9\Fournisseurs\Fournisseurs;
 use Humanome\Worker\Tick;
@@ -20,9 +19,9 @@ use stdClass;
  * owner's for a test run (T15: a draft serves only its author's test runs,
  * while they author drafts — AUTEURS), a template set its owner may choose
  * (T14: the v9.8's, the instance's default, a copy of theirs while they
- * belong to the atelier — TemplateSets::pour), the personal key only where
- * the administrator opened it and only for Anthropic (ADR-012), the
- * Anthropic models the instance prices (T10). The schema says what a profile
+ * belong to the atelier — TemplateSets::pour), the instance's key — never
+ * the personal key since ADR-013 §6 —, the Anthropic models the instance
+ * prices (T10). The schema says what a profile
  * is; this says what its owner may pick (admettre(), at its registration and
  * at its launch), and what a launch — or a resumption — asks besides
  * (admettreAuLancement()): every provider its calls reach open on the
@@ -38,6 +37,11 @@ final class ProfilPolicy
 {
     /** Who writes a referential's drafts, and so may run their own in test mode (T15): the guard of the drafts. */
     public const AUTEURS = ['epistemiarque', 'admin'];
+
+    /** Why a profile on the personal key no longer leaves (ADR-013 §6), at its registration, launch and resumption. */
+    public const CLE_PERSONNELLE_REFUSEE = 'Profil refusé — /cle : la clé personnelle ne sert plus aux analyses du '
+        . 'serveur (une analyse du serveur ne peut pas garder la clé de votre navigateur, et humanome ne garde plus '
+        . 'les clés de ses utilisateurs) ; choisissez la clé de l’instance';
 
     public function __construct(private readonly PDO $pdo, private readonly Twin9Config $config)
     {
@@ -78,29 +82,15 @@ final class ProfilPolicy
      */
     public function admettre(stdClass $profil, int $userId): void
     {
-        if ($profil->cle === 'personnelle' && !$this->config->clePersoOuverte()) {
-            throw new Twin9Exception('Profil refusé — /cle : les clés personnelles ne sont pas ouvertes sur cette instance',
-                422);
-        }
+        self::refuserClePersonnelle($profil);
         // the archived layers vote at the consensus already: the stigmergy's traces would count twice (Q3)
         if (MoteurReglages::stigmergie($profil) && ($profil->calques->accumulation ?? true) !== false) {
             throw new Twin9Exception('Profil refusé — /stigmergie : la stigmergie demande calques.accumulation à false ; '
                 . 'les calques archivés votent déjà au consensus, ses traces y compteraient deux fois', 422);
         }
         $combinaisons = (new CallSettings($profil))->combinaisons();
-        // the holder of a key reads what is sent with it: a third party gets the platform's prompts with the
-        // instance's key only (ADR-012)
-        if ($profil->cle === 'personnelle') {
-            foreach ($combinaisons as $reglage) {
-                if ($reglage['fournisseur'] !== Fournisseurs::DEFAUT) {
-                    throw new Twin9Exception('Profil refusé — /cle : la clé personnelle ne sert que chez Anthropic ; un '
-                        . 'profil qui appelle ' . self::libelle($reglage['fournisseur']) . ' ne part qu’avec les clés '
-                        . 'de l’instance', 422);
-                }
-            }
-        }
-        // a set no longer offered (a former default, a copy out of the atelier) refuses its profile, as a
-        // closed personal key does: the profile keeps it until its owner chooses another
+        // a set no longer offered (a former default, a copy out of the atelier) refuses its profile, as the
+        // personal key does: the profile keeps it until its owner chooses another
         if (!\in_array($profil->gabarits, (new TemplateSets($this->pdo))->pour($userId), true)) {
             throw new Twin9Exception('Profil refusé — /gabarits : ce jeu de gabarits ne vous est pas proposé', 422);
         }
@@ -113,6 +103,24 @@ final class ProfilPolicy
                 throw new Twin9Exception('Profil refusé — ' . $reglage['modele'] . ' : aucun prix pour ce modèle sur '
                     . 'cette instance', 422);
             }
+        }
+    }
+
+    /**
+     * The personal key no longer serves a server run (ADR-013 §2 b, §6): a
+     * profile, or a run's copy of it, that names it is refused — at its
+     * registration and its launch (admettre()), at its resumption (the
+     * route). It stays readable in the schema: a profile that carries it
+     * stays saved until its owner chooses another key, a run launched on it
+     * before ends on it (RunKey). Its fingerprints are untouched: `cle` is
+     * no call setting (CallSettings::empreinte, Evaluations::signature).
+     *
+     * @throws Twin9Exception 422
+     */
+    public static function refuserClePersonnelle(stdClass $profil): void
+    {
+        if (($profil->cle ?? 'instance') === 'personnelle') {
+            throw new Twin9Exception(self::CLE_PERSONNELLE_REFUSEE, 422);
         }
     }
 
@@ -192,8 +200,7 @@ final class ProfilPolicy
     /**
      * Whether a provider open on this instance may serve a run: Anthropic
      * always (its key is read as each call leaves, a missing one makes the
-     * run wait); another provider with its instance key only (a personal
-     * key never leaves Anthropic).
+     * run wait); another provider with its instance key only.
      */
     private function disponible(string $fournisseur): bool
     {
@@ -248,14 +255,13 @@ final class ProfilPolicy
      * the published referentials, each with its label — its latest
      * version's — and its versions, their own drafts for a test run (T15;
      * a referential with drafts only takes its latest draft's label), the
-     * template sets they may choose, the personal key, and each provider
-     * with its GDPR tag and whether a run may reach it now — one boolean,
+     * template sets they may choose, and each provider with its GDPR tag and whether a run may reach it now — one boolean,
      * never why (closed, or its instance key missing: nobody learns which
      * keys the instance holds).
      *
      * @return array{referentiels: list<array{id: string, label: string, versions: list<string>,
      *                                        brouillons: list<string>}>,
-     *               gabarits: list<string>, cle_perso_ouverte: bool, cle_perso_enregistree: bool,
+     *               gabarits: list<string>,
      *               fournisseurs: list<array{id: string, libelle: string, rgpd: string, disponible: bool}>}
      */
     public function choix(int $userId): array
@@ -275,14 +281,6 @@ final class ProfilPolicy
                                'label' => (string) ($repo->findVersion((string) $id, $semvers[0])['label'] ?? $id),
                                'versions' => [], 'brouillons' => $semvers];
         }
-        $enregistree = false;
-        $master = KeyVault::masterKeyFromEnv();
-        if ($master !== null) {
-            foreach ((new KeyVault($this->pdo, $master))->listForUser($userId) as $cle) {
-                $enregistree = $enregistree || $cle['provider'] === 'anthropic';
-            }
-        }
-
         $actifs = $this->config->fournisseursActifs();
         $fournisseurs = [];
         foreach (Fournisseurs::REGISTRE as $id => $registre) {
@@ -293,8 +291,6 @@ final class ProfilPolicy
         return [
             'referentiels' => $referentiels,
             'gabarits' => (new TemplateSets($this->pdo))->pour($userId),
-            'cle_perso_ouverte' => $this->config->clePersoOuverte(),
-            'cle_perso_enregistree' => $enregistree,
             'fournisseurs' => $fournisseurs,
         ];
     }

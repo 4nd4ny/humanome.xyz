@@ -4,10 +4,10 @@ declare(strict_types=1);
 
 namespace Humanome\Tests\Twin9;
 
-use Humanome\Keys\KeyVault;
 use Humanome\MigrationRunner;
 use Humanome\Packages\SettingsRepository;
 use Humanome\Referentiel\ReferentielRepository;
+use Humanome\Tests\StoredKeys;
 use Humanome\Tests\TestDb;
 use Humanome\Twin9\CreditService;
 use Humanome\Twin9\DirectCalls;
@@ -181,13 +181,14 @@ final class CoutsTest extends TestCase
         self::assertSame(self::CREDIT - $cout, (new CreditService($this->pdo))->balance($this->user));
     }
 
-    /** With its owner's own key, a run debits nothing here; its cost is Anthropic's, without the margin. */
+    /**
+     * With its owner's own key, a run launched on it before ADR-013 debits nothing here, until it ends (§8,
+     * step 3); its cost is Anthropic's, without the margin.
+     */
     public function testWithItsOwnersKeyARunDebitsNothingAndCostsWithoutTheMargin(): void
     {
         TestDb::setEnv('SODIUM_MASTER_KEY', str_repeat('ab', 32));
-        (new Twin9Config(new SettingsRepository($this->pdo)))->update(['twin9_cle_perso_ouverte' => true]);
-        (new KeyVault($this->pdo, (string) KeyVault::masterKeyFromEnv()))->store($this->user, 'anthropic',
-            'sk-ant-perso-cle-secrete-2');
+        StoredKeys::seed($this->pdo, $this->user, 'anthropic', 'sk-ant-perso-cle-secrete-2');
         $id = $this->nouveauRun(self::SONNET + ['/cle' => 'personnelle', '/budget_usd' => 50.0]);
         $http = self::anthropic();
 
@@ -738,9 +739,7 @@ final class CoutsTest extends TestCase
     public function testNoKeyIsWrittenAnywhere(): void
     {
         TestDb::setEnv('SODIUM_MASTER_KEY', str_repeat('ab', 32));
-        (new Twin9Config(new SettingsRepository($this->pdo)))->update(['twin9_cle_perso_ouverte' => true]);
-        (new KeyVault($this->pdo, (string) KeyVault::masterKeyFromEnv()))->store($this->user, 'anthropic',
-            'sk-ant-perso-cle-secrete-2');
+        StoredKeys::seed($this->pdo, $this->user, 'anthropic', 'sk-ant-perso-cle-secrete-2');
         $direct = $this->nouveauRun([], portfolio: "## J1\nUn jour.\n");
         $perso = $this->nouveauRun(['/cle' => 'personnelle'], portfolio: "## J1\nUn autre jour.\n",
             journal: 'autre-journal');

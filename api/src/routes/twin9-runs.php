@@ -242,9 +242,11 @@ return function (App $app): void {
                 }
                 $plafonds['budget_usd'] = $budget;
             }
-            // the guard of its providers, read again (ADR-012): one closed since, or without its key, keeps it stopped
+            // the guard of its providers, read again (ADR-012): one closed since, or without its key, keeps it stopped;
+            // a run on the personal key no longer resumes (ADR-013 §6): it ended there, or its owner stopped it
             $copie = (new RunRepository(Db::get()))->tete($id);
             if ($copie !== null && \in_array($copie['statut'], ['annule', 'echoue'], true)) {
+                ProfilPolicy::refuserClePersonnelle($copie['profil']);
                 (new ProfilPolicy(Db::get(), new Twin9Config(new SettingsRepository(Db::get()))))
                     ->admettreAuLancement($copie['profil']);
             }

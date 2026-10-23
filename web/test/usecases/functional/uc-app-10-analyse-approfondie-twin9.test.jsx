@@ -713,10 +713,15 @@ describe('UC-APP-10 — qui paie l’analyse (sprint 6, lot S6b — ADR-013 §4)
     fireEvent.change(menu, { target: { value: '4' } })
     const avant = await screen.findByRole('region', { name: 'Avant de lancer' })
     expect(within(avant).getByTestId('apercu-payeur').textContent).toBe(
-      'Payé par votre école, École des Platanes. Elle voit le montant de ce qu’elle paie pour vous, jamais le contenu de vos analyses.',
+      'Payé par votre école, École des Platanes. Elle voit le montant de ce qu’elle paie pour vous, jamais le contenu de vos analyses sur humanome ; avec sa propre clé Anthropic, elle peut relire dans sa Console Anthropic les résultats des appels partis par lots.',
     )
-    // sur la clé de son école, l'aperçu dit que l'école peut relire les résultats de ses lots (ADR-013 §6)
+    // sur la clé de son école, l'aperçu dit que l'école peut relire les résultats de ses lots (ADR-013 §6) — et l'accord
+    // du lancement le nomme (§7)
     expect(within(avant).getByTestId('apercu-cle-ecole').textContent).toContain('relire dans sa Console Anthropic')
+    expect(screen.getByTestId('accord-console-ecole').textContent).toContain(
+      'votre école peut relire dans sa Console Anthropic les résultats des appels partis par lots')
+    expect(screen.getByRole('checkbox', { name: /J’accepte que mon portfolio/ }).closest('label').textContent)
+      .toContain('Console Anthropic')
     const demandes = ecritures(calls, 'POST twin9/runs/apercu')
     expect(bodyOf(demandes[demandes.length - 1]).payeur).toBe(4)
     expect(demandes[demandes.length - 1].init.headers['X-CSRF-Token']).toBe(CSRF)

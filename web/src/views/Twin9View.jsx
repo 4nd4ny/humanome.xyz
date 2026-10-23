@@ -91,7 +91,7 @@ import { useUiMode } from '../lib/ui-mode.js'
 import { libelleRgpd, libelleVoie } from './configuration/profilSchema.js'
 import ConfigurationDuRun from './twin9/ConfigurationDuRun.jsx'
 import ChoixPayeur from './twin9/ChoixPayeur.jsx'
-import { choixParDefaut, listePayeurs, phrasePayeur, valeurPayeur } from '../lib/payeurs.js'
+import { CONSOLE_ECOLE, choixParDefaut, listePayeurs, phrasePayeur, valeurPayeur } from '../lib/payeurs.js'
 import '../styles/twin9.css'
 
 const STATUTS = { en_cours: 'En cours', termine: 'Terminé', annule: 'Annulé', echoue: 'Arrêté' }
@@ -669,7 +669,9 @@ function Lancer({ deps }) {
             <label className="twin9-case">
               <input type="checkbox" checked={accorde} onChange={(e) => setAccord(e.target.checked ? cleAccord : null)} /> J’accepte
               que mon portfolio et l’état de l’analyse restent sur le serveur humanome.xyz jusqu’à ce que je les efface.{' '}
-              {phraseFournisseurs(fournisseurs)} Voir la <a href="#/confidentialite">politique de confidentialité</a>.
+              {phraseFournisseurs(fournisseurs)}{' '}
+              {apercu?.donnees?.cle === 'ecole' ? <span data-testid="accord-console-ecole">{CONSOLE_ECOLE} </span> : null}
+              Voir la <a href="#/confidentialite">politique de confidentialité</a>.
             </label>
           </fieldset>
           {apercu?.donnees ? <Apercu apercu={apercu.donnees} envoi={envoi} /> : null}
@@ -848,6 +850,7 @@ function PageDuRun({ id, deps, onOpenInInterface }) {
         {run.payeur?.type === 'ecole' ? (
           <li data-testid="run-payeur">
             Payé par votre école{run.payeur.nom ? `, ${run.payeur.nom}` : ''} : elle voit le montant, jamais le contenu
+            sur humanome
           </li>
         ) : null}
         {cout && (cout.depense_microusd > 0 || cout.budget_usd != null) ? (

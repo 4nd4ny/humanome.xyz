@@ -102,7 +102,7 @@ final class UcApp08RejoindreCohorteTest extends CartographeTestCase
         self::assertSame([
             'cohorteId' => $this->cohorte['id'],
             'nom' => 'BTS SIO 2026',
-            'consentement' => "En rejoignant cette cohorte, vous acceptez que l'établissement voie les cartographies produites dans ce cadre, et le montant de ce qu’il paie pour vos analyses (jamais leur contenu).",
+            'consentement' => "En rejoignant cette cohorte, vous acceptez que l'établissement voie les cartographies produites dans ce cadre, et le montant de ce qu’il paie pour vos analyses (jamais leur contenu sur humanome ; s’il les paie avec sa propre clé Anthropic, les résultats des appels partis par lots restent lisibles dans sa Console Anthropic).",
         ], self::json($joined));
         self::assertEquals(['cohorteId' => $this->cohorte['id']], self::lastAudit('cohorte_joined')['details']);
 

@@ -130,7 +130,7 @@ export function cohorteDetail(overrides = {}) {
     codeInvitation: 'COHORTE7AZ',
     createdAt: '2026-07-01T10:00:00',
     consentement:
-      "En rejoignant cette cohorte, vous acceptez que l'établissement voie les cartographies produites dans ce cadre, et le montant de ce qu’il paie pour vos analyses (jamais leur contenu).",
+      "En rejoignant cette cohorte, vous acceptez que l'établissement voie les cartographies produites dans ce cadre, et le montant de ce qu’il paie pour vos analyses (jamais leur contenu sur humanome ; s’il les paie avec sa propre clé Anthropic, les résultats des appels partis par lots restent lisibles dans sa Console Anthropic).",
     membres: [
       membre(),
       membre({

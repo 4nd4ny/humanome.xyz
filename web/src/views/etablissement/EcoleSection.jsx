@@ -303,8 +303,9 @@ export default function EcoleSection({ fetchFn }) {
           </div>
         )}
         <p className="privacy-note">
-          Ce mois-ci ({ecole.mois}) : {formatUsd(ecole.depenseMoisMicrousd)} engagés pour vos élèves. Vous voyez des
-          montants, jamais le contenu de leurs analyses.
+          Ce mois-ci ({ecole.mois}) : {formatUsd(ecole.depenseMoisMicrousd)} engagés pour vos élèves. Vous voyez ici
+          des montants, jamais le contenu de leurs analyses ; seule votre Console Anthropic, avec votre clé, garde les
+          résultats des appels partis par lots.
         </p>
       </div>
 

@@ -289,7 +289,7 @@ describe('UC-APP-11 — un apprenant n’achète pas (ADR-013, R2)', () => {
     // its credit, lower: one sentence, never its amount
     expect(section.textContent).toContain('Le crédit de votre école ne couvre pas tout ce qu’elle vous accorde ce mois-ci')
     expect(section.textContent).not.toContain('1,80')
-    expect(section.textContent).toContain('Elle voit le montant de ce qu’elle paie pour vous, jamais le contenu de vos analyses.')
+    expect(section.textContent).toContain('Elle voit le montant de ce qu’elle paie pour vous, jamais le contenu de vos analyses sur humanome ; avec sa propre clé Anthropic, elle peut relire dans sa Console Anthropic les résultats des appels partis par lots.')
     expect(screen.queryByRole('button', { name: 'Recharger' })).toBeNull()
     expect(screen.queryByTestId('credit-espace-ecole')).toBeNull()
     cleanup()

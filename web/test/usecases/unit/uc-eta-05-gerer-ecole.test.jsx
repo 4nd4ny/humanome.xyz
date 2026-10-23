@@ -52,7 +52,7 @@ describe('UC-ETA-05 — qui paie (lib/payeurs.js)', () => {
     expect(CREDIT_ECOLE_BAS).not.toMatch(/\d/)
     expect(libellePayeur(SOLDE)).toBe('Mon solde restant (2,00 $)')
     expect(phrasePayeur(TILLEULS)).toBe(
-      'Payé par votre école, École des Tilleuls. Elle voit le montant de ce qu’elle paie pour vous, jamais le contenu de vos analyses.',
+      'Payé par votre école, École des Tilleuls. Elle voit le montant de ce qu’elle paie pour vous, jamais le contenu de vos analyses sur humanome ; avec sa propre clé Anthropic, elle peut relire dans sa Console Anthropic les résultats des appels partis par lots.',
     )
     expect(phrasePayeur(SOLDE)).toBe('')
     expect(phrasePayeur({ ...TILLEULS, soi: true })).toBe('') // une école pour elle-même

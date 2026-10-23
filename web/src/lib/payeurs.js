@@ -15,9 +15,19 @@
 
 import { formatUsd } from '../api/twin9.js'
 
-/** Le texte que l'élève lit : son école voit le montant, jamais le contenu (ADR-013 §7). */
+/**
+ * Le texte que l'élève lit : son école voit le montant, jamais le contenu sur
+ * humanome ; sur sa propre clé, sa Console Anthropic garde les résultats des
+ * appels partis par lots (ADR-013 §6, §7).
+ */
 export const ECOLE_VOIT_LE_MONTANT =
-  'Elle voit le montant de ce qu’elle paie pour vous, jamais le contenu de vos analyses.'
+  'Elle voit le montant de ce qu’elle paie pour vous, jamais le contenu de vos analyses sur humanome ; avec sa ' +
+  'propre clé Anthropic, elle peut relire dans sa Console Anthropic les résultats des appels partis par lots.'
+
+/** Ce que l'accord d'un lancement sur la clé de son école ajoute (ADR-013 §6, §7). */
+export const CONSOLE_ECOLE =
+  'Sur la clé Anthropic de votre école, votre école peut relire dans sa Console Anthropic les résultats des ' +
+  'appels partis par lots.'
 
 /** @param {unknown} payeurs @returns {Array<object>} les payeurs, une liste même vide */
 export function listePayeurs(payeurs) {

@@ -51,11 +51,14 @@ return function (App $app): void {
     /**
      * Displayed by the front next to the join button (plan-masse §6); since
      * ADR-013 (§7), it names what the school sees of what it pays for its
-     * learners — amounts only — for the new memberships.
+     * learners — amounts only on humanome — for the new memberships, and,
+     * when it pays with its own Anthropic key, what its Anthropic Console
+     * keeps (the results of the calls sent by batches, ADR-013 §6).
      */
     $consentText = 'En rejoignant cette cohorte, vous acceptez que l\'établissement '
         . 'voie les cartographies produites dans ce cadre, et le montant de ce qu’il paie pour vos analyses '
-        . '(jamais leur contenu).';
+        . '(jamais leur contenu sur humanome ; s’il les paie avec sa propre clé Anthropic, les résultats des '
+        . 'appels partis par lots restent lisibles dans sa Console Anthropic).';
 
     $maxPortfolioBytes = 4 * 1024 * 1024;
 

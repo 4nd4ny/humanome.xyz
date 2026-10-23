@@ -87,6 +87,10 @@ final class Lancement
 
     public const REFERENCE_SECONDES = 94;
 
+    /** A launch its school's cap refuses, the school not having set it yet (0, its default; ADR-013 §3). */
+    public const PLAFOND_NON_REGLE = 'Votre école n’a pas encore réglé le plafond qu’elle vous accorde chaque mois '
+        . '(0 $ par défaut) : demandez-le-lui avant de lancer une analyse qu’elle paie';
+
     /** The JSON of the engine's settings: 1.0 stays a float, as the v9.8 reads it. */
     private const JSON = JSON_THROW_ON_ERROR | JSON_UNESCAPED_UNICODE | JSON_PRESERVE_ZERO_FRACTION;
 
@@ -346,8 +350,12 @@ final class Lancement
         if ($instance) {
             $limites['credit'] = $solde - $autres;
         }
+        // a cap its school has not set yet (0, its default): the refusal says so, rather than an amount to reach
+        $plafondNul = false;
         if ($eleve !== null) {
-            $limites['plafond'] = (new Ecoles($this->pdo))->reste($compte, $eleve, Ecoles::mois());
+            $ecoles = new Ecoles($this->pdo);
+            $limites['plafond'] = $ecoles->reste($compte, $eleve, Ecoles::mois());
+            $plafondNul = $ecoles->reglages($compte)['plafond_eleve_microusd'] === 0;
         }
         if (($profil->budget_usd ?? null) !== null) {
             $limites['budget'] = (int) round((float) $profil->budget_usd * 1_000_000);
@@ -464,7 +472,7 @@ final class Lancement
                 // what its other runs may still spend of the credit: its owner's own, never a school's to its learner
                 'autres_usd' => $limite === 'credit' && $eleve === null ? $usd($autres) : 0.0,
                 'refus' => $refus === null ? null : self::refus($refus, (string) $limite, $retenu['besoin'],
-                    $limite === 'credit' && $eleve === null ? $autres : 0, $observe, $ecole),
+                    $limite === 'credit' && $eleve === null ? $autres : 0, $observe, $ecole, $plafondNul),
             ],
             'reserve' => $refus === null ? (int) ceil($retenu['fusion']['max'] + $retenu['pire_fusion']) : 0,
             'engagement' => $refus === null && $instance ? (int) ceil($retenu['besoin']) : 0,
@@ -478,8 +486,13 @@ final class Lancement
      * again (prevoir()).
      */
     private static function refus(string $quoi, string $limite, float $besoin, int $autres, bool $observe,
-                                  bool $ecole = false): string
+                                  bool $ecole = false, bool $plafondNul = false): string
     {
+        if ($limite === 'plafond' && $plafondNul) {
+            // its default, 0: nothing paid for its learners until it sets one (ADR-013 §3) — the learner can do
+            // nothing but ask it
+            return self::PLAFOND_NON_REGLE;
+        }
         $sujet = match ($limite) {
             'budget' => 'le budget du profil',
             'plafond' => 'le plafond que votre école vous accorde ce mois-ci',

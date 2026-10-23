@@ -188,6 +188,39 @@ function reserveSortieUsd(model, modeles) {
   return (sortieMaxAnthropic(model) * prixSortie) / 1_000_000
 }
 
+/**
+ * Le libellé de la voie « crédits » (ADR-013 §4) : son solde à lui (la
+ * contribution des particuliers), son école sur sa clé (le coût réel, rien de
+ * plus : elle paie Anthropic), sur son crédit (le coût réel et sa surtaxe) ;
+ * une école pour elle-même de même ; sans école, nos crédits.
+ */
+function libelleVoieCredits(payeur, ecoles) {
+  if (payeur?.type === 'personnel') return 'Avec mon solde restant (+10 % de contribution)'
+  if (payeur?.type === 'ecole') {
+    if (payeur.soi) {
+      return payeur.cle
+        ? 'Avec la clé Anthropic de mon école (le coût réel, payé à Anthropic)'
+        : 'Avec le crédit de mon école (le coût réel et ma surtaxe)'
+    }
+    return payeur.cle
+      ? 'Avec ce que paie mon école, sur sa propre clé Anthropic (le coût réel, rien de plus)'
+      : 'Avec les crédits que paie mon école (le coût réel et sa surtaxe)'
+  }
+  return ecoles.some((e) => !e.soi)
+    ? 'Avec les crédits que paie mon école (le coût réel et sa surtaxe)'
+    : 'Avec nos crédits (+10 % de contribution)'
+}
+
+/** Ce que la note dit de ce qui est débité sur crédits, selon celui qui paie. */
+function noteCredits(payeur) {
+  if (payeur?.type === 'ecole') {
+    return payeur.cle
+      ? 'Sur la clé de l’école, elle paie Anthropic directement : rien n’est débité ici.'
+      : 'Sur le crédit de l’école, le coût réel est débité, plus sa surtaxe.'
+  }
+  return 'En crédits, seul le coût réel (+10 %) est débité.'
+}
+
 /** Ce qu'un payeur peut encore payer pour un run sur crédits : son école sur sa clé si elle en a une (ADR-013 §4). */
 function restePour(payeur, offer) {
   if (payeur === null) return Number(offer?.solde_microusd ?? 0)
@@ -326,6 +359,9 @@ export default function Twin6OuverteView({ lib: injectedLib, deps = {} }) {
   const quiPaie = payeurChoisi(payeurs, payeur)
   // plusieurs écoles : l'élève choisit avant de lancer sur crédits
   const payeurAChoisir = voie === 'credits' && ecoles.length > 1 && quiPaie === null
+  // ce que dit la voie « crédits » (ADR-013 §4) : celui qui paie — l'école choisie, ou la seule —, et comment
+  const payeurCredits = quiPaie ?? (ecoles.length === 1 ? ecoles[0] : null)
+  const libelleCredits = libelleVoieCredits(payeurCredits, ecoles)
   // Mode simple : le modèle cible du paquet, même si un autre avait été choisi en mode expert.
   const modele = expert ? model : (res.pkg?.modeleCibleDefaut ?? model)
   const portfolioPret = portfolio.trim().length > 40
@@ -376,9 +412,15 @@ export default function Twin6OuverteView({ lib: injectedLib, deps = {} }) {
         // Arrondis au centime supérieur : le montant affiché ne passe jamais sous le solde qui manque.
         const auCentime = (usd) => (Math.ceil(usd * 100 - 1e-9) / 100).toFixed(2)
         // seule une école recharge (ADR-013 §2 e) : à un autre compte, la page ne propose pas la recharge
+        // son plafond pas encore réglé (0, le défaut) : le lui demander ; son solde à lui, s'il en a un : le choisir
+        const plafondNonRegle = parEcole && Number(quiPaie.plafond_microusd ?? 0) === 0
+        const soldePerso = payeurs.some((p) => p.type === 'personnel' && Number(p.solde_microusd ?? 0) > 0)
         const issue = parEcole
-          ? 'Demandez à votre école de relever le plafond qu’elle vous accorde, choisissez un modèle moins cher, ou ' +
-            'utilisez votre propre clé API, dans ce navigateur.'
+          ? (plafondNonRegle
+            ? 'Votre école n’a pas encore réglé le plafond qu’elle vous accorde : demandez-le-lui'
+            : 'Demandez à votre école de relever le plafond qu’elle vous accorde') +
+            (soldePerso ? ', choisissez « Mon solde restant » dans « Qui paie »' : '') +
+            ', choisissez un modèle moins cher, ou utilisez votre propre clé API, dans ce navigateur.'
           : res.offer?.peut_acheter
             ? 'Rechargez votre crédit, choisissez un modèle moins cher ou utilisez votre propre clé API.'
             : 'Choisissez un modèle moins cher, ou utilisez votre propre clé API, dans ce navigateur : seules les ' +
@@ -601,9 +643,7 @@ export default function Twin6OuverteView({ lib: injectedLib, deps = {} }) {
               <>
                 <label>
                   <input type="radio" name="voie" value="credits" checked={voie === 'credits'} onChange={() => setVoie('credits')} />{' '}
-                  {ecoles.some((e) => !e.soi)
-                    ? 'Avec les crédits que paie mon école (le coût réel et sa surtaxe)'
-                    : 'Avec nos crédits (+10 % de contribution)'}
+                  {libelleCredits}
                 </label>
                 <label>
                   <input type="radio" name="voie" value="cle_perso" checked={voie === 'cle_perso'} onChange={() => setVoie('cle_perso')} />{' '}
@@ -662,7 +702,7 @@ export default function Twin6OuverteView({ lib: injectedLib, deps = {} }) {
               {nbPoles + 1} appels au modèle ({nbPoles} pôle{nbPoles > 1 ? 's' : ''} + synthèse).{' '}
               {essai
                 ? 'Essai gratuit : rien n’est débité ni conservé ; le budget du jour est commun à tous les essais.'
-                : 'Le coût réel dépend de la taille de votre portfolio et du modèle. En crédits, seul le coût réel (+10 %) est débité.'}
+                : `Le coût réel dépend de la taille de votre portfolio et du modèle. ${noteCredits(payeurCredits)}`}
             </p>
           ) : ref.status === 'loading' ? (
             <p role="status" className="twin6-note">Chargement du référentiel…</p>

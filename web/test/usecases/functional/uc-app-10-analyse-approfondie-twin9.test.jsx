@@ -732,6 +732,29 @@ describe('UC-APP-10 — qui paie l’analyse (sprint 6, lot S6b — ADR-013 §4)
     })
   })
 
+  it('UC-APP-10-F38 — E15 (IHM) : son école n’a pas réglé son plafond ; un solde à lui : l’aperçu dit le refus du serveur, et propose « Mon solde restant » dans « Qui paie »', async () => {
+    const sansPlafond = { ...TILLEULS, plafond_microusd: 0, reste_credit_microusd: 0, reste_cle_microusd: 0 }
+    const refus = 'Votre école n’a pas encore réglé le plafond qu’elle vous accorde chaque mois (0 $ par défaut) : demandez-le-lui avant de lancer une analyse qu’elle paie'
+    stubFetch(
+      routes({
+        'GET twin9/meta': jsonResponse(200, { payeurs: [sansPlafond, { type: 'personnel', solde_microusd: 2_000_000 }] }),
+        'POST twin9/runs/apercu': jsonResponse(200, apercu({
+          credit_usd: null, payeur: { type: 'ecole', id: 3, nom: 'École des Tilleuls', soi: false },
+          payeurs: [sansPlafond, { type: 'personnel', solde_microusd: 2_000_000 }],
+          admission: { journees: 0, total: 2, limite: 'plafond', instruites: 0, en_attente: 2, changees_en_attente: 0,
+                       autres_usd: 0, refus },
+        })),
+      }),
+    )
+    await openApp('#/twin9', { portfolio: PORTFOLIO })
+    fireEvent.click(await screen.findByRole('checkbox', { name: /J’accepte que mon portfolio/ }))
+    const avant = await screen.findByRole('region', { name: 'Avant de lancer' })
+    const alerte = await within(avant).findByRole('alert')
+    expect(alerte.textContent).toContain(refus)
+    expect(alerte.textContent).toContain('Vous pouvez aussi choisir « Mon solde restant » dans « Qui paie ».')
+    expect(within(alerte).queryByRole('link', { name: 'Recharger' })).toBeNull()
+  })
+
   it('UC-APP-10-F34 — E16 (IHM) : arrêté parce que son école ne le paie plus, la page le dit ; sa reprise choisit qui paie (son solde) et le porte (CSRF)', async () => {
     const arrete = run({
       statut: 'echoue', attente: 'votre école ne paie plus cette analyse', retard: 'Votre école ne paie plus cette analyse',

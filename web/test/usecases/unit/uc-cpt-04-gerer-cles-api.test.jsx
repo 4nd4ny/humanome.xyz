@@ -169,6 +169,13 @@ describe('UC-CPT-04 — ApiKeysSection (composant seul)', () => {
     expect(deleteKey).toHaveBeenCalledWith('anthropic')
   })
 
+  it('UC-CPT-04-U23 — la section dit où part l’analyse approfondie, qui tourne sur le serveur : avec la clé de la plateforme, ou celle de l’école de l’élève quand elle en a posé une', async () => {
+    render(<ApiKeysSection deps={{ listKeys: vi.fn().mockResolvedValue([]), deleteKey: vi.fn(), revealKey: vi.fn() }} />)
+    expect(await screen.findByText('Aucune clé gardée sur le serveur.')).toBeDefined()
+    expect(document.body.textContent).toContain(
+      'part avec la clé de la plateforme — ou avec celle de votre école, quand elle paie pour vous et en a posé une.')
+  })
+
   it('UC-CPT-04-U20 — « Recopier dans ce navigateur, puis supprimer » : la clé relue est écrite dans humanome-keys AVANT la suppression ; un navigateur qui ne la garde pas → rien n’est supprimé', async () => {
     const ordre = []
     const storage = memoryStorage()

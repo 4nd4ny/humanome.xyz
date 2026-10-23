@@ -601,6 +601,39 @@ describe('UC-APP-09 — l’apprenant lance une cartographie ouverte', () => {
     expect(appelsTwin6(court.calls)).toHaveLength(0)
   })
 
+  it('UC-APP-09-F37 — A7 : la voie « crédits » dit qui paie et comment — sur la clé de son école, le coût réel sans surtaxe et rien de débité ici ; son solde restant choisi, la contribution ; son école sans plafond réglé (0) et un solde à lui : le refus dit de demander le plafond, et propose « Mon solde restant »', async () => {
+    const ecole = {
+      type: 'ecole', id: 3, nom: 'École des Tilleuls', soi: false, cle: true, mois: '2026-10',
+      plafond_microusd: 5_000_000, engage_microusd: 0, reste_credit_microusd: 5_000_000, reste_cle_microusd: 5_000_000,
+      credit_suffisant: true,
+    }
+    stubFetch(routes({ 'GET twin9/meta': jsonResponse(200, metaTwin9({ solde_microusd: 0, peut_acheter: false, payeurs: [ecole] })) }))
+    openTwin6()
+    await saisirPortfolio()
+    expect(screen.getByLabelText(/Avec ce que paie mon école, sur sa propre clé Anthropic/).checked).toBe(true)
+    expect(screen.queryByText(/sa surtaxe/)).toBeNull()
+    expect(screen.getByText(/Sur la clé de l’école, elle paie Anthropic directement : rien n’est débité ici\./)).toBeDefined()
+    cleanup()
+    resetApiClient()
+
+    const sansPlafond = { ...ecole, cle: false, plafond_microusd: 0, reste_credit_microusd: 0, reste_cle_microusd: 0 }
+    const solde = { type: 'personnel', solde_microusd: 3_000_000 }
+    const court = stubFetch(routes({
+      'GET twin9/meta': jsonResponse(200, metaTwin9({ solde_microusd: 3_000_000, peut_acheter: false, payeurs: [sansPlafond, solde] })),
+    }))
+    openTwin6()
+    await saisirPortfolio()
+    expect(screen.getByLabelText(/Avec les crédits que paie mon école \(le coût réel et sa surtaxe\)/)).toBeDefined()
+    await lancer()
+    const alerte = await screen.findByRole('alert')
+    expect(alerte.textContent).toContain('Votre école n’a pas encore réglé le plafond qu’elle vous accorde : demandez-le-lui')
+    expect(alerte.textContent).toContain('choisissez « Mon solde restant » dans « Qui paie »')
+    expect(appelsTwin6(court.calls)).toHaveLength(0)
+
+    fireEvent.change(screen.getByLabelText('Qui paie'), { target: { value: 'personnel' } })
+    expect(screen.getByLabelText(/Avec mon solde restant \(\+10 % de contribution\)/)).toBeDefined()
+  })
+
   it('UC-APP-09-F07 — E4 : le serveur refuse un appel (402, réserve non couverte) → run arrêté, message affiché avec ce que le run a débité (le premier appel abouti), bouton réutilisable', async () => {
     let n = 0
     const { calls } = stubFetch(

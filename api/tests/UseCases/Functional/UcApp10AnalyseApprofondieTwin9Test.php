@@ -945,4 +945,19 @@ final class UcApp10AnalyseApprofondieTwin9Test extends CartographeTestCase
         self::assertSame('instance', (new RunRepository(self::$pdo))->tete($deuxieme['id'])['profil']->cle);
         self::assertLessThan(1_000_000_000, self::solde($ecole), 'sans sa clé, son crédit paie');
     }
+
+    #[TestDox('UC-APP-10-F37 — E15 : son école n’a pas encore réglé son plafond (0 $, le défaut) → l’aperçu et le lancement le disent, et qu’il faut le lui demander, plutôt qu’un montant à atteindre')]
+    public function testF37ACapNotSetYetIsSaidSo(): void
+    {
+        $lea = $this->registerAs('plafond-zero@example.org', 'Léa', ['apprenant']);
+        $this->ecolePour($lea, 'plafond-zero-ecole@example.org', 'École des Tilleuls', 0.0);
+        $profil = $this->profilDirect($lea);
+
+        $apercu = $this->apercu($lea, $profil);
+        self::assertSame(['plafond', Lancement::PLAFOND_NON_REGLE], [$apercu['admission']['limite'], $apercu['admission']['refus']]);
+        self::assertStringContainsString('demandez-le-lui', Lancement::PLAFOND_NON_REGLE);
+        $lance = $this->as_($lea, 'POST', '/api/twin9/runs', $this->lancement($profil));
+        self::assertSame([422, Lancement::PLAFOND_NON_REGLE], [$lance->getStatusCode(), self::json($lance)['error']]);
+        self::assertSame(0, self::runs());
+    }
 }

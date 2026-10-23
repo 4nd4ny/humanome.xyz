@@ -292,6 +292,11 @@ function phraseJury(retires) {
  * qu'il faudrait ; les plafonds ; ce que l'envoi change au texte, et les journées que Twin9 n'y lit plus que la carte
  * garde (sprint 4, T0).
  */
+/** Son propre solde restant, parmi les payeurs possibles : un refus de son école peut le lui proposer. */
+function soldeRestant(payeurs) {
+  return listePayeurs(payeurs).some((p) => p.type === 'personnel' && Number(p.solde_microusd ?? 0) > 0)
+}
+
 function Apercu({ apercu, envoi }) {
   const e = apercu.estimation
   const a = apercu.admission
@@ -354,6 +359,9 @@ function Apercu({ apercu, envoi }) {
       {a?.refus ? (
         <p role="alert">
           {a.refus}.{a.limite === 'credit' && !ecole ? <> <a href="#/compte/credit">Recharger</a></> : null}
+          {ecole && (a.limite === 'plafond' || a.limite === 'credit') && soldeRestant(apercu.payeurs)
+            ? ' Vous pouvez aussi choisir « Mon solde restant » dans « Qui paie ».'
+            : null}
         </p>
       ) : (
         <>

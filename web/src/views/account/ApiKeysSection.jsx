@@ -144,7 +144,8 @@ export default function ApiKeysSection({ deps = {} }) {
         Pour lancer une cartographie avec votre propre clé, saisissez-la au lancement (assistant de
         cartographie, cartographie ouverte) : elle n’y est gardée que si vous demandez à la mémoriser
         dans ce navigateur, et ne part que vers le fournisseur choisi. L’analyse approfondie Twin9, qui
-        tourne sur le serveur, part avec la clé de la plateforme.
+        tourne sur le serveur, part avec la clé de la plateforme — ou avec celle de votre école, quand
+        elle paie pour vous et en a posé une.
       </p>
 
       {keys === null ? (

@@ -526,5 +526,54 @@ describe('UC-APP-10 — l’apprenant lance une analyse approfondie, la suit et 
     ])
     expect(JSON.stringify(tout)).not.toMatch(/"prix"|"grille"|"cle"|"plafonds"|"budget_usd"|"cout_microusd"|"reprises"|reserve_microusd/)
   })
+
+  it('UC-APP-10-F23 — S3-3 : un run dont la stigmergie du greffier est activée, ouvert dans la cartographie : chaque journée garde les traces de son analyse, et la modale du jour les montre selon leur nature ; une journée en panne, non conservées ; en mode simple, sans intensité', async () => {
+    const r = resultats()
+    const bloc = (date, run) => ({
+      analyse: 2,
+      run,
+      explorateurs: [],
+      lues: {},
+      depots: [],
+      rejets: [],
+      traces: [{ id: `t-${date}`, code: '1.01', start: 0, end: 30, extrait: `Le ${date}, j’ai mesuré le CO2.`, tau: 1.7, incertitude: 'faible', statut: 'présence établie', voie: 'tribunal', role: 'preuve décisive', source: 'trace_probante', analyses: 2 }],
+    })
+    for (const date of DATES) {
+      const chemin = `journees/${date}/carto_jour.json`
+      r.sorties[chemin] = JSON.stringify({ ...JSON.parse(r.sorties[chemin]), stigmergie: bloc(date, '2026-10-20T10:00:00.a1b2c3') })
+    }
+    // le 6, un appel en panne : son analyse n'est pas entrée dans la mémoire de la carte
+    r.traces_conservees = { '2026-01-05': true, '2026-01-06': false }
+    stubFetch(routes({ 'GET twin9/runs/7': jsonResponse(200, fini()), 'GET twin9/runs/7/resultats': jsonResponse(200, r) }))
+    await openApp('#/twin9/7')
+    await waitFor(() => expect(screen.getByRole('status').textContent).toBe('Terminé'))
+    fireEvent.click(screen.getByRole('button', { name: 'Ouvrir dans la cartographie' }))
+    await waitFor(() => expect(document.querySelector('.carto-context-dataset')?.textContent).toBe('Twin9 · mon-journal · RESPIRE v7'), ATTENTE)
+
+    const store = createInterfaceStore()
+    const [jeu] = await store.listDatasets()
+    const tout = await store.exportAll(jeu.datasetId)
+    expect(tout.dataset.days.map((d) => [d.date, d.variants[0].stigmergie])).toEqual([
+      ['2026-01-05', { analyse: 2, traces: 1, conservee: true }],
+      ['2026-01-06', { analyse: 2, traces: 1, conservee: false }],
+    ])
+
+    // la modale du 5 : la trace, sa nature ; l'apprenant (mode simple par défaut) n'en lit pas l'intensité
+    window.location.hash = '#/cartographie/jour/2026-01-05'
+    const dialog = await screen.findByRole('dialog', { name: /5 janvier 2026/ }, ATTENTE)
+    const section = await within(dialog).findByRole('region', { name: 'Traces de la stigmergie (1)' })
+    await waitFor(() => expect(section.querySelector('.carto-sg-list li')).not.toBeNull())
+    const nom = REFERENTIEL_DU_RUN.competences.find((c) => c.code === '1.01').nom
+    expect(section.querySelector('.carto-sg-what').textContent).toBe(`1.01 ${nom} · incertitude faible`)
+    expect(section.textContent).toContain('Conservées dans la mémoire de la carte')
+    expect(section.textContent).not.toMatch(/intensité|score/i)
+
+    // celle du 6, en panne : ses traces ne sont pas dites conservées
+    window.location.hash = '#/cartographie/jour/2026-01-06'
+    const sixieme = await screen.findByRole('dialog', { name: /6 janvier 2026/ }, ATTENTE)
+    const traces6 = await within(sixieme).findByRole('region', { name: 'Traces de la stigmergie (1)' })
+    expect(traces6.querySelector('.carto-sg-warning').textContent).toContain('Non conservées')
+    expect(traces6.textContent).not.toContain('Conservées dans la mémoire de la carte')
+  })
 })
 

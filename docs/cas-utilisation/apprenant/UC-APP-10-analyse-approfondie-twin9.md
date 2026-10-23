@@ -7,7 +7,7 @@
 | **Portée** | humanome.xyz — vues `#/twin9` et `#/twin9/<id>`, routes `/api/twin9/runs…` (`api/src/routes/twin9-runs.php`), profils de `#/configuration` (`/api/twin9/configuration`, `/api/twin9/profils`), ouverture dans l'interface de cartographie (`#/cartographie`) |
 | **Niveau** | Objectif utilisateur |
 | **Cahier des charges** | §3.2, §4.3 (découpage journalier + fusion), §4.4, §6 (RGPD), §7 (Golden Prompt payant) ; ADR-004, ADR-007, ADR-010, ADR-011 ; `docs/contrats.md` §8 |
-| **Statut** | Implémenté (T9, T10, T8 stratégie A, T16, T17 ; P0-1 : configuration et exécution du run, 2026-10-22 ; P1-5 : un fournisseur par étage, étape et lecteur, l'accord qui les nomme, 2026-10-22) ; le moteur du navigateur et son proxy `POST /api/twin9/appel` sont retirés depuis T11 |
+| **Statut** | Implémenté (T9, T10, T8 stratégie A, T16, T17 ; P0-1 : configuration et exécution du run, 2026-10-22 ; P1-5 : un fournisseur par étage, étape et lecteur, l'accord qui les nomme, 2026-10-22 ; S3-3 : les traces de la stigmergie du greffier dans la cartographie et le portfolio surligné, 2026-10-23) ; le moteur du navigateur et son proxy `POST /api/twin9/appel` sont retirés depuis T11 |
 
 ## Objectif
 
@@ -127,7 +127,9 @@ badge premium) ou ouvre `#/twin9`.
    nouveau), par fournisseur et par voie, passes du moteur, lots, coût
    (RG13). Ouvert dans la cartographie
    (étape 7), chaque journée dit ses modèles et son jeu de gabarits, et le
-   jeu garde la configuration par liste blanche (RG14).
+   jeu garde la configuration par liste blanche (RG14). Quand le profil
+   active la stigmergie du greffier, la modale de chaque journée montre les
+   traces de son analyse selon leur nature, conservées ou non (RG15).
 
 ## Scénarios alternatifs
 
@@ -321,6 +323,27 @@ badge premium) ou ouvre `#/twin9`.
   …, rapide: …, lecteurs: … »), `provenance.prompt` (« gabarits <jeu> ») et
   `provenance.configurationRef` ; l'interface les affiche sous « Twin9
   (serveur) ». Sans configuration, l'import ne change pas.
+- **RG15 — Les traces de la stigmergie du greffier** (S3-3,
+  `docs/contrats.md` §4 point 16, §7.4, §8.4) : une analyse dont le profil
+  active la stigmergie laisse, dans la mémoire de sa carte, des traces — un
+  passage validé par la procédure pour une compétence, sa nature
+  (l'incertitude calculée : faible, moyenne, forte, écartée) et son
+  intensité, de 0 à 3. Les résultats disent, par journée, si l'analyse est au
+  journal de la mémoire (`traces_conservees`) : une journée dont un appel est
+  en panne n'y dépose rien, et ses traces se montrent **non conservées** ;
+  sans ce signal, jamais conservées, sauf pour une journée que la mémoire a
+  reprise. Le jeu de cartographie en garde, par liste blanche, le rang, le
+  run, la conservation et les traces (jamais les dépôts ni les traces lues),
+  résumés dans son index. La modale du jour montre chaque trace, sa nature en
+  mots et par la marque de son surlignage, son dernier verdict, et « Ouvrir
+  dans le portfolio » la surligne de cette marque ; son **intensité** ne se
+  lit qu'en mode expert et pour le cartographe, jamais sans session ni dans
+  une copie autonome, et n'est jamais appelée « score ». L'Export propose
+  alors le **portfolio surligné** (Markdown) : les passages des traces
+  conservées entourés de `<mark data-twin9-code data-incertitude
+  [data-intensite]>`, ligne par ligne, et le tableau des traces de chaque
+  journée. Le texte envoyé au moteur n'en porte jamais : la page Twin9 retire
+  ces marques avant l'aperçu et le lancement (UC-APP-01 RG10, UC-APP-06).
 
 ## Données et RGPD
 
@@ -333,6 +356,7 @@ badge premium) ou ouvre `#/twin9`.
 | Évaluation d'un run fini | Tailles et coûts de ses journées et de sa fusion, rien d'autre ; anonyme une fois le compte supprimé (T8) |
 | Audit anti-fuite | `{run, fuites}` seulement |
 | Configuration et exécution d'un run (P0-1) | Réglages, versions, empreintes, prix facturés et compteurs, jamais un gabarit, une fiche, la clé ni la marge ; lues par le propriétaire entières, par un cartographe lié sans prix, coût, plafond ni clé ; dans le jeu de cartographie, la seule liste blanche de RG14 |
+| Traces de la stigmergie (S3-3) | Dans la mémoire de la carte (journal `stigmergie/<jour>`, exporté et purgé avec elle) et dans la carte du jour ; propres à la carte, jamais partagées ; dans le jeu de cartographie, la liste blanche de RG15 ; le portfolio surligné est produit dans le navigateur, jamais envoyé |
 
 ## Code sollicité
 
@@ -346,6 +370,8 @@ badge premium) ou ouvre `#/twin9`.
 | Front | `web/src/lib/interface-handoff.js` — `twin9RunFiles` | Document `twin9-run` remis à l'interface de cartographie |
 | Front | `web/src/carto/core/importers/twin9-run.js` — `importTwin9Run`, `configurationGardee`, `executionGardee` ; `web/src/lib/twin9/mapper.js` — `twin9Dossier`, `twin9ToMergeDocument` | Jeu de cartographie d'un run, dossier de chaque verdict, configuration par liste blanche (RG14) |
 | Front | `web/src/carto/ui/Manager.jsx` — `SOURCE_LABELS`, `provenanceLabel` | « Twin9 (serveur) », modèles et jeu de gabarits d'une journée |
+| Front | `web/src/carto/core/stigmergie.js` — `stigmergieGardee`, `tracesConserveesDuJour`, `intensitesVisibles` ; `web/src/carto/ui/Stigmergie.jsx` — `StigmergieDuJour` ; `web/src/carto/ui/highlight-dom.js` — `traceClass` ; `web/src/carto/ui/PortfolioReader.jsx` | Les traces de la stigmergie dans le jeu, la modale du jour et le volet du portfolio (RG15) |
+| Front | `web/src/carto/core/portfolio-md.js` — `buildHighlightedPortfolioMarkdown` ; `web/src/carto/ui/ExportPanel.jsx` ; `web/src/lib/twin9/marques.js` — `sansMarquesTwin9`, `retirerMarquesTwin9` | Le portfolio surligné ; ses marques retirées de tout texte importé ou envoyé (RG15) |
 | API | `GET/POST /api/twin9/runs`, `POST …/apercu`, `POST …/avancer`, `GET …/{id}`, `POST …/{id}/annuler`, `POST …/{id}/reprendre`, `PUT …/{id}/visibilite`, `GET …/{id}/resultats`, `GET /api/twin9/admin/runs` — `api/src/routes/twin9-runs.php` | Runs du serveur |
 | API | `api/src/Middleware/CsrfMiddleware.php` | Jeton CSRF des écritures (E1) — logique unitaire couverte par UC-CPT-02-U07 |
 | Domaine | `api/src/Twin9/Lancement.php` — `lancer`, `apercu`, `empreinte` | Lancement, aperçu, estimation, admission ; jeu d'avant T16 (RG12) |
@@ -354,7 +380,7 @@ badge premium) ou ouvre `#/twin9`.
 | API | `GET /api/twin9/configuration` — `api/src/routes/twin9-configuration.php` ; `Lancement::fournisseurs` | Les fournisseurs de chaque profil et du profil v9.8, pour l'accord (A9) |
 | Domaine | `api/src/Twin9/RunRepository.php` — `duProprietaire`, `suivi`, `annuler`, `reprendre`, `rendreVisible`, `acces` | Liste, suivi, actions du propriétaire |
 | Domaine | `api/src/Twin9/RunCosts.php`, `api/src/Twin9/CreditService.php` | Réserves, réconciliation, remboursements |
-| Domaine | `api/src/Twin9/Resultats.php` — `lire` ; `api/src/Twin9/LeakFilter.php` | Résultats filtrés, mémoire, référentiel du run |
+| Domaine | `api/src/Twin9/Resultats.php` — `lire` ; `api/src/Twin9/LeakFilter.php` | Résultats filtrés, mémoire, référentiel du run ; traces de la stigmergie conservées ou non (RG15) |
 | Domaine | `api/src/Twin9/RunConfiguration.php` — `depuis`, `pourCartographe` ; `api/src/Twin9/RunExecution.php` — `bloc`, `depuis`, `pourCartographe` ; `RunRepository::configuration`, `execution` | Configuration et exécution d'un run (RG13) |
 | Domaine | `api/src/Twin9/EngineLoader.php`, `api/src/Worker/Tick.php` | Chargement du moteur, tranches (tick et page) |
 | Moteur | `Twin_v9/php/src` (dépôt privé), `api/tests/fixtures/twin9-factice` (moteur factice des tests) | Exécution du protocole |
@@ -382,6 +408,11 @@ badge premium) ou ouvre `#/twin9`.
 | UC-APP-10-U15 | `importTwin9Run` | Configuration et exécution gardées par liste blanche sous « <run>\|configuration », non comptées comme une délibération ; modèles et jeu de gabarits de chaque journée ; ni prix, ni coût, ni plafond, ni clé (RG14) | idem |
 | UC-APP-10-U17 | `Twin9View` (`Lancer`) | L'accord nomme chaque fournisseur du profil, sa voie et son étiquette RGPD, avant tout aperçu ; un fournisseur « non » dit à éviter ; un autre profil le redemande ; un serveur qui ne nomme pas les fournisseurs : Anthropic ; le lancement envoie `{fournisseurs}` (RG1, A9) | `web/test/usecases/unit/uc-app-10-analyse-approfondie-twin9.test.jsx` |
 | UC-APP-10-U16 | `ETAPES_DU_MOTEUR` | Les étapes du moteur que comptent les compteurs du run, rapportées à celles du profil comme `CallSettings::ETAPES` les range (lu dans le code PHP) : le conseil des sorties tronquées nomme celles de la page des profils (RG13) | idem |
+| UC-APP-10-U18 | `Resultats::lire` | `traces_conservees` : par carte du jour qui porte la stigmergie, vrai si son analyse est au journal de la mémoire de la carte, faux pour une journée en panne ; les journées de la mémoire de même ; sans bloc ou d'un run illisible, rien ; `{}` sans bloc ; sous `test/` en mode essai (RG15) | `api/tests/UseCases/Unit/UcApp10AnalyseApprofondieTwin9Test.php` |
+| UC-APP-10-U19 | `importTwin9Run` | Le bloc gardé par liste blanche dans le détail, résumé dans l'index ; conservé si les résultats le disent, non conservé (rapport) pour une journée en panne, nul sans signal, conservé pour une journée de la mémoire ; mêmes identifiants et empreintes avec ou sans lui (RG15) | `web/test/usecases/unit/uc-app-10-analyse-approfondie-twin9.test.jsx` |
+| UC-APP-10-U20 | `twin9RunFiles`, `StigmergieDuJour` | `traces_conservees` remis à l'interface (nul sans lui) ; la nature de chaque trace en mots, sa conservation, son intensité seulement quand elle se montre, jamais « score » ; « Ouvrir dans le portfolio » emporte la nature et, visible, l'intensité (RG15) | idem |
+| UC-APP-10-U21 | `buildHighlightedPortfolioMarkdown` | Le portfolio surligné : marque par nature, intensité seulement quand elle se montre, jamais une trace non conservée ; sans ses marques, le portfolio exporté à l'octet (RG15) | idem |
+| UC-APP-10-U22 | `Twin9View` (`Lancer`) | Le texte envoyé à l'aperçu ne porte jamais les marques d'un portfolio surligné rangé dans la bibliothèque (RG15) | idem |
 
 ### Tests fonctionnels
 
@@ -409,6 +440,7 @@ badge premium) ou ouvre `#/twin9`.
 | UC-APP-10-F19 | A3, A4, A5 | IHM | Annuler, reprendre ; arrêté par le budget, reprise sous un nouveau budget ; case du cartographe | idem |
 | UC-APP-10-F22 | A9, RG1, E4 | IHM | `<App/>` : un profil Anthropic et Mistral AI ; l'accord nomme les deux, leur voie et leur étiquette, avant tout aperçu ; le lancement envoie `{fournisseurs: [anthropic, mistral]}` (CSRF) ; un fournisseur non ouvert fait refuser le lancement (`422`), message affiché, la page reste | `web/test/usecases/functional/uc-app-10-analyse-approfondie-twin9.test.jsx` |
 | UC-APP-10-F21 | Nominal (étapes 7-8), RG13, RG14 | IHM | `<App/>` : la page d'un run fini ouvre sa configuration, lue dans ses résultats à l'ouverture seulement, à côté de l'attestation inchangée ; le conseil de la sortie tronquée nomme son étape et dit le coût du remède ; ouvert dans la cartographie, le jeu garde la configuration par liste blanche, chaque journée dit ses modèles et son jeu, rien d'un prix, d'un coût ni de la clé | `web/test/usecases/functional/uc-app-10-analyse-approfondie-twin9.test.jsx` |
+| UC-APP-10-F23 | Nominal (étape 7), RG15 | IHM | `<App/>` : un run dont la stigmergie est activée, ouvert dans la cartographie ; le jeu garde les traces de chaque journée, conservées ou non ; la modale du 5 montre sa trace et sa nature, sans intensité pour l'apprenant en mode simple ; celle du 6, en panne, les dit non conservées | idem |
 
 ### Tests existants liés (non-régression)
 
@@ -425,6 +457,8 @@ badge premium) ou ouvre `#/twin9`.
 - `api/tests/Twin9/ConfigurationDroitsTest.php` — `testTheConfigurationNamesEachProfilesProviders` (les fournisseurs de chaque profil et du profil v9.8, avant tout aperçu), `testAProviderNotOpenYetIsSavedNotLaunched` ; `api/tests/Twin9/RunsTest.php` — l'accord comparé aux fournisseurs du run, gardé dans sa configuration (A9).
 - `web/src/carto/core/importers/twin9-run.test.js`, `web/src/lib/twin9/mapper.test.js` — jeu de cartographie d'un run, dossiers ; configuration par liste blanche, variantes inchangées avec ou sans elle, jeu exporté sans prix ni clé (P0-1).
 - `web/src/lib/archive.test.js` — l'archive du compte avec la configuration et l'exécution d'un run, sans elles pour un run ancien, invalide avec une clé inconnue (P0-1).
+- `api/tests/Twin9/StigmergieTest.php` — avec le vrai moteur (`TWIN_V9_DIR`) : deux runs d'une carte déposent puis renforcent leurs traces ; une journée dont le président d'un tribunal est en panne écrit le bloc, son analyse n'entre pas au journal, et ses résultats, le run fini (journal d'appels effacé), la disent non conservée, ceux du run d'avant conservée (RG15).
+- `web/src/carto/core/stigmergie.test.js`, `web/src/carto/ui/Stigmergie.test.jsx`, `web/src/carto/ui/highlight-dom.test.js`, `web/src/carto/core/portfolio-md.test.js`, `web/src/lib/twin9/marques.test.js` — les traces dans le jeu, la modale et le volet (marque par nature, intensité selon le mode et le rôle), le portfolio surligné et son aller-retour, le retrait des marques (sécurité : aucune trace forgée par un fichier, aucune marque dans le texte rendu) (RG15).
 - `web/e2e/twin9-run.e2e.js`, `web/e2e/twin9-referentiels.e2e.js` — de bout en bout, en local (`docs/tests-e2e.md`).
 
 ### Exécuter

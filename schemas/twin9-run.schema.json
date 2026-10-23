@@ -30,6 +30,11 @@
     "carto_evolutive": { "type": ["object", "null"] },
     "journees": { "type": "object" },
     "memoire": { "type": "array" },
+    "traces_conservees": {
+      "type": ["object", "null"],
+      "additionalProperties": { "type": "boolean" },
+      "description": "Depuis S3-3 : « traces_conservees » des résultats (GET /api/twin9/runs/{id}/resultats). Par journée dont la carte du jour porte le bloc « stigmergie » du greffier, vrai si son analyse est au journal de la journée dans la mémoire de la carte (« stigmergie/<jour> », sous test/ en mode essai), faux sinon : une journée dont un appel est en panne n'y dépose rien (une panne n'est jamais un verdict). Nul, ou une journée absente, quand rien ne le dit : l'interface ne montre jamais ses traces comme conservées."
+    },
     "incomplete": { "type": "boolean" }
   },
   "$defs": {

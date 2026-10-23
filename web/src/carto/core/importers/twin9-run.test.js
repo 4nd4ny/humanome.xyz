@@ -11,6 +11,8 @@ import { createCartoStore, createMemoryAdapter } from '../store.js'
 import { buildArchive } from '../archive.js'
 import { createDataset } from '../model.js'
 import { provenanceLabel } from '../../ui/Manager.jsx'
+import { assembleDay, splitArchive } from '../split.js'
+import { validateDocument } from '@engine/validation.js'
 // un run configuré tel que ses résultats le rendent à son propriétaire (P0-1) : valeurs inventées, prix compris
 import exemple from '../../../../../schemas/fixtures/twin9-configuration-exemple.json'
 
@@ -355,6 +357,124 @@ describe('importTwin9Run : la configuration du run (P0-1)', () => {
     expect(archive.runDetails['twin9:7|configuration'].configuration.empreinte).toBe('ad519cee3a0b8405')
     const texte = JSON.stringify(archive)
     for (const interdit of INTERDITS) expect(texte, interdit).not.toContain(interdit)
+  })
+})
+
+// Le bloc `stigmergie` d'une carte du jour (spec-stigmergie.md §9 de Twin_v9), aux valeurs inventées.
+const STIGMERGIE = () => ({
+  analyse: 3,
+  run: '2026-10-23T10:00:00.a1b2c3',
+  explorateurs: ['1.05'],
+  lues: { '1.01': ['t-0a1b2c3d4e5f'] },
+  depots: [{ code: '1.01', start: 0, end: 48, extrait: 'J’ai monté le capteur et vérifié chaque mesure.', delta: 1.0, incertitude: 'faible', trace: 't-0a1b2c3d4e5f' }],
+  rejets: [{ code: '1.05', facteur: 0.3, incertitude: 'écartée', statut: 'présence non établie', voie: 'tribunal' }],
+  traces: [
+    { id: 't-0a1b2c3d4e5f', code: '1.01', start: 0, end: 48, extrait: 'J’ai monté le capteur et vérifié chaque mesure.', tau: 2.19, incertitude: 'faible', statut: 'présence établie', voie: 'tribunal', role: 'preuve décisive', source: 'trace_probante', analyses: 3, premier_run: '2026-10-21T10:00:00.f0f0f0', dernier_run: '2026-10-23T10:00:00.a1b2c3' },
+    { id: 't-5f4e3d2c1b0a', code: '1.05', start: 60, end: 104, extrait: 'Je relie la pompe, la sonde et le réservoir.', tau: 0.147, incertitude: 'écartée', statut: { glisse: 'un objet' }, voie: 'tribunal', role: null, source: 'trace_probante', analyses: 1 },
+    // illisibles : une nature inconnue, une intensité qui n'est pas un nombre, un extrait vide, sans code
+    { id: 't-1', code: '1.01', extrait: 'un', tau: 1, incertitude: 'certaine' },
+    { id: 't-2', code: '1.01', extrait: 'deux', tau: '1.2', incertitude: 'faible' },
+    { id: 't-3', code: '1.01', extrait: '  ', tau: 1, incertitude: 'faible' },
+    { id: 't-4', extrait: 'quatre', tau: 1, incertitude: 'faible' },
+  ],
+})
+
+/** Le run du test, ses deux cartes du jour avec la stigmergie ; `extra` : ce que disent ses résultats. */
+const avecStigmergie = (extra = {}) => {
+  const d = doc()
+  d.journees['2026-01-05'].stigmergie = STIGMERGIE()
+  d.journees['2026-01-06'].stigmergie = { ...STIGMERGIE(), analyse: 2, run: '2026-10-22T10:00:00.d4d4d4' }
+  return { ...d, ...extra }
+}
+
+describe('importTwin9Run : la stigmergie du greffier (S3-3)', () => {
+  it('garde du bloc, par liste blanche, son rang, son run et ses traces lisibles, dans le détail de la journée ; l’index en dit le compte', () => {
+    const r = importTwin9Run(avecStigmergie({ traces_conservees: { '2026-01-05': true, '2026-01-06': true } }), { now: '2026-10-23T10:00:00Z' })
+    const [jour1] = r.variants
+    expect(jour1.summary.stigmergie).toEqual({ analyse: 3, traces: 2, conservee: true })
+    const bloc = jour1.detail.stigmergie
+    expect(Object.keys(bloc)).toEqual(['analyse', 'run', 'conservee', 'traces'])
+    expect([bloc.analyse, bloc.run, bloc.conservee]).toEqual([3, '2026-10-23T10:00:00.a1b2c3', true])
+    expect(bloc.traces).toEqual([
+      { id: 't-0a1b2c3d4e5f', code: '1.01', start: 0, end: 48, extrait: 'J’ai monté le capteur et vérifié chaque mesure.', tau: 2.19, incertitude: 'faible', statut: 'présence établie', voie: 'tribunal', role: 'preuve décisive', source: 'trace_probante', analyses: 3 },
+      // une valeur qui n'est pas simple ne passe pas
+      { id: 't-5f4e3d2c1b0a', code: '1.05', start: 60, end: 104, extrait: 'Je relie la pompe, la sonde et le réservoir.', tau: 0.147, incertitude: 'écartée', statut: null, voie: 'tribunal', role: null, source: 'trace_probante', analyses: 1 },
+    ])
+    // ni dépôts, ni rejets, ni traces lues, ni explorateurs, ni runs des traces
+    const texte = JSON.stringify(bloc)
+    for (const absent of ['depots', 'rejets', 'lues', 'explorateurs', 'premier_run', 'dernier_run', 'f0f0f0']) expect(texte, absent).not.toContain(absent)
+    expect(r.report.filter((x) => x.code.startsWith('twin9-traces'))).toEqual([])
+  })
+
+  it('une journée en panne (son analyse n’est pas dans la mémoire de la carte) montre ses traces non conservées, et le rapport le dit', () => {
+    const r = importTwin9Run(avecStigmergie({ traces_conservees: { '2026-01-05': false, '2026-01-06': true } }), { now: '2026-10-23T10:00:00Z' })
+    const [jour1, jour2] = r.variants
+    expect([jour1.summary.stigmergie.conservee, jour1.detail.stigmergie.conservee]).toEqual([false, false])
+    expect(jour2.detail.stigmergie.conservee).toBe(true)
+    expect(r.report.filter((x) => x.code.startsWith('twin9-traces'))).toEqual([
+      expect.objectContaining({ severity: 'info', code: 'twin9-traces-non-conservees', date: '2026-01-05' }),
+    ])
+    expect(r.report.find((x) => x.code === 'twin9-traces-non-conservees').message).toContain('une panne n’est jamais un verdict')
+  })
+
+  it('sans signal, jamais conservées : la journée reprise de la mémoire, oui ; celle du run, non confirmée ; un signal faux l’emporte sur la mémoire', () => {
+    const sans = importTwin9Run(avecStigmergie(), { now: '2026-10-23T10:00:00Z' })
+    expect(sans.variants.map((v) => [v.date, v.detail.stigmergie.conservee])).toEqual([
+      ['2026-01-05', null],
+      ['2026-01-06', true],
+    ])
+    expect(sans.report.filter((x) => x.code.startsWith('twin9-traces')).map((x) => [x.code, x.date])).toEqual([['twin9-traces-non-confirmees', '2026-01-05']])
+    for (const illisible of [null, [true, true], 'oui', { '2026-01-05': 'true' }]) {
+      const r = importTwin9Run(avecStigmergie({ traces_conservees: illisible }), { now: '2026-10-23T10:00:00Z' })
+      expect(r.variants[0].detail.stigmergie.conservee, JSON.stringify(illisible)).toBeNull()
+    }
+    const faux = importTwin9Run(avecStigmergie({ traces_conservees: { '2026-01-06': false } }), { now: '2026-10-23T10:00:00Z' })
+    expect(faux.variants[1].detail.stigmergie.conservee).toBe(false)
+  })
+
+  it('les mêmes variantes, identifiants et empreintes avec ou sans le bloc ; sans lui, ni l’index ni le détail n’ont de clé « stigmergie »', () => {
+    const avec = importTwin9Run(avecStigmergie({ traces_conservees: { '2026-01-05': true } }), { now: '2026-10-23T10:00:00Z' })
+    const sans = importTwin9Run(doc(), { now: '2026-10-23T10:00:00Z' })
+    const ids = (r) => r.variants.map((v) => [v.date, v.summary.id, v.summary.digest])
+    expect(ids(avec)).toEqual(ids(sans))
+    for (const v of sans.variants) {
+      expect(v.summary).not.toHaveProperty('stigmergie')
+      expect(v.detail).not.toHaveProperty('stigmergie')
+    }
+    // un bloc illisible (pas un objet) : comme sans
+    const d = doc()
+    d.journees['2026-01-05'].stigmergie = ['pas', 'un', 'objet']
+    expect(importTwin9Run(d, { now: '2026-10-23T10:00:00Z' }).variants[0].summary).not.toHaveProperty('stigmergie')
+  })
+
+  it('passe par la chaîne d’import, le magasin et l’archive : conforme au schéma du master, et le jeu lu à la demande la remonte avec la journée', async () => {
+    const store = createCartoStore({ adapter: createMemoryAdapter() })
+    const base = createDataset({ datasetId: 'ds-sg', title: 'Twin9 · mon-journal', referential: REFERENTIEL, now: '2026-10-23T10:00:00Z' })
+    const run = avecStigmergie({ traces_conservees: { '2026-01-05': true, '2026-01-06': false } })
+    const result = await importFiles([{ path: 'twin9-run-7.json', text: JSON.stringify(run) }], base, { now: '2026-10-23T10:00:00Z' })
+    expect(result.report.filter((x) => x.severity === 'blocking')).toEqual([])
+    await store.commit(result)
+    const archive = buildArchive(await store.exportAll('ds-sg'), { now: '2026-10-23T10:00:00Z' })
+    expect(validateDocument('competency-map-master', archive)).toEqual({ valid: true, errors: [] })
+    const day = archive.days.find((d) => d.date === '2026-01-05')
+    expect(day.variants[0].stigmergie).toEqual({ analyse: 3, traces: 2, conservee: true })
+    const detail = archive.details['2026-01-05'].variants[day.variants[0].id].stigmergie
+    expect(detail.traces.map((t) => [t.code, t.incertitude, t.tau])).toEqual([
+      ['1.01', 'faible', 2.19],
+      ['1.05', 'écartée', 0.147],
+    ])
+    // une trace forgée dans une archive (nature inconnue) est refusée par le schéma
+    const forgee = JSON.parse(JSON.stringify(archive))
+    forgee.details['2026-01-05'].variants[day.variants[0].id].stigmergie.traces[0].incertitude = 'certaine'
+    expect(validateDocument('competency-map-master', forgee).valid).toBe(false)
+
+    // lu à la demande (D-67) : le bloc va dans le fichier de la journée, et en revient
+    const { index, files } = splitArchive(archive)
+    const fichier = files.find((f) => f.path.endsWith('jours/2026-01-05.json'))
+    expect(fichier.value.variants[day.variants[0].id].stigmergie).toEqual(detail)
+    const remonte = assembleDay('2026-01-05', [day.variants[0].id], { day: fichier.value })
+    expect(remonte.variants[day.variants[0].id].stigmergie).toEqual(detail)
+    expect(index.days.find((d) => d.date === '2026-01-05').variants[0].stigmergie).toEqual({ analyse: 3, traces: 2, conservee: true })
   })
 })
 

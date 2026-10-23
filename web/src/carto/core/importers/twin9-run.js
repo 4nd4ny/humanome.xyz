@@ -30,6 +30,17 @@
 // pas comme une délibération) ; chaque journée y renvoie
 // (`provenance.configurationRef`) et dit ses modèles et son jeu de gabarits.
 // Sans configuration (un run d'avant P0-1), rien ne change.
+//
+// Depuis S3-3 (sprint 3 ; spec-stigmergie.md §9 de Twin_v9), une carte du
+// jour dont la stigmergie du greffier est activée porte un bloc
+// `stigmergie` : le jeu en garde, par liste blanche, le rang de l'analyse, son
+// run et ses traces (core/stigmergie.js), dans le détail de la journée et,
+// résumé, dans son index. Ses traces ne sont dites conservées que si les
+// résultats le disent (`traces_conservees`, par journée : l'analyse est au
+// journal de la mémoire de la carte), ou pour une journée que la mémoire a
+// reprise ; une journée en panne, dont l'analyse n'y entre pas, les montre
+// non conservées, et sans signal elles ne sont jamais dites conservées. Ni
+// l'identifiant ni l'empreinte d'une journée ne changent.
 
 import { twin9Dossier, twin9ToMergeDocument } from '../../../lib/twin9/mapper.js'
 import { importSiteMerge } from './merge.js'
@@ -37,6 +48,7 @@ import { referentialErrors, toEmbeddedReferential } from '../referential.js'
 import { canonicalJson, contentHash, normalizeConfidence, normalizeRole, normalizeStatus, stableId } from '../model.js'
 import { splitExtract } from '../highlight.js'
 import { isIsoDate } from '../dates.js'
+import { resumeStigmergie, stigmergieGardee } from '../stigmergie.js'
 
 /** Le document est-il un run Twin9 du serveur ? Arrêté avant sa fusion (T10), il n'a que ses journées. */
 export function looksLikeTwin9Run(doc) {
@@ -216,17 +228,30 @@ export function importTwin9Run(doc, { fileName = 'twin9-run.json', now = new Dat
   const cartes = new Map()
   for (const [jour, carte] of Object.entries(doc.journees ?? {})) {
     const date = isIsoDate(carte?.date) ? carte.date : isIsoDate(jour) ? jour : null
-    if (date) cartes.set(date, carte)
+    if (date) cartes.set(date, { carte, jour })
   }
+  // Ses traces de la stigmergie sont-elles conservées ? Ce que disent les résultats, par journée ; une journée
+  // que la mémoire a reprise, oui (seule une journée sans panne y entre) ; sinon, rien ne le dit (null).
+  const conservees = estObjet(doc.traces_conservees) ? doc.traces_conservees : {}
+  const reprises = new Set(Array.isArray(doc.memoire) ? doc.memoire : [])
+  const conservation = (jour) => (typeof conservees[jour] === 'boolean' ? conservees[jour] : reprises.has(jour) ? true : null)
 
   const variants = []
   const runDetails = []
   const dates = [...new Set([...fusion.variants.map((v) => v.date), ...cartes.keys()])].sort()
   for (const date of dates) {
-    const carte = cartes.get(date)
-    if (carte) {
-      const variant = variantDuJour(carte, date, runId, provenance, runDetails)
+    const lue = cartes.get(date)
+    if (lue) {
+      const stigmergie = stigmergieGardee(lue.carte?.stigmergie, conservation(lue.jour))
+      const variant = variantDuJour(lue.carte, date, runId, provenance, runDetails, stigmergie)
       if (variant) variants.push(variant)
+      if (variant && stigmergie?.traces.length > 0 && stigmergie.conservee === false) {
+        const message = `${date} : traces de la stigmergie non conservées — l’analyse de cette journée n’est pas dans la mémoire de la carte (un appel en panne n’y dépose rien : une panne n’est jamais un verdict)`
+        report.push({ severity: 'info', code: 'twin9-traces-non-conservees', message, date })
+      } else if (variant && stigmergie?.traces.length > 0 && stigmergie.conservee === null) {
+        const message = `${date} : traces de la stigmergie non confirmées — rien ne dit qu’elles sont dans la mémoire de la carte`
+        report.push({ severity: 'info', code: 'twin9-traces-non-confirmees', message, date })
+      }
       continue
     }
     const v = fusion.variants.find((x) => x.date === date)
@@ -250,9 +275,10 @@ export function importTwin9Run(doc, { fileName = 'twin9-run.json', now = new Dat
 
 /**
  * Une journée d'un run : ses verdicts établis, renvoyés au cartographe, ou
- * jugés par le tribunal, chacun avec son dossier.
+ * jugés par le tribunal, chacun avec son dossier ; et les traces de la
+ * stigmergie de son analyse (`stigmergieGardee`), résumées dans l'index.
  */
-function variantDuJour(carte, date, runId, provenance, runDetails) {
+function variantDuJour(carte, date, runId, provenance, runDetails, stigmergie = null) {
   const entrees = Object.entries(carte.verdicts ?? {})
     .map(([code, brut]) => [code, twin9Dossier(brut)])
     .filter(([, d]) => normalizeStatus(d.statut) !== 'not_established' || d.jury !== null || d.president !== null)
@@ -302,11 +328,13 @@ function variantDuJour(carte, date, runId, provenance, runDetails) {
     }
     detailVerdicts[code] = detail
   }
-  return {
-    date,
-    summary: { id: variantId, digest, provenance, verdicts, anomalies: [] },
-    detail: { verdicts: detailVerdicts, passages: [], poleReports: {}, audits: {}, kairos: null, kairosRaw: null, emergences: null, runId },
+  const summary = { id: variantId, digest, provenance, verdicts, anomalies: [] }
+  const detail = { verdicts: detailVerdicts, passages: [], poleReports: {}, audits: {}, kairos: null, kairosRaw: null, emergences: null, runId }
+  if (stigmergie) {
+    summary.stigmergie = resumeStigmergie(stigmergie)
+    detail.stigmergie = stigmergie
   }
+  return { date, summary, detail }
 }
 
 /** Le jury et la délibération d'un verdict, à la forme que lit l'interface (Jury.jsx). */

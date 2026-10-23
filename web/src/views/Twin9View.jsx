@@ -30,7 +30,9 @@
 // chaque profil, avant tout aperçu, puisque l'aperçu emporte déjà le
 // portfolio. Il vaut pour cette liste : un profil qui en atteint d'autres le
 // redemande. Le lancement l'envoie ({fournisseurs: [ids]}), et le serveur
-// refuse une liste qui n'est pas celle du profil.
+// refuse une liste qui n'est pas celle du profil. Le texte envoyé ne porte
+// jamais les marques d'un portfolio surligné par Twin9 (S3-3,
+// lib/twin9/marques.js), qu'il vienne de la bibliothèque ou d'un fichier.
 //
 // Le moteur lit le référentiel du run (T16), et sa carte s'ouvre dans la
 // cartographie avec lui (T17) : RESPIRE, ou celui d'une autre structure, dont
@@ -53,6 +55,7 @@ import {
 } from '../api/twin9.js'
 import { createPortfolioStore } from '../lib/portfolio-store.js'
 import { twin9RunFiles } from '../lib/interface-handoff.js'
+import { sansMarquesTwin9 } from '../lib/twin9/marques.js'
 import { libelleRgpd, libelleVoie } from './configuration/profilSchema.js'
 import ConfigurationDuRun from './twin9/ConfigurationDuRun.jsx'
 import '../styles/twin9.css'
@@ -267,7 +270,8 @@ function Lancer({ deps }) {
 
   // Avant de lancer, l'accord donné : ce que le run instruirait, et ce qu'il coûterait.
   const local = donnees?.portfolios.find((p) => p.id === portfolio) ?? null
-  const choisi = local ? { nom: nomDeFichier(local.titre), texte: local.texte } : fichier
+  // le texte analysé ne porte jamais les marques d'un portfolio surligné (S3-3), d'où qu'il vienne
+  const choisi = local ? { nom: nomDeFichier(local.titre), texte: sansMarquesTwin9(local.texte) } : fichier
   const [apercu, setApercu] = useState(null)
   const nom = choisi?.nom ?? null
   const texte = choisi?.texte ?? ''
@@ -323,7 +327,7 @@ function Lancer({ deps }) {
 
   const lireFichier = (f) => {
     if (!f) return setFichier(null)
-    f.text().then((texte) => setFichier({ nom: f.name, texte }))
+    f.text().then((texte) => setFichier({ nom: f.name, texte: sansMarquesTwin9(texte) }))
   }
 
   return (

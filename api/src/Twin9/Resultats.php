@@ -27,6 +27,15 @@ use stdClass;
  * With them, the referential its map is read with (T17): the poles and
  * competences its engine read, names and codes, with their colours; never a
  * fiche, a preamble nor a description, of which the fiches are made.
+ *
+ * And, for each day map that carries the greffier's stigmergy block (S3-3,
+ * Twin_v9's docs/twin9/spec-stigmergie.md §9, §11.3), whether the traces it
+ * shows are those its map keeps: whether the analysis it ends (its `run`) is
+ * in the day's journal of the map's memory (`stigmergie/<day>`, under test/
+ * in the test mode). A day where a call failed writes its map with the block
+ * all the same, but its analysis never enters the journal (the engine's
+ * `failedUnder("journees/<day>/")`: a failure is never a verdict): the
+ * journal says it after the run's end too, when its call journal is gone.
  */
 final class Resultats
 {
@@ -44,9 +53,10 @@ final class Resultats
 
     /**
      * @param int $lecteurId who reads, for the audit of a redaction
-     * @return array{sorties: array<string, string>, memoire: list<string>, referentiel: array<string, mixed>|null}
+     * @return array{sorties: array<string, string>, memoire: list<string>, referentiel: array<string, mixed>|null,
+     *               traces_conservees: stdClass}
      *         the outputs by path, filtered; the days taken back from the map's memory; the referential its map
-     *         is read with (referentiel())
+     *         is read with (referentiel()); by day, whether its map's stigmergy traces are kept (tracesConservees())
      */
     public function lire(int $runId, int $lecteurId): array
     {
@@ -60,8 +70,8 @@ final class Resultats
 
         // the days its merge counts that this run did not write: their maps are in the map's memory
         $memoire = [];
+        $prefixe = $run['profil']->mode === 'test' ? 'test/' : '';
         if (isset($sorties['carto_evolutive.json'])) {
-            $prefixe = $run['profil']->mode === 'test' ? 'test/' : '';
             foreach (self::journees(json_decode($sorties['carto_evolutive.json'], false, 512, JSON_THROW_ON_ERROR))
                      as $jour) {
                 $chemin = 'journees/' . $jour . '/carto_jour.json';
@@ -77,6 +87,7 @@ final class Resultats
         }
         ksort($sorties, SORT_STRING);
         sort($memoire, SORT_STRING);
+        $conservees = $this->tracesConservees((int) $run['carte_id'], $prefixe, $sorties);
 
         $index = self::index($this->confidentiels($runId, (int) $run['carte_id']));
         $fuites = 0;
@@ -89,7 +100,43 @@ final class Resultats
 
         return ['sorties' => $sorties, 'memoire' => $memoire,
                 'referentiel' => $this->referentiel(json_decode($run['moteur'], false, 512, JSON_THROW_ON_ERROR)
-                    ->referentiel ?? null)];
+                    ->referentiel ?? null),
+                'traces_conservees' => $conservees];
+    }
+
+    /**
+     * By day, for each day map with a stigmergy block (its `run` a string):
+     * true when that analysis is in the day's journal of the map's memory,
+     * false otherwise — a day of the run where a call failed, or a journal
+     * emptied since (a changed text) or that no longer keeps it (its last
+     * analyses only). The days of the memory are read the same way. An
+     * object, {} without a block: a JSON map by day.
+     *
+     * @param array<string, string> $sorties the outputs, before the leak filter
+     */
+    private function tracesConservees(int $carteId, string $prefixe, array $sorties): stdClass
+    {
+        $conservees = new stdClass();
+        foreach ($sorties as $chemin => $texte) {
+            if (preg_match('#^journees/([^/]+)/carto_jour\.json$#', $chemin, $m) !== 1) {
+                continue;
+            }
+            $run = json_decode($texte, false, 512, JSON_THROW_ON_ERROR)->stigmergie->run ?? null;
+            if (!\is_string($run)) {
+                continue;
+            }
+            $analyses = $this->entree($carteId, $prefixe . 'stigmergie/' . $m[1])?->analyses ?? null;
+            $gardee = false;
+            foreach (\is_array($analyses) ? $analyses : [] as $analyse) {
+                if (($analyse->run ?? null) === $run) {
+                    $gardee = true;
+                    break;
+                }
+            }
+            $conservees->{$m[1]} = $gardee;
+        }
+
+        return $conservees;
     }
 
     /**
@@ -254,6 +301,14 @@ final class Resultats
     /** The day map the memory keeps under this key, without the day's text. */
     private function carteDuJour(int $carteId, string $cle): ?stdClass
     {
+        $entree = $this->entree($carteId, $cle);
+
+        return ($entree?->carto ?? null) instanceof stdClass ? $entree->carto : null;
+    }
+
+    /** The entry the map's memory keeps under this key, decoded; null without one, or for one that is no object. */
+    private function entree(int $carteId, string $cle): ?stdClass
+    {
         $stmt = $this->pdo->prepare('SELECT valeur FROM twin9_memoire WHERE carte_id = ? AND cle = ?');
         $stmt->execute([$carteId, $cle]);
         $blob = $stmt->fetchColumn();
@@ -262,6 +317,6 @@ final class Resultats
         }
         $entree = json_decode(RunRepository::uncompress((string) $blob), false, 512, JSON_THROW_ON_ERROR);
 
-        return ($entree->carto ?? null) instanceof stdClass ? $entree->carto : null;
+        return $entree instanceof stdClass ? $entree : null;
     }
 }

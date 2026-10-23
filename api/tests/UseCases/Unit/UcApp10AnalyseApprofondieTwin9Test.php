@@ -13,6 +13,7 @@ use Humanome\Tests\UseCases\Support\RunsTwin9Factices;
 use Humanome\Twin9\CreditService;
 use Humanome\Twin9\EngineLoader;
 use Humanome\Twin9\Lancement;
+use Humanome\Twin9\MapStore;
 use Humanome\Twin9\ProfilPolicy;
 use Humanome\Twin9\ProfilRepository;
 use Humanome\Twin9\Resultats;
@@ -278,7 +279,8 @@ final class UcApp10AnalyseApprofondieTwin9Test extends TestCase
         $runs->ecrireSortie($id, 'rapport.md', "# Rapport\n\nVoici : " . self::$gabaritsFactices['factice/consigne']);
 
         $r = (new Resultats(self::$pdo))->lire($id, $lea);
-        self::assertSame(['sorties', 'memoire', 'referentiel'], array_keys($r));
+        self::assertSame(['sorties', 'memoire', 'referentiel', 'traces_conservees'], array_keys($r));
+        self::assertSame('{}', json_encode($r['traces_conservees']), 'aucune carte du jour ne porte la stigmergie');
         self::assertSame(['carto_evolutive.json', 'journees/2026-01-05/carto_jour.json', 'rapport.md'], array_keys($r['sorties']),
             'les calques ne sont pas des sorties publiques');
         self::assertStringNotContainsString('ne jamais réciter ce gabarit', $r['sorties']['rapport.md']);
@@ -296,6 +298,60 @@ final class UcApp10AnalyseApprofondieTwin9Test extends TestCase
         self::assertSame([['num', 'nom', 'couleur']], array_values(array_unique(array_map('array_keys', $ref['poles']), SORT_REGULAR)));
         self::assertSame([['code', 'nom', 'pole']],
             array_values(array_unique(array_map('array_keys', $ref['competences']), SORT_REGULAR)));
+    }
+
+    #[TestDox('UC-APP-10-U18 — Resultats::lire : pour chaque carte du jour qui porte le bloc de la stigmergie, ses traces sont conservées si son analyse (son run) est au journal de la journée dans la mémoire de la carte ; une journée en panne, dont l’analyse n’y entre pas, non ; les journées de la mémoire de même ; sans bloc, rien ; sous test/ en mode essai (S3-3)')]
+    public function testU18TheKeptTracesOfTheStigmergy(): void
+    {
+        $bloc = static fn (mixed $run): array => ['analyse' => 2, 'run' => $run, 'explorateurs' => [], 'lues' => new stdClass(),
+                                                  'depots' => [], 'rejets' => [], 'traces' => []];
+        $journal = static fn (string $jour, array $runs): string => (string) json_encode(['schema' => 'twin9-stigmergie/1',
+            'journee' => $jour, 'texte_empreinte' => 'a1b2c3d4e5f6', 'n_analyses' => \count($runs),
+            'analyses' => array_map(static fn (string $r): array => ['run' => $r, 'depots' => [], 'rejets' => []], $runs)]);
+        $jour = static fn (string $j, ?array $stigmergie): string => (string) json_encode(['journee' => $j, 'verdicts' => []]
+            + ($stigmergie === null ? [] : ['stigmergie' => $stigmergie]));
+        $fusion = static fn (array $jours): string => (string) json_encode(['journal_id' => 'journal-factice',
+            'competences' => ['1.01' => ['attestations' => array_map(static fn (string $j): array => ['journee' => $j], $jours)]]]);
+
+        $lea = self::utilisateur('lea@example.org');
+        $id = self::lancer($lea);
+        $runs = new RunRepository(self::$pdo);
+        $memoire = new MapStore(self::$pdo, (int) $runs->charger($id)['carte_id']);
+        $runs->ecrireSortie($id, 'carto_evolutive.json', $fusion(['2026-01-05', '2026-01-06', '2026-01-07', '2026-01-08']));
+        // the day of this run, its analysis kept, after an earlier one
+        $runs->ecrireSortie($id, 'journees/2026-01-05/carto_jour.json', $jour('2026-01-05', $bloc('2026-10-23T10:00:00.r2r2r2')));
+        $memoire->write('stigmergie/2026-01-05', $journal('2026-01-05', ['2026-10-22T10:00:00.r1r1r1', '2026-10-23T10:00:00.r2r2r2']));
+        // a day where a call failed: its map has the block, its analysis is not in the journal (an earlier one is)
+        $runs->ecrireSortie($id, 'journees/2026-01-06/carto_jour.json', $jour('2026-01-06', $bloc('2026-10-23T10:00:00.r2r2r2')));
+        $memoire->write('stigmergie/2026-01-06', $journal('2026-01-06', ['2026-10-22T10:00:00.r1r1r1']));
+        // a map without the block (the stigmergy off), and one whose run is no string: nothing said
+        $runs->ecrireSortie($id, 'journees/2026-01-07/carto_jour.json', $jour('2026-01-07', null));
+        $runs->ecrireSortie($id, 'journees/2026-01-09/carto_jour.json', $jour('2026-01-09', $bloc(7)));
+        // a day of the memory, its map and its journal written by the earlier run
+        $memoire->write('journees/2026-01-08', (string) json_encode(['carto' => json_decode($jour('2026-01-08',
+            $bloc('2026-10-22T10:00:00.r1r1r1')))]));
+        $memoire->write('stigmergie/2026-01-08', $journal('2026-01-08', ['2026-10-22T10:00:00.r1r1r1']));
+        // a journal under test/: not the one of a full run
+        $memoire->write('test/stigmergie/2026-01-06', $journal('2026-01-06', ['2026-10-23T10:00:00.r2r2r2']));
+
+        $r = (new Resultats(self::$pdo))->lire($id, $lea);
+        self::assertSame(['2026-01-08'], $r['memoire']);
+        self::assertSame('{"2026-01-05":true,"2026-01-06":false,"2026-01-08":true}', json_encode($r['traces_conservees']),
+            'par journée : conservées, en panne, de la mémoire ; ni sans bloc ni d’un run illisible');
+        self::assertStringContainsString('"stigmergie"', $r['sorties']['journees/2026-01-06/carto_jour.json'],
+            'la carte du jour en panne garde son bloc : seule la réponse dit ses traces non conservées');
+
+        // the test mode: its journals under test/
+        $max = self::utilisateur('max@example.org');
+        $essai = self::lancement()->lancer($max, self::profil($max, 'Essai', ['mode' => 'test']), 'journal-factice.md',
+            self::$portfolioFactice, true);
+        $memoireEssai = new MapStore(self::$pdo, (int) $runs->charger($essai)['carte_id']);
+        $runs->ecrireSortie($essai, 'journees/2026-01-05/carto_jour.json', $jour('2026-01-05', $bloc('2026-10-23T11:00:00.e1e1e1')));
+        $runs->ecrireSortie($essai, 'journees/2026-01-06/carto_jour.json', $jour('2026-01-06', $bloc('2026-10-23T11:00:00.e1e1e1')));
+        $memoireEssai->write('test/stigmergie/2026-01-05', $journal('2026-01-05', ['2026-10-23T11:00:00.e1e1e1']));
+        $memoireEssai->write('stigmergie/2026-01-06', $journal('2026-01-06', ['2026-10-23T11:00:00.e1e1e1']));
+        self::assertSame('{"2026-01-05":true,"2026-01-06":false}',
+            json_encode((new Resultats(self::$pdo))->lire($essai, $max)['traces_conservees']));
     }
 
     #[TestDox('UC-APP-10-U13 — Lancement::empreinte : l’empreinte d’un jeu de gabarits — seize chiffres hexadécimaux, indépendante de l’ordre, sensible au nom comme au contenu')]

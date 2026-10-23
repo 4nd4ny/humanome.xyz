@@ -513,6 +513,36 @@ par `scripts/extract-referentiel.mjs`.
       racine ; validateurs régénérés. Un lecteur 4.x qui les ignore lit le
       même jeu.
 
+16. **Master v4 : les traces de la stigmergie du greffier d'une analyse
+    Twin9, `stigmergie` (2026-10-23, sprint 3, S3-3).** Ajout 4.x
+    facultatif, présent seulement pour une analyse dont la carte du jour
+    porte le bloc `stigmergie` (spec-stigmergie.md §9 de Twin_v9, §7.4
+    ci-dessous). L'importeur d'un run (`twin9-run.js`) en garde, par liste
+    blanche (`core/stigmergie.js`) :
+    - dans le **détail** de la variante (`details[date].variants[id].stigmergie`) :
+      `analyse` (le rang k de l'analyse dans l'histoire de la journée),
+      `run`, `conservee` et `traces` — chacune `{id, code, start, end,
+      extrait, tau, incertitude, statut, voie, role, source, analyses}`,
+      valeurs simples seulement ; une trace sans code ni extrait, d'une
+      incertitude hors de `faible`, `moyenne`, `forte`, `écartée`, ou d'une
+      intensité qui n'est pas un nombre fini n'entre pas. Jamais les dépôts,
+      les rejets, les traces lues, les explorateurs ni les runs des traces ;
+    - dans l'**index** (`days[].variants[].stigmergie`) : `{analyse, traces,
+      conservee}`, pour dire sans lire le détail (D-67) qu'une journée a des
+      traces et proposer le portfolio surligné. Un jeu lu à la demande range
+      le bloc du détail dans le fichier de la journée (`jours/<date>.json`).
+    - **`conservee`** : `true` quand les résultats du run le disent
+      (`traces_conservees`, §8.4) ou pour une journée que sa mémoire a
+      reprise ; `false` quand ils disent l'analyse absente du journal de la
+      mémoire de la carte (une journée dont un appel est en panne : une panne
+      n'est jamais un verdict) ; `null` quand rien ne le dit. Seul `true` se
+      montre « conservé » ; le rapport d'import dit les autres
+      (`twin9-traces-non-conservees`, `twin9-traces-non-confirmees`).
+    - Les calculs ne le lisent pas ; l'identifiant et l'empreinte de la
+      variante ne le comptent pas (réimporter le même run ne l'ajoute pas
+      deux fois). Schéma : `stigmergie` dans la variante résumée et dans le
+      détail, incertitude par énumération ; validateurs régénérés.
+
 ## 5. Note d'outillage
 
 `engine/src/validation.js` importe les schémas en imports JSON « nus »
@@ -882,11 +912,45 @@ dans le bloc des calques de son dossier. Aucun appel en plus.
   le journal `stigmergie/<jour>` de la mémoire de la carte (exporté et
   purgé avec elle), le bloc `stigmergie` en dernière clé de
   `carto_jour.json` (spec du moteur, §9), et `configuration.algorithme.stigmergie`
-  dans le bloc de configuration du run (§8.9). L'affichage des traces est
-  un lot à part (S3-3). `StigmergieTest` mène deux runs d'une carte par le
-  tick, sur le scénario 16-test-mode de l'oracle : la première analyse fait
-  les appels de l'oracle et dépose, la seconde, sous `rescan`, relit la
-  première.
+  dans le bloc de configuration du run (§8.9). `StigmergieTest` mène deux
+  runs d'une carte par le tick, sur le scénario 16-test-mode de l'oracle :
+  la première analyse fait les appels de l'oracle et dépose, la seconde,
+  sous `rescan`, relit la première ; un troisième test met en panne le
+  président d'un tribunal de la journée.
+- **Ce que la plateforme en montre** (S3-3) :
+  - **Conservées ou non.** Les résultats d'un run (§8.4) disent, par
+    journée dont la carte porte le bloc, si son analyse est au journal de la
+    mémoire de la carte (`traces_conservees`). Une journée dont un appel est
+    en panne écrit sa carte avec le bloc, mais son analyse n'entre jamais au
+    journal (`failedUnder` du moteur) : ses traces sont dites non
+    conservées. Le signal se lit dans la mémoire, et non dans le journal des
+    appels du run, effacé à sa fin (`RunRepository::terminer`).
+  - **Dans la cartographie** (`carto/ui/Stigmergie.jsx`), sous les verdicts
+    de la modale du jour : chaque trace de l'analyse qui compte, sa
+    compétence, sa nature (l'incertitude calculée par la procédure, en mots
+    et par la marque de son surlignage : `carto-hl--trace-faible`,
+    `-moyenne`, `-forte`, `-ecartee`, une couleur et un trait), son dernier
+    verdict, ce qu'en fait le greffier suivant, son passage ; « Ouvrir dans
+    le portfolio » le surligne de sa marque, retrouvé par son extrait
+    (coupé à 240 caractères par le moteur : un long passage ne se surligne
+    qu'en tête). Son **intensité** (`tau`, de 0 à 3) ne se lit qu'en mode
+    expert et pour le cartographe (`intensitesVisibles` : jamais sans
+    session ni dans une copie autonome), et n'est jamais appelée « score ».
+  - **Le portfolio surligné** (Export de l'interface, quand une journée a
+    des traces conservées) : le portfolio en Markdown, chaque passage d'une
+    trace conservée entouré, ligne par ligne, d'un `<mark
+    data-twin9-code="…" data-incertitude="…">` (et `data-intensite` quand
+    l'intensité se montre), chaque journée suivie du tableau de ses traces
+    entre `<!-- twin9-traces -->` et `<!-- /twin9-traces -->`.
+  - **À l'import** (`lib/twin9/marques.js`) : l'import d'un portfolio dans
+    l'interface, la page « Mon portfolio » (fichier, Google Docs, texte
+    collé ou écrit), la restauration d'une archive (bornes des journées
+    ramenées) et le texte que la page Twin9 envoie retirent les éléments
+    qui portent `data-twin9-*`, `data-incertitude` ou `data-intensite`
+    (leurs balises, pas leur texte) et le tableau des traces : réimporté,
+    le portfolio surligné redonne à l'octet le portfolio sans marques, et
+    aucune trace n'entre par un fichier. Le texte rendu d'un portfolio
+    n'en montre aucune.
 
 ## 8. Le moteur Twin9 et la plateforme (T7)
 
@@ -1323,7 +1387,14 @@ une suivante le relève.
   nom, pole}]}`, jamais une fiche, un préambule ni une description ; nul pour
   un run d'avant T16. Depuis P0-1, `run` porte `configuration` et
   `execution` (§8.9), nuls pour un run d'avant elles ; un cartographe lié
-  les lit sans prix, coût, plafond ni clé.
+  les lit sans prix, coût, plafond ni clé. Depuis S3-3 (§7.4), la réponse
+  porte aussi `traces_conservees` : un objet par journée dont la carte du
+  jour (du run ou de la mémoire) porte le bloc `stigmergie` du greffier,
+  `true` si son analyse (`stigmergie.run`) est au journal de la journée dans
+  la mémoire de la carte (`stigmergie/<jour>`, sous `test/` en mode essai),
+  `false` sinon ; `{}` sans bloc. Une journée en panne n'y dépose rien : sa
+  carte garde le bloc, la réponse le dit non conservé, même après la fin du
+  run, quand son journal d'appels est effacé.
 - **Le document `twin9-run`** que la page remet à l'interface de cartographie
   (`twin9RunFiles`, `web/src/lib/interface-handoff.js` ; schéma
   `schemas/twin9-run.schema.json` depuis P0-1, racine souple : `kind` et
@@ -1341,7 +1412,10 @@ une suivante le relève.
   seul. Depuis P0-1, l'interface ne garde de `run.configuration` et
   `run.execution` qu'une liste blanche (§8.9), et chaque journée dit ses
   modèles et son jeu de gabarits (`provenance.model`, `provenance.prompt`,
-  `provenance.configurationRef`).
+  `provenance.configurationRef`). Depuis S3-3, le document porte
+  `traces_conservees` des résultats (nul quand ils ne le disent pas), et
+  l'interface garde le bloc `stigmergie` de chaque carte du jour par liste
+  blanche (§4, point 16).
 
 ### 8.5 Coûts, plafonds, relance, purge et export (T10)
 

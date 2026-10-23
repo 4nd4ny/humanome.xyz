@@ -317,6 +317,35 @@ describe('importArchive', () => {
     expect(entries.every((e) => e.promptPackage === null)).toBe(true)
   })
 
+  it('S3-3 — un portfolio surligné par Twin9 glissé dans une archive y perd ses marques ; ses journées gardent leurs bornes, ramenées au texte nettoyé', async () => {
+    const jour1 = '## 2026-01-05\nJ’ai <mark data-twin9-code="1.01" data-incertitude="faible" data-intensite="2.19">monté le capteur</mark>.\n'
+    const tableau = '\n<!-- twin9-traces -->\n| 1.01 | « monté le capteur » |\n<!-- /twin9-traces -->\n'
+    const jour2 = '## 2026-01-06\nJ’ai <span data-twin9-code="1.05">lu</span> les mesures.\n'
+    const texte = jour1 + tableau + jour2
+    const source = makeStores()
+    await source.portfolioStore.create({
+      titre: 'Surligné',
+      source: 'fichier',
+      texte,
+      segments: [
+        { date: '2026-01-05', texte: jour1 + tableau, debut: 0, fin: (jour1 + tableau).length },
+        { date: '2026-01-06', texte: jour2, debut: (jour1 + tableau).length, fin: texte.length },
+      ],
+    })
+    const { archive } = await exportArchive({ ...source, ...offlineDeps(), download: () => {} })
+    const target = makeStores()
+    expect((await importArchive(JSON.stringify(archive), target)).portfolios).toBe(1)
+    const [restaure] = await target.portfolioStore.list()
+    expect(restaure.texte).toBe('## 2026-01-05\nJ’ai monté le capteur.\n## 2026-01-06\nJ’ai lu les mesures.\n')
+    expect(restaure.segments.map((seg) => [seg.date, seg.texte])).toEqual([
+      ['2026-01-05', '## 2026-01-05\nJ’ai monté le capteur.\n'],
+      ['2026-01-06', '## 2026-01-06\nJ’ai lu les mesures.\n'],
+    ])
+    for (const seg of restaure.segments) expect(restaure.texte.slice(seg.debut, seg.fin)).toBe(seg.texte)
+    // la même archive réimportée : le texte nettoyé est déjà là
+    expect((await importArchive(JSON.stringify(archive), target)).portfolios).toBe(0)
+  })
+
   it('rejette un JSON invalide avec un message français', async () => {
     const stores = makeStores()
     await expect(importArchive('{pas du json', stores)).rejects.toThrow(

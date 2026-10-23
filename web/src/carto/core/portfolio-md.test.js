@@ -3,7 +3,8 @@
 // Markdown, dans la journée où il a été tenu ; redécoupé comme à l'import, le
 // fichier redonne les mêmes journées. Le versement se défait entièrement.
 import { describe, expect, it } from 'vitest'
-import { buildPortfolioMarkdown, boundaryDate, hasPortfolioToExport } from './portfolio-md.js'
+import { buildHighlightedPortfolioMarkdown, buildPortfolioMarkdown, boundaryDate, hasPortfolioToExport, locateExtractInText } from './portfolio-md.js'
+import { sansMarquesTwin9 } from '../../lib/twin9/marques.js'
 import { reflectionIsoDay, versedDialogueMarkdown } from './dialogue.js'
 import { addReflection, removeReflection, setReflectionVersed } from './ops.js'
 import { importFiles } from './import.js'
@@ -223,5 +224,111 @@ describe('verser un dialogue au portfolio', () => {
     expect(hasPortfolioToExport(setReflectionVersed(kept, kept.reflections[0].id, true, { now: NOW }))).toBe(true)
     const { dataset } = await louStore()
     expect(hasPortfolioToExport(dataset)).toBe(true)
+  })
+})
+
+// S3-3 — le portfolio surligné : les passages des traces conservées de la stigmergie de Twin9, marqués
+// selon leur nature, et le tableau des traces de chaque journée ; réimporté, le portfolio sans marques.
+describe('le portfolio surligné (S3-3)', () => {
+  const JOUR1 = [
+    '## 2026-01-05',
+    '',
+    'J’ai monté le capteur et vérifié chaque mesure.',
+    '',
+    '- Je relie la pompe,',
+    '- la sonde et le réservoir.',
+    '',
+    'Un passage | avec <balise> à citer.',
+  ].join('\n')
+  const JOUR2 = '## 2026-01-06\n\nDeuxième jour : j’ai lu les mesures.'
+  const trace = (code, extrait, incertitude, tau, extra = {}) => ({ id: `t-${code}-${tau}`, code, start: 0, end: 10, extrait, tau, incertitude, statut: 'présence établie', voie: 'tribunal', role: 'preuve décisive', source: 'trace_probante', analyses: 2, ...extra })
+  const TRACES = [
+    trace('1.01', 'J’ai monté le capteur et vérifié chaque mesure.', 'faible', 2.19),
+    trace('1.05', 'Je relie la pompe,\n- la sonde et le réservoir.', 'écartée', 0.147),
+    trace('1.01', 'monté le capteur', 'moyenne', 0.6),
+    trace('1.05', 'Un passage introuvable dans ce texte.', 'forte', 0.3),
+    trace('1.08', 'Un passage | avec <balise> à citer.', 'faible', 1),
+  ]
+  const exported = ({ conservee1 = true, conservee2 = false } = {}) => ({
+    dataset: {
+      days: [
+        { date: '2026-01-05', activeVariantId: 'v1', variants: [{ id: 'v1', stigmergie: { analyse: 3, traces: TRACES.length, conservee: conservee1 } }] },
+        { date: '2026-01-06', activeVariantId: 'v2', variants: [{ id: 'v2', stigmergie: { analyse: 1, traces: 1, conservee: conservee2 } }] },
+      ],
+      reflections: [],
+      portfolio: { undated: [] },
+    },
+    details: {
+      '2026-01-05': { portfolio: { text: JOUR1 }, variants: { v1: { stigmergie: { analyse: 3, run: 'r3', conservee: conservee1, traces: TRACES } } } },
+      '2026-01-06': { portfolio: { text: JOUR2 }, variants: { v2: { stigmergie: { analyse: 1, run: 'r1', conservee: conservee2, traces: [trace('1.01', 'j’ai lu les mesures', 'faible', 1)] } } } },
+    },
+  })
+  const refl = { compByCode: new Map([['1.01', { name: 'Analyse', order: 1 }], ['1.05', { name: 'Pensée systémique', order: 2 }], ['1.08', { name: 'Rigueur', order: 3 }]]) }
+  const marks = (text) => [...text.matchAll(/<mark ([^>]*)>([^<]*)<\/mark>/g)].map((m) => [m[1], m[2]])
+
+  it('chaque passage d’une trace conservée est marqué selon sa nature, ligne par ligne, hors des marqueurs de liste ; la journée finit sur le tableau de ses traces', () => {
+    const out = buildHighlightedPortfolioMarkdown(exported(), { refl })
+    expect([out.days, out.traces, out.marked]).toEqual([2, 5, 3])
+    expect(marks(out.text)).toEqual([
+      ['data-twin9-code="1.01" data-incertitude="faible"', 'J’ai monté le capteur et vérifié chaque mesure.'],
+      ['data-twin9-code="1.05" data-incertitude="écartée"', 'Je relie la pompe,'],
+      ['data-twin9-code="1.05" data-incertitude="écartée"', 'la sonde et le réservoir.'],
+    ])
+    expect(out.text).toContain('<mark data-twin9-code="1.08" data-incertitude="faible">Un passage | avec <balise> à citer.</mark>')
+    expect(out.text).toContain('- <mark data-twin9-code="1.05" data-incertitude="écartée">Je relie la pompe,</mark>\n- <mark')
+    // une marque ne passe jamais d'une ligne à l'autre
+    for (const m of out.text.matchAll(/<mark [^>]*>([\s\S]*?)<\/mark>/g)) expect(m[1]).not.toContain('\n')
+    // le tableau, en fin de journée, avant la suivante ; ses cases n'ont ni HTML ni barre qui les couperaient
+    const tableau = out.text.slice(out.text.indexOf('<!-- twin9-traces -->'), out.text.indexOf('<!-- /twin9-traces -->'))
+    expect(tableau).toContain('| Compétence | Nature de la trace | Passage |')
+    expect(tableau).toContain('| 1.01 Analyse | incertitude faible | « J’ai monté le capteur et vérifié chaque mesure. » |')
+    expect(tableau).toContain('| 1.01 Analyse | incertitude moyenne | « monté le capteur » (non surligné : dans le passage de 1.01) |')
+    expect(tableau).toContain('| 1.05 Pensée systémique | écartée | « Je relie la pompe, - la sonde et le réservoir. » |')
+    expect(tableau).toContain('« Un passage introuvable dans ce texte. » (non surligné : introuvable tel quel dans ce texte)')
+    expect(tableau).toContain('| 1.08 Rigueur | incertitude faible | « Un passage \\| avec &lt;balise&gt; à citer. » |')
+    expect(tableau).toContain('analyse n° 3 de cette journée')
+    expect(out.text.indexOf('<!-- /twin9-traces -->')).toBeLessThan(out.text.indexOf('## 2026-01-06'))
+    // la journée en panne : ni marque ni tableau
+    expect(out.text.slice(out.text.indexOf('## 2026-01-06'))).toBe(`${JOUR2}\n`)
+    // ni intensité (elle ne se montre pas par défaut), ni « score »
+    expect(out.text).not.toMatch(/data-intensite|Intensité|score/i)
+  })
+
+  it('l’intensité, seulement quand elle se montre (mode expert, cartographe) : un attribut et une colonne', () => {
+    const out = buildHighlightedPortfolioMarkdown(exported(), { refl, intensites: true })
+    expect(marks(out.text)[0][0]).toBe('data-twin9-code="1.01" data-incertitude="faible" data-intensite="2.19"')
+    expect(out.text).toContain('| Compétence | Nature de la trace | Intensité (sur 3) | Passage |')
+    expect(out.text).toContain('| 1.01 Analyse | incertitude faible | 2,19 | « J’ai monté')
+    expect(out.text).not.toMatch(/score/i)
+  })
+
+  it('réimporté, il redonne à l’octet le portfolio sans marques, et les mêmes journées', () => {
+    for (const intensites of [false, true]) {
+      const plain = buildPortfolioMarkdown(exported()).text
+      const highlighted = buildHighlightedPortfolioMarkdown(exported(), { refl, intensites }).text
+      expect(highlighted).not.toBe(plain)
+      expect(sansMarquesTwin9(highlighted)).toBe(plain)
+      const lu = importPortfolioText(highlighted, { fileName: 'portfolio-surligne.md' })
+      expect(lu.segments).toEqual(importPortfolioText(plain, { fileName: 'portfolio-surligne.md' }).segments)
+      expect(lu.report.map((r) => r.code)).toContain('marques-twin9-retirees')
+      expect(JSON.stringify(lu.segments)).not.toMatch(/data-twin9|data-incertitude|data-intensite|twin9-traces/)
+    }
+  })
+
+  it('jamais une trace non conservée ; sans trace conservée, le portfolio sans marques', () => {
+    const aucune = exported({ conservee1: null, conservee2: false })
+    expect(buildHighlightedPortfolioMarkdown(aucune, { refl }).text).toBe(buildPortfolioMarkdown(aucune).text)
+    const deux = buildHighlightedPortfolioMarkdown(exported({ conservee2: true }), { refl })
+    expect(deux.text).toContain('Deuxième jour : <mark data-twin9-code="1.01" data-incertitude="faible">j’ai lu les mesures</mark>.')
+  })
+
+  it('les valeurs des attributs sont échappées ; un passage se retrouve aux blancs près', () => {
+    const ex = exported()
+    ex.details['2026-01-05'].variants.v1.stigmergie.traces = [trace('1"><x', 'J’ai monté   le capteur et\nvérifié chaque mesure.', 'forte', 1)]
+    const out = buildHighlightedPortfolioMarkdown(ex, { refl })
+    expect(out.text).toContain('<mark data-twin9-code="1&quot;&gt;&lt;x" data-incertitude="forte">J’ai monté le capteur et vérifié chaque mesure.</mark>')
+    expect(sansMarquesTwin9(out.text)).toBe(buildPortfolioMarkdown(ex).text)
+    expect(locateExtractInText('a b\n\nc  d', 'b c d')).toEqual([2, 9])
+    expect(locateExtractInText('abc', 'x')).toBeNull()
   })
 })

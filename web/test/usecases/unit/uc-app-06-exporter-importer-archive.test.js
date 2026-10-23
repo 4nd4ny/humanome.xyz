@@ -358,3 +358,32 @@ describe('UC-APP-06 — A5 : stockage de l’interface de cartographie illisible
     expect(validateDocument('archive-export', archive).valid).toBe(true)
   })
 })
+
+describe('UC-APP-06 — import : aucune trace de Twin9 n’entre par une archive (S3-3, RG10)', () => {
+  it('UC-APP-06-U21 — un portfolio surligné rangé dans une archive est restauré sans ses marques ni le tableau de ses traces ; ses journées gardent leurs bornes, ramenées au texte nettoyé', async () => {
+    const jour1 = '## 2026-01-05\n<mark data-twin9-code="1.01" data-incertitude="faible">Atelier.</mark>\n'
+    const tableau = '\n<!-- twin9-traces -->\n| 1.01 | « Atelier. » |\n<!-- /twin9-traces -->\n'
+    const jour2 = '## 2026-01-06\nVernissage, <span data-intensite="1.4">enfin</span>.\n'
+    const texte = jour1 + tableau + jour2
+    const source = stores()
+    await source.portfolioStore.create({
+      titre: 'Journal',
+      source: 'fichier',
+      texte,
+      segments: [
+        { date: '2026-01-05', texte: jour1 + tableau, debut: 0, fin: jour1.length + tableau.length },
+        { date: '2026-01-06', texte: jour2, debut: jour1.length + tableau.length, fin: texte.length },
+      ],
+    })
+    const { archive } = await exportArchive({ ...source, ...offline() })
+    expect(archive.portfolios[0].texte).toBe(texte) // l'archive garde ce qui est rangé
+    const cible = stores()
+    expect((await importArchive(JSON.stringify(archive), cible)).portfolios).toBe(1)
+    const [restaure] = await cible.portfolioStore.list()
+    expect(restaure.texte).toBe('## 2026-01-05\nAtelier.\n## 2026-01-06\nVernissage, enfin.\n')
+    expect(restaure.segments.map((seg) => [seg.date, seg.texte, restaure.texte.slice(seg.debut, seg.fin) === seg.texte])).toEqual([
+      ['2026-01-05', '## 2026-01-05\nAtelier.\n', true],
+      ['2026-01-06', '## 2026-01-06\nVernissage, enfin.\n', true],
+    ])
+  })
+})

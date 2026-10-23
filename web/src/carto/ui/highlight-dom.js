@@ -10,10 +10,20 @@
 // englobant des <p> ; les segments blancs sont ignorés. Tout passe par
 // l'API DOM (aucune chaîne HTML assemblée à la main) sur un <template> inerte,
 // puis la sortie repasse par DOMPurify.
+//
+// Une plage peut porter la nature d'une trace de la stigmergie de Twin9
+// (`incertitude`, S3-3 : core/stigmergie.js) : son surlignage en prend la
+// classe (`carto-hl--trace-faible`…), qui se lit aussi sans la couleur
+// (trait plein, tirets, pointillés, barré). Le texte rendu du portfolio ne
+// garde aucune marque de Twin9 (`data-twin9-*`, `data-incertitude`,
+// `data-intensite`) : un texte qui en porterait encore n'en montre rien,
+// seules les traces des analyses se surlignent.
 
 import { mdToHtml } from '../../lib/md.js'
 import { renderNarrativeHtml } from '../../lib/narrative.js'
 import { locateApproximate, locateRendered } from '../core/highlight.js'
+import { INCERTITUDES } from '../core/stigmergie.js'
+import { sansMarquesTwin9 } from '../../lib/twin9/marques.js'
 
 const BLOCKS = new Set([
   'ADDRESS', 'ARTICLE', 'ASIDE', 'BLOCKQUOTE', 'BR', 'DD', 'DIV', 'DL', 'DT', 'FIGCAPTION', 'FIGURE', 'FOOTER',
@@ -66,10 +76,17 @@ export function collectText(root) {
   return { text, segments, breaks }
 }
 
+/** La classe du surlignage d'une trace de la stigmergie, selon son incertitude ('' pour une autre plage). */
+export function traceClass(incertitude) {
+  const nature = Object.hasOwn(INCERTITUDES, incertitude ?? '') ? INCERTITUDES[incertitude] : null
+  return nature ? ` carto-hl--trace carto-hl--trace-${nature.slug}` : ''
+}
+
 /**
  * Enveloppe des plages du texte affiché par des <mark>, nœud par nœud.
  * @param {{segments: Array<{node: Text, start: number, end: number}>}} collected sortie de collectText
- * @param {Array<{from: number, to: number, complete: boolean}>} ranges plages (non chevauchantes après tri)
+ * @param {Array<{from: number, to: number, complete: boolean, approximate?: boolean, incertitude?: string}>} ranges
+ *   plages (non chevauchantes après tri) ; `incertitude` : celle d'une trace de la stigmergie (traceClass)
  * @param {{current?: number | null}} [opts] occurrence mise en avant (classe carto-hl--current)
  * @returns {number} nombre de <mark> posés
  */
@@ -82,7 +99,7 @@ export function wrapRanges(collected, ranges, { current = null } = {}) {
       const b = Math.min(r.to, seg.end) - seg.start
       if (b <= a) continue
       if (!pieces.has(seg.node)) pieces.set(seg.node, [])
-      pieces.get(seg.node).push({ a, b, occurrence, complete: r.complete, approximate: Boolean(r.approximate) })
+      pieces.get(seg.node).push({ a, b, occurrence, complete: r.complete, approximate: Boolean(r.approximate), trace: traceClass(r.incertitude) })
     }
   })
   let count = 0
@@ -100,7 +117,7 @@ export function wrapRanges(collected, ranges, { current = null } = {}) {
       const target = p.a > 0 ? node.splitText(p.a) : node
       if (b - p.a < target.data.length) target.splitText(b - p.a)
       const mark = doc.createElement('mark')
-      mark.className = `carto-hl ${p.approximate ? 'carto-hl--approx' : p.complete ? 'carto-hl--complete' : 'carto-hl--partial'}${p.occurrence === current ? ' carto-hl--current' : ''}`
+      mark.className = `carto-hl ${p.approximate ? 'carto-hl--approx' : p.complete ? 'carto-hl--complete' : 'carto-hl--partial'}${p.trace}${p.occurrence === current ? ' carto-hl--current' : ''}`
       mark.setAttribute('data-occurrence', String(p.occurrence))
       target.parentNode.replaceChild(mark, target)
       mark.appendChild(target)
@@ -130,8 +147,9 @@ export function renderPortfolio(portfolio) {
   const hit = rendered.get(portfolio)
   if (hit) return hit
   // Pas de front-matter dans un portfolio : un texte qui commence par un trait
-  // (une journée scindée juste avant lui) s'affiche en entier.
-  const html = renderNarrativeHtml(mdToHtml(portfolio.text))
+  // (une journée scindée juste avant lui) s'affiche en entier. Aucune marque de
+  // Twin9 n'y passe (S3-3) : seules les traces des analyses se surlignent.
+  const html = renderNarrativeHtml(mdToHtml(sansMarquesTwin9(portfolio.text)))
   const { text, breaks } = collectText(inertFragment(html))
   const out = { html, text, breaks }
   rendered.set(portfolio, out)

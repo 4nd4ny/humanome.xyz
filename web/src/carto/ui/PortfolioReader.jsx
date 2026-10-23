@@ -17,7 +17,10 @@
 // le volet montre une autre journée que celle de l'analyse qui a retenu la
 // trace (une analyse qui couvre plusieurs journées du portfolio, sprint 4), il
 // le dit et ouvre, sur demande, la journée analysée (D-14). Hors ligne : aucun
-// réseau, aucun nouvel onglet.
+// réseau, aucun nouvel onglet. Le passage d'une trace de la stigmergie de
+// Twin9 (S3-3) se surligne selon sa nature (son incertitude), dite en mots à
+// côté de la marque ; son intensité, seulement quand elle se montre (mode
+// expert, cartographe) ; une trace non conservée le dit.
 
 import { useEffect, useMemo, useRef, useState } from 'react'
 import { formatLong, weekdayName } from '../core/dates.js'
@@ -26,6 +29,8 @@ import { NEED_PORTFOLIO, needCode } from '../core/split.js'
 import { splitExtract } from '../core/highlight.js'
 import { findPassage } from '../core/passages.js'
 import { approximateInPortfolio, highlightHtml, locateInPortfolio, renderPortfolio } from './highlight-dom.js'
+import { TAU_MAX } from '../core/stigmergie.js'
+import { TraceNature } from './Stigmergie.jsx'
 import { poleVars } from './colors.js'
 import { usePalette } from './palette.js'
 
@@ -77,7 +82,7 @@ function StepButton({ dir, label, disabled, onStep, small = false }) {
 function resolveTarget(target, getDetail) {
   if (target.kind === 'passage') {
     const extract = target.extract ?? ''
-    return { loading: false, anchors: extract ? splitExtract(extract) : null, extract, primary: target.date, secondary: null, role: null, synthetic: false, ref: null }
+    return { loading: false, anchors: extract ? splitExtract(extract) : null, extract, primary: target.date, secondary: null, role: null, synthetic: false, ref: null, incertitude: target.incertitude ?? null }
   }
   const ref = target.list[target.index]
   const detail = getDetail(ref.date, needCode(target.code))
@@ -122,7 +127,8 @@ function quoteCaption(result, { portfolioCount, primaryHasText, primary, demo })
 /**
  * @param {{
  *   target: {kind: 'trace', code: string, list: Array<{id: string, date: string, variantId: string, role?: string}>, index: number}
- *         | {kind: 'passage', date: string, extract: string, label?: string},
+ *         | {kind: 'passage', date: string, extract: string, label?: string,
+ *            incertitude?: string, conservee?: boolean | null, intensite?: string},
  *   dataset: object, refl: object,
  *   getDetail: (date: string) => object | null | undefined, ensureDetails: (dates: string[]) => Promise<void>,
  *   reducedMotion?: boolean,
@@ -203,7 +209,11 @@ export function PortfolioReader({ target, dataset, refl, getDetail, ensureDetail
   const settled = want.anchors === null ? ownLoaded : result !== null && !searching
   const shownDate = (settled && result?.date) || want.primary
   const shownDetail = text(shownDate)
-  const ranges = useMemo(() => (settled && result ? result.ranges : []), [settled, result])
+  // Le passage d'une trace de la stigmergie prend la marque de sa nature (S3-3).
+  const ranges = useMemo(
+    () => (settled && result ? (want.incertitude ? result.ranges.map((r) => ({ ...r, incertitude: want.incertitude })) : result.ranges) : []),
+    [settled, result, want.incertitude],
+  )
   const current = ranges.length > 0 ? Math.min(occurrence, ranges.length - 1) : null
   const body = useMemo(() => {
     const portfolio = shownDetail?.portfolio
@@ -351,6 +361,13 @@ export function PortfolioReader({ target, dataset, refl, getDetail, ensureDetail
         {legend ? (
           <p className="carto-reader-note">
             <mark className="carto-hl carto-hl--partial">En orange</mark>, un seul bout du passage est retrouvé à cet endroit.
+          </p>
+        ) : null}
+        {want.incertitude ? (
+          <p className="carto-reader-note">
+            Trace de la stigmergie, surlignée selon sa nature : <TraceNature incertitude={want.incertitude} />, calculée par la procédure
+            {target.intensite ? ` ; intensité ${target.intensite} sur ${TAU_MAX}` : ''}.
+            {target.conservee === true ? '' : ' Non conservée dans la mémoire de la carte : elle ne guide pas l’analyse suivante.'}
           </p>
         ) : null}
       </div>

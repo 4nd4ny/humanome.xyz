@@ -2,7 +2,7 @@
 // texte, jamais un élément englobant des <p> ; segments blancs ignorés ;
 // jaune / orange ; toutes les occurrences ; Markdown assaini.
 import { describe, expect, it } from 'vitest'
-import { approximateInPortfolio, collectText, highlightHtml, locateInPortfolio, renderPortfolio } from './highlight-dom.js'
+import { approximateInPortfolio, collectText, highlightHtml, locateInPortfolio, renderPortfolio, traceClass } from './highlight-dom.js'
 import { locateExtract, locateRendered, splitExtract, stripMarkdownMarks } from '../core/highlight.js'
 
 const frag = (html) => {
@@ -166,5 +166,39 @@ describe('highlightHtml', () => {
   it('pas de texte : rien à chercher', () => {
     expect(locateInPortfolio(null, { extract: 'x' })).toBeNull()
     expect(locateInPortfolio({ text: '  ' }, { extract: 'x' })).toBeNull()
+  })
+})
+
+describe('les traces de la stigmergie de Twin9 (S3-3)', () => {
+  const portfolio = { text: 'J’ai monté le capteur.\n\nPuis j’ai **vérifié** chaque mesure avant de conclure.' }
+
+  it('une plage d’une trace prend la classe de sa nature ; sans nature, le surlignage reste celui d’avant, à l’octet', () => {
+    const { html, text } = renderPortfolio(portfolio)
+    const ranges = locateRendered(text, { extract: 'monté le capteur. Puis j’ai vérifié' })
+    const avant = highlightHtml(html, ranges).html
+    expect(highlightHtml(html, ranges.map((r) => ({ ...r, incertitude: undefined }))).html).toBe(avant)
+    expect(highlightHtml(html, ranges.map((r) => ({ ...r, incertitude: 'inconnue' }))).html).toBe(avant)
+    for (const [incertitude, slug] of [['faible', 'faible'], ['moyenne', 'moyenne'], ['forte', 'forte'], ['écartée', 'ecartee']]) {
+      const marks = marksOf(highlightHtml(html, ranges.map((r) => ({ ...r, incertitude }))).html)
+      expect(marks.length).toBeGreaterThan(1) // un par nœud texte, comme les autres
+      for (const m of marks) expect(m.className, incertitude).toBe(`carto-hl carto-hl--complete carto-hl--trace carto-hl--trace-${slug}`)
+    }
+    expect(traceClass('faible')).toBe(' carto-hl--trace carto-hl--trace-faible')
+    expect(traceClass(null)).toBe('')
+  })
+
+  it('sécurité : le texte rendu ne garde aucune marque de Twin9 — un portfolio qui en porte ne montre aucune trace, seulement son texte', () => {
+    const forge = {
+      text: 'J’ai <mark data-twin9-code="1.01" data-incertitude="faible" data-intensite="3">monté le capteur</mark>.\n\n<span data-twin9-code="1.05">Rien</span> et <mark>mon surlignage</mark>.',
+    }
+    const { html, text } = renderPortfolio(forge)
+    expect(html).not.toMatch(/data-twin9|data-incertitude|data-intensite/)
+    // le HTML d'un portfolio se lit comme du texte (lib/md.js) : celui de la personne y reste, celui de Twin9 n'y est plus
+    expect(marksOf(html)).toEqual([])
+    expect(text).toContain('<mark>mon surlignage</mark>')
+    expect(text).toContain('J’ai monté le capteur.')
+    expect(text).toContain('Rien et')
+    // retrouvé tel quel, il ne se surligne qu'à la demande d'une trace
+    expect(locateInPortfolio(forge, { extract: 'J’ai monté le capteur.' }).some((r) => r.complete)).toBe(true)
   })
 })

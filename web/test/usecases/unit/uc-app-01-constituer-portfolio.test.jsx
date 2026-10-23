@@ -7,7 +7,7 @@
 // historiques), le store lui-même, le relais Google Docs (extractGdocId,
 // fetchGdocText), la validation des dates de journée et l'éditeur isolé.
 import { afterEach, describe, expect, it, vi } from 'vitest'
-import { cleanup, fireEvent, render, screen } from '@testing-library/react'
+import { cleanup, fireEvent, render, screen, waitFor } from '@testing-library/react'
 import { FAMILIES } from '../../../src/nav.js'
 import { isValidIsoDate, parseHash } from '../../../src/router.js'
 import {
@@ -16,6 +16,8 @@ import {
 } from '../../../src/lib/portfolio-store.js'
 import { GDOC_UNAVAILABLE_MESSAGE, extractGdocId, fetchGdocText } from '../../../src/lib/gdoc.js'
 import PortfolioEditor from '../../../src/components/PortfolioEditor.jsx'
+import PortfolioView from '../../../src/views/PortfolioView.jsx'
+import { createMemoryAdapter } from '../../../src/lib/portfolio-store.js'
 import { createFakeIndexedDb } from '../support/appl-fake-indexeddb.js'
 import { jsonResponse, textResponse } from '../support/appl-http.js'
 
@@ -178,5 +180,36 @@ describe('UC-APP-01 — ajustement du découpage et éditeur (étapes 3 et 6)', 
     expect(container.querySelector('.portfolio-editor-fullscreen')).not.toBeNull()
     fireEvent.keyDown(window, { key: 'Escape' })
     expect(container.querySelector('.portfolio-editor-fullscreen')).toBeNull()
+  })
+})
+
+describe('UC-APP-01 — le portfolio surligné par Twin9 réimporté (S3-3, RG10)', () => {
+  it('UC-APP-01-U23 — PortfolioView : un fichier, un texte collé ou écrit perd les marques de Twin9 et le tableau de ses traces avant d’être rangé et découpé ; l’import le dit ; un <mark> de la personne reste', async () => {
+    const SURLIGNE =
+      '## 2026-01-05\n\n<mark data-twin9-code="1.01" data-incertitude="faible" data-intensite="2.19">J’ai monté le capteur.</mark>\n\n' +
+      '<!-- twin9-traces -->\n\n| Compétence | Passage |\n|---|---|\n| 1.01 | « J’ai monté le capteur. » |\n\n<!-- /twin9-traces -->\n\n' +
+      '## 2026-01-06\n\nJ’ai <mark>lu</mark> les mesures.\n'
+    const PROPRE = '## 2026-01-05\n\nJ’ai monté le capteur.\n\n## 2026-01-06\n\nJ’ai <mark>lu</mark> les mesures.\n'
+    const store = createPortfolioStore(createMemoryAdapter())
+    render(<PortfolioView store={store} today="2026-07-12" saveDelay={0} />)
+    fireEvent.click(screen.getByRole('button', { name: 'Nouveau portfolio' }))
+    const editor = await screen.findByLabelText('Texte du portfolio')
+
+    // collé (ou écrit) dans l'éditeur
+    fireEvent.change(editor, { target: { value: SURLIGNE } })
+    await waitFor(async () => expect((await store.list())[0]?.texte).toBe(PROPRE))
+    const [colle] = await store.list()
+    expect(colle.segments.map((seg) => seg.date)).toEqual(['2026-01-05', '2026-01-06'])
+    expect(JSON.stringify(colle)).not.toMatch(/data-twin9|data-incertitude|data-intensite|twin9-traces/)
+
+    // un fichier : de même, et l'import le dit
+    fireEvent.change(editor, { target: { value: '' } })
+    const fichier = new File([SURLIGNE], 'portfolio-surligne.md', { type: 'text/markdown' })
+    fichier.text = async () => SURLIGNE // jsdom n'implémente pas File.prototype.text()
+    fireEvent.change(screen.getByLabelText('Importer un fichier .txt ou .md'), { target: { files: [fichier] } })
+    expect((await screen.findByText(/Fichier « portfolio-surligne\.md » importé/)).textContent).toContain(
+      'Ses surlignages et tableaux de traces de Twin9 ont été retirés : le texte analysé n’en porte jamais.',
+    )
+    await waitFor(async () => expect((await store.list())[0]?.texte).toBe(PROPRE))
   })
 })

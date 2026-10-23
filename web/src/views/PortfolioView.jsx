@@ -2,8 +2,12 @@ import { useEffect, useRef, useState } from 'react'
 import { mergeSegments, segmentText, splitSegment } from '@engine/portfolio/segment.js'
 import PortfolioEditor from '../components/PortfolioEditor.jsx'
 import { extractGdocId, fetchGdocText } from '../lib/gdoc.js'
+import { retirerMarquesTwin9 } from '../lib/twin9/marques.js'
 import { createPortfolioStore } from '../lib/portfolio-store.js'
 import { isValidIsoDate } from '../router.js'
+
+/** Ce que dit l'import d'un portfolio surligné par Twin9 (S3-3). */
+const MARQUES_RETIREES = ' Ses surlignages et tableaux de traces de Twin9 ont été retirés : le texte analysé n’en porte jamais.'
 
 /**
  * Module Portfolio (#/portfolio, P7) — entièrement côté client (cahier §4.2,
@@ -105,11 +109,18 @@ export default function PortfolioView({ store, fetchFn, today, saveDelay = 600 }
     }
   }
 
-  /** Remplace le texte : re-segmentation automatique + sauvegarde différée. */
+  /**
+   * Remplace le texte : re-segmentation automatique + sauvegarde différée. Les
+   * marques d'un portfolio surligné par Twin9 (S3-3) n'y entrent jamais, d'où
+   * qu'il vienne (fichier, Google Docs, texte collé ou écrit) : c'est le texte
+   * analysé. Rend vrai si des marques ont été retirées.
+   */
   function applyTexte(texte, extra = {}) {
     const base = currentRef.current
-    if (!base) return
-    touch({ ...base, ...extra, texte, segments: segmentText(texte, segmentOptions) })
+    if (!base) return false
+    const nettoye = retirerMarquesTwin9(texte)
+    touch({ ...base, ...extra, texte: nettoye.texte, segments: segmentText(nettoye.texte, segmentOptions) })
+    return nettoye.retire
   }
 
   async function handleCreate() {
@@ -177,10 +188,10 @@ export default function PortfolioView({ store, fetchFn, today, saveDelay = 600 }
       if (currentRef.current?.titre === 'Portfolio sans titre') {
         extra.titre = file.name.replace(/\.(txt|md|markdown)$/i, '')
       }
-      applyTexte(texte, extra)
+      const retire = applyTexte(texte, extra)
       setNotice({
         kind: 'info',
-        text: `Fichier « ${file.name} » importé (${texte.length.toLocaleString('fr-FR')} caractères), lu localement par votre navigateur.`,
+        text: `Fichier « ${file.name} » importé (${texte.length.toLocaleString('fr-FR')} caractères), lu localement par votre navigateur.${retire ? MARQUES_RETIREES : ''}`,
       })
     } catch (error) {
       setNotice({ kind: 'error', text: `Lecture du fichier impossible : ${error.message}` })
@@ -201,12 +212,13 @@ export default function PortfolioView({ store, fetchFn, today, saveDelay = 600 }
     setGdocBusy(true)
     try {
       const texte = await fetchGdocText(docId, fetchFn ? { fetchFn } : undefined)
-      applyTexte(texte, { source: 'gdocs' })
+      const retire = applyTexte(texte, { source: 'gdocs' })
       setNotice({
         kind: 'info',
         text:
           `Document importé (${texte.length.toLocaleString('fr-FR')} caractères). ` +
-          'Il est maintenant stocké localement dans votre navigateur ; le serveur n’en conserve aucune copie.',
+          'Il est maintenant stocké localement dans votre navigateur ; le serveur n’en conserve aucune copie.' +
+          (retire ? MARQUES_RETIREES : ''),
       })
     } catch (error) {
       setNotice({ kind: 'error', text: error.message })

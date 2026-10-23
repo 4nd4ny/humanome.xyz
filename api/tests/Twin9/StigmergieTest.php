@@ -13,6 +13,7 @@ use Humanome\Twin9\MapStore;
 use Humanome\Twin9\MoteurReglages;
 use Humanome\Twin9\ProfilRepository;
 use Humanome\Twin9\ReferentielMoteur;
+use Humanome\Twin9\Resultats;
 use Humanome\Twin9\RunRepository;
 use Humanome\Worker\Tick;
 use PDO;
@@ -150,6 +151,40 @@ final class StigmergieTest extends TestCase
     }
 
     /**
+     * A day where a call failed (S3-3; spec-stigmergie.md §9): its day map
+     * carries the block, its analysis does not enter the journal; once the
+     * run is over, its call journal gone, its results say its traces are not
+     * kept, those of the run before stay kept.
+     */
+    public function testADayWithAFailureShowsItsTracesAsNotKept(): void
+    {
+        $user = $this->utilisateur('stigmergie-panne@example.test');
+        $record = self::record(self::$dir . '/oracle/scenarios/' . self::SCENARIO . '/calls.jsonl');
+        $premier = $this->lancer($user, $record, '2026-10-19T12:00:00', rescan: false, strict: true)[0];
+
+        // the same map, rescan: the president of a tribunal of the day fails
+        $panne = 'journees/' . self::JOUR . '/tribunal/1.05/24-president.md';
+        self::assertArrayHasKey($panne, $record);
+        $record[$panne] = array_diff_key($record[$panne], ['response' => true]) + ['failure' => 'panne simulée'];
+        $second = $this->lancer($user, $record, '2026-10-19T13:00:00', rescan: true, strict: false)[0];
+
+        $carto = 'journees/' . self::JOUR . '/carto_jour.json';
+        $bloc = json_decode((new RunRepository(self::$pdo))->sorties($second)[$carto], true, 512, JSON_THROW_ON_ERROR)['stigmergie'];
+        self::assertSame(2, $bloc['analyse'], 'la carte du jour en panne porte le bloc de sa seconde analyse');
+        $journal = json_decode((string) $this->memoire($second)->read('test/stigmergie/' . self::JOUR), true, 512,
+            JSON_THROW_ON_ERROR);
+        self::assertSame(1, $journal['n_analyses'], 'l’analyse de la journée en panne n’entre pas au journal');
+        $stmt = self::$pdo->prepare('SELECT COUNT(*) FROM twin9_appels WHERE run_id = ?');
+        $stmt->execute([$second]);
+        self::assertSame(0, (int) $stmt->fetchColumn(), 'le run fini, son journal d’appels est effacé');
+
+        $resultats = new Resultats(self::$pdo);
+        self::assertSame([self::JOUR => false], (array) $resultats->lire($second, $user)['traces_conservees']);
+        self::assertSame([self::JOUR => true], (array) $resultats->lire($premier, $user)['traces_conservees'],
+            'les traces de la première analyse restent celles que garde la carte');
+    }
+
+    /**
      * A run of the scenario on $user's map, through the tick until its end.
      *
      * @param array<string, array<string, string>> $record
@@ -177,9 +212,14 @@ final class StigmergieTest extends TestCase
                             'referentiel' => self::referentiel()];
         $portfolio = self::$dir . '/' . $option('--portfolio');
 
+        // the profile's mode says the engine's, as MoteurReglages makes it: the test mode's memory under test/, where
+        // Resultats reads it
+        $profil = self::profil();
+        $profil->mode = $moteur->test ? 'test' : $profil->mode;
+
         self::$pdo->exec('UPDATE twin9_runs SET statut = "annule" WHERE statut = "en_cours"');
         $runs = new RunRepository(self::$pdo);
-        $run = $runs->creer($user, self::profil(), $moteur, basename($portfolio), (string) file_get_contents($portfolio),
+        $run = $runs->creer($user, $profil, $moteur, basename($portfolio), (string) file_get_contents($portfolio),
             pathinfo($portfolio, PATHINFO_FILENAME), self::gabarits(), new \DateTimeImmutable($horloge),
             (string) $option('--out'));
         $envoi = new ReplaySender($record, part: 0.5, strict: $strict);

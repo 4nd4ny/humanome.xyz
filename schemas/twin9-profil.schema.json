@@ -644,7 +644,9 @@
         },
         "graine": {
           "type": "integer",
-          "description": "La graine des tirages des explorateurs. Absent : 1, la valeur du moteur."
+          "minimum": -9007199254740991,
+          "maximum": 9007199254740991,
+          "description": "La graine des tirages des explorateurs. Absent : 1, la valeur du moteur. Entre -(2^53 - 1) et 2^53 - 1 : au-delà, un entier se lit en flottant (JSON, PHP), que le moteur refuse."
         },
         "lignes": {
           "type": "integer",

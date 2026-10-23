@@ -617,8 +617,11 @@ valide et range les profils.
   flottant (`1.0`, non `1`), quelle que soit la forme reçue : le navigateur
   ne distingue pas `1` de `1.0`, et la v9.8 lit `1.0` (T13). Un réglage
   qu'il type `integer` seulement est un entier (`5`, non `5.0`, que le
-  schéma admet pourtant comme entier) : les réglages de la stigmergie
-  refusent un flottant là où ils attendent un entier (§7.4).
+  schéma admet pourtant comme entier), jusqu'à 2^53 en valeur absolue :
+  au-delà, un flottant (`1e21`, ou un entier de plus de 19 chiffres, que
+  PHP décode en flottant) le reste ; le schéma borne donc tout entier que
+  le moteur exige tel (`stigmergie.graine`, §7.4) : les réglages de la
+  stigmergie refusent un flottant là où ils attendent un entier.
 - **Règles de l'API** : la réflexion coupée refuse les efforts `xhigh`
   et `max`, pour toute étape où les réglages se combinent ainsi
   (`CallSettings::parEtape`, T13) ; et celles des fournisseurs (ADR-012,
@@ -874,7 +877,7 @@ dans le bloc des calques de son dossier. Aucun appel en plus.
   | `enabled` | booléen, requis dans l'objet | — | — |
   | `evaporation` | `number` | [0,2 ; 1] | 0,3, la valeur du moteur |
   | `exploration` | `number` | [0 ; 1] | 0,2 |
-  | `graine` | `integer` | — | 1 |
+  | `graine` | `integer` | [−(2^53 − 1) ; 2^53 − 1] | 1 |
   | `lignes` | `integer` | [0 ; 10] | 5 |
 
   Les quatre réglages n'ont pas de valeur par défaut au schéma : absents,
@@ -883,7 +886,11 @@ dans le bloc des calques de son dossier. Aucun appel en plus.
   Les types sont stricts : le moteur ne convertit rien, une chaîne, un
   booléen ou un flottant pour un entier ferait échouer le run ; l'API
   ramène un flottant sans partie décimale à un entier là où le schéma
-  attend un entier (§7, « Nombres »). Le plancher de l'évaporation est
+  attend un entier (§7, « Nombres »), jusqu'à 2^53 en valeur absolue :
+  d'où les bornes de `graine`, sans quoi `1e21`, que le schéma admet comme
+  entier, arriverait en flottant au moteur (une `TypeError`, la
+  spécification du moteur, §2, demandant au schéma de l'empêcher). Le
+  plancher de l'évaporation est
   celui que conseille la spécification du moteur : en dessous de 0,2, une
   trace peut disparaître d'un coup quand son analyse sort des 16 que lit un
   run.

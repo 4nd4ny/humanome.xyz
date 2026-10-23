@@ -199,6 +199,12 @@ final class ProfilTest extends TestCase
         yield 'exploration booléenne' => ['/stigmergie', (object) ['enabled' => true, 'exploration' => true]];
         yield 'graine fractionnaire' => ['/stigmergie', (object) ['enabled' => true, 'graine' => 1.5]];
         yield 'graine en chaîne' => ['/stigmergie', (object) ['enabled' => true, 'graine' => '1']];
+        // an integer beyond 2^53 decodes as a float, which the schema admits as an integer and the engine refuses
+        yield 'graine 1e21' => ['/stigmergie', (object) ['enabled' => true, 'graine' => 1e21]];
+        yield 'graine 1e30' => ['/stigmergie', (object) ['enabled' => true, 'graine' => 1e30]];
+        yield 'graine de vingt chiffres' => ['/stigmergie', (object) ['enabled' => true, 'graine' => 99999999999999999999]];
+        yield 'graine -1e17' => ['/stigmergie', (object) ['enabled' => true, 'graine' => -1e17]];
+        yield 'graine 2^53' => ['/stigmergie', (object) ['enabled' => true, 'graine' => 2 ** 53]];
         yield 'lignes au-delà de 10' => ['/stigmergie', (object) ['enabled' => true, 'lignes' => 11]];
         yield 'lignes négatives' => ['/stigmergie', (object) ['enabled' => true, 'lignes' => -1]];
         yield 'lignes en liste' => ['/stigmergie', (object) ['enabled' => true, 'lignes' => [5]]];
@@ -312,6 +318,15 @@ final class ProfilTest extends TestCase
                                              $valide->jours, $valide->troncatures->journee->calques_extrait]);
         self::assertSame(1.0, $valide->college[0]->poids);
         self::assertStringContainsString('"graine":5,"lignes":4', json_encode($valide->stigmergie, JSON_PRESERVE_ZERO_FRACTION));
+
+        // the stigmergy's seed, at its bounds (±(2^53 − 1)): whatever form it came in, an integer for the engine
+        foreach ([9007199254740991, -9007199254740991, 9007199254740991.0, -9007199254740991.0] as $graine) {
+            $profil->stigmergie = (object) ['enabled' => true, 'graine' => $graine];
+            self::assertSame((int) $graine, ProfilRepository::validate($profil)->stigmergie->graine, (string) $graine);
+        }
+        $decode = json_decode('{"enabled": true, "graine": 9007199254740991}', false, 512, JSON_THROW_ON_ERROR);
+        $profil->stigmergie = $decode;
+        self::assertSame(9007199254740991, ProfilRepository::validate($profil)->stigmergie->graine);
     }
 
     /**

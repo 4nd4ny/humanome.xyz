@@ -34,8 +34,11 @@ use stdClass;
  * one and the same. A setting the schema types as a number keeps a float's
  * form (1.0, not 1), as Python reads the v9.8's config.json, whatever form
  * the page sent it in (T13); one it types as an integer is an integer (5, not
- * 5.0, which the schema admits as an integer): the stigmergy's settings refuse
- * a float where they want an integer (Stigmergie::reglages()).
+ * 5.0, which the schema admits as an integer) up to 2^53 in absolute value,
+ * beyond which a float stays one (1e21, or an integer of over 19 digits,
+ * which PHP decodes as a float): the stigmergy's settings refuse a float
+ * where they want an integer (Stigmergie::reglages()), so the schema bounds
+ * each of them within ±(2^53 − 1).
  *
  * Beyond the schema, the API's own rules: thinking cut refuses the efforts
  * xhigh and max, for any step the settings resolve to (T13); and the

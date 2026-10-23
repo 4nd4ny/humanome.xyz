@@ -175,7 +175,7 @@ describe('ReferentielView', () => {
     expect(screen.getAllByRole('alert')).toHaveLength(1)
   })
 
-  it('UC-VIS-02-U13 — un chargement plus lent, d’un choix déjà quitté, n’écrase pas le référentiel demandé', async () => {
+  it('UC-VIS-02-U19 — un chargement plus lent, d’un choix déjà quitté, n’écrase pas le référentiel demandé', async () => {
     let lent
     const loader = vi.fn(({ id }) =>
       id === 'lent'
@@ -201,7 +201,7 @@ describe('ReferentielView', () => {
     expect(screen.getByRole('alert').textContent).toContain('X9')
   })
 
-  it('UC-VIS-02-U13 — une base sans RESPIRE publié : le menu choisit le premier référentiel, l’adresse est remplacée (pas d’entrée d’historique)', async () => {
+  it('UC-VIS-02-U20 — une base sans RESPIRE publié : le menu choisit le premier référentiel, l’adresse est remplacée (pas d’entrée d’historique)', async () => {
     const replaceHash = vi.fn()
     const lister = async () => [{ id: humanome.id, label: humanome.label, source: null, versions: [{ semver: humanome.version, label: humanome.label }] }]
     render(<ReferentielView load={load} list={lister} replaceHash={replaceHash} />)
@@ -238,7 +238,7 @@ describe('ReferentielView', () => {
     expect(replaceHash).not.toHaveBeenCalled()
   })
 
-  it('UC-VIS-02-U16 — une base sans RESPIRE publié et un identifiant introuvable : le menu ne prétend pas montrer un autre référentiel que celui affiché', async () => {
+  it('UC-VIS-02-U22 — une base sans RESPIRE publié et un identifiant introuvable : le menu ne prétend pas montrer un autre référentiel que celui affiché', async () => {
     const replaceHash = vi.fn()
     const loader = vi.fn(async ({ id }) => {
       if (id === 'respire') return { doc: { ...fixture, id: 'respire', label: 'RESPIRE embarqué', version: '7.0.0' }, origin: 'bundled' }

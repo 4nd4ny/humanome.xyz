@@ -671,6 +671,10 @@ valide et range les profils.
   refusé — /cle : la clé personnelle ne sert plus aux analyses du serveur… »,
   `ProfilPolicy::refuserClePersonnelle`), quels que soient ses fournisseurs ;
   la valeur reste lisible dans le schéma, pour les profils et les runs gardés ;
+  ou, depuis le lot S6b (2026-10-22), la clé de l'école qui paie (`ecole`),
+  chez Anthropic seulement (`422` « Profil refusé — /cle : la clé de votre
+  école ne sert que chez Anthropic ; <étape> appelle <fournisseur> »), l'école
+  se choisissant au lancement (§15) ;
   un prix pour chaque modèle Anthropic. Au lancement, à l'aperçu et à la
   reprise s'y ajoute (`ProfilPolicy::admettreAuLancement`), pour chaque
   fournisseur que ses appels atteignent (`CallSettings::atteints()` : ses
@@ -755,7 +759,7 @@ autres fournisseurs partent toujours en direct), `parallelisme.appels_directs`
 (32 au plus), `parallelisme.journees` (journées menées de front quand aucun
 appel ne part par lots ; dès qu'un appel part par lots, toutes le sont, §8.7),
 `budget_usd` et `duree_minutes` (`null` : aucun plafond),
-`cle` (« instance » ; « personnelle », la clé de l'utilisateur chez Anthropic, reste lisible pour un profil ou un run d'avant l'ADR-013, mais ne se choisit ni ne part plus), `gabarits` (l'identifiant du jeu :
+`cle` (« instance » ; « ecole », la clé de l'école qui paie, chez Anthropic seulement, depuis le lot S6b, §15 ; « personnelle », la clé de l'utilisateur chez Anthropic, reste lisible pour un profil ou un run d'avant l'ADR-013, mais ne se choisit ni ne part plus), `gabarits` (l'identifiant du jeu :
 « v9.8 », valeur du schéma, ou le nom d'une copie, §8.6) et `referentiel`
 (`id`, et `version`, `null` pour la dernière publiée, figée dans la copie du
 profil au lancement).
@@ -2104,8 +2108,13 @@ refusée ; fixture inventée `schemas/fixtures/twin9-configuration-exemple.json`
     (`CallSettings::empreinte`, §8.2, celle de la plateforme du lancement),
     `signature_evaluations` (`Evaluations::signature`, §8.7) ;
   - `execution_prevue` : `voie_anthropic` (la voie du profil), `cle`
-    (`instance` ou `personnelle`, jamais la clé), `parallelisme`,
+    (`instance`, `ecole` ou `personnelle`, jamais la clé), `payeur`
+    (`personnel` ou `ecole`, depuis le lot S6b : qui paie le run, jamais la
+    marge ni la surtaxe ; absent des runs d'avant), `parallelisme`,
     `plafonds {budget_usd, duree_minutes}`, `jours`, `rescan`, `memoire` ;
+    les prix (`prix.grille`) sont ceux que paie son payeur : la marge de
+    l'instance pour un particulier, le facteur de son école quand elle paie
+    (1 + sa surtaxe sur son crédit, 1,0 sur sa clé) ;
   - `fournisseurs` : chaque fournisseur qu'atteignent ses appels
     (`CallSettings::combinaisons()` : ses étapes et ses lecteurs, jamais
     l'étage des lecteurs seul ni une étape que le profil ne connaît pas),
@@ -2186,7 +2195,7 @@ refusée ; fixture inventée `schemas/fixtures/twin9-configuration-exemple.json`
   et dans l'export (§8.5), où chacune est omise quand elle est nulle. Un
   cartographe lié (visibilité `cartographe`) les lit sans ce que paie le
   propriétaire ni comment : ni `prix`, ni `execution_prevue.plafonds`, ni
-  `execution_prevue.cle`, ni aucun `cout_microusd`, ni le `budget_usd` des
+  `execution_prevue.cle`, ni `execution_prevue.payeur`, ni aucun `cout_microusd`, ni le `budget_usd` des
   reprises ; ni le `sel` de l'empreinte. L'administrateur n'en voit rien
   (§8.4 : des compteurs).
 - **La page du run** (`web/src/views/twin9/ConfigurationDuRun.jsx`), celle
@@ -2900,3 +2909,71 @@ Depuis le 2026-10-22, la clé d'un utilisateur reste dans son navigateur
   enregistrement (la contraction l'effacera, ADR-008).
 - **Le profil** : `cle` — voir §7 et §7.1 ; aucune réécriture des profils
   gardés, aucune empreinte changée (§8.2).
+
+## 15. L'école paie pour ses élèves (sprint 6, S6b, ADR-013)
+
+Depuis le 2026-10-22, l'école — le compte qui porte l'habilitation
+`etablissement` — paie les usages payants de ses élèves, les membres de ses
+cohortes : l'analyse approfondie (Twin9) et la cartographie ouverte sur
+crédits (Twin6). Ce que l'API en dit :
+
+- **`GET /api/etablissement/ecole`** (école) : `{surtaxePct, surtaxeMin: 3.5,
+  surtaxeMax: 10, plafondEleveMicrousd, respireNumero, creditMicrousd,
+  cles: [{fournisseur, poseeLe}], chiffrementDisponible, mois: "YYYY-MM",
+  depenseMoisMicrousd, eleves: [{userId, displayName, cohortes: [noms],
+  membre, moisMicrousd, totalMicrousd}]}` — jamais une clé, des montants
+  seulement. `PUT` `{surtaxePct?, plafondEleveUsd?}` (surtaxe de 3,5 à 10 au
+  centième ; plafond en dollars, de 0 à 100 000, au centime ; un champ absent
+  est gardé ; `422 {error, fields}`) rend la même page. `PUT …/ecole/cle`
+  `{cle, fournisseur?: "anthropic"}` (`422` hors Anthropic, clé vide, avec un
+  espace ou de plus de 400 caractères ; `503` sans clé maîtresse) ; `DELETE
+  …/ecole/cle/{fournisseur}` → `204`, `404` sans clé.
+- **`payeur`** — dans `POST /api/twin9/runs/apercu`, `POST /api/twin9/runs`,
+  `POST /api/twin9/runs/{id}/reprendre` et `POST /api/twin6/appel` : absent ou
+  `null`, le défaut (sa seule école ; sans école, son solde) ; `"personnel"`,
+  son solde restant ; l'identifiant d'une de ses écoles. `422` : plusieurs
+  écoles sans choix (« Choisissez qui paie cette analyse : vous êtes membre
+  de plusieurs écoles »), une école dont il n'est pas membre, une valeur mal
+  formée, la clé d'école sans école ou sans clé posée.
+- **`GET /api/twin9/meta`** gagne `payeurs` : pour chacune de ses écoles
+  `{type: "ecole", id, nom, soi, cle (une clé posée), mois, plafond_microusd,
+  engage_microusd, reste_credit_microusd (son plafond restant, borné par le
+  crédit de l'école : quand ce crédit est plus bas, c'est lui que l'élève lit,
+  le seul cas où il en apprend quelque chose), reste_cle_microusd (sur sa
+  clé : son plafond restant)}`
+  — `plafond_microusd`, `engage_microusd` et `reste_cle_microusd` nuls pour
+  une école elle-même, dont `reste_credit_microusd` est son crédit —, puis
+  `{type: "personnel", solde_microusd}` quand il a un solde ou aucune école
+  (jamais pour une école). Jamais le crédit d'une école à son élève.
+- **L'aperçu d'un run** gagne `payeur` (`{type: "ecole", id, nom, soi}` ou
+  `{type: "personnel"}`) et `payeurs` ; `credit_usd` est nul quand une école
+  paie ; `admission.limite` peut valoir `plafond` (ce qui reste du plafond de
+  l'élève ce mois-ci), et `autres_usd` vaut 0 quand une école paie pour lui.
+  **Le suivi d'un run** (`GET /api/twin9/runs/{id}`) gagne `payeur` de même
+  (le nom de l'école, jamais son crédit ni sa surtaxe). Ses arrêts nouveaux,
+  dans `attente` : « plafond de votre école atteint : carte incomplète »,
+  « crédit de votre école insuffisant : carte incomplète » (et leurs
+  variantes « (fusion réservée) », « (engagé par d'autres analyses) »),
+  « votre école ne paie plus cette analyse » (et « … : elle a retiré sa
+  clé »).
+- **`POST /api/twin6/appel`** : un appel payé par l'école d'un élève est
+  réservé sur son plafond du mois puis sur le crédit de l'école à ×
+  (1 + surtaxe) — ou part sur la clé de l'école, à son prix de grille ;
+  `cout_microusd` est ce qu'a payé l'école. Refus : `402 {error: "Plafond de
+  votre école atteint pour ce mois", code: "plafond", reste_microusd,
+  requis_estime_microusd}`, `402 {error: "Crédit de votre école insuffisant",
+  code: "credit_ecole", requis_estime_microusd}` (sans `solde_microusd`).
+- **Le profil** : `cle` admet `ecole` (§7) ; **la configuration du run**
+  `execution_prevue.payeur` (§8.9) ; **le consentement d'une cohorte**
+  (`GET /api/etablissement/cohortes/{id}`, `consentement`) dit désormais « …
+  et le montant de ce qu'il paie pour vos analyses (jamais leur contenu). ».
+- **La base** (migration 037) : `ecoles`, `ecole_cles`, `ecole_consommations`,
+  `twin9_runs.payeur` / `payeur_id` / `facteur_prix`,
+  `twin9_credit_events.beneficiaire_id`, `twin9_appels.mois_reserve`,
+  `twin9_lots.cle = "ecole"`, `twin9_lots_a_effacer.ecole_id` ; des
+  expansions, que la release précédente ignore.
+- **Ce qui ne change pas** : les runs de masse (ADR-013 §4 : leur
+  facturation après coup jusqu'à un lot à part), la cartographie ouverte sur
+  la clé du navigateur, la démonstration et le tuteur (les crédits offerts,
+  §13) ; aucune empreinte de profil ni signature d'évaluation (§8.2).
+

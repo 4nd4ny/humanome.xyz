@@ -291,6 +291,26 @@ protégée comme `/api/admin/maintenance`, ou le Mac sur la base de production)
 et le jour de l'avis et de la purge sont des décisions de Christian ; rien n'a
 été avisé ni purgé.
 
+### Les écoles et RESPIRE#0 (ADR-013, lot S6b)
+
+Une école est un compte qui porte l'habilitation `etablissement`, que seul
+l'administrateur attribue (`#/admin`, UC-ADM-01) ; un rôle déclaré n'ouvre rien.
+Elle règle elle-même, dans « Mon école » (`#/etablissement`, UC-ETA-05), sa
+surtaxe sur la clé de l'instance (3,5 % à 10 %), le plafond par élève et par
+mois (0 par défaut : rien de payant pour ses élèves tant qu'elle ne l'a pas
+réglé) et sa clé Anthropic ; elle achète son crédit sur `#/compte/credit`.
+L'administrateur n'a pas de réglage d'école à part : retirer l'habilitation
+arrête, à leur tranche suivante, les runs que l'école payait, sans les reporter
+sur le solde de ses élèves.
+
+**RESPIRE#0**, l'école de démonstration (R5), n'existe qu'**en base** : ni dans
+le dépôt, ni dans une migration, ni dans un jeu d'amorçage. Elle se reconnaît à
+`ecoles.respire_numero = 0` (1 pour RESPIRE#1, plus pour les suivantes, unique).
+Son script de création est gardé hors dépôt (une adresse `.invalid`, un mot de
+passe inutilisable, l'habilitation `etablissement`, une cohorte de
+démonstration) et n'a été essayé que sur une base de test ; la créer en
+production, comme RESPIRE#1, est un geste de Christian.
+
 ---
 
 ## 4. Configuration serveur versionnable (`api/config/app.php`)

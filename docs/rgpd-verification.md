@@ -124,6 +124,27 @@ de ses habilitations (`user_roles`) : une déclaration n'ouvre aucun droit
 Preuves : `RgpdAuditTest` (règle CASCADE attendue, empreinte d'un compte
 peuplé), UC-CPT-07-U11 et UC-CPT-07-F09 (purge), UC-CPT-07-U12 (export).
 
+### L'école paie pour ses élèves (migration 037, sprint 6, lot S6b)
+
+L'école — le compte qui porte l'habilitation `etablissement` — paie les usages
+payants des membres de ses cohortes (registre §6 bis, §6 ter ; ADR-013 §3, §7).
+Des montants, des mois et des identifiants : jamais un portfolio, une sortie ni
+un prompt. Légende comme ci-dessus ; `via` = lu par l'école dans
+`GET /api/etablissement/ecole`, par l'élève dans `GET /api/twin9/meta`.
+
+| Migration | Table | Personnelle ? | Suppression du compte | Export / accès |
+|---|---|---|---|---|
+| 037 | `ecoles` | non pour l'élève (réglages de l'école : surtaxe, plafond, numéro RESPIRE) | CASCADE `user_id` (l'école) | `via` |
+| 037 | `ecole_cles` | non (la clé de l'école, chiffrée, un secret) | CASCADE `ecole_id` ; ses lots chez Anthropic annulés et effacés avant (`RunPurge::lotsEcole`) | `none` (jamais rendue, comme `user_api_keys`) |
+| 037 | `ecole_consommations` | oui (ce que l'élève a engagé de son école, par mois : un montant) | CASCADE `ecole_id` et `eleve_id` | `via` |
+| 037 | `twin9_credit_events.beneficiaire_id` | oui (l'élève qu'un événement du grand livre de l'école nomme) | SET NULL `beneficiaire_id` : l'événement reste à l'école, anonyme | `—` (le grand livre est celui de l'école) |
+| 037 | `twin9_runs.payeur`, `payeur_id`, `facteur_prix` ; `twin9_appels.mois_reserve` | non (qui paie le run, son facteur ; le mois d'une réserve) | avec le run (CASCADE `user_id`) ; SET NULL `payeur_id` à la purge de l'école | `archive` pour le seul type de payeur, dans la configuration du run (`execution_prevue.payeur`) ; les colonnes elles-mêmes ne sont pas exportées |
+| 037 | `twin9_lots_a_effacer.ecole_id` | non (l'école dont la clé efface le lot) | CASCADE `ecole_id` | `—` |
+
+Preuves : `RgpdAuditTest` (règles attendues, colonnes gouvernées),
+`api/tests/Twin9/EcolesTest.php` (le lot d'un élève purgé, confié au tick avec
+son école, effacé avec la clé de l'école), UC-ETA-05-U05 à U13.
+
 **Les lots encore chez Anthropic** (`DELETE /api/auth/account`,
 `Twin9\RunPurge`) : ceux de la clé personnelle sont annulés, puis supprimés
 une fois finis, avant la suppression du compte, tant que la clé existe ;

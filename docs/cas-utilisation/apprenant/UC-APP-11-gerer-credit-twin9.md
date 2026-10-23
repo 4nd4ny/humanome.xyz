@@ -7,7 +7,7 @@
 | **Portée** | humanome.xyz — vue `#/compte/credit`, routes `/api/twin9/credit*`, `/api/twin9/facture`, `/api/twin9/depenses`, offre `/api/twin9/meta` |
 | **Niveau** | Objectif utilisateur |
 | **Cahier des charges** | §6.5 (journalisation minimale), §7 (modèle économique : usage payant, coût API + marge) ; ADR-010 §3 ; **ADR-013** §2 c, e (seule une école achète, règle R2 de Christian) |
-| **Statut** | Implémenté (recharges PayPal, factures récapitulatives, remboursement à la demande) ; achat réservé aux écoles depuis le 2026-10-22 (sprint 6, lot S6a) |
+| **Statut** | Implémenté (recharges PayPal, factures récapitulatives, remboursement à la demande) ; achat réservé aux écoles depuis le 2026-10-22 (sprint 6, lot S6a) ; l'école paie les usages payants de ses élèves (lot S6b, UC-ETA-05) |
 
 ## Objectif
 
@@ -20,8 +20,12 @@ sans que la plateforme ne voie ni ne stocke aucune donnée bancaire.
 Depuis l'ADR-013, **seule une école achète des crédits** : vendre à un
 particulier obligerait à contrôler l'âge des apprenants (règle R2 de
 Christian). Un apprenant utilise sa propre clé, dans son navigateur
-(UC-CPT-04), ou le crédit de son école (lot S6b) ; le solde qu'il a acheté
-avant reste utilisable jusqu'à épuisement, et remboursable sur demande (A5).
+(UC-CPT-04), ou le crédit de son école (lot S6b), qui paie ses usages payants
+sous le plafond qu'elle lui accorde par mois : sa page du crédit le lui dit,
+avec ce que son école peut encore payer pour lui (A6) ; le solde qu'il a
+acheté avant reste utilisable jusqu'à épuisement, et remboursable sur demande
+(A5). Une école paie ses usages, et ceux de ses élèves, au coût réel × (1 + sa
+surtaxe) — et non à la contribution des particuliers (ADR-013 §2 d).
 
 ## Déclencheur
 
@@ -136,6 +140,18 @@ crédit, menu du compte) ou y revient depuis PayPal.
   solde déjà acheté s'affiche, se dépense (cartographie ouverte sur crédits,
   Twin9) et se rembourse comme en A3 ; la confirmation dit « Seules les écoles
   rechargent. » au lieu de « Vous pourrez recharger à tout moment ».
+- **A6 — Un apprenant dont l'école paie** (étape 1, ADR-013 §4, lot S6b) :
+  `GET /api/twin9/meta` dit ses payeurs possibles (`payeurs`) : chacune de ses
+  écoles — son nom, si elle a une clé, son plafond par élève du mois, ce qu'il
+  en a engagé, ce qu'elle peut encore payer pour lui (`reste_credit_microusd`,
+  son plafond restant borné par le crédit de l'école ; `reste_cle_microusd`
+  sur sa clé) — jamais le crédit de l'école ; et son propre solde quand il en
+  a un. La vue montre « Votre école paie » : « École des Tilleuls paie vos
+  analyses approfondies et vos cartographies ouvertes sur crédits : il vous
+  reste 1,80 $ ce mois-ci, sur un plafond de 5,00 $ par mois », et qu'elle en
+  voit le montant, jamais le contenu. Ses appels sont débités de son école ;
+  son grand livre à lui reste vide. Une école, elle, est renvoyée à son espace
+  (`#/etablissement`) pour sa surtaxe, son plafond et sa clé (UC-ETA-05).
 
 ## Scénarios d'erreur
 
@@ -180,6 +196,11 @@ crédit, menu du compte) ou y revient depuis PayPal.
   rien ne part chez PayPal, aucun ordre n'est lié, aucun crédit. Un rôle
   déclaré n'y change rien ; une école qui perd son habilitation entre la
   création et la capture ne capture rien (son ordre expire chez PayPal).
+- **E12 — Le crédit de son école ne couvre pas l'appel** (A6) : `402 {error:
+  "Crédit de votre école insuffisant", code: "credit_ecole",
+  requis_estime_microusd}` — jamais le solde de l'école ; rien n'est réservé,
+  pas même sur son plafond ; rien ne part. Son plafond du mois atteint : `402
+  {code: "plafond"}` (UC-ETA-05, A3).
 
 ## Règles de gestion
 
@@ -210,6 +231,11 @@ crédit, menu du compte) ou y revient depuis PayPal.
   l'administrateur attribue ; le serveur le dit à la page (`peut_acheter`),
   qui ne le déduit pas des rôles. Le remboursement (A3) reste ouvert à tout
   compte, l'achat individuel d'avant l'ADR-013 suivant la procédure existante.
+- **RG10** — L'école paie (ADR-013 §2 d, lot S6b) : sur la clé de l'instance,
+  son crédit est débité au coût réel × (1 + sa surtaxe), chaque événement de
+  son grand livre nommant l'élève (`beneficiaire_id`) ; un élève ne voit
+  jamais le crédit de son école, seulement ce qu'elle peut encore payer pour
+  lui ce mois-ci.
 
 ## Données et RGPD
 
@@ -234,6 +260,8 @@ crédit, menu du compte) ou y revient depuis PayPal.
 | API | `GET /api/twin9/meta`, `GET /api/twin9/credit`, `GET /api/twin9/depenses`, `GET /api/twin9/facture`, `POST /api/twin9/credit/paypal/creer`, `POST /api/twin9/credit/paypal/capturer`, `POST /api/twin9/credit/rembourser` — `api/src/routes/twin9.php` | Offre, orchestration (répartition des remboursements, bornes) |
 | API | `api/src/Middleware/CsrfMiddleware.php` | Jeton CSRF des mutations (E10) — logique unitaire couverte par UC-CPT-02-U07 |
 | Domaine | `api/src/Etablissement/Ecole.php` — `est`, `ACHAT_REFUSE`, `ACHAT_POURQUOI` | Qui achète : le compte qui a l'habilitation `etablissement` (RG9, E11, A5) |
+| Domaine | `api/src/Etablissement/Payeurs.php` — `possibles` ; `GrandLivreLocal` | Ce qu'une école peut encore payer pour son élève, jamais son crédit (A6) ; son crédit débité, l'élève nommé (RG10) — unitaires en UC-ETA-05-U05, U13 |
+| Front | `web/src/lib/payeurs.js` — `ecolesQuiPaient`, `resteMicrousd` | « Votre école paie » (A6) — unitaire en UC-ETA-05-U14 |
 | Domaine | `api/src/Twin9/PayPalClient.php` — `fromEnv`, `createOrder`, `captureOrder`, `getOrder`, `refundCapture` | Dialogue serveur-à-serveur avec PayPal |
 | Domaine | `api/src/Twin9/CreditService.php` — `balance`, `topup`, `events`, `recordPaypalOrder`, `paypalOrderOwner`, `recordCapture`, `refundableCaptures`, `soldeRemboursable`, `appliquerRemboursement` ; `SoldeInsuffisantException` | Grand-livre, propriété, remboursement |
 | Domaine | `api/src/Twin9/FactureService.php` — `facture`, `depensesParMois` | Facture et suivi |
@@ -279,8 +307,9 @@ crédit, menu du compte) ou y revient depuis PayPal.
 | UC-APP-11-F09 | E1 | IHM | Anonyme : invitation ; copie statique : message | idem |
 | UC-APP-11-F10 | E6, E7 | IHM | Création d'ordre en `502` (PayPal en erreur), remboursement refusé : messages serveur | idem |
 | UC-APP-11-F32 | A5, E11 | IHM | Un apprenant : ni pack ni « Recharger », la raison affichée, son solde restant affiché et remboursable (« Seules les écoles rechargent. »), aucun ordre créé | idem |
+| UC-APP-11-F35 | A6 | IHM | « Votre école paie » : ce qu'elle peut encore payer pour lui ce mois-ci, son plafond, qu'elle en voit le montant ; une école est renvoyée à son espace | idem |
 | UC-APP-11-F29 | A4 | IHM | `<App/>` : section inconnue, `CREDIT`, `credit/`, retour PayPal à barre finale (`credit/?paypal=retour&token=…`) → page Compte (« Profil »), aucun appel `twin9/…` (ni lecture du crédit, ni capture) ; `%63redit` → espace crédit ; `#/compte/` → page introuvable | idem |
-| UC-APP-11-F11 | Nominal | API | Crédit vide → ordre 20 $ (URLs de retour envoyées par la route) → capture → dépense réelle → grand-livre → suivi → facture | `api/tests/UseCases/Functional/UcApp11GererCreditTwin9Test.php` |
+| UC-APP-11-F11 | Nominal | API | Crédit vide → ordre 20 $ (URLs de retour envoyées par la route) → capture → dépense réelle (l'école, au coût réel × 1,035 : RG10) → grand-livre → suivi → facture | `api/tests/UseCases/Functional/UcApp11GererCreditTwin9Test.php` |
 | UC-APP-11-F12 | A2, RG2 | API | Capture rejouée : même solde, une seule recharge ; pack de 20 $ mais capture de 12,34 $ → 12,34 $ crédités | idem |
 | UC-APP-11-F13 | A3 | API | Remboursement partiel puis total, deux clés d'idempotence (décalage), facture ; **anomalie 1 figée** | idem |
 | UC-APP-11-F14 | E1 | API | 401 sur les six routes | idem |
@@ -300,6 +329,8 @@ crédit, menu du compte) ou y revient depuis PayPal.
 | UC-APP-11-F28 | A3 (limite) | API | Moins d'un centime remboursable ou demandé (nul, négatif) → 200 avec 0, aucun appel PayPal | idem |
 | UC-APP-11-F30 | E11, RG9 | API | Un apprenant (un rôle déclaré en plus) : `/meta` dit `peut_acheter: false` et pourquoi, une école `true` ; créer et capturer → 403 « Seule une école achète des crédits. », rien chez PayPal, aucun crédit | idem |
 | UC-APP-11-F31 | A5 | API | Le solde qu'un apprenant a acheté avant l'ADR-013 : un appel Twin6 le débite, aucun nouvel achat (403), le reste se rembourse sur demande (en centimes entiers) | idem |
+| UC-APP-11-F33 | A6, RG10 | API | Un apprenant dont l'école paie : `/meta` dit ce qu'elle peut encore payer pour lui, jamais son crédit ; son appel Twin6 est payé par elle à × 1,035, son compte intact | idem |
+| UC-APP-11-F34 | E12 | API | Le crédit de son école ne couvre pas l'appel : 402 « Crédit de votre école insuffisant », sans le solde de l'école ; rien réservé ni envoyé | idem |
 
 ### Tests existants liés (non-régression)
 

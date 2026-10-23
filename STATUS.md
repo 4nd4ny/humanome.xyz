@@ -45,6 +45,122 @@ autre fournisseur qu'Anthropic, que l'administrateur ouvre (entrée du 2026-10-2
 
 ## Fait
 
+- 2026-10-22 — **Sprint 6, lots S6a et S6b : les clés restent dans le navigateur, seule une école
+  achète, l'école paie pour ses élèves (branche `feat/ecoles`, rien déployé).** TODO, sprint 6 : les
+  clés API d'un utilisateur ne sont « JAMAIS stockées sur le site, SAUF pour une école » ; « un
+  utilisateur ne peut pas acheter de crédits API » ; « un école paye les clés API de ses élèves » ;
+  une école sans clé utilise celle de l'instance « moyennant une surtaxe que l'école choisit : entre
+  3.5 % […] et 10 % » ; RESPIRE#0 « en base de données (pas dans GitHub) ». Cinq commits :
+  `34927cf` (ADR-013, `docs/decisions/ADR-013-ecoles-cles-credits.md`), `233bf28` et `1f74de7`
+  (S6a), `a49bd90` et `282405a` (S6b), plus celui de cette entrée (documents). Seuls les lots
+  locaux : S6c (registre et grand livre communs avec EduChat, sur son VPS) et S6d (Stripe, PayPal
+  réel) ne sont ni faits ni branchés — l'ADR-013 §9 décrit seulement leur interface (API HTTPS
+  signée HMAC-SHA256, horodatage et nonce, idempotence, identité commune par courriel normalisé,
+  une réservation par run, montants en micro-unités avec leur devise ISO 4217 ; webhook Stripe
+  vérifié par sa signature, idempotent par événement), et S6b n'en pose que la couture
+  (`Etablissement\GrandLivreEcoles`, implémentée localement par `GrandLivreLocal`). Aucun appel au
+  VPS, aucun Stripe, aucune donnée réelle, aucune purge lancée.
+  - **S6a** (`233bf28`, `1f74de7`, migration 036) — `PUT /api/keys` répond `410` à tout compte ;
+    `KeyVault::store` refuse la clé de tout compte sans l'habilitation `etablissement` ; les clés
+    gardées avant sont listées « à supprimer » sur la page du compte (supprimer, ou recopier dans
+    ce navigateur puis supprimer) et purgées par `scripts/purger-cles-utilisateurs.php`, à la main
+    seulement, après un avis par courriel (`user_api_keys.avis_purge_at`, 30 jours) ; la clé
+    personnelle est refusée à l'enregistrement, à l'aperçu, au lancement et à la reprise d'un run
+    Twin9 (un run lancé avant sur elle finit sur elle) ; les packs PayPal (bac à sable en local) sont
+    réservés aux écoles (`403` sinon, la capture relit l'habilitation), le solde d'un particulier
+    reste dépensable et remboursable ; l'assistant de run, la cartographie ouverte et la page du
+    compte disent « Votre clé reste dans ce navigateur … ». Aucune empreinte de profil ni signature
+    d'évaluation ne change (`cle` n'est pas un réglage d'appel : test figé).
+  - **S6b** (`a49bd90`, `282405a`, migration 037) — **l'école** est le compte qui porte
+    l'habilitation `etablissement` (jamais un rôle déclaré) ; **ses élèves**, les membres de ses
+    cohortes. « Mon école », en tête de `#/etablissement` : son crédit (acheté sur
+    `#/compte/credit`), le plafond par élève et par mois UTC (0 par défaut, dit en premier), sa
+    surtaxe (3,50 à 10,00 au centième, 3,50 par défaut, bornée aussi par un `CHECK` de la base), sa
+    clé Anthropic (`ecole_cles`, chiffrée, jamais rendue ni journalisée), ses élèves et ce que
+    chacun a engagé ce mois-ci et en tout, en montants seulement (`ecole_consommations`). Les usages
+    payants d'un élève — Twin9, et la cartographie ouverte sur crédits, la seule cartographie
+    payante (`POST /api/llm`, le « Service humanome » de la cartographie standard, ne débite aucun
+    crédit : il vit sur les crédits offerts, S7a) — sont payés par son école : sur la clé de
+    l'instance, son crédit est débité au coût réel × (1 + surtaxe), figée au lancement
+    (`twin9_runs.facteur_prix`) ; sur sa clé, rien sur le crédit, le plafond compte le prix de la
+    grille. Chaque réserve tient le plafond de l'élève (sa ligne du mois, verrouillée la première),
+    puis le crédit de l'école, dans la transaction qui écrit l'appel ; elle se règle dans le mois
+    où elle a été prise (`twin9_appels.mois_reserve`) ; chaque événement du grand livre de l'école
+    nomme l'élève (`beneficiaire_id`, SET NULL à sa purge). Un élève choisit qui paie (`payeur` :
+    par défaut sa seule école ; avec plusieurs, il choisit, `422` sinon ; son solde restant s'il le
+    choisit), au lancement, à la reprise et à chaque appel de la cartographie ouverte ; il voit
+    « Votre école paie » et ce qu'elle peut encore payer pour lui, jamais son crédit. Un run dont
+    l'école ne paie plus (purgée, habilitation retirée, élève parti, clé retirée sur sa voie)
+    s'arrête à sa tranche suivante, jamais reporté sur le solde de l'élève, et se reprend en
+    choisissant de nouveau qui paie. Un profil `cle: "ecole"` ne sert que chez Anthropic. Les lots
+    de la clé d'une école d'un élève purgé sont confiés au tick avec l'école
+    (`twin9_lots_a_effacer.ecole_id`) ; une école purgée annule et efface d'abord ceux de sa clé.
+    Le texte de consentement d'une cohorte dit que l'école voit le montant, jamais le contenu.
+    **RESPIRE#0** : un script **hors dépôt**
+    (`…/scratchpad/ecoles/creer-respire0.php` de la session), idempotent, qui refuse toute base dont
+    le nom ne commence pas par `humanome_test` et n'écrit rien sans `--confirmer` : un compte
+    « RESPIRE#0 » (`respire0@ecoles.invalid`, mot de passe inutilisable), l'habilitation
+    `etablissement`, `ecoles.respire_numero = 0`, une cohorte de démonstration ; passé deux fois sur
+    `humanome_test_s6` migrée (la seconde : « rien à faire »), refusé sur la base de développement,
+    jamais touchée.
+  - **Documents** (cette entrée) : la fiche nouvelle UC-ETA-05 (gérer son école), UC-ETA-01 à 04,
+    UC-APP-08 à 11 ; le catalogue des cas recompté (62 cas, 1 109 U, 1 251 F, 191 anomalies) ;
+    `docs/contrats.md` (§7, §8.9, nouveau §15), `docs/autorisations.md`, `docs/rgpd-registre.md`
+    (§6 bis, nouveau §6 ter, §9, §11, §13), `docs/rgpd-verification.md`, `docs/roles.md`,
+    `docs/administration.md` (les écoles, RESPIRE#0), l'ADR-013 (ce que S6b a fixé), la page de
+    confidentialité, un chapitre de la formation établissement, `SUMMARY.md` régénéré.
+  - **Vérifié** (PHP 8.5.12, MySQL 8.0 locaux, base `humanome_test_s6`, `TWIN_V9_DIR` = t9-s2, sur
+    l'arbre de `282405a`, suite lancée à 14 h 46, hors de la fenêtre 0 h – 2 h
+    d'`UcAdm06MonitoringTest`) : PHP `Tests: 2001, Assertions: 22865`, les 2 échecs connus seuls
+    (`AuthActivationTest::testExpiredCodeIsRejected`, `UcCpt02…::testU17SessionCookieAttributes`),
+    1 dépréciation, `PariteTest` compris ; front 3 038 tests verts (279 fichiers, 9 sautés) ;
+    moteur 593 tests, 585 verts, 8 sautés ; `npm run build` puis `npm run test:dist` vert ;
+    `check-publiable` OK. Tests nouveaux de S6b : `api/tests/Twin9/EcolesTest.php` (7 : débit au
+    coût réel × 1,05, plafond qui arrête le run, clé de l'école en direct et par lots, école qui ne
+    paie plus et reprise sur le solde, lots d'un élève purgé effacés avec la clé de l'école, pas de
+    changement de payeur sous une réserve), UC-ETA-05-U01 à U17 et F01 à F09 (dont U08 : quatre
+    processus PHP concurrents, vingt réserves, exactement ce que tient le plafond — dix —, puis le
+    crédit — sept —, ni l'un ni l'autre dépassé), UC-APP-10-F29 à F34, UC-APP-11-F33 à F35,
+    UC-APP-09-F36. Attentes déplacées : l'appel Twin6 d'une école coûte désormais × 1,035 au lieu
+    de × 1,1 (UC-APP-11-F11) ; le bloc de configuration porte `execution_prevue.payeur` ;
+    `/api/twin9/meta` porte `payeurs` ; le grand livre a une colonne de plus ; l'audit RGPD gouverne
+    les nouvelles colonnes vers `users`.
+  - **Non vérifié / limites** : PHP 8.2 (la CI) ; PayPal réel (le bac à sable simulé seulement) ;
+    un vrai navigateur (jsdom) ; une vraie clé d'école chez Anthropic (simulée), dont la Console
+    relirait les lots ; rien n'est déployé, ni migré ailleurs que sur les bases de test. Les runs de
+    masse gardent leur plafond, leur compteur et leur facturation après coup (ADR-013 §4 : un lot à
+    part). Une école qui retire sa clé pendant qu'un lot parti avec elle est encore chez Anthropic :
+    le tick ne relève plus ce lot, ses appels gardent leur pire cas sur le plafond de l'élève, et le
+    run ne change pas de payeur (`409`) — à traiter dans un lot suivant. L'admission d'un run borne
+    par ce qui reste du plafond du mois, sans déduire ce que les autres runs de l'élève payés par la
+    même école ont été accordés (chaque réserve d'appel, elle, le tient exactement).
+  - **À décider (Christian)** : les décisions prises par délégation, à confirmer — (a) les clés
+    d'utilisateur déjà gardées ne servent plus à aucun run nouveau, « à supprimer » avec un bouton,
+    purgées par le script après un avis par courriel (le moyen de le lancer en production et le jour
+    de l'avis et de la purge sont à toi ; rien n'a été avisé ni purgé) ; (b) Twin9 ne part plus sur
+    une clé personnelle : voies `instance` et `ecole` ; (c) les soldes individuels restent
+    utilisables jusqu'à épuisement, remboursables par la procédure existante ; (d) l'école paie les
+    usages payants de ses élèves sous un plafond par élève, au coût réel × (1 + surtaxe) sur la clé
+    de l'instance, rien à la plateforme sur sa clé ; (e) les packs PayPal réservés aux écoles ;
+    (f) Twin6 sur la clé du navigateur inchangé ; (g) RESPIRE#0 par un script hors dépôt, essayé
+    sur la base de test seulement — sa création en production, et celle de RESPIRE#1, sont à toi ;
+    (h) l'école est le compte qui a l'habilitation `etablissement`. Et ce que S6b a fixé en plus :
+    (1) une école paie aussi ses propres usages à 1 + sa surtaxe, au lieu de la contribution des
+    particuliers — une baisse de prix pour les comptes école existants (l'appel Twin6 de 4 400 µUSD
+    à 4 140) ; (2) le payeur par défaut est la seule école de l'élève, dont le plafond vaut 0 tant
+    qu'elle ne l'a pas réglé : un élève qui a encore un solde à lui est refusé par défaut et doit
+    choisir « Mon solde » ; (3) ce qu'un élève lit de ce que son école peut encore payer est son
+    plafond restant borné par le crédit de l'école : quand ce crédit est plus bas, c'est lui qu'il
+    lit ; (4) que l'école puisse relire, avec sa clé, les résultats des lots de ses élèves dans sa
+    Console Anthropic, l'aperçu du lancement et la page de configuration le disent, pas le texte de
+    l'accord ; (5) les adhésions aux cohortes antérieures au nouveau texte de consentement ne sont
+    pas redemandées ; (6) des noms qui s'écartent de ceux, indicatifs, de l'ADR : `twin9_runs.payeur`
+    (`personnel` par défaut pour les runs d'avant), `twin9_appels.mois_reserve`, `ecole_cles` qui
+    référence le compte. Pour S6c et S6d, rien n'est décidé : prépayé ou facturé après coup, la
+    devise et la conversion, le maître du registre des écoles, le plancher de la surtaxe face au
+    plancher calculé d'EduChat, Stripe en test puis en réel, PayPal réel — chaque geste distant
+    demande ton accord.
+
 - 2026-10-22 — **Sprint 7, lot S7a : corrections de la revue indépendante (même branche
   `feat/plafond-offerts`, rien déployé).** Dix constats confirmés, dix corrigés : six commits
   `fix:`, chacun avec le test qui échouait avant lui, un `test:` (deux trous de couverture, prouvés

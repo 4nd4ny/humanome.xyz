@@ -20,9 +20,12 @@ machine auprès de la file de jobs.
 Depuis l'ADR-013 (sprint 6, lot S6a), l'école — le compte qui a
 l'habilitation `etablissement`, que seul l'administrateur attribue — est le
 **seul** compte dont humanome garde une clé sur ses serveurs : celle de son
-point d'accès, ici, et, avec le lot S6b, sa clé Anthropic pour ses élèves
-(`KeyVault::store` refuse la clé de tout autre compte ; les clés
-d'utilisateur restent dans leur navigateur, UC-CPT-04). C'est aussi le seul
+point d'accès, ici, et, depuis le lot S6b, sa clé Anthropic pour ses élèves,
+posée dans la section « Mon école » (`ecole_cles`, UC-ETA-05 A2 ;
+`KeyVault::store` refuse la clé de tout autre compte ; les clés
+d'utilisateur restent dans leur navigateur, UC-CPT-04). Les deux ne se
+confondent pas : la clé du point d'accès ne sert qu'aux runs de masse, celle
+de l'école qu'aux usages payants de ses élèves. C'est aussi le seul
 compte qui achète des crédits (UC-APP-11, E11). Le plafond, la dépense et la
 facturation à l'usage des runs de masse décrits ici ne changent pas (ADR-013
 §4 : leur bascule vers le crédit prépayé de l'école fera un lot à part).

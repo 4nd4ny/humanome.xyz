@@ -13,6 +13,17 @@ personnelle à la clé d'école).
 Mise en œuvre : les lots S6a et S6b (§10). À la date de cet ADR, le code n'a pas encore changé ;
 les références `fichier:ligne` sont celles de `main` (`9f623b1`).
 
+Mis en œuvre le 2026-10-22, sur la branche `feat/ecoles` : S6a (les clés restent dans le navigateur,
+seule une école achète, migration 036) puis S6b (l'école paie, migration 037). Ce que S6b a fixé
+en plus des noms indicatifs du §3 : le type de payeur s'appelle `twin9_runs.payeur`
+(`ENUM('personnel', 'ecole') NOT NULL DEFAULT 'personnel'` : les runs d'avant sont `personnel`) ;
+le mois d'une réserve, que le §3 demande sans la nommer, est `twin9_appels.mois_reserve` ; la clé
+d'école référence le compte (`ecole_cles.ecole_id → users`) ; une école pour elle-même est un payeur
+de type `ecole` dont l'école est elle-même, sans plafond ; la surtaxe est bornée aussi par une
+contrainte `CHECK` de la base ; un changement de payeur à la reprise attend que les lots qui tiennent
+encore une réserve de l'ancien se règlent (`409`). Le grand livre des écoles est
+`Etablissement\GrandLivreEcoles`, implémenté par `GrandLivreLocal` (§9).
+
 Les lots distants S6c (registre et grand livre communs avec EduChat) et S6d (Stripe, PayPal réel)
 ne sont pas décidés ici : chaque geste y demande l'accord de Christian. Le §9 décrit seulement
 l'interface où ils se brancheront, et le code de S6b la prépare sans la brancher.

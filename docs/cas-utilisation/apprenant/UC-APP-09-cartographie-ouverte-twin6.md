@@ -7,7 +7,7 @@
 | **Portée** | humanome.xyz — vue `#/twin6-ouverte`, moteur navigateur `engine/src/twin6/`, proxy facturé `POST /api/twin6/appel`, proxy de la démo `POST /api/llm` (essai gratuit) |
 | **Niveau** | Objectif utilisateur |
 | **Cahier des charges** | §3.2 (déclencher une cartographie), §4.3 (module cartographie), §5 (clé API personnelle), §6.1-6.2 (RGPD), §7 (modèle économique) ; ADR-001, ADR-004, ADR-010 §3 |
-| **Statut** | Implémenté (cartographie ouverte Twin6, contribution +10 % ; l’essai gratuit sous le plafond mensuel des crédits offerts : sprint 7, S7a) |
+| **Statut** | Implémenté (cartographie ouverte Twin6, contribution +10 % ; l’essai gratuit sous le plafond mensuel des crédits offerts : sprint 7, S7a ; payée par l’école de l’apprenant sur crédits : sprint 6, S6b) |
 
 ## Objectif
 
@@ -237,6 +237,23 @@ page Essayer (UC-VIS-03), ou par l'adresse.
   un autre avait été choisi en mode expert. Le choix du référentiel et des
   voies de paiement ne change pas. Les autres scénarios se jouent en mode
   expert.
+- **A9 — Son école paie** (voie crédits, étapes 3-6 ; sprint 6, lot S6b ;
+  ADR-013 §2 d, §4) : un apprenant membre d'une cohorte d'une école lit
+  « Avec les crédits que paie mon école (le coût réel et sa surtaxe) » et
+  « Payé par votre école, … Elle voit le montant de ce qu'elle paie pour vous,
+  jamais le contenu de vos analyses. » ; avec plusieurs écoles, ou son école
+  et son solde restant, le menu « Qui paie » (UC-ETA-05). Chaque appel porte
+  `payeur` (l'identifiant de l'école, ou `"personnel"`) : le serveur le
+  revérifie, réserve sur le plafond de l'élève du mois puis débite le crédit
+  de l'école à × (1 + sa surtaxe) — ou, si l'école a sa clé, appelle Anthropic
+  avec elle, le plafond comptant le prix de la grille, son crédit intact. Le
+  garde-fou avant le run compare ce que l'école peut encore payer pour lui ce
+  mois-ci (jamais son crédit) : trop bas, le lancement est bloqué avant tout
+  appel (« Ce que votre école peut encore payer pour vous ce mois-ci ne suffit
+  pas… », sans proposer d'acheter, en proposant de demander à l'école de
+  relever son plafond). Un refus du serveur : `402 {code: "plafond"}` ou
+  `{code: "credit_ecole"}` (UC-ETA-05 A3, UC-APP-11 E12), `422` pour un élève
+  de deux écoles sans choix (UC-ETA-05 A4).
 
 ## Scénarios d'erreur
 
@@ -507,7 +524,7 @@ page Essayer (UC-VIS-03), ou par l'adresse.
 | UC-APP-09-U15 | `makeCreditsProvider` | Corps, jeton CSRF de session, contrat moteur, contribution remontée | idem |
 | UC-APP-09-U16 | `makeCreditsProvider` | Replis sûrs ; 402 → `ApiError`, aucune contribution | idem |
 | UC-APP-09-U17 | `makeOwnKeyProvider` | Transport direct, jamais `/api`, clé exigée | idem |
-| UC-APP-09-U18 | `fetchTwin6Offer` | Prix Twin6, référentiel, solde, droit d'acheter (`peut_acheter`, faux par défaut), replis | idem |
+| UC-APP-09-U18 | `fetchTwin6Offer` | Prix Twin6, référentiel, solde, droit d'acheter (`peut_acheter`, faux par défaut), payeurs possibles (A9), replis | idem |
 | UC-APP-09-U19 | `referentielPourMoteur` | Pôles et compétences aplaties | idem |
 | UC-APP-09-U20 | `formatUsd` | µUSD → « x,yy $ », 4 décimales sous le centime | idem |
 | UC-APP-09-U32 | `referentielTwin6` | RESPIRE : la structure de `/meta` tant qu'elle est celle de la version (ordre indifférent) ; compétence déplacée, pôle en moins, `/meta` vide, autre référentiel → le document (RG9) | idem |
@@ -554,6 +571,7 @@ montage (`humanome-mode`), sauf F32, qui rejoue le mode simple (A8).
 | UC-APP-09-F33 | A7 | IHM | Un portfolio du module portfolio aux en-têtes « Mardi 10 février 2026 », précédé d'un passage non daté : la liste le propose ; choisi, la zone de saisie reçoit deux feuilles `### 2026-02-10` et `### 2026-02-11` ; « 2 journées datées… ; 1 passage non daté laissé de côté. » ; les 8 prompts portent ce texte, jamais le passage non daté | idem |
 | UC-APP-09-F34 | A7 | IHM | Un texte déjà en feuilles est repris tel quel (« 1 journée datée ») ; un portfolio sans journée datée ne remplace rien et renvoie à « Mon portfolio » ; sans IndexedDB, pas de liste | idem |
 | UC-APP-09-F35 | A6, E14, RG11 | IHM | Crédits offerts du mois épuisés (`503` `offerts_epuises`) : le visiteur lit le message du serveur (« revenez le 1er novembre »), un compte aussi, suivi de ses deux autres voies, jamais « pour aujourd'hui » ; un seul appel, bouton de nouveau cliquable | `web/test/usecases/functional/uc-app-09-cartographie-ouverte-twin6.test.jsx` |
+| UC-APP-09-F36 | A9 | IHM | Son école paie : la voie et la phrase le disent, chaque appel porte `payeur` ; ce qu'elle peut encore payer pour lui trop bas → lancement bloqué avant tout appel, sans proposer d'acheter | idem |
 | UC-APP-09-F10 | Nominal | API | 8 appels : contrat, `text` amont intact et `model`, coût 4 400 µUSD chacun (Sonnet 5 à 2 / 10), prompt public transmis tel quel, grand-livre réserve/réconciliation | `api/tests/UseCases/Functional/UcApp09CartographieOuverteTwin6Test.php` |
 | UC-APP-09-F11 | Nominal (étape 2), RG7 | API | `/api/twin9/meta` : prix Twin6, référentiel, solde ; Twin6 fonctionne sans Twin9 importé | idem |
 | UC-APP-09-F12 | E7 | API | 401 sans session, aucun appel amont | idem |

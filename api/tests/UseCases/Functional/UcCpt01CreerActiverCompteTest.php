@@ -770,4 +770,27 @@ final class UcCpt01CreerActiverCompteTest extends CartographeTestCase
             \Humanome\Clock::setOverride(null);
         }
     }
+
+    #[TestDox('UC-CPT-01-F34 — RG9 : l’expiration du code d’activation est écrite et lue en UTC, quel que soit le fuseau de PHP — un code posé par un PHP en UTC (le cron, scripts/worker.php, qui lève la liste) et lu par un PHP réglé sur Paris s’active au lieu d’être « expiré » dès sa naissance ; posé sous Paris, il vit 30 minutes, pas 2 h 30 ; lu sous Los Angeles, il s’active aussi')]
+    public function testF34TheCodeExpiryIsUtc(): void
+    {
+        $zone = date_default_timezone_get();
+        try {
+            date_default_timezone_set('UTC');
+            self::assertSame('pending_activation', self::json($this->signUp())['status']);
+            $code = $this->lastCode();
+            date_default_timezone_set('Europe/Paris');
+            $this->cookieSid = null;
+            self::assertSame(200, $this->activate('ada@example.org', $code)->getStatusCode(), 'posé en UTC, lu sous Paris');
+
+            self::assertSame('pending_activation', self::json($this->signUp(['email' => 'bob@example.org', 'emailConfirm' => 'bob@example.org']))['status']);
+            $ttl = strtotime(self::userRow('bob@example.org')['verification_expires_at'] . ' UTC') - time();
+            self::assertEqualsWithDelta(1800, $ttl, 5, 'posé sous Paris : 30 minutes, en UTC');
+            date_default_timezone_set('America/Los_Angeles');
+            $this->cookieSid = null;
+            self::assertSame(200, $this->activate('bob@example.org', $this->lastCode())->getStatusCode(), 'posé sous Paris, lu sous Los Angeles');
+        } finally {
+            date_default_timezone_set($zone);
+        }
+    }
 }

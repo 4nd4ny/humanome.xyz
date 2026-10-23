@@ -14,8 +14,8 @@ use PDO;
  * /api/auth/register and /resend, the lift of the waiting list (Waitlist:
  * the month's first request, the tick, the administrator).
  *
- * The activation code: 4 digits, hashed in the base (Argon2id), 30 minutes,
- * 5 attempts. Sent again, it is regenerated and its attempts reopened
+ * The activation code: 4 digits, hashed in the base (Argon2id), 30 minutes
+ * (verification_expires_at, a UTC DATETIME), 5 attempts. Sent again, it is regenerated and its attempts reopened
  * (Users::setVerificationCode). The waiting-list mail carries no code: the
  * activation by code is deferred to the lift.
  */
@@ -35,7 +35,10 @@ final class ActivationMail
     public static function send(PDO $pdo, int $userId, string $email, bool $afterWaitlist = false): bool
     {
         $code = str_pad((string) random_int(0, 9999), 4, '0', STR_PAD_LEFT);
-        $expiresAt = date('Y-m-d H:i:s', time() + self::CODE_TTL_SECONDS);
+        // UTC (gmdate), read as such by POST /api/auth/activate: a code set by
+        // one PHP (the cron's CLI, scripts/worker.php) and read by another (the
+        // web's) never depends on their time zones (review of 2026-10-23).
+        $expiresAt = gmdate('Y-m-d H:i:s', time() + self::CODE_TTL_SECONDS);
         Users::setVerificationCode($pdo, $userId, Users::hashPassword($code), $expiresAt);
 
         $site = self::site();

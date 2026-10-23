@@ -229,7 +229,8 @@ return function (App $app): void {
             || Waitlist::isWaitlisted($user) // en liste d'attente : son code n'est pas encore parti
             || ($user['verification_code_hash'] ?? null) === null
             || (int) ($user['verification_attempts'] ?? 0) >= $MAX_CODE_ATTEMPTS
-            || strtotime((string) ($user['verification_expires_at'] ?? '1970-01-01')) < time()) {
+            // l'expiration est en UTC (ActivationMail), quel que soit le fuseau de PHP
+            || strtotime((string) ($user['verification_expires_at'] ?? '1970-01-01') . ' UTC') < time()) {
             return $json($response, $genericError, 401);
         }
 

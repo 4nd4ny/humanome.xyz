@@ -3,7 +3,7 @@
 | Champ | Valeur |
 |---|---|
 | **Acteur principal** | Épistémiarque (ou administrateur : garde « épistémiarque ou admin ») |
-| **Acteurs secondaires** | Membres épistémiarques (vote, UC-EPI-02 A5) ; chaque compte, qui choisit un référentiel publié dans son profil Twin9 (UC-APP-10, page Configuration) ou au lancement d'une cartographie standard, ouverte ou de masse ; l'auteur d'un brouillon, pour ses runs d'essai |
+| **Acteurs secondaires** | Membres épistémiarques (vote, UC-EPI-02 A5) ; chaque compte, qui choisit un référentiel publié dans son profil Twin9 (UC-APP-10, page Configuration), au lancement d'une analyse approfondie (UC-APP-10 A11, depuis S5 lot C) ou d'une cartographie standard, ouverte ou de masse ; l'auteur d'un brouillon, pour ses runs d'essai |
 | **Portée** | Atelier `#/epistemiarque/referentiels` (section « Autres référentiels » : import d'un JSON ou d'un texte Markdown, modèles, export en Markdown) ; API `POST /api/referentiel/import`, `GET /api/referentiels`, `GET /api/referentiels/{id}/versions/{semver}`, et le cycle du grain document (`/api/referentiel/drafts…`, `/api/referentiel/proposals…`, UC-EPI-04) ; hors vote, l'amorçage de l'Humanome V18 converti de son YAML (`scripts/convertir-humanome.mjs`, `scripts/amorcer-referentiel.php`, S5, A6) |
 | **Niveau** | Objectif utilisateur |
 | **Cahier des charges** | §3.5, §4.1 ; T15 (dépôt `Twin_v9`, `docs/plan-twin9-php.md`, lot 4c, première tâche) ; schéma `referentiel` 2.1.0 (`docs/contrats.md` §9 et §11) |
@@ -42,9 +42,11 @@ de pôle, en partant d'un modèle ou d'un référentiel publié exporté (A7 à 
   plus fins dessous ; ses `niveaux` commencent au niveau choisi.
 - Après le vote et la publication, la version est servie (`GET /api/referentiels`
   la liste, `GET /api/referentiels/{id}/versions/{semver}` son document, à
-  tous, en lecture seule) et proposée à chaque compte : dans son profil Twin9
-  et, depuis le 2026-10-20, au choix du référentiel de la cartographie
-  standard, de la cartographie ouverte (Twin6) et des cartographies de masse.
+  tous, en lecture seule) et proposée à chaque compte : dans son profil Twin9,
+  au lancement d'une analyse approfondie (menu « Référentiel », S5 lot C,
+  UC-APP-10 A11) et, depuis le 2026-10-20, au choix du référentiel de la
+  cartographie standard, de la cartographie ouverte (Twin6) et des
+  cartographies de masse.
   Depuis S5 (2026-10-22), ces trois menus la lisent dans la base, dès sa
   publication : plus besoin d'un export statique ni d'un redéploiement. Ses
   fiches de scan s'écrivent depuis son document, sans rien à générer (RG10).
@@ -114,9 +116,10 @@ de pôle, en partant d'un modèle ou d'un référentiel publié exporté (A7 à 
   soumet, retire et publie ; il ne vote pas (UC-EPI-04 A4).
 - **A5 — Run d'essai sur son brouillon** : son auteur, tant qu'il est
   épistémiarque ou administrateur, le désigne dans un profil Twin9 en mode
-  essai (page Configuration : « version (brouillon, run d'essai) ») ; nul
-  autre, et pas en mode complet. Depuis T16, le moteur lit le référentiel
-  du run, le brouillon compris (RG8).
+  essai (page Configuration : « version (brouillon, run d'essai) »), ou le
+  choisit au lancement d'un tel profil, en mode expert (« … (brouillon, run
+  d'essai) », UC-APP-10 A11) ; nul autre, et pas en mode complet. Depuis
+  T16, le moteur lit le référentiel du run, le brouillon compris (RG8).
 - **A6 — L'Humanome V18, converti et amorcé hors vote** (S5, décision de
   Christian du 2026-10-22 ; `docs/referentiel-humanome.md`). Sur le poste :
   `node scripts/convertir-humanome.mjs <humanome_v18.yaml>` écrit le document
@@ -436,6 +439,7 @@ de pôle, en partant d'un modèle ou d'un référentiel publié exporté (A7 à 
 ### Tests existants liés (non-régression)
 
 - `api/tests/Twin9/ConfigurationDroitsTest.php` — `testADraftServesOnlyItsAuthorsTestRuns` (RG7, la ligne de la matrice), `testOnlyAPublishedReferential`.
+- UC-APP-10-F26 (`api/tests/UseCases/Functional/UcApp10AnalyseApprofondieTwin9Test.php`) — un brouillon choisi au lancement Twin9 : le run d'essai de son auteur va au bout ; en mode complet, pour un autre compte, sans version : `422` (RG7, A5).
 - `api/tests/Twin9/RunsTest.php` — `testARunReadsTheReferentialItsProfileNames` (RG8 : un run sur un autre référentiel part, ses réglages portent son référentiel ; un brouillon RESPIRE sert le run d'essai de son auteur).
 - `engine/src/twin6/fiches.test.js` — les fiches de Twin6 d'un autre référentiel, écrites depuis son document (RG10).
 - `api/tests/Twin9/ReferentielMoteurTest.php` — le référentiel que lit le moteur (RG8, RG10) : fiches de RESPIRE prises dans la base, celles d'un autre écrites depuis son document, ordre naturel des codes ; avec le vrai moteur, un référentiel qu'il ne lit pas (des codes faits de chiffres, une version écrite telle quelle comme enregistrée avant le contrôle de RG2) est refusé au lancement.

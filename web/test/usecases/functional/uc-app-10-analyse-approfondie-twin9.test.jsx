@@ -425,6 +425,62 @@ describe('UC-APP-10 — l’apprenant lance une analyse approfondie, la suit et 
     expect(screen.queryByTestId('twin9-profil-simple')).toBeNull()
   })
 
+  it('UC-APP-10-F28 — A11 : le référentiel se choisit au lancement — en mode simple, le menu paraît dès deux référentiels publiés, par défaut celui du profil ; l’aperçu dit le référentiel lu et les spécialistes du jury retirés ; l’aperçu et le lancement portent le choix (CSRF)', async () => {
+    const referentiels = [
+      { id: 'respire', label: 'RESPIRE v7', versions: ['7.0.0'], brouillons: [] },
+      { id: 'humanome-fictif', label: 'Humanome fictif', versions: ['18.0.0', '17.0.0'], brouillons: [] },
+    ]
+    const { calls } = stubFetch(
+      routes({
+        'GET twin9/configuration': jsonResponse(200, {
+          profils: [],
+          defaut: { referentiel: { id: 'respire', version: null } },
+          defaut_fournisseurs: [ANTHROPIC],
+          referentiels,
+          gabarits: ['v9.8'],
+          cle_perso_ouverte: false,
+          cle_perso_enregistree: false,
+        }),
+        'POST twin9/runs/apercu': (url, init) =>
+          jsonResponse(
+            200,
+            bodyOf({ init }).referentiel
+              ? apercu({ referentiel: { id: 'humanome-fictif', version: '18.0.0', label: 'Humanome fictif' }, jury_retire: [] })
+              : apercu({ referentiel: { id: 'respire', version: '7.0.0', label: 'RESPIRE v7' }, jury_retire: [] }),
+          ),
+        'POST twin9/runs': jsonResponse(201, run()),
+      }),
+    )
+    await openApp('#/twin9', { portfolio: PORTFOLIO })
+    await screen.findByRole('button', { name: 'Lancer l’analyse' })
+    expect(screen.queryByLabelText('Profil')).toBeNull() // mode simple (A10)
+    const menu = screen.getByLabelText('Référentiel')
+    expect([...menu.options].map((o) => o.textContent)).toEqual(['Celui du profil (RESPIRE v7)', 'RESPIRE v7', 'Humanome fictif'])
+    expect(menu.value).toBe('')
+
+    fireEvent.click(screen.getByRole('checkbox', { name: /J’accepte que mon portfolio/ }))
+    await waitFor(() => expect(screen.getByRole('region', { name: 'Avant de lancer' }).textContent).toContain('Référentiel lu : RESPIRE v7, version 7.0.0.'))
+    fireEvent.change(menu, { target: { value: 'humanome-fictif' } })
+    await waitFor(() =>
+      expect(screen.getByRole('region', { name: 'Avant de lancer' }).textContent).toContain('Référentiel lu : Humanome fictif, version 18.0.0.'),
+    )
+    const apercus = ecritures(calls, 'POST twin9/runs/apercu')
+    expect(apercus.map((c) => bodyOf(c).referentiel ?? null)).toEqual([null, { id: 'humanome-fictif', version: null }])
+    expect(apercus.every((c) => c.init.headers['X-CSRF-Token'] === CSRF)).toBe(true)
+
+    fireEvent.click(screen.getByRole('button', { name: 'Lancer l’analyse' }))
+    await waitFor(() => expect(window.location.hash).toBe('#/twin9/7'))
+    const [lance] = ecritures(calls, 'POST twin9/runs')
+    expect(bodyOf(lance)).toEqual({
+      profil: null,
+      portfolio: { nom: 'Mon journal.md', texte: PORTFOLIO },
+      accord: { fournisseurs: ['anthropic'] },
+      visibilite: 'privee',
+      referentiel: { id: 'humanome-fictif', version: null },
+    })
+    expect(lance.init.headers['X-CSRF-Token']).toBe(CSRF)
+  })
+
   it('UC-APP-10-F19 — A3 : annuler puis reprendre un run en cours ; A4 : arrêté par son budget, il reprend sous un nouveau budget et va au bout ; A5 : la case du cartographe règle qui lit ses résultats (jeton CSRF à chaque écriture)', async () => {
     // A3 — un run en cours que la page fait avancer ; le serveur ne lui donne pas de tour (verrou pris).
     let statut = 'en_cours'

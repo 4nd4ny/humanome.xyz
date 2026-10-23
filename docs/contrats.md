@@ -665,7 +665,11 @@ valide et range les profils.
   (`defaut_fournisseurs`) : `[{id, libelle, rgpd, voie}]` dans l'ordre du
   registre, comme l'aperçu (`Lancement::fournisseurs`, `voie` : `lots`,
   `directe` ou `mixte`) ; `null` pour un profil rangé que le schéma n'admet
-  plus (son lancement est refusé de toute façon). La page `#/configuration`
+  plus (son lancement est refusé de toute façon). Depuis le sprint 5, lot C
+  (phase D, 2026-10-22), chaque profil y nomme aussi son référentiel
+  (`profils[].referentiel` : `{id, version}`, `null` pour un profil rangé
+  sans référentiel lisible), que la page de lancement propose par défaut
+  (§8.4). La page `#/configuration`
   les recalcule en direct depuis le profil édité (`fournisseursDuProfil`,
   `web/src/views/configuration/profilSchema.js`, dont l'étage de chaque
   étape, les libellés, les étiquettes et les motifs de modèle sont comparés
@@ -1358,6 +1362,33 @@ une suivante le relève.
   de ses fournisseurs (§7.2, `admettreAuLancement`) : un fournisseur fermé
   depuis, ou sans sa clé d'instance, la refuse en `422`. Depuis P0-1, il garde aussi sa **configuration**
   (§8.9), écrite au lancement et jamais modifiée, distincte de l'attestation.
+- **Le référentiel choisi au lancement** (sprint 5, lot C ; phase D,
+  2026-10-22). `POST /api/twin9/runs` et `POST /api/twin9/runs/apercu`
+  acceptent `referentiel: {id, version?} | null`, facultatif : absent ou
+  nul, celui du profil ; sinon `id` au motif des identifiants de
+  référentiel (`ReferentielRepository::ID_PATTERN`) et `version` semver ou
+  nulle (la dernière publiée), aucune autre clé, sans quoi `422`
+  « Référentiel invalide : {id, version?} (version semver, ou null pour la
+  dernière publiée), ou null pour celui du profil ». `Lancement::preparer`
+  l'écrit dans la **copie** du profil, juste après l'avoir lue et avant
+  `ProfilPolicy::admettre` : tout ce qui vaut pour le référentiel d'un
+  profil vaut pour lui — un brouillon ne sert que le run d'essai de son
+  auteur (§9), un référentiel ou une version non publiés sont refusés
+  (`422` « Profil refusé — /referentiel/id : … » ou « …/version : … »), la
+  version est figée dans la copie, un jeu d'avant T16 le refuse (§8.8) —,
+  et il entre dans l'empreinte des réglages, l'attestation
+  (`referentiel`), la configuration (§8.9) et la carte (sa mémoire est
+  celle de ce référentiel). Le profil enregistré ne change pas.
+  **Garde du jury** : quand l'identifiant choisi n'est pas celui du profil,
+  `jury.specialistes` (un spécialiste par numéro de pôle) et
+  `jury.par_competence` (par code), réglés pour le référentiel du profil,
+  sont vidés dans la copie (`{}`, leur défaut) ; l'aperçu nomme ceux qu'il
+  a vidés (`jury_retire`). La page de lancement (`#/twin9`) propose un menu
+  « Référentiel » : « Celui du profil » par défaut, chaque référentiel
+  publié (sa dernière version, `version` nulle) et, en mode expert, ses
+  brouillons ; toujours en mode expert, en mode simple dès que plus d'un
+  référentiel est publié. Elle n'envoie `referentiel` que pour un autre
+  choix que celui du profil.
 - **Le portfolio envoyé** (sprint 4, T0 ; journal de la cartographie
   D-73). Le moteur découpe le texte à sa façon (`Twin_v9/php/src/Portfolio.php` :
   un titre `##` ou `###` qui porte une date, sinon une date Google Docs,
@@ -1573,13 +1604,18 @@ une suivante le relève.
   gagnent `coupures` (les coupures par la fin d'une tranche) et
   `par_fournisseur` (`{appels, pannes, tronques, coupures, cout_microusd}`
   par fournisseur).
-- **L'aperçu** (`POST /api/twin9/runs/apercu`, `{profil, portfolio}`, ce que
-  demande un lancement, l'accord excepté ; rien n'est gardé) rend
+- **L'aperçu** (`POST /api/twin9/runs/apercu`, `{profil, portfolio,
+  referentiel?}`, ce que demande un lancement, l'accord excepté ; rien n'est
+  gardé) rend
   `{journal, mode, voie, cle, fournisseurs, journees: {total, nouvelles, changees},
   estimation: {cout_usd, min_usd, max_usd, reserve_usd, duree_s,
   evaluations | reference, poles}, admission: {journees, total, limite,
   instruites, en_attente, changees_en_attente, autres_usd, refus},
-  plafonds: {budget_usd, duree_minutes}, credit_usd}`. L'estimation et
+  plafonds: {budget_usd, duree_minutes}, credit_usd, referentiel: {id,
+  version, label}, jury_retire}` ; `referentiel` (sprint 5, lot C) est celui
+  que le run lirait, du profil ou choisi (§8.4), sa version figée ;
+  `jury_retire`, la liste des réglages du jury que ce choix vide
+  (`specialistes`, `par_competence`), vide sinon. L'estimation et
   l'admission sont au §8.7 (T8). À défaut d'évaluation, la référence est le
   vrai run de PLANT-01 de T2, en mode essai, 0,1344 $ et 94 s, fois les
   pôles du référentiel pour un run complet, à moitié prix quand tous ses
@@ -1901,7 +1937,10 @@ T16, plan validé par Christian le 2026-10-20).
   2026-10-20) : un pôle de RESPIRE, reconnu à sa clé, assoit le spécialiste
   et la paire de la v9.8 ; un autre, le « Spécialiste du pôle », qui lit son
   domaine, et la paire (Spécialiste du pôle, Historien) — cinq sièges en
-  `socle4+1`, quatre en `socle2+2`. `jury.specialistes` du profil l'emporte.
+  `socle4+1`, quatre en `socle2+2`. `jury.specialistes` du profil l'emporte,
+  sauf quand le lancement choisit un autre référentiel que celui du profil :
+  il est alors vidé dans la copie, comme `jury.par_competence` (§8.4, garde
+  du jury).
   Sa lentille n'est pas dans la banque dont les journées gardent l'empreinte
   (`Tribunal::infosPersonas`) : un référentiel dont un pôle n'est pas de
   RESPIRE la garde avec l'empreinte des réglages de ses journées
@@ -2193,11 +2232,17 @@ Le schéma `referentiel` passe en **2.0.0** (`docs/plan-twin9-php.md` de
   le profil est en mode essai ; sinon `422` « Profil refusé —
   /referentiel/version : un brouillon ne sert qu’aux runs d’essai de son
   auteur ». `GET /api/twin9/configuration` rend, pour chaque référentiel,
-  `{id, versions, brouillons}` : ses versions publiées et ses propres
-  brouillons, un référentiel jamais publié n'y figurant que pour son auteur.
+  `{id, label, versions, brouillons}` : son libellé (celui de sa dernière
+  version publiée, `ReferentielRepository::catalogue()` ; pour un
+  référentiel qui n'a que des brouillons, celui du plus récent ; depuis le
+  sprint 5, lot C, pour le menu « Référentiel » du lancement Twin9), ses
+  versions publiées et ses propres brouillons, un référentiel jamais publié
+  n'y figurant que pour son auteur.
 - **Le lancement** (§8.4) : le moteur lit le référentiel de son run (T16,
   §8.8) ; un run ou son aperçu sur un autre référentiel, publié, part. Un
-  brouillon sert le run d'essai de son auteur. (De T15 à T16, le moteur
+  brouillon sert le run d'essai de son auteur. Depuis le sprint 5, lot C, le
+  lancement et l'aperçu peuvent choisir un autre référentiel que celui du
+  profil (`referentiel: {id, version?}`), soumis aux mêmes règles. (De T15 à T16, le moteur
   lisait les fiches RESPIRE de son jeu, et un autre référentiel était refusé,
   `422`.)
 - **Les annotations** (`POST /api/cartographies/{id}/annotations`) : une

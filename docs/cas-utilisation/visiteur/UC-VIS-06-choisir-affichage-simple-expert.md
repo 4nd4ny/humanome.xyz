@@ -113,7 +113,9 @@ l'application (`web/src/App.jsx`).
   visiteur en mode expert garde le menu d'un visiteur.
 - **RG2** — Ne sont jamais masqués : le Gestionnaire de la cartographie et
   son point « anomalies à traiter », les espaces Dialogue et Export (ses
-  quatre formats), le choix du référentiel (assistant standard, Twin6),
+  quatre formats), le choix du référentiel (assistant standard, Twin6 ;
+  Twin9 dès que plus d'un référentiel est publié, sans les brouillons, qui
+  restent au mode expert : UC-APP-10 A11),
   l'accord, le consentement et l'estimation de coût, les familles de rôle.
   Les écrans des clés personnelles ne passent pas en mode expert : c'est une
   question de conformité (sprint 6).

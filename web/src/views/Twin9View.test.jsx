@@ -442,6 +442,127 @@ describe('Twin9View — mode simple (S1, lot 2)', () => {
   })
 })
 
+// Sprint 5, lot C : le référentiel se choisit au lancement, par défaut celui du profil ; l'aperçu et le lancement
+// portent le choix (absent pour celui du profil) ; l'aperçu dit le référentiel lu et les spécialistes du jury retirés.
+describe('Twin9View — le référentiel choisi au lancement (S5, lot C)', () => {
+  const REFERENTIELS = [
+    { id: 'respire', label: 'RESPIRE v7', versions: ['7.0.0'], brouillons: [] },
+    { id: 'fictif-lettre', label: 'Fictif lettré', versions: ['1.0.0'], brouillons: [] },
+    { id: 'fictif-neuf', label: 'Fictif à neuf pôles', versions: [], brouillons: ['1.0.0'] },
+  ]
+  const configuration = (extra = {}) =>
+    jsonResponse(200, {
+      profils: [{ id: 3, nom: 'Lettré', fournisseurs: [ANTHROPIC_LOTS], referentiel: { id: 'fictif-lettre', version: null } }],
+      defaut: { referentiel: { id: 'respire', version: null } },
+      defaut_fournisseurs: [ANTHROPIC_LOTS],
+      referentiels: REFERENTIELS,
+      ...extra,
+    })
+  const options = () => [...screen.getByLabelText('Référentiel').options].map((o) => o.textContent)
+
+  it('par défaut celui du profil ; un autre part dans l’aperçu et le lancement, l’accord tient ; l’aperçu dit le référentiel lu et le jury retiré', async () => {
+    const corps = []
+    let envoye = null
+    const fetchFn = routedFetch({
+      'GET api/twin9/runs': jsonResponse(200, { disponible: true, runs: [] }),
+      'GET api/twin9/configuration': configuration(),
+      'POST api/twin9/runs/apercu': (init) => {
+        const c = JSON.parse(init.body)
+        corps.push(c)
+        return jsonResponse(
+          200,
+          c.referentiel
+            ? apercu({ referentiel: { id: 'fictif-lettre', version: '1.0.0', label: 'Fictif lettré' }, jury_retire: ['specialistes', 'par_competence'] })
+            : apercu({ referentiel: { id: 'respire', version: '7.0.0', label: 'RESPIRE v7' }, jury_retire: [] }),
+        )
+      },
+      'POST api/twin9/runs': (init) => {
+        envoye = JSON.parse(init.body)
+        return jsonResponse(201, run())
+      },
+    })
+    const navigate = vi.fn()
+    render(<Twin9View deps={{ fetchFn, store: await bibliotheque(), navigate }} />)
+    await screen.findByRole('button', { name: 'Lancer l’analyse' })
+    expect(options()).toEqual(['Celui du profil (RESPIRE v7)', 'RESPIRE v7', 'Fictif lettré', 'Fictif à neuf pôles 1.0.0 (brouillon, run d’essai)'])
+    expect(screen.getByLabelText('Référentiel').value).toBe('')
+    fireEvent.change(screen.getByLabelText('Profil'), { target: { value: '3' } })
+    expect(options()[0]).toBe('Celui du profil (Fictif lettré)')
+    fireEvent.change(screen.getByLabelText('Profil'), { target: { value: '' } })
+
+    fireEvent.click(screen.getByRole('checkbox', { name: /J’accepte que mon portfolio/ }))
+    await waitFor(() => expect(screen.getByRole('region', { name: 'Avant de lancer' }).textContent).toContain('Référentiel lu : RESPIRE v7, version 7.0.0.'))
+    expect(corps[0]).not.toHaveProperty('referentiel')
+
+    fireEvent.change(screen.getByLabelText('Référentiel'), { target: { value: 'fictif-lettre' } })
+    expect(screen.getByRole('checkbox', { name: /J’accepte que mon portfolio/ }).checked).toBe(true)
+    await waitFor(() =>
+      expect(screen.getByRole('region', { name: 'Avant de lancer' }).textContent).toContain(
+        'Référentiel lu : Fictif lettré, version 1.0.0. Les spécialistes que ce profil impose au jury par pôle et par ' +
+          'compétence valent pour son référentiel : ils sont retirés pour celui-ci, et le jury garde ses sièges par défaut.',
+      ),
+    )
+    expect(corps.at(-1).referentiel).toEqual({ id: 'fictif-lettre', version: null })
+
+    // un brouillon, pour un run d'essai : sa version part avec lui
+    fireEvent.change(screen.getByLabelText('Référentiel'), { target: { value: 'fictif-neuf@1.0.0' } })
+    await waitFor(() => expect(corps.at(-1).referentiel).toEqual({ id: 'fictif-neuf', version: '1.0.0' }))
+
+    fireEvent.change(screen.getByLabelText('Référentiel'), { target: { value: 'fictif-lettre' } })
+    await waitFor(() => expect(corps.at(-1).referentiel).toEqual({ id: 'fictif-lettre', version: null }))
+    await waitFor(() => expect(screen.getByRole('button', { name: 'Lancer l’analyse' }).disabled).toBe(false))
+    fireEvent.click(screen.getByRole('button', { name: 'Lancer l’analyse' }))
+    await waitFor(() => expect(navigate).toHaveBeenCalledWith('#/twin9/7'))
+    expect(envoye).toEqual({
+      profil: null,
+      portfolio: { nom: 'Mon journal.md', texte: '## 2026-01-05\nPremier jour.\n' },
+      accord: { fournisseurs: ['anthropic'] },
+      visibilite: 'privee',
+      referentiel: { id: 'fictif-lettre', version: null },
+    })
+  })
+
+  it('en mode simple, le menu paraît dès deux référentiels publiés, sans brouillon ; un brouillon choisi en mode expert retombe sur le profil', async () => {
+    const corps = []
+    const fetchFn = (referentiels) =>
+      routedFetch({
+        'GET api/twin9/runs': jsonResponse(200, { disponible: true, runs: [] }),
+        'GET api/twin9/configuration': configuration({ referentiels }),
+        'POST api/twin9/runs/apercu': (init) => {
+          corps.push(JSON.parse(init.body).referentiel ?? null)
+          return jsonResponse(200, apercu())
+        },
+      })
+    const store = await bibliotheque()
+    const vue = (mode, f) => (
+      <UiModeContext.Provider value={{ expert: mode, setExpert() {} }}>
+        <Twin9View deps={{ fetchFn: f, store }} />
+      </UiModeContext.Provider>
+    )
+    // un seul référentiel publié : pas de menu en mode simple ; il est là en mode expert
+    const seul = fetchFn([REFERENTIELS[0], REFERENTIELS[2]])
+    const { rerender } = render(vue(false, seul))
+    await screen.findByRole('button', { name: 'Lancer l’analyse' })
+    expect(screen.queryByLabelText('Référentiel')).toBeNull()
+    rerender(vue(true, seul))
+    expect(options()).toEqual(['Celui du profil (RESPIRE v7)', 'RESPIRE v7', 'Fictif à neuf pôles 1.0.0 (brouillon, run d’essai)'])
+    cleanup()
+
+    const deux = fetchFn(REFERENTIELS)
+    const r = render(vue(true, deux))
+    await screen.findByRole('button', { name: 'Lancer l’analyse' })
+    fireEvent.change(screen.getByLabelText('Référentiel'), { target: { value: 'fictif-neuf@1.0.0' } })
+    fireEvent.click(screen.getByRole('checkbox', { name: /J’accepte que mon portfolio/ }))
+    await waitFor(() => expect(corps.at(-1)).toEqual({ id: 'fictif-neuf', version: '1.0.0' }))
+    r.rerender(vue(false, deux))
+    expect(options()).toEqual(['Celui du profil (RESPIRE v7)', 'RESPIRE v7', 'Fictif lettré'])
+    expect(screen.getByLabelText('Référentiel').value).toBe('')
+    await waitFor(() => expect(corps.at(-1)).toBeNull())
+    fireEvent.change(screen.getByLabelText('Référentiel'), { target: { value: 'fictif-lettre' } })
+    await waitFor(() => expect(corps.at(-1)).toEqual({ id: 'fictif-lettre', version: null }))
+  })
+})
+
 describe('Twin9View — la page du run (T9)', () => {
   it('fait avancer le run tant qu’il est en cours, puis l’ouvre dans la cartographie', async () => {
     const etats = [run(), run({ retard: null, progression: { appels: { envoye: 1, attente: 0, repondu: 2, panne: 0 }, journees: 1, fusion: false, lots: 0, runs_avant: 0 } }), fini()]

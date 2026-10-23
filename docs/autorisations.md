@@ -283,6 +283,7 @@ l'export, dans `PurgeExportTest.php` (T10).
 |---|---|---|---|---|
 | Voir avant de lancer les journées à instruire, le coût et la durée estimés (rien n'est gardé) | — (401) | ✔ avec un de ses profils ou celui de la v9.8 | comme tout compte | comme tout compte |
 | Lancer un run : un de ses profils ou celui de la v9.8, son portfolio, son accord | — (401) | ✔ (accord exigé, qui nomme les fournisseurs du run, 422 sans lui ou s'il en nomme d'autres ; 422 si le profil atteint un fournisseur que l'administrateur n'a pas ouvert, ou sans sa clé d'instance, ou un modèle tiers sans prix ni plafonds) | comme tout compte | comme tout compte |
+| Lancer, ou voir avant de lancer, sur un autre référentiel que celui du profil (S5, lot C) | — (401) | ✔ un référentiel publié ; avec `epistemiarque`, son propre brouillon, pour un run d'essai, tant qu'il l'est (422 sinon, comme pour un profil) | comme tout compte | comme tout compte (un `admin` écrit aussi des brouillons) |
 | Lancer avec le profil d'un autre | — | — (404) | — (404) | — (404) |
 | Suivre ses runs, les annuler, les reprendre (sous un nouveau budget), régler leur visibilité | — (401) | ✔ les siens | — (404) | — (404) |
 | Exporter ses runs, leurs journaux et la mémoire de ses cartes | — (401) | ✔ les siens | — | — |
@@ -293,8 +294,8 @@ l'export, dans `PurgeExportTest.php` (T10).
 | Route | Méthode | Accès |
 |---|---|---|
 | `/api/twin9/runs` | GET | Compte : ses runs (sans portfolio ni résultat), et si Twin9 tourne sur l'instance |
-| `/api/twin9/runs/apercu` | POST | Compte, + CSRF : `{profil, portfolio}` ; les journées nouvelles ou changées, le coût et la durée estimés, les plafonds, son crédit ; 404 pour le profil d'un autre ; rien n'est gardé |
-| `/api/twin9/runs` | POST | Compte, + CSRF : `{profil, portfolio: {nom, texte}, accord: {fournisseurs}, visibilite}` (`accord: true` pour un profil tout Anthropic) ; le profil est revalidé et admis (`ProfilPolicy` : modèles au prix de l'instance compris), son référentiel figé ; jusqu'à T16, un autre référentiel que RESPIRE est refusé (422), à l'aperçu aussi |
+| `/api/twin9/runs/apercu` | POST | Compte, + CSRF : `{profil, portfolio, referentiel?}` ; les journées nouvelles ou changées, le coût et la durée estimés, les plafonds, son crédit, le référentiel lu et le jury retiré (S5, lot C) ; 404 pour le profil d'un autre ; rien n'est gardé |
+| `/api/twin9/runs` | POST | Compte, + CSRF : `{profil, portfolio: {nom, texte}, accord: {fournisseurs}, visibilite, referentiel?}` (`accord: true` pour un profil tout Anthropic ; `referentiel: {id, version?}`, un autre que celui du profil, écrit dans sa copie avant son admission, S5 lot C) ; le profil est revalidé et admis (`ProfilPolicy` : modèles au prix de l'instance compris), son référentiel figé ; jusqu'à T16, un autre référentiel que RESPIRE est refusé (422), à l'aperçu aussi |
 | `/api/twin9/runs/avancer` | POST | Compte, + CSRF : une tranche, de la durée de celles du tick et sous son verrou, pour ses seuls runs |
 | `/api/twin9/runs/{id}` | GET | Son propriétaire : sa progression, lue dans son journal ; 404 pour tout autre |
 | `/api/twin9/runs/{id}/annuler`, `/reprendre` | POST | Son propriétaire, + CSRF ; `/reprendre` accepte `{budget_usd}`, un nouveau budget, et relit la garde de ses fournisseurs (422 pour un fournisseur fermé depuis ou sans sa clé d'instance) ; 409 hors de l'état voulu |

@@ -10,10 +10,12 @@ declare(strict_types=1);
  * « Runs Twin9 ».
  *
  *   GET  /api/twin9/runs                     own runs, and whether Twin9 runs on this instance
- *   POST /api/twin9/runs/apercu              {profil, portfolio}: the days new or changed, the estimated cost and
- *                                            duration, the caps, before a launch (T10)
+ *   POST /api/twin9/runs/apercu              {profil, portfolio, referentiel?}: the days new or changed, the estimated
+ *                                            cost and duration, the caps, the referential read, before a launch (T10)
  *   POST /api/twin9/runs                     {profil: id|null, portfolio: {nom, texte}, accord: {fournisseurs: [ids]}
- *                                            (true for a profile all Anthropic), visibilite?} -> 201
+ *                                            (true for a profile all Anthropic), visibilite?, referentiel?:
+ *                                            {id, version?}|null — another referential than its profile's, chosen at
+ *                                            the launch (S5, lot C)} -> 201
  *   POST /api/twin9/runs/avancer             the page advances its owner's runs (never the tick's token)
  *   GET  /api/twin9/runs/{id}                its progress, read in its journal, and its cost (owner)
  *   POST /api/twin9/runs/{id}/annuler        stop it (owner)
@@ -35,6 +37,8 @@ use Humanome\Cartographe\Links;
 use Humanome\Db;
 use Humanome\Middleware\RequireRole;
 use Humanome\Packages\SettingsRepository;
+use Humanome\Referentiel\ReferentielRepository;
+use Humanome\Referentiel\Semver;
 use Humanome\Twin9\EngineLoader;
 use Humanome\Twin9\Lancement;
 use Humanome\Twin9\ProfilPolicy;
@@ -122,7 +126,13 @@ return function (App $app): void {
         }
     ));
 
-    /** @return array{0: int|null, 1: array{nom: string, texte: string}} the profile and the portfolio a body names, or 422 */
+    /**
+     * The profile, the portfolio and the referential a body names, or 422. The referential (S5, lot C): absent or
+     * null, its profile's; {id, version?}, another one chosen at the launch, its version null for its latest
+     * published (Lancement::preparer()).
+     *
+     * @return array{0: int|null, 1: array{nom: string, texte: string}, 2: array{id: string, version: string|null}|null}
+     */
     $choix = static function (array $c): array {
         $profil = $c['profil'] ?? null;
         if ($profil !== null && !\is_int($profil)) {
@@ -132,8 +142,20 @@ return function (App $app): void {
         if (!\is_array($portfolio) || !\is_string($portfolio['nom'] ?? null) || !\is_string($portfolio['texte'] ?? null)) {
             throw new Twin9Exception('Portfolio requis : {nom, texte}', 422);
         }
+        $referentiel = $c['referentiel'] ?? null;
+        if ($referentiel !== null) {
+            $id = \is_array($referentiel) ? ($referentiel['id'] ?? null) : null;
+            $version = \is_array($referentiel) ? ($referentiel['version'] ?? null) : null;
+            if (!\is_string($id) || preg_match(ReferentielRepository::ID_PATTERN, $id) !== 1
+                || array_diff(array_keys($referentiel), ['id', 'version']) !== []
+                || ($version !== null && (!\is_string($version) || !Semver::isValid($version)))) {
+                throw new Twin9Exception('Référentiel invalide : {id, version?} (version semver, ou null pour la '
+                    . 'dernière publiée), ou null pour celui du profil', 422);
+            }
+            $referentiel = ['id' => $id, 'version' => $version];
+        }
 
-        return [$profil, $portfolio];
+        return [$profil, $portfolio, $referentiel];
     };
 
     $lancement = static fn (): Lancement => new Lancement(Db::get(), new Twin9Config(new SettingsRepository(Db::get())));
@@ -143,9 +165,10 @@ return function (App $app): void {
     $app->post('/twin9/runs/apercu', $wrap(
         function (Request $request, Response $response, array $args, int $userId) use ($json, $corps, $choix,
                                                                                         $lancement): Response {
-            [$profil, $portfolio] = $choix($corps($request));
+            [$profil, $portfolio, $referentiel] = $choix($corps($request));
 
-            return $json($response, $lancement()->apercu($userId, $profil, $portfolio['nom'], $portfolio['texte']));
+            return $json($response, $lancement()->apercu($userId, $profil, $portfolio['nom'], $portfolio['texte'],
+                $referentiel));
         }
     ));
 
@@ -153,11 +176,11 @@ return function (App $app): void {
         function (Request $request, Response $response, array $args, int $userId) use ($json, $corps, $choix,
                                                                                         $lancement, $suivi): Response {
             $c = $corps($request);
-            [$profil, $portfolio] = $choix($c);
+            [$profil, $portfolio, $referentiel] = $choix($c);
             $visibilite = $c['visibilite'] ?? 'privee';
             // the consent as sent: {fournisseurs: [ids]}, or true for a profile all Anthropic (Lancement)
             $id = $lancement()->lancer($userId, $profil, $portfolio['nom'], $portfolio['texte'],
-                $c['accord'] ?? false, \is_string($visibilite) ? $visibilite : '');
+                $c['accord'] ?? false, \is_string($visibilite) ? $visibilite : '', null, $referentiel);
 
             return $json($response, $suivi($id), 201);
         }

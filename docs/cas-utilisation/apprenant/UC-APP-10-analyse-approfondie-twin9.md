@@ -75,9 +75,10 @@ badge premium) ou ouvre `#/twin9`.
    qu'atteignent ses appels, avec leur voie et leur étiquette RGPD) et sa
    bibliothèque locale de portfolios (IndexedDB, UC-APP-01).
 2. Il choisit un profil (« Profil v9.8 », par défaut, ou un des siens ; « Régler
-   mes profils » mène à `#/configuration`), un portfolio de sa bibliothèque ou
-   un fichier (`.md`, `.txt`) et, s'il le veut, « Mon cartographe peut lire les
-   résultats » (A5).
+   mes profils » mène à `#/configuration` ; en mode simple, le profil v9.8 :
+   A10), s'il le veut un autre référentiel que celui du profil (A11), un
+   portfolio de sa bibliothèque ou un fichier (`.md`, `.txt`) et, s'il le
+   veut, « Mon cartographe peut lire les résultats » (A5).
 3. Il coche l'**accord** : son portfolio et l'état de l'analyse restent sur le
    serveur jusqu'à ce qu'il les efface ; le texte part chez les fournisseurs
    que l'accord nomme, chacun avec sa voie et son étiquette RGPD — pour le
@@ -85,7 +86,8 @@ badge premium) ou ouvre `#/twin9`.
    fournisseur du modèle » ; par lots, Anthropic garde le lot jusqu'à sa
    suppression, 29 jours au plus (RG1, A9).
 4. L'accord donné, la vue demande l'**aperçu** (`POST /api/twin9/runs/apercu
-   {profil, portfolio}`, rien n'est gardé) et l'affiche : les journées à
+   {profil, portfolio, referentiel?}`, rien n'est gardé) et l'affiche : le
+   référentiel lu (« Référentiel lu : RESPIRE v7, version 7.0.0. »), les journées à
    instruire (« 2 journées à instruire. » au premier run), le coût estimé — en
    moyenne, au plus bas, au plus haut — et la durée, d'après les évaluations
    passées de mêmes réglages ou, à défaut, d'après le vrai run de PLANT-01 ×
@@ -94,7 +96,7 @@ badge premium) ou ouvre `#/twin9`.
    les journées de l'interface, et l'aperçu dit les journées qu'il retouche
    pour cela (RG16).
 5. « Lancer l'analyse » envoie `POST /api/twin9/runs {profil, portfolio,
-   accord: {fournisseurs: [ids]}, visibilite}` avec le jeton CSRF, le
+   accord: {fournisseurs: [ids]}, visibilite, referentiel?}` avec le jeton CSRF, le
    portfolio tel que l'aperçu l'a envoyé (RG16). Le serveur revalide et admet
    le profil, fige la version de son référentiel, prend l'instantané du jeu de
    gabarits, admet les journées (RG5), crée le run `en_cours` et son
@@ -175,7 +177,8 @@ badge premium) ou ouvre `#/twin9`.
   le lit, et la carte s'ouvre avec ses pôles, que le titre du jeu nomme. De même
   une version de RESPIRE d'une autre structure (2026-10-20, UC-EPI-04 : six
   pôles, une compétence déplacée) : le moteur en lit les pôles (numérotés de 1
-  à N, la règle du moteur), et ses fiches suivent RG12.
+  à N, la règle du moteur), et ses fiches suivent RG12. Depuis le sprint 5,
+  lot C, le référentiel se choisit aussi au lancement, sans profil (A11).
 - **A8 — Mode essai** (étape 2) : un profil en mode essai ne lit que la
   première journée et le premier pôle ; « essai » dans « Mes analyses » et
   dans l'attestation.
@@ -216,6 +219,23 @@ badge premium) ou ouvre `#/twin9`.
   dit (UC-VIS-06 A4). En mode expert, la page est celle d'avant. Le mode
   n'est jamais un droit : le serveur ne le lit pas, et un profil reste
   lancé par son identifiant, quel que soit le mode.
+- **A11 — Référentiel choisi au lancement** (étapes 2, 4 et 5 ; sprint 5,
+  lot C, phase D, 2026-10-22 ; `docs/contrats.md` §8.4) : le menu
+  « Référentiel » propose « Celui du profil (RESPIRE v7) », par défaut,
+  chaque référentiel publié par son libellé (sa dernière version) et, en
+  mode expert, les brouillons de son auteur (« … 1.0.0 (brouillon, run
+  d'essai) »). Il est toujours là en mode expert ; en mode simple, dès que
+  plus d'un référentiel est publié (sans brouillon). Un autre choix part
+  dans l'aperçu et le lancement (`referentiel: {id, version}`, `version`
+  nulle pour la dernière publiée), sans redemander l'accord : les
+  fournisseurs ne changent pas. Le serveur l'écrit dans la copie du profil
+  avant de l'admettre : un brouillon ne sert que le run d'essai de son
+  auteur (UC-EPI-05 A5), un référentiel inconnu ou une version non publiée
+  sont refusés (`422`, E4), la version est figée, et l'attestation, la
+  configuration et la carte portent le référentiel choisi ; le profil
+  enregistré ne change pas. L'aperçu dit le référentiel lu et, le cas
+  échéant, les spécialistes du jury retirés (RG18). C'est ainsi qu'on lance
+  le profil v9.8 sur un autre référentiel, sans créer de profil.
 
 ## Scénarios d'erreur
 
@@ -231,9 +251,11 @@ badge premium) ou ouvre `#/twin9`.
 - **E4 — Portfolio ou profil refusé** (étapes 4-5) : nom ou texte invalide
   (`422`), profil d'un autre (`404`), profil refusé — clé personnelle fermée
   ou absente, jeu de gabarits non proposé ou incomplet, modèle sans prix sur
-  l'instance, référentiel non publié ou illisible, jeu de gabarits d'avant T16
+  l'instance, référentiel non publié ou illisible — celui du profil ou celui
+  choisi au lancement (A11) —, jeu de gabarits d'avant T16
   hors de la structure que décrivent ses fiches (RG12) — `422` qui nomme le
-  choix refusé ; la vue affiche le message.
+  choix refusé ; un choix de référentiel mal formé, `422` « Référentiel
+  invalide : … » ; la vue affiche le message.
 - **E5 — Refus d'admission** (étapes 4-5) : le crédit ou le budget ne couvre
   pas même une journée et sa fusion : l'aperçu dit ce qu'il faudrait (« Votre
   crédit ne couvre pas une carte, même d'une journée : il faudrait … ») avec
@@ -383,6 +405,15 @@ badge premium) ou ouvre `#/twin9`.
   indices, les journées de ses traces, sa délibération ; elle n'entre dans
   aucune journée ni dans le soleil, et le panneau de son pôle la nomme.
 
+- **RG18 — Garde du jury** (A11) : un référentiel choisi au lancement dont
+  l'identifiant n'est pas celui du profil vide, dans la copie du profil, les
+  spécialistes que le profil impose au jury par numéro de pôle
+  (`jury.specialistes`) et par code de compétence (`jury.par_competence`) :
+  réglés pour le référentiel du profil, ils assiéraient un juré sur un
+  autre pôle, ou sur aucun code. Le jury garde alors ses sièges par défaut
+  (`docs/contrats.md` §8.8). L'aperçu nomme ce qu'il retire
+  (`jury_retire`) ; le même référentiel, ou aucun choix, les garde.
+
 ## Données et RGPD
 
 | Donnée | Traitement |
@@ -401,7 +432,7 @@ badge premium) ou ouvre `#/twin9`.
 | Couche | Élément | Rôle |
 |---|---|---|
 | Front | `web/src/router.js` — `parseHash` ; `web/src/nav.js` — `navGroups` | Routes `#/twin9` et `#/twin9/<id>` ; entrée « Analyse approfondie » (premium) |
-| Front | `web/src/views/Twin9View.jsx` — `Lancer`, `Apercu`, `PageDuRun`, `phraseFournisseurs` | Choix, accord qui nomme les fournisseurs (A9), aperçu, lancement ; suivi, avance, annulation, reprise sous un nouveau budget, visibilité, ouverture dans la cartographie, attestation |
+| Front | `web/src/views/Twin9View.jsx` — `Lancer`, `Apercu`, `PageDuRun`, `phraseFournisseurs`, `choixReferentiels`, `phraseJury` | Choix (profil selon le mode, A10 ; référentiel, A11), accord qui nomme les fournisseurs (A9), aperçu, lancement ; suivi, avance, annulation, reprise sous un nouveau budget, visibilité, ouverture dans la cartographie, attestation |
 | Front | `web/src/views/ConfigurationView.jsx` ; `web/src/views/configuration/profilSchema.js` — `fournisseurDe`, `fournisseurHerite`, `fournisseursDuProfil`, `suivreLeFournisseur`, `modeleAdmis` | Le fournisseur de chaque étage, étape et lecteur, son étiquette, la voie, ce que le serveur refuserait (A9) |
 | Front | `web/src/views/twin9/ConfigurationDuRun.jsx` — `ConfigurationDuRun`, `VueConfiguration` | « Configuration » de la page du run : lecture à l'ouverture, réglages par rôle, exécution (RG13) |
 | Front | `web/src/api/twin9.js` — `fetchRuns`, `fetchConfiguration`, `apercuRun`, `lancerRun`, `fetchRun`, `avancerRuns`, `annulerRun`, `reprendreRun`, `rendreRunVisible`, `fetchResultats`, `formatUsd` | Client des runs |
@@ -414,10 +445,10 @@ badge premium) ou ouvre `#/twin9`.
 | Front | `web/src/carto/core/importers/twin9-run.js` — `importTwin9Run` (`cartesReunies`, `stigmergieReunie`, `secondRessort`) ; `web/src/carto/core/import.js` — `mergeIntoDataset` ; `web/src/carto/ui/SecondReading.jsx` — `readingName`, `readingVerdict`, `SecondReadings` ; `web/src/carto/ui/DetailPanel.jsx` | Deux cartes du même jour réunies ; le second ressort en seconde lecture, sa ligne, le panneau du pôle (RG17) |
 | API | `GET/POST /api/twin9/runs`, `POST …/apercu`, `POST …/avancer`, `GET …/{id}`, `POST …/{id}/annuler`, `POST …/{id}/reprendre`, `PUT …/{id}/visibilite`, `GET …/{id}/resultats`, `GET /api/twin9/admin/runs` — `api/src/routes/twin9-runs.php` | Runs du serveur |
 | API | `api/src/Middleware/CsrfMiddleware.php` | Jeton CSRF des écritures (E1) — logique unitaire couverte par UC-CPT-02-U07 |
-| Domaine | `api/src/Twin9/Lancement.php` — `lancer`, `apercu`, `empreinte` | Lancement, aperçu, estimation, admission ; jeu d'avant T16 (RG12) |
+| Domaine | `api/src/Twin9/Lancement.php` — `lancer`, `apercu`, `empreinte`, `choisirReferentiel` | Lancement, aperçu, estimation, admission ; jeu d'avant T16 (RG12) ; référentiel choisi et garde du jury (A11, RG18) |
 | Domaine | `api/src/Twin9/ReferentielMoteur.php` — `bloc` | Le référentiel du run tel que le moteur le lit, ses fiches (RG12) |
-| Domaine | `api/src/Twin9/ProfilPolicy.php` — `admettre`, `admettreAuLancement`, `choix` | Ce qu'un profil peut choisir sur l'instance ; les fournisseurs disponibles (A9) |
-| API | `GET /api/twin9/configuration` — `api/src/routes/twin9-configuration.php` ; `Lancement::fournisseurs` | Les fournisseurs de chaque profil et du profil v9.8, pour l'accord (A9) |
+| Domaine | `api/src/Twin9/ProfilPolicy.php` — `admettre`, `admettreAuLancement`, `choix` | Ce qu'un profil peut choisir sur l'instance, les référentiels et leurs libellés (A11) ; les fournisseurs disponibles (A9) |
+| API | `GET /api/twin9/configuration` — `api/src/routes/twin9-configuration.php` ; `Lancement::fournisseurs` | Les fournisseurs de chaque profil et du profil v9.8, pour l'accord (A9) ; le référentiel de chaque profil (A11) |
 | Domaine | `api/src/Twin9/RunRepository.php` — `duProprietaire`, `suivi`, `annuler`, `reprendre`, `rendreVisible`, `acces` | Liste, suivi, actions du propriétaire |
 | Domaine | `api/src/Twin9/RunCosts.php`, `api/src/Twin9/CreditService.php` | Réserves, réconciliation, remboursements |
 | Domaine | `api/src/Twin9/Resultats.php` — `lire` ; `api/src/Twin9/LeakFilter.php` | Résultats filtrés, mémoire, référentiel du run ; traces de la stigmergie conservées ou non (RG15) |
@@ -484,6 +515,10 @@ badge premium) ou ouvre `#/twin9`.
 | UC-APP-10-F21 | Nominal (étapes 7-8), RG13, RG14 | IHM | `<App/>` : la page d'un run fini ouvre sa configuration, lue dans ses résultats à l'ouverture seulement, à côté de l'attestation inchangée ; le conseil de la sortie tronquée nomme son étape et dit le coût du remède ; ouvert dans la cartographie, le jeu garde la configuration par liste blanche, chaque journée dit ses modèles et son jeu, rien d'un prix, d'un coût ni de la clé | `web/test/usecases/functional/uc-app-10-analyse-approfondie-twin9.test.jsx` |
 | UC-APP-10-F23 | Nominal (étape 7), RG15 | IHM | `<App/>` : un run dont la stigmergie est activée, ouvert dans la cartographie ; le jeu garde les traces de chaque journée, conservées ou non ; la modale du 5 montre sa trace et sa nature, sans intensité pour l'apprenant en mode simple ; celle du 6, en panne, les dit non conservées | idem |
 | UC-APP-10-F24 | A10 | IHM | `<App/>`, apprenant en mode simple : ni liste des profils ni « Régler mes profils », une ligne nomme le profil v9.8 ; l'aide le dit ; l'accord nomme ses fournisseurs, l'aperçu et le lancement envoient `profil: null` ; en mode expert, la liste et le lien reviennent | `web/test/usecases/functional/uc-app-10-analyse-approfondie-twin9.test.jsx` |
+| UC-APP-10-F25 | A11, E4 | API | Le profil v9.8 et un profil RESPIRE sur un référentiel choisi : l'aperçu dit le référentiel lu, ses pôles comptés ; lancement `201`, attestation (empreinte), configuration, copie du profil et réglages du moteur sur le référentiel choisi, sa dernière version figée ; run au bout, résultats et carte sur lui ; le profil enregistré inchangé ; inconnu, version non publiée, choix mal formé : `422`, aucun run | `api/tests/UseCases/Functional/UcApp10AnalyseApprofondieTwin9Test.php` |
+| UC-APP-10-F26 | A11, E4 | API | Un brouillon choisi au lancement : le run d'essai de son auteur va au bout ; en mode complet, pour un autre compte, ou sans version (jamais publié) : `422`, aucun run | idem |
+| UC-APP-10-F27 | RG18 | API | Un autre référentiel vide les spécialistes du jury dans la copie (`{}`) et dans les réglages du moteur, l'aperçu les nomme ; le même référentiel, ou aucun choix, les garde ; le profil enregistré inchangé | idem |
+| UC-APP-10-F28 | A11 | IHM | `<App/>`, mode simple, deux référentiels publiés : le menu « Référentiel », par défaut celui du profil ; l'aperçu dit le référentiel lu ; l'aperçu et le lancement portent le choix (CSRF) | `web/test/usecases/functional/uc-app-10-analyse-approfondie-twin9.test.jsx` |
 
 ### Tests existants liés (non-régression)
 
@@ -495,7 +530,7 @@ badge premium) ou ouvre `#/twin9`.
 - `api/tests/Twin9/PurgeExportTest.php` — purge du compte, lots chez Anthropic, export.
 - `api/tests/Twin9MetaTest.php` — le proxy du moteur du navigateur est parti (T11).
 - `api/tests/Twin9/RunConfigurationTest.php`, `api/tests/Twin9/RunsTest.php`, `api/tests/Twin9/PurgeExportTest.php` — configuration et exécution d'un run (P0-1) : liste blanche, vue du cartographe, tables vides en objets, reprises, export d'un run ancien.
-- `web/src/views/Twin9View.test.jsx` — lancement, aperçu, admission, page du run, carte incomplète, référentiels (T17) ; « Configuration » (P0-1) : lue à l'ouverture seulement, l'exécution partielle seule d'un run d'avant elle, relue à chaque ouverture d'un run en cours et quand il finit, erreur dans le bloc ; l'accord qui nomme les fournisseurs, tient pour les mêmes, tombe pour d'autres, la durée d'un run mixte (A9) ; en mode simple, le profil v9.8 sans liste ni lien, un profil choisi en mode expert qui ne part pas (A10).
+- `web/src/views/Twin9View.test.jsx` — lancement, aperçu, admission, page du run, carte incomplète, référentiels (T17) ; « Configuration » (P0-1) : lue à l'ouverture seulement, l'exécution partielle seule d'un run d'avant elle, relue à chaque ouverture d'un run en cours et quand il finit, erreur dans le bloc ; l'accord qui nomme les fournisseurs, tient pour les mêmes, tombe pour d'autres, la durée d'un run mixte (A9) ; en mode simple, le profil v9.8 sans liste ni lien, un profil choisi en mode expert qui ne part pas (A10) ; le menu « Référentiel » : celui du profil par défaut, un autre dans l'aperçu et le lancement, l'accord qui tient, un brouillon en mode expert seulement, le menu du mode simple dès deux référentiels publiés, le référentiel lu et le jury retiré dits par l'aperçu (A11, RG18).
 - `web/src/views/ConfigurationView.test.jsx`, `web/src/views/configuration/profilSchema.test.js` — le fournisseur de chaque réglage : hérité, étiquette visible, indisponible non choisi, famille, modèle et effort qui suivent, ce que le serveur refuserait dit à côté, la voie expliquée, la clé personnelle chez Anthropic seulement ; l'héritage, les fournisseurs atteints et les tables recopiées du PHP (étages des étapes, libellés, étiquettes, motifs de modèle) comparés au code PHP (A9).
 - `api/tests/Twin9/ConfigurationDroitsTest.php` — `testTheConfigurationNamesEachProfilesProviders` (les fournisseurs de chaque profil et du profil v9.8, avant tout aperçu), `testAProviderNotOpenYetIsSavedNotLaunched` ; `api/tests/Twin9/RunsTest.php` — l'accord comparé aux fournisseurs du run, gardé dans sa configuration (A9).
 - `web/src/carto/core/importers/twin9-run.test.js`, `web/src/lib/twin9/mapper.test.js` — jeu de cartographie d'un run, dossiers ; configuration par liste blanche, variantes inchangées avec ou sans elle, jeu exporté sans prix ni clé (P0-1).

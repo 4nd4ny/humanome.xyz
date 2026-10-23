@@ -11,9 +11,11 @@ declare(strict_types=1);
  *
  *   GET    /api/twin9/configuration  the page's start: own profiles (no document; each with the providers its
  *                                     calls reach, which a launch's consent names before any preview,
- *                                     ADR-012), the default profile (the v9.8's, with the instance's default
+ *                                     ADR-012, and its referential, which a launch may replace, S5 lot C),
+ *                                     the default profile (the v9.8's, with the instance's default
  *                                     template set) and its providers, the presets a new profile copies
- *                                     (`predefinis`, each with its providers), the choices
+ *                                     (`predefinis`, each with its providers), the choices (the
+ *                                     referentials with their labels, the launch page's menu)
  *   POST   /api/twin9/profils        {nom, profil} -> 201 {id, nom, profil}
  *   GET    /api/twin9/profils/{id}   own profile -> {id, nom, profil}
  *   PUT    /api/twin9/profils/{id}   {nom?, profil} -> {id, nom, profil}
@@ -130,9 +132,15 @@ return function (App $app): void {
             $documents = $profils->documentsDe($userId);
             $defaut = $politique()->defaut();
 
+            // each profile's referential, {id, version}: the launch page names it as its default (S5, lot C)
+            $referentiel = static fn (?stdClass $doc): ?array => \is_string($doc->referentiel->id ?? null)
+                ? ['id' => $doc->referentiel->id, 'version' => \is_string($doc->referentiel->version ?? null)
+                    ? $doc->referentiel->version : null] : null;
+
             return $json($response, [
                 'profils' => array_map(static fn (array $p): array => $p + ['fournisseurs' => isset($documents[$p['id']])
-                    ? $fournisseurs($documents[$p['id']]) : null], $profils->listForUser($userId)),
+                    ? $fournisseurs($documents[$p['id']]) : null, 'referentiel' => $referentiel($documents[$p['id']] ?? null)],
+                    $profils->listForUser($userId)),
                 'defaut' => $defaut,
                 'defaut_fournisseurs' => $fournisseurs($defaut),
                 'predefinis' => array_map(static fn (array $p): array => $p + ['fournisseurs' => $fournisseurs($p['profil'])],

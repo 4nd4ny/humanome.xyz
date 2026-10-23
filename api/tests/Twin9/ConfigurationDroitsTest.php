@@ -242,7 +242,7 @@ final class ConfigurationDroitsTest extends CartographeTestCase
     public function testOnlyAPublishedReferential(): void
     {
         $compte = $this->registerAs('ref@example.org', 'Référentiel');
-        self::assertSame([['id' => 'respire', 'versions' => ['7.0.0'], 'brouillons' => []]],
+        self::assertSame([['id' => 'respire', 'label' => 'RESPIRE v7', 'versions' => ['7.0.0'], 'brouillons' => []]],
             self::json($this->as_($compte, 'GET', '/api/twin9/configuration'))['referentiels']);
 
         foreach ([['respire', null, 201], ['respire', '7.0.0', 201], ['respire', '9.9.9', 422], ['inconnu', null, 422]]
@@ -270,10 +270,10 @@ final class ConfigurationDroitsTest extends CartographeTestCase
         $repo->createDraft('respire', '7.0.0', '7.1.0', null, $alix['id']);
         $refus = 'Profil refusé — /referentiel/version : un brouillon ne sert qu’aux runs d’essai de son auteur';
 
-        self::assertSame([['id' => 'respire', 'versions' => ['7.0.0'], 'brouillons' => ['7.1.0']],
-                          ['id' => 'fictif-neuf', 'versions' => [], 'brouillons' => ['1.0.0']]],
+        self::assertSame([['id' => 'respire', 'label' => 'RESPIRE v7', 'versions' => ['7.0.0'], 'brouillons' => ['7.1.0']],
+                          ['id' => 'fictif-neuf', 'label' => 'Fictif à neuf pôles', 'versions' => [], 'brouillons' => ['1.0.0']]],
             self::json($this->as_($alix, 'GET', '/api/twin9/configuration'))['referentiels']);
-        self::assertSame([['id' => 'respire', 'versions' => ['7.0.0'], 'brouillons' => []]],
+        self::assertSame([['id' => 'respire', 'label' => 'RESPIRE v7', 'versions' => ['7.0.0'], 'brouillons' => []]],
             self::json($this->as_($bao, 'GET', '/api/twin9/configuration'))['referentiels']);
 
         $profil = function (string $id, ?string $version, string $mode): stdClass {
@@ -300,7 +300,7 @@ final class ConfigurationDroitsTest extends CartographeTestCase
 
         // out of the épistémiarques, its author's drafts are no longer offered
         self::$pdo->prepare('DELETE FROM user_roles WHERE user_id = ?')->execute([$alix['id']]);
-        self::assertSame([['id' => 'respire', 'versions' => ['7.0.0'], 'brouillons' => []]],
+        self::assertSame([['id' => 'respire', 'label' => 'RESPIRE v7', 'versions' => ['7.0.0'], 'brouillons' => []]],
             self::json($this->as_($alix, 'GET', '/api/twin9/configuration'))['referentiels']);
         self::assertSame([422, $refus], $enregistrer($alix, $profil('fictif-neuf', '1.0.0', 'test')));
 
@@ -537,7 +537,8 @@ final class ConfigurationDroitsTest extends CartographeTestCase
      * preview, the portfolio not sent yet (ADR-012): the configuration's
      * route gives each profile's, and the default's, as the preview does —
      * label, GDPR tag, lane —, whether the instance opened them or not; a
-     * stored profile the schema no longer admits gives none.
+     * stored profile the schema no longer admits gives none. Each profile
+     * names its referential too, the launch page's default (S5, lot C).
      */
     public function testTheConfigurationNamesEachProfilesProviders(): void
     {
@@ -565,7 +566,10 @@ final class ConfigurationDroitsTest extends CartographeTestCase
                         ['id' => 'mistral', 'libelle' => 'Mistral AI', 'rgpd' => 'oui', 'voie' => 'directe']],
         ], array_column($configuration['profils'], 'fournisseurs', 'nom'));
         self::assertSame([$anthropic + ['voie' => 'lots']], $configuration['defaut_fournisseurs']);
-        self::assertSame(['id', 'nom', 'updated_at', 'fournisseurs'], array_keys($configuration['profils'][0]));
+        self::assertSame(['id', 'nom', 'updated_at', 'fournisseurs', 'referentiel'], array_keys($configuration['profils'][0]));
+        $respire = ['id' => 'respire', 'version' => null];
+        self::assertSame(['Ancien' => null, 'Direct' => $respire, 'Mixte' => $respire],
+            array_column($configuration['profils'], 'referentiel', 'nom'));
     }
 
     /**

@@ -42,7 +42,12 @@ use stdClass;
  * The engine reads the run's referential from its settings, drawn from the
  * base at the version its profile freezes (T16, ReferentielMoteur): any
  * referential published, or a draft its author tries; the attestation keeps
- * its fingerprint. A profile with the greffier's stigmergy on is launched
+ * its fingerprint. The launch, and its preview, may choose another
+ * referential than the profile's (S5, lot C: choisirReferentiel()), in the
+ * run's copy of its profile before its admission: every rule of a profile's
+ * referential holds for it, and the jury's overrides, keyed by the numbers
+ * and the codes of the profile's referential, are dropped when its id
+ * changes. A profile with the greffier's stigmergy on is launched
  * only by an engine that has it (Twin9\Stigmergie): another one would ignore
  * it.
  *
@@ -83,11 +88,15 @@ final class Lancement
      * @param string $portfolioNom the portfolio's file name: its stem names the journal, and the map
      * @param mixed $accord the owner's consent, which every launch asks: {fournisseurs: [ids]}, the providers the
      *                      run's calls reach, as the page showed them; true for a profile all Anthropic
+     * @param array{id: string, version: string|null}|null $referentielChoisi another referential than the profile's,
+     *                                                                         chosen at the launch (S5, lot C); null:
+     *                                                                         the profile's
      * @return int the run
      * @throws Twin9Exception 422 naming what is refused, 404 for another's profile, 503 without the engine
      */
     public function lancer(int $userId, ?int $profilId, string $portfolioNom, string $portfolio, mixed $accord,
-                           string $visibilite = 'privee', ?\DateTimeImmutable $maintenant = null): int
+                           string $visibilite = 'privee', ?\DateTimeImmutable $maintenant = null,
+                           ?array $referentielChoisi = null): int
     {
         $accordes = self::accordes($accord);
         if ($accordes === null) {
@@ -101,7 +110,7 @@ final class Lancement
         $sortie = 'twin9/runs/' . bin2hex(random_bytes(8));
         ['profil' => $profil, 'nom' => $nom, 'moteur' => $moteur, 'jeu' => $jeu, 'referentiel' => $referentiel,
          'plateforme' => $plateforme, 'empreinte_reglages' => $empreinteReglages]
-            = $this->preparer($userId, $profilId, $portfolioNom, $portfolio, $horloge, $sortie);
+            = $this->preparer($userId, $profilId, $portfolioNom, $portfolio, $horloge, $sortie, $referentielChoisi);
         // the consent names the providers the run reaches, no more, no fewer (ADR-012)
         $atteints = (new CallSettings($profil))->fournisseurs();
         if ($accordes === true ? $atteints !== [Fournisseurs::DEFAUT] : $accordes !== self::trie($atteints)) {
@@ -168,15 +177,21 @@ final class Lancement
      * would instruct, new or changed since its map's memory; what it would
      * cost and last, and the days its owner's credit or its budget lets in
      * (T8, prevoir()); its caps; its owner's credit when the instance's key
-     * pays. Nothing is kept.
+     * pays; the referential it would read, the one its profile names or the
+     * one chosen (S5, lot C), and the jury's overrides that choice drops.
+     * Nothing is kept.
      *
+     * @param array{id: string, version: string|null}|null $referentielChoisi as lancer() takes it
      * @return array<string, mixed>
      * @throws Twin9Exception as lancer() does
      */
-    public function apercu(int $userId, ?int $profilId, string $portfolioNom, string $portfolio): array
+    public function apercu(int $userId, ?int $profilId, string $portfolioNom, string $portfolio,
+                           ?array $referentielChoisi = null): array
     {
-        ['profil' => $profil, 'jeu' => $jeu, 'referentiel' => $referentiel, 'plateforme' => $plateforme]
-            = $this->preparer($userId, $profilId, $portfolioNom, $portfolio, new \DateTimeImmutable(), 'twin9/apercu');
+        ['profil' => $profil, 'jeu' => $jeu, 'referentiel' => $referentiel, 'plateforme' => $plateforme,
+         'jury_retire' => $juryRetire]
+            = $this->preparer($userId, $profilId, $portfolioNom, $portfolio, new \DateTimeImmutable(), 'twin9/apercu',
+                $referentielChoisi);
         if (!method_exists($plateforme, 'apercu')) {
             throw new Twin9Exception('L’aperçu demande une version plus récente du moteur', 503);
         }
@@ -204,6 +219,10 @@ final class Lancement
             'plafonds' => ['budget_usd' => $profil->budget_usd ?? null, 'duree_minutes' => $profil->duree_minutes ?? null],
             'credit_usd' => $profil->cle === 'instance'
                 ? round((new CreditService($this->pdo))->balance($userId) / 1_000_000, 2) : null,
+            // the referential the run would read, its version frozen; the jury's overrides its choice drops (S5, lot C)
+            'referentiel' => ['id' => (string) $profil->referentiel->id, 'version' => (string) $profil->referentiel->version,
+                              'label' => (string) ($referentiel['label'] ?? $profil->referentiel->id)],
+            'jury_retire' => $juryRetire,
         ];
     }
 
@@ -485,16 +504,19 @@ final class Lancement
 
     /**
      * What a launch and its preview share: the portfolio checked, the
-     * profile copied and admitted, the engine and the template set present,
-     * the engine's settings drawn from the copy, and the platform built over
-     * them as the slices build it.
+     * profile copied — with the referential chosen at the launch, if any
+     * (choisirReferentiel()) — and admitted, the engine and the template set
+     * present, the engine's settings drawn from the copy, and the platform
+     * built over them as the slices build it.
      *
+     * @param array{id: string, version: string|null}|null $referentielChoisi
      * @return array{profil: stdClass, nom: string, moteur: stdClass,
      *               jeu: array{gabarits: array<string, string>, versions: array<string, int>},
-     *               referentiel: array<string, mixed>, plateforme: \Twin9\Plateforme}
+     *               referentiel: array<string, mixed>, plateforme: \Twin9\Plateforme, empreinte_reglages: string,
+     *               jury_retire: list<string>}
      */
     private function preparer(int $userId, ?int $profilId, string $portfolioNom, string $portfolio,
-                              \DateTimeImmutable $horloge, string $sortie): array
+                              \DateTimeImmutable $horloge, string $sortie, ?array $referentielChoisi = null): array
     {
         $portfolioNom = trim($portfolioNom);
         if ($portfolioNom === '' || \strlen($portfolioNom) > 255 || preg_match('#[/\\\\\x00-\x1f]#', $portfolioNom) === 1) {
@@ -515,6 +537,9 @@ final class Lancement
 
         $politique = new ProfilPolicy($this->pdo, $this->config);
         [$profil, $nom] = $this->profil($userId, $profilId, $politique);
+        // S5, lot C: the referential chosen at the launch, in the copy, before its admission — the drafts' rule, a
+        // referential not published refused, its version frozen below, a set of before T16 refused, the attestation
+        $juryRetire = $referentielChoisi === null ? [] : self::choisirReferentiel($profil, $referentielChoisi);
         $politique->admettre($profil, $userId);
         $politique->admettreAuLancement($profil);
         // an engine without the stigmergy would ignore config.stigmergie: the run, its configuration saying it on,
@@ -586,7 +611,35 @@ final class Lancement
         }
 
         return ['profil' => $profil, 'nom' => $nom, 'moteur' => $moteur, 'jeu' => $jeu, 'referentiel' => $referentiel,
-                'plateforme' => $plateforme, 'empreinte_reglages' => $empreinteReglages];
+                'plateforme' => $plateforme, 'empreinte_reglages' => $empreinteReglages, 'jury_retire' => $juryRetire];
+    }
+
+    /**
+     * The referential chosen at a launch (S5, lot C), written in the run's
+     * copy of its profile: its id, and its version, null for its latest
+     * published, which preparer() freezes. When the id is not the profile's,
+     * the jury's overrides — a specialist by pole number (jury.specialistes),
+     * by competence code (jury.par_competence), both of the profile's
+     * referential — would seat a juror on another pole, or on no code: they
+     * are emptied, as their default is.
+     *
+     * @param array{id: string, version: string|null} $choix
+     * @return list<string> the overrides emptied, those the profile set: specialistes, par_competence
+     */
+    private static function choisirReferentiel(stdClass $profil, array $choix): array
+    {
+        $retire = [];
+        if ($choix['id'] !== (string) $profil->referentiel->id) {
+            foreach (['specialistes', 'par_competence'] as $cle) {
+                if (isset($profil->jury->{$cle}) && (array) $profil->jury->{$cle} !== []) {
+                    $profil->jury->{$cle} = new stdClass();
+                    $retire[] = $cle;
+                }
+            }
+        }
+        $profil->referentiel = (object) ['id' => $choix['id'], 'version' => $choix['version']];
+
+        return $retire;
     }
 
     /**

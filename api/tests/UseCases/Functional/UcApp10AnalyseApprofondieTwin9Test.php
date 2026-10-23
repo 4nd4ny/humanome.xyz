@@ -16,6 +16,8 @@ use Humanome\Tests\UseCases\Support\ReferentielsFictifs;
 use Humanome\Tests\UseCases\Support\RunsTwin9Factices;
 use Humanome\Twin9\CreditService;
 use Humanome\Twin9\Lancement;
+use Humanome\Twin9\ProfilRepository;
+use Humanome\Twin9\ReferentielMoteur;
 use Humanome\Twin9\RunRepository;
 use Humanome\Twin9\Twin9Config;
 use PHPUnit\Framework\Attributes\PreserveGlobalState;
@@ -378,6 +380,154 @@ final class UcApp10AnalyseApprofondieTwin9Test extends CartographeTestCase
         self::assertSame(['respire', '8.0.0', 6, \count($doc['competences'])],
             [$ref['id'], $ref['version'], \count($ref['poles']), \count($ref['competences'])]);
         self::assertSame(range(1, 6), array_column($ref['poles'], 'num'));
+    }
+
+    /**
+     * Un aperçu, ou un lancement, qui choisit son référentiel (S5, lot C) : la réponse brute.
+     *
+     * @param array<string, mixed>|string|null $referentiel le choix tel que le corps le porte
+     */
+    private function avecReferentiel(array $user, string $route, ?int $profil, mixed $referentiel): \Psr\Http\Message\ResponseInterface
+    {
+        return $this->as_($user, 'POST', $route, $this->lancement($profil) + ['referentiel' => $referentiel]);
+    }
+
+    #[TestDox('UC-APP-10-F25 — A11 : un référentiel choisi au lancement, sur le profil v9.8 comme sur un des siens — l’aperçu et le lancement le lisent, sa dernière version publiée figée ; l’attestation, la configuration, la copie du profil et la carte le portent ; inconnu, version non publiée, choix mal formé : 422, aucun run')]
+    public function testF25AReferentialChosenAtTheLaunch(): void
+    {
+        self::publier(ReferentielsFictifs::lettre());
+        $lea = $this->registerAs('choix@example.org', 'Léa');
+        $this->crediter($lea, 1_000_000_000);
+        $lettre = ['id' => 'fictif-lettre'];
+
+        // l'aperçu dit le référentiel qu'il lirait : celui du profil v9.8, ou celui choisi, sa version figée
+        $sans = $this->apercu($lea, null);
+        self::assertSame([['id' => 'respire', 'version' => '7.0.0', 'label' => 'RESPIRE v7'], [], 7],
+            [$sans['referentiel'], $sans['jury_retire'], $sans['estimation']['poles']]);
+        $apercu = $this->avecReferentiel($lea, '/api/twin9/runs/apercu', null, $lettre);
+        self::assertSame(200, $apercu->getStatusCode(), (string) $apercu->getBody());
+        self::assertSame([['id' => 'fictif-lettre', 'version' => '1.0.0', 'label' => 'Fictif lettré'], [], 5],
+            [self::json($apercu)['referentiel'], self::json($apercu)['jury_retire'], self::json($apercu)['estimation']['poles']]);
+        self::assertSame($sans['referentiel'], self::json($this->avecReferentiel($lea, '/api/twin9/runs/apercu', null, null))
+            ['referentiel'], 'null : celui du profil');
+
+        // le profil v9.8, sur le référentiel choisi : l'attestation, la configuration et la copie le portent
+        $lance = $this->avecReferentiel($lea, '/api/twin9/runs', null, $lettre);
+        self::assertSame(201, $lance->getStatusCode(), (string) $lance->getBody());
+        $run = self::json($lance);
+        $bloc = (new ReferentielMoteur(self::$pdo))->bloc('fictif-lettre', '1.0.0');
+        self::assertSame(['id' => null, 'nom' => 'Profil v9.8', 'mode' => 'complet'], $run['attestation']['profil']);
+        self::assertSame(['id' => 'fictif-lettre', 'version' => '1.0.0', 'empreinte' => ReferentielMoteur::empreinte($bloc)],
+            $run['attestation']['referentiel']);
+        $runs = new RunRepository(self::$pdo);
+        self::assertEquals((object) ['id' => 'fictif-lettre', 'version' => '1.0.0'], $runs->charger($run['id'])['profil']->referentiel);
+        $configuration = $runs->configuration($run['id']);
+        self::assertSame(['fictif-lettre', '1.0.0', 'Fictif lettré'], [$configuration->referentiel->id,
+            $configuration->referentiel->version, $configuration->referentiel->label]);
+        self::assertSame($bloc, json_decode($runs->charger($run['id'])['moteur'], true)['referentiel']);
+        self::assertSame(200, $this->as_($lea, 'POST', '/api/twin9/runs/' . $run['id'] . '/annuler')->getStatusCode());
+
+        // un de ses profils (RESPIRE), le référentiel choisi à sa version : le run va au bout, sur sa carte à lui
+        $direct = $this->profilDirect($lea);
+        $lance = $this->avecReferentiel($lea, '/api/twin9/runs', $direct, ['id' => 'fictif-lettre', 'version' => '1.0.0']);
+        self::assertSame(201, $lance->getStatusCode(), (string) $lance->getBody());
+        $id = self::json($lance)['id'];
+        self::assertSame(['id' => $direct, 'nom' => 'Direct', 'mode' => 'complet'], self::json($lance)['attestation']['profil']);
+        self::assertSame('termine', $this->jusquAuBout($lea, $id)['statut']);
+        $ref = self::json($this->as_($lea, 'GET', "/api/twin9/runs/$id/resultats"))['referentiel'];
+        self::assertSame(['fictif-lettre', '1.0.0', 5], [$ref['id'], $ref['version'], \count($ref['poles'])]);
+        self::assertSame(['fictif-lettre'], self::$pdo->query('SELECT DISTINCT referentiel FROM twin9_cartes')->fetchAll(\PDO::FETCH_COLUMN));
+        // le profil enregistré ne change pas
+        self::assertSame('respire', (new ProfilRepository(self::$pdo))->get($direct)['profil']->referentiel->id);
+
+        // refusés, sans run : un référentiel inconnu, une version non publiée, un choix mal formé
+        $avant = self::runs();
+        $malForme = 'Référentiel invalide : {id, version?} (version semver, ou null pour la dernière publiée), ou null '
+            . 'pour celui du profil';
+        foreach ([[['id' => 'inconnu'], 'Profil refusé — /referentiel/id : aucun référentiel publié sous ce nom'],
+                  [['id' => 'fictif-lettre', 'version' => '9.9.9'], 'Profil refusé — /referentiel/version : version non publiée'],
+                  [['id' => 'Fictif Lettré'], $malForme], [['id' => 'fictif-lettre', 'version' => '1.0'], $malForme],
+                  [['id' => 'fictif-lettre', 'version' => 1], $malForme], ['fictif-lettre', $malForme],
+                  [['id' => 'fictif-lettre', 'label' => 'Fictif lettré'], $malForme], [[], $malForme]] as [$choix, $erreur]) {
+            foreach (['/api/twin9/runs/apercu', '/api/twin9/runs'] as $route) {
+                $refus = $this->avecReferentiel($lea, $route, $direct, $choix);
+                self::assertSame([422, $erreur], [$refus->getStatusCode(), self::json($refus)['error'] ?? null],
+                    $route . ' ' . json_encode($choix));
+            }
+        }
+        self::assertSame($avant, self::runs());
+    }
+
+    #[TestDox('UC-APP-10-F26 — A11 / UC-EPI-05 A5 : un brouillon choisi au lancement sert le run d’essai de son auteur, qui va au bout ; en mode complet, ou pour un autre compte : 422 ; sans version, un référentiel jamais publié : 422')]
+    public function testF26ADraftChosenAtTheLaunch(): void
+    {
+        $epi = $this->registerAs('epi-choix@example.org', 'Épi', ['epistemiarque']);
+        $eleve = $this->registerAs('eleve-choix@example.org', 'Élève');
+        foreach ([$epi, $eleve] as $compte) {
+            $this->crediter($compte, 1_000_000_000);
+        }
+        (new ReferentielRepository(self::$pdo))->importDraft(ReferentielsFictifs::neufPoles(), null, $epi['id']);
+        $brouillon = ['id' => 'fictif-neuf', 'version' => '1.0.0'];
+        $refus = 'Profil refusé — /referentiel/version : un brouillon ne sert qu’aux runs d’essai de son auteur';
+        $essai = $this->profilDirect($epi, 'Essai', ['mode' => 'test']);
+
+        $apercu = $this->avecReferentiel($epi, '/api/twin9/runs/apercu', $essai, $brouillon);
+        self::assertSame(200, $apercu->getStatusCode(), (string) $apercu->getBody());
+        self::assertSame(['id' => 'fictif-neuf', 'version' => '1.0.0', 'label' => 'Fictif à neuf pôles'],
+            self::json($apercu)['referentiel']);
+        $lance = $this->avecReferentiel($epi, '/api/twin9/runs', $essai, $brouillon);
+        self::assertSame(201, $lance->getStatusCode(), (string) $lance->getBody());
+        self::assertSame(['fictif-neuf', '1.0.0'], [self::json($lance)['attestation']['referentiel']['id'],
+                                                   self::json($lance)['attestation']['referentiel']['version']]);
+        self::assertSame('termine', $this->jusquAuBout($epi, self::json($lance)['id'])['statut']);
+
+        $avant = self::runs();
+        foreach ([[$epi, $this->profilDirect($epi, 'Complet'), $brouillon, $refus],
+                  [$eleve, $this->profilDirect($eleve, 'Essai', ['mode' => 'test']), $brouillon, $refus],
+                  [$epi, $essai, ['id' => 'fictif-neuf'], 'Profil refusé — /referentiel/id : aucun référentiel publié sous ce nom']]
+                 as $n => [$compte, $profil, $choix, $erreur]) {
+            foreach (['/api/twin9/runs/apercu', '/api/twin9/runs'] as $route) {
+                $r = $this->avecReferentiel($compte, $route, $profil, $choix);
+                self::assertSame([422, $erreur], [$r->getStatusCode(), self::json($r)['error'] ?? null], "$n $route");
+            }
+        }
+        self::assertSame($avant, self::runs());
+    }
+
+    #[TestDox('UC-APP-10-F27 — RG18 : un autre référentiel choisi au lancement retire de la copie les spécialistes que le profil impose par pôle et par compétence, et l’aperçu le dit ; le même référentiel, ou aucun choix, les garde ; le profil enregistré ne change pas')]
+    public function testF27SwitchingReferentialDropsTheJurysOverrides(): void
+    {
+        self::publier(ReferentielsFictifs::lettre());
+        $lea = $this->registerAs('jury-choix@example.org', 'Léa');
+        $this->crediter($lea, 1_000_000_000);
+        $jury = ProfilRepository::v98()->jury;
+        $jury->specialistes = (object) ['4' => 'Spécialiste fictif'];
+        $jury->par_competence = (object) ['1.01' => 'Juré fictif'];
+        $profil = $this->profilDirect($lea, 'Jury de RESPIRE', ['jury' => $jury]);
+
+        $apercu = fn (mixed $choix): array => self::json($this->avecReferentiel($lea, '/api/twin9/runs/apercu', $profil, $choix));
+        self::assertSame(['specialistes', 'par_competence'], $apercu(['id' => 'fictif-lettre'])['jury_retire']);
+        self::assertSame([], $apercu(['id' => 'respire'])['jury_retire'], 'le même référentiel');
+        self::assertSame([], $apercu(null)['jury_retire'], 'aucun choix');
+
+        $runs = new RunRepository(self::$pdo);
+        $lance = $this->avecReferentiel($lea, '/api/twin9/runs', $profil, ['id' => 'fictif-lettre']);
+        self::assertSame(201, $lance->getStatusCode(), (string) $lance->getBody());
+        $copie = $runs->charger(self::json($lance)['id'])['profil'];
+        self::assertEquals([new \stdClass(), new \stdClass()], [$copie->jury->specialistes, $copie->jury->par_competence]);
+        self::assertSame('{}', json_encode($copie->jury->specialistes), 'vidé comme son défaut, un objet');
+        $moteur = json_decode($runs->charger(self::json($lance)['id'])['moteur'], true);
+        self::assertSame([[], []], [(array) ($moteur['config']['jury']['specialistes'] ?? []),
+                                    (array) ($moteur['config']['jury']['par_competence'] ?? [])]);
+        self::assertSame(200, $this->as_($lea, 'POST', '/api/twin9/runs/' . self::json($lance)['id'] . '/annuler')->getStatusCode());
+
+        $garde = $this->avecReferentiel($lea, '/api/twin9/runs', $profil, ['id' => 'respire']);
+        self::assertSame(201, $garde->getStatusCode(), (string) $garde->getBody());
+        $copie = $runs->charger(self::json($garde)['id'])['profil'];
+        self::assertEquals([(object) ['4' => 'Spécialiste fictif'], (object) ['1.01' => 'Juré fictif']],
+            [$copie->jury->specialistes, $copie->jury->par_competence]);
+        $enregistre = (new ProfilRepository(self::$pdo))->get($profil)['profil'];
+        self::assertEquals((object) ['4' => 'Spécialiste fictif'], $enregistre->jury->specialistes, 'le profil enregistré');
     }
 
     #[TestDox('UC-APP-10-F09 — A8 : un profil en mode essai — une journée lue, un pôle estimé ; « test » dans la liste et dans l’attestation')]

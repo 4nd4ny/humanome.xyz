@@ -100,9 +100,11 @@ export function fetchRuns(options) {
 /**
  * Avant de lancer (T10) : les journées que le run instruirait — nouvelles ou
  * changées depuis la mémoire de sa carte —, son coût et sa durée estimés, les
- * plafonds de son profil, le crédit quand la clé de l'instance paie. Rien
- * n'est gardé.
- * @param {{profil: number|null, portfolio: {nom: string, texte: string}}} choix
+ * plafonds de son profil, le crédit quand la clé de l'instance paie, le
+ * référentiel qu'il lirait et les réglages du jury qu'un autre référentiel
+ * retire (S5, lot C). Rien n'est gardé.
+ * @param {{profil: number|null, portfolio: {nom: string, texte: string},
+ *   referentiel?: {id: string, version: string|null}|null}} choix `referentiel` : un autre que celui du profil
  */
 export function apercuRun(choix, options) {
   return apiFetch('twin9/runs/apercu', { ...options, method: 'POST', body: choix })
@@ -112,9 +114,11 @@ export function apercuRun(choix, options) {
  * Lance un run : son profil (null : celui de la v9.8), son portfolio, l'accord
  * de la personne, qui chaque lancement demande et qui nomme les fournisseurs
  * auxquels le run envoie le texte ({fournisseurs: [ids]}, ADR-012 ; le serveur
- * refuse une liste qui n'est pas celle du profil). Rend le run tel que sa page le suit.
+ * refuse une liste qui n'est pas celle du profil), et, s'il en choisit un
+ * autre que celui du profil, son référentiel (S5, lot C ; version nulle : la
+ * dernière publiée). Rend le run tel que sa page le suit.
  * @param {{profil: number|null, portfolio: {nom: string, texte: string}, accord: {fournisseurs: string[]}|boolean,
- *   visibilite?: string}} lancement
+ *   visibilite?: string, referentiel?: {id: string, version: string|null}|null}} lancement
  */
 export function lancerRun(lancement, options) {
   return apiFetch('twin9/runs', { ...options, method: 'POST', body: lancement })

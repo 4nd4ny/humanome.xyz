@@ -50,6 +50,14 @@
 // page lance avec le profil v9.8, sans liste des profils ni « Régler mes
 // profils » ; un profil choisi en mode expert ne part pas en mode simple. Le
 // mode n'est jamais un droit : #/configuration reste ouverte par son adresse.
+//
+// Le référentiel se choisit au lancement (sprint 5, lot C) : par défaut celui
+// du profil ; sinon un référentiel publié (sa dernière version), ou, en mode
+// expert, un de ses brouillons pour un run d'essai. Le menu « Référentiel »
+// est toujours proposé en mode expert ; en mode simple, dès que plus d'un
+// référentiel est publié. Le serveur l'écrit dans la copie du profil, avant
+// de l'admettre ; un autre référentiel retire les spécialistes que le profil
+// impose au jury par pôle ou par compétence, et l'aperçu le dit.
 
 import { useCallback, useEffect, useMemo, useState } from 'react'
 import { ApiError } from '../api/client.js'
@@ -110,6 +118,25 @@ const ANTHROPIC = { id: 'anthropic', libelle: 'Anthropic', rgpd: 'sous_condition
 function fournisseursDuLancement(donnees, profil) {
   const liste = profil === '' ? donnees?.defautFournisseurs : donnees?.profils.find((p) => String(p.id) === profil)?.fournisseurs
   return Array.isArray(liste) && liste.length > 0 ? liste : [ANTHROPIC]
+}
+
+/**
+ * Les référentiels qu'un lancement peut choisir (S5, lot C ; `referentiels` de GET twin9/configuration) : chaque
+ * référentiel publié, sa dernière version (`version` nulle) ; en mode expert, ses brouillons, pour un run d'essai.
+ * @returns {Array<{valeur: string, id: string, version: string|null, libelle: string}>}
+ */
+function choixReferentiels(referentiels, expert) {
+  const options = []
+  for (const r of Array.isArray(referentiels) ? referentiels : []) {
+    const nom = r.label || r.id
+    if (r.versions?.length > 0) options.push({ valeur: r.id, id: r.id, version: null, libelle: nom })
+    if (expert) {
+      for (const v of r.brouillons ?? []) {
+        options.push({ valeur: `${r.id}@${v}`, id: r.id, version: v, libelle: `${nom} ${v} (brouillon, run d’essai)` })
+      }
+    }
+  }
+  return options
 }
 
 /** « Anthropic, OpenAI et Mistral AI ». */
@@ -174,10 +201,22 @@ function phraseRetouche({ retouchees, sansDate }) {
   return phrases.join(' ')
 }
 
+/** Les spécialistes qu'un autre référentiel retire au jury du profil (S5, lot C) : vide quand il n'en retire aucun. */
+function phraseJury(retires) {
+  const par = [
+    retires.includes('specialistes') ? 'par pôle' : null,
+    retires.includes('par_competence') ? 'par compétence' : null,
+  ].filter(Boolean)
+  return par.length === 0
+    ? ''
+    : `Les spécialistes que ce profil impose au jury ${par.join(' et ')} valent pour son référentiel : ils sont retirés ` +
+        'pour celui-ci, et le jury garde ses sièges par défaut.'
+}
+
 /**
- * Avant de lancer : les journées à instruire ; le coût estimé, en moyenne, au plus bas et au plus haut, et la durée ;
- * celles que le crédit ou le budget admet avec leur fusion (T8), ou le refus, qui dit ce qu'il faudrait ; les plafonds ;
- * ce que l'envoi change au texte (sprint 4, T0).
+ * Avant de lancer : le référentiel lu (S5, lot C) ; les journées à instruire ; le coût estimé, en moyenne, au plus bas
+ * et au plus haut, et la durée ; celles que le crédit ou le budget admet avec leur fusion (T8), ou le refus, qui dit ce
+ * qu'il faudrait ; les plafonds ; ce que l'envoi change au texte (sprint 4, T0).
  */
 function Apercu({ apercu, envoi }) {
   const e = apercu.estimation
@@ -204,8 +243,16 @@ function Apercu({ apercu, envoi }) {
   const { budget_usd: budget, duree_minutes: minutes } = apercu.plafonds
   const s = (n) => (n > 1 ? 's' : '')
   const retouche = envoi ? phraseRetouche(envoi) : ''
+  const ref = apercu.referentiel
+  const jury = Array.isArray(apercu.jury_retire) ? phraseJury(apercu.jury_retire) : ''
   return (
     <section className="twin9-apercu" aria-label="Avant de lancer">
+      {ref?.id ? (
+        <p>
+          Référentiel lu : {ref.label || ref.id}
+          {ref.version ? `, version ${ref.version}` : ''}.{jury ? ` ${jury}` : ''}
+        </p>
+      ) : null}
       <p>{phraseJournees(apercu.journees)}</p>
       {retouche ? <p>{retouche}</p> : null}
       {a?.refus ? (
@@ -288,6 +335,8 @@ function Lancer({ deps }) {
   const [portfolio, setPortfolio] = useState('')
   const [fichier, setFichier] = useState(null)
   const [profil, setProfil] = useState('')
+  // le référentiel choisi au lancement (S5, lot C) : '' pour celui du profil
+  const [referentiel, setReferentiel] = useState('')
   const [visible, setVisible] = useState(false)
   // l'accord, donné pour une liste de fournisseurs et de voies : la clé de cette liste, null sans accord
   const [accord, setAccord] = useState(null)
@@ -302,7 +351,14 @@ function Lancer({ deps }) {
     Promise.all([fetchRuns({ fetchFn }), fetchConfiguration({ fetchFn }), store.list().catch(() => [])])
       .then(([runs, config, portfolios]) => {
         if (!actif) return
-        setDonnees({ ...runs, profils: config.profils, defautFournisseurs: config.defaut_fournisseurs ?? null, portfolios })
+        setDonnees({
+          ...runs,
+          profils: config.profils,
+          defautFournisseurs: config.defaut_fournisseurs ?? null,
+          referentiels: config.referentiels ?? [],
+          defautReferentiel: config.defaut?.referentiel ?? null,
+          portfolios,
+        })
         setPortfolio(portfolios[0]?.id ?? 'fichier')
         setEtat({})
       })
@@ -320,6 +376,20 @@ function Lancer({ deps }) {
   useEffect(() => {
     if (accord !== null && accord !== cleAccord) setAccord(null)
   }, [accord, cleAccord])
+
+  // Le référentiel (S5, lot C) : celui du profil, ou un autre ; en mode simple, ni brouillon ni menu tant qu'un seul
+  // référentiel est publié. Un choix que le menu ne propose plus (un brouillon, en mode simple) retombe sur le profil.
+  const optionsReferentiel = choixReferentiels(donnees?.referentiels, expert)
+  const publies = optionsReferentiel.filter((o) => o.version === null).length
+  const menuReferentiel = expert ? optionsReferentiel.length > 0 : publies > 1
+  const referentielChoisi = menuReferentiel ? (optionsReferentiel.find((o) => o.valeur === referentiel) ?? null) : null
+  const choixRef = referentielChoisi ? { id: referentielChoisi.id, version: referentielChoisi.version } : null
+  const cleReferentiel = referentielChoisi?.valeur ?? ''
+  const duProfil =
+    profilEffectif === '' ? donnees?.defautReferentiel : donnees?.profils.find((p) => String(p.id) === profilEffectif)?.referentiel
+  const nomDuProfil = duProfil?.id
+    ? (optionsReferentiel.find((o) => o.id === duProfil.id && o.version === null)?.libelle ?? duProfil.id)
+    : null
 
   // Avant de lancer, l'accord donné : ce que le run instruirait, et ce qu'il coûterait.
   const local = donnees?.portfolios.find((p) => p.id === portfolio) ?? null
@@ -339,13 +409,21 @@ function Lancer({ deps }) {
     }
     let actif = true
     setApercu({ chargement: true })
-    apercuRun({ profil: profilEffectif === '' ? null : Number(profilEffectif), portfolio: { nom, texte } }, { fetchFn })
+    const [id, version] = cleReferentiel === '' ? [] : [cleReferentiel.split('@')[0], cleReferentiel.split('@')[1] ?? null]
+    apercuRun(
+      {
+        profil: profilEffectif === '' ? null : Number(profilEffectif),
+        portfolio: { nom, texte },
+        ...(id ? { referentiel: { id, version } } : {}),
+      },
+      { fetchFn },
+    )
       .then((a) => actif && setApercu({ donnees: a }))
       .catch((e) => actif && setApercu({ erreur: e.message }))
     return () => {
       actif = false
     }
-  }, [accorde, profilEffectif, nom, texte, fetchFn])
+  }, [accorde, profilEffectif, cleReferentiel, nom, texte, fetchFn])
 
   if (etat.chargement) return <p>Chargement…</p>
   if (etat.erreur) {
@@ -372,6 +450,7 @@ function Lancer({ deps }) {
           portfolio: { nom: choisi.nom, texte: envoi.texte },
           accord: { fournisseurs: fournisseurs.map((f) => f.id) },
           visibilite: visible ? 'cartographe' : 'privee',
+          ...(choixRef ? { referentiel: choixRef } : {}),
         },
         { fetchFn },
       )
@@ -412,6 +491,21 @@ function Lancer({ deps }) {
               Profil : Profil v9.8. Le mode expert, au bas du menu, propose vos profils et leurs réglages.
             </p>
           )}
+          {menuReferentiel ? (
+            <div className="config-champ">
+              <label htmlFor="twin9-referentiel">Référentiel</label>
+              <div className="config-commande">
+                <select id="twin9-referentiel" value={cleReferentiel} onChange={(e) => setReferentiel(e.target.value)}>
+                  <option value="">{nomDuProfil ? `Celui du profil (${nomDuProfil})` : 'Celui du profil'}</option>
+                  {optionsReferentiel.map((o) => (
+                    <option key={o.valeur} value={o.valeur}>
+                      {o.libelle}
+                    </option>
+                  ))}
+                </select>
+              </div>
+            </div>
+          ) : null}
           <div className="config-champ">
             <label htmlFor="twin9-portfolio">Portfolio</label>
             <div className="config-commande">

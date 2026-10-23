@@ -190,10 +190,15 @@ export default function CartoApp({ route = {}, deps = {}, slots = {}, mode = 'si
   const modalDate = route.sub === 'jour' ? route.date : null
   const { dataset, ref: refl } = data
 
-  // Changer de jeu de données remet l'interface à zéro.
-  useEffect(() => {
+  // Changer de jeu de données remet l'interface à zéro, dans le rendu même qui
+  // le montre. Un effet passerait après ce rendu : un clic fait entre les deux
+  // (le soleil déjà dessiné, l'effet pas encore passé) serait effacé.
+  const datasetId = dataset?.datasetId
+  const [uiDatasetId, setUiDatasetId] = useState(datasetId)
+  if (uiDatasetId !== datasetId) {
+    setUiDatasetId(datasetId)
     dispatch({ type: 'reset' })
-  }, [dataset?.datasetId])
+  }
 
   const prefs = dataset?.preferences
   const params = useMemo(() => resolveParams(prefs?.params ?? {}), [prefs?.params])

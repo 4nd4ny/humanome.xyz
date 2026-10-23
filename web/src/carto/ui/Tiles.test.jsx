@@ -5,7 +5,7 @@
 // l'affichage » ; plus de « mode expert » ni de boutons qui doublent les espaces.
 import { useEffect, useState } from 'react'
 import { cleanup, fireEvent, render, screen, waitFor, within } from '@testing-library/react'
-import { afterEach, beforeEach, describe, expect, it } from 'vitest'
+import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
 import CartoApp from './CartoApp.jsx'
 import { createCartoStore, createMemoryAdapter } from '../core/store.js'
 import { importFiles } from '../core/import.js'
@@ -101,6 +101,50 @@ describe('couleurs des pôles en clair (D-63)', () => {
     const detail = await within(tile('detail')).findByRole('article', { name: /^Détail : 2\.01/ })
     expect(detail.classList.contains('carto-pole')).toBe(true)
     expect([detail.style.getPropertyValue('--pole-light'), detail.style.getPropertyValue('--pole-dark')]).toEqual(['#047857', '#03835a'])
+  })
+})
+
+describe('un clic dès que le soleil paraît', () => {
+  // Ouvrir un jeu remet l'interface à zéro. Faite dans un effet, cette remise à
+  // zéro passait APRÈS le rendu qui dessine le soleil, et effaçait un clic fait
+  // entre les deux. Sur une machine chargée, ce rendu dépasse la tranche de 5 ms
+  // du Scheduler de React, qui rend la main avant de passer les effets : le test
+  // D-63 ci-dessus, sorti de son waitFor dans cet intervalle, cliquait sur 2.01
+  // et attendait en vain son détail (findByRole, 1 s). Ici, l'horloge du
+  // Scheduler trouve chaque tranche épuisée (la charge, sans délai), et le clic
+  // part au rendu même qui dessine le secteur (MutationObserver) : il échouait à
+  // coup sûr. `window.event` est celui d'une page neuve, hors de tout évènement
+  // (jsdom garde le dernier clic d'un test précédent : React rendrait alors ce
+  // jeu de façon synchrone, effets compris, et l'intervalle n'existerait pas).
+  it('la sélection faite au premier rendu du soleil reste', async () => {
+    const store = await louStore()
+    const now = performance.now.bind(performance)
+    let late = 0
+    const loaded = vi.spyOn(performance, 'now').mockImplementation(() => now() + (late += 10))
+    const outside = vi.spyOn(window, 'event', 'get').mockReturnValue(undefined)
+    try {
+      const clicked = new Promise((resolve) => {
+        const observer = new MutationObserver(() => {
+          const sector = document.querySelector('[data-tile="sun"] .carto-sun [role="button"][aria-label^="2.01"]')
+          if (!sector) return
+          observer.disconnect()
+          loaded.mockRestore()
+          outside.mockRestore()
+          fireEvent.click(sector)
+          resolve(sector)
+        })
+        observer.observe(document.body, { childList: true, subtree: true })
+      })
+      render(<Harness store={store} />)
+      const sector = await clicked
+      expect(within(tile('detail')).getByRole('article', { name: /^Détail : 2\.01/ })).toBeTruthy()
+      await new Promise((resolve) => setTimeout(resolve, 0))
+      expect(sector.getAttribute('aria-pressed')).toBe('true')
+      expect(within(tile('detail')).getByRole('article', { name: /^Détail : 2\.01/ })).toBeTruthy()
+    } finally {
+      loaded.mockRestore()
+      outside.mockRestore()
+    }
   })
 })
 

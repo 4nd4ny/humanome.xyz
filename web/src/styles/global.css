@@ -2586,9 +2586,13 @@ body:has([aria-modal='true'], .portfolio-editor-fullscreen)
   overflow-x: auto;
 }
 
-/* D4 — synchro timeline : la feuille de la trame courante est surlignée. */
+/* D4 — synchro timeline : la feuille de la trame courante est surlignée, à
+   l'encre de la visualisation comme le lecteur (l'aplat d'accent, éclairci en
+   sombre, tombait à 2,69:1 sur ce fond blanc). Elle se distingue du survol et
+   du focus (1 px, plus haut) par l'épaisseur ; survolée ou focalisée, elle
+   prend leur trait, pour que l'état reste visible. */
 .heatmap-day-current {
-  stroke: var(--accent-solid);
+  stroke: var(--viz-ink);
   stroke-width: 2;
 }
 

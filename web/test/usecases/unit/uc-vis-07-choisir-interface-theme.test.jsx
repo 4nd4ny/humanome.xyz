@@ -547,6 +547,47 @@ describe('UC-VIS-07 — contrastes en usage : les règles des feuilles du site, 
       }
     }
   })
+
+  it('UC-VIS-07-U12 — zone du diagramme (soleil, heatmap, lecteur de timeline), claire dans les deux thèmes : chaque couleur d’interface qu’une règle y trace (texte, trait, remplissage, filet, anneau) atteint 4,5:1 pour un texte, 3:1 sinon, sur --viz-surface dans les neuf contextes ; un mélange (color-mix) n’y lit que les encres de la visualisation (RG4, RG7)', () => {
+    const rules = globalCssRules()
+    // Les jetons que la zone pose sur ses descendants (--focus = l'encre de la visualisation).
+    const zone = Object.fromEntries(Object.entries(declOf(rules, '.diagram-zone')).filter(([prop]) => prop.startsWith('--')))
+    const INSIDE = /(^|\s)\.(sunburst|heatmap|timeline-|hover-overlay|diagram-placeholder)/
+    const PROPS = ['color', 'fill', 'stroke', 'outline', 'outline-color', 'background', 'background-color', 'border', 'border-color', 'border-top', 'border-right', 'border-bottom', 'border-left', 'box-shadow', 'accent-color']
+    const failures = []
+    let traced = 0
+    for (const sheet of ['src/styles/global.css', 'src/styles/timeline.css']) {
+      for (const rule of sheetRules(sheet)) {
+        if (rule.media?.includes('print')) continue
+        const parts = rule.selector.split(',').map((p) => p.trim())
+        if (!parts.some((part) => INSIDE.test(part))) continue
+        for (const prop of PROPS) {
+          const value = rule.decl[prop]
+          if (value === undefined) continue
+          const where = `${sheet} ${rule.selector} : ${prop} ${value}`
+          const vars = [...value.matchAll(/var\(--([\w-]+)/g)].map((m) => m[1])
+          if (vars.length === 0 || ELEMENT_VARS.test(value)) continue // littéral (liseré blanc entre secteurs), données
+          const color = colorIn(value)
+          if (/color-mix\(/.test(value) || !SINGLE_COLOR.test(color ?? '')) {
+            const foreign = vars.filter((name) => !name.startsWith('viz-'))
+            if (foreign.length) failures.push(`${where} : mélange d'un jeton d'interface (${foreign.join(', ')})`)
+            continue
+          }
+          if (color === 'var(--viz-surface)') continue // la surface elle-même (fond d'une commande du lecteur)
+          traced++
+          const min = prop === 'color' ? 4.5 : 3
+          for (const theme of THEMES) {
+            const [ink, surface] = [color, 'var(--viz-surface)'].map((v) => resolveColor(rules, v, theme, zone))
+            if (!HEX.test(ink) || !HEX.test(surface)) failures.push(`${where}, ${theme.name} : non mesurable ${ink} / ${surface}`)
+            else if (!(contrast(ink, surface) >= min))
+              failures.push(`${where}, ${theme.name} : ${ink} sur --viz-surface ${surface} = ${contrast(ink, surface).toFixed(2)} < ${min}`)
+          }
+        }
+      }
+    }
+    expect(failures).toEqual([])
+    expect(traced).toBeGreaterThanOrEqual(14) // textes, liserés, filets et anneaux (16 aux correctifs du sprint 9)
+  })
 })
 
 describe('UC-VIS-07 — le sélecteur (DisplaySelects)', () => {

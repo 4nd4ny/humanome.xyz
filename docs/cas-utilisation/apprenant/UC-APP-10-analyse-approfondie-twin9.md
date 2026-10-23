@@ -387,7 +387,10 @@ badge premium) ou ouvre `#/twin9`.
   lirait comme l'en-tête d'une autre journée, est précédée de « — » ; les
   passages sans date passent en tête, où le moteur ne lit rien. Un texte
   qu'il lit déjà en ces journées part à l'octet, comme un texte de moins de
-  deux journées datées ; un export Google Docs (des dates seules, puis un
+  deux journées datées (le moteur ne date pas une journée seule : s'il y lit
+  pourtant des titres datés d'autres jours, l'aperçu nomme ces journées que
+  l'interface n'a pas, et celle de l'interface qu'il ne lit pas — « Twin9 lit
+  dans ce texte 2 journées que l'interface n'a pas : … ») ; un export Google Docs (des dates seules, puis un
   trait) garde cette forme. Le run garde le texte tel qu'il a été envoyé. L'aperçu nomme les journées dont le texte change
   pour le moteur (« … : 2 journées touchées, 1er févr. 2026 et 10 févr.
   2026. ») — une journée évaluée sur le texte brut est instruite de nouveau

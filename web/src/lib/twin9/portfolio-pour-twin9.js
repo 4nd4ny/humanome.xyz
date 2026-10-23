@@ -39,8 +39,13 @@
 //   - les passages sans date passent en tête, leurs dates neutralisées :
 //     Twin9 ne lit rien avant son premier titre daté, l'interface ne les
 //     range dans aucune journée ;
-//   - à moins de deux journées datées, le texte part tel quel : Twin9 ne date
-//     rien à moins de deux titres, une retouche ne servirait à rien.
+//   - à moins de deux journées datées dans l'interface, le texte part tel
+//     quel : Twin9 ne date pas une journée seule (à moins de deux titres
+//     datés, il ne date rien). Il peut pourtant y lire deux titres datés
+//     d'autres jours (« ### Retour sur la séance du 26.01.2026 ») : il crée
+//     alors des journées que l'interface n'a pas, et ne lit rien avant le
+//     premier. `autres` et `nonLues` le disent, que la page de lancement
+//     nomme ; neutraliser ces titres, ou non, est à décider (Christian).
 // `retouchees` dit les journées dont le texte, tel que Twin9 le lit, change
 // (comparé à ce qu'il lisait du texte d'origine) : celles qui reçoivent un
 // en-tête, et celles qui absorbaient un passage qu'elles rendent.
@@ -235,14 +240,17 @@ const sansBlancsFinaux = (texte) => texte.replace(/\s+$/u, '')
  * @param {string} texte le portfolio (sans les marques d'un portfolio surligné : `sansMarquesTwin9`)
  * @param {{segments?: Array<{date: string | null, texte: string}>}} [options] le découpage de sa fiche
  *   (portfolio-store) ; à défaut, ou s'il n'est pas celui de ce texte, `segmentText`
- * @returns {{texte: string, retouchees: string[], sansDate: number, disparues: string[]}} le texte à envoyer ;
+ * @returns {{texte: string, retouchees: string[], sansDate: number, disparues: string[], autres: string[],
+ *   nonLues: string[]}} le texte à envoyer ;
  *   les journées dont le texte, tel que Twin9 le lit, change (AAAA-MM-JJ, dans l'ordre) ; les passages sans date,
  *   que Twin9 ne lit pas ; les journées que Twin9 lisait dans le texte d'origine et qu'il ne lit plus dans le texte
- *   envoyé (ses identifiants, « AAAA-MM-JJ » ou « AAAA-MM-JJ_b », dans l'ordre)
+ *   envoyé (ses identifiants, « AAAA-MM-JJ » ou « AAAA-MM-JJ_b », dans l'ordre) ; les journées que Twin9 lit dans
+ *   le texte envoyé et que l'interface n'a pas (ses identifiants), et celles de l'interface qu'il n'y lit pas
+ *   (AAAA-MM-JJ) : vides, sauf à moins de deux journées datées, où le texte part tel quel
  */
 export function portfolioPourTwin9(texte, { segments } = {}) {
   const brut = typeof texte === 'string' ? texte : ''
-  const intact = { texte: brut, retouchees: [], sansDate: 0, disparues: [] }
+  const intact = { texte: brut, retouchees: [], sansDate: 0, disparues: [], autres: [], nonLues: [] }
   const source = brut.replace(/^\uFEFF/, '').replace(/\r\n?/g, '\n')
   const decoupage = (source === brut ? segmentsDuTexte(segments, brut) : null) ?? segmentText(source, { today: SANS_DATE })
 
@@ -256,7 +264,17 @@ export function portfolioPourTwin9(texte, { segments } = {}) {
     else if (journees.has(s.date)) journees.set(s.date, `${sansBlancsFinaux(journees.get(s.date))}\n\n${t}`)
     else journees.set(s.date, t)
   }
-  if (journees.size < 2) return intact
+  if (journees.size < 2) {
+    // Twin9 ne date pas une journée seule ; il peut pourtant lire dans ce texte des titres datés d'autres jours
+    const lues = journeesLuesParTwin9(source)
+    if (lues === null) return intact
+    const dates = new Set(lues.map((f) => f.date))
+    return {
+      ...intact,
+      autres: lues.filter((f) => !journees.has(f.date)).map((f) => f.id).sort(),
+      nonLues: [...journees.keys()].filter((date) => !dates.has(date)),
+    }
+  }
   const sansDate = passagesSansDate.length
 
   // Twin9 lit-il déjà ces journées, chacune avec ce texte ? Alors rien ne change.
@@ -286,5 +304,5 @@ export function portfolioPourTwin9(texte, { segments } = {}) {
   if (retouchees.length === 0 && apres.length === lues.size) return { ...intact, sansDate }
   const luesApres = new Set(apres.map((f) => f.id))
   const disparues = [...lues.keys()].filter((id) => !luesApres.has(id)).sort()
-  return { texte: sortie, retouchees, sansDate, disparues }
+  return { ...intact, texte: sortie, retouchees, sansDate, disparues }
 }

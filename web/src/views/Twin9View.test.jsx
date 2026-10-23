@@ -394,6 +394,29 @@ describe('Twin9View — les journées que Twin9 ne lit plus dans le texte envoy�
     expect(region.textContent).not.toContain('n’y lit plus')
   })
 
+  it('une seule journée dans l’interface : le texte part tel quel, et l’aperçu dit les journées que Twin9 y lit à la place', async () => {
+    const texte = '**05.01.2026**\nUne journée.\n\n### Retour sur la séance du 26.01.2026\nUn retour.\n\n### Bilan du 27.01.2026\nUn bilan.\n'
+    const store = createPortfolioStore(createMemoryAdapter())
+    await store.create({ titre: 'Mon journal', texte })
+    const corps = []
+    const fetchFn = routedFetch({
+      'GET api/twin9/runs': jsonResponse(200, { disponible: true, runs: [] }),
+      'GET api/twin9/configuration': jsonResponse(200, { profils: [] }),
+      'POST api/twin9/runs/apercu': (init) => {
+        corps.push(JSON.parse(init.body))
+        return jsonResponse(200, apercu({ memoire: [] }))
+      },
+    })
+    render(<Twin9View deps={{ fetchFn, store }} />)
+    fireEvent.click(await screen.findByRole('checkbox', { name: /J’accepte que mon portfolio/ }))
+    const region = await screen.findByRole('region', { name: 'Avant de lancer' })
+    expect(region.textContent).toContain(
+      'Twin9 lit dans ce texte 2 journées que l’interface n’a pas : 26 janv. 2026 et 27 janv. 2026, et ne lit pas la vôtre, ' +
+        'du 5 janv. 2026. Le texte part tel quel : à moins de deux journées datées, il n’est pas retouché.',
+    )
+    expect(corps[0].portfolio.texte).toBe(texte)
+  })
+
   it('un aperçu qui ne dit pas la mémoire de la carte : la phrase reste au conditionnel', async () => {
     const region = await avant(apercu())
     expect(region.textContent).toContain(

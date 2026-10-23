@@ -238,6 +238,32 @@ function phraseDisparues(disparues, memoire) {
   return `${lues} ${suite}`
 }
 
+/**
+ * À moins de deux journées datées dans l'interface, le texte part tel quel (sprint 4, T0) : les journées que Twin9 y
+ * lit pourtant et que l'interface n'a pas (des titres datés d'autres jours), et celle de l'interface qu'il n'y lit pas
+ * (avant son premier titre daté). Vide quand Twin9 y lit les journées de l'interface, ou rien de daté.
+ */
+function phraseEcart({ autres = [], nonLues = [] }) {
+  if (autres.length === 0 && nonLues.length === 0) return ''
+  const liste = (jours) => {
+    const noms = jours.slice(0, DATES_NOMMEES).map(nomDeJournee)
+    const reste = jours.length - noms.length
+    return reste > 0 ? `${noms.join(', ')} et ${reste} autre${reste > 1 ? 's' : ''}` : enumeration(noms)
+  }
+  const parties = []
+  if (autres.length > 0) {
+    parties.push(
+      `Twin9 lit dans ce texte ${autres.length > 1 ? `${autres.length} journées` : 'une journée'} que l’interface n’a pas : ` +
+        liste(autres),
+    )
+  }
+  if (nonLues.length > 0) {
+    const quoi = nonLues.length > 1 ? `les vôtres, des ${liste(nonLues)}` : `la vôtre, du ${liste(nonLues)}`
+    parties.push(`${parties.length > 0 ? 'et ' : 'Twin9 '}ne lit pas ${quoi}`)
+  }
+  return `${parties.join(', ')}. Le texte part tel quel : à moins de deux journées datées, il n’est pas retouché.`
+}
+
 /** Les spécialistes qu'un autre référentiel retire au jury du profil (S5, lot C) : vide quand il n'en retire aucun. */
 function phraseJury(retires) {
   const par = [
@@ -282,6 +308,7 @@ function Apercu({ apercu, envoi }) {
   const s = (n) => (n > 1 ? 's' : '')
   const retouche = envoi ? phraseRetouche(envoi) : ''
   const disparues = envoi?.disparues ? phraseDisparues(envoi.disparues, apercu.memoire) : ''
+  const ecart = envoi ? phraseEcart(envoi) : ''
   const ref = apercu.referentiel
   const jury = Array.isArray(apercu.jury_retire) ? phraseJury(apercu.jury_retire) : ''
   return (
@@ -295,6 +322,7 @@ function Apercu({ apercu, envoi }) {
       <p>{phraseJournees(apercu.journees)}</p>
       {retouche ? <p>{retouche}</p> : null}
       {disparues ? <p>{disparues}</p> : null}
+      {ecart ? <p>{ecart}</p> : null}
       {a?.refus ? (
         <p role="alert">
           {a.refus}.{a.limite === 'credit' ? <> <a href="#/compte/credit">Recharger</a></> : null}

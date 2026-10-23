@@ -1411,7 +1411,12 @@ une suivante le relève.
   l'interface lirait comme l'en-tête d'une autre journée, est précédée de
   « — » ; les passages sans date passent en tête, où le moteur ne lit rien.
   Un texte que le moteur lit déjà en ces journées, chacune avec son texte,
-  part à l'octet, comme un texte de moins de deux journées datées. Un texte
+  part à l'octet, comme un texte de moins de deux journées datées : le
+  moteur ne date pas une journée seule. Il peut pourtant y lire deux titres
+  datés d'autres jours (« ### Retour sur la séance du 26.01.2026 ») ; `autres`
+  dit alors les journées qu'il y lit et que l'interface n'a pas, `nonLues`
+  celle de l'interface qu'il n'y lit pas (avant son premier titre daté), et
+  l'aperçu les nomme ; neutraliser ces titres est à décider. Un texte
   qu'il lit en mode Google Docs le reste : une journée y reçoit
   « JJ.MM.AAAA », une ligne vide et un trait, jamais un titre daté (deux
   titres datés le feraient changer de mode, et toutes les journées

@@ -47,6 +47,10 @@ données et RGPD, **code sollicité**, puis **jeux de tests**.
   (lisible avec `--testdox`) ; en JS, par le libellé du `it(…)`.
 - Chaque fiche liste ses tests (identifiant, cible ou scénario, niveau, ce qui
   est vérifié, fichier) ; chaque fichier de test cite en tête sa fiche.
+- Un identifiant nomme une seule ligne de fiche (une ligne peut couvrir
+  plusieurs `it(…)` d'un même fichier, que sa colonne « Vérifie » dit tous) :
+  `web/test/usecases/catalogue-identifiants.test.js` refuse deux lignes au
+  même identifiant.
 - Règle de couverture : chaque scénario de la fiche (nominal, `Ax`, `Ex`) a au
   moins un test fonctionnel ; chaque élément de logique du « code sollicité »
   a au moins un test unitaire.
@@ -129,7 +133,7 @@ rejouant les fixtures : aucun appel réseau réel).
 | [UC-APP-06](apprenant/UC-APP-06-exporter-importer-archive.md) | Exporter et importer son archive complète | 21 | 18 | 6 |
 | [UC-APP-07](apprenant/UC-APP-07-inviter-cartographe.md) | Inviter un cartographe | 9 | 10 | 1 |
 | [UC-APP-08](apprenant/UC-APP-08-rejoindre-cohorte.md) | Rejoindre une cohorte, déposer son portfolio, quitter | 12 | 25 | 4 |
-| [UC-APP-09](apprenant/UC-APP-09-cartographie-ouverte-twin6.md) | Lancer une cartographie ouverte (Twin6) | 39 | 34 | 1 |
+| [UC-APP-09](apprenant/UC-APP-09-cartographie-ouverte-twin6.md) | Lancer une cartographie ouverte (Twin6) | 39 | 35 | 1 |
 | [UC-APP-10](apprenant/UC-APP-10-analyse-approfondie-twin9.md) | Lancer une analyse approfondie (Twin9) | 24 | 28 | 0 |
 | [UC-APP-11](apprenant/UC-APP-11-gerer-credit-twin9.md) | Gérer son crédit Twin9 (achat, factures, remboursement) | 17 | 29 | 3 |
 | [UC-APP-12](apprenant/UC-APP-12-interface-ipsative-v3.md) | Explorer sa cartographie dans l'interface ipsative V3 (retirée le 2026-10-14) | 29 | 0 | 19 |
@@ -205,7 +209,7 @@ rejouant les fixtures : aucun appel réseau réel).
 | [UC-SYS-04](systeme/UC-SYS-04-construire-artefacts-derives.md) | Construire les données et artefacts dérivés | 9 | 19 | 3 |
 | [UC-SYS-05](systeme/UC-SYS-05-sauvegarder-restaurer.md) | Sauvegarder et restaurer la base | 0 | 8 | 6 |
 
-**Total : 61 cas d'utilisation, 1085 tests unitaires et 1232 tests fonctionnels identifiés, 192 anomalies de production documentées.**
+**Total : 61 cas d'utilisation, 1085 tests unitaires et 1233 tests fonctionnels identifiés, 192 anomalies de production documentées.**
 
 Les comptes portent sur les identifiants distincts (`UC-…-Unn`, `UC-…-Fnn`) présents dans les fichiers de tests ; un identifiant paramétré (`it.each`) compte pour un.
 <!-- catalogue:end -->

@@ -312,6 +312,12 @@ export async function fetchEcole(fetchFn) {
       moisMicrousd: Number(e?.moisMicrousd ?? 0),
       totalMicrousd: Number(e?.totalMicrousd ?? 0),
     })),
+    // ceux qui ont quitté ses cohortes : leurs montants ensemble, jamais leur nom (ADR-013 §7)
+    partis: {
+      nombre: Number(data?.partis?.nombre ?? 0),
+      moisMicrousd: Number(data?.partis?.moisMicrousd ?? 0),
+      totalMicrousd: Number(data?.partis?.totalMicrousd ?? 0),
+    },
   }
 }
 

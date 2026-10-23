@@ -210,8 +210,10 @@ final class Ecoles
     /**
      * The school's learners, as its page lists them: each member of its
      * cohorts, once, with their cohorts, what they committed this month and
-     * in all (amounts only, ADR-013 §7), those who left keeping their past
-     * months under their account while it exists.
+     * in all (amounts only, ADR-013 §7). A learner who left its cohorts —
+     * their consent withdrawn (registre §9) — is no longer named: their
+     * amounts count among those who left (partis()), without a name nor an
+     * id; back in a cohort, they are named again, with their months.
      *
      * @return list<array{userId: int, displayName: string, cohortes: list<string>, membre: bool,
      *                    moisMicrousd: int, totalMicrousd: int}>
@@ -229,11 +231,10 @@ final class Ecoles
                                WHERE e.ecole_id = ? AND e.eleve_id = u.id), 0) AS total
                FROM users u
               WHERE u.id IN (SELECT m.user_id FROM cohorte_membres m JOIN cohortes c ON c.id = m.cohorte_id
-                              WHERE c.etablissement_id = ?
-                             UNION SELECT e.eleve_id FROM ecole_consommations e WHERE e.ecole_id = ?)
+                              WHERE c.etablissement_id = ?)
               ORDER BY u.display_name, u.id'
         );
-        $stmt->execute([$ecoleId, $ecoleId, $mois, $ecoleId, $ecoleId, $ecoleId]);
+        $stmt->execute([$ecoleId, $ecoleId, $mois, $ecoleId, $ecoleId]);
 
         return array_map(static fn (array $row): array => [
             'userId' => (int) $row['id'],
@@ -243,5 +244,30 @@ final class Ecoles
             'moisMicrousd' => (int) $row['mois'],
             'totalMicrousd' => (int) $row['total'],
         ], $stmt->fetchAll());
+    }
+
+    /**
+     * What the learners who left its cohorts committed, together — how many
+     * they are, this month and in all —, never who: their consent withdrawn,
+     * the school keeps its totals, not their names (ADR-013 §7, registre §6
+     * ter). Their rows stay, for the cap of the month (a learner who comes
+     * back finds it as it was), until their account or the school goes.
+     *
+     * @return array{nombre: int, moisMicrousd: int, totalMicrousd: int}
+     */
+    public function partis(int $ecoleId, string $mois): array
+    {
+        $stmt = $this->pdo->prepare(
+            'SELECT COUNT(DISTINCT e.eleve_id), COALESCE(SUM(IF(e.mois = ?, GREATEST(0, e.engage_microusd), 0)), 0),
+                    COALESCE(SUM(GREATEST(0, e.engage_microusd)), 0)
+               FROM ecole_consommations e
+              WHERE e.ecole_id = ? AND e.eleve_id <> e.ecole_id
+                AND NOT EXISTS (SELECT 1 FROM cohorte_membres m JOIN cohortes c ON c.id = m.cohorte_id
+                                 WHERE c.etablissement_id = e.ecole_id AND m.user_id = e.eleve_id)'
+        );
+        $stmt->execute([$mois, $ecoleId]);
+        [$nombre, $moisMicrousd, $total] = array_map('intval', $stmt->fetch(PDO::FETCH_NUM));
+
+        return ['nombre' => $nombre, 'moisMicrousd' => $moisMicrousd, 'totalMicrousd' => $total];
     }
 }

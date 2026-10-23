@@ -497,6 +497,32 @@ final class UcEta05GererEcoleTest extends TestCase
         }
     }
 
+    #[TestDox('UC-ETA-05-U21 — un élève qui a quitté ses cohortes (son consentement retiré) n’est plus nommé : ses montants restent comptés, sans nom ni identifiant, dans les élèves partis ; revenu, il est de nouveau nommé, avec son mois')]
+    public function testU21ALearnerWhoLeftIsNoLongerNamed(): void
+    {
+        $ecole = self::ecole(self::$pdo, 'École des Tilleuls', 3.5, 5.0, 10_000_000);
+        $lea = self::compte(self::$pdo, 'Léa');
+        $zoe = self::compte(self::$pdo, 'Zoé');
+        $cohorte = self::inscrire(self::$pdo, $ecole, $lea);
+        self::inscrire(self::$pdo, $ecole, $zoe);
+        $grandLivre = new GrandLivreLocal(self::$pdo);
+        $grandLivre->reserver($ecole, $lea, Ecoles::mois(), 100_000, true, 'essai (réserve)');
+        $grandLivre->reserver($ecole, $zoe, Ecoles::mois(), 250_000, true, 'essai (réserve)');
+        $grandLivre->reserver($ecole, $zoe, '2026-01', 50_000, false, 'essai (réserve)');
+        (new \Humanome\Etablissement\CohorteRepository(self::$pdo))->quit($cohorte, $zoe);
+
+        $ecoles = new Ecoles(self::$pdo);
+        self::assertSame(['Léa'], array_column($ecoles->eleves($ecole, Ecoles::mois()), 'displayName'),
+            'Zoé n’est plus nommée');
+        self::assertSame(['nombre' => 1, 'moisMicrousd' => 250_000, 'totalMicrousd' => 300_000],
+            $ecoles->partis($ecole, Ecoles::mois()), 'ses montants, sans nom ni identifiant');
+        self::assertSame(250_000, $ecoles->engage($ecole, $zoe, Ecoles::mois()), 'son plafond du mois tient toujours');
+
+        self::inscrire(self::$pdo, $ecole, $zoe);
+        self::assertSame(['Léa', 'Zoé'], array_column($ecoles->eleves($ecole, Ecoles::mois()), 'displayName'));
+        self::assertSame(['nombre' => 0, 'moisMicrousd' => 0, 'totalMicrousd' => 0], $ecoles->partis($ecole, Ecoles::mois()));
+    }
+
     private static function refuse(\Closure $f, string $message): void
     {
         try {

@@ -375,13 +375,18 @@ return function (App $app): void {
     // The school (ADR-013 §3, §5, lot S6b; role etablissement)
     // ==================================================================
 
-    /** The school's page: its settings, its credit, its keys (never their material), its learners and their spend. */
+    /**
+     * The school's page: its settings, its credit, its keys (never their material), its learners and their spend —
+     * those who left, together and without a name.
+     */
     $ecole = static function (int $ecoleId): array {
         $pdo = Db::get();
         $mois = Ecoles::mois();
         $ecoles = new Ecoles($pdo);
         $reglages = $ecoles->reglages($ecoleId);
         $eleves = $ecoles->eleves($ecoleId, $mois);
+        // those who left its cohorts: their amounts, together, never who (ADR-013 §7)
+        $partis = $ecoles->partis($ecoleId, $mois);
 
         return [
             'surtaxePct' => $reglages['surtaxe_pct'],
@@ -393,8 +398,9 @@ return function (App $app): void {
             'cles' => EcoleCles::liste($pdo, $ecoleId),
             'chiffrementDisponible' => KeyVault::masterKeyFromEnv() !== null,
             'mois' => $mois,
-            'depenseMoisMicrousd' => array_sum(array_column($eleves, 'moisMicrousd')),
+            'depenseMoisMicrousd' => array_sum(array_column($eleves, 'moisMicrousd')) + $partis['moisMicrousd'],
             'eleves' => $eleves,
+            'partis' => $partis,
         ];
     };
 

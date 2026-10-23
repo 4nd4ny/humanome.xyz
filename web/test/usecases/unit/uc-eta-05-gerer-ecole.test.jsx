@@ -82,11 +82,10 @@ describe('UC-ETA-05 — qui paie (lib/payeurs.js)', () => {
 })
 
 describe('UC-ETA-05 — la section « Mon école » (EcoleSection)', () => {
-  it('UC-ETA-05-U16 — plafond à 0 montré d’abord ; crédit et lien d’achat ; réglages envoyés (PUT) ; surtaxe hors bornes refusée sans appel ; élèves et dépenses en montants', async () => {
+  it('UC-ETA-05-U16 — plafond à 0 montré d’abord ; crédit et lien d’achat ; réglages envoyés (PUT) ; surtaxe hors bornes refusée sans appel ; élèves et dépenses en montants, ceux qui sont partis ensemble et sans nom', async () => {
     let page = ecolePage({ creditMicrousd: 20_000_000, eleves: [
       { userId: 12, displayName: 'Maya', cohortes: ['BTS SIO 2026'], membre: true, moisMicrousd: 4_260, totalMicrousd: 9_000 },
-      { userId: 13, displayName: 'Noé', cohortes: [], membre: false, moisMicrousd: 0, totalMicrousd: 1_000 },
-    ], depenseMoisMicrousd: 4_260 })
+    ], partis: { nombre: 1, moisMicrousd: 0, totalMicrousd: 1_000 }, depenseMoisMicrousd: 4_260 })
     const net = fakeFetch({
       'GET api/etablissement/ecole': () => jsonResponse(200, page),
       'PUT api/etablissement/ecole': (init) => {
@@ -102,9 +101,10 @@ describe('UC-ETA-05 — la section « Mon école » (EcoleSection)', () => {
     expect(screen.getByRole('link', { name: 'Acheter du crédit' }).getAttribute('href')).toBe('#/compte/credit')
     const lignes = [...screen.getByTestId('etab-eleves').querySelectorAll('tbody tr')].map((tr) =>
       [...tr.querySelectorAll('td')].map((td) => td.textContent))
+    // a learner who left (their consent withdrawn): their amounts with the others who left, never their name
     expect(lignes).toEqual([
       ['Maya', 'BTS SIO 2026', '0,0043 $', '0,0090 $'],
-      ['Noé', 'a quitté vos cohortes', '0,00 $', '0,0010 $'],
+      ['1 élève parti', 'a quitté vos cohortes — sans son nom', '0,00 $', '0,0010 $'],
     ])
 
     fireEvent.change(screen.getByLabelText('Surtaxe sur la clé de l’instance (%)'), { target: { value: '3' } })

@@ -162,6 +162,7 @@ export function ecolePage(overrides = {}) {
     mois: '2026-10',
     depenseMoisMicrousd: 0,
     eleves: [],
+    partis: { nombre: 0, moisMicrousd: 0, totalMicrousd: 0 },
     ...overrides,
   }
 }

@@ -190,7 +190,7 @@ export default function EcoleSection({ fetchFn }) {
 
       <div className="etab-ecole-eleves">
         <h3>Mes élèves et leurs dépenses</h3>
-        {ecole.eleves.length === 0 ? (
+        {ecole.eleves.length === 0 && ecole.partis.nombre === 0 ? (
           <p className="privacy-note">Aucun élève pour l’instant : ils rejoignent vos cohortes par leur code.</p>
         ) : (
           <div className="table-scroll">
@@ -207,11 +207,22 @@ export default function EcoleSection({ fetchFn }) {
                 {ecole.eleves.map((e) => (
                   <tr key={e.userId}>
                     <td>{e.displayName}</td>
-                    <td>{e.membre ? e.cohortes.join(', ') : 'a quitté vos cohortes'}</td>
+                    <td>{e.cohortes.join(', ')}</td>
                     <td>{formatUsd(e.moisMicrousd)}</td>
                     <td>{formatUsd(e.totalMicrousd)}</td>
                   </tr>
                 ))}
+                {ecole.partis.nombre > 0 ? (
+                  // leur consentement retiré : leurs montants ensemble, jamais leur nom
+                  <tr data-testid="etab-partis">
+                    <td>
+                      {ecole.partis.nombre} élève{ecole.partis.nombre > 1 ? 's' : ''} parti{ecole.partis.nombre > 1 ? 's' : ''}
+                    </td>
+                    <td>{ecole.partis.nombre > 1 ? 'ont quitté vos cohortes — sans leur nom' : 'a quitté vos cohortes — sans son nom'}</td>
+                    <td>{formatUsd(ecole.partis.moisMicrousd)}</td>
+                    <td>{formatUsd(ecole.partis.totalMicrousd)}</td>
+                  </tr>
+                ) : null}
               </tbody>
             </table>
           </div>

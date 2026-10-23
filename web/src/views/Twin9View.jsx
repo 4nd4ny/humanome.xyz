@@ -63,7 +63,8 @@
 // une, sur son crédit ou sur sa clé, sous le plafond qu'elle lui accorde par
 // mois ; son propre solde restant, s'il le choisit. Avec plusieurs écoles, il
 // choisit (twin9/ChoixPayeur.jsx) ; la page dit que son école voit le montant,
-// jamais le contenu. Un run que son école ne paie plus s'arrête, et sa reprise
+// jamais le contenu sur humanome — et, sur sa clé, ce que garde sa Console
+// Anthropic (l'aperçu et l'accord). Un run que son école ne paie plus s'arrête, et sa reprise
 // choisit de nouveau qui paie.
 
 import { useCallback, useEffect, useMemo, useState } from 'react'

@@ -2941,8 +2941,10 @@ crédits (Twin6). Ce que l'API en dit :
   run Twin9 : une école qui a sa clé Anthropic paie avec elle (facteur 1,0)
   un run qui n'appelle qu'Anthropic, même sur un profil `cle: "instance"`, le
   défaut — l'aperçu et la copie du profil du run disent alors
-  `cle: "ecole"` ; à une reprise qui nomme son payeur, la voie suit ce payeur
-  de même (sa clé, sinon la clé de l'instance).
+  `cle: "ecole"` ; à une reprise qui nomme son payeur, un run sur la clé d'une
+  école la garde si l'école choisie en a une, sinon repasse sur la clé de
+  l'instance ; un run sur la clé de l'instance y reste (son accord ne nommait
+  pas la Console d'une école).
 - **`GET /api/twin9/meta`** gagne `payeurs` : pour chacune de ses écoles
   `{type: "ecole", id, nom, soi, cle (une clé posée), mois, plafond_microusd,
   engage_microusd, reste_credit_microusd (son plafond restant),

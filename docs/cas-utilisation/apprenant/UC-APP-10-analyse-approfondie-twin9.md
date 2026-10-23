@@ -290,8 +290,10 @@ badge premium) ou ouvre `#/twin9`.
   dans sa Console Anthropic les résultats des lots partis avec sa clé :
   l'aperçu le dit à l'élève avant le lancement, et l'accord le nomme. Un run
   qui appelle un autre fournisseur reste sur la clé de l'instance, payé par
-  le crédit de l'école. À une reprise qui nomme son payeur, la voie suit ce
-  payeur : sa clé s'il en a une, sinon la clé de l'instance.
+  le crédit de l'école. À une reprise qui nomme son payeur, un run sur la clé
+  d'une école la garde si l'école choisie en a une, sinon repasse sur la clé
+  de l'instance ; un run sur la clé de l'instance y reste, même si son école a
+  posé sa clé depuis (son accord ne nommait pas sa Console).
   Un profil « ecole » qui appelle un autre fournisseur est refusé à
   l'enregistrement (`422` « Profil refusé — /cle : la clé de votre école ne
   sert que chez Anthropic ; … ») ; une école sans clé, `422` « Votre école n'a
@@ -340,7 +342,8 @@ badge premium) ou ouvre `#/twin9`.
   plus cette analyse »), ses réserves rendues à l'école, jamais débité du
   solde de l'élève ; sa reprise sans payeur → `422` « Votre école ne paie plus
   cette analyse : choisissez qui la paie pour la reprendre » ; avec `payeur`,
-  il reprend, le facteur figé de nouveau, et sa voie suit ce payeur ; un lot
+  il reprend, le facteur figé de nouveau (sur la clé d'une école, il la garde
+  si l'école choisie en a une, sinon repasse sur la clé de l'instance) ; un lot
   encore chez Anthropic empêche le changement de payeur (`409`) tant qu'il ne
   s'est pas réglé — un lot parti avec la clé d'une école qui l'a retirée, ou
   qui a disparu, ne se relèvera plus : il est perdu, ses appels et leurs
@@ -634,7 +637,7 @@ badge premium) ou ouvre `#/twin9`.
 | UC-APP-10-F33 | A12, A13 | IHM | Deux écoles et un solde : « Qui paie » à choisir, refus du serveur affiché ; l'aperçu et le lancement portent le choix (CSRF) ; l'aperçu dit que son école paie et en voit le montant, et, sur sa clé, qu'elle peut relire les résultats de ses lots | `web/test/usecases/functional/uc-app-10-analyse-approfondie-twin9.test.jsx` |
 | UC-APP-10-F34 | E16 | IHM | Arrêté parce que son école ne paie plus : la page le dit, et la reprise porte le payeur choisi (CSRF) | idem |
 | UC-APP-10-F35 | E15 | API | Une école envoie `payeur: "personnel"` : aperçu et lancement 422, aucun run ; sans payeur, elle-même | `api/tests/UseCases/Functional/UcApp10AnalyseApprofondieTwin9Test.php` |
-| UC-APP-10-F36 | A13 | API | Son école a sa clé : le profil par défaut et un profil `instance` partent avec elle (aperçu `cle: ecole`, prix de la grille), son crédit intact, le plafond compte le coût ; annulé, la clé retirée, repris avec son école : sur son crédit | idem |
+| UC-APP-10-F36 | A13 | API | Son école a sa clé : le profil par défaut et un profil `instance` partent avec elle (aperçu `cle: ecole`, prix de la grille), son crédit intact, le plafond compte le coût ; annulé, la clé retirée, repris avec son école : sur son crédit ; un run lancé sur la clé de l'instance y reste à sa reprise, l'école ayant posé sa clé depuis | idem |
 | UC-APP-10-F37 | A12, E15 | API | Le plafond pas encore réglé (0) : l'aperçu et le lancement disent de le demander à l'école | idem |
 | UC-APP-10-F38 | A12 | IHM | Le refus du plafond non réglé affiché, et « Mon solde restant » proposé dans « Qui paie » | `web/test/usecases/functional/uc-app-10-analyse-approfondie-twin9.test.jsx` |
 

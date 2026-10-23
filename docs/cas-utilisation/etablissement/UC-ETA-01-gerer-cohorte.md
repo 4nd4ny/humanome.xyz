@@ -161,7 +161,9 @@ L'établissement ouvre l'accueil de son espace (`#/etablissement`, section
   arrête, à leur tranche suivante, les runs que l'école payait pour lui, sans
   jamais les reporter sur son solde (UC-APP-10, E16). Le texte de
   consentement dit, depuis le 2026-10-22 : « …et le montant de ce qu'il paie
-  pour vos analyses (jamais leur contenu). »
+  pour vos analyses (jamais leur contenu sur humanome ; s'il les paie avec sa
+  propre clé Anthropic, les résultats des appels partis par lots restent
+  lisibles dans sa Console Anthropic). »
 
 ## Données et RGPD
 

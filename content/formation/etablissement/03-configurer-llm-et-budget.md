@@ -100,7 +100,11 @@ pour vos apprenants — les membres de vos cohortes —, hors runs de masse :
   apprenants en sont prévenus.
 
 La même section liste vos apprenants et ce que chacun a engagé ce mois-ci et en
-tout : des montants, jamais le contenu de leurs analyses.
+tout : des montants, jamais le contenu de leurs analyses sur humanome (seule
+votre Console Anthropic, avec votre clé, garde les résultats des appels partis
+par lots). Un apprenant qui quitte vos cohortes retire son consentement : il
+n'est plus nommé, ses montants ne comptent plus qu'avec ceux des autres
+apprenants partis.
 
 ## 4. Fixer le plafond de budget
 

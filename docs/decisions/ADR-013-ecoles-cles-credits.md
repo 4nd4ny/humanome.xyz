@@ -27,7 +27,8 @@ encore une réserve de l'ancien se règlent (`409`). Le grand livre des écoles 
 Revue du lot S6b (2026-10-22, même branche) : dix-huit constats confirmés (dix-sept défauts
 distincts), corrigés. Ce qu'ils ont fixé en plus, ou changé, de ce que disaient S6a et S6b : la voie d'un run suit son payeur — une école
 qui a sa clé Anthropic paie avec elle un run qui n'appelle qu'Anthropic, profil `instance` (le
-défaut) compris, et une reprise qui nomme son payeur reprend sa voie (§4, §6) ; une école ne paie
+défaut) compris ; à une reprise, un run sur la clé d'une école la garde si l'école choisie en a une, sinon
+repasse sur la clé de l'instance, et un run sur la clé de l'instance y reste (§4, §6) ; une école ne paie
 jamais comme un particulier (`"personnel"` lui est refusé, `422`) ; l'élève lit son plafond restant
 et un booléen (`credit_suffisant`), jamais le crédit de son école, même plus bas ; un élève parti
 des cohortes n'est plus nommé à l'école, ses montants comptés avec ceux des élèves partis (§7) ;
@@ -209,7 +210,10 @@ gardé, où et combien de temps.
   run qui n'appelle qu'Anthropic, même sur un profil `cle: "instance"` — le défaut, qui veut dire
   « pas ma clé à moi », jamais « pas celle de mon école » —, comme la cartographie ouverte ; un run
   qui appelle un autre fournisseur reste sur la clé de l'instance, payé par son crédit. La copie du
-  profil du run garde la voie prise ; une reprise qui nomme son payeur la reprend de même.
+  profil du run garde la voie prise. À une reprise qui nomme son payeur, un run sur la clé d'une
+  école la garde si l'école choisie en a une, sinon repasse sur la clé de l'instance (son crédit, ou
+  le solde de l'élève, paie) ; un run sur la clé de l'instance y reste, même si l'école a posé sa clé
+  depuis : son accord ne nommait pas la Console de l'école (§7).
 - **Une seule transaction.** La réserve d'un appel payé par une école vérifie, atomiquement et dans
   la transaction qui écrit l'appel, le plafond de l'élève (un `UPDATE` conditionnel de sa ligne du
   mois, verrouillée la première) puis le crédit de l'école (le débit conditionnel de
@@ -532,8 +536,11 @@ Les décisions (a) à (h) du §2, prises par délégation, et ces détails, fix�
     conversion, le maître du registre, le plancher de la surtaxe face à celui d'EduChat, Stripe en
     test puis en réel, PayPal réel, la création de RESPIRE#0 et de RESPIRE#1 en production.
 11. Revue du lot S6b, des choix qui changent ce que S6a et S6b avaient fixé : (a) la voie d'un run
-    suit son payeur (une école qui a sa clé paie avec elle, profil par défaut compris ; la reprise
-    de même) ; (b) une école qui envoie `"personnel"` est refusée (`422`) plutôt que facturée
+    suit son payeur (une école qui a sa clé paie avec elle, profil par défaut compris ; à une
+    reprise, un run sur la clé d'une école repasse sur celle de l'instance si l'école choisie n'en a
+    pas, mais un run sur la clé de l'instance y reste — son école paie alors sa surtaxe, même si elle
+    a posé sa clé depuis, plutôt que de faire passer l'élève sur une Console que son accord ne
+    nommait pas) ; (b) une école qui envoie `"personnel"` est refusée (`422`) plutôt que facturée
     comme un particulier ; (c) l'élève ne lit plus le crédit de son école, même plus bas que son
     plafond restant, mais un booléen ; (d) un élève parti des cohortes n'est plus nommé à l'école ;
     (e) un run sur une clé personnelle s'arrête à sa première tranche après le déploiement, au lieu

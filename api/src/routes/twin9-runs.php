@@ -258,15 +258,18 @@ return function (App $app): void {
                 ProfilPolicy::refuserClePersonnelle($copie['profil']);
                 (new ProfilPolicy(Db::get(), new Twin9Config(new SettingsRepository(Db::get()))))
                     ->admettreAuLancement($copie['profil']);
-                // who pays (ADR-013 §4): chosen again when the body says so, its factor frozen again — and the lane
-                // with it: its school's key when the school chosen has one and the run reaches Anthropic alone, else
-                // the instance's, paid from that school's credit or its owner's balance (Payeurs::pourRun()); else
+                // who pays (ADR-013 §4): chosen again when the body says so, its factor frozen again. A run on its
+                // school's key keeps it when the school chosen has one (and reaches Anthropic alone), else goes back
+                // to the instance's, paid from that school's credit or its owner's balance (Payeurs::pourRun()); a
+                // run on the instance's key stays there — its consent never named a school's Console (§7) —; else
                 // its school, if one paid, still paying — never its owner's balance in its place
                 $payeurs = new Payeurs(Db::get());
                 $cle = (string) ($copie['profil']->cle ?? 'instance');
                 if (\is_array($c) && \array_key_exists('payeur', $c)) {
-                    ['payeur' => $payeur, 'cle' => $voie] = $payeurs->pourRun($userId, $c['payeur'], 'instance',
-                        (new CallSettings($copie['profil']))->fournisseurs());
+                    ['payeur' => $payeur, 'cle' => $voie] = $cle === 'ecole'
+                        ? $payeurs->pourRun($userId, $c['payeur'], 'instance',
+                            (new CallSettings($copie['profil']))->fournisseurs())
+                        : ['payeur' => $payeurs->resoudre($userId, $c['payeur'], $cle), 'cle' => $cle];
                 } elseif ($copie['payeur'] === 'ecole' && $payeurs->encorePaie($userId, $copie['payeur_id'], $cle,
                         $copie['facteur_prix']) !== null) {
                     throw new Twin9Exception('Votre école ne paie plus cette analyse : choisissez qui la paie pour la '

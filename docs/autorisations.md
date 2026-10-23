@@ -211,7 +211,9 @@ Principes d'accès (docs/plan-masse.md §6-7) : « sa cohorte » = cohorte dont
 étages : rejoindre la cohorte (consentement explicite `{"consentement": true}`
 dans le corps + texte affiché — « l'établissement verra les cartographies
 produites dans ce cadre », et, depuis le sprint 6 (lot S6b), le montant de ce
-qu'il paie pour ses analyses, jamais leur contenu) puis **déposer son
+qu'il paie pour ses analyses, jamais leur contenu sur humanome — avec sa propre
+clé Anthropic, les résultats des appels partis par lots restent lisibles dans
+sa Console Anthropic) puis **déposer son
 portfolio** (opt-in de fait au
 traitement serveur : seuls les déposants sont enfilés). Quitter la cohorte
 retire le consentement : adhésion + dépôt purgés, jobs en attente annulés ;
@@ -347,7 +349,7 @@ l'export, dans `PurgeExportTest.php` (T10).
 | `/api/twin9/runs` | POST | Compte, + CSRF : `{profil, portfolio: {nom, texte}, accord: {fournisseurs}, visibilite, referentiel?}` (`accord: true` pour un profil tout Anthropic ; `referentiel: {id, version?}`, un autre que celui du profil, écrit dans sa copie avant son admission, S5 lot C ; `payeur?`, une de ses écoles ou `"personnel"`, S6b) ; le profil est revalidé et admis (`ProfilPolicy` : modèles au prix de l'instance compris), son référentiel figé, son payeur revérifié et figé avec le facteur de son école — `"personnel"` refusé à une école (422) —, et sa voie avec lui (une école qui a sa clé Anthropic paie avec elle un run qui n'appelle qu'Anthropic, revue du lot S6b) ; jusqu'à T16, un autre référentiel que RESPIRE est refusé (422), à l'aperçu aussi |
 | `/api/twin9/runs/avancer` | POST | Compte, + CSRF : une tranche, de la durée de celles du tick et sous son verrou, pour ses seuls runs |
 | `/api/twin9/runs/{id}` | GET | Son propriétaire : sa progression, lue dans son journal ; 404 pour tout autre |
-| `/api/twin9/runs/{id}/annuler`, `/reprendre` | POST | Son propriétaire, + CSRF ; `/reprendre` accepte `{budget_usd}`, un nouveau budget, et `{payeur}`, qui paie désormais (S6b) — sa voie suit ce payeur —, et relit la garde de ses fournisseurs (422 pour un fournisseur fermé depuis ou sans sa clé d'instance) ; 422 pour un run sur la clé personnelle (ADR-013 §6), ou dont l'école ne paie plus, sans nouveau payeur ; 409 hors de l'état voulu, ou pour un nouveau payeur tant qu'un lot tient encore une réserve |
+| `/api/twin9/runs/{id}/annuler`, `/reprendre` | POST | Son propriétaire, + CSRF ; `/reprendre` accepte `{budget_usd}`, un nouveau budget, et `{payeur}`, qui paie désormais (S6b) — un run sur la clé d'une école la garde si l'école choisie en a une, sinon repasse sur la clé de l'instance ; un run sur la clé de l'instance y reste —, et relit la garde de ses fournisseurs (422 pour un fournisseur fermé depuis ou sans sa clé d'instance) ; 422 pour un run sur la clé personnelle (ADR-013 §6), ou dont l'école ne paie plus, sans nouveau payeur ; 409 hors de l'état voulu, ou pour un nouveau payeur tant qu'un lot tient encore une réserve |
 | `/api/twin9/runs/{id}/visibilite` | PUT | Son propriétaire, + CSRF : `privee` ou `cartographe` |
 | `/api/twin9/runs/{id}/resultats` | GET | Son propriétaire ; le cartographe lié si le run lui est visible, la configuration et l'exécution du run sans prix, coût, plafond ni clé (P0-1, `docs/contrats.md` §8.9) ; 404 pour tout autre, administrateur compris |
 | `/api/twin9/mes-analyses` | GET | Compte : ses runs (copie du profil, portfolio, journal, sorties, filtrés) et la mémoire de ses cartes, pour l'archive de compte |

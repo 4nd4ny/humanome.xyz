@@ -907,7 +907,7 @@ final class UcApp10AnalyseApprofondieTwin9Test extends CartographeTestCase
             $apercu['payeur']);
     }
 
-    #[TestDox('UC-APP-10-F36 — A11 : son école a posé sa clé Anthropic : le profil par défaut (mode simple) part avec elle, au prix de la grille, son crédit intact, le plafond comptant le coût ; un profil qui appelle un autre fournisseur reste sur la clé de l’instance ; la clé retirée, la reprise avec son école part sur son crédit')]
+    #[TestDox('UC-APP-10-F36 — A13 : son école a posé sa clé Anthropic : le profil par défaut (mode simple) part avec elle, au prix de la grille, son crédit intact, le plafond comptant le coût ; la clé retirée, la reprise avec son école part sur son crédit ; un run lancé sur la clé de l’instance y reste à sa reprise, même si l’école a posé sa clé depuis')]
     public function testF36TheDefaultProfileTakesTheSchoolsKey(): void
     {
         TestDb::setEnv('SODIUM_MASTER_KEY', bin2hex(random_bytes(32)));
@@ -944,6 +944,18 @@ final class UcApp10AnalyseApprofondieTwin9Test extends CartographeTestCase
         self::assertSame('termine', $this->jusquAuBout($lea, $deuxieme['id'])['statut']);
         self::assertSame('instance', (new RunRepository(self::$pdo))->tete($deuxieme['id'])['profil']->cle);
         self::assertLessThan(1_000_000_000, self::solde($ecole), 'sans sa clé, son crédit paie');
+
+        // launched on the instance's key (its school without a key), resumed once its school has set one: it stays on
+        // the instance's key — its consent never named the school's Console
+        $troisieme = $this->lancer($lea, $profil, "## 2026-01-08\nQuatrième jour.\n");
+        self::assertSame('instance', (new RunRepository(self::$pdo))->tete($troisieme['id'])['profil']->cle);
+        self::assertSame(200, $this->as_($lea, 'POST', "/api/twin9/runs/{$troisieme['id']}/annuler")->getStatusCode());
+        self::assertSame(200, $this->as_($ecole, 'PUT', '/api/etablissement/ecole/cle', ['cle' => 'sk-ant-ecole-fictive-36b'])
+            ->getStatusCode());
+        $reprise = $this->as_($lea, 'POST', "/api/twin9/runs/{$troisieme['id']}/reprendre", ['payeur' => $ecole['id']]);
+        self::assertSame(200, $reprise->getStatusCode(), (string) $reprise->getBody());
+        self::assertSame('instance', (new RunRepository(self::$pdo))->tete($troisieme['id'])['profil']->cle,
+            'une reprise ne la fait pas passer sur la clé de l’école, que son accord ne nommait pas');
     }
 
     #[TestDox('UC-APP-10-F37 — E15 : son école n’a pas encore réglé son plafond (0 $, le défaut) → l’aperçu et le lancement le disent, et qu’il faut le lui demander, plutôt qu’un montant à atteindre')]

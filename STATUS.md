@@ -47,8 +47,9 @@ autre fournisseur qu'Anthropic, que l'administrateur ouvre (entrée du 2026-10-2
 
 - 2026-10-22 — **Sprint 6, lots S6a et S6b : corrections de la revue indépendante (même branche
   `feat/ecoles`, rien déployé).** Dix-huit constats confirmés — dix-sept défauts distincts (le retrait
-  d'une clé d'école sous un lot en vol était relevé deux fois) —, tous corrigés : quatorze commits
-  `fix:`, chacun avec le test qui échouait avant lui, un `test:` et un `docs:` (celui de cette entrée).
+  d'une clé d'école sous un lot en vol était relevé deux fois) —, tous corrigés : quinze commits
+  `fix:`, chacun avec le test qui échouait avant lui, un `test:` et un `docs:` ; le dernier `fix:`
+  porte aussi cette entrée.
   Toujours les seuls lots locaux : aucun appel au VPS d'EduChat, aucun Stripe, aucune donnée réelle,
   aucune purge lancée ; `Twin_v9` n'est pas touché ; la migration 037, pas encore déployée, n'est
   complétée qu'en commentaire.
@@ -77,8 +78,9 @@ autre fournisseur qu'Anthropic, que l'administrateur ouvre (entrée du 2026-10-2
     du profil, et le profil par défaut (mode simple) dit `instance` ; l'école payait sa surtaxe, ou
     voyait refuser ses élèves pour un crédit nul, alors que ses écrans disaient le contraire.
     `Payeurs::pourRun()` : sa clé, au facteur 1,0, pour un run qui n'appelle qu'Anthropic ; la copie du
-    profil du run dit `ecole` ; à une reprise qui nomme son payeur, la voie suit ce payeur.
-    UC-APP-10-F36, UC-ETA-05-U20.
+    profil du run dit `ecole`. UC-APP-10-F36, UC-ETA-05-U20. Ce commit faisait aussi passer à la
+    reprise un run de la clé de l'instance sur celle de l'école, que son accord ne nommait pas : le
+    dernier `fix:` (ci-dessous) l'en empêche.
   - `f5be703` — **l'élève ne lit plus le crédit de son école** : `reste_credit_microusd` valait le
     crédit de l'école dès qu'il était plus bas que le plafond restant (`/api/twin9/meta`, l'aperçu) ;
     il vaut le plafond restant, et `credit_suffisant` dit en un bit si le crédit le couvre ; les pages
@@ -107,7 +109,13 @@ autre fournisseur qu'Anthropic, que l'administrateur ouvre (entrée du 2026-10-2
     UC-APP-10-F33.
   - `c582087` — **la règle R1 sous chaque champ de clé** : banc d'essai, rétrospective, relances du
     dialogue. UC-PRO-05-F30, UC-PRO-06-F06, P7.
-  - Le commit `docs:` de cette entrée : la migration 037 et l'ADR-013 §10 ne prétendent plus que la
+  - Le dernier `fix:` — **une reprise ne fait jamais passer un run sur la clé d'une école que son
+    accord ne nommait pas** : un run lancé sur la clé de l'instance y reste à sa reprise, même si
+    son école a posé sa clé depuis (elle paie alors sa surtaxe) ; un run sur la clé d'une école la
+    garde si l'école choisie en a une, sinon repasse sur la clé de l'instance. UC-APP-10-F36 (étendu).
+    Avec lui, les derniers « jamais le contenu » sans nuance (l'aide de « Mon école », la formation
+    établissement, `docs/autorisations.md`, UC-ETA-01) et `docs/rgpd-verification.md` (§ des écoles).
+  - Le commit `docs:` (`7677f12`) : la migration 037 et l'ADR-013 §10 ne prétendent plus que la
     release précédente ignore 037 (elle lit le schéma, pas les données : un run payé par une école y
     serait pris pour celui de l'élève) ; `docs/administration.md` décrit la procédure d'avant un retour
     arrière (compter en lecture seule, ne pas revenir tant qu'un run payé par une école est en cours
@@ -117,10 +125,11 @@ autre fournisseur qu'Anthropic, que l'administrateur ouvre (entrée du 2026-10-2
     UC-ADM-01, UC-PRO-05, UC-PRO-06 ; `docs/contrats.md`, `docs/autorisations.md`, `docs/roles.md`,
     la page de confidentialité ; le catalogue des cas recompté (62 cas, 1 118 U, 1 261 F,
     191 anomalies).
-  - **Vérifié** (PHP 8.5.12, MySQL 8.0 locaux, base `humanome_test_s6`, `TWIN_V9_DIR` = t9-s2, suite
-    lancée à 17 h 00, hors de la fenêtre 0 h – 2 h d'`UcAdm06MonitoringTest`) : PHP `Tests: 2015,
-    Assertions: 22950`, les 2 échecs connus seuls (`AuthActivationTest::testExpiredCodeIsRejected`,
-    `UcCpt02…::testU17SessionCookieAttributes`), 1 dépréciation, `PariteTest` compris ;
+  - **Vérifié** (PHP 8.5.12, MySQL 8.0 locaux, base `humanome_test_s6`, `TWIN_V9_DIR` = t9-s2,
+    dernière suite lancée à 17 h 31 sur l'arbre final, hors de la fenêtre 0 h – 2 h
+    d'`UcAdm06MonitoringTest`) : PHP `Tests: 2015, Assertions: 22949`, les 2 échecs connus seuls
+    (`AuthActivationTest::testExpiredCodeIsRejected`, `UcCpt02…::testU17SessionCookieAttributes`),
+    1 dépréciation, `PariteTest` compris ;
     `--filter 'PariteTest|EmpreintesFigeesTest|RejeuTest|VoieMixteTest'` relancé à part : 33 tests
     verts ; front 3 045 tests verts (279 fichiers, 9 sautés) ; moteur 593 tests, 585 verts, 8 sautés ;
     `npm run build` puis `npm run test:dist` vert ; `check-publiable` OK ; recomptage des
@@ -136,8 +145,10 @@ autre fournisseur qu'Anthropic, que l'administrateur ouvre (entrée du 2026-10-2
     29 jours au plus. Les runs de masse gardent leur facturation après coup (inchangé).
   - **À décider (Christian)** : ce que la revue a fixé en changeant S6a ou S6b (ADR-013, « À signaler à
     Christian », point 11) — (a) la voie d'un run suit son payeur : une école qui a sa clé paie avec
-    elle, profil par défaut compris, et une reprise qui nomme son payeur reprend sa voie (un profil
-    `ecole` repris avec une école sans clé passe sur son crédit) ; (b) `"personnel"` refusé à une école
+    elle, profil par défaut compris ; à une reprise, un run sur la clé d'une école repasse sur celle
+    de l'instance si l'école choisie n'en a pas, mais un run sur la clé de l'instance y reste — son
+    école paie sa surtaxe même si elle a posé sa clé depuis, plutôt que de faire relire ses lots dans
+    une Console que l'accord de l'élève ne nommait pas ; (b) `"personnel"` refusé à une école
     (`422`), plutôt que traité comme l'école elle-même ; (c) l'élève lit un booléen sur le crédit de son
     école, plus jamais un montant ; (d) un élève parti n'est plus nommé à l'école (plutôt que déclarer
     une base comptable et une durée) ; (e) un run sur une clé personnelle s'arrête au déploiement au

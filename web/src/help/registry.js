@@ -173,7 +173,7 @@ const BASE = {
       'Cartographiez vos classes en masse : des cohortes rejointes par code d’invitation avec ' +
       'consentement explicite, une file de traitement, un budget plafonné ; et payez les analyses de vos élèves.',
     points: [
-      '« Mon école » : votre crédit (acheté sur la page du crédit), le plafond par élève et par mois, votre surtaxe sur la clé de l’instance (3,5 % à 10 %), votre clé Anthropic, jamais réaffichée, et ce que chaque élève a engagé — des montants, jamais le contenu.',
+      '« Mon école » : votre crédit (acheté sur la page du crédit), le plafond par élève et par mois, votre surtaxe sur la clé de l’instance (3,5 % à 10 %), votre clé Anthropic, jamais réaffichée, et ce que chaque élève a engagé — des montants, jamais le contenu sur humanome (avec votre clé, votre Console Anthropic garde les résultats des appels partis par lots) ; les élèves partis de vos cohortes, ensemble et sans nom.',
       'Créez une cohorte, configurez votre fournisseur LLM et votre budget.',
       'Vos apprenants rejoignent avec leur consentement et déposent leur portfolio.',
       'Lancez un run de masse et suivez son avancement en direct ; les cartographies se lisent membre par membre.',

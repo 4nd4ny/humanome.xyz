@@ -16,15 +16,16 @@ use PDO;
  * (Fournisseurs::REGISTRE, `env`). Read when a call leaves, kept nowhere
  * else.
  *
- * No new run leaves on a personal key since ADR-013: a server run cannot
- * keep the key of a browser, and a user's keys are no longer kept on the
- * server. The profile refuses `personnelle` at its registration, its launch
- * and its resumption (ProfilPolicy). What remains of the personal lane
- * serves only the runs launched on it before, until they end (ADR-013 §8,
- * step 3): at Anthropic only — a personal key never reaches another
- * provider, whose account holder could read back what was sent with it —,
- * its owner's key stored before, while it is there. It leaves with the
- * contraction (ADR-013 §8, step 10).
+ * No call leaves on a personal key since ADR-013: a server run cannot keep
+ * the key of a browser, and a user's keys are no longer kept on the server.
+ * The profile refuses `personnelle` at its registration, its launch and its
+ * resumption (ProfilPolicy), and a run launched on it before stops at its
+ * first slice since (Twin9Slice, ADR-013 §8, step 3). What remains of the
+ * personal lane serves only the batches those runs left at Anthropic, to
+ * collect then delete them: at Anthropic only — a personal key never
+ * reaches another provider, whose account holder could read back what was
+ * sent with it —, its owner's key stored before, while it is there. It
+ * leaves with the contraction (ADR-013 §8, step 10).
  *
  * The `ecole` lane (ADR-013 §6, lot S6b): the key of the school that pays
  * the run (EcoleCles), read as each call leaves, kept nowhere else; at

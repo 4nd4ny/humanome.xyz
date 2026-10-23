@@ -19,6 +19,7 @@ use Humanome\Twin9\ProfilPolicy;
 use Humanome\Twin9\ProfilRepository;
 use Humanome\Twin9\ReferentielMoteur;
 use Humanome\Twin9\RunRepository;
+use Humanome\Worker\Twin9Slice;
 use PHPUnit\Framework\Attributes\PreserveGlobalState;
 use PHPUnit\Framework\Attributes\RunTestsInSeparateProcesses;
 use PHPUnit\Framework\Attributes\TestDox;
@@ -305,7 +306,7 @@ final class UcApp10AnalyseApprofondieTwin9Test extends CartographeTestCase
         self::assertSame('cartographe', self::json($second)['visibilite']);
     }
 
-    #[TestDox('UC-APP-10-F07 — A6 : clé personnelle (ADR-013) — un profil enregistré avant, à clé personnelle, est refusé à l’aperçu et au lancement, même avec une clé gardée ; un run lancé dessus avant va au bout sur elle sans rien débiter ; arrêté, il ne reprend pas')]
+    #[TestDox('UC-APP-10-F07 — A6 : clé personnelle (ADR-013) — un profil enregistré avant, à clé personnelle, est refusé à l’aperçu et au lancement, même avec une clé gardée ; un run lancé dessus avant s’arrête à sa tranche suivante, sans un appel ni un débit, et le dit ; arrêté, il ne reprend pas')]
     public function testF07APersonalKeyDebitsNothing(): void
     {
         TestDb::setEnv('SODIUM_MASTER_KEY', str_repeat('ab', 32));
@@ -319,14 +320,19 @@ final class UcApp10AnalyseApprofondieTwin9Test extends CartographeTestCase
         }
         self::assertSame(0, self::runs());
 
-        // a run launched on it before ADR-013 (its copy rewritten as it was then): it ends on it, debiting nothing
+        // a run launched on it before ADR-013 (its copy rewritten as it was then): stopped at its next slice, no call
+        // leaving with the key kept on the server, nothing debited (§8, step 3)
         $this->crediter($lea, 1_000_000_000);
         $instance = $this->profilDirect($lea);
         $id = $this->lancer($lea, $instance)['id'];
         self::surLaClePersonnelle($id);
         $suivi = $this->jusquAuBout($lea, $id);
-        self::assertSame('termine', $suivi['statut']);
-        self::assertGreaterThan(0, $suivi['cout']['depense_microusd'], 'son coût, celui d’Anthropic');
+        self::assertSame('echoue', $suivi['statut']);
+        self::assertSame(ucfirst(Twin9Slice::CLE_PERSONNELLE), $suivi['retard']);
+        self::assertSame(0, $suivi['cout']['depense_microusd'], 'pas un appel');
+        $stmt = self::$pdo->prepare('SELECT COUNT(*) FROM twin9_appels WHERE run_id = ?');
+        $stmt->execute([$id]);
+        self::assertSame(0, (int) $stmt->fetchColumn());
         self::assertSame(1_000_000_000, (new CreditService(self::$pdo))->balance($lea['id']));
         $stmt = self::$pdo->prepare('SELECT COUNT(*) FROM twin9_credit_events WHERE user_id = ? AND kind <> "adjust"');
         $stmt->execute([$lea['id']]);

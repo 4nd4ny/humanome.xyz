@@ -260,7 +260,10 @@ Le monitoring (`GET /api/admin/monitoring`) ne fait que compter la liste
 
 Depuis l'ADR-013, la clé d'un utilisateur reste dans son navigateur : le
 serveur n'en écrit plus aucune (`PUT /api/keys` → `410`), et celles gardées
-avant ne servent plus à aucun run nouveau. La page « Mon compte » les montre
+avant ne servent plus à aucun run : un run lancé avant sur la clé personnelle
+s'arrête à sa première tranche après le déploiement, ses lots encore chez
+Anthropic relevés puis supprimés avec la clé (ADR-013 §8, pas 3 ; le comptage
+ci-dessous dit combien il y en a). La page « Mon compte » les montre
 « à supprimer ». Le script d'administration `scripts/purger-cles-utilisateurs.php`
 (logique : `api/src/Keys/UserKeysPurge.php`) les purge, **à la main
 seulement** : ni le worker, ni une tâche planifiée, ni le déploiement ne
@@ -283,8 +286,10 @@ php scripts/purger-cles-utilisateurs.php purger --confirmer  # efface les clés 
   `api_keys_purge_notice {providers}`.
 - **Purger** : les clés avisées depuis 30 jours au moins ; un compte dont un run
   est en cours sur sa clé personnelle est reporté ; les lots soumis avec la clé
-  sont d'abord annulés puis effacés chez Anthropic. Audit `api_keys_purged
-  {providers}`.
+  sont d'abord annulés puis effacés chez Anthropic, et un compte dont un lot y
+  reste peut-être (Anthropic injoignable, une annulation pas encore finie) est
+  reporté lui aussi, sa clé gardée pour l'effacer la fois suivante. Audit
+  `api_keys_purged {providers}`.
 
 En production, faute de SSH, le moyen de le lancer (une route d'administration
 protégée comme `/api/admin/maintenance`, ou le Mac sur la base de production)

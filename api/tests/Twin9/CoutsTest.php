@@ -22,6 +22,8 @@ use Humanome\Twin9\TarifsAnthropic;
 use Humanome\Twin9\Twin9Config;
 use Humanome\Twin9\Twin9Exception;
 use Humanome\Worker\Tick;
+use Humanome\Worker\Twin9Lots;
+use Humanome\Worker\Twin9Slice;
 use PDO;
 use PHPUnit\Framework\Attributes\PreserveGlobalState;
 use PHPUnit\Framework\Attributes\RunTestsInSeparateProcesses;
@@ -182,26 +184,44 @@ final class CoutsTest extends TestCase
     }
 
     /**
-     * With its owner's own key, a run launched on it before ADR-013 debits nothing here, until it ends (§8,
-     * step 3); its cost is Anthropic's, without the margin.
+     * ADR-013 §8, step 3: a run launched on its owner's own key before ADR-013 — one that a closed promotion
+     * held back, say — stops at its first slice since: not a call leaves with the key kept on the server,
+     * nothing is debited, and a batch it left at Anthropic is collected, then deleted, with that key.
      */
-    public function testWithItsOwnersKeyARunDebitsNothingAndCostsWithoutTheMargin(): void
+    public function testARunOnItsOwnersKeyStopsAtItsFirstSlice(): void
     {
         TestDb::setEnv('SODIUM_MASTER_KEY', str_repeat('ab', 32));
         StoredKeys::seed($this->pdo, $this->user, 'anthropic', 'sk-ant-perso-cle-secrete-2');
         $id = $this->nouveauRun(self::SONNET + ['/cle' => 'personnelle', '/budget_usd' => 50.0]);
+        // a batch of it, submitted with the key before, still at Anthropic: one call in it
+        $api = new FakeBatchApi(static fn (array $r): array => FakeBatchApi::message('vu', 'claude-sonnet-5-5'));
+        $appel = 'journees/J1/a/1-lecteur.md';
+        $corps = json_encode(['requests' => [['custom_id' => Twin9Lots::customId($appel), 'params' => [
+            'model' => 'claude-sonnet-5-5', 'max_tokens' => 1, 'messages' => [['role' => 'user', 'content' => '?']]]]]],
+            JSON_THROW_ON_ERROR);
+        $lot = (string) $api->creer('sk-ant-perso-cle-secrete-2', $corps, microtime(true) + 5)['lot']['id'];
+        $this->pdo->prepare('INSERT INTO twin9_lots (run_id, lot, statut, cle, requetes, octets, soumis_at)
+                             VALUES (?, ?, "en_cours", "personnelle", 1, 10, NOW(3))')->execute([$id, $lot]);
+        $this->pdo->prepare('INSERT INTO twin9_appels (run_id, appel, etape, modele, sha256, statut, lot_id, custom_id)
+                             VALUES (?, ?, "lecteur", "claude-sonnet-5-5", ?, "envoye", ?, ?)')
+            ->execute([$id, $appel, str_repeat('0', 64), (int) $this->pdo->lastInsertId(), Twin9Lots::customId($appel)]);
         $http = self::anthropic();
 
-        $this->jusquALArret($http);
+        for ($n = 0; $n < 3; $n++) {
+            (new Tick($this->pdo, ['budgetSeconds' => 2, 'twin9Sender' => new DirectCalls($http), 'twin9Lots' => $api,
+                                   'twin9Pauses' => [0.05, 0.1]]))->run();
+        }
 
         $runs = new RunRepository($this->pdo);
-        self::assertSame('termine', $runs->statut($id));
-        self::assertSame($this->attendu($http->requests, marge: false), $runs->compteursDe($id)['cout_microusd']);
+        self::assertSame('echoue', $runs->statut($id));
+        self::assertSame(Twin9Slice::CLE_PERSONNELLE, $runs->suivi($id)['attente']);
+        self::assertSame([], $http->requests, 'pas un appel avec la clé gardée');
+        self::assertSame([], $api->verifications, 'ni un lot de plus');
         self::assertSame(self::CREDIT, (new CreditService($this->pdo))->balance($this->user));
         self::assertSame(0, $this->evenements('debit') + $this->evenements('adjust', 'Twin9 run%'));
-        foreach ($http->requests as $r) {
-            self::assertSame('sk-ant-perso-cle-secrete-2', $r['headers']['x-api-key']);
-        }
+        self::assertSame([$lot], $api->supprimes, 'son lot relevé, puis supprimé chez Anthropic avec la clé');
+        self::assertSame('repondu', (string) $this->pdo->query('SELECT statut FROM twin9_appels WHERE run_id = ' . $id)
+            ->fetchColumn(), 'sa réponse lue, jamais supprimée sans être lue');
     }
 
     /** Its owner's credit spent, a run stops the same way, then resumes once topped up. */
@@ -298,8 +318,9 @@ final class CoutsTest extends TestCase
     {
         $this->pdo->prepare('UPDATE twin9_credits SET balance_microusd = 1000000 WHERE user_id = ?')
             ->execute([$this->user]);
-        // the other run, granted 600,000 µ$ of which it has spent 100,000; its key missing, it waits in progress
-        $autre = $this->nouveauRun(self::SONNET + ['/cle' => 'personnelle'], portfolio: "## J1\nAilleurs.\n", journal: 'autre',
+        // the other run, granted 600,000 µ$ of which it has spent 100,000; its key missing (a school's lane without
+        // a school), it waits in progress
+        $autre = $this->nouveauRun(self::SONNET + ['/cle' => 'ecole'], portfolio: "## J1\nAilleurs.\n", journal: 'autre',
             engagement: 600_000);
         $this->pdo->prepare('INSERT INTO twin9_appels (run_id, appel, etape, modele, sha256, statut, cout_microusd)
                              VALUES (?, "journees/J0/1-greffier.md", "greffier", "claude-sonnet-5-5", ?, "repondu", 100000)')
@@ -760,8 +781,12 @@ final class CoutsTest extends TestCase
                                    'twin9Runs' => 3, 'twin9Pauses' => [0.05, 0.1]]))->run();
         }
         $runs = new RunRepository($this->pdo);
-        self::assertSame(['termine', 'termine', 'termine'], [$runs->statut($direct), $runs->statut($perso),
-                                                             $runs->statut($lots)]);
+        // the personal key's, launched before ADR-013, stops at its first slice (§8, step 3)
+        self::assertSame(['termine', 'echoue', 'termine'], [$runs->statut($direct), $runs->statut($perso),
+                                                            $runs->statut($lots)]);
+        foreach ($http->requests as $r) {
+            self::assertNotSame('sk-ant-perso-cle-secrete-2', $r['headers']['x-api-key']);
+        }
         $this->aucuneCle();
         $export = '';
         (new RunExport($this->pdo))->ecrire($this->user, static function (string $morceau) use (&$export): void {

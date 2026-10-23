@@ -256,8 +256,9 @@ Côté interface (S6a) — R1 demande de le dire :
   propriétaire : aujourd'hui appelé avec `$run->userId` (`api/src/Worker/Twin9Lots.php:190`,
   `api/src/Worker/Twin9Slice.php:558`), il reçoit le run, ou son payeur. Voie `instance` : la
   variable du registre, inchangée. Voie `ecole` : la clé d'école du payeur, lue au départ de chaque
-  appel, gardée nulle part ailleurs. Sa branche `personnelle` (`:37-44`) ne sert plus qu'aux runs
-  lancés avant S6a, jusqu'à leur fin (§8), puis part avec la contraction.
+  appel, gardée nulle part ailleurs. Sa branche `personnelle` (`:37-44`) ne sert plus qu'à relever
+  puis supprimer les lots des runs lancés avant S6a, qui s'arrêtent à leur première tranche (§8,
+  pas 3), puis part avec la contraction.
 - **`ProfilPolicy`.** La garde de l'ADR-012 §5 n'est pas retirée : elle passe à la clé d'école, dont
   l'école est le titulaire comme l'utilisateur l'était de la sienne. Un profil `cle: "ecole"` qui
   appelle un autre fournisseur qu'Anthropic est refusé à l'enregistrement (422, aujourd'hui
@@ -332,8 +333,14 @@ Dans l'ordre ; chaque pas suppose le précédent fait.
 2. **Le déploiement de S6a** (migration 036) : plus de lancement ni de reprise sur une clé
    personnelle, plus d'écriture de clé d'utilisateur, plus aucune lecture d'une clé gardée pour un
    run nouveau, packs réservés aux écoles, « à supprimer » sur la page du compte.
-3. **Les runs en cours sur une clé personnelle** finissent sur elle, ou leur propriétaire les annule.
-   Le réglage étant fermé par défaut, il ne devrait y en avoir aucun ; le comptage du pas 1 le dit.
+3. **Les runs en cours sur une clé personnelle** s'arrêtent à leur première tranche après le
+   déploiement (`Twin9Slice::CLE_PERSONNELLE` : « la clé personnelle ne sert plus aux analyses du
+   serveur : relancez l'analyse sur la clé de l'instance ou celle de votre école, la mémoire de la
+   carte garde ce qui est fait ») : plus aucun appel ne part avec une clé gardée sur le serveur, ni
+   pour un run qu'une promotion refermée depuis tenait en attente — il serait reparti sur la clé
+   gardée contre la dernière décision de l'administrateur. Leurs lots encore chez Anthropic sont
+   relevés, puis supprimés avec elle. Le comptage du pas 1 dit à Christian combien il y en a avant
+   le déploiement. (Revue du lot S6b : ce pas disait d'abord qu'ils finissaient sur elle.)
 4. **Leurs lots** : avant d'effacer la clé d'un compte, le script annule puis efface chez Anthropic
    les lots soumis avec elle (`RunPurge::lotsPersonnels`, `api/src/Twin9/RunPurge.php:38`), tant
    qu'elle existe. Une clé dont un run n'est pas fini n'est pas purgée.

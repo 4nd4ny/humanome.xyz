@@ -109,6 +109,13 @@ use Twin9\Run\Pending;
  */
 final class Twin9Slice
 {
+    /**
+     * Why a run on the personal key stops (ADR-013 §8, step 3), as its page
+     * says it: it cannot resume there, a new launch keeps the map's memory.
+     */
+    public const CLE_PERSONNELLE = 'la clé personnelle ne sert plus aux analyses du serveur : relancez l’analyse sur la '
+        . 'clé de l’instance ou celle de votre école, la mémoire de la carte garde ce qui est fait';
+
     /** The v9.8's attempts of a call (aurora/backends.py: RETRIES = 2). */
     public const TENTATIVES = 3;
 
@@ -283,9 +290,17 @@ final class Twin9Slice
         if ($tete === null || $tete['statut'] !== 'en_cours') {
             return null;
         }
+        $payeur = RunPayeur::depuis($tete, $tete['profil']);
+        // a run launched on its owner's personal key before ADR-013 (§8, step 3): stopped at its first slice since,
+        // never another call with the key kept on the server — not even for a run that a promotion closed since held
+        // back. Its batches still at Anthropic are collected, then deleted, with that key (Twin9Lots::menage())
+        if ($payeur->cle === 'personnelle') {
+            $this->arreter($id, self::CLE_PERSONNELLE);
+
+            return null;
+        }
         // its school, if one pays, read again (ADR-013 §4): one that no longer pays stops it, for its owner to choose
         // again at its resumption — never its owner's balance instead
-        $payeur = RunPayeur::depuis($tete, $tete['profil']);
         if ($payeur->ecole()) {
             $raison = (new Payeurs($this->pdo))->encorePaie($payeur->proprietaire, $payeur->ecoleId, $payeur->cle,
                 $payeur->facteur);

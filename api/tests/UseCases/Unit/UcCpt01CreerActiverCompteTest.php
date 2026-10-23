@@ -367,20 +367,20 @@ final class UcCpt01CreerActiverCompteTest extends TestCase
         $tard = self::account('novembre@example.org');
         $waitlist->enlist($tard, $novembre);
 
-        self::assertSame(0, $waitlist->liftDue($novembre - 1), 'le 31 octobre au soir (UTC), rien n’est dû');
+        self::assertSame(['lifted' => 0, 'failed' => 0], $waitlist->liftDue($novembre - 1), 'le 31 octobre au soir (UTC), rien n’est dû');
         self::assertSame([], $mailer->sent);
         self::assertSame(4, $waitlist->count(), 'le compte supprimé ne compte pas');
 
-        self::assertSame(2, $waitlist->liftDue($novembre, 2), 'un lot de deux');
+        self::assertSame(['lifted' => 2, 'failed' => 0], $waitlist->liftDue($novembre, 2), 'un lot de deux');
         self::assertSame(['un@example.org', 'deux@example.org'], array_column($mailer->sent, 'to'), 'ordre d’inscription');
         self::assertNull(self::row($ids['un'])['waitlisted_at']);
         self::assertNotNull(self::row($ids['un'])['verification_code_hash'], 'son code est posé');
         self::assertNotNull(self::row($ids['trois'])['waitlisted_at'], 'le suivant attend le lot suivant');
         self::assertStringContainsString('sort de la liste d\'attente', $mailer->sent[0]['body']);
 
-        self::assertSame(1, $waitlist->liftDue($novembre));
-        self::assertSame(0, $waitlist->liftDue($novembre), 'plus rien de dû');
-        self::assertFalse($waitlist->lift($ids['un']), 'déjà levé : rien');
+        self::assertSame(['lifted' => 1, 'failed' => 0], $waitlist->liftDue($novembre));
+        self::assertSame(['lifted' => 0, 'failed' => 0], $waitlist->liftDue($novembre), 'plus rien de dû');
+        self::assertSame(Waitlist::UNCHANGED, $waitlist->lift($ids['un']), 'déjà levé : rien');
         self::assertCount(3, $mailer->sent, 'un mail par compte, jamais deux');
         self::assertNotNull(self::row($tard)['waitlisted_at'], 'inscrit en novembre : attend décembre');
         self::assertNotNull(self::row($ids['parti'])['waitlisted_at'], 'un compte supprimé n’est pas levé');
@@ -418,5 +418,46 @@ final class UcCpt01CreerActiverCompteTest extends TestCase
         self::assertStringContainsString('Votre inscription sur humanome.xyz sort de la liste d\'attente.', $levee['body']);
         self::assertStringNotContainsString('renouvel', $levee['body']);
         self::assertStringContainsString('/#/compte', $levee['body']);
+    }
+
+    #[TestDox('UC-CPT-01-U25 — Waitlist : un courriel de levée que le transport refuse (mail() rend false : quota, sendmail en panne) laisse le compte EN LISTE D’ATTENTE, à sa date, sans code ni audit de levée — levée « mail_failed », jamais « lifted » ; la levée du mois s’arrête au premier refus et se retient 5 minutes (aucun courriel, aucun code régénéré à chaque requête), puis reprend dans l’ordre ; « Tout lever » s’arrête aussi et le dit (failed)')]
+    public function testU25ALiftWhoseMailFailsStaysOnTheList(): void
+    {
+        $mailer = new MemoryMailer();
+        $mailer->refuse = true;
+        MailerFactory::setOverride($mailer);
+        $waitlist = new Waitlist(self::$pdo);
+        $octobre = gmmktime(10, 0, 0, 10, 10, 2026);
+        $ids = [];
+        foreach (['un', 'deux', 'trois'] as $i => $nom) {
+            $ids[$nom] = self::account($nom . '@example.org');
+            $waitlist->enlist($ids[$nom], $octobre + $i * 86_400);
+        }
+        $novembre = gmmktime(0, 0, 0, 11, 1, 2026);
+
+        self::assertSame(['lifted' => 0, 'failed' => 1], $waitlist->liftDue($novembre), 'arrêtée au premier refus');
+        self::assertSame(['un@example.org'], $mailer->refused, 'un seul essai');
+        $un = self::row($ids['un']);
+        self::assertSame(['2026-10-10 10:00:00', null, null], [$un['waitlisted_at'], $un['verification_code_hash'], $un['verification_expires_at']],
+            'remis en liste d’attente à sa date, sans code : la levée suivante le reprend');
+        self::assertSame(0, (int) self::$pdo->query("SELECT COUNT(*) FROM audit_events WHERE type = 'waitlist_lifted'")->fetchColumn());
+        self::assertSame(3, $waitlist->count());
+
+        // Le transport refuse encore : 5 minutes sans essai, à chaque requête et chaque tick.
+        self::assertSame(['lifted' => 0, 'failed' => 0], $waitlist->liftDue($novembre + 60));
+        self::assertCount(1, $mailer->refused, 'aucun essai pendant la retenue');
+
+        // L'administrateur, lui, essaie : un compte, puis tout ; chacun le dit.
+        self::assertSame(Waitlist::MAIL_FAILED, $waitlist->lift($ids['deux'], 1));
+        self::assertSame(['lifted' => 0, 'failed' => 1, 'remaining' => 3], $waitlist->liftAll(1));
+        self::assertSame(['un@example.org', 'deux@example.org', 'un@example.org'], $mailer->refused);
+        self::assertSame(3, $waitlist->count());
+
+        // Le transport revient, la retenue passée : la levée reprend dans l'ordre d'inscription.
+        $mailer->refuse = false;
+        self::assertSame(['lifted' => 3, 'failed' => 0], $waitlist->liftDue($novembre + 300));
+        self::assertSame(['un@example.org', 'deux@example.org', 'trois@example.org'], array_column($mailer->sent, 'to'));
+        self::assertSame(Waitlist::UNCHANGED, $waitlist->lift($ids['un']), 'déjà levé');
+        self::assertSame(3, (int) self::$pdo->query("SELECT COUNT(*) FROM audit_events WHERE type = 'waitlist_lifted'")->fetchColumn());
     }
 }

@@ -250,13 +250,15 @@ return function (App $app): void {
     }))->add($admin);
 
     // POST /api/admin/waitlist/lift — « Tout lever » : in sign-up order,
-    // Waitlist::ADMIN_BATCH accounts at most per call -> {lifted, remaining}.
+    // Waitlist::ADMIN_BATCH accounts at most per call, stopping at the first
+    // mail the transport refuses -> {lifted, failed, remaining}.
     $app->post('/admin/waitlist/lift', $wrap(function (Request $request, Response $response) use ($json): Response {
         return $json($response, (new Waitlist(Db::get()))->liftAll((int) $request->getAttribute('userId')));
     }))->add($admin);
 
     // POST /api/admin/waitlist/{id}/lift — one account: its code leaves by
-    // mail -> {id, status: lifted|unchanged}; 404 for an unknown account.
+    // mail -> {id, status: lifted|unchanged}; 404 for an unknown account; 502
+    // when the transport refused the mail (the account stays on the list).
     $app->post('/admin/waitlist/{id:[0-9]+}/lift', $wrap(function (Request $request, Response $response, array $args) use ($json): Response {
         $id = (int) $args['id'];
         $exists = Db::get()->prepare('SELECT 1 FROM users WHERE id = ? AND deleted_at IS NULL');
@@ -264,8 +266,12 @@ return function (App $app): void {
         if ($exists->fetchColumn() === false) {
             throw new AdminException('Compte introuvable', 404);
         }
-        $lifted = (new Waitlist(Db::get()))->lift($id, (int) $request->getAttribute('userId'));
+        $status = (new Waitlist(Db::get()))->lift($id, (int) $request->getAttribute('userId'));
+        if ($status === Waitlist::MAIL_FAILED) {
+            throw new AdminException('Le courriel du code d’activation n’est pas parti : le compte reste en liste d’attente. '
+                . 'Réessayez plus tard.', 502);
+        }
 
-        return $json($response, ['id' => $id, 'status' => $lifted ? 'lifted' : 'unchanged']);
+        return $json($response, ['id' => $id, 'status' => $status]);
     }))->add($admin);
 };

@@ -695,4 +695,40 @@ final class UcCpt01CreerActiverCompteTest extends CartographeTestCase
         self::assertSame([$plafond, 0, true], [$mois['spentMicrousd'], $mois['reservedMicrousd'], $mois['exhausted']],
             'son pire cas compté comme dépensé, plus rien « en vol »');
     }
+
+    #[TestDox('UC-CPT-01-F32 — A5 : le courriel de la levée refusé par le transport (mail() rend false) — le tick le dit (listeAttenteEchecs, aucune levée comptée) et le compte reste en liste d’attente ; sa connexion, son attente finie, répond 403 waitlisted « le courriel de votre code n’a pas pu partir », sans session ; le transport revenu, sa connexion le lève (403 email_not_verified, un code) et il s’active')]
+    public function testF32ALiftWhoseMailFailsStaysOnTheList(): void
+    {
+        TestDb::setEnv('OFFERTS_MENSUEL_USD', '0');
+        self::assertSame('waitlisted', self::json($this->signUp())['status']);
+        self::attenteDuMoisDernier('ada@example.org');
+        $this->mailer->clear();
+        $this->mailer->refuse = true;
+        TestDb::setEnv('WORKER_TICK_TOKEN', 'jeton-de-tick-fictif-uc-cpt-01');
+        TestDb::setEnv('ANTHROPIC_API_KEY', ''); // aucun relevé de tarifs : aucun réseau
+
+        $this->cookieSid = null;
+        $tick = $this->request('POST', '/api/admin/worker-tick', ['budgetSeconds' => 1, 'maxCalls' => 1],
+            ['X-Worker-Tick-Token' => 'jeton-de-tick-fictif-uc-cpt-01']);
+        self::assertSame(200, $tick->getStatusCode(), (string) $tick->getBody());
+        self::assertSame([1, null], [self::json($tick)['listeAttenteEchecs'] ?? null, self::json($tick)['listeAttenteLevees'] ?? null]);
+        self::assertNotNull(self::userRow('ada@example.org')['waitlisted_at'], 'toujours en liste d’attente');
+        self::assertNull(self::userRow('ada@example.org')['verification_code_hash']);
+
+        $this->cookieSid = null;
+        $login = $this->login('ada@example.org', self::PASSWORD);
+        self::assertSame(403, $login->getStatusCode());
+        self::assertSame(['code' => 'waitlisted', 'email' => 'ada@example.org'],
+            array_intersect_key(self::json($login), ['code' => 0, 'email' => 0]));
+        self::assertStringContainsString('n\'a pas pu partir', self::json($login)['error']);
+        self::assertNull($this->cookieSid);
+        self::assertSame([], $this->mailer->sent);
+
+        $this->mailer->refuse = false;
+        $this->cookieSid = null;
+        $retry = $this->login('ada@example.org', self::PASSWORD);
+        self::assertSame([403, 'email_not_verified'], [$retry->getStatusCode(), self::json($retry)['code']]);
+        self::assertSame(['ada@example.org'], array_column($this->mailer->sent, 'to'));
+        self::assertSame(200, $this->activate('ada@example.org', $this->lastCode())->getStatusCode());
+    }
 }

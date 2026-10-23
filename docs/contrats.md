@@ -2800,17 +2800,31 @@ liste. La connexion ou le renvoi d'un compte dont l'attente est finie le lève
 lui-même. Un compte levé devient un compte non activé ordinaire : son code
 part par courriel, qui rappelle qu'une fois les 30 minutes passées il suffit de
 se connecter puis de « Renvoyer le code ». Chaque levée est un `UPDATE …
-WHERE waitlisted_at IS NOT NULL` : deux levées simultanées n'envoient qu'un
+WHERE waitlisted_at = <sa date>` : deux levées simultanées n'envoient qu'un
 courriel. Audit `waitlist_lifted {targetUserId}`, d'auteur l'administrateur,
-ou nul pour la levée du mois.
+ou nul pour la levée du mois, écrit une fois le courriel accepté par le
+transport.
+
+**Un courriel refusé** (revue du 2026-10-23 : `mail()` qui rend `false`, le
+quota de l'hébergeur, sendmail en panne) : le compte **reste en liste
+d'attente**, à sa date et sans code, et la levée suivante réessaie. La levée
+du mois s'arrête au premier refus et se retient 5 minutes
+(`Waitlist::MAIL_BACKOFF_SECONDS`, un compteur de `rate_limits` sans
+adresse) : ni chaque requête ni chaque tick ne renvoie un lot de courriels,
+chacun avec un code neuf. Le tick ajoute alors `listeAttenteEchecs: 1` à ses
+compteurs ; la connexion d'un compte dont l'attente est finie répond `403
+{error: « Votre attente est finie, mais le courriel de votre code
+d'activation n'a pas pu partir : réessayez de vous connecter dans quelques
+minutes. », code: "waitlisted", email}`. Un courriel accepté puis perdu en aval
+n'est pas visible ici : le recours reste « Renvoyer le code ».
 
 **L'administration** (session `admin` + CSRF, `docs/administration.md`) :
 
 | Méthode | Route | Réponse |
 |---|---|---|
 | `GET` | `/api/admin/waitlist` | Lève d'abord les comptes dus, puis `{month, signupsOpen, nextLift: "AAAA-MM-01", total, accounts: [{id, email, displayName, createdAt, waitlistedAt}]}` (200 comptes au plus, dans l'ordre ; `waitlistedAt` en UTC, suffixe `Z`) |
-| `POST` | `/api/admin/waitlist/{id}/lift` | `{id, status: "lifted" \| "unchanged"}` ; `404 « Compte introuvable »` |
-| `POST` | `/api/admin/waitlist/lift` | « Tout lever », dans l'ordre, 200 comptes au plus par appel : `{lifted, remaining}` |
+| `POST` | `/api/admin/waitlist/{id}/lift` | `{id, status: "lifted" \| "unchanged"}` ; `404 « Compte introuvable »` ; `502 « Le courriel du code d’activation n’est pas parti : le compte reste en liste d’attente. Réessayez plus tard. »` quand le transport refuse le courriel |
+| `POST` | `/api/admin/waitlist/lift` | « Tout lever », dans l'ordre, 200 comptes au plus par appel, arrêté au premier courriel refusé : `{lifted, failed, remaining}` (`failed` : 0 ou 1) |
 
 `GET /api/admin/monitoring` compte la liste dans `utilisateurs.enListeAttente`
 (ces comptes comptent aussi dans `nonActives`).

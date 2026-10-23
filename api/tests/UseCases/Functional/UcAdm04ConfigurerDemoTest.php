@@ -566,7 +566,7 @@ final class UcAdm04ConfigurerDemoTest extends AdminTestCase
 
         // Tout lever : Ada puis Cid, dans l'ordre d'inscription.
         $all = $this->as_($this->admin, 'POST', '/api/admin/waitlist/lift');
-        self::assertSame([200, ['lifted' => 2, 'remaining' => 0]], [$all->getStatusCode(), self::json($all)]);
+        self::assertSame([200, ['lifted' => 2, 'failed' => 0, 'remaining' => 0]], [$all->getStatusCode(), self::json($all)]);
         self::assertSame(['bob@example.org', 'ada@example.org', 'cid@example.org'], array_column($this->mailer->sent, 'to'));
         self::assertSame(['total' => 0, 'accounts' => []],
             array_intersect_key(self::json($this->as_($this->admin, 'GET', '/api/admin/waitlist')), ['total' => 0, 'accounts' => 0]));
@@ -575,5 +575,34 @@ final class UcAdm04ConfigurerDemoTest extends AdminTestCase
         $this->cookieSid = null;
         self::assertSame(200, $this->activate('bob@example.org', $bobCode)->getStatusCode());
         self::assertSame('waitlisted', self::json($this->registerPending('dan@example.org'))['status']);
+    }
+
+    #[TestDox('UC-ADM-04-F27 — A9, RG11 : le courriel du code refusé par le transport (mail() rend false) — « Lever » répond 502 « Le courriel du code d’activation n’est pas parti : le compte reste en liste d’attente », le compte reste listé, sans audit de levée ; « Tout lever » s’arrête au premier refus et le dit (failed) ; le transport revenu, « Lever » réussit')]
+    public function testF27ALiftWhoseMailFailsStaysListed(): void
+    {
+        $this->put(['monthlyFreeUsd' => 0]);
+        foreach (['ada', 'bob'] as $nom) {
+            self::assertSame('waitlisted', self::json($this->registerPending("{$nom}@example.org"))['status']);
+        }
+        $stmt = self::$pdo->prepare('SELECT id FROM users WHERE email = ?');
+        $stmt->execute(['bob@example.org']);
+        $bob = (int) $stmt->fetchColumn();
+        $this->mailer->clear();
+        $this->mailer->refuse = true;
+
+        $lift = $this->as_($this->admin, 'POST', '/api/admin/waitlist/' . $bob . '/lift');
+        self::assertSame([502, ['error' => 'Le courriel du code d’activation n’est pas parti : le compte reste en liste d’attente. Réessayez plus tard.']],
+            [$lift->getStatusCode(), self::json($lift)]);
+        self::assertNull(self::lastAudit('waitlist_lifted'));
+        $all = $this->as_($this->admin, 'POST', '/api/admin/waitlist/lift');
+        self::assertSame([200, ['lifted' => 0, 'failed' => 1, 'remaining' => 2]], [$all->getStatusCode(), self::json($all)]);
+        self::assertSame(['bob@example.org', 'ada@example.org'], $this->mailer->refused, '« Tout lever » arrêté au premier refus');
+        self::assertSame(['ada@example.org', 'bob@example.org'],
+            array_column(self::json($this->as_($this->admin, 'GET', '/api/admin/waitlist'))['accounts'], 'email'));
+
+        $this->mailer->refuse = false;
+        $again = $this->as_($this->admin, 'POST', '/api/admin/waitlist/' . $bob . '/lift');
+        self::assertSame([200, ['id' => $bob, 'status' => 'lifted']], [$again->getStatusCode(), self::json($again)]);
+        self::assertSame(['bob@example.org'], array_column($this->mailer->sent, 'to'));
     }
 }

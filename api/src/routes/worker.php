@@ -359,11 +359,15 @@ return function (App $app): void {
             $counters['tarifs'] = $tarifs;
         }
         // The waiting list of the sign-ups, on the 1st of the month (sprint 7,
-        // Auth\Waitlist): a batch, in sign-up order. Its failure never fails the tick.
+        // Auth\Waitlist): a batch, in sign-up order, stopped by a mail the
+        // transport refuses (listeAttenteEchecs). Its failure never fails the tick.
         try {
-            $levees = (new Waitlist(Db::get()))->liftDue();
-            if ($levees > 0) {
-                $counters['listeAttenteLevees'] = $levees;
+            $levee = (new Waitlist(Db::get()))->liftDue();
+            if ($levee['lifted'] > 0) {
+                $counters['listeAttenteLevees'] = $levee['lifted'];
+            }
+            if ($levee['failed'] > 0) {
+                $counters['listeAttenteEchecs'] = $levee['failed'];
             }
         } catch (\Throwable $e) {
             error_log('[worker-tick] liste d\'attente non levée : ' . $e::class);

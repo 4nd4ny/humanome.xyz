@@ -26,8 +26,8 @@ declare(strict_types=1);
  *
  * Output: the tick counters as one JSON line — counters only, never any
  * portfolio or document content (cahier §6.5) —, with `tarifs` (ok, echec)
- * when the prices were read and `listeAttenteLevees` when accounts left the
- * waiting list.
+ * when the prices were read, `listeAttenteLevees` when accounts left the
+ * waiting list and `listeAttenteEchecs` when the transport refused a lift's mail.
  */
 
 $root = dirname(__DIR__);
@@ -82,11 +82,15 @@ if ($tarifs !== null) {
 }
 
 // The sign-ups' waiting list, on the 1st of the month (sprint 7): a batch, in
-// sign-up order; its failure never fails the tick either.
+// sign-up order, stopped by a mail the transport refuses; its failure never
+// fails the tick either.
 try {
-    $levees = (new \Humanome\Auth\Waitlist(\Humanome\Db::get()))->liftDue();
-    if ($levees > 0) {
-        $counters['listeAttenteLevees'] = $levees;
+    $levee = (new \Humanome\Auth\Waitlist(\Humanome\Db::get()))->liftDue();
+    if ($levee['lifted'] > 0) {
+        $counters['listeAttenteLevees'] = $levee['lifted'];
+    }
+    if ($levee['failed'] > 0) {
+        $counters['listeAttenteEchecs'] = $levee['failed'];
     }
 } catch (\Throwable $e) {
     fwrite(STDERR, '[worker] liste d\'attente non levée : ' . $e::class . "\n");

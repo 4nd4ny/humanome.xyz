@@ -139,7 +139,14 @@ Le visiteur ouvre `#/compte` et choisit « Inscription » — ou clique le lien
   tout moment (UC-ADM-04, A9). Levé, le compte est un compte non activé
   ordinaire : son code part par email (« votre inscription sort de la liste
   d'attente », le lien `#/activer`, 30 minutes, puis « connectez-vous et
-  Renvoyer le code »), et le scénario reprend à l'étape 7 (ou par A3).
+  Renvoyer le code »), et le scénario reprend à l'étape 7 (ou par A3). Un
+  courriel que le transport refuse (`mail()` rend `false`) laisse le compte
+  **en liste d'attente**, à sa date et sans code : la levée du mois s'arrête
+  et se retient 5 minutes, puis réessaie ; le tick le compte
+  (`listeAttenteEchecs`) ; la connexion du compte répond `403 waitlisted`
+  « Votre attente est finie, mais le courriel de votre code d'activation n'a
+  pas pu partir : réessayez de vous connecter dans quelques minutes. » (revue
+  du 2026-10-23).
 
 ## Scénarios d'erreur
 
@@ -282,6 +289,7 @@ Le visiteur ouvre `#/compte` et choisit « Inscription » — ou clique le lien
 | UC-CPT-01-U22 | `ActivationMail` | Email de la liste d'attente sans code ; email de la levée : code, lien, 30 minutes, « Renvoyer le code » | idem |
 | UC-CPT-01-U23 | `AccountView` (inscription, seul) | Réponse `waitlisted` : retour à la connexion, notice du serveur, pas d'écran d'activation, aucun code (A4) | `web/test/usecases/unit/uc-cpt-01-creer-activer-compte.test.jsx` |
 | UC-CPT-01-U24 | `AccountView` (connexion, seul) | `403 waitlisted` : notice du serveur, ni alerte, ni écran d'activation, ni « Renvoyer le code » (A4) | idem |
+| UC-CPT-01-U25 | `Waitlist::lift`, `liftDue`, `liftAll`, `ActivationMail::send` | Un courriel refusé par le transport : `mail_failed`, le compte remis en attente à sa date, sans code ni audit ; levée du mois arrêtée au premier refus, retenue 5 minutes sans essai, puis reprise dans l'ordre ; « Tout lever » arrêté, `failed: 1` ; l'administrateur essaie toujours (A5) | `api/tests/UseCases/Unit/UcCpt01CreerActiverCompteTest.php` |
 
 ### Tests fonctionnels
 
@@ -318,6 +326,7 @@ Le visiteur ouvre `#/compte` et choisit « Inscription » — ou clique le lien
 | UC-CPT-01-F29 | A5 | API | Le tick (`POST /api/admin/worker-tick`, jeton du déclencheur) lève la liste et le dit (`listeAttenteLevees`) ; un tick sans compte dû n'en dit rien | idem |
 | UC-CPT-01-F30 | A4, A5 | IHM | `<App/>` : inscription en liste d'attente (notice, aucun code), connexion qui le redit ; levée → connexion → écran d'activation → connecté | `web/test/usecases/functional/uc-cpt-01-creer-activer-compte.test.jsx` |
 | UC-CPT-01-F31 | RG8 | API | Une réserve orpheline du pire cas d'un Essayer, au-delà de son échéance : l'inscription part en liste d'attente, l'Essayer est refusé, le mois la montre dépensée et plus « en vol » | `api/tests/UseCases/Functional/UcCpt01CreerActiverCompteTest.php` |
+| UC-CPT-01-F32 | A5 | API | Le courriel de la levée refusé : le tick dit `listeAttenteEchecs: 1`, le compte reste en attente sans code ; sa connexion répond `403 waitlisted` « … n'a pas pu partir … », sans session ; le transport revenu, sa connexion le lève (`email_not_verified`, un code) et il s'active | `api/tests/UseCases/Functional/UcCpt01CreerActiverCompteTest.php` |
 
 Les tests IHM jouent `<App/>` contre un faux serveur en mémoire qui rejoue le
 contrat HTTP des routes du compte (`web/test/usecases/support/cpt.js`).

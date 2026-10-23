@@ -28,6 +28,13 @@ use PDO;
  *   scripts/worker.php) and when the administrator opens it; and by the
  *   administrator, one by one or all. A lifted account becomes an ordinary
  *   pending one: its code leaves by mail (ActivationMail, $afterWaitlist).
+ * - A lift whose mail the transport refuses (mail() false: the host's quota,
+ *   sendmail down) puts the account back on the list, at its date and without
+ *   a code (review of 2026-10-23): it is « mail_failed », never « lifted »,
+ *   and the next lift tries again. The month's lift then stops, and holds
+ *   back for MAIL_BACKOFF_SECONDS (a counter of rate_limits, no address):
+ *   neither every request nor every tick retries a batch of mails, each with
+ *   a fresh code. The administrator's lifts, explicit, always try.
  *
  * Clock: waitlisted_at is written in UTC by PHP (gmdate), never by MySQL's
  * NOW(), which follows the server's local time; an account is due once its
@@ -54,6 +61,25 @@ final class Waitlist
 
     /** Audit of a lift: {targetUserId}, by the administrator (user_id) or the month (user_id NULL). */
     public const AUDIT_LIFTED = 'waitlist_lifted';
+
+    /** lift(): the account left the list and its code left by mail. */
+    public const LIFTED = 'lifted';
+
+    /** lift(): the account was not (or no longer) on the list; nothing sent. */
+    public const UNCHANGED = 'unchanged';
+
+    /** lift(): the transport refused the mail; the account stays on the list. */
+    public const MAIL_FAILED = 'mail_failed';
+
+    /** What the login of a due account answers when its lift's mail was refused. */
+    public const MAIL_FAILED_MESSAGE = 'Votre attente est finie, mais le courriel de votre code d\'activation n\'a pas pu '
+        . 'partir : réessayez de vous connecter dans quelques minutes.';
+
+    /** How long the month's lift holds back after a refused mail (5 minutes). */
+    public const MAIL_BACKOFF_SECONDS = 300;
+
+    /** The rate_limits bucket of that hold (a counter, no address). */
+    private const MAIL_BACKOFF_BUCKET = 'waitlist:mail-refused';
 
     public function __construct(private readonly PDO $pdo)
     {
@@ -132,65 +158,126 @@ final class Waitlist
 
     /**
      * Lifts one account: it becomes an ordinary pending account and its
-     * activation code leaves by mail. False, and nothing sent, when it was not
-     * (or no longer) on the list.
+     * activation code leaves by mail — LIFTED, audited once the transport
+     * has taken the mail. UNCHANGED, and nothing sent, when it was not (or no
+     * longer) on the list. MAIL_FAILED when the transport refused the mail:
+     * the account is put back on the list, at its date and without a code,
+     * and the month's lift holds back (MAIL_BACKOFF_SECONDS). The account is
+     * claimed first by a conditional UPDATE: two concurrent lifts send one
+     * mail.
      *
      * @param int|null $adminId the administrator who lifts it, null for the month
+     * @return self::LIFTED|self::UNCHANGED|self::MAIL_FAILED
      */
-    public function lift(int $userId, ?int $adminId = null): bool
+    public function lift(int $userId, ?int $adminId = null, ?int $now = null): string
     {
-        $update = $this->pdo->prepare(
-            'UPDATE users SET waitlisted_at = NULL WHERE id = ? AND waitlisted_at IS NOT NULL AND deleted_at IS NULL'
+        $stmt = $this->pdo->prepare(
+            'SELECT email, waitlisted_at FROM users WHERE id = ? AND waitlisted_at IS NOT NULL AND deleted_at IS NULL'
         );
-        $update->execute([$userId]);
-        if ($update->rowCount() !== 1) {
-            return false;
+        $stmt->execute([$userId]);
+        $row = $stmt->fetch(PDO::FETCH_ASSOC);
+        if (!\is_array($row)) {
+            return self::UNCHANGED;
+        }
+        $claim = $this->pdo->prepare(
+            'UPDATE users SET waitlisted_at = NULL WHERE id = ? AND waitlisted_at = ? AND deleted_at IS NULL'
+        );
+        $claim->execute([$userId, $row['waitlisted_at']]);
+        if ($claim->rowCount() !== 1) {
+            return self::UNCHANGED; // lifted meanwhile
+        }
+        try {
+            $sent = ActivationMail::send($this->pdo, $userId, (string) $row['email'], true);
+        } catch (\Throwable $e) {
+            try {
+                $this->putBack($userId, (string) $row['waitlisted_at']);
+            } catch (\Throwable) {
+                // the original failure says more
+            }
+            throw $e;
+        }
+        if (!$sent) {
+            $this->putBack($userId, (string) $row['waitlisted_at']);
+            (new RateLimiter($this->pdo, 1, self::MAIL_BACKOFF_SECONDS))->hit(self::MAIL_BACKOFF_BUCKET, $now);
+            error_log('[waitlist] activation mail refused by the transport'); // no address
+
+            return self::MAIL_FAILED;
         }
         Audit::record($this->pdo, $adminId, self::AUDIT_LIFTED, ['targetUserId' => $userId]);
-        $email = $this->pdo->prepare('SELECT email FROM users WHERE id = ?');
-        $email->execute([$userId]);
-        ActivationMail::send($this->pdo, $userId, (string) $email->fetchColumn(), true);
 
-        return true;
+        return self::LIFTED;
     }
 
     /**
      * The month's lift: the accounts waitlisted before the current UTC month,
      * in sign-up order, $limit at most (the rest at the next request or
-     * tick). Returns how many this call lifted.
+     * tick). It stops at the first refused mail, and does nothing while the
+     * hold that follows lasts (MAIL_BACKOFF_SECONDS).
+     *
+     * @return array{lifted: int, failed: int} what this call lifted, and refused mails (0 or 1)
      */
-    public function liftDue(?int $now = null, int $limit = self::LIFT_BATCH): int
+    public function liftDue(?int $now = null, int $limit = self::LIFT_BATCH): array
     {
+        if ((new RateLimiter($this->pdo, 1, self::MAIL_BACKOFF_SECONDS))->isBlocked(self::MAIL_BACKOFF_BUCKET, $now)) {
+            return ['lifted' => 0, 'failed' => 0];
+        }
         $stmt = $this->pdo->prepare(
             'SELECT id FROM users WHERE waitlisted_at IS NOT NULL AND waitlisted_at < ? AND deleted_at IS NULL
               ORDER BY id LIMIT ' . max(1, $limit)
         );
         $stmt->execute([self::monthStart($now)]);
-        $lifted = 0;
-        foreach ($stmt->fetchAll(PDO::FETCH_COLUMN) as $id) {
-            $lifted += $this->lift((int) $id) ? 1 : 0;
-        }
 
-        return $lifted;
+        return $this->liftEach($stmt->fetchAll(PDO::FETCH_COLUMN), null, $now);
     }
 
     /**
      * « Tout lever » (the administrator): the whole list, in sign-up order,
-     * ADMIN_BATCH accounts at most per call.
+     * ADMIN_BATCH accounts at most per call; it stops at the first refused
+     * mail (failed: 1).
      *
-     * @return array{lifted: int, remaining: int}
+     * @return array{lifted: int, failed: int, remaining: int}
      */
     public function liftAll(int $adminId, int $limit = self::ADMIN_BATCH): array
     {
         $stmt = $this->pdo->query(
             'SELECT id FROM users WHERE waitlisted_at IS NOT NULL AND deleted_at IS NULL ORDER BY id LIMIT ' . max(1, $limit)
         );
+
+        return $this->liftEach($stmt->fetchAll(PDO::FETCH_COLUMN), $adminId, null) + ['remaining' => $this->count()];
+    }
+
+    /**
+     * Lifts the accounts in order, until a refused mail.
+     *
+     * @param list<int|string> $ids
+     * @return array{lifted: int, failed: int}
+     */
+    private function liftEach(array $ids, ?int $adminId, ?int $now): array
+    {
         $lifted = 0;
-        foreach ($stmt->fetchAll(PDO::FETCH_COLUMN) as $id) {
-            $lifted += $this->lift((int) $id, $adminId) ? 1 : 0;
+        foreach ($ids as $id) {
+            $status = $this->lift((int) $id, $adminId, $now);
+            if ($status === self::MAIL_FAILED) {
+                return ['lifted' => $lifted, 'failed' => 1];
+            }
+            $lifted += $status === self::LIFTED ? 1 : 0;
         }
 
-        return ['lifted' => $lifted, 'remaining' => $this->count()];
+        return ['lifted' => $lifted, 'failed' => 0];
+    }
+
+    /**
+     * A lift whose mail did not leave: the account back on the list, at its
+     * date, without the code that never left — as long as it is still a
+     * pending account (never activated, never deleted meanwhile).
+     */
+    private function putBack(int $userId, string $waitlistedAt): void
+    {
+        $this->pdo->prepare(
+            'UPDATE users SET waitlisted_at = ?, verification_code_hash = NULL, verification_expires_at = NULL,
+                    verification_attempts = 0
+              WHERE id = ? AND waitlisted_at IS NULL AND email_verified_at IS NULL AND deleted_at IS NULL'
+        )->execute([$waitlistedAt, $userId]);
     }
 
     /** Accounts on the waiting list. */

@@ -231,8 +231,8 @@ paquet par défaut, et la **démo publique s'édite** via `/api/admin/demo-confi
 | Méthode | Route | Effet |
 |---|---|---|
 | `GET` | `/api/admin/waitlist` | Lève d'abord les comptes dont l'attente est finie (c'est une requête du mois), puis `{month, signupsOpen, nextLift, total, accounts}` (200 comptes au plus, ordre d'inscription). |
-| `POST` | `/api/admin/waitlist/{id}/lift` | Lève un compte : `{id, status: lifted\|unchanged}`, 404 « Compte introuvable ». Son code part par courriel. Audit : `waitlist_lifted` `{targetUserId}`. |
-| `POST` | `/api/admin/waitlist/lift` | « Tout lever », dans l'ordre d'inscription, 200 comptes au plus par appel : `{lifted, remaining}`. |
+| `POST` | `/api/admin/waitlist/{id}/lift` | Lève un compte : `{id, status: lifted\|unchanged}`, 404 « Compte introuvable ». Son code part par courriel. Audit : `waitlist_lifted` `{targetUserId}`. Courriel refusé par le transport : 502, le compte reste en liste d'attente (réessayer plus tard). |
+| `POST` | `/api/admin/waitlist/lift` | « Tout lever », dans l'ordre d'inscription, 200 comptes au plus par appel, arrêté au premier courriel refusé : `{lifted, failed, remaining}`. |
 
 Le monitoring (`GET /api/admin/monitoring`) ne fait que compter la liste
 (`utilisateurs.enListeAttente`) : il n'écrit rien.

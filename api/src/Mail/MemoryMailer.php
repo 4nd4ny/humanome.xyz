@@ -8,15 +8,27 @@ namespace Humanome\Mail;
  * Implémentation no-op de test : capture les messages en mémoire au lieu de les
  * envoyer. Les tests d'inscription lisent `lastBody()` et en extraient le code
  * à 4 chiffres (ce qui vérifie AUSSI que le mail contient bien le lien + le code
- * en clair, exigence D5).
+ * en clair, exigence D5). $refuse simule un transport qui refuse l'envoi
+ * (`mail()` qui rend false : quota de l'hébergeur, sendmail en panne) : le
+ * message n'est pas capturé, la tentative l'est ($refused).
  */
 final class MemoryMailer implements Mailer
 {
     /** @var list<array{to: string, subject: string, body: string}> */
     public array $sent = [];
 
+    public bool $refuse = false;
+
+    /** @var list<string> les destinataires des envois refusés */
+    public array $refused = [];
+
     public function send(string $to, string $subject, string $body): bool
     {
+        if ($this->refuse) {
+            $this->refused[] = $to;
+
+            return false;
+        }
         $this->sent[] = ['to' => $to, 'subject' => $subject, 'body' => $body];
 
         return true;

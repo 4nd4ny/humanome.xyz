@@ -342,7 +342,8 @@ return function (App $app): void {
         // qu'il est aussi : 403 {code: "waitlisted"}, sans session ni code. Son
         // attente finie (un mois passé), il est levé ici (ou vient de l'être par
         // une requête concurrente) : son code part, et il devient un compte non
-        // activé ordinaire.
+        // activé ordinaire — sauf si le transport refuse le courriel : il reste
+        // en attente, et la réponse le dit.
         if (Waitlist::isWaitlisted($user)) {
             if (!Waitlist::isDue($user)) {
                 return $json($response, [
@@ -351,7 +352,15 @@ return function (App $app): void {
                     'email' => (string) $user['email'],
                 ], 403);
             }
-            $waitlist->lift((int) $user['id']);
+            if ($waitlist->lift((int) $user['id']) === Waitlist::MAIL_FAILED) {
+                // Le courriel de son code n'est pas parti : il reste en liste
+                // d'attente, la prochaine connexion (ou levée) réessaie.
+                return $json($response, [
+                    'error' => Waitlist::MAIL_FAILED_MESSAGE,
+                    'code' => 'waitlisted',
+                    'email' => (string) $user['email'],
+                ], 403);
+            }
         }
 
         // Compte non activé (email non confirmé, D5) : 403 explicite + le front

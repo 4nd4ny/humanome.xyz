@@ -176,7 +176,12 @@ par exemple juste avant ou juste après une présentation.
   d'activation part par email. ») ; un compte déjà levé répond `unchanged`.
   « Tout lever (n) » (`POST /api/admin/waitlist/lift`) lève la liste dans
   l'ordre, 200 comptes au plus par appel (« 2 comptes levés. », ou combien
-  restent). Les inscriptions restent fermées tant que le plafond le veut :
+  restent). Un courriel que le transport refuse laisse le compte en attente :
+  « Lever » répond `502` « Le courriel du code d’activation n’est pas parti :
+  le compte reste en liste d’attente. Réessayez plus tard. », affiché en
+  alerte ; « Tout lever » s'arrête au premier refus (`failed: 1`) et le dit
+  (« … un courriel de code n’est pas parti : ce compte et les suivants restent
+  en liste d’attente, réessayez plus tard. »). Les inscriptions restent fermées tant que le plafond le veut :
   pour les rouvrir, l'administrateur relève `monthlyFreeUsd` (A8). Une API
   sans cette route : une note « Liste d'attente indisponible », le reste des
   réglages intact.
@@ -299,7 +304,8 @@ par exemple juste avant ou juste après une présentation.
   attend alors, sans code. La liste se lève au 1er du mois UTC suivant, dans
   l'ordre d'inscription, ou par l'administrateur (A9), seul `admin` (session
   + CSRF) ; chaque levée envoie au compte son code et journalise
-  `waitlist_lifted {targetUserId}`, l'administrateur pour auteur.
+  `waitlist_lifted {targetUserId}`, l'administrateur pour auteur, une fois le
+  courriel accepté par le transport ; refusé, le compte reste en attente.
 
 ## Données et RGPD
 
@@ -365,6 +371,7 @@ par exemple juste avant ou juste après une présentation.
 | UC-ADM-04-U14 | `toggleDemo` | `PUT api/admin/demo-config` (méthode et URL vérifiées) avec `{enabled}` booléen seul | idem |
 | UC-ADM-04-U32 | `fetchWaitlist`, `liftWaitlisted`, `liftWaitlist` (A9) | `GET api/admin/waitlist` normalisé (réponse partielle : inscriptions ouvertes, liste vide) ; POST `…/{id}/lift` et `…/lift` avec le jeton CSRF | `web/test/usecases/unit/uc-adm-04-configurer-demo.test.jsx` |
 | UC-ADM-04-U33 | `ReglagesSection` — `FreeCreditsMonth`, `WaitlistBlock` (A9, RG11) | « Inscriptions : en liste d'attente » et le seuil ; liste dans l'ordre, prochaine levée ; « Lever » puis « Tout lever » rechargent et le disent ; API sans la route : une note, aucune alerte | idem |
+| UC-ADM-04-U34 | `ReglagesSection` — `WaitlistBlock` (A9) | Courriel refusé : « Lever » affiche en alerte le message du serveur (`502`), le compte reste listé ; « Tout lever » `{lifted: 0, failed: 1}` dit « 0 compte levé ; un courriel de code n’est pas parti … », sans prétendre la liste levée | `web/test/usecases/unit/uc-adm-04-configurer-demo.test.jsx` |
 | UC-ADM-04-U31 | `ReglagesSection` (A8, RG10) | Champ « Crédits offerts / mois (USD) » (valeur, bornes 0 – 1000, pas de 0,01), PUT partiel `{monthlyFreeUsd: 0}` ; la ligne du grand livre du mois, « Épuisés » au plafond ; une API qui ne le donne pas ne montre ni le champ ni la ligne | `web/test/usecases/unit/uc-adm-04-configurer-demo.test.jsx` |
 | UC-ADM-04-U15 | `ReglagesSection` | PUT partiel des seuls champs modifiés, nombres | idem |
 | UC-ADM-04-U16 | `ReglagesSection` | Modèle hors liste → « autre… » ; rien à enregistrer | idem |
@@ -396,6 +403,7 @@ par exemple juste avant ou juste après une présentation.
 | UC-ADM-04-F23 | A7, RG9 | API | Le Sonnet 5 du `.env` de juillet est refusé et nommé, la démo appelle Haiku 5.5 avec toute sa sortie ; un `PUT` Sonnet ou Opus → `422`, rien d'écrit | idem |
 | UC-ADM-04-F24 | A8, RG10 | API | Plafond mensuel : 20 $ (fichier), `OFFERTS_MENSUEL_USD` (env), `PUT {monthlyFreeUsd: 0}` (base) → l'Essayer et le tuteur répondent aussitôt `503` « Les crédits offerts de ce mois sont épuisés ; revenez le 1er … » (`offerts_epuises`), `remainingThisMonth` faux ; `GET` montre le grand livre (1 appel, 2 refus, épuisé, inscriptions en liste d'attente) ; 1 000,01, −1, texte, `null` → `422` ; Réinitialiser → l'environnement | `api/tests/UseCases/Functional/UcAdm04ConfigurerDemoTest.php` |
 | UC-ADM-04-F25 | A9, RG11 | API | Cap à 0 → trois inscriptions en attente ; `GET /api/admin/waitlist` (401 visiteur, 403 apprenant) : ordre, champs, UTC, `signupsOpen` faux ; sans CSRF 403 ; « Lever » → code envoyé, audit d'auteur l'admin, puis `unchanged` ; inconnu 404 ; « Tout lever » → `{lifted: 2, remaining: 0}` dans l'ordre ; le compte levé s'active, la nouvelle inscription attend | `api/tests/UseCases/Functional/UcAdm04ConfigurerDemoTest.php` |
+| UC-ADM-04-F27 | A9, RG11 | API | Courriel refusé par le transport : « Lever » → `502` et son message, le compte reste listé, aucun audit ; « Tout lever » → `{lifted: 0, failed: 1, remaining: 2}`, arrêté au premier ; le transport revenu, « Lever » réussit | `api/tests/UseCases/Functional/UcAdm04ConfigurerDemoTest.php` |
 | UC-ADM-04-F11 | Nominal (1-4) | IHM | `<App/>` : interrupteur → PUT `{enabled:false}` + CSRF, message, badge | `web/test/usecases/functional/uc-adm-04-configurer-demo.test.jsx` |
 | UC-ADM-04-F12 | Nominal (5) | IHM | Modèle (un Haiku) + entrée max → PUT partiel, message, badges « réglage base », sortie du modèle affichée | idem |
 | UC-ADM-04-F13 | A2 | IHM | Réinitialiser → DELETE, message, retour au fichier | idem |

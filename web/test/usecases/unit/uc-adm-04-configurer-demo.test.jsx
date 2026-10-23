@@ -351,6 +351,47 @@ describe('UC-ADM-04 — liste d’attente des inscriptions (sprint 7, S7a-2)', (
     expect(await screen.findByTestId('waitlist-unavailable')).toBeDefined()
     expect(screen.queryByRole('alert')).toBeNull()
   })
+
+  it('UC-ADM-04-U34 — RG11 : ReglagesSection — un courriel de code que le transport refuse : « Lever » affiche le message du serveur (502) en alerte et le compte reste listé ; « Tout lever » arrêté au premier refus (failed) le dit, sans prétendre le compte levé', async () => {
+    await fetchMe({ fetchFn: async () => jsonResponse(200, { user: { id: 1 }, csrfToken: 'csrf-attente' }) })
+    const accounts = [
+      { id: 7, email: 'ada@example.org', displayName: 'Ada', createdAt: '2026-10-20T08:00:00', waitlistedAt: '2026-10-20T06:00:00Z' },
+      { id: 9, email: 'bob@example.org', displayName: 'Bob', createdAt: '2026-10-21T08:00:00', waitlistedAt: '2026-10-21T06:00:00Z' },
+    ]
+    const refus = 'Le courriel du code d’activation n’est pas parti : le compte reste en liste d’attente. Réessayez plus tard.'
+    const base = reglagesFetch(DEMO)
+    const fetchFn = vi.fn(async (url, init = {}) => {
+      const key = `${init.method ?? 'GET'} ${url}`
+      if (key === 'GET api/admin/waitlist') {
+        return jsonResponse(200, { month: '2026-10', signupsOpen: false, nextLift: '2026-11-01', total: accounts.length, accounts })
+      }
+      if (key === 'POST api/admin/waitlist/9/lift') {
+        return jsonResponse(502, { error: refus })
+      }
+      if (key === 'POST api/admin/waitlist/lift') {
+        return jsonResponse(200, { lifted: 0, failed: 1, remaining: 2 })
+      }
+      return base(url, init)
+    })
+    await renderReglages(fetchFn)
+    const block = screen.getByTestId('admin-waitlist')
+    await within(block).findByText('bob@example.org')
+
+    await act(async () => {
+      fireEvent.click(within(block).getByRole('button', { name: 'Lever bob@example.org' }))
+    })
+    expect((await within(block).findByRole('alert')).textContent).toBe(refus)
+    expect(within(block).queryByRole('status')).toBeNull()
+    expect(within(block).getByRole('button', { name: 'Lever bob@example.org' })).toBeDefined()
+
+    await act(async () => {
+      fireEvent.click(within(block).getByRole('button', { name: 'Tout lever (2)' }))
+    })
+    expect((await within(block).findByRole('status')).textContent).toBe(
+      '0 compte levé ; un courriel de code n’est pas parti : ce compte et les suivants restent en liste d’attente, réessayez plus tard.',
+    )
+    expect(within(block).getAllByRole('row')).toHaveLength(3)
+  })
 })
 
 describe('UC-ADM-04 — configuration serveur (ConfigSection isolé)', () => {

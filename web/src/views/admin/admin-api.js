@@ -104,8 +104,10 @@ export function toggleDemo(enabled, fetchFn) {
 // --- 3ter. Liste d'attente des inscriptions (sprint 7, S7a-2) --------------
 // Contrat avec routes/admin.php (Auth\Waitlist) :
 //   GET  api/admin/waitlist -> {month, signupsOpen, nextLift, total, accounts}
-//   POST api/admin/waitlist/{id}/lift -> {id, status: lifted|unchanged}
-//   POST api/admin/waitlist/lift -> {lifted, remaining} (dans l'ordre d'inscription)
+//   POST api/admin/waitlist/{id}/lift -> {id, status: lifted|unchanged} ; 502 quand
+//     le transport refuse le courriel (le compte reste en attente)
+//   POST api/admin/waitlist/lift -> {lifted, failed, remaining} (dans l'ordre
+//     d'inscription, arrêtée au premier courriel refusé : failed 1)
 
 /** GET api/admin/waitlist (les comptes dus du mois passé sont levés d'abord). */
 export async function fetchWaitlist(fetchFn) {

@@ -28,9 +28,11 @@ final class ActivationMail
      * Generates a code, stores its hash and expiry, and sends it by mail.
      * $afterWaitlist: the account leaves the waiting list — the mail says so,
      * and how to get a fresh code once this one has expired (the lift may run
-     * at night, at 00:00 UTC).
+     * at night, at 00:00 UTC). Returns what the transport answered (Mailer:
+     * true once it accepted the mail): a lift whose mail was refused keeps
+     * the account on the list (Waitlist::lift).
      */
-    public static function send(PDO $pdo, int $userId, string $email, bool $afterWaitlist = false): void
+    public static function send(PDO $pdo, int $userId, string $email, bool $afterWaitlist = false): bool
     {
         $code = str_pad((string) random_int(0, 9999), 4, '0', STR_PAD_LEFT);
         $expiresAt = date('Y-m-d H:i:s', time() + self::CODE_TTL_SECONDS);
@@ -69,7 +71,7 @@ final class ActivationMail
             '',
             '— L\'équipe humanome.xyz',
         ]);
-        MailerFactory::default()->send($email, 'humanome.xyz — activez votre compte', $body);
+        return MailerFactory::default()->send($email, 'humanome.xyz — activez votre compte', $body);
     }
 
     /**

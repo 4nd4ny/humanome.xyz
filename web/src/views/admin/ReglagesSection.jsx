@@ -121,7 +121,9 @@ function frFirstOfMonth(iso) {
 /**
  * Liste d'attente des inscriptions (sprint 7, S7a-2) : GET api/admin/waitlist,
  * « Lever » (POST …/{id}/lift) et « Tout lever » (POST …/lift). Chaque compte
- * levé reçoit son code d'activation par email.
+ * levé reçoit son code d'activation par email ; un courriel que le transport
+ * refuse laisse le compte en attente (« Lever » : 502 et son message ; « Tout
+ * lever » : failed, la levée arrêtée).
  */
 function WaitlistBlock({ fetchFn }) {
   const [data, setData] = useState(null)
@@ -174,10 +176,14 @@ function WaitlistBlock({ fetchFn }) {
       () => liftWaitlist(fetchFn),
       (result) => {
         const lifted = Number(result?.lifted ?? 0)
+        const failed = Number(result?.failed ?? 0)
         const remaining = Number(result?.remaining ?? 0)
-        return `${lifted} compte${lifted > 1 ? 's' : ''} levé${lifted > 1 ? 's' : ''}${
-          remaining > 0 ? ` ; ${remaining} encore en attente : relancez « Tout lever ».` : '.'
-        }`
+        const levees = `${lifted} compte${lifted > 1 ? 's' : ''} levé${lifted > 1 ? 's' : ''}`
+        // Un courriel refusé par le transport arrête la levée : le compte reste en attente.
+        if (failed > 0) {
+          return `${levees} ; un courriel de code n’est pas parti : ce compte et les suivants restent en liste d’attente, réessayez plus tard.`
+        }
+        return `${levees}${remaining > 0 ? ` ; ${remaining} encore en attente : relancez « Tout lever ».` : '.'}`
       },
     )
   }

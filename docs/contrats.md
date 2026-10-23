@@ -542,8 +542,10 @@ par `scripts/extract-referentiel.mjs`.
     - **`conservee`** : `true` quand les résultats du run le disent
       (`traces_conservees`, §8.4) ou pour une journée que sa mémoire a
       reprise ; `false` quand ils disent l'analyse absente du journal de la
-      mémoire de la carte (une journée dont un appel est en panne : une panne
-      n'est jamais un verdict) ; `null` quand rien ne le dit. Seul `true` se
+      mémoire de la carte, sans en dire la cause : une journée dont un appel
+      est en panne (une panne n'est jamais un verdict), un texte modifié
+      depuis, qui remet le journal à zéro (§7.4), une analyse sortie des
+      dernières qu'il garde ; `null` quand rien ne le dit. Seul `true` se
       montre « conservé » ; le rapport d'import dit les autres
       (`twin9-traces-non-conservees`, `twin9-traces-non-confirmees`).
     - Les calculs ne le lisent pas ; l'identifiant et l'empreinte de la
@@ -1482,7 +1484,11 @@ une suivante le relève.
   la mémoire de la carte (`stigmergie/<jour>`, sous `test/` en mode essai),
   `false` sinon ; `{}` sans bloc. Une journée en panne n'y dépose rien : sa
   carte garde le bloc, la réponse le dit non conservé, même après la fin du
-  run, quand son journal d'appels est effacé.
+  run, quand son journal d'appels est effacé. Elle est lue à chaque fois
+  contre la mémoire du moment : un run suivant sur un texte modifié (qui
+  remet le journal à zéro), ou dix-sept analyses plus tard (le journal ne
+  garde que les dernières), un ancien run se lit non conservé, sans panne ;
+  la réponse ne dit pas la cause, l'interface non plus.
 - **Le document `twin9-run`** que la page remet à l'interface de cartographie
   (`twin9RunFiles`, `web/src/lib/interface-handoff.js` ; schéma
   `schemas/twin9-run.schema.json` depuis P0-1, racine souple : `kind` et

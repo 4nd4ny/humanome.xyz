@@ -361,7 +361,10 @@ badge premium) ou ouvre `#/twin9`.
   (l'incertitude calculée : faible, moyenne, forte, écartée) et son
   intensité, de 0 à 3. Les résultats disent, par journée, si l'analyse est au
   journal de la mémoire (`traces_conservees`) : une journée dont un appel est
-  en panne n'y dépose rien, et ses traces se montrent **non conservées** ;
+  en panne n'y dépose rien, et ses traces se montrent **non conservées** —
+  comme celles d'une analyse que le journal ne garde plus (un texte modifié
+  depuis le remet à zéro, il ne garde que ses dernières analyses) : la
+  modale ne dit pas la cause, ni qu'une panne a eu lieu ;
   sans ce signal, jamais conservées, sauf pour une journée que la mémoire a
   reprise. Le jeu de cartographie en garde, par liste blanche, le rang, le
   run, la conservation et les traces (jamais les dépôts ni les traces lues),

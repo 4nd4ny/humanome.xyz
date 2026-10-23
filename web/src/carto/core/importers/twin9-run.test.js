@@ -414,7 +414,17 @@ describe('importTwin9Run : la stigmergie du greffier (S3-3)', () => {
     expect(r.report.filter((x) => x.code.startsWith('twin9-traces'))).toEqual([
       expect.objectContaining({ severity: 'info', code: 'twin9-traces-non-conservees', date: '2026-01-05' }),
     ])
-    expect(r.report.find((x) => x.code === 'twin9-traces-non-conservees').message).toContain('une panne n’est jamais un verdict')
+    expect(r.report.find((x) => x.code === 'twin9-traces-non-conservees').message).toContain('un appel en panne n’y dépose rien')
+  })
+
+  it('non conservées sans aucune panne (un texte modifié depuis a remis le journal à zéro) : le rapport n’en accuse pas une', () => {
+    // le run est fini sans panne ; un run suivant, sur un texte retouché, a remis le journal de la journée à zéro
+    const r = importTwin9Run(avecStigmergie({ traces_conservees: { '2026-01-05': false, '2026-01-06': true } }), { now: '2026-10-23T10:00:00Z' })
+    const message = r.report.find((x) => x.code === 'twin9-traces-non-conservees').message
+    expect(message).toContain('n’est pas, ou plus, dans la mémoire de la carte')
+    expect(message).toContain('un texte modifié depuis')
+    expect(message).toContain('ses dernières analyses')
+    expect(message).not.toMatch(/est tombé en panne|refera/)
   })
 
   it('sans signal, jamais conservées : la journée reprise de la mémoire, oui ; celle du run, non confirmée ; un signal faux l’emporte sur la mémoire', () => {

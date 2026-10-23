@@ -420,7 +420,7 @@
           "type": "object",
           "additionalProperties": true,
           "required": ["traces", "conservee"],
-          "description": "Analyse Twin9 dont la stigmergie du greffier est activée : ce que l'index dit de ses traces, sans lire le détail — son rang dans l'histoire de la journée, combien de traces, et si elles sont conservées dans la mémoire de la carte (vrai, faux pour une journée en panne, nul quand rien ne le dit). Absent sinon. Les calculs ne le lisent pas (sprint 3, S3-3 ; ajout 4.x facultatif).",
+          "description": "Analyse Twin9 dont la stigmergie du greffier est activée : ce que l'index dit de ses traces, sans lire le détail — son rang dans l'histoire de la journée, combien de traces, et si elles sont conservées dans la mémoire de la carte (vrai ; faux quand l'analyse n'est pas, ou plus, au journal de la journée : un appel en panne, un texte modifié depuis, une analyse trop ancienne ; nul quand rien ne le dit). Absent sinon. Les calculs ne le lisent pas (sprint 3, S3-3 ; ajout 4.x facultatif).",
           "properties": {
             "analyse": { "type": ["integer", "null"] },
             "traces": { "type": "integer", "minimum": 0 },

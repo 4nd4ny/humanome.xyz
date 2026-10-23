@@ -53,7 +53,8 @@ export async function interfaceFiles(entry, { getReferentiel = loadPublishedRefe
  * peut-être, sa carte marquée incomplète. Depuis S3-3, le document porte
  * aussi `traces_conservees` des résultats : par journée dont la carte porte la
  * stigmergie du greffier, si ses traces sont celles que garde la carte (une
- * journée en panne, non) ; nul quand le serveur ne le dit pas.
+ * journée en panne, un journal remis à zéro depuis, non) ; nul quand le
+ * serveur ne le dit pas.
  *
  * Le référentiel est celui du run (T17) : ses pôles et ses compétences, tels
  * que son moteur les a lus ; les résultats n'en portent aucune description

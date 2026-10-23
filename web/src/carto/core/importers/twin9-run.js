@@ -38,8 +38,10 @@
 // résumé, dans son index. Ses traces ne sont dites conservées que si les
 // résultats le disent (`traces_conservees`, par journée : l'analyse est au
 // journal de la mémoire de la carte), ou pour une journée que la mémoire a
-// reprise ; une journée en panne, dont l'analyse n'y entre pas, les montre
-// non conservées, et sans signal elles ne sont jamais dites conservées. Ni
+// reprise ; une analyse qui n'est pas, ou plus, au journal (un appel de la
+// journée en panne, un texte modifié depuis, qui le remet à zéro, une analyse
+// trop ancienne pour qu'il la garde) les montre non conservées, et sans
+// signal elles ne sont jamais dites conservées. Ni
 // l'identifiant ni l'empreinte d'une journée ne changent.
 //
 // Depuis le sprint 4 (C3 et C4 ; journal de la cartographie D-73) :
@@ -283,7 +285,7 @@ export function importTwin9Run(doc, { fileName = 'twin9-run.json', now = new Dat
       const variant = variantDuJour(lue.carte, date, runId, provenance, runDetails, stigmergie)
       if (variant) variants.push(variant)
       if (variant && stigmergie?.traces.length > 0 && stigmergie.conservee === false) {
-        const message = `${date} : traces de la stigmergie non conservées — l’analyse de cette journée n’est pas dans la mémoire de la carte (un appel en panne n’y dépose rien : une panne n’est jamais un verdict)`
+        const message = `${date} : traces de la stigmergie non conservées — l’analyse de cette journée n’est pas, ou plus, dans la mémoire de la carte (un appel en panne n’y dépose rien, un texte modifié depuis remet son journal à zéro, qui ne garde que ses dernières analyses)`
         report.push({ severity: 'info', code: 'twin9-traces-non-conservees', message, date })
       } else if (variant && stigmergie?.traces.length > 0 && stigmergie.conservee === null) {
         const message = `${date} : traces de la stigmergie non confirmées — rien ne dit qu’elles sont dans la mémoire de la carte`

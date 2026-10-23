@@ -14,9 +14,11 @@
 //   - son intensité, en mode expert et pour le cartographe SEULEMENT, jamais
 //     comme une note : c'est la force d'une piste pour le greffier, pas une
 //     évaluation de la personne (le mot « score » n'est jamais employé) ;
-//   - des traces « non conservées » quand l'analyse de la journée n'est pas
-//     entrée dans la mémoire de la carte — un appel de la journée en panne
-//     (une panne n'est jamais un verdict) : le serveur le dit
+//   - des traces « non conservées » quand l'analyse de la journée n'est pas,
+//     ou plus, au journal de la journée dans la mémoire de la carte — un
+//     appel de la journée en panne (une panne n'est jamais un verdict), un
+//     texte modifié depuis, qui remet le journal à zéro, une analyse trop
+//     ancienne pour qu'il la garde : le serveur le dit, sans la cause
 //     (`traces_conservees` des résultats), et sans ce signal l'interface ne
 //     les dit jamais conservées.
 
@@ -70,7 +72,8 @@ function traceGardee(t) {
  * Le bloc `stigmergie` d'une carte du jour tel que le jeu le garde : son rang
  * (`analyse`), son run, ses traces par liste blanche, et si elles sont
  * conservées dans la mémoire de la carte — `true`, `false` (l'analyse n'y est
- * pas : une journée en panne), ou `null` quand rien ne le dit (jamais
+ * pas, ou plus : une journée en panne, un journal remis à zéro ou qui ne la
+ * garde plus), ou `null` quand rien ne le dit (jamais
  * montrées conservées). Ni les dépôts, ni les rejets, ni les traces lues.
  * @param {unknown} bloc `carte.stigmergie`
  * @param {boolean | null} conservee

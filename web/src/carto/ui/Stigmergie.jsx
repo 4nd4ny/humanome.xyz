@@ -7,8 +7,10 @@
 // dernier verdict qui l'a déposée, son passage, et « Ouvrir dans le
 // portfolio », qui le surligne selon sa nature. Son intensité ne se lit qu'en
 // mode expert et pour le cartographe (`intensites`), jamais comme une note.
-// Des traces non conservées (une journée en panne) le disent, en tête : elles
-// ne guident pas l'analyse suivante.
+// Des traces non conservées le disent, en tête : l'analyse n'est pas, ou plus,
+// au journal de la journée dans la mémoire de la carte (un appel en panne, un
+// texte modifié depuis, une analyse trop ancienne : le serveur ne dit pas
+// laquelle), et le greffier de l'analyse suivante ne les relit pas.
 
 import { useEffect, useMemo } from 'react'
 import { NEED_DAY } from '../core/split.js'
@@ -27,11 +29,15 @@ export function TraceNature({ incertitude }) {
   return <mark className={`carto-hl carto-hl--complete${traceClass(incertitude)}`}>{nature.label}</mark>
 }
 
-/** Ce que les traces d'une analyse sont pour la carte : conservées, non conservées (panne), non confirmées. */
+/** Ce que les traces d'une analyse sont pour la carte : conservées, non conservées (pas ou plus au journal), non confirmées. */
 export function conservationText(conservee) {
   if (conservee === true) return 'Conservées dans la mémoire de la carte : le greffier de la prochaine analyse de cette journée les relira.'
   if (conservee === false) {
-    return 'Non conservées : l’analyse de cette journée n’est pas dans la mémoire de la carte — un appel de la journée est tombé en panne, et une panne n’est jamais un verdict. Elles ne guideront pas l’analyse suivante, qui refera celle-ci.'
+    return (
+      'Non conservées : l’analyse de cette journée n’est pas, ou plus, dans la mémoire de la carte — un appel de la journée en panne ' +
+      '(une panne n’est jamais un verdict), un texte modifié depuis, qui remet son journal à zéro, ou une analyse trop ancienne pour ' +
+      'qu’il la garde. Le greffier de l’analyse suivante ne les relira pas.'
+    )
   }
   return 'Non confirmées : rien ne dit qu’elles sont dans la mémoire de la carte ; elles ne sont pas montrées comme conservées.'
 }

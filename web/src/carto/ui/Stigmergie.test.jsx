@@ -14,6 +14,7 @@ import { importFiles } from '../core/import.js'
 import { createDataset } from '../core/model.js'
 import { parseHash, subscribe } from '../../router.js'
 import { sansMarquesTwin9 } from '../../lib/twin9/marques.js'
+import { conservationText } from './Stigmergie.jsx'
 import { miniReferential } from '../test/fixtures.js'
 import { showCartoTiles } from '../test/tiles.js'
 
@@ -173,6 +174,17 @@ describe('les traces de la stigmergie dans la modale du jour (S3-3)', () => {
 
     const sans = await openDay(await storeWith(undefined), EXPERT)
     expect(sans.section.querySelector('.carto-sg-warning').textContent).toContain('Non confirmées')
+  })
+
+  it('non conservées n’est pas toujours une panne : un texte modifié depuis, une analyse trop ancienne ; rien n’annonce que l’analyse suivante la refera', async () => {
+    // le serveur rend faux dès que l'analyse n'est plus au journal de la journée, quelle qu'en soit la cause
+    const texte = conservationText(false)
+    expect(texte).toContain('n’est pas, ou plus, dans la mémoire de la carte')
+    expect(texte).toContain('un texte modifié depuis')
+    expect(texte).toContain('une analyse trop ancienne')
+    expect(texte).not.toMatch(/est tombé en panne|refera/)
+    const { section } = await openDay(await storeWith(false), EXPERT)
+    expect(section.querySelector('.carto-sg-warning').textContent).toBe(texte)
   })
 })
 

@@ -35,7 +35,9 @@ import { libelle, noeud } from '../configuration/profilSchema.js'
 export const RGPD = { oui: 'RGPD : oui', sous_conditions: 'RGPD : sous conditions', non: 'RGPD : non' }
 
 const VOIES = { lots: 'par lots', directe: 'directe', mixte: 'par lots et directe' }
-const CLES = { instance: 'celle de l’instance', personnelle: 'clé personnelle' }
+const CLES = { instance: 'celle de l’instance', personnelle: 'clé personnelle', ecole: 'celle de son école' }
+/** Qui paie le run (ADR-013 §3) : son propriétaire, ou son école — jamais la marge ni la surtaxe. */
+const PAYEURS = { personnel: 'son propriétaire', ecole: 'son école' }
 const GROUPES = [
   ['etages', 'Étages'],
   ['etapes', 'Étapes'],
@@ -245,6 +247,7 @@ export function VueConfiguration({ configuration, execution, parEtape = null }) 
   const c = estObjet(configuration) ? configuration : null
   const fournisseurs = c?.fournisseurs ?? {}
   const cle = c?.execution_prevue?.cle
+  const payeur = c?.execution_prevue?.payeur
   return (
     <div className="twin9-config">
       {c ? (
@@ -279,6 +282,12 @@ export function VueConfiguration({ configuration, execution, parEtape = null }) 
               <>
                 <dt>Clé</dt>
                 <dd>{CLES[cle] ?? cle}</dd>
+              </>
+            ) : null}
+            {payeur ? (
+              <>
+                <dt>Payé par</dt>
+                <dd>{PAYEURS[payeur] ?? payeur}</dd>
               </>
             ) : null}
           </dl>

@@ -1,9 +1,12 @@
-// Accueil de l'espace établissement (P11) : mes cohortes (création, code
-// d'invitation, suppression en deux temps) + configuration LLM/budget.
+// Accueil de l'espace établissement (P11) : mon école (sprint 6, lot S6b —
+// crédit, plafond par élève, surtaxe, clé, élèves et dépenses : EcoleSection),
+// mes cohortes (création, code d'invitation, suppression en deux temps) +
+// configuration LLM/budget des runs de masse.
 // La garde de rôle est faite par EtablissementView : ici l'utilisateur EST
 // établissement.
 
 import { useCallback, useEffect, useState } from 'react'
+import EcoleSection from './EcoleSection.jsx'
 import {
   createCohorte,
   deleteCohorte,
@@ -239,6 +242,8 @@ export default function AccueilSection({ fetchFn }) {
           {loadError}
         </p>
       ) : null}
+
+      <EcoleSection fetchFn={fetchFn} />
 
       <section className="espace-bloc" aria-label="Mes cohortes">
         <h2>Mes cohortes</h2>

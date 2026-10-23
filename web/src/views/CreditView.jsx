@@ -12,6 +12,12 @@
 // pourquoi (`achat_pourquoi`). Leur solde restant, acheté avant, reste
 // utilisable jusqu'à épuisement et remboursable sur demande (§2 c).
 //
+// Un apprenant voit que son école paie (sprint 6, lot S6b — ADR-013 §4) :
+// chacune de ses écoles (`payeurs` de /api/twin9/meta), ce qu'elle peut
+// encore payer pour lui ce mois-ci, et qu'elle en voit le montant — jamais
+// le crédit de l'école. Une école règle sa surtaxe, son plafond par élève et
+// sa clé dans son espace (#/etablissement).
+//
 // Garde de session : GET api/auth/me au montage (pattern EspaceView/AdminView) —
 // le reste du site reste statique. Dégradation propre en copie statique
 // (ApiUnavailableError). Toute la surface serveur passe par api/twin9.js.
@@ -36,6 +42,7 @@ import {
   formatUsd,
 } from '../api/twin9.js'
 import FactureTwin9 from './twin9/FactureTwin9.jsx'
+import { ECOLE_VOIT_LE_MONTANT, ecolesQuiPaient, listePayeurs, resteMicrousd } from '../lib/payeurs.js'
 import '../styles/twin9-credit.css'
 
 const MOIS_FR = [
@@ -138,6 +145,8 @@ export default function CreditView({ deps = {} }) {
     achatPourquoi: '',
     evenements: [],
     depensesMois: [],
+    ecoles: [],
+    ecoleElleMeme: false,
   })
 
   const [paypal, setPaypal] = useState({ status: 'idle', message: '', solde: null })
@@ -171,6 +180,9 @@ export default function CreditView({ deps = {} }) {
           achatPourquoi: typeof meta.achat_pourquoi === 'string' ? meta.achat_pourquoi : '',
           evenements: Array.isArray(credit.evenements) ? credit.evenements : [],
           depensesMois: Array.isArray(dep.mois) ? dep.mois : [],
+          // les écoles qui paient pour lui (ADR-013 §4), et s'il est lui-même une école
+          ecoles: ecolesQuiPaient(meta.payeurs),
+          ecoleElleMeme: listePayeurs(meta.payeurs).some((p) => p.type === 'ecole' && p.soi),
         })
         setDataStatus('ready')
       } catch (error) {
@@ -372,6 +384,34 @@ export default function CreditView({ deps = {} }) {
 
       {dataStatus === 'ready' ? (
         <>
+          {/* 0. SON ÉCOLE PAIE (ADR-013 §4) */}
+          {data.ecoles.length > 0 ? (
+            <section className="credit-ecole" aria-labelledby="credit-ecole-titre" data-testid="credit-ecole">
+              <h2 id="credit-ecole-titre">{data.ecoles.length > 1 ? 'Vos écoles paient' : 'Votre école paie'}</h2>
+              <ul>
+                {data.ecoles.map((e) => (
+                  <li key={e.id}>
+                    <strong>{e.nom}</strong> paie vos analyses approfondies et vos cartographies ouvertes sur
+                    crédits{e.cle ? ', avec sa propre clé' : ''} : il vous reste{' '}
+                    <strong>{formatUsd(resteMicrousd(e, e.cle ? 'ecole' : 'instance'))}</strong> ce mois-ci, sur un
+                    plafond de {formatUsd(e.plafond_microusd ?? 0)} par mois.
+                    {Number(e.plafond_microusd ?? 0) === 0 ? ' Votre école n’a pas encore réglé ce plafond.' : ''}
+                  </li>
+                ))}
+              </ul>
+              <p className="privacy-note">
+                {ECOLE_VOIT_LE_MONTANT} Vous ne pouvez pas acheter de crédits vous-même : votre école les achète pour
+                vous.
+              </p>
+            </section>
+          ) : null}
+          {data.ecoleElleMeme ? (
+            <p className="privacy-note" data-testid="credit-espace-ecole">
+              Votre surtaxe, le plafond de vos élèves, votre clé et leurs dépenses se règlent dans votre{' '}
+              <a href="#/etablissement">espace établissement</a>.
+            </p>
+          ) : null}
+
           {/* 1. SOLDE */}
           <section className="credit-solde" aria-labelledby="credit-solde-titre">
             <h2 id="credit-solde-titre">Solde courant</h2>

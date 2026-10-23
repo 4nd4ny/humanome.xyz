@@ -149,13 +149,14 @@ describe('UC-APP-09 — provider « clé perso » (gratuit, direct navigateur)',
 })
 
 describe('UC-APP-09 — offre et référentiel lus dans /api/twin9/meta', () => {
-  it('UC-APP-09-U18 — prix Twin6 (+10 %), référentiel, solde et droit d’acheter (ADR-013) ; replis sûrs si absents', async () => {
+  it('UC-APP-09-U18 — prix Twin6 (+10 %), référentiel, solde, droit d’acheter et payeurs (ADR-013) ; replis sûrs si absents', async () => {
     const complet = vi.fn(async () =>
       jsonResponse(200, {
         modeles_twin6: { 'claude-sonnet-5': [2.2, 11] },
         referentiel: [{ num: 1, nom: 'TÊTE', competences: [] }],
         solde_microusd: '2500000',
         peut_acheter: true,
+        payeurs: [{ type: 'personnel', solde_microusd: 2_500_000 }],
       }),
     )
     expect(await fetchTwin6Offer({ fetchFn: complet })).toEqual({
@@ -163,6 +164,8 @@ describe('UC-APP-09 — offre et référentiel lus dans /api/twin9/meta', () => 
       referentiel: [{ num: 1, nom: 'TÊTE', competences: [] }],
       solde_microusd: 2_500_000,
       peut_acheter: true,
+      // qui peut payer (ADR-013 §4, S6b), tel que le serveur le dit
+      payeurs: [{ type: 'personnel', solde_microusd: 2_500_000 }],
     })
     expect(complet.mock.calls[0][0]).toBe('api/twin9/meta')
 
@@ -172,6 +175,7 @@ describe('UC-APP-09 — offre et référentiel lus dans /api/twin9/meta', () => 
       referentiel: [],
       solde_microusd: 0,
       peut_acheter: false, // seule une école achète (ADR-013) : faux sauf si le serveur le dit
+      payeurs: [],
     })
   })
 

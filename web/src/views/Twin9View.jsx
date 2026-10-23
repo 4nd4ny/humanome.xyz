@@ -58,6 +58,13 @@
 // référentiel est publié. Le serveur l'écrit dans la copie du profil, avant
 // de l'admettre ; un autre référentiel retire les spécialistes que le profil
 // impose au jury par pôle ou par compétence, et l'aperçu le dit.
+//
+// Qui paie (sprint 6, lot S6b — ADR-013 §4) : l'école de l'élève quand il en a
+// une, sur son crédit ou sur sa clé, sous le plafond qu'elle lui accorde par
+// mois ; son propre solde restant, s'il le choisit. Avec plusieurs écoles, il
+// choisit (twin9/ChoixPayeur.jsx) ; la page dit que son école voit le montant,
+// jamais le contenu. Un run que son école ne paie plus s'arrête, et sa reprise
+// choisit de nouveau qui paie.
 
 import { useCallback, useEffect, useMemo, useState } from 'react'
 import { ApiError } from '../api/client.js'
@@ -69,6 +76,7 @@ import {
   fetchResultats,
   fetchRun,
   fetchRuns,
+  fetchTwin9Meta,
   formatUsd,
   lancerRun,
   rendreRunVisible,
@@ -82,6 +90,8 @@ import { formatShort } from '../carto/core/dates.js'
 import { useUiMode } from '../lib/ui-mode.js'
 import { libelleRgpd, libelleVoie } from './configuration/profilSchema.js'
 import ConfigurationDuRun from './twin9/ConfigurationDuRun.jsx'
+import ChoixPayeur from './twin9/ChoixPayeur.jsx'
+import { choixParDefaut, listePayeurs, phrasePayeur, valeurPayeur } from '../lib/payeurs.js'
 import '../styles/twin9.css'
 
 const STATUTS = { en_cours: 'En cours', termine: 'Terminé', annule: 'Annulé', echoue: 'Arrêté' }
@@ -311,8 +321,26 @@ function Apercu({ apercu, envoi }) {
   const ecart = envoi ? phraseEcart(envoi) : ''
   const ref = apercu.referentiel
   const jury = Array.isArray(apercu.jury_retire) ? phraseJury(apercu.jury_retire) : ''
+  // qui paie (ADR-013 §4) : son école voit le montant ; un refus ne propose la recharge que de son propre crédit
+  const ecole = apercu.payeur?.type === 'ecole'
+  const payePar = phrasePayeur(apercu.payeur)
+  const sujet =
+    a?.limite === 'budget'
+      ? 'Le budget du profil'
+      : a?.limite === 'plafond'
+        ? 'Le plafond que votre école vous accorde ce mois-ci'
+        : ecole
+          ? 'Le crédit de votre école'
+          : 'Votre crédit'
   return (
     <section className="twin9-apercu" aria-label="Avant de lancer">
+      {payePar ? <p data-testid="apercu-payeur">{payePar}</p> : null}
+      {apercu.cle === 'ecole' ? (
+        <p data-testid="apercu-cle-ecole">
+          L’analyse part avec la clé Anthropic de votre école : votre école paie Anthropic, et peut relire dans sa
+          Console Anthropic les résultats des appels partis par lots.
+        </p>
+      ) : null}
       {ref?.id ? (
         <p>
           Référentiel lu : {ref.label || ref.id}
@@ -325,13 +353,13 @@ function Apercu({ apercu, envoi }) {
       {ecart ? <p>{ecart}</p> : null}
       {a?.refus ? (
         <p role="alert">
-          {a.refus}.{a.limite === 'credit' ? <> <a href="#/compte/credit">Recharger</a></> : null}
+          {a.refus}.{a.limite === 'credit' && !ecole ? <> <a href="#/compte/credit">Recharger</a></> : null}
         </p>
       ) : (
         <>
           {a?.en_attente > 0 ? (
             <p>
-              {a.limite === 'budget' ? 'Le budget du profil' : 'Votre crédit'}
+              {sujet}
               {a.limite === 'credit' && a.autres_usd > 0 ? `, déduits les ${dollars(a.autres_usd)} que vos analyses en cours peuvent encore dépenser,` : ''}{' '}
               couvre {a.instruites} des {a.instruites + a.en_attente} journées à instruire, avec leur fusion,{' '}
               {e.evaluations != null ? 'au coût le plus haut observé' : 'd’après le run de référence'}, réserves des appels comprises.{' '}
@@ -408,6 +436,9 @@ function Lancer({ deps }) {
   const [visible, setVisible] = useState(false)
   // l'accord, donné pour une liste de fournisseurs et de voies : la clé de cette liste, null sans accord
   const [accord, setAccord] = useState(null)
+  // qui paie (ADR-013 §4) : les payeurs possibles du compte, et le choix ('' : le défaut du serveur)
+  const [payeurs, setPayeurs] = useState([])
+  const [payeur, setPayeur] = useState('')
   const [occupe, setOccupe] = useState(false)
   const [erreur, setErreur] = useState(null)
   // en mode simple, le profil v9.8 : un profil choisi en mode expert ne part pas (S1, lot 2)
@@ -431,6 +462,15 @@ function Lancer({ deps }) {
         setEtat({})
       })
       .catch((e) => actif && setEtat({ erreur: e }))
+    // les payeurs possibles, à part : sans eux, le serveur choisit (son école quand il n'en a qu'une)
+    fetchTwin9Meta({ fetchFn })
+      .then((meta) => {
+        if (!actif) return
+        const liste = listePayeurs(meta?.payeurs)
+        setPayeurs(liste)
+        setPayeur((p) => (p === '' ? choixParDefaut(liste) : p))
+      })
+      .catch(() => {})
     return () => {
       actif = false
     }
@@ -482,11 +522,13 @@ function Lancer({ deps }) {
     let actif = true
     setApercu({ chargement: true })
     const [id, version] = cleReferentiel === '' ? [] : [cleReferentiel.split('@')[0], cleReferentiel.split('@')[1] ?? null]
+    const quiPaie = valeurPayeur(payeur)
     apercuRun(
       {
         profil: profilEffectif === '' ? null : Number(profilEffectif),
         portfolio: { nom, texte },
         ...(id ? { referentiel: { id, version } } : {}),
+        ...(quiPaie !== null ? { payeur: quiPaie } : {}),
       },
       { fetchFn },
     )
@@ -495,7 +537,7 @@ function Lancer({ deps }) {
     return () => {
       actif = false
     }
-  }, [accorde, profilEffectif, cleReferentiel, nom, texte, fetchFn])
+  }, [accorde, profilEffectif, cleReferentiel, nom, texte, fetchFn, payeur])
 
   if (etat.chargement) return <p>Chargement…</p>
   if (etat.erreur) {
@@ -515,6 +557,7 @@ function Lancer({ deps }) {
     e.preventDefault()
     setOccupe(true)
     setErreur(null)
+    const quiPaie = valeurPayeur(payeur)
     try {
       const run = await lancerRun(
         {
@@ -523,6 +566,7 @@ function Lancer({ deps }) {
           accord: { fournisseurs: fournisseurs.map((f) => f.id) },
           visibilite: visible ? 'cartographe' : 'privee',
           ...(choixRef ? { referentiel: choixRef } : {}),
+          ...(quiPaie !== null ? { payeur: quiPaie } : {}),
         },
         { fetchFn },
       )
@@ -601,6 +645,13 @@ function Lancer({ deps }) {
               ) : null}
             </div>
           </div>
+          <ChoixPayeur
+            id="twin9-payeur"
+            payeurs={payeurs}
+            valeur={payeur}
+            onChange={setPayeur}
+            cle={apercu?.donnees?.cle ?? 'instance'}
+          />
           <label className="twin9-case">
             <input type="checkbox" checked={visible} onChange={(e) => setVisible(e.target.checked)} /> Mon cartographe peut
             lire les résultats
@@ -658,6 +709,9 @@ function PageDuRun({ id, deps, onOpenInInterface }) {
   const [occupe, setOccupe] = useState(false)
   const [relance, setRelance] = useState(0)
   const [budget, setBudget] = useState('')
+  // sa reprise choisit de nouveau qui paie quand son école ne le paie plus (ADR-013 §4)
+  const [payeursReprise, setPayeursReprise] = useState(null)
+  const [payeurReprise, setPayeurReprise] = useState('')
 
   // Tant que la page est ouverte, elle fait avancer les runs de la personne (ADR-011 §2).
   useEffect(() => {
@@ -681,6 +735,26 @@ function PageDuRun({ id, deps, onOpenInInterface }) {
       actif = false
     }
   }, [id, fetchFn, pause, relance])
+
+  // arrêté parce que son école ne le paie plus, ou au plafond qu'elle lui accorde : les payeurs possibles, pour sa reprise
+  const attenteEcole =
+    run?.statut === 'echoue' &&
+    /^(votre école ne paie plus|plafond de votre école|crédit de votre école)/.test(String(run?.attente ?? ''))
+  useEffect(() => {
+    if (!attenteEcole || payeursReprise !== null) return undefined
+    let actif = true
+    fetchTwin9Meta({ fetchFn })
+      .then((meta) => {
+        if (!actif) return
+        const liste = listePayeurs(meta?.payeurs)
+        setPayeursReprise(liste)
+        setPayeurReprise(choixParDefaut(liste))
+      })
+      .catch(() => actif && setPayeursReprise([]))
+    return () => {
+      actif = false
+    }
+  }, [attenteEcole, payeursReprise, fetchFn])
 
   const agir = useCallback(
     async (action) => {
@@ -736,6 +810,8 @@ function PageDuRun({ id, deps, onOpenInInterface }) {
   // arrêté par son budget, il reprend sous un nouveau (vide : aucun) ; par le crédit, une fois rechargé
   const parBudget = run.statut === 'echoue' && String(run.attente ?? '').startsWith('budget atteint')
   const parCredit = run.statut === 'echoue' && String(run.attente ?? '').startsWith('crédit insuffisant')
+  // son école ne le paie plus, ou son plafond du mois est atteint : sa reprise choisit qui paie
+  const parEcole = attenteEcole
   const depenseUsd = (cout?.depense_microusd ?? 0) / 1_000_000
   const budgetValide = budget === '' || Number(budget) > depenseUsd
   // une carte à ouvrir : sa fusion faite, ou des journées finies d'un run arrêté
@@ -761,6 +837,11 @@ function PageDuRun({ id, deps, onOpenInInterface }) {
           {appels.panne > 0 ? ` · ${appels.panne} en panne` : ''}
         </li>
         {p.lots > 0 ? <li>{p.lots} lot{p.lots > 1 ? 's' : ''} chez Anthropic</li> : null}
+        {run.payeur?.type === 'ecole' ? (
+          <li data-testid="run-payeur">
+            Payé par votre école{run.payeur.nom ? `, ${run.payeur.nom}` : ''} : elle voit le montant, jamais le contenu
+          </li>
+        ) : null}
         {cout && (cout.depense_microusd > 0 || cout.budget_usd != null) ? (
           <li>
             Coût : {formatUsd(cout.depense_microusd)}
@@ -792,13 +873,31 @@ function PageDuRun({ id, deps, onOpenInInterface }) {
             />
           </label>
         ) : null}
+        {parEcole && payeursReprise !== null ? (
+          <ChoixPayeur
+            id="twin9-payeur-reprise"
+            payeurs={payeursReprise}
+            valeur={payeurReprise}
+            onChange={setPayeurReprise}
+            disabled={occupe}
+          />
+        ) : null}
         {run.statut === 'annule' || run.statut === 'echoue' ? (
           <button
             type="button"
-            disabled={occupe || (parBudget && !budgetValide)}
-            onClick={() =>
-              agir(() => reprendreRun(id, { fetchFn }, parBudget ? { budget_usd: budget === '' ? null : Number(budget) } : undefined))
+            disabled={
+              occupe ||
+              (parBudget && !budgetValide) ||
+              (parEcole && payeursReprise !== null && listePayeurs(payeursReprise).length > 1 && valeurPayeur(payeurReprise) === null)
             }
+            onClick={() => {
+              const quiPaie = parEcole ? valeurPayeur(payeurReprise) : null
+              const corps = {
+                ...(parBudget ? { budget_usd: budget === '' ? null : Number(budget) } : {}),
+                ...(quiPaie !== null ? { payeur: quiPaie } : {}),
+              }
+              agir(() => reprendreRun(id, { fetchFn }, Object.keys(corps).length > 0 ? corps : undefined))
+            }}
           >
             Reprendre
           </button>

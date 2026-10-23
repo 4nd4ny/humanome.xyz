@@ -266,6 +266,37 @@ describe('UC-APP-11 — un apprenant n’achète pas (ADR-013, R2)', () => {
     expect(screen.getByText(/Seules les écoles rechargent\./)).toBeDefined()
     expect(posts(calls, 'twin9/credit/paypal/creer')).toHaveLength(0)
   })
+
+  it('UC-APP-11-F35 — A5 (IHM) : un apprenant voit que son école paie — ce qu’elle peut encore payer pour lui ce mois-ci, son plafond, qu’elle en voit le montant —, jamais le crédit de l’école ; une école est renvoyée à son espace', async () => {
+    const ecole = {
+      type: 'ecole', id: 3, nom: 'École des Tilleuls', soi: false, cle: false, mois: '2026-10',
+      plafond_microusd: 5_000_000, engage_microusd: 1_200_000, reste_credit_microusd: 1_800_000, reste_cle_microusd: 3_800_000,
+    }
+    stubFetch(
+      routes({
+        'GET auth/me': meResponse(['apprenant']),
+        'GET twin9/meta': jsonResponse(200, metaTwin9({ solde_microusd: 0, peut_acheter: false, payeurs: [ecole] })),
+        'GET twin9/credit': jsonResponse(200, { solde_microusd: 0, evenements: [] }),
+      }),
+    )
+    openApp('#/compte/credit', { id: 8, roles: ['apprenant'] })
+
+    const section = await screen.findByTestId('credit-ecole')
+    expect(within(section).getByRole('heading', { level: 2 }).textContent).toBe('Votre école paie')
+    expect(section.textContent).toContain('École des Tilleuls paie vos analyses approfondies')
+    expect(section.textContent).toContain('il vous reste 1,80 $ ce mois-ci, sur un plafond de 5,00 $ par mois.')
+    expect(section.textContent).toContain('Elle voit le montant de ce qu’elle paie pour vous, jamais le contenu de vos analyses.')
+    expect(screen.queryByRole('button', { name: 'Recharger' })).toBeNull()
+    expect(screen.queryByTestId('credit-espace-ecole')).toBeNull()
+    cleanup()
+    resetApiClient()
+
+    // a school, for itself: its space, not « votre école paie »
+    stubFetch(routes({ 'GET twin9/meta': jsonResponse(200, metaTwin9({ payeurs: [{ ...ecole, soi: true, plafond_microusd: null }] })) }))
+    openApp()
+    expect((await screen.findByTestId('credit-espace-ecole')).querySelector('a').getAttribute('href')).toBe('#/etablissement')
+    expect(screen.queryByTestId('credit-ecole')).toBeNull()
+  })
 })
 
 describe('UC-APP-11 — segments de route hors « credit » (#/compte/<section>)', () => {

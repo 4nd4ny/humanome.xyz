@@ -84,10 +84,15 @@ export const RELAIS_INTERROMPU_CREDITS =
  * `onCout` en reçoit le coût, puis l'erreur est levée ; l'annuler (signal)
  * coupe l'appel, facturé de même.
  *
+ * Qui paie (sprint 6, lot S6b — ADR-013 §4) : `payeur` ('personnel', ou
+ * l'identifiant d'une de ses écoles ; absent, le défaut du serveur : son école
+ * quand il n'en a qu'une) part avec chaque appel. Son école le paie sur sa clé
+ * si elle en a une, sinon sur son crédit, au coût réel × (1 + sa surtaxe).
+ *
  * @param {{onCout?: (microusd:number)=>void, onProgression?: (caracteres:number)=>void,
- *   fetchFn?: typeof fetch}} [opts]
+ *   fetchFn?: typeof fetch, payeur?: 'personnel'|number|null}} [opts]
  */
-export function makeCreditsProvider({ onCout, onProgression, fetchFn } = {}) {
+export function makeCreditsProvider({ onCout, onProgression, fetchFn, payeur = null } = {}) {
   return {
     name: 'twin6-credits',
     // Le fournisseur des appels (la configuration du document le consigne) : Anthropic seul.
@@ -98,7 +103,7 @@ export function makeCreditsProvider({ onCout, onProgression, fetchFn } = {}) {
       try {
         data = await apiFetch('twin6/appel', {
           method: 'POST',
-          body: { model, prompt, system, max_tokens: maxTokens },
+          body: { model, prompt, system, max_tokens: maxTokens, ...(payeur != null ? { payeur } : {}) },
           headers: { Accept: ACCEPT_RELAIS },
           ...(onProgression ? { onProgression } : {}),
           ...(fetchFn ? { fetchFn } : {}),
@@ -192,5 +197,7 @@ export async function fetchTwin6Offer(options) {
     solde_microusd: Number(meta.solde_microusd ?? 0),
     // Seule une école recharge (ADR-013 §2 e) : le message d'un solde insuffisant ne propose pas la recharge aux autres.
     peut_acheter: meta.peut_acheter === true,
+    // Qui peut payer (ADR-013 §4) : ses écoles — ce qu'elles peuvent encore payer pour lui —, son solde restant.
+    payeurs: Array.isArray(meta.payeurs) ? meta.payeurs : [],
   }
 }

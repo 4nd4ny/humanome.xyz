@@ -563,6 +563,44 @@ describe('UC-APP-09 — l’apprenant lance une cartographie ouverte', () => {
     expect(appelsTwin6(calls)).toHaveLength(0)
   })
 
+  it('UC-APP-09-F36 — A7 (sprint 6, lot S6b) : son école paie — la voie le dit, chaque appel porte son école (payeur) ; ce qu’elle peut encore payer pour lui trop bas → lancement bloqué AVANT tout appel, sans proposer d’acheter', async () => {
+    const ecole = {
+      type: 'ecole', id: 3, nom: 'École des Tilleuls', soi: false, cle: false, mois: '2026-10',
+      plafond_microusd: 5_000_000, engage_microusd: 0, reste_credit_microusd: 5_000_000, reste_cle_microusd: 5_000_000,
+    }
+    const { calls } = stubFetch(
+      routes({ 'GET twin9/meta': jsonResponse(200, metaTwin9({ solde_microusd: 0, peut_acheter: false, payeurs: [ecole] })) }),
+    )
+    openTwin6()
+    await saisirPortfolio()
+    expect(screen.getByLabelText(/Avec les crédits que paie mon école/).checked).toBe(true)
+    expect(screen.getByTestId('payeur-ecole').textContent).toContain('Payé par votre école, École des Tilleuls.')
+    await lancer()
+
+    await screen.findByText(/Cartographie ouverte terminée/, undefined, { timeout: 4000 })
+    expect(appelsTwin6(calls).length).toBeGreaterThan(0)
+    expect(appelsTwin6(calls).every((c) => bodyOf(c).payeur === 3)).toBe(true)
+    cleanup()
+    resetApiClient()
+
+    const court = stubFetch(
+      routes({
+        'GET twin9/meta': jsonResponse(200, metaTwin9({
+          solde_microusd: 0, peut_acheter: false, payeurs: [{ ...ecole, reste_credit_microusd: 500_000 }],
+        })),
+      }),
+    )
+    openTwin6()
+    await saisirPortfolio()
+    await lancer()
+    const alerte = await screen.findByRole('alert')
+    expect(alerte.textContent).toContain('Ce que votre école peut encore payer pour vous ce mois-ci ne suffit pas')
+    expect(alerte.textContent).toContain('il vous reste 0.50 $')
+    expect(alerte.textContent).toContain('relever le plafond')
+    expect(alerte.textContent).not.toContain('Rechargez')
+    expect(appelsTwin6(court.calls)).toHaveLength(0)
+  })
+
   it('UC-APP-09-F07 — E4 : le serveur refuse un appel (402, réserve non couverte) → run arrêté, message affiché avec ce que le run a débité (le premier appel abouti), bouton réutilisable', async () => {
     let n = 0
     const { calls } = stubFetch(

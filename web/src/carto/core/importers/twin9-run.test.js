@@ -545,6 +545,24 @@ describe('importTwin9Run : deux cartes du même jour (C3, sprint 4)', () => {
     expect(lire({ '2026-01-05': true }).detail.stigmergie.conservee).toBeNull()
   })
 
+  it('des traces sans identifiant (un bloc d’un moteur plus ancien) : toutes gardées dans la journée réunie, comme dans une carte seule', () => {
+    const sansId = (t) => ({ ...t, id: undefined })
+    const [capteur, pompe] = STIGMERGIE().traces
+    const d = deuxCartes({ stigmergie: { ...STIGMERGIE(), analyse: 1, traces: [sansId(pompe)] } })
+    d.journees['2026-01-05'].stigmergie = { ...STIGMERGIE(), traces: [sansId(capteur), sansId({ ...pompe, code: '1.01' })] }
+    // une journée seule, ses deux traces sans identifiant
+    d.journees['2026-01-06'] = { journee: '2026-01-06', date: '2026-01-06', verdicts: { '1.01': verdict() }, stigmergie: { ...STIGMERGIE(), traces: [sansId(capteur), sansId(pompe)] } }
+    const r = importTwin9Run({ ...d, traces_conservees: { '2026-01-05': true, '2026-01-05_b': true, '2026-01-06': true } }, { now: '2026-10-23T10:00:00Z' })
+    const reunie = r.variants.find((v) => v.date === '2026-01-05')
+    expect(reunie.summary.stigmergie.traces).toBe(3)
+    expect(reunie.detail.stigmergie.traces.map((t) => [t.id, t.code])).toEqual([[null, '1.01'], [null, '1.01'], [null, '1.05']])
+    expect(r.variants.find((v) => v.date === '2026-01-06').summary.stigmergie.traces).toBe(2)
+    // une trace d'identifiant connu, dans les deux cartes, reste une seule
+    const memes = deuxCartes({ stigmergie: { ...STIGMERGIE(), analyse: 1, traces: [capteur] } })
+    memes.journees['2026-01-05'].stigmergie = { ...STIGMERGIE(), traces: [capteur] }
+    expect(importTwin9Run(memes, { now: '2026-10-23T10:00:00Z' }).variants.find((v) => v.date === '2026-01-05').summary.stigmergie.traces).toBe(1)
+  })
+
   it('passe par la chaîne d’import : la trace dont le passage est d’un autre jour y porte `at` (T2)', async () => {
     const d = deuxCartes()
     d.journees['2026-01-05_b'].verdicts['1.05'].traces_probantes = [{ ...POMPE, date: '2026-01-03' }]

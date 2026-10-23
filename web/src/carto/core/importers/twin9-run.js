@@ -357,7 +357,9 @@ function cartesReunies(cartes) {
 
 /**
  * Les traces de la stigmergie de cartes réunies (C3) : celles de toutes, sans
- * en redire une ; le rang de l'analyse la plus avancée, et son run ;
+ * en redire une (de même identifiant ; une trace sans identifiant, d'un bloc
+ * qui n'en porte pas, reste, comme dans une carte seule) ; le rang de
+ * l'analyse la plus avancée, et son run ;
  * conservées si toutes le sont, non conservées si l'une ne l'est pas, sinon
  * rien ne le dit.
  */
@@ -371,7 +373,7 @@ function stigmergieReunie(gardees) {
     analyse: premiere.analyse,
     run: premiere.run,
     conservee: etats.includes(false) ? false : etats.every((x) => x === true) ? true : null,
-    traces: blocs.flatMap((b) => b.traces).filter((t) => !vues.has(t.id) && vues.add(t.id)),
+    traces: blocs.flatMap((b) => b.traces).filter((t) => t.id === null || (!vues.has(t.id) && vues.add(t.id))),
   }
 }
 

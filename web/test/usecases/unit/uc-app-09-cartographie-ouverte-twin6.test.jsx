@@ -7,7 +7,7 @@
 // l'adaptation du référentiel, le référentiel que lit un run (U32) et le
 // formatage des montants. Réseau simulé.
 import { afterEach, describe, expect, it, vi } from 'vitest'
-import { act, cleanup, fireEvent, render, screen } from '@testing-library/react'
+import { act, cleanup, fireEvent, render, screen, waitFor } from '@testing-library/react'
 import { parseHash } from '../../../src/router.js'
 import { ApiError, fetchMe, resetApiClient } from '../../../src/api/client.js'
 import {
@@ -301,7 +301,9 @@ describe('UC-APP-09 — clé enregistrée et garde-fou de solde', () => {
     )
     const zone = await screen.findByLabelText(/Votre portfolio/)
     await screen.findByText(/appels au modèle/)
-    expect(screen.getAllByRole('radio').map((r) => [r.value, r.checked])).toEqual([['demo', true]])
+    // La voie du visiteur est cochée par un effet, après le rendu qui la montre :
+    // sous charge, le test la lisait avant (['demo', false]).
+    await waitFor(() => expect(screen.getAllByRole('radio').map((r) => [r.value, r.checked])).toEqual([['demo', true]]))
     expect(fetchOffer).not.toHaveBeenCalled()
     expect(listKeys).not.toHaveBeenCalled()
     const bouton = screen.getByRole('button', { name: 'Lancer la cartographie ouverte' })

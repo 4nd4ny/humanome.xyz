@@ -57,7 +57,7 @@ onglet « Monitoring »).
    `RequireRole::any('admin')` laisse passer ; `Monitoring::overview(days)`
    borne la fenêtre à 1..365 et renvoie `200 {periode, utilisateurs,
    cartographies, finances, tokens, connexions, votes}`. La fenêtre de N jours
-   part de minuit il y a N-1 jours (aujourd'hui inclus).
+   part de minuit UTC il y a N-1 jours (la journée UTC en cours incluse).
 3. Une fois le tableau de bord reçu (le bloc est rendu **dans** celui-ci), le
    bloc « Comptes par rôle » appelle `GET /api/admin/users?role=admin`
    (UC-ADM-01, A2) : l'appel est séquentiel, et n'a pas lieu si le premier
@@ -126,9 +126,15 @@ onglet « Monitoring »).
 
 ## Règles de gestion
 
-- **RG1** — Fenêtre : `since = DATE_SUB(CURDATE(), INTERVAL days-1 DAY)`,
-  `days` borné à 1..365 par `overview` (l'entier est inliné, jamais une chaîne
-  utilisateur).
+- **RG1** — Fenêtre en journées UTC, comme le reste du serveur (les compteurs
+  démo et tuteur, que `UsageCounters` date par `gmdate` ; le mois des crédits
+  offerts) : elle part de minuit UTC il y a `days-1` jours, date tirée par
+  `gmdate` de l'instant de `Clock`. Les colonnes DATETIME, écrites par MySQL
+  (`NOW()`, `CURRENT_TIMESTAMP`) à l'heure de sa session, sont comparées à
+  cette borne convertie (`CONVERT_TZ`), et la série par jour range chaque
+  événement sous sa journée UTC ; `usage_date` est comparée à la date UTC.
+  `days` borné à 1..365 par `overview` (la date est inlinée, jamais une
+  chaîne utilisateur).
 - **RG2** — « Connecté maintenant » = session active depuis moins de
   `ACTIVE_WINDOW_SECONDS` (900 s) ; comptes distincts, sessions anonymes
   comptées à part. Les comptes supprimés sont exclus des totaux et de la
@@ -188,6 +194,7 @@ onglet « Monitoring »).
 | UC-ADM-06-U01 | `Monitoring::overview` | Bornes 1..365, sept blocs ordonnés | `api/tests/UseCases/Unit/UcAdm06MonitoringTest.php` |
 | UC-ADM-06-U02 | `overview` — utilisateurs | Supprimés exclus, non activés, connectés < 15 min distincts, anonymes, par rôle (RG2) | idem |
 | UC-ADM-06-U03 | `overview` — fenêtre | `days=1` exclut hier, `days=2` l'inclut (RG1) | idem |
+| UC-ADM-06-U24 | `overview` — journées UTC | À 00 h 30 à Paris (horloges de PHP et de MySQL figées au même instant, session à +02:00), dans chaque bloc : `days=1` compte les compteurs démo et tuteur du jour UTC en cours, l'inscription, le débit Twin9 et la connexion de l'instant, et les cartographies, mouvements de crédit, captures PayPal et consultations de partage de l'instant et de 22 h 30 à Paris (même journée UTC, veille à l'heure de Paris), séries rangées sous la même date UTC ; la veille UTC reste dehors (RG1, L2) | idem |
 | UC-ADM-06-U04 | `overview` — cartographies | Par type, stockées, nouvelles, partages actifs, consultations période/total (RG3) | idem |
 | UC-ADM-06-U05 | `overview` — finances | Soldes, natures signées, série quotidienne, PayPal (RG4) | idem |
 | UC-ADM-06-U06 | `overview` — tokens | Fusion démo/tuteur/Twin9 par jour, `null` si muet, totaux, par modèle « ? » | idem |
@@ -279,15 +286,14 @@ cd web && npx vitest run test/usecases/unit/uc-adm-06 test/usecases/functional/u
 - **L1** — Levée le 2026-10-22 : la famille de menu « Administrer »
   (`web/src/nav.js`) liste désormais « Monitoring » en premier, comme les
   sections de l'administration (UC-VIS-04-U13 et F20).
-- **L2** — L'axe du temps de l'IHM est construit en dates **UTC**
-  (`toISOString`), alors que le serveur groupe par `DATE()` / `CURDATE()` dans
-  le fuseau de la session MySQL : si ces fuseaux diffèrent, un point proche de
-  minuit peut tomber hors de l'axe affiché. En outre, les compteurs démo et
-  tuteur (`usage_date`, datés en **UTC** par `gmdate`) sont bornés par
-  `CURDATE()` du fuseau MySQL : si les fuseaux diffèrent, la fenêtre de ces
-  deux sources est décalée d'un jour autour de minuit, **totaux de période
-  compris** (ex. session en Europe/Paris, entre 00:00 et 02:00, `days=1`
-  exclut la consommation du jour UTC en cours).
+- **L2** — Levée le 2026-10-23 (RG1, UC-ADM-06-U24) : le serveur compte
+  désormais en journées UTC, comme l'axe du temps de l'IHM (`toISOString`).
+  Jusque-là, il groupait par `DATE()` et bornait par `CURDATE()`, dans le
+  fuseau de la session MySQL : un point proche de minuit pouvait tomber hors
+  de l'axe affiché, et les compteurs démo et tuteur (`usage_date`, datés en
+  UTC par `gmdate`) étaient décalés d'un jour, **totaux de période compris**
+  — en Europe/Paris, entre 00:00 et 02:00, `days=1` excluait la consommation
+  du jour UTC en cours, et la série rangeait démo et Twin9 sous deux dates.
 - **L3** — Sans base MMDB (`GEOIP_DB` vide ou fichier absent), toutes les
   connexions sont « Inconnu » ; l'indisponibilité est mémorisée pour la durée
   du processus PHP.

@@ -390,9 +390,9 @@ de pôle, en partant d'un modèle ou d'un référentiel publié exporté (A7 à 
 | UC-EPI-05-U08 | `createEpistemiarqueApi` | `importReferentiel` (niveau facultatif), `listCatalogue` | `web/test/usecases/unit/uc-epi-05-importer-referentiel.test.js` |
 | UC-EPI-05-U09 | `apiFetch` | Un refus garde son détail par pointeur (`errors`), une autre erreur non | idem |
 | UC-EPI-05-U10 | `createDraft` | La nouvelle version garde l'identifiant de sa source, quelle que soit la graphie demandée (casse, espace final) | `api/tests/UseCases/Unit/UcEpi05ImporterReferentielTest.php` |
-| UC-EPI-05-U11 | `convertirHumanome` | Sur la fixture fictive à la forme Humanome : document attendu, valide au schéma ; libellé, `nomCourt`, niveaux déduits, palette, codes ; rubriques composées dans l'ordre, absentes omises, hors du document ce que le schéma ne représente pas ; provenance ; avertissements (`structure`, rubriques) ; empreinte de l'extracteur ; niveau facette ; refus à leur chemin ; fiches de scan (A6) | `engine/src/referentiel-humanome.test.js` |
-| UC-EPI-05-U12 | `scripts/convertir-humanome.mjs` | Écrit le document attendu ; relancé, « déjà à jour » ; refuse d'écraser une version tirée d'un autre fichier, un YAML illisible ou refusé, un niveau inconnu (A6) | idem |
-| UC-EPI-05-U13 | `ContentHash`, `auNiveau` | Le document converti a l'empreinte et l'ordre du serveur ; son niveau facette est celui d'`auNiveau` (A6) | `api/tests/ReferentielAmorcageTest.php` |
+| UC-EPI-05-U11 | `convertirHumanome` | Sur la fixture fictive à la forme Humanome, au niveau capacité : le document attendu, valide au schéma (A6) | `engine/src/referentiel-humanome.test.js` |
+| UC-EPI-05-U12 | `scripts/convertir-humanome.mjs` | Écrit le document attendu avec ses avertissements, aux niveaux capacité et facette ; relancé, « déjà à jour » ; refuse d'écraser une version tirée d'un autre fichier (A6) | idem |
+| UC-EPI-05-U13 | `ContentHash` | Le document converti, aux deux niveaux, a l'empreinte et l'ordre canonique du serveur (A6) | `api/tests/ReferentielAmorcageTest.php` |
 | UC-EPI-05-U14 | `createEpistemiarqueApi` | `getPublishedVersion` : `GET referentiels/{id}/versions/{semver}`, segments encodés (A9) | `web/test/usecases/unit/uc-epi-05-importer-referentiel.test.js` |
 | UC-EPI-05-U15 | `referentielEnMarkdown`, `referentielDepuisMarkdown` | RESPIRE 7.1.0 et 7.0.0 tels que publiés (`web/public/data/referentiel/`) : le texte est celui des fiches du moteur, couleur sous le titre, provenance en tête ; relu, mêmes pôles, compétences, provenance, même empreinte (`b246101c…`), valide au schéma ; réécrit, octet pour octet (A9) | `web/src/lib/referentiel-markdown.test.js` |
 | UC-EPI-05-U16 | idem | La fixture fictive à la forme Humanome, aux niveaux capacité et facette : niveaux nommés par le commentaire, facettes un titre plus bas, aller-retour exact ; ses motifs saisis, le document est celui de la fixture hors empreinte (A9) | idem |
@@ -408,6 +408,16 @@ de pôle, en partant d'un modèle ou d'un référentiel publié exporté (A7 à 
 | UC-EPI-05-U26 | `referentielDepuisMarkdown` | Un motif saisi propre à PCRE (possessif, atomique, « (?i) ») : avertissement, import possible ; « \p{Lu} » lu ; vide, plus de 100 caractères, verbe, caractère de contrôle : erreurs (RG2, E6) | idem |
 | UC-EPI-05-U27 | `MODELE_JSON`, `referentielDepuisMarkdown`, `deduireMotif` | `schemas/fixtures/markdown/referentiel-markdown-contrat.json` est ce que la page envoie (le modèle, la fixture à la forme Humanome relue en Markdown) et les motifs qu'elle déduit (ceux de U17) ; `ECRIRE_CONTRAT=1` le réécrit | idem |
 | UC-EPI-05-U28 | `validateDocument`, `auNiveau`, `regexDuMotif` | Chaque document de ce contrat se valide à chacun de ses niveaux ; chaque motif se compile en PCRE et y retrouve ses codes | `api/tests/UseCases/Unit/UcEpi05ImporterReferentielTest.php` |
+| UC-EPI-05-U29 | `convertirHumanome` | Identité (`schemaVersion`, `kind`, `id`, version), libellé, `nomCourt`, niveaux déduits avec leurs motifs, pôles et leur palette, codes des compétences et des éléments (A6) | `engine/src/referentiel-humanome.test.js` |
+| UC-EPI-05-U30 | `convertirHumanome` | Descriptions composées des seules rubriques du YAML, dans un ordre fixe ; une rubrique absente n'est pas inventée ; hors du document ce que le schéma ne représente pas (A6) | idem |
+| UC-EPI-05-U31 | `convertirHumanome` | La provenance (`source`) : titre, version, date, URL (sans URL : la page qui publie l'Humanome), fichier, sha256, convertisseur, niveau, licence (A6) | idem |
+| UC-EPI-05-U32 | `convertirHumanome` | Compte dans le contenu et avertit d'un en-tête `structure` qui le contredit, d'une rubrique absente, d'une licence non déclarée ; aucun avertissement sur un YAML juste (A6) | idem |
+| UC-EPI-05-U33 | `convertirHumanome`, `corpsDuHash` | L'empreinte est celle de l'extracteur (sha256 du JSON compact `{poles, competences}`) ; sans fonction de hachage, pas d'empreinte (A6) | idem |
+| UC-EPI-05-U34 | `convertirHumanome` (niveau facette) | Les facettes deviennent les compétences, sous le pôle de leur capacité ; document attendu, valide ; niveau inconnu refusé ; une capacité sans facette refusée (A6) | idem |
+| UC-EPI-05-U35 | `convertirHumanome` | Refuse ce que le schéma ou le moteur ne liraient pas (repères hors forme ou en double, version, identifiant, titres, limites, listes vides), chaque erreur à son chemin (A6) | idem |
+| UC-EPI-05-U36 | `fichesDuReferentiel` | Les fiches de scan écrites depuis le document converti montrent les facettes sous leur capacité, rubriques en gras, jamais en titre (A6) | idem |
+| UC-EPI-05-U37 | `scripts/convertir-humanome.mjs` | Refuse un YAML illisible, un YAML refusé, un niveau inconnu, un appel sans fichier, sans rien écrire (A6) | idem |
+| UC-EPI-05-U38 | `auNiveau` | Le niveau facette du convertisseur est celui d'`auNiveau` : seule la provenance les distingue (A6) | `api/tests/ReferentielAmorcageTest.php` |
 
 ### Tests fonctionnels
 
@@ -428,13 +438,19 @@ de pôle, en partant d'un modèle ou d'un référentiel publié exporté (A7 à 
 | UC-EPI-05-F13 | A4 | IHM | Un administrateur non membre : pas de vote, publication possible | idem |
 | UC-EPI-05-F14 | Étape 1 | IHM | Le lien de l'atelier ; section vide dite | idem |
 | UC-EPI-05-F15 | Étape 4 | IHM | « Voir » : le document au vote, pôle par pôle, avant le vote ; « Masquer » ; un brouillon aussi | idem |
-| UC-EPI-05-F16 | A6 | API | Amorçage publié sans vote puis « déjà amorcé », servi par `GET /api/referentiels` et par sa version ; même contenu sous une autre provenance « déjà amorcé », la première gardée ; autre contenu sous la même version (description, niveaux, structure), brouillon de l'atelier, RESPIRE, identifiant ou code invalides refusés, rien d'écrit ; la ligne de commande | `api/tests/ReferentielAmorcageTest.php` |
-| UC-EPI-05-F17 | A6 | IHM | Le référentiel amorcé est proposé au menu des parcours et se charge tel que la base le sert ; sa provenance (`source`, servie par `GET /api/referentiels`) s'affiche sous le menu | `web/src/components/ReferentielChoice.test.jsx` |
+| UC-EPI-05-F16 | A6 | API | Amorçage publié sans vote puis « déjà amorcé », servi par `GET /api/referentiels` et par sa version | `api/tests/ReferentielAmorcageTest.php` |
+| UC-EPI-05-F17 | A6 | IHM | Le référentiel amorcé est proposé au menu des parcours et se charge tel que la base le sert | `web/src/components/ReferentielChoice.test.jsx` |
 | UC-EPI-05-F18 | A6 | API | En production, `POST /api/admin/import-referentiel` amorce un autre référentiel que RESPIRE avec les garde-fous du script : publié (note « Amorçage hors vote (S5) »), puis « unchanged », sous une autre provenance aussi ; une autre description sous la même version ou une empreinte fausse → `409`, rien d'écrit ; un identifiant invalide → `422` | `api/tests/AdminImportReferentielTest.php` |
 | UC-EPI-05-F19 | A7, E6 | IHM | Un fichier `.md` remplit le texte ; aperçu (pôles, compétences, éléments, accordés) au niveau choisi ; sans les trois champs, les erreurs le disent, le bouton indisponible (`aria-disabled`) décrit par le résumé, chaque champ `aria-invalid` relié à son erreur, le focus porté sur les erreurs, rien d'envoyé ; motifs déduits affichés, l'un élargi à la main ; niveau choisi, l'aperçu le suit ; le document envoyé est celui attendu ; message, rechargement, formulaire vidé | `web/test/usecases/functional/uc-epi-05-importer-referentiel.test.jsx` |
 | UC-EPI-05-F20 | E6 | IHM | Niveau sauté, pôle vide, doublon, à leur ligne, import indisponible, sans alerte ; un code hors du motif saisi, puis « Reprendre le motif déduit » ; un refus du serveur par pointeur, le texte gardé, rien rechargé | idem |
 | UC-EPI-05-F21 | A8 | IHM | Les deux modèles se téléchargent (nom, contenu) ; le JSON commenté champ par champ ; l'écueil des noms de pôle de RESPIRE dit ; le modèle Markdown collé se lit sans erreur et s'importe comme le modèle JSON | idem |
 | UC-EPI-05-F22 | A9, E7 | IHM | Toutes les versions publiées, RESPIRE compris, proposées ; l'export lit la version par l'API et télécharge `{id}-v{version}.md`, le texte de `referentielEnMarkdown` ; un `404` est dit, rien ne part | idem |
+| UC-EPI-05-F23 | A6 | API | Un autre contenu sous la même version (description, niveaux, structure) est refusé, rien d'écrit | `api/tests/ReferentielAmorcageTest.php` |
+| UC-EPI-05-F24 | A6 | API | Le même contenu sous une autre provenance est « déjà amorcé », la première gardée | idem |
+| UC-EPI-05-F25 | A6 | API | Une version que l'atelier tient en brouillon n'est pas publiée par-dessus | idem |
+| UC-EPI-05-F26 | A6 | API | RESPIRE, un identifiant ou un code invalides sont refusés, rien d'écrit | idem |
+| UC-EPI-05-F27 | A6 | API | La ligne de commande amorce une fois, puis dit que la version est là ; un refus sort en 1 | idem |
+| UC-EPI-05-F28 | A6 | IHM | La provenance d'un autre référentiel que RESPIRE (`source`, servie par `GET /api/referentiels`) s'affiche sous le menu, liée par `aria-describedby` ; rien pour RESPIRE ni sans provenance connue | `web/src/components/ReferentielChoice.test.jsx` |
 
 ### Tests existants liés (non-régression)
 
@@ -446,8 +462,8 @@ de pôle, en partant d'un modèle ou d'un référentiel publié exporté (A7 à 
 - `api/tests/AnnotationsTest.php` — `testACartographyOfAnotherReferentialTakesItsCodes` (RG9).
 - `web/src/views/ConfigurationView.test.jsx` — les brouillons proposés en version.
 - `api/tests/ReferentielApiTest.php` — `testAnyPublishedReferentialIsServedByIdAndVersion` (S5) : une version publiée de tout référentiel servie à tous par son identifiant ; brouillon, proposition (même à leur auteur), identifiant ou version inconnus, autre graphie (casse, espace final) → `404` ; lecture seule (`405`) ; le catalogue ne liste que la publiée.
-- `web/src/data/referentiel.test.js` (« API d'abord, export statique en repli ») ; `web/src/components/ReferentielChoice.test.jsx` ; UC-APP-02-F27, UC-APP-09-F31, UC-ETA-03-F30 — les menus des parcours lisent la base.
-- UC-VIS-02-U12 à U14, F18 à F21 (S5, lot E) — la page publique montre un référentiel publié autre que RESPIRE, lu dans la base, avec sa provenance, par le menu ou un lien profond ; un identifiant introuvable est dit (L4).
+- `web/src/data/referentiel.test.js` (« API d'abord, export statique en repli ») ; `web/src/components/ReferentielChoice.test.jsx` ; UC-APP-02-F27, UC-APP-09-F16, UC-ETA-03-F30 — les menus des parcours lisent la base.
+- UC-VIS-02-U12 à U14, U19, U20, F18 à F21 (S5, lot E) — la page publique montre un référentiel publié autre que RESPIRE, lu dans la base, avec sa provenance, par le menu ou un lien profond ; un identifiant introuvable est dit (L4).
 - UC-EPI-03 (coupe de release : complétude, la structure de la dernière version publiée), UC-EPI-04 (grain document), `ReferentielApiTest`, `ReferentielImportExportTest`, `CompetenceReleaseTest`, `engine/test/usecases/unit/uc-sys-04-chaine-artefacts-derives.test.js` (validateurs compilés).
 - `web/src/views/epistemiarque/ReferentielsSection.test.jsx` (S5, lot D) — le détail de la section : l'aperçu suit chaque frappe et compte au niveau choisi (une capacité et trois facettes : 1 puis 3 compétences), un nom de niveau saisi nomme le choix et le document, un nouveau fichier repart des noms et motifs de son texte et vide le champ, l'aperçu n'est ni une alerte ni un statut, un avertissement n'empêche pas l'import, un fichier illisible est dit, un export sans téléchargement possible ou trop profond est dit, rien à exporter sans référentiel publié.
 

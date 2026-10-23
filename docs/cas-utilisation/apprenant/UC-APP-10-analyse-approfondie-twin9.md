@@ -502,8 +502,10 @@ badge premium) ou ouvre `#/twin9`.
 | UC-APP-10-U20 | `twin9RunFiles`, `StigmergieDuJour` | `traces_conservees` remis à l'interface (nul sans lui) ; la nature de chaque trace en mots, sa conservation, son intensité seulement quand elle se montre, jamais « score » ; « Ouvrir dans le portfolio » emporte la nature et, visible, l'intensité (RG15) | idem |
 | UC-APP-10-U21 | `buildHighlightedPortfolioMarkdown` | Le portfolio surligné : marque par nature, intensité seulement quand elle se montre, jamais une trace non conservée ; sans ses marques, le portfolio exporté à l'octet (RG15) | idem |
 | UC-APP-10-U22 | `Twin9View` (`Lancer`) | Le texte envoyé à l'aperçu ne porte jamais les marques d'un portfolio surligné rangé dans la bibliothèque (RG15) | idem |
-| UC-APP-10-U23 | `portfolioPourTwin9`, `Twin9View` (`Lancer`, `Apercu`) | Le texte envoyé à l'aperçu et au lancement, le même, découpé selon la fiche du portfolio (une fusion faite à la main comprise) : en-tête ajouté, en-tête intérieur neutralisé ; l'aperçu nomme les journées retouchées ; un portfolio que le moteur lit déjà ainsi part à l'octet, l'aperçu n'en dit rien ; un passage sans date en tête : l'aperçu dit que le moteur ne le lit pas (RG16) | idem |
+| UC-APP-10-U23 | `portfolioPourTwin9`, `Twin9View` (`Lancer`, `Apercu`) | Le texte envoyé à l'aperçu et au lancement, le même, découpé selon la fiche du portfolio (une fusion faite à la main comprise) : en-tête ajouté, en-tête intérieur neutralisé ; l'aperçu nomme les journées retouchées (RG16) | idem |
 | UC-APP-10-U24 | `importTwin9Run`, `SecondReadings` | Deux cartes du même jour : une journée, leurs compétences réunies, le rapport le dit ; une compétence établie par faisceau : une seconde lecture, sa ligne (statut du moteur, journée de ses traces), hors du soleil (RG17) | idem |
+| UC-APP-10-U25 | `portfolioPourTwin9`, `Twin9View` (`Apercu`) | Un portfolio que Twin9 lit déjà en ses journées part à l'octet, et l'aperçu n'en dit rien (RG16) | `web/test/usecases/unit/uc-app-10-analyse-approfondie-twin9.test.jsx` |
+| UC-APP-10-U26 | `portfolioPourTwin9`, `Twin9View` (`Apercu`) | Un passage sans date, en tête : le texte part à l'octet, l'aperçu dit que Twin9 ne le lit pas (RG16) | idem |
 
 ### Tests fonctionnels
 

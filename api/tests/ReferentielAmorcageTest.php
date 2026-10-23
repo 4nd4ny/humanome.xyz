@@ -61,7 +61,7 @@ final class ReferentielAmorcageTest extends ReferentielTestCase
     }
 
     /** The converter's facette level is the repository's (auNiveau): the two must not drift. */
-    #[TestDox('UC-EPI-05-U13 — le niveau facette du convertisseur est celui d’auNiveau')]
+    #[TestDox('UC-EPI-05-U38 — le niveau facette du convertisseur est celui d’auNiveau')]
     public function testTheFacetteLevelIsTheRepositorysReading(): void
     {
         $repo = self::repo();
@@ -119,7 +119,7 @@ final class ReferentielAmorcageTest extends ReferentielTestCase
      * descriptions out: the seed compares the whole document, so that a
      * re-conversion of the same version never passes for « unchanged ».
      */
-    #[TestDox('UC-EPI-05-F16 — un autre contenu sous la même version est refusé, rien d’écrit')]
+    #[TestDox('UC-EPI-05-F23 — un autre contenu sous la même version est refusé, rien d’écrit')]
     public function testSeedingRefusesAnotherContentUnderTheSameVersion(): void
     {
         $doc = self::fixture();
@@ -161,7 +161,7 @@ final class ReferentielAmorcageTest extends ReferentielTestCase
      * changes only `source`, the provenance prose: the same version, so the
      * seed says « unchanged » and the published row keeps its first provenance.
      */
-    #[TestDox('UC-EPI-05-F16 — le même contenu sous une autre provenance est « déjà amorcé », la première gardée')]
+    #[TestDox('UC-EPI-05-F24 — le même contenu sous une autre provenance est « déjà amorcé », la première gardée')]
     public function testSeedingTheSameContentUnderAnotherProvenanceIsUnchanged(): void
     {
         $doc = self::fixture();
@@ -189,7 +189,7 @@ final class ReferentielAmorcageTest extends ReferentielTestCase
     }
 
     /** A draft of the same version (the atelier's path) is not published over. */
-    #[TestDox('UC-EPI-05-F16 — une version que l’atelier tient en brouillon n’est pas publiée par-dessus')]
+    #[TestDox('UC-EPI-05-F25 — une version que l’atelier tient en brouillon n’est pas publiée par-dessus')]
     public function testSeedingRefusesAVersionTheAtelierHolds(): void
     {
         $author = self::createUser('epistemiarque');
@@ -204,7 +204,7 @@ final class ReferentielAmorcageTest extends ReferentielTestCase
     }
 
     /** Never under RESPIRE's id (S5, E1), never an id the atelier would refuse. */
-    #[TestDox('UC-EPI-05-F16 — RESPIRE, un identifiant ou un code invalides sont refusés, rien d’écrit')]
+    #[TestDox('UC-EPI-05-F26 — RESPIRE, un identifiant ou un code invalides sont refusés, rien d’écrit')]
     public function testSeedingRefusesRespireAndInvalidIds(): void
     {
         $respire = self::fixture();
@@ -239,7 +239,7 @@ final class ReferentielAmorcageTest extends ReferentielTestCase
     }
 
     /** The command line, as a workstation runs it: seeded, then already there; refusals exit 1. */
-    #[TestDox('UC-EPI-05-F16 — la ligne de commande amorce une fois, puis dit que la version est là ; un refus sort en 1')]
+    #[TestDox('UC-EPI-05-F27 — la ligne de commande amorce une fois, puis dit que la version est là ; un refus sort en 1')]
     public function testTheCommandLineSeedsOnceThenSaysItIsThere(): void
     {
         $fixture = \dirname(__DIR__, 2) . '/schemas/fixtures/referentiel-humanome-fictif.json';

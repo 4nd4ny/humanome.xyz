@@ -151,8 +151,8 @@ final class AdminMonitoringTest extends AdminTestCase
         // Tokens démo : aujourd'hui + un jour hors fenêtre de 7 jours.
         $pdo->exec(
             "INSERT INTO llm_usage_daily (usage_date, requests, input_tokens, output_tokens, estimated_cost_usd)
-             VALUES (CURDATE(), 12, 30000, 8000, 0.42),
-                    (DATE_SUB(CURDATE(), INTERVAL 20 DAY), 5, 10000, 2000, 0.10)"
+             VALUES (UTC_DATE(), 12, 30000, 8000, 0.42),
+                    (DATE_SUB(UTC_DATE(), INTERVAL 20 DAY), 5, 10000, 2000, 0.10)"
         );
         // Consultations de partage : deux traces d'audit.
         $pdo->exec(

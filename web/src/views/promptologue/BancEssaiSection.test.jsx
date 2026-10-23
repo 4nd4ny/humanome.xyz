@@ -39,6 +39,14 @@ function fakeDeps(runFn) {
   }
 }
 
+/**
+ * Les versions publiées et MES brouillons sont arrivés. Le menu « Version à
+ * tester » existe dès le premier rendu, avec le seul moteur embarqué : l'attendre
+ * ne suffit pas (sous charge, le test lisait le menu avant leur arrivée). Le
+ * brouillon arrive le dernier (GET drafts, puis son document).
+ */
+const versionsLoaded = () => screen.findAllByRole('option', { name: 'aurora-demo@1.1.0 (mon brouillon)' })
+
 const okRun = (pkg) => ({
   pkg: { id: pkg.id, version: pkg.version },
   engine: pkg.builtin === true,
@@ -56,6 +64,7 @@ describe('BancEssaiSection — sélection', () => {
   it('propose le paquet embarqué, les versions publiées et MES brouillons', async () => {
     render(<BancEssaiSection api={fakeApi()} user={user} deps={fakeDeps(vi.fn())} />)
     const select = await screen.findByLabelText('Version à tester')
+    await versionsLoaded()
     const labels = [...select.options].map((o) => o.textContent)
     expect(labels[0]).toContain('moteur embarqué')
     expect(labels).toContain('aurora-lab@2.0.0 (publiée)')
@@ -85,6 +94,7 @@ describe('BancEssaiSection — exécution', () => {
     const api = fakeApi()
     render(<BancEssaiSection api={api} user={user} deps={fakeDeps(runFn)} />)
     const select = await screen.findByLabelText('Version à tester')
+    await versionsLoaded()
     fireEvent.change(select, { target: { value: 'draft:7' } })
     fireEvent.click(screen.getByRole('button', { name: 'Lancer' }))
     await screen.findByTestId('banc-simple')
@@ -112,7 +122,7 @@ describe('BancEssaiSection — exécution', () => {
     const runFn = vi.fn(async ({ pkg }) => okRun(pkg))
     const api = fakeApi()
     render(<BancEssaiSection api={api} user={user} deps={fakeDeps(runFn)} />)
-    await screen.findByLabelText('Version à tester')
+    await versionsLoaded()
     fireEvent.click(screen.getByRole('radio', { name: /A\/B/ }))
     fireEvent.change(screen.getByLabelText('Version A'), { target: { value: 'builtin' } })
     fireEvent.change(screen.getByLabelText('Version B'), { target: { value: 'pub:aurora-lab@2.0.0' } })

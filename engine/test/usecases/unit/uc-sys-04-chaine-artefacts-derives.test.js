@@ -916,6 +916,25 @@ describe('UC-SYS-04 — fonctionnels (scripts en sous-processus, miroir temporai
     )
   }, TIMEOUT)
 
+  it('UC-SYS-04-F20 — A5 : le SUMMARY.md versionné est la sortie exacte du générateur sur les documents du dépôt (aucune ligne ajoutée ni retirée à la main) ; chaque document de docs/ y figure', () => {
+    // Une ligne ajoutée à la main disparaît à la régénération suivante :
+    // celle de la campagne Twin9 (#38) est sortie ainsi du sommaire publié.
+    const root = makeMirror({ docs: true })
+    expectOk(run(root, 'scripts/build-gitbook-summary.mjs'))
+    const generated = readFileSync(join(root, 'SUMMARY.md'), 'utf8')
+    expect(readFileSync(join(REPO, 'SUMMARY.md'), 'utf8')).toBe(generated)
+    const listed = new Set(
+      generated
+        .split('\n')
+        .map((line) => line.match(/\]\((docs\/[^/)]+\.md)\)$/)?.[1])
+        .filter(Boolean),
+    )
+    const docs = readdirSync(join(REPO, 'docs'))
+      .filter((f) => f.endsWith('.md'))
+      .map((f) => `docs/${f}`)
+    expect(docs.filter((f) => !listed.has(f))).toEqual([])
+  }, TIMEOUT)
+
   it('UC-SYS-04-F16 — AN-4 : lancés par un chemin qui traverse un lien symbolique, les quatre scripts à garde CLI sortent en 0 sans rien faire ni rien afficher (comportement ACTUEL) ; par le chemin réel, ils travaillent', () => {
     // Miroir complet : corpus amont, 7.0.0, gabarits Twin6 (versionnés) et P*.md
     // (chaque script aurait donc de quoi travailler) ; corpus des fiches périmé.

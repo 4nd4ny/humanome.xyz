@@ -34,7 +34,7 @@ const DOCS_GROUPS = [
   ],
   [
     'Exploitation',
-    ['administration.md', 'hebergement.md', 'deploiement.md', 'recette-twin9.md', 'backup-restore.md', 'runner-node.md'],
+    ['administration.md', 'hebergement.md', 'deploiement.md', 'recette-twin9.md', 'campagne-twin9-2026-10-23.md', 'backup-restore.md', 'runner-node.md'],
   ],
   [
     'RGPD & autorisations',

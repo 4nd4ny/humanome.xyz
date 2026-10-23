@@ -399,6 +399,7 @@ par le catalogue, comme UC-SYS-01-F22, UC-SYS-02-F19 et UC-PRO-08-F17.
 | UC-SYS-04-F17 | Nominal, étapes 6-7, A6, E9 | CLI | `build-site-map` et `build-tuteur-digest` dans deux miroirs qui ne contiennent que la liste blanche des sources : journaux exacts, sorties identiques à l'octet (RG2) ; un chapitre périmé disparaît ; `SITE_URL` et `ROBOTS_POLICY=noindex` appliqués ; politique ou adresse invalide → code 1, rien d'écrit | `engine/test/usecases/unit/uc-sys-04-carte-du-site.test.js` |
 | UC-SYS-04-F18 | Nominal, étape 6 | CLI | `llms.txt` au format llmstxt.org (titre, citation, trois sections au moins, items `- [titre](https://…)`, liens locaux vers des fichiers générés, moins de 50 Ko) ; `sitemap.xml` = la racine et les fichiers publiés, sans fragment ; liens `alternate` et `<noscript>` d'`index.html` vers des fichiers générés ; tous les parcours du hub publiés ; une page par route du catalogue dans `site-map.json`, au contrat que lit l'API (`version` 1 ; `route`, `href`, `interne` de chaque page ; `titre` non vide, `resume` et `points` de texte pour une page non interne, `docs/contrats.md` §12) ; la carte fictive des tests PHP (`api/tests/fixtures/tuteur/site-map.json`) de même forme : même version, routes réelles de même nature, mêmes champs et mêmes types | idem |
 | UC-SYS-04-F19 | Nominal, RG8 | CLI | Garde de publication des sorties : aucune clé Anthropic, aucun chemin local absolu, aucun identifiant OVH, aucune variable ni chemin de gabarit Twin9 dans les fichiers générés ; aucun corps de chapitre dans le digest | idem |
+| UC-SYS-04-F20 | A5 | CLI | Le `SUMMARY.md` versionné est la sortie exacte du générateur sur les documents du dépôt : aucune ligne ajoutée ni retirée à la main ; chaque document de `docs/` y figure | `engine/test/usecases/unit/uc-sys-04-chaine-artefacts-derives.test.js` |
 
 ### Tests existants liés (non-régression)
 
@@ -523,9 +524,11 @@ cd web && npx vitest run test/usecases/unit/uc-sys-04-carte-du-site.test.js
   testés qu'en sous-processus, pas unitairement.
 - `dump-fiches.mjs` est testé contre un serveur HTTP local qui simule la route ;
   la route réelle est couverte par UC-SYS-02-F05 et UC-EPI-03-F13.
-- `SUMMARY.md` versionné n'est pas comparé à sa régénération : il dépend de
-  toutes les fiches présentes et se régénère à la main (A5) ; à la rédaction de
-  cette fiche, il ne listait pas encore les cas d'utilisation.
+- `SUMMARY.md` versionné se régénère à la main (A5), mais il est comparé à sa
+  régénération depuis le 2026-10-23 (F20) : une ligne ajoutée à la main, celle de
+  la campagne Twin9 du 2026-10-23, en était sortie à la régénération suivante. Un
+  document de `docs/` s'inscrit donc dans `DOCS_GROUPS` du générateur, pas dans
+  `SUMMARY.md`.
 - L'export statique des versions **publiées** du référentiel
   (`scripts/export-referentiel-static.php`, depuis la base) relève d'UC-VIS-02
   et d'UC-EPI-03 ; les scripts PHP d'import (`import-referentiel.php`,

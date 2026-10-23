@@ -47,6 +47,17 @@ la phase D) et, le 2026-10-23, la première campagne réelle de Twin9 en local
 
 ## Fait
 
+- 2026-10-23 — **Le compte rendu de la campagne revient au sommaire GitBook, et le sommaire ne
+  peut plus dériver (branche `fix/sommaire-campagne`).** La ligne de
+  `docs/campagne-twin9-2026-10-23.md` avait été ajoutée à la main dans `SUMMARY.md` (#38) ;
+  `build-gitbook-summary.mjs` ne la connaissait pas, et sa régénération, à la fusion de `main`
+  dans la branche du sprint 9 (`fa11747`, arrivée avec #41), l'a retirée : la synchronisation
+  GitBook de `d47d031` a publié un sommaire sans la campagne. Le document entre dans
+  `DOCS_GROUPS` (Exploitation, après la recette) et `SUMMARY.md` est régénéré. UC-SYS-04-F20
+  compare désormais le `SUMMARY.md` versionné à sa régénération et exige que chaque document de
+  `docs/` y figure : rouge avant le correctif (la campagne absente), vert après. La limite
+  correspondante de la fiche UC-SYS-04 est levée. Catalogue recompté : 1 148 U, 1 276 F.
+
 - 2026-10-23 — **Sprint 9, correctifs de relecture (branche `feat/trois-interfaces`, rien poussé
   ni déployé).** La relecture du sprint (entrée suivante) a confirmé des contrastes que la preuve
   sur les règles laissait passer, et un écart à la proposition B. Chaque correctif porte le test

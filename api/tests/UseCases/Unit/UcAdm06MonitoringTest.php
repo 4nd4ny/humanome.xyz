@@ -411,7 +411,7 @@ final class UcAdm06MonitoringTest extends TestCase
         self::assertSame(['total', 'nonActives', 'enListeAttente', 'actifsMaintenant'], \array_slice(array_keys($u), 0, 4));
     }
 
-    #[TestDox('UC-ADM-06-U24 — journées UTC (RG1) : à 00 h 30 à Paris (22 h 30 UTC la veille), days=1 compte la journée UTC en cours — compteurs démo et tuteur (usage_date en UTC) et événements datés par MySQL à l’heure de Paris, rangés ensemble sous cette date ; la veille UTC reste dehors')]
+    #[TestDox('UC-ADM-06-U24 — journées UTC (RG1) : à 00 h 30 à Paris (22 h 30 UTC la veille), days=1 compte la journée UTC en cours dans chaque bloc — compteurs démo et tuteur (usage_date en UTC), et événements datés par MySQL à l’heure de Paris (inscriptions, cartographies, mouvements et captures, consultations de partage, débits, connexions), rangés sous cette date ; la veille UTC reste dehors')]
     public function testU24DaysAreUtcDaysAtHalfPastMidnightInParis(): void
     {
         // Le 23 octobre 2026 à 00 h 30 à Paris (heure d'été, UTC+2) : le 22 à 22 h 30 UTC.
@@ -443,6 +443,28 @@ final class UcAdm06MonitoringTest extends TestCase
             "INSERT INTO audit_events (user_id, type, details, created_at) VALUES
              ({$ada}, 'login', '{}', NOW()), ({$ada}, 'login', '{}', NOW() - INTERVAL 23 HOUR)"
         );
+        // Cartographies, mouvements de crédit, captures PayPal et consultations de partage,
+        // trois instants chacun : à l'instant ; deux heures plus tôt (le 22 à 22 h 30 à
+        // Paris, 20 h 30 UTC : la même journée UTC, la veille à l'heure de Paris) ; et la
+        // veille UTC (NOW() - 23 h, le 21 à 23 h 30 UTC), hors fenêtre.
+        foreach (['', ' - INTERVAL 2 HOUR', ' - INTERVAL 23 HOUR'] as $i => $ago) {
+            self::$pdo->exec(
+                "INSERT INTO cartographies (user_id, type, titre, visibility, document, created_at)
+                 VALUES ({$ada}, 'jour', 'T', 'privee', NULL, NOW(){$ago})"
+            );
+            self::$pdo->exec(
+                "INSERT INTO twin9_credit_events (user_id, kind, amount_microusd, label, created_at)
+                 VALUES ({$ada}, 'topup', 1000000, 'ORD-U24-{$i}', NOW(){$ago})"
+            );
+            self::$pdo->exec(
+                "INSERT INTO twin9_paypal_captures (capture_id, user_id, paypal_order_id, montant_microusd, rembourse_microusd, created_at)
+                 VALUES ('CAP-U24-{$i}', {$ada}, 'ORD-U24-{$i}', 1000000, 0, NOW(){$ago})"
+            );
+            self::$pdo->exec(
+                "INSERT INTO audit_events (user_id, type, details, created_at)
+                 VALUES (NULL, 'share_consulted', '{}', NOW(){$ago})"
+            );
+        }
 
         $o = self::overview(1);
 
@@ -456,5 +478,22 @@ final class UcAdm06MonitoringTest extends TestCase
         self::assertSame([['date' => '2026-10-22', 'n' => 1]], $o['utilisateurs']['parJour']);
         self::assertSame(1, $o['utilisateurs']['nouveauxPeriode']);
         self::assertSame(13, $t['toutTemps']['demo']['requetes']);
+
+        $c = $o['cartographies'];
+        self::assertSame([['date' => '2026-10-22', 'n' => 2]], $c['parJour'], 'l’instant et 22 h 30 à Paris : une journée UTC');
+        self::assertSame(2, $c['nouvellesPeriode'], 'la veille UTC est hors fenêtre, 22 h 30 à Paris dedans');
+        self::assertSame(2, $c['partages']['consultationsPeriode']);
+        self::assertSame([['date' => '2026-10-22', 'n' => 2]], $c['partages']['consultationsParJour']);
+        self::assertSame(3, $c['partages']['consultationsTotal']);
+
+        $f = $o['finances'];
+        self::assertSame(['n' => 2, 'microusd' => 2000000], $f['periode']['topup']);
+        self::assertSame(
+            [['date' => '2026-10-22', 'topup' => 2000000, 'debit' => -100000, 'refund' => 0, 'adjust' => 0]],
+            $f['parJour'],
+            'mouvements de l’instant, de 22 h 30 à Paris et débit Twin9 : une seule journée UTC',
+        );
+        self::assertSame(['captures' => 2, 'brutMicrousd' => 2000000, 'rembourseMicrousd' => 0], $f['paypal']['periode']);
+        self::assertSame(3, $f['paypal']['toutTemps']['captures']);
     }
 }

@@ -194,7 +194,7 @@ onglet « Monitoring »).
 | UC-ADM-06-U01 | `Monitoring::overview` | Bornes 1..365, sept blocs ordonnés | `api/tests/UseCases/Unit/UcAdm06MonitoringTest.php` |
 | UC-ADM-06-U02 | `overview` — utilisateurs | Supprimés exclus, non activés, connectés < 15 min distincts, anonymes, par rôle (RG2) | idem |
 | UC-ADM-06-U03 | `overview` — fenêtre | `days=1` exclut hier, `days=2` l'inclut (RG1) | idem |
-| UC-ADM-06-U24 | `overview` — journées UTC | À 00 h 30 à Paris (horloges de PHP et de MySQL figées au même instant, session à +02:00) : `days=1` compte les compteurs démo et tuteur du jour UTC en cours, le débit Twin9, la connexion et l'inscription de l'instant, rangés sous la même date UTC ; la connexion de la veille UTC reste dehors (RG1, L2) | idem |
+| UC-ADM-06-U24 | `overview` — journées UTC | À 00 h 30 à Paris (horloges de PHP et de MySQL figées au même instant, session à +02:00), dans chaque bloc : `days=1` compte les compteurs démo et tuteur du jour UTC en cours, l'inscription, le débit Twin9 et la connexion de l'instant, et les cartographies, mouvements de crédit, captures PayPal et consultations de partage de l'instant et de 22 h 30 à Paris (même journée UTC, veille à l'heure de Paris), séries rangées sous la même date UTC ; la veille UTC reste dehors (RG1, L2) | idem |
 | UC-ADM-06-U04 | `overview` — cartographies | Par type, stockées, nouvelles, partages actifs, consultations période/total (RG3) | idem |
 | UC-ADM-06-U05 | `overview` — finances | Soldes, natures signées, série quotidienne, PayPal (RG4) | idem |
 | UC-ADM-06-U06 | `overview` — tokens | Fusion démo/tuteur/Twin9 par jour, `null` si muet, totaux, par modèle « ? » | idem |

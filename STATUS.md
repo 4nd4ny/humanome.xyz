@@ -45,6 +45,21 @@ autre fournisseur qu'Anthropic, que l'administrateur ouvre (entrée du 2026-10-2
 
 ## Fait
 
+- 2026-10-23 — **Le commit du moteur Twin9 en SHA-256 et au format reftable (revue de
+  `fix/engine-commit-espace`, même branche).** Deux défauts latents, préexistants, du même
+  symptôme (commit `null` sans bruit) : `51cbf90` accepte un nom de 64 chiffres (dépôt
+  `--object-format=sha256`) dans `HEAD`, les refs et `COMMIT`, et le schéma
+  (`configuration.moteur.commit` : `{7,64}`, validateurs recompilés, `docs/contrats.md`,
+  `twin9-configuration/1` gardé : simple élargissement) ; `6bae0ff` demande la tête à git
+  (`git --git-dir=… rev-parse`, sans shell) quand le dépôt est au format reftable, sur ce seul
+  dépôt — jamais celui qui l'entoure. Format « files » et copie sans git : inchangés.
+  - Vérifié : les deux tests rouges avant (`EngineLoaderTest`, vrai dépôt reftable sous un
+    chemin à espace, branche et worktree détaché ; `validation.test.js` pour le motif) ; le moteur
+    de référence donne toujours `a1d84bf…` ; filtre Twin9 32 tests OK ; suite PHP complète
+    1 862 tests, 2 échecs préexistants (PHP 8.5).
+  - Non vérifié : un vrai moteur recloné en SHA-256 ou en reftable ; la CI (le test reftable y
+    saute si son git est antérieur à 2.45).
+
 - 2026-10-23 — **Le commit du moteur Twin9 survit aux chemins avec une espace (branche
   `fix/engine-commit-espace`).** `afd5db9` : `EngineLoader::commit()` lisait le fichier `.git`
   d'un worktree avec `/^gitdir:\s*(\S+)/`, coupé à la première espace (« 13. Cartographie/… ») ;

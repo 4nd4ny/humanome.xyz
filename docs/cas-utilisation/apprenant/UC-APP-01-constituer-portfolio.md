@@ -202,7 +202,9 @@ ou le lien « Créer un portfolio » du tableau de bord `#/espace`).
   portfolios fictifs de Twin9 (`Twin_v9/tests/portfolios`) et sur un
   portfolio synthétique aux titres de tous niveaux, les journées de
   l'interface sont celles de Twin9 (test du moteur, sauté sans
-  `TWIN_V9_DIR`).
+  `TWIN_V9_DIR`). Pour tout autre portfolio, la page de lancement de Twin9
+  lui envoie les journées de l'interface, celles de la fiche retouchée à la
+  main comprises (UC-APP-10 RG16, sprint 4 T0).
 - **RG6** — Identifiant Google Docs. Côté navigateur, un identifiant collé
   seul doit faire 20 à 80 caractères `[A-Za-z0-9_-]` ; un identifiant extrait
   d'une URL (`/document/d/`, `/document/u/<n>/d/`, `?id=` sur **n'importe

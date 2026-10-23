@@ -1350,6 +1350,29 @@ une suivante le relève.
   de ses fournisseurs (§7.2, `admettreAuLancement`) : un fournisseur fermé
   depuis, ou sans sa clé d'instance, la refuse en `422`. Depuis P0-1, il garde aussi sa **configuration**
   (§8.9), écrite au lancement et jamais modifiée, distincte de l'attestation.
+- **Le portfolio envoyé** (sprint 4, T0 ; journal de la cartographie
+  D-73). Le moteur découpe le texte à sa façon (`Twin_v9/php/src/Portfolio.php` :
+  un titre `##` ou `###` qui porte une date, sinon une date Google Docs,
+  sinon rien de daté), l'interface par `segmentText` ; ils divergent
+  (« 1er.02.2026 », `####`, un titre daté au milieu d'une journée, deux
+  entrées du même jour en `_b`). La page de lancement n'envoie donc pas le
+  texte brut, à l'aperçu comme au lancement, mais `portfolioPourTwin9(texte,
+  {segments}).texte` (`web/src/lib/twin9/portfolio-pour-twin9.js`) : les
+  journées de la fiche du portfolio (ses `segments`, retouches à la main
+  comprises), sinon de `segmentText`, une par date ; un en-tête que le moteur
+  lit à la même date est gardé, sinon `### AAAA-MM-JJ` s'ajoute en tête de la
+  journée ; toute autre ligne qu'il lirait comme un titre daté, ou que
+  l'interface lirait comme l'en-tête d'une autre journée, est précédée de
+  « — » ; les passages sans date passent en tête, où le moteur ne lit rien.
+  Un texte que le moteur lit déjà en ces journées, chacune avec son texte,
+  part à l'octet, comme un texte de moins de deux journées datées. L'aperçu
+  dit les journées dont le texte, tel que le moteur le lit, change
+  (`retouchees`) : évaluées sur le texte brut, leur empreinte change et la
+  mémoire de la carte les instruit de nouveau, une fois (le texte envoyé
+  ensuite est le même). Les expressions du moteur sont copiées, documentées,
+  dans le module ; `api/tests/Twin9/PortfolioPourTwin9Test.php` passe le
+  texte qu'il rend (`schemas/fixtures/twin9-portfolio/`) au `Portfolio` du
+  vrai moteur. Le serveur ne change pas : il range et analyse le texte reçu.
 - **Le suivi** (`GET /api/twin9/runs/{id}`) lit le journal : appels par état,
   journées finies (cartes du jour écrites), fusion faite, lots chez Anthropic,
   run antérieur de la même carte encore en cours ; `retard` dit en mots ce qui

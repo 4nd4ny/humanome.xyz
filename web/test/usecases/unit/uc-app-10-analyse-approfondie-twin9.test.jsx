@@ -11,7 +11,9 @@
 // tournent sur le serveur (ADR-011) : le front ne fait que les lancer, les
 // suivre et les lire. Depuis P0-1 : la configuration et l'exécution du run
 // (VueConfiguration, pour son propriétaire et pour un cartographe lié) et
-// ce que l'importeur du run en garde dans le jeu (liste blanche).
+// ce que l'importeur du run en garde dans le jeu (liste blanche). Depuis le
+// sprint 4 (T0) : le portfolio envoyé à Twin9, découpé en les journées de
+// l'interface (portfolioPourTwin9), et ce que l'aperçu en dit.
 import { readFileSync } from 'node:fs'
 import { dirname, resolve } from 'node:path'
 import { fileURLToPath } from 'node:url'
@@ -39,6 +41,8 @@ import { ETAPES_DU_MOTEUR, VueConfiguration } from '../../../src/views/twin9/Con
 import { importTwin9Run } from '../../../src/carto/core/importers/twin9-run.js'
 import { buildHighlightedPortfolioMarkdown, buildPortfolioMarkdown } from '../../../src/carto/core/portfolio-md.js'
 import { sansMarquesTwin9 } from '../../../src/lib/twin9/marques.js'
+import { portfolioPourTwin9 } from '../../../src/lib/twin9/portfolio-pour-twin9.js'
+import { segmentText } from '@engine/portfolio/segment.js'
 import { StigmergieDuJour } from '../../../src/carto/ui/Stigmergie.jsx'
 import { jsonResponse } from '../support/twin.js'
 // un run configuré, tel que ses résultats le rendent à son propriétaire (P0-1) : valeurs inventées
@@ -636,5 +640,78 @@ describe('UC-APP-10 — les traces de la stigmergie du greffier (S3-3)', () => {
     fireEvent.click(await screen.findByRole('checkbox', { name: /J’accepte que mon portfolio/ }))
     await waitFor(() => expect(corps).toHaveLength(1))
     expect(corps[0].portfolio.texte).toBe('## 2026-01-05\nPremier jour : j’ai monté le capteur.\n')
+  })
+})
+
+describe('UC-APP-10 — le portfolio envoyé à Twin9 : les journées de l’interface (sprint 4, T0)', () => {
+  it('UC-APP-10-U23 — Twin9View : l’aperçu et le lancement envoient le même texte, découpé selon la fiche du portfolio (une fusion faite à la main comprise) ; l’aperçu dit les journées retouchées', async () => {
+    // fictif, écrit à rebours : Twin9 ne lit pas « 1er » ; la fiche a fusionné à la main le 3 dans le 1er
+    const texte = '### 10.02.2026\nNous avons rangé la salle.\n\n### 1er.02.2026\nCarnet neuf.\n\n### 3.02.2026\nLe chat a ouvert la porte.\n'
+    const [dix, premier, trois] = segmentText(texte, { today: '0000-00-00' })
+    const segments = [dix, { ...premier, texte: premier.texte + trois.texte, fin: trois.fin }]
+    const attendu = portfolioPourTwin9(texte, { segments })
+    expect(attendu).toEqual({
+      texte: '### 10.02.2026\nNous avons rangé la salle.\n\n### 2026-02-01\n\n### 1er.02.2026\nCarnet neuf.\n\n— ### 3.02.2026\nLe chat a ouvert la porte.\n',
+      retouchees: ['2026-02-01', '2026-02-10'],
+      sansDate: 0,
+    })
+
+    const corps = []
+    let lance = null
+    const fetchFn = routedFetch({
+      'GET api/twin9/runs': jsonResponse(200, { disponible: true, runs: [] }),
+      'GET api/twin9/configuration': jsonResponse(200, { profils: [] }),
+      'POST api/twin9/runs/apercu': (init) => {
+        corps.push(JSON.parse(init.body))
+        return jsonResponse(200, apercu())
+      },
+      'POST api/twin9/runs': (init) => {
+        lance = JSON.parse(init.body)
+        return jsonResponse(201, run())
+      },
+    })
+    const store = createPortfolioStore(createMemoryAdapter())
+    await store.create({ titre: 'Mon journal', texte, segments })
+    const navigate = vi.fn()
+    render(<Twin9View deps={{ fetchFn, store, navigate }} />)
+    fireEvent.click(await screen.findByRole('checkbox', { name: /J’accepte que mon portfolio/ }))
+    const region = await screen.findByRole('region', { name: 'Avant de lancer' })
+    expect(region.textContent).toContain(
+      'Pour que Twin9 y lise vos journées, le texte envoyé est retouché (un en-tête de date ajouté, une date neutralisée par « — ») : ' +
+        '2 journées touchées, 1er févr. 2026 et 10 févr. 2026.',
+    )
+    expect(corps[0].portfolio).toEqual({ nom: 'Mon journal.md', texte: attendu.texte })
+
+    fireEvent.click(screen.getByRole('button', { name: 'Lancer l’analyse' }))
+    await waitFor(() => expect(navigate).toHaveBeenCalled())
+    expect(lance.portfolio).toEqual({ nom: 'Mon journal.md', texte: attendu.texte })
+  })
+
+  it('UC-APP-10-U23 — un portfolio que Twin9 lit déjà en ses journées part à l’octet, et l’aperçu n’en dit rien', async () => {
+    const region = await avantDeLancer(apercu())
+    expect(portfolioPourTwin9(PORTFOLIO)).toEqual({ texte: PORTFOLIO, retouchees: [], sansDate: 0 })
+    expect(region.textContent).not.toContain('retouché')
+  })
+
+  it('UC-APP-10-U23 — un passage sans date, en tête : le texte part à l’octet, l’aperçu dit que Twin9 ne le lit pas', async () => {
+    const texte = `Mon introduction, avant toute journée.\n\n${PORTFOLIO}`
+    expect(portfolioPourTwin9(texte)).toEqual({ texte, retouchees: [], sansDate: 1 })
+    const corps = []
+    const fetchFn = routedFetch({
+      'GET api/twin9/runs': jsonResponse(200, { disponible: true, runs: [] }),
+      'GET api/twin9/configuration': jsonResponse(200, { profils: [] }),
+      'POST api/twin9/runs/apercu': (init) => {
+        corps.push(JSON.parse(init.body))
+        return jsonResponse(200, apercu())
+      },
+    })
+    const store = createPortfolioStore(createMemoryAdapter())
+    await store.create({ titre: 'Mon journal', texte })
+    render(<Twin9View deps={{ fetchFn, store }} />)
+    fireEvent.click(await screen.findByRole('checkbox', { name: /J’accepte que mon portfolio/ }))
+    const region = await screen.findByRole('region', { name: 'Avant de lancer' })
+    expect(region.textContent).toContain('Le passage sans date, en tête du texte envoyé, n’est pas lu par Twin9.')
+    expect(region.textContent).not.toContain('retouché')
+    expect(corps[0].portfolio.texte).toBe(texte)
   })
 })

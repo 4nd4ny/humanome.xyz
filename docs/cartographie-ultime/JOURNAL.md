@@ -3041,8 +3041,8 @@ l'index, pour que la journée du passage renvoie à l'analyse :
     rendu sur neuf journées, pas mesurés ; une journée qui a sa propre
     analyse imposerait un choix ; le kairos et les rapports de pôle restent
     globaux) ;
-  - T0 (envoyer à Twin9 des en-têtes que l'interface lit pareil), C3 et
-    C4 : avec le lot Twin9 ;
+  - T0 (envoyer à Twin9 des en-têtes que l'interface lit pareil) : fait le
+    2026-10-23 (D-73) ; C3 et C4 : avec le lot Twin9 ;
   - la démonstration publique : son index déployé n'a pas `at` ; il faut la
     redécouper (`node web/scripts/carto-demo-split.mjs`, qui l'écrit) puis
     la redéployer. D'ici là, sa journée du 3 février dit « Aucune analyse
@@ -3060,6 +3060,65 @@ l'index, pour que la journée du passage renvoie à l'analyse :
   vérifiées par le moteur PHP quand il est là) ;
   `core/portfolio-md.test.js` (un `### 02.03.26` d'un autre jour est
   neutralisé à l'export).
+
+### D-73 — Twin9 reçoit les journées de l'interface **[décidé]**
+
+Sprint 4, T0, fait le 2026-10-23 par délégation (phase D du plan) : que
+l'analyse Twin9 lancée depuis le site ne refasse pas le 10 février. Twin9
+découpe le texte qu'on lui envoie à sa façon (`Twin_v9/php/src/Portfolio.php`,
+en lecture seule) : un titre `##` ou `###` qui porte une date n'importe où
+ouvre une journée ; « 1er.02.2026 », `#### 30.01.2026`, `# 29.01.2026`,
+`**28.01.2026**`, « Mardi 27 janvier 2026 » n'en ouvrent pas, que
+l'interface lit ; « ### Retour sur la séance du 26.01.2026 », au milieu d'une
+journée, en ouvre une qu'elle n'a pas ; deux entrées du même jour deviennent
+`_b` (étude du sprint 4, §4.1, C2 et C3). Sur les onze formes de l'étude :
+dix journées pour l'interface, six pour Twin9.
+
+- **La page de lancement (`#/twin9`) envoie les journées de l'interface**,
+  à l'aperçu comme au lancement (`lib/twin9/portfolio-pour-twin9.js`) :
+  celles de la fiche du portfolio, avec ses fusions, scissions et dates
+  corrigées à la main, sinon celles du découpage du site (un fichier) ; les
+  passages d'une même date réunis. Un en-tête que Twin9 lit à la même date
+  est gardé ; sinon `### AAAA-MM-JJ` s'ajoute en tête de la journée ; une
+  ligne que Twin9 lirait comme un titre daté (même du même jour) ou que
+  l'interface lirait comme l'en-tête d'une autre journée est précédée de
+  « — », comme à l'export du portfolio (D-55). Les passages sans date
+  passent en tête : Twin9 ne lit rien avant son premier titre daté, et
+  l'interface ne les range dans aucune journée.
+- **[choix d'implémentation] Le moins de retouches possible.** La mémoire de
+  la carte reconnaît une journée à son texte : une journée retouchée est
+  instruite de nouveau, et payée. Un texte que Twin9 lit déjà en ces
+  journées, chacune avec ce texte, part à l'octet — PLANT-01 (`### 02.03.26`,
+  et le titre du document avant la première journée), un export Google Docs
+  bien daté (une date seule, puis un trait `___`), les quatre SYNTH-* sans
+  date ; de même un texte de moins de deux journées datées (Twin9 ne date
+  rien à moins de deux titres). Sinon, seules changent pour Twin9 les
+  journées qui reçoivent un en-tête et celles qui absorbaient un passage
+  qu'elles rendent : pour un journal écrit à rebours comme les feuilles du
+  journal 300, le 1er (son en-tête) et le 3 (qui l'absorbait), pas les
+  autres.
+- **L'aperçu le dit** : « Pour que Twin9 y lise vos journées, le texte envoyé
+  est retouché (un en-tête de date ajouté, une date neutralisée par « — ») :
+  2 journées touchées, 1er févr. 2026 et 3 févr. 2026. » (six dates nommées,
+  puis « et N autres »), et « Le passage sans date, en tête du texte envoyé,
+  n'est pas lu par Twin9. » quand il y en a. Son compte de journées (`journees.total`,
+  le serveur découpe le texte reçu) est désormais celui de l'interface.
+- **[choix d'implémentation] Copie documentée, moteur intact.** Les deux
+  expressions de `Portfolio.php` (lignes 56 et 58 au commit a1d84bf) sont
+  recopiées dans le module, avec ce que PHP en fait (`\d` de toute écriture,
+  ses blancs, `\n` compris, `^` et `$` à `\n` seulement), plutôt que de
+  changer le moteur et sa parité avec l'oracle Python. Un test PHP passe le
+  texte rendu pour les onze formes (`schemas/fixtures/twin9-portfolio/`) au
+  `Portfolio` du vrai moteur, chargé par `EngineLoader` : ses dix journées.
+- Tests : `lib/twin9/portfolio-pour-twin9.test.js` (les onze formes et la
+  fixture, journées égales des deux côtés, journées retouchées ; les cinq
+  portfolios de Twin9, lus dans `TWIN_V9_DIR` et jamais recopiés, à
+  l'octet ; le moteur PHP lui-même sur eux et sur les fixtures quand il est
+  là ; journal à rebours ; deux entrées du même jour ; fusion et date
+  corrigées dans la fiche ; passages sans date, Google Docs, chiffres de
+  toute écriture, fins de ligne Windows) ; UC-APP-10-U23 (la page :
+  l'aperçu et le lancement envoient le même texte, l'aperçu dit les
+  journées retouchées) ; `api/tests/Twin9/PortfolioPourTwin9Test.php`.
 
 ---
 
@@ -4115,3 +4174,7 @@ Question posée avec D-70 (2026-10-16) :
   renvoie à l'analyse du 10 ; le découpage lit les années sur deux chiffres
   comme Twin9 (D-72). T3, répartir les traces par date de passage, reste à
   décider.
+- **2026-10-23** — Sprint 4, T0, par délégation (phase D) : la page de
+  lancement de Twin9 lui envoie le portfolio découpé en les journées de
+  l'interface, en ne retouchant que les journées que Twin9 lisait autrement,
+  et l'aperçu les nomme (D-73).

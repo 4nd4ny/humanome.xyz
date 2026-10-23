@@ -37,8 +37,16 @@
 // Le moteur lit le référentiel du run (T16), et sa carte s'ouvre dans la
 // cartographie avec lui (T17) : RESPIRE, ou celui d'une autre structure, dont
 // le titre du jeu porte le nom.
+//
+// Depuis le sprint 4 (T0, journal de la cartographie D-73), Twin9 reçoit le
+// portfolio découpé en les journées de l'interface (lib/twin9/portfolio-pour-twin9.js) :
+// le découpage de la fiche du portfolio, ses fusions et dates corrigées à la
+// main comprises, ou celui du site pour un fichier ; un en-tête que Twin9 ne
+// lit pas reçoit `### AAAA-MM-JJ`, une date qu'il lirait au milieu d'une
+// journée est neutralisée par « — ». L'aperçu et le lancement envoient ce même
+// texte, et l'aperçu dit les journées dont le texte change pour Twin9.
 
-import { useCallback, useEffect, useState } from 'react'
+import { useCallback, useEffect, useMemo, useState } from 'react'
 import { ApiError } from '../api/client.js'
 import {
   annulerRun,
@@ -56,6 +64,8 @@ import {
 import { createPortfolioStore } from '../lib/portfolio-store.js'
 import { twin9RunFiles } from '../lib/interface-handoff.js'
 import { sansMarquesTwin9 } from '../lib/twin9/marques.js'
+import { portfolioPourTwin9 } from '../lib/twin9/portfolio-pour-twin9.js'
+import { formatShort } from '../carto/core/dates.js'
 import { libelleRgpd, libelleVoie } from './configuration/profilSchema.js'
 import ConfigurationDuRun from './twin9/ConfigurationDuRun.jsx'
 import '../styles/twin9.css'
@@ -128,11 +138,42 @@ function phraseFournisseurs(fournisseurs) {
   return phrases.join(' ')
 }
 
+/** Combien de dates une phrase nomme avant de dire « et N autres ». */
+const DATES_NOMMEES = 6
+
+/**
+ * Ce que l'envoi change au texte (sprint 4, T0) : les journées retouchées pour que Twin9 y lise celles de
+ * l'interface, nommées ; les passages sans date, en tête, qu'il ne lit pas. Vide quand rien ne change.
+ */
+function phraseRetouche({ retouchees, sansDate }) {
+  const s = (n) => (n > 1 ? 's' : '')
+  const phrases = []
+  const n = retouchees.length
+  if (n > 0) {
+    const noms = retouchees.slice(0, DATES_NOMMEES).map((d) => formatShort(d, { weekday: false }))
+    const reste = n - noms.length
+    const liste = reste > 0 ? `${noms.join(', ')} et ${reste} autre${s(reste)}` : enumeration(noms)
+    phrases.push(
+      `Pour que Twin9 y lise vos journées, le texte envoyé est retouché (un en-tête de date ajouté, une date ` +
+        `neutralisée par « — ») : ${n} journée${s(n)} touchée${s(n)}, ${liste}.`,
+    )
+  }
+  if (sansDate > 0) {
+    phrases.push(
+      sansDate > 1
+        ? `Les ${sansDate} passages sans date, en tête du texte envoyé, ne sont pas lus par Twin9.`
+        : 'Le passage sans date, en tête du texte envoyé, n’est pas lu par Twin9.',
+    )
+  }
+  return phrases.join(' ')
+}
+
 /**
  * Avant de lancer : les journées à instruire ; le coût estimé, en moyenne, au plus bas et au plus haut, et la durée ;
- * celles que le crédit ou le budget admet avec leur fusion (T8), ou le refus, qui dit ce qu'il faudrait ; les plafonds.
+ * celles que le crédit ou le budget admet avec leur fusion (T8), ou le refus, qui dit ce qu'il faudrait ; les plafonds ;
+ * ce que l'envoi change au texte (sprint 4, T0).
  */
-function Apercu({ apercu }) {
+function Apercu({ apercu, envoi }) {
   const e = apercu.estimation
   const a = apercu.admission
   const source =
@@ -156,9 +197,11 @@ function Apercu({ apercu }) {
         : ''
   const { budget_usd: budget, duree_minutes: minutes } = apercu.plafonds
   const s = (n) => (n > 1 ? 's' : '')
+  const retouche = envoi ? phraseRetouche(envoi) : ''
   return (
     <section className="twin9-apercu" aria-label="Avant de lancer">
       <p>{phraseJournees(apercu.journees)}</p>
+      {retouche ? <p>{retouche}</p> : null}
       {a?.refus ? (
         <p role="alert">
           {a.refus}.{a.limite === 'credit' ? <> <a href="#/compte/credit">Recharger</a></> : null}
@@ -272,9 +315,13 @@ function Lancer({ deps }) {
   const local = donnees?.portfolios.find((p) => p.id === portfolio) ?? null
   // le texte analysé ne porte jamais les marques d'un portfolio surligné (S3-3), d'où qu'il vienne
   const choisi = local ? { nom: nomDeFichier(local.titre), texte: sansMarquesTwin9(local.texte) } : fichier
+  // Twin9 reçoit les journées de l'interface (sprint 4, T0) : celles de la fiche, sinon celles du site.
+  const texteChoisi = choisi?.texte ?? ''
+  const segmentsLocaux = local?.segments
+  const envoi = useMemo(() => portfolioPourTwin9(texteChoisi, { segments: segmentsLocaux }), [texteChoisi, segmentsLocaux])
   const [apercu, setApercu] = useState(null)
   const nom = choisi?.nom ?? null
-  const texte = choisi?.texte ?? ''
+  const texte = envoi.texte
   useEffect(() => {
     if (!accorde || nom === null || texte.trim() === '') {
       setApercu(null)
@@ -312,7 +359,7 @@ function Lancer({ deps }) {
       const run = await lancerRun(
         {
           profil: profil === '' ? null : Number(profil),
-          portfolio: choisi,
+          portfolio: { nom: choisi.nom, texte: envoi.texte },
           accord: { fournisseurs: fournisseurs.map((f) => f.id) },
           visibilite: visible ? 'cartographe' : 'privee',
         },
@@ -384,7 +431,7 @@ function Lancer({ deps }) {
               {phraseFournisseurs(fournisseurs)} Voir la <a href="#/confidentialite">politique de confidentialité</a>.
             </label>
           </fieldset>
-          {apercu?.donnees ? <Apercu apercu={apercu.donnees} /> : null}
+          {apercu?.donnees ? <Apercu apercu={apercu.donnees} envoi={envoi} /> : null}
           {apercu?.chargement ? <p>Estimation…</p> : null}
           {apercu?.erreur ? (
             <p className="load-error" role="alert">

@@ -73,8 +73,12 @@ function opensAndStaysInDay(text, date) {
   return segs.length > 0 && segs.every((s) => s.date === date)
 }
 
-/** Neutralise chaque ligne qui ouvrirait une autre journée que `date` (« — » devant). */
-function keepInDay(text, date) {
+/**
+ * Neutralise chaque ligne qui ouvrirait une autre journée que `date` (« — »
+ * devant) ; sans `date`, toute ligne qui ouvrirait une journée. Le texte
+ * envoyé à Twin9 s'en sert aussi (lib/twin9/portfolio-pour-twin9.js).
+ */
+export function keepInDay(text, date) {
   return text
     .split('\n')
     .map((line) => (line.trim() === '' || !opensDayWithin(line) || boundaryDate(line) === date ? line : `— ${line}`))

@@ -179,3 +179,4 @@
 * [ADR-010 — Twin9 : Golden Prompt opérationnel, secret des gabarits, prépaiement](docs/decisions/ADR-010-twin9-golden-prompt.md)
 * [ADR-011 — Moteur Twin9 v9.8 en PHP](docs/decisions/ADR-011-moteur-twin9-php.md)
 * [ADR-012 — Twin9 multi-fournisseur : chaque étape choisit son fournisseur](docs/decisions/ADR-012-multi-fournisseur-twin9.md)
+* [ADR-013 — Écoles, clés et crédits : la clé reste dans le navigateur, l'école paie pour ses élèves](docs/decisions/ADR-013-ecoles-cles-credits.md)

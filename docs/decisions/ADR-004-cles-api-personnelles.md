@@ -1,5 +1,7 @@
 # ADR-004 — Clés API personnelles : localStorage par défaut, stockage serveur opt-in chiffré
 
+> **Amendé par [ADR-013](ADR-013-ecoles-cles-credits.md)** : le stockage serveur opt-in est retiré ; la clé d'un utilisateur ne quitte plus son navigateur. Seule une école garde la sienne sur le serveur, chiffrée, pour ses élèves, et aucune route ne la rend. Les clés déjà gardées ne servent plus à aucun run et sont purgées après un avis à leur propriétaire.
+
 ## Statut
 
 Accepté — 2026-07 (décision pré-actée AD-4 du plan de construction).

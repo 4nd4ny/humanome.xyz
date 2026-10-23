@@ -18,6 +18,7 @@ use Humanome\Auth\Session;
 use Humanome\Auth\Users;
 use Humanome\Auth\Waitlist;
 use Humanome\ClientIp;
+use Humanome\Clock;
 use Humanome\Db;
 use Humanome\Middleware\CsrfMiddleware;
 use Humanome\Twin9\RunPurge;
@@ -112,9 +113,13 @@ return function (App $app): void {
             return $json($response, ['error' => 'Trop de tentatives, réessayez plus tard'], 429)
                 ->withHeader('Retry-After', (string) $limiter->retryAfter($attempts));
         }
+        // L'horloge, lue une fois : la décision (le mois dépensé ?) et ce qui
+        // l'écrit — la date d'attente, le courriel, la réponse — sont du même
+        // mois, même si la création du compte (Argon2id) passe minuit le 31.
+        $now = Clock::now();
         // La première requête du mois lève la liste d'attente des mois passés.
         $waitlist = new Waitlist($pdo);
-        $waitlist->liftDue();
+        $waitlist->liftDue($now);
 
         ['email' => $email, 'password' => $password, 'displayName' => $displayName] = $credentials($request);
         $data = (array) ($request->getParsedBody() ?? []);
@@ -145,16 +150,16 @@ return function (App $app): void {
 
         // Une décision prise une fois : ce qui reste du mois paie-t-il encore le
         // plus petit appel de l'Essayer ? (FreeCreditLedger::signupsOpen.)
-        $waitlisted = !$waitlist->signupsOpen();
+        $waitlisted = !$waitlist->signupsOpen($now);
         try {
             $pdo->beginTransaction();
             $userId = Users::create($pdo, $email, Users::hashPassword($password), $displayName);
             Users::assignRole($pdo, $userId, 'apprenant');
             Audit::record($pdo, $userId, Audit::ACCOUNT_CREATED);
             if ($waitlisted) {
-                $waitlist->enlist($userId);
+                $waitlist->enlist($userId, $now);
                 Audit::record($pdo, $userId, Waitlist::AUDIT_WAITLISTED);
-                ActivationMail::sendWaitlisted($email); // aucun code : l'activation attend la levée
+                ActivationMail::sendWaitlisted($email, $now); // aucun code : l'activation attend la levée
             } else {
                 $sendVerification($pdo, $userId, $email); // code posé + email envoyé
             }
@@ -173,7 +178,7 @@ return function (App $app): void {
             return $json($response, [
                 'status' => 'waitlisted',
                 'email' => $email,
-                'message' => Waitlist::signupMessage(),
+                'message' => Waitlist::signupMessage($now),
             ], 201);
         }
 
@@ -282,19 +287,20 @@ return function (App $app): void {
         $ipLimiter->hit($ipBucket);
         $acctLimiter->hit($acctBucket);
         $waitlist = new Waitlist($pdo);
+        $now = Clock::now(); // une fois, pour ce compte et la levée du mois
 
         $user = Users::findByEmail($pdo, $email);
         if ($user !== null && !Users::isVerified($user)) {
             if (!Waitlist::isWaitlisted($user)) {
                 $sendVerification($pdo, (int) $user['id'], $email);
-            } elseif (Waitlist::isDue($user)) {
-                $waitlist->lift((int) $user['id']); // son attente est finie : son code part avec la levée, une fois
+            } elseif (Waitlist::isDue($user, $now)) {
+                $waitlist->lift((int) $user['id'], null, $now); // son attente est finie : son code part avec la levée, une fois
             }
             // En liste d'attente ce mois-ci : aucun code (l'activation attend la levée).
         }
         // Puis les autres comptes dus : la première requête du mois lève la liste
         // des mois passés (après ce compte, pour qu'il ne reçoive qu'un code).
-        $waitlist->liftDue();
+        $waitlist->liftDue($now);
 
         return $json($response, $generic);
     });
@@ -325,9 +331,11 @@ return function (App $app): void {
                 ->withHeader('Retry-After', (string) $limiter->retryAfter($attempts));
         }
 
-        // La première requête du mois lève la liste d'attente des mois passés.
+        // La première requête du mois lève la liste d'attente des mois passés
+        // (l'horloge lue une fois, pour elle et pour ce compte).
+        $now = Clock::now();
         $waitlist = new Waitlist($pdo);
-        $waitlist->liftDue();
+        $waitlist->liftDue($now);
 
         $user = Users::findByEmail($pdo, $email);
         $hash = $user === null ? Users::dummyHash() : (string) $user['password_hash'];
@@ -345,14 +353,14 @@ return function (App $app): void {
         // activé ordinaire — sauf si le transport refuse le courriel : il reste
         // en attente, et la réponse le dit.
         if (Waitlist::isWaitlisted($user)) {
-            if (!Waitlist::isDue($user)) {
+            if (!Waitlist::isDue($user, $now)) {
                 return $json($response, [
-                    'error' => Waitlist::signupMessage(),
+                    'error' => Waitlist::signupMessage($now),
                     'code' => 'waitlisted',
                     'email' => (string) $user['email'],
                 ], 403);
             }
-            if ($waitlist->lift((int) $user['id']) === Waitlist::MAIL_FAILED) {
+            if ($waitlist->lift((int) $user['id'], null, $now) === Waitlist::MAIL_FAILED) {
                 // Le courriel de son code n'est pas parti : il reste en liste
                 // d'attente, la prochaine connexion (ou levée) réessaie.
                 return $json($response, [

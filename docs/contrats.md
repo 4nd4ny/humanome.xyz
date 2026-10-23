@@ -2790,6 +2790,11 @@ ne se connecte pas : `POST /api/auth/login`, bon mot de passe, répond `403
 rien envoyer ; `POST /api/auth/activate` répond le refus générique. Les
 comptes existants ne sont jamais touchés.
 
+**L'horloge** : chaque requête d'authentification lit l'heure une fois
+(`Humanome\Clock`, revue du 2026-10-23) : la décision (le mois est-il
+dépensé ?) et ce qu'elle écrit (`waitlisted_at`, le courriel, la réponse)
+sont du même mois, même quand la création du compte passe minuit le 31.
+
 **La levée** : au 1er du mois suivant (UTC, le mois du grand livre), dans
 l'ordre d'inscription (`id`), par lots de 50 : à la première requête
 d'authentification du mois (`register`, `login`, `resend` — pas un

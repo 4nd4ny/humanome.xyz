@@ -109,7 +109,7 @@ rejouant les fixtures : aucun appel réseau réel).
 
 | ID | Cas d'utilisation | Tests unitaires | Tests fonctionnels | Anomalies |
 |---|---|---:|---:|---:|
-| [UC-CPT-01](compte/UC-CPT-01-creer-activer-compte.md) | Créer un compte et l'activer par code email | 25 | 32 | 6 |
+| [UC-CPT-01](compte/UC-CPT-01-creer-activer-compte.md) | Créer un compte et l'activer par code email | 25 | 33 | 6 |
 | [UC-CPT-02](compte/UC-CPT-02-se-connecter-deconnecter.md) | Se connecter et se déconnecter | 17 | 25 | 4 |
 | [UC-CPT-03](compte/UC-CPT-03-gerer-profil.md) | Gérer son profil (nom affiché, avatar) | 18 | 19 | 3 |
 | [UC-CPT-04](compte/UC-CPT-04-gerer-cles-api.md) | Gérer ses clés API personnelles | 14 | 22 | 1 |
@@ -204,7 +204,7 @@ rejouant les fixtures : aucun appel réseau réel).
 | [UC-SYS-04](systeme/UC-SYS-04-construire-artefacts-derives.md) | Construire les données et artefacts dérivés | 9 | 19 | 3 |
 | [UC-SYS-05](systeme/UC-SYS-05-sauvegarder-restaurer.md) | Sauvegarder et restaurer la base | 0 | 8 | 6 |
 
-**Total : 60 cas d'utilisation, 1056 tests unitaires et 1213 tests fonctionnels identifiés, 192 anomalies de production documentées.**
+**Total : 60 cas d'utilisation, 1056 tests unitaires et 1214 tests fonctionnels identifiés, 192 anomalies de production documentées.**
 
 Les comptes portent sur les identifiants distincts (`UC-…-Unn`, `UC-…-Fnn`) présents dans les fichiers de tests ; un identifiant paramétré (`it.each`) compte pour un.
 <!-- catalogue:end -->

@@ -731,4 +731,43 @@ final class UcCpt01CreerActiverCompteTest extends CartographeTestCase
         self::assertSame(['ada@example.org'], array_column($this->mailer->sent, 'to'));
         self::assertSame(200, $this->activate('ada@example.org', $this->lastCode())->getStatusCode());
     }
+
+    #[TestDox('UC-CPT-01-F33 — RG9 : l’inscription lit l’horloge une fois — refusée sous octobre (le mois dépensé), à 23 h 59 min 59 s UTC le 31, alors que l’horloge passe au 1er novembre pendant la création du compte (le hachage Argon2id) : son attente est datée d’octobre, la réponse et le courriel disent « le 1er novembre », et la levée de novembre la prend ; la connexion et le renvoi lisent aussi leur horloge une fois')]
+    public function testF33TheSignUpReadsTheClockOnce(): void
+    {
+        $seuil = (new Waitlist(self::$pdo))->floorMicrousd();
+        $plafond = $seuil + 100_000;
+        TestDb::setEnv('OFFERTS_MENSUEL_USD', sprintf('%.6f', $plafond / 1_000_000));
+        $octobre = gmmktime(23, 59, 59, 10, 31, 2030);
+        $ledger = new FreeCreditLedger(self::$pdo);
+        self::assertTrue($ledger->reserve($plafond, $plafond, $octobre - 3600));
+        $ledger->settle($plafond, $plafond, $octobre - 3600); // octobre 2030 dépensé ; novembre, neuf
+        // Une horloge qui passe au 1er novembre à sa deuxième lecture.
+        $lectures = 0;
+        \Humanome\Clock::setOverride(static function () use (&$lectures, $octobre): int {
+            return $octobre + (++$lectures > 1 ? 1 : 0);
+        });
+        try {
+            $registered = $this->signUp();
+            self::assertSame(201, $registered->getStatusCode(), (string) $registered->getBody());
+            self::assertSame(['status' => 'waitlisted', 'email' => 'ada@example.org', 'message' => Waitlist::signupMessage($octobre)],
+                self::json($registered));
+            self::assertStringContainsString('le 1er novembre', self::json($registered)['message']);
+            self::assertSame('2030-10-31 23:59:59', self::userRow('ada@example.org')['waitlisted_at'], 'daté de la décision : octobre');
+            self::assertStringContainsString('Le 1er novembre, vous recevrez', $this->mailer->last()['body']);
+
+            // Le 1er novembre, la connexion d'Ada la lève (son attente est finie), en lisant elle aussi
+            // une seule horloge — dans le même lot que la levée du mois.
+            $novembre = gmmktime(0, 0, 5, 11, 1, 2030);
+            \Humanome\Clock::setOverride(static fn (): int => $novembre);
+            $this->cookieSid = null;
+            $login = $this->login('ada@example.org', self::PASSWORD);
+            self::assertSame([403, 'email_not_verified'], [$login->getStatusCode(), self::json($login)['code']]);
+            self::assertNull(self::userRow('ada@example.org')['waitlisted_at']);
+            self::assertSame(['ada@example.org', 'humanome.xyz — activez votre compte'],
+                [$this->mailer->last()['to'], $this->mailer->last()['subject']]);
+        } finally {
+            \Humanome\Clock::setOverride(null);
+        }
+    }
 }

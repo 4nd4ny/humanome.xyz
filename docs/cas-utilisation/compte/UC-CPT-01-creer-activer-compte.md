@@ -222,7 +222,11 @@ Le visiteur ouvre `#/compte` et choisit « Inscription » — ou clique le lien
 - **RG9** — Horloge de la liste : `waitlisted_at` est écrit en **UTC** par PHP
   (`gmdate`), jamais par `NOW()` de MySQL ; un compte est dû dès le 1er du mois
   UTC suivant, 0 h (1 h ou 2 h à Paris), le mois du grand livre des crédits
-  offerts. Chaque levée est un `UPDATE … WHERE waitlisted_at IS NOT NULL` :
+  offerts. Chaque requête (`register`, `login`, `resend`) lit l'horloge **une
+  fois** (`Humanome\Clock`) et la passe à la décision et à ce qui l'écrit :
+  une inscription refusée sous octobre à 23 h 59 min 59 s UTC le 31 est datée
+  d'octobre et levée le 1er novembre, même si la création du compte (le
+  hachage Argon2id) passe minuit (revue du 2026-10-23). Chaque levée est un `UPDATE … WHERE waitlisted_at IS NOT NULL` :
   deux levées simultanées n'envoient qu'un email. Audit `waitlist_lifted
   {targetUserId}`, sans auteur pour la levée du mois.
 
@@ -327,6 +331,7 @@ Le visiteur ouvre `#/compte` et choisit « Inscription » — ou clique le lien
 | UC-CPT-01-F30 | A4, A5 | IHM | `<App/>` : inscription en liste d'attente (notice, aucun code), connexion qui le redit ; levée → connexion → écran d'activation → connecté | `web/test/usecases/functional/uc-cpt-01-creer-activer-compte.test.jsx` |
 | UC-CPT-01-F31 | RG8 | API | Une réserve orpheline du pire cas d'un Essayer, au-delà de son échéance : l'inscription part en liste d'attente, l'Essayer est refusé, le mois la montre dépensée et plus « en vol » | `api/tests/UseCases/Functional/UcCpt01CreerActiverCompteTest.php` |
 | UC-CPT-01-F32 | A5 | API | Le courriel de la levée refusé : le tick dit `listeAttenteEchecs: 1`, le compte reste en attente sans code ; sa connexion répond `403 waitlisted` « … n'a pas pu partir … », sans session ; le transport revenu, sa connexion le lève (`email_not_verified`, un code) et il s'active | `api/tests/UseCases/Functional/UcCpt01CreerActiverCompteTest.php` |
+| UC-CPT-01-F33 | RG9 | API | Horloge qui passe au 1er novembre 2030 pendant l'inscription, octobre dépensé : `waitlisted`, `waitlisted_at` du 31 octobre à 23 h 59 min 59 s, réponse et courriel « le 1er novembre » ; le 1er novembre, la connexion la lève (`email_not_verified`, un code) | `api/tests/UseCases/Functional/UcCpt01CreerActiverCompteTest.php` |
 
 Les tests IHM jouent `<App/>` contre un faux serveur en mémoire qui rejoue le
 contrat HTTP des routes du compte (`web/test/usecases/support/cpt.js`).

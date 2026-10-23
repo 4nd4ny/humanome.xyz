@@ -45,6 +45,22 @@ autre fournisseur qu'Anthropic, que l'administrateur ouvre (entrée du 2026-10-2
 
 ## Fait
 
+- 2026-10-23 — **Les cinq échecs locaux d'UC-PRO-08 (F19 à F22, F25) : cause trouvée, test
+  corrigé (branche `fix/uc-pro-08-node20`).** Le test copie `import-protocole.mjs` et le parseur
+  `web/src/lib/twin9/*.js` dans un miroir temporaire, sans `package.json` : Node 20.17 (le poste)
+  y lit ces `.js` en CommonJS, et le script meurt au chargement (« Named export 'parsePole' not
+  found »). La CI (`node-version: 20`, soit Node 20.20.2) détecte la syntaxe des modules depuis
+  Node 20.19 : elle passait. Le miroir reçoit désormais `web/package.json` (`"type": "module"`).
+  Le script n'est pas en faute : dans le dépôt, ce `package.json` est le sien, et il se charge
+  sous Node 20.17. Ces cinq échecs ne sont plus l'état normal du poste ; la cause qu'en donnait
+  l'entrée « P0, PR B » du 2026-10-22 (« le faux dépôt Twin_v9 ne se crée pas ») n'est pas celle
+  reproduite aujourd'hui.
+  - Vérifié : le fichier 8/8 sous Node 20.17, avec et sans détection forcée
+    (`NODE_OPTIONS=--experimental-detect-module`, `--no-experimental-detect-module`) ; l'ancien
+    test : 5 échecs sans détection, 8/8 avec ; suite moteur 593 tests verts ; le vrai script,
+    lancé depuis le dépôt sous Node 20.17, passe ses imports.
+  - Non vérifié : la CI (rien n'est poussé).
+
 - 2026-10-23 — **Le commit du moteur Twin9 en SHA-256 et au format reftable (revue de
   `fix/engine-commit-espace`, même branche).** Deux défauts latents, préexistants, du même
   symptôme (commit `null` sans bruit) : `51cbf90` accepte un nom de 64 chiffres (dépôt

@@ -45,6 +45,84 @@ autre fournisseur qu'Anthropic, que l'administrateur ouvre (entrée du 2026-10-2
 
 ## Fait
 
+- 2026-10-22 — **Phase D : l'algorithme Twin9 et ses entrées, en une seule version, avant la
+  campagne payante (branche `feat/phase-d-twin9`, depuis `main` 6d44046 ; non poussée, rien
+  déployé).** Plan d'ensemble (`ordre.md` §2, phase D, hors dépôt) ; designs des sprints 3, 4, 1 (lot 2) et 5 (lot C).
+  Moteur de référence : `Twin_v9` a1d84bf (stigmergie du greffier désactivée par défaut,
+  `--rescan` en plusieurs passes), en lecture seule, jamais modifié. Aucun appel LLM réel. Neuf
+  commits ; les décisions de Christian, prises par délégation, sont appliquées telles quelles.
+  - `26c1b3c` — **S3-2, la stigmergie du greffier sur la plateforme** : clé `stigmergie` de
+    premier niveau du profil, hors `required`, `{enabled: false}` par défaut (complété par
+    `ProfilRepository::complete`), types stricts (`evaporation` de 0,2 à 1, `exploration` de 0 à
+    1, `graine` entier, `lignes` de 0 à 10) ; `MoteurReglages` n'émet `config.stigmergie` que si
+    elle est activée (le profil v9.8 porte `{enabled: false}`, `PariteTest` inchangé) ;
+    `ProfilPolicy` refuse la stigmergie avec `calques.accumulation` à vrai, dès l'enregistrement ;
+    profil prédéfini « Stigmergie (essai) » ; bloc `configuration.algorithme.stigmergie`.
+  - `d230ddd` — ses réglages sur `#/configuration`, en mode expert (une stigmergie activée reste
+    visible en mode simple) ; « Nouveau, depuis « Stigmergie (essai) » ».
+  - `717b2af` — **S3-3, les traces dans la cartographie** : `traces_conservees` dans les
+    résultats (une journée dont un appel est en panne ne montre pas ses traces comme
+    conservées) ; les traces dans le jeu par liste blanche, la modale du jour (nature en mots et
+    par sa marque ; l'intensité en mode expert et pour le cartographe seulement, jamais appelée
+    « score ») ; le portfolio surligné à l'export, dont les marques sont retirées de tout texte
+    importé ou envoyé à Twin9.
+  - `cd60726`, `1102b54` — **S4 T0, Twin9 reçoit les journées de l'interface**
+    (`web/src/lib/twin9/portfolio-pour-twin9.js`) : segments de la fiche du portfolio d'abord,
+    en-têtes canoniques seulement là où Twin9 ne lit pas la date, le mode Google Docs gardé ;
+    l'aperçu nomme les journées retouchées.
+  - `274ffbf` — **S4 C3 et C4** : deux cartes de même date réunies (avertissement
+    `twin9-journee-dupliquee`) ; « établie par faisceau (second ressort) » en seconde lecture
+    (D-68). T3 n'est pas fait (décision).
+  - `0b56282` — **S1, lot 2 du mode expert** : en mode simple, `#/twin9` lance avec le profil
+    v9.8, sans liste des profils ni « Régler mes profils » (une ligne le nomme) ; un profil choisi
+    en mode expert ne part pas en mode simple ; l'aide le dit ; en mode expert, rien ne change. Le
+    mode n'est jamais un droit. UC-APP-10 A10, UC-VIS-06, UC-APP-10-F24.
+  - `45fe62f` — **S5, lot C : le référentiel choisi au lancement de Twin9.** `POST
+    /api/twin9/runs` et `…/apercu` acceptent `referentiel: {id, version?} | null`, écrit dans la
+    **copie** du profil avant `ProfilPolicy::admettre` : brouillons (run d'essai de leur auteur),
+    refus d'un référentiel non publié, gel de la version, refus d'un jeu d'avant T16 et
+    attestation tiennent tous ; il entre dans la configuration, l'empreinte et la carte ; le
+    profil enregistré ne change pas. **Garde du jury** : si l'identifiant change,
+    `jury.specialistes` et `jury.par_competence` sont vidés dans la copie, et l'aperçu le dit
+    (`jury_retire`, avec le référentiel lu). `ProfilPolicy::choix` donne le libellé de chaque
+    référentiel, la configuration celui de chaque profil. Menu « Référentiel » dans « Lancer »,
+    par défaut celui du profil : toujours en mode expert (brouillons compris), en mode simple
+    dès que plus d'un référentiel est publié. UC-APP-10 (A11, RG18, F25 à F28), UC-VIS-06 RG2,
+    UC-EPI-05 ; UC-ETA-03 vérifiée, non concernée (runs de masse).
+  - Ce commit — **le test instable de `Twin9View.test.jsx` rendu déterministe, et cette
+    entrée.** Cause trouvée (pas un délai allongé) : reproduit sous charge (1 échec sur 20
+    passages parallèles), « relit ses comptes à chaque ouverture… » rouvrait « Configuration »
+    avant que React ait rendu la fermeture ; les deux `toggle`, fermé puis ouvert, se rendaient
+    d'un même lot (ou, fermé puis rouvert avant la tâche, le `<details>` n'en émet qu'un, ouvert :
+    spécification HTML, suivie par jsdom), l'état « ouvert » ne changeait pas et rien ne se
+    relisait. `ConfigurationDuRun` compte désormais les ouvertures ; un test fond la fermeture et
+    la réouverture en un seul `toggle` : il échouait à coup sûr avant, il passe. Après le
+    correctif : 24 passages parallèles sous charge, 24 verts.
+  - **Vérifié** (PHP 8.5.12, MySQL 8.0 locaux, base `humanome_test_d`, sur l'arbre de ce
+    commit, le code des deux derniers lots inclus) : PHP `Tests: 1894, Assertions: 20588`, les 2
+    échecs connus de PHP 8.5 seuls (`AuthActivationTest::testExpiredCodeIsRejected`,
+    `UcCpt02…::testU17SessionCookieAttributes`), 1 dépréciation, 22 tests sautés (ceux du vrai
+    moteur, sans `TWIN_V9_DIR`) ; avec `TWIN_V9_DIR` = `Twin_v9` a1d84bf : `PariteTest`,
+    `EmpreintesFigeesTest`, `RejeuTest`, `VoieMixteTest` 33 tests verts, et `StigmergieTest`,
+    `PortfolioPourTwin9Test`, `ReferentielMoteurTest`, `ProfilTest` 115 tests verts ; front
+    2 984 tests verts (273 fichiers, 9 sautés) ; moteur 592 tests, 587 verts et les 5 échecs
+    locaux connus d'UC-PRO-08 (F19 à F22, F25) ; `npm run build` puis `npm run test:dist` vert ;
+    catalogue des cas recompté (1 036 U, 1 193 F) ; `check-publiable` OK.
+  - **Non vérifié** : PHP 8.2 (la CI) ; un vrai navigateur (jsdom seulement) ; les parcours e2e
+    `twin9-run` et `twin9-referentiels` (le mode expert y est posé, ils ne sont pas lancés ici) ;
+    l'essai réel S3-4 et « une panne n'est jamais un verdict », hors périmètre (Christian) ; rien
+    n'est déployé. Une fois, sous forte charge, `UC-ADM-05-F01` a dépassé son délai de 1 s
+    (`findByText`) ; il passe seul, non traité ici. Restent de la phase D, hors de cette branche :
+    S5 B3 (l'Humanome V18 en base de développement) et le gel (tag du moteur, un aperçu de chaque
+    run de la campagne).
+  - **À décider (Christian)** : (1) la garde du jury ne joue que si l'identifiant change : une
+    version de RESPIRE d'une autre structure (six pôles) choisie au lancement garde les
+    spécialistes par numéro de pôle du profil — l'étendre à un changement de structure ? (2)
+    l'attestation porte le référentiel du run, pas le fait qu'il a été choisi au lancement : un
+    drapeau est-il utile ? (3) en mode simple, le menu « Référentiel » paraît dès deux
+    référentiels publiés, sans brouillon : convient-il ? (4) un jury propre aux pôles d'Humanome
+    (S5, Q5) reste ouvert : un référentiel lettré reçoit le « Spécialiste du pôle » générique.
+
 - 2026-10-22 — **Twin9 multi-fournisseur : corrections de la revue de la PR C (même branche
   `feat/twin9-multi-fournisseur`).** Dix-sept constats confirmés (deux en double),
   treize commits `fix:`, chacun avec le test qui échouait avant lui, et trois `docs:`. `Twin_v9`

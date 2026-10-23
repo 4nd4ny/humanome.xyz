@@ -7,7 +7,7 @@
 // journées que le crédit admet avec leur fusion, ou le refus et ce qu'il
 // faudrait ; un run arrêté avant sa fusion se reprend comme les autres.
 import { afterEach, describe, expect, it, vi } from 'vitest'
-import { cleanup, fireEvent, render, screen, waitFor, within } from '@testing-library/react'
+import { act, cleanup, fireEvent, render, screen, waitFor, within } from '@testing-library/react'
 import Twin9View from './Twin9View.jsx'
 import { resetApiClient } from '../api/client.js'
 import { UiModeContext } from '../lib/ui-mode.js'
@@ -972,6 +972,37 @@ describe('Twin9View — la configuration du run (P0-1)', () => {
     fireEvent.click(fige.querySelector('summary'))
     await waitFor(() => expect(fige.open).toBe(true))
     expect(finiFetch.mock.calls.filter(([url]) => url === 'api/twin9/runs/7/resultats')).toHaveLength(1)
+  })
+
+  // La cause de l'instabilité de « relit ses comptes… » sous charge : fermer puis rouvrir avant que React ait rendu la
+  // fermeture. Le navigateur, comme jsdom, ne garde alors qu'un « toggle », ouvert (spécification HTML : les tâches
+  // toggle d'un <details> se fondent) ; ou bien React rend d'un même lot les deux « toggle » de la fermeture et de la
+  // réouverture. Dans les deux cas l'état « ouvert » ne change pas : sans compter les ouvertures, rien ne se relisait.
+  it('se relit à une réouverture que React ne voit pas précédée de sa fermeture (deux « toggle » fondus en un)', async () => {
+    const enCoursDeRoute = configure({ statut: 'en_cours', retard: null, compteurs: null, progression: { appels: { envoye: 1, attente: 0, repondu: 2, panne: 0 }, journees: 1, fusion: false, lots: 0, runs_avant: 0 } })
+    const compte = (repondus) => ({ ...exemple.run.execution, source: 'journal', statut: 'en_cours', appels: { total: repondus + 1, repondus, pannes: 0, tronques: 0, refus: 0, tentatives: repondus + 1 } })
+    let lu = 0
+    const fetchFn = routedFetch({
+      'GET api/twin9/runs/7': jsonResponse(200, enCoursDeRoute),
+      'POST api/twin9/runs/avancer': jsonResponse(200, { avance: false, locked: false }),
+      'GET api/twin9/runs/7/resultats': () => resultats(compte(2 + 3 * lu++)),
+    })
+    render(<Twin9View section="7" deps={{ fetchFn, pause: () => new Promise(() => {}) }} />)
+    await waitFor(() => expect(screen.getByRole('status').textContent).toBe('En cours'))
+    const details = screen.getByText('Configuration').closest('details')
+    fireEvent.click(details.querySelector('summary'))
+    await within(details).findByText(/Lue dans son journal à l’ouverture/)
+    const toggles = []
+    details.addEventListener('toggle', () => toggles.push(details.open))
+
+    // fermée puis rouverte d'un même geste : un seul « toggle », ouvert
+    act(() => {
+      details.open = false
+      details.open = true
+    })
+    await waitFor(() => expect(lignes(details.querySelectorAll('dl')[1]).Appels).toBe('6 : 5 répondus, 0 en panne'))
+    expect(toggles).toEqual([true])
+    expect(fetchFn.mock.calls.filter(([url]) => url === 'api/twin9/runs/7/resultats')).toHaveLength(2)
   })
 
   it('dit une erreur de lecture dans le bloc, sans toucher la page ; la rouvrir réessaie', async () => {

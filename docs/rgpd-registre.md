@@ -38,9 +38,9 @@ exécution du service/contrat, **f** = intérêt légitime.
 | Personnes concernées | Toute personne créant un compte. |
 | Données | Email (destinataire du message), empreinte du code de confirmation (hash — jamais le code en clair en base), date d'expiration, compteur d'essais, date de vérification ; pour une inscription en liste d'attente, la date de sa mise en attente (UTC), rien de plus que ce que garde une inscription. |
 | Base légale | **b** (mesure précontractuelle : sécuriser la création du compte demandé). |
-| Durée | Code : 30 minutes (expiration), effacé dès l'activation. `email_verified_at` : durée de vie du compte. `waitlisted_at` : jusqu'à la levée de la liste, qui l'efface. |
+| Durée | Code : 30 minutes (expiration), effacé dès l'activation. `email_verified_at` : durée de vie du compte. `waitlisted_at` : jusqu'à la levée de la liste, qui l'efface (une levée dont le courriel est refusé par le transport la garde : le compte reste en attente). |
 | Destinataires | Transport email : `mail()` de l'hébergeur OVH (l'email transite par l'infrastructure OVH, sous-traitant d'hébergement déjà au registre). Aucun service d'emailing tiers. |
-| Tables | Colonnes `users.email_verified_at`, `users.verification_code_hash`, `users.verification_expires_at`, `users.verification_attempts` (migration 018) ; `users.waitlisted_at` (migration 034). L'audit garde `account_waitlisted` (sans détail) et `waitlist_lifted` (`{targetUserId}`), anonymisés à la purge comme les autres événements. |
+| Tables | Colonnes `users.email_verified_at`, `users.verification_code_hash`, `users.verification_expires_at`, `users.verification_attempts` (migration 018) ; `users.waitlisted_at` (migration 034). L'audit garde `account_waitlisted` (sans détail ; son `user_id`, le compte lui-même, passe à NULL à la purge) et `waitlist_lifted` (`{targetUserId}`, d'auteur l'administrateur ou personne pour la levée du mois) : à la purge du compte levé, son identifiant numérique reste dans `details.targetUserId`, hors clé étrangère — un pseudonyme orphelin, comme pour les attributions de rôle (§10 ; UC-CPT-06, Limites). |
 | Sort à la suppression | Colonnes de la ligne `users` : purge en même temps que le compte (aucune table séparée). |
 
 ## 2. Portfolios (journal réflexif)
@@ -206,7 +206,7 @@ exécution du service/contrat, **f** = intérêt légitime.
 | Personnes concernées | Toute personne effectuant une action tracée. |
 | Données | Type d'événement, date, `details` = faits structurés minuscules (identifiants, compteurs, valeurs de liste blanche). **Jamais** de contenu, de mot de passe, de clé, d'email. |
 | Base légale | **f** (intérêt légitime : sécurité, obligations de traçabilité). |
-| Durée | Conservé au-delà du compte, mais **anonymisé** : `user_id` passe à NULL à la purge — la trace datée subsiste sans identifier personne. |
+| Durée | Conservé au-delà du compte, mais **anonymisé** : `user_id` passe à NULL à la purge — la trace datée subsiste sans identifier personne par ce lien. Limite : un événement écrit par un autre acteur (attribution ou retrait de rôle, invitation acceptée, accès au golden prompt, levée de la liste d'attente…) garde dans `details` l'identifiant numérique du compte supprimé, hors clé étrangère — un pseudonyme orphelin (UC-CPT-06, Limites). |
 | Destinataires | Interne. |
 | Tables | `audit_events`. |
 | Sort à la suppression | `user_id` SET NULL (anonymisation légitime, pas un oubli de purge). |

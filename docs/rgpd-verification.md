@@ -58,7 +58,7 @@ applicable.
 | 004 | `share_links` | empreintes seules (jamais de clair) | chaîne via `cartographies` (validité 90 j déf., 1-365) | `—` (hachages) |
 | 005 | `training_progress` | oui (avancement) | CASCADE `user_id` | `local` (store formation) |
 | 005 | `user_api_keys` | oui (clé chiffrée) | CASCADE `user_id` | `aucun` (secret, jamais réexporté — choix de conception) |
-| 005 | `audit_events` | trace | SET NULL `user_id` (anonymisée) | `—` |
+| 005 | `audit_events` | trace | SET NULL `user_id` (anonymisée) ; les `details` d'un autre acteur (`role_granted`, `role_revoked`, `invitation_accepted`, `golden_access_granted`, `waitlist_lifted`…) gardent l'identifiant numérique d'un compte supprimé, pseudonyme orphelin hors clé étrangère | `—` |
 | 006 | `llm_usage_daily` | non (compteurs anonymes) | — (entretien) | — |
 | 006 | `llm_pow_challenges` | non (empreintes anti-rejeu) | — (TTL 2 min) | — |
 | 034 | `free_credit_monthly` | non (compteurs anonymes du mois : dépense, réserve, appels, refus des crédits offerts, sprint 7) | — (une ligne par mois, gardée) | — |

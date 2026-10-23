@@ -315,6 +315,8 @@
 
 .facture-twin9 h3 {
   font-size: 1rem;
+  font-family: var(--font-subheading);
+  font-weight: var(--fw-subheading);
   margin: 1.25rem 0 0.5rem;
 }
 

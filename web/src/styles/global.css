@@ -746,6 +746,10 @@
      --font-mono : code et identifiants.
    - --fw-strong : gras du texte (b, strong, les « 600 » des composants) ;
      --fw-heading : titres h1 à h3.
+   - --font-subheading, --fw-subheading : un titre h1 à h3 qu'un composant
+     ramène sous 1,125 rem (.carto-section h3…) : la police des titres en
+     épistémiarque et en technomancien ; le texte en gras en noèsiologue,
+     dont la proposition B réserve Fredoka aux titres de 1,125 rem et plus.
    - --fs-xs à --fs-3xl : échelle ; --fs-base : corps ; h1 = 3xl, h2 = 2xl,
      h3 = xl.
    - --lh-* : interlignes ; --tracking-* : approche (technomancien resserre
@@ -761,6 +765,8 @@ html {
   --font-mono: ui-monospace, 'SF Mono', SFMono-Regular, Menlo, Consolas, 'DejaVu Sans Mono', monospace;
   --fw-strong: 600;
   --fw-heading: 600;
+  --font-subheading: var(--font-heading);
+  --fw-subheading: var(--fw-heading);
   --fs-xs: clamp(0.8125rem, 0.788rem + 0.1087vw, 0.875rem);
   --fs-sm: clamp(0.9375rem, 0.913rem + 0.1087vw, 1rem);
   --fs-base: clamp(1.0625rem, 1.0136rem + 0.2174vw, 1.1875rem);
@@ -784,6 +790,8 @@ html[data-interface='noesiologue'] {
   --font-mono: ui-monospace, SFMono-Regular, 'SF Mono', Menlo, Consolas, 'Liberation Mono', monospace;
   --fw-strong: 700;
   --fw-heading: 600;
+  --font-subheading: var(--font-body);
+  --fw-subheading: var(--fw-strong);
   --fs-xs: 0.8125rem;
   --fs-sm: 0.9375rem;
   --fs-base: clamp(1rem, 0.96rem + 0.18vw, 1.0625rem);
@@ -806,6 +814,8 @@ html[data-interface='technomancien'] {
   --font-mono: 'JetBrains Mono', ui-monospace, 'SF Mono', SFMono-Regular, Menlo, Consolas, 'Liberation Mono', monospace;
   --fw-strong: 600;
   --fw-heading: 600;
+  --font-subheading: var(--font-heading);
+  --fw-subheading: var(--fw-heading);
   --fs-xs: clamp(0.75rem, 0.7255rem + 0.1087vw, 0.8125rem);
   --fs-sm: clamp(0.875rem, 0.8505rem + 0.1087vw, 0.9375rem);
   --fs-base: clamp(1rem, 0.9755rem + 0.1087vw, 1.0625rem);
@@ -862,7 +872,9 @@ body {
 }
 
 /* Titres de base : ceux qu'aucun composant ne règle prennent l'échelle de
-   l'interface ; une règle de composant (.carto-section h3…) garde la main. */
+   l'interface ; une règle de composant (.carto-section h3…) garde la main,
+   et lit --font-subheading et --fw-subheading si elle ramène le titre sous
+   1,125 rem (gardé par src/styles/fonts.test.js). */
 h1,
 h2,
 h3 {
@@ -2038,6 +2050,8 @@ body:has([aria-modal='true'], .portfolio-editor-fullscreen)
 
 .guides-family h3 {
   font-size: 1.1rem;
+  font-family: var(--font-subheading);
+  font-weight: var(--fw-subheading);
   color: var(--ink-soft);
   border-bottom: 1px solid var(--line);
   padding-bottom: 0.35rem;
@@ -2630,6 +2644,8 @@ body:has([aria-modal='true'], .portfolio-editor-fullscreen)
 .traces h3,
 .pole-rapport h3 {
   font-size: 1rem;
+  font-family: var(--font-subheading);
+  font-weight: var(--fw-subheading);
   margin: 1rem 0 0.4rem;
 }
 
@@ -2683,6 +2699,8 @@ body:has([aria-modal='true'], .portfolio-editor-fullscreen)
 .exclus h3 {
   margin: 0 0 0.4rem;
   font-size: 0.95rem;
+  font-family: var(--font-subheading);
+  font-weight: var(--fw-subheading);
   color: var(--ink-soft);
 }
 
@@ -2794,6 +2812,8 @@ body:has([aria-modal='true'], .portfolio-editor-fullscreen)
   gap: 0.5rem;
   margin: 0 0 0.5rem;
   font-size: 1.05rem;
+  font-family: var(--font-subheading);
+  font-weight: var(--fw-subheading);
 }
 
 .ref-pole-count {
@@ -2920,6 +2940,8 @@ body:has([aria-modal='true'], .portfolio-editor-fullscreen)
 .account-profile h2 {
   margin: 0 0 0.5rem;
   font-size: 1.05rem;
+  font-family: var(--font-subheading);
+  font-weight: var(--fw-subheading);
 }
 
 /* D6 — bloc avatar (photo + actions) en tête du profil. */
@@ -2995,6 +3017,8 @@ body:has([aria-modal='true'], .portfolio-editor-fullscreen)
 .account-danger h2 {
   margin: 0;
   font-size: 1.05rem;
+  font-family: var(--font-subheading);
+  font-weight: var(--fw-subheading);
   color: var(--danger);
 }
 
@@ -3241,6 +3265,8 @@ body:has([aria-modal='true'], .portfolio-editor-fullscreen)
 .portfolio-sidebar h2,
 .portfolio-main h2 {
   font-size: 1.05rem;
+  font-family: var(--font-subheading);
+  font-weight: var(--fw-subheading);
   margin: 1.25rem 0 0.5rem;
 }
 
@@ -3815,6 +3841,11 @@ body:has([aria-modal='true'], .portfolio-editor-fullscreen)
   font-size: 1rem;
 }
 
+.share-dialog-head h3 {
+  font-family: var(--font-subheading);
+  font-weight: var(--fw-subheading);
+}
+
 .share-dialog-hint,
 .share-dialog-empty {
   margin: 0;
@@ -3865,6 +3896,8 @@ body:has([aria-modal='true'], .portfolio-editor-fullscreen)
 .mes-donnees h3 {
   margin: 0;
   font-size: 1.05rem;
+  font-family: var(--font-subheading);
+  font-weight: var(--fw-subheading);
 }
 
 .mes-donnees p {
@@ -6058,6 +6091,8 @@ body:has([aria-modal='true'], .portfolio-editor-fullscreen)
 .account-respire h2 {
   margin: 0 0 0.5rem;
   font-size: 1.05rem;
+  font-family: var(--font-subheading);
+  font-weight: var(--fw-subheading);
 }
 
 .account-respire-intro,

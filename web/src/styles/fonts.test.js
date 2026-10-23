@@ -10,6 +10,7 @@ import { fileURLToPath } from 'node:url'
 import { dirname, join, relative } from 'node:path'
 import { describe, expect, it } from 'vitest'
 import { DEFAULT_INTERFACE, INTERFACES } from '../lib/theme.js'
+import { SITE_SHEETS, jsxClasses, sheetRules } from '../../test/usecases/support/global-css.js'
 
 const here = dirname(fileURLToPath(import.meta.url))
 const web = join(here, '../..')
@@ -30,6 +31,8 @@ const TYPE_VARS = [
   '--font-mono',
   '--fw-strong',
   '--fw-heading',
+  '--font-subheading',
+  '--fw-subheading',
   '--fs-xs',
   '--fs-sm',
   '--fs-base',
@@ -172,6 +175,56 @@ describe('polices des trois interfaces (sprint 9)', () => {
       const literal = source.split('\n').filter((line) => /font-family:\s*ui-monospace/.test(line))
       expect(literal, relative(web, file)).toEqual([])
     }
+  })
+
+  it('un petit intertitre (titre h1 à h3 ramené sous 1,125 rem par un composant) lit --font-subheading : la police des titres en épistémiarque et en technomancien, le texte en gras en noèsiologue (Fredoka seulement à partir de 1,125 rem, proposition B)', () => {
+    const subheading = {
+      epistemiarque: ['var(--font-heading)', 'var(--fw-heading)'],
+      noesiologue: ['var(--font-body)', 'var(--fw-strong)'],
+      technomancien: ['var(--font-heading)', 'var(--fw-heading)'],
+    }
+    for (const id of INTERFACES) {
+      const block = typeBlock(id)
+      expect([block['--font-subheading'], block['--fw-subheading']], id).toEqual(subheading[id])
+    }
+    // Taille en rem, à 16 px le rem (em : le corps des conteneurs qui en
+    // emploient est à 1 rem) ; un clamp() compte pour son minimum, une
+    // variable --fs-* pour sa valeur dans la noèsiologue, la seule interface
+    // où le petit intertitre change de famille.
+    const scale = typeBlock('noesiologue')
+    const rem = (value) => {
+      const token = /^var\((--fs-[\w-]+)\)$/.exec(value)
+      if (token) return rem(scale[token[1]])
+      const clamp = /^clamp\(\s*([^,]+),/.exec(value)
+      if (clamp) return rem(clamp[1].trim())
+      const m = /^([\d.]+)(rem|em|px|pt)$/.exec(value)
+      if (!m) return null
+      return Number(m[1]) * { rem: 1, em: 1, px: 1 / 16, pt: 4 / 3 / 16 }[m[2]]
+    }
+    // Un titre : le dernier composé du sélecteur est h1, h2 ou h3, ou porte
+    // une classe que le JSX pose sur un h1 à h3 (.ref-pole-title).
+    const classes = [...jsxClasses(/^h[1-3]$/).keys()]
+    expect(classes).toContain('ref-pole-title')
+    const HEADING = new RegExp(`(^|[\\s>+~])(h[1-3]|[\\w.-]*\\.(${classes.join('|')}))$`)
+    const sizes = new Map()
+    const families = new Map()
+    for (const sheet of SITE_SHEETS) {
+      for (const rule of sheetRules(sheet)) {
+        if (rule.media?.includes('print')) continue
+        for (const part of rule.selector.split(',').map((p) => p.trim())) {
+          if (!HEADING.test(part)) continue
+          const key = `${sheet} ${rule.media ?? ''} ${part}`
+          if ('font-size' in rule.decl) sizes.set(key, { sheet, part, size: rule.decl['font-size'] })
+          if ('font-family' in rule.decl) families.set(part, [rule.decl['font-family'], rule.decl['font-weight']])
+        }
+      }
+    }
+    const small = [...sizes.values()].filter(({ size }) => rem(size) !== null && rem(size) < 1.125)
+    const failures = small
+      .filter(({ part }) => (families.get(part) ?? []).join(' ') !== 'var(--font-subheading) var(--fw-subheading)')
+      .map(({ sheet, part, size }) => `${sheet} ${part} (${size}) : ${families.get(part)?.[0] ?? 'var(--font-heading), de h1, h2, h3'}`)
+    expect(failures).toEqual([])
+    expect(small.length).toBeGreaterThanOrEqual(30) // intertitres de composants (32 aux correctifs du sprint 9)
   })
 
   it('aucune origine tierce de police, ni préchargement (CSS du site, index.html, copie autonome)', () => {

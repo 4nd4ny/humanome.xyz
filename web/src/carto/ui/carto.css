@@ -1244,6 +1244,8 @@ kbd {
 }
 .carto-section h3 {
   font-size: 0.95rem;
+  font-family: var(--font-subheading);
+  font-weight: var(--fw-subheading);
   margin: 0.2rem 0;
 }
 .carto-section--alert {
@@ -1348,6 +1350,8 @@ kbd {
 .carto-report-head h3 {
   margin: 0;
   font-size: 0.95rem;
+  font-family: var(--font-subheading);
+  font-weight: var(--fw-subheading);
 }
 .carto-report-filters {
   display: flex;
@@ -1447,6 +1451,8 @@ kbd {
 }
 .carto-detail h3 {
   font-size: 0.95rem;
+  font-family: var(--font-subheading);
+  font-weight: var(--fw-subheading);
   margin: 0.8rem 0 0.3rem;
 }
 .carto-member-list {
@@ -1627,6 +1633,8 @@ kbd {
 }
 .carto-covered h3 {
   font-size: 0.95rem;
+  font-family: var(--font-subheading);
+  font-weight: var(--fw-subheading);
   margin: 0.9rem 0 0.2rem;
 }
 .carto-covered .carto-verdict-list .carto-link-btn {
@@ -1635,6 +1643,8 @@ kbd {
 }
 .carto-why h3 {
   font-size: 0.95rem;
+  font-family: var(--font-subheading);
+  font-weight: var(--fw-subheading);
   margin: 0.9rem 0 0.3rem;
 }
 .carto-formulas {
@@ -1881,6 +1891,12 @@ kbd {
   font-size: 1rem;
   margin: 0.9rem 0 0.35rem;
 }
+.carto-prose h1,
+.carto-prose h2,
+.carto-prose h3 {
+  font-family: var(--font-subheading);
+  font-weight: var(--fw-subheading);
+}
 .carto-prose blockquote {
   margin: 0.4rem 0;
   padding-left: 0.7rem;
@@ -1945,6 +1961,8 @@ kbd {
   min-width: 0;
   margin: 0;
   font-size: 1.05rem;
+  font-family: var(--font-subheading);
+  font-weight: var(--fw-subheading);
   line-height: 1.25;
   text-align: center;
   text-wrap: balance;
@@ -2072,6 +2090,8 @@ kbd {
 }
 .carto-reader-text h3 {
   font-size: 1.07em;
+  font-family: var(--font-subheading);
+  font-weight: var(--fw-subheading);
 }
 .carto-reader-text ul,
 .carto-reader-text ol {
@@ -2193,6 +2213,8 @@ kbd {
 .carto-sg h3 {
   margin: 0 0 0.25rem;
   font-size: 1rem;
+  font-family: var(--font-subheading);
+  font-weight: var(--fw-subheading);
 }
 .carto-sg-warning {
   border-left: 3px solid var(--warn);
@@ -2465,6 +2487,8 @@ kbd {
 .carto-cmp-precautions h3 {
   margin: 0 0 0.3rem;
   font-size: 0.95rem;
+  font-family: var(--font-subheading);
+  font-weight: var(--fw-subheading);
 }
 .carto-cmp-precautions ul {
   margin: 0;
@@ -2961,6 +2985,8 @@ kbd {
 .carto-export-card h3 {
   margin: 0;
   font-size: 1rem;
+  font-family: var(--font-subheading);
+  font-weight: var(--fw-subheading);
 }
 .carto-export-card p {
   margin: 0;
@@ -3038,6 +3064,8 @@ kbd {
 .carto-demo-head h3 {
   margin: 0;
   font-size: 1.05rem;
+  font-family: var(--font-subheading);
+  font-weight: var(--fw-subheading);
 }
 .carto-demo-head h3:focus {
   outline: none;
@@ -3290,6 +3318,8 @@ kbd {
 .carto-print-toolbar h2 {
   margin: 0;
   font-size: 1.05rem;
+  font-family: var(--font-subheading);
+  font-weight: var(--fw-subheading);
 }
 .carto-print-toolbar p {
   margin: 0.1rem 0 0;
@@ -3347,6 +3377,8 @@ kbd {
 }
 .carto-print-page h3 {
   font-size: 12pt;
+  font-family: var(--font-subheading);
+  font-weight: var(--fw-subheading);
   margin: 1.1em 0 0.3em;
 }
 .carto-print-page h4 {
@@ -3630,6 +3662,8 @@ kbd {
 }
 .carto-share-h {
   font-size: 1.05rem;
+  font-family: var(--font-subheading);
+  font-weight: var(--fw-subheading);
   margin: 0 0 0.5rem;
 }
 .carto-share-gate {
@@ -3687,6 +3721,8 @@ kbd {
 }
 .carto-share-step-title {
   font-size: 1rem;
+  font-family: var(--font-subheading);
+  font-weight: var(--fw-subheading);
   margin: 0;
 }
 .carto-app .carto-share-step-title:focus,

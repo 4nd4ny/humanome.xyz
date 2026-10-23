@@ -114,9 +114,12 @@ rôles ») : le bloc « Mes rôles RESPIRE » suit le profil et sa ligne
   écriture (et pour la session d'un compte purgé) ; `#/compte` montre alors
   la connexion, sans le bloc.
 - **E4 — Jeton CSRF absent ou faux, session disparue** (étape 4) : `403` du
-  middleware global, rien n'est écrit ; le bloc affiche le message du serveur
-  (« Jeton CSRF absent ou invalide ») en alerte et garde la saisie. Un refus
-  `422` (E1, E2) s'affiche de même, avec le message de chaque champ.
+  middleware global (« Jeton CSRF absent ou invalide »), ou `401` pour la
+  session d'un compte purgé ; rien n'est écrit. Le bloc ne reprend pas ce
+  message du serveur : il affiche en alerte « Votre session a expiré :
+  reconnectez-vous, puis enregistrez de nouveau vos rôles. » et garde la
+  saisie (la route elle-même ne répond jamais `403`). Un refus `422` (E1, E2)
+  s'affiche en alerte avec le message de chaque champ.
 - **E5 — Déclaration illisible** (étape 1) : `404` d'une API antérieure,
   `500`, API injoignable ou catalogue vide → le message discret « Vos rôles
   RESPIRE ne peuvent pas être chargés pour le moment. Réessayez plus tard. »,
@@ -217,7 +220,7 @@ n'en garde que les libellés, pour la liste d'administration (UC-CPT-07-U15).
 | UC-CPT-07-U25 | `HELP_ENTRIES.account` (`web/src/help/registry.js`) | Vocabulaire de l'aide de `#/compte` : l'habilitation s'attribue (« L'habilitation « apprenant » est attribuée par défaut… »), le rôle se déclare ; aucun point ne dit un rôle « attribué » | idem |
 | UC-CPT-07-U17 | `DeclaredRolesSection` | Mention, neuf cases dans l'ordre décrites par leur définition, déclaration courante cochée, bouton inactif sans changement | `web/test/usecases/unit/uc-cpt-07-declarer-roles-respire-vue.test.jsx` |
 | UC-CPT-07-U18 | `DeclaredRolesSection` | Case du cercle avec chacun des trois rôles éligibles, jamais avec les six autres ; retirée et décochée avec le dernier (A4) | idem |
-| UC-CPT-07-U19 | `DeclaredRolesSection` | Déclaration entière dans l'ordre du catalogue, message « vos accès ne changent pas » ; `422` et `403` : message en alerte, saisie gardée | idem |
+| UC-CPT-07-U19 | `DeclaredRolesSection` | Déclaration entière dans l'ordre du catalogue, message « vos accès ne changent pas » ; `422` : message du champ en alerte ; `403` et `401` sans champ : « Votre session a expiré : reconnectez-vous… » ; saisie gardée | idem |
 | UC-CPT-07-U20 | `DeclaredRolesSection` | Lecture impossible (`404`, `500`, API injoignable, catalogue vide) : message discret, ni alerte ni formulaire (E5) | idem |
 | UC-CPT-07-U23 | `DeclaredRolesSection`, `global.css` | Définitions et note du cercle (0,85rem, annoncées par `aria-describedby`) à 4,5:1 au moins sur la surface de leur carte, dans les trois thèmes (clair, sombre du système, sombre choisi) | idem |
 | UC-CPT-07-U24 | `DeclaredRolesSection` | Au clavier : le bouton garde le focus inactif, pendant et après l'enregistrement (`aria-disabled`, jamais `disabled`) ; « Enregistrement… » pendant l'envoi ; inactif, l'activer n'envoie rien | idem |
@@ -239,7 +242,7 @@ n'en garde que les libellés, pour la liste d'administration (UC-CPT-07-U15).
 | UC-CPT-07-F11 | RG4, A3 | IHM | Contrôle positif : cartographe déclarée → ni « Encadrer et garantir », ni `#/cartographe` ; habilitée par l'administrateur → la famille et le mode expert à la session suivante | idem |
 | UC-CPT-07-F12 | Nominal, A2 | IHM | Mention, catalogue, ligne « Habilitations » ; promptagogue, architecte et la case → `PUT` entier avec CSRF, confirmation, relu au rechargement ; tout décocher efface | idem |
 | UC-CPT-07-F13 | A4, E1 | IHM | La case disparaît avec le dernier rôle éligible, le serveur ne la reçoit jamais seule ; `422` forcé → message du champ, rien d'écrit | idem |
-| UC-CPT-07-F14 | E4, E5 | IHM | Session disparue → `403` affiché, rien d'écrit ; lecture en `500` → message discret, sans alerte, le profil et les clés restent utilisables | idem |
+| UC-CPT-07-F14 | E4, E5 | IHM | Session disparue → `403`, l'alerte dit de se reconnecter, rien d'écrit ; lecture en `500` → message discret, sans alerte, le profil et les clés restent utilisables | idem |
 
 ### Tests existants liés (non-régression)
 

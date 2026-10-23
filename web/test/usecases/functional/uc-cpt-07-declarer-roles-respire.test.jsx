@@ -223,14 +223,16 @@ describe('UC-CPT-07 — la section « Mes rôles RESPIRE » du profil', () => {
     expect(circle().checked).toBe(true)
   })
 
-  it('UC-CPT-07-F14 — E3, E4 : session disparue côté serveur → le PUT reçoit 403, message affiché, rien d’écrit ; déclaration illisible (500) → message discret, sans alerte, le reste du profil reste utilisable', async () => {
+  it('UC-CPT-07-F14 — E3, E4 : session disparue côté serveur → le PUT reçoit 403, l’alerte dit de se reconnecter, rien d’écrit ; déclaration illisible (500) → message discret, sans alerte, le reste du profil reste utilisable', async () => {
     const api = await openAccount(
       installFakeAccountApi({ users: [{ ...MAYA, roles: ['apprenant'] }], loggedInAs: MAYA.email }),
     )
     api.expireSession()
     fireEvent.click(box('noesiologue'))
     await save()
-    expect((await section().findByRole('alert')).textContent).toBe('Jeton CSRF absent ou invalide')
+    expect((await section().findByRole('alert')).textContent).toBe(
+      'Votre session a expiré : reconnectez-vous, puis enregistrez de nouveau vos rôles.',
+    )
     expect(api.users.get(MAYA.email).declared).toEqual({ roles: [], foundingCircle: false })
 
     cleanup()

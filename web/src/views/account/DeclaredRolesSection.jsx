@@ -26,11 +26,20 @@ import {
   saveDeclaredRoles as saveDeclaredRolesApi,
 } from '../../api/declared-roles.js'
 
-/** @param {unknown} error @returns {string} message affichable (détails par champ d'un 422) */
+/**
+ * @param {unknown} error
+ * @returns {string} message affichable : détails par champ d'un 422 ; pour une
+ *   session perdue — 403 du middleware CSRF (session disparue côté serveur),
+ *   401 (compte purgé) — ce qu'il faut faire, pas « Jeton CSRF absent ou
+ *   invalide » (la route elle-même ne répond jamais 403)
+ */
 function message(error) {
   if (error instanceof ApiError) {
     const details = Object.values(error.fields ?? {}).filter((value) => typeof value === 'string')
     if (details.length > 0) return details.join(' ')
+    if (error.status === 401 || error.status === 403) {
+      return 'Votre session a expiré : reconnectez-vous, puis enregistrez de nouveau vos rôles.'
+    }
     return error.serverMessage ?? error.message
   }
   if (error instanceof ApiUnavailableError) return error.message

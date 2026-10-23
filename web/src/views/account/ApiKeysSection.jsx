@@ -18,8 +18,16 @@ import {
   storeKey as storeKeyApi,
 } from '../../api/keys.js'
 
-/** @param {unknown} error @returns {string} message affichable */
+/**
+ * @param {unknown} error
+ * @returns {string} message affichable ; une session perdue (403 du
+ *   middleware CSRF, 401) dit de se reconnecter (les routes /api/keys ne
+ *   répondent jamais 403 elles-mêmes)
+ */
 function message(error) {
+  if (error instanceof ApiError && (error.status === 401 || error.status === 403)) {
+    return 'Votre session a expiré : reconnectez-vous, puis réessayez.'
+  }
   if (error instanceof ApiError) return error.serverMessage ?? error.message
   return 'Une erreur est survenue. Réessayez.'
 }

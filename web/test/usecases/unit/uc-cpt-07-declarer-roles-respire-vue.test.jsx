@@ -105,7 +105,7 @@ describe('UC-CPT-07 — la section « Mes rôles RESPIRE » du profil', () => {
     expect(d.saveDeclaredRoles).toHaveBeenCalledWith({ roles: ['epistemiarque'], foundingCircle: false })
   })
 
-  it('UC-CPT-07-U19 — enregistrer : la déclaration entière, dans l’ordre du catalogue, avec la case ; message « vos accès ne changent pas » ; un refus 422 affiche les messages par champ et garde la saisie', async () => {
+  it('UC-CPT-07-U19 — enregistrer : la déclaration entière, dans l’ordre du catalogue, avec la case ; message « vos accès ne changent pas » ; un refus 422 affiche les messages par champ et garde la saisie ; une session perdue (403, 401) dit de se reconnecter', async () => {
     const d = await renderSection({ roles: ['cartographe'] })
     fireEvent.click(box('maitre-du-grimoire'))
     fireEvent.click(box('eclaireur'))
@@ -137,14 +137,20 @@ describe('UC-CPT-07 — la section « Mes rôles RESPIRE » du profil', () => {
     expect(circle().checked).toBe(true)
     expect(inactive(saveButton())).toBe(false)
 
-    // Session perdue : le message du serveur, sans détail de champ.
+    // Session perdue — 403 du middleware CSRF (session disparue côté serveur) ou 401 (compte purgé), sans
+    // détail de champ : ce qu'il faut faire, pas le jargon du serveur ; la saisie reste.
     const csrf = new ApiError('Jeton CSRF absent ou invalide', 403)
     csrf.serverMessage = 'Jeton CSRF absent ou invalide'
-    d.saveDeclaredRoles.mockRejectedValueOnce(csrf)
-    await act(async () => {
-      fireEvent.click(saveButton())
-    })
-    expect(section().getByRole('alert').textContent).toBe('Jeton CSRF absent ou invalide')
+    const gone = new ApiError('Authentification requise', 401)
+    gone.serverMessage = 'Authentification requise'
+    for (const lost of [csrf, gone]) {
+      d.saveDeclaredRoles.mockRejectedValueOnce(lost)
+      await act(async () => {
+        fireEvent.click(saveButton())
+      })
+      expect(section().getByRole('alert').textContent).toBe('Votre session a expiré : reconnectez-vous, puis enregistrez de nouveau vos rôles.')
+      expect(circle().checked).toBe(true)
+    }
   })
 
   it('UC-CPT-07-U20 — déclaration illisible (404 d’une API antérieure, 500, API injoignable, catalogue vide) : un message discret, sans alerte ni formulaire ; la mention reste', async () => {

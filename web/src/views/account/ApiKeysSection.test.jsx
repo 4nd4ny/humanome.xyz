@@ -80,6 +80,23 @@ describe('ApiKeysSection', () => {
     expect(deps.listKeys).toHaveBeenCalledTimes(1)
   })
 
+  it('session perdue (403 du jeton CSRF, 401) : l’alerte dit de se reconnecter, pas « Jeton CSRF absent ou invalide »', async () => {
+    const csrf = new ApiError('Jeton CSRF absent ou invalide', 403)
+    csrf.serverMessage = 'Jeton CSRF absent ou invalide'
+    const deps = fakeDeps({ listKeys: vi.fn(async () => []), storeKey: vi.fn(async () => { throw csrf }) })
+    render(<ApiKeysSection deps={deps} />)
+    await screen.findByText('Aucune clé enregistrée.')
+    fireEvent.change(screen.getByLabelText('Clé API'), { target: { value: 'sk-ant-abcdef123456' } })
+    fireEvent.click(screen.getByRole('button', { name: 'Enregistrer la clé' }))
+    expect((await screen.findByRole('alert')).textContent).toBe('Votre session a expiré : reconnectez-vous, puis réessayez.')
+    cleanup()
+
+    const gone = new ApiError('Authentification requise', 401)
+    gone.serverMessage = 'Authentification requise'
+    render(<ApiKeysSection deps={fakeDeps({ listKeys: vi.fn(async () => { throw gone }) })} />)
+    expect((await screen.findByRole('alert')).textContent).toBe('Votre session a expiré : reconnectez-vous, puis réessayez.')
+  })
+
   it('échec de suppression : message en role=alert', async () => {
     const deps = fakeDeps({ deleteKey: vi.fn(async () => { throw new ApiError('Boom suppression', 500) }) })
     render(<ApiKeysSection deps={deps} />)

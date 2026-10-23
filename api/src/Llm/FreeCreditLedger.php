@@ -135,6 +135,27 @@ final class FreeCreditLedger
         ];
     }
 
+    /**
+     * Whether a NEW sign-up is still taken (sprint 7, S7a-2): what the month
+     * has SPENT leaves at least the floor — the smallest worst case an
+     * Essayer call reserves (Auth\Waitlist::floorMicrousd) — under the cap.
+     * Below it, no free call of the Essayer can pass any more, even with
+     * nothing in flight, and a new account waits for the next month
+     * (« Après, mettre les inscriptions sur liste d'attente »).
+     *
+     * The reservations in flight do not count: a sign-up's fate is decided
+     * once, and a call that settles cheaply a moment later would have
+     * waitlisted it for nothing. A cap of 0 waitlists every sign-up.
+     */
+    public function signupsOpen(int $capMicrousd, int $floorMicrousd, ?int $now = null): bool
+    {
+        $stmt = $this->pdo->prepare('SELECT spent_microusd FROM free_credit_monthly WHERE month = ?');
+        $stmt->execute([self::month($now)]);
+        $spent = (int) ($stmt->fetchColumn() ?: 0);
+
+        return $capMicrousd - $spent >= max(1, $floorMicrousd);
+    }
+
     /** The cap in micro-USD; a negative or non-finite one closes everything. */
     public static function capMicrousd(float $capUsd): int
     {
@@ -154,9 +175,15 @@ final class FreeCreditLedger
      */
     public static function refusalMessage(?int $now = null): string
     {
+        return 'Les crédits offerts de ce mois sont épuisés ; revenez le ' . self::nextMonthLabel($now) . '.';
+    }
+
+    /** « 1er novembre »: the first day of the next UTC month, in French. */
+    public static function nextMonthLabel(?int $now = null): string
+    {
         $next = (int) gmdate('n', $now ?? time()) % 12; // 0-based index of the next month
 
-        return 'Les crédits offerts de ce mois sont épuisés ; revenez le 1er ' . self::MOIS[$next] . '.';
+        return '1er ' . self::MOIS[$next];
     }
 
     private function giveBack(int $reservedMicrousd, int $costMicrousd, int $calls, ?int $now): void

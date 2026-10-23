@@ -3,11 +3,11 @@
 | Champ | Valeur |
 |---|---|
 | **Acteur principal** | Administrateur (rôle `admin`, session ouverte — typiquement depuis un smartphone) |
-| **Acteurs secondaires** | Visiteur de la démo et compte qui fait l'essai gratuit de la cartographie ouverte (subissent l'effet : UC-VIS-03, UC-VIS-05, UC-APP-09 A6) ; exploitant qui règle l'environnement serveur (`~/app/shared/.env`) |
-| **Portée** | humanome.xyz — `#/admin/reglages` (bloc « Démo publique »), `#/admin/config` ; API de session `/api/admin/demo-config` |
+| **Acteurs secondaires** | Visiteur de la démo et compte qui fait l'essai gratuit de la cartographie ouverte (subissent l'effet : UC-VIS-03, UC-VIS-05, UC-APP-09 A6) ; personne inscrite en liste d'attente (A9, UC-CPT-01 A4) ; exploitant qui règle l'environnement serveur (`~/app/shared/.env`) |
+| **Portée** | humanome.xyz — `#/admin/reglages` (blocs « Démo publique » et « Liste d'attente des inscriptions »), `#/admin/config` ; API de session `/api/admin/demo-config`, `/api/admin/waitlist` |
 | **Niveau** | Objectif utilisateur |
 | **Cahier des charges** | §3.1 (démo sans compte, garde-fous anti-abus), §3.8 et §4.10 (configuration simple) ; principe RGPD n°5 — journalisation minimale (`CLAUDE.md`, `docs/rgpd-registre.md`) ; `docs/administration.md` §3-4, `api/config/demo.php` |
-| **Statut** | Implémenté (P12.1 ; édition en ligne : chantier A ; plafond mensuel des crédits offerts : sprint 7, S7a) |
+| **Statut** | Implémenté (P12.1 ; édition en ligne : chantier A ; plafond mensuel des crédits offerts : sprint 7, S7a ; liste d'attente des inscriptions : S7a-2) |
 
 ## Objectif
 
@@ -160,7 +160,24 @@ par exemple juste avant ou juste après une présentation.
   appels en cours, 16.48 $ restants sur 20.00 $ — 41 appels, 0 refus. », et
   « Épuisés : … » une fois le plafond atteint. À 0, effet immédiat : l'Essayer
   et le tuteur répondent « Les crédits offerts de ce mois sont épuisés ;
-  revenez le 1er … » ; une réponse déjà en cours finit (UC-VIS-03 RG7).
+  revenez le 1er … » ; une réponse déjà en cours finit (UC-VIS-03 RG7). La
+  ligne dit aussi « Inscriptions : ouvertes » ou « en liste d'attente », avec
+  le seuil (RG11).
+- **A9 — La liste d'attente des inscriptions** (après A8, RG11, sprint 7,
+  S7a-2) : sous la démo, le bloc « Liste d'attente des inscriptions »
+  (`GET /api/admin/waitlist`, qui lève d'abord les comptes dont l'attente est
+  finie) dit l'état des inscriptions et la prochaine levée (« le 1er novembre
+  2026 (mois UTC) »), puis les comptes en attente dans l'ordre d'inscription
+  (nom, email, date). « Lever » (`POST /api/admin/waitlist/{id}/lift`, CSRF)
+  lève un compte : son code d'activation part par email, la liste se
+  recharge, un message le dit (« ada@example.org : levé, son code
+  d'activation part par email. ») ; un compte déjà levé répond `unchanged`.
+  « Tout lever (n) » (`POST /api/admin/waitlist/lift`) lève la liste dans
+  l'ordre, 200 comptes au plus par appel (« 2 comptes levés. », ou combien
+  restent). Les inscriptions restent fermées tant que le plafond le veut :
+  pour les rouvrir, l'administrateur relève `monthlyFreeUsd` (A8). Une API
+  sans cette route : une note « Liste d'attente indisponible », le reste des
+  réglages intact.
 
 ## Scénarios d'erreur
 
@@ -271,8 +288,16 @@ par exemple juste avant ou juste après une présentation.
   chaque requête : un changement s'applique à l'appel suivant, jamais à une
   réponse en cours. `GET /api/admin/demo-config` le rend dans `effective` et
   `sources`, avec `freeCreditsMonth` `{month, capUsd, spentUsd, reservedUsd,
-  remainingUsd, calls, refusals, exhausted}`, au mois UTC du serveur
-  (`gmdate`, jamais `CURDATE()`).
+  remainingUsd, calls, refusals, exhausted, signupsOpen, signupFloorUsd}`, au
+  mois UTC du serveur (`gmdate`, jamais `CURDATE()`).
+- **RG11** — La liste d'attente des inscriptions (S7a-2 ; `docs/contrats.md`
+  §13.1, UC-CPT-01 A4, A5, RG8, RG9) : `signupsOpen` est faux dès que
+  `monthlyFreeUsd` moins ce que le mois a dépensé est sous `signupFloorUsd`,
+  le pire cas du plus petit appel de l'Essayer ; une nouvelle inscription
+  attend alors, sans code. La liste se lève au 1er du mois UTC suivant, dans
+  l'ordre d'inscription, ou par l'administrateur (A9), seul `admin` (session
+  + CSRF) ; chaque levée envoie au compte son code et journalise
+  `waitlist_lifted {targetUserId}`, l'administrateur pour auteur.
 
 ## Données et RGPD
 
@@ -282,16 +307,18 @@ par exemple juste avant ou juste après une présentation.
 | Clé plateforme Anthropic | Environnement serveur uniquement ; exposée comme booléen |
 | Trace des modifications | `audit_events` : `demo_config_updated {fields}`, `demo_config_reset` |
 | Visiteurs de la démo | Quotas par seau d'IP haché (`rate_limits`), compteurs journaliers sans contenu (`llm_usage_daily`), grand livre du mois des crédits offerts sans contenu ni compte (`free_credit_monthly`, RG10) |
+| Inscriptions en liste d'attente | Montrées à l'administrateur : nom affiché, email, date de création et de mise en attente (`users.waitlisted_at`, UTC), rien de plus ; audit `waitlist_lifted {targetUserId}` (RG11) |
 
 ## Code sollicité
 
 | Couche | Élément | Rôle |
 |---|---|---|
-| Front | `web/src/views/admin/ReglagesSection.jsx` — `DemoSettings` | Interrupteur, formulaire, PUT partiel, badges d'origine, messages, état occupé |
+| Front | `web/src/views/admin/ReglagesSection.jsx` — `DemoSettings`, `FreeCreditsMonth`, `WaitlistBlock` | Interrupteur, formulaire, PUT partiel, badges d'origine, messages, état occupé ; grand livre et état des inscriptions ; liste d'attente, « Lever », « Tout lever » (A9) |
 | Front | `web/src/views/admin/ConfigSection.jsx` | Configuration serveur versionnée, secrets « configuré / absent » |
-| Front | `web/src/views/admin/admin-api.js` — `fetchDemoConfig`, `saveDemoConfig`, `resetDemoConfig`, `toggleDemo`, `fetchSettings` | Appels HTTP |
+| Front | `web/src/views/admin/admin-api.js` — `fetchDemoConfig`, `saveDemoConfig`, `resetDemoConfig`, `toggleDemo`, `fetchSettings`, `fetchWaitlist`, `liftWaitlisted`, `liftWaitlist` | Appels HTTP |
 | Front | `web/src/views/AdminView.jsx`, `web/src/api/client.js` | Garde de rôle, CSRF, erreurs typées |
-| API | `api/src/routes/admin.php` — `GET/PUT/DELETE /admin/demo-config`, `GET /admin/settings` | Orchestration, `400` corps illisible, mapping `AdminException` |
+| API | `api/src/routes/admin.php` — `GET/PUT/DELETE /admin/demo-config`, `GET /admin/settings`, `GET /admin/waitlist`, `POST /admin/waitlist/{id}/lift`, `POST /admin/waitlist/lift` | Orchestration, `400` corps illisible, mapping `AdminException` (404 « Compte introuvable ») |
+| Domaine | `api/src/Auth/Waitlist.php` — `overview`, `lift`, `liftAll`, `floorMicrousd`, `signupsOpen` | Liste d'attente (A9, RG11) |
 | Domaine | `api/src/Admin/DemoConfigService.php` — `read`, `update`, `reset` | Validation, fusion, audit |
 | Domaine | `api/src/Llm/DemoConfig.php` — `load`, `sortieMax` | Précédence, origine par champ, fail-safe ; un Haiku seulement (RG9) ; la sortie du modèle |
 | Domaine | `api/src/Llm/ModelLimits.php` — `sortieMax`, `estHaiku` | Sortie maximale de chaque modèle Claude, reconnaissance d'un Haiku |
@@ -300,7 +327,7 @@ par exemple juste avant ou juste après une présentation.
 | Domaine | `api/src/Middleware/RequireRole.php` | Garde `401 « Authentification requise »` / `403 « Rôle insuffisant »` (E1, E2) |
 | Domaine | `api/src/Middleware/CsrfMiddleware.php` | `403 « Jeton CSRF absent ou invalide »` (E5) |
 | Domaine | `api/src/Llm/UsageCounters.php` — `isExhausted`, `record` | Coupe-circuit journalier (`≥` plafond de tokens ou budget, A1) |
-| Domaine | `api/src/Llm/FreeCreditLedger.php` — `state`, `capMicrousd` | Grand livre du mois des crédits offerts, montré à l'administrateur (A8, RG10) |
+| Domaine | `api/src/Llm/FreeCreditLedger.php` — `state`, `capMicrousd`, `signupsOpen` | Grand livre du mois des crédits offerts, montré à l'administrateur (A8, RG10), et l'état des inscriptions (RG11) |
 | Domaine | `api/src/Llm/PowChallenge.php` | Défi de preuve de travail (`difficultyBits`, étape 6) |
 | Domaine | `api/src/Auth/RateLimiter.php` | Quota horaire par seau d'IP haché (`perIpPerHour`) |
 | Domaine | `api/src/Auth/Audit.php` | Journal `demo_config_updated` / `demo_config_reset` |
@@ -331,9 +358,11 @@ par exemple juste avant ou juste après une présentation.
 | UC-ADM-04-U24 | `DemoConfigService::update` (RG7) | Champ renvoyé à l'identique : surcharge « base » créée, audit `{fields}` quand même | idem |
 | UC-ADM-04-U28 | `DemoConfig::load` (RG9) | Un Haiku seulement : le premier Haiku des couches, sinon Haiku 5.5 ; un Sonnet ou un Opus d'une couche refusé et signalé | idem |
 | UC-ADM-04-U29 | `DemoConfig::sortieMax`, `DemoConfigService::update` (RG8) | La sortie est le maximum du modèle (128 000 pour Haiku 5.5, 64 000 pour Haiku 4.5) ; `maxTokensPerRequest`, en base ou en env, n'est plus lu et quitte la base au prochain enregistrement | idem |
-| UC-ADM-04-U30 | `DemoConfig::load`, `DemoConfigService::update`, `read` (RG10) | `monthlyFreeUsd` : 20 $ du fichier, `OFFERTS_MENSUEL_USD` par-dessus (une valeur non numérique ignorée), la base par-dessus tout ; de 0 à 1 000, un nombre ; `read($now)` rend le grand livre du mois UTC en dollars (dépensé, réservé, restant, appels, refus), un mois neuf le 1er à 0 h UTC | `api/tests/UseCases/Unit/UcAdm04ConfigurerDemoTest.php` |
+| UC-ADM-04-U30 | `DemoConfig::load`, `DemoConfigService::update`, `read` (RG10) | `monthlyFreeUsd` : 20 $ du fichier, `OFFERTS_MENSUEL_USD` par-dessus (une valeur non numérique ignorée), la base par-dessus tout ; de 0 à 1 000, un nombre ; `read($now)` rend le grand livre du mois UTC en dollars (dépensé, réservé, restant, appels, refus, inscriptions ouvertes et leur seuil), un mois neuf le 1er à 0 h UTC | `api/tests/UseCases/Unit/UcAdm04ConfigurerDemoTest.php` |
 | UC-ADM-04-U13 | `fetchDemoConfig`, `saveDemoConfig`, `resetDemoConfig` | URL, méthodes, corps, CSRF sur mutations | `web/test/usecases/unit/uc-adm-04-configurer-demo.test.jsx` |
 | UC-ADM-04-U14 | `toggleDemo` | `PUT api/admin/demo-config` (méthode et URL vérifiées) avec `{enabled}` booléen seul | idem |
+| UC-ADM-04-U32 | `fetchWaitlist`, `liftWaitlisted`, `liftWaitlist` (A9) | `GET api/admin/waitlist` normalisé (réponse partielle : inscriptions ouvertes, liste vide) ; POST `…/{id}/lift` et `…/lift` avec le jeton CSRF | `web/test/usecases/unit/uc-adm-04-configurer-demo.test.jsx` |
+| UC-ADM-04-U33 | `ReglagesSection` — `FreeCreditsMonth`, `WaitlistBlock` (A9, RG11) | « Inscriptions : en liste d'attente » et le seuil ; liste dans l'ordre, prochaine levée ; « Lever » puis « Tout lever » rechargent et le disent ; API sans la route : une note, aucune alerte | idem |
 | UC-ADM-04-U31 | `ReglagesSection` (A8, RG10) | Champ « Crédits offerts / mois (USD) » (valeur, bornes 0 – 1000, pas de 0,01), PUT partiel `{monthlyFreeUsd: 0}` ; la ligne du grand livre du mois, « Épuisés » au plafond ; une API qui ne le donne pas ne montre ni le champ ni la ligne | `web/test/usecases/unit/uc-adm-04-configurer-demo.test.jsx` |
 | UC-ADM-04-U15 | `ReglagesSection` | PUT partiel des seuls champs modifiés, nombres | idem |
 | UC-ADM-04-U16 | `ReglagesSection` | Modèle hors liste → « autre… » ; rien à enregistrer | idem |
@@ -363,7 +392,8 @@ par exemple juste avant ou juste après une présentation.
 | UC-ADM-04-F21 | A1 | API | `dailyGlobalTokens` 10 000 : 9 999 consommés → reste ; 10 000 → `remainingToday` faux, `503` | idem |
 | UC-ADM-04-F22 | A4 | API | `GET /api/admin/settings` : secrets `configured` sans valeur, clé absente du corps ; non-admin → `403` | idem |
 | UC-ADM-04-F23 | A7, RG9 | API | Le Sonnet 5 du `.env` de juillet est refusé et nommé, la démo appelle Haiku 5.5 avec toute sa sortie ; un `PUT` Sonnet ou Opus → `422`, rien d'écrit | idem |
-| UC-ADM-04-F24 | A8, RG10 | API | Plafond mensuel : 20 $ (fichier), `OFFERTS_MENSUEL_USD` (env), `PUT {monthlyFreeUsd: 0}` (base) → l'Essayer et le tuteur répondent aussitôt `503` « Les crédits offerts de ce mois sont épuisés ; revenez le 1er … » (`offerts_epuises`), `remainingThisMonth` faux ; `GET` montre le grand livre (1 appel, 2 refus, épuisé) ; 1 000,01, −1, texte, `null` → `422` ; Réinitialiser → l'environnement | `api/tests/UseCases/Functional/UcAdm04ConfigurerDemoTest.php` |
+| UC-ADM-04-F24 | A8, RG10 | API | Plafond mensuel : 20 $ (fichier), `OFFERTS_MENSUEL_USD` (env), `PUT {monthlyFreeUsd: 0}` (base) → l'Essayer et le tuteur répondent aussitôt `503` « Les crédits offerts de ce mois sont épuisés ; revenez le 1er … » (`offerts_epuises`), `remainingThisMonth` faux ; `GET` montre le grand livre (1 appel, 2 refus, épuisé, inscriptions en liste d'attente) ; 1 000,01, −1, texte, `null` → `422` ; Réinitialiser → l'environnement | `api/tests/UseCases/Functional/UcAdm04ConfigurerDemoTest.php` |
+| UC-ADM-04-F25 | A9, RG11 | API | Cap à 0 → trois inscriptions en attente ; `GET /api/admin/waitlist` (401 visiteur, 403 apprenant) : ordre, champs, UTC, `signupsOpen` faux ; sans CSRF 403 ; « Lever » → code envoyé, audit d'auteur l'admin, puis `unchanged` ; inconnu 404 ; « Tout lever » → `{lifted: 2, remaining: 0}` dans l'ordre ; le compte levé s'active, la nouvelle inscription attend | `api/tests/UseCases/Functional/UcAdm04ConfigurerDemoTest.php` |
 | UC-ADM-04-F11 | Nominal (1-4) | IHM | `<App/>` : interrupteur → PUT `{enabled:false}` + CSRF, message, badge | `web/test/usecases/functional/uc-adm-04-configurer-demo.test.jsx` |
 | UC-ADM-04-F12 | Nominal (5) | IHM | Modèle (un Haiku) + entrée max → PUT partiel, message, badges « réglage base », sortie du modèle affichée | idem |
 | UC-ADM-04-F13 | A2 | IHM | Réinitialiser → DELETE, message, retour au fichier | idem |
@@ -373,6 +403,7 @@ par exemple juste avant ou juste après une présentation.
 | UC-ADM-04-F17 | A4 | IHM | `#/admin/config` : secrets « configuré / absent », défaut affiché | idem |
 | UC-ADM-04-F18 | E1, E2 | IHM | Visiteur (« Vous n'êtes pas connecté ») puis compte non admin : espace réservé, aucune lecture | idem |
 | UC-ADM-04-F19 | A6, A5 | IHM | Modèle hors liste → « autre… » + valeur ; Enregistrer sans modification → « Aucune modification à enregistrer. », aucun PUT | idem |
+| UC-ADM-04-F26 | A9 | IHM | `<App/>` `#/admin/reglages` : liste dans l'ordre, « Lever » (POST + CSRF) retire le compte et le dit, « Tout lever » vide la liste, la démo reste réglable | idem |
 
 ### Tests existants liés (non-régression)
 

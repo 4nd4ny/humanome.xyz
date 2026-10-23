@@ -2727,7 +2727,69 @@ plafond`) ; vrai, il ne promet pas qu'un appel de plus tienne.
 `OFFERTS_MENSUEL_USD`, puis `api/config/demo.php`, puis 20. `0` ferme tout ce
 qui est offert. `GET /api/admin/demo-config` le rend dans `effective` et
 `sources`, et ajoute `freeCreditsMonth` : `{month, capUsd, spentUsd,
-reservedUsd, remainingUsd, calls, refusals, exhausted}`.
+reservedUsd, remainingUsd, calls, refusals, exhausted, signupsOpen,
+signupFloorUsd}` (les deux derniers : la liste d'attente, ci-dessous).
 
-**Préparé pour le lot suivant** (S7a-2, la liste d'attente) :
-`users.waitlisted_at`, nul pour tout compte, dans la même migration 034.
+### 13.1 La liste d'attente des inscriptions (S7a-2)
+
+« Après, mettre les inscriptions sur liste d'attente. » Une colonne,
+`users.waitlisted_at` (migration 034) : la date (UTC) depuis laquelle un
+compte attend, nulle pour tout autre compte. Code : `Auth\Waitlist`,
+`Auth\ActivationMail`, `FreeCreditLedger::signupsOpen`.
+
+**Le critère** (décidé une fois, à l'inscription) : les inscriptions restent
+ouvertes tant que le plafond moins ce que le mois a **dépensé** couvre le plus
+petit appel de l'Essayer — son pire cas à l'entrée nulle, le surcoût de la
+requête (1 024 jetons) et toute la sortie du modèle, au tarif de la grille,
+comme sa réserve (`Waitlist::floorMicrousd`, `signupFloorUsd`). Sous ce seuil,
+aucun appel de l'Essayer ne peut plus passer, même sans appel en vol : une
+nouvelle inscription attend. Les réserves des appels en cours ne comptent pas
+(une réserve réglée bon marché un instant après aurait mis quelqu'un en attente
+pour rien) ; un plafond de 0 met toute inscription en attente. Ce n'est pas
+`exhausted` (`spent + reserved >= plafond`), que des pires cas de quelques
+cents (6 pour Haiku 5.5) ou dizaines de cents n'atteignent presque jamais : sous le seuil, le statut
+public peut dire `remainingThisMonth: true` alors que les inscriptions
+attendent. Le tuteur, au pire cas plus petit (600 jetons de sortie), peut
+encore répondre à quelques questions dans cette bande.
+
+**L'inscription au plafond** : `POST /api/auth/register` crée le compte
+(rôle `apprenant`, audit `account_created` puis `account_waitlisted`), pose
+`waitlisted_at` et n'envoie **aucun code** : un courriel « votre inscription
+est en liste d'attente » le dit, et la réponse aussi :
+
+```json
+{"status": "waitlisted", "email": "ada@example.org",
+ "message": "Les crédits offerts de ce mois sont épuisés : votre inscription est en liste d'attente. Vous recevrez votre code d'activation par email le 1er novembre (plus tôt si l'administrateur lève la liste)."}
+```
+
+(`201`, comme `pending_activation`, sans session). Tant qu'il attend, le compte
+ne se connecte pas : `POST /api/auth/login`, bon mot de passe, répond `403
+{error: <le même message>, code: "waitlisted", email}`, testé avant
+`email_not_verified` ; `POST /api/auth/resend` garde sa réponse générique sans
+rien envoyer ; `POST /api/auth/activate` répond le refus générique. Les
+comptes existants ne sont jamais touchés.
+
+**La levée** : au 1er du mois suivant (UTC, le mois du grand livre), dans
+l'ordre d'inscription (`id`), par lots de 50 : à la première requête
+d'authentification du mois (`register`, `login`, `resend` — pas un
+intergiciel global), au tick (`POST /api/admin/worker-tick` et
+`scripts/worker.php`, qui ajoutent `listeAttenteLevees: n` à leurs compteurs
+quand des comptes sortent de la liste) et quand l'administrateur ouvre la
+liste. La connexion ou le renvoi d'un compte dont l'attente est finie le lève
+lui-même. Un compte levé devient un compte non activé ordinaire : son code
+part par courriel, qui rappelle qu'une fois les 30 minutes passées il suffit de
+se connecter puis de « Renvoyer le code ». Chaque levée est un `UPDATE …
+WHERE waitlisted_at IS NOT NULL` : deux levées simultanées n'envoient qu'un
+courriel. Audit `waitlist_lifted {targetUserId}`, d'auteur l'administrateur,
+ou nul pour la levée du mois.
+
+**L'administration** (session `admin` + CSRF, `docs/administration.md`) :
+
+| Méthode | Route | Réponse |
+|---|---|---|
+| `GET` | `/api/admin/waitlist` | Lève d'abord les comptes dus, puis `{month, signupsOpen, nextLift: "AAAA-MM-01", total, accounts: [{id, email, displayName, createdAt, waitlistedAt}]}` (200 comptes au plus, dans l'ordre ; `waitlistedAt` en UTC, suffixe `Z`) |
+| `POST` | `/api/admin/waitlist/{id}/lift` | `{id, status: "lifted" \| "unchanged"}` ; `404 « Compte introuvable »` |
+| `POST` | `/api/admin/waitlist/lift` | « Tout lever », dans l'ordre, 200 comptes au plus par appel : `{lifted, remaining}` |
+
+`GET /api/admin/monitoring` compte la liste dans `utilisateurs.enListeAttente`
+(ces comptes comptent aussi dans `nonActives`).

@@ -34,13 +34,13 @@ exécution du service/contrat, **f** = intérêt légitime.
 
 | Élément | Détail |
 |---|---|
-| Finalité | Confirmer que l'adresse email appartient bien à la personne qui s'inscrit (un compte n'est activé qu'après confirmation d'un code à 4 chiffres envoyé par email). |
+| Finalité | Confirmer que l'adresse email appartient bien à la personne qui s'inscrit (un compte n'est activé qu'après confirmation d'un code à 4 chiffres envoyé par email). Une inscription faite une fois les crédits offerts du mois épuisés attend en liste d'attente (sprint 7) : un email le lui dit, sans code, et son code part à la levée (le 1er du mois suivant, ou par l'administrateur). |
 | Personnes concernées | Toute personne créant un compte. |
-| Données | Email (destinataire du message), empreinte du code de confirmation (hash — jamais le code en clair en base), date d'expiration, compteur d'essais, date de vérification. |
+| Données | Email (destinataire du message), empreinte du code de confirmation (hash — jamais le code en clair en base), date d'expiration, compteur d'essais, date de vérification ; pour une inscription en liste d'attente, la date de sa mise en attente (UTC), rien de plus que ce que garde une inscription. |
 | Base légale | **b** (mesure précontractuelle : sécuriser la création du compte demandé). |
-| Durée | Code : 30 minutes (expiration), effacé dès l'activation. `email_verified_at` : durée de vie du compte. |
+| Durée | Code : 30 minutes (expiration), effacé dès l'activation. `email_verified_at` : durée de vie du compte. `waitlisted_at` : jusqu'à la levée de la liste, qui l'efface. |
 | Destinataires | Transport email : `mail()` de l'hébergeur OVH (l'email transite par l'infrastructure OVH, sous-traitant d'hébergement déjà au registre). Aucun service d'emailing tiers. |
-| Tables | Colonnes `users.email_verified_at`, `users.verification_code_hash`, `users.verification_expires_at`, `users.verification_attempts` (migration 018). |
+| Tables | Colonnes `users.email_verified_at`, `users.verification_code_hash`, `users.verification_expires_at`, `users.verification_attempts` (migration 018) ; `users.waitlisted_at` (migration 034). L'audit garde `account_waitlisted` (sans détail) et `waitlist_lifted` (`{targetUserId}`), anonymisés à la purge comme les autres événements. |
 | Sort à la suppression | Colonnes de la ligne `users` : purge en même temps que le compte (aucune table séparée). |
 
 ## 2. Portfolios (journal réflexif)

@@ -7,6 +7,7 @@ namespace Humanome\Tests\UseCases\Unit;
 use Humanome\Admin\AdminException;
 use Humanome\Admin\DemoConfigService;
 use Humanome\Admin\PlatformStatus;
+use Humanome\Auth\Waitlist;
 use Humanome\Db;
 use Humanome\Llm\DemoConfig;
 use Humanome\Llm\FreeCreditLedger;
@@ -515,11 +516,17 @@ final class UcAdm04ConfigurerDemoTest extends TestCase
         $ledger->settle(2_500_000, 1_234_567, $now);
         self::assertTrue($ledger->reserve(320_065, 12_500_000, $now));
         self::assertFalse($ledger->reserve(12_000_000, 12_500_000, $now));
+        // S7a-2 : les inscriptions restent ouvertes tant que le plafond moins le
+        // dépensé couvre le plus petit appel de l'Essayer (signupFloorUsd).
+        $floorUsd = round((new Waitlist(self::$pdo))->floorMicrousd() / 1_000_000, 6);
+        self::assertGreaterThan(0.0, $floorUsd);
         self::assertSame(['month' => '2026-10', 'capUsd' => 12.5, 'spentUsd' => 1.234567, 'reservedUsd' => 0.320065,
-            'remainingUsd' => 10.945368, 'calls' => 1, 'refusals' => 1, 'exhausted' => false],
+            'remainingUsd' => 10.945368, 'calls' => 1, 'refusals' => 1, 'exhausted' => false,
+            'signupsOpen' => true, 'signupFloorUsd' => $floorUsd],
             self::service()->read($now)['freeCreditsMonth']);
         self::assertSame(['month' => '2026-11', 'capUsd' => 12.5, 'spentUsd' => 0.0, 'reservedUsd' => 0.0,
-            'remainingUsd' => 12.5, 'calls' => 0, 'refusals' => 0, 'exhausted' => false],
+            'remainingUsd' => 12.5, 'calls' => 0, 'refusals' => 0, 'exhausted' => false,
+            'signupsOpen' => true, 'signupFloorUsd' => $floorUsd],
             self::service()->read($now + 1)['freeCreditsMonth'], 'le 1er à 0 h UTC, un mois neuf');
     }
 }

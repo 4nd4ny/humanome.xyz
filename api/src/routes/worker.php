@@ -17,11 +17,13 @@ declare(strict_types=1);
  *   still opens it (ADR-008 trust model). After its slice, once a UTC day,
  *   it reads Anthropic's prices into the grid (Twin9\TarifsAnthropic) where
  *   the platform's key is set: the trigger's minute brings the daily update
- *   (2026-10-21), with no gesture of its own.
+ *   (2026-10-21), with no gesture of its own. Then, on the 1st of a month, it
+ *   lifts a batch of the sign-ups' waiting list (sprint 7, Auth\Waitlist).
  *
  * Logging: counters only, never portfolio or document content (§6.5).
  */
 
+use Humanome\Auth\Waitlist;
 use Humanome\Db;
 use Humanome\Env;
 use Humanome\Etablissement\CohorteRepository;
@@ -355,6 +357,16 @@ return function (App $app): void {
         $tarifs = TarifsAnthropic::releverApresTranche(Db::get());
         if ($tarifs !== null) {
             $counters['tarifs'] = $tarifs;
+        }
+        // The waiting list of the sign-ups, on the 1st of the month (sprint 7,
+        // Auth\Waitlist): a batch, in sign-up order. Its failure never fails the tick.
+        try {
+            $levees = (new Waitlist(Db::get()))->liftDue();
+            if ($levees > 0) {
+                $counters['listeAttenteLevees'] = $levees;
+            }
+        } catch (\Throwable $e) {
+            error_log('[worker-tick] liste d\'attente non levée : ' . $e::class);
         }
         error_log('[worker-tick] ' . json_encode($counters)); // counters only
 

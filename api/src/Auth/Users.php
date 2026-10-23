@@ -36,7 +36,8 @@ final class Users
     {
         $stmt = $pdo->prepare(
             'SELECT id, email, password_hash, display_name, created_at, avatar_mime,
-                    email_verified_at, verification_code_hash, verification_expires_at, verification_attempts
+                    email_verified_at, verification_code_hash, verification_expires_at, verification_attempts,
+                    waitlisted_at
              FROM users WHERE email = ? AND deleted_at IS NULL'
         );
         $stmt->execute([$email]);
@@ -50,7 +51,8 @@ final class Users
     {
         $stmt = $pdo->prepare(
             'SELECT id, email, password_hash, display_name, created_at, avatar_mime,
-                    email_verified_at, verification_code_hash, verification_expires_at, verification_attempts
+                    email_verified_at, verification_code_hash, verification_expires_at, verification_attempts,
+                    waitlisted_at
              FROM users WHERE id = ? AND deleted_at IS NULL'
         );
         $stmt->execute([$id]);

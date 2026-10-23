@@ -24,6 +24,9 @@ declare(strict_types=1);
  *                 GET  /admin/demo-config
  *                 PUT  /admin/demo-config {champs partiels}
  *                 DELETE /admin/demo-config              (reset -> env/fichier)
+ *                 GET  /admin/waitlist                   (liste d'attente, sprint 7)
+ *                 POST /admin/waitlist/{id}/lift         (lever un compte)
+ *                 POST /admin/waitlist/lift              (tout lever, dans l'ordre)
  *
  * `admin` is NOT an implicit super-role elsewhere (docs/autorisations.md):
  * these routes are the ONLY admin surface.
@@ -35,6 +38,7 @@ use Humanome\Admin\GoldenRepository;
 use Humanome\Admin\Monitoring;
 use Humanome\Admin\PlatformStatus;
 use Humanome\Admin\UserDirectory;
+use Humanome\Auth\Waitlist;
 use Humanome\Db;
 use Humanome\Middleware\RequireRole;
 use Psr\Http\Message\ResponseInterface as Response;
@@ -233,5 +237,35 @@ return function (App $app): void {
         );
 
         return $json($response, $result);
+    }))->add($admin);
+
+    // ==================================================================
+    // 4. Liste d'attente des inscriptions (sprint 7, S7a-2 ; Auth\Waitlist)
+    // ==================================================================
+
+    // GET /api/admin/waitlist — the due accounts lifted first (a request of
+    // the month), then {month, signupsOpen, nextLift, total, accounts}.
+    $app->get('/admin/waitlist', $wrap(function (Request $request, Response $response) use ($json): Response {
+        return $json($response, (new Waitlist(Db::get()))->overview());
+    }))->add($admin);
+
+    // POST /api/admin/waitlist/lift — « Tout lever » : in sign-up order,
+    // Waitlist::ADMIN_BATCH accounts at most per call -> {lifted, remaining}.
+    $app->post('/admin/waitlist/lift', $wrap(function (Request $request, Response $response) use ($json): Response {
+        return $json($response, (new Waitlist(Db::get()))->liftAll((int) $request->getAttribute('userId')));
+    }))->add($admin);
+
+    // POST /api/admin/waitlist/{id}/lift — one account: its code leaves by
+    // mail -> {id, status: lifted|unchanged}; 404 for an unknown account.
+    $app->post('/admin/waitlist/{id:[0-9]+}/lift', $wrap(function (Request $request, Response $response, array $args) use ($json): Response {
+        $id = (int) $args['id'];
+        $exists = Db::get()->prepare('SELECT 1 FROM users WHERE id = ? AND deleted_at IS NULL');
+        $exists->execute([$id]);
+        if ($exists->fetchColumn() === false) {
+            throw new AdminException('Compte introuvable', 404);
+        }
+        $lifted = (new Waitlist(Db::get()))->lift($id, (int) $request->getAttribute('userId'));
+
+        return $json($response, ['id' => $id, 'status' => $lifted ? 'lifted' : 'unchanged']);
     }))->add($admin);
 };

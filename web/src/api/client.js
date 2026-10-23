@@ -220,7 +220,9 @@ export async function login({ email, password }, options) {
 
 /**
  * Inscription (D5) : ne crée PAS de session. Réponse « pending_activation » ;
- * l'activation par code (activate) ouvre la session ensuite.
+ * l'activation par code (activate) ouvre la session ensuite. Crédits offerts
+ * du mois épuisés (sprint 7) : « waitlisted », le compte attend en liste
+ * d'attente, sans code (son message dit quand il arrivera).
  * @returns {Promise<object>} {status, email, message}
  */
 export async function register({ email, emailConfirm, password, displayName }, options) {

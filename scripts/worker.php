@@ -21,11 +21,13 @@ declare(strict_types=1);
  *
  * After the slice, once a UTC day where ANTHROPIC_API_KEY is set, it reads
  * Anthropic's prices into the grid, as the route does (Twin9\TarifsAnthropic,
- * 2026-10-22).
+ * 2026-10-22). Then it lifts a batch of the sign-ups' waiting list once a new
+ * UTC month has begun (sprint 7, Auth\Waitlist), as the route does too.
  *
  * Output: the tick counters as one JSON line — counters only, never any
  * portfolio or document content (cahier §6.5) —, with `tarifs` (ok, echec)
- * when the prices were read.
+ * when the prices were read and `listeAttenteLevees` when accounts left the
+ * waiting list.
  */
 
 $root = dirname(__DIR__);
@@ -77,6 +79,17 @@ try {
 $tarifs = \Humanome\Twin9\TarifsAnthropic::releverApresTranche(\Humanome\Db::get());
 if ($tarifs !== null) {
     $counters['tarifs'] = $tarifs;
+}
+
+// The sign-ups' waiting list, on the 1st of the month (sprint 7): a batch, in
+// sign-up order; its failure never fails the tick either.
+try {
+    $levees = (new \Humanome\Auth\Waitlist(\Humanome\Db::get()))->liftDue();
+    if ($levees > 0) {
+        $counters['listeAttenteLevees'] = $levees;
+    }
+} catch (\Throwable $e) {
+    fwrite(STDERR, '[worker] liste d\'attente non levée : ' . $e::class . "\n");
 }
 
 echo json_encode($counters, JSON_THROW_ON_ERROR), "\n";

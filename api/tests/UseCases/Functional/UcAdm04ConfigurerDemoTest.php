@@ -4,6 +4,7 @@ declare(strict_types=1);
 
 namespace Humanome\Tests\UseCases\Functional;
 
+use Humanome\Auth\Waitlist;
 use Humanome\Bootstrap;
 use Humanome\Db;
 use Humanome\DbSessionHandler;
@@ -478,8 +479,10 @@ final class UcAdm04ConfigurerDemoTest extends AdminTestCase
         // Des nombres JSON : 20.0 se lit 20 (assertEquals).
         $read = self::json($this->as_($this->admin, 'GET', '/api/admin/demo-config'));
         self::assertEquals([20.0, 'fichier'], [$read['effective']['monthlyFreeUsd'], $read['sources']['monthlyFreeUsd']]);
+        $floorUsd = round((new Waitlist(self::$pdo))->floorMicrousd() / 1_000_000, 6);
         self::assertEquals(['month' => gmdate('Y-m'), 'capUsd' => 20.0, 'spentUsd' => 0.0, 'reservedUsd' => 0.0,
-            'remainingUsd' => 20.0, 'calls' => 0, 'refusals' => 0, 'exhausted' => false], $read['freeCreditsMonth']);
+            'remainingUsd' => 20.0, 'calls' => 0, 'refusals' => 0, 'exhausted' => false,
+            'signupsOpen' => true, 'signupFloorUsd' => $floorUsd], $read['freeCreditsMonth']);
 
         $this->put(['powDifficultyBits' => 8]);
         self::assertSame(200, $this->askDemo('Une question offerte.')->getStatusCode());
@@ -501,8 +504,8 @@ final class UcAdm04ConfigurerDemoTest extends AdminTestCase
         self::assertSame(['enabled' => true, 'remainingToday' => true, 'remainingThisMonth' => false],
             self::json($this->visitor('GET', '/api/llm/status')));
         $month = self::json($this->as_($this->admin, 'GET', '/api/admin/demo-config'))['freeCreditsMonth'];
-        self::assertEquals([0.0, 0.0, 0.0, 1, 2, true], [$month['capUsd'], $month['reservedUsd'], $month['remainingUsd'],
-            $month['calls'], $month['refusals'], $month['exhausted']]);
+        self::assertEquals([0.0, 0.0, 0.0, 1, 2, true, false], [$month['capUsd'], $month['reservedUsd'], $month['remainingUsd'],
+            $month['calls'], $month['refusals'], $month['exhausted'], $month['signupsOpen']], 'à 0, toute inscription attend');
 
         foreach ([1000.01, -1, 'vingt', null] as $value) {
             self::assertSame(422, $this->put(['monthlyFreeUsd' => $value])->getStatusCode(), json_encode($value));
@@ -510,5 +513,67 @@ final class UcAdm04ConfigurerDemoTest extends AdminTestCase
         $this->as_($this->admin, 'DELETE', '/api/admin/demo-config');
         $reset = self::json($this->as_($this->admin, 'GET', '/api/admin/demo-config'));
         self::assertEquals([5.0, 'env'], [$reset['effective']['monthlyFreeUsd'], $reset['sources']['monthlyFreeUsd']]);
+    }
+
+    #[TestDox('UC-ADM-04-F25 — A9, RG11 : la liste d’attente des inscriptions — GET /api/admin/waitlist (admin seul) la donne dans l’ordre d’inscription, avec l’état des inscriptions et la prochaine levée ; « Lever » un compte envoie son code (audit waitlist_lifted, auteur l’administrateur), une seconde fois rien ; compte inconnu 404 ; « Tout lever » lève le reste dans l’ordre ; CSRF exigé ; le compte levé s’active')]
+    public function testF25TheWaitingListOfTheSignUps(): void
+    {
+        $apprenant = $this->registerAs('apprenant@example.org', 'Apprenant');
+        self::assertTrue(self::json($this->as_($this->admin, 'GET', '/api/admin/demo-config'))['freeCreditsMonth']['signupsOpen']);
+        $this->put(['monthlyFreeUsd' => 0]); // l'administrateur ferme tout ce qui est offert
+        foreach (['ada', 'bob', 'cid'] as $nom) {
+            self::assertSame('waitlisted', self::json($this->registerPending("{$nom}@example.org"))['status']);
+        }
+        $ids = array_map(static function (string $nom): int {
+            $stmt = self::$pdo->prepare('SELECT id FROM users WHERE email = ?');
+            $stmt->execute(["{$nom}@example.org"]);
+
+            return (int) $stmt->fetchColumn();
+        }, ['ada', 'bob', 'cid']);
+        $this->mailer->clear();
+
+        $this->cookieSid = null;
+        self::assertSame(401, $this->request('GET', '/api/admin/waitlist')->getStatusCode());
+        self::assertSame(403, $this->as_($apprenant, 'GET', '/api/admin/waitlist')->getStatusCode());
+        self::assertSame(403, $this->as_($apprenant, 'POST', '/api/admin/waitlist/lift')->getStatusCode());
+
+        $list = self::json($this->as_($this->admin, 'GET', '/api/admin/waitlist'));
+        self::assertSame([gmdate('Y-m'), false, Waitlist::nextLift(), 3],
+            [$list['month'], $list['signupsOpen'], $list['nextLift'], $list['total']]);
+        self::assertSame(['ada@example.org', 'bob@example.org', 'cid@example.org'], array_column($list['accounts'], 'email'));
+        self::assertSame(['id', 'email', 'displayName', 'createdAt', 'waitlistedAt'], array_keys($list['accounts'][0]));
+        self::assertMatchesRegularExpression('/^\d{4}-\d\d-\d\dT\d\d:\d\d:\d\dZ$/', $list['accounts'][0]['waitlistedAt'], 'UTC, dit');
+        self::assertFalse(self::json($this->as_($this->admin, 'GET', '/api/admin/demo-config'))['freeCreditsMonth']['signupsOpen']);
+
+        // Sans jeton CSRF : refusé, rien n'est levé.
+        $this->cookieSid = $this->admin['sid'];
+        self::assertSame(403, $this->request('POST', '/api/admin/waitlist/' . $ids[1] . '/lift')->getStatusCode());
+        self::assertSame([], $this->mailer->sent);
+
+        // Lever Bob, seul : son code part, l'audit nomme l'administrateur.
+        $lift = $this->as_($this->admin, 'POST', '/api/admin/waitlist/' . $ids[1] . '/lift');
+        self::assertSame([200, ['id' => $ids[1], 'status' => 'lifted']], [$lift->getStatusCode(), self::json($lift)]);
+        self::assertSame(['bob@example.org'], array_column($this->mailer->sent, 'to'));
+        $bobCode = $this->lastCode();
+        self::assertSame(['userId' => $this->admin['id'], 'details' => ['targetUserId' => $ids[1]]], self::lastAudit('waitlist_lifted'));
+        self::assertSame(['id' => $ids[1], 'status' => 'unchanged'],
+            self::json($this->as_($this->admin, 'POST', '/api/admin/waitlist/' . $ids[1] . '/lift')), 'déjà levé');
+        self::assertSame(['id' => $apprenant['id'], 'status' => 'unchanged'],
+            self::json($this->as_($this->admin, 'POST', '/api/admin/waitlist/' . $apprenant['id'] . '/lift')), 'jamais en attente');
+        $unknown = $this->as_($this->admin, 'POST', '/api/admin/waitlist/999999/lift');
+        self::assertSame([404, ['error' => 'Compte introuvable']], [$unknown->getStatusCode(), self::json($unknown)]);
+        self::assertCount(1, $this->mailer->sent);
+
+        // Tout lever : Ada puis Cid, dans l'ordre d'inscription.
+        $all = $this->as_($this->admin, 'POST', '/api/admin/waitlist/lift');
+        self::assertSame([200, ['lifted' => 2, 'remaining' => 0]], [$all->getStatusCode(), self::json($all)]);
+        self::assertSame(['bob@example.org', 'ada@example.org', 'cid@example.org'], array_column($this->mailer->sent, 'to'));
+        self::assertSame(['total' => 0, 'accounts' => []],
+            array_intersect_key(self::json($this->as_($this->admin, 'GET', '/api/admin/waitlist')), ['total' => 0, 'accounts' => 0]));
+
+        // Levé, Bob s'active avec son code (les inscriptions, elles, restent fermées).
+        $this->cookieSid = null;
+        self::assertSame(200, $this->activate('bob@example.org', $bobCode)->getStatusCode());
+        self::assertSame('waitlisted', self::json($this->registerPending('dan@example.org'))['status']);
     }
 }

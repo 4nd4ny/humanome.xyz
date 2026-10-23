@@ -5,6 +5,7 @@ declare(strict_types=1);
 namespace Humanome\Admin;
 
 use Humanome\Auth\Audit;
+use Humanome\Auth\Waitlist;
 use Humanome\Env;
 use Humanome\Llm\DemoConfig;
 use Humanome\Llm\FreeCreditLedger;
@@ -34,7 +35,8 @@ use PDO;
  *
  * The monthly cap of the offered credits (monthlyFreeUsd, sprint 7) is
  * edited here too: it bounds the demo's calls and the tutor's together, and
- * read() shows the month's ledger beside it (FreeCreditLedger).
+ * read() shows the month's ledger beside it (FreeCreditLedger), with whether
+ * a new sign-up is still taken or waitlisted (S7a-2, Auth\Waitlist).
  */
 final class DemoConfigService
 {
@@ -102,20 +104,26 @@ final class DemoConfigService
             'allowedModels' => self::ALLOWED_MODELS,
             // Boolean only — the key value NEVER leaves the environment.
             'apiKeyConfigured' => Env::get('ANTHROPIC_API_KEY') !== '',
-            'freeCreditsMonth' => $this->freeCreditsMonth($c->monthlyFreeUsd, $now),
+            'freeCreditsMonth' => $this->freeCreditsMonth($c, $now),
         ];
     }
 
     /**
      * The month's ledger of the offered credits, in USD: what was spent, what
      * the calls in flight hold, what is left under the cap, the calls and
-     * the refusals. The UTC month (FreeCreditLedger::month).
+     * the refusals. The UTC month (FreeCreditLedger::month). signupsOpen: a
+     * new sign-up is taken (false: waitlisted), as long as the cap less what
+     * was spent covers signupFloorUsd, the smallest worst case of an Essayer
+     * call (Waitlist::floorMicrousd).
      *
      * @return array<string, mixed>
      */
-    private function freeCreditsMonth(float $capUsd, ?int $now): array
+    private function freeCreditsMonth(DemoConfig $c, ?int $now): array
     {
-        $state = (new FreeCreditLedger($this->pdo))->state(FreeCreditLedger::capMicrousd($capUsd), $now);
+        $ledger = new FreeCreditLedger($this->pdo);
+        $cap = FreeCreditLedger::capMicrousd($c->monthlyFreeUsd);
+        $state = $ledger->state($cap, $now);
+        $floor = (new Waitlist($this->pdo))->floorMicrousd($c);
         $usd = static fn (int $microusd): float => round($microusd / 1_000_000, 6);
 
         return [
@@ -127,6 +135,8 @@ final class DemoConfigService
             'calls' => $state['calls'],
             'refusals' => $state['refusals'],
             'exhausted' => $state['exhausted'],
+            'signupsOpen' => $ledger->signupsOpen($cap, $floor, $now),
+            'signupFloorUsd' => $usd($floor),
         ];
     }
 

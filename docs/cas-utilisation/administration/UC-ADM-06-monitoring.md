@@ -64,7 +64,8 @@ onglet « Monitoring »).
    chargement échoue (E3).
 4. L'IHM affiche sept tuiles : connectés maintenant (comptes distincts actifs
    depuis moins de 15 minutes, plus les sessions anonymes), comptes (+ nouveaux
-   sur la période, non activés), cartographies (total et détail journée /
+   sur la période, non activés, « dont n en liste d'attente » quand des
+   inscriptions attendent, sprint 7), cartographies (total et détail journée /
    merge — les cartographies `twin9` en sont exclues, AN-2), partages
    actifs (+ consultations), crédits en circulation, dépense LLM de la période
    (démo + tuteur + Twin9), connexions (+ échecs).
@@ -132,6 +133,11 @@ onglet « Monitoring »).
   `ACTIVE_WINDOW_SECONDS` (900 s) ; comptes distincts, sessions anonymes
   comptées à part. Les comptes supprimés sont exclus des totaux et de la
   répartition par rôle.
+- **RG7** — Liste d'attente (sprint 7, S7a-2) : `utilisateurs.enListeAttente`
+  compte les inscriptions en attente (`waitlisted_at` posé, compte non
+  supprimé) ; jamais activées, elles comptent aussi dans `nonActives`. Le
+  monitoring ne fait que les compter : la liste et sa levée sont dans
+  « Réglages » (UC-ADM-04, A9), le grand livre du mois aussi (A8).
 - **RG3** — Partage actif = non révoqué et non expiré ; consultations =
   événements `share_consulted` (période et total).
 - **RG4** — Finances en micro-USD signés : recharge positive, débit et
@@ -190,6 +196,7 @@ onglet « Monitoring »).
 | UC-ADM-06-U09 | `LoginJournal` | `{pays, reseau}` sans IP, IP invalide → réseau `null`, purge > 365 j (J-364 conservé, J-366 purgé) (RG5) | idem |
 | UC-ADM-06-U10 | `CountryResolver` | MMDB absente (vide, inexistante, relative) → `null` ; couture de test | idem |
 | UC-ADM-06-U11 | `IpAnonymizer` | `/24`, `/48`, IPv4 mappée, entrées invalides | idem |
+| UC-ADM-06-U22 | `overview` — utilisateurs (RG7) | `enListeAttente` : en attente hors supprimés, comptés aussi parmi les non activés ; position de la clé | idem |
 | UC-ADM-06-U19 | `overview` — cartographies (AN-2) | Comportement actuel : une cartographie `twin9` compte par type et sur la période, pas dans `total` | idem |
 | UC-ADM-06-U12 | `fetchMonitoring` | URL `days` (défaut 30, encodé) | `web/test/usecases/unit/uc-adm-06-monitoring.test.jsx` |
 | UC-ADM-06-U13 | `usd`, `nb` | Signes, non-numériques → 0, millions | idem |
@@ -199,6 +206,7 @@ onglet « Monitoring »).
 | UC-ADM-06-U17 | `MonitoringSection` | Pays/compte inconnus, issue « Échec » | idem |
 | UC-ADM-06-U18 | `MonitoringSection` | Barres divergentes `|débit + remboursement|`, tuile de dépense | idem |
 | UC-ADM-06-U20 | `MonitoringSection` — votes | Verdicts « Majorité atteinte — entérinable », « Rejetée (majorité contre) », « Électorat vide » (seuil « — » sur 0 membre), pas de relance sans retardataire | idem |
+| UC-ADM-06-U23 | `MonitoringSection` — tuile des comptes (RG7) | « 4 non activés dont 3 en liste d'attente » ; rien quand il n'y en a pas | `web/test/usecases/unit/uc-adm-06-monitoring.test.jsx` |
 | UC-ADM-06-U21 | `listUsers`, `frDate` | `?role=admin`, `?page=2&role=…` ; `''` → « — », date invalide rendue telle quelle | idem |
 
 ### Tests fonctionnels

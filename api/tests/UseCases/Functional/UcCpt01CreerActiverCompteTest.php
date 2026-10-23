@@ -4,8 +4,11 @@ declare(strict_types=1);
 
 namespace Humanome\Tests\UseCases\Functional;
 
+use Humanome\Auth\Waitlist;
 use Humanome\Geo\CountryResolver;
+use Humanome\Llm\FreeCreditLedger;
 use Humanome\Tests\CartographeTestCase;
+use Humanome\Tests\TestDb;
 use Humanome\Tests\UseCases\Support\CptSupport;
 use PHPUnit\Framework\Attributes\TestDox;
 use Psr\Http\Message\ResponseInterface;
@@ -20,6 +23,11 @@ use Psr\Http\Message\ResponseInterface;
  * s'inscrit par POST /api/auth/register, « lit » l'email capturé par le
  * MemoryMailer, puis active son compte par POST /api/auth/activate (ou
  * demande un renvoi par POST /api/auth/resend).
+ *
+ * La liste d'attente (sprint 7, S7a-2 ; F26 à F29) : le plafond des crédits
+ * offerts (OFFERTS_MENSUEL_USD) et la dépense du mois (free_credit_monthly)
+ * sont posés par le test ; le passage au mois suivant est simulé en datant
+ * waitlisted_at du mois précédent (UTC), la route lisant l'horloge réelle.
  */
 final class UcCpt01CreerActiverCompteTest extends CartographeTestCase
 {
@@ -28,12 +36,53 @@ final class UcCpt01CreerActiverCompteTest extends CartographeTestCase
         parent::setUp();
         // Base pays déterministe (le vrai résolveur lit une base MMDB locale).
         CountryResolver::setOverride(static fn (string $ip): ?string => 'FR');
+        // Les crédits offerts du mois intacts, au plafond par défaut (sprint 7).
+        self::$pdo->exec('DELETE FROM free_credit_monthly');
+        TestDb::setEnv('OFFERTS_MENSUEL_USD', '20');
     }
 
     protected function tearDown(): void
     {
         CountryResolver::setOverride(null);
+        self::$pdo->exec('DELETE FROM free_credit_monthly');
+        TestDb::setEnv('OFFERTS_MENSUEL_USD', '20');
         parent::tearDown();
+    }
+
+    /**
+     * Le mois des crédits offerts tel que, sous le plafond, il reste $reste
+     * micro-dollars DÉPENSÉS en moins : un plafond de seuil + 0,10 $, et sa
+     * dépense réglée. Renvoie [plafond] en micro-dollars.
+     *
+     * @return array{0: int}
+     */
+    private static function moisAvecReste(int $reste): array
+    {
+        self::$pdo->exec('DELETE FROM free_credit_monthly');
+        $seuil = (new Waitlist(self::$pdo))->floorMicrousd();
+        $plafond = $seuil + 100_000;
+        TestDb::setEnv('OFFERTS_MENSUEL_USD', sprintf('%.6f', $plafond / 1_000_000));
+        $ledger = new FreeCreditLedger(self::$pdo);
+        self::assertTrue($ledger->reserve($plafond - $reste, $plafond));
+        $ledger->settle($plafond - $reste, $plafond - $reste);
+
+        return [$plafond];
+    }
+
+    /** Date l'attente d'un compte du mois UTC précédent : son attente est finie. */
+    private static function attenteDuMoisDernier(string $email): void
+    {
+        $moisDernier = gmmktime(12, 0, 0, (int) gmdate('n') - 1, 15, (int) gmdate('Y'));
+        self::$pdo->prepare('UPDATE users SET waitlisted_at = ? WHERE email = ?')
+            ->execute([gmdate('Y-m-d H:i:s', $moisDernier), $email]);
+    }
+
+    private static function countAudits(string $type): int
+    {
+        $stmt = self::$pdo->prepare('SELECT COUNT(*) FROM audit_events WHERE type = ?');
+        $stmt->execute([$type]);
+
+        return (int) $stmt->fetchColumn();
     }
 
     /** Étape 4 : le formulaire d'inscription envoie ses quatre champs. */
@@ -464,5 +513,164 @@ final class UcCpt01CreerActiverCompteTest extends CartographeTestCase
         });
         self::assertSame(0, self::countUsers());
         self::assertSame([], $this->mailer->sent);
+    }
+
+    #[TestDox('UC-CPT-01-F26 — A4, RG8 : crédits offerts du mois épuisés → l’inscription est créée EN LISTE D’ATTENTE : 201 waitlisted, aucune session, aucun code, un mail qui le dit, audit account_waitlisted ; la connexion répond 403 waitlisted (sans session ni journal), le renvoi reste muet, l’activation est refusée ; les comptes existants (actif, en attente d’activation) ne sont pas touchés')]
+    public function testF26SignUpAtTheCapIsWaitlisted(): void
+    {
+        // Avant le plafond : un compte actif et un compte qui attend son code.
+        self::assertSame(200, $this->register('ancien@example.org', self::PASSWORD, 'Ancien')->getStatusCode());
+        self::assertSame(201, $this->signUp(['email' => 'pending@example.org', 'emailConfirm' => 'pending@example.org'])->getStatusCode());
+        $codeDuPending = $this->lastCode();
+        $seuil = (new Waitlist(self::$pdo))->floorMicrousd();
+        [$plafond] = self::moisAvecReste($seuil - 1); // un micro-dollar de moins que le plus petit appel de l'Essayer
+        $this->mailer->clear();
+
+        $registered = $this->signUp();
+        self::assertSame(201, $registered->getStatusCode(), (string) $registered->getBody());
+        self::assertSame([
+            'status' => 'waitlisted',
+            'email' => 'ada@example.org',
+            'message' => Waitlist::signupMessage(),
+        ], self::json($registered));
+        self::assertStringStartsWith('Les crédits offerts de ce mois sont épuisés : votre inscription est en liste d\'attente.',
+            self::json($registered)['message']);
+        self::assertNull($this->cookieSid, 'pas de session');
+        $row = self::userRow('ada@example.org');
+        $userId = (int) $row['id'];
+        self::assertNotNull($row['waitlisted_at']);
+        self::assertLessThan(120, abs(strtotime($row['waitlisted_at'] . ' UTC') - time()), 'daté en UTC, maintenant');
+        self::assertNull($row['verification_code_hash'], 'aucun code : l’activation attend la levée');
+        self::assertNull($row['email_verified_at']);
+        self::assertSame(['apprenant'], \Humanome\Auth\Users::rolesOf(self::$pdo, $userId));
+        self::assertSame(['userId' => $userId, 'details' => null], self::lastAudit('account_created'));
+        self::assertSame(['userId' => $userId, 'details' => null], self::lastAudit('account_waitlisted'));
+        self::assertCount(1, $this->mailer->sent);
+        self::assertSame(['ada@example.org', 'humanome.xyz — votre inscription est en liste d\'attente'],
+            [$this->mailer->last()['to'], $this->mailer->last()['subject']]);
+        self::assertSame('', $this->lastCode(), 'le mail ne porte aucun code');
+        $mois = (new FreeCreditLedger(self::$pdo))->state($plafond);
+        self::assertFalse($mois['exhausted'], 'le mois n’est pas « épuisé » au sens du statut public : il reste moins qu’un appel');
+
+        // Connexion, bon mot de passe : 403 waitlisted, ni session ni journal.
+        $connexions = self::countAudits('login');
+        $this->cookieSid = null;
+        $login = $this->login('ada@example.org', self::PASSWORD);
+        self::assertSame(403, $login->getStatusCode());
+        self::assertSame(['error' => Waitlist::signupMessage(), 'code' => 'waitlisted', 'email' => 'ada@example.org'], self::json($login));
+        self::assertNull($this->cookieSid);
+        self::assertSame($connexions, self::countAudits('login'));
+        self::assertSame(401, $this->login('ada@example.org', 'mauvais mot de passe')->getStatusCode(),
+            'sans le bon mot de passe, rien n’est dit');
+
+        // Renvoi : réponse générique, aucun mail ; activation : refus générique.
+        $resend = $this->request('POST', '/api/auth/resend', ['email' => 'ada@example.org']);
+        self::assertSame(['status' => 'ok', 'message' => 'Si un compte non activé existe pour cette adresse, un nouveau code a été envoyé.'],
+            self::json($resend));
+        self::assertCount(1, $this->mailer->sent, 'aucun code envoyé');
+        self::assertNull(self::userRow('ada@example.org')['verification_code_hash']);
+        $activate = $this->activate('ada@example.org', '1234');
+        self::assertSame([401, ['error' => 'Code invalide ou expiré']], [$activate->getStatusCode(), self::json($activate)]);
+        self::assertSame(409, $this->signUp()->getStatusCode(), 'l’adresse est prise, comme pour toute inscription');
+
+        // Les comptes existants ne sont pas touchés.
+        $this->cookieSid = null;
+        self::assertSame(200, $this->login('ancien@example.org', self::PASSWORD)->getStatusCode());
+        $this->cookieSid = null;
+        self::assertSame(200, $this->activate('pending@example.org', $codeDuPending)->getStatusCode());
+        self::assertNull(self::userRow('ancien@example.org')['waitlisted_at']);
+        self::assertNull(self::userRow('pending@example.org')['waitlisted_at']);
+    }
+
+    #[TestDox('UC-CPT-01-F27 — RG8 : le critère — ce que le mois a DÉPENSÉ laisse-t-il, sous le plafond, le plus petit appel de l’Essayer ? Au seuil exact : inscription ordinaire ; un micro-dollar de plus dépensé : liste d’attente ; une réserve en vol ne ferme rien ; plafond 0 : toute inscription attend')]
+    public function testF27TheWaitlistCriterion(): void
+    {
+        $seuil = (new Waitlist(self::$pdo))->floorMicrousd();
+        [$plafond] = self::moisAvecReste($seuil);
+        self::assertSame('pending_activation', self::json($this->signUp(['email' => 'a1@example.org', 'emailConfirm' => 'a1@example.org']))['status'],
+            'il reste exactement le plus petit appel');
+
+        $ledger = new FreeCreditLedger(self::$pdo);
+        self::assertTrue($ledger->reserve($seuil, $plafond), 'un appel en vol prend tout ce qui reste');
+        self::assertSame('pending_activation', self::json($this->signUp(['email' => 'a2@example.org', 'emailConfirm' => 'a2@example.org']))['status'],
+            'la réserve en vol ne compte pas');
+        $ledger->settle($seuil, 1); // il se règle à 1 µ$
+        self::assertSame('waitlisted', self::json($this->signUp(['email' => 'a3@example.org', 'emailConfirm' => 'a3@example.org']))['status'],
+            'un micro-dollar de plus dépensé : sous le seuil');
+        self::assertFalse($ledger->reserve($seuil, $plafond), 'et l’Essayer est refusé lui aussi');
+
+        self::$pdo->exec('DELETE FROM free_credit_monthly');
+        TestDb::setEnv('OFFERTS_MENSUEL_USD', '0');
+        self::assertSame('waitlisted', self::json($this->signUp(['email' => 'a4@example.org', 'emailConfirm' => 'a4@example.org']))['status'],
+            'plafond 0 : tout ce qui est offert est fermé');
+        self::assertSame([null, null], [self::userRow('a1@example.org')['waitlisted_at'], self::userRow('a2@example.org')['waitlisted_at']]);
+    }
+
+    #[TestDox('UC-CPT-01-F28 — A5 : le mois suivant, la première requête d’authentification (ici une connexion ratée d’un inconnu) lève la liste dans l’ordre d’inscription — chacun reçoit son code et s’active ; un compte mis en attente ce mois-ci attend encore ; la connexion d’un compte dû le lève (403 email_not_verified, code envoyé) ; son renvoi aussi, un seul mail')]
+    public function testF28TheNextMonthLiftsTheList(): void
+    {
+        TestDb::setEnv('OFFERTS_MENSUEL_USD', '0');
+        foreach (['ada', 'bob', 'cid', 'dan', 'eve'] as $nom) {
+            self::assertSame('waitlisted', self::json($this->signUp(['email' => "{$nom}@example.org", 'emailConfirm' => "{$nom}@example.org"]))['status']);
+        }
+        self::attenteDuMoisDernier('bob@example.org');
+        self::attenteDuMoisDernier('ada@example.org');
+        $this->mailer->clear();
+
+        $this->cookieSid = null;
+        self::assertSame(401, $this->login('inconnu@example.org', 'peu importe')->getStatusCode());
+        self::assertSame(['ada@example.org', 'bob@example.org'], array_column($this->mailer->sent, 'to'), 'ordre d’inscription, pas de date');
+        self::assertStringContainsString('sort de la liste d\'attente', $this->mailer->sent[0]['body']);
+        self::assertSame([null, null], [self::userRow('ada@example.org')['waitlisted_at'], self::userRow('bob@example.org')['waitlisted_at']]);
+        self::assertNotNull(self::userRow('cid@example.org')['waitlisted_at'], 'en attente ce mois-ci : attend encore');
+        $lifted = self::lastAudit('waitlist_lifted');
+        self::assertSame(['userId' => null, 'details' => ['targetUserId' => (int) self::userRow('bob@example.org')['id']]], $lifted);
+
+        // Bob active son compte avec le code de la levée (la liste reste fermée aux nouvelles inscriptions).
+        $bobCode = preg_match('/[?&]code=(\d{4})\b/', $this->mailer->sent[1]['body'], $m) === 1 ? $m[1] : '';
+        self::assertSame(200, $this->activate('bob@example.org', $bobCode)->getStatusCode());
+
+        // Cid : sa connexion, son attente finie, le lève — un code part, l'écran d'activation suit.
+        self::attenteDuMoisDernier('cid@example.org');
+        $this->cookieSid = null;
+        $login = $this->login('cid@example.org', self::PASSWORD);
+        self::assertSame(403, $login->getStatusCode());
+        self::assertSame('email_not_verified', self::json($login)['code']);
+        self::assertSame('cid@example.org', $this->mailer->last()['to']);
+        self::assertSame(200, $this->activate('cid@example.org', $this->lastCode())->getStatusCode());
+
+        // Dan : son renvoi, son attente finie, le lève — un seul mail, son code active.
+        self::attenteDuMoisDernier('dan@example.org');
+        $avant = \count($this->mailer->sent);
+        $this->cookieSid = null;
+        self::assertSame(200, $this->request('POST', '/api/auth/resend', ['email' => 'dan@example.org'])->getStatusCode());
+        self::assertSame(['dan@example.org'], array_column(\array_slice($this->mailer->sent, $avant), 'to'), 'un seul mail');
+        self::assertSame(200, $this->activate('dan@example.org', $this->lastCode())->getStatusCode());
+        self::assertNotNull(self::userRow('eve@example.org')['waitlisted_at'], 'Eve attend toujours');
+    }
+
+    #[TestDox('UC-CPT-01-F29 — A5 : le tick (POST /api/admin/worker-tick, jeton du déclencheur) lève aussi la liste du mois passé, et le dit dans ses compteurs (listeAttenteLevees) ; un tick sans compte dû n’en dit rien')]
+    public function testF29TheTickLiftsTheList(): void
+    {
+        TestDb::setEnv('OFFERTS_MENSUEL_USD', '0');
+        self::assertSame('waitlisted', self::json($this->signUp())['status']);
+        self::attenteDuMoisDernier('ada@example.org');
+        $this->mailer->clear();
+        TestDb::setEnv('WORKER_TICK_TOKEN', 'jeton-de-tick-fictif-uc-cpt-01');
+        TestDb::setEnv('ANTHROPIC_API_KEY', ''); // aucun relevé de tarifs : aucun réseau
+        $tick = fn (): \Psr\Http\Message\ResponseInterface => $this->request('POST', '/api/admin/worker-tick',
+            ['budgetSeconds' => 1, 'maxCalls' => 1], ['X-Worker-Tick-Token' => 'jeton-de-tick-fictif-uc-cpt-01']);
+
+        $this->cookieSid = null;
+        $first = $tick();
+        self::assertSame(200, $first->getStatusCode(), (string) $first->getBody());
+        self::assertSame(1, self::json($first)['listeAttenteLevees'] ?? null);
+        self::assertSame(['ada@example.org'], array_column($this->mailer->sent, 'to'));
+        self::assertNull(self::userRow('ada@example.org')['waitlisted_at']);
+        self::assertSame(200, $this->activate('ada@example.org', $this->lastCode())->getStatusCode());
+
+        $this->cookieSid = null;
+        self::assertArrayNotHasKey('listeAttenteLevees', self::json($tick()));
+        self::assertCount(1, $this->mailer->sent);
     }
 }

@@ -101,6 +101,34 @@ export function toggleDemo(enabled, fetchFn) {
   return saveDemoConfig({ enabled: Boolean(enabled) }, fetchFn)
 }
 
+// --- 3ter. Liste d'attente des inscriptions (sprint 7, S7a-2) --------------
+// Contrat avec routes/admin.php (Auth\Waitlist) :
+//   GET  api/admin/waitlist -> {month, signupsOpen, nextLift, total, accounts}
+//   POST api/admin/waitlist/{id}/lift -> {id, status: lifted|unchanged}
+//   POST api/admin/waitlist/lift -> {lifted, remaining} (dans l'ordre d'inscription)
+
+/** GET api/admin/waitlist (les comptes dus du mois passé sont levés d'abord). */
+export async function fetchWaitlist(fetchFn) {
+  const data = await apiFetch('admin/waitlist', { fetchFn })
+  return {
+    month: typeof data?.month === 'string' ? data.month : '',
+    signupsOpen: data?.signupsOpen !== false,
+    nextLift: typeof data?.nextLift === 'string' ? data.nextLift : '',
+    total: Number(data?.total ?? 0),
+    accounts: Array.isArray(data?.accounts) ? data.accounts : [],
+  }
+}
+
+/** POST api/admin/waitlist/{id}/lift — lève un compte : son code part par email. */
+export function liftWaitlisted(userId, fetchFn) {
+  return apiFetch(`admin/waitlist/${userId}/lift`, { method: 'POST', fetchFn })
+}
+
+/** POST api/admin/waitlist/lift — « Tout lever », dans l'ordre d'inscription. */
+export function liftWaitlist(fetchFn) {
+  return apiFetch('admin/waitlist/lift', { method: 'POST', fetchFn })
+}
+
 /** GET api/prompt-packages -> versions publiées (pour choisir le défaut). */
 export async function listPublishedPackages(fetchFn) {
   const data = await apiFetch('prompt-packages', { fetchFn })

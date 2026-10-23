@@ -149,6 +149,20 @@ describe('UC-ADM-06 — tableau de bord (MonitoringSection isolé)', () => {
     expect(spaces(tile.textContent)).toContain('2,75 $')
   })
 
+  it('UC-ADM-06-U23 — comptes : la tuile des comptes dit combien d’inscriptions sont en liste d’attente (sprint 7), parmi les non activés ; rien quand il n’y en a pas', async () => {
+    const overview = emptyOverview(30)
+    overview.utilisateurs = { ...overview.utilisateurs, total: 12, nonActives: 4, enListeAttente: 3, nouveauxPeriode: 5 }
+    render(<MonitoringSection fetchFn={monitoringFetch(overview)} />)
+    const tile = (await screen.findByText('comptes')).closest('.mon-tile')
+    expect(spaces(tile.textContent)).toContain('+ 5 sur la période · 4 non activés dont 3 en liste d’attente')
+    cleanup()
+
+    render(<MonitoringSection fetchFn={monitoringFetch({ ...emptyOverview(30), utilisateurs: { ...emptyOverview(30).utilisateurs, nonActives: 2 } })} />)
+    const sans = (await screen.findByText('comptes')).closest('.mon-tile')
+    expect(spaces(sans.textContent)).toContain('2 non activés')
+    expect(sans.textContent).not.toContain('liste d’attente')
+  })
+
   it('UC-ADM-06-U20 — votes : verdicts « Majorité atteinte — entérinable », « Rejetée (majorité contre) », « Électorat vide » (seuil « — » sur 0 membre), pas de relance sans retardataire', async () => {
     const overview = emptyOverview(30)
     const prop = (id, label, decompte, manquants = []) => ({ id, label, semver: '7.1.1', soumiseLe: null, decompte, manquants })

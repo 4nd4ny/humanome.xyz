@@ -109,6 +109,11 @@ clique « Se déconnecter ».
 - **E3 — Compte non activé** (étape 4) : `403 {error, code:
   "email_not_verified", email}` quand le mot de passe est bon ; pas de session,
   quota non consommé. Le site ouvre l'écran d'activation (UC-CPT-01 A3).
+  Un compte **en liste d'attente** (sprint 7) répond avant cela `403 {error,
+  code: "waitlisted", email}`, pas de session ni de journal, et le site
+  affiche le message sans écran d'activation ; son attente finie (un mois
+  passé), la connexion le lève et répond E3 (UC-CPT-01 A4, A5 ; testé en
+  UC-CPT-01-F26, F28, U24).
 - **E4 — Trop de tentatives** (étape 4) : à partir du 6ᵉ essai pour le même
   couple IP (/64 en IPv6) + email, `429 « Trop de tentatives de connexion,
   réessayez plus tard »` avec `Retry-After` 30 s puis doublé à chaque essai

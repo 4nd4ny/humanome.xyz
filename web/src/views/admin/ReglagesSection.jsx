@@ -13,6 +13,11 @@
 //   du modèle, affiché. Le plafond MENSUEL des crédits offerts (sprint 7,
 //   monthlyFreeUsd : l'Essayer, la démo et le tuteur ensemble) se règle ici
 //   aussi, avec le grand livre du mois (dépensé, réservé, restant).
+// - liste d'attente des inscriptions (sprint 7, S7a-2) : l'état des
+//   inscriptions (ouvertes, ou en liste d'attente quand ce que le mois a
+//   dépensé ne laisse plus le plus petit appel de l'Essayer), les comptes en
+//   attente dans l'ordre d'inscription, « Lever » un compte (son code part par
+//   email) et « Tout lever ». Bloc autonome : son propre chargement, ses erreurs.
 // - version de prompt par défaut (settings default_prompt_package, P10) ;
 // - état du worker de masse : jobs en file, par statut, dernière activité.
 
@@ -21,7 +26,10 @@ import { ApiError, ApiUnavailableError } from '../../api/client.js'
 import {
   fetchDemoConfig,
   fetchSettings,
+  fetchWaitlist,
   frDate,
+  liftWaitlist,
+  liftWaitlisted,
   listPublishedPackages,
   resetDemoConfig,
   saveDemoConfig,
@@ -85,7 +93,170 @@ function FreeCreditsMonth({ month }) {
       {money(month.capUsd)} — {month.calls ?? 0} appel{(month.calls ?? 0) > 1 ? 's' : ''},{' '}
       {month.refusals ?? 0} refus.
       {month.exhausted ? ' Épuisés : l’Essayer, la démo et le tuteur répondent « revenez le 1er ».' : ''}
+      {typeof month.signupsOpen === 'boolean' ? (
+        <span data-testid="demo-offerts-inscriptions">
+          {' '}
+          Inscriptions :{' '}
+          {month.signupsOpen ? (
+            <strong>ouvertes</strong>
+          ) : (
+            <strong>en liste d’attente</strong>
+          )}{' '}
+          (fermées quand le plafond moins le dépensé ne couvre plus le plus petit appel de l’Essayer,{' '}
+          {money(month.signupFloorUsd)}).
+        </span>
+      ) : null}
     </p>
+  )
+}
+
+/** « 2026-11-01 » -> « 1er novembre 2026 » (la date de la prochaine levée, UTC). */
+function frFirstOfMonth(iso) {
+  if (typeof iso !== 'string') return '—'
+  const d = new Date(`${iso}T12:00:00Z`)
+  if (Number.isNaN(d.getTime())) return '—'
+  return `1er ${d.toLocaleDateString('fr-FR', { month: 'long', year: 'numeric', timeZone: 'UTC' })}`
+}
+
+/**
+ * Liste d'attente des inscriptions (sprint 7, S7a-2) : GET api/admin/waitlist,
+ * « Lever » (POST …/{id}/lift) et « Tout lever » (POST …/lift). Chaque compte
+ * levé reçoit son code d'activation par email.
+ */
+function WaitlistBlock({ fetchFn }) {
+  const [data, setData] = useState(null)
+  const [loadError, setLoadError] = useState(null)
+  const [error, setError] = useState(null)
+  const [message, setMessage] = useState(null)
+  const [busy, setBusy] = useState(false)
+
+  // Un échec de lecture ne gêne pas le reste des réglages : une note, pas une alerte.
+  const load = useCallback(async () => {
+    try {
+      setData(await fetchWaitlist(fetchFn))
+      setLoadError(null)
+    } catch (err) {
+      setLoadError(err instanceof ApiError || err instanceof ApiUnavailableError ? err.message : 'erreur inattendue')
+    }
+  }, [fetchFn])
+
+  useEffect(() => {
+    load()
+  }, [load])
+
+  async function run(action, describe) {
+    setBusy(true)
+    setMessage(null)
+    setError(null)
+    try {
+      const result = await action()
+      setMessage(describe(result))
+      await load()
+    } catch (err) {
+      setError(err instanceof ApiError || err instanceof ApiUnavailableError ? err.message : 'Levée impossible.')
+    } finally {
+      setBusy(false)
+    }
+  }
+
+  function onLift(account) {
+    run(
+      () => liftWaitlisted(account.id, fetchFn),
+      (result) =>
+        result?.status === 'lifted'
+          ? `${account.email} : levé, son code d’activation part par email.`
+          : `${account.email} n’était plus en liste d’attente.`,
+    )
+  }
+
+  function onLiftAll() {
+    run(
+      () => liftWaitlist(fetchFn),
+      (result) => {
+        const lifted = Number(result?.lifted ?? 0)
+        const remaining = Number(result?.remaining ?? 0)
+        return `${lifted} compte${lifted > 1 ? 's' : ''} levé${lifted > 1 ? 's' : ''}${
+          remaining > 0 ? ` ; ${remaining} encore en attente : relancez « Tout lever ».` : '.'
+        }`
+      },
+    )
+  }
+
+  const accounts = data?.accounts ?? []
+
+  return (
+    <div className="admin-waitlist" data-testid="admin-waitlist">
+      <h3>Liste d’attente des inscriptions</h3>
+      {data ? (
+        <p className="privacy-note">
+          Inscriptions : <strong>{data.signupsOpen ? 'ouvertes' : 'en liste d’attente'}</strong>. Une inscription
+          faite une fois les crédits offerts du mois épuisés attend, sans code d’activation ; la liste est levée
+          le {frFirstOfMonth(data.nextLift)} (mois UTC), dans l’ordre d’inscription, ou ici, par vous. Chaque
+          compte levé reçoit son code par email.
+        </p>
+      ) : null}
+      {loadError && !data ? (
+        <p className="privacy-note" data-testid="waitlist-unavailable">
+          Liste d’attente indisponible ({loadError}).
+        </p>
+      ) : null}
+      {message ? (
+        <p role="status" className="admin-message">
+          {message}
+        </p>
+      ) : null}
+      {error ? (
+        <p role="alert" className="load-error">
+          {error}
+        </p>
+      ) : null}
+      {data && accounts.length === 0 ? <p data-testid="waitlist-empty">Aucune inscription en attente.</p> : null}
+      {accounts.length > 0 ? (
+        <>
+          <table className="admin-table">
+            <thead>
+              <tr>
+                <th scope="col">Compte</th>
+                <th scope="col">Inscrit le</th>
+                <th scope="col">Action</th>
+              </tr>
+            </thead>
+            <tbody>
+              {accounts.map((account) => (
+                <tr key={account.id}>
+                  <td>
+                    <strong>{account.displayName}</strong>
+                    <br />
+                    <span className="admin-email">{account.email}</span>
+                  </td>
+                  <td className="admin-created">{frDate(account.waitlistedAt)}</td>
+                  <td>
+                    <button
+                      type="button"
+                      disabled={busy}
+                      aria-label={`Lever ${account.email}`}
+                      onClick={() => onLift(account)}
+                    >
+                      Lever
+                    </button>
+                  </td>
+                </tr>
+              ))}
+            </tbody>
+          </table>
+          {data.total > accounts.length ? (
+            <p className="privacy-note">
+              {accounts.length} premiers comptes affichés sur {data.total}.
+            </p>
+          ) : null}
+          <div className="admin-demo-actions">
+            <button type="button" disabled={busy} onClick={onLiftAll}>
+              Tout lever ({data.total})
+            </button>
+          </div>
+        </>
+      ) : null}
+    </div>
   )
 }
 
@@ -452,6 +623,8 @@ export default function ReglagesSection({ fetchFn }) {
         onSave={onSaveDemo}
         onReset={onResetDemo}
       />
+
+      <WaitlistBlock fetchFn={fetchFn} />
 
       <DefaultPackage
         defaultPackage={settings?.defaultPackage}

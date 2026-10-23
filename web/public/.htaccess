@@ -45,8 +45,12 @@ RewriteRule ^ https://%{HTTP_HOST}%{REQUEST_URI} [R=301,L]
   #                             web/src/lib/csp-providers.test.js checks it.
   #                             The promptologue sandbox is NOT widened: its
   #                             srcdoc keeps its own "default-src 'none'".
-  #   font-src 'self'           self-hosted iA Writer Quattro woff2 (D7). Explicit
-  #                             (default-src already covers it) — clarté + défense.
+  #   font-src 'self'           self-hosted woff2 of the three interfaces
+  #                             (sprint 9: Source Serif 4 / Source Sans 3,
+  #                             Fredoka / Nunito, Space Grotesk / JetBrains
+  #                             Mono, from Fontsource, OFL; web/public/fonts/).
+  #                             Explicit (default-src already covers it) —
+  #                             clarté + défense.
   #   worker-src blob:          see the sandbox note below.
   #   object-src 'none'; base-uri 'self'; frame-ancestors 'self'
   #

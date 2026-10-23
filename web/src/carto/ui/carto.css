@@ -668,7 +668,7 @@ kbd {
 /* Nom d'un pôle, écrit le long de son arc (D-58). */
 .carto-sun-pole-label {
   font-size: 8.5px;
-  font-weight: 600;
+  font-weight: var(--fw-strong);
   letter-spacing: 0.02em;
   text-anchor: middle;
   pointer-events: none;
@@ -702,7 +702,7 @@ kbd {
 /* Code d'une compétence du pôle ouvert (D-45). */
 .carto-sun-code-label {
   font-size: 8.5px;
-  font-weight: 600;
+  font-weight: var(--fw-strong);
   text-anchor: middle;
   dominant-baseline: middle;
   pointer-events: none;
@@ -2082,7 +2082,7 @@ kbd {
   border-top: 1px solid var(--line);
 }
 .carto-reader-text code {
-  font-family: ui-monospace, SFMono-Regular, Menlo, Consolas, monospace;
+  font-family: var(--font-mono);
   font-size: 0.88em;
   padding: 0.05em 0.3em;
   border-radius: 3px;
@@ -2391,7 +2391,7 @@ kbd {
   white-space: nowrap;
 }
 .carto-cmp-table thead th {
-  font-weight: 600;
+  font-weight: var(--fw-strong);
   color: var(--ink-soft);
   vertical-align: bottom;
   white-space: normal;
@@ -2982,7 +2982,7 @@ kbd {
 }
 .carto-export-fieldset legend {
   font-size: 0.85rem;
-  font-weight: 600;
+  font-weight: var(--fw-strong);
   padding: 0 0.25rem;
 }
 .carto-export-codes ul {
@@ -3064,7 +3064,7 @@ kbd {
 }
 .carto-demo-box legend {
   font-size: 0.85rem;
-  font-weight: 600;
+  font-weight: var(--fw-strong);
   padding: 0 0.25rem;
 }
 .carto-demo-suggestions {
@@ -3083,7 +3083,7 @@ kbd {
 }
 .carto-demo-dict caption {
   text-align: left;
-  font-weight: 600;
+  font-weight: var(--fw-strong);
   font-size: 0.85rem;
   padding-bottom: 0.25rem;
 }
@@ -3179,7 +3179,7 @@ kbd {
 }
 .carto-demo .carto-mini-table caption {
   text-align: left;
-  font-weight: 600;
+  font-weight: var(--fw-strong);
   font-size: 0.85rem;
   padding-bottom: 0.2rem;
 }
@@ -3219,7 +3219,7 @@ kbd {
 .carto-demo-confirm {
   display: block;
   margin: 0.8rem 0 0.5rem;
-  font-weight: 600;
+  font-weight: var(--fw-strong);
 }
 .carto-demo-actions {
   display: flex;
@@ -3430,7 +3430,7 @@ kbd {
 }
 .carto-print-table caption {
   text-align: left;
-  font-weight: 600;
+  font-weight: var(--fw-strong);
   font-size: 10pt;
   padding-bottom: 0.3em;
 }
@@ -3443,7 +3443,7 @@ kbd {
 }
 .carto-print-table thead th {
   border-bottom: 1px solid var(--ink-faint);
-  font-weight: 600;
+  font-weight: var(--fw-strong);
 }
 .carto-print-table tr {
   break-inside: avoid;
@@ -3516,7 +3516,7 @@ kbd {
 }
 .carto-print-sheet details > summary {
   list-style: none;
-  font-weight: 600;
+  font-weight: var(--fw-strong);
 }
 .carto-print-sheet details > summary::-webkit-details-marker {
   display: none;
@@ -3525,7 +3525,7 @@ kbd {
   margin: 0.3em 0;
 }
 .carto-print-voices dt {
-  font-weight: 600;
+  font-weight: var(--fw-strong);
   margin-top: 0.3em;
 }
 .carto-print-voices dd {
@@ -3655,7 +3655,7 @@ kbd {
 }
 .carto-share-steps [aria-current='step'] {
   color: var(--ink);
-  font-weight: 600;
+  font-weight: var(--fw-strong);
   text-decoration: underline;
   text-decoration-color: var(--accent);
   text-decoration-thickness: 2px;
@@ -3694,11 +3694,11 @@ label.carto-share-field {
 }
 label.carto-share-field span {
   font-size: 0.85rem;
-  font-weight: 600;
+  font-weight: var(--fw-strong);
 }
 .carto-share-field legend {
   font-size: 0.85rem;
-  font-weight: 600;
+  font-weight: var(--fw-strong);
   padding: 0 0.25rem;
 }
 .carto-share-field input[type='text'] {
@@ -3735,7 +3735,7 @@ label.carto-share-field span {
   color: var(--ink-faint);
 }
 .carto-share-pole {
-  font-weight: 600;
+  font-weight: var(--fw-strong);
 }
 .carto-share-picker {
   border: 1px dashed var(--line);
@@ -3936,7 +3936,7 @@ label.carto-share-field span {
 }
 .carto-shared-facts dd {
   margin: 0;
-  font-weight: 600;
+  font-weight: var(--fw-strong);
 }
 .carto-shared-grid {
   display: grid;
@@ -4023,7 +4023,7 @@ label.carto-share-field span {
   margin: 0.1rem 0;
 }
 .carto-shared-comp-name {
-  font-weight: 600;
+  font-weight: var(--fw-strong);
 }
 .carto-shared-chip {
   margin-left: 0.5rem;
@@ -4182,7 +4182,7 @@ label.carto-share-field span {
 }
 .carto-dialogue-llm summary {
   cursor: pointer;
-  font-weight: 600;
+  font-weight: var(--fw-strong);
   font-size: 0.92rem;
 }
 .carto-dialogue-llm[open] {

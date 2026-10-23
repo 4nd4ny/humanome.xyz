@@ -28,7 +28,7 @@
 }
 .md-table th {
   background: var(--surface-2);
-  font-weight: 600;
+  font-weight: var(--fw-strong);
 }
 .md-table p {
   margin: 0;

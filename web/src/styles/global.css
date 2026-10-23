@@ -2,41 +2,184 @@
    CSS pur, sobre : palette neutre (ardoise), accents portés par les couleurs
    des pôles présentes dans les données. */
 
-/* ================= TYPOGRAPHIE : iA Writer Quattro (D7 / AD-D5) =================
-   Police auto-hébergée sous licence SIL OFL 1.1 (fichiers + licence dans
-   web/public/fonts/quattro/, copiés tels quels dans le build). On ne charge
-   QUE les 4 graisses utilisées (Regular/Italic/Bold/BoldItalic, ~172 Ko woff2
-   au total, hors bundle JS). font-display:swap : le texte s'affiche tout de
-   suite en repli système puis bascule (FOUT accepté, pas de FOIT).
-   La pile MONOSPACE reste système (ui-monospace) : iA Writer Mono n'est pas
-   embarquée en v1.1 (choix : éviter ~170 Ko de plus pour du code/technique). */
+/* ================= TYPOGRAPHIE : polices des trois interfaces (sprint 9) =================
+   Chaque interface a ses polices (décision de Christian du 2026-10-23),
+   auto-hébergées sous licence SIL OFL 1.1 : CSP font-src 'self', aucune
+   origine tierce (src/styles/fonts.test.js le garde). Fichiers woff2 pris
+   tels quels dans les paquets npm Fontsource (@fontsource 5.3.x pour les
+   graisses fixes, @fontsource-variable 5.3.x pour les variables), avec la
+   licence de chaque famille, dans web/public/fonts/<famille>/ :
+     - ÉPISTÉMIARQUE : Source Serif 4 (titres, 600 ; italique 400) et
+       Source Sans 3 (texte, variable 200-900 ; italique 400) ;
+     - NOÈSIOLOGUE : Fredoka (titres, variable 300-700) et Nunito (texte,
+       variable 200-1000, romain et italique) ;
+     - TECHNOMANCIEN : Space Grotesk (texte et titres, variable 300-700 ;
+       pas d'italique, l'oblique est synthétisée) et JetBrains Mono (chasse
+       fixe, variable 100-800).
+   Sous-ensembles latin (le français entier : é, œ, « », espaces fines, €)
+   et latin-ext seulement, chacun avec la unicode-range de Fontsource : le
+   navigateur ne télécharge un fichier que si la page emploie ses caractères.
+   Comme chez Fontsource, latin-ext est déclaré AVANT latin : leurs plages
+   partagent trois diacritiques combinants (U+0304, U+0308, U+0329), et le
+   navigateur essaie d'abord la dernière face déclarée ; dans l'autre ordre,
+   un seul de ces signes ferait charger latin-ext.
+   Une déclaration @font-face ne télécharge rien : seules les familles
+   nommées par les piles de l'interface en vigueur (--font-body,
+   --font-heading, --font-mono, plus bas) sont chargées, à l'usage. Pas de
+   <link rel=preload> : il chargerait les polices de toutes les interfaces.
+   font-display: swap : le texte s'affiche tout de suite en repli système puis
+   bascule (FOUT accepté, pas de FOIT). Noms de fichiers nouveaux : les woff2
+   sont servis « immutable » un an (public/.htaccess).
+   iA Writer Quattro (D7) n'est plus employée : ses fichiers restent dans
+   web/public/fonts/quattro/ jusqu'à la décision de Christian de les retirer. */
 @font-face {
-  font-family: 'iA Writer Quattro';
+  font-family: 'Source Serif 4';
   font-style: normal;
-  font-weight: 400;
+  font-weight: 600;
   font-display: swap;
-  src: url('/fonts/quattro/iAWriterQuattroS-Regular.woff2') format('woff2');
+  src: url('/fonts/source-serif-4/source-serif-4-latin-ext-600-normal.woff2') format('woff2');
+  unicode-range: U+0100-02BA,U+02BD-02C5,U+02C7-02CC,U+02CE-02D7,U+02DD-02FF,U+0304,U+0308,U+0329,U+1D00-1DBF,U+1E00-1E9F,U+1EF2-1EFF,U+2020,U+20A0-20AB,U+20AD-20C4,U+2113,U+2C60-2C7F,U+A720-A7FF;
 }
 @font-face {
-  font-family: 'iA Writer Quattro';
+  font-family: 'Source Serif 4';
+  font-style: normal;
+  font-weight: 600;
+  font-display: swap;
+  src: url('/fonts/source-serif-4/source-serif-4-latin-600-normal.woff2') format('woff2');
+  unicode-range: U+0000-00FF,U+0131,U+0152-0153,U+02BB-02BC,U+02C6,U+02DA,U+02DC,U+0304,U+0308,U+0329,U+2000-206F,U+20AC,U+2122,U+2191,U+2193,U+2212,U+2215,U+FEFF,U+FFFD;
+}
+@font-face {
+  font-family: 'Source Serif 4';
   font-style: italic;
   font-weight: 400;
   font-display: swap;
-  src: url('/fonts/quattro/iAWriterQuattroS-Italic.woff2') format('woff2');
+  src: url('/fonts/source-serif-4/source-serif-4-latin-ext-400-italic.woff2') format('woff2');
+  unicode-range: U+0100-02BA,U+02BD-02C5,U+02C7-02CC,U+02CE-02D7,U+02DD-02FF,U+0304,U+0308,U+0329,U+1D00-1DBF,U+1E00-1E9F,U+1EF2-1EFF,U+2020,U+20A0-20AB,U+20AD-20C4,U+2113,U+2C60-2C7F,U+A720-A7FF;
 }
 @font-face {
-  font-family: 'iA Writer Quattro';
-  font-style: normal;
-  font-weight: 700;
-  font-display: swap;
-  src: url('/fonts/quattro/iAWriterQuattroS-Bold.woff2') format('woff2');
-}
-@font-face {
-  font-family: 'iA Writer Quattro';
+  font-family: 'Source Serif 4';
   font-style: italic;
-  font-weight: 700;
+  font-weight: 400;
   font-display: swap;
-  src: url('/fonts/quattro/iAWriterQuattroS-BoldItalic.woff2') format('woff2');
+  src: url('/fonts/source-serif-4/source-serif-4-latin-400-italic.woff2') format('woff2');
+  unicode-range: U+0000-00FF,U+0131,U+0152-0153,U+02BB-02BC,U+02C6,U+02DA,U+02DC,U+0304,U+0308,U+0329,U+2000-206F,U+20AC,U+2122,U+2191,U+2193,U+2212,U+2215,U+FEFF,U+FFFD;
+}
+
+@font-face {
+  font-family: 'Source Sans 3';
+  font-style: normal;
+  font-weight: 200 900;
+  font-display: swap;
+  src: url('/fonts/source-sans-3/source-sans-3-latin-ext-wght-normal.woff2') format('woff2');
+  unicode-range: U+0100-02BA,U+02BD-02C5,U+02C7-02CC,U+02CE-02D7,U+02DD-02FF,U+0304,U+0308,U+0329,U+1D00-1DBF,U+1E00-1E9F,U+1EF2-1EFF,U+2020,U+20A0-20AB,U+20AD-20C4,U+2113,U+2C60-2C7F,U+A720-A7FF;
+}
+@font-face {
+  font-family: 'Source Sans 3';
+  font-style: normal;
+  font-weight: 200 900;
+  font-display: swap;
+  src: url('/fonts/source-sans-3/source-sans-3-latin-wght-normal.woff2') format('woff2');
+  unicode-range: U+0000-00FF,U+0131,U+0152-0153,U+02BB-02BC,U+02C6,U+02DA,U+02DC,U+0304,U+0308,U+0329,U+2000-206F,U+20AC,U+2122,U+2191,U+2193,U+2212,U+2215,U+FEFF,U+FFFD;
+}
+@font-face {
+  font-family: 'Source Sans 3';
+  font-style: italic;
+  font-weight: 400;
+  font-display: swap;
+  src: url('/fonts/source-sans-3/source-sans-3-latin-ext-400-italic.woff2') format('woff2');
+  unicode-range: U+0100-02BA,U+02BD-02C5,U+02C7-02CC,U+02CE-02D7,U+02DD-02FF,U+0304,U+0308,U+0329,U+1D00-1DBF,U+1E00-1E9F,U+1EF2-1EFF,U+2020,U+20A0-20AB,U+20AD-20C4,U+2113,U+2C60-2C7F,U+A720-A7FF;
+}
+@font-face {
+  font-family: 'Source Sans 3';
+  font-style: italic;
+  font-weight: 400;
+  font-display: swap;
+  src: url('/fonts/source-sans-3/source-sans-3-latin-400-italic.woff2') format('woff2');
+  unicode-range: U+0000-00FF,U+0131,U+0152-0153,U+02BB-02BC,U+02C6,U+02DA,U+02DC,U+0304,U+0308,U+0329,U+2000-206F,U+20AC,U+2122,U+2191,U+2193,U+2212,U+2215,U+FEFF,U+FFFD;
+}
+
+@font-face {
+  font-family: 'Fredoka';
+  font-style: normal;
+  font-weight: 300 700;
+  font-display: swap;
+  src: url('/fonts/fredoka/fredoka-latin-ext-wght-normal.woff2') format('woff2');
+  unicode-range: U+0100-02BA,U+02BD-02C5,U+02C7-02CC,U+02CE-02D7,U+02DD-02FF,U+0304,U+0308,U+0329,U+1D00-1DBF,U+1E00-1E9F,U+1EF2-1EFF,U+2020,U+20A0-20AB,U+20AD-20C0,U+2113,U+2C60-2C7F,U+A720-A7FF;
+}
+@font-face {
+  font-family: 'Fredoka';
+  font-style: normal;
+  font-weight: 300 700;
+  font-display: swap;
+  src: url('/fonts/fredoka/fredoka-latin-wght-normal.woff2') format('woff2');
+  unicode-range: U+0000-00FF,U+0131,U+0152-0153,U+02BB-02BC,U+02C6,U+02DA,U+02DC,U+0304,U+0308,U+0329,U+2000-206F,U+20AC,U+2122,U+2191,U+2193,U+2212,U+2215,U+FEFF,U+FFFD;
+}
+
+@font-face {
+  font-family: 'Nunito';
+  font-style: normal;
+  font-weight: 200 1000;
+  font-display: swap;
+  src: url('/fonts/nunito/nunito-latin-ext-wght-normal.woff2') format('woff2');
+  unicode-range: U+0100-02BA,U+02BD-02C5,U+02C7-02CC,U+02CE-02D7,U+02DD-02FF,U+0304,U+0308,U+0329,U+1D00-1DBF,U+1E00-1E9F,U+1EF2-1EFF,U+2020,U+20A0-20AB,U+20AD-20C0,U+2113,U+2C60-2C7F,U+A720-A7FF;
+}
+@font-face {
+  font-family: 'Nunito';
+  font-style: normal;
+  font-weight: 200 1000;
+  font-display: swap;
+  src: url('/fonts/nunito/nunito-latin-wght-normal.woff2') format('woff2');
+  unicode-range: U+0000-00FF,U+0131,U+0152-0153,U+02BB-02BC,U+02C6,U+02DA,U+02DC,U+0304,U+0308,U+0329,U+2000-206F,U+20AC,U+2122,U+2191,U+2193,U+2212,U+2215,U+FEFF,U+FFFD;
+}
+@font-face {
+  font-family: 'Nunito';
+  font-style: italic;
+  font-weight: 200 1000;
+  font-display: swap;
+  src: url('/fonts/nunito/nunito-latin-ext-wght-italic.woff2') format('woff2');
+  unicode-range: U+0100-02BA,U+02BD-02C5,U+02C7-02CC,U+02CE-02D7,U+02DD-02FF,U+0304,U+0308,U+0329,U+1D00-1DBF,U+1E00-1E9F,U+1EF2-1EFF,U+2020,U+20A0-20AB,U+20AD-20C0,U+2113,U+2C60-2C7F,U+A720-A7FF;
+}
+@font-face {
+  font-family: 'Nunito';
+  font-style: italic;
+  font-weight: 200 1000;
+  font-display: swap;
+  src: url('/fonts/nunito/nunito-latin-wght-italic.woff2') format('woff2');
+  unicode-range: U+0000-00FF,U+0131,U+0152-0153,U+02BB-02BC,U+02C6,U+02DA,U+02DC,U+0304,U+0308,U+0329,U+2000-206F,U+20AC,U+2122,U+2191,U+2193,U+2212,U+2215,U+FEFF,U+FFFD;
+}
+
+@font-face {
+  font-family: 'Space Grotesk';
+  font-style: normal;
+  font-weight: 300 700;
+  font-display: swap;
+  src: url('/fonts/space-grotesk/space-grotesk-latin-ext-wght-normal.woff2') format('woff2');
+  unicode-range: U+0100-02BA,U+02BD-02C5,U+02C7-02CC,U+02CE-02D7,U+02DD-02FF,U+0304,U+0308,U+0329,U+1D00-1DBF,U+1E00-1E9F,U+1EF2-1EFF,U+2020,U+20A0-20AB,U+20AD-20C0,U+2113,U+2C60-2C7F,U+A720-A7FF;
+}
+@font-face {
+  font-family: 'Space Grotesk';
+  font-style: normal;
+  font-weight: 300 700;
+  font-display: swap;
+  src: url('/fonts/space-grotesk/space-grotesk-latin-wght-normal.woff2') format('woff2');
+  unicode-range: U+0000-00FF,U+0131,U+0152-0153,U+02BB-02BC,U+02C6,U+02DA,U+02DC,U+0304,U+0308,U+0329,U+2000-206F,U+20AC,U+2122,U+2191,U+2193,U+2212,U+2215,U+FEFF,U+FFFD;
+}
+
+@font-face {
+  font-family: 'JetBrains Mono';
+  font-style: normal;
+  font-weight: 100 800;
+  font-display: swap;
+  src: url('/fonts/jetbrains-mono/jetbrains-mono-latin-ext-wght-normal.woff2') format('woff2');
+  unicode-range: U+0100-02BA,U+02BD-02C5,U+02C7-02CC,U+02CE-02D7,U+02DD-02FF,U+0304,U+0308,U+0329,U+1D00-1DBF,U+1E00-1E9F,U+1EF2-1EFF,U+2020,U+20A0-20AB,U+20AD-20C0,U+2113,U+2C60-2C7F,U+A720-A7FF;
+}
+@font-face {
+  font-family: 'JetBrains Mono';
+  font-style: normal;
+  font-weight: 100 800;
+  font-display: swap;
+  src: url('/fonts/jetbrains-mono/jetbrains-mono-latin-wght-normal.woff2') format('woff2');
+  unicode-range: U+0000-00FF,U+0131,U+0152-0153,U+02BB-02BC,U+02C6,U+02DA,U+02DC,U+0304,U+0308,U+0329,U+2000-206F,U+20AC,U+2122,U+2191,U+2193,U+2212,U+2215,U+FEFF,U+FFFD;
 }
 
 /* ================= INTERFACES : jetons des trois habillages (sprint 9) =================
@@ -579,6 +722,100 @@
   --mon-good: #16a34a;
 }
 
+/* ================= TYPOGRAPHIE : piles et échelle de chaque interface =================
+   Reprises des jetons typographiques des trois propositions de charte
+   (tokens.css de chacune) : piles de polices, graisses, échelle fluide de
+   360 px à 1 280 px de large, interlignes, approche. La typographie ne
+   dépend PAS du thème : un bloc par interface, sur html (le défaut, sans
+   attribut ou avec une valeur inconnue : l'épistémiarque) puis
+   html[data-interface=...] (spécificité supérieure), et non sur les
+   sélecteurs :root[...] des jetons de couleur, dont UC-VIS-07 garde la parité
+   des neuf contextes clair / sombre. Chaque bloc déclare le MÊME jeu de
+   variables, et chaque pile ne nomme QUE les familles de son interface (une
+   interface ne télécharge que ses polices) : gardé par
+   src/styles/fonts.test.js.
+   Seuls le corps, les titres h1 à h6, l'emphase, les champs et le code les
+   lisent ici ; les tailles en rem des composants ne changent pas (pas de
+   refonte de la mise en page) et passeront à l'échelle --fs-* au fil des
+   écrans.
+   - --font-body : texte et commandes ; --font-heading : h1 à h3 ;
+     --font-mono : code et identifiants.
+   - --fw-strong : gras du texte (b, strong, les « 600 » des composants) ;
+     --fw-heading : titres h1 à h3.
+   - --fs-xs à --fs-3xl : échelle ; --fs-base : corps ; h1 = 3xl, h2 = 2xl,
+     h3 = xl.
+   - --lh-* : interlignes ; --tracking-* : approche (technomancien resserre
+     sa police large). */
+
+/* ---- Épistémiarque (défaut) : Source Serif 4 en titre, Source Sans 3 en
+   texte, chasse fixe du système. Corps de 17 à 19 px (le petit œil de
+   Source Sans) ; seules les graisses livrées : 600, pas de 700 synthétisé
+   sur les titres serif. ---- */
+html {
+  --font-body: 'Source Sans 3', system-ui, -apple-system, 'Segoe UI', Roboto, 'Helvetica Neue', Arial, sans-serif;
+  --font-heading: 'Source Serif 4', Charter, 'Bitstream Charter', 'Iowan Old Style', 'Sitka Text', Cambria, Georgia, serif;
+  --font-mono: ui-monospace, 'SF Mono', SFMono-Regular, Menlo, Consolas, 'DejaVu Sans Mono', monospace;
+  --fw-strong: 600;
+  --fw-heading: 600;
+  --fs-xs: clamp(0.8125rem, 0.788rem + 0.1087vw, 0.875rem);
+  --fs-sm: clamp(0.9375rem, 0.913rem + 0.1087vw, 1rem);
+  --fs-base: clamp(1.0625rem, 1.0136rem + 0.2174vw, 1.1875rem);
+  --fs-lg: clamp(1.1875rem, 1.1141rem + 0.3261vw, 1.375rem);
+  --fs-xl: clamp(1.375rem, 1.2283rem + 0.6522vw, 1.75rem);
+  --fs-2xl: clamp(1.625rem, 1.3804rem + 1.087vw, 2.25rem);
+  --fs-3xl: clamp(1.9375rem, 1.5707rem + 1.6304vw, 2.875rem);
+  --lh-tight: 1.15;
+  --lh-snug: 1.3;
+  --lh-body: 1.6;
+  --tracking-heading: normal;
+  --tracking-body: normal;
+}
+
+/* ---- Noèsiologue : Fredoka en titre (jamais en italique ni pour un
+   paragraphe), Nunito en texte ; le texte n'emploie que 400 et 700. Repli
+   arrondi du système (ui-rounded : SF Pro Rounded sur Apple). ---- */
+html[data-interface='noesiologue'] {
+  --font-body: 'Nunito', ui-rounded, 'SF Pro Rounded', system-ui, -apple-system, 'Segoe UI', Roboto, 'Helvetica Neue', Arial, sans-serif;
+  --font-heading: 'Fredoka', ui-rounded, 'SF Pro Rounded', 'Nunito', system-ui, -apple-system, 'Segoe UI', Roboto, sans-serif;
+  --font-mono: ui-monospace, SFMono-Regular, 'SF Mono', Menlo, Consolas, 'Liberation Mono', monospace;
+  --fw-strong: 700;
+  --fw-heading: 600;
+  --fs-xs: 0.8125rem;
+  --fs-sm: 0.9375rem;
+  --fs-base: clamp(1rem, 0.96rem + 0.18vw, 1.0625rem);
+  --fs-lg: clamp(1.125rem, 1.06rem + 0.3vw, 1.3125rem);
+  --fs-xl: clamp(1.3125rem, 1.2rem + 0.5vw, 1.625rem);
+  --fs-2xl: clamp(1.5rem, 1.32rem + 0.8vw, 2.125rem);
+  --fs-3xl: clamp(1.875rem, 1.55rem + 1.45vw, 2.875rem);
+  --lh-tight: 1.15;
+  --lh-snug: 1.35;
+  --lh-body: 1.6;
+  --tracking-heading: normal;
+  --tracking-body: normal;
+}
+
+/* ---- Technomancien : Space Grotesk partout (titres resserrés), JetBrains
+   Mono pour le code et les identifiants. ---- */
+html[data-interface='technomancien'] {
+  --font-body: 'Space Grotesk', ui-sans-serif, system-ui, -apple-system, 'Segoe UI', Roboto, 'Helvetica Neue', Arial, sans-serif;
+  --font-heading: 'Space Grotesk', ui-sans-serif, system-ui, -apple-system, 'Segoe UI', Roboto, 'Helvetica Neue', Arial, sans-serif;
+  --font-mono: 'JetBrains Mono', ui-monospace, 'SF Mono', SFMono-Regular, Menlo, Consolas, 'Liberation Mono', monospace;
+  --fw-strong: 600;
+  --fw-heading: 600;
+  --fs-xs: clamp(0.75rem, 0.7255rem + 0.1087vw, 0.8125rem);
+  --fs-sm: clamp(0.875rem, 0.8505rem + 0.1087vw, 0.9375rem);
+  --fs-base: clamp(1rem, 0.9755rem + 0.1087vw, 1.0625rem);
+  --fs-lg: clamp(1.125rem, 1.0761rem + 0.2174vw, 1.25rem);
+  --fs-xl: clamp(1.25rem, 1.1522rem + 0.4348vw, 1.5rem);
+  --fs-2xl: clamp(1.5rem, 1.3533rem + 0.6522vw, 1.875rem);
+  --fs-3xl: clamp(1.75rem, 1.5054rem + 1.087vw, 2.375rem);
+  --lh-tight: 1.15;
+  --lh-snug: 1.35;
+  --lh-body: 1.6;
+  --tracking-heading: -0.02em;
+  --tracking-body: -0.005em;
+}
+
 /* Focus clavier visible partout (liens, boutons, résumés dépliables). */
 a:focus-visible,
 button:focus-visible,
@@ -601,17 +838,70 @@ html {
 
 body {
   margin: 0;
-  /* D7 — corps en iA Writer Quattro (auto-hébergée), repli système. */
-  font-family:
-    'iA Writer Quattro',
-    system-ui,
-    -apple-system,
-    'Segoe UI',
-    Roboto,
-    sans-serif;
+  /* Sprint 9 — police, corps et interligne de l'interface (plus haut). */
+  font-family: var(--font-body);
+  font-size: var(--fs-base);
+  line-height: var(--lh-body);
+  letter-spacing: var(--tracking-body);
   color: var(--ink);
   background: var(--paper);
-  line-height: 1.55;
+}
+
+/* Titres de base : ceux qu'aucun composant ne règle prennent l'échelle de
+   l'interface ; une règle de composant (.carto-section h3…) garde la main. */
+h1,
+h2,
+h3 {
+  font-family: var(--font-heading);
+  font-weight: var(--fw-heading);
+  line-height: var(--lh-tight);
+  letter-spacing: var(--tracking-heading);
+}
+
+h1 {
+  font-size: var(--fs-3xl);
+}
+
+h2 {
+  font-size: var(--fs-2xl);
+}
+
+h3 {
+  font-size: var(--fs-xl);
+  line-height: var(--lh-snug);
+}
+
+h4,
+h5,
+h6,
+b,
+strong {
+  font-weight: var(--fw-strong);
+}
+
+/* Les commandes prennent la police de l'interface (sans la famille, le
+   navigateur leur donne celle du système) ; leur taille ne change pas. */
+button,
+input,
+select,
+textarea {
+  font-family: inherit;
+}
+
+/* Chasse fixe de l'interface. La taille relative remplace la réduction
+   automatique du navigateur, réservée à la seule famille « monospace ». */
+code,
+kbd,
+samp,
+pre {
+  font-family: var(--font-mono);
+  font-size: 0.92em;
+}
+
+pre code,
+pre kbd,
+pre samp {
+  font-size: inherit;
 }
 
 .app {
@@ -820,7 +1110,7 @@ body {
   background: var(--card);
   color: var(--ink);
   font-size: 0.95rem;
-  font-weight: 600;
+  font-weight: var(--fw-strong);
   cursor: pointer;
 }
 
@@ -1069,7 +1359,7 @@ body:has([aria-modal='true'], .portfolio-editor-fullscreen)
 .app-nav a[aria-current='page'] {
   color: var(--accent-strong);
   background: var(--info-bg);
-  font-weight: 600;
+  font-weight: var(--fw-strong);
 }
 
 /* Déconnexion : dernier groupe du panneau, même gabarit que les liens de
@@ -1096,7 +1386,7 @@ body:has([aria-modal='true'], .portfolio-editor-fullscreen)
 }
 
 .app-nav-identity-name {
-  font-weight: 600;
+  font-weight: var(--fw-strong);
   overflow: hidden;
   text-overflow: ellipsis;
   white-space: nowrap;
@@ -1139,7 +1429,7 @@ body:has([aria-modal='true'], .portfolio-editor-fullscreen)
   color: var(--ink-soft);
   font: inherit;
   font-size: 0.98rem;
-  font-weight: 600;
+  font-weight: var(--fw-strong);
   cursor: pointer;
   text-align: left;
 }
@@ -1176,7 +1466,7 @@ body:has([aria-modal='true'], .portfolio-editor-fullscreen)
   color: var(--ink-soft);
   font: inherit;
   font-size: 0.98rem;
-  font-weight: 600;
+  font-weight: var(--fw-strong);
   cursor: pointer;
   text-align: left;
 }
@@ -1251,7 +1541,7 @@ body:has([aria-modal='true'], .portfolio-editor-fullscreen)
 }
 
 .display-select-label {
-  font-weight: 600;
+  font-weight: var(--fw-strong);
 }
 
 .display-select select {
@@ -1401,7 +1691,7 @@ body:has([aria-modal='true'], .portfolio-editor-fullscreen)
 .chip {
   font: inherit;
   font-size: 0.9rem;
-  font-weight: 600;
+  font-weight: var(--fw-strong);
   cursor: pointer;
   padding: 0.35rem 0.8rem;
   border-radius: 999px;
@@ -1463,7 +1753,7 @@ body:has([aria-modal='true'], .portfolio-editor-fullscreen)
 
 .family-intent {
   font-size: 0.76rem;
-  font-weight: 650;
+  font-weight: var(--fw-strong);
   color: var(--fam, var(--accent));
 }
 
@@ -1478,7 +1768,7 @@ body:has([aria-modal='true'], .portfolio-editor-fullscreen)
   color: var(--ink-faint);
   text-transform: uppercase;
   letter-spacing: 0.06em;
-  font-weight: 600;
+  font-weight: var(--fw-strong);
 }
 
 .family-note-text {
@@ -1524,7 +1814,7 @@ body:has([aria-modal='true'], .portfolio-editor-fullscreen)
 
 .route-label {
   font-size: 0.93rem;
-  font-weight: 550;
+  font-weight: var(--fw-strong);
 }
 
 .route-hint {
@@ -1567,7 +1857,7 @@ body:has([aria-modal='true'], .portfolio-editor-fullscreen)
 .callout-hint {
   margin: 0.5rem 0 0;
   font-size: 0.9rem;
-  font-weight: 600;
+  font-weight: var(--fw-strong);
   color: var(--accent-strong);
 }
 
@@ -1782,7 +2072,7 @@ body:has([aria-modal='true'], .portfolio-editor-fullscreen)
 
 .guides-card-cta {
   font-size: 0.9rem;
-  font-weight: 600;
+  font-weight: var(--fw-strong);
   color: var(--accent);
   margin-top: 0.2rem;
 }
@@ -1984,7 +2274,7 @@ body:has([aria-modal='true'], .portfolio-editor-fullscreen)
   background: var(--card);
   color: var(--ink-soft);
   font: inherit;
-  font-weight: 600;
+  font-weight: var(--fw-strong);
   cursor: pointer;
   -webkit-tap-highlight-color: transparent;
 }
@@ -2039,7 +2329,7 @@ body:has([aria-modal='true'], .portfolio-editor-fullscreen)
 .hover-overlay {
   min-height: 1.4em;
   font-size: 0.9rem;
-  font-weight: 600;
+  font-weight: var(--fw-strong);
   color: var(--viz-ink-soft);
   text-align: center;
 }
@@ -2173,7 +2463,7 @@ body:has([aria-modal='true'], .portfolio-editor-fullscreen)
 
 .profile-summary dd {
   margin: 0;
-  font-weight: 600;
+  font-weight: var(--fw-strong);
 }
 
 /* ---------- HTML narratif (corpus hérité) ---------- */
@@ -2197,7 +2487,7 @@ body:has([aria-modal='true'], .portfolio-editor-fullscreen)
   padding: 0.15rem 0.6rem;
   border-radius: 999px;
   font-size: 0.8rem;
-  font-weight: 600;
+  font-weight: var(--fw-strong);
   background: var(--line);
   color: var(--ink-soft);
 }
@@ -2322,7 +2612,7 @@ body:has([aria-modal='true'], .portfolio-editor-fullscreen)
 
 .pedagogue-block summary {
   cursor: pointer;
-  font-weight: 600;
+  font-weight: var(--fw-strong);
   font-size: 0.95rem;
 }
 
@@ -2346,7 +2636,7 @@ body:has([aria-modal='true'], .portfolio-editor-fullscreen)
 .passages summary,
 .exclus summary {
   cursor: pointer;
-  font-weight: 600;
+  font-weight: var(--fw-strong);
   font-size: 0.95rem;
 }
 
@@ -2509,7 +2799,7 @@ body:has([aria-modal='true'], .portfolio-editor-fullscreen)
 
 .ref-competence-code {
   font-variant-numeric: tabular-nums;
-  font-weight: 600;
+  font-weight: var(--fw-strong);
   color: var(--pole-color, var(--accent));
   text-decoration: none;
 }
@@ -2654,7 +2944,7 @@ body:has([aria-modal='true'], .portfolio-editor-fullscreen)
 
 .account-row dd {
   margin: 0;
-  font-weight: 600;
+  font-weight: var(--fw-strong);
   overflow-wrap: anywhere;
   text-align: right;
 }
@@ -2813,7 +3103,7 @@ body:has([aria-modal='true'], .portfolio-editor-fullscreen)
 .char-counter-over {
   color: var(--danger);
   opacity: 1;
-  font-weight: 600;
+  font-weight: var(--fw-strong);
 }
 
 .essayer-hint {
@@ -2857,7 +3147,7 @@ body:has([aria-modal='true'], .portfolio-editor-fullscreen)
 }
 
 .essayer-step-active .essayer-step-label {
-  font-weight: 600;
+  font-weight: var(--fw-strong);
 }
 
 .essayer-step-phase {
@@ -2987,7 +3277,7 @@ body:has([aria-modal='true'], .portfolio-editor-fullscreen)
   border: 1px solid var(--line);
   border-radius: 8px;
   font: inherit;
-  font-weight: 600;
+  font-weight: var(--fw-strong);
 }
 
 /* Éditeur textarea améliorée (ADR-010). */
@@ -3149,7 +3439,7 @@ body:has([aria-modal='true'], .portfolio-editor-fullscreen)
 }
 
 .portfolio-day-titre {
-  font-weight: 600;
+  font-weight: var(--fw-strong);
 }
 
 .portfolio-day-meta {
@@ -3841,7 +4131,7 @@ body:has([aria-modal='true'], .portfolio-editor-fullscreen)
 }
 
 .compare-champ-divergent {
-  font-weight: 600;
+  font-weight: var(--fw-strong);
   background: var(--warn-bg-strong);
 }
 
@@ -3958,7 +4248,7 @@ body:has([aria-modal='true'], .portfolio-editor-fullscreen)
 }
 
 .code-editor {
-  font-family: ui-monospace, 'SFMono-Regular', Menlo, Consolas, monospace;
+  font-family: var(--font-mono);
   font-size: 0.85rem;
   line-height: 1.45;
   tab-size: 2;
@@ -4060,7 +4350,7 @@ body:has([aria-modal='true'], .portfolio-editor-fullscreen)
 
 .banc-carnet > summary {
   cursor: pointer;
-  font-weight: 600;
+  font-weight: var(--fw-strong);
 }
 
 .banc-carnet-texte {
@@ -4240,7 +4530,7 @@ body:has([aria-modal='true'], .portfolio-editor-fullscreen)
 .cohorte-consent label {
   display: block;
   margin-top: 0.5rem;
-  font-weight: 600;
+  font-weight: var(--fw-strong);
 }
 
 .cohorte-liste {
@@ -4311,7 +4601,7 @@ body:has([aria-modal='true'], .portfolio-editor-fullscreen)
   background: var(--accent-solid);
   border-color: var(--accent);
   color: #fff;
-  font-weight: 600;
+  font-weight: var(--fw-strong);
 }
 
 .admin-tabs .admin-tabs-home {
@@ -4971,7 +5261,7 @@ body:has([aria-modal='true'], .portfolio-editor-fullscreen)
   width: 100%;
   max-width: 44rem;
   margin-top: 0.35rem;
-  font-family: ui-monospace, SFMono-Regular, Menlo, Consolas, monospace;
+  font-family: var(--font-mono);
   font-size: 0.9rem;
   line-height: 1.5;
   padding: 0.6rem 0.7rem;
@@ -5021,7 +5311,7 @@ body:has([aria-modal='true'], .portfolio-editor-fullscreen)
   white-space: pre-wrap;
   word-break: break-word;
   overflow-x: auto;
-  font-family: ui-monospace, SFMono-Regular, Menlo, Consolas, monospace;
+  font-family: var(--font-mono);
   font-size: 0.9rem;
   line-height: 1.5;
   padding: 0.7rem 0.8rem;
@@ -5180,7 +5470,7 @@ body:has([aria-modal='true'], .portfolio-editor-fullscreen)
 }
 
 .epi-list-title {
-  font-weight: 600;
+  font-weight: var(--fw-strong);
 }
 
 .epi-small {
@@ -5288,7 +5578,7 @@ body:has([aria-modal='true'], .portfolio-editor-fullscreen)
   flex: 0 0 auto;
   min-width: 2.6rem;
   font-variant-numeric: tabular-nums;
-  font-weight: 600;
+  font-weight: var(--fw-strong);
   color: var(--pole-color, var(--ink-soft));
 }
 
@@ -5432,7 +5722,7 @@ body:has([aria-modal='true'], .portfolio-editor-fullscreen)
 }
 
 .epi-vote-who {
-  font-weight: 600;
+  font-weight: var(--fw-strong);
 }
 
 .epi-vote-choice {
@@ -5485,7 +5775,7 @@ body:has([aria-modal='true'], .portfolio-editor-fullscreen)
 
 .epi-ok {
   color: var(--ok);
-  font-weight: 600;
+  font-weight: var(--fw-strong);
 }
 
 .epi-notice {
@@ -5586,13 +5876,13 @@ body:has([aria-modal='true'], .portfolio-editor-fullscreen)
   padding: 0.75rem;
   border-radius: 8px;
   background: var(--surface-2);
-  font-family: ui-monospace, SFMono-Regular, Menlo, Consolas, monospace;
+  font-family: var(--font-mono);
   font-size: 0.8rem;
 }
 
 .epi-modele dt {
-  font-family: ui-monospace, SFMono-Regular, Menlo, Consolas, monospace;
-  font-weight: 600;
+  font-family: var(--font-mono);
+  font-weight: var(--fw-strong);
 }
 
 .epi-modele dd {
@@ -5603,7 +5893,7 @@ body:has([aria-modal='true'], .portfolio-editor-fullscreen)
 .epi-markdown textarea {
   width: 100%;
   min-height: 14rem;
-  font-family: ui-monospace, SFMono-Regular, Menlo, Consolas, monospace;
+  font-family: var(--font-mono);
   font-size: 0.85rem;
 }
 
@@ -5661,7 +5951,7 @@ body:has([aria-modal='true'], .portfolio-editor-fullscreen)
 }
 
 .account-keys-provider {
-  font-weight: 600;
+  font-weight: var(--fw-strong);
 }
 
 .account-keys-date {
@@ -5714,7 +6004,7 @@ body:has([aria-modal='true'], .portfolio-editor-fullscreen)
 
 .account-keys-ok {
   color: var(--ok);
-  font-weight: 600;
+  font-weight: var(--fw-strong);
 }
 
 /* « Mes rôles RESPIRE » (profil #/compte, sprint 8) : une déclaration, sans
@@ -5788,7 +6078,7 @@ body:has([aria-modal='true'], .portfolio-editor-fullscreen)
 }
 
 .account-respire-label {
-  font-weight: 600;
+  font-weight: var(--fw-strong);
   cursor: pointer;
 }
 
@@ -5815,7 +6105,7 @@ body:has([aria-modal='true'], .portfolio-editor-fullscreen)
 
 .account-respire-ok {
   color: var(--ok);
-  font-weight: 600;
+  font-weight: var(--fw-strong);
 }
 
 /* Rôles déclarés dans la liste d'administration (#/admin/roles) : à côté

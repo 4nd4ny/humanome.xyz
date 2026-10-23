@@ -84,7 +84,7 @@
 .config-partie > summary {
   cursor: pointer;
   padding: 0.75rem 0;
-  font-weight: 600;
+  font-weight: var(--fw-strong);
   min-height: 44px;
 }
 
@@ -124,7 +124,7 @@
 .config-champ.is-modified > legend,
 .config-mode.is-modified .admin-demo-toggle-label {
   color: var(--accent-strong);
-  font-weight: 600;
+  font-weight: var(--fw-strong);
 }
 
 .config-modifie {

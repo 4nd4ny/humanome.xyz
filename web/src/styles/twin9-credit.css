@@ -96,7 +96,7 @@
 }
 
 .credit-pack-libelle {
-  font-weight: 600;
+  font-weight: var(--fw-strong);
 }
 
 .credit-pack-montant {
@@ -110,7 +110,7 @@
   min-height: 44px;
   padding: 0.5rem 1.1rem;
   font: inherit;
-  font-weight: 600;
+  font-weight: var(--fw-strong);
   color: #fff;
   background: var(--accent);
   border: 1px solid var(--accent-strong);
@@ -195,7 +195,7 @@
 .credit-table thead th,
 .facture-twin9 thead th {
   color: var(--ink-soft);
-  font-weight: 600;
+  font-weight: var(--fw-strong);
   white-space: nowrap;
 }
 
@@ -206,7 +206,7 @@
 }
 
 .mono {
-  font-family: ui-monospace, SFMono-Regular, Menlo, monospace;
+  font-family: var(--font-mono);
   font-size: 0.82rem;
 }
 
@@ -347,7 +347,7 @@
 .facture-totaux dd {
   margin: 0;
   font-variant-numeric: tabular-nums;
-  font-weight: 600;
+  font-weight: var(--fw-strong);
 }
 
 .facture-solde-fin {

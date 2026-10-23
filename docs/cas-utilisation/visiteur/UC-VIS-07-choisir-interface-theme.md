@@ -7,7 +7,7 @@
 | **Portée** | humanome.xyz — listes « Interface » et « Thème » au bas du menu (sous « Mode expert ») et dans la ligne « Affichage » de `#/compte` ; bascule soleil/lune de l'en-tête (UC-VIS-04 A5) ; choix gardés dans le navigateur (`localStorage` `humanome-interface`, `humanome-theme`), posés sur `<html>` (`data-interface`, `data-theme`) avant le premier rendu par le script anti-FOUC de `web/index.html` ; sans API |
 | **Niveau** | Objectif utilisateur |
 | **Cahier des charges** | Sprint 9 (TODO_LIST, charte graphique) : décision de Christian du 2026-10-23 — « Les trois propositions d'interface sont excellentes. Nous allons les conserver toutes les trois » —, chacune nommée d'après une filière : épistémiarque (proposition A), noèsiologue (B), technomancien (C) |
-| **Statut** | Implémenté (lot S9-1, 2026-10-23 : jetons de couleur, sélecteur, persistance). Polices des interfaces et passage des couleurs littérales restantes aux jetons : lots suivants du sprint 9 |
+| **Statut** | Implémenté (lot S9-1, 2026-10-23 : jetons de couleur, sélecteur, persistance ; lot S9-2 : polices et échelle typographique de chaque interface). Passage des couleurs littérales restantes aux jetons : lot suivant du sprint 9 |
 
 ## Objectif
 
@@ -116,6 +116,14 @@ Aucune. Les réglages fonctionnent sans compte ni API.
 - **RG5** — Les couleurs de données (familles d'intention, séries du
   monitoring, surface des visualisations, badges gratuit / premium, pôles et
   palettes de la cartographie) ne dépendent pas de l'interface.
+- **RG6** — Polices : chaque interface a les siennes, auto-hébergées (CSP
+  `font-src 'self'`, licence OFL) : Source Serif 4 et Source Sans 3
+  (épistémiarque), Fredoka et Nunito (noèsiologue), Space Grotesk et
+  JetBrains Mono (technomancien). Ses piles (`--font-body`, `--font-heading`,
+  `--font-mono`) et son échelle (`--fs-*`, `--fw-*`, `--lh-*`) ne dépendent
+  pas du thème et ne nomment aucune famille d'une autre interface : le
+  navigateur ne télécharge que les polices de l'interface en vigueur, et
+  seulement les sous-ensembles (latin, latin-ext) que la page emploie.
 
 ## Données et RGPD
 
@@ -134,6 +142,7 @@ Aucune. Les réglages fonctionnent sans compte ni API.
 | Front | `web/src/App.jsx` | État de l'interface et du choix de thème, contexte autour du shell, listes du tiroir, bascule de l'en-tête synchronisée, attribut reposé au montage |
 | Front | `web/src/views/AccountView.jsx` — `DisplayModeRow` | Ligne « Affichage » (A4) |
 | Front | `web/src/styles/global.css` — jetons `--ds-*` des trois interfaces, alias, `.display-select` | Couleurs des interfaces (RG4, RG5) ; listes de 44 px |
+| Front | `web/src/styles/global.css` — `@font-face` et blocs typographiques `html[data-interface]` ; `web/public/fonts/<famille>/` (woff2 Fontsource et `OFL.txt`) | Polices et échelle de chaque interface (RG6) |
 
 ## Jeux de tests
 
@@ -167,6 +176,9 @@ Aucune. Les réglages fonctionnent sans compte ni API.
   `web/src/anti-fouc.test.js` — script en ligne exécuté contre des doublures,
   clés et liste alignées sur `lib/theme.js`, sha256 présent dans la CSP, dans
   son commentaire et dans `docs/securite-checklist.md`.
+- `web/src/styles/fonts.test.js` — chaque `@font-face` (woff2 présent,
+  licence OFL, `swap`, `unicode-range`), mêmes variables typographiques dans
+  les trois interfaces, aucune famille partagée, aucune origine tierce (RG6).
 - `web/src/App.test.jsx` (bascule de thème de l'en-tête, groupes du tiroir),
   UC-VIS-06-F06 (ligne « Affichage » du compte), UC-CPT-07-U23 (contrastes
   des définitions de rôle, désormais dans les neuf contextes).
@@ -174,7 +186,7 @@ Aucune. Les réglages fonctionnent sans compte ni API.
 ### Exécuter
 
 ```sh
-cd web && npx vitest run test/usecases/unit/uc-vis-07 test/usecases/functional/uc-vis-07 src/lib/theme.test.js src/anti-fouc.test.js
+cd web && npx vitest run test/usecases/unit/uc-vis-07 test/usecases/functional/uc-vis-07 src/lib/theme.test.js src/anti-fouc.test.js src/styles/fonts.test.js
 ```
 
 ## Limites
@@ -187,11 +199,9 @@ cd web && npx vitest run test/usecases/unit/uc-vis-07 test/usecases/functional/u
   production : les trois interfaces × (sans choix, clair, sombre) × système
   clair ou sombre, plus une valeur inconnue, posent les bons attributs et les
   bonnes couleurs avant le bundle, sans violation de CSP.
-- **Lot S9-1 seulement** : les polices propres à chaque interface (Source
-  Serif 4 et Source Sans 3, Fredoka et Nunito, Space Grotesk et JetBrains
-  Mono) et le passage aux jetons des couleurs littérales restantes (blancs
-  écrits en dur sur les aplats d'accent, `timeline.css`, `twin9-credit.css`)
-  viennent aux lots suivants. D'ici là, en noèsiologue et en technomancien
+- **Lots S9-1 et S9-2 seulement** : le passage aux jetons des couleurs
+  littérales restantes (blancs écrits en dur sur les aplats d'accent,
+  `timeline.css`, `twin9-credit.css`) vient au lot suivant. D'ici là, en noèsiologue et en technomancien
   sombres, le texte blanc écrit en dur sur un aplat d'accent éclairci reste
   sous 4,5:1 : `--on-accent` (encre sombre) existe, les règles ne le lisent
   pas encore.

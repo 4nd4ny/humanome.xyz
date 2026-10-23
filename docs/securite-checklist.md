@@ -122,9 +122,11 @@ Dernière revue : M9 (2026-07-12).
   non assaini (DOMPurify, ADR-007), textes de l'utilisateur rendus par React
   en texte, pas de `'unsafe-inline'` ni de `'unsafe-eval'` pour les scripts ;
   et toute nouvelle entrée de `connect-src` doit répondre à un adaptateur du
-  moteur (garde `csp-providers.test.js`). `font-src 'self'` (polices iA Writer Quattro auto-hébergées,
-  D7 — explicite bien que `default-src 'self'` les couvre déjà ; aucune origine
-  tierce de police), Permissions-Policy restrictive (ajoutée en M9).
+  moteur (garde `csp-providers.test.js`). `font-src 'self'` (polices auto-hébergées : iA Writer Quattro en D7, puis,
+  depuis le sprint 9, celles des trois interfaces, prises dans les paquets
+  Fontsource sous licence OFL et servies depuis `web/public/fonts/` ;
+  explicite bien que `default-src 'self'` les couvre déjà ; aucune origine
+  tierce de police, garde `web/src/styles/fonts.test.js`), Permissions-Policy restrictive (ajoutée en M9).
   **Correction de régression M9 (bug réel)** : la CSP de prod cassait
   *silencieusement* la sandbox promptologue (P10). Un iframe `srcdoc` **hérite de la
   CSP de la page parente** ; `script-src 'self'` refusait donc le bootstrap inline

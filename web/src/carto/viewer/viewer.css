@@ -1,4 +1,11 @@
-/* Copie autonome : police système (aucun fichier de police à charger). */
+/* Copie autonome : police système (aucun fichier de police à charger). Les
+   piles de l'interface (global.css, sprint 9) sont ramenées au système, sans
+   quoi les titres et le code nommeraient des woff2 absents de la copie. */
+:root {
+  --font-body: system-ui, -apple-system, 'Segoe UI', Roboto, sans-serif;
+  --font-heading: system-ui, -apple-system, 'Segoe UI', Roboto, sans-serif;
+  --font-mono: ui-monospace, SFMono-Regular, Menlo, Consolas, monospace;
+}
 body {
   font-family: system-ui, -apple-system, 'Segoe UI', Roboto, sans-serif;
 }

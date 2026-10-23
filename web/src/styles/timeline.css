@@ -85,7 +85,7 @@
 }
 
 .timeline-date {
-  font-weight: 600;
+  font-weight: var(--fw-strong);
   font-variant-numeric: tabular-nums;
   color: #1e293b;
 }

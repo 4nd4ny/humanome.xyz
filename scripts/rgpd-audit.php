@@ -91,6 +91,7 @@ final class RgpdAudit
     public const EXPORT_COVERAGE = [
         'users' => 'local',                 // account block embedded in the archive
         'user_roles' => '—',
+        'user_declared_roles' => 'archive', // declared RESPIRE roles (migration 035), GET /api/auth/me/declared-roles
         'sessions' => '—',
         'cartographies' => 'local',         // local store is the source of truth
         'share_links' => '—',               // hashes only, never personal content

@@ -105,6 +105,7 @@
     * [UC-CPT-04 — Gérer ses clés API personnelles](docs/cas-utilisation/compte/UC-CPT-04-gerer-cles-api.md)
     * [UC-CPT-05 — Suivre sa progression de formation](docs/cas-utilisation/compte/UC-CPT-05-suivre-progression-formation.md)
     * [UC-CPT-06 — Supprimer son compte (droit à l'effacement)](docs/cas-utilisation/compte/UC-CPT-06-supprimer-compte.md)
+    * [UC-CPT-07 — Déclarer ses rôles RESPIRE](docs/cas-utilisation/compte/UC-CPT-07-declarer-roles-respire.md)
   * Apprenant
     * [UC-APP-01 — Constituer son portfolio local](docs/cas-utilisation/apprenant/UC-APP-01-constituer-portfolio.md)
     * [UC-APP-02 — Lancer une cartographie standard](docs/cas-utilisation/apprenant/UC-APP-02-lancer-cartographie-standard.md)

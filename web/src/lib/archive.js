@@ -27,6 +27,11 @@
 // its outputs — and the memory of its maps, as GET /api/twin9/mes-analyses gives
 // them (`analysesTwin9`). Never imported back: a run is launched again.
 //
+// Since 1.3.0 (sprint 8), the account block also carries the RESPIRE roles
+// the person declares (`account.declaredRoles`, GET /api/auth/me/declared-roles),
+// apart from its habilitations (`account.roles`): a declaration opens no
+// right. Left out when it cannot be read; never imported back.
+//
 // A portfolio restored from an archive loses the marks of Twin9's highlighted
 // portfolio (S3-3, lib/twin9/marques.js), its segmentation's bounds moved with
 // its text: no trace comes in through a file, the analysed text never has one.
@@ -44,7 +49,7 @@ import { retirerMarquesTwin9 } from './twin9/marques.js'
 import { importFiles as importIntoInterface } from '../carto/core/import.js'
 import { createDataset, isPristineDemo } from '../carto/core/model.js'
 
-export const ARCHIVE_SCHEMA_VERSION = '1.2.0'
+export const ARCHIVE_SCHEMA_VERSION = '1.3.0'
 
 // Traceability fallbacks for cartographies saved without run metadata (e.g.
 // a document imported by drag & drop): the archive schema REQUIRES the
@@ -91,7 +96,26 @@ async function defaultGetAccount(fetchFn) {
     if (typeof user.displayName === 'string' && user.displayName !== '') {
       account.displayName = user.displayName
     }
+    const declaredRoles = await defaultGetDeclaredRoles(fetchFn)
+    if (declaredRoles) account.declaredRoles = declaredRoles
     return account
+  } catch {
+    return null
+  }
+}
+
+/**
+ * The RESPIRE roles the account declares (1.3.0, sprint 8), apart from its
+ * habilitations; null when they cannot be read (an older API, the network).
+ */
+async function defaultGetDeclaredRoles(fetchFn) {
+  try {
+    const data = await apiFetch('auth/me/declared-roles', fetchFn ? { fetchFn } : undefined)
+    if (!Array.isArray(data?.roles) || typeof data.foundingCircle !== 'boolean') return null
+    return {
+      roles: data.roles.filter((role) => typeof role === 'string' && role !== ''),
+      foundingCircle: data.foundingCircle,
+    }
   } catch {
     return null
   }

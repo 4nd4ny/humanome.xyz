@@ -293,4 +293,39 @@ final class UcAdm01GererComptesRolesTest extends AdminTestCase
         self::assertSame([], $beyond['users']);
         self::assertSame(1, $beyond['total']);
     }
+
+    #[TestDox('UC-ADM-01-F26 — A7 : l’admin voit les rôles déclarés à côté des habilitations et habilite d’un clic celle qu’une déclaration appelle ; effet immédiat, la déclaration reste, son retrait ne la touche pas')]
+    public function testF26DeclarationsBesideHabilitationsAndOneClickGrant(): void
+    {
+        $maya = $this->registerAs('maya@example.org', 'Maya', ['apprenant']);
+        $declared = $this->as_($maya, 'PUT', '/api/auth/me/declared-roles',
+            ['roles' => ['promptagogue', 'cartographe'], 'foundingCircle' => true]);
+        self::assertSame(200, $declared->getStatusCode(), (string) $declared->getBody());
+
+        $row = self::json($this->as_($this->admin, 'GET', '/api/admin/users?query=maya'))['users'][0];
+        self::assertSame(['apprenant'], $row['roles']);
+        self::assertSame(['cartographe', 'promptagogue'], $row['declaredRoles']);
+        self::assertTrue($row['foundingCircle']);
+        self::assertSame(['cartographe'], $row['grantable'], 'promptagogue n’a pas d’habilitation');
+        self::assertSame(403, $this->as_($maya, 'GET', '/api/cartographe/cartographies')->getStatusCode(), 'déclarée, pas habilitée');
+
+        // un clic : le POST d'attribution, avec le rôle que « grantable » nomme
+        $granted = $this->grant($maya['id'], $row['grantable'][0]);
+        self::assertSame(['id' => $maya['id'], 'role' => 'cartographe', 'status' => 'granted'], self::json($granted));
+        self::assertSame(200, $this->as_($maya, 'GET', '/api/cartographe/cartographies')->getStatusCode());
+        self::assertSame('cartographe', self::lastAudit('role_granted')['details']['role']);
+
+        $row = self::json($this->as_($this->admin, 'GET', '/api/admin/users?query=maya'))['users'][0];
+        self::assertSame(['apprenant', 'cartographe'], $row['roles']);
+        self::assertSame([], $row['grantable']);
+        self::assertSame(['cartographe', 'promptagogue'], $row['declaredRoles']);
+
+        // retirer l'habilitation ne retire pas la déclaration : elle redevient à habiliter
+        $this->revoke($maya['id'], 'cartographe');
+        $row = self::json($this->as_($this->admin, 'GET', '/api/admin/users?query=maya'))['users'][0];
+        self::assertSame(['apprenant'], $row['roles']);
+        self::assertSame(['cartographe', 'promptagogue'], $row['declaredRoles']);
+        self::assertSame(['cartographe'], $row['grantable']);
+        self::assertSame(403, $this->as_($maya, 'GET', '/api/cartographe/cartographies')->getStatusCode());
+    }
 }

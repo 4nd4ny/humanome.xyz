@@ -5,6 +5,7 @@ declare(strict_types=1);
 namespace Humanome\Admin;
 
 use Humanome\Auth\Audit;
+use Humanome\Auth\DeclaredRoles;
 use PDO;
 
 /**
@@ -12,6 +13,12 @@ use PDO;
  * roles, grant and revoke the cahier §2 roles through an admin SESSION API
  * (RequireRole::any('admin') in routes/admin.php) — NOT the deploy
  * X-Migrate-Token used by the pre-P12 grant-role tooling (routes/system.php).
+ *
+ * Beside each account's roles — its HABILITATIONS — the list shows the RESPIRE
+ * roles it DECLARES itself (Auth\DeclaredRoles, sprint 8): a declaration
+ * grants nothing, and `grantable` names the habilitations its declarations
+ * call for that it does not hold yet, which the administrator grants in one
+ * click through grant() — the only way a habilitation is ever given.
  *
  * Anti-lockout invariant: an administrator may not revoke their OWN admin
  * role, so the platform always keeps at least the acting admin. Every grant
@@ -31,8 +38,11 @@ final class UserDirectory
      * Paginated account list with roles, optional case-insensitive search on
      * email or display name, optional filter on a carried role (monitoring :
      * « tous les comptes ayant tel rôle »). Deleted accounts are excluded.
+     * Each account comes with its declaration (declaredRoles, foundingCircle)
+     * and the habilitations it calls for (grantable).
      *
-     * @return array{users: list<array{id: int, email: string, displayName: string, createdAt: string, roles: list<string>}>, total: int, page: int, pageSize: int}
+     * @return array{users: list<array{id: int, email: string, displayName: string, createdAt: string, roles: list<string>,
+     *     declaredRoles: list<string>, foundingCircle: bool, grantable: list<string>}>, total: int, page: int, pageSize: int}
      */
     public function list(string $query = '', int $page = 1, string $role = ''): array
     {
@@ -76,15 +86,26 @@ final class UserDirectory
             return ['users' => [], 'total' => $total, 'page' => $page, 'pageSize' => self::PAGE_SIZE];
         }
 
-        $rolesByUser = $this->rolesByUser(array_map(static fn (array $r): int => (int) $r['id'], $rows));
+        $ids = array_map(static fn (array $r): int => (int) $r['id'], $rows);
+        $rolesByUser = $this->rolesByUser($ids);
+        $declarations = (new DeclaredRoles($this->pdo))->ofUsers($ids);
 
-        $users = array_map(static fn (array $r): array => [
-            'id' => (int) $r['id'],
-            'email' => (string) $r['email'],
-            'displayName' => (string) $r['display_name'],
-            'createdAt' => str_replace(' ', 'T', (string) $r['created_at']),
-            'roles' => $rolesByUser[(int) $r['id']] ?? [],
-        ], $rows);
+        $users = array_map(static function (array $r) use ($rolesByUser, $declarations): array {
+            $id = (int) $r['id'];
+            $roles = $rolesByUser[$id] ?? [];
+            $declared = $declarations[$id] ?? ['roles' => [], 'foundingCircle' => false];
+
+            return [
+                'id' => $id,
+                'email' => (string) $r['email'],
+                'displayName' => (string) $r['display_name'],
+                'createdAt' => str_replace(' ', 'T', (string) $r['created_at']),
+                'roles' => $roles,
+                'declaredRoles' => $declared['roles'],
+                'foundingCircle' => $declared['foundingCircle'],
+                'grantable' => DeclaredRoles::grantable($declared['roles'], $roles),
+            ];
+        }, $rows);
 
         return ['users' => $users, 'total' => $total, 'page' => $page, 'pageSize' => self::PAGE_SIZE];
     }

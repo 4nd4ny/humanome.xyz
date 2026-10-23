@@ -29,13 +29,13 @@ schémas ; les deux runtimes sont testés (`engine/src/validation.test.js`,
 | `cartographie-merge.schema.json` | `cartographie-merge` | Agrégat chronologique de TOUTES les feuilles (merge évolutif v3) : séries temporelles par pôle et par compétence, archétypes, profil ipsatif, narratifs HTML. Source du sunburst. Document réel : `web/public/data/demo/merge.json`. Depuis la 1.1.0 (2026-10-22), un document de la cartographie ouverte Twin6 porte en plus sa `configuration` et son `execution` (§4, point 8). |
 | `prompt-package.schema.json` | `prompt-package` | Paquet promptologue : textes de prompts + variables + code JS d'orchestration (sandbox Web Worker) + métadonnées (version, auteur, modèle cible, référentiel compatible, changelog). |
 | `competency-map-master.schema.json` | `competency-map-master` | Archive de l'interface de cartographie (`#/cartographie`, master v4, `schemaVersion` 4.x) : référentiel embarqué, journées et variantes (verdicts résumés), détail par journée (extraits, ancres, jury, portfolio du jour), délibérations de run, état de l'apprenant (cases, étiquettes, choix de variante, ensembles, réponses au jury, repères, notes, carnet du dialogue, préférences). Produite par l'espace Export de l'interface et embarquée par l'archive de compte. Fixture : `schemas/fixtures/carto/competency-map-master-exemple.json`, sortie EXACTE de l'interface (`web/scripts/carto-master-fixture.mjs`). |
-| `archive-export.schema.json` | `archive-export` | Format pivot de portabilité (ADR-006) : archive autoporteuse embarquant portfolios en texte intégral, référentiels et prompt-packages COMPLETS, cartographies produites, jeux de l'interface de cartographie (`jeuxCartographie`, depuis la 1.1.0), analyses approfondies Twin9 du compte (`analysesTwin9`, depuis la 1.2.0, §8.5) et journal d'audit. Sert l'export/suppression RGPD, l'import de compte et le seed d'instance. Référence les 5 autres schémas par `$ref` sur leur `$id` absolu. |
+| `archive-export.schema.json` | `archive-export` | Format pivot de portabilité (ADR-006) : archive autoporteuse embarquant portfolios en texte intégral, référentiels et prompt-packages COMPLETS, cartographies produites, jeux de l'interface de cartographie (`jeuxCartographie`, depuis la 1.1.0), analyses approfondies Twin9 du compte (`analysesTwin9`, depuis la 1.2.0, §8.5), rôles RESPIRE que la personne se déclare (`account.declaredRoles`, depuis la 1.3.0, décision 17) et journal d'audit. Sert l'export/suppression RGPD, l'import de compte et le seed d'instance. Référence les 5 autres schémas par `$ref` sur leur `$id` absolu. |
 | `twin9-profil.schema.json` | `twin9-profil` | Profil d'un run Twin9, décrit de bout en bout (`docs/plan-twin9-php.md` de `Twin_v9`, lot 4a, T12) : paramètres d'algorithme de la v9.8, troncatures comprises, collège des lecteurs, modèle et réglages de chaque étape, voie, plafonds, clé, gabarits, référentiel. Rangé dans `twin9_profils` (migration 024) ; document de référence : le profil v9.8, `api/config/twin9-profil-v98.json`. Validé côté PHP seulement (`ProfilRepository`) ; voir §7. |
 | `twin9-protocole-contrat.json` | — | Pas un schéma : les variables que le moteur fournit à chaque gabarit du jeu v9.8, par son nom (noms seuls, ADR-010 §2). Une copie du jeu n'en emploie pas d'autre (§8.6, T14). Lu par `TemplateSets`, livré avec la release (`scripts/deploy/stage-api.sh`). |
 
 Chaque document porte `schemaVersion` (semver du schéma d'enveloppe : « 1.0.0 »
-partout, sauf l'archive de compte, « 1.1.0 » depuis le 2026-10-14 et « 1.2.0 »
-depuis T10, un référentiel d'une autre structure que RESPIRE, « 2.0.0 »
+partout, sauf l'archive de compte, « 1.1.0 » depuis le 2026-10-14, « 1.2.0 »
+depuis T10 et « 1.3.0 » depuis le sprint 8, un référentiel d'une autre structure que RESPIRE, « 2.0.0 »
 depuis T15 (RESPIRE reste en 1.0.0, valide tel quel), une cartographie
 fusionnée qui porte sa configuration (Twin6), « 1.1.0 » depuis le 2026-10-22
 (toute autre reste en 1.0.0, à l'octet), et le master
@@ -554,6 +554,33 @@ par `scripts/extract-referentiel.mjs`.
       variante ne le comptent pas (réimporter le même run ne l'ajoute pas
       deux fois). Schéma : `stigmergie` dans la variante résumée et dans le
       détail, incertitude par énumération ; validateurs régénérés.
+
+17. **Archive de compte 1.3.0 : les rôles RESPIRE déclarés (sprint 8,
+    2026-10-22, migration 035).** Le bloc `account` gagne une propriété
+    OPTIONNELLE, `declaredRoles` `{roles, foundingCircle}` : les rôles de la
+    liste RESPIRE que la personne se déclare dans `#/compte` (identifiants
+    `cartographe`, `promptologue`, `promptagogue`, `eclaireur`, `architecte`,
+    `epistemiarque`, `mediateur`, `noesiologue`, `maitre-du-grimoire`, dans cet
+    ordre, sans doublon) et la case « membre du cercle des fondateurs »,
+    tels que `GET /api/auth/me/declared-roles` les rend. `account.roles` garde
+    son sens : les **habilitations**, qui seules ouvrent des droits
+    (`docs/autorisations.md`, principe 7) ; les deux ne se mêlent jamais.
+    - Absente d'une archive antérieure, d'un export anonyme, ou quand la
+      déclaration n'a pas pu être lue (API antérieure, réseau) : l'export part
+      quand même. Jamais réimportée : la personne se déclare de nouveau.
+    - Ajout rétro-compatible en lecture, comme la 1.1.0 et la 1.2.0 ;
+      `additionalProperties: false` sur la déclaration ; validateurs
+      régénérés.
+    - Les routes (contrat d'API, `routes/declared-roles.php`) :
+      `GET /api/auth/me/declared-roles` → `{roles, foundingCircle, catalogue}`,
+      `catalogue` = les neuf rôles `{id, label, definition, habilitation,
+      foundingCircleEligible}` ; `PUT` du même chemin
+      `{roles, foundingCircle?}` (case absente = décochée) remplace la
+      déclaration entière, `422 {error, fields}` sinon. `GET
+      /api/admin/users` porte en plus, pour chaque compte, `declaredRoles`,
+      `foundingCircle` et `grantable` (les habilitations que ses déclarations
+      appellent et qu'il n'a pas). `GET /api/auth/me` est inchangé : ses
+      `roles` restent les habilitations.
 
 ## 5. Note d'outillage
 

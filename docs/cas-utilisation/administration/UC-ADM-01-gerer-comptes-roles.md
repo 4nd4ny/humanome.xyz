@@ -15,7 +15,10 @@ Permettre à l'administrateur de retrouver un compte et de lui **attribuer** ou
 **retirer** l'un des sept rôles du référentiel §2 (`apprenant`, `cartographe`,
 `promptologue`, `epistemiarque`, `employeur`, `etablissement`, `admin`), avec
 effet immédiat, sans jamais pouvoir se retirer à lui-même l'accès à
-l'administration.
+l'administration. Depuis le sprint 8, il voit à côté de ces rôles — les
+**habilitations** — les rôles RESPIRE que chaque compte se **déclare**
+(UC-CPT-07), qui n'ouvrent aucun droit, et habilite d'un clic celle qu'une
+déclaration appelle (A7).
 
 ## Déclencheur
 
@@ -59,7 +62,8 @@ comptes », ou carte « Rôles » de l'accueil `#/admin`).
    `RequireRole::any('admin')` relit les rôles du compte en base, puis
    `UserDirectory::list` renvoie `200 {users, total, page, pageSize: 20}` :
    comptes non supprimés, triés par identifiant, chacun avec
-   `{id, email, displayName, createdAt (ISO « T »), roles (ordre alphabétique)}`.
+   `{id, email, displayName, createdAt (ISO « T »), roles (ordre alphabétique),
+   declaredRoles (ordre du catalogue), foundingCircle, grantable}` (A7).
 3. L'IHM affiche le compteur (« 3 comptes. ») et un tableau : compte, puces des
    rôles, menu d'attribution (seulement les rôles manquants), date de création.
 4. L'administrateur saisit un fragment dans « Rechercher un compte (e-mail ou
@@ -106,6 +110,19 @@ comptes », ou carte « Rôles » de l'accueil `#/admin`).
 - **A6 — Aucun résultat** (étape 4) : une recherche qui n'atteint aucun compte
   affiche « 0 compte pour « … ». » et « Aucun compte ne correspond. », sans
   tableau.
+- **A7 — Rôles déclarés et habilitation d'un clic** (étapes 2 et 5, sprint 8) :
+  chaque compte porte, à côté de ses rôles, les rôles RESPIRE qu'il se déclare
+  (`declaredRoles`, `foundingCircle`, UC-CPT-07) et `grantable`, les
+  habilitations que ses déclarations appellent et qu'il n'a pas encore
+  (cartographe → `cartographe`, promptologue → `promptologue`, épistémiarque →
+  `epistemiarque` ; les autres déclarations n'en ont pas). Habiliter d'un clic
+  est le `POST /api/admin/users/{id}/roles {role}` de l'étape 5 avec ce rôle :
+  même vérification, même audit `role_granted`, effet immédiat ; le rôle
+  quitte `grantable`. Retirer l'habilitation (étape 7) ne touche pas la
+  déclaration, qui l'appelle de nouveau. L'administrateur ne modifie pas les
+  déclarations, et une déclaration seule n'ouvre rien
+  (`docs/autorisations.md`, principe 7). L'IHM de `RolesSection` vient au lot
+  suivant du sprint 8.
 
 ## Scénarios d'erreur
 
@@ -171,6 +188,9 @@ comptes », ou carte « Rôles » de l'accueil `#/admin`).
   liste et se comportent comme inconnus.
 - **RG7** — Mutations protégées par le CSRF global (double soumission
   `X-CSRF-Token`).
+- **RG8** — Seul l'administrateur habilite : une déclaration (UC-CPT-07)
+  n'écrit jamais `user_roles`, et `grantable` n'est qu'une suggestion, que
+  l'attribution de l'étape 5 rend effective.
 
 ## Données et RGPD
 
@@ -178,6 +198,7 @@ comptes », ou carte « Rôles » de l'accueil `#/admin`).
 |---|---|
 | E-mail et nom des comptes | Affichés à l'administrateur seulement (liste) ; jamais journalisés |
 | Rôles | Table `user_roles` (CASCADE à la purge du compte) |
+| Rôles déclarés | `user_declared_roles`, `users.founding_circle` (UC-CPT-07) : lus par l'administrateur, jamais modifiés par lui |
 | Trace d'attribution | `audit_events` : acteur = admin, `{targetUserId, role, status}` |
 | Recherche | Terme passé en paramètre d'URL (`GET …?query=`) et utilisé dans une requête préparée ; jamais stocké par l'application (il peut figurer dans les journaux d'accès HTTP de l'hébergeur) |
 
@@ -193,6 +214,7 @@ comptes », ou carte « Rôles » de l'accueil `#/admin`).
 | Front | `web/src/api/client.js` — `apiFetch`, `fetchMe` | Jeton CSRF en mémoire, erreurs typées, copie statique |
 | API | `api/src/routes/admin.php` — `GET /admin/users`, `POST /admin/users/{id}/roles`, `DELETE /admin/users/{id}/roles/{role}` | Orchestration, `422` champ requis, mapping `AdminException` |
 | Domaine | `api/src/Admin/UserDirectory.php` — `list`, `grant`, `revoke` | Liste, recherche, filtre, pagination, anti-verrouillage, audit |
+| Domaine | `api/src/Auth/DeclaredRoles.php` — `ofUsers`, `grantable` | Déclarations des comptes de la page, habilitations qu'elles appellent (A7) |
 | Domaine | `api/src/Middleware/RequireRole.php`, `api/src/Auth/Users.php` — `rolesOf` | Garde `401/403`, rôles relus en base |
 | Domaine | `api/src/Middleware/CsrfMiddleware.php`, `api/src/Auth/Audit.php` | CSRF, journal `role_granted`/`role_revoked` |
 
@@ -202,7 +224,7 @@ comptes », ou carte « Rôles » de l'accueil `#/admin`).
 
 | ID | Cible | Vérifie | Fichier |
 |---|---|---|---|
-| UC-ADM-01-U01 | `UserDirectory::list` | Supprimés exclus, tri par id, rôles alphabétiques, forme et date ISO | `api/tests/UseCases/Unit/UcAdm01GererComptesRolesTest.php` |
+| UC-ADM-01-U01 | `UserDirectory::list` | Supprimés exclus, tri par id, rôles alphabétiques, forme (déclaration comprise, A7) et date ISO | `api/tests/UseCases/Unit/UcAdm01GererComptesRolesTest.php` |
 | UC-ADM-01-U02 | `UserDirectory::list` | Recherche e-mail/nom insensible à la casse, `%` et `_` littéraux | idem |
 | UC-ADM-01-U03 | `UserDirectory::list` | Filtre par rôle, combiné à la recherche (`example.org` + `epistemiarque` → 1 sur 3 ; `root` + `apprenant` → 0), rôle inconnu → vide | idem |
 | UC-ADM-01-U04 | `UserDirectory::list` | 20 par page, page ≤ 0 → 1, page au-delà → vide | idem |
@@ -216,6 +238,7 @@ comptes », ou carte « Rôles » de l'accueil `#/admin`).
 | UC-ADM-01-U12 | `UserDirectory` (AN-1) | Comportement actuel : rôle résolu sans casse, accents ni espaces finaux ; `revoke('ADMIN' \| 'ádmin' \| 'admin ')` contourne l'anti-verrouillage de la classe, écho non normalisé | idem |
 | UC-ADM-01-U22 | `CsrfMiddleware::process` | GET et POST sans session passent ; session sans jeton ou jeton faux → `403 « Jeton CSRF absent ou invalide »`, handler non appelé ; bon jeton → passe | idem |
 | UC-ADM-01-U23 | `UserDirectory::revoke` | Rôle invalide → `422` avant le compte ; compte inconnu ou supprimé → `404`, aucun audit | idem |
+| UC-ADM-01-U28 | `UserDirectory::list`, `DeclaredRoles::grantable` | Rôles déclarés dans l'ordre du catalogue, case du cercle, `grantable` sans les habilitations détenues ni les déclarations sans habilitation ; après `grant`, le rôle quitte `grantable`, la déclaration reste (A7) | idem |
 | UC-ADM-01-U24 | `UserDirectory::list` (AN-2) | Comportement actuel : `list('', PHP_INT_MAX)` → `PDOException` (OFFSET en notation scientifique) ; plus grande page sans débordement → vide | idem |
 | UC-ADM-01-U13 | `parseHash` | `#/admin/roles` → `{admin, roles}`, `#/admin` → section nulle | `web/test/usecases/unit/uc-adm-01-gerer-comptes-roles.test.jsx` |
 | UC-ADM-01-U14 | `navGroups` | Famille « Administrer » seulement avec `admin` | idem |
@@ -246,6 +269,7 @@ comptes », ou carte « Rôles » de l'accueil `#/admin`).
 | UC-ADM-01-F10 | E5 | API | `409` anti-verrouillage, rôle conservé, pas d'audit | idem |
 | UC-ADM-01-F11 | E6 | API | `403` CSRF absent/faux, aucune mutation | idem |
 | UC-ADM-01-F12 | AN-1 | API | Comportement actuel : `CARTOGRAPHE` et `cártographe` acceptés, écho et audit non normalisés | idem |
+| UC-ADM-01-F26 | A7 | API | Déclarations à côté des habilitations ; habilitation d'un clic (`grantable`) : accès immédiat, audit, `grantable` vide, déclaration intacte ; retrait de l'habilitation : la déclaration reste et l'appelle de nouveau | `api/tests/UseCases/Functional/UcAdm01GererComptesRolesTest.php` |
 | UC-ADM-01-F22 | A3, AN-2 | API | Comportement actuel : `?page=9223372036854775807` → `500 « Erreur interne »` ; `?page=9` → vide | idem |
 | UC-ADM-01-F13 | Nominal (1-6) | IHM | `<App/>` : liste, recherche, attribution avec CSRF, message, puce ajoutée | `web/test/usecases/functional/uc-adm-01-gerer-comptes-roles.test.jsx` |
 | UC-ADM-01-F14 | Nominal (7) | IHM | Croix → `DELETE`, message, puce retirée | idem |

@@ -447,7 +447,7 @@ describe('UC-APP-06 — interface de cartographie (archive 1.1.0, décision du 2
       /^Archive téléchargée \(humanome-export-\d{4}-\d{2}-\d{2}\.json\) : 0 portfolio\(s\), 0 cartographie\(s\), 1 jeu\(x\) de l’interface de cartographie\.$/,
     )
     const archive = await downloads.json()
-    expect(archive.schemaVersion).toBe('1.2.0')
+    expect(archive.schemaVersion).toBe('1.3.0')
     expect(validateDocument('archive-export', archive)).toEqual({ valid: true, errors: [] })
     expect(archive.jeuxCartographie.map((j) => j.datasetId)).toEqual(['ds-lou'])
     // Tout : le texte du portfolio, les réponses au jury, le carnet du dialogue.

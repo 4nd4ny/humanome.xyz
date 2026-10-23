@@ -104,7 +104,7 @@
     * [UC-CPT-01 — Créer un compte et l'activer par code email](docs/cas-utilisation/compte/UC-CPT-01-creer-activer-compte.md)
     * [UC-CPT-02 — Se connecter et se déconnecter](docs/cas-utilisation/compte/UC-CPT-02-se-connecter-deconnecter.md)
     * [UC-CPT-03 — Gérer son profil (nom affiché, avatar)](docs/cas-utilisation/compte/UC-CPT-03-gerer-profil.md)
-    * [UC-CPT-04 — Gérer ses clés API personnelles](docs/cas-utilisation/compte/UC-CPT-04-gerer-cles-api.md)
+    * [UC-CPT-04 — Gérer ses clés API (dans le navigateur ; supprimer celles gardées sur le serveur)](docs/cas-utilisation/compte/UC-CPT-04-gerer-cles-api.md)
     * [UC-CPT-05 — Suivre sa progression de formation](docs/cas-utilisation/compte/UC-CPT-05-suivre-progression-formation.md)
     * [UC-CPT-06 — Supprimer son compte (droit à l'effacement)](docs/cas-utilisation/compte/UC-CPT-06-supprimer-compte.md)
     * [UC-CPT-07 — Déclarer ses rôles RESPIRE](docs/cas-utilisation/compte/UC-CPT-07-declarer-roles-respire.md)
@@ -119,7 +119,7 @@
     * [UC-APP-08 — Rejoindre une cohorte, déposer son portfolio, quitter](docs/cas-utilisation/apprenant/UC-APP-08-rejoindre-cohorte.md)
     * [UC-APP-09 — Lancer une cartographie ouverte (Twin6)](docs/cas-utilisation/apprenant/UC-APP-09-cartographie-ouverte-twin6.md)
     * [UC-APP-10 — Lancer une analyse approfondie (Twin9)](docs/cas-utilisation/apprenant/UC-APP-10-analyse-approfondie-twin9.md)
-    * [UC-APP-11 — Gérer son crédit Twin9 (achat, factures, remboursement)](docs/cas-utilisation/apprenant/UC-APP-11-gerer-credit-twin9.md)
+    * [UC-APP-11 — Gérer son crédit Twin9 (achat par une école, factures, remboursement)](docs/cas-utilisation/apprenant/UC-APP-11-gerer-credit-twin9.md)
     * [UC-APP-12 — Explorer sa cartographie dans l'interface ipsative V3](docs/cas-utilisation/apprenant/UC-APP-12-interface-ipsative-v3.md)
   * Cartographe
     * [UC-CAR-01 — Accepter l'invitation d'un apprenant](docs/cas-utilisation/cartographe/UC-CAR-01-accepter-invitation.md)
@@ -151,6 +151,7 @@
     * [UC-ETA-02 — Configurer le moteur LLM, le budget et le jeton worker](docs/cas-utilisation/etablissement/UC-ETA-02-configurer-llm-budget.md)
     * [UC-ETA-03 — Lancer, suivre et annuler un run de masse](docs/cas-utilisation/etablissement/UC-ETA-03-piloter-run-masse.md)
     * [UC-ETA-04 — Consulter les documents produits pour un membre](docs/cas-utilisation/etablissement/UC-ETA-04-consulter-documents-membre.md)
+    * [UC-ETA-05 — Gérer son école : crédit, surtaxe, plafond par élève, clé](docs/cas-utilisation/etablissement/UC-ETA-05-gerer-ecole.md)
   * Administration
     * [UC-ADM-01 — Gérer les comptes et les rôles](docs/cas-utilisation/administration/UC-ADM-01-gerer-comptes-roles.md)
     * [UC-ADM-02 — Gérer le Golden Prompt et ses accès](docs/cas-utilisation/administration/UC-ADM-02-gerer-golden-prompt.md)
@@ -180,3 +181,4 @@
 * [ADR-010 — Twin9 : Golden Prompt opérationnel, secret des gabarits, prépaiement](docs/decisions/ADR-010-twin9-golden-prompt.md)
 * [ADR-011 — Moteur Twin9 v9.8 en PHP](docs/decisions/ADR-011-moteur-twin9-php.md)
 * [ADR-012 — Twin9 multi-fournisseur : chaque étape choisit son fournisseur](docs/decisions/ADR-012-multi-fournisseur-twin9.md)
+* [ADR-013 — Écoles, clés et crédits : la clé reste dans le navigateur, l'école paie pour ses élèves](docs/decisions/ADR-013-ecoles-cles-credits.md)

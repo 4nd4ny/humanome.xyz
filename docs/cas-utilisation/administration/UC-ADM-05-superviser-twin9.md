@@ -3,7 +3,7 @@
 | Champ | Valeur |
 |---|---|
 | **Acteur principal** | Administrateur (rôle `admin`) |
-| **Acteurs secondaires** | Apprenants et établissements (offre, prix, promotion et fournisseurs ouverts appliqués à leurs analyses et à leurs profils, UC-APP-09/10/11) ; PayPal (montants des packs) ; Anthropic (page des prix, relevée chaque jour, A6) ; le déclencheur externe du worker (T18), qui fait le relevé ; les autres fournisseurs des appels Twin9 (OpenAI, Mistral AI, Google, xAI, OpenRouter : A7, A8, ADR-012) |
+| **Acteurs secondaires** | Apprenants et établissements (offre, prix et fournisseurs ouverts appliqués à leurs analyses et à leurs profils, UC-APP-09/10/11) ; PayPal (montants des packs) ; Anthropic (page des prix, relevée chaque jour, A6) ; le déclencheur externe du worker (T18), qui fait le relevé ; les autres fournisseurs des appels Twin9 (OpenAI, Mistral AI, Google, xAI, OpenRouter : A7, A8, ADR-012) |
 | **Portée** | humanome.xyz — vue `#/admin/twin9` (section « Supervision Twin9 » de l'administration), routes `GET/PUT /api/twin9/admin/config`, `GET /api/twin9/admin/comptes`, `GET /api/twin9/admin/jeux`, `PUT /api/twin9/admin/jeux/defaut` |
 | **Niveau** | Objectif utilisateur |
 | **Cahier des charges** | §3.8 et §4.10 (administration), §7 (modèle économique : coût API + marge) ; ADR-010 §3 et §6 ; décision AD-D2 (`docs/autorisations.md`) |
@@ -12,8 +12,8 @@
 ## Objectif
 
 Permettre à l'administrateur de piloter l'offre commerciale de Twin9 et de la
-cartographie ouverte Twin6 — contributions (marges), promotion « Twin9 avec sa
-propre clé », packs de recharge, modèles et leurs prix, que la plateforme
+cartographie ouverte Twin6 — contributions (marges), packs de recharge (que
+seules les écoles achètent depuis l'ADR-013, UC-APP-11), modèles et leurs prix, que la plateforme
 relève chaque jour sur la page d'Anthropic (A6) —, d'ouvrir aux runs Twin9
 d'autres fournisseurs qu'Anthropic et de tarifer leurs modèles (A7, A8), de
 fixer le jeu de gabarits par défaut (T14) et de suivre les soldes et cumuls de
@@ -47,7 +47,7 @@ L'administrateur ouvre « Administrer » → « Supervision Twin9 » (`#/admin/t
 1. L'administrateur ouvre `#/admin/twin9` ; la vue d'administration vérifie la
    session et le rôle `admin`.
 2. La section charge `GET /api/twin9/admin/config` (forme administrateur :
-   contributions `marge` et `marge_twin6`, promotion, packs, modèles avec prix
+   contributions `marge` et `marge_twin6`, packs, modèles avec prix
    **catalogue** — l'interrupteur, le rythme, les réglages du pipeline et les
    étages de l'offre sont partis le 2026-10-20, voir Limites —, fournisseurs
    ouverts aux runs, et en lecture seule chaque fournisseur avec son étiquette
@@ -78,12 +78,13 @@ L'administrateur ouvre « Administrer » → « Supervision Twin9 » (`#/admin/t
 
 ## Scénarios alternatifs
 
-- **A1 — Promotion « Twin9 avec sa propre clé »** (étape 4) : la case ouvre ou
-  ferme la fenêtre promotionnelle ; ouverte, un apprenant ayant enregistré sa
-  clé peut régler un profil à clé personnelle et lancer Twin9 sans débit ni
-  contribution (UC-APP-10 A6) ; fermée, un tel profil est refusé (`422`), à
-  l'enregistrement comme au lancement. La clé de l'instance reste facturée
-  dans les deux cas.
+- **A1 — Promotion « Twin9 avec sa propre clé » : retirée** (ADR-013 §6,
+  2026-10-22) : elle a disparu avec la clé personnelle, qu'un run du serveur ne
+  peut pas garder. La section n'a plus de case ; elle dit que seules les écoles
+  achètent des crédits. `twin9_cle_perso_ouverte` est une clé inconnue (`422`)
+  à l'enregistrement ; stockée avant, elle est ignorée à la lecture et part au
+  prochain enregistrement. Un profil à clé personnelle est refusé à
+  l'enregistrement, à l'aperçu, au lancement et à la reprise (UC-APP-10 A6).
 - **A2 — Grille de packs** (étape 4) : ajout, modification ou suppression de
   packs (montant + libellé) ; l'offre publique et le montant des ordres PayPal
   suivent (UC-APP-11). Un pack est désigné par sa **position** (`pack_index`) :
@@ -163,7 +164,7 @@ L'administrateur ouvre « Administrer » → « Supervision Twin9 » (`#/admin/t
 - **E1 — Compte non administrateur** (étape 1) : la vue affiche « Cet espace est
   réservé à l'administration de la plateforme » sans rien charger ; l'API
   répond `401` sans session et `403` à tout autre rôle (apprenant, promptologue,
-  établissement) ; un refus n'ouvre évidemment pas la promotion.
+  établissement) ; un refus ne change évidemment rien à la configuration.
 - **E2 — Mise à jour refusée par le serveur** (étape 5) : corps scalaire ou JSON
   invalide → `400` ; un tableau JSON est traité comme un objet : `[]` (ou corps
   vide) est accepté sans changement (`200`), une liste non vide donne `422
@@ -198,8 +199,9 @@ L'administrateur ouvre « Administrer » → « Supervision Twin9 » (`#/admin/t
 - **RG4** — Modèles : au moins un ; prix `[entrée, sortie]` strictement positifs
   (USD par million de tokens) ; palier des longs prompts facultatif ; aucune
   autre clé (les étages sont partis le 2026-10-20).
-- **RG5** — Promotion : booléen, fermée par défaut ; elle n'ouvre que les
-  profils à clé personnelle.
+- ~~**RG5**~~ — retirée le 2026-10-22 avec la promotion (A1, ADR-013 §6) :
+  `twin9_cle_perso_ouverte` est une clé inconnue (`422`), stockée avant elle
+  est ignorée et part au prochain enregistrement.
 - ~~**RG6**~~ — retirée le 2026-10-20 avec `enabled`, `appels_par_minute` et
   `pipeline` : ce sont désormais des clés inconnues (`422`) ; stockées par une
   instance plus ancienne, elles sont ignorées à la lecture et l'enregistrement
@@ -305,9 +307,9 @@ L'administrateur ouvre « Administrer » → « Supervision Twin9 » (`#/admin/t
 | UC-ADM-05-U20 | `Twin9Section` (fournisseurs) | Chaque fournisseur, son étiquette RGPD, sa voie, sa clé d'instance posée ou absente ; rien de modifié → aucun `PUT` (offre relue dans un autre ordre comprise) ; Mistral AI ouvert → `{twin9_fournisseurs_ouverts}` seul ; un fournisseur « non » attend le second interrupteur, que refermer referme avec lui (A7, RG10) | idem |
 | UC-ADM-05-U21 | `Twin9Section` (grille tierce) | Le modèle d'un autre fournisseur : son fournisseur, ses plafonds, son réglage de raisonnement (OpenAI et Google) ; une modification ne change que sa valeur ; un modèle ajouté, à 30 s ; plafonds invalides → message, aucun `PUT` (A8, RG11, E3) | idem |
 | UC-ADM-05-U08 | `Twin9Config::update` | Fusion partielle, persistance de la configuration complète (défauts figés), clé inconnue refusée sans écriture (RG7) | `api/tests/UseCases/Unit/UcAdm05SuperviserTwin9Test.php` |
-| UC-ADM-05-U09 | `Twin9Config::update` | Bornes de chaque réglage (RG2-RG5) ; un modèle ne porte que ses prix (RG4) ; les réglages retirés le 2026-10-20 sont des clés inconnues ; configuration entière inchangée après les refus | idem |
+| UC-ADM-05-U09 | `Twin9Config::update` | Bornes de chaque réglage (RG2-RG4) ; un modèle ne porte que ses prix (RG4) ; les réglages retirés le 2026-10-20 et la promotion de la clé personnelle (ADR-013) sont des clés inconnues ; configuration entière inchangée après les refus | idem |
 | UC-ADM-05-U10 | `Twin9Config::update` | **Anomalie 2 figée** : message « 1 et 100 USD » pour une borne à 500 | idem |
-| UC-ADM-05-U11 | `Twin9Config::read`, `publicView` | Défauts, clés obsolètes ignorées (dont les réglages retirés et les étages d'un modèle, effacés au prochain enregistrement) ; vue publique sans marge, sans promotion, sans offre Twin9 (T11) | idem |
+| UC-ADM-05-U11 | `Twin9Config::read`, `publicView` | Défauts, clés obsolètes ignorées (dont les réglages retirés, la promotion de la clé personnelle et les étages d'un modèle, effacés au prochain enregistrement) ; vue publique sans marge, sans promotion, sans offre Twin9 (T11) | idem |
 | UC-ADM-05-U12 | `FactureService::comptes` | Comptes actifs, cumuls, ordre ; **anomalie 3 figée** | idem |
 | UC-ADM-05-U15 | `TarifsAnthropic::lire` | Le tableau « Model pricing », colonnes trouvées par leurs titres : un identifiant par nom, liens et notes ôtés, le palier long de Haiku 5.5 ; le tableau d'une autre section jamais lu (RG9) | idem |
 | UC-ADM-05-U16 | `TarifsAnthropic::lire` | Une page qu'on ne sait pas lire est refusée en entier : section, tableau ou colonnes absents, prix illisible ou hors bornes, palier sans prix de base, un modèle deux fois (un libellé de palier qu'on ne reconnaît plus), trop peu de modèles (RG9) | idem |
@@ -319,7 +321,7 @@ L'administrateur ouvre « Administrer » → « Supervision Twin9 » (`#/admin/t
 | ID | Scénario | Niveau | Vérifie | Fichier |
 |---|---|---|---|---|
 | UC-ADM-05-F01 | Nominal | IHM | `<App/>` : réglages et comptes, contribution modifiée → PUT partiel avec CSRF, confirmation, resynchronisation (second enregistrement : « Aucune modification ») ; aucun appel aux gabarits | `web/test/usecases/functional/uc-adm-05-superviser-twin9.test.jsx` |
-| UC-ADM-05-F02 | A1 | IHM | Promotion ouverte → `{twin9_cle_perso_ouverte: true}` | idem |
+| UC-ADM-05-F02 | A1 | IHM | Plus de case de promotion ; la section dit que seules les écoles achètent ; aucun PUT | idem |
 | UC-ADM-05-F03 | A2 | IHM | Pack ajouté → liste complète envoyée ; **anomalie 2 figée** (borne affichée) | idem |
 | UC-ADM-05-F04 | A3 | IHM | Prix modifié → `modeles` envoyé ; plus d'étages | idem |
 | UC-ADM-05-F05 | E1 | IHM | Promptologue : espace réservé, rien chargé | idem |
@@ -327,11 +329,11 @@ L'administrateur ouvre « Administrer » → « Supervision Twin9 » (`#/admin/t
 | UC-ADM-05-F07 | E3 | IHM | Identifiant vide : message, aucun PUT | idem |
 | UC-ADM-05-F08 | E4 | IHM | Erreur de chargement : message, pas de formulaire ; copie statique : message, aucun appel de supervision | idem |
 | UC-ADM-05-F09 | Nominal | API | Contributions changées → l'estimation d'un run Twin9 (×1,5), les prix Twin6 de `/meta` et le coût réel de `/api/twin6/appel` (×1,25) suivent | `api/tests/UseCases/Functional/UcAdm05SuperviserTwin9Test.php` |
-| UC-ADM-05-F10 | A1 | API | Promotion fermée : profil à clé personnelle refusé ; ouverte : lue par `/api/twin9/configuration` (plus par `/meta`), admis, estimé sans contribution ; refermée : son lancement refusé ; pendant la promotion, un profil à la clé de l'instance s'estime toujours avec contribution | idem |
-| UC-ADM-05-F11 | A2 | API | Packs → `/meta` et montant de l'ordre PayPal ; index hors grille 422 ; limite figée : pack désigné par sa position | idem |
+| UC-ADM-05-F10 | A1 | API | La promotion ne s'ouvre plus (422, clé inconnue ; absente de la config et de `/api/twin9/configuration`) ; un profil à clé personnelle refusé à l'enregistrement même avec une clé gardée ; un profil enregistré avant refusé à l'aperçu et au lancement, aucun run ; un profil à la clé de l'instance s'estime toujours avec contribution | idem |
+| UC-ADM-05-F11 | A2 | API | Packs → `/meta` et montant de l'ordre PayPal d'une école ; index hors grille 422 ; limite figée : pack désigné par sa position | idem |
 | UC-ADM-05-F12 | A3 | API | Modèle retiré de l'offre : profil qui le nomme refusé (422) ; un modèle de l'offre à tous les étages d'un profil : admis, estimé, lancé ; des étages envoyés pour un modèle → 422 | idem |
 | UC-ADM-05-F13 | Nominal (étape 7) | API | Table des comptes : actifs seulement, ordre, montants | idem |
-| UC-ADM-05-F14 | E1 | API | 401 visiteur ; 403 apprenant, promptologue, établissement ; la promotion reste fermée | idem |
+| UC-ADM-05-F14 | E1 | API | 401 visiteur ; 403 apprenant, promptologue, établissement ; la configuration reste inchangée | idem |
 | UC-ADM-05-F15 | E2 | API | 400 corps scalaire ; `[1]` → 422, `[]` → 200 ; 422 par cas, dont les réglages retirés ; configuration entière inchangée | idem |
 | UC-ADM-05-F16 | Anomalie 1 | API | Config relue : clés réordonnées par MySQL (cause) | idem |
 | UC-ADM-05-F17 | E5 | API | Session admin sans jeton CSRF ou jeton faux → 403, configuration inchangée | idem |
@@ -346,7 +348,7 @@ L'administrateur ouvre « Administrer » → « Supervision Twin9 » (`#/admin/t
 - `api/tests/Twin9/JeuxGabaritsTest.php` — le profil par défaut prend le jeu par défaut (A5).
 - `api/tests/Twin9FactureTest.php` — `testAdminComptesIsAdminOnlyAndAggregates`.
 - `api/tests/Twin9PayPalTest.php` — packs 200 et 500 configurables.
-- `web/src/views/admin/Twin9Section.test.jsx` — supervision sans contenu, diff, promotion, pack, comptes, garde d'`AdminView`.
+- `web/src/views/admin/Twin9Section.test.jsx` — supervision sans contenu, diff, plus de promotion, pack, comptes, garde d'`AdminView`.
 - `api/tests/Twin9/ConfigurationDroitsTest.php` — `testTheProvidersAreOpenedByTheAdministrator` (RG10, admin seul), `testTheAdministratorReadsWhichInstanceKeysAreSet` (A7 : un booléen, jamais la clé, refusé en `PUT`), `testTheInstanceKeyNeverPassesThroughTheInterface`.
 - `api/tests/Twin9/CoutsTest.php` — `testTheGridKeepsAThirdPartysCaps` (RG11), `testAThirdPartysWorstCaseCountsItsCaps`.
 - `web/src/views/configuration/profilSchema.test.js` — le registre recopié (libellés, étiquettes, motifs de modèle, réglages de raisonnement) égal à celui du PHP.

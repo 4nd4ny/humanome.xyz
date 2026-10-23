@@ -279,3 +279,59 @@ export async function fetchMembreDocuments(userId, fetchFn) {
       .filter((d) => d.document && typeof d.date === 'string'),
   }
 }
+
+// --- L'école : crédit, surtaxe, plafond par élève, clé (sprint 6, lot S6b — ADR-013) ----------
+
+/**
+ * GET api/etablissement/ecole — ses réglages, son crédit, ses clés (jamais leur
+ * matériau : le fournisseur et la date), ses élèves et ce que chacun a engagé
+ * ce mois-ci et en tout (des montants seulement).
+ * @returns {Promise<{surtaxePct: number, surtaxeMin: number, surtaxeMax: number,
+ *   plafondEleveMicrousd: number, respireNumero: number|null, creditMicrousd: number,
+ *   cles: Array<{fournisseur: string, poseeLe: string}>, chiffrementDisponible: boolean,
+ *   mois: string, depenseMoisMicrousd: number, eleves: Array<object>}>}
+ */
+export async function fetchEcole(fetchFn) {
+  const data = await apiFetch('etablissement/ecole', { fetchFn })
+  return {
+    surtaxePct: Number(data?.surtaxePct ?? 3.5),
+    surtaxeMin: Number(data?.surtaxeMin ?? 3.5),
+    surtaxeMax: Number(data?.surtaxeMax ?? 10),
+    plafondEleveMicrousd: Number(data?.plafondEleveMicrousd ?? 0),
+    respireNumero: Number.isInteger(data?.respireNumero) ? data.respireNumero : null,
+    creditMicrousd: Number(data?.creditMicrousd ?? 0),
+    cles: asList(data, 'cles'),
+    chiffrementDisponible: data?.chiffrementDisponible !== false,
+    mois: typeof data?.mois === 'string' ? data.mois : '',
+    depenseMoisMicrousd: Number(data?.depenseMoisMicrousd ?? 0),
+    eleves: asList(data, 'eleves').map((e) => ({
+      userId: e?.userId ?? null,
+      displayName: e?.displayName ?? '—',
+      cohortes: Array.isArray(e?.cohortes) ? e.cohortes : [],
+      membre: e?.membre !== false,
+      moisMicrousd: Number(e?.moisMicrousd ?? 0),
+      totalMicrousd: Number(e?.totalMicrousd ?? 0),
+    })),
+    // ceux qui ont quitté ses cohortes : leurs montants ensemble, jamais leur nom (ADR-013 §7)
+    partis: {
+      nombre: Number(data?.partis?.nombre ?? 0),
+      moisMicrousd: Number(data?.partis?.moisMicrousd ?? 0),
+      totalMicrousd: Number(data?.partis?.totalMicrousd ?? 0),
+    },
+  }
+}
+
+/** PUT api/etablissement/ecole {surtaxePct?, plafondEleveUsd?} — la surtaxe entre 3,5 et 10, au centième. */
+export function saveEcole(body, fetchFn) {
+  return apiFetch('etablissement/ecole', { method: 'PUT', body, fetchFn })
+}
+
+/** PUT api/etablissement/ecole/cle {cle} — la clé Anthropic de l'école, chiffrée, jamais rendue. */
+export function poserCleEcole(cle, fetchFn) {
+  return apiFetch('etablissement/ecole/cle', { method: 'PUT', body: { cle, fournisseur: 'anthropic' }, fetchFn })
+}
+
+/** DELETE api/etablissement/ecole/cle/anthropic — la clé retirée pour de bon. */
+export function retirerCleEcole(fetchFn) {
+  return apiFetch('etablissement/ecole/cle/anthropic', { method: 'DELETE', fetchFn })
+}

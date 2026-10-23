@@ -31,7 +31,8 @@ Selon votre usage, nous pouvons traiter :
 - **Portfolio** : le texte de votre journal réflexif. Par défaut il reste **dans votre navigateur** (stockage local IndexedDB) et ne transite par nos serveurs que le temps d'un traitement que vous déclenchez, s'il est déposé dans une cohorte d'établissement, ou si vous lancez une analyse approfondie Twin9, qui le garde avec votre accord (voir plus bas). Finalité : produire votre cartographie de compétences.
 - **Cartographies** : le résultat JSON de l'analyse de votre portfolio. Enregistré sur le serveur **uniquement si vous l'y autorisez** (opt-in daté), sinon conservé localement et dans vos exports.
 - **Progression de formation** : les chapitres de formation que vous avez parcourus, pour afficher votre avancement.
-- **Clés d'API personnelles** : si vous choisissez d'utiliser votre propre clé d'un fournisseur de modèle de langage, elle est **chiffrée au repos** et n'est jamais réaffichée ni exposée.
+- **Clés d'API personnelles** : si vous choisissez d'utiliser votre propre clé d'un fournisseur de modèle de langage, **elle reste dans votre navigateur** : nous ne la gardons jamais sur nos serveurs. Seule une école peut y garder la sienne, chiffrée au repos, pour ses élèves. Si vous aviez gardé une clé sur nos serveurs avant le 22 octobre 2026, elle ne sert plus à aucune analyse : vous pouvez la recopier dans votre navigateur ou la supprimer dès maintenant dans « Mon compte » ; sinon, elle sera supprimée après un avis par courriel, 30 jours au moins après cet avis.
+- **Crédits** : seules les écoles achètent des crédits (paiement chez PayPal : nous ne voyons ni ne gardons aucune donnée bancaire). Un particulier n'achète rien, ce qui nous évite d'avoir à vérifier l'âge des apprenants ; un solde acheté avant le 22 octobre 2026 reste utilisable jusqu'à épuisement, et remboursable sur demande. Nous ne gardons que des compteurs : solde, mouvements, identifiant de l'ordre. Si vous êtes membre d'une cohorte d'une école, votre école peut payer vos analyses payantes (l'analyse approfondie, la cartographie ouverte sur crédits), sur son crédit ou avec sa propre clé, sous un plafond mensuel qu'elle règle : elle voit alors le montant de ce qu'elle paie pour vous, mois par mois, jamais le contenu de vos analyses sur humanome — ni le crédit de votre école ne vous est montré : seulement ce qui reste de votre plafond. Avec la clé de votre école, les résultats des appels envoyés par lots restent lisibles par l'école dans son compte chez Anthropic : le texte de consentement de la cohorte, la page de lancement et son accord vous le disent. Si vous quittez ses cohortes, l'école ne vous nomme plus parmi ceux qu'elle paie : vos montants ne comptent plus, pour elle, qu'avec ceux des autres élèves partis.
 - **Liens de partage** : lorsque vous partagez une cartographie avec un employeur, nous conservons une empreinte (hachage) du lien et, s'il y en a un, du mot de passe de partage — jamais leur valeur en clair. Depuis le 14 octobre 2026, on partage une version partagée (ci-dessous) ; les liens créés avant vers une cartographie restent valables jusqu'à leur échéance, et vous pouvez les révoquer.
 - **Versions partagées (adultes uniquement)** : depuis l'espace Partage de la cartographie, une personne majeure peut publier une version de sa cartographie qu'elle compose elle-même (compétences retenues, dates au jour, au mois ou masquées, extraits choisis et relus) — jamais son portfolio. Nous conservons cette version, la date à laquelle vous avez attesté être majeur·e (aucune date de naissance, aucun justificatif), et la date de chaque consultation de vos liens, que vous seul·e voyez.
 - **Versions garanties** : vous pouvez aussi demander au cartographe qui a relu votre cartographie avec vous de publier lui-même une version, avec sa garantie. Vous lui remettez pour cela un code de demande (une seule fois, 30 jours au plus) ; nous conservons ce code jusqu'à son usage, puis le nom affiché du cartographe et la date de sa garantie, que lit toute personne qui ouvre vos liens. La version reste la vôtre : vous seul·e décidez de la partager. Si vous la remplacez vous-même, ou si le cartographe supprime son compte, la garantie en est retirée.
@@ -43,7 +44,7 @@ C'est le cœur de notre approche « RGPD dès la conception » :
 
 - **Par défaut, local.** Portfolio et cartographies vivent dans votre navigateur. Si vous videz votre navigateur sans avoir exporté, ces données sont perdues — d'où l'export local systématique que nous proposons.
 - **Sur option, serveur.** Vous pouvez décider d'enregistrer une cartographie sur nos serveurs (pour la partager, la faire relire par un cartographe, ou la retrouver ailleurs). Ce choix est explicite, daté, et réversible.
-- **En établissement.** Si vous rejoignez la cohorte d'un établissement de formation, vous donnez un **consentement explicite** au moment de rejoindre, puis, en déposant votre portfolio, vous autorisez son traitement côté serveur au sein de cette cohorte. L'établissement voit les cartographies produites dans ce cadre. Quitter la cohorte retire ce partage et efface le portfolio déposé.
+- **En établissement.** Si vous rejoignez la cohorte d'un établissement de formation, vous donnez un **consentement explicite** au moment de rejoindre, puis, en déposant votre portfolio, vous autorisez son traitement côté serveur au sein de cette cohorte. L'établissement voit les cartographies produites dans ce cadre, et le montant de ce qu'il paie pour vos analyses (jamais leur contenu sur humanome ; avec sa propre clé chez Anthropic, les résultats des appels envoyés par lots restent lisibles dans son compte Anthropic). Quitter la cohorte retire ce partage et efface le portfolio déposé ; l'école cesse alors de payer vos analyses.
 
 ## Base légale
 
@@ -81,9 +82,9 @@ mode d'usage, le texte transmis et le destinataire changent :
 
 - **Démonstration publique** : le proxy de la plateforme transmet le texte que vous collez à **Anthropic** (modèle Claude) pour produire la démonstration. Aucune donnée n'est conservée côté serveur au-delà de compteurs anonymes.
 - **Assistant tuteur** : l'assistant (bouton « 💬 ») transmet à **Anthropic** (modèle Claude Haiku) **uniquement votre question et la rubrique que vous consultez** — jamais votre portfolio ni vos cartographies. **Aucune conversation n'est stockée côté serveur** (compteurs anonymes seulement) ; l'historique n'existe que dans votre navigateur, le temps de la session.
-- **Clé personnelle** : si vous enregistrez votre propre clé d'API, **vous choisissez** votre fournisseur (Anthropic, OpenAI, Google, etc.). Le texte est transmis au fournisseur que vous avez sélectionné, sous votre propre relation contractuelle avec lui.
+- **Clé personnelle** : si vous utilisez votre propre clé d'API, **vous choisissez** votre fournisseur (Anthropic, OpenAI, Google, etc.). Le texte part de votre navigateur vers le fournisseur que vous avez sélectionné, sous votre propre relation contractuelle avec lui ; la clé ne passe jamais par nos serveurs.
 - **Établissement** : le traitement utilise soit la **clé de l'établissement**, soit la clé de la plateforme, selon la configuration choisie par l'établissement ; le texte est transmis au fournisseur correspondant.
-- **Analyse approfondie Twin9** : votre portfolio est transmis aux **fournisseurs des modèles de votre profil** — **Anthropic** (modèles Claude) par défaut ; OpenAI, Mistral AI, Google (Gemini), xAI (Grok) ou OpenRouter seulement si l'administrateur de la plateforme les a ouverts et si votre profil les choisit —, que l'accord demandé à chaque lancement nomme. Avec la clé de la plateforme, ou votre propre clé chez Anthropic seulement ; par lots, Anthropic garde chaque lot de requêtes jusqu'à sa suppression, 29 jours au plus (détails ci-dessous).
+- **Analyse approfondie Twin9** : votre portfolio est transmis aux **fournisseurs des modèles de votre profil** — **Anthropic** (modèles Claude) par défaut ; OpenAI, Mistral AI, Google (Gemini), xAI (Grok) ou OpenRouter seulement si l'administrateur de la plateforme les a ouverts et si votre profil les choisit —, que l'accord demandé à chaque lancement nomme. Avec la clé de la plateforme : l'analyse tourne sur nos serveurs, qui ne peuvent pas garder la clé de votre navigateur ; par lots, Anthropic garde chaque lot de requêtes jusqu'à sa suppression, 29 jours au plus (détails ci-dessous).
 - **Dialogue d'accompagnement** (espace Dialogue de la cartographie) : il fonctionne **sans modèle de langage**, entièrement dans votre navigateur. Si vous choisissez d'activer les relances et donnez votre accord, chaque relance que vous demandez transmet **uniquement la question, votre réponse et le passage cité**, directement depuis votre navigateur, au fournisseur que vous avez choisi (avec votre propre clé) ou à Ollama sur votre ordinateur — jamais par nos serveurs. Vos réponses restent dans votre carnet, dans votre navigateur.
 
 Ces fournisseurs agissent comme sous-traitants : ils traitent le texte pour
@@ -114,7 +115,10 @@ contenu).
 
 Le texte de votre portfolio est transmis aux fournisseurs des modèles que votre
 profil choisit, étape par étape : **Anthropic** (modèles Claude) par défaut,
-avec la clé de la plateforme ou votre propre clé. Par la **voie par lots**,
+avec la clé de la plateforme, ou celle de votre école quand elle paie pour vous
+et en a une (une analyse lancée avant le 22 octobre 2026 sur votre propre clé
+s'arrête, sans plus rien envoyer avec elle ; ses lots déjà partis sont relevés,
+puis supprimés). Par la **voie par lots**,
 Anthropic garde chaque lot de requêtes jusqu'à ce que notre serveur le supprime,
 dès ses réponses relevées ; un lot qui n'aurait pas été supprimé n'y reste jamais
 plus de **29 jours**. La suppression de votre compte annule et supprime aussi vos
@@ -181,8 +185,9 @@ local (hors ligne) reste la réponse appropriée.
 ## Sécurité
 
 Les échanges sont chiffrés en transit (HTTPS). Les mots de passe sont conservés
-sous forme d'empreintes robustes (Argon2id). Les clés d'API personnelles sont
-**chiffrées au repos**. Les secrets du service sont conservés hors de la racine
+sous forme d'empreintes robustes (Argon2id). Les clés d'API qu'une école garde
+sur nos serveurs, et celles qu'un utilisateur y avait gardées avant le 22
+octobre 2026 jusqu'à leur suppression, sont **chiffrées au repos**. Les secrets du service sont conservés hors de la racine
 web, inaccessibles publiquement.
 
 ## Contact et réclamation

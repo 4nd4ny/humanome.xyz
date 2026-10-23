@@ -1,6 +1,6 @@
 // Section « Twin9 » de l'administration (ADR-010, AD-D2) — SUPERVISION seule :
-//   1. Réglages  : marge Twin9/Twin6, promo « Twin9 gratuit clé perso », packs
-//                  PayPal, fournisseurs ouverts aux runs (ADR-012), offre de
+//   1. Réglages  : marge Twin9/Twin6, packs PayPal (achetés par les écoles
+//                  seules, ADR-013), fournisseurs ouverts aux runs (ADR-012), offre de
 //                  modèles -> PUT partiel (diff). Décision COMMERCIALE, admin
 //                  seul. Un fournisseur autre qu'Anthropic s'ouvre ici, avec
 //                  son étiquette RGPD et la présence de la clé de l'instance
@@ -59,7 +59,6 @@ function draftFromConfig(config) {
   return {
     marge: config?.marge === undefined ? '' : String(config.marge),
     margeTwin6: config?.marge_twin6 === undefined ? '' : String(config.marge_twin6),
-    clePersoOuverte: Boolean(config?.twin9_cle_perso_ouverte),
     ouverts: ouvertsDe(config),
     nonRgpd: Boolean(config?.twin9_fournisseurs_non_rgpd),
     packs: (config?.packs ?? []).map((p) => ({
@@ -269,10 +268,6 @@ function ReglagesBloc({ config, fetchFn, onSaved }) {
     if (!Number.isFinite(margeTwin6)) return { error: 'Marge Twin6 invalide : nombre attendu.' }
     if (margeTwin6 !== config.marge_twin6) patch.marge_twin6 = margeTwin6
 
-    if (Boolean(draft.clePersoOuverte) !== Boolean(config.twin9_cle_perso_ouverte)) {
-      patch.twin9_cle_perso_ouverte = Boolean(draft.clePersoOuverte)
-    }
-
     // les fournisseurs ouverts, dans l'ordre du registre ; envoyés seulement s'ils changent
     const ouverts = FOURNISSEURS.filter((f) => draft.ouverts.includes(f))
     const avant = ouvertsDe(config)
@@ -396,25 +391,12 @@ function ReglagesBloc({ config, fetchFn, onSaved }) {
         budget Haiku de la démo). « Contribution », jamais « surtaxe ».
       </p>
 
-      <div className="admin-field admin-field-toggle">
-        <label htmlFor="twin9-promo">
-          <input
-            id="twin9-promo"
-            type="checkbox"
-            checked={draft.clePersoOuverte}
-            disabled={busy}
-            onChange={(event) => setDraft((prev) => ({ ...prev, clePersoOuverte: event.target.checked }))}
-          />{' '}
-          Promo : Twin9 gratuit avec la clé perso de l’utilisateur
-        </label>
-      </div>
-      <p className="privacy-note">
-        Fenêtre promotionnelle : quand c’est coché, un utilisateur peut lancer Twin9{' '}
-        <strong>gratuitement avec sa propre clé API</strong> — pour goûter la qualité avant d’acheter
-        des crédits. Décoché (défaut), Twin9 s’utilise uniquement avec nos crédits (+20 %).
-      </p>
-
       <h4>Packs de recharge (PayPal)</h4>
+      <p className="privacy-note">
+        Seules les écoles achètent des crédits (ADR-013) : un autre compte ne voit pas les packs. La
+        promotion « Twin9 gratuit avec sa propre clé » a disparu avec la clé personnelle, qu’une analyse
+        du serveur ne peut pas garder.
+      </p>
       <ul className="twin9-admin-packs">
         {draft.packs.map((p, i) => (
           <li key={i} className="twin9-admin-pack">
@@ -865,7 +847,7 @@ export default function Twin9Section({ fetchFn }) {
       <p className="privacy-note">
         L’édition des gabarits du Golden Prompt a déménagé vers l’
         <a href="#/twin9-atelier">atelier Twin9</a> (réservé aux administrateurs-promptologues).
-        Cette section garde la supervision commerciale : contribution, promo, packs, comptes ; et le
+        Cette section garde la supervision commerciale : contribution, packs, comptes ; et le
         jeu de gabarits par défaut.
       </p>
       {config ? <ReglagesBloc config={config} fetchFn={fetchFn} onSaved={setConfig} /> : null}

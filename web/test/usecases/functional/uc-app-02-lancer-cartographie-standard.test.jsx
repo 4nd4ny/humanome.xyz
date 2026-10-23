@@ -67,7 +67,7 @@ function openWizard() {
 const next = () => fireEvent.click(screen.getByRole('button', { name: 'Continuer' }))
 
 /** Étapes 2 à 5 de l'assistant, jusqu'au bouton « Lancer le run ». */
-async function walkToExecution({ portfolio = /Journal de Maya — 3 journée\(s\)/, pkg = null, mode = 'humanome', key = KEY, sync = false } = {}) {
+async function walkToExecution({ portfolio = /Journal de Maya — 3 journée\(s\)/, pkg = null, mode = 'humanome', key = KEY } = {}) {
   fireEvent.click(await screen.findByRole('radio', { name: portfolio }))
   next()
   await screen.findByTestId('step-prompt')
@@ -79,7 +79,6 @@ async function walkToExecution({ portfolio = /Journal de Maya — 3 journée\(s\
     fireEvent.click(screen.getByRole('radio', { name: /Service humanome/ }))
   } else {
     fireEvent.change(screen.getByLabelText('Clé API'), { target: { value: key } })
-    if (sync) fireEvent.click(screen.getByRole('checkbox', { name: /Synchroniser sur le serveur/ }))
   }
   next()
   await screen.findByTestId('run-estimate')
@@ -222,13 +221,13 @@ describe('UC-APP-02 — scénario nominal : Service humanome', () => {
 })
 
 describe('UC-APP-02 — scénarios alternatifs', () => {
-  it('UC-APP-02-F02 — A1 : clé personnelle Anthropic, appels directs, clé mémorisée localement et synchronisée (opt-in)', async () => {
+  it('UC-APP-02-F02 — A1 : clé personnelle Anthropic, appels directs, clé mémorisée dans ce navigateur ; elle ne part jamais vers humanome (ADR-013)', async () => {
     await seedPortfolio()
-    const fetchMock = stubNetwork({ extra: [['api/keys', noContent]] })
+    const fetchMock = stubNetwork()
     openWizard()
     await screen.findByTestId('espace-connecte')
 
-    await walkToExecution({ mode: 'cle', sync: true })
+    await walkToExecution({ mode: 'cle' })
     await launch()
     await screen.findByTestId('run-success', {}, { timeout: 15000 })
 
@@ -236,17 +235,17 @@ describe('UC-APP-02 — scénarios alternatifs', () => {
     expect(direct).toHaveLength(24)
     expect(direct.every((c) => c.init.headers['x-api-key'] === KEY)).toBe(true)
     expect(llmPosts(fetchMock)).toHaveLength(0)
-    // La clé ne part vers humanome QUE par l'opt-in explicite (PUT api/keys, CSRF).
+    // La clé ne part jamais vers humanome : plus de synchronisation (ADR-013).
     const toHumanome = fetchMock.calls.filter((c) => c.url.startsWith('api/') && JSON.stringify(c).includes(KEY))
-    expect(toHumanome.map((c) => [c.url, c.init.method])).toEqual([['api/keys', 'PUT']])
-    expect(toHumanome[0].init.headers['X-CSRF-Token']).toBe('csrf-maya')
+    expect(toHumanome).toEqual([])
+    expect(fetchMock.calls.filter((c) => c.url.startsWith('api/keys'))).toEqual([])
     expect(JSON.parse(localStorage.getItem('humanome-keys'))).toEqual({ anthropic: KEY })
 
     const merge = idb.values(...CARTOS).find((c) => c.type === 'merge')
     expect(merge.runMeta).toMatchObject({ mode: 'cle', provider: 'anthropic', model: 'claude-sonnet-4-6' })
   })
 
-  it('UC-APP-02-F03 — A2 : API injoignable : bandeau « copie statique », version embarquée seule, synchronisation désactivée', async () => {
+  it('UC-APP-02-F03 — A2 : API injoignable : bandeau « copie statique », version embarquée seule ; la clé reste dans le navigateur, aucune synchronisation proposée', async () => {
     await seedPortfolio()
     vi.stubGlobal('fetch', vi.fn(async () => { throw new TypeError('Failed to fetch') }))
     openWizard()
@@ -260,8 +259,8 @@ describe('UC-APP-02 — scénarios alternatifs', () => {
     ])
     next()
     await screen.findByTestId('step-fournisseur')
-    expect(screen.getByRole('checkbox', { name: /Synchroniser sur le serveur/ }).disabled).toBe(true)
-    expect(screen.getByText(/pour activer la synchronisation/)).toBeDefined()
+    expect(screen.queryByRole('checkbox', { name: /Synchroniser sur le serveur/ })).toBeNull()
+    expect(screen.getByTestId('cle-reste-navigateur').textContent).toContain('Votre clé reste dans ce navigateur')
   })
 
   it('UC-APP-02-F04 — A3 : version publiée choisie : tracée avec la cartographie, pipeline embarqué exécuté ; défaut serveur non présélectionné', async () => {
@@ -713,7 +712,7 @@ describe('UC-APP-02 — scénarios d’erreur', () => {
     expect(idb.values(...CARTOS)).toHaveLength(0)
   })
 
-  it('UC-APP-02-F21 — A1 : clé pré-remplie depuis localStorage ou récupérée du serveur ; SANS synchronisation, elle ne va jamais vers humanome', async () => {
+  it('UC-APP-02-F21 — A1 : clé pré-remplie depuis localStorage, jamais récupérée du serveur (ADR-013) ; elle ne va jamais vers humanome', async () => {
     await seedPortfolio()
     const SERVER_KEY = 'sk-ant-serveur-9876543210'
     localStorage.setItem('humanome-keys', JSON.stringify({ anthropic: KEY }))
@@ -729,12 +728,9 @@ describe('UC-APP-02 — scénarios d’erreur', () => {
     await screen.findByTestId('step-fournisseur')
     // Pré-remplissage depuis localStorage (« humanome-keys »).
     expect(screen.getByLabelText('Clé API').value).toBe(KEY)
-    expect(screen.getByRole('checkbox', { name: /Synchroniser sur le serveur/ }).checked).toBe(false)
-
-    // Récupération explicite de la clé enregistrée sur le serveur.
-    fireEvent.click(screen.getByRole('button', { name: 'Récupérer la clé depuis le serveur' }))
-    expect(await screen.findByText('Clé récupérée depuis le serveur.')).toBeDefined()
-    expect(screen.getByLabelText('Clé API').value).toBe(SERVER_KEY)
+    expect(screen.queryByRole('checkbox', { name: /Synchroniser sur le serveur/ })).toBeNull()
+    // Plus de récupération de la clé gardée sur le serveur (« Mon compte » la recopie dans ce navigateur).
+    expect(screen.queryByRole('button', { name: 'Récupérer la clé depuis le serveur' })).toBeNull()
 
     next()
     await screen.findByTestId('run-estimate')
@@ -745,36 +741,27 @@ describe('UC-APP-02 — scénarios d’erreur', () => {
 
     const direct = fetchMock.calls.filter((c) => c.url === 'https://api.anthropic.com/v1/messages')
     expect(direct).toHaveLength(24)
-    expect(direct.every((c) => c.init.headers['x-api-key'] === SERVER_KEY)).toBe(true)
-    // Case non cochée : aucun PUT api/keys, aucune requête vers humanome ne porte une clé.
-    expect(fetchMock.calls.filter((c) => c.url === 'api/keys')).toEqual([])
+    expect(direct.every((c) => c.init.headers['x-api-key'] === KEY)).toBe(true)
+    // Aucune requête /api/keys (ni PUT ni GET), aucune requête vers humanome ne porte une clé.
+    expect(fetchMock.calls.filter((c) => c.url.startsWith('api/keys'))).toEqual([])
     const leaked = fetchMock.calls.filter(
       (c) => c.url.startsWith('api/') && (JSON.stringify(c).includes(KEY) || JSON.stringify(c).includes(SERVER_KEY)),
     )
     expect(leaked).toEqual([])
-    expect(JSON.parse(localStorage.getItem('humanome-keys'))).toEqual({ anthropic: SERVER_KEY })
+    expect(JSON.parse(localStorage.getItem('humanome-keys'))).toEqual({ anthropic: KEY })
   })
 
-  it('UC-APP-02-F22 — E6 : synchronisation de la clé refusée par le serveur (422) : message du serveur, aucun appel LLM, reprise possible', async () => {
+  it('UC-APP-02-F22 — E6 : (ADR-013) la clé saisie n’est jamais envoyée à humanome, même par un serveur qui accepterait encore PUT api/keys : aucun appel, le run part sur elle', async () => {
     await seedPortfolio()
-    const fetchMock = stubNetwork({
-      extra: [
-        [
-          'api/keys',
-          () => jsonResponse(422, { error: 'Validation échouée', fields: { apiKey: 'Clé API invalide (8 à 4096 caractères imprimables)' } }),
-        ],
-      ],
-    })
+    const fetchMock = stubNetwork({ extra: [['api/keys', noContent]] })
     openWizard()
     await screen.findByTestId('espace-connecte')
-    await walkToExecution({ mode: 'cle', sync: true })
+    await walkToExecution({ mode: 'cle' })
     await launch()
+    await screen.findByTestId('run-success', {}, { timeout: 15000 })
 
-    expect((await screen.findByRole('alert')).textContent).toBe('Validation échouée')
-    expect(fetchMock.calls.filter((c) => c.url === 'api/keys').map((c) => c.init.method)).toEqual(['PUT'])
-    expect(fetchMock.calls.filter((c) => c.url.startsWith('https://api.anthropic.com'))).toHaveLength(0)
-    expect(screen.getByRole('button', { name: 'Reprendre le run' })).toBeDefined()
-    expect(idb.values(...CARTOS)).toHaveLength(0)
+    expect(fetchMock.calls.filter((c) => c.url.startsWith('api/keys'))).toEqual([])
+    expect(fetchMock.calls.filter((c) => c.url === 'https://api.anthropic.com/v1/messages')).toHaveLength(24)
   })
 
   it('UC-APP-02-F25 — E7 : clé personnelle refusée par le fournisseur (401 Anthropic) : aucune reprise du transport, 2 requêtes par journée, chaque journée en échec avec le détail du fournisseur, rien d’enregistré', async () => {
@@ -805,7 +792,7 @@ describe('UC-APP-02 — scénarios d’erreur', () => {
     expect(screen.getByRole('button', { name: 'Reprendre le run' })).toBeDefined()
   })
 
-  it('UC-APP-02-F23 — A2 : API joignable mais en erreur 5xx JSON : bandeau « non connecté », version embarquée seule, synchronisation désactivée', async () => {
+  it('UC-APP-02-F23 — A2 : API joignable mais en erreur 5xx JSON : bandeau « non connecté », version embarquée seule, aucune synchronisation ni récupération de clé', async () => {
     await seedPortfolio()
     stubNetwork({ extra: [[/^api\//, () => jsonResponse(503, { error: 'Service indisponible' })]] })
     openWizard()
@@ -816,7 +803,7 @@ describe('UC-APP-02 — scénarios d’erreur', () => {
     expect((await screen.findByTestId('packages-fallback')).textContent).toContain('version embarquée proposée')
     next()
     await screen.findByTestId('step-fournisseur')
-    expect(screen.getByRole('checkbox', { name: /Synchroniser sur le serveur/ }).disabled).toBe(true)
+    expect(screen.queryByRole('checkbox', { name: /Synchroniser sur le serveur/ })).toBeNull()
     expect(screen.queryByRole('button', { name: 'Récupérer la clé depuis le serveur' })).toBeNull()
   })
 

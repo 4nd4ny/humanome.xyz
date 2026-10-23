@@ -39,8 +39,6 @@ const configuration = (extra = {}) => ({
   defaut: v98,
   referentiels: [{ id: 'respire', versions: ['7.1.0', '7.0.0'] }],
   gabarits: ['v9.8'],
-  cle_perso_ouverte: false,
-  cle_perso_enregistree: false,
   ...extra,
 })
 
@@ -140,19 +138,12 @@ describe('ConfigurationView (T13)', { timeout: 15000 }, () => {
     expect(await annonce('alert')).toContain('/referentiel/id')
   })
 
-  it('n’offre la clé personnelle que là où l’administrateur l’a ouverte', async () => {
+  it('ne propose plus la clé personnelle (ADR-013 §6) : la clé de l’instance seule', async () => {
     const { vue } = await ouvrir()
-    const personnelle = within(vue.container.querySelector('#config-cle')).getByRole('option', { name: 'Ma clé personnelle' })
-    expect(personnelle.disabled).toBe(true)
-    cleanup()
-
-    const ouverte = await ouvrir({
-      'GET api/twin9/configuration': jsonResponse(200, configuration({ cle_perso_ouverte: true })),
-    })
-    const cle = ouverte.vue.container.querySelector('#config-cle')
-    expect(within(cle).getByRole('option', { name: 'Ma clé personnelle' }).disabled).toBe(false)
-    fireEvent.change(cle, { target: { value: 'personnelle' } })
-    expect(champ(ouverte.vue, 'cle').textContent).toContain('Aucune clé Anthropic personnelle n’est enregistrée')
+    const cle = vue.container.querySelector('#config-cle')
+    expect(within(cle).queryByRole('option', { name: /clé personnelle/ })).toBeNull()
+    expect(within(cle).getAllByRole('option').map((o) => o.textContent)).toContain('Celle de l’instance')
+    expect(champ(vue, 'cle').querySelector('.config-avertissement')).toBeNull()
   })
 
   it('propose les référentiels publiés et leurs versions, la dernière par défaut', async () => {
@@ -394,18 +385,20 @@ describe('ConfigurationView — un fournisseur par étage, étape et lecteur (AD
     )
   })
 
-  it('la clé personnelle ne sert que chez Anthropic : un profil qui appelle un autre fournisseur ne la propose pas, et le dit', async () => {
+  it('un profil enregistré avant sur la clé personnelle la montre, désactivée, et dit quoi faire ; une autre clé choisie, elle disparaît', async () => {
     const profil = structuredClone(v98)
-    profil.etapes = { greffier: { fournisseur: 'mistral', modele: 'modele-fictif' } }
     profil.cle = 'personnelle'
-    const { vue } = await ouvrirProfil(profil, { cle_perso_ouverte: true, cle_perso_enregistree: true })
+    const { vue } = await ouvrirProfil(profil)
     const cle = vue.container.querySelector('#config-cle')
-    expect(within(cle).getByRole('option', { name: 'Ma clé personnelle' }).disabled).toBe(false) // celle que nomme le profil
+    expect(cle.value).toBe('personnelle')
+    expect(within(cle).getByRole('option', { name: 'Ma clé personnelle (ne sert plus)' }).disabled).toBe(true)
     expect(champ(vue, 'cle').querySelector('.config-avertissement').textContent).toBe(
-      'La clé personnelle ne sert que chez Anthropic : ce profil appelle aussi Mistral AI, il ne part qu’avec les clés de l’instance.',
+      'La clé personnelle ne sert plus aux analyses du serveur : une analyse approfondie ne peut pas garder la clé de ' +
+        'votre navigateur, et humanome ne garde plus les clés de ses utilisateurs. Choisissez la clé de l’instance : ce ' +
+        'profil ne part pas tant qu’il porte la clé personnelle.',
     )
     fireEvent.change(cle, { target: { value: 'instance' } })
-    expect(within(cle).getByRole('option', { name: 'Ma clé personnelle' }).disabled).toBe(true)
+    expect(within(cle).queryByRole('option', { name: /clé personnelle/ })).toBeNull()
     expect(champ(vue, 'cle').querySelector('.config-avertissement')).toBeNull()
   })
 })

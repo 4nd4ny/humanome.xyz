@@ -149,7 +149,7 @@ describe('UC-PRO-06 — scénario nominal', () => {
 })
 
 describe('UC-PRO-06 — scénarios alternatifs', () => {
-  it('UC-PRO-06-F06 — A1 + A2 : texte introuvable localement, collé par le promptologue ; clé personnelle Anthropic', async () => {
+  it('UC-PRO-06-F06 — A1 + A2 : texte introuvable localement, collé par le promptologue ; clé personnelle Anthropic, qui reste dans le navigateur (R1, la page le dit)', async () => {
     const anthropic = anthropicDirect({ mutate: etablit103SiRevisee })
     const net = stubNetwork({ ...retroRoutes(), ...anthropic.routes })
     // Application entière : aucun portfolio local (IndexedDB absent).
@@ -161,6 +161,8 @@ describe('UC-PRO-06 — scénarios alternatifs', () => {
     fireEvent.change(screen.getByLabelText(/Texte de la journée/), { target: { value: 'Texte collé du 5 janvier.' } })
     fireEvent.change(screen.getByLabelText('Version du référentiel'), { target: { value: '7.1.0' } })
     fireEvent.click(screen.getByRole('radio', { name: 'Clé personnelle' }))
+    // R1 (ADR-013 §5) : la clé reste dans ce navigateur, la page le dit
+    expect(screen.getByTestId('cle-reste-navigateur').textContent).toBe('Votre clé reste dans ce navigateur : humanome ne la garde jamais sur ses serveurs. Seule une école peut y garder la sienne, pour ses élèves.')
     fireEvent.change(screen.getByLabelText(/Clé API/), { target: { value: 'sk-ant-retro' } })
     await regenerer()
 

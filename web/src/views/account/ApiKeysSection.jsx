@@ -1,22 +1,34 @@
-// Clés API personnelles dans le profil (cahier §4.5, ADR-004).
+// Les clés API dans le profil (cahier §4.5 ; ADR-013 §5, règle R1 de Christian).
 //
-// Stockage serveur OPT-IN et chiffré (libsodium). L'utilisateur enregistre ici
-// sa clé API privée pour lancer les cartographies « clé perso » (Twin6) sans la
-// ressaisir à chaque fois. La clé n'est jamais réaffichée après enregistrement.
-// L'analyse approfondie Twin9 n'emploie qu'une clé personnelle Anthropic : ses
-// appels aux autres fournisseurs partent avec les clés de la plateforme
-// (ADR-012) ; la section le dit. Elle ne propose pas de clé Mistral AI,
-// qu'aucun parcours n'emploie (minimisation).
+// Depuis l'ADR-013, les clés d'un utilisateur restent dans son navigateur :
+// humanome n'en garde plus aucune, seule une école garde la sienne, pour ses
+// élèves (dans son espace établissement). La section le dit, et n'a plus de
+// formulaire d'ajout. Elle montre les clés gardées sur le serveur AVANT,
+// « à supprimer », qui ne servent plus à aucune analyse, avec deux boutons :
+// « Supprimer du serveur » (en deux temps : armer, puis confirmer — elle ne
+// sera plus récupérable), et « Recopier dans ce navigateur, puis supprimer »
+// (la clé est relue une fois, mémorisée dans localStorage 'humanome-keys',
+// celui de l'assistant de run et de la cartographie ouverte, puis supprimée du
+// serveur), pour que personne ne perde une clé gardée nulle part ailleurs. Si
+// la date de l'avis de purge est connue, elle dit à partir de quand la clé
+// sera supprimée d'office (30 jours après l'avis).
 
 import { useCallback, useEffect, useState } from 'react'
 import { ApiError } from '../../api/client.js'
 import {
-  KEY_PROVIDERS,
   deleteKey as deleteKeyApi,
   listKeys as listKeysApi,
   providerLabel,
-  storeKey as storeKeyApi,
+  revealKey as revealKeyApi,
 } from '../../api/keys.js'
+import {
+  KEY_STAYS_IN_BROWSER,
+  getLocalKey as getLocalKeyFn,
+  setLocalKey as setLocalKeyFn,
+} from '../../lib/local-keys.js'
+
+/** Jours entre l'avis et la purge (api/src/Keys/UserKeysPurge.php, DELAI_JOURS). */
+const DELAI_PURGE_JOURS = 30
 
 /**
  * @param {unknown} error
@@ -32,28 +44,40 @@ function message(error) {
   return 'Une erreur est survenue. Réessayez.'
 }
 
+/** « AAAA-MM-JJ » de l'avis + 30 jours, ou null. */
+function datePurge(avisPurgeAt) {
+  const avis = new Date(`${String(avisPurgeAt).slice(0, 10)}T00:00:00Z`)
+  if (avisPurgeAt == null || Number.isNaN(avis.getTime())) return null
+  avis.setUTCDate(avis.getUTCDate() + DELAI_PURGE_JOURS)
+  return avis.toISOString().slice(0, 10)
+}
+
 /**
- * @param {{deps?: {listKeys?: typeof listKeysApi, storeKey?: typeof storeKeyApi,
- *   deleteKey?: typeof deleteKeyApi}}} props coutures de test
+ * @param {{deps?: {listKeys?: typeof listKeysApi, revealKey?: typeof revealKeyApi,
+ *   deleteKey?: typeof deleteKeyApi, keyStorage?: Storage}}} props coutures de test (keyStorage : le
+ *   stockage du navigateur, localStorage par défaut)
  */
 export default function ApiKeysSection({ deps = {} }) {
   const listKeys = deps.listKeys ?? listKeysApi
-  const storeKey = deps.storeKey ?? storeKeyApi
+  const revealKey = deps.revealKey ?? revealKeyApi
   const deleteKey = deps.deleteKey ?? deleteKeyApi
 
   const [keys, setKeys] = useState(null) // null = chargement, [] = aucune
   const [loadError, setLoadError] = useState(null)
-  const [provider, setProvider] = useState(KEY_PROVIDERS[0].id)
-  const [apiKey, setApiKey] = useState('')
   const [busy, setBusy] = useState(false)
   const [feedback, setFeedback] = useState(null)
   const [reloadKey, setReloadKey] = useState(0)
+  // « Supprimer du serveur » en deux temps (comme le retrait de la clé d'une école) : le fournisseur armé
+  const [arme, setArme] = useState(null)
 
   useEffect(() => {
     let alive = true
     listKeys()
       .then((list) => {
-        if (alive) setKeys(Array.isArray(list) ? list : [])
+        if (alive) {
+          setKeys(Array.isArray(list) ? list : [])
+          setLoadError(null)
+        }
       })
       .catch((error) => {
         if (alive) {
@@ -68,14 +92,13 @@ export default function ApiKeysSection({ deps = {} }) {
 
   const reload = useCallback(() => setReloadKey((k) => k + 1), [])
 
-  async function save(event) {
-    event.preventDefault()
+  async function remove(prov) {
+    setArme(null)
     setBusy(true)
     setFeedback(null)
     try {
-      await storeKey({ provider, apiKey: apiKey.trim() })
-      setApiKey('')
-      setFeedback({ kind: 'ok', message: `Clé ${providerLabel(provider)} enregistrée (chiffrée).` })
+      await deleteKey(prov)
+      setFeedback({ kind: 'ok', message: `Clé ${providerLabel(prov)} supprimée du serveur.` })
       reload()
     } catch (error) {
       setFeedback({ kind: 'error', message: message(error) })
@@ -84,87 +107,109 @@ export default function ApiKeysSection({ deps = {} }) {
     }
   }
 
-  async function remove(prov) {
+  async function copyThenRemove(prov) {
+    setArme(null)
     setBusy(true)
     setFeedback(null)
     try {
+      const { apiKey } = (await revealKey(prov)) ?? {}
+      if (typeof apiKey !== 'string' || apiKey === '') {
+        throw new Error('La clé gardée n’a pas pu être relue : rien n’a été supprimé.')
+      }
+      setLocalKeyFn(prov, apiKey, deps.keyStorage)
+      // un navigateur qui n'a pas pu la garder (stockage plein ou bloqué) : rien n'est supprimé
+      if (getLocalKeyFn(prov, deps.keyStorage) !== apiKey) {
+        throw new Error('Ce navigateur n’a pas pu garder la clé : rien n’a été supprimé du serveur.')
+      }
       await deleteKey(prov)
-      setFeedback({ kind: 'ok', message: `Clé ${providerLabel(prov)} supprimée.` })
+      setFeedback({
+        kind: 'ok',
+        message: `Clé ${providerLabel(prov)} recopiée dans ce navigateur, puis supprimée du serveur.`,
+      })
       reload()
     } catch (error) {
-      setFeedback({ kind: 'error', message: message(error) })
+      setFeedback({ kind: 'error', message: error instanceof ApiError ? message(error) : error.message })
     } finally {
       setBusy(false)
     }
   }
 
   return (
-    <section className="account-keys" aria-label="Clés API personnelles">
-      <h2>Clés API personnelles</h2>
-      <p className="account-keys-intro">
-        Enregistrez votre propre clé API pour lancer une cartographie sur votre clé (gratuit pour
-        vous, hors coût de votre fournisseur). Elle est <strong>chiffrée sur le serveur</strong>{' '}
-        (opt-in, RGPD) et n’est <strong>jamais réaffichée</strong> ensuite ; vous pouvez la supprimer
-        à tout moment.
+    <section className="account-keys" aria-label="Clés API">
+      <h2>Clés API</h2>
+      <p className="account-keys-intro" data-testid="cle-reste-navigateur">
+        <strong>{KEY_STAYS_IN_BROWSER}</strong>
       </p>
       <p className="account-keys-intro">
-        Pour l’analyse approfondie Twin9, une clé personnelle ne sert que chez Anthropic : un profil qui
-        appelle un autre fournisseur ne part qu’avec les clés de la plateforme.
+        Pour lancer une cartographie avec votre propre clé, saisissez-la au lancement (assistant de
+        cartographie, cartographie ouverte) : elle n’y est gardée que si vous demandez à la mémoriser
+        dans ce navigateur, et ne part que vers le fournisseur choisi. L’analyse approfondie Twin9, qui
+        tourne sur le serveur, part avec la clé de la plateforme — ou avec celle de votre école, quand
+        elle paie pour vous et en a posé une.
       </p>
 
       {keys === null ? (
         <p role="status">Chargement des clés…</p>
-      ) : (
+      ) : keys.length > 0 ? (
         <>
-          {keys.length > 0 ? (
-            <ul className="account-keys-list">
-              {keys.map((k) => (
+          <p className="account-keys-intro" data-testid="cles-a-supprimer">
+            Ces clés avaient été gardées sur le serveur avant ce changement. Elles ne servent plus à
+            aucune analyse et <strong>sont à supprimer</strong> : recopiez-les dans ce navigateur si
+            vous ne les avez nulle part ailleurs, ou supprimez-les.
+          </p>
+          <ul className="account-keys-list">
+            {keys.map((k) => {
+              const purge = datePurge(k.avisPurgeAt)
+              return (
                 <li key={k.provider} className="account-keys-item">
                   <span className="account-keys-provider">{providerLabel(k.provider)}</span>
-                  <span className="account-keys-date">enregistrée le {String(k.createdAt).slice(0, 10)}</span>
+                  <span className="account-keys-date">
+                    à supprimer — gardée le {String(k.createdAt).slice(0, 10)}
+                    {purge ? `, supprimée d’office à partir du ${purge}` : ''}
+                  </span>
                   <button
                     type="button"
-                    className="account-keys-delete"
-                    onClick={() => remove(k.provider)}
+                    className="account-keys-copy"
+                    onClick={() => copyThenRemove(k.provider)}
                     disabled={busy}
                   >
-                    Supprimer
+                    Recopier dans ce navigateur, puis supprimer
                   </button>
+                  {arme === k.provider ? (
+                    <>
+                      <span className="account-keys-armed" data-testid="cle-suppression-armee">
+                        Supprimée du serveur, elle ne sera plus récupérable : recopiez-la d’abord si vous ne
+                        l’avez nulle part ailleurs.
+                      </span>
+                      <button
+                        type="button"
+                        className="account-keys-delete"
+                        onClick={() => remove(k.provider)}
+                        disabled={busy}
+                      >
+                        Confirmer la suppression
+                      </button>
+                      <button type="button" className="account-keys-cancel" onClick={() => setArme(null)} disabled={busy}>
+                        Annuler
+                      </button>
+                    </>
+                  ) : (
+                    <button
+                      type="button"
+                      className="account-keys-delete"
+                      onClick={() => setArme(k.provider)}
+                      disabled={busy}
+                    >
+                      Supprimer du serveur
+                    </button>
+                  )}
                 </li>
-              ))}
-            </ul>
-          ) : (
-            <p className="account-keys-empty">Aucune clé enregistrée.</p>
-          )}
-
-          <form className="account-keys-form" onSubmit={save}>
-            <label>
-              Fournisseur
-              <select value={provider} onChange={(e) => setProvider(e.target.value)} disabled={busy}>
-                {KEY_PROVIDERS.map((p) => (
-                  <option key={p.id} value={p.id}>
-                    {p.label}
-                  </option>
-                ))}
-              </select>
-            </label>
-            <label>
-              Clé API
-              <input
-                type="password"
-                value={apiKey}
-                onChange={(e) => setApiKey(e.target.value)}
-                placeholder={KEY_PROVIDERS.find((p) => p.id === provider)?.exemple}
-                autoComplete="off"
-                spellCheck={false}
-                disabled={busy}
-              />
-            </label>
-            <button type="submit" className="button" disabled={busy || apiKey.trim().length < 8}>
-              {busy ? '…' : 'Enregistrer la clé'}
-            </button>
-          </form>
+              )
+            })}
+          </ul>
         </>
+      ) : (
+        <p className="account-keys-empty">Aucune clé gardée sur le serveur.</p>
       )}
 
       {loadError ? (

@@ -41,7 +41,6 @@ export function noContentResponse() {
 
 const CSRF_EXEMPT = new Set(['POST auth/login', 'POST auth/register', 'POST auth/activate', 'POST auth/resend'])
 const MUTATING = new Set(['POST', 'PUT', 'PATCH', 'DELETE'])
-const SERVER_KEY_PROVIDERS = ['anthropic', 'openai', 'google', 'openrouter', 'xai', 'ollama', 'mock']
 const AVATAR_MIMES = ['image/jpeg', 'image/png', 'image/webp']
 // N.B. : le motif PHP de training.php (sans modificateur D) accepte EN PLUS un
 // saut de ligne final (UC-CPT-05, anomalie AN2, figée côté API par UC-CPT-05-F15) ;
@@ -86,7 +85,12 @@ export function createFakeAccountApi(options = {}) {
       code: u.code ?? null,
       attempts: 0,
       hasAvatar: u.hasAvatar ?? false,
-      keys: new Map(Object.entries(u.keys ?? {}).map(([p, k]) => [p, { apiKey: k, createdAt: `${today}T10:00:00` }])),
+      // les clés gardées avant l'ADR-013 : une chaîne, ou {apiKey, avisPurgeAt} (avis de purge parti)
+      keys: new Map(Object.entries(u.keys ?? {}).map(([p, k]) => [p, {
+        apiKey: typeof k === 'string' ? k : k.apiKey,
+        createdAt: `${today}T10:00:00`,
+        avisPurgeAt: typeof k === 'string' ? null : (k.avisPurgeAt ?? null),
+      }])),
       training: new Map(Object.entries(u.training ?? {}).map(([p, list]) => [p, new Set(list)])),
       declared: declarationOf(u.declared),
     }
@@ -256,24 +260,19 @@ export function createFakeAccountApi(options = {}) {
           200,
           [...me.keys.entries()]
             .sort(([a], [b]) => (a < b ? -1 : 1))
-            .map(([provider, entry]) => ({ provider, createdAt: entry.createdAt })),
+            .map(([provider, entry]) => ({ provider, createdAt: entry.createdAt, avisPurgeAt: entry.avisPurgeAt ?? null })),
         )
 
-      case 'PUT keys': {
+      // ADR-013 §5 : plus aucune clé d'utilisateur n'est écrite — 410 à tout compte, le corps jamais lu.
+      case 'PUT keys':
         if (!me) return unauthorized()
-        const fields = {}
-        if (!SERVER_KEY_PROVIDERS.includes(body?.provider)) {
-          fields.provider = `Fournisseur inconnu (attendu : ${SERVER_KEY_PROVIDERS.join(', ')})`
-        }
-        const apiKey = body?.apiKey
-        // eslint-disable-next-line no-control-regex
-        if (typeof apiKey !== 'string' || apiKey.length < 8 || apiKey.length > 4096 || /[\x00-\x1f\x7f]/.test(apiKey)) {
-          fields.apiKey = 'Clé API invalide (8 à 4096 caractères imprimables)'
-        }
-        if (Object.keys(fields).length > 0) return validation(fields)
-        me.keys.set(body.provider, { apiKey, createdAt: `${today}T12:00:00` })
-        return noContentResponse()
-      }
+        return jsonResponse(410, {
+          error: 'Vos clés restent dans votre navigateur : humanome ne les garde plus sur ses serveurs.',
+          detail: me.roles.includes('etablissement')
+            ? 'La clé de votre école, pour ses élèves, se règle dans votre espace établissement.'
+            : 'Saisissez votre clé dans le navigateur, au lancement d’une cartographie : elle y reste. Seule une '
+              + 'école garde la sienne sur le serveur, pour ses élèves.',
+        })
 
       // UC-CPT-07 : la déclaration, jamais mêlée aux habilitations (`roles`).
       case 'GET auth/me/declared-roles':

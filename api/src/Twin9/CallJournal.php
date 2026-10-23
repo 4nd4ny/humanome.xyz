@@ -88,22 +88,27 @@ final class CallJournal implements Journal
      * to the next.
      *
      * @param string $fournisseur its provider (CallSettings::pour()), an id of Fournisseurs::REGISTRE
+     * @param string|null $mois the UTC month a new reserve is taken in (Ecoles::mois()): a learner's cap is settled
+     *                          in it (ADR-013 §3, twin9_appels.mois_reserve); kept from one try to the next
      */
     public function envoye(Call $call, string $modele, int $tentative, ?int $lotId = null, ?string $customId = null,
-                           ?int $reserve = null, string $fournisseur = Fournisseurs::DEFAUT): void
+                           ?int $reserve = null, string $fournisseur = Fournisseurs::DEFAUT, ?string $mois = null): void
     {
         $this->pdo->prepare(
             'INSERT INTO twin9_appels (run_id, appel, etape, modele, modele_envoye, fournisseur, sha256, statut, lot_id,
-                    custom_id, tentatives, reprise_at, reponse, panne, reserve_microusd, pire_cas_microusd, envoye_at)
-             VALUES (?, ?, ?, ?, ?, ?, ?, "envoye", ?, ?, ?, NULL, NULL, NULL, ?, ?, NOW(3))
+                    custom_id, tentatives, reprise_at, reponse, panne, reserve_microusd, pire_cas_microusd, mois_reserve,
+                    envoye_at)
+             VALUES (?, ?, ?, ?, ?, ?, ?, "envoye", ?, ?, ?, NULL, NULL, NULL, ?, ?, ?, NOW(3))
              ON DUPLICATE KEY UPDATE etape = VALUES(etape), modele = VALUES(modele),
                     modele_envoye = VALUES(modele_envoye), fournisseur = VALUES(fournisseur), sha256 = VALUES(sha256),
                     statut = "envoye", lot_id = VALUES(lot_id), custom_id = VALUES(custom_id),
                     tentatives = VALUES(tentatives), reprise_at = NULL, reponse = NULL, panne = NULL,
                     reserve_microusd = COALESCE(VALUES(reserve_microusd), reserve_microusd),
-                    pire_cas_microusd = COALESCE(VALUES(pire_cas_microusd), pire_cas_microusd), envoye_at = NOW(3)'
+                    pire_cas_microusd = COALESCE(VALUES(pire_cas_microusd), pire_cas_microusd),
+                    mois_reserve = IF(VALUES(reserve_microusd) IS NULL, mois_reserve, VALUES(mois_reserve)),
+                    envoye_at = NOW(3)'
         )->execute([$this->runId, $call->id, $call->step, $call->model, $modele, $fournisseur, $call->sha256, $lotId,
-                    $customId, $tentative, $reserve, $reserve]);
+                    $customId, $tentative, $reserve, $reserve, $reserve === null ? null : $mois]);
         $this->rows[$call->id] = ['statut' => 'envoye', 'sha256' => $call->sha256, 'tentatives' => $tentative,
                                   'reprise_at' => null, 'panne' => null, 'blob' => null, 'reponse' => null,
                                   'reserve' => $reserve ?? $this->rows[$call->id]['reserve'] ?? null];

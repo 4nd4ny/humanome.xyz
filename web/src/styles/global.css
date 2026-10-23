@@ -3817,6 +3817,47 @@ body:has([aria-modal='true'], .portfolio-editor-fullscreen)
   width: min(28rem, 100%);
 }
 
+/* « Mon école » (ADR-013, lot S6b) : ses deux formulaires, libellés en bloc et
+   champs bornés, lisibles à 375 px ; chaque message sous son champ. */
+.etab-ecole-reglages,
+.etab-ecole-cle-form {
+  margin-bottom: 0.75rem;
+}
+
+.etab-ecole-reglages label,
+.etab-ecole-cle-form label {
+  display: block;
+  margin: 0.4rem 0 0.15rem;
+  font-size: 0.9rem;
+  color: var(--ink-soft);
+}
+
+.etab-ecole-reglages input,
+.etab-ecole-cle-form input {
+  box-sizing: border-box;
+  width: min(28rem, 100%);
+  padding: 0.35rem 0.5rem;
+  border: 1px solid var(--line);
+  border-radius: 6px;
+  font: inherit;
+}
+
+.etab-ecole-reglages input[aria-invalid='true'],
+.etab-ecole-cle-form input[aria-invalid='true'] {
+  border-color: var(--danger);
+}
+
+.etab-ecole-reglages button,
+.etab-ecole-cle-form button {
+  margin-top: 0.6rem;
+}
+
+.etab-ecole-champ-erreur {
+  margin: 0.2rem 0 0;
+  font-size: 0.85rem;
+  color: var(--danger);
+}
+
 .etab-run-estimate {
   margin-top: 0.75rem;
   padding: 0.6rem 0.8rem;
@@ -5236,7 +5277,8 @@ body:has([aria-modal='true'], .portfolio-editor-fullscreen)
   color: var(--warn);
 }
 
-/* Clés API personnelles (profil #/compte) + choix clé enregistrée Twin6. */
+/* Clés API (profil #/compte, ADR-013) : la clé reste dans le navigateur ; les
+   clés gardées avant, « à supprimer », se recopient ou se suppriment. */
 .account-keys {
   background: var(--card);
   border: 1px solid var(--line);
@@ -5251,7 +5293,6 @@ body:has([aria-modal='true'], .portfolio-editor-fullscreen)
   line-height: 1.5;
 }
 
-/* Une clé qu'aucun parcours n'emploie encore (Mistral AI, ADR-012). */
 .account-keys-list {
   list-style: none;
   margin: 0.75rem 0;
@@ -5282,6 +5323,18 @@ body:has([aria-modal='true'], .portfolio-editor-fullscreen)
   margin-right: auto;
 }
 
+.account-keys-copy,
+.account-keys-cancel {
+  background: none;
+  border: 1px solid var(--line);
+  color: var(--ink);
+  border-radius: 8px;
+  padding: 0.3rem 0.7rem;
+  cursor: pointer;
+  font: inherit;
+  font-size: 0.85rem;
+}
+
 .account-keys-delete {
   background: none;
   border: 1px solid var(--danger-border);
@@ -5293,35 +5346,15 @@ body:has([aria-modal='true'], .portfolio-editor-fullscreen)
   font-size: 0.85rem;
 }
 
+.account-keys-armed {
+  flex-basis: 100%;
+  color: var(--danger);
+  font-size: 0.88rem;
+}
+
 .account-keys-empty {
   color: var(--ink-faint);
   font-style: italic;
-}
-
-.account-keys-form {
-  display: flex;
-  flex-wrap: wrap;
-  align-items: flex-end;
-  gap: 0.75rem;
-  margin-top: 0.75rem;
-}
-
-.account-keys-form label {
-  display: flex;
-  flex-direction: column;
-  gap: 0.3rem;
-  font-size: 0.9rem;
-  color: var(--ink-soft);
-}
-
-.account-keys-form select,
-.account-keys-form input {
-  padding: 0.5rem 0.65rem;
-  border: 1px solid var(--line);
-  border-radius: 8px;
-  background: var(--card);
-  color: var(--ink);
-  font: inherit;
 }
 
 .account-keys-ok {

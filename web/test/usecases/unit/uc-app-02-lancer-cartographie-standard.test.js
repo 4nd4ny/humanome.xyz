@@ -25,12 +25,10 @@ import {
   computeDayGroups,
   createProviderBundle,
   executeRun,
-  fetchKeyFromServer,
   fetchPromptPackages,
   makeRunId,
   readLocalKeys,
   setLocalKey,
-  syncKeyToServer,
 } from '../../../src/lib/run-launcher.js'
 import {
   DEMO_MODEL,
@@ -38,7 +36,6 @@ import {
   createDemoProvider,
   describeDemoError,
 } from '../../../src/lib/demo-llm.js'
-import { ApiError } from '../../../src/api/client.js'
 import { createFakeIndexedDb } from '../support/appl-fake-indexeddb.js'
 import { bodyOf, jsonResponse, routedFetch } from '../support/appl-http.js'
 import { fixtureAnswer, portfolioText } from '../support/appl-llm.js'
@@ -197,28 +194,16 @@ describe('UC-APP-02 — étape 4 : fournisseur et clés', () => {
     expect(JSON.parse(storage.map.get(KEYS_STORAGE_KEY))).toEqual({ openai: 'sk-oa-1' })
   })
 
-  it('UC-APP-02-U17 — synchronisation opt-in : PUT api/keys ; récupération GET api/keys/{fournisseur} ; clé absente (404 du serveur)', async () => {
-    const apiFetchFn = vi.fn(async (path) => {
-      if (path === 'keys/openai') {
-        // Réponse RÉELLE de l'API pour une clé absente (api/src/routes/keys.php).
-        throw new ApiError('Aucune clé enregistrée pour ce fournisseur', 404)
-      }
-      return path === 'keys/google' ? { apiKey: '' } : { apiKey: 'sk-ant-2' }
-    })
-    await syncKeyToServer('anthropic', 'sk-ant-2', { apiFetchFn })
-    expect(apiFetchFn).toHaveBeenCalledWith('keys', {
-      method: 'PUT',
-      body: { provider: 'anthropic', apiKey: 'sk-ant-2' },
-    })
-    await expect(fetchKeyFromServer('anthropic', { apiFetchFn })).resolves.toBe('sk-ant-2')
-    // Clé absente : le message du SERVEUR est propagé tel quel.
-    await expect(fetchKeyFromServer('openai', { apiFetchFn })).rejects.toThrow(
-      'Aucune clé enregistrée pour ce fournisseur',
-    )
-    // Garde défensive (réponse 200 sans clé, jamais produite par l'API actuelle).
-    await expect(fetchKeyFromServer('google', { apiFetchFn })).rejects.toThrow(
-      'Aucune clé enregistrée sur le serveur pour ce fournisseur.',
-    )
+  it('UC-APP-02-U17 — plus de synchronisation de la clé (ADR-013) : run-launcher n’exporte ni syncKeyToServer ni fetchKeyFromServer ; la clé reste dans ce navigateur (humanome-keys), ce que dit KEY_STAYS_IN_BROWSER', async () => {
+    const launcher = await import('../../../src/lib/run-launcher.js')
+    expect(launcher.syncKeyToServer).toBeUndefined()
+    expect(launcher.fetchKeyFromServer).toBeUndefined()
+    expect(launcher.KEY_STAYS_IN_BROWSER).toContain('humanome ne la garde jamais sur ses serveurs')
+    const map = new Map()
+    const storage = { getItem: (k) => map.get(k) ?? null, setItem: (k, v) => map.set(k, v) }
+    launcher.setLocalKey('anthropic', 'sk-ant-2', storage)
+    expect(launcher.getLocalKey('anthropic', storage)).toBe('sk-ant-2')
+    expect([...map.keys()]).toEqual(['humanome-keys'])
   })
 
   it('UC-APP-02-U18 — service humanome : un défi par appel, résolu puis joint au POST avec le pot de miel vide', async () => {

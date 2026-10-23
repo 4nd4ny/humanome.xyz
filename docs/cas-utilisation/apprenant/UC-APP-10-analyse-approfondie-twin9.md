@@ -3,11 +3,11 @@
 | Champ | Valeur |
 |---|---|
 | **Acteur principal** | Apprenant (tout compte connecté) |
-| **Acteurs secondaires** | Moteur Twin9 (dépôt privé `4nd4ny/Twin_v9`, chargé depuis `TWIN_V9_DIR`, ADR-011) ; fournisseurs LLM (Anthropic : appels directs ou API Message Batches ; depuis P1-5, ceux que l'administrateur ouvre — OpenAI, Mistral AI, Google, xAI, OpenRouter —, en direct, ADR-012) ; tick du serveur (`POST /api/admin/worker-tick`) ; cartographe lié (lecture des résultats, s'il y est autorisé) ; administrateur (offre, contribution, promotion — UC-ADM-05 ; compteurs des runs) ; atelier (jeux de gabarits — UC-PRO-08) |
+| **Acteurs secondaires** | Moteur Twin9 (dépôt privé `4nd4ny/Twin_v9`, chargé depuis `TWIN_V9_DIR`, ADR-011) ; fournisseurs LLM (Anthropic : appels directs ou API Message Batches ; depuis P1-5, ceux que l'administrateur ouvre — OpenAI, Mistral AI, Google, xAI, OpenRouter —, en direct, ADR-012) ; tick du serveur (`POST /api/admin/worker-tick`) ; cartographe lié (lecture des résultats, s'il y est autorisé) ; administrateur (offre, contribution — UC-ADM-05 ; compteurs des runs) ; atelier (jeux de gabarits — UC-PRO-08) |
 | **Portée** | humanome.xyz — vues `#/twin9` et `#/twin9/<id>`, routes `/api/twin9/runs…` (`api/src/routes/twin9-runs.php`), profils de `#/configuration` (`/api/twin9/configuration`, `/api/twin9/profils`), ouverture dans l'interface de cartographie (`#/cartographie`) |
 | **Niveau** | Objectif utilisateur |
 | **Cahier des charges** | §3.2, §4.3 (découpage journalier + fusion), §4.4, §6 (RGPD), §7 (Golden Prompt payant) ; ADR-004, ADR-007, ADR-010, ADR-011 ; `docs/contrats.md` §8 |
-| **Statut** | Implémenté (T9, T10, T8 stratégie A, T16, T17 ; P0-1 : configuration et exécution du run, 2026-10-22 ; P1-5 : un fournisseur par étage, étape et lecteur, l'accord qui les nomme, 2026-10-22 ; S3-3 : les traces de la stigmergie du greffier dans la cartographie et le portfolio surligné, 2026-10-23 ; sprint 4, T0 : le portfolio envoyé découpé en les journées de l'interface ; C3, C4 : deux cartes du même jour, le second ressort en seconde lecture, 2026-10-23) ; le moteur du navigateur et son proxy `POST /api/twin9/appel` sont retirés depuis T11 |
+| **Statut** | Implémenté (T9, T10, T8 stratégie A, T16, T17 ; P0-1 : configuration et exécution du run, 2026-10-22 ; P1-5 : un fournisseur par étage, étape et lecteur, l'accord qui les nomme, 2026-10-22 ; S3-3 : les traces de la stigmergie du greffier dans la cartographie et le portfolio surligné, 2026-10-23 ; sprint 4, T0 : le portfolio envoyé découpé en les journées de l'interface ; C3, C4 : deux cartes du même jour, le second ressort en seconde lecture, 2026-10-23 ; sprint 6, S6b : l'école paie, sur son crédit ou sur sa clé, sous un plafond par élève, 2026-10-22) ; le moteur du navigateur et son proxy `POST /api/twin9/appel` sont retirés depuis T11 |
 
 ## Objectif
 
@@ -17,9 +17,11 @@ verbatim des citations, consensus mécanique, instruction rapide, tribunal
 adversarial à résolution calculée, fusion chronologique et relectures. Le
 moteur tourne **sur le serveur**, par tranches (ADR-011) : avec l'accord de
 l'apprenant, son portfolio et l'état du run y restent jusqu'à ce qu'il les
-efface. Le run se paie sur son crédit prépayé (contribution +20 %) ou, pendant
-une promotion, avec sa propre clé. Sa carte s'ouvre dans l'interface de
-cartographie, délibérations comprises.
+efface. Le run part avec la clé de l'instance et se paie sur un crédit prépayé
+(contribution +20 %) : depuis l'ADR-013, plus avec la clé personnelle de
+l'apprenant — un run du serveur ne peut pas garder la clé de son navigateur,
+et humanome ne garde plus les clés de ses utilisateurs (A6). Sa carte s'ouvre
+dans l'interface de cartographie, délibérations comprises.
 
 ## Déclencheur
 
@@ -34,9 +36,9 @@ badge premium) ou ouvre `#/twin9`.
   jeu de gabarits v9.8 est importé (UC-PRO-08 A4) : sans lui, le lancement
   répond `503` (E2).
 - Un référentiel publié, RESPIRE par défaut, avec ses fiches en base.
-- Avec la clé de l'instance : un crédit (UC-APP-11) qui couvre au moins une
-  journée et sa fusion. Avec sa clé personnelle : promotion ouverte (UC-ADM-05
-  A1) et clé Anthropic enregistrée (UC-CPT-04).
+- Un crédit (UC-APP-11) qui couvre au moins une journée et sa fusion : le
+  solde restant de l'apprenant (seule une école en achète, ADR-013), ou, avec
+  le lot S6b, celui de son école.
 
 ## Garanties en cas de succès
 
@@ -168,10 +170,23 @@ badge premium) ou ouvre `#/twin9`.
   sur la page du run (`PUT /api/twin9/runs/<id>/visibilite`), rend les
   résultats lisibles du cartographe auquel l'apprenant est lié (UC-APP-07),
   et de lui seul ; il ne suit ni ne commande le run.
-- **A6 — Clé personnelle** (étape 2) : un profil à clé personnelle (promotion
-  ouverte, clé enregistrée) : l'estimation est sans contribution, le crédit ne
-  borne rien, et rien n'est débité ; la clé, chiffrée (ADR-004), ne sert que
-  sur le serveur.
+- **A6 — Clé personnelle (ADR-013 §6)** (étapes 2, 4-5) : elle ne se choisit
+  plus (`#/configuration` ne la propose pas ; la promotion « Twin9 avec sa
+  clé » a disparu, UC-ADM-05 A1). Un profil enregistré avant qui la porte reste
+  gardé, la montre désactivée avec ce qu'il faut faire, et est refusé à
+  l'enregistrement, à l'aperçu, au lancement et à la reprise : `422` « Profil
+  refusé — /cle : la clé personnelle ne sert plus aux analyses du serveur (une
+  analyse du serveur ne peut pas garder la clé de votre navigateur, et
+  humanome ne garde plus les clés de ses utilisateurs) ; choisissez la clé de
+  l'instance ou celle de votre école », même avec une clé gardée sur le serveur. Un run **lancé avant**
+  sur elle s'arrête à sa première tranche, sans un appel de plus ni rien
+  débiter (« La clé personnelle ne sert plus aux analyses du serveur :
+  relancez l'analyse sur la clé de l'instance ou celle de votre école, la
+  mémoire de la carte garde ce qui est fait » ; ADR-013 §8, pas 3, revue du
+  lot S6b) ; ses lots encore chez Anthropic y sont relevés puis supprimés avec
+  la clé ; arrêté, il ne reprend pas. `cle` n'est pas un réglage d'appel : l'empreinte
+  des réglages (mémoire de la carte) et la signature des évaluations
+  (prévisions) d'un profil ne changent pas avec elle.
 - **A7 — Autre référentiel** (étape 2, T16-T17) : un profil qui nomme un autre
   référentiel publié, ou un brouillon de son auteur en mode essai : le moteur
   le lit, et la carte s'ouvre avec ses pôles, que le titre du jeu nomme. De même
@@ -191,8 +206,7 @@ badge premium) ou ouvre `#/twin9`.
   suivait l'ancien, un modèle qu'il n'admet pas (un étage, qui en exige un, le
   demande), l'effort d'Anthropic ; ce que le serveur refuserait — un modèle
   hors du motif du fournisseur, un effort qu'hériterait un appel parti
-  ailleurs, la clé personnelle avec un autre fournisseur — se dit à côté du
-  réglage. La voie ne règle que les appels Anthropic, et son explication reste
+  ailleurs — se dit à côté du réglage. La voie ne règle que les appels Anthropic, et son explication reste
   visible : par lots à moitié prix, en différé ; les autres fournisseurs
   toujours en direct ; sans appel Anthropic, elle est sans effet. Au
   lancement, l'accord nomme les fournisseurs du profil choisi, leur voie et
@@ -238,6 +252,52 @@ badge premium) ou ouvre `#/twin9`.
   enregistré ne change pas. L'aperçu dit le référentiel lu et, le cas
   échéant, les spécialistes du jury retirés (RG18). C'est ainsi qu'on lance
   le profil v9.8 sur un autre référentiel, sans créer de profil.
+- **A12 — Payé par son école** (étapes 2, 4-5 ; sprint 6, lot S6b ; ADR-013
+  §2 d, §4) : un apprenant membre d'une cohorte d'une école — le compte qui a
+  l'habilitation `etablissement` — voit « Payé par votre école, … Elle voit le
+  montant de ce qu'elle paie pour vous, jamais le contenu de vos analyses sur
+  humanome ; avec sa propre clé Anthropic, elle peut relire dans sa Console
+  Anthropic les résultats des appels partis par lots. » ;
+  son run est payé par elle : sur la clé de l'instance, son crédit est débité
+  au coût réel × (1 + sa surtaxe, figée au lancement), jamais le solde de
+  l'élève ; sous le plafond qu'elle lui accorde par mois, réservé appel par
+  appel avant le crédit, dans la même transaction. L'aperçu le dit
+  (`payeur`, `payeurs`) sans le crédit de l'école (`credit_usd` nul, et dans
+  `payeurs` son plafond restant et un booléen, jamais ce crédit), et
+  borne l'admission par ce qui reste du plafond (`limite: "plafond"` : « Le
+  plafond que votre école vous accorde ce mois-ci ne couvre pas une carte… » ;
+  un plafond que l'école n'a pas encore réglé, à 0 : « Votre école n'a pas
+  encore réglé le plafond qu'elle vous accorde chaque mois (0 $ par défaut) :
+  demandez-le-lui… », et la page propose « Mon solde restant » quand il en a
+  un)
+  et par le crédit de l'école, moins ce que tous les runs qu'elle paie peuvent
+  encore en dépenser. Avec plusieurs écoles, ou son école et son propre solde
+  restant, le menu « Qui paie » propose chacune, avec ce qu'elle peut encore
+  payer pour lui ce mois-ci, et son solde ; avec plusieurs écoles, il choisit
+  (sinon `422` « Choisissez qui paie… ») ; l'aperçu et le lancement portent
+  `payeur` (l'identifiant d'une école, ou `"personnel"`). Le plafond atteint
+  arrête le run sur « plafond de votre école atteint : carte incomplète » ; le
+  crédit de l'école, sur « crédit de votre école insuffisant : carte
+  incomplète ».
+- **A13 — Sur la clé de son école** (étapes 2, 5 ; ADR-013 §6) : quand
+  l'école qui paie a sa clé Anthropic et que le run n'appelle qu'Anthropic, il
+  part avec elle — le profil par défaut du mode simple (`cle: "instance"`)
+  compris, la copie du profil du run disant alors `cle: "ecole"` (revue du lot
+  S6b) —, comme un profil `cle: "ecole"` (« Celle de mon école (Anthropic
+  seulement) » dans `#/configuration`) ; la clé est relue au départ de chaque
+  appel, en direct comme par lots ; son crédit n'est pas touché, le plafond
+  de l'élève compte le prix de la grille (facteur 1,0) ; l'école peut relire
+  dans sa Console Anthropic les résultats des lots partis avec sa clé :
+  l'aperçu le dit à l'élève avant le lancement, et l'accord le nomme. Un run
+  qui appelle un autre fournisseur reste sur la clé de l'instance, payé par
+  le crédit de l'école. À une reprise qui nomme son payeur, un run sur la clé
+  d'une école la garde si l'école choisie en a une, sinon repasse sur la clé
+  de l'instance ; un run sur la clé de l'instance y reste, même si son école a
+  posé sa clé depuis (son accord ne nommait pas sa Console).
+  Un profil « ecole » qui appelle un autre fournisseur est refusé à
+  l'enregistrement (`422` « Profil refusé — /cle : la clé de votre école ne
+  sert que chez Anthropic ; … ») ; une école sans clé, `422` « Votre école n'a
+  pas de clé : choisissez la clé de l'instance, que paie son crédit ».
 
 ## Scénarios d'erreur
 
@@ -251,8 +311,8 @@ badge premium) ou ouvre `#/twin9`.
 - **E3 — Accord absent** (étape 5) : le bouton reste désactivé ; l'API répond
   `422` « Accord requis… », sans rien créer.
 - **E4 — Portfolio ou profil refusé** (étapes 4-5) : nom ou texte invalide
-  (`422`), profil d'un autre (`404`), profil refusé — clé personnelle fermée
-  ou absente, jeu de gabarits non proposé ou incomplet, modèle sans prix sur
+  (`422`), profil d'un autre (`404`), profil refusé — clé personnelle (A6),
+  jeu de gabarits non proposé ou incomplet, modèle sans prix sur
   l'instance, référentiel non publié ou illisible — celui du profil ou celui
   choisi au lancement (A11) —, jeu de gabarits d'avant T16
   hors de la structure que décrivent ses fiches (RG12) — `422` qui nomme le
@@ -272,6 +332,22 @@ badge premium) ou ouvre `#/twin9`.
 - **E8 — Action impossible** (étape 6) : annuler un run qui n'est pas en cours,
   reprendre un run ni annulé ni arrêté → `409` ; budget invalide ou visibilité
   inconnue → `422`.
+- **E15 — Payeur refusé** (étapes 4-5, A12) : élève de plusieurs écoles sans
+  choix, école dont il n'est membre d'aucune cohorte, payeur mal formé, une
+  école qui envoie `"personnel"` (« Une école paie ses usages sur son crédit
+  d'école, à sa surtaxe : choisissez votre école ») → `422`, aucun run.
+- **E16 — Son école ne paie plus** (étape 6, A12) : école purgée,
+  habilitation retirée, élève sorti de ses cohortes, clé retirée sur la voie
+  de l'école → à sa tranche suivante, le run s'arrête (« Votre école ne paie
+  plus cette analyse »), ses réserves rendues à l'école, jamais débité du
+  solde de l'élève ; sa reprise sans payeur → `422` « Votre école ne paie plus
+  cette analyse : choisissez qui la paie pour la reprendre » ; avec `payeur`,
+  il reprend, le facteur figé de nouveau (sur la clé d'une école, il la garde
+  si l'école choisie en a une, sinon repasse sur la clé de l'instance) ; un lot
+  encore chez Anthropic empêche le changement de payeur (`409`) tant qu'il ne
+  s'est pas réglé — un lot parti avec la clé d'une école qui l'a retirée, ou
+  qui a disparu, ne se relèvera plus : il est perdu, ses appels et leurs
+  réserves rendus, et le changement de payeur redevient possible.
 
 ## Règles de gestion
 
@@ -423,6 +499,18 @@ badge premium) ou ouvre `#/twin9`.
   indices, les journées de ses traces, sa délibération ; elle n'entre dans
   aucune journée ni dans le soleil, et le panneau de son pôle la nomme.
 
+- **RG19 — Qui paie** (A12, A13 ; ADR-013 §3, §4 ; `RunPayeur`) : le type de
+  payeur (`personnel` ou `ecole`), l'école et son facteur sont figés dans le
+  run ; le type fait foi — une école disparue n'a rien à débiter et ne
+  bascule jamais sur l'élève. Un appel payé par une école réserve sur la ligne
+  du mois de l'élève, verrouillée la première, puis sur le crédit de l'école,
+  puis s'écrit, dans une transaction ; il se règle dans le mois de sa réserve
+  (`twin9_appels.mois_reserve`), chaque événement nommant l'élève. Une école
+  pour elle-même paie à (1 + sa surtaxe), sans plafond. Les lots partis avec
+  la clé d'une école gardent l'école (`twin9_lots.cle = "ecole"`) ; à la
+  purge de l'élève, la file des lots à effacer garde l'école, dont le tick lit
+  la clé ; à la purge de l'école, ses lots sont annulés et effacés tant que sa
+  clé existe.
 - **RG18 — Garde du jury** (A11) : un référentiel choisi au lancement dont
   l'identifiant n'est pas celui du profil vide, dans la copie du profil, les
   spécialistes que le profil impose au jury par numéro de pôle
@@ -438,7 +526,8 @@ badge premium) ou ouvre `#/twin9`.
 |---|---|
 | Portfolio | Envoyé au lancement avec l'accord ; gardé sur le serveur, compressé, avec l'état du run, jusqu'à la suppression du compte ; jamais renvoyé par le suivi ni les résultats ; part chez les fournisseurs que l'accord nomme — Anthropic, qui garde un lot 29 jours au plus ; les autres, ouverts par l'administrateur, en direct, selon leur conservation (`docs/rgpd-registre.md` §13) |
 | Gabarits et fiches | En base ; jamais transmis au navigateur ; le filtre de fuite protège les résultats |
-| Clé personnelle | Chiffrée (ADR-004), utilisée sur le serveur seulement, chez Anthropic seulement (ADR-012) |
+| Clé personnelle | Plus aucune depuis l'ADR-013 : ni choisie, ni lue pour un run nouveau ; celle gardée avant ne sert qu'aux runs lancés sur elle, jusqu'à leur fin, chez Anthropic seulement (`RunKey`), puis part avec la purge (UC-CPT-04 A7) |
+| Payeur | Le type, l'école et son facteur dans le run (`twin9_runs.payeur`, `payeur_id` SET NULL, `facteur_prix`) ; ce que l'école paie pour l'élève, en montants (`ecole_consommations`, `beneficiaire_id`) — l'école ne voit jamais le portfolio, une sortie ni un prompt (UC-ETA-05) |
 | Grand-livre | Montants, modèle, jetons, libellé du run et de l'étape — jamais de contenu |
 | Évaluation d'un run fini | Tailles et coûts de ses journées et de sa fusion, rien d'autre ; anonyme une fois le compte supprimé (T8) |
 | Audit anti-fuite | `{run, fuites}` seulement |
@@ -465,7 +554,10 @@ badge premium) ou ouvre `#/twin9`.
 | API | `api/src/Middleware/CsrfMiddleware.php` | Jeton CSRF des écritures (E1) — logique unitaire couverte par UC-CPT-02-U07 |
 | Domaine | `api/src/Twin9/Lancement.php` — `lancer`, `apercu`, `empreinte`, `choisirReferentiel` | Lancement, aperçu, estimation, admission ; jeu d'avant T16 (RG12) ; référentiel choisi et garde du jury (A11, RG18) |
 | Domaine | `api/src/Twin9/ReferentielMoteur.php` — `bloc` | Le référentiel du run tel que le moteur le lit, ses fiches (RG12) |
-| Domaine | `api/src/Twin9/ProfilPolicy.php` — `admettre`, `admettreAuLancement`, `choix` | Ce qu'un profil peut choisir sur l'instance, les référentiels et leurs libellés (A11) ; les fournisseurs disponibles (A9) |
+| Domaine | `api/src/Twin9/ProfilPolicy.php` — `admettre`, `refuserClePersonnelle`, `admettreAuLancement`, `choix` | Ce qu'un profil peut choisir sur l'instance, la clé personnelle refusée (A6, aussi à la reprise : `api/src/routes/twin9-runs.php`), les référentiels et leurs libellés (A11) ; les fournisseurs disponibles (A9) |
+| Domaine | `api/src/Twin9/RunKey.php` — `pour` | La clé de chaque appel : celle de l'instance ; celle de l'école qui paie, chez Anthropic seulement (A13) ; la clé personnelle, pour relever puis supprimer les lots d'un run lancé avant l'ADR-013, qui s'arrête à sa première tranche (A6) |
+| Domaine | `api/src/Twin9/RunPayeur.php` ; `api/src/Etablissement/Payeurs.php`, `GrandLivreLocal.php` ; `api/src/Worker/Twin9Slice.php`, `Twin9Lots.php` | Qui paie un run, ce qu'il débite et à quel prix ; l'école qui paie encore, relue à chaque tranche ; le plafond puis le crédit (A12, A13, RG19, E16) |
+| Front | `web/src/views/twin9/ChoixPayeur.jsx` ; `web/src/lib/payeurs.js` | « Qui paie » au lancement et à la reprise (A12, E16) |
 | API | `GET /api/twin9/configuration` — `api/src/routes/twin9-configuration.php` ; `Lancement::fournisseurs` | Les fournisseurs de chaque profil et du profil v9.8, pour l'accord (A9) ; le référentiel de chaque profil (A11) |
 | Domaine | `api/src/Twin9/RunRepository.php` — `duProprietaire`, `suivi`, `annuler`, `reprendre`, `rendreVisible`, `acces` | Liste, suivi, actions du propriétaire |
 | Domaine | `api/src/Twin9/RunCosts.php`, `api/src/Twin9/CreditService.php` | Réserves, réconciliation, remboursements |
@@ -487,8 +579,8 @@ badge premium) ou ouvre `#/twin9`.
 | UC-APP-10-U05 | `Twin9View` (`Apercu`) | Admission partielle (A2) ; refus (E5) : message, « Recharger », bouton désactivé | idem |
 | UC-APP-10-U06 | `Twin9View` (`PageDuRun`) | Arrêt par le budget : nouveau budget, reprise `{budget_usd}` ; par le crédit : « Recharger mon crédit » (A4) | idem |
 | UC-APP-10-U07 | `Lancement::lancer` | Accord absent, visibilité inconnue → `422`, rien n'est créé (RG1, E3) | `api/tests/UseCases/Unit/UcApp10AnalyseApprofondieTwin9Test.php` |
-| UC-APP-10-U08 | `ProfilPolicy::admettre` | Profil v9.8 admis ; clé personnelle fermée, jeu non proposé, modèle sans prix, référentiel non publié → `422` qui nomme le choix (RG2, E4) | idem |
-| UC-APP-10-U09 | `Lancement::apercu` | Estimation sans évaluation : référence × pôles × contribution, la moitié par lots ; clé personnelle sans contribution ; rien n'est gardé (RG4) | idem |
+| UC-APP-10-U08 | `ProfilPolicy::admettre` | Profil v9.8 admis ; clé personnelle (ADR-013), jeu non proposé, modèle sans prix, référentiel non publié → `422` qui nomme le choix (RG2, E4) | idem |
+| UC-APP-10-U09 | `Lancement::apercu` | Estimation sans évaluation : référence × pôles × contribution, la moitié par lots ; un profil à clé personnelle enregistré avant refusé, même avec une clé gardée ; rien n'est gardé (RG4) | idem |
 | UC-APP-10-U10 | `RunRepository::annuler`, `reprendre`, `rendreVisible` | Seul le propriétaire agit, et seulement depuis le bon statut ; un nouveau budget remplace celui de la copie (A3, A4, A5, E8) | idem |
 | UC-APP-10-U11 | `RunRepository::suivi` | Ce qui retient un run en mots (premier tour, run précédent de la même carte) ; ni portfolio ni sortie | idem |
 | UC-APP-10-U12 | `Resultats::lire` | Seules les sorties publiques ; récitation expurgée, audit en compteur ; référentiel sans fiche ni description (RG9, RG11) | idem |
@@ -506,6 +598,7 @@ badge premium) ou ouvre `#/twin9`.
 | UC-APP-10-U24 | `importTwin9Run`, `SecondReadings` | Deux cartes du même jour : une journée, leurs compétences réunies, le rapport le dit ; une compétence établie par faisceau : une seconde lecture, sa ligne (statut du moteur, journée de ses traces), hors du soleil (RG17) | idem |
 | UC-APP-10-U25 | `portfolioPourTwin9`, `Twin9View` (`Apercu`) | Un portfolio que Twin9 lit déjà en ses journées part à l'octet, et l'aperçu n'en dit rien (RG16) | `web/test/usecases/unit/uc-app-10-analyse-approfondie-twin9.test.jsx` |
 | UC-APP-10-U26 | `portfolioPourTwin9`, `Twin9View` (`Apercu`) | Un passage sans date, en tête : le texte part à l'octet, l'aperçu dit que Twin9 ne le lit pas (RG16) | idem |
+| UC-APP-10-U27 | `CallSettings::empreinte`, `Evaluations::signature`, `ProfilRepository::validate` | A6 : un même profil sur la clé de l'instance, la clé personnelle ou celle d'une école garde la même empreinte des réglages et la même signature des évaluations ; un profil d'avant l'ADR-013 se relit tel quel | `api/tests/UseCases/Unit/UcApp10AnalyseApprofondieTwin9Test.php` |
 
 ### Tests fonctionnels
 
@@ -517,13 +610,13 @@ badge premium) ou ouvre `#/twin9`.
 | UC-APP-10-F04 | A3, E8 | API | Annuler puis reprendre jusqu'au bout ; `409` pour une action hors de son statut | idem |
 | UC-APP-10-F05 | A4, E8 | API | Reprise sous un nouveau budget, puis sans budget ; budget invalide → `422` | idem |
 | UC-APP-10-F06 | A5 | API | Privé : le cartographe lié ne lit rien ; visible : lui seul lit les résultats, sans suivre le run | idem |
-| UC-APP-10-F07 | A6 | API | Clé personnelle : run au bout, crédit intact, aucun événement au grand-livre | idem |
+| UC-APP-10-F07 | A6 | API | Clé personnelle : un profil enregistré avant refusé à l'aperçu et au lancement (même avec une clé gardée) ; un run lancé dessus avant s'arrête à sa tranche suivante, sans un appel ni un débit, et le dit ; annulé, il ne reprend pas (`422`) | idem |
 | UC-APP-10-F08 | A7 | API | Un autre référentiel : run au bout, résultats portant ses pôles et ses compétences | idem |
 | UC-APP-10-F20 | A7, RG12 | API | Une version de RESPIRE à six pôles : l'aperçu en compte six, run au bout, résultats portant ses six pôles et ses compétences | idem |
 | UC-APP-10-F09 | A8 | API | Mode essai : une journée lue, « test » dans la liste et l'attestation | idem |
 | UC-APP-10-F10 | E1 | API | `401` sans session sur chaque route ; `403` sans jeton CSRF | idem |
 | UC-APP-10-F11 | E2 | API | Sans moteur : `disponible` faux, aperçu et lancement `503` ; sans gabarit : `503` | idem |
-| UC-APP-10-F12 | E3, E4 | API | Accord absent, portfolio invalide, profil d'un autre, profil refusé : `422` ou `404`, aucun run | idem |
+| UC-APP-10-F12 | E3, E4 | API | Accord absent, portfolio invalide, profil d'un autre, profil refusé (clé personnelle) : `422` ou `404`, aucun run | idem |
 | UC-APP-10-F13 | E5 | API | Crédit nul : l'aperçu dit ce qu'il faudrait ; le lancement est refusé du même message | idem |
 | UC-APP-10-F14 | E6, RG10 | API | Le run d'un autre : `404` pour tous, l'administrateur compris, qui ne lit que des compteurs ; la page n'avance que les runs de son compte | idem |
 | UC-APP-10-F15 | E7 | API | Un gabarit récité est expurgé des résultats ; l'audit garde le nombre, la réponse ne le dit pas | idem |
@@ -539,6 +632,16 @@ badge premium) ou ouvre `#/twin9`.
 | UC-APP-10-F26 | A11, E4 | API | Un brouillon choisi au lancement : le run d'essai de son auteur va au bout ; en mode complet, pour un autre compte, ou sans version (jamais publié) : `422`, aucun run | idem |
 | UC-APP-10-F27 | RG18 | API | Un autre référentiel vide les spécialistes du jury dans la copie (`{}`) et dans les réglages du moteur, l'aperçu les nomme ; le même référentiel, ou aucun choix, les garde ; le profil enregistré inchangé | idem |
 | UC-APP-10-F28 | A11 | IHM | `<App/>`, mode simple, deux référentiels publiés : le menu « Référentiel », par défaut celui du profil ; l'aperçu dit le référentiel lu ; l'aperçu et le lancement portent le choix (CSRF) | `web/test/usecases/functional/uc-app-10-analyse-approfondie-twin9.test.jsx` |
+| UC-APP-10-F29 | A12 | API | Payé par son école : l'aperçu nomme l'école et les payeurs, sans son crédit, estimation à 1 + 3,5 % ; le run va au bout, l'école le paie, l'élève rien ; la page de l'école voit le montant | `api/tests/UseCases/Functional/UcApp10AnalyseApprofondieTwin9Test.php` |
+| UC-APP-10-F30 | A12, E15 | API | Deux écoles : aperçu et lancement 422 sans choix ; le plafond trop bas d'une école refuse l'admission (`limite: plafond`) ; école étrangère 422 ; l'école choisie paie | idem |
+| UC-APP-10-F31 | A13 | API | Profil « ecole » vers un autre fournisseur refusé ; école sans clé 422 ; sa clé posée, le run va au bout, son crédit intact, le plafond compte le coût | idem |
+| UC-APP-10-F32 | E16 | API | L'élève quitte sa cohorte : le run s'arrête (« Votre école ne paie plus cette analyse »), jamais sur son solde ; reprise sans payeur 422, avec son solde elle va au bout | idem |
+| UC-APP-10-F33 | A12, A13 | IHM | Deux écoles et un solde : « Qui paie » à choisir, refus du serveur affiché ; l'aperçu et le lancement portent le choix (CSRF) ; l'aperçu dit que son école paie et en voit le montant, et, sur sa clé, qu'elle peut relire les résultats de ses lots | `web/test/usecases/functional/uc-app-10-analyse-approfondie-twin9.test.jsx` |
+| UC-APP-10-F34 | E16 | IHM | Arrêté parce que son école ne paie plus : la page le dit, et la reprise porte le payeur choisi (CSRF) | idem |
+| UC-APP-10-F35 | E15 | API | Une école envoie `payeur: "personnel"` : aperçu et lancement 422, aucun run ; sans payeur, elle-même | `api/tests/UseCases/Functional/UcApp10AnalyseApprofondieTwin9Test.php` |
+| UC-APP-10-F36 | A13 | API | Son école a sa clé : le profil par défaut et un profil `instance` partent avec elle (aperçu `cle: ecole`, prix de la grille), son crédit intact, le plafond compte le coût ; annulé, la clé retirée, repris avec son école : sur son crédit ; un run lancé sur la clé de l'instance y reste à sa reprise, l'école ayant posé sa clé depuis | idem |
+| UC-APP-10-F37 | A12, E15 | API | Le plafond pas encore réglé (0) : l'aperçu et le lancement disent de le demander à l'école | idem |
+| UC-APP-10-F38 | A12 | IHM | Le refus du plafond non réglé affiché, et « Mon solde restant » proposé dans « Qui paie » | `web/test/usecases/functional/uc-app-10-analyse-approfondie-twin9.test.jsx` |
 
 ### Tests existants liés (non-régression)
 
@@ -546,12 +649,14 @@ badge premium) ou ouvre `#/twin9`.
 - `api/tests/Twin9/ReferentielMoteurTest.php` — le bloc du référentiel (RG12) : RESPIRE v7 tel que la base le garde, un autre référentiel écrit depuis son document, un code que la base ne connaît pas, une version de RESPIRE à six pôles (compétence déplacée), et, avec le vrai moteur, RESPIRE v7 lu comme les fichiers de pôle de la v9.8 et RESPIRE à six pôles lu.
 - `api/tests/Twin9/JeuxGabaritsTest.php` — copie d'un jeu d'avant T16 : ce qu'il faut refaire pour un autre référentiel.
 - `api/tests/Twin9/ApercuTest.php` — journées nouvelles ou changées, estimation, admission (T8), refus.
-- `api/tests/Twin9/CoutsTest.php` — réserves, réconciliation, plafonds (budget, durée, crédit), clé personnelle.
+- `api/tests/Twin9/CoutsTest.php` — réserves, réconciliation, plafonds (budget, durée, crédit) ; un run lancé avant l'ADR-013 sur la clé personnelle s'arrête à sa première tranche, son lot relevé puis supprimé avec la clé.
+- `api/tests/Twin9/EcolesTest.php` — l'école paie (S6b) : débit au coût réel × (1 + surtaxe), plafond par élève qui arrête le run, clé de l'école en direct et par lots, école qui ne paie plus et reprise sur un autre payeur, lots de la clé d'une école effacés à la purge de l'élève, changement de payeur refusé sous une réserve.
+- `api/tests/Twin9/ConfigurationDroitsTest.php` — la clé personnelle refusée à l'enregistrement, la promotion inconnue, un profil d'avant gardé jusqu'au choix d'une autre clé.
 - `api/tests/Twin9/PurgeExportTest.php` — purge du compte, lots chez Anthropic, export.
 - `api/tests/Twin9MetaTest.php` — le proxy du moteur du navigateur est parti (T11).
 - `api/tests/Twin9/RunConfigurationTest.php`, `api/tests/Twin9/RunsTest.php`, `api/tests/Twin9/PurgeExportTest.php` — configuration et exécution d'un run (P0-1) : liste blanche, vue du cartographe, tables vides en objets, reprises, export d'un run ancien.
 - `web/src/views/Twin9View.test.jsx` — lancement, aperçu, admission, page du run, carte incomplète, référentiels (T17) ; « Configuration » (P0-1) : lue à l'ouverture seulement, l'exécution partielle seule d'un run d'avant elle, relue à chaque ouverture d'un run en cours — une réouverture fondue avec sa fermeture comprise (un seul « toggle ») — et quand il finit, erreur dans le bloc ; l'accord qui nomme les fournisseurs, tient pour les mêmes, tombe pour d'autres, la durée d'un run mixte (A9) ; en mode simple, le profil v9.8 sans liste ni lien, un profil choisi en mode expert qui ne part pas (A10) ; le menu « Référentiel » : celui du profil par défaut, un autre dans l'aperçu et le lancement, l'accord qui tient, un brouillon en mode expert seulement, le menu du mode simple dès deux référentiels publiés, le référentiel lu et le jury retiré dits par l'aperçu (A11, RG18).
-- `web/src/views/ConfigurationView.test.jsx`, `web/src/views/configuration/profilSchema.test.js` — le fournisseur de chaque réglage : hérité, étiquette visible, indisponible non choisi, famille, modèle et effort qui suivent, ce que le serveur refuserait dit à côté, la voie expliquée, la clé personnelle chez Anthropic seulement ; l'héritage, les fournisseurs atteints et les tables recopiées du PHP (étages des étapes, libellés, étiquettes, motifs de modèle) comparés au code PHP (A9).
+- `web/src/views/ConfigurationView.test.jsx`, `web/src/views/configuration/profilSchema.test.js` — le fournisseur de chaque réglage : hérité, étiquette visible, indisponible non choisi, famille, modèle et effort qui suivent, ce que le serveur refuserait dit à côté, la voie expliquée, la clé personnelle plus proposée (montrée désactivée dans un profil d'avant) ; l'héritage, les fournisseurs atteints et les tables recopiées du PHP (étages des étapes, libellés, étiquettes, motifs de modèle) comparés au code PHP (A9).
 - `api/tests/Twin9/ConfigurationDroitsTest.php` — `testTheConfigurationNamesEachProfilesProviders` (les fournisseurs de chaque profil et du profil v9.8, avant tout aperçu), `testAProviderNotOpenYetIsSavedNotLaunched` ; `api/tests/Twin9/RunsTest.php` — l'accord comparé aux fournisseurs du run, gardé dans sa configuration (A9).
 - `web/src/carto/core/importers/twin9-run.test.js`, `web/src/lib/twin9/mapper.test.js` — jeu de cartographie d'un run, dossiers ; configuration par liste blanche, variantes inchangées avec ou sans elle, jeu exporté sans prix ni clé (P0-1).
 - `web/src/lib/archive.test.js` — l'archive du compte avec la configuration et l'exécution d'un run, sans elles pour un run ancien, invalide avec une clé inconnue (P0-1).

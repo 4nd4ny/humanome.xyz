@@ -4,6 +4,7 @@ declare(strict_types=1);
 
 namespace Humanome\Twin9;
 
+use Humanome\Etablissement\Payeur;
 use Humanome\Twin9\Fournisseurs\Arret;
 use PDO;
 use stdClass;
@@ -19,6 +20,11 @@ use stdClass;
  * The tick advances the runs in progress (Worker\Twin9Slice), the oldest of
  * each map only: two runs of one map would write one memory. A run done
  * keeps its counters, its journal goes (ADR-011 §5).
+ *
+ * Who pays a run is frozen at its launch (ADR-013 §3, migration 037): its
+ * type — `personnel`, its owner, or `ecole` —, the school that pays and its
+ * price factor; a resumption may choose again, and freezes the factor
+ * again then.
  */
 final class RunRepository
 {
@@ -50,11 +56,14 @@ final class RunRepository
      *                        eat into what it may still spend of it (T8)
      * @param array<string, mixed>|null $configuration its configuration block (P0-1, RunConfiguration), kept as it
      *                                                 is, never changed; null: none (tests)
+     * @param Payeur|null $payeur who pays it (ADR-013 §3); null: its owner
      */
     public function creer(int $userId, stdClass $profil, stdClass $moteur, string $portfolioNom, string $portfolio,
                           string $journal, array $gabarits, \DateTimeImmutable $horloge, ?string $sortie = null,
-                          int $reserveFusion = 0, int $engagement = 0, ?array $configuration = null): int
+                          int $reserveFusion = 0, int $engagement = 0, ?array $configuration = null,
+                          ?Payeur $payeur = null): int
     {
+        $payeur ??= Payeur::personnel();
         $referentiel = (string) ($profil->referentiel->id ?? '');
         $jeu = (string) ($profil->gabarits ?? '');
         $this->pdo->prepare(
@@ -68,8 +77,9 @@ final class RunRepository
 
         $this->pdo->prepare(
             'INSERT INTO twin9_runs (user_id, carte_id, reglages, portfolio, gabarits, horloge, debut_at,
-                                     reserve_fusion_microusd, engagement_microusd, configuration)
-             VALUES (?, ?, ?, ?, ?, ?, NOW(), ?, ?, ?)'
+                                     reserve_fusion_microusd, engagement_microusd, configuration, payeur, payeur_id,
+                                     facteur_prix)
+             VALUES (?, ?, ?, ?, ?, ?, NOW(), ?, ?, ?, ?, ?, ?)'
         )->execute([
             $userId,
             $carteId,
@@ -81,6 +91,9 @@ final class RunRepository
             max(0, $reserveFusion),
             max(0, $engagement),
             $configuration === null ? null : self::pack($configuration),
+            $payeur->type,
+            $payeur->ecoleId,
+            $payeur->facteur === null ? null : number_format($payeur->facteur, 4, '.', ''),
         ]);
 
         return (int) $this->pdo->lastInsertId();
@@ -172,8 +185,9 @@ final class RunRepository
         $stmt = $this->pdo->prepare(
             'SELECT r.id, r.user_id, r.carte_id, c.portfolio AS journal, r.statut, r.attente, r.visibilite,
                     r.attestation, r.configuration, r.reglages, r.compteurs, r.created_at, r.avance_at, r.finished_at,
-                    r.accord_at
-               FROM twin9_runs r JOIN twin9_cartes c ON c.id = r.carte_id WHERE r.id = ?'
+                    r.accord_at, r.payeur, r.payeur_id, r.facteur_prix, u.display_name AS payeur_nom
+               FROM twin9_runs r JOIN twin9_cartes c ON c.id = r.carte_id LEFT JOIN users u ON u.id = r.payeur_id
+              WHERE r.id = ?'
         );
         $stmt->execute([$id]);
         $row = $stmt->fetch();
@@ -181,10 +195,12 @@ final class RunRepository
             return null;
         }
         $profil = self::unpack((string) $row['reglages'])->profil;
+        $payeur = RunPayeur::depuis($row, $profil);
 
-        // what its calls cost its owner (RunCosts::facture()): with the instance's key, never beyond what each held
+        // what its calls cost (RunCosts::facture()): held by a ledger — a credit, a learner's cap —, never beyond what
+        // each held
         $stmt = $this->pdo->prepare(
-            'SELECT statut, COUNT(*) AS n, SUM(COALESCE(' . RunCosts::facture('', ($profil->cle ?? 'instance') === 'instance')
+            'SELECT statut, COUNT(*) AS n, SUM(COALESCE(' . RunCosts::facture('', $payeur->reserve())
                 . ', 0)) AS cout FROM twin9_appels WHERE run_id = ? GROUP BY statut'
         );
         $stmt->execute([$id]);
@@ -236,6 +252,11 @@ final class RunRepository
             'visibilite' => (string) $row['visibilite'],
             'mode' => (string) $profil->mode,
             'voie' => (string) $profil->voie,
+            // who pays it (ADR-013 §3): its owner, or its school — its name, never its credit nor its surtax
+            'payeur' => $payeur->ecole()
+                ? ['type' => Payeur::ECOLE, 'id' => $payeur->ecoleId,
+                   'nom' => $row['payeur_nom'] === null ? null : (string) $row['payeur_nom']]
+                : ['type' => Payeur::PERSONNEL],
             'attestation' => $row['attestation'] === null ? null : json_decode((string) $row['attestation'], true,
                 512, JSON_THROW_ON_ERROR),
             'configuration_empreinte' => $row['configuration'] === null ? null
@@ -348,14 +369,40 @@ final class RunRepository
      * journal, where it stopped, its duration counted again from now (T10).
      * A run its budget stopped goes on under a new one, given here: a number
      * of dollars, or null for none. Admitted again (T8): what it may still
-     * spend of its owner's credit never goes beyond what their other runs in
+     * spend of the credit that pays never goes beyond what its other runs in
      * progress leave free. False when it was neither cancelled nor stopped.
      *
+     * Its payer may be chosen again ($payeur, resolved by the route:
+     * Payeurs::pourRun()), its factor frozen again then, and the lane of its
+     * calls with it ($cle: its school's key, or the instance's), written in
+     * its copy of its profile; not while calls of it still hold a worst case
+     * (a batch still at Anthropic), which its former payer holds: 409.
+     *
      * @param array{budget_usd?: float|int|null} $plafonds
+     * @param string|null $cle the lane its new payer takes ("instance" or "ecole"); null: unchanged
+     * @throws Twin9Exception 409 a new payer while a batch of it is still at Anthropic
      */
-    public function reprendre(int $id, int $userId, array $plafonds = []): bool
+    public function reprendre(int $id, int $userId, array $plafonds = [], ?Payeur $payeur = null,
+                              ?string $cle = null): bool
     {
-        return $this->sousVerrou($userId, fn (): bool => $this->reprendreAdmis($id, $userId, $plafonds));
+        $actuel = $this->payeurDe($id);
+        $compte = $payeur !== null ? ($payeur->estEcole() ? (int) $payeur->ecoleId : $userId)
+            : ($actuel?->ecole() ? (int) ($actuel->ecoleId ?? $userId) : $userId);
+
+        return $this->sousVerrou($compte, fn (): bool => $this->reprendreAdmis($id, $userId, $plafonds, $payeur,
+            $payeur === null ? null : $cle));
+    }
+
+    /**
+     * Who pays a run, as its row says it; null for a run not found.
+     */
+    public function payeurDe(int $id): ?RunPayeur
+    {
+        $stmt = $this->pdo->prepare('SELECT user_id, reglages, payeur, payeur_id, facteur_prix FROM twin9_runs WHERE id = ?');
+        $stmt->execute([$id]);
+        $row = $stmt->fetch();
+
+        return $row === false ? null : RunPayeur::depuis($row, self::unpack((string) $row['reglages'])->profil);
     }
 
     /**
@@ -364,11 +411,12 @@ final class RunRepository
      *
      * @param array{budget_usd?: float|int|null} $plafonds
      */
-    private function reprendreAdmis(int $id, int $userId, array $plafonds): bool
+    private function reprendreAdmis(int $id, int $userId, array $plafonds, ?Payeur $payeur, ?string $cle = null): bool
     {
         $this->pdo->beginTransaction();
         try {
-            $stmt = $this->pdo->prepare('SELECT reglages, execution, NOW() AS maintenant FROM twin9_runs
+            $stmt = $this->pdo->prepare('SELECT user_id, reglages, execution, payeur, payeur_id, facteur_prix,
+                                                NOW() AS maintenant FROM twin9_runs
                                           WHERE id = ? AND user_id = ? AND statut IN ("annule", "echoue") FOR UPDATE');
             $stmt->execute([$id, $userId]);
             $row = $stmt->fetch();
@@ -377,29 +425,51 @@ final class RunRepository
 
                 return false;
             }
+            if ($payeur !== null) {
+                // its calls still holding a worst case hold it on its former payer: they settle first
+                $stmt = $this->pdo->prepare('SELECT COUNT(*) FROM twin9_appels WHERE run_id = ? AND reserve_microusd IS NOT NULL');
+                $stmt->execute([$id]);
+                if ((int) $stmt->fetchColumn() > 0) {
+                    // rolled back below, as any refusal of the transaction
+                    throw new Twin9Exception('Un lot de ce run est encore chez Anthropic : il se règle d’abord avec '
+                        . 'son payeur ; reprenez-le un peu plus tard pour en choisir un autre', 409);
+                }
+                $row['payeur'] = $payeur->type;
+                $row['payeur_id'] = $payeur->ecoleId;
+                $row['facteur_prix'] = $payeur->facteur;
+            }
             $copie = self::unpack((string) $row['reglages']);
             $reglages = null;
             if (\array_key_exists('budget_usd', $plafonds)) {
                 $reglages = $copie;
                 $reglages->profil->budget_usd = $plafonds['budget_usd'];
             }
+            if ($cle !== null && $cle !== ($copie->profil->cle ?? 'instance')) {
+                // the lane its new payer takes (ADR-013 §4): its calls leave with that key from now on
+                $reglages = $copie;
+                $reglages->profil->cle = $cle;
+            }
             $execution = self::executionGardee($row['execution']);
             $execution->reprises[] = ['at' => (string) $row['maintenant'], 'budget_usd' => $copie->profil->budget_usd ?? null];
-            // what it has committed, and what the owner's other runs in progress leave free
+            // what it has committed, and what the other runs in progress the same credit pays leave free
             $stmt = $this->pdo->prepare(
                 'SELECT COALESCE(SUM(' . RunCosts::impute() . '), 0) FROM twin9_appels WHERE run_id = ?'
             );
             $stmt->execute([$id]);
             $engage = (int) $stmt->fetchColumn();
-            ['solde' => $solde, 'autres' => $autres] = $this->disponible($userId, $id);
+            $compte = RunPayeur::depuis($row, $copie->profil)->compte();
+            ['solde' => $solde, 'autres' => $autres] = $compte === null ? ['solde' => 0, 'autres' => 0]
+                : $this->disponible($compte, $id);
             $this->pdo->prepare(
                 'UPDATE twin9_runs SET statut = "en_cours", attente = NULL, retenu_depuis = NULL, finished_at = NULL,
                         debut_at = NOW(),
                         reglages = COALESCE(?, reglages), engagement_microusd = LEAST(engagement_microusd, ?),
-                        execution = ?
+                        execution = ?, payeur = ?, payeur_id = ?, facteur_prix = ?
                   WHERE id = ?'
             )->execute([$reglages === null ? null : self::pack($reglages), $engage + max(0, $solde - $autres),
-                        json_encode($execution, self::JSON), $id]);
+                        json_encode($execution, self::JSON), (string) $row['payeur'], $row['payeur_id'],
+                        $row['facteur_prix'] === null ? null : number_format((float) $row['facteur_prix'], 4, '.', ''),
+                        $id]);
             $this->pdo->commit();
         } catch (\Throwable $e) {
             $this->pdo->rollBack();
@@ -460,14 +530,16 @@ final class RunRepository
 
     /**
      * What a slice reads of a run before playing it: its owner, its status,
-     * what holds it back and its profile, without its portfolio nor its
-     * templates.
+     * what holds it back, its profile and who pays it (ADR-013 §3), without
+     * its portfolio nor its templates.
      *
-     * @return array{user_id: int, statut: string, attente: string|null, profil: stdClass}|null
+     * @return array{user_id: int, statut: string, attente: string|null, profil: stdClass, payeur: string,
+     *               payeur_id: int|null, facteur_prix: float|null}|null
      */
     public function tete(int $id): ?array
     {
-        $stmt = $this->pdo->prepare('SELECT user_id, statut, attente, reglages FROM twin9_runs WHERE id = ?');
+        $stmt = $this->pdo->prepare('SELECT user_id, statut, attente, reglages, payeur, payeur_id, facteur_prix
+                                       FROM twin9_runs WHERE id = ?');
         $stmt->execute([$id]);
         $row = $stmt->fetch();
         if ($row === false) {
@@ -479,6 +551,9 @@ final class RunRepository
             'statut' => (string) $row['statut'],
             'attente' => $row['attente'] === null ? null : (string) $row['attente'],
             'profil' => self::unpack((string) $row['reglages'])->profil,
+            'payeur' => (string) $row['payeur'],
+            'payeur_id' => $row['payeur_id'] === null ? null : (int) $row['payeur_id'],
+            'facteur_prix' => $row['facteur_prix'] === null ? null : (float) $row['facteur_prix'],
         ];
     }
 
@@ -627,16 +702,18 @@ final class RunRepository
     }
 
     /**
-     * An owner's credit, and what their runs in progress may still spend of
-     * it (T8): for each, what its launch granted it, less what it has
-     * committed — the worst cases its calls hold, the real costs of those
-     * settled —; the run asking left out. One statement, one snapshot: a
-     * call's hold, or its settlement, moves the credit and its run's
-     * commitment together.
+     * A credit, and what the runs in progress it pays may still spend of it
+     * (T8): for each, what its launch granted it, less what it has committed
+     * — the worst cases its calls hold, the real costs of those settled —;
+     * the run asking left out. The credit of an owner pays their own runs;
+     * a school's pays its runs of type `ecole`, those of all its learners
+     * and its own (ADR-013 §6). One statement, one snapshot: a call's hold,
+     * or its settlement, moves the credit and its run's commitment together.
      *
+     * @param int $compte the account whose credit it is (RunPayeur::compte())
      * @return array{solde: int, autres: int} in micro-USD
      */
-    public function disponible(int $userId, int $sauf = 0): array
+    public function disponible(int $compte, int $sauf = 0): array
     {
         $stmt = $this->pdo->prepare(
             'SELECT (SELECT COALESCE(MAX(balance_microusd), 0) FROM twin9_credits WHERE user_id = ?),
@@ -644,17 +721,20 @@ final class RunRepository
                               - (SELECT COALESCE(SUM(' . RunCosts::impute('a.') . '), 0)
                                    FROM twin9_appels a WHERE a.run_id = r.id))), 0)
                        FROM twin9_runs r
-                      WHERE r.user_id = ? AND r.statut = "en_cours" AND r.engagement_microusd > 0 AND r.id <> ?)'
+                      WHERE ((r.payeur = "personnel" AND r.user_id = ?) OR (r.payeur = "ecole" AND r.payeur_id = ?))
+                        AND r.statut = "en_cours" AND r.engagement_microusd > 0 AND r.id <> ?)'
         );
-        $stmt->execute([$userId, $userId, $sauf]);
+        $stmt->execute([$compte, $compte, $compte, $sauf]);
         [$solde, $autres] = $stmt->fetch(PDO::FETCH_NUM);
 
         return ['solde' => (int) $solde, 'autres' => (int) $autres];
     }
 
     /**
-     * $f under its owner's admission lock (T8): one launch, or resumption,
-     * at a time, for the next to count what the previous was granted.
+     * $f under the admission lock of the credit that pays (T8): one launch,
+     * or resumption, at a time, for the next to count what the previous was
+     * granted — its owner's, or its school's (ADR-013 §6: two learners of
+     * one school never count its credit twice, nor one learner its cap).
      *
      * @template T
      * @param \Closure(): T $f

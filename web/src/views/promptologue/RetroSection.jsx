@@ -17,6 +17,7 @@ import { useEffect, useMemo, useState } from 'react'
 import { extractDay } from '@engine/pipeline/extract.js'
 import { REFERENTIEL_PAR_DEFAUT } from '@engine/conformite.js'
 import { PROVIDERS, createProviderBundle } from '../../lib/run-launcher.js'
+import { KEY_STAYS_IN_BROWSER } from '../../lib/local-keys.js'
 import { createPortfolioStore } from '../../lib/portfolio-store.js'
 import { listPublishedReferentiels, loadPublishedReferentiel } from '../../data/referentiel.js'
 import { compareRetroDocs, findLocalDayText, newerReferentielVersions } from './retro.js'
@@ -278,6 +279,10 @@ export default function RetroSection({ api, deps = {} }) {
                     autoComplete="off"
                   />
                 </label>
+                {/* R1 (ADR-013 §5) : dit partout où l'on saisit une clé */}{' '}
+                <span className="privacy-note" data-testid="cle-reste-navigateur">
+                  {KEY_STAYS_IN_BROWSER}
+                </span>
               </span>
             ) : null}
           </fieldset>

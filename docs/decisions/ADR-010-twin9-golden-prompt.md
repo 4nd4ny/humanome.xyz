@@ -4,6 +4,8 @@
 
 > **Amendé par [ADR-012](ADR-012-multi-fournisseur-twin9.md)** : l'adresse verrouillée vaut pour chaque fournisseur que l'administrateur a ouvert, une par fournisseur, et le modèle de menace gagne leurs lignes (§2) ; le roster multi-fournisseur est exposé, avec les seules clés de l'instance : la clé personnelle ne sert que chez Anthropic (§4).
 
+> **Amendé par [ADR-013](ADR-013-ecoles-cles-credits.md)** : seule une école achète des crédits ; les soldes individuels déjà achetés restent utilisables jusqu'à épuisement, et une école sur la clé de l'instance paie une surtaxe qu'elle choisit entre 3,5 % et 10 % (§3) ; la clé privée de Twin9 n'est plus celle de l'utilisateur, mais celle de son école (§4).
+
 Date : 2026-07-13 · Statut : accepté, §1 révisé le 2026-10-17, §1 et §2 le 2026-10-20
 
 > **Révision du 2026-10-17 (§1).** L'algorithme ne voyage plus : le moteur

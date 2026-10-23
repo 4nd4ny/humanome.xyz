@@ -6,6 +6,8 @@ namespace Humanome\Admin;
 
 use Humanome\Auth\Audit;
 use Humanome\Auth\DeclaredRoles;
+use Humanome\Etablissement\Ecole;
+use Humanome\Twin9\RunPurge;
 use PDO;
 
 /**
@@ -175,6 +177,15 @@ final class UserDirectory
                 'role' => $role,
                 'status' => $status,
             ]);
+            if ($role === Ecole::HABILITATION) {
+                // no longer a school: no longer keeps a key on the server (ADR-013 R1) — erased now, never kept
+                // until a habilitation given back would bring it back without a word; its batches first
+                foreach ((new RunPurge($this->pdo))->retirerCleEcole($targetUserId, null, microtime(true) + 10.0)
+                         as $fournisseur) {
+                    Audit::record($this->pdo, $targetUserId, 'ecole_cle_retiree',
+                        ['fournisseur' => $fournisseur, 'cause' => 'habilitation_retiree']);
+                }
+            }
         }
 
         return ['status' => $status];

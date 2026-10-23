@@ -677,3 +677,116 @@ describe('UC-APP-10 — l’apprenant lance une analyse approfondie, la suit et 
   })
 })
 
+describe('UC-APP-10 — qui paie l’analyse (sprint 6, lot S6b — ADR-013 §4)', () => {
+  const TILLEULS = {
+    type: 'ecole', id: 3, nom: 'École des Tilleuls', soi: false, cle: false, mois: '2026-10',
+    plafond_microusd: 50_000_000, engage_microusd: 0, reste_credit_microusd: 50_000_000, reste_cle_microusd: 50_000_000,
+  }
+  const PLATANES = { ...TILLEULS, id: 4, nom: 'École des Platanes' }
+
+  it('UC-APP-10-F33 — A12, A13 (IHM) : élève de deux écoles et d’un solde : « Qui paie » à choisir ; l’aperçu et le lancement portent son choix (CSRF) ; l’aperçu dit que son école paie et en voit le montant, et, sur sa clé, qu’elle peut relire les résultats de ses lots', async () => {
+    const { calls } = stubFetch(
+      routes({
+        'GET twin9/meta': jsonResponse(200, { payeurs: [TILLEULS, PLATANES, { type: 'personnel', solde_microusd: 2_000_000 }] }),
+        'POST twin9/runs/apercu': (url, init) => {
+          const corps = JSON.parse(init.body)
+          return corps.payeur === undefined
+            ? jsonResponse(422, { error: 'Choisissez qui paie cette analyse : vous êtes membre de plusieurs écoles' })
+            : jsonResponse(200, apercu({ cle: 'ecole', credit_usd: null, payeur: { type: 'ecole', id: 4, nom: 'École des Platanes', soi: false } }))
+        },
+        'POST twin9/runs': jsonResponse(201, run({ payeur: { type: 'ecole', id: 4, nom: 'École des Platanes' } })),
+        'GET twin9/runs/7': jsonResponse(200, fini()),
+      }),
+    )
+    await openApp('#/twin9', { portfolio: PORTFOLIO })
+
+    const menu = await screen.findByLabelText('Qui paie')
+    expect([...menu.options].map((o) => o.textContent)).toEqual([
+      'Choisir…',
+      'Mon école, École des Tilleuls (il me reste 50,00 $ ce mois-ci)',
+      'Mon école, École des Platanes (il me reste 50,00 $ ce mois-ci)',
+      'Mon solde restant (2,00 $)',
+    ])
+    fireEvent.click(screen.getByRole('checkbox', { name: /J’accepte que mon portfolio/ }))
+    expect((await screen.findByRole('alert')).textContent).toBe('Choisissez qui paie cette analyse : vous êtes membre de plusieurs écoles')
+
+    fireEvent.change(menu, { target: { value: '4' } })
+    const avant = await screen.findByRole('region', { name: 'Avant de lancer' })
+    expect(within(avant).getByTestId('apercu-payeur').textContent).toBe(
+      'Payé par votre école, École des Platanes. Elle voit le montant de ce qu’elle paie pour vous, jamais le contenu de vos analyses sur humanome ; avec sa propre clé Anthropic, elle peut relire dans sa Console Anthropic les résultats des appels partis par lots.',
+    )
+    // sur la clé de son école, l'aperçu dit que l'école peut relire les résultats de ses lots (ADR-013 §6) — et l'accord
+    // du lancement le nomme (§7)
+    expect(within(avant).getByTestId('apercu-cle-ecole').textContent).toContain('relire dans sa Console Anthropic')
+    expect(screen.getByTestId('accord-console-ecole').textContent).toContain(
+      'votre école peut relire dans sa Console Anthropic les résultats des appels partis par lots')
+    expect(screen.getByRole('checkbox', { name: /J’accepte que mon portfolio/ }).closest('label').textContent)
+      .toContain('Console Anthropic')
+    const demandes = ecritures(calls, 'POST twin9/runs/apercu')
+    expect(bodyOf(demandes[demandes.length - 1]).payeur).toBe(4)
+    expect(demandes[demandes.length - 1].init.headers['X-CSRF-Token']).toBe(CSRF)
+
+    fireEvent.click(screen.getByRole('button', { name: 'Lancer l’analyse' }))
+    await waitFor(() => expect(window.location.hash).toBe('#/twin9/7'))
+    expect(bodyOf(ecritures(calls, 'POST twin9/runs')[0])).toEqual({
+      profil: null,
+      portfolio: { nom: 'Mon journal.md', texte: PORTFOLIO },
+      accord: { fournisseurs: ['anthropic'] },
+      visibilite: 'privee',
+      payeur: 4,
+    })
+  })
+
+  it('UC-APP-10-F38 — E15 (IHM) : son école n’a pas réglé son plafond ; un solde à lui : l’aperçu dit le refus du serveur, et propose « Mon solde restant » dans « Qui paie »', async () => {
+    const sansPlafond = { ...TILLEULS, plafond_microusd: 0, reste_credit_microusd: 0, reste_cle_microusd: 0 }
+    const refus = 'Votre école n’a pas encore réglé le plafond qu’elle vous accorde chaque mois (0 $ par défaut) : demandez-le-lui avant de lancer une analyse qu’elle paie'
+    stubFetch(
+      routes({
+        'GET twin9/meta': jsonResponse(200, { payeurs: [sansPlafond, { type: 'personnel', solde_microusd: 2_000_000 }] }),
+        'POST twin9/runs/apercu': jsonResponse(200, apercu({
+          credit_usd: null, payeur: { type: 'ecole', id: 3, nom: 'École des Tilleuls', soi: false },
+          payeurs: [sansPlafond, { type: 'personnel', solde_microusd: 2_000_000 }],
+          admission: { journees: 0, total: 2, limite: 'plafond', instruites: 0, en_attente: 2, changees_en_attente: 0,
+                       autres_usd: 0, refus },
+        })),
+      }),
+    )
+    await openApp('#/twin9', { portfolio: PORTFOLIO })
+    fireEvent.click(await screen.findByRole('checkbox', { name: /J’accepte que mon portfolio/ }))
+    const avant = await screen.findByRole('region', { name: 'Avant de lancer' })
+    const alerte = await within(avant).findByRole('alert')
+    expect(alerte.textContent).toContain(refus)
+    expect(alerte.textContent).toContain('Vous pouvez aussi choisir « Mon solde restant » dans « Qui paie ».')
+    expect(within(alerte).queryByRole('link', { name: 'Recharger' })).toBeNull()
+  })
+
+  it('UC-APP-10-F34 — E16 (IHM) : arrêté parce que son école ne le paie plus, la page le dit ; sa reprise choisit qui paie (son solde) et le porte (CSRF)', async () => {
+    const arrete = run({
+      statut: 'echoue', attente: 'votre école ne paie plus cette analyse', retard: 'Votre école ne paie plus cette analyse',
+      finished_at: '2026-10-20 10:00:09', payeur: { type: 'ecole', id: 3, nom: 'École des Tilleuls' },
+    })
+    let repris = false
+    const { calls } = stubFetch(
+      routes({
+        'GET twin9/meta': jsonResponse(200, { payeurs: [{ type: 'personnel', solde_microusd: 2_000_000 }] }),
+        'GET twin9/runs/7': () => jsonResponse(200, repris ? fini() : arrete),
+        'POST twin9/runs/7/reprendre': () => {
+          repris = true
+          return jsonResponse(200, run({ payeur: { type: 'personnel' } }))
+        },
+        'POST twin9/runs/avancer': jsonResponse(200, { avance: true, locked: false }),
+      }),
+    )
+    await openApp('#/twin9/7')
+
+    expect((await screen.findByRole('status')).textContent).toBe('Arrêté — Votre école ne paie plus cette analyse')
+    expect(screen.getByTestId('run-payeur').textContent).toContain('Payé par votre école, École des Tilleuls')
+    await waitFor(() => expect(ecritures(calls, 'GET twin9/meta')).toHaveLength(1))
+    fireEvent.click(screen.getByRole('button', { name: 'Reprendre' }))
+    await waitFor(() => expect(ecritures(calls, 'POST twin9/runs/7/reprendre')).toHaveLength(1))
+    const [reprise] = ecritures(calls, 'POST twin9/runs/7/reprendre')
+    expect(bodyOf(reprise)).toEqual({ payeur: 'personnel' })
+    expect(reprise.init.headers['X-CSRF-Token']).toBe(CSRF)
+  })
+})
+

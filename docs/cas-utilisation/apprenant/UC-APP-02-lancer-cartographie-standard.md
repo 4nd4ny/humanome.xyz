@@ -47,8 +47,9 @@ Cartographier mes écrits », ou le bouton du tableau de bord `#/espace`).
 - Mode « Clé personnelle » : une clé du fournisseur choisi (sauf Ollama,
   local et sans clé, attendu sur `http://localhost:11434` : l'assistant ne
   permet pas de changer cette adresse).
-- Aucune session n'est exigée ; la synchronisation serveur de la clé et la
-  récupération d'une clé enregistrée demandent d'être connecté.
+- Aucune session n'est exigée. Depuis l'ADR-013, la clé personnelle reste dans
+  le navigateur : il n'y a plus ni synchronisation sur le serveur ni
+  récupération d'une clé gardée (UC-CPT-04).
 
 ## Garanties en cas de succès
 
@@ -69,8 +70,8 @@ Cartographier mes écrits », ou le bouton du tableau de bord `#/espace`).
 - Chaque journée terminée reste checkpointée : une reprise ne refait pas le
   travail déjà payé.
 - Aucune cartographie incomplète n'est enregistrée tant qu'une journée manque.
-- La clé personnelle ne transite jamais par humanome, sauf synchronisation
-  explicitement cochée (chiffrée côté serveur, ADR-004).
+- La clé personnelle ne transite jamais par humanome (ADR-013, règle R1 de
+  Christian) : la page le dit à l'étape « Fournisseur ».
 
 ## Scénario nominal
 
@@ -138,10 +139,11 @@ Cartographier mes écrits », ou le bouton du tableau de bord `#/espace`).
 - **A1 — Clé personnelle** (étape 4) : fournisseur (Anthropic, OpenAI,
   Google, xAI, OpenRouter, Ollama), modèle (défaut du fournisseur) et clé ; la
   clé est pré-remplie depuis `localStorage` (`humanome-keys`) et y est
-  mémorisée par défaut ; « Synchroniser sur le serveur (chiffrée) » (opt-in,
-  connecté) envoie `PUT api/keys` avant le run ; « Récupérer la clé depuis le
-  serveur » lit `GET api/keys/{fournisseur}` (clé absente : message du
-  serveur, « Aucune clé enregistrée pour ce fournisseur »). L'assistant
+  mémorisée par défaut ; la page dit « Votre clé reste dans ce navigateur :
+  humanome ne la garde jamais sur ses serveurs. Seule une école peut y garder
+  la sienne, pour ses élèves. » ; elle ne propose plus ni « Synchroniser sur le
+  serveur » ni « Récupérer la clé depuis le serveur » (ADR-013), et n'appelle
+  jamais `/api/keys`. L'assistant
   construit un transport `direct` du moteur (`createProviderBundle` →
   `createProvider`, modèle saisi — pré-rempli avec le défaut du fournisseur,
   défaut si le champ est vide —, budget de sortie : tout ce que le modèle peut
@@ -157,15 +159,14 @@ Cartographier mes écrits », ou le bouton du tableau de bord `#/espace`).
   aucune sur une autre erreur HTTP (E7), soit, avec le nouvel essai
   d'`extractDay`, jusqu'à 6 requêtes par pôle ; une réponse tronquée n'est
   jamais refaite (une requête, 2026-10-22). « Interrompre » abandonne
-  aussi l'attente avant reprise. Un refus de la synchronisation bloque le
-  lancement (E6).
+  aussi l'attente avant reprise.
 - **A2 — API injoignable ou en erreur** (étapes 1 et 3) : API absente (échec
   réseau, réponse non JSON d'une copie statique) : bandeau « Copie statique du
   site… » ; API joignable mais en erreur 5xx JSON : bandeau « Vous n'êtes pas
   connecté… ». Dans les deux cas, seule la version embarquée est proposée
   (« Versions publiées indisponibles (API injoignable) : version embarquée
-  proposée. ») et la synchronisation de clé est désactivée. Le mode clé
-  personnelle reste utilisable.
+  proposée. »). Le mode clé personnelle reste utilisable, la clé dans le
+  navigateur.
 - **A3 — Version publiée choisie** (étape 3) : la version choisie est
   enregistrée avec chaque cartographie (`promptPackage`) et entre dans
   l'identifiant du run ; en v1 le moteur exécute **toujours** le protocole
@@ -243,11 +244,10 @@ Cartographier mes écrits », ou le bouton du tableau de bord `#/espace`).
   long (`413`) et les refus de preuve (`400 pow_*`, `429 pow_reused`) ne
   surviennent que sur `POST api/llm`, donc **en cours de run** : les journées
   concernées échouent avec le détail technique (E4, anomalie A-02).
-- **E6 — Synchronisation de la clé refusée** (étape 6, A1) : `PUT api/keys`
-  en échec (`401` session expirée, `403` CSRF, `422` « Validation échouée »,
-  clé de moins de 8 caractères) : le run ne démarre pas, le message du
-  serveur s'affiche avec « Reprendre le run », aucun appel au fournisseur —
-  bien que la clé fonctionnerait localement.
+- **E6 — Synchronisation de la clé** (étape 6, A1) : sans objet depuis
+  l'ADR-013 — l'assistant n'envoie plus jamais la clé à humanome, même à un
+  serveur qui l'accepterait (`PUT api/keys` répond désormais `410`, UC-CPT-04
+  E3) : le run part sur la clé saisie.
 - **E7 — Clé refusée ou requête rejetée par le fournisseur** (étape 6, A1) :
   une réponse HTTP autre que 429/5xx (`401` clé invalide, `400`, `403`,
   `404` modèle absent d'Ollama…) ou un `200` au corps non JSON n'est pas
@@ -342,7 +342,7 @@ Cartographier mes écrits », ou le bouton du tableau de bord `#/espace`).
 | Donnée | Traitement |
 |---|---|
 | Texte des journées | Navigateur ; transite vers le fournisseur choisi (clé personnelle) ou via le proxy humanome sans conservation |
-| Clé API personnelle | `localStorage` par défaut ; serveur seulement sur opt-in (chiffrée, ADR-004) ; jamais dans une URL |
+| Clé API personnelle | `localStorage` seulement, jamais envoyée à humanome (ADR-013) ; jamais dans une URL |
 | Checkpoints, journal de run | IndexedDB `humanome-runs` |
 | Cartographies | IndexedDB `humanome-cartographies`, visibilité `privee` |
 | Usage du service humanome | Compteurs journaliers (`llm_usage_daily`) et du mois des crédits offerts (`free_credit_monthly`, UC-VIS-03 RG7) ; empreinte du défi consommé (`llm_pow_challenges`) ; seau de quota haché |
@@ -356,7 +356,7 @@ Cartographier mes écrits », ou le bouton du tableau de bord `#/espace`).
 | Front | `web/src/lib/ui-mode.js` — `useUiMode` | Mode d'affichage fourni par le shell (A8, UC-VIS-06) |
 | Front | `web/src/data/referentiel.js` — `loadPublishedReferentiel`, `listPublishedReferentiels` | RESPIRE publié (repli embarqué) ou le référentiel choisi, liste des référentiels publiés : la base par l'API publique d'abord, l'export statique en repli (S5) |
 | API | `api/src/routes/referentiel.php` — `GET /referentiels`, `GET /referentiels/{id}/versions/{semver}` | Référentiels publiés et document d'une version publiée, publics, en lecture seule (A7) |
-| Front | `web/src/lib/run-launcher.js` — `computeDayGroups`, `fetchPromptPackages`, `buildEstimate`, `createProviderBundle`, `makeRunId`, `executeRun`, `buildLocalNarratives`, clés locales et synchronisation | Logique non-UI du lancement, résumés locaux du merge, validation de la fusion (schéma puis conformité) |
+| Front | `web/src/lib/run-launcher.js` — `computeDayGroups`, `fetchPromptPackages`, `buildEstimate`, `createProviderBundle`, `makeRunId`, `executeRun`, `buildLocalNarratives`, clés locales (`lib/local-keys.js`, réexportées) | Logique non-UI du lancement, résumés locaux du merge, validation de la fusion (schéma puis conformité) |
 | Front | `web/src/lib/demo-llm.js` — `createDemoProvider`, `describeDemoError` ; `web/src/lib/pow.js` | Service humanome : défi, preuve de travail, messages |
 | Front | `web/src/lib/carto-store.js` (via `carto-store-bridge.js`) | Enregistrement local des résultats |
 | Moteur | `engine/src/pipeline/extract.js` — `extractDay` ; `engine/src/conformite.js` — `validateDocumentPourReferentiel` | Un appel par pôle du référentiel + kairos, validation (schéma puis conformité), nouvel essai (jamais sur une réponse tronquée) |
@@ -394,7 +394,7 @@ Cartographier mes écrits », ou le bouton du tableau de bord `#/espace`).
 | UC-APP-02-U14 | `fetchPromptPackages` | Ordre des appels, embarqué (1.1.0) en tête sans doublon de sa copie publiée, 1.0.0 publiée proposée, défaut marqué | idem |
 | UC-APP-02-U15 | `createProviderBundle` | Service humanome (modèle imposé), clé requise sauf Ollama | idem |
 | UC-APP-02-U16 | `setLocalKey`, `readLocalKeys` | `humanome-keys` : mémoriser, effacer, JSON corrompu toléré | idem |
-| UC-APP-02-U17 | `syncKeyToServer`, `fetchKeyFromServer` | `PUT api/keys`, `GET api/keys/{fournisseur}` ; clé absente = 404 du serveur, message propagé ; garde défensive `{apiKey: ''}` | idem |
+| UC-APP-02-U17 | `run-launcher.js` — `setLocalKey`, `getLocalKey`, `KEY_STAYS_IN_BROWSER` | Plus de `syncKeyToServer` ni de `fetchKeyFromServer` (ADR-013) ; la clé dans `humanome-keys`, le message R1 | idem |
 | UC-APP-02-U18 | `createDemoProvider`, `pow.js` | Un défi par appel, nonce satisfaisant la difficulté (sha256 recalculé), pot de miel joint (RG5) | idem |
 | UC-APP-02-U19 | `describeDemoError` | 429 → minutes, 503 → épuisé, autre → détail | idem |
 | UC-APP-02-U20 | `buildEstimate` | Modèle de référence du service, coût inconnu, surcharges | idem |
@@ -428,8 +428,8 @@ montage (`humanome-mode`), sauf F29, qui rejoue le mode simple (A8).
 | ID | Scénario | Niveau | Vérifie | Fichier |
 |---|---|---|---|---|
 | UC-APP-02-F01 | Nominal | IHM | `<App/>` : 5 étapes, estimation, 24 POST avec défis distincts, 3 jours + merge privés et tracés | `web/test/usecases/functional/uc-app-02-lancer-cartographie-standard.test.jsx` |
-| UC-APP-02-F02 | A1 | IHM | 24 appels directs à Anthropic ; clé vers humanome uniquement par `PUT api/keys` (CSRF, réponse 204) ; `localStorage` | idem |
-| UC-APP-02-F03 | A2 | IHM | Bandeau copie statique, version embarquée seule, synchronisation désactivée | idem |
+| UC-APP-02-F02 | A1 | IHM | 24 appels directs à Anthropic ; la clé jamais vers humanome, aucun `api/keys` ; `localStorage` | idem |
+| UC-APP-02-F03 | A2 | IHM | Bandeau copie statique, version embarquée seule ; aucune synchronisation proposée, le message R1 | idem |
 | UC-APP-02-F04 | A3 (anomalie A-01) | IHM | Version publiée tracée ; paquet publié jamais téléchargé, 1er prompt = prompt du moteur embarqué ; défaut serveur ni présélectionné ni signalé | idem |
 | UC-APP-02-F05 | A4 | IHM | Interruption en journée 2, reprise : 16 appels, journée 1 sautée | idem |
 | UC-APP-02-F06 | A5 | IHM | Démontage (rechargement) : signal de la requête en cours abandonné ; reprise depuis IndexedDB | idem |
@@ -447,9 +447,9 @@ montage (`humanome-mode`), sauf F29, qui rejoue le mode simple (A8).
 | UC-APP-02-F18 | E5 | API | Journée trop longue → 413, aucun défi ni compteur consommé | idem |
 | UC-APP-02-F19 | A5 (anomalie A-03) | IHM | **Comportement actuel** : relance après modification → aucun appel, anciens documents ré-enregistrés en double | `web/test/usecases/functional/uc-app-02-lancer-cartographie-standard.test.jsx` |
 | UC-APP-02-F20 | E5 (anomalie A-02) | IHM | **Comportement actuel** : quota 429 sur `POST api/llm` à partir du 9e appel → journée 1 checkpointée, journées 2 et 3 en échec « HTTP 429 », 12 appels | idem |
-| UC-APP-02-F21 | A1 | IHM | Clé pré-remplie depuis `localStorage`, « Récupérer la clé depuis le serveur » ; sans synchronisation : aucun `api/keys`, aucune clé dans une requête vers humanome | idem |
-| UC-APP-02-F22 | E6 | IHM | `PUT api/keys` → 422 : message du serveur, aucun appel au fournisseur, « Reprendre le run » | idem |
-| UC-APP-02-F23 | A2 | IHM | API en erreur 5xx JSON : bandeau « non connecté », version embarquée seule, synchronisation et récupération indisponibles | idem |
+| UC-APP-02-F21 | A1 | IHM | Clé pré-remplie depuis `localStorage`, plus de « Récupérer la clé depuis le serveur » (une clé gardée n'est pas lue) ; aucun `api/keys`, aucune clé dans une requête vers humanome | idem |
+| UC-APP-02-F22 | E6 | IHM | (ADR-013) Un serveur qui accepterait encore `PUT api/keys` ne reçoit rien : aucun `api/keys`, le run part sur la clé (24 appels directs) | idem |
+| UC-APP-02-F23 | A2 | IHM | API en erreur 5xx JSON : bandeau « non connecté », version embarquée seule ; ni synchronisation ni récupération proposées | idem |
 | UC-APP-02-F24 | E5 (anomalie A-05) | API | **Comportement actuel** : quota par défaut (20/h) → un run de 3 journées bloqué au 21e appel, `Retry-After` 30/60/120/240 | `api/tests/UseCases/Functional/UcApp02LancerCartographieStandardTest.php` |
 | UC-APP-02-F25 | E7 | IHM | Clé personnelle refusée (`401` d'Anthropic) : 2 requêtes par journée (aucune reprise du transport, nouvel essai d'`extractDay`), 6 au total ; les 3 journées listées en échec « extractDay : pôle 1 (…) — anthropic: HTTP 401 — invalid x-api-key » ; aucun appel à `api/llm`, rien d'enregistré | `web/test/usecases/functional/uc-app-02-lancer-cartographie-standard.test.jsx` |
 | UC-APP-02-F26 | A7 | IHM | Index des référentiels publiés : « Référentiel » propose RESPIRE (défaut) et un référentiel lettré ; choisi, il est chargé ; estimation 34 appels ; 18 POST dont les prompts le nomment ; 3 jours + fusion enregistrés avec `referentiel: {id, version}`, documents nommés, 5 domaines ; checkpoints sous l'identifiant qui l'inclut | `web/test/usecases/functional/uc-app-02-lancer-cartographie-standard.test.jsx` |

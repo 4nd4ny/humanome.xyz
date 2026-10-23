@@ -21,7 +21,10 @@ use Humanome\ClientIp;
 use Humanome\Clock;
 use Humanome\Db;
 use Humanome\Middleware\CsrfMiddleware;
+use Humanome\Packages\SettingsRepository;
+use Humanome\Twin9\RunCosts;
 use Humanome\Twin9\RunPurge;
+use Humanome\Twin9\Twin9Config;
 use Psr\Http\Message\ResponseInterface as Response;
 use Psr\Http\Message\ServerRequestInterface as Request;
 use Slim\App;
@@ -553,12 +556,17 @@ return function (App $app): void {
 
         $pdo = Db::get();
         // Twin9 (T10, ADR-011 §5): the account's batches still at Anthropic go too — those of its own
-        // key now, while the key exists; the instance's, handed to the tick with the purge
+        // key now, while the key exists, and a school's those of its key (ADR-013 §6); the instance's, and a
+        // learner's on their school's key, handed to the tick with the purge
         $twin9 = new RunPurge($pdo);
         $twin9->lotsPersonnels($userId, microtime(true) + 10.0);
+        $twin9->lotsEcole($userId, microtime(true) + 10.0);
         try {
             $pdo->beginTransaction();
             Audit::record($pdo, $userId, Audit::ACCOUNT_DELETED);
+            // what its runs a school pays still hold goes back to that school, a batch's calls included, while the
+            // learner is there to be named in its ledger (ADR-013 §7): the runs go with the account
+            (new RunCosts($pdo, new Twin9Config(new SettingsRepository($pdo))))->rendreAvantLaPurge($userId);
             $twin9->confier($userId);
             Users::purge($pdo, $userId);
             $pdo->commit();

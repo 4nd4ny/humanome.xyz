@@ -112,10 +112,14 @@ session ; un id étranger répond `404` exactement comme un id inexistant
 | `/api/share/open` | GET (sans mdp) | **Public** | Lien SANS mot de passe d'une version partagée (§12) : jeton dans l'en-tête `X-Share-Token`, **jamais dans l'URL** (pas de trace dans les journaux d'accès) ; même quota IP que le POST, 404 homogène, 401 `password_required` si le lien a un mot de passe ; `X-Robots-Tag: noindex, nofollow, noarchive` et `Cache-Control: no-store` sur toutes les réponses publiques de partage |
 | `/api/share/{token}` | POST (mdp) | **Public** (employeur, §3.6 — pas de compte) | Rate-limit IP (buckets hachés, /64 IPv6 via `ClientIp`) ; 404 homogène inconnu/expiré/révoqué (anti-énumération, vérif factice du mdp) ; 403 mauvais mdp ; depuis P9, `garantie` = état figé `{par, date, revisionId}` ou `null`, et le document servi est **celui de la révision garantie** quand `revisionId` est présent (§8). Si le navigateur porte une session, le SPA joint son jeton CSRF comme partout |
 | `/api/training/progress` | GET/PUT | Connecté (tout rôle), sa propre progression | Session (+ CSRF sur PUT) |
-| `/api/keys` | PUT | Connecté, ses propres clés | Session + CSRF ; chiffrement sodium `crypto_secretbox`, nonce par entrée, clé maîtresse `SODIUM_MASTER_KEY` (hors webroot) ; 503 explicite si non configurée |
-| `/api/keys` | GET | Connecté, ses propres clés | Session ; `[{provider, createdAt}]`, **jamais** la clé |
-| `/api/keys/{provider}` | GET | Connecté, **propriétaire authentifié seulement** | Session ; renvoie la clé déchiffrée — synchronisation AD-4 : le run s'exécute dans le navigateur (ADR-001) et a besoin de la clé côté client |
+| `/api/keys` | PUT | **Personne** depuis l'ADR-013 | Session + CSRF, puis **410** à tout compte, une école comprise (« Vos clés restent dans votre navigateur : humanome ne les garde plus sur ses serveurs. ») ; le corps n'est jamais lu, rien n'est écrit. La clé d'une école, pour ses élèves, se règle dans son espace établissement (lot S6b) ; `KeyVault::store` refuse la clé de tout compte sans l'habilitation `etablissement` ; 503 explicite si `SODIUM_MASTER_KEY` n'est pas configurée |
+| `/api/keys` | GET | Connecté, ses propres clés | Session ; les clés gardées avant l'ADR-013, « à supprimer » : `[{provider, createdAt, avisPurgeAt}]`, **jamais** la clé |
+| `/api/keys/{provider}` | GET | Connecté, **propriétaire authentifié seulement** | Session ; renvoie la clé déchiffrée (`no-store`), pour **une** action de la page du compte : la recopier dans ce navigateur avant de la supprimer ; aucun chemin de run ne l'appelle ; part avec la contraction (ADR-013 §8) |
 | `/api/keys/{provider}` | DELETE | Connecté, ses propres clés | Session + CSRF ; suppression réelle |
+| `/api/twin9/meta` | GET | Connecté | Session ; l'offre, les packs, `paypalConfigured`, son solde, `peut_acheter` (une école seulement, ADR-013 §2 e) et, sinon, `achat_pourquoi` ; plus de `cle_privee_disponible` ; `payeurs` (S6b) : ses écoles — ce qu'elles peuvent encore payer pour lui ce mois-ci, **jamais** leur crédit à un élève — et son propre solde |
+| `/api/twin6/appel` | POST | Connecté | Session + CSRF ; `payeur?` (S6b, ADR-013 §4) revérifié : une de ses écoles (habilitation en vigueur, membre d'une de ses cohortes, sinon **422**), son solde (`"personnel"`, refusé à une école : **422**), ou par défaut sa seule école ; plusieurs écoles sans choix : **422** ; son école paie sur sa clé si elle en a une, sinon sur son crédit ; plafond de l'élève ou crédit de l'école court : **402** (`code: plafond`, `credit_ecole`), jamais le solde de l'école |
+| `/api/twin9/credit/paypal/creer`, `/capturer` | POST | **`etablissement` seulement** (ADR-013 §2 e, règle R2) | Session + CSRF ; **403** « Seule une école achète des crédits. » à tout autre compte, avant le rythme et avant tout appel à PayPal ; la capture relit l'habilitation ; un rôle déclaré n'ouvre rien |
+| `/api/twin9/credit/rembourser` | POST | Connecté, son propre solde | Session + CSRF ; tout compte, une école ou non : un solde acheté avant l'ADR-013 se dépense jusqu'à épuisement ou se rembourse (§2 c) |
 | `/api/prompt-packages`, `/api/prompt-packages/{id}/{version}` | GET | Public (comme le référentiel) | — ; versions **publiées** uniquement : un paquet publié est un artefact de méthode, sans donnée d'apprenant (la matrice P10 ci-dessous garde « connecté » pour l'atelier complet) |
 | `/api/admin/import-prompt-package` | POST | Technique (script de déploiement, ADR-008) | Jeton `MIGRATE_TOKEN` dédié, hors rôles ; import idempotent par hash |
 
@@ -206,7 +210,11 @@ Principes d'accès (docs/plan-masse.md §6-7) : « sa cohorte » = cohorte dont
 **même 404** qu'un id inexistant. Le consentement de l'apprenant est à DEUX
 étages : rejoindre la cohorte (consentement explicite `{"consentement": true}`
 dans le corps + texte affiché — « l'établissement verra les cartographies
-produites dans ce cadre ») puis **déposer son portfolio** (opt-in de fait au
+produites dans ce cadre », et, depuis le sprint 6 (lot S6b), le montant de ce
+qu'il paie pour ses analyses, jamais leur contenu sur humanome — avec sa propre
+clé Anthropic, les résultats des appels partis par lots restent lisibles dans
+sa Console Anthropic) puis **déposer son
+portfolio** (opt-in de fait au
 traitement serveur : seuls les déposants sont enfilés). Quitter la cohorte
 retire le consentement : adhésion + dépôt purgés, jobs en attente annulés ;
 les documents produits restent à l'apprenant et sortent du champ de
@@ -223,6 +231,10 @@ l'établissement (l'accès exige l'adhésion active).
 | `/api/cohortes/{id}/quitter` | DELETE | `apprenant`, membre | + CSRF ; retrait du consentement (voir principes) ; audit `cohorte_quit` |
 | `/api/etablissement/config` | PUT/GET | `etablissement`, son compte | + CSRF sur PUT ; clé endpoint chiffrée sodium (AD-4), **jamais relue** (`hasApiKey`) ; hausse du plafond = réactivation des jobs `budget_exceeded` |
 | `/api/etablissement/worker-token` | POST | `etablissement`, son compte | + CSRF ; jeton en clair **une seule fois** (`no-store`), stocké sha256 |
+| `/api/etablissement/ecole` | GET | `etablissement`, son compte (S6b, ADR-013) | Ses réglages (surtaxe, plafond par élève), son crédit, ses clés (le fournisseur et la date, **jamais** la clé), ses élèves — les membres de ses cohortes — et ce que chacun a engagé ce mois-ci et en tout, en montants seulement ; ceux qui ont quitté ses cohortes, ensemble et sans nom (`partis`, revue du lot S6b) ; 403 à tout compte sans l'habilitation (un rôle déclaré n'ouvre rien) |
+| `/api/etablissement/ecole` | PUT | `etablissement`, son compte | + CSRF ; `{surtaxePct?, plafondEleveUsd?}` : surtaxe de 3,5 à 10 au centième (contrainte CHECK en base aussi), plafond de 0 à 100 000 $ au centime ; 422 par champ ; audit `ecole_reglages` |
+| `/api/etablissement/ecole/cle` | PUT | `etablissement`, son compte | + CSRF ; `{cle, fournisseur?: "anthropic"}` : Anthropic seulement (422 sinon) ; chiffrée sodium (format `KeyVault`, `ecole_cles`), **jamais relue par une route**, jamais journalisée ; 503 sans `SODIUM_MASTER_KEY` ; audit `ecole_cle_posee {fournisseur}` |
+| `/api/etablissement/ecole/cle/{fournisseur}` | DELETE | `etablissement`, son compte | + CSRF ; les lots partis avec elle d'abord annulés puis supprimés chez Anthropic (10 s au plus), puis suppression réelle (204, 404 sans clé) ; audit `ecole_cle_retiree {fournisseur}` ; un run sur elle s'arrête à sa tranche suivante, un lot qu'aucune clé ne peut plus relever est rendu par le tick. Retirer l'habilitation `etablissement` (`DELETE /api/admin/users/{id}/roles/etablissement`) efface de même la clé de l'école, audit `ecole_cle_retiree {fournisseur, cause: habilitation_retiree}` |
 | `/api/etablissement/cohortes/{id}/runs` | POST | `etablissement`, propriétaire | + CSRF ; versions paquet/référentiel **publiées** figées sur le run ; enfile (membre consenti AYANT déposé × journée) ; audit `mass_run_created` (compteurs) |
 | `/api/etablissement/runs/{runId}` | GET | `etablissement`, propriétaire | Jobs par statut, coût cumulé, erreurs (jamais de contenu) |
 | `/api/etablissement/runs/{runId}/annuler` | POST | `etablissement`, propriétaire | + CSRF ; jobs non terminaux → `cancelled` (écritures worker conditionnelles : l'annulation gagne) |
@@ -243,13 +255,13 @@ l'établissement (l'accès exige l'adhésion active).
 | Liste d'attente des inscriptions (`GET /api/admin/waitlist`, `POST /api/admin/waitlist/{id}/lift`, `POST /api/admin/waitlist/lift`, sprint 7) | GET/POST | `admin` (session + CSRF) ; une levée envoie au compte son code d'activation |
 | **Gabarits Twin9 — CONTENU** (`/api/twin9/admin/jeux/{jeu}/protocole**`, `/api/twin9/admin/jeux/{jeu}/tester`) et copie du jeu v9.8 (`POST /api/twin9/admin/jeux`) | GET/PUT/POST | **`admin` ∧ `promptologue`** (les DEUX rôles, `RequireRole::all`, AD-D2) ; écrire (`PUT`, `…/restore`) : l'auteur de la copie seul, jamais le jeu v9.8 (403, T14) |
 | Jeux de gabarits Twin9 — liste sans contenu (`GET /api/twin9/admin/jeux`) et jeu par défaut (`PUT /api/twin9/admin/jeux/defaut`) | GET/PUT | `admin` (T14) |
-| Twin9 supervision (config, contribution, promo, comptes) | GET/PUT | `admin` |
+| Twin9 supervision (config, contribution, packs, comptes) | GET/PUT | `admin` |
 
 > **AD-D2.** L'édition des gabarits du Golden Prompt Twin9 (lecture ET écriture du
 > contenu, versions, banc d'essai de rendu) exige la **conjonction** admin ∧
 > promptologue : un administrateur non-promptologue n'en voit plus le contenu
-> (403). La supervision commerciale (contribution, promo « Twin9 gratuit »,
-> comptes) reste `admin` seul. Front : l'éditeur vit sous « Faire évoluer » →
+> (403). La supervision commerciale (contribution, packs, comptes) reste
+> `admin` seul. Front : l'éditeur vit sous « Faire évoluer » →
 > `#/twin9-atelier` (visible seulement avec les deux rôles) ; `#/admin/twin9`
 > garde la supervision. Depuis T14, l'atelier lit le jeu v9.8 sans l'écrire —
 > l'import seul l'écrit — et chacun y écrit ses copies, et elles seules ; la
@@ -269,15 +281,17 @@ fixe ce qui vaut pour toute l'instance. Chaque ligne de la matrice a son test da
 | Le profil v9.8, par défaut | — | lecture (une modification en fait une copie, la sienne) | idem |
 | Les profils prédéfinis (« Stigmergie (essai) », proposé en mode expert) | — | lecture (on le copie dans un nouveau profil, le sien) | idem |
 | Le budget et la durée de ses runs | — | ✔ | ✔ |
-| Sa clé : celle de l'instance ou la sienne | — | ✔ ; la sienne si l'administrateur l'a ouverte, et chez Anthropic seulement (ADR-012) | idem |
+| Sa clé : celle de l'instance | — | ✔ ; la sienne ne se choisit plus (ADR-013 §6 : 422 à l'enregistrement, à l'aperçu, au lancement et à la reprise ; un profil d'avant qui la porte reste enregistré) | idem |
+| Sa clé : celle de son école (`cle: "ecole"`, S6b) | — | ✔ chez Anthropic seulement (422 à l'enregistrement pour un autre fournisseur) ; au lancement, l'école qui paie doit être une des siennes et avoir posé sa clé (422 sinon) | idem |
+| Qui paie ses runs (S6b, ADR-013 §4) | — | ✔ une de ses écoles — par défaut la seule —, ou son solde restant ; choisi au lancement, revérifié à chaque tranche, rechoisi à la reprise | idem |
 | Le fournisseur de chaque étage, étape ou lecteur de ses profils (ADR-012) | — | ✔ parmi les six du registre ; un fournisseur que l'administrateur n'a pas ouvert s'enregistre, mais ne s'estime ni ne se lance | idem |
-| Sa clé personnelle elle-même (son coffre, `#/compte`) | — | ✔ | ✔ |
+| Ses clés gardées sur le serveur avant l'ADR-013 (`#/compte`) | — | ✔ les lister, les recopier dans ce navigateur, les supprimer ; en garder une nouvelle : — (410) | idem |
 | Le référentiel de ses runs | — | parmi les publiés ; avec `epistemiarque`, ses propres brouillons aussi, pour ses runs d'essai (T15), tant qu'il l'est | idem (un `admin` écrit aussi des brouillons) |
 | Le jeu de gabarits de ses runs (T14) | — | le jeu v9.8 ou le jeu par défaut | idem ; avec `promptologue` (atelier), ses copies aussi, tant qu'il en est |
 | Le jeu v9.8 (T14) | — | — | lecture dans l'atelier (`admin` ∧ `promptologue`) ; seul l'import l'écrit |
 | Copier le jeu v9.8, éditer sa copie, ses versions, son retour arrière (T14) | — | — | `admin` ∧ `promptologue` : ✔ la sienne ; la copie d'un autre se lit (403 en écriture) ; `admin` seul : — (403) |
 | Le jeu de gabarits par défaut, celui du profil par défaut (T14) | — | — (403) | ✔ (`#/admin/twin9`, `/api/twin9/admin/jeux/defaut`) |
-| Prix, marge, ouverture des clés personnelles | — | — (403) | ✔ (`#/admin/twin9`, `/api/twin9/admin/config`) |
+| Prix, marge (la promotion de la clé personnelle a disparu, ADR-013 : 422) | — | — (403) | ✔ (`#/admin/twin9`, `/api/twin9/admin/config`) |
 | Ouverture des fournisseurs (`twin9_fournisseurs_ouverts`, Anthropic seul par défaut) et des fournisseurs étiquetés « non » au regard du RGPD (`twin9_fournisseurs_non_rgpd`, fermé par défaut), prix et plafonds de leurs modèles — ADR-012 | — | — (403) | ✔ (`#/admin/twin9`, `/api/twin9/admin/config`) |
 | Savoir quelles clés d'instance sont posées | — | — : la page de configuration ne lit qu'un booléen `disponible` par fournisseur, sans sa cause | ✔ (`fournisseurs[].cle_instance` de `/api/twin9/admin/config`, un booléen, jamais la clé) |
 | Runs par tick, durée d'une tranche (T7) | — | — (403) | ✔ (`/api/twin9/admin/config`, pas encore à l'écran) |
@@ -297,14 +311,15 @@ les fournisseurs de chaque profil que l'accord nomme (`testTheConfigurationNames
 les profils prédéfinis (`testThePresetsAreReadOnly`), la stigmergie, que
 l'accumulation des calques fait refuser (`testTheStigmergyRefusesTheArchivedLayersInTheConsensus`),
 un profil qui nomme un fournisseur fermé (`testAProviderNotOpenYetIsSavedNotLaunched`),
-la clé personnelle, Anthropic seulement
-(`testThePersonalKeyOnlyWhereTheAdministratorOpenedIt`), et le lancement
+la clé personnelle refusée, la promotion qui ne s'ouvre plus et un profil
+d'avant gardé (`testThePersonalKeyIsRefusedAndNoLongerOpens`), une page qui ne
+dit plus rien d'une clé personnelle (`testTheConfigurationSaysNothingOfAPersonalKey`), et le lancement
 refusé (`RunsTest.php`, `testAProviderNotOpenLaunchesNothing`).
 
 | Route | Méthode | Accès |
 |---|---|---|
-| `/api/twin9/configuration` | GET | Compte : ses profils (sans leur document), le profil par défaut (celui de la v9.8, avec le jeu de gabarits par défaut), les profils prédéfinis (`predefinis`, de même), les référentiels publiés et leurs versions, ses propres brouillons (T15), les jeux de gabarits qu'il peut choisir, sa clé personnelle (ouverte, enregistrée) |
-| `/api/twin9/profils` | POST | Compte, + CSRF. Le profil doit être valide (schéma, règles de l'API, dont celles des fournisseurs) et admis (référentiel publié, ou son brouillon en mode essai, T15 ; jeu qu'il peut choisir ; clé personnelle ouverte, et seulement pour un profil tout Anthropic) |
+| `/api/twin9/configuration` | GET | Compte : ses profils (sans leur document), le profil par défaut (celui de la v9.8, avec le jeu de gabarits par défaut), les profils prédéfinis (`predefinis`, de même), les référentiels publiés et leurs versions, ses propres brouillons (T15), les jeux de gabarits qu'il peut choisir (depuis l'ADR-013, plus rien de sa clé personnelle) |
+| `/api/twin9/profils` | POST | Compte, + CSRF. Le profil doit être valide (schéma, règles de l'API, dont celles des fournisseurs) et admis (référentiel publié, ou son brouillon en mode essai, T15 ; jeu qu'il peut choisir ; jamais la clé personnelle, ADR-013) |
 | `/api/twin9/profils/{id}` | GET/PUT/DELETE | Son propriétaire, + CSRF sur PUT et DELETE ; 404 pour tout autre |
 
 ### Runs Twin9 (T9, `#/twin9`)
@@ -330,11 +345,11 @@ l'export, dans `PurgeExportTest.php` (T10).
 | Route | Méthode | Accès |
 |---|---|---|
 | `/api/twin9/runs` | GET | Compte : ses runs (sans portfolio ni résultat), et si Twin9 tourne sur l'instance |
-| `/api/twin9/runs/apercu` | POST | Compte, + CSRF : `{profil, portfolio, referentiel?}` ; les journées nouvelles ou changées, le coût et la durée estimés, les plafonds, son crédit, le référentiel lu et le jury retiré (S5, lot C) ; 404 pour le profil d'un autre ; rien n'est gardé |
-| `/api/twin9/runs` | POST | Compte, + CSRF : `{profil, portfolio: {nom, texte}, accord: {fournisseurs}, visibilite, referentiel?}` (`accord: true` pour un profil tout Anthropic ; `referentiel: {id, version?}`, un autre que celui du profil, écrit dans sa copie avant son admission, S5 lot C) ; le profil est revalidé et admis (`ProfilPolicy` : modèles au prix de l'instance compris), son référentiel figé ; jusqu'à T16, un autre référentiel que RESPIRE est refusé (422), à l'aperçu aussi |
+| `/api/twin9/runs/apercu` | POST | Compte, + CSRF : `{profil, portfolio, referentiel?, payeur?}` ; les journées nouvelles ou changées, le coût et la durée estimés, les plafonds, son crédit (jamais celui d'une école), le référentiel lu et le jury retiré (S5, lot C), qui paierait et qui peut payer (S6b) ; 404 pour le profil d'un autre ; 422 pour un payeur refusé ; rien n'est gardé |
+| `/api/twin9/runs` | POST | Compte, + CSRF : `{profil, portfolio: {nom, texte}, accord: {fournisseurs}, visibilite, referentiel?}` (`accord: true` pour un profil tout Anthropic ; `referentiel: {id, version?}`, un autre que celui du profil, écrit dans sa copie avant son admission, S5 lot C ; `payeur?`, une de ses écoles ou `"personnel"`, S6b) ; le profil est revalidé et admis (`ProfilPolicy` : modèles au prix de l'instance compris), son référentiel figé, son payeur revérifié et figé avec le facteur de son école — `"personnel"` refusé à une école (422) —, et sa voie avec lui (une école qui a sa clé Anthropic paie avec elle un run qui n'appelle qu'Anthropic, revue du lot S6b) ; jusqu'à T16, un autre référentiel que RESPIRE est refusé (422), à l'aperçu aussi |
 | `/api/twin9/runs/avancer` | POST | Compte, + CSRF : une tranche, de la durée de celles du tick et sous son verrou, pour ses seuls runs |
 | `/api/twin9/runs/{id}` | GET | Son propriétaire : sa progression, lue dans son journal ; 404 pour tout autre |
-| `/api/twin9/runs/{id}/annuler`, `/reprendre` | POST | Son propriétaire, + CSRF ; `/reprendre` accepte `{budget_usd}`, un nouveau budget, et relit la garde de ses fournisseurs (422 pour un fournisseur fermé depuis ou sans sa clé d'instance) ; 409 hors de l'état voulu |
+| `/api/twin9/runs/{id}/annuler`, `/reprendre` | POST | Son propriétaire, + CSRF ; `/reprendre` accepte `{budget_usd}`, un nouveau budget, et `{payeur}`, qui paie désormais (S6b) — un run sur la clé d'une école la garde si l'école choisie en a une, sinon repasse sur la clé de l'instance ; un run sur la clé de l'instance y reste —, et relit la garde de ses fournisseurs (422 pour un fournisseur fermé depuis ou sans sa clé d'instance) ; 422 pour un run sur la clé personnelle (ADR-013 §6), ou dont l'école ne paie plus, sans nouveau payeur ; 409 hors de l'état voulu, ou pour un nouveau payeur tant qu'un lot tient encore une réserve |
 | `/api/twin9/runs/{id}/visibilite` | PUT | Son propriétaire, + CSRF : `privee` ou `cartographe` |
 | `/api/twin9/runs/{id}/resultats` | GET | Son propriétaire ; le cartographe lié si le run lui est visible, la configuration et l'exécution du run sans prix, coût, plafond ni clé (P0-1, `docs/contrats.md` §8.9) ; 404 pour tout autre, administrateur compris |
 | `/api/twin9/mes-analyses` | GET | Compte : ses runs (copie du profil, portfolio, journal, sorties, filtrés) et la mémoire de ses cartes, pour l'archive de compte |

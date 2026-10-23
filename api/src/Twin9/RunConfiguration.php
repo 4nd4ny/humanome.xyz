@@ -4,6 +4,7 @@ declare(strict_types=1);
 
 namespace Humanome\Twin9;
 
+use Humanome\Etablissement\Payeur;
 use Humanome\Twin9\Fournisseurs\Fournisseurs;
 use stdClass;
 
@@ -64,12 +65,16 @@ final class RunConfiguration
      *              scan?: string|null} $versions the engine's, read by the caller; null when the engine has none
      * @param string $sel the block's salt (SEL), drawn by the caller: bin2hex(random_bytes(16))
      * @param list<string>|null $accord the providers its owner's consent named (Lancement, ADR-012); null: none kept
+     * @param Payeur|null $payeur who pays (ADR-013 §3): its type is kept, never the margin nor the surtax; its prices
+     *                            are those its payer is billed; null: its owner
      * @return array<string, mixed>
      */
     public static function depuis(stdClass $profil, ?int $profilId, string $nom, stdClass $moteur, array $jeu,
                                   array $referentiel, string $empreinteReglages, array $grille, ?array $releve,
-                                  array $versions, \DateTimeImmutable $horloge, string $sel, ?array $accord = null): array
+                                  array $versions, \DateTimeImmutable $horloge, string $sel, ?array $accord = null,
+                                  ?Payeur $payeur = null): array
     {
+        $payeur ??= Payeur::personnel();
         if (preg_match(self::SEL, $sel) !== 1) {
             throw new \InvalidArgumentException('Sel de configuration invalide');
         }
@@ -134,6 +139,8 @@ final class RunConfiguration
             'execution_prevue' => [
                 'voie_anthropic' => (string) $profil->voie,
                 'cle' => (string) $profil->cle,
+                // who pays: its owner, or its school (ADR-013 §3); never the margin nor the surtax
+                'payeur' => $payeur->type,
                 'parallelisme' => ['appels_directs' => (int) $profil->parallelisme->appels_directs,
                                    'journees' => (int) $profil->parallelisme->journees],
                 'plafonds' => ['budget_usd' => $profil->budget_usd ?? null,
@@ -166,7 +173,8 @@ final class RunConfiguration
                 'releve' => $releve === null ? null : ['jour' => self::texte($releve['jour'] ?? null),
                                                        'statut' => self::texte($releve['statut'] ?? null),
                                                        'source' => self::texte($releve['source'] ?? null)],
-                'grille' => (object) self::grille($combinaisons, $grille, $profil->cle === 'instance'),
+                'grille' => (object) self::grille($combinaisons, $grille, $profil->cle === 'instance',
+                    $payeur->estEcole() ? $payeur->facteur : null),
             ],
         ];
         $bloc['empreinte'] = self::empreinte($bloc);
@@ -193,7 +201,7 @@ final class RunConfiguration
     /**
      * The block as a cartographe the run's owner linked reads it (its
      * results, visibility « cartographe »): without what its owner pays nor
-     * how — the prices, the caps, the key —, nor its salt, without which its
+     * how — the prices, the caps, the key, who pays —, nor its salt, without which its
      * fingerprint, the same as its owner's, tells nothing of them.
      */
     public static function pourCartographe(stdClass $bloc): stdClass
@@ -201,24 +209,26 @@ final class RunConfiguration
         $copie = self::copie($bloc);
         unset($copie->prix, $copie->sel);
         if (($copie->execution_prevue ?? null) instanceof stdClass) {
-            unset($copie->execution_prevue->plafonds, $copie->execution_prevue->cle);
+            unset($copie->execution_prevue->plafonds, $copie->execution_prevue->cle, $copie->execution_prevue->payeur);
         }
 
         return $copie;
     }
 
     /**
-     * The prices of the models its calls use, as its owner is billed: the
+     * The prices of the models its calls use, as its payer is billed: the
      * list price times the margin with the instance's key, the list price
-     * with their own; a long prompt's tier with its own.
+     * with their own; times its school's factor when its school pays
+     * ($ecole: 1 + its surtax on its credit, 1.0 on its key); a long
+     * prompt's tier with its own.
      *
      * @param list<array{fournisseur: string, modele: string}> $combinaisons
      * @param array<string, mixed> $grille
      * @return array<string, array<string, mixed>>
      */
-    private static function grille(array $combinaisons, array $grille, bool $instance): array
+    private static function grille(array $combinaisons, array $grille, bool $instance, ?float $ecole = null): array
     {
-        $facteur = $instance ? (float) ($grille['marge'] ?? 1.0) : 1.0;
+        $facteur = $ecole ?? ($instance ? (float) ($grille['marge'] ?? 1.0) : 1.0);
         $facture = static fn (array $mtok): array => ['entree' => round((float) $mtok[0] * $facteur, 6),
                                                       'sortie' => round((float) $mtok[1] * $facteur, 6)];
         $prix = [];

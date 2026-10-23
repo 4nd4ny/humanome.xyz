@@ -16,6 +16,12 @@ journalières produites par ses runs de masse pour un membre qui a consenti,
 et d'en voir la **fusion chronologique**, calculée dans son navigateur par le
 moteur — sans que rien de plus ne soit stocké ni calculé côté serveur.
 
+Ce que l'école paie pour un élève (sprint 6, lot S6b) ne lui ouvre pas les
+analyses de cet élève : elle en voit le montant dans « Mon école »
+(UC-ETA-05), jamais un portfolio, une sortie ni un prompt (ADR-013 §7) ; seuls
+les documents de ses runs de masse se lisent ici, sous le consentement de la
+cohorte.
+
 ## Déclencheur
 
 Depuis la page d'une cohorte, l'établissement clique « Documents » sur la

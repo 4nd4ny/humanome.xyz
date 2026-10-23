@@ -15,9 +15,17 @@
 // Trois voies :
 //   - CLÉ PERSO : le moteur (executerTwin6) tourne DANS le navigateur, appel
 //     direct au fournisseur avec la clé de l'utilisateur → GRATUIT. La clé ne
-//     quitte pas le navigateur (appel direct, en-tête browser-access).
+//     quitte pas le navigateur (appel direct, en-tête browser-access) ; elle
+//     s'y mémorise si on le demande (localStorage 'humanome-keys', celui de
+//     l'assistant de run). Depuis l'ADR-013, la page ne lit plus de clé gardée
+//     sur le serveur et le dit : « votre clé reste dans ce navigateur ».
 //   - CRÉDITS : chaque appel passe par /api/twin6/appel (notre clé), +10 % de
-//     contribution débités du solde prépayé.
+//     contribution débités du solde prépayé — celui qu'un compte a encore, que
+//     seule une école recharge (ADR-013 §2 c, e). Un apprenant dont l'école
+//     paie (sprint 6, lot S6b — §4) : son école, sur sa clé si elle en a une,
+//     sinon sur son crédit au coût réel et sa surtaxe, sous le plafond qu'elle
+//     lui accorde par mois ; avec plusieurs écoles, il choisit laquelle
+//     (twin9/ChoixPayeur.jsx), ou son propre solde restant.
 //   - ESSAI GRATUIT (2026-10-21) : chaque appel passe par le proxy de la démo
 //     (POST /api/llm, une preuve de travail par appel), comme l'Essayer, dont il
 //     partage le budget du jour (1 $ par défaut) ; le serveur impose le modèle.
@@ -41,7 +49,7 @@
 
 import { useEffect, useMemo, useRef, useState } from 'react'
 import { ApiUnavailableError, fetchMe } from '../api/client.js'
-import { listKeys as listKeysApi, revealKey as revealKeyApi } from '../api/keys.js'
+import { getLocalKey, KEY_STAYS_IN_BROWSER, setLocalKey } from '../lib/local-keys.js'
 import { formatUsd } from '../api/twin9.js'
 import {
   TWIN6_PACKAGE_URL,
@@ -63,6 +71,16 @@ import { DEMO_MODEL, DEMO_TEXT_MAX_CHARS, createDemoProvider, describeDemoError 
 import { createPortfolioStore } from '../lib/portfolio-store.js'
 import { computeDayGroups } from '../lib/run-launcher.js'
 import { useUiMode } from '../lib/ui-mode.js'
+import {
+  CREDIT_ECOLE_BAS,
+  choixParDefaut,
+  creditEcoleBas,
+  listePayeurs,
+  payeurChoisi,
+  resteMicrousd,
+  valeurPayeur,
+} from '../lib/payeurs.js'
+import ChoixPayeur from './twin9/ChoixPayeur.jsx'
 
 /** L'offre d'un visiteur : ni prix, ni solde, ni structure importée (RG9 : le document publié). */
 const OFFRE_VISITEUR = Object.freeze({ modeles: {}, referentiel: [], solde_microusd: 0 })
@@ -170,6 +188,45 @@ function reserveSortieUsd(model, modeles) {
   return (sortieMaxAnthropic(model) * prixSortie) / 1_000_000
 }
 
+/**
+ * Le libellé de la voie « crédits » (ADR-013 §4) : son solde à lui (la
+ * contribution des particuliers), son école sur sa clé (le coût réel, rien de
+ * plus : elle paie Anthropic), sur son crédit (le coût réel et sa surtaxe) ;
+ * une école pour elle-même de même ; sans école, nos crédits.
+ */
+function libelleVoieCredits(payeur, ecoles) {
+  if (payeur?.type === 'personnel') return 'Avec mon solde restant (+10 % de contribution)'
+  if (payeur?.type === 'ecole') {
+    if (payeur.soi) {
+      return payeur.cle
+        ? 'Avec la clé Anthropic de mon école (le coût réel, payé à Anthropic)'
+        : 'Avec le crédit de mon école (le coût réel et ma surtaxe)'
+    }
+    return payeur.cle
+      ? 'Avec ce que paie mon école, sur sa propre clé Anthropic (le coût réel, rien de plus)'
+      : 'Avec les crédits que paie mon école (le coût réel et sa surtaxe)'
+  }
+  return ecoles.some((e) => !e.soi)
+    ? 'Avec les crédits que paie mon école (le coût réel et sa surtaxe)'
+    : 'Avec nos crédits (+10 % de contribution)'
+}
+
+/** Ce que la note dit de ce qui est débité sur crédits, selon celui qui paie. */
+function noteCredits(payeur) {
+  if (payeur?.type === 'ecole') {
+    return payeur.cle
+      ? 'Sur la clé de l’école, elle paie Anthropic directement : rien n’est débité ici.'
+      : 'Sur le crédit de l’école, le coût réel est débité, plus sa surtaxe.'
+  }
+  return 'En crédits, seul le coût réel (+10 %) est débité.'
+}
+
+/** Ce qu'un payeur peut encore payer pour un run sur crédits : son école sur sa clé si elle en a une (ADR-013 §4). */
+function restePour(payeur, offer) {
+  if (payeur === null) return Number(offer?.solde_microusd ?? 0)
+  return resteMicrousd(payeur, payeur.type === 'ecole' && payeur.cle ? 'ecole' : 'instance')
+}
+
 export default function Twin6OuverteView({ lib: injectedLib, deps = {} }) {
   // Mode d'affichage (défaut du contexte : expert, la liste des modèles est proposée).
   const { expert } = useUiMode()
@@ -180,8 +237,6 @@ export default function Twin6OuverteView({ lib: injectedLib, deps = {} }) {
   const creditsFactory = deps.makeCreditsProvider ?? makeCreditsProvider
   const ownKeyFactory = deps.makeOwnKeyProvider ?? makeOwnKeyProvider
   const demoFactory = deps.makeDemoProvider ?? createDemoProvider
-  const listKeys = deps.listKeys ?? listKeysApi
-  const revealKey = deps.revealKey ?? revealKeyApi
   const now = deps.now ?? (() => new Date())
   const callOpts = deps.fetchFn ? { fetchFn: deps.fetchFn } : {}
   const loadReferentiel = deps.loadReferentiel ?? loadPublishedReferentiel
@@ -198,9 +253,9 @@ export default function Twin6OuverteView({ lib: injectedLib, deps = {} }) {
   const [portfolio, setPortfolio] = useState('')
   const [model, setModel] = useState('')
   const [voie, setVoie] = useState('credits') // 'credits' | 'cle_perso' | 'demo'
-  const [apiKey, setApiKey] = useState('')
-  const [savedProviders, setSavedProviders] = useState([]) // clés perso enregistrées au profil
-  const [useSavedKey, setUseSavedKey] = useState(false)
+  // La clé de ce navigateur, si elle y est mémorisée (jamais une clé gardée sur le serveur, ADR-013).
+  const [apiKey, setApiKey] = useState(() => getLocalKey(OWN_KEY_PROVIDER, deps.keyStorage))
+  const [memoriser, setMemoriser] = useState(() => getLocalKey(OWN_KEY_PROVIDER, deps.keyStorage) !== '')
   // Le référentiel choisi : null, RESPIRE (sa dernière version publiée) ; son document une fois chargé.
   const [choix, setChoix] = useState(null)
   const [ref, setRef] = useState({ status: 'loading', doc: null, message: '' })
@@ -211,6 +266,8 @@ export default function Twin6OuverteView({ lib: injectedLib, deps = {} }) {
   const [mesPortfolios, setMesPortfolios] = useState([])
   const [choixPortfolio, setChoixPortfolio] = useState('')
   const [reprise, setReprise] = useState(null) // {titre, journees, nonDates} du portfolio repris
+  // qui paie sur crédits (ADR-013 §4) : '' le défaut du serveur, 'personnel', ou l'identifiant d'une école
+  const [payeur, setPayeur] = useState('')
 
   useEffect(() => {
     let alive = true
@@ -272,6 +329,7 @@ export default function Twin6OuverteView({ lib: injectedLib, deps = {} }) {
         if (!alive) return
         setRes({ status: 'ready', pkg, offer, message: '' })
         setModel((m) => m || pkg.modeleCibleDefaut)
+        setPayeur((p) => (p === '' ? choixParDefaut(offer?.payeurs) : p))
       })
       .catch((e) => alive && setRes({ status: 'error', pkg: null, offer: null, message: messageErreur(e) }))
     return () => {
@@ -295,27 +353,15 @@ export default function Twin6OuverteView({ lib: injectedLib, deps = {} }) {
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [session.status, choix?.id, choix?.version])
 
-  // Clés perso enregistrées au profil : si l'utilisateur en a une pour le
-  // fournisseur, on lui propose de lancer dessus sans la ressaisir.
-  useEffect(() => {
-    if (session.status !== 'authenticated') return undefined
-    let alive = true
-    listKeys(callOpts)
-      .then((list) => {
-        if (!alive) return
-        const providers = Array.isArray(list) ? list.map((k) => k.provider) : []
-        setSavedProviders(providers)
-        if (providers.includes(OWN_KEY_PROVIDER)) setUseSavedKey(true)
-      })
-      .catch(() => alive && setSavedProviders([]))
-    return () => {
-      alive = false
-    }
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [session.status])
-
-  const hasSavedKey = savedProviders.includes(OWN_KEY_PROVIDER)
   const modeles = res.offer?.modeles ?? {}
+  const payeurs = listePayeurs(res.offer?.payeurs)
+  const ecoles = payeurs.filter((p) => p.type === 'ecole')
+  const quiPaie = payeurChoisi(payeurs, payeur)
+  // plusieurs écoles : l'élève choisit avant de lancer sur crédits
+  const payeurAChoisir = voie === 'credits' && ecoles.length > 1 && quiPaie === null
+  // ce que dit la voie « crédits » (ADR-013 §4) : celui qui paie — l'école choisie, ou la seule —, et comment
+  const payeurCredits = quiPaie ?? (ecoles.length === 1 ? ecoles[0] : null)
+  const libelleCredits = libelleVoieCredits(payeurCredits, ecoles)
   // Mode simple : le modèle cible du paquet, même si un autre avait été choisi en mode expert.
   const modele = expert ? model : (res.pkg?.modeleCibleDefaut ?? model)
   const portfolioPret = portfolio.trim().length > 40
@@ -326,7 +372,7 @@ export default function Twin6OuverteView({ lib: injectedLib, deps = {} }) {
   // dollar du jour, finiraient sur « aucune feuille datée » (le texte collé
   // dans l'Essayer n'en a pas).
   const sansFeuilleDatee = essai && !FEUILLE_DATEE.test(portfolio)
-  const clePersoPrete = (useSavedKey && hasSavedKey) || apiKey.trim() !== ''
+  const clePersoPrete = apiKey.trim() !== ''
   // Le référentiel que lit le moteur : le document choisi ; pour RESPIRE, la
   // structure de /meta tant qu'elle est celle de la version choisie.
   const moteurRef = useMemo(
@@ -343,6 +389,7 @@ export default function Twin6OuverteView({ lib: injectedLib, deps = {} }) {
     !tropLongPourEssai &&
     !sansFeuilleDatee &&
     (voie !== 'cle_perso' || clePersoPrete) &&
+    !payeurAChoisir &&
     run.status !== 'running'
 
   async function lancer() {
@@ -358,18 +405,34 @@ export default function Twin6OuverteView({ lib: injectedLib, deps = {} }) {
       const poids = poidsEstimeUsd(portfolio)
       const reserve = reserveSortieUsd(modele, modeles)
       const requisMicro = Math.ceil((poids + reserve) * 1_000_000)
-      const solde = Number(res.offer?.solde_microusd ?? 0)
+      // son école, quand elle paie pour lui : ce qu'elle peut encore payer ce mois-ci, jamais son crédit (ADR-013 §4)
+      const parEcole = quiPaie?.type === 'ecole' && !quiPaie.soi
+      const solde = restePour(quiPaie, res.offer)
       if (solde < requisMicro) {
         // Arrondis au centime supérieur : le montant affiché ne passe jamais sous le solde qui manque.
         const auCentime = (usd) => (Math.ceil(usd * 100 - 1e-9) / 100).toFixed(2)
+        // seule une école recharge (ADR-013 §2 e) : à un autre compte, la page ne propose pas la recharge
+        // son plafond pas encore réglé (0, le défaut) : le lui demander ; son solde à lui, s'il en a un : le choisir
+        const plafondNonRegle = parEcole && Number(quiPaie.plafond_microusd ?? 0) === 0
+        const soldePerso = payeurs.some((p) => p.type === 'personnel' && Number(p.solde_microusd ?? 0) > 0)
+        const issue = parEcole
+          ? (plafondNonRegle
+            ? 'Votre école n’a pas encore réglé le plafond qu’elle vous accorde : demandez-le-lui'
+            : 'Demandez à votre école de relever le plafond qu’elle vous accorde') +
+            (soldePerso ? ', choisissez « Mon solde restant » dans « Qui paie »' : '') +
+            ', choisissez un modèle moins cher, ou utilisez votre propre clé API, dans ce navigateur.'
+          : res.offer?.peut_acheter
+            ? 'Rechargez votre crédit, choisissez un modèle moins cher ou utilisez votre propre clé API.'
+            : 'Choisissez un modèle moins cher, ou utilisez votre propre clé API, dans ce navigateur : seules les ' +
+              'écoles achètent des crédits.'
         setRun((r) => ({
           ...r,
           status: 'error',
           error:
-            `Solde insuffisant pour ce portfolio avec ce modèle (~${auCentime(poids + reserve)} $ : ` +
+            `${parEcole ? 'Ce que votre école peut encore payer pour vous ce mois-ci ne suffit pas' : 'Solde insuffisant'} ` +
+            `pour ce portfolio avec ce modèle (~${auCentime(poids + reserve)} $ : ` +
             `${poids} $ estimés, et ${auCentime(reserve)} $ réservés le temps de chaque appel puis rendus ; ` +
-            `solde ${(solde / 1_000_000).toFixed(2)} $). Rechargez votre crédit, choisissez un modèle moins cher ` +
-            `ou utilisez votre propre clé API.`,
+            `${parEcole ? 'il vous reste' : 'solde'} ${(solde / 1_000_000).toFixed(2)} $). ${issue}`,
         }))
         return
       }
@@ -391,16 +454,15 @@ export default function Twin6OuverteView({ lib: injectedLib, deps = {} }) {
         await demo.prime()
         provider = demo.provider
       } else if (voie === 'cle_perso') {
-        // Clé enregistrée au profil (révélée à la demande, no-store) OU saisie.
-        const key =
-          useSavedKey && hasSavedKey
-            ? (await revealKey(OWN_KEY_PROVIDER, callOpts)).apiKey
-            : apiKey.trim()
+        // La clé saisie, ou celle mémorisée dans ce navigateur ; jamais envoyée à humanome (ADR-013).
+        const key = apiKey.trim()
+        if (memoriser) setLocalKey(OWN_KEY_PROVIDER, key, deps.keyStorage)
         provider = ownKeyFactory({ provider: OWN_KEY_PROVIDER, apiKey: key, ...callOpts })
       } else {
         provider = creditsFactory({
           onCout: (c) => setRun((r) => ({ ...r, cout: r.cout + (Number(c) || 0) })),
           onProgression,
+          payeur: valeurPayeur(payeur),
           ...callOpts,
         })
       }
@@ -581,7 +643,7 @@ export default function Twin6OuverteView({ lib: injectedLib, deps = {} }) {
               <>
                 <label>
                   <input type="radio" name="voie" value="credits" checked={voie === 'credits'} onChange={() => setVoie('credits')} />{' '}
-                  Avec nos crédits (+10 % de contribution)
+                  {libelleCredits}
                 </label>
                 <label>
                   <input type="radio" name="voie" value="cle_perso" checked={voie === 'cle_perso'} onChange={() => setVoie('cle_perso')} />{' '}
@@ -599,45 +661,38 @@ export default function Twin6OuverteView({ lib: injectedLib, deps = {} }) {
                 <a href="#/compte">Connectez-vous</a>.
               </p>
             ) : null}
+            {voie === 'credits' ? (
+              <ChoixPayeur
+                id="twin6-payeur"
+                payeurs={payeurs}
+                valeur={payeur}
+                onChange={setPayeur}
+                cle={quiPaie?.type === 'ecole' && quiPaie.cle ? 'ecole' : 'instance'}
+                disabled={run.status === 'running'}
+              />
+            ) : null}
+            {voie === 'credits' && creditEcoleBas(quiPaie, quiPaie?.cle ? 'ecole' : 'instance') ? (
+              <p className="twin6-hint" data-testid="credit-ecole-bas">
+                {CREDIT_ECOLE_BAS}
+              </p>
+            ) : null}
             {voie === 'cle_perso' ? (
               <div className="twin6-cleperso">
-                {hasSavedKey ? (
-                  <>
-                    <label>
-                      <input
-                        type="radio"
-                        name="cleperso"
-                        checked={useSavedKey}
-                        onChange={() => setUseSavedKey(true)}
-                      />{' '}
-                      Utiliser ma clé Anthropic enregistrée dans mon profil
-                    </label>
-                    <label>
-                      <input
-                        type="radio"
-                        name="cleperso"
-                        checked={!useSavedKey}
-                        onChange={() => setUseSavedKey(false)}
-                      />{' '}
-                      Saisir une autre clé
-                    </label>
-                  </>
-                ) : (
-                  <p className="twin6-hint">
-                    Astuce : <a href="#/compte">enregistrez votre clé dans votre profil</a> pour ne
-                    plus la ressaisir.
-                  </p>
-                )}
-                {!(hasSavedKey && useSavedKey) ? (
-                  <input
-                    type="password"
-                    aria-label="Clé API Anthropic"
-                    placeholder="sk-ant-…"
-                    value={apiKey}
-                    onChange={(e) => setApiKey(e.target.value)}
-                    autoComplete="off"
-                  />
-                ) : null}
+                <input
+                  type="password"
+                  aria-label="Clé API Anthropic"
+                  placeholder="sk-ant-…"
+                  value={apiKey}
+                  onChange={(e) => setApiKey(e.target.value)}
+                  autoComplete="off"
+                />
+                <label>
+                  <input type="checkbox" checked={memoriser} onChange={(e) => setMemoriser(e.target.checked)} />{' '}
+                  Mémoriser la clé dans ce navigateur
+                </label>
+                <p className="twin6-hint" data-testid="cle-reste-navigateur">
+                  {KEY_STAYS_IN_BROWSER}
+                </p>
               </div>
             ) : null}
           </fieldset>
@@ -647,7 +702,7 @@ export default function Twin6OuverteView({ lib: injectedLib, deps = {} }) {
               {nbPoles + 1} appels au modèle ({nbPoles} pôle{nbPoles > 1 ? 's' : ''} + synthèse).{' '}
               {essai
                 ? 'Essai gratuit : rien n’est débité ni conservé ; le budget du jour est commun à tous les essais.'
-                : 'Le coût réel dépend de la taille de votre portfolio et du modèle. En crédits, seul le coût réel (+10 %) est débité.'}
+                : `Le coût réel dépend de la taille de votre portfolio et du modèle. ${noteCredits(payeurCredits)}`}
             </p>
           ) : ref.status === 'loading' ? (
             <p role="status" className="twin6-note">Chargement du référentiel…</p>

@@ -261,18 +261,19 @@ final class Twin9ProtocoleTest extends CartographeTestCase
 
         // SUPERVISION (config, liste des jeux, jeu par défaut) : reste admin
         // seul — l'admin seul PASSE, le promptologue seul est refusé, et un
-        // refus n'ouvre pas la promo.
+        // refus ne change rien.
         self::assertSame(200, $this->as_($admin, 'GET', '/api/twin9/admin/config')->getStatusCode());
         self::assertSame(200, $this->as_($admin, 'GET', '/api/twin9/admin/jeux')->getStatusCode());
         self::assertSame(200, $this->as_($admin, 'PUT', '/api/twin9/admin/jeux/defaut', ['jeu' => 'essai'])->getStatusCode());
         self::assertSame(403, $this->as_($promptologue, 'GET', '/api/twin9/admin/config')->getStatusCode());
         self::assertSame(403, $this->as_($promptologue, 'GET', '/api/twin9/admin/jeux')->getStatusCode());
         self::assertSame(403, $this->as_($promptologue, 'PUT', '/api/twin9/admin/jeux/defaut', ['jeu' => 'v9.8'])->getStatusCode());
-        $putConfig = $this->as_($promptologue, 'PUT', '/api/twin9/admin/config', ['twin9_cle_perso_ouverte' => true]);
+        $putConfig = $this->as_($promptologue, 'PUT', '/api/twin9/admin/config', ['marge' => 3.0]);
         self::assertSame(403, $putConfig->getStatusCode());
-        self::assertFalse(
-            (new Twin9Config(new SettingsRepository(Db::get())))->clePersoOuverte(),
-            'the refused PUT must not have opened the promo',
+        self::assertSame(
+            1.2,
+            (new Twin9Config(new SettingsRepository(Db::get())))->marge(),
+            'the refused PUT must not have changed the contribution',
         );
     }
 
@@ -593,12 +594,12 @@ final class Twin9ProtocoleTest extends CartographeTestCase
         // 10 USD so the PayPal FIXED fee stays well below the margin.
         self::assertSame(1.2, $config['marge']);
         self::assertSame(1.1, $config['marge_twin6']);
-        self::assertFalse($config['twin9_cle_perso_ouverte']); // promo closed by default
         self::assertSame([10, 20, 50, 100, 200, 500], array_column($config['packs'], 'montant_usd'));
         // A profile asks a model for its price only: the offer's tiers, the
-        // switch, the pipeline and the rate left on 2026-10-20.
+        // switch, the pipeline and the rate left on 2026-10-20; the promotion
+        // of a free Twin9 on one's own key with the personal lane (ADR-013 §6).
         self::assertSame(['prix_usd_mtok' => [1, 5]], $config['modeles']['claude-haiku-4-5-20251001']);
-        foreach (['enabled', 'pipeline', 'appels_par_minute'] as $parti) {
+        foreach (['enabled', 'pipeline', 'appels_par_minute', 'twin9_cle_perso_ouverte'] as $parti) {
             self::assertArrayNotHasKey($parti, $config);
         }
 
@@ -609,7 +610,7 @@ final class Twin9ProtocoleTest extends CartographeTestCase
             ['marge' => 'deux'],
             ['marge_twin6' => 0.5],
             ['marge_twin6' => 5.1],
-            ['twin9_cle_perso_ouverte' => 'oui'],
+            ['twin9_cle_perso_ouverte' => true],
             ['packs' => []],
             ['packs' => [['montant_usd' => 0.5, 'libelle' => 'trop petit']]],
             ['packs' => [['montant_usd' => 750, 'libelle' => 'trop gros']]],
@@ -627,12 +628,12 @@ final class Twin9ProtocoleTest extends CartographeTestCase
         }
         self::assertSame(1.2, self::json($this->as_($admin, 'GET', '/api/twin9/admin/config'))['marge']);
 
-        // Valid partial update persists (incl. the promo toggle).
-        $response = $this->as_($admin, 'PUT', '/api/twin9/admin/config', ['marge' => 2.5, 'twin9_cle_perso_ouverte' => true]);
+        // Valid partial update persists.
+        $response = $this->as_($admin, 'PUT', '/api/twin9/admin/config', ['marge' => 2.5, 'marge_twin6' => 1.3]);
         self::assertSame(200, $response->getStatusCode(), (string) $response->getBody());
         $after = self::json($this->as_($admin, 'GET', '/api/twin9/admin/config'));
         self::assertSame(2.5, $after['marge']);
-        self::assertTrue($after['twin9_cle_perso_ouverte']);
+        self::assertSame(1.3, $after['marge_twin6']);
     }
 
     public function testPublicViewAppliesMarginAndPaypalFlag(): void

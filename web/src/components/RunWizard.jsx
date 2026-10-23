@@ -21,6 +21,11 @@
 // qui est aussi celui qu'enregistre la cartographie ; le champ « Modèle » de la
 // clé personnelle disparaît (modèle par défaut du fournisseur). Le choix du
 // référentiel reste visible dans les deux modes.
+//
+// La clé personnelle (ADR-013, règle R1 de Christian) reste dans ce
+// navigateur : l'étape « Fournisseur » le dit, propose de la mémoriser ici
+// (localStorage), et n'offre plus ni de la synchroniser sur le serveur ni de
+// l'y récupérer ; une clé gardée avant se recopie depuis « Mon compte ».
 
 import { useEffect, useMemo, useRef, useState } from 'react'
 import { createPortfolioStore } from '../lib/portfolio-store.js'
@@ -39,12 +44,11 @@ import {
   computeDayGroups,
   createProviderBundle,
   executeRun,
-  fetchKeyFromServer,
   fetchPromptPackages,
   getLocalKey,
+  KEY_STAYS_IN_BROWSER,
   makeRunId,
   setLocalKey,
-  syncKeyToServer,
 } from '../lib/run-launcher.js'
 import { loadCartoStore } from '../views/espace/carto-store-bridge.js'
 import { useUiMode } from '../lib/ui-mode.js'
@@ -71,7 +75,6 @@ function formatInt(n) {
  *    navigate, now}
  */
 export default function RunWizard({ session, deps = {} }) {
-  const connected = session.status === 'authenticated'
   // Mode d'affichage (défaut du contexte : expert, tout est proposé).
   const { expert } = useUiMode()
   const portfolioStore = useMemo(
@@ -105,8 +108,6 @@ export default function RunWizard({ session, deps = {} }) {
   const [apiKey, setApiKey] = useState('')
   const [model, setModel] = useState(PROVIDERS[0].defaultModel)
   const [rememberKey, setRememberKey] = useState(true)
-  const [syncKey, setSyncKey] = useState(false)
-  const [keyNotice, setKeyNotice] = useState(null)
 
   // (e) exécution
   const [runState, setRunState] = useState('idle')
@@ -157,7 +158,6 @@ export default function RunWizard({ session, deps = {} }) {
   useEffect(() => {
     setApiKey(getLocalKey(providerId, deps.keyStorage))
     setModel(PROVIDERS.find((p) => p.id === providerId)?.defaultModel ?? '')
-    setKeyNotice(null)
   }, [providerId, deps.keyStorage])
 
   const portfolio = portfolios?.find((p) => p.id === portfolioId) ?? null
@@ -193,17 +193,6 @@ export default function RunWizard({ session, deps = {} }) {
     prompt: referentiel !== null,
     fournisseur: mode === 'humanome' || !providerDef?.requiresKey || apiKey.trim() !== '',
     estimation: estimate !== null,
-  }
-
-  async function recoverServerKey() {
-    setKeyNotice(null)
-    try {
-      const key = await fetchKeyFromServer(providerId, { apiFetchFn })
-      setApiKey(key)
-      setKeyNotice('Clé récupérée depuis le serveur.')
-    } catch (err) {
-      setKeyNotice(err?.message ?? 'Récupération impossible.')
-    }
   }
 
   async function saveResults(document, dayDocuments, usage) {
@@ -278,12 +267,9 @@ export default function RunWizard({ session, deps = {} }) {
     controllerRef.current = controller
     setRunState('running')
     try {
-      // Mémorisation / synchronisation de la clé (opt-in, avant le run).
+      // Mémorisation de la clé dans ce navigateur (avant le run) ; jamais sur le serveur (ADR-013).
       if (mode === 'cle' && providerDef?.requiresKey) {
         if (rememberKey) setLocalKey(providerId, apiKey.trim(), deps.keyStorage)
-        if (syncKey && connected) {
-          await syncKeyToServer(providerId, apiKey.trim(), { apiFetchFn })
-        }
       }
 
       const bundle = bundleFactory({
@@ -550,31 +536,9 @@ export default function RunWizard({ session, deps = {} }) {
                       Mémoriser la clé dans ce navigateur (localStorage)
                     </label>
                   </p>
-                  <p>
-                    <label>
-                      <input
-                        type="checkbox"
-                        checked={syncKey}
-                        disabled={!connected}
-                        onChange={(event) => setSyncKey(event.target.checked)}
-                      />{' '}
-                      Synchroniser sur le serveur (chiffrée) — opt-in explicite
-                    </label>
-                    {!connected ? (
-                      <span className="field-hint">
-                        {' '}
-                        (<a href="#/compte">connectez-vous</a> pour activer la synchronisation)
-                      </span>
-                    ) : null}
+                  <p className="field-hint" data-testid="cle-reste-navigateur">
+                    {KEY_STAYS_IN_BROWSER}
                   </p>
-                  {connected ? (
-                    <p>
-                      <button type="button" className="button" onClick={recoverServerKey}>
-                        Récupérer la clé depuis le serveur
-                      </button>
-                    </p>
-                  ) : null}
-                  {keyNotice ? <p role="status">{keyNotice}</p> : null}
                 </>
               ) : (
                 <p className="field-hint">Ollama tourne en local : aucune clé requise.</p>

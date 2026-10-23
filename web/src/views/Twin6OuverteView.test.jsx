@@ -3,7 +3,6 @@ import { cleanup, render, screen, fireEvent, waitFor } from '@testing-library/re
 import Twin6OuverteView, { portfolioEnFeuilles } from './Twin6OuverteView.jsx'
 import { UiModeContext } from '../lib/ui-mode.js'
 import { createMemoryAdapter, createPortfolioStore } from '../lib/portfolio-store.js'
-import { ApiError } from '../api/client.js'
 import * as fakeLib from '../test/fake-sunburst-lib.js'
 
 afterEach(cleanup)
@@ -65,6 +64,16 @@ const LISTE = [
   { id: 'fictif-lettre', label: 'Fictif lettré', versions: [{ semver: '1.0.0', label: 'Fictif lettré' }] },
 ]
 
+/** Un localStorage en mémoire, avec la table des clés de ce navigateur (lib/local-keys.js). */
+function memoryStorage(cles = null) {
+  const data = new Map(cles ? [['humanome-keys', JSON.stringify(cles)]] : [])
+  return {
+    getItem: (k) => (data.has(k) ? data.get(k) : null),
+    setItem: (k, v) => data.set(k, String(v)),
+    removeItem: (k) => data.delete(k),
+  }
+}
+
 function baseDeps(over = {}) {
   return {
     fetchMeFn: async () => ({ user: { id: 1, roles: ['apprenant'] } }),
@@ -72,8 +81,7 @@ function baseDeps(over = {}) {
     fetchOffer: async () => OFFER,
     makeCreditsProvider: () => ({ name: 'twin6-credits', complete: async () => ({}) }),
     makeOwnKeyProvider: vi.fn(() => ({ name: 'anthropic', complete: async () => ({}) })),
-    listKeys: async () => [], // par défaut : aucune clé enregistrée
-    revealKey: vi.fn(async () => ({ apiKey: 'sk-ant-stored-key' })),
+    keyStorage: memoryStorage(), // par défaut : aucune clé mémorisée dans ce navigateur
     runEngine: vi.fn(async () => ({ document: MERGE_DOC, calls: new Array(8).fill(0) })),
     // Sans index des référentiels : aucun choix, RESPIRE (sa version publiée).
     listReferentiels: async () => [],
@@ -97,8 +105,7 @@ const PORTFOLIO_COURT = '### 2026-01-05\n---\nAujourd’hui j’ai réparé l’
 describe('Twin6OuverteView', () => {
   it('un visiteur : l’essai gratuit seul, sans offre ni clés, et l’invitation à se connecter pour les autres voies', async () => {
     const fetchOffer = vi.fn(async () => OFFER)
-    const listKeys = vi.fn(async () => [])
-    render(<Twin6OuverteView deps={baseDeps({ fetchMeFn: async () => ({ user: null }), fetchOffer, listKeys })} />)
+    render(<Twin6OuverteView deps={baseDeps({ fetchMeFn: async () => ({ user: null }), fetchOffer })} />)
 
     expect(await screen.findByLabelText(/Votre portfolio/)).toBeDefined()
     expect(screen.getByRole('radio', { name: /Essai gratuit/ }).checked).toBe(true)
@@ -108,7 +115,6 @@ describe('Twin6OuverteView', () => {
     expect(screen.getByRole('link', { name: 'Connectez-vous' }).getAttribute('href')).toBe('#/compte')
     expect(screen.getByTestId('twin6-compteur').textContent).toBe('0 / 5 000 caractères (essai gratuit)')
     expect(fetchOffer).not.toHaveBeenCalled() // /api/twin9/meta exige une session
-    expect(listKeys).not.toHaveBeenCalled()
   })
 
   it('un visiteur lance l’essai : la première preuve est résolue avant le moteur, qui reçoit le fournisseur de la démo et le document publié', async () => {
@@ -358,8 +364,11 @@ describe('Twin6OuverteView', () => {
     expect(screen.getByRole('button', { name: 'Lancer la cartographie ouverte' })).toHaveProperty('disabled', false)
   })
 
-  it('propose et lance sur la clé enregistrée au profil (sans ressaisie)', async () => {
-    const deps = baseDeps({ listKeys: async () => [{ provider: 'anthropic', createdAt: '2026-07-15' }] })
+  it('prérempli avec la clé mémorisée dans ce navigateur, il lance dessus, et ne demande jamais une clé gardée sur le serveur (ADR-013)', async () => {
+    const fetchFn = vi.fn(async () => {
+      throw new Error('aucun fetch ne doit partir sur la voie clé perso')
+    })
+    const deps = baseDeps({ keyStorage: memoryStorage({ anthropic: 'sk-ant-locale-0123456789' }), fetchFn })
     render(<Twin6OuverteView deps={deps} />)
     await screen.findByLabelText(/Votre portfolio/)
     fireEvent.change(screen.getByLabelText(/Votre portfolio/), {
@@ -367,56 +376,55 @@ describe('Twin6OuverteView', () => {
     })
     fireEvent.click(screen.getByRole('radio', { name: /Avec ma propre clé API/ }))
 
-    // Le choix « clé enregistrée » est proposé et présélectionné : aucun champ à saisir,
-    // le bouton est actif immédiatement.
-    expect(await screen.findByRole('radio', { name: /clé Anthropic enregistrée/ })).toHaveProperty('checked', true)
-    expect(screen.queryByLabelText('Clé API Anthropic')).toBeNull()
+    expect(screen.getByLabelText('Clé API Anthropic').value).toBe('sk-ant-locale-0123456789')
+    expect(screen.getByRole('checkbox', { name: 'Mémoriser la clé dans ce navigateur' }).checked).toBe(true)
     expect(screen.getByRole('button', { name: 'Lancer la cartographie ouverte' })).toHaveProperty('disabled', false)
 
     fireEvent.click(screen.getByRole('button', { name: 'Lancer la cartographie ouverte' }))
-    // La clé est révélée à la demande et passée au provider own-key.
-    await waitFor(() => expect(deps.revealKey).toHaveBeenCalledWith('anthropic', expect.anything()))
-    await waitFor(() => expect(deps.makeOwnKeyProvider).toHaveBeenCalled())
-    expect(deps.makeOwnKeyProvider.mock.calls[0][0]).toMatchObject({ apiKey: 'sk-ant-stored-key' })
     await waitFor(() => expect(deps.runEngine).toHaveBeenCalledTimes(1))
+    expect(deps.makeOwnKeyProvider.mock.calls[0][0]).toMatchObject({ apiKey: 'sk-ant-locale-0123456789' })
+    expect(fetchFn.mock.calls.map(([u]) => String(u)).filter((u) => u.includes('keys'))).toEqual([])
     // L'accès, sans rien de la clé.
     const { configuration } = deps.runEngine.mock.calls[0][0].options
     expect(configuration.acces).toBe('cle_perso')
     expect(JSON.stringify(configuration)).not.toContain('sk-ant')
   })
 
-  // Exigence : « sinon saisie manuelle + lien vers le profil » — sans clé
-  // enregistrée, la vue guide vers #/compte pour enregistrer sa clé.
-  it('sans clé enregistrée : saisie manuelle + lien « enregistrez votre clé » vers #/compte', async () => {
-    render(<Twin6OuverteView deps={baseDeps()} />) // listKeys → [] par défaut
+  // ADR-013 (R1) : « l'indiquer à l'utilisateur » — la page dit que la clé reste
+  // dans le navigateur, et ne renvoie plus vers le profil pour l'y « enregistrer ».
+  it('sans clé mémorisée : saisie, la page dit que la clé reste dans ce navigateur, plus de lien « enregistrez votre clé »', async () => {
+    render(<Twin6OuverteView deps={baseDeps()} />)
     await screen.findByLabelText(/Votre portfolio/)
     fireEvent.click(screen.getByRole('radio', { name: /Avec ma propre clé API/ }))
 
-    const link = screen.getByRole('link', { name: /enregistrez votre clé dans votre profil/ })
-    expect(link.getAttribute('href')).toBe('#/compte')
-    // La saisie manuelle reste possible, et l'option « clé enregistrée » n'est pas proposée.
-    expect(screen.getByLabelText('Clé API Anthropic')).toBeDefined()
+    expect(screen.getByLabelText('Clé API Anthropic').value).toBe('')
+    expect(screen.getByTestId('cle-reste-navigateur').textContent).toBe(
+      'Votre clé reste dans ce navigateur : humanome ne la garde jamais sur ses serveurs. Seule une école peut y ' +
+        'garder la sienne, pour ses élèves.',
+    )
+    expect(screen.queryByRole('link', { name: /enregistrez votre clé/ })).toBeNull()
     expect(screen.queryByRole('radio', { name: /clé Anthropic enregistrée/ })).toBeNull()
+    expect(screen.getByRole('checkbox', { name: 'Mémoriser la clé dans ce navigateur' }).checked).toBe(false)
   })
 
-  // Exigence : la clé enregistrée est révélée « à la demande » UNIQUEMENT —
-  // si l'utilisateur choisit de saisir une autre clé, revealKey ne doit pas être appelé.
-  it('« Saisir une autre clé » : lance sur la clé saisie, sans jamais révéler la clé du profil', async () => {
-    const deps = baseDeps({ listKeys: async () => [{ provider: 'anthropic', createdAt: '2026-07-15' }] })
-    render(<Twin6OuverteView deps={deps} />)
-    await screen.findByLabelText(/Votre portfolio/)
-    fireEvent.change(screen.getByLabelText(/Votre portfolio/), {
-      target: { value: 'Un portfolio suffisamment long pour être analysé, avec du contenu réflexif réel.' },
-    })
-    fireEvent.click(screen.getByRole('radio', { name: /Avec ma propre clé API/ }))
-
-    fireEvent.click(await screen.findByRole('radio', { name: /Saisir une autre clé/ }))
-    fireEvent.change(screen.getByLabelText('Clé API Anthropic'), { target: { value: 'sk-ant-autre-cle' } })
-    fireEvent.click(screen.getByRole('button', { name: 'Lancer la cartographie ouverte' }))
-
-    await waitFor(() => expect(deps.makeOwnKeyProvider).toHaveBeenCalled())
-    expect(deps.makeOwnKeyProvider.mock.calls[0][0]).toMatchObject({ apiKey: 'sk-ant-autre-cle' })
-    expect(deps.revealKey).not.toHaveBeenCalled()
+  it('« Mémoriser la clé dans ce navigateur » : cochée, la clé saisie s’y garde au lancement ; décochée, rien n’est écrit', async () => {
+    for (const memoriser of [true, false]) {
+      const keyStorage = memoryStorage()
+      const deps = baseDeps({ keyStorage })
+      render(<Twin6OuverteView deps={deps} />)
+      await screen.findByLabelText(/Votre portfolio/)
+      fireEvent.change(screen.getByLabelText(/Votre portfolio/), {
+        target: { value: 'Un portfolio suffisamment long pour être analysé, avec du contenu réflexif réel.' },
+      })
+      fireEvent.click(screen.getByRole('radio', { name: /Avec ma propre clé API/ }))
+      fireEvent.change(screen.getByLabelText('Clé API Anthropic'), { target: { value: 'sk-ant-saisie-0123456789' } })
+      if (memoriser) fireEvent.click(screen.getByRole('checkbox', { name: 'Mémoriser la clé dans ce navigateur' }))
+      fireEvent.click(screen.getByRole('button', { name: 'Lancer la cartographie ouverte' }))
+      await waitFor(() => expect(deps.runEngine).toHaveBeenCalledTimes(1))
+      expect(deps.makeOwnKeyProvider.mock.calls[0][0]).toMatchObject({ apiKey: 'sk-ant-saisie-0123456789' })
+      expect(keyStorage.getItem('humanome-keys')).toBe(memoriser ? JSON.stringify({ anthropic: 'sk-ant-saisie-0123456789' }) : null)
+      cleanup()
+    }
   })
 
   // Traçabilité — exigence utilisateur (credits-paypal, point 3) : « clé API
@@ -484,29 +492,6 @@ describe('Twin6OuverteView', () => {
 
   // Clé supprimée entre-temps (ou serveur en erreur) : le run échoue proprement
   // (role=alert), le moteur n'est pas lancé, et l'utilisateur peut réessayer.
-  it('échec de revealKey : erreur affichée (role=alert) et bouton de nouveau cliquable', async () => {
-    const deps = baseDeps({
-      listKeys: async () => [{ provider: 'anthropic', createdAt: '2026-07-15' }],
-      revealKey: vi.fn(async () => {
-        throw new ApiError('Aucune clé enregistrée pour ce fournisseur', 404)
-      }),
-    })
-    render(<Twin6OuverteView deps={deps} />)
-    await screen.findByLabelText(/Votre portfolio/)
-    fireEvent.change(screen.getByLabelText(/Votre portfolio/), {
-      target: { value: 'Un portfolio suffisamment long pour être analysé, avec du contenu réflexif réel.' },
-    })
-    fireEvent.click(screen.getByRole('radio', { name: /Avec ma propre clé API/ }))
-    expect(await screen.findByRole('radio', { name: /clé Anthropic enregistrée/ })).toHaveProperty('checked', true)
-
-    fireEvent.click(screen.getByRole('button', { name: 'Lancer la cartographie ouverte' }))
-
-    const alert = await screen.findByRole('alert')
-    expect(alert.textContent).toContain('Aucune clé enregistrée pour ce fournisseur')
-    expect(deps.runEngine).not.toHaveBeenCalled()
-    // Le verrou de lancement est relâché : l'utilisateur peut relancer.
-    expect(screen.getByRole('button', { name: 'Lancer la cartographie ouverte' })).toHaveProperty('disabled', false)
-  })
 })
 
 // Mode simple du site (lib/ui-mode.js, 2026-10-22) : pas de liste des modèles,

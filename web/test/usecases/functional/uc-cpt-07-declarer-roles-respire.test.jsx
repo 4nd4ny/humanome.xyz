@@ -246,6 +246,6 @@ describe('UC-CPT-07 — la section « Mes rôles RESPIRE » du profil', () => {
     expect(screen.queryByRole('alert')).toBeNull()
     expect(section().queryByRole('checkbox')).toBeNull()
     expect(screen.getByRole('region', { name: 'Profil' })).toBeDefined()
-    expect(await screen.findByText('Aucune clé enregistrée.')).toBeDefined()
+    expect(await screen.findByText('Aucune clé gardée sur le serveur.')).toBeDefined()
   })
 })

@@ -1,5 +1,7 @@
 # ADR-012 — Twin9 multi-fournisseur : chaque étape choisit son fournisseur
 
+> **Amendé par [ADR-013](ADR-013-ecoles-cles-credits.md)** : Twin9 ne part plus sur une clé personnelle ; la garde du §5 passe à la clé d'école, qui ne sert que chez Anthropic, refusée à l'enregistrement et appel par appel ailleurs.
+
 ## Statut
 
 Accepté — 2026-10-22 (plan P1-5 « multi-fournisseur » du propriétaire). Amende l'ADR-010

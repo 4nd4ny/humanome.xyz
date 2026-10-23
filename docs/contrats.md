@@ -665,9 +665,16 @@ valide et range les profils.
 - **Choix admis** (`ProfilPolicy`, T13) : un référentiel publié et, s'il est
   donné, une de ses versions publiées ; un jeu de gabarits que son
   propriétaire peut choisir (T14, §8.6 : le jeu v9.8, le jeu par défaut, ses
-  copies tant qu'il est de l'atelier) ; la clé personnelle là où
-  l'administrateur l'a ouverte, et chez Anthropic seulement : un profil dont
-  un appel part ailleurs n'admet que les clés de l'instance (ADR-012 §5) ;
+  copies tant qu'il est de l'atelier) ; la clé de l'instance — depuis
+  l'ADR-013 (§6, 2026-10-22), la clé personnelle est refusée à
+  l'enregistrement, à l'aperçu, au lancement et à la reprise (`422` « Profil
+  refusé — /cle : la clé personnelle ne sert plus aux analyses du serveur… »,
+  `ProfilPolicy::refuserClePersonnelle`), quels que soient ses fournisseurs ;
+  la valeur reste lisible dans le schéma, pour les profils et les runs gardés ;
+  ou, depuis le lot S6b (2026-10-22), la clé de l'école qui paie (`ecole`),
+  chez Anthropic seulement (`422` « Profil refusé — /cle : la clé de votre
+  école ne sert que chez Anthropic ; <étape> appelle <fournisseur> »), l'école
+  se choisissant au lancement (§15) ;
   un prix pour chaque modèle Anthropic. Au lancement, à l'aperçu et à la
   reprise s'y ajoute (`ProfilPolicy::admettreAuLancement`), pour chaque
   fournisseur que ses appels atteignent (`CallSettings::atteints()` : ses
@@ -752,7 +759,7 @@ autres fournisseurs partent toujours en direct), `parallelisme.appels_directs`
 (32 au plus), `parallelisme.journees` (journées menées de front quand aucun
 appel ne part par lots ; dès qu'un appel part par lots, toutes le sont, §8.7),
 `budget_usd` et `duree_minutes` (`null` : aucun plafond),
-`cle` (« instance » ou « personnelle », Anthropic seulement), `gabarits` (l'identifiant du jeu :
+`cle` (« instance » ; « ecole », la clé de l'école qui paie, chez Anthropic seulement, depuis le lot S6b, §15 ; « personnelle », la clé de l'utilisateur chez Anthropic, reste lisible pour un profil ou un run d'avant l'ADR-013, mais ne se choisit ni ne part plus), `gabarits` (l'identifiant du jeu :
 « v9.8 », valeur du schéma, ou le nom d'une copie, §8.6) et `referentiel`
 (`id`, et `version`, `null` pour la dernière publiée, figée dans la copie du
 profil au lancement).
@@ -1284,8 +1291,11 @@ arrêt brut assaini (§8), modèle servi gardé s'il est un identifiant. La
 clé (`RunKey::pour`, par fournisseur) : celle de l'instance, lue dans la
 variable du registre (`OPENAI_API_KEY`, `MISTRAL_API_KEY`, `GOOGLE_API_KEY`,
 `XAI_API_KEY`, `OPENROUTER_API_KEY`, des secrets de `api/config/app.php`) ;
-une clé personnelle, chez Anthropic seulement, refusée appel par appel pour
-tout autre fournisseur.
+pour les lots d'un run lancé avant l'ADR-013 sur la clé personnelle — run
+qui s'arrête à sa première tranche depuis (revue du lot S6b) —, celle que son
+propriétaire avait gardée, chez Anthropic seulement, pour les relever puis les
+supprimer, refusée pour tout autre fournisseur ; plus aucun réglage
+d'administration ne la conditionne (`twin9_cle_perso_ouverte` est parti).
 
 ### 8.2 L'empreinte des réglages
 
@@ -1305,8 +1315,11 @@ des lecteurs sur un lecteur — n'y entre pas
 (§8.7) : un profil tout Anthropic garde ses empreintes, que
 `EmpreintesFigeesTest` fige. Celui du second ressort y entre toujours, sans
 quoi deux profils dont les appels partent chez deux fournisseurs
-partageraient une empreinte (ADR-012 §2). Les sorties gardent l'empreinte de
-la v9.8.
+partageraient une empreinte (ADR-012 §2). `cle` n'est pas un réglage d'appel :
+ni l'empreinte ni la signature des évaluations ne la lisent, et passer de la
+clé personnelle à celle de l'instance (ADR-013 §6) ne change l'empreinte
+d'aucun profil, ni sa mémoire, ni ses prévisions (UC-APP-10-U27). Les sorties
+gardent l'empreinte de la v9.8.
 
 ### 8.3 La voie par lots (T8)
 
@@ -1772,8 +1785,8 @@ une suivante le relève.
   nomme un jeu que son propriétaire ne peut plus choisir (un ancien jeu par
   défaut, une copie de quelqu'un sorti de l'atelier), il est refusé, à
   l'enregistrement comme au lancement (`422` « … ce jeu de gabarits ne vous
-  est pas proposé »), comme l'est une clé personnelle que l'administrateur a
-  fermée, jusqu'à ce qu'il en choisisse un autre ; la page Configuration le
+  est pas proposé »), comme l'est la clé personnelle depuis l'ADR-013,
+  jusqu'à ce qu'il en choisisse un autre ; la page Configuration le
   montre, sans le proposer.
 - **Dans un run** : l'instantané est le jeu du profil
   (`ProtocoleRepository::jeu`), son attestation en garde le nom et la version
@@ -2096,8 +2109,13 @@ refusée ; fixture inventée `schemas/fixtures/twin9-configuration-exemple.json`
     (`CallSettings::empreinte`, §8.2, celle de la plateforme du lancement),
     `signature_evaluations` (`Evaluations::signature`, §8.7) ;
   - `execution_prevue` : `voie_anthropic` (la voie du profil), `cle`
-    (`instance` ou `personnelle`, jamais la clé), `parallelisme`,
+    (`instance`, `ecole` ou `personnelle`, jamais la clé), `payeur`
+    (`personnel` ou `ecole`, depuis le lot S6b : qui paie le run, jamais la
+    marge ni la surtaxe ; absent des runs d'avant), `parallelisme`,
     `plafonds {budget_usd, duree_minutes}`, `jours`, `rescan`, `memoire` ;
+    les prix (`prix.grille`) sont ceux que paie son payeur : la marge de
+    l'instance pour un particulier, le facteur de son école quand elle paie
+    (1 + sa surtaxe sur son crédit, 1,0 sur sa clé) ;
   - `fournisseurs` : chaque fournisseur qu'atteignent ses appels
     (`CallSettings::combinaisons()` : ses étapes et ses lecteurs, jamais
     l'étage des lecteurs seul ni une étape que le profil ne connaît pas),
@@ -2178,7 +2196,7 @@ refusée ; fixture inventée `schemas/fixtures/twin9-configuration-exemple.json`
   et dans l'export (§8.5), où chacune est omise quand elle est nulle. Un
   cartographe lié (visibilité `cartographe`) les lit sans ce que paie le
   propriétaire ni comment : ni `prix`, ni `execution_prevue.plafonds`, ni
-  `execution_prevue.cle`, ni aucun `cout_microusd`, ni le `budget_usd` des
+  `execution_prevue.cle`, ni `execution_prevue.payeur`, ni aucun `cout_microusd`, ni le `budget_usd` des
   reprises ; ni le `sel` de l'empreinte. L'administrateur n'en voit rien
   (§8.4 : des compteurs).
 - **La page du run** (`web/src/views/twin9/ConfigurationDuRun.jsx`), celle
@@ -2863,3 +2881,124 @@ n'est pas visible ici : le recours reste « Renvoyer le code ».
 ses séries `parJour` sont en journées UTC (2026-10-23, UC-ADM-06 RG1), comme
 les budgets journaliers et le mois des crédits offerts ; la forme de la
 réponse ne change pas.
+
+## 14. Les clés et l'achat de crédits (sprint 6, S6a, ADR-013)
+
+Depuis le 2026-10-22, la clé d'un utilisateur reste dans son navigateur
+(`localStorage['humanome-keys']`, `web/src/lib/local-keys.js`) et seule une
+école achète des crédits. Ce que l'API en dit :
+
+- **`PUT /api/keys`** : `410 {error, detail}` à tout compte, le corps jamais
+  lu ; `error` = « Vos clés restent dans votre navigateur : humanome ne les
+  garde plus sur ses serveurs. », `detail` renvoie une école à son espace
+  établissement, un autre compte à son navigateur.
+- **`GET /api/keys`** : `[{provider, createdAt, avisPurgeAt}]` — les clés
+  gardées avant, « à supprimer » ; `avisPurgeAt` (ISO, sans fuseau) est la
+  date de l'avis de purge, `null` avant (migration 036). Jamais de matériau
+  de clé. `GET /api/keys/{provider}` (`{apiKey}`, `no-store`) et `DELETE`
+  restent, pour recopier puis supprimer.
+- **`GET /api/twin9/meta`** : `{modeles_twin6, packs, referentiel,
+  paypalConfigured, solde_microusd, peut_acheter, achat_pourquoi}` ;
+  `peut_acheter` est vrai pour un compte qui a l'habilitation `etablissement`,
+  `achat_pourquoi` dit pourquoi aux autres (`null` pour une école) ;
+  `cle_privee_disponible` est parti (la page ne le lisait plus que pour
+  proposer de garder une clé).
+- **`GET /api/twin9/configuration`** : plus de `cle_perso_ouverte` ni de
+  `cle_perso_enregistree`.
+- **`POST /api/twin9/credit/paypal/creer`, `/capturer`** : `403 {error: "Seule
+  une école achète des crédits.", detail}` à un compte sans l'habilitation,
+  avant le rythme et avant PayPal ; la capture la relit.
+- **`twin9_config`** : `twin9_cle_perso_ouverte` est une clé inconnue
+  (`422`) ; stockée avant, elle est ignorée à la lecture et part au prochain
+  enregistrement (la contraction l'effacera, ADR-008).
+- **Le profil** : `cle` — voir §7 et §7.1 ; aucune réécriture des profils
+  gardés, aucune empreinte changée (§8.2).
+
+## 15. L'école paie pour ses élèves (sprint 6, S6b, ADR-013)
+
+Depuis le 2026-10-22, l'école — le compte qui porte l'habilitation
+`etablissement` — paie les usages payants de ses élèves, les membres de ses
+cohortes : l'analyse approfondie (Twin9) et la cartographie ouverte sur
+crédits (Twin6). Ce que l'API en dit :
+
+- **`GET /api/etablissement/ecole`** (école) : `{surtaxePct, surtaxeMin: 3.5,
+  surtaxeMax: 10, plafondEleveMicrousd, respireNumero, creditMicrousd,
+  cles: [{fournisseur, poseeLe}], chiffrementDisponible, mois: "YYYY-MM",
+  depenseMoisMicrousd, eleves: [{userId, displayName, cohortes: [noms],
+  membre, moisMicrousd, totalMicrousd}]}` — jamais une clé, des montants
+  seulement. `PUT` `{surtaxePct?, plafondEleveUsd?}` (surtaxe de 3,5 à 10 au
+  centième ; plafond en dollars, de 0 à 100 000, au centime ; un champ absent
+  est gardé ; `422 {error, fields}`) rend la même page. `PUT …/ecole/cle`
+  `{cle, fournisseur?: "anthropic"}` (`422` hors Anthropic, clé vide, avec un
+  espace ou de plus de 400 caractères ; `503` sans clé maîtresse) ; `DELETE
+  …/ecole/cle/{fournisseur}` → `204`, `404` sans clé.
+- **`payeur`** — dans `POST /api/twin9/runs/apercu`, `POST /api/twin9/runs`,
+  `POST /api/twin9/runs/{id}/reprendre` et `POST /api/twin6/appel` : absent ou
+  `null`, le défaut (sa seule école ; sans école, son solde) ; `"personnel"`,
+  son solde restant ; l'identifiant d'une de ses écoles. `422` : plusieurs
+  écoles sans choix (« Choisissez qui paie cette analyse : vous êtes membre
+  de plusieurs écoles »), une école dont il n'est pas membre, une valeur mal
+  formée, la clé d'école sans école ou sans clé posée, `"personnel"` envoyé
+  par une école (« Une école paie ses usages sur son crédit d'école, à sa
+  surtaxe : choisissez votre école »). Le payeur décide aussi de la voie d'un
+  run Twin9 : une école qui a sa clé Anthropic paie avec elle (facteur 1,0)
+  un run qui n'appelle qu'Anthropic, même sur un profil `cle: "instance"`, le
+  défaut — l'aperçu et la copie du profil du run disent alors
+  `cle: "ecole"` ; à une reprise qui nomme son payeur, un run sur la clé d'une
+  école la garde si l'école choisie en a une, sinon repasse sur la clé de
+  l'instance ; un run sur la clé de l'instance y reste (son accord ne nommait
+  pas la Console d'une école).
+- **`GET /api/twin9/meta`** gagne `payeurs` : pour chacune de ses écoles
+  `{type: "ecole", id, nom, soi, cle (une clé posée), mois, plafond_microusd,
+  engage_microusd, reste_credit_microusd (son plafond restant),
+  reste_cle_microusd (le même : son plafond restant), credit_suffisant (le
+  crédit de l'école couvre-t-il ce plafond restant ? un booléen, jamais le
+  montant ; revue du lot S6b : le reste n'est plus borné par ce crédit, ce
+  qui le disait chaque fois qu'il était le plus bas)}`
+  — `plafond_microusd`, `engage_microusd` et `reste_cle_microusd` nuls pour
+  une école elle-même, dont `reste_credit_microusd` est son crédit, sans
+  `credit_suffisant` —, puis `{type: "personnel", solde_microusd}` quand il a
+  un solde ou aucune école (jamais pour une école). Jamais le crédit d'une
+  école à son élève.
+- **L'aperçu d'un run** gagne `payeur` (`{type: "ecole", id, nom, soi}` ou
+  `{type: "personnel"}`) et `payeurs` ; `credit_usd` est nul quand une école
+  paie ; `admission.limite` peut valoir `plafond` (ce qui reste du plafond de
+  l'élève ce mois-ci), et `autres_usd` vaut 0 quand une école paie pour lui.
+  **Le suivi d'un run** (`GET /api/twin9/runs/{id}`) gagne `payeur` de même
+  (le nom de l'école, jamais son crédit ni sa surtaxe). Ses arrêts nouveaux,
+  dans `attente` : « plafond de votre école atteint : carte incomplète »,
+  « crédit de votre école insuffisant : carte incomplète » (et leurs
+  variantes « (fusion réservée) », « (engagé par d'autres analyses) »),
+  « votre école ne paie plus cette analyse » (et « … : elle a retiré sa
+  clé »).
+- **`POST /api/twin6/appel`** : un appel payé par l'école d'un élève est
+  réservé sur son plafond du mois puis sur le crédit de l'école à ×
+  (1 + surtaxe) — ou part sur la clé de l'école, à son prix de grille ;
+  `cout_microusd` est ce qu'a payé l'école. Refus : `402 {error: "Plafond de
+  votre école atteint pour ce mois", code: "plafond", reste_microusd,
+  requis_estime_microusd}`, `402 {error: "Crédit de votre école insuffisant",
+  code: "credit_ecole", requis_estime_microusd}` (sans `solde_microusd`).
+- **Le profil** : `cle` admet `ecole` (§7) ; **la configuration du run**
+  `execution_prevue.payeur` (§8.9) ; **le consentement d'une cohorte**
+  (`GET /api/etablissement/cohortes/{id}`, `consentement`) dit désormais « …
+  et le montant de ce qu'il paie pour vos analyses (jamais leur contenu sur
+  humanome ; s'il les paie avec sa propre clé Anthropic, les résultats des
+  appels partis par lots restent lisibles dans sa Console Anthropic). »
+  (revue du lot S6b : la Console nommée).
+- **`GET /api/etablissement/ecole`** gagne `partis` `{nombre, moisMicrousd,
+  totalMicrousd}` : ce qu'ont engagé, ensemble, les élèves qui ont quitté ses
+  cohortes — jamais qui ; `eleves` ne liste plus que les membres de ses
+  cohortes, et `depenseMoisMicrousd` compte les deux (revue du lot S6b).
+- **La base** (migration 037) : `ecoles`, `ecole_cles`, `ecole_consommations`,
+  `twin9_runs.payeur` / `payeur_id` / `facteur_prix`,
+  `twin9_credit_events.beneficiaire_id`, `twin9_appels.mois_reserve`,
+  `twin9_lots.cle = "ecole"`, `twin9_lots_a_effacer.ecole_id` ; des
+  expansions, dont la release précédente lit le schéma sans erreur, mais pas
+  les données (un run payé par une école y passerait pour celui de son
+  élève) : avant un retour arrière par-dessus 037, la procédure de
+  `docs/administration.md`.
+- **Ce qui ne change pas** : les runs de masse (ADR-013 §4 : leur
+  facturation après coup jusqu'à un lot à part), la cartographie ouverte sur
+  la clé du navigateur, la démonstration et le tuteur (les crédits offerts,
+  §13) ; aucune empreinte de profil ni signature d'évaluation (§8.2).
+

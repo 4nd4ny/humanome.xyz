@@ -33,7 +33,6 @@ function routedFetch(routes) {
 const CONFIG = {
   marge: 1.2,
   marge_twin6: 1.1,
-  twin9_cle_perso_ouverte: false,
   packs: [{ montant_usd: 10, libelle: 'Pack découverte — 10 $' }],
   modeles: {
     'modele-fictif-a': { prix_usd_mtok: [1, 5] },
@@ -106,21 +105,10 @@ describe('Twin9Section — réglages', () => {
     expect(alert.textContent).toMatch(/hors bornes/)
   })
 
-  it('permet d’activer la promo (Twin9 gratuit en clé perso) via un diff', async () => {
-    let putBody = null
-    await renderReady({
-      ...baseRoutes,
-      'PUT api/twin9/admin/config': (init) => {
-        putBody = JSON.parse(init.body)
-        return jsonResponse(200, { ...CONFIG, twin9_cle_perso_ouverte: true })
-      },
-    })
-
-    fireEvent.click(screen.getByLabelText(/Twin9 gratuit avec la clé perso/))
-    fireEvent.click(screen.getByRole('button', { name: 'Enregistrer les réglages' }))
-
-    await screen.findByText('Réglages Twin9 enregistrés.')
-    expect(putBody).toEqual({ twin9_cle_perso_ouverte: true })
+  it('ne propose plus la promotion « Twin9 gratuit avec sa propre clé » (ADR-013) et dit que seules les écoles achètent', async () => {
+    await renderReady(baseRoutes)
+    expect(screen.queryByLabelText(/Twin9 gratuit avec la clé perso/)).toBeNull()
+    expect(screen.getByText(/Seules les écoles achètent des crédits \(ADR-013\)/)).toBeDefined()
   })
 
   it('ajoute un pack et l’envoie dans le diff', async () => {

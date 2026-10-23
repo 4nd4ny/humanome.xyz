@@ -7,7 +7,7 @@
 | **Portée** | humanome.xyz — listes « Interface » et « Thème » au bas du menu (sous « Mode expert ») et dans la ligne « Affichage » de `#/compte` ; bascule soleil/lune de l'en-tête (UC-VIS-04 A5) ; choix gardés dans le navigateur (`localStorage` `humanome-interface`, `humanome-theme`), posés sur `<html>` (`data-interface`, `data-theme`) avant le premier rendu par le script anti-FOUC de `web/index.html` ; sans API |
 | **Niveau** | Objectif utilisateur |
 | **Cahier des charges** | Sprint 9 (TODO_LIST, charte graphique) : décision de Christian du 2026-10-23 — « Les trois propositions d'interface sont excellentes. Nous allons les conserver toutes les trois » —, chacune nommée d'après une filière : épistémiarque (proposition A), noèsiologue (B), technomancien (C) |
-| **Statut** | Implémenté (lot S9-1, 2026-10-23 : jetons de couleur, sélecteur, persistance ; lot S9-2 : polices et échelle typographique de chaque interface, couleurs littérales hors données passées aux jetons) |
+| **Statut** | Implémenté (lot S9-1, 2026-10-23 : jetons de couleur, sélecteur, persistance ; lot S9-2 : polices et échelle typographique de chaque interface, couleurs littérales hors données passées aux jetons ; lot S9-3 : contrastes prouvés sur les règles des feuilles du site, anneau de focus de l'interface, bordures de champ à 3:1, captures) ; décision : [ADR-014](../../decisions/ADR-014-trois-interfaces.md) |
 
 ## Objectif
 
@@ -117,6 +117,16 @@ Aucune. Les réglages fonctionnent sans compte ni API.
   (blanc, ou encre sombre quand l'aplat s'éclaircit en sombre), les
   bandeaux d'état les jetons d'état ; le lecteur de timeline, posé sur la
   surface claire de la visualisation, en prend les encres (`--viz-*`).
+- **RG7** — Contrastes en usage (lot S9-3) : dans les neuf contextes, chaque
+  règle des feuilles du site qui pose un texte sur un fond atteint 4,5:1
+  (3:1 pour un grand texte : aucune règle n'en a besoin) ; l'anneau de focus
+  est celui de l'interface (`--focus` : bleu de Prusse, violet ou cyan, 2 px
+  décalés de 2 px, sur les liens, boutons, résumés, éléments focalisables
+  et champs), ou l'encre de la visualisation sur sa surface claire, et il
+  atteint 3:1 sur tout fond où il peut tomber ; la zone du diagramme et la
+  feuille imprimable, claires dans les deux thèmes, posent leur propre
+  anneau ; chaque champ (`input`, `select`, `textarea`) est bordé de
+  `--line-strong` (3:1), jamais du filet décoratif `--line`.
 - **RG5** — Les couleurs de données (familles d'intention, séries du
   monitoring, surface des visualisations, badges gratuit / premium, pôles et
   palettes de la cartographie) ne dépendent pas de l'interface.
@@ -147,6 +157,7 @@ Aucune. Les réglages fonctionnent sans compte ni API.
 | Front | `web/src/views/AccountView.jsx` — `DisplayModeRow` | Ligne « Affichage » (A4) |
 | Front | `web/src/styles/global.css` — jetons `--ds-*` des trois interfaces, alias, `.display-select` | Couleurs des interfaces (RG4, RG5) ; listes de 44 px |
 | Front | `web/src/styles/global.css` — `@font-face` et blocs typographiques `html[data-interface]` ; `web/public/fonts/<famille>/` (woff2 Fontsource et `OFL.txt`) | Polices et échelle de chaque interface (RG6) |
+| Front | `web/src/styles/global.css` (règle de focus commune, `.diagram-zone`, champs), `web/src/carto/ui/carto.css` (anneaux de la cartographie, `.carto-print-sheet`, champs), `configuration.css`, `twin9-credit.css` (champs) | Anneau de focus de l'interface, bordures de champ (RG7) |
 
 ## Jeux de tests
 
@@ -160,8 +171,11 @@ Aucune. Les réglages fonctionnent sans compte ni API.
 | UC-VIS-07-U04 | `global.css` | Neuf contextes au même jeu de jetons `--ds-*` ; copies sombres identiques ; trois interfaces distinctes (RG4) | idem |
 | UC-VIS-07-U05 | `global.css` | Variables historiques en alias des jetons, jamais redéfinies par une interface ; couleurs de données identiques dans les trois interfaces (RG5) | idem |
 | UC-VIS-07-U06 | `global.css` | Contrastes WCAG dans les neuf contextes : texte 4,5:1, texte sur l'aplat d'accent 4,5:1, bordure de commande, focus et aplat 3:1 (RG4) | idem |
-| UC-VIS-07-U07 | `DisplaySelects` | Deux listes nommées, options dans l'ordre, valeurs du contexte, précision annoncée, aucun groupe ; un changement appelle le réglage seul (étapes 2 et 3) | idem |
+| UC-VIS-07-U07 | `DisplaySelects` | Deux listes nommées, options dans l'ordre, valeurs du contexte, précision annoncée, aucun groupe ; un changement appelle le réglage seul ; l'intitulé ne se coupe pas au milieu du mot (étapes 2 et 3, A4) | idem |
 | UC-VIS-07-U08 | Feuilles du site (`global.css`, `configuration.css`, `carto.css`, `twin9-credit.css`, `timeline.css`…) | Aucun texte blanc écrit en dur hors impression ; sur l'aplat d'accent, l'encre est `--on-accent` ; plus aucune couleur littérale dans `timeline.css` ni `twin9-credit.css` (RG4) | idem |
+| UC-VIS-07-U09 | Feuilles du site | Chaque règle qui pose un texte sur un fond (143) : 4,5:1, 3:1 pour un grand texte, dans les neuf contextes ; couleurs posées par élément (pôles, couleurs calculées, familles, tuiles V3) hors de l'interface ; règles de `carto.css` sur la surface de la cartographie (sombre avec le site) ou sur la feuille imprimable (RG7, RG5) | idem |
+| UC-VIS-07-U10 | Feuilles du site | Chaque règle `:focus` (13 anneaux) trace `--focus`, ou `--viz-ink` sur la visualisation ; 3:1 sur le fond, la carte, la surface secondaire, l'encart d'information et la surface de la cartographie ; règle commune étendue aux champs ; `--focus` de la zone du diagramme et de la feuille imprimable (RG7) | idem |
+| UC-VIS-07-U11 | Feuilles du site | Chaque champ (36 bordures) en `--line-strong`, ou en couleur de danger s'il est invalide ; deux champs sans cadre à dessein au plus ; `--line-strong` à 3:1 sur le fond, la carte et la surface secondaire (RG7) | idem |
 
 ### Tests fonctionnels
 
@@ -199,11 +213,28 @@ cd web && npx vitest run test/usecases/unit/uc-vis-07 test/usecases/functional/u
 - **Persistance par navigateur** : comme le mode d'affichage (UC-VIS-06), le
   choix ne suit pas le compte d'un appareil à l'autre.
 - **Affichage réel** : jsdom n'applique pas les styles ; les contrastes sont
-  calculés sur les jetons, pas mesurés à l'écran. Vérifié à la main le
-  2026-10-23 dans Chromium, sur le bundle construit servi sous la CSP de
-  production : les trois interfaces × (sans choix, clair, sombre) × système
-  clair ou sombre, plus une valeur inconnue, posent les bons attributs et les
-  bonnes couleurs avant le bundle, sans violation de CSP.
+  calculés sur les jetons et sur les règles qui les emploient, pas mesurés à
+  l'écran : un texte posé sur un fond hérité d'un parent n'est couvert qu'au
+  niveau des jetons (U06). Vérifié à la main le 2026-10-23 dans Chromium, sur
+  le bundle construit servi sous la CSP de production : les trois interfaces
+  × (sans choix, clair, sombre) × système clair ou sombre, plus une valeur
+  inconnue, posent les bons attributs et les bonnes couleurs avant le bundle,
+  sans violation de CSP.
+- **Captures (lot S9-3, 2026-10-23)** : script Playwright temporaire (hors du
+  dépôt), sur le serveur de développement, API simulée (un compte inventé
+  pour `#/compte`) ; le choix est posé dans le stockage avant tout script,
+  donc par le vrai chemin du script anti-FOUC. Accueil, cartographie de
+  démonstration et `#/compte`, à 375 et 1 280 px, en clair et en sombre,
+  pour chaque interface : 36 images, gardées hors du dépôt. Sur chacune, les
+  bons attributs, aucun débordement horizontal, aucune erreur de page, et
+  seules les polices de l'interface chargées. Elles ont montré l'intitulé
+  « Interface » coupé en « Interfac / e » à 375 px (corrigé, U07) ; reste,
+  non corrigé ici, « Apprenant » coupé en « Apprena / nt » dans la ligne
+  « Habilitations » de `#/compte` à 375 px, dans les trois interfaces : la
+  ligne et sa règle (le `dd` coupe partout, pour les longues adresses) sont
+  antérieures au sprint 9 ; le rendu d'avant n'a pas été capturé.
+- **Anneau de focus** : 2 px partout ; les propositions A et B en prévoyaient
+  3. Le contraste élevé (`forced-colors`) n'a pas de règle propre.
 - **Couleurs laissées hors des jetons, à dessein** : les couleurs de données
   (RG5 : surface sombre et encres de la cartographie `--viz-*` / `--hm-*` de
   `carto.css`, surlignages des traces, comparaison, jauges de confiance,
@@ -217,4 +248,7 @@ cd web && npx vitest run test/usecases/unit/uc-vis-07 test/usecases/functional/u
 
 ## Anomalies constatées
 
-Aucune.
+Aucune en production (rien n'est déployé). Trouvés et corrigés avant
+livraison par les tests du lot S9-3 : anneaux de focus à la couleur de
+l'accent, 34 champs bordés du filet décoratif (1,2 à 1,6:1), badge « env »
+de l'administration à 4,26:1 sur le fond d'alerte de l'épistémiarque.

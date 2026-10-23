@@ -552,10 +552,11 @@ describe('Twin9View — le référentiel choisi au lancement (S5, lot C)', () =>
     const navigate = vi.fn()
     render(<Twin9View deps={{ fetchFn, store: await bibliotheque(), navigate }} />)
     await screen.findByRole('button', { name: 'Lancer l’analyse' })
-    expect(options()).toEqual(['Celui du profil (RESPIRE v7)', 'RESPIRE v7', 'Fictif lettré', 'Fictif à neuf pôles 1.0.0 (brouillon, run d’essai)'])
+    // le référentiel du profil n'est proposé qu'une fois : « Celui du profil »
+    expect(options()).toEqual(['Celui du profil (RESPIRE v7)', 'Fictif lettré', 'Fictif à neuf pôles 1.0.0 (brouillon, run d’essai)'])
     expect(screen.getByLabelText('Référentiel').value).toBe('')
     fireEvent.change(screen.getByLabelText('Profil'), { target: { value: '3' } })
-    expect(options()[0]).toBe('Celui du profil (Fictif lettré)')
+    expect(options()).toEqual(['Celui du profil (Fictif lettré)', 'RESPIRE v7', 'Fictif à neuf pôles 1.0.0 (brouillon, run d’essai)'])
     fireEvent.change(screen.getByLabelText('Profil'), { target: { value: '' } })
 
     fireEvent.click(screen.getByRole('checkbox', { name: /J’accepte que mon portfolio/ }))
@@ -613,7 +614,7 @@ describe('Twin9View — le référentiel choisi au lancement (S5, lot C)', () =>
     await screen.findByRole('button', { name: 'Lancer l’analyse' })
     expect(screen.queryByLabelText('Référentiel')).toBeNull()
     rerender(vue(true, seul))
-    expect(options()).toEqual(['Celui du profil (RESPIRE v7)', 'RESPIRE v7', 'Fictif à neuf pôles 1.0.0 (brouillon, run d’essai)'])
+    expect(options()).toEqual(['Celui du profil (RESPIRE v7)', 'Fictif à neuf pôles 1.0.0 (brouillon, run d’essai)'])
     cleanup()
 
     const deux = fetchFn(REFERENTIELS)
@@ -623,11 +624,54 @@ describe('Twin9View — le référentiel choisi au lancement (S5, lot C)', () =>
     fireEvent.click(screen.getByRole('checkbox', { name: /J’accepte que mon portfolio/ }))
     await waitFor(() => expect(corps.at(-1)).toEqual({ id: 'fictif-neuf', version: '1.0.0' }))
     r.rerender(vue(false, deux))
-    expect(options()).toEqual(['Celui du profil (RESPIRE v7)', 'RESPIRE v7', 'Fictif lettré'])
+    // deux référentiels publiés, dont celui du profil : le menu reste, avec l'autre
+    expect(options()).toEqual(['Celui du profil (RESPIRE v7)', 'Fictif lettré'])
     expect(screen.getByLabelText('Référentiel').value).toBe('')
     await waitFor(() => expect(corps.at(-1)).toBeNull())
     fireEvent.change(screen.getByLabelText('Référentiel'), { target: { value: 'fictif-lettre' } })
     await waitFor(() => expect(corps.at(-1)).toEqual({ id: 'fictif-lettre', version: null }))
+  })
+
+  it('un profil qui fige une version de son référentiel : rien ne la change au lancement, et le libellé la dit', async () => {
+    const corps = []
+    let envoye = null
+    const fetchFn = routedFetch({
+      'GET api/twin9/runs': jsonResponse(200, { disponible: true, runs: [] }),
+      'GET api/twin9/configuration': configuration({
+        profils: [
+          { id: 4, nom: 'RESPIRE figé', fournisseurs: [ANTHROPIC_LOTS], referentiel: { id: 'respire', version: '7.0.0' } },
+          { id: 3, nom: 'Lettré', fournisseurs: [ANTHROPIC_LOTS], referentiel: { id: 'fictif-lettre', version: null } },
+        ],
+        referentiels: [{ ...REFERENTIELS[0], versions: ['7.1.0', '7.0.0'] }, REFERENTIELS[1]],
+      }),
+      'POST api/twin9/runs/apercu': (init) => {
+        corps.push(JSON.parse(init.body))
+        return jsonResponse(200, apercu())
+      },
+      'POST api/twin9/runs': (init) => {
+        envoye = JSON.parse(init.body)
+        return jsonResponse(201, run())
+      },
+    })
+    const navigate = vi.fn()
+    render(<Twin9View deps={{ fetchFn, store: await bibliotheque(), navigate }} />)
+    await screen.findByRole('button', { name: 'Lancer l’analyse' })
+    fireEvent.change(screen.getByLabelText('Profil'), { target: { value: '4' } })
+    // aucune autre option ne lit RESPIRE à sa dernière version publiée
+    expect(options()).toEqual(['Celui du profil (RESPIRE v7, version 7.0.0)', 'Fictif lettré'])
+    // un choix de RESPIRE fait pour un autre profil retombe sur celui du profil, sa version figée
+    fireEvent.change(screen.getByLabelText('Profil'), { target: { value: '3' } })
+    fireEvent.change(screen.getByLabelText('Référentiel'), { target: { value: 'respire' } })
+    fireEvent.change(screen.getByLabelText('Profil'), { target: { value: '4' } })
+    expect(screen.getByLabelText('Référentiel').value).toBe('')
+    fireEvent.click(screen.getByRole('checkbox', { name: /J’accepte que mon portfolio/ }))
+    await waitFor(() => expect(corps).toHaveLength(1))
+    expect(corps[0]).not.toHaveProperty('referentiel')
+    await waitFor(() => expect(screen.getByRole('button', { name: 'Lancer l’analyse' }).disabled).toBe(false))
+    fireEvent.click(screen.getByRole('button', { name: 'Lancer l’analyse' }))
+    await waitFor(() => expect(navigate).toHaveBeenCalledWith('#/twin9/7'))
+    expect(envoye).not.toHaveProperty('referentiel')
+    expect(envoye.profil).toBe(4)
   })
 })
 

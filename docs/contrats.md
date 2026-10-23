@@ -1403,11 +1403,15 @@ une suivante le relève.
   `jury.par_competence` (par code), réglés pour le référentiel du profil,
   sont vidés dans la copie (`{}`, leur défaut) ; l'aperçu nomme ceux qu'il
   a vidés (`jury_retire`). La page de lancement (`#/twin9`) propose un menu
-  « Référentiel » : « Celui du profil » par défaut, chaque référentiel
-  publié (sa dernière version, `version` nulle) et, en mode expert, ses
-  brouillons ; toujours en mode expert, en mode simple dès que plus d'un
-  référentiel est publié. Elle n'envoie `referentiel` que pour un autre
-  choix que celui du profil.
+  « Référentiel » : « Celui du profil » par défaut (sa version figée dans
+  le libellé, quand le profil en fige une), chaque autre référentiel
+  publié (sa dernière version, `version` nulle) et, en mode expert, les
+  brouillons de chacun ; toujours en mode expert, en mode simple dès que
+  plus d'un référentiel est publié. Le référentiel du profil n'est pas
+  proposé une seconde fois : choisi ainsi, il lirait sa dernière version
+  publiée au lieu de celle que le profil fige, sans que la garde du jury
+  joue (l'identifiant est le même). Elle n'envoie donc `referentiel` que
+  pour un autre choix que celui du profil.
 - **Le portfolio envoyé** (sprint 4, T0 ; journal de la cartographie
   D-73). Le moteur découpe le texte à sa façon (`Twin_v9/php/src/Portfolio.php` :
   un titre `##` ou `###` qui porte une date, sinon une date Google Docs,

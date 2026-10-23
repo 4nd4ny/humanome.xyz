@@ -446,17 +446,21 @@ function Lancer({ deps }) {
   }, [accord, cleAccord])
 
   // Le référentiel (S5, lot C) : celui du profil, ou un autre ; en mode simple, ni brouillon ni menu tant qu'un seul
-  // référentiel est publié. Un choix que le menu ne propose plus (un brouillon, en mode simple) retombe sur le profil.
-  const optionsReferentiel = choixReferentiels(donnees?.referentiels, expert)
-  const publies = optionsReferentiel.filter((o) => o.version === null).length
-  const menuReferentiel = expert ? optionsReferentiel.length > 0 : publies > 1
+  // référentiel est publié. Celui du profil, à sa version (figée ou la dernière), est « Celui du profil » : il n'est
+  // pas proposé une seconde fois, où il lirait la dernière version publiée (ses brouillons, oui). Un choix que le menu
+  // ne propose plus (un brouillon en mode simple, le référentiel du profil choisi) retombe sur le profil.
+  const tousLesReferentiels = choixReferentiels(donnees?.referentiels, expert)
+  const publies = tousLesReferentiels.filter((o) => o.version === null).length
+  const menuReferentiel = expert ? tousLesReferentiels.length > 0 : publies > 1
+  const duProfil =
+    profilEffectif === '' ? donnees?.defautReferentiel : donnees?.profils.find((p) => String(p.id) === profilEffectif)?.referentiel
+  const optionsReferentiel = tousLesReferentiels.filter((o) => !(o.version === null && o.id === duProfil?.id))
   const referentielChoisi = menuReferentiel ? (optionsReferentiel.find((o) => o.valeur === referentiel) ?? null) : null
   const choixRef = referentielChoisi ? { id: referentielChoisi.id, version: referentielChoisi.version } : null
   const cleReferentiel = referentielChoisi?.valeur ?? ''
-  const duProfil =
-    profilEffectif === '' ? donnees?.defautReferentiel : donnees?.profils.find((p) => String(p.id) === profilEffectif)?.referentiel
   const nomDuProfil = duProfil?.id
-    ? (optionsReferentiel.find((o) => o.id === duProfil.id && o.version === null)?.libelle ?? duProfil.id)
+    ? `${tousLesReferentiels.find((o) => o.id === duProfil.id && o.version === null)?.libelle ?? duProfil.id}` +
+      (duProfil.version ? `, version ${duProfil.version}` : '')
     : null
 
   // Avant de lancer, l'accord donné : ce que le run instruirait, et ce qu'il coûterait.

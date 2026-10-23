@@ -455,7 +455,7 @@ describe('UC-APP-10 — l’apprenant lance une analyse approfondie, la suit et 
     await screen.findByRole('button', { name: 'Lancer l’analyse' })
     expect(screen.queryByLabelText('Profil')).toBeNull() // mode simple (A10)
     const menu = screen.getByLabelText('Référentiel')
-    expect([...menu.options].map((o) => o.textContent)).toEqual(['Celui du profil (RESPIRE v7)', 'RESPIRE v7', 'Humanome fictif'])
+    expect([...menu.options].map((o) => o.textContent)).toEqual(['Celui du profil (RESPIRE v7)', 'Humanome fictif'])
     expect(menu.value).toBe('')
 
     fireEvent.click(screen.getByRole('checkbox', { name: /J’accepte que mon portfolio/ }))

@@ -221,10 +221,12 @@ badge premium) ou ouvre `#/twin9`.
   lancé par son identifiant, quel que soit le mode.
 - **A11 — Référentiel choisi au lancement** (étapes 2, 4 et 5 ; sprint 5,
   lot C, phase D, 2026-10-22 ; `docs/contrats.md` §8.4) : le menu
-  « Référentiel » propose « Celui du profil (RESPIRE v7) », par défaut,
-  chaque référentiel publié par son libellé (sa dernière version) et, en
-  mode expert, les brouillons de son auteur (« … 1.0.0 (brouillon, run
-  d'essai) »). Il est toujours là en mode expert ; en mode simple, dès que
+  « Référentiel » propose « Celui du profil (RESPIRE v7) », par défaut (sa
+  version dans le libellé quand le profil la fige : « Celui du profil
+  (RESPIRE v7, version 7.0.0) »), chaque autre référentiel publié par son
+  libellé (sa dernière version) et, en mode expert, les brouillons de son
+  auteur (« … 1.0.0 (brouillon, run d'essai) ») ; le référentiel du profil
+  n'y paraît pas une seconde fois, où il lirait sa dernière version. Il est toujours là en mode expert ; en mode simple, dès que
   plus d'un référentiel est publié (sans brouillon). Un autre choix part
   dans l'aperçu et le lancement (`referentiel: {id, version}`, `version`
   nulle pour la dernière publiée), sans redemander l'accord : les

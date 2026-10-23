@@ -63,7 +63,13 @@ $app->post('/referentiel/versions', $handler)
    UC-CPT-07-F06 à F08 : un compte qui se déclare cartographe ne lit pas un
    run partagé aux cartographes, même lié ; un compte qui se déclare
    épistémiarque ne vote pas et n'entre pas dans l'électorat ; aucun compte ne
-   s'habilite lui-même, `admin` compris.
+   s'habilite lui-même, `admin` compris. Côté IHM, UC-CPT-07-F10 vérifie,
+   pour six jeux d'habilitations, que déclarer les neuf rôles et la case ne
+   change ni les familles du menu, ni ses liens, ni le mode d'affichage par
+   défaut ; F11 en est le contrôle positif. Le profil le dit en tête du bloc
+   « Mes rôles RESPIRE » : « Une déclaration ne donne pas d'accès ;
+   l'administrateur habilite. » Glossaire des deux notions :
+   [`docs/roles.md`](roles.md).
 
 ## Routes actuelles (P0–P3)
 

@@ -58,7 +58,11 @@ d'attribuer ou de retirer les **rôles du référentiel §2** (`apprenant`,
   `epistemiarque` ; les autres déclarations n'en ont pas aujourd'hui) :
   « habiliter d'un clic » est le `POST` d'attribution avec ce rôle, audité
   comme toute attribution. Retirer l'habilitation ne retire pas la
-  déclaration ; l'administrateur ne modifie pas les déclarations.
+  déclaration ; l'administrateur ne modifie pas les déclarations. Dans
+  `#/admin/roles`, la colonne « Rôles déclarés » montre la déclaration de
+  chaque compte, en libellés, et un bouton « Habiliter « <rôle> » » par
+  habilitation de `grantable` ; la colonne des rôles s'intitule
+  « Habilitations ». Glossaire : [`docs/roles.md`](roles.md).
 - **Anti-verrouillage** : un administrateur **ne peut pas retirer son propre
   rôle admin** (409). La plateforme conserve donc toujours au moins
   l'administrateur agissant. Un admin peut retirer le rôle admin d'un *autre*
@@ -265,6 +269,7 @@ les entrées secrètes, `GET /api/admin/settings` et l'UI n'exposent que l'état
   et habilitation d'un clic : UC-ADM-01-U28 et F26, UC-CPT-07 (une
   déclaration n'ouvre rien).
 - Web : `AdminView.test.jsx` (garde de rôle), `admin/RolesSection.test.jsx`
-  (tableau, attribution, retrait, anti-verrouillage),
+  (tableau, attribution, retrait, anti-verrouillage), UC-ADM-01-U29, U30 et
+  F27 (colonne « Rôles déclarés », « Habiliter »),
   `admin/ReglagesSection.test.jsx` (interrupteur démo, modèle menu + texte
   libre, PUT partiel, 422, badges d'origine, réinitialisation).

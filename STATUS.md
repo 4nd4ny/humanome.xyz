@@ -45,6 +45,97 @@ autre fournisseur qu'Anthropic, que l'administrateur ouvre (entrée du 2026-10-2
 
 ## Fait
 
+- 2026-10-22 — **Sprint 8 : les rôles RESPIRE se déclarent, les habilitations restent à
+  l'administrateur (branche `feat/roles-declares`, sur `main` 11c4eae ; rien poussé ni déployé ;
+  migration 035).** Le TODO demande des rôles « auto-attribués ». Or deux des sept rôles
+  actuels donnent des droits : un cartographe lit les runs Twin9 partagés aux cartographes, et
+  l'électorat du référentiel est fait des épistémiarques. Une auto-attribution aurait donc ouvert
+  des données d'élèves et le vote à n'importe quel compte. Décision prise par délégation
+  (recommandation de la fiche du sprint) : **séparer deux notions**, décrites dans
+  `docs/roles.md` (nouveau glossaire) et `docs/autorisations.md` (principe 7).
+  - **Le rôle déclaré** est l'identité RESPIRE que la personne se donne dans `#/compte`, parmi
+    les neuf de la liste : cartographe, promptologue, promptagogue, éclaireur, architecte,
+    épistémiarque, médiateur, noèsiologue, maître du grimoire. La case « membre du cercle des
+    fondateurs » n'est proposée et acceptée qu'avec promptagogue, épistémiarque ou maître du
+    grimoire ; le serveur la revérifie (`422`). Une déclaration n'ouvre **rien** : aucune garde,
+    aucune famille du menu, aucun mode d'affichage par défaut, aucun vote. Elle est visible de la
+    personne, de l'administrateur et dans l'archive de compte, et supprimée avec le compte.
+  - **L'habilitation** désigne les sept rôles actuels. Elle reste attribuée par l'administrateur
+    seul : personne ne s'habilite soi-même, `admin` compris.
+  - **Habiliter d'un clic** : l'écran des rôles montre les déclarations, et un bouton
+    « Habiliter » accorde celle qui y correspond (cartographe, promptologue, épistémiarque ; les
+    six autres déclarations n'ont pas d'habilitation aujourd'hui). C'est l'attribution existante,
+    auditée.
+
+  Commits :
+  - `6364dbc` — **serveur** : migration 035 (`user_declared_roles`, `users.founding_circle`) et
+    `Auth\DeclaredRoles` (catalogue, validation, écriture sous verrou, `grantable`).
+    - Routes : `GET`/`PUT /api/auth/me/declared-roles` ; `GET /api/admin/users` porte les
+      déclarations et `grantable`.
+    - Archive de compte 1.3.0 (`account.declaredRoles`, décision 17 de `docs/contrats.md`) ;
+      registre RGPD §1 ter.
+    - Tests PHP UC-CPT-07 U01 à U11 et F01 à F09, avec leurs contrôles positifs : une
+      cartographe déclarée, même liée, ne lit pas un run partagé aux cartographes ; une
+      épistémiarque déclarée ne vote pas.
+  - `f9f9e03` — **IHM** : le bloc « Mes rôles RESPIRE » de `#/compte`, après le profil et sa
+    ligne « Affichage ».
+    - Le bloc affiche le catalogue de l'API, avec définitions, et la mention « Une déclaration ne
+      donne pas d'accès ; l'administrateur habilite. ». La case du cercle est conditionnelle.
+    - L'enregistrement n'émet aucun événement de session. La ligne « Rôles » du profil devient
+      « Habilitations ».
+    - Dans `#/admin/roles` : la colonne « Rôles déclarés » et les boutons « Habiliter ».
+    - Aide contextuelle mise à jour ; `docs/roles.md` ajouté au sommaire GitBook.
+    - Tests web : UC-CPT-07 U15 à U21 et F10 à F14, UC-ADM-01 U29, U30 et F27. **F10 est la
+      propriété du menu** : pour six jeux d'habilitations, déclarer les neuf rôles et la case ne
+      change ni les familles du menu, ni ses liens, ni le mode par défaut, à l'enregistrement
+      comme après rechargement. F11 en est le contrôle positif : l'habilitation, elle, change le
+      menu.
+    - Les faux serveurs lisent catalogue, validation et `grantable` dans `DeclaredRoles.php`. Des
+      tests de concordance lient la copie des libellés du front et le glossaire à ce fichier.
+  - Le commit `docs:` de cette entrée : fiches UC-CPT-07 et UC-ADM-01 (IHM, scénarios A4 et E5,
+    RG6, tests), `docs/autorisations.md`, `docs/administration.md`,
+    `docs/ergonomie-navigation.md`. Catalogue des cas recompté : 61 cas, 1 060 U, 1 209 F
+    (UC-CPT-07 : 21 U, 14 F ; UC-ADM-01 : 30 U, 27 F).
+  - **Vérifié** (PHP 8.5.12, MySQL 8.0 locaux, base `humanome_test_s8`, `TWIN_V9_DIR` = t9-s2,
+    arbre de `f9f9e03`) :
+    - PHP : `Tests: 1925, Assertions: 21454`, les 2 échecs connus de PHP 8.5 seuls
+      (`AuthActivationTest::testExpiredCodeIsRejected`,
+      `UcCpt02…::testU17SessionCookieAttributes`), 1 dépréciation ; UC-CPT-07 et UC-ADM-01 verts
+      (le lot IHM ne touche pas le PHP) ;
+    - front : 3 019 tests verts et 9 sautés, sur 277 fichiers (+15). Mesuré dans le même
+      environnement : 3 004 verts et 9 sautés sur `6364dbc` (+3), 3 001 verts et 9 sautés sur
+      `main` 11c4eae, comme à l'entrée « Phase D » (le « 3 015 verts » de `main` a été compté dans
+      un autre environnement) ;
+    - moteur : 585 verts et 8 sautés (593) ;
+    - `npm run build` puis `npm run test:dist` : vert ; `check-publiable` : OK ;
+    - F10 détecte une fuite. Faux serveur rendant les déclarations parmi les rôles de
+      `auth/me` : F10 échoue (mutation annulée).
+    - Rendu : le balisage produit en jsdom, avec `global.css`, dans Chromium headless. Bloc du
+      compte en clair, en sombre et à 380 px ; colonne d'administration en clair et en sombre.
+  - **Non vérifié** :
+    - PHP 8.2 (la CI) ;
+    - l'application servie avec son API dans un vrai navigateur, et les e2e Playwright (aucun ne
+      couvre encore ces écrans) ;
+    - rien n'est déployé, et la migration 035 n'est appliquée nulle part hors des bases de test.
+  - **« Uploader tous les jeux de tests dans GitHub » : non fait.** C'est une publication. Le
+    dépôt alimente un miroir public (`check-publiable`) ; seuls des jeux **fictifs** pourraient y
+    aller, pas le journal 300 ni la démo, qui sont réels. Il faut l'accord explicite de Christian
+    et la liste des jeux.
+  - **À décider (Christian)** :
+    1. **La séparation déclaration / habilitation**, prise par délégation. L'alternative,
+       habiliter d'office à la déclaration, ouvrirait les runs partagés aux cartographes et le
+       vote du référentiel à tout compte.
+    2. **Les libellés et définitions des neuf rôles** (`docs/roles.md`, à relire tous).
+       - Six n'ont pas de source dans le dépôt : promptagogue, éclaireur et architecte ont une
+         définition neutre ; médiateur, noèsiologue et maître du grimoire, une source indirecte
+         (`content/formation/noesiologie`, ch. 1).
+       - La graphie « noèsiologie » du catalogue suit la liste du TODO. `content/formation` écrit
+         « noésiologie ».
+    3. **Le cercle des fondateurs est déclaratif** : personne ne le vérifie. Faut-il une liste
+       fermée, tenue par l'administrateur ?
+    4. **Les jeux de tests à verser sur GitHub** (fictifs seulement).
+    5. **Les rôles partagés avec EduChat** (`is_promptagogue`, `is_teacher`, autre dépôt) : hors
+       de ce travail.
 - 2026-10-22 — **Phase D : corrections de la revue (même branche `feat/phase-d-twin9`, rien
   déployé).** Douze constats confirmés, dont deux paires en double (la graine,
   « non conservées ») : dix défauts, huit commits `fix:`, chacun avec le test qui échouait avant

@@ -441,6 +441,10 @@ flowchart TD
 > Lecture : chaque rôle **ajoute une seule famille d'intention** à la barre, nommée par le **but**.
 > Un cartographe voit `Découvrir · Ma cartographie · Encadrer & garantir · Mon compte` — sa tâche
 > n°1 (« Ma file de relecture ») est nommée dès le niveau 1, plus enterrée en 4ᵉ position.
+>
+> « Rôle » s'entend ici de l'**habilitation**, attribuée par l'administrateur. Un rôle RESPIRE
+> **déclaré** dans `#/compte` (sprint 8) n'ajoute aucune famille et ne change pas le mode
+> d'affichage par défaut ([glossaire des rôles](roles.md), UC-CPT-07-F10).
 
 ### 3.4 Avant / après (niveau 1)
 

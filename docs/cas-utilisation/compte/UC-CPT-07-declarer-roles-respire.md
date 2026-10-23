@@ -4,10 +4,10 @@
 |---|---|
 | **Acteur principal** | Tout utilisateur inscrit et connecté |
 | **Acteurs secondaires** | Administrateur (voit les déclarations à côté des habilitations et habilite d'un clic, UC-ADM-01 A7) |
-| **Portée** | humanome.xyz — `GET` et `PUT /api/auth/me/declared-roles` ; à côté du bloc « Affichage » de `#/compte` (IHM : lot suivant du sprint 8) ; l'archive de compte (UC-APP-06 RG11) |
+| **Portée** | humanome.xyz — bloc « Mes rôles RESPIRE » de `#/compte`, à côté du bloc « Affichage » ; `GET` et `PUT /api/auth/me/declared-roles` ; la colonne « Rôles déclarés » de `#/admin/roles` (UC-ADM-01 A7) ; l'archive de compte (UC-APP-06 RG11) |
 | **Niveau** | Objectif utilisateur |
-| **Cahier des charges** | §2 (glossaire des rôles) ; `TODO_LIST.md`, sprint 8 ; décision de Christian (prise par délégation) : séparer le rôle déclaré de l'habilitation ; `docs/autorisations.md` principe 7 ; registre RGPD §1 ter |
-| **Statut** | Implémenté côté serveur (sprint 8, lot S8-1, migration 035) ; l'IHM de `#/compte` et de `#/admin/roles` vient au lot suivant |
+| **Cahier des charges** | §2 (glossaire des rôles) ; `TODO_LIST.md`, sprint 8 ; décision de Christian (prise par délégation) : séparer le rôle déclaré de l'habilitation ; `docs/autorisations.md` principe 7 ; [glossaire des rôles](../../roles.md) ; registre RGPD §1 ter |
+| **Statut** | Implémenté (sprint 8 : serveur et migration 035 au lot S8-1, IHM de `#/compte` et de `#/admin/roles` au lot S8-2) |
 
 ## Objectif
 
@@ -22,8 +22,9 @@ habilité vote. Se déclarer ne fait ni l'un ni l'autre.
 
 ## Déclencheur
 
-L'utilisateur connecté ouvre `#/compte` et coche ses rôles (IHM du lot
-suivant) ; côté API, le client appelle `PUT /api/auth/me/declared-roles`.
+L'utilisateur connecté ouvre `#/compte` (menu « Mon compte » → « Profil et
+rôles ») : le bloc « Mes rôles RESPIRE » suit le profil et sa ligne
+« Affichage ».
 
 ## Préconditions
 
@@ -37,6 +38,9 @@ suivant) ; côté API, le client appelle `PUT /api/auth/me/declared-roles`.
 - `user_roles` n'est jamais touché : `GET /api/auth/me` rend les mêmes
   `roles`, les gardes, le menu, l'électorat et la lecture des runs partagés
   ne changent pas.
+- Dans l'IHM, ni les familles du menu, ni leurs liens, ni le mode
+  d'affichage par défaut, ni les gardes de vue ne changent, à l'enregistrement
+  comme après rechargement (RG6).
 
 ## Garanties minimales (en cas d'échec)
 
@@ -46,44 +50,69 @@ suivant) ; côté API, le client appelle `PUT /api/auth/me/declared-roles`.
 
 ## Scénario nominal
 
-1. Le client lit `GET /api/auth/me/declared-roles` : `200 {roles: [],
-   foundingCircle: false, catalogue}` pour un compte qui n'a rien déclaré ;
-   `catalogue` liste les neuf rôles dans l'ordre de la liste RESPIRE, chacun
-   `{id, label, definition, habilitation, foundingCircleEligible}`.
-2. L'utilisateur choisit ses rôles et, s'il a déclaré promptagogue,
-   épistémiarque ou maître du grimoire, coche « Membre du cercle des
-   fondateurs ».
-3. Le client envoie `PUT /api/auth/me/declared-roles {roles,
-   foundingCircle}` avec l'en-tête `X-CSRF-Token`.
-4. `DeclaredRoles::validate` vérifie la déclaration entière (RG1 à RG4) ;
+1. L'utilisateur ouvre `#/compte`. Après la vérification de session
+   d'`AccountView`, `DeclaredRolesSection` lit
+   `GET /api/auth/me/declared-roles` : `200 {roles: [], foundingCircle:
+   false, catalogue}` pour un compte qui n'a rien déclaré ; `catalogue` liste
+   les neuf rôles dans l'ordre de la liste RESPIRE, chacun `{id, label,
+   definition, habilitation, foundingCircleEligible}`.
+2. Le bloc « Mes rôles RESPIRE » affiche la mention « **Une déclaration ne
+   donne pas d'accès ; l'administrateur habilite.** », le nom des
+   déclarations qui ont une habilitation du même nom, puis une case par rôle
+   du catalogue, avec sa définition ; la déclaration courante est cochée.
+   « Enregistrer mes rôles » reste inactif tant que rien ne change. Plus
+   haut, la ligne « Habilitations » du profil liste les rôles attribués par
+   l'administrateur.
+3. L'utilisateur coche ses rôles. Dès que promptagogue, épistémiarque ou
+   maître du grimoire est coché, la case « Membre du cercle des fondateurs »
+   apparaît ; il peut la cocher.
+4. Il clique « Enregistrer mes rôles » : le client envoie
+   `PUT /api/auth/me/declared-roles {roles, foundingCircle}` (rôles dans
+   l'ordre du catalogue) avec l'en-tête `X-CSRF-Token`.
+5. `DeclaredRoles::validate` vérifie la déclaration entière (RG1 à RG4) ;
    `DeclaredRoles::replace` la revérifie et l'écrit.
-5. `200 {roles, foundingCircle, catalogue}` : les rôles dans l'ordre du
-   catalogue. Les habilitations du compte ne bougent pas.
+6. `200 {roles, foundingCircle, catalogue}` : les rôles dans l'ordre du
+   catalogue. Le bloc affiche « Rôles RESPIRE enregistrés. Vos accès ne
+   changent pas : seul l'administrateur habilite. » Les habilitations du
+   compte ne bougent pas, et la session n'est pas relue (RG6).
 
 ## Scénarios alternatifs
 
-- **A1 — Changer sa déclaration** (étape 3) : le `PUT` remplace tout ; un rôle
-  absent de la liste n'est plus déclaré ; la case absente vaut « décochée ».
-- **A2 — Ne plus rien déclarer** (étape 3) : `{roles: []}` efface la
-  déclaration.
+- **A1 — Changer sa déclaration** (étape 4) : le `PUT` remplace tout ; un rôle
+  décoché n'est plus déclaré ; la case absente vaut « décochée ».
+- **A2 — Ne plus rien déclarer** (étape 4) : tout décocher envoie
+  `{roles: [], foundingCircle: false}`, qui efface la déclaration.
 - **A3 — L'administrateur habilite** (hors de ce cas, UC-ADM-01 A7) : la
   déclaration reste telle quelle ; retirer l'habilitation ne la touche pas.
+  C'est l'habilitation qui, à la session suivante, ajoute la famille du menu
+  et passe l'affichage en mode expert par défaut (UC-CPT-07-F11).
+- **A4 — Décocher le dernier rôle éligible** (étape 3) : la case du cercle
+  disparaît et se décoche ; le `PUT` part avec `foundingCircle: false`. Avec
+  deux rôles éligibles cochés, elle reste tant que l'un d'eux reste.
 
 ## Scénarios d'erreur
 
-- **E1 — Case du cercle sans rôle éligible** (étape 4) : `422 {error:
+- **E1 — Case du cercle sans rôle éligible** (étape 5) : `422 {error:
   "Validation échouée", fields: {foundingCircle}}`, y compris quand le `PUT`
   retire le dernier rôle éligible en gardant la case.
-- **E2 — Déclaration refusée** (étape 4) : `admin` (« ne se déclare pas :
+- **E2 — Déclaration refusée** (étape 5) : `admin` (« ne se déclare pas :
   seul un administrateur l'attribue »), une autre habilitation (`apprenant`,
   `employeur`, `etablissement`), un rôle inconnu ou d'une autre graphie
   (`Cartographe`, `épistémiarque`), un doublon, une liste absente ou mal
   formée, un rôle non textuel, une case non booléenne, un corps qui n'est pas
   un objet JSON → `422 {error, fields}` ; rien n'est écrit.
 - **E3 — Visiteur** : `401 « Authentification requise »` en lecture comme en
-  écriture (et pour la session d'un compte purgé).
-- **E4 — Jeton CSRF absent ou faux** (étape 3) : `403` du middleware global,
-  rien n'est écrit.
+  écriture (et pour la session d'un compte purgé) ; `#/compte` montre alors
+  la connexion, sans le bloc.
+- **E4 — Jeton CSRF absent ou faux, session disparue** (étape 4) : `403` du
+  middleware global, rien n'est écrit ; le bloc affiche le message du serveur
+  (« Jeton CSRF absent ou invalide ») en alerte et garde la saisie. Un refus
+  `422` (E1, E2) s'affiche de même, avec le message de chaque champ.
+- **E5 — Déclaration illisible** (étape 1) : `404` d'une API antérieure,
+  `500`, API injoignable ou catalogue vide → le message discret « Vos rôles
+  RESPIRE ne peuvent pas être chargés pour le moment. Réessayez plus tard. »,
+  sans alerte ni formulaire (il écraserait la déclaration du serveur) ; la
+  mention reste, le reste du profil reste utilisable.
 
 ## Règles de gestion
 
@@ -105,20 +134,23 @@ suivant) ; côté API, le client appelle `PUT /api/auth/me/declared-roles`.
 - **RG5** — Aucun journal d'audit pour une déclaration (elle n'ouvre rien ;
   journalisation minimale, cahier §6.5) ; l'habilitation qui suit, elle, est
   auditée (`role_granted`).
+- **RG6** — Côté IHM, le menu (`navGroups`), le mode d'affichage par défaut
+  (`defaultMode`) et les gardes de vue ne lisent que les habilitations
+  (`user.roles` de `GET /api/auth/me`). Enregistrer une déclaration n'émet
+  aucun événement de session (`humanome:auth`) : le shell ne relit rien.
+  Propriété vérifiée sur l'application entière pour six jeux
+  d'habilitations (UC-CPT-07-F10), avec son contrôle positif (F11).
 
 ## Libellés et définitions (à relire par Christian)
 
-| Rôle | Libellé | Définition | Source |
-|---|---|---|---|
-| `cartographe` | Cartographe | Relit, commente, corrige, valide et garantit la cartographie produite pour un apprenant. | cahier §2, `content/formation/cartographe` |
-| `promptologue` | Promptologue | Conçoit, teste, versionne et enrichit les prompts qui transforment un portfolio réflexif en cartographie de compétences. | cahier §2, `content/formation/promptologue` |
-| `promptagogue` | Promptagogue | Accompagne les apprenants dans l'usage pédagogique des assistants d'IA. | aucune dans le dépôt (cahier §2 : rôle mentionné, repoussé ; rôle d'EduChat) — définition neutre |
-| `eclaireur` | Éclaireur | Repère et partage de nouvelles pistes pour la communauté RESPIRE. | aucune — définition neutre |
-| `architecte` | Architecte | Conçoit et fait évoluer l'organisation de l'écosystème RESPIRE. | aucune — définition neutre |
-| `epistemiarque` | Épistémiarque | Édite collectivement le référentiel de compétences, en s'appuyant sur les échanges avec la société civile. | cahier §2, `content/formation/epistemiarque` |
-| `mediateur` | Médiateur | Accompagne les apprenants sur le terrain, dans les écoles RESPIRE. | indirecte (« médiateurs en formation », `content/formation/noesiologie`, ch. 1) |
-| `noesiologue` | Noèsiologue | Étudie et pratique la noèsiologie, l'étude des fonctions de l'esprit. | indirecte (`content/formation/noesiologie`, ch. 1) |
-| `maitre-du-grimoire` | Maître du grimoire | Fait vivre le Grimoire, le répertoire des fonctions cognitives de la noèsiologie. | indirecte (le Grimoire de *De Humani Cerebri Fabrica*, même chapitre) |
+Le [glossaire des rôles](../../roles.md) les donne, mot pour mot comme le
+catalogue de l'API (`DeclaredRoles::CATALOGUE`, concordance vérifiée par
+UC-CPT-07-U21), avec leur source : le cahier §2 et `content/formation` pour
+cartographe, promptologue et épistémiarque ; une source indirecte
+(`content/formation/noesiologie`, ch. 1) pour médiateur, noèsiologue et maître
+du grimoire ; aucune pour promptagogue, éclaireur et architecte, dont la
+définition est neutre. L'IHM affiche le catalogue servi par l'API ; le front
+n'en garde que les libellés, pour la liste d'administration (UC-CPT-07-U15).
 
 ## Données et RGPD
 
@@ -139,6 +171,11 @@ suivant) ; côté API, le client appelle `PUT /api/auth/me/declared-roles`.
 | API | `api/src/Middleware/CsrfMiddleware.php` | `403` sans jeton sur le `PUT` |
 | Domaine | `api/src/Admin/UserDirectory.php` — `list` | Les déclarations à côté des habilitations (UC-ADM-01 A7) |
 | Front | `web/src/lib/archive.js` — `defaultGetAccount` | `account.declaredRoles` dans l'archive 1.3.0 |
+| Front | `web/src/api/declared-roles.js` — `fetchDeclaredRoles`, `saveDeclaredRoles`, `normalizeDeclaration`, `DECLARED_ROLES`, `FOUNDING_CIRCLE_ELIGIBLE`, `FOUNDING_CIRCLE_LABEL`, `declaredRoleLabel` | Client de la route (sans événement de session), copie des libellés |
+| Front | `web/src/views/account/DeclaredRolesSection.jsx` | Bloc « Mes rôles RESPIRE » : mention, catalogue, case du cercle conditionnelle, enregistrement, refus, lecture impossible |
+| Front | `web/src/views/AccountView.jsx` | Le bloc après le profil ; la ligne « Habilitations » |
+| Front | `web/src/App.jsx`, `web/src/nav.js` — `navGroups`, `web/src/lib/ui-mode.js` — `defaultMode` | Menu et mode par défaut tirés des seules habilitations (RG6) |
+| Doc | `docs/roles.md` | Glossaire des rôles, concordant avec le catalogue |
 | RGPD | `scripts/rgpd-audit.php` — `EXPORT_COVERAGE` | `user_declared_roles` : `archive` |
 
 ## Jeux de tests
@@ -161,6 +198,13 @@ suivant) ; côté API, le client appelle `PUT /api/auth/me/declared-roles`.
 | UC-CPT-07-U12 | `exportArchive` | `account.declaredRoles` à part de `account.roles`, archive 1.3.0 conforme, lecture seule | `web/test/usecases/unit/uc-cpt-07-declarer-roles-respire.test.js` |
 | UC-CPT-07-U13 | `exportArchive`, schéma `archive-export` | Déclaration illisible (404, 500, mal formée) → omise, l'export part ; déclaration mal formée refusée par le schéma | idem |
 | UC-CPT-07-U14 | `importArchive` | Une archive 1.3.0 s'importe, la déclaration n'est pas réimportée (aucun appel réseau) | idem |
+| UC-CPT-07-U15 | `DECLARED_ROLES`, `FOUNDING_CIRCLE_ELIGIBLE`, `FOUNDING_CIRCLE_LABEL`, `declaredRoleLabel` | Copie du front = catalogue PHP (lu dans `DeclaredRoles.php`) : ordre, libellés, rôles éligibles, libellé de la case ; aucune habilitation sans déclaration | idem |
+| UC-CPT-07-U16 | `fetchDeclaredRoles`, `saveDeclaredRoles`, `normalizeDeclaration` | `GET` normalisé, `PUT {roles, foundingCircle}` avec CSRF, `422` porteur des champs ; aucun événement `humanome:auth` (contrôle : `updateProfile` en émet un) | idem |
+| UC-CPT-07-U21 | `docs/roles.md` | Le glossaire reprend le catalogue mot pour mot : identifiants dans l'ordre, libellés, définitions, habilitations, case du cercle | idem |
+| UC-CPT-07-U17 | `DeclaredRolesSection` | Mention, neuf cases dans l'ordre décrites par leur définition, déclaration courante cochée, bouton inactif sans changement | `web/test/usecases/unit/uc-cpt-07-declarer-roles-respire-vue.test.jsx` |
+| UC-CPT-07-U18 | `DeclaredRolesSection` | Case du cercle avec chacun des trois rôles éligibles, jamais avec les six autres ; retirée et décochée avec le dernier (A4) | idem |
+| UC-CPT-07-U19 | `DeclaredRolesSection` | Déclaration entière dans l'ordre du catalogue, message « vos accès ne changent pas » ; `422` et `403` : message en alerte, saisie gardée | idem |
+| UC-CPT-07-U20 | `DeclaredRolesSection` | Lecture impossible (`404`, `500`, API injoignable, catalogue vide) : message discret, ni alerte ni formulaire (E5) | idem |
 
 ### Tests fonctionnels
 
@@ -175,23 +219,33 @@ suivant) ; côté API, le client appelle `PUT /api/auth/me/declared-roles`.
 | UC-CPT-07-F07 | RG4 | API | Épistémiarque déclarée : vote `403`, aucun bulletin, hors de l'électorat ; contrôle : habilitée d'un clic, elle vote | idem |
 | UC-CPT-07-F08 | RG4 | API | Cartographe déclarée, même liée : run Twin9 partagé aux cartographes `404` ; contrôle : habilitée, elle le lit (moteur factice, processus séparé) | idem |
 | UC-CPT-07-F09 | RGPD | API | Suppression du compte : déclaration et case effacées, celles d'autrui intactes | idem |
+| UC-CPT-07-F10 | RG6, RG4 | IHM | Propriété, six jeux d'habilitations : déclarer les neuf rôles et la case ne change ni les familles du menu, ni ses liens, ni le mode par défaut, à l'enregistrement comme après rechargement ; menu = `navGroups` des habilitations ; session non relue | `web/test/usecases/functional/uc-cpt-07-declarer-roles-respire.test.jsx` |
+| UC-CPT-07-F11 | RG4, A3 | IHM | Contrôle positif : cartographe déclarée → ni « Encadrer et garantir », ni `#/cartographe` ; habilitée par l'administrateur → la famille et le mode expert à la session suivante | idem |
+| UC-CPT-07-F12 | Nominal, A2 | IHM | Mention, catalogue, ligne « Habilitations » ; promptagogue, architecte et la case → `PUT` entier avec CSRF, confirmation, relu au rechargement ; tout décocher efface | idem |
+| UC-CPT-07-F13 | A4, E1 | IHM | La case disparaît avec le dernier rôle éligible, le serveur ne la reçoit jamais seule ; `422` forcé → message du champ, rien d'écrit | idem |
+| UC-CPT-07-F14 | E4, E5 | IHM | Session disparue → `403` affiché, rien d'écrit ; lecture en `500` → message discret, sans alerte, le profil et les clés restent utilisables | idem |
 
 ### Tests existants liés (non-régression)
 
 - `api/tests/RgpdAuditTest.php` — règle CASCADE de `user_declared_roles.user_id`, empreinte d'un compte peuplé.
-- `api/tests/UseCases/Functional/UcAdm01GererComptesRolesTest.php` (F26) et `…/Unit/UcAdm01GererComptesRolesTest.php` (U01, U28) — la liste de l'administration.
+- `api/tests/UseCases/Functional/UcAdm01GererComptesRolesTest.php` (F26) et `…/Unit/UcAdm01GererComptesRolesTest.php` (U01, U28) — la liste de l'administration ; côté IHM, UC-ADM-01-U29, U30 et F27 (colonne « Rôles déclarés », « Habiliter »).
+- `web/src/views/AccountView.test.jsx` — la lecture de la déclaration, hors de la file ordonnée des réponses d'authentification.
+- `web/test/usecases/support/declared-roles-php.js` — catalogue, validation et `grantable` lus dans `DeclaredRoles.php`, pour les faux serveurs `cpt.js` et `adm.js`.
 
 ### Exécuter
 
 ```sh
 (cd api && vendor/bin/phpunit --filter UcCpt07 --testdox)
-cd web && npx vitest run test/usecases/unit/uc-cpt-07
+cd web && npx vitest run test/usecases/unit/uc-cpt-07 test/usecases/functional/uc-cpt-07
 ```
 
 ## Limites
 
-- L'IHM (`#/compte`, `#/admin/roles`) et le test du menu « une déclaration ne
-  change aucune famille » viennent au lot suivant du sprint 8.
 - Les rôles partagés avec EduChat (autre dépôt) n'en font pas partie.
 - Les libellés et définitions sans source dans le dépôt sont neutres, à faire
-  relire par Christian.
+  relire par Christian ([glossaire](../../roles.md)).
+- La case « membre du cercle des fondateurs » est une déclaration comme les
+  autres : personne ne la vérifie (aucune liste des fondateurs côté serveur),
+  et elle n'ouvre rien.
+- L'enregistrement remplace la déclaration entière sans contrôle de version :
+  deux onglets ouverts sur `#/compte`, le dernier enregistré l'emporte.

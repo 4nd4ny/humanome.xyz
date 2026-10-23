@@ -297,11 +297,41 @@ final class RunCosts
     }
 
     /**
+     * An account about to be erased (ADR-013 §7), in the purge's transaction,
+     * before its runs go with it (CASCADE): what the calls of its runs that a
+     * school pays for it still hold goes back to that school — a call
+     * answered at its real cost, every other one entirely, those of a batch
+     * still at Anthropic too, whose results will never be collected (the
+     * batch itself goes to the tick, RunPurge::confier()). Without it, the
+     * school's reservations would stay debited for good, and its ledger
+     * without their counterpart. A run its owner pays, or a school for
+     * itself, goes with the credit that paid it.
+     *
+     * @return int the calls whose real cost went beyond what they held (depassements)
+     */
+    public function rendreAvantLaPurge(int $userId): int
+    {
+        $stmt = $this->pdo->prepare(
+            'SELECT id FROM twin9_runs
+              WHERE user_id = ? AND payeur = "ecole" AND payeur_id IS NOT NULL AND payeur_id <> user_id ORDER BY id'
+        );
+        $stmt->execute([$userId]);
+        $depassements = 0;
+        foreach ($stmt->fetchAll(PDO::FETCH_COLUMN) as $runId) {
+            $depassements += $this->solder((int) $runId, true, false, true);
+        }
+
+        return $depassements;
+    }
+
+    /**
      * Settles what a run's calls hold: each call's real cost, at most what
      * it held — the excess is the instance's, counted and logged (the model
-     * and the amounts only) —, the rest given back.
+     * and the amounts only) —, the rest given back. $lots: the calls of a
+     * batch still at Anthropic too (rendreAvantLaPurge()). In the caller's
+     * transaction when one is open.
      */
-    private function solder(int $runId, bool $tout, bool $horsVol = false): int
+    private function solder(int $runId, bool $tout, bool $horsVol = false, bool $lots = false): int
     {
         $payeur = $this->payeur($runId);
         if ($payeur === null) {
@@ -309,7 +339,10 @@ final class RunCosts
         }
         $grandLivre = new GrandLivreLocal($this->pdo);
 
-        $this->pdo->beginTransaction();
+        $own = !$this->pdo->inTransaction();
+        if ($own) {
+            $this->pdo->beginTransaction();
+        }
         try {
             // the lock order of the schools' ledger: the learner's caps, then the credit, then the calls
             $grandLivre->verrouiller($payeur->ecoleId, $payeur->eleve(), $payeur->compte());
@@ -322,8 +355,8 @@ final class RunCosts
                    FROM twin9_appels
                   WHERE run_id = ? AND reserve_microusd IS NOT NULL
                     AND (statut IN ("repondu", "panne")'
-                    . ($tout ? ($horsVol ? ' OR statut <> "envoye"' : ' OR NOT (statut = "envoye" AND lot_id IS NOT NULL)')
-                        : '') . ')
+                    . ($lots ? ' OR TRUE' : ($tout ? ($horsVol ? ' OR statut <> "envoye"'
+                        : ' OR NOT (statut = "envoye" AND lot_id IS NOT NULL)') : '')) . ')
                   FOR UPDATE'
             );
             $stmt->execute([$runId]);
@@ -370,9 +403,13 @@ final class RunCosts
                         $tokensIn, $tokensOut);
                 }
             }
-            $this->pdo->commit();
+            if ($own) {
+                $this->pdo->commit();
+            }
         } catch (\Throwable $e) {
-            $this->pdo->rollBack();
+            if ($own && $this->pdo->inTransaction()) {
+                $this->pdo->rollBack();
+            }
             throw $e;
         }
         $parModele = [];

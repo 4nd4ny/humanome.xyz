@@ -425,6 +425,25 @@ final class UcEta05GererEcoleTest extends TestCase
             (new Payeurs(self::$pdo))->possibles($ecole)), 'une école paie pour elle-même, comme une école');
     }
 
+    #[TestDox('UC-ETA-05-U18 — règlement après le départ de l’élève (son compte supprimé pendant un appel de la cartographie ouverte) : le crédit de l’école est rendu quand même, l’événement sans bénéficiaire')]
+    public function testU18ASettlementOutlivesTheLearnersAccount(): void
+    {
+        $ecole = self::ecole(self::$pdo, 'École des Tilleuls', 3.5, 10.0, 10_000_000);
+        $eleve = self::compte(self::$pdo, 'Léa');
+        self::inscrire(self::$pdo, $ecole, $eleve);
+        $grandLivre = new GrandLivreLocal(self::$pdo);
+        $grandLivre->reserver($ecole, $eleve, Ecoles::mois(), 1_000_000, true, 'twin6/cartographie (réserve)');
+        self::$pdo->prepare('DELETE FROM users WHERE id = ?')->execute([$eleve]);
+
+        $grandLivre->regler($ecole, $eleve, Ecoles::mois(), 600_000, true, 'twin6/cartographie (réconciliation)',
+            'claude-sonnet-5', 100, 20);
+
+        self::assertSame(10_000_000 - 400_000, self::solde(self::$pdo, $ecole), 'rendu à l’école');
+        $event = self::$pdo->query('SELECT amount_microusd, beneficiaire_id FROM twin9_credit_events ORDER BY id DESC LIMIT 1')
+            ->fetch();
+        self::assertSame([600_000, null], [(int) $event['amount_microusd'], $event['beneficiaire_id']]);
+    }
+
     private static function refuse(\Closure $f, string $message): void
     {
         try {

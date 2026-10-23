@@ -5,12 +5,17 @@ declare(strict_types=1);
 namespace Humanome\Tests\UseCases\Functional;
 
 use Humanome\Db;
+use Humanome\Etablissement\Ecoles;
+use Humanome\Etablissement\GrandLivreLocal;
+use Humanome\Etablissement\Payeur;
 use Humanome\Llm\LlmRuntime;
 use Humanome\Tests\CartographeTestCase;
 use Humanome\Tests\LlmFakeHttpClient;
 use Humanome\Tests\TestDb;
 use Humanome\Tests\UseCases\Support\TwinSupport;
 use Humanome\Twin9\CreditService;
+use Humanome\Twin9\ProfilRepository;
+use Humanome\Twin9\RunRepository;
 use PHPUnit\Framework\Attributes\TestDox;
 use Psr\Http\Message\ResponseInterface;
 
@@ -260,5 +265,51 @@ final class UcEta05GererEcoleTest extends CartographeTestCase
 
         self::assertSame(200, $this->appelTwin6($this->lea, ['payeur' => 'personnel'])->getStatusCode());
         self::assertSame(1_000_000 - 4400, self::solde($this->lea['id']), 'son solde, à la contribution des particuliers');
+    }
+
+    #[TestDox('UC-ETA-05-F10 — un élève supprime son compte pendant un run que paie son école : ce que ses appels tiennent encore (un lot chez Anthropic, un appel en vol, un appel en attente) revient au crédit de l’école ; un appel répondu est payé à son coût réel ; le lot est confié au tick')]
+    public function testF10AnErasedLearnerGivesTheSchoolBackWhatTheirRunsHold(): void
+    {
+        $this->as_($this->ecole, 'PUT', '/api/etablissement/ecole', ['plafondEleveUsd' => 50]);
+        self::crediter($this->ecole['id'], 100_000_000, 'crédit des tests');
+        $this->rejoindre($this->ecole, $this->lea);
+        $pdo = Db::get();
+        $profil = ProfilRepository::v98();
+        $profil->voie = 'lots';
+        $run = (new RunRepository($pdo))->creer($this->lea['id'], ProfilRepository::validate($profil),
+            (object) ['lecteurs' => ['a'], 'etapes' => [], 'fusion' => true], 'journal-factice.md', "## J1\nUn jour.\n",
+            'journal-factice', ['factice/lecture' => 'Lis {$TEXTE}'], new \DateTimeImmutable('2026-10-18T12:00:00+00:00'),
+            payeur: Payeur::ecole($this->ecole['id'], 1.05));
+        // a batch still at Anthropic, on the instance's key
+        $pdo->prepare('INSERT INTO twin9_lots (run_id, lot, statut, cle, requetes, octets, soumis_at)
+                       VALUES (?, "msgbatch_eta05_f10", "en_cours", "instance", 1, 100, NOW(3))')->execute([$run]);
+        $lot = (int) $pdo->lastInsertId();
+        $mois = Ecoles::mois();
+        $grandLivre = new GrandLivreLocal($pdo);
+        $ecrire = $pdo->prepare('INSERT INTO twin9_appels (run_id, appel, etape, modele, sha256, statut, lot_id, reserve_microusd,
+                                         pire_cas_microusd, mois_reserve, cout_microusd)
+                                 VALUES (?, ?, "lecture", "claude-sonnet-5-5", ?, ?, ?, ?, ?, ?, ?)');
+        // [the call, its status, its batch, what it holds, its real cost]
+        $appels = [['j1/a', 'envoye', $lot, 630_532, null], ['j1/b', 'envoye', null, 200_000, null],
+                   ['j1/c', 'attente', null, 100_000, null], ['j1/d', 'repondu', null, 50_000, 30_000]];
+        foreach ($appels as [$appel, $statut, $lotId, $reserve, $cout]) {
+            $grandLivre->reserver($this->ecole['id'], $this->lea['id'], $mois, $reserve, true,
+                'Twin9 run ' . $run . ' · lecture (réserve)', 'claude-sonnet-5-5');
+            $ecrire->execute([$run, $appel, hash('sha256', $appel), $statut, $lotId, $reserve, $reserve, $mois, $cout]);
+        }
+        self::assertSame(100_000_000 - 980_532, self::solde($this->ecole['id']));
+
+        self::assertSame(204, $this->as_($this->lea, 'DELETE', '/api/auth/account')->getStatusCode());
+
+        self::assertSame(100_000_000 - 30_000, self::solde($this->ecole['id']),
+            'tout ce que les appels tenaient revient à l’école ; l’appel répondu, à son coût réel');
+        $stmt = $pdo->prepare('SELECT COALESCE(SUM(amount_microusd), 0) FROM twin9_credit_events WHERE user_id = ?');
+        $stmt->execute([$this->ecole['id']]);
+        self::assertSame(100_000_000 - 30_000, (int) $stmt->fetchColumn(), 'le grand livre de l’école tombe juste');
+        self::assertSame(0, (int) $pdo->query('SELECT COUNT(*) FROM twin9_credit_events WHERE beneficiaire_id IS NOT NULL')
+            ->fetchColumn(), 'ses lignes deviennent anonymes');
+        self::assertSame(['msgbatch_eta05_f10'], $pdo->query('SELECT lot FROM twin9_lots_a_effacer')->fetchAll(\PDO::FETCH_COLUMN),
+            'le lot, confié au tick');
+        self::assertSame(0, (int) $pdo->query('SELECT COUNT(*) FROM twin9_runs')->fetchColumn());
     }
 }

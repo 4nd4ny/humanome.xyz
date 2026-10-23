@@ -21,7 +21,10 @@ use Humanome\ClientIp;
 use Humanome\Clock;
 use Humanome\Db;
 use Humanome\Middleware\CsrfMiddleware;
+use Humanome\Packages\SettingsRepository;
+use Humanome\Twin9\RunCosts;
 use Humanome\Twin9\RunPurge;
+use Humanome\Twin9\Twin9Config;
 use Psr\Http\Message\ResponseInterface as Response;
 use Psr\Http\Message\ServerRequestInterface as Request;
 use Slim\App;
@@ -561,6 +564,9 @@ return function (App $app): void {
         try {
             $pdo->beginTransaction();
             Audit::record($pdo, $userId, Audit::ACCOUNT_DELETED);
+            // what its runs a school pays still hold goes back to that school, a batch's calls included, while the
+            // learner is there to be named in its ledger (ADR-013 §7): the runs go with the account
+            (new RunCosts($pdo, new Twin9Config(new SettingsRepository($pdo))))->rendreAvantLaPurge($userId);
             $twin9->confier($userId);
             Users::purge($pdo, $userId);
             $pdo->commit();

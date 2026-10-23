@@ -103,7 +103,11 @@ final class GrandLivreLocal implements GrandLivreEcoles
                 )->execute([$rendu, $ecole, $eleve, $mois]);
             }
             if ($credit) {
-                $this->credits->adjust($ecole, $rendu, $libelle, $modele, $entree, $sortie, $eleve);
+                // a learner erased meanwhile (a call of the open cartography in flight while their account went): the
+                // school gets its credit back all the same, the event naming no one — as the purge leaves the others
+                // (SET NULL). Their row read in share mode: a purge under way finishes first.
+                $this->credits->adjust($ecole, $rendu, $libelle, $modele, $entree, $sortie,
+                    $eleve !== null && $this->existe($eleve) ? $eleve : null);
             }
             if ($own) {
                 $this->pdo->commit();
@@ -114,6 +118,15 @@ final class GrandLivreLocal implements GrandLivreEcoles
             }
             throw $e;
         }
+    }
+
+    /** Whether an account is still there, its row held in share mode until the transaction ends. */
+    private function existe(int $userId): bool
+    {
+        $stmt = $this->pdo->prepare('SELECT 1 FROM users WHERE id = ? FOR SHARE');
+        $stmt->execute([$userId]);
+
+        return $stmt->fetchColumn() !== false;
     }
 
     public function solde(int $ecole): int

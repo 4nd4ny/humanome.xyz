@@ -673,4 +673,26 @@ final class UcCpt01CreerActiverCompteTest extends CartographeTestCase
         self::assertArrayNotHasKey('listeAttenteLevees', self::json($tick()));
         self::assertCount(1, $this->mailer->sent);
     }
+
+    #[TestDox('UC-CPT-01-F31 — RG8 : une réserve orpheline (un Essayer dont le processus est mort avant son règlement) ferme l’offert ; passé RESERVATION_TTL_SECONDS, elle compte comme dépensée, et les nouvelles inscriptions partent en liste d’attente au lieu de rester ouvertes jusqu’au 1er ; l’administrateur la voit dépensée, plus « en vol »')]
+    public function testF31AnOrphanReservationWaitlistsOnceExpired(): void
+    {
+        $seuil = (new Waitlist(self::$pdo))->floorMicrousd();
+        [$plafond] = self::moisAvecReste($seuil);
+        // L'orphelin : le pire cas d'un Essayer réservé il y a plus que l'échéance, jamais réglé.
+        $mort = time() - FreeCreditLedger::RESERVATION_TTL_SECONDS - 1;
+        if (FreeCreditLedger::month($mort) !== FreeCreditLedger::month()) {
+            self::markTestSkipped('les premières minutes du mois UTC : l’orphelin serait du mois passé');
+        }
+        $ledger = new FreeCreditLedger(self::$pdo);
+        self::assertTrue($ledger->reserve($seuil, $plafond, $mort));
+
+        $registered = $this->signUp();
+        self::assertSame(201, $registered->getStatusCode(), (string) $registered->getBody());
+        self::assertSame('waitlisted', self::json($registered)['status'], 'l’offert est fermé : l’inscription attend');
+        self::assertFalse($ledger->reserve($seuil, $plafond), 'et l’Essayer est refusé');
+        $mois = $ledger->state($plafond);
+        self::assertSame([$plafond, 0, true], [$mois['spentMicrousd'], $mois['reservedMicrousd'], $mois['exhausted']],
+            'son pire cas compté comme dépensé, plus rien « en vol »');
+    }
 }

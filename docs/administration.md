@@ -199,7 +199,9 @@ paquet par défaut, et la **démo publique s'édite** via `/api/admin/demo-confi
   exhausted, signupsOpen, signupFloorUsd}` (`docs/contrats.md` §13) :
   `signupsOpen` faux, une nouvelle inscription part en liste d'attente, dès
   que le plafond moins le dépensé est sous `signupFloorUsd`, le pire cas du
-  plus petit appel de l'Essayer (§13.1).
+  plus petit appel de l'Essayer (§13.1). `reservedUsd` : les appels en cours ;
+  une réserve que son processus n'a jamais réglée (tué en route) expire au bout
+  de 15 minutes et passe dans `spentUsd`, à son pire cas (§13).
 - `modelRefuse` : les modèles des couches qui ne sont pas un Haiku
   (`[{valeur, source}]`), refusés ; la démo prend le premier Haiku des couches,
   sinon Haiku 5.5, et l'UI nomme le modèle refusé. C'est le cas du `.env` de

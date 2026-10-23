@@ -48,7 +48,8 @@ de l'accueil.
   (`DayView`), peut l'imprimer ou l'exporter en JSON (téléchargement local).
 - Le serveur n'a conservé **que des compteurs** : requêtes, tokens et coût
   estimé du jour (`llm_usage_daily`), dépense et réserve du mois en
-  micro-dollars (`free_credit_monthly`, RG7), empreintes SHA-256 des défis
+  micro-dollars (`free_credit_monthly`, et ses réserves datées
+  `free_credit_reservations`, RG7), empreintes SHA-256 des défis
   consommés (`llm_pow_challenges`), seau de quota haché (`rate_limits`). Ni le
   texte, ni la réponse, ni l'IP en clair.
 - Le navigateur n'a rien écrit (ni Web Storage, ni IndexedDB) : un
@@ -285,7 +286,16 @@ de l'accueil.
   coût réel, sans condition : **une réponse en cours n'est jamais coupée**,
   même si l'administrateur baisse le plafond ou si le mois se remplit pendant
   qu'elle arrive. Coupé après l'envoi, il règle ce qu'il a produit (comme
-  RG4) ; refusé par le fournisseur ou jamais parti, il rend sa réserve. Il se
+  RG4) ; refusé par le fournisseur ou jamais parti, il rend sa réserve. Jamais
+  réglée — son processus mort entre la réserve et le règlement (le kill de
+  l'hébergeur, un redéploiement, une erreur fatale) —, une réserve **expire**
+  après `FreeCreditLedger::RESERVATION_TTL_SECONDS` (15 minutes, au-delà du
+  plus long appel permis) : chaque réserve est datée
+  (`free_credit_reservations`), et son pire cas passe en dépensé, compté comme
+  un appel ; toute réserve, toute lecture du mois et le critère des
+  inscriptions (UC-CPT-01 RG8) la font expirer d'abord (revue du 2026-10-23).
+  Réglée après coup, elle n'ajoute que l'excédent de son coût réel ; rendue,
+  elle ne rend rien. Il se
   règle au mois où il a réservé, même s'il finit le mois suivant. Le mois est
   UTC, calculé en PHP (`gmdate`), comme le jour : il s'ouvre le 1er à 0 h UTC,
   soit 1 h (hiver) ou 2 h (été) à Paris. Plafond : 20 $ par défaut,
@@ -314,7 +324,7 @@ de l'accueil.
 | API | `GET /api/llm/status`, `GET /api/llm/challenge`, `POST /api/llm` — `api/src/routes/llm.php` | Orchestration des gardes |
 | Domaine | `api/src/Llm/PowChallenge.php` — `issue`, `verify`, `secretFromEnv`, `leadingZeroBits` | Preuve de travail sans état |
 | Domaine | `api/src/Llm/UsageCounters.php` — `reserve`, `settle`, `release`, `today`, `isExhausted` | Coupe-circuit journalier : réservation du pire cas, règlement au réel |
-| Domaine | `api/src/Llm/FreeCreditLedger.php` — `reserve`, `settle`, `release`, `refuse`, `state`, `month`, `refusalMessage` | Plafond mensuel des crédits offerts (RG7, E8) |
+| Domaine | `api/src/Llm/FreeCreditLedger.php` — `reserve`, `settle`, `release`, `expireStale`, `refuse`, `state`, `month`, `refusalMessage` | Plafond mensuel des crédits offerts (RG7, E8) |
 | Base | `scripts/migrations/034_credits_offerts.sql` | Grand livre du mois (`free_credit_monthly`) |
 | Domaine | `api/src/Llm/Pricing.php` — `estimateUsd` | Coût estimé : le plus haut de la grille des crédits et de la table, palier long de Haiku 5.5 compris |
 | Domaine | `api/src/Llm/AnthropicProvider.php` — `countTokens`, `ouvrirFlux` | Compte d'Anthropic d'une entrée de plus de 100 000 octets (RG4) ; l'appel en flux (RG6) |
@@ -362,10 +372,11 @@ de l'accueil.
 | UC-VIS-03-U28 | `createDemoProvider` | Demande le relais ; progression en caractères ; le résultat relayé devient la réponse du moteur ; un appel coupé (délai, fournisseur, connexion perdue) échoue avec le message du serveur, sans nouvel essai de la démo (RG6, A4, E7) | `web/test/usecases/unit/uc-vis-03-essayer-cartographie-en-direct.test.js` |
 | UC-VIS-03-U29 | `createDemoProvider` + `extractDay` | Un appel coupé à chaque essai : 2 POST sur le pôle 1 (le nouvel essai du moteur seul), contre 4 pour un 504 sans flux (U22) ; le message dit la coupure (A4) | idem |
 | UC-VIS-03-U30 | `RelaisAppel::reponse` | En-têtes du flux (ni cache, ni transformation, ni tampon de proxy) ; la première progression tout de suite ; l'issue calculée une fois ; une issue qui échoue → `erreur` 500 générique ; le navigateur parti, l'appel coupé, son issue calculée une fois (RG6) | `api/tests/UseCases/Unit/UcVis03EssayerCartographieTest.php` |
-| UC-VIS-03-U31 | `FreeCreditLedger::reserve`, `settle`, `release`, `refuse`, `state`, `microusd`, `capMicrousd` | Pire cas réservé sous le plafond du mois en micro-dollars entiers, pile au plafond accepté ; un refus ne réserve rien et se compte, un refus décidé avant toute réserve aussi (`refuse`) ; une réserve de rien compte pour 1 µ$ ; réglée au coût réel, même au-delà de sa réserve et du plafond ; rendue, rien ne reste (jamais sous zéro) ; un plafond relevé rouvre ; conversions vers le haut ; plafond nul, négatif ou non fini → tout fermé ; la table n'a que des compteurs (RG7) | `api/tests/UseCases/Unit/UcVis03EssayerCartographieTest.php` |
+| UC-VIS-03-U31 | `FreeCreditLedger::reserve`, `settle`, `release`, `refuse`, `state`, `microusd`, `capMicrousd` | Pire cas réservé sous le plafond du mois en micro-dollars entiers, pile au plafond accepté ; un refus ne réserve rien et se compte, un refus décidé avant toute réserve aussi (`refuse`) ; une réserve de rien compte pour 1 µ$ ; réglée au coût réel, même au-delà de sa réserve et du plafond ; rendue, rien ne reste ; rendre une réserve que le mois ne tient pas (expirée) ne rend rien ni ne prend sur une autre ; un plafond relevé rouvre ; conversions vers le haut ; plafond nul, négatif ou non fini → tout fermé ; la table n'a que des compteurs (RG7) | `api/tests/UseCases/Unit/UcVis03EssayerCartographieTest.php` |
 | UC-VIS-03-U32 | `FreeCreditLedger::month`, `refusalMessage` | Mois UTC sous Kiritimati, Paris et Los Angeles ; horloge figée : le 31 octobre à 23 h 59 min 59 s UTC est octobre, le 1er novembre à 0 h UTC un mois neuf, 0 h 30 à Paris encore octobre ; l'appel d'octobre réglé en novembre l'est en octobre ; le refus nomme le 1er du mois suivant (novembre, janvier, février) (RG7) | idem |
 | UC-VIS-03-U33 | `FreeCreditLedger::reserve` sous concurrence | Une réserve en cours dans une autre connexion (transaction ouverte 2 s) verrouille la ligne du mois : la seconde attend, puis n'a plus la place ; deux processus × 20 réserves de 1 000 µ$ sous 15 000 µ$ → 15 passent, jamais une de plus (RG7) | idem |
 | UC-VIS-03-U34 | `describeDemoError` | 503 `offerts_epuises` au bout de la pile (`extractDay`) → les mots du serveur (« revenez le 1er novembre »), sans réessai ; un autre 503 garde le message du jour (E8) | `web/test/usecases/unit/uc-vis-03-essayer-cartographie-en-direct.test.js` |
+| UC-VIS-03-U35 | `FreeCreditLedger::expireStale`, `reserve`, `state`, `signupsOpen`, `settle`, `release` | Une réserve orpheline expire après `RESERVATION_TTL_SECONDS` (≥ 300 + 5 + 5 + 300 s), pas avant : son pire cas en dépensé, un appel ; une plus fraîche reste en vol ; réglée après coup, l'excédent seul ; rendue après coup, rien ; le critère des inscriptions et une réserve la font expirer ; au passage du mois, elle se dépense au mois où elle a réservé ; la table n'a que des compteurs et part avec son mois (RG7) | `api/tests/UseCases/Unit/UcVis03EssayerCartographieTest.php` |
 
 ### Tests fonctionnels
 

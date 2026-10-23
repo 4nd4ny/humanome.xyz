@@ -159,7 +159,7 @@ exécution du service/contrat, **f** = intérêt légitime.
 | Base légale | **f** (intérêt légitime : sécurité et maîtrise du budget). |
 | Durée | Compteurs journaliers (fenêtres courtes), purgés par l'entretien ; grand livre mensuel des crédits offerts, une ligne par mois, gardée (aucune donnée personnelle) ; défis anti-rejeu à TTL de 2 min. |
 | Destinataires | Anthropic (le temps du traitement, texte non conservé côté serveur). |
-| Tables | `llm_usage_daily`, `free_credit_monthly` (migration 034 : mois, dépense, réserve, appels, refus), `llm_pow_challenges`, `rate_limits` (buckets hachés). |
+| Tables | `llm_usage_daily`, `free_credit_monthly` (migration 034 : mois, dépense, réserve, appels, refus), `free_credit_reservations` (migration 034 : les réserves en cours, un montant et une heure chacune, retirées au règlement ou à leur expiration après 15 minutes), `llm_pow_challenges`, `rate_limits` (buckets hachés). |
 | Sort à la suppression | Sans objet (aucune donnée nominative ; aucune colonne `user_id`). |
 
 ## 8. Sous-traitance modèles de langage (LLM)

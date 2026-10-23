@@ -2685,6 +2685,13 @@ en PHP (`gmdate`), jamais par `CURDATE()` ni `NOW()` de MySQL, qui suivent
 l'heure locale du serveur. Il s'ouvre donc le 1er à 0 h UTC, soit 1 h (hiver)
 ou 2 h (été) à Paris.
 
+**La table** `free_credit_reservations` (migration 034, revue du 2026-10-23) :
+une ligne datée par réserve en cours (`id`, `month`, `microusd`,
+`reserved_at` en temps Unix), écrite dans la même transaction que l'`UPDATE`
+conditionnel, retirée au règlement ; `reserved_microusd` reste la somme des
+lignes de son mois. Compteurs seulement, comme la ligne du mois, et partie
+avec elle (`ON DELETE CASCADE`).
+
 **Le déroulé d'un appel offert** (`Llm\FreeCreditLedger`) :
 
 1. Son pire cas (le même que celui du budget du jour pour `/api/llm` ; pour
@@ -2702,6 +2709,17 @@ ou 2 h (été) à Paris.
    question du tuteur dont le délai est dépassé la garde, pire cas entier :
    elle a pu être reçue et facturée, et sa réponse, d'un bloc, ne dit pas ce
    qu'elle a produit.
+4. Jamais réglée — son processus mort entre la réserve et le règlement (le
+   kill de l'hébergeur, un redéploiement, une erreur fatale, une écriture
+   qui échoue) —, la réserve **expire** après
+   `FreeCreditLedger::RESERVATION_TTL_SECONDS` (15 minutes, bien au-delà du
+   plus long appel permis : 300 s de délai amont au plus, le comptage, une
+   marge) : son pire cas passe en dépensé, compté comme un appel, au mois où
+   elle a réservé. Toute réserve, toute lecture du mois et le critère des
+   inscriptions la font expirer d'abord : un orphelin ne tient plus sa part
+   jusqu'au 1er en laissant les inscriptions ouvertes. Réglée après coup, une
+   réserve expirée n'ajoute que ce que son coût réel dépasse de son pire cas ;
+   rendue, elle ne rend rien.
 
 Un appel se règle au mois où il a réservé, même s'il finit le mois suivant.
 

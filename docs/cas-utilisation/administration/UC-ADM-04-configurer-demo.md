@@ -157,7 +157,9 @@ par exemple juste avant ou juste après une présentation.
   règle ce que l'instance offre en un mois UTC, l'Essayer, la démo et le
   tuteur ensemble ; une ligne dit le grand livre du mois : « Crédits offerts
   ce mois-ci (2026-10, mois UTC) : 3.20 $ dépensés, 0.32 $ réservés par les
-  appels en cours, 16.48 $ restants sur 20.00 $ — 41 appels, 0 refus. », et
+  appels en cours, 16.48 $ restants sur 20.00 $ — 41 appels, 0 refus. » (une
+  réserve jamais réglée, son processus tué en route, passe en dépensé au bout
+  de 15 minutes, UC-VIS-03 RG7), et
   « Épuisés : … » une fois le plafond atteint. À 0, effet immédiat : l'Essayer
   et le tuteur répondent « Les crédits offerts de ce mois sont épuisés ;
   revenez le 1er … » ; une réponse déjà en cours finit (UC-VIS-03 RG7). La

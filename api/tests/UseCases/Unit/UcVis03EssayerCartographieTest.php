@@ -215,7 +215,10 @@ final class UcVis03EssayerCartographieTest extends TestCase
         self::assertFalse($ledger->reserve(1, $cap, $now), 'au-delà du plafond, plus rien ne part');
         self::assertTrue($ledger->reserve(1, 20_000, $now), 'un plafond relevé rouvre aussitôt');
         $ledger->release(5, $now);
-        self::assertSame(0, $ledger->state($cap, $now)['reservedMicrousd'], 'rendre plus que la réserve ne descend pas sous zéro');
+        self::assertSame([1, 10_500], [$ledger->state($cap, $now)['reservedMicrousd'], $ledger->state($cap, $now)['spentMicrousd']],
+            'rendre une réserve que le mois ne tient pas (expirée) ne rend rien, ni ne prend sur une autre');
+        $ledger->release(1, $now);
+        self::assertSame(0, $ledger->state($cap, $now)['reservedMicrousd']);
 
         // Les conversions : vers le haut, jamais sous ce que coûte l'appel ; un plafond nul, négatif ou non fini ferme tout.
         self::assertSame([300, 1, 0, 0, 320_065], [FreeCreditLedger::microusd(0.0003), FreeCreditLedger::microusd(1e-9),
@@ -336,6 +339,64 @@ final class UcVis03EssayerCartographieTest extends TestCase
         self::assertSame(15, $passed);
         $state = (new FreeCreditLedger(self::$pdo))->state(15_000, $month);
         self::assertSame([15_000, 25, true], [$state['reservedMicrousd'], $state['refusals'], $state['exhausted']]);
+    }
+
+    #[TestDox('UC-VIS-03-U35 — FreeCreditLedger : une réserve orpheline (son processus mort avant de la régler : le kill de l’hébergeur, un redéploiement, une erreur fatale) expire après RESERVATION_TTL_SECONDS, au-delà du plus long appel permis, et passe en DÉPENSÉ à son pire cas, comptée comme un appel, au mois où elle a réservé ; réserver, lire le mois ou le critère des inscriptions la fait expirer ; une réserve plus fraîche reste en vol ; réglée après coup, elle n’ajoute que l’excédent de son coût réel, rendue elle ne rend rien (RG7)')]
+    public function testU35AnOrphanReservationExpiresIntoTheSpentAmount(): void
+    {
+        $ledger = new FreeCreditLedger(self::$pdo);
+        $ttl = FreeCreditLedger::RESERVATION_TTL_SECONDS;
+        // Au-delà du plus long appel que la configuration permet : le délai amont (300 s au plus
+        // dans l'administration), le comptage des jetons (5 s), l'échéance du flux (5 s), une marge.
+        self::assertGreaterThanOrEqual(300 + 5 + 5 + 300, $ttl);
+        $t = gmmktime(12, 0, 0, 10, 15, 2026);
+        $cap = 100_000;
+        $mois = static fn (int $now): array => array_intersect_key($ledger->state($cap, $now),
+            ['spentMicrousd' => 0, 'reservedMicrousd' => 0, 'calls' => 0]);
+
+        self::assertTrue($ledger->reserve(30_000, $cap, $t), 'l’orphelin : jamais réglé');
+        self::assertTrue($ledger->reserve(20_000, $cap, $t + 600), 'un appel en vol, parti plus tard');
+        self::assertSame(['spentMicrousd' => 0, 'reservedMicrousd' => 50_000, 'calls' => 0], $mois($t + $ttl),
+            'à l’échéance pile : encore en vol');
+        self::assertSame(['spentMicrousd' => 30_000, 'reservedMicrousd' => 20_000, 'calls' => 1], $mois($t + $ttl + 1),
+            'au-delà : son pire cas dépensé, compté comme un appel ; l’appel plus frais reste en vol');
+
+        // Réglée après coup (un appel très lent, pas mort) : son pire cas est déjà compté, seul ce
+        // que son coût réel le dépasse s'ajoute ; rendue après coup, rien ne revient (prudent).
+        $ledger->settle(30_000, 45_000, $t);
+        $ledger->release(30_000, $t);
+        self::assertSame(['spentMicrousd' => 45_000, 'reservedMicrousd' => 20_000, 'calls' => 1], $mois($t + $ttl + 1));
+        $ledger->settle(20_000, 5_000, $t + 600);
+        self::assertSame(['spentMicrousd' => 50_000, 'reservedMicrousd' => 0, 'calls' => 2], $mois($t + $ttl + 1),
+            'l’appel en vol se règle comme d’ordinaire');
+
+        // Le critère des inscriptions la fait expirer : fraîche, elle ne ferme rien ; orpheline, elle compte.
+        self::assertTrue($ledger->reserve(40_000, $cap, $t + 2000));
+        self::assertTrue($ledger->signupsOpen($cap, 40_000, $t + 2000), 'en vol : 50 000 dépensés, le seuil tient');
+        self::assertFalse($ledger->signupsOpen($cap, 40_000, $t + 2000 + $ttl + 1),
+            'orpheline : 90 000 dépensés, il ne reste plus le seuil — les inscriptions attendent');
+
+        // Une réserve la fait expirer aussi, avant de décider (la ligne du mois, sans relire state()).
+        self::assertTrue($ledger->reserve(5_000, $cap, $t + 3000));
+        self::assertTrue($ledger->reserve(1_000, $cap, $t + 3000 + $ttl + 1));
+        self::assertSame(['95000', '1000', '4'], array_map('strval', self::$pdo->query(
+            "SELECT spent_microusd, reserved_microusd, calls FROM free_credit_monthly WHERE month = '2026-10'")->fetch(PDO::FETCH_NUM)));
+
+        // Au passage du mois (la réserve de 1 000 µ$, orpheline elle aussi, expire au passage) :
+        // l'orphelin du 31 octobre à 23 h 50 UTC se dépense en octobre, novembre n'en voit rien.
+        $late = gmmktime(23, 50, 0, 10, 31, 2026);
+        self::assertTrue($ledger->reserve(3_000, $cap, $late));
+        $novembre = $mois($late + $ttl + 1);
+        self::assertSame(['spentMicrousd' => 0, 'reservedMicrousd' => 0, 'calls' => 0], $novembre);
+        self::assertSame(['spentMicrousd' => 99_000, 'reservedMicrousd' => 0, 'calls' => 6], $mois($late));
+
+        // Compteurs seulement : un montant, une heure, le mois ; ni contenu, ni utilisateur, ni IP.
+        self::assertSame(['id', 'month', 'microusd', 'reserved_at'], self::$pdo->query(
+            "SELECT COLUMN_NAME FROM information_schema.COLUMNS WHERE TABLE_SCHEMA = DATABASE()
+             AND TABLE_NAME = 'free_credit_reservations' ORDER BY ORDINAL_POSITION")->fetchAll(PDO::FETCH_COLUMN));
+        self::$pdo->exec('DELETE FROM free_credit_monthly');
+        self::assertSame(0, (int) self::$pdo->query('SELECT COUNT(*) FROM free_credit_reservations')->fetchColumn(),
+            'les réserves partent avec leur mois');
     }
 
     /**

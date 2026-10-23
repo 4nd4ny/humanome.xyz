@@ -62,6 +62,7 @@ applicable.
 | 006 | `llm_usage_daily` | non (compteurs anonymes) | — (entretien) | — |
 | 006 | `llm_pow_challenges` | non (empreintes anti-rejeu) | — (TTL 2 min) | — |
 | 034 | `free_credit_monthly` | non (compteurs anonymes du mois : dépense, réserve, appels, refus des crédits offerts, sprint 7) | — (une ligne par mois, gardée) | — |
+| 034 | `free_credit_reservations` | non (compteurs anonymes : le montant et l'heure d'une réserve en cours, sans compte ni contenu) | — (retirée au règlement, ou à son expiration après 15 minutes ; part avec la ligne de son mois) | — |
 | 034 | `users.waitlisted_at` | oui (une date : la mise en liste d'attente d'une inscription, sprint 7 ; nulle pour tout autre compte, effacée à la levée) | avec la ligne `users` | `—` (un compte en attente ne se connecte pas ; levé, la date est effacée) |
 | 007 | `cartographies.run_meta` | oui (compteurs de run) | avec `cartographies` | `local` |
 | 008 | `cartographe_invitations` | oui (invitation) | CASCADE `apprenant_id` / SET NULL `accepted_by` | `—` |

@@ -25,14 +25,29 @@
 --   COUNTERS ONLY: no content, no user, no IP (cahier §6.5). Never pruned:
 --   one row a month.
 --
+-- free_credit_reservations: the reservations in flight, one row each, dated
+--   (independent review of 2026-10-23). A process that dies between its
+--   reservation and its settlement — the host's kill, a redeploy, a fatal
+--   error, a settlement that fails — would otherwise hold its worst case in
+--   reserved_microusd until the end of the month: the free calls refused
+--   before the cap, while the sign-ups, which read the spent amount only,
+--   stayed open. A reservation older than FreeCreditLedger::
+--   RESERVATION_TTL_SECONDS — well past the longest call the configuration
+--   allows — expires into its month's spent amount, at its worst case (the
+--   prudent side: the call may have been billed). reserved_microusd stays,
+--   updated in the same transactions: the sum of its month's rows.
+--   reserved_at: Unix time, from PHP (UTC by nature). COUNTERS ONLY: an
+--   amount and a time, no content, no user, no IP. A row leaves at its
+--   settlement, at its expiry, or with its month (ON DELETE CASCADE).
+--
 -- users.waitlisted_at: since when a new account waits for the next month's
 --   credits (S7a, lot 2: the sign-ups made once the month's credits are
 --   spent; NULL for every other account, the existing ones included). A
 --   date, nothing more than a sign-up keeps (RGPD, registre §1); the account
 --   purge removes it with the row.
 --
--- Forward-only, expand pattern (ADR-008): a new table and a nullable column,
--- which the previously pointed release simply ignores.
+-- Forward-only, expand pattern (ADR-008): two new tables and a nullable
+-- column, which the previously pointed release simply ignores.
 
 CREATE TABLE free_credit_monthly (
     month CHAR(7) NOT NULL,
@@ -41,6 +56,18 @@ CREATE TABLE free_credit_monthly (
     calls INT UNSIGNED NOT NULL DEFAULT 0,
     refusals INT UNSIGNED NOT NULL DEFAULT 0,
     PRIMARY KEY (month)
+) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci;
+
+CREATE TABLE free_credit_reservations (
+    id BIGINT UNSIGNED NOT NULL AUTO_INCREMENT,
+    month CHAR(7) NOT NULL,
+    microusd BIGINT UNSIGNED NOT NULL,
+    reserved_at BIGINT UNSIGNED NOT NULL,
+    PRIMARY KEY (id),
+    KEY idx_free_credit_reservations_month (month, microusd),
+    KEY idx_free_credit_reservations_at (reserved_at),
+    CONSTRAINT fk_free_credit_reservations_month FOREIGN KEY (month)
+        REFERENCES free_credit_monthly (month) ON DELETE CASCADE
 ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci;
 
 ALTER TABLE users

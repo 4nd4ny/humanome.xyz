@@ -271,6 +271,8 @@ les seules écritures sont :
 - `llm_usage_daily` : compteurs de tokens + coût (aucun contenu) ;
 - `free_credit_monthly` : dépense, réserve, appels et refus du mois, en
   micro-dollars (aucun contenu, aucun compte) ;
+- `free_credit_reservations` : le montant et l'heure de chaque réserve en
+  cours, retirée au règlement ou à son expiration (aucun contenu, aucun compte) ;
 - `llm_pow_challenges` : `sha256(challenge)` (aucune donnée client) ;
 - `rate_limits` : bucket **haché** (jamais d'IP brute).
 

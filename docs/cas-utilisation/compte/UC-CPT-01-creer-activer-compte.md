@@ -205,9 +205,13 @@ Le visiteur ouvre `#/compte` et choisit « Inscription » — ou clique le lien
   sous le pire cas du plus petit appel de l'Essayer (entrée : le seul surcoût
   de 1 024 jetons ; sortie : le maximum du modèle ; au tarif de la grille,
   `Waitlist::floorMicrousd`). Les réserves des appels en vol ne comptent pas ;
-  un plafond de 0 met toute inscription en attente ; la décision est prise
-  une fois, à l'inscription. Sous ce seuil, aucun appel de l'Essayer ne passe
-  plus, même sans appel en vol.
+  une réserve **orpheline** (son processus mort avant de la régler) compte dès
+  qu'elle a expiré en dépense, après `FreeCreditLedger::RESERVATION_TTL_SECONDS`
+  (15 minutes ; UC-VIS-03 RG7), et non plus jamais jusqu'au 1er : les
+  inscriptions ne restent pas ouvertes quand l'offert est fermé (revue du
+  2026-10-23). Un plafond de 0 met toute inscription en attente ; la décision
+  est prise une fois, à l'inscription. Sous ce seuil, aucun appel de l'Essayer
+  ne passe plus, même sans appel en vol.
 - **RG9** — Horloge de la liste : `waitlisted_at` est écrit en **UTC** par PHP
   (`gmdate`), jamais par `NOW()` de MySQL ; un compte est dû dès le 1er du mois
   UTC suivant, 0 h (1 h ou 2 h à Paris), le mois du grand livre des crédits
@@ -313,6 +317,7 @@ Le visiteur ouvre `#/compte` et choisit « Inscription » — ou clique le lien
 | UC-CPT-01-F28 | A5 | API | Mois suivant : une connexion ratée d'un inconnu lève la liste dans l'ordre, le code de la levée active ; un compte du mois attend ; connexion et renvoi d'un compte dû le lèvent, un seul email | idem |
 | UC-CPT-01-F29 | A5 | API | Le tick (`POST /api/admin/worker-tick`, jeton du déclencheur) lève la liste et le dit (`listeAttenteLevees`) ; un tick sans compte dû n'en dit rien | idem |
 | UC-CPT-01-F30 | A4, A5 | IHM | `<App/>` : inscription en liste d'attente (notice, aucun code), connexion qui le redit ; levée → connexion → écran d'activation → connecté | `web/test/usecases/functional/uc-cpt-01-creer-activer-compte.test.jsx` |
+| UC-CPT-01-F31 | RG8 | API | Une réserve orpheline du pire cas d'un Essayer, au-delà de son échéance : l'inscription part en liste d'attente, l'Essayer est refusé, le mois la montre dépensée et plus « en vol » | `api/tests/UseCases/Functional/UcCpt01CreerActiverCompteTest.php` |
 
 Les tests IHM jouent `<App/>` contre un faux serveur en mémoire qui rejoue le
 contrat HTTP des routes du compte (`web/test/usecases/support/cpt.js`).

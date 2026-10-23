@@ -137,7 +137,7 @@
           "description": "Versions du moteur au lancement, chacune nulle quand le moteur ne la donne pas.",
           "properties": {
             "commit": {
-              "anyOf": [{ "type": "null" }, { "type": "string", "pattern": "^[0-9a-f]{7,40}$" }]
+              "anyOf": [{ "type": "null" }, { "type": "string", "pattern": "^[0-9a-f]{7,64}$" }]
             },
             "protocole": { "$ref": "#/$defs/texte" },
             "personas": {

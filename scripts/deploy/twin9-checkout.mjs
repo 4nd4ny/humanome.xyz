@@ -25,7 +25,7 @@ export function git(dir, args, encoding = 'utf8') {
  *
  * @param {string} twinDir
  * @param {string[]} paths relative to the checkout's root
- * @returns {string} the commit (40 hex digits)
+ * @returns {string} the commit (40 hex digits, 64 in a SHA-256 repository)
  */
 export function cleanCommit(twinDir, paths) {
   let root

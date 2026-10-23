@@ -77,8 +77,9 @@ final class EngineLoader
 
     /**
      * The engine's commit, which a run's attestation keeps (T9): the HEAD of
-     * the Twin_v9 checkout, else the first line of its COMMIT file (a copy
-     * without git, as the deployment leaves it), else null.
+     * the Twin_v9 checkout, read in git's files or, in the reftable format,
+     * asked to git; else the first line of its COMMIT file (a copy without
+     * git, as the deployment leaves it); else null.
      */
     public static function commit(?string $directory = null): ?string
     {
@@ -95,6 +96,10 @@ final class EngineLoader
         if (preg_match('/^' . self::OBJECT_NAME . '$/', $head) === 1) {
             return $head;
         }
+        $head = self::reftableHead($git);
+        if ($head !== null) {
+            return $head;
+        }
         $fichier = $directory . '/COMMIT';
         $commit = is_file($fichier) ? trim(strtok((string) file_get_contents($fichier), "\n") ?: '') : '';
 
@@ -105,12 +110,7 @@ final class EngineLoader
     /** A reference's commit: its file, else packed-refs; in a worktree, the common directory holds both. */
     private static function reference(string $git, string $ref): ?string
     {
-        $communs = [$git];
-        if (is_file($git . '/commondir')) {
-            $commun = trim((string) file_get_contents($git . '/commondir'));
-            $communs[] = str_starts_with($commun, '/') ? $commun : $git . '/' . $commun;
-        }
-        foreach ($communs as $dir) {
+        foreach (self::refDirectories($git) as $dir) {
             if (is_file($dir . '/' . $ref)) {
                 return trim((string) file_get_contents($dir . '/' . $ref));
             }
@@ -122,6 +122,51 @@ final class EngineLoader
         }
 
         return null;
+    }
+
+    /**
+     * The HEAD of a repository in the reftable format (git init
+     * --ref-format=reftable, git 3.0's default), whose refs are binary tables
+     * only git reads: asked to git, without a shell, on that gitdir alone
+     * (--git-dir), so that a .git git refuses never yields the commit of a
+     * repository around it. Null in the files format (read above), without
+     * proc_open or git, or when git names no commit.
+     */
+    private static function reftableHead(string $git): ?string
+    {
+        $reftable = array_filter(self::refDirectories($git), static fn (string $dir): bool => is_dir($dir . '/reftable'));
+        if ($reftable === [] || !\function_exists('proc_open')) {
+            return null;
+        }
+        $process = @proc_open(
+            ['git', '--git-dir=' . $git, 'rev-parse', '--verify', '--quiet', 'HEAD'],
+            [0 => ['file', '/dev/null', 'r'], 1 => ['pipe', 'w'], 2 => ['file', '/dev/null', 'w']],
+            $pipes,
+        );
+        if (!\is_resource($process)) {
+            return null;
+        }
+        $head = trim((string) stream_get_contents($pipes[1]));
+        fclose($pipes[1]);
+
+        return proc_close($process) === 0 && preg_match('/^' . self::OBJECT_NAME . '$/', $head) === 1 ? $head : null;
+    }
+
+    /**
+     * Where a gitdir's refs live: itself, and in a worktree its common
+     * directory (absolute or relative).
+     *
+     * @return list<string>
+     */
+    private static function refDirectories(string $git): array
+    {
+        $dirs = [$git];
+        if (is_file($git . '/commondir')) {
+            $commun = trim((string) file_get_contents($git . '/commondir'));
+            $dirs[] = str_starts_with($commun, '/') ? $commun : $git . '/' . $commun;
+        }
+
+        return $dirs;
     }
 
     /** A file's first line, without its line end (CRLF included) nor its trailing blanks. */

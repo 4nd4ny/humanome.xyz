@@ -146,6 +146,50 @@ final class EngineLoaderTest extends TestCase
     }
 
     /**
+     * A repository in the reftable format (git init --ref-format=reftable,
+     * git 3.0's default) keeps its refs in binary tables, its HEAD file naming
+     * refs/heads/.invalid: its commit, on a branch or in a detached worktree,
+     * under a path with a space, is the one git reads there; never the commit
+     * of a repository around a directory whose .git git refuses. Skipped where
+     * git does not know the format.
+     */
+    public function testTheEnginesCommitInAReftableRepositoryIsTheOneGitReads(): void
+    {
+        $racine = sys_get_temp_dir() . '/twin v9-reftable-' . bin2hex(random_bytes(4));
+        $depot = "$racine/13. Cartographie/Twin_v9";
+        $git = static function (string ...$arguments): ?string {
+            $sortie = [];
+            $code = 1;
+            exec('GIT_CONFIG_GLOBAL=/dev/null GIT_CONFIG_NOSYSTEM=1 git -c user.name=Test -c user.email=test@example.invalid '
+                . '-c commit.gpgsign=false -c core.hooksPath=/dev/null '
+                . implode(' ', array_map('escapeshellarg', $arguments)) . ' 2>/dev/null', $sortie, $code);
+
+            return $code === 0 ? trim(implode("\n", $sortie)) : null;
+        };
+        try {
+            mkdir($depot, 0777, true);
+            if ($git('init', '-q', '--ref-format=reftable', '-b', 'main', $depot) === null) {
+                self::markTestSkipped('git does not know the reftable format here (git >= 2.45).');
+            }
+            $git('-C', $depot, 'commit', '-q', '--allow-empty', '-m', 'engine');
+            $sha = (string) $git('-C', $depot, 'rev-parse', 'HEAD');
+            self::assertMatchesRegularExpression('/^[0-9a-f]{40}$/', $sha);
+            self::assertSame("ref: refs/heads/.invalid\n", file_get_contents("$depot/.git/HEAD"), 'the reftable format');
+
+            self::assertSame($sha, EngineLoader::commit($depot), 'the clone, on a branch');
+
+            self::assertNotNull($git('-C', $depot, 'worktree', 'add', '-q', '--detach', "$racine/t9 s2"));
+            self::assertSame($sha, EngineLoader::commit("$racine/t9 s2"), 'a detached worktree');
+
+            mkdir("$depot/factice/.git/reftable", 0777, true);
+            file_put_contents("$depot/factice/.git/HEAD", "ref: refs/heads/.invalid\n");
+            self::assertNull(EngineLoader::commit("$depot/factice"), 'not the commit of the repository around it');
+        } finally {
+            exec('rm -rf ' . escapeshellarg($racine));
+        }
+    }
+
+    /**
      * Where Twin_v9 is a git checkout (TWIN_V9_DIR, a worktree or a clone),
      * the commit the attestation keeps is the HEAD git itself reads there.
      */

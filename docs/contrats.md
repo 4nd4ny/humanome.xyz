@@ -1178,8 +1178,9 @@ une suivante le relève.
   — ses versions archivées plus une —, `empreinte` du jeu), `referentiel`
   (`id`, `version`, et depuis T16 `empreinte`, §8.8), `moteur` (`commit` : la
   tête du dépôt `TWIN_V9_DIR` — 40 chiffres hexadécimaux, 64 dans un dépôt
-  SHA-256 —, sinon la première ligne de son fichier `COMMIT` (7 à 64 chiffres),
-  sinon nul). Il garde aussi sa
+  SHA-256 —, lue dans les fichiers de git ou, au format reftable, demandée à
+  git sur ce seul dépôt (`--git-dir`), sinon la première ligne de son fichier
+  `COMMIT` (7 à 64 chiffres), sinon nul). Il garde aussi sa
   visibilité (`privee` ou `cartographe`) et la date de l'accord (`accord_at`),
   sans lequel rien ne part. Depuis la voie mixte (P1-5, ADR-012), l'accord
   nomme les fournisseurs : `accord: {fournisseurs: [ids]}`, comparé à ceux

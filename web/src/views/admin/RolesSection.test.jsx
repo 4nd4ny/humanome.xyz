@@ -87,7 +87,7 @@ describe('RolesSection', () => {
         expect.objectContaining({ method: 'POST', body: JSON.stringify({ role: 'cartographe' }) }),
       ),
     )
-    await screen.findByText(/attribué/i)
+    await screen.findByText('Habilitation « cartographe » accordée.')
   })
 
   it('retire un rôle (DELETE)', async () => {
@@ -108,7 +108,7 @@ describe('RolesSection', () => {
         expect.objectContaining({ method: 'DELETE' }),
       ),
     )
-    await screen.findByText(/retiré/i)
+    await screen.findByText('Habilitation « apprenant » retirée.')
   })
 
   it('recherche par requête (query dans l’URL)', async () => {

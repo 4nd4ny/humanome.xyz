@@ -7,6 +7,10 @@
 // PayPal) ou dépend du mois courant (liste des factures), la vue CreditView
 // est rendue seule avec ses coutures `redirect` / `now` — le réseau reste le
 // fetch global. PayPal n'est jamais appelé : ce sont les routes API qui le font.
+//
+// Seule une école achète (ADR-013 §2 e) : le compte de ces scénarios en est
+// une (le serveur dit `peut_acheter`, support/twin.js metaTwin9) ; F32 joue un
+// apprenant, qui ne voit pas les packs et garde son solde restant.
 import { StrictMode } from 'react'
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
 import { act, cleanup, fireEvent, render, screen, waitFor, within } from '@testing-library/react'
@@ -43,7 +47,7 @@ const FACTURE = {
 
 function routes(overrides = {}) {
   return {
-    'GET auth/me': meResponse(['apprenant']),
+    'GET auth/me': meResponse(['etablissement']),
     'GET twin9/meta': jsonResponse(200, metaTwin9({ solde_microusd: 4_500_000 })),
     'GET twin9/credit': jsonResponse(200, CREDIT),
     'GET twin9/depenses': jsonResponse(200, DEPENSES),
@@ -52,7 +56,7 @@ function routes(overrides = {}) {
   }
 }
 
-function openApp(hash = '#/compte/credit', user = { id: 7, roles: ['apprenant'] }, { strict = false } = {}) {
+function openApp(hash = '#/compte/credit', user = { id: 7, roles: ['etablissement'] }, { strict = false } = {}) {
   window.location.hash = hash
   const app = <App lib={fakeLib} fetchMeFn={async () => ({ user })} />
   // StrictMode : comme web/src/main.jsx (effets montés, démontés puis remontés en développement).
@@ -70,7 +74,7 @@ afterEach(() => {
   vi.restoreAllMocks()
 })
 
-describe('UC-APP-11 — l’apprenant gère son crédit prépayé', () => {
+describe('UC-APP-11 — un compte gère son crédit prépayé (une école achète)', () => {
   it('UC-APP-11-F01 — nominal (consultation) : solde, suivi mensuel, grand-livre en compteurs, packs de recharge', async () => {
     stubFetch(routes())
     openApp()
@@ -191,13 +195,12 @@ describe('UC-APP-11 — l’apprenant gère son crédit prépayé', () => {
     expect((await screen.findByTestId('credit-solde')).textContent).toBe('4,50 $')
   })
 
-  it('UC-APP-11-F08 — E2 : PayPal non configuré → « recharge indisponible », clé privée suggérée, pas de remboursement', async () => {
-    stubFetch(routes({ 'GET twin9/meta': jsonResponse(200, metaTwin9({ paypalConfigured: false, cle_privee_disponible: true })) }))
+  it('UC-APP-11-F08 — E2 : PayPal non configuré → « recharge indisponible », aucune clé gardée suggérée (ADR-013), pas de remboursement', async () => {
+    stubFetch(routes({ 'GET twin9/meta': jsonResponse(200, metaTwin9({ paypalConfigured: false })) }))
     openApp()
 
     const indispo = await screen.findByTestId('recharge-indispo')
-    expect(indispo.textContent).toContain('indisponible pour le moment')
-    expect(indispo.textContent).toContain('Votre clé Anthropic privée enregistrée reste utilisable')
+    expect(indispo.textContent).toBe('La recharge par carte (PayPal) est indisponible pour le moment.')
     expect(screen.queryByRole('button', { name: 'Recharger' })).toBeNull()
     expect(screen.queryByRole('button', { name: 'Se faire rembourser le solde restant' })).toBeNull()
   })
@@ -238,6 +241,30 @@ describe('UC-APP-11 — l’apprenant gère son crédit prépayé', () => {
     })
     await waitFor(() => expect(screen.getByText('Aucun solde remboursable pour le moment.').getAttribute('role')).toBe('alert'))
     expect(screen.getByTestId('credit-solde').textContent).toBe('4,50 $')
+  })
+})
+
+describe('UC-APP-11 — un apprenant n’achète pas (ADR-013, R2)', () => {
+  it('UC-APP-11-F32 — E11 / A4 : un apprenant ne voit aucun pack ni bouton « Recharger » ; la page dit pourquoi ; son solde restant reste affiché et remboursable', async () => {
+    const pourquoi =
+      'Pour ne pas avoir à vérifier l’âge des apprenants, seules les écoles achètent des crédits : utilisez votre ' +
+      'propre clé, dans votre navigateur, ou le crédit de votre école. Votre solde restant reste utilisable jusqu’à ' +
+      'épuisement, et remboursable sur demande.'
+    const { calls } = stubFetch(
+      routes({
+        'GET auth/me': meResponse(['apprenant']),
+        'GET twin9/meta': jsonResponse(200, metaTwin9({ solde_microusd: 4_500_000, peut_acheter: false, achat_pourquoi: pourquoi })),
+      }),
+    )
+    openApp('#/compte/credit', { id: 8, roles: ['apprenant'] })
+
+    expect((await screen.findByTestId('achat-ecoles')).textContent).toBe(pourquoi)
+    expect(screen.queryByRole('button', { name: 'Recharger' })).toBeNull()
+    expect(screen.queryByText('Pack découverte — 10 $')).toBeNull()
+    expect(screen.getByTestId('credit-solde').textContent).toBe('4,50 $')
+    fireEvent.click(screen.getByRole('button', { name: 'Se faire rembourser le solde restant' }))
+    expect(screen.getByText(/Seules les écoles rechargent\./)).toBeDefined()
+    expect(posts(calls, 'twin9/credit/paypal/creer')).toHaveLength(0)
   })
 })
 

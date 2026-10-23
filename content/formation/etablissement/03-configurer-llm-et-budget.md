@@ -79,6 +79,11 @@ Autrement dit, vous ne relirez jamais une clé saisie : notez-la ailleurs si vou
 avez besoin. Ce comportement est volontaire — une clé qu'on ne peut pas relire est
 une clé qu'on ne peut pas exfiltrer par l'écran.
 
+Depuis le 22 octobre 2026, l'école est le **seul** compte dont humanome garde une
+clé sur ses serveurs : les clés de vos apprenants restent dans leur navigateur.
+C'est aussi le seul compte qui achète des crédits (« Mon compte », « Crédit »),
+pour les analyses de ses apprenants.
+
 ## 4. Fixer le plafond de budget
 
 Sous « Plafond de dépense (USD) », saisissez un montant en dollars (0 ou plus).

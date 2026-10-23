@@ -1,7 +1,7 @@
 # Registre des traitements — humanome.xyz (RGPD art. 30)
 
 **Responsable du traitement :** Harmonia Éducation (écosystème RESPIRE).
-**Version :** M9 / P12.2 — 2026-07-12 ; fournisseurs des runs Twin9 (ADR-012) — 2026-10-22 ; rôles RESPIRE déclarés (§1 ter, sprint 8) — 2026-10-22.
+**Version :** M9 / P12.2 — 2026-07-12 ; fournisseurs des runs Twin9 (ADR-012) — 2026-10-22 ; rôles RESPIRE déclarés (§1 ter, sprint 8) — 2026-10-22 ; clés et crédits (ADR-013, sprint 6, lot S6a : §6, §6 bis, §11, §13) — 2026-10-22.
 **Principe transverse (cahier §6) :** aucune donnée de portfolio ni de
 cartographie côté serveur par défaut ; tout stockage serveur est un opt-in
 explicite et réversible de la personne concernée. Journalisation minimale :
@@ -150,18 +150,37 @@ exécution du service/contrat, **f** = intérêt légitime.
 | Tables | `share_links`. |
 | Sort à la suppression | CASCADE via la cartographie ; entretien périodique pour les liens dormants. |
 
-## 6. Clés d'API personnelles
+## 6. Clés d'API personnelles : plus collectées, en cours de purge (ADR-013)
+
+Depuis l'ADR-013 (règle R1 de Christian), la clé d'API d'un utilisateur reste
+dans son navigateur (`localStorage`, jamais transmise à humanome) : le serveur
+n'en collecte plus aucune (`PUT /api/keys` répond `410`, le corps jamais lu).
+Seule une école garde la sienne, pour ses élèves (§6 bis). Restent les clés
+gardées avant, que ce traitement efface.
 
 | Élément | Détail |
 |---|---|
-| Finalité | Permettre à une personne d'utiliser sa propre clé d'un fournisseur de LLM. |
-| Personnes concernées | Apprenants/utilisateurs avancés ; établissements (clé de cohorte, §9). |
-| Données | Clé d'API **chiffrée au repos** (libsodium, clé maîtresse hors webroot, ADR-004) ; jamais réaffichée ni exposée. |
-| Base légale | **a**/**b** (fonctionnalité demandée). |
-| Durée | Jusqu'à effacement par la personne ou suppression du compte. |
-| Destinataires | Le fournisseur choisi par la personne, le temps du traitement. Pour un run Twin9, la clé personnelle ne sert que chez Anthropic : un profil qui appelle un autre fournisseur ne part qu'avec les clés de l'instance, refus à l'enregistrement et appel par appel (ADR-012, §13). |
-| Tables | `user_api_keys` (+ `etablissement_config.encrypted_key` pour le B2B). |
-| Sort à la suppression | CASCADE. |
+| Finalité | Effacer les clés d'API que des personnes avaient gardées sur le serveur avant l'ADR-013 (ADR-004, opt-in), après les leur avoir rendues si elles le veulent. Elles ne servent plus à aucun run nouveau ; seuls les runs Twin9 lancés avant sur elles les lisent encore, jusqu'à leur fin, chez Anthropic seulement (§13). |
+| Personnes concernées | Les comptes qui avaient gardé une clé (apprenants, utilisateurs avancés). |
+| Données | Clé d'API **chiffrée au repos** (libsodium, clé maîtresse hors webroot) ; la date de l'avis de purge (`avis_purge_at`, migration 036). Le courriel d'avis porte les fournisseurs et la date de purge, jamais la clé. |
+| Base légale | **b** (fin d'un service retiré, et restitution à la personne) ; **f** (minimisation : ne plus garder un secret qui ne sert plus, art. 5.1.c et e). |
+| Durée | Jusqu'à la suppression par la personne (« Supprimer du serveur », ou « Recopier dans ce navigateur, puis supprimer », `#/compte`), ou jusqu'à la purge : 30 jours au moins après l'avis par courriel, par le script d'administration `scripts/purger-cles-utilisateurs.php`, lancé à la main seulement (jamais automatiquement ; jour et moyen en production à décider par Christian). Une clé dont un run est en cours n'est pas purgée. |
+| Destinataires | La personne (relecture `no-store`, pour recopier sa clé dans son navigateur) ; Anthropic, pour un run lancé avant sur elle, jusqu'à sa fin, et pour annuler puis effacer les lots soumis avec elle avant la purge. |
+| Tables | `user_api_keys`. |
+| Sort à la suppression | CASCADE ; à la purge, un événement d'audit par compte, `api_keys_purged {providers}` (et `api_keys_purge_notice {providers}` à l'avis), jamais la clé. La table part avec la contraction, une fois vide (ADR-013 §8). |
+
+### 6 bis. Clés d'API d'une école
+
+| Élément | Détail |
+|---|---|
+| Finalité | Permettre à une école de payer l'usage des modèles de ses élèves avec sa propre clé (ADR-013, R1 et R3). |
+| Personnes concernées | L'école (le compte qui a l'habilitation `etablissement`). |
+| Données | La clé de son point d'accès (`etablissement_config.encrypted_key`, §9) et, avec le lot S6b, sa clé Anthropic pour ses élèves ; chiffrées au repos, jamais rendues par une route, jamais journalisées. `KeyVault::store` refuse la clé de tout autre compte. |
+| Base légale | **b** (contrat établissement). |
+| Durée | Jusqu'à effacement par l'école ou suppression de son compte. |
+| Destinataires | Le fournisseur de la clé ; avec la clé d'une école, les résultats des lots d'un élève restent lisibles dans la Console de l'école (lot S6b, ADR-013 §6). |
+| Tables | `etablissement_config` (et, lot S6b, `ecole_cles`). |
+| Sort à la suppression | CASCADE avec le compte école. |
 
 ## 7. Démonstration publique (proxy LLM)
 
@@ -183,7 +202,7 @@ exécution du service/contrat, **f** = intérêt légitime.
 | Finalité | Analyse du texte du portfolio pour produire la cartographie. |
 | Personnes concernées | Toute personne déclenchant un run. |
 | Données transmises | Le texte à analyser + consignes système. Jamais le mot de passe ni les identifiants de compte. |
-| Destinataire | **Démo** : Anthropic via le proxy plateforme. **Clé perso** : le fournisseur choisi par la personne. **Établissement** : la clé de l'établissement ou de la plateforme, selon sa configuration. **Run Twin9** : les fournisseurs des modèles de son profil — Anthropic par défaut, avec la clé de l'instance ou la clé personnelle de la personne ; OpenAI, Mistral AI, Google, xAI ou OpenRouter, avec la clé de l'instance seulement, quand l'administrateur les a ouverts (§13, ADR-012). |
+| Destinataire | **Démo** : Anthropic via le proxy plateforme. **Clé perso** : le fournisseur choisi par la personne, directement depuis son navigateur. **Établissement** : la clé de l'établissement ou de la plateforme, selon sa configuration. **Run Twin9** : les fournisseurs des modèles de son profil — Anthropic par défaut ; OpenAI, Mistral AI, Google, xAI ou OpenRouter quand l'administrateur les a ouverts —, avec la clé de l'instance ; plus avec la clé personnelle de la personne depuis l'ADR-013, sauf pour un run lancé avant sur elle, jusqu'à sa fin (§13, ADR-012). |
 | Transferts hors UE | Anthropic, OpenAI, Google, xAI et OpenRouter sont des entreprises américaines : le texte peut être traité hors de l'Union européenne, notamment aux États-Unis. Pays de traitement et garantie de chaque transfert (art. 44 à 46 : décision d'adéquation — cadre de protection des données UE–États-Unis — ou clauses contractuelles types) : **non vérifiés** à ce jour, fournisseur par fournisseur, Anthropic compris (point ouvert, signalé le 2026-10-22) ; à établir avant d'ouvrir un fournisseur autre qu'Anthropic. Mistral AI : entreprise française, lieu de traitement non vérifié. OpenRouter, intermédiaire : le pays dépend en outre du fournisseur final. Clé personnelle : la relation contractuelle de la personne avec son fournisseur. Rien de cela ne figure dans les faits d'API relevés (2026-10-22) : ni pays, ni garantie. |
 | Base légale | **a** (le run est déclenché par la personne). |
 | Conservation chez le fournisseur | Selon ses règles : Anthropic efface requêtes et réponses dans les 30 jours (jusqu'à 2 ans en cas de signalement ; un lot, 29 jours au plus) ; les autres fournisseurs d'un run Twin9, §13. |
@@ -229,12 +248,12 @@ exécution du service/contrat, **f** = intérêt légitime.
 
 | Élément | Détail |
 |---|---|
-| Finalité | Facturer l'usage de la clé API plateforme pour les runs Twin9 (ADR-010 §3) : solde prépayé, recharges PayPal, débit par appel. |
-| Personnes concernées | Titulaires de compte utilisant Twin9. |
+| Finalité | Facturer l'usage de la clé API plateforme pour les runs Twin9 et la cartographie ouverte sur crédits (ADR-010 §3) : solde prépayé, recharges PayPal, débit par appel. Depuis l'ADR-013 (§2 e, règle R2), **seule une école achète** : aucun paiement n'est demandé à un particulier, ce qui évite de contrôler l'âge des apprenants ; le solde qu'un particulier a acheté avant reste utilisable jusqu'à épuisement, et remboursable sur demande (§2 c). |
+| Personnes concernées | Les écoles qui achètent ; les titulaires de compte qui dépensent ou se font rembourser un solde. |
 | Données | **Compteurs uniquement** : solde en micro-USD (`twin9_credits`), journal des mouvements (`twin9_credit_events` : montant, étiquette d'étape — pour un run sur le serveur, son numéro et son étape —, modèle, tokens réels, identifiant d'ordre PayPal). **Aucune donnée bancaire** (le paiement se fait chez PayPal), aucun contenu de portfolio ni de prompt. |
-| Base légale | **b** (exécution du service prépayé demandé par la personne). |
+| Base légale | **b** (exécution du service prépayé demandé par l'école, ou par la personne pour un solde acheté avant l'ADR-013). |
 | Durée | Vie du compte. |
-| Destinataires | PayPal (paiement chez eux ; nous ne recevons que l'id d'ordre, le montant, l'état). |
+| Destinataires | PayPal (paiement chez eux ; nous ne recevons que l'id d'ordre, le montant, l'état ; le bac à sable seulement en local). |
 | Tables | `twin9_credits`, `twin9_credit_events`. |
 | Sort à la suppression | CASCADE (le solde et son journal appartiennent à la personne). |
 
@@ -244,7 +263,7 @@ exécution du service/contrat, **f** = intérêt légitime.
 |---|---|
 | Finalité | Régler les runs Twin9 de la personne : fournisseurs et modèles de chaque étage, étape et lecteur (ADR-012), seuils, troncatures, voie des appels Anthropic, plafonds (`docs/plan-twin9-php.md` de `Twin_v9`, lot 4a). |
 | Personnes concernées | Titulaires de compte qui règlent leurs runs Twin9. |
-| Données | **Réglages uniquement**, validés par `schemas/twin9-profil.schema.json` : aucun contenu de portfolio ni de prompt, aucune clé (le profil dit laquelle employer, celle de l'instance ou la clé personnelle, jamais la clé elle-même). |
+| Données | **Réglages uniquement**, validés par `schemas/twin9-profil.schema.json` : aucun contenu de portfolio ni de prompt, aucune clé (le profil dit laquelle employer, celle de l'instance — « personnelle » reste lisible dans un profil d'avant l'ADR-013, qui ne part plus —, jamais la clé elle-même). |
 | Base légale | **b** (exécution du service demandé par la personne). |
 | Durée | Vie du compte, ou jusqu'à ce que la personne supprime le profil. |
 | Destinataires | Interne. |
@@ -260,7 +279,7 @@ exécution du service/contrat, **f** = intérêt légitime.
 | Données | Par run (`twin9_runs`) : copie des réglages (profil et réglages de la v9.8), **copie du portfolio**, instantané du jeu de gabarits, horloge, compteurs, attestation (profil, versions du jeu de gabarits et du référentiel, commit du moteur), visibilité, date de l'accord, début de sa période en cours et secondes actives ; sa configuration et son exécution (migration 031, P0-1) : **réglages, versions, compteurs et montants uniquement** — réglages d'appel de chaque étape (fournisseur, voie, modèle, budget de sortie, effort, réflexion), collège, paramètres d'algorithme, versions et empreintes du moteur, du référentiel et du jeu de gabarits, prix facturés des modèles employés, appels, pannes, jetons et coûts par voie, fournisseur et modèle, passes du moteur et leur durée, reprises (date, budget) ; jamais un gabarit, une fiche, une clé, la marge ni un contenu de portfolio. Journal des appels (`twin9_appels`) : empreinte SHA-256 du prompt (jamais le prompt), réponse du modèle, fournisseur de l'appel, modèle servi, jetons, coût, réserve tenue avant l'envoi et son montant gardé une fois réglée (le pire cas, T8), durée, coupures par la fin d'une tranche et date depuis laquelle l'appel bute sur un plafond de dépense (migration 032, voie mixte) ; jamais la clé. Lots (`twin9_lots`, voie par lots) : identifiant Anthropic, nombre de requêtes, taille, dates, aucun contenu. Sorties du run (`twin9_resultats`). Mémoire de la carte (`twin9_cartes`, `twin9_memoire`) : journées instruites, faisceaux, calques archivés, par portfolio, référentiel et jeu de gabarits. Tout ce contenu est compressé (zlib), non chiffré. |
 | Base légale | **a** : à chaque lancement, l'accord de l'apprenant pour garder son portfolio et l'état du run sur le serveur (ADR-011 §5), que l'écran de lancement (`#/twin9`, T9) demande, daté (`accord_at`) ; sans lui, rien ne part. L'accord nomme les fournisseurs auxquels le run envoie le texte, avec leur voie et leur étiquette RGPD (ADR-012) : la page les lit avant tout aperçu, le lancement envoie leur liste, que le serveur compare aux fournisseurs qu'atteignent les appels du profil (`422` si elle diffère) et garde dans la configuration du run (`accord.fournisseurs`). |
 | Durée | Un run fini ne garde de son journal que les compteurs. Le run, portfolio et sorties compris, et la mémoire de ses cartes restent jusqu'à ce que la personne les efface (ADR-011 §5) ; aujourd'hui, en supprimant son compte. |
-| Destinataires | Les fournisseurs des modèles du profil (§8), à chaque appel, puis selon la conservation de chacun ; transferts hors UE : §8 (garanties non vérifiées). Anthropic par défaut ; par lots, jusqu'à ce que le lot soit relevé, puis supprimé chez Anthropic, ou annulé puis supprimé avec son run. Un lot qui ne serait pas supprimé y resterait 29 jours. Les autres fournisseurs (ADR-012) — seulement ceux que l'administrateur a ouverts (`twin9_fournisseurs_ouverts`, Anthropic seul par défaut ; un fournisseur étiqueté « non » derrière `twin9_fournisseurs_non_rgpd`, fermé par défaut), avec la clé de l'instance, en direct — conservent selon leur documentation officielle (relevée le 2026-10-22) : OpenAI, appelé avec `store: false`, des journaux de lutte contre les abus jusqu'à 30 jours ; Mistral AI, durée standard non trouvée dans sa documentation (conservation nulle sur demande) ; Google (Gemini), offre payante seule, `store: false`, 55 jours pour la lutte contre les abus ; xAI, 30 jours pour audit, sans entraînement ; OpenRouter, intermédiaire appelé avec `data_collection: deny` et sans repli, la conservation du fournisseur final. Étiquettes RGPD du registre `Twin9\Fournisseurs\Fournisseurs` (recherche de juillet 2026, pas un avis juridique) : Mistral AI « oui » ; Anthropic, OpenAI « sous conditions » ; Google, xAI, OpenRouter « non ». La garde (fournisseur ouvert, étiquette, clé de l'instance, pas de clé personnelle hors d'Anthropic) est relue au lancement, à la reprise et à l'ouverture de chaque tranche ; à l'enregistrement d'un profil, seule la clé personnelle hors d'Anthropic est refusée (un profil qui nomme un fournisseur fermé s'enregistre, mais ne se lance pas). Ce que la plateforme ne règle pas requête par requête se règle sur les comptes des clés de l'instance, à leur pose : chez Mistral AI, l'usage des données pour l'entraînement coupé (« Anonymous improvement data ») ou une offre payante ; chez OpenRouter, la journalisation des entrées et sorties et leur usage par OpenRouter laissés désactivés ; chez Google, une clé de l'offre payante. Les résultats (sorties, cartes du jour de la mémoire) sont lus par la personne et, si elle le décide (visibilité « cartographe », réversible), par le cartographe auquel elle est liée, avec la configuration et l'exécution du run sans prix, coût, plafond ni clé ; l'administrateur ne voit que des compteurs (`docs/autorisations.md`, « Runs Twin9 »). |
+| Destinataires | Les fournisseurs des modèles du profil (§8), à chaque appel, puis selon la conservation de chacun ; transferts hors UE : §8 (garanties non vérifiées). Anthropic par défaut ; par lots, jusqu'à ce que le lot soit relevé, puis supprimé chez Anthropic, ou annulé puis supprimé avec son run. Un lot qui ne serait pas supprimé y resterait 29 jours. Les autres fournisseurs (ADR-012) — seulement ceux que l'administrateur a ouverts (`twin9_fournisseurs_ouverts`, Anthropic seul par défaut ; un fournisseur étiqueté « non » derrière `twin9_fournisseurs_non_rgpd`, fermé par défaut), avec la clé de l'instance, en direct — conservent selon leur documentation officielle (relevée le 2026-10-22) : OpenAI, appelé avec `store: false`, des journaux de lutte contre les abus jusqu'à 30 jours ; Mistral AI, durée standard non trouvée dans sa documentation (conservation nulle sur demande) ; Google (Gemini), offre payante seule, `store: false`, 55 jours pour la lutte contre les abus ; xAI, 30 jours pour audit, sans entraînement ; OpenRouter, intermédiaire appelé avec `data_collection: deny` et sans repli, la conservation du fournisseur final. Étiquettes RGPD du registre `Twin9\Fournisseurs\Fournisseurs` (recherche de juillet 2026, pas un avis juridique) : Mistral AI « oui » ; Anthropic, OpenAI « sous conditions » ; Google, xAI, OpenRouter « non ». La garde (fournisseur ouvert, étiquette, clé de l'instance, pas de clé personnelle hors d'Anthropic) est relue au lancement, à la reprise et à l'ouverture de chaque tranche ; depuis l'ADR-013, la clé personnelle est refusée à l'enregistrement, au lancement et à la reprise, et seul un run lancé avant sur elle la lit encore, chez Anthropic, jusqu'à sa fin (un profil qui nomme un fournisseur fermé s'enregistre, mais ne se lance pas). Ce que la plateforme ne règle pas requête par requête se règle sur les comptes des clés de l'instance, à leur pose : chez Mistral AI, l'usage des données pour l'entraînement coupé (« Anonymous improvement data ») ou une offre payante ; chez OpenRouter, la journalisation des entrées et sorties et leur usage par OpenRouter laissés désactivés ; chez Google, une clé de l'offre payante. Les résultats (sorties, cartes du jour de la mémoire) sont lus par la personne et, si elle le décide (visibilité « cartographe », réversible), par le cartographe auquel elle est liée, avec la configuration et l'exécution du run sans prix, coût, plafond ni clé ; l'administrateur ne voit que des compteurs (`docs/autorisations.md`, « Runs Twin9 »). |
 | Tables | `twin9_cartes`, `twin9_memoire`, `twin9_runs`, `twin9_appels`, `twin9_resultats` (migration 025), `twin9_lots` (migration 026) ; attestation, visibilité et accord (migration 027) ; réserves, période et secondes actives, `twin9_lots_a_effacer` (migration 028) ; réserve de la fusion, engagement sur le crédit, pire cas de chaque appel, `twin9_evaluations` (migration 030, ci-dessous) ; configuration, exécution, passes et temps du moteur (migration 031) ; fournisseur, coupures et plafond de chaque appel (migration 032) ; depuis quand un run est retenu par un modèle plus long que ses tranches (migration 033 : une date, jamais de contenu). |
 | Sort à la suppression | CASCADE depuis le compte (cartes et runs), puis depuis la carte (mémoire) et le run (journal, lots, sorties) (T10). Ses lots encore chez Anthropic sont annulés puis supprimés : ceux de sa clé personnelle au moment de la suppression, tant que la clé existe ; ceux de la clé de l'instance par le tick, qui n'en garde que l'identifiant Anthropic (`twin9_lots_a_effacer`, sans propriétaire). Un lot de sa clé encore en cours d'annulation, ou dont la soumission n'a pas eu de réponse, reste chez Anthropic jusqu'à ce qu'Anthropic l'efface, 29 jours après sa création au plus. |
 | Accès et portabilité | L'archive de compte (« Exporter toutes mes données ») contient ses runs — copie du profil, portfolio, configuration et exécution, journal, sorties, évaluation — et la mémoire de ses cartes (`analysesTwin9`, `GET /api/twin9/mes-analyses`, T10), filtrés contre la récitation des gabarits. |

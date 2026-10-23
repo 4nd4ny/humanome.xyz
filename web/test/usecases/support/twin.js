@@ -261,9 +261,11 @@ export function twin6ModelText(prompt, referentiel = null) {
 
 /**
  * Ce que sert /api/twin9/meta, FICTIF : offre Twin6, packs, référentiel,
- * PayPal, solde, clé privée (T11 : plus d'étapes, d'offre Twin9 ni de réglages
- * du pipeline, que seul lisait le moteur du navigateur ; 2026-10-20 : plus
- * l'état de la promotion, qu'aucune vue ne lisait).
+ * PayPal, solde, droit d'acheter (T11 : plus d'étapes, d'offre Twin9 ni de
+ * réglages du pipeline, que seul lisait le moteur du navigateur ; 2026-10-20 :
+ * plus l'état de la promotion, qu'aucune vue ne lisait ; ADR-013 : plus la
+ * présence d'une clé privée, et seule une école achète — le compte par défaut
+ * de ces tests en est une, `peut_acheter: false` pour un autre).
  */
 export function metaTwin9(overrides = {}) {
   return {
@@ -275,7 +277,8 @@ export function metaTwin9(overrides = {}) {
     referentiel: META_REFERENTIEL,
     paypalConfigured: true,
     solde_microusd: 50_000_000,
-    cle_privee_disponible: false,
+    peut_acheter: true,
+    achat_pourquoi: null,
     ...overrides,
   }
 }

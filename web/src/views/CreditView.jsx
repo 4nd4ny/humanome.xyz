@@ -5,6 +5,13 @@
 // cahier §6.5) et factures récapitulatives imprimables (particuliers ET
 // établissements, même compte, même grand-livre).
 //
+// Seule une école achète des crédits (ADR-013 §2 e, règle R2 de Christian :
+// pour ne pas avoir à vérifier l'âge des apprenants) : les packs ne sont
+// proposés qu'au compte que le serveur dit pouvoir acheter (`peut_acheter` de
+// /api/twin9/meta, l'habilitation etablissement) ; aux autres, la page dit
+// pourquoi (`achat_pourquoi`). Leur solde restant, acheté avant, reste
+// utilisable jusqu'à épuisement et remboursable sur demande (§2 c).
+//
 // Garde de session : GET api/auth/me au montage (pattern EspaceView/AdminView) —
 // le reste du site reste statique. Dégradation propre en copie statique
 // (ApiUnavailableError). Toute la surface serveur passe par api/twin9.js.
@@ -127,7 +134,8 @@ export default function CreditView({ deps = {} }) {
     solde: 0,
     packs: [],
     paypalConfigured: false,
-    clePriveeDisponible: false,
+    peutAcheter: false,
+    achatPourquoi: '',
     evenements: [],
     depensesMois: [],
   })
@@ -159,7 +167,8 @@ export default function CreditView({ deps = {} }) {
           solde: credit.solde_microusd ?? meta.solde_microusd ?? 0,
           packs: Array.isArray(meta.packs) ? meta.packs : [],
           paypalConfigured: Boolean(meta.paypalConfigured),
-          clePriveeDisponible: Boolean(meta.cle_privee_disponible),
+          peutAcheter: meta.peut_acheter === true,
+          achatPourquoi: typeof meta.achat_pourquoi === 'string' ? meta.achat_pourquoi : '',
           evenements: Array.isArray(credit.evenements) ? credit.evenements : [],
           depensesMois: Array.isArray(dep.mois) ? dep.mois : [],
         })
@@ -383,7 +392,10 @@ export default function CreditView({ deps = {} }) {
                   <p role="status" className="credit-refund-ok">{refund.message}</p>
                 ) : refund.status === 'confirm' ? (
                   <div className="credit-refund-confirm">
-                    <p>Rembourser votre solde restant ({formatUsd(data.solde)}) vers PayPal ? Vous pourrez recharger à tout moment.</p>
+                    <p>
+                      Rembourser votre solde restant ({formatUsd(data.solde)}) vers PayPal ?
+                      {data.peutAcheter ? ' Vous pourrez recharger à tout moment.' : ' Seules les écoles rechargent.'}
+                    </p>
                     <button type="button" className="btn-primaire" onClick={rembourser}>Confirmer le remboursement</button>{' '}
                     <button type="button" onClick={() => setRefund({ status: 'idle', message: '', erreur: '' })}>Annuler</button>
                   </div>
@@ -405,16 +417,15 @@ export default function CreditView({ deps = {} }) {
           {/* 2. RECHARGE PayPal */}
           <section className="credit-recharge" aria-labelledby="credit-recharge-titre">
             <h2 id="credit-recharge-titre">Recharger</h2>
-            {!data.paypalConfigured ? (
+            {!data.peutAcheter ? (
+              // seule une école achète (ADR-013 §2 e) : le serveur dit pourquoi, la page le montre
+              <p role="status" className="credit-indispo" data-testid="achat-ecoles">
+                {data.achatPourquoi ||
+                  'Seules les écoles achètent des crédits : utilisez votre propre clé, dans votre navigateur, ou le crédit de votre école.'}
+              </p>
+            ) : !data.paypalConfigured ? (
               <p role="status" className="credit-indispo" data-testid="recharge-indispo">
-                La recharge par carte (PayPal) est indisponible pour le moment.{' '}
-                {/* une clé personnelle ne sert que chez Anthropic (ADR-012 §5) : un autre fournisseur débite le crédit */}
-                {data.clePriveeDisponible
-                  ? 'Votre clé Anthropic privée enregistrée reste utilisable pour un profil qui n’appelle qu’Anthropic : '
-                    + 'ses appels Twin9 ne débitent alors aucun crédit ; un profil qui appelle un autre fournisseur part '
-                    + 'avec les clés de la plateforme et débite le crédit.'
-                  : 'Vous pouvez aussi enregistrer votre propre clé Anthropic depuis votre compte (aucun débit de crédit '
-                    + 'pour un profil qui n’appelle qu’Anthropic).'}
+                La recharge par carte (PayPal) est indisponible pour le moment.
               </p>
             ) : data.packs.length === 0 ? (
               <p role="status" className="credit-indispo">

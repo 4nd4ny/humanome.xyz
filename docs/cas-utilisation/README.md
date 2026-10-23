@@ -112,7 +112,7 @@ rejouant les fixtures : aucun appel réseau réel).
 | [UC-CPT-01](compte/UC-CPT-01-creer-activer-compte.md) | Créer un compte et l'activer par code email | 25 | 35 | 6 |
 | [UC-CPT-02](compte/UC-CPT-02-se-connecter-deconnecter.md) | Se connecter et se déconnecter | 17 | 25 | 4 |
 | [UC-CPT-03](compte/UC-CPT-03-gerer-profil.md) | Gérer son profil (nom affiché, avatar) | 18 | 19 | 3 |
-| [UC-CPT-04](compte/UC-CPT-04-gerer-cles-api.md) | Gérer ses clés API personnelles | 14 | 22 | 1 |
+| [UC-CPT-04](compte/UC-CPT-04-gerer-cles-api.md) | Gérer ses clés API (dans le navigateur ; supprimer celles gardées sur le serveur) | 20 | 19 | 0 |
 | [UC-CPT-05](compte/UC-CPT-05-suivre-progression-formation.md) | Suivre sa progression de formation | 15 | 17 | 5 |
 | [UC-CPT-06](compte/UC-CPT-06-supprimer-compte.md) | Supprimer son compte (droit à l'effacement) | 10 | 12 | 1 |
 | [UC-CPT-07](compte/UC-CPT-07-declarer-roles-respire.md) | Déclarer ses rôles RESPIRE | 25 | 14 | 0 |
@@ -130,8 +130,8 @@ rejouant les fixtures : aucun appel réseau réel).
 | [UC-APP-07](apprenant/UC-APP-07-inviter-cartographe.md) | Inviter un cartographe | 9 | 10 | 1 |
 | [UC-APP-08](apprenant/UC-APP-08-rejoindre-cohorte.md) | Rejoindre une cohorte, déposer son portfolio, quitter | 12 | 25 | 4 |
 | [UC-APP-09](apprenant/UC-APP-09-cartographie-ouverte-twin6.md) | Lancer une cartographie ouverte (Twin6) | 39 | 34 | 1 |
-| [UC-APP-10](apprenant/UC-APP-10-analyse-approfondie-twin9.md) | Lancer une analyse approfondie (Twin9) | 24 | 28 | 0 |
-| [UC-APP-11](apprenant/UC-APP-11-gerer-credit-twin9.md) | Gérer son crédit Twin9 (achat, factures, remboursement) | 17 | 29 | 3 |
+| [UC-APP-10](apprenant/UC-APP-10-analyse-approfondie-twin9.md) | Lancer une analyse approfondie (Twin9) | 25 | 28 | 0 |
+| [UC-APP-11](apprenant/UC-APP-11-gerer-credit-twin9.md) | Gérer son crédit Twin9 (achat par une école, factures, remboursement) | 17 | 32 | 3 |
 | [UC-APP-12](apprenant/UC-APP-12-interface-ipsative-v3.md) | Explorer sa cartographie dans l'interface ipsative V3 (retirée le 2026-10-14) | 29 | 0 | 19 |
 
 ### Cartographe
@@ -205,7 +205,7 @@ rejouant les fixtures : aucun appel réseau réel).
 | [UC-SYS-04](systeme/UC-SYS-04-construire-artefacts-derives.md) | Construire les données et artefacts dérivés | 9 | 19 | 3 |
 | [UC-SYS-05](systeme/UC-SYS-05-sauvegarder-restaurer.md) | Sauvegarder et restaurer la base | 0 | 8 | 6 |
 
-**Total : 61 cas d'utilisation, 1085 tests unitaires et 1232 tests fonctionnels identifiés, 192 anomalies de production documentées.**
+**Total : 61 cas d'utilisation, 1092 tests unitaires et 1232 tests fonctionnels identifiés, 191 anomalies de production documentées.**
 
 Les comptes portent sur les identifiants distincts (`UC-…-Unn`, `UC-…-Fnn`) présents dans les fichiers de tests ; un identifiant paramétré (`it.each`) compte pour un.
 <!-- catalogue:end -->

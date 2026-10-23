@@ -24,7 +24,6 @@ afterEach(() => {
 const CONFIG = {
   marge: 1.2,
   marge_twin6: 1.1,
-  twin9_cle_perso_ouverte: false,
   packs: [
     { montant_usd: 10, libelle: 'Pack découverte — 10 $' },
     { montant_usd: 20, libelle: 'Pack standard — 20 $' },
@@ -78,11 +77,11 @@ describe('UC-ADM-05 — accès à la supervision', () => {
     )
     await fetchMe({ fetchFn })
     await fetchTwin9Config({ fetchFn })
-    await saveTwin9Config({ twin9_cle_perso_ouverte: true }, { fetchFn })
+    await saveTwin9Config({ marge: 1.5 }, { fetchFn })
     await fetchComptes({ fetchFn })
     expect(fetchFn.mock.calls.slice(1).map(([url, init]) => [init.method, url, init.body, init.headers['X-CSRF-Token']])).toEqual([
       ['GET', 'api/twin9/admin/config', undefined, undefined],
-      ['PUT', 'api/twin9/admin/config', '{"twin9_cle_perso_ouverte":true}', 'csrf-uc-adm-05'],
+      ['PUT', 'api/twin9/admin/config', '{"marge":1.5}', 'csrf-uc-adm-05'],
       ['GET', 'api/twin9/admin/comptes', undefined, undefined],
     ])
   })
@@ -166,12 +165,12 @@ describe('UC-ADM-05 — réglages : diff envoyé au serveur (Twin9Section isolé
     }
     const fetchFn = monter(relue)
     await screen.findByRole('heading', { name: 'Réglages' })
-    fireEvent.click(screen.getByLabelText(/Promo : Twin9 gratuit/))
+    fireEvent.change(screen.getByLabelText(/Contribution Twin9/), { target: { value: '1.3' } })
     await enregistrer()
 
     const [diff] = puts(fetchFn)
-    expect(Object.keys(diff).sort()).toEqual(['packs', 'twin9_cle_perso_ouverte'])
-    expect(diff.twin9_cle_perso_ouverte).toBe(true)
+    expect(Object.keys(diff).sort()).toEqual(['marge', 'packs'])
+    expect(diff.marge).toBe(1.3)
   })
 })
 

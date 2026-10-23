@@ -243,7 +243,7 @@ const CHOIX = {
   directe: 'Directe',
   lots: 'Par lots',
   instance: 'Celle de l’instance',
-  personnelle: 'Ma clé personnelle',
+  personnelle: 'Ma clé personnelle (ne sert plus)',
   coupee: 'Coupée',
   adaptative: 'Adaptative',
   aleatoire: 'Aléatoire',

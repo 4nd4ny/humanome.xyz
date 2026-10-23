@@ -15,7 +15,6 @@ import { bodyOf, htmlResponse, jsonResponse, meResponse, stubFetch } from '../su
 const CONFIG = {
   marge: 1.2,
   marge_twin6: 1.1,
-  twin9_cle_perso_ouverte: false,
   packs: [{ montant_usd: 10, libelle: 'Pack découverte — 10 $' }],
   modeles: {
     'claude-sonnet-5': { prix_usd_mtok: [3, 15] },
@@ -97,12 +96,13 @@ describe('UC-ADM-05 — l’administrateur supervise Twin9', () => {
     expect(calls.some((c) => c.key.includes('protocole'))).toBe(false)
   })
 
-  it('UC-ADM-05-F02 — A1 : ouvrir la promotion « Twin9 gratuit avec sa propre clé »', async () => {
+  it('UC-ADM-05-F02 — A1 : la promotion « Twin9 gratuit avec sa propre clé » a disparu (ADR-013) — aucune case, la page dit que seules les écoles achètent', async () => {
     const { calls } = stubFetch(routes())
     openSupervision()
-    fireEvent.click(await screen.findByLabelText(/Promo : Twin9 gratuit avec la clé perso/))
-    await enregistrer()
-    expect(bodyOf(putsConfig(calls)[0])).toEqual({ twin9_cle_perso_ouverte: true })
+    await screen.findByRole('button', { name: 'Enregistrer les réglages' })
+    expect(screen.queryByLabelText(/Promo : Twin9 gratuit avec la clé perso/)).toBeNull()
+    expect(screen.getByText(/Seules les écoles achètent des crédits \(ADR-013\)/)).toBeDefined()
+    expect(putsConfig(calls)).toHaveLength(0)
   })
 
   it('UC-ADM-05-F03 — A2 : ajouter un pack de recharge (montant + libellé) ; anomalie figée : borne affichée 1 – 100', async () => {

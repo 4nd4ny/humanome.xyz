@@ -35,7 +35,7 @@ Les rôles du cahier des charges §2, attribués par l'administrateur.
 | `promptologue` | Dans « Faire évoluer », l'atelier de prompts ; avec `admin`, l'atelier Twin9 |
 | `epistemiarque` | Dans « Faire évoluer », l'édition du référentiel ; une voix au vote des référentiels (l'électorat est fait des épistémiarques) |
 | `employeur` | Aucune garde ni famille aujourd'hui : un lien partagé se consulte sans compte |
-| `etablissement` | La famille « Piloter mon organisation » : cohortes, budget, runs de masse |
+| `etablissement` | La famille « Piloter mon organisation » : cohortes, budget, runs de masse. Depuis l'ADR-013 : le seul compte dont le serveur garde une clé d'API (pour ses élèves) et le seul qui achète des crédits (packs PayPal) |
 | `admin` | La famille « Administrer » et la supervision Twin9 ; pas un super-rôle : chaque garde le liste explicitement |
 
 Les habilitations de travail (`cartographe`, `promptologue`, `epistemiarque`,

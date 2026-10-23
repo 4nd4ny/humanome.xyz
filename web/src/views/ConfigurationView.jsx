@@ -5,8 +5,11 @@
 // du profil v9.8, rien de plus. L'aide d'un réglage paraît quand on y entre.
 //
 // Les droits (docs/autorisations.md, « Configuration Twin9 ») : chacun règle
-// ses profils, le référentiel parmi les publiés, la clé personnelle là où
-// l'administrateur l'a ouverte. Le serveur valide et complète chaque profil.
+// ses profils, le référentiel parmi les publiés. La clé personnelle ne se
+// choisit plus (ADR-013 §6 : une analyse du serveur ne peut pas garder la clé
+// du navigateur) : un profil enregistré avant qui la porte la montre, avec ce
+// qu'il faut faire, jusqu'à ce qu'on en choisisse une autre. Le serveur valide
+// et complète chaque profil.
 //
 // Chaque étage, étape et lecteur choisit son fournisseur (ADR-012) : absent,
 // il hérite du sien (« hérité : … »), et son étiquette RGPD se lit à côté,
@@ -76,6 +79,12 @@ const ident = (chemin) => `config-${chemin.join('-')}`
  * seul face à un serveur qui ne le dit pas.
  */
 const ANTHROPIC_SEUL = [{ id: FOURNISSEUR_DEFAUT, libelle: 'Anthropic', rgpd: 'sous_conditions', disponible: true }]
+
+/** Ce que dit un profil enregistré avant l'ADR-013 sur la clé personnelle : le serveur le refuse au lancement. */
+const CLE_PERSONNELLE_RETIREE =
+  'La clé personnelle ne sert plus aux analyses du serveur : une analyse approfondie ne peut pas garder la clé de ' +
+  'votre navigateur, et humanome ne garde plus les clés de ses utilisateurs. Choisissez la clé de l’instance : ce ' +
+  'profil ne part pas tant qu’il porte la clé personnelle.'
 
 /** « Anthropic, OpenAI et Mistral AI ». */
 function enumeration(noms) {
@@ -194,20 +203,19 @@ function Champ({ chemin, valeur, defaut, peutManquer, onChange, contexte }) {
         'aux autres fournisseurs partent toujours en direct ; un profil mixte n’avance qu’au rythme de ses lots.'
       : 'Sans effet : ce profil n’appelle pas Anthropic, tous ses appels partent en direct.'
   } else if (g === 'choix') {
-    // la clé personnelle ne sert que chez Anthropic (ADR-012)
-    const tiers = champ === 'cle' ? fournisseursDuProfil(profil).filter((f) => f.id !== FOURNISSEUR_DEFAUT) : []
+    // la clé personnelle ne se choisit plus (ADR-013 §6) ; un profil d'avant qui la porte la montre, désactivée
     commande = options(
-      node.enum.map((v) => ({
-        valeur: v,
-        libelle: libelleChoix(v),
-        desactive: champ === 'cle' && v === 'personnelle' && (!contexte.clePersoOuverte || tiers.length > 0) && valeur !== v,
-      })),
+      node.enum
+        .filter((v) => !(champ === 'cle' && v === 'personnelle' && valeur !== v))
+        .map((v) => ({
+          valeur: v,
+          libelle: libelleChoix(v),
+          desactive: champ === 'cle' && v === 'personnelle',
+        })),
       undefined,
     )
-    if (champ === 'cle' && valeur === 'personnelle' && tiers.length > 0) {
-      avertissement = `La clé personnelle ne sert que chez Anthropic : ce profil appelle aussi ${enumeration(
-        tiers.map((f) => nomDe(f.id)),
-      )}, il ne part qu’avec les clés de l’instance.`
+    if (champ === 'cle' && valeur === 'personnelle') {
+      avertissement = CLE_PERSONNELLE_RETIREE
     }
     if (cle === 'reflexion' && objet !== null) {
       const f = fournisseurDe(profil, objet)
@@ -279,10 +287,7 @@ function Champ({ chemin, valeur, defaut, peutManquer, onChange, contexte }) {
     }
   }
 
-  const aide =
-    champ === 'cle' && valeur === 'personnelle' && !contexte.clePersoEnregistree
-      ? 'Aucune clé Anthropic personnelle n’est enregistrée : elle s’ajoute dans Mon compte.'
-      : node.description
+  const aide = node.description
   return (
     <div className={`config-champ${modifie ? ' is-modified' : ''}`} data-chemin={champ}>
       <label htmlFor={id}>
@@ -595,8 +600,6 @@ export default function ConfigurationView({ deps = {} }) {
   const contexte = {
     gabarits: config.gabarits,
     referentiels: config.referentiels,
-    clePersoOuverte: config.cle_perso_ouverte,
-    clePersoEnregistree: config.cle_perso_enregistree,
     fournisseurs: Array.isArray(config.fournisseurs) ? config.fournisseurs : ANTHROPIC_SEUL,
   }
 

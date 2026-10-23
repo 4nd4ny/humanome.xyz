@@ -665,9 +665,12 @@ valide et range les profils.
 - **Choix admis** (`ProfilPolicy`, T13) : un référentiel publié et, s'il est
   donné, une de ses versions publiées ; un jeu de gabarits que son
   propriétaire peut choisir (T14, §8.6 : le jeu v9.8, le jeu par défaut, ses
-  copies tant qu'il est de l'atelier) ; la clé personnelle là où
-  l'administrateur l'a ouverte, et chez Anthropic seulement : un profil dont
-  un appel part ailleurs n'admet que les clés de l'instance (ADR-012 §5) ;
+  copies tant qu'il est de l'atelier) ; la clé de l'instance — depuis
+  l'ADR-013 (§6, 2026-10-22), la clé personnelle est refusée à
+  l'enregistrement, à l'aperçu, au lancement et à la reprise (`422` « Profil
+  refusé — /cle : la clé personnelle ne sert plus aux analyses du serveur… »,
+  `ProfilPolicy::refuserClePersonnelle`), quels que soient ses fournisseurs ;
+  la valeur reste lisible dans le schéma, pour les profils et les runs gardés ;
   un prix pour chaque modèle Anthropic. Au lancement, à l'aperçu et à la
   reprise s'y ajoute (`ProfilPolicy::admettreAuLancement`), pour chaque
   fournisseur que ses appels atteignent (`CallSettings::atteints()` : ses
@@ -752,7 +755,7 @@ autres fournisseurs partent toujours en direct), `parallelisme.appels_directs`
 (32 au plus), `parallelisme.journees` (journées menées de front quand aucun
 appel ne part par lots ; dès qu'un appel part par lots, toutes le sont, §8.7),
 `budget_usd` et `duree_minutes` (`null` : aucun plafond),
-`cle` (« instance » ou « personnelle », Anthropic seulement), `gabarits` (l'identifiant du jeu :
+`cle` (« instance » ; « personnelle », la clé de l'utilisateur chez Anthropic, reste lisible pour un profil ou un run d'avant l'ADR-013, mais ne se choisit ni ne part plus), `gabarits` (l'identifiant du jeu :
 « v9.8 », valeur du schéma, ou le nom d'une copie, §8.6) et `referentiel`
 (`id`, et `version`, `null` pour la dernière publiée, figée dans la copie du
 profil au lancement).
@@ -1284,8 +1287,10 @@ arrêt brut assaini (§8), modèle servi gardé s'il est un identifiant. La
 clé (`RunKey::pour`, par fournisseur) : celle de l'instance, lue dans la
 variable du registre (`OPENAI_API_KEY`, `MISTRAL_API_KEY`, `GOOGLE_API_KEY`,
 `XAI_API_KEY`, `OPENROUTER_API_KEY`, des secrets de `api/config/app.php`) ;
-une clé personnelle, chez Anthropic seulement, refusée appel par appel pour
-tout autre fournisseur.
+pour un run lancé avant l'ADR-013 sur la clé personnelle, jusqu'à sa fin,
+celle que son propriétaire avait gardée, chez Anthropic seulement, refusée
+appel par appel pour tout autre fournisseur ; plus aucun réglage
+d'administration ne la conditionne (`twin9_cle_perso_ouverte` est parti).
 
 ### 8.2 L'empreinte des réglages
 
@@ -1305,8 +1310,11 @@ des lecteurs sur un lecteur — n'y entre pas
 (§8.7) : un profil tout Anthropic garde ses empreintes, que
 `EmpreintesFigeesTest` fige. Celui du second ressort y entre toujours, sans
 quoi deux profils dont les appels partent chez deux fournisseurs
-partageraient une empreinte (ADR-012 §2). Les sorties gardent l'empreinte de
-la v9.8.
+partageraient une empreinte (ADR-012 §2). `cle` n'est pas un réglage d'appel :
+ni l'empreinte ni la signature des évaluations ne la lisent, et passer de la
+clé personnelle à celle de l'instance (ADR-013 §6) ne change l'empreinte
+d'aucun profil, ni sa mémoire, ni ses prévisions (UC-APP-10-U25). Les sorties
+gardent l'empreinte de la v9.8.
 
 ### 8.3 La voie par lots (T8)
 
@@ -1772,8 +1780,8 @@ une suivante le relève.
   nomme un jeu que son propriétaire ne peut plus choisir (un ancien jeu par
   défaut, une copie de quelqu'un sorti de l'atelier), il est refusé, à
   l'enregistrement comme au lancement (`422` « … ce jeu de gabarits ne vous
-  est pas proposé »), comme l'est une clé personnelle que l'administrateur a
-  fermée, jusqu'à ce qu'il en choisisse un autre ; la page Configuration le
+  est pas proposé »), comme l'est la clé personnelle depuis l'ADR-013,
+  jusqu'à ce qu'il en choisisse un autre ; la page Configuration le
   montre, sans le proposer.
 - **Dans un run** : l'instantané est le jeu du profil
   (`ProtocoleRepository::jeu`), son attestation en garde le nom et la version
@@ -2860,3 +2868,35 @@ n'est pas visible ici : le recours reste « Renvoyer le code ».
 
 `GET /api/admin/monitoring` compte la liste dans `utilisateurs.enListeAttente`
 (ces comptes comptent aussi dans `nonActives`).
+
+## 14. Les clés et l'achat de crédits (sprint 6, S6a, ADR-013)
+
+Depuis le 2026-10-22, la clé d'un utilisateur reste dans son navigateur
+(`localStorage['humanome-keys']`, `web/src/lib/local-keys.js`) et seule une
+école achète des crédits. Ce que l'API en dit :
+
+- **`PUT /api/keys`** : `410 {error, detail}` à tout compte, le corps jamais
+  lu ; `error` = « Vos clés restent dans votre navigateur : humanome ne les
+  garde plus sur ses serveurs. », `detail` renvoie une école à son espace
+  établissement, un autre compte à son navigateur.
+- **`GET /api/keys`** : `[{provider, createdAt, avisPurgeAt}]` — les clés
+  gardées avant, « à supprimer » ; `avisPurgeAt` (ISO, sans fuseau) est la
+  date de l'avis de purge, `null` avant (migration 036). Jamais de matériau
+  de clé. `GET /api/keys/{provider}` (`{apiKey}`, `no-store`) et `DELETE`
+  restent, pour recopier puis supprimer.
+- **`GET /api/twin9/meta`** : `{modeles_twin6, packs, referentiel,
+  paypalConfigured, solde_microusd, peut_acheter, achat_pourquoi}` ;
+  `peut_acheter` est vrai pour un compte qui a l'habilitation `etablissement`,
+  `achat_pourquoi` dit pourquoi aux autres (`null` pour une école) ;
+  `cle_privee_disponible` est parti (la page ne le lisait plus que pour
+  proposer de garder une clé).
+- **`GET /api/twin9/configuration`** : plus de `cle_perso_ouverte` ni de
+  `cle_perso_enregistree`.
+- **`POST /api/twin9/credit/paypal/creer`, `/capturer`** : `403 {error: "Seule
+  une école achète des crédits.", detail}` à un compte sans l'habilitation,
+  avant le rythme et avant PayPal ; la capture la relit.
+- **`twin9_config`** : `twin9_cle_perso_ouverte` est une clé inconnue
+  (`422`) ; stockée avant, elle est ignorée à la lecture et part au prochain
+  enregistrement (la contraction l'effacera, ADR-008).
+- **Le profil** : `cle` — voir §7 et §7.1 ; aucune réécriture des profils
+  gardés, aucune empreinte changée (§8.2).

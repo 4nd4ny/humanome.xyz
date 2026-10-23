@@ -256,6 +256,41 @@ paquet par défaut, et la **démo publique s'édite** via `/api/admin/demo-confi
 Le monitoring (`GET /api/admin/monitoring`) ne fait que compter la liste
 (`utilisateurs.enListeAttente`) : il n'écrit rien.
 
+### Purge des clés d'API d'utilisateur (ADR-013 §8)
+
+Depuis l'ADR-013, la clé d'un utilisateur reste dans son navigateur : le
+serveur n'en écrit plus aucune (`PUT /api/keys` → `410`), et celles gardées
+avant ne servent plus à aucun run nouveau. La page « Mon compte » les montre
+« à supprimer ». Le script d'administration `scripts/purger-cles-utilisateurs.php`
+(logique : `api/src/Keys/UserKeysPurge.php`) les purge, **à la main
+seulement** : ni le worker, ni une tâche planifiée, ni le déploiement ne
+l'appellent.
+
+```sh
+php scripts/purger-cles-utilisateurs.php                     # compte, ne change rien
+php scripts/purger-cles-utilisateurs.php aviser              # écrit à chaque compte pas encore avisé
+php scripts/purger-cles-utilisateurs.php purger --confirmer  # efface les clés avisées depuis 30 jours
+```
+
+- **Compter** (défaut, et `purger` sans `--confirmer`) : des nombres seulement
+  — comptes avec une clé, clés par fournisseur, comptes avisés et purgeables,
+  runs en cours et profils sur la clé personnelle, soldes positifs (dont
+  d'écoles). C'est le pas 1 du plan de l'ADR-013 §8, à faire avant le
+  déploiement de S6a.
+- **Aviser** : un courriel par compte (fournisseurs, date de purge, comment
+  recopier ou supprimer — jamais la clé), puis `user_api_keys.avis_purge_at` ;
+  jamais deux fois ; un envoi refusé laisse le compte à aviser. Audit
+  `api_keys_purge_notice {providers}`.
+- **Purger** : les clés avisées depuis 30 jours au moins ; un compte dont un run
+  est en cours sur sa clé personnelle est reporté ; les lots soumis avec la clé
+  sont d'abord annulés puis effacés chez Anthropic. Audit `api_keys_purged
+  {providers}`.
+
+En production, faute de SSH, le moyen de le lancer (une route d'administration
+protégée comme `/api/admin/maintenance`, ou le Mac sur la base de production)
+et le jour de l'avis et de la purge sont des décisions de Christian ; rien n'a
+été avisé ni purgé.
+
 ---
 
 ## 4. Configuration serveur versionnable (`api/config/app.php`)

@@ -1,17 +1,20 @@
-// UC-CPT-04 — Gérer ses clés API personnelles : tests FONCTIONNELS (IHM).
+// UC-CPT-04 — Gérer ses clés API : tests FONCTIONNELS (IHM).
 // Fiche : docs/cas-utilisation/compte/UC-CPT-04-gerer-cles-api.md
 //
-// Deux surfaces :
-//  - la section « Clés API personnelles » du profil, jouée dans <App/> (#/compte)
-//    contre le faux serveur du lot (web/test/usecases/support/cpt.js) ;
+// Depuis l'ADR-013, la clé d'un utilisateur reste dans son navigateur. Deux
+// surfaces :
 //  - l'étape « Fournisseur » de l'assistant de run, où la clé vit en
-//    localStorage par défaut et n'est synchronisée qu'en opt-in. L'assistant est
-//    joué dans la vraie vue #/espace/nouveau-run (EspaceView) : la session est
-//    DÉRIVÉE par la sonde GET auth/me contre le faux serveur (connecté, anonyme,
-//    jeton CSRF), comme en production. Seules les coutures de l'assistant sont
-//    injectées (portfolio en mémoire, référentiel et journée des fixtures
-//    versionnées, fournisseur LLM simulé) ; ses appels API passent par le vrai
-//    client vers le même faux serveur.
+//    localStorage et ne part que vers le fournisseur choisi : la page le dit,
+//    et ne propose plus ni de la synchroniser ni de la récupérer sur le
+//    serveur. L'assistant est joué dans la vraie vue #/espace/nouveau-run
+//    (EspaceView) : la session est DÉRIVÉE par la sonde GET auth/me contre le
+//    faux serveur (connecté, anonyme, jeton CSRF), comme en production. Seules
+//    les coutures de l'assistant sont injectées (portfolio en mémoire,
+//    référentiel et journée des fixtures versionnées, fournisseur LLM simulé) ;
+//    ses appels API passent par le vrai client vers le même faux serveur ;
+//  - la section « Clés API » du profil, jouée dans <App/> (#/compte) contre le
+//    faux serveur du lot (web/test/usecases/support/cpt.js) : les clés gardées
+//    avant, « à supprimer », recopiées dans ce navigateur ou supprimées.
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
 import { act, cleanup, fireEvent, render, screen, waitFor, within } from '@testing-library/react'
 import App from '../../../src/App.jsx'
@@ -46,19 +49,13 @@ async function openKeysSection(apiOptions = {}) {
   const api = installFakeAccountApi({ users: [ADA], loggedInAs: ADA.email, ...apiOptions })
   window.location.hash = '#/compte'
   render(<App lib={fakeLib} />)
-  const section = within(await screen.findByRole('region', { name: 'Clés API personnelles' }))
+  const section = within(await screen.findByRole('region', { name: 'Clés API' }))
   return { api, section }
 }
 
-async function submitKey(section, providerLabel, key) {
-  fireEvent.change(section.getByLabelText('Fournisseur'), {
-    target: { value: section.getByRole('option', { name: providerLabel }).value },
-  })
-  fireEvent.change(section.getByLabelText('Clé API'), { target: { value: key } })
-  await act(async () => {
-    fireEvent.click(section.getByRole('button', { name: 'Enregistrer la clé' }))
-  })
-}
+const R1 =
+  'Votre clé reste dans ce navigateur : humanome ne la garde jamais sur ses serveurs. Seule une école peut y ' +
+  'garder la sienne, pour ses élèves.'
 
 // --- Assistant de run (étape Fournisseur) -------------------------------------
 
@@ -121,90 +118,8 @@ async function launchFromProviderStep() {
   })
 }
 
-describe('UC-CPT-04 — section « Clés API personnelles » du profil', () => {
-  it('UC-CPT-04-F11 — nominal : enregistrer une clé (opt-in chiffré) → PUT + CSRF, confirmation, liste sans la clé', async () => {
-    const { api, section } = await openKeysSection()
-    expect(await section.findByText('Aucune clé enregistrée.')).toBeDefined()
-    const field = section.getByLabelText('Clé API')
-    expect(field.getAttribute('type')).toBe('password')
-    expect(field.getAttribute('autocomplete')).toBe('off')
-
-    fireEvent.change(field, { target: { value: 'sk-1234' } })
-    expect(section.getByRole('button', { name: 'Enregistrer la clé' }).disabled).toBe(true) // < 8 caractères
-    fireEvent.change(field, { target: { value: '   sk-1234   ' } })
-    expect(section.getByRole('button', { name: 'Enregistrer la clé' }).disabled).toBe(true) // espaces non comptés
-    fireEvent.change(field, { target: { value: 'sk-12345' } })
-    expect(section.getByRole('button', { name: 'Enregistrer la clé' }).disabled).toBe(false) // 8 caractères
-
-    await submitKey(section, 'OpenAI (GPT)', '  sk-openai-perso  ')
-
-    expect(await section.findByText('Clé OpenAI (GPT) enregistrée (chiffrée).')).toBeDefined()
-    const [put] = api.callsTo('keys', 'PUT')
-    expect(put.body).toEqual({ provider: 'openai', apiKey: 'sk-openai-perso' })
-    expect(put.headers['X-CSRF-Token']).toBe(api.session.csrf)
-    const item = await section.findByText('OpenAI (GPT)', { selector: '.account-keys-provider' })
-    expect(item.parentElement.textContent).toContain('enregistrée le 2026-09-28')
-    expect(section.getByLabelText('Clé API').value).toBe('') // jamais réaffichée
-    expect(screen.queryByText(/sk-openai-perso/)).toBeNull()
-  })
-
-  it('UC-CPT-04-F12 — A5 : supprimer la clé serveur → DELETE, confirmation, liste vide ; 404 affiché par la section ; clé locale intacte', async () => {
-    const local = JSON.stringify({ anthropic: 'sk-ant-locale' })
-    localStorage.setItem('humanome-keys', local)
-    const { api, section } = await openKeysSection({
-      users: [{ ...ADA, keys: { anthropic: 'sk-ant-serveur' } }],
-    })
-    await section.findByText('Anthropic (Claude)', { selector: '.account-keys-provider' })
-
-    // E4 depuis la section (A5) : l'entrée a disparu entre-temps (autre navigateur).
-    api.failNext('DELETE keys/anthropic', jsonResponse(404, { error: 'Aucune clé enregistrée pour ce fournisseur' }))
-    await act(async () => {
-      fireEvent.click(section.getByRole('button', { name: 'Supprimer' }))
-    })
-    expect((await section.findByRole('alert')).textContent).toBe('Aucune clé enregistrée pour ce fournisseur')
-
-    await act(async () => {
-      fireEvent.click(section.getByRole('button', { name: 'Supprimer' }))
-    })
-
-    expect(await section.findByText('Clé Anthropic (Claude) supprimée.')).toBeDefined()
-    expect(await section.findByText('Aucune clé enregistrée.')).toBeDefined()
-    expect(api.callsTo('keys/anthropic', 'DELETE')).toHaveLength(2)
-    expect(localStorage.getItem('humanome-keys')).toBe(local) // la révocation serveur ne touche pas le local
-  })
-
-  it('UC-CPT-04-F13 — E1 : stockage serveur non configuré (503) → message explicite dans la section', async () => {
-    const api = installFakeAccountApi({ users: [ADA], loggedInAs: ADA.email })
-    api.override('GET keys', () => jsonResponse(503, { error: 'Stockage de clés non configuré' }))
-    window.location.hash = '#/compte'
-    render(<App lib={fakeLib} />)
-    const section = within(await screen.findByRole('region', { name: 'Clés API personnelles' }))
-
-    expect((await section.findByRole('alert')).textContent).toBe('Stockage de clés non configuré')
-    expect(section.getByText('Aucune clé enregistrée.')).toBeDefined()
-  })
-
-  it('UC-CPT-04-F14 — E3 : clé refusée par le serveur (422) → message du serveur, rien n’est listé', async () => {
-    const { section } = await openKeysSection()
-    await submitKey(section, 'xAI (Grok)', 'x'.repeat(4097)) // au-delà de 4096 caractères
-
-    expect((await section.findByRole('alert')).textContent).toBe('Validation échouée')
-    expect(section.getByText('Aucune clé enregistrée.')).toBeDefined()
-  })
-})
-
-describe('UC-CPT-04 — les clés et Twin9 (ADR-012)', () => {
-  it('UC-CPT-04-F22 — A6 : la section dit que Twin9 n’emploie qu’une clé personnelle Anthropic ; elle ne propose aucune clé Mistral AI, qu’aucun parcours n’emploie (minimisation)', async () => {
-    const { section } = await openKeysSection()
-    await section.findByText('Aucune clé enregistrée.')
-    expect(section.getByText(/Pour l’analyse approfondie Twin9, une clé personnelle ne sert que chez Anthropic/)).toBeDefined()
-    const options = Array.from(section.getByLabelText('Fournisseur').querySelectorAll('option')).map((o) => o.value)
-    expect(options).not.toContain('mistral')
-  })
-})
-
-describe('UC-CPT-04 — clé dans l’assistant de run', () => {
-  it('UC-CPT-04-F15 — A1 : sans compte, la clé mémorisée localement est pré-remplie, sert au run et ne part jamais vers humanome', async () => {
+describe('UC-CPT-04 — la clé dans l’assistant de run', () => {
+  it('UC-CPT-04-F13 — nominal : sans compte, la clé mémorisée dans ce navigateur est pré-remplie, la page dit qu’elle y reste, plus de synchronisation ni de récupération ; elle sert au run et ne part jamais vers humanome', async () => {
     const api = installFakeAccountApi()
     const { keyStorage, bundleCalls } = await renderWizard({
       connected: false,
@@ -213,9 +128,8 @@ describe('UC-CPT-04 — clé dans l’assistant de run', () => {
 
     expect(screen.getByLabelText('Clé API').value).toBe('sk-ant-locale')
     expect(screen.getByRole('checkbox', { name: /Mémoriser la clé dans ce navigateur/ }).checked).toBe(true)
-    const sync = screen.getByRole('checkbox', { name: /Synchroniser sur le serveur/ })
-    expect(sync.disabled).toBe(true)
-    expect(screen.getByRole('link', { name: 'connectez-vous' }).getAttribute('href')).toBe('#/compte')
+    expect(screen.getByTestId('cle-reste-navigateur').textContent).toBe(R1)
+    expect(screen.queryByRole('checkbox', { name: /Synchroniser sur le serveur/ })).toBeNull()
     expect(screen.queryByRole('button', { name: 'Récupérer la clé depuis le serveur' })).toBeNull()
 
     // Nouvelle clé saisie : mémorisée au lancement, transmise au seul fournisseur.
@@ -228,101 +142,102 @@ describe('UC-CPT-04 — clé dans l’assistant de run', () => {
     expect(api.calls.filter((c) => c.path.startsWith('keys'))).toHaveLength(0)
   }, 20000)
 
-  it('UC-CPT-04-F16 — A2 : connecté, « Synchroniser sur le serveur » coché → PUT keys AVANT le run, clé aussi gardée localement', async () => {
-    const api = installFakeAccountApi({ users: [ADA], loggedInAs: ADA.email })
-    const order = []
-    api.override('PUT keys', () => {
-      order.push('sync')
-    })
-    const bundleCalls = { push: (o) => order.push(`bundle:${o.apiKey}`) }
-    const { keyStorage } = await renderWizard({ connected: true, bundleCalls })
-
-    fireEvent.change(screen.getByLabelText('Clé API'), { target: { value: 'sk-ant-sync' } })
-    fireEvent.click(screen.getByRole('checkbox', { name: /Synchroniser sur le serveur/ }))
-    await launchFromProviderStep()
-    await screen.findByTestId('run-success', {}, { timeout: 15000 })
-
-    const [put] = api.callsTo('keys', 'PUT')
-    expect(put.body).toEqual({ provider: 'anthropic', apiKey: 'sk-ant-sync' })
-    expect(put.headers['X-CSRF-Token']).toBe(api.session.csrf)
-    expect(order).toEqual(['sync', 'bundle:sk-ant-sync'])
-    expect(JSON.parse(keyStorage.map.get('humanome-keys')).anthropic).toBe('sk-ant-sync')
-  }, 20000)
-
-  it('UC-CPT-04-F17 — A3 : sur un autre navigateur, « Récupérer la clé depuis le serveur » remplit le champ', async () => {
-    installFakeAccountApi({ users: [{ ...ADA, keys: { anthropic: 'sk-ant-du-serveur' } }], loggedInAs: ADA.email })
-    await renderWizard({ connected: true })
-    expect(screen.getByLabelText('Clé API').value).toBe('') // rien en local ici
-
-    await act(async () => {
-      fireEvent.click(screen.getByRole('button', { name: 'Récupérer la clé depuis le serveur' }))
-    })
-
-    expect(await screen.findByText('Clé récupérée depuis le serveur.')).toBeDefined()
-    expect(screen.getByLabelText('Clé API').value).toBe('sk-ant-du-serveur')
-  })
-
-  it('UC-CPT-04-F18 — E4 : aucune clé sur le serveur pour ce fournisseur → message, la clé locale déjà saisie reste dans le champ', async () => {
-    installFakeAccountApi({ users: [ADA], loggedInAs: ADA.email })
-    await renderWizard({
-      connected: true,
-      keyStorage: memoryKeyStorage({ 'humanome-keys': JSON.stringify({ anthropic: 'sk-ant-locale' }) }),
-    })
-    expect(screen.getByLabelText('Clé API').value).toBe('sk-ant-locale')
-
-    await act(async () => {
-      fireEvent.click(screen.getByRole('button', { name: 'Récupérer la clé depuis le serveur' }))
-    })
-
-    expect(await screen.findByText('Aucune clé enregistrée pour ce fournisseur')).toBeDefined()
-    expect(screen.getByLabelText('Clé API').value).toBe('sk-ant-locale')
-  })
-
-  it('UC-CPT-04-F19 — E1 : synchronisation impossible (503) → le run ne démarre pas, message affiché ; la clé est déjà mémorisée localement', async () => {
-    const api = installFakeAccountApi({ users: [ADA], loggedInAs: ADA.email })
-    api.override('PUT keys', () => jsonResponse(503, { error: 'Stockage de clés non configuré' }))
-    const bundleCalls = []
-    const { keyStorage } = await renderWizard({ connected: true, bundleCalls })
-
-    fireEvent.change(screen.getByLabelText('Clé API'), { target: { value: 'sk-ant-sync' } })
-    fireEvent.click(screen.getByRole('checkbox', { name: /Synchroniser sur le serveur/ }))
-    await launchFromProviderStep()
-
-    await waitFor(() => expect(screen.getByRole('alert').textContent).toBe('Stockage de clés non configuré'))
-    expect(bundleCalls).toHaveLength(0) // aucun appel au fournisseur
-    // setLocalKey précède syncKeyToServer : l'échec de la synchronisation n'annule pas la mémorisation.
-    expect(JSON.parse(keyStorage.map.get('humanome-keys')).anthropic).toBe('sk-ant-sync')
-  })
-
-  it('UC-CPT-04-F20 — A1 / RG1 : connecté, options par défaut → synchronisation décochée, aucun PUT /api/keys, clé gardée localement', async () => {
-    const api = installFakeAccountApi({ users: [ADA], loggedInAs: ADA.email })
+  it('UC-CPT-04-F14 — RG1 : connecté, la page ne propose rien de plus — aucune requête /api/keys, ni PUT ni GET ; la clé gardée dans ce navigateur', async () => {
+    const api = installFakeAccountApi({ users: [{ ...ADA, keys: { anthropic: 'sk-ant-du-serveur' } }], loggedInAs: ADA.email })
     const { keyStorage, bundleCalls } = await renderWizard({ connected: true })
 
-    const sync = screen.getByRole('checkbox', { name: /Synchroniser sur le serveur/ })
-    expect(sync.disabled).toBe(false) // connecté : l'opt-in est proposé…
-    expect(sync.checked).toBe(false) // … mais jamais coché par défaut
+    expect(screen.getByLabelText('Clé API').value).toBe('') // la clé gardée sur le serveur n'est plus lue
+    expect(screen.queryByRole('checkbox', { name: /Synchroniser sur le serveur/ })).toBeNull()
+    expect(screen.getByTestId('cle-reste-navigateur').textContent).toBe(R1)
     fireEvent.change(screen.getByLabelText('Clé API'), { target: { value: 'sk-ant-par-defaut' } })
     await launchFromProviderStep()
     await screen.findByTestId('run-success', {}, { timeout: 15000 })
 
-    expect(api.callsTo('keys', 'PUT')).toHaveLength(0)
     expect(api.calls.filter((c) => c.path.startsWith('keys'))).toHaveLength(0)
     expect(JSON.parse(keyStorage.map.get('humanome-keys'))).toEqual({ anthropic: 'sk-ant-par-defaut' })
     expect(bundleCalls[0]).toMatchObject({ mode: 'cle', provider: 'anthropic', apiKey: 'sk-ant-par-defaut' })
   }, 20000)
+})
 
-  it('UC-CPT-04-F21 — E3 dans l’assistant : clé courte (< 8) acceptée localement, synchronisation refusée (422) → run non démarré, clé mémorisée', async () => {
+describe('UC-CPT-04 — section « Clés API » du profil', () => {
+  it('UC-CPT-04-F15 — A1, A3 : la section dit que la clé reste dans le navigateur, liste les clés gardées « à supprimer » (date de purge après l’avis) ; « Supprimer du serveur » → DELETE + CSRF ; 404 affiché ; clé locale intacte', async () => {
+    const local = JSON.stringify({ anthropic: 'sk-ant-locale' })
+    localStorage.setItem('humanome-keys', local)
+    const { api, section } = await openKeysSection({
+      users: [{ ...ADA, keys: { anthropic: 'sk-ant-serveur', openai: { apiKey: 'sk-openai-serveur', avisPurgeAt: '2026-10-22T08:00:00' } } }],
+    })
+    await section.findByText('Anthropic (Claude)', { selector: '.account-keys-provider' })
+    expect(section.getByTestId('cle-reste-navigateur').textContent).toBe(R1)
+    expect(section.queryByLabelText('Clé API')).toBeNull() // plus de formulaire d'ajout
+    expect(section.getByText(/sont à supprimer/)).toBeDefined()
+    expect(section.getByText(/supprimée d’office à partir du 2026-11-21/)).toBeDefined()
+
+    // E4 depuis la section : l'entrée a disparu entre-temps (autre navigateur).
+    api.failNext('DELETE keys/anthropic', jsonResponse(404, { error: 'Aucune clé enregistrée pour ce fournisseur' }))
+    const [supprimerAnthropic] = section.getAllByRole('button', { name: 'Supprimer du serveur' })
+    await act(async () => {
+      fireEvent.click(supprimerAnthropic)
+    })
+    expect((await section.findByRole('alert')).textContent).toBe('Aucune clé enregistrée pour ce fournisseur')
+
+    await act(async () => {
+      fireEvent.click(section.getAllByRole('button', { name: 'Supprimer du serveur' })[0])
+    })
+
+    expect(await section.findByText('Clé Anthropic (Claude) supprimée du serveur.')).toBeDefined()
+    const deletes = api.callsTo('keys/anthropic', 'DELETE')
+    expect(deletes).toHaveLength(2)
+    expect(deletes[1].headers['X-CSRF-Token']).toBe(api.session.csrf)
+    expect(localStorage.getItem('humanome-keys')).toBe(local) // la suppression serveur ne touche pas le local
+    expect(screen.queryByText(/sk-ant-serveur|sk-openai-serveur/)).toBeNull()
+  })
+
+  it('UC-CPT-04-F16 — A2 : « Recopier dans ce navigateur, puis supprimer » → GET keys/{fournisseur} puis DELETE ; la clé est dans humanome-keys, celle que l’assistant pré-remplit ; plus rien sur le serveur', async () => {
+    const { api, section } = await openKeysSection({ users: [{ ...ADA, keys: { anthropic: 'sk-ant-serveur' } }] })
+    await act(async () => {
+      fireEvent.click(await section.findByRole('button', { name: 'Recopier dans ce navigateur, puis supprimer' }))
+    })
+
+    expect(await section.findByText('Clé Anthropic (Claude) recopiée dans ce navigateur, puis supprimée du serveur.')).toBeDefined()
+    expect(api.calls.filter((c) => c.path.startsWith('keys/')).map((c) => `${c.method} ${c.path}`)).toEqual([
+      'GET keys/anthropic',
+      'DELETE keys/anthropic',
+    ])
+    expect(JSON.parse(localStorage.getItem('humanome-keys'))).toEqual({ anthropic: 'sk-ant-serveur' })
+    expect(await section.findByText('Aucune clé gardée sur le serveur.')).toBeDefined()
+    expect(screen.queryByText(/sk-ant-serveur/)).toBeNull()
+  })
+
+  it('UC-CPT-04-F17 — E4 : la clé à recopier a disparu du serveur (404) → message, rien n’est supprimé ni écrit dans ce navigateur', async () => {
+    const { api, section } = await openKeysSection({ users: [{ ...ADA, keys: { anthropic: 'sk-ant-serveur' } }] })
+    api.failNext('GET keys/anthropic', jsonResponse(404, { error: 'Aucune clé enregistrée pour ce fournisseur' }))
+    await act(async () => {
+      fireEvent.click(await section.findByRole('button', { name: 'Recopier dans ce navigateur, puis supprimer' }))
+    })
+
+    expect((await section.findByRole('alert')).textContent).toBe('Aucune clé enregistrée pour ce fournisseur')
+    expect(api.callsTo('keys/anthropic', 'DELETE')).toHaveLength(0)
+    expect(localStorage.getItem('humanome-keys')).toBeNull()
+  })
+
+  it('UC-CPT-04-F18 — E1 : stockage serveur non configuré (503) → message explicite dans la section', async () => {
     const api = installFakeAccountApi({ users: [ADA], loggedInAs: ADA.email })
-    const bundleCalls = []
-    const { keyStorage } = await renderWizard({ connected: true, bundleCalls })
+    api.override('GET keys', () => jsonResponse(503, { error: 'Stockage de clés non configuré' }))
+    window.location.hash = '#/compte'
+    render(<App lib={fakeLib} />)
+    const section = within(await screen.findByRole('region', { name: 'Clés API' }))
 
-    fireEvent.change(screen.getByLabelText('Clé API'), { target: { value: 'sk-1' } })
-    fireEvent.click(screen.getByRole('checkbox', { name: /Synchroniser sur le serveur/ }))
-    await launchFromProviderStep() // l'assistant n'exige qu'une clé non vide
+    expect((await section.findByRole('alert')).textContent).toBe('Stockage de clés non configuré')
+    expect(section.getByText('Aucune clé gardée sur le serveur.')).toBeDefined()
+  })
+})
 
-    await waitFor(() => expect(screen.getByRole('alert').textContent).toBe('Validation échouée'))
-    expect(api.callsTo('keys', 'PUT')[0].body).toEqual({ provider: 'anthropic', apiKey: 'sk-1' })
-    expect(bundleCalls).toHaveLength(0)
-    expect(JSON.parse(keyStorage.map.get('humanome-keys')).anthropic).toBe('sk-1')
+describe('UC-CPT-04 — les clés et Twin9 (ADR-013)', () => {
+  it('UC-CPT-04-F19 — A6 : la section dit que Twin9, qui tourne sur le serveur, part avec la clé de la plateforme ; elle ne demande aucune clé, Mistral AI comprise', async () => {
+    const { section } = await openKeysSection()
+    await section.findByText('Aucune clé gardée sur le serveur.')
+    expect(section.getByText(/L’analyse approfondie Twin9, qui tourne sur le serveur, part avec la clé de la plateforme/)).toBeDefined()
+    expect(section.queryByLabelText('Fournisseur')).toBeNull()
+    expect(section.queryByRole('textbox')).toBeNull()
   })
 })

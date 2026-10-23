@@ -215,7 +215,7 @@ const BASE = {
       'Avant de lancer, la page dit les journées à instruire — un portfolio déjà analysé n’instruit que ses journées nouvelles ou changées —, le coût et la durée estimés.',
       'L’analyse tourne sur le serveur ; sa page la suit et la fait avancer. Vous pouvez l’annuler, la reprendre, et l’ouvrir dans la cartographie, délibérations comprises.',
       'Un budget et une durée, réglés dans votre profil, l’arrêtent avant de les dépasser : sa carte est alors incomplète, et vous la reprenez sous un nouveau budget.',
-      'Rechargez votre crédit par PayPal, ou utilisez votre propre clé Anthropic, quand l’administrateur l’ouvre, pour un profil qui n’appelle qu’Anthropic — dans les deux cas notre système de prompts reste protégé.',
+      'Elle part avec la clé de la plateforme et se paie sur un crédit : celui qu’une école achète pour ses élèves, ou votre solde restant. Seules les écoles achètent des crédits ; votre propre clé reste dans votre navigateur, et une analyse du serveur ne peut pas la garder.',
       'Une facture récapitulative mensuelle est disponible dans « Mon compte ».',
     ],
   },
@@ -245,7 +245,7 @@ const BASE = {
       'Chaque enregistrement archive une version, qui se relit et se restaure ; une variable qu’aucune étape ne fournit au gabarit est refusée.',
       'Une copie se choisit dans un profil (page Configuration) ; l’administrateur peut en faire le jeu par défaut.',
       'Le banc d’essai rend un gabarit avec des variables d’exemple, sans aucun débit ni appel au modèle.',
-      'La supervision commerciale (contribution, promo, comptes) reste dans #/admin/twin9 (administrateur).',
+      'La supervision commerciale (contribution, packs, comptes) reste dans #/admin/twin9 (administrateur).',
     ],
   },
   configuration: {
@@ -259,7 +259,7 @@ const BASE = {
       'Le « Mode essai » ne lit que la première journée du portfolio et le premier pôle du référentiel : de quoi vérifier un réglage à moindre coût.',
       'Le budget et la durée arrêtent l’analyse avant de les dépasser ; laissés vides, ils ne bornent rien.',
       'L’aide d’un réglage paraît quand vous y entrez. Le serveur valide et complète chaque profil enregistré.',
-      'La clé personnelle n’est proposée que si l’administration l’a ouverte ; elle s’ajoute dans « Mon compte ».',
+      'La clé personnelle ne se choisit plus : une analyse du serveur ne peut pas garder la clé de votre navigateur. Un profil qui la portait se garde, mais ne part qu’avec la clé de l’instance.',
     ],
   },
   twin6ouverte: {

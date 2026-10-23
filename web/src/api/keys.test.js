@@ -1,12 +1,13 @@
-// Clés API personnelles (cahier §4.5, ADR-004) — exigence : « section Clés API
-// personnelles dans #/compte : lister (fournisseur + date, JAMAIS la clé),
-// ajouter, supprimer ; fournisseurs anthropic/openai/google/openrouter/xai/
-// ollama ; clé révélée à la demande via revealKey ». Ce fichier prouve le
-// contrat HTTP du client fin web/src/api/keys.js avec /api/keys : chemins,
-// méthodes, forme du corps, encodage du fournisseur et liste des fournisseurs.
+// Clés API (cahier §4.5 ; ADR-013 §5) — exigence : « section Clés API dans
+// #/compte : lister les clés gardées avant (fournisseur + date, JAMAIS la clé),
+// les recopier dans ce navigateur (revealKey), les supprimer ; plus d'ajout :
+// la clé reste dans le navigateur ». Ce fichier prouve le contrat HTTP du
+// client fin web/src/api/keys.js avec /api/keys : chemins, méthodes, encodage
+// du fournisseur et liste des fournisseurs.
 
 import { describe, it, expect, vi, beforeEach } from 'vitest'
-import { KEY_PROVIDERS, providerLabel, listKeys, storeKey, revealKey, deleteKey } from './keys.js'
+import * as keys from './keys.js'
+import { KEY_PROVIDERS, providerLabel, listKeys, revealKey, deleteKey } from './keys.js'
 import { resetApiClient } from './client.js'
 
 function jsonResponse(body, { ok = true, status = 200 } = {}) {
@@ -26,10 +27,10 @@ function noContent() {
 beforeEach(() => resetApiClient())
 
 describe('listKeys', () => {
-  it('émet GET api/keys et retourne la liste [{provider, createdAt}] telle quelle (jamais la clé)', async () => {
+  it('émet GET api/keys et retourne la liste [{provider, createdAt, avisPurgeAt}] telle quelle (jamais la clé)', async () => {
     const list = [
-      { provider: 'anthropic', createdAt: '2026-07-15T10:00:00' },
-      { provider: 'ollama', createdAt: '2026-07-14T09:00:00' },
+      { provider: 'anthropic', createdAt: '2026-07-15T10:00:00', avisPurgeAt: null },
+      { provider: 'ollama', createdAt: '2026-07-14T09:00:00', avisPurgeAt: '2026-10-22T08:00:00' },
     ]
     const calls = []
     const fetchFn = vi.fn(async (url, init) => {
@@ -43,24 +44,14 @@ describe('listKeys', () => {
     expect(calls[0].init.method).toBe('GET')
     expect(out).toEqual(list)
     // Le contrat serveur ne porte JAMAIS de matériel de clé dans la liste.
-    expect(Object.keys(out[0])).toEqual(['provider', 'createdAt'])
+    expect(Object.keys(out[0])).toEqual(['provider', 'createdAt', 'avisPurgeAt'])
   })
 })
 
 describe('storeKey', () => {
-  it('émet PUT api/keys avec le corps JSON {provider, apiKey}', async () => {
-    const calls = []
-    const fetchFn = vi.fn(async (url, init) => {
-      calls.push({ url, init })
-      return noContent()
-    })
-
-    const out = await storeKey({ provider: 'openai', apiKey: 'sk-openai-0123456789' }, { fetchFn })
-
-    expect(calls[0].url).toBe('api/keys')
-    expect(calls[0].init.method).toBe('PUT')
-    expect(JSON.parse(calls[0].init.body)).toEqual({ provider: 'openai', apiKey: 'sk-openai-0123456789' })
-    expect(out).toBeNull() // 204 No Content
+  it('n’existe plus (ADR-013) : aucune clé d’utilisateur ne part au serveur, PUT api/keys répond 410', () => {
+    expect(keys.storeKey).toBeUndefined()
+    expect(Object.keys(keys).sort()).toEqual(['KEY_PROVIDERS', 'deleteKey', 'listKeys', 'providerLabel', 'revealKey'])
   })
 })
 

@@ -15,9 +15,13 @@
 // Trois voies :
 //   - CLÉ PERSO : le moteur (executerTwin6) tourne DANS le navigateur, appel
 //     direct au fournisseur avec la clé de l'utilisateur → GRATUIT. La clé ne
-//     quitte pas le navigateur (appel direct, en-tête browser-access).
+//     quitte pas le navigateur (appel direct, en-tête browser-access) ; elle
+//     s'y mémorise si on le demande (localStorage 'humanome-keys', celui de
+//     l'assistant de run). Depuis l'ADR-013, la page ne lit plus de clé gardée
+//     sur le serveur et le dit : « votre clé reste dans ce navigateur ».
 //   - CRÉDITS : chaque appel passe par /api/twin6/appel (notre clé), +10 % de
-//     contribution débités du solde prépayé.
+//     contribution débités du solde prépayé — celui qu'un compte a encore, que
+//     seule une école recharge (ADR-013 §2 c, e).
 //   - ESSAI GRATUIT (2026-10-21) : chaque appel passe par le proxy de la démo
 //     (POST /api/llm, une preuve de travail par appel), comme l'Essayer, dont il
 //     partage le budget du jour (1 $ par défaut) ; le serveur impose le modèle.
@@ -41,7 +45,7 @@
 
 import { useEffect, useMemo, useRef, useState } from 'react'
 import { ApiUnavailableError, fetchMe } from '../api/client.js'
-import { listKeys as listKeysApi, revealKey as revealKeyApi } from '../api/keys.js'
+import { getLocalKey, KEY_STAYS_IN_BROWSER, setLocalKey } from '../lib/local-keys.js'
 import { formatUsd } from '../api/twin9.js'
 import {
   TWIN6_PACKAGE_URL,
@@ -180,8 +184,6 @@ export default function Twin6OuverteView({ lib: injectedLib, deps = {} }) {
   const creditsFactory = deps.makeCreditsProvider ?? makeCreditsProvider
   const ownKeyFactory = deps.makeOwnKeyProvider ?? makeOwnKeyProvider
   const demoFactory = deps.makeDemoProvider ?? createDemoProvider
-  const listKeys = deps.listKeys ?? listKeysApi
-  const revealKey = deps.revealKey ?? revealKeyApi
   const now = deps.now ?? (() => new Date())
   const callOpts = deps.fetchFn ? { fetchFn: deps.fetchFn } : {}
   const loadReferentiel = deps.loadReferentiel ?? loadPublishedReferentiel
@@ -198,9 +200,9 @@ export default function Twin6OuverteView({ lib: injectedLib, deps = {} }) {
   const [portfolio, setPortfolio] = useState('')
   const [model, setModel] = useState('')
   const [voie, setVoie] = useState('credits') // 'credits' | 'cle_perso' | 'demo'
-  const [apiKey, setApiKey] = useState('')
-  const [savedProviders, setSavedProviders] = useState([]) // clés perso enregistrées au profil
-  const [useSavedKey, setUseSavedKey] = useState(false)
+  // La clé de ce navigateur, si elle y est mémorisée (jamais une clé gardée sur le serveur, ADR-013).
+  const [apiKey, setApiKey] = useState(() => getLocalKey(OWN_KEY_PROVIDER, deps.keyStorage))
+  const [memoriser, setMemoriser] = useState(() => getLocalKey(OWN_KEY_PROVIDER, deps.keyStorage) !== '')
   // Le référentiel choisi : null, RESPIRE (sa dernière version publiée) ; son document une fois chargé.
   const [choix, setChoix] = useState(null)
   const [ref, setRef] = useState({ status: 'loading', doc: null, message: '' })
@@ -295,26 +297,6 @@ export default function Twin6OuverteView({ lib: injectedLib, deps = {} }) {
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [session.status, choix?.id, choix?.version])
 
-  // Clés perso enregistrées au profil : si l'utilisateur en a une pour le
-  // fournisseur, on lui propose de lancer dessus sans la ressaisir.
-  useEffect(() => {
-    if (session.status !== 'authenticated') return undefined
-    let alive = true
-    listKeys(callOpts)
-      .then((list) => {
-        if (!alive) return
-        const providers = Array.isArray(list) ? list.map((k) => k.provider) : []
-        setSavedProviders(providers)
-        if (providers.includes(OWN_KEY_PROVIDER)) setUseSavedKey(true)
-      })
-      .catch(() => alive && setSavedProviders([]))
-    return () => {
-      alive = false
-    }
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [session.status])
-
-  const hasSavedKey = savedProviders.includes(OWN_KEY_PROVIDER)
   const modeles = res.offer?.modeles ?? {}
   // Mode simple : le modèle cible du paquet, même si un autre avait été choisi en mode expert.
   const modele = expert ? model : (res.pkg?.modeleCibleDefaut ?? model)
@@ -326,7 +308,7 @@ export default function Twin6OuverteView({ lib: injectedLib, deps = {} }) {
   // dollar du jour, finiraient sur « aucune feuille datée » (le texte collé
   // dans l'Essayer n'en a pas).
   const sansFeuilleDatee = essai && !FEUILLE_DATEE.test(portfolio)
-  const clePersoPrete = (useSavedKey && hasSavedKey) || apiKey.trim() !== ''
+  const clePersoPrete = apiKey.trim() !== ''
   // Le référentiel que lit le moteur : le document choisi ; pour RESPIRE, la
   // structure de /meta tant qu'elle est celle de la version choisie.
   const moteurRef = useMemo(
@@ -362,14 +344,18 @@ export default function Twin6OuverteView({ lib: injectedLib, deps = {} }) {
       if (solde < requisMicro) {
         // Arrondis au centime supérieur : le montant affiché ne passe jamais sous le solde qui manque.
         const auCentime = (usd) => (Math.ceil(usd * 100 - 1e-9) / 100).toFixed(2)
+        // seule une école recharge (ADR-013 §2 e) : à un autre compte, la page ne propose pas la recharge
+        const issue = res.offer?.peut_acheter
+          ? 'Rechargez votre crédit, choisissez un modèle moins cher ou utilisez votre propre clé API.'
+          : 'Choisissez un modèle moins cher, ou utilisez votre propre clé API, dans ce navigateur : seules les ' +
+            'écoles achètent des crédits.'
         setRun((r) => ({
           ...r,
           status: 'error',
           error:
             `Solde insuffisant pour ce portfolio avec ce modèle (~${auCentime(poids + reserve)} $ : ` +
             `${poids} $ estimés, et ${auCentime(reserve)} $ réservés le temps de chaque appel puis rendus ; ` +
-            `solde ${(solde / 1_000_000).toFixed(2)} $). Rechargez votre crédit, choisissez un modèle moins cher ` +
-            `ou utilisez votre propre clé API.`,
+            `solde ${(solde / 1_000_000).toFixed(2)} $). ${issue}`,
         }))
         return
       }
@@ -391,11 +377,9 @@ export default function Twin6OuverteView({ lib: injectedLib, deps = {} }) {
         await demo.prime()
         provider = demo.provider
       } else if (voie === 'cle_perso') {
-        // Clé enregistrée au profil (révélée à la demande, no-store) OU saisie.
-        const key =
-          useSavedKey && hasSavedKey
-            ? (await revealKey(OWN_KEY_PROVIDER, callOpts)).apiKey
-            : apiKey.trim()
+        // La clé saisie, ou celle mémorisée dans ce navigateur ; jamais envoyée à humanome (ADR-013).
+        const key = apiKey.trim()
+        if (memoriser) setLocalKey(OWN_KEY_PROVIDER, key, deps.keyStorage)
         provider = ownKeyFactory({ provider: OWN_KEY_PROVIDER, apiKey: key, ...callOpts })
       } else {
         provider = creditsFactory({
@@ -601,43 +585,21 @@ export default function Twin6OuverteView({ lib: injectedLib, deps = {} }) {
             ) : null}
             {voie === 'cle_perso' ? (
               <div className="twin6-cleperso">
-                {hasSavedKey ? (
-                  <>
-                    <label>
-                      <input
-                        type="radio"
-                        name="cleperso"
-                        checked={useSavedKey}
-                        onChange={() => setUseSavedKey(true)}
-                      />{' '}
-                      Utiliser ma clé Anthropic enregistrée dans mon profil
-                    </label>
-                    <label>
-                      <input
-                        type="radio"
-                        name="cleperso"
-                        checked={!useSavedKey}
-                        onChange={() => setUseSavedKey(false)}
-                      />{' '}
-                      Saisir une autre clé
-                    </label>
-                  </>
-                ) : (
-                  <p className="twin6-hint">
-                    Astuce : <a href="#/compte">enregistrez votre clé dans votre profil</a> pour ne
-                    plus la ressaisir.
-                  </p>
-                )}
-                {!(hasSavedKey && useSavedKey) ? (
-                  <input
-                    type="password"
-                    aria-label="Clé API Anthropic"
-                    placeholder="sk-ant-…"
-                    value={apiKey}
-                    onChange={(e) => setApiKey(e.target.value)}
-                    autoComplete="off"
-                  />
-                ) : null}
+                <input
+                  type="password"
+                  aria-label="Clé API Anthropic"
+                  placeholder="sk-ant-…"
+                  value={apiKey}
+                  onChange={(e) => setApiKey(e.target.value)}
+                  autoComplete="off"
+                />
+                <label>
+                  <input type="checkbox" checked={memoriser} onChange={(e) => setMemoriser(e.target.checked)} />{' '}
+                  Mémoriser la clé dans ce navigateur
+                </label>
+                <p className="twin6-hint" data-testid="cle-reste-navigateur">
+                  {KEY_STAYS_IN_BROWSER}
+                </p>
               </div>
             ) : null}
           </fieldset>

@@ -190,5 +190,7 @@ export async function fetchTwin6Offer(options) {
     // Solde prépayé du compte : sert de garde-fou avant un run sur crédits
     // (on ne lance pas si le solde ne couvre pas le poids du portfolio).
     solde_microusd: Number(meta.solde_microusd ?? 0),
+    // Seule une école recharge (ADR-013 §2 e) : le message d'un solde insuffisant ne propose pas la recharge aux autres.
+    peut_acheter: meta.peut_acheter === true,
   }
 }

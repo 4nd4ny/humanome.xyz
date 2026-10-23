@@ -2,16 +2,18 @@
 //
 // Le composant web/src/components/RunWizard.jsx n'est qu'une coquille UI
 // autour de ce module : choix du référentiel (sa structure se lit dans son
-// JSON, 2026-10-20) et du paquet de prompts, gestion des clés API
-// (localStorage par défaut, opt-in serveur chiffré AD-4), estimation avant
+// JSON, 2026-10-20) et du paquet de prompts, gestion des clés API (dans le
+// navigateur seulement, ADR-013), estimation avant
 // lancement (engine estimateRun), exécution avec checkpoints/reprise
 // (engine createRun + createIndexedDbStorage) et construction du document
 // merge final SANS narratifs LLM (v1 : résumés locaux déterministes —
 // les récits narratifs de fusion arrivent avec le banc promptologue, P10).
 //
 // RGPD : la clé API ne quitte JAMAIS ce module en clair vers un log ; elle vit
-// dans localStorage ('humanome-keys') par défaut, et ne part au serveur (PUT
-// api/keys, chiffrement sodium côté serveur) que sur opt-in explicite.
+// dans localStorage ('humanome-keys') et ne part que vers le fournisseur
+// choisi, jamais vers humanome : depuis l'ADR-013, le serveur ne garde plus
+// les clés de ses utilisateurs (la synchronisation « opt-in » de l'ADR-004 est
+// retirée), seule une école garde la sienne, pour ses élèves.
 
 import {
   createProvider,
@@ -27,10 +29,9 @@ import { buildMergeDocument } from '@engine/pipeline/merge-document.js'
 import { REFERENTIEL_PAR_DEFAUT, validateDocumentPourReferentiel } from '@engine/conformite.js'
 import { apiFetch } from '../api/client.js'
 import { createDemoProvider, DEMO_MODEL, DEMO_MAX_TOKENS } from './demo-llm.js'
+export { KEYS_STORAGE_KEY, KEY_STAYS_IN_BROWSER, getLocalKey, readLocalKeys, setLocalKey } from './local-keys.js'
 
 // --- Constantes ------------------------------------------------------------
-
-export const KEYS_STORAGE_KEY = 'humanome-keys'
 
 /**
  * Budget de sortie par appel d'un fournisseur autre qu'Anthropic (leçon M5 :
@@ -70,58 +71,8 @@ export const BUILTIN_PACKAGE = Object.freeze({
 export const SERVICE_ESTIMATION_MODEL = 'claude-haiku-5-5'
 
 // --- Clés API locales (localStorage 'humanome-keys') ------------------------
-
-function keysStorage(storage) {
-  return storage ?? globalThis.localStorage ?? null
-}
-
-/** @returns {Record<string, string>} table provider -> clé (localStorage) */
-export function readLocalKeys(storage) {
-  const s = keysStorage(storage)
-  if (!s) return {}
-  try {
-    const data = JSON.parse(s.getItem(KEYS_STORAGE_KEY) ?? '{}')
-    return data && typeof data === 'object' ? data : {}
-  } catch {
-    return {}
-  }
-}
-
-/** @returns {string} clé locale du fournisseur ('' si absente) */
-export function getLocalKey(provider, storage) {
-  const value = readLocalKeys(storage)[provider]
-  return typeof value === 'string' ? value : ''
-}
-
-/** Mémorise (ou efface avec '') la clé locale d'un fournisseur. */
-export function setLocalKey(provider, apiKey, storage) {
-  const s = keysStorage(storage)
-  if (!s) return
-  const keys = readLocalKeys(storage)
-  if (apiKey) keys[provider] = apiKey
-  else delete keys[provider]
-  try {
-    s.setItem(KEYS_STORAGE_KEY, JSON.stringify(keys))
-  } catch {
-    /* stockage indisponible : la clé reste en mémoire de session */
-  }
-}
-
-// --- Clés API serveur (opt-in AD-4, chiffrées côté serveur) -----------------
-
-/** PUT api/keys — opt-in explicite « synchroniser sur le serveur (chiffrée) ». */
-export function syncKeyToServer(provider, apiKey, { apiFetchFn = apiFetch } = {}) {
-  return apiFetchFn('keys', { method: 'PUT', body: { provider, apiKey } })
-}
-
-/** GET api/keys/{provider} — synchronisation AD-4 (propriétaire authentifié). */
-export async function fetchKeyFromServer(provider, { apiFetchFn = apiFetch } = {}) {
-  const data = await apiFetchFn(`keys/${encodeURIComponent(provider)}`)
-  if (typeof data?.apiKey !== 'string' || data.apiKey === '') {
-    throw new Error('Aucune clé enregistrée sur le serveur pour ce fournisseur.')
-  }
-  return data.apiKey
-}
+// Elles vivent dans lib/local-keys.js, que lisent aussi la page du compte et la
+// cartographie ouverte sans charger le moteur ; ce module les réexporte.
 
 // --- Paquets de prompts ------------------------------------------------------
 

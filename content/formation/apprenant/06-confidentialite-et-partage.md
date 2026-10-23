@@ -134,17 +134,22 @@ les **révoquer**.
 Si vous lancez vos runs avec **votre propre clé LLM** (mode « clé personnelle »
 de l'assistant de run, chapitre 5) :
 
-- par défaut, la clé peut être **mémorisée dans ce navigateur** (localStorage) —
-  case « Mémoriser la clé dans ce navigateur » ;
-- elle peut, en option et si vous êtes connecté, être **synchronisée sur le
-  serveur de façon chiffrée** — case « Synchroniser sur le serveur (chiffrée) —
-  opt-in explicite » ; utile pour la retrouver sur un autre appareil, via
-  « Récupérer la clé depuis le serveur » ;
+- **votre clé reste dans votre navigateur** : humanome ne la garde jamais sur
+  ses serveurs (seule une école peut y garder la sienne, pour ses élèves) ;
+- elle peut être **mémorisée dans ce navigateur** (localStorage) — case
+  « Mémoriser la clé dans ce navigateur », cochée par défaut dans l'assistant ;
+  sur un autre appareil, vous la saisissez de nouveau ;
 - en mode « clé personnelle », **la clé ne transite jamais par humanome** lors
-  des appels : votre navigateur appelle directement le fournisseur.
+  des appels : votre navigateur appelle directement le fournisseur ;
+- l'analyse approfondie Twin9, qui tourne sur le serveur, ne peut pas garder la
+  clé de votre navigateur : elle part avec la clé de la plateforme.
 
-Bonnes pratiques : n'activez la synchronisation serveur que si vous en avez
-besoin ; sur un ordinateur partagé, évitez de mémoriser la clé.
+Si vous aviez gardé une clé sur le serveur avant le 22 octobre 2026, la section
+« Clés API » de « Mon compte » la montre « à supprimer » : « Recopier dans ce
+navigateur, puis supprimer », ou « Supprimer du serveur ». Sans geste de votre
+part, elle sera supprimée après un avis par courriel.
+
+Bonne pratique : sur un ordinateur partagé, évitez de mémoriser la clé.
 
 ## 6. Exporter, importer, supprimer
 

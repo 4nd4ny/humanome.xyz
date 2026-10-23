@@ -62,8 +62,10 @@ page Essayer (UC-VIS-03), ou par l'adresse.
   accentués) est celle des documents Twin6 tant qu'elle compte exactement les
   pôles et les compétences de la version choisie (RG9).
 - Voie crédits : la clé plateforme `ANTHROPIC_API_KEY` est configurée et le
-  solde prépayé couvre le run (UC-APP-11). Voie clé perso : l'apprenant saisit
-  une clé Anthropic ou en a enregistré une dans son profil (UC-CPT-04).
+  solde prépayé couvre le run (UC-APP-11 : le solde restant d'un compte, que
+  seule une école recharge). Voie clé perso : l'apprenant saisit une clé
+  Anthropic, ou l'a mémorisée dans ce navigateur (UC-CPT-04) ; depuis l'ADR-013,
+  plus aucune clé gardée sur le serveur n'est lue.
 
 ## Garanties en cas de succès
 
@@ -108,10 +110,8 @@ page Essayer (UC-VIS-03), ou par l'adresse.
    (`GET /api/auth/me`, qui sème aussi le jeton CSRF).
 2. La vue charge en parallèle le paquet PUBLIC (`GET data/twin6/twin6-ouverte-1.1.0.json`,
    contrôlé : scanPole, kairos, fiches) et l'offre (`GET /api/twin9/meta` :
-   prix Twin6 déjà margés `modeles_twin6`, référentiel, solde) ; en parallèle
-   encore (effets séparés), elle lit la liste des clés enregistrées
-   (`GET /api/keys`), dont l'échec est ignoré silencieusement, et le référentiel
-   choisi — RESPIRE, sa dernière version publiée, par défaut : dans la base
+   prix Twin6 déjà margés `modeles_twin6`, référentiel, solde, `peut_acheter`) ;
+   en parallèle encore, elle lit le référentiel choisi — RESPIRE, sa dernière version publiée, par défaut : dans la base
    (`GET /api/referentiels` puis `GET /api/referentiels/respire/versions/{semver}`,
    S5), à défaut `GET data/referentiel/index.json` puis son fichier, enfin le
    RESPIRE embarqué. Le choix « Référentiel » liste les référentiels publiés en base
@@ -166,10 +166,15 @@ page Essayer (UC-VIS-03), ou par l'adresse.
   final indique « (avec votre clé) ». Contrairement à la voie crédits, le
   transport direct **réessaie automatiquement** (3 tentatives au plus sur 429,
   5xx ou erreur réseau, `Retry-After` honoré).
-- **A2 — Clé enregistrée au profil** (étape 3) : si `GET /api/keys` liste une clé
-  `anthropic`, l'option « Utiliser ma clé Anthropic enregistrée » est cochée par
-  défaut ; au lancement la clé est révélée une fois (`GET /api/keys/anthropic`,
-  propriétaire seul) puis utilisée comme en A1, sans ressaisie.
+- **A2 — Clé mémorisée dans ce navigateur** (étape 3, ADR-013) : si
+  `localStorage['humanome-keys']` porte une clé `anthropic`, le champ en est
+  pré-rempli et « Mémoriser la clé dans ce navigateur » coché ; au lancement la
+  clé est utilisée comme en A1, sans ressaisie, et mémorisée si la case est
+  cochée. La page dit « Votre clé reste dans ce navigateur : humanome ne la
+  garde jamais sur ses serveurs. Seule une école peut y garder la sienne, pour
+  ses élèves. » ; elle ne lit plus aucune clé gardée sur le serveur (ni `GET
+  /api/keys`, ni `GET /api/keys/anthropic`) — une telle clé se recopie dans ce
+  navigateur depuis « Mon compte » (UC-CPT-04 A2).
 - **A3 — Sortie demandée hors bornes** (étape 6) : `max_tokens` (ou l'alias
   `maxTokens`) est ramené dans [256, maximum du modèle] — 128 000 pour Sonnet 5,
   Opus 5.5 ou Haiku 5.5, 64 000 pour Haiku 4.5 (`Llm\ModelLimits`) ; absent,
@@ -245,8 +250,11 @@ page Essayer (UC-VIS-03), ou par l'adresse.
 - **E3 — Solde trop bas pour le portfolio et le modèle** (étape 4, voie
   crédits) : alerte « Solde insuffisant pour ce portfolio avec ce modèle (~T $ :
   P $ estimés, et R $ réservés le temps de chaque appel puis rendus ; solde
-  S $). Rechargez votre crédit, choisissez un modèle moins cher ou utilisez
-  votre propre clé API. » — aucun appel (RG5).
+  S $). » suivi, pour une école (`peut_acheter`), de « Rechargez votre crédit,
+  choisissez un modèle moins cher ou utilisez votre propre clé API. », et pour
+  un autre compte de « Choisissez un modèle moins cher, ou utilisez votre
+  propre clé API, dans ce navigateur : seules les écoles achètent des
+  crédits. » (ADR-013) — aucun appel (RG5).
 - **E4 — Réserve non couverte** (étape 6) : `402 {error: "Solde insuffisant",
   solde_microusd, requis_estime_microusd}` ; l'amont n'est pas appelé ; la vue
   arrête le run et affiche le message, suivi de ce que le run a débité
@@ -429,7 +437,7 @@ page Essayer (UC-VIS-03), ou par l'adresse.
 | Donnée | Traitement |
 |---|---|
 | Texte du portfolio | Voie crédits et essai gratuit : transite par le serveur et Anthropic le temps de l'appel, **jamais stocké** ni journalisé ; voie clé perso : ne passe que du navigateur au fournisseur |
-| Clé API personnelle | Saisie : reste dans le navigateur ; enregistrée : coffre chiffré (ADR-004), révélée au seul propriétaire |
+| Clé API personnelle | Reste dans le navigateur (`localStorage['humanome-keys']` si on la mémorise), ne part que vers Anthropic ; jamais gardée ni lue sur le serveur (ADR-013) |
 | Prompts | Publics (paquet AGPL téléchargeable) |
 | Grand-livre | `twin9_credit_events` : montants, modèle, tokens, libellé d'étape — jamais de contenu |
 | Essai gratuit | Compteurs de la démo seulement (`llm_usage_daily`, `free_credit_monthly`, `llm_pow_challenges` hachés, `rate_limits` au seau haché), comme l'Essayer (UC-VIS-03) |
@@ -448,7 +456,7 @@ page Essayer (UC-VIS-03), ou par l'adresse.
 | Front | `web/src/components/ReferentielChoice.jsx`, `web/src/data/referentiel.js` — `listPublishedReferentiels`, `loadPublishedReferentiel` | Choix et chargement du référentiel publié (étape 2, A4, E13) : la base par l'API publique d'abord, l'export statique en repli (S5) |
 | API | `api/src/routes/referentiel.php` — `GET /referentiels`, `GET /referentiels/{id}/versions/{semver}` | Référentiels publiés et document d'une version publiée, publics, en lecture seule |
 | Front | `web/src/api/twin9.js` — `referentielPourMoteur`, `formatUsd` | Adaptation du référentiel de `/meta`, montants |
-| Front | `web/src/api/keys.js` — `listKeys`, `revealKey` | Clé enregistrée au profil |
+| Front | `web/src/lib/local-keys.js` — `getLocalKey`, `setLocalKey`, `KEY_STAYS_IN_BROWSER` | Clé mémorisée dans ce navigateur, message R1 (A2) |
 | Front | `web/src/lib/demo-llm.js` — `createDemoProvider`, `describeDemoError`, `DEMO_MODEL`, `DEMO_TEXT_MAX_CHARS` | Essai gratuit : un défi par appel, messages des refus, borne du portfolio (A6, E14) — unitaires : UC-VIS-03 |
 | Front | `web/src/api/client.js` — `fetchMe`, `apiFetch`, `ApiError`, `ApiUnavailableError` | Session et amorçage du jeton CSRF (étape 1), jeton sur chaque mutation, erreurs typées (E1, E2, E4) — unitaires : UC-APP-09-U15, U16 ; copie statique : UC-CPT-02-U12 |
 | Build | `scripts/build-twin6-package.mjs` (après `scripts/generate-fiches.mjs`, `prebuild` du front) | Construit le paquet public servi à l'étape 2 (précondition) — relève de UC-SYS-04 : rejoué en sous-processus dans un miroir temporaire par UC-SYS-04-F11 (fiches absentes, puis entrées versionnées seules) et F12 (1.0.0 et 1.1.0, dérive d'un gabarit) |
@@ -464,7 +472,6 @@ page Essayer (UC-VIS-03), ou par l'adresse.
 | Domaine | `api/src/Llm/ModelLimits.php` — `sortieMax` ; `engine/src/providers/limits.js` — `sortieMaxAnthropic` | La sortie maximale de chaque modèle Claude : défaut et borne du serveur (RG4), défaut du moteur, réserve du garde-fou client (RG5) |
 | API | `GET /api/llm/challenge`, `POST /api/llm` — `api/src/routes/llm.php` ; `api/src/Llm/DemoConfig.php`, `api/src/Llm/Pricing.php` | Proxy de la démo (essai gratuit), ses réglages et son tarif — relèvent de UC-VIS-03 et UC-ADM-04 |
 | API | `api/src/Middleware/CsrfMiddleware.php` | Jeton CSRF des mutations (E12) — logique unitaire couverte par UC-CPT-02-U07 |
-| API | `GET /api/keys/anthropic` — `api/src/routes/keys.php`, `api/src/Keys/KeyVault.php` | Révélation de la clé enregistrée (A2) — garde propriétaire et chiffrement couverts par UC-CPT-04 |
 | API | `GET /api/twin9/meta` — `api/src/routes/twin9.php` | Offre (prix Twin6, référentiel, solde) |
 | Domaine | `api/src/Twin9/Twin9Config.php` — `coutMicrousd`, `reserveMicrousd`, `publicView`, `marge`, `modeles` | Tarification Twin6, bornes |
 | Domaine | `api/src/Twin9/CreditService.php` — `debit`, `adjust` ; `SoldeInsuffisantException` | Réserve, réconciliation, remboursement |
@@ -500,11 +507,11 @@ page Essayer (UC-VIS-03), ou par l'adresse.
 | UC-APP-09-U15 | `makeCreditsProvider` | Corps, jeton CSRF de session, contrat moteur, contribution remontée | idem |
 | UC-APP-09-U16 | `makeCreditsProvider` | Replis sûrs ; 402 → `ApiError`, aucune contribution | idem |
 | UC-APP-09-U17 | `makeOwnKeyProvider` | Transport direct, jamais `/api`, clé exigée | idem |
-| UC-APP-09-U18 | `fetchTwin6Offer` | Prix Twin6, promo, référentiel, solde, replis | idem |
+| UC-APP-09-U18 | `fetchTwin6Offer` | Prix Twin6, référentiel, solde, droit d'acheter (`peut_acheter`, faux par défaut), replis | idem |
 | UC-APP-09-U19 | `referentielPourMoteur` | Pôles et compétences aplaties | idem |
 | UC-APP-09-U20 | `formatUsd` | µUSD → « x,yy $ », 4 décimales sous le centime | idem |
 | UC-APP-09-U32 | `referentielTwin6` | RESPIRE : la structure de `/meta` tant qu'elle est celle de la version (ordre indifférent) ; compétence déplacée, pôle en moins, `/meta` vide, autre référentiel → le document (RG9) | idem |
-| UC-APP-09-U28 | `listKeys`, `revealKey` | Liste sans la clé, révélation `GET api/keys/anthropic` (A2) ; la garde propriétaire relève de UC-CPT-04 | idem |
+| UC-APP-09-U28 | `Twin6OuverteView` (isolée), sa source | La clé mémorisée dans ce navigateur pré-remplie, le message R1 ; la vue n'importe plus le client `/api/keys` (A2) | idem |
 | UC-APP-09-U29 | `Twin6OuverteView` (isolée) | Garde-fou : ⌈octets / 1024⌉ $, plus la réserve d'un appel (toute la sortie du modèle à son prix), comparés au solde avant tout provider ; montant requis arrondi au centime supérieur (RG5, E3) | idem |
 | UC-APP-09-U38 | `makeCreditsProvider` | Demande le relais ; progression en caractères ; le résultat relayé rend le contrat moteur et sa contribution ; coupé, l'appel remonte son coût puis échoue au message du serveur ; connexion perdue : l'appel a pu être facturé ; l'annulation reste une `AbortError` (RG12, E11) | `web/test/usecases/unit/uc-app-09-cartographie-ouverte-twin6.test.jsx` |
 | UC-APP-09-U39 | `Twin6OuverteView` (isolée) | Voie crédits : les caractères reçus de l'appel en cours, remis à zéro à chaque étape ; un appel coupé laisse son message et ce que le run a débité (RG12, E11) | idem |
@@ -527,7 +534,7 @@ montage (`humanome-mode`), sauf F32, qui rejoue le mode simple (A8).
 |---|---|---|---|---|
 | UC-APP-09-F01 | Nominal | IHM | `<App/>` : RESPIRE par défaut, « 8 appels au modèle (7 pôles + synthèse) » ; progression « étape 1/8 » et contribution cumulée pendant le run ; 8 appels via `/api/twin6/appel` avec CSRF, la fiche du paquet telle quelle, contribution finale, secteurs du sunburst, export JSON (`cartographie-merge` sans `referentiel`, noms de pôle de `/meta`, `.json`, aucun envoi réseau ; en 1.1.0 avec sa `configuration` — sha256 des octets servis du paquet, comparé à `node:crypto` — et son `execution`, valide au schéma) ; « Compétences établies » sur les compétences du référentiel du run (anomalie 3 corrigée) ; portfolio envoyé nulle part ailleurs | `web/test/usecases/functional/uc-app-09-cartographie-ouverte-twin6.test.jsx` |
 | UC-APP-09-F02 | A1, RG5 | IHM | Clé saisie, solde nul : 8 appels directs au fournisseur, aucun passage par l'API, aucun garde-fou de solde | idem |
-| UC-APP-09-F03 | A2 | IHM | Clé du profil révélée une fois, 8 appels directs avec elle, aucun appel à `/api/twin6/appel` (voie crédits câblée en échec), « (avec votre clé) » | idem |
+| UC-APP-09-F03 | A2 | IHM | Clé de ce navigateur pré-remplie, message R1 ; 8 appels directs avec elle, aucun appel à `/api/keys` ni à `/api/twin6/appel` (voie crédits câblée en échec), « (avec votre clé) » | idem |
 | UC-APP-09-F04 | E1 | IHM | Anonyme : l'essai gratuit seul, invitation à se connecter pour les autres voies ; ni offre ni clés lues | idem |
 | UC-APP-09-F05 | E2 | IHM | Copie statique : fonctionnalité indisponible | idem |
 | UC-APP-09-F06 | E3 | IHM | Solde < poids du portfolio et réserve d'un appel (« ~2.41 $ : 1 $ estimés, et 1.41 $ réservés… », Sonnet 5 à 2 / 10) : blocage avant tout appel | idem |

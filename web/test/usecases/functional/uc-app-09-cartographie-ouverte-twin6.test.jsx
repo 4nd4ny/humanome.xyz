@@ -312,7 +312,8 @@ describe('UC-APP-09 — l’apprenant lance une cartographie ouverte', () => {
     expect(calls.filter((c) => c.url.startsWith('api/')).some((c) => String(c.init?.body ?? '').includes('sk-ant'))).toBe(false)
   })
 
-  it('UC-APP-09-F03 — A2 : clé enregistrée au profil → révélée à la demande puis utilisée sans ressaisie', async () => {
+  it('UC-APP-09-F03 — A2 : la clé mémorisée dans ce navigateur pré-remplit le champ et sert sans ressaisie ; aucune clé gardée sur le serveur n’est lue (ADR-013)', async () => {
+    localStorage.setItem('humanome-keys', JSON.stringify({ anthropic: 'sk-ant-navigateur-fictive' }))
     const { calls } = stubFetch(
       routes({
         'GET keys': jsonResponse(200, [{ provider: 'anthropic', createdAt: '2026-07-15' }]),
@@ -325,16 +326,17 @@ describe('UC-APP-09 — l’apprenant lance une cartographie ouverte', () => {
     openTwin6()
     await saisirPortfolio()
     fireEvent.click(screen.getByRole('radio', { name: /Avec ma propre clé API/ }))
-    expect(screen.getByRole('radio', { name: /Utiliser ma clé Anthropic enregistrée/ }).checked).toBe(true)
-    expect(screen.queryByLabelText('Clé API Anthropic')).toBeNull()
+    expect(screen.getByLabelText('Clé API Anthropic').value).toBe('sk-ant-navigateur-fictive')
+    expect(screen.queryByRole('radio', { name: /Utiliser ma clé Anthropic enregistrée/ })).toBeNull()
+    expect(screen.getByTestId('cle-reste-navigateur').textContent).toContain('humanome ne la garde jamais sur ses serveurs')
 
     await lancer()
     const succes = await screen.findByText(/Cartographie ouverte terminée/)
     expect(succes.textContent).toContain('(avec votre clé)')
-    expect(calls.filter((c) => c.key === 'GET keys/anthropic')).toHaveLength(1)
+    expect(calls.filter((c) => c.key === 'GET keys' || c.key === 'GET keys/anthropic')).toHaveLength(0)
     const directs = calls.filter((c) => c.url === ANTHROPIC_URL)
     expect(directs).toHaveLength(8)
-    expect(directs.every((c) => c.init.headers['x-api-key'] === 'sk-ant-profil-fictive')).toBe(true)
+    expect(directs.every((c) => c.init.headers['x-api-key'] === 'sk-ant-navigateur-fictive')).toBe(true)
     expect(appelsTwin6(calls)).toHaveLength(0)
   })
 

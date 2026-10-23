@@ -43,6 +43,7 @@ use Humanome\Middleware\RequireRole;
 use Humanome\Packages\SettingsRepository;
 use Humanome\Referentiel\ReferentielRepository;
 use Humanome\Referentiel\Semver;
+use Humanome\Twin9\CallSettings;
 use Humanome\Twin9\EngineLoader;
 use Humanome\Twin9\Lancement;
 use Humanome\Twin9\ProfilPolicy;
@@ -252,23 +253,27 @@ return function (App $app): void {
             // a run on the personal key no longer resumes (ADR-013 §6): it ended there, or its owner stopped it
             $copie = (new RunRepository(Db::get()))->tete($id);
             $payeur = null;
+            $voie = null;
             if ($copie !== null && \in_array($copie['statut'], ['annule', 'echoue'], true)) {
                 ProfilPolicy::refuserClePersonnelle($copie['profil']);
                 (new ProfilPolicy(Db::get(), new Twin9Config(new SettingsRepository(Db::get()))))
                     ->admettreAuLancement($copie['profil']);
-                // who pays (ADR-013 §4): chosen again when the body says so, its factor frozen again; else its
-                // school, if one paid, still paying — never its owner's balance in its place
+                // who pays (ADR-013 §4): chosen again when the body says so, its factor frozen again — and the lane
+                // with it: its school's key when the school chosen has one and the run reaches Anthropic alone, else
+                // the instance's, paid from that school's credit or its owner's balance (Payeurs::pourRun()); else
+                // its school, if one paid, still paying — never its owner's balance in its place
                 $payeurs = new Payeurs(Db::get());
                 $cle = (string) ($copie['profil']->cle ?? 'instance');
                 if (\is_array($c) && \array_key_exists('payeur', $c)) {
-                    $payeur = $payeurs->resoudre($userId, $c['payeur'], $cle);
+                    ['payeur' => $payeur, 'cle' => $voie] = $payeurs->pourRun($userId, $c['payeur'], 'instance',
+                        (new CallSettings($copie['profil']))->fournisseurs());
                 } elseif ($copie['payeur'] === 'ecole' && $payeurs->encorePaie($userId, $copie['payeur_id'], $cle,
                         $copie['facteur_prix']) !== null) {
                     throw new Twin9Exception('Votre école ne paie plus cette analyse : choisissez qui la paie pour la '
                         . 'reprendre', 422);
                 }
             }
-            if (!(new RunRepository(Db::get()))->reprendre($id, $userId, $plafonds, $payeur)) {
+            if (!(new RunRepository(Db::get()))->reprendre($id, $userId, $plafonds, $payeur, $voie ?? null)) {
                 throw new Twin9Exception('Seul un run annulé ou arrêté reprend', 409);
             }
 

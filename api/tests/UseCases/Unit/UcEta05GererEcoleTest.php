@@ -459,6 +459,39 @@ final class UcEta05GererEcoleTest extends TestCase
         self::assertSame(Payeur::PERSONNEL, $payeurs->resoudre($lea, Payeur::PERSONNEL, 'instance')->type);
     }
 
+    #[TestDox('UC-ETA-05-U20 — la voie d’un run Twin9 : l’école qui a sa clé Anthropic paie avec elle (facteur 1,0) un run qui n’appelle qu’Anthropic, profil « instance » compris ; un autre fournisseur, ou une école sans clé : la clé de l’instance, son crédit à sa surtaxe ; son solde à lui : la clé de l’instance')]
+    public function testU20TheLaneOfARunFollowsItsPayer(): void
+    {
+        TestDb::setEnv('SODIUM_MASTER_KEY', str_repeat('ab', 32));
+        try {
+            $tilleuls = self::ecole(self::$pdo, 'École des Tilleuls', 5.0, 10.0, 10_000_000);
+            $platanes = self::ecole(self::$pdo, 'École des Platanes', 5.0, 10.0, 10_000_000);
+            $lea = self::compte(self::$pdo, 'Léa');
+            self::inscrire(self::$pdo, $tilleuls, $lea);
+            self::inscrire(self::$pdo, $platanes, $lea);
+            (new EcoleCles(self::$pdo, (string) \Humanome\Keys\KeyVault::masterKeyFromEnv()))
+                ->poser($tilleuls, 'anthropic', 'sk-ant-ecole-fictive-u20');
+            $payeurs = new Payeurs(self::$pdo);
+            $voie = static fn (array $r): array => [$r['cle'], $r['payeur']->type, $r['payeur']->ecoleId, $r['payeur']->facteur];
+
+            self::assertSame(['ecole', 'ecole', $tilleuls, 1.0],
+                $voie($payeurs->pourRun($lea, $tilleuls, 'instance', ['anthropic'])), 'sa clé, rien à la plateforme');
+            self::assertSame(['instance', 'ecole', $tilleuls, 1.05],
+                $voie($payeurs->pourRun($lea, $tilleuls, 'instance', ['anthropic', 'openai'])), 'un autre fournisseur');
+            self::assertSame(['instance', 'ecole', $platanes, 1.05],
+                $voie($payeurs->pourRun($lea, $platanes, 'instance', ['anthropic'])), 'une école sans clé');
+            self::assertSame(['instance', 'personnel', null, null],
+                $voie($payeurs->pourRun($lea, Payeur::PERSONNEL, 'instance', ['anthropic'])), 'son solde');
+            self::assertSame(['ecole', 'ecole', $tilleuls, 1.0],
+                $voie($payeurs->pourRun($lea, $tilleuls, 'ecole', ['anthropic'])), 'la voie école demandée');
+            self::refuse(fn () => $payeurs->pourRun($lea, $platanes, 'ecole', ['anthropic']), Payeurs::SANS_CLE);
+            self::assertSame(['ecole', 'ecole', $tilleuls, 1.0],
+                $voie($payeurs->pourRun($tilleuls, null, 'instance', ['anthropic'])), 'une école pour elle-même, sa clé');
+        } finally {
+            TestDb::restoreEnv();
+        }
+    }
+
     private static function refuse(\Closure $f, string $message): void
     {
         try {

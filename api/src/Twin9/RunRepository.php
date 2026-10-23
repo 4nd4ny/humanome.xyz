@@ -373,20 +373,24 @@ final class RunRepository
      * progress leave free. False when it was neither cancelled nor stopped.
      *
      * Its payer may be chosen again ($payeur, resolved by the route:
-     * Payeurs::resoudre()), its factor frozen again then; not while calls of
-     * it still hold a worst case (a batch still at Anthropic), which its
-     * former payer holds: 409.
+     * Payeurs::pourRun()), its factor frozen again then, and the lane of its
+     * calls with it ($cle: its school's key, or the instance's), written in
+     * its copy of its profile; not while calls of it still hold a worst case
+     * (a batch still at Anthropic), which its former payer holds: 409.
      *
      * @param array{budget_usd?: float|int|null} $plafonds
+     * @param string|null $cle the lane its new payer takes ("instance" or "ecole"); null: unchanged
      * @throws Twin9Exception 409 a new payer while a batch of it is still at Anthropic
      */
-    public function reprendre(int $id, int $userId, array $plafonds = [], ?Payeur $payeur = null): bool
+    public function reprendre(int $id, int $userId, array $plafonds = [], ?Payeur $payeur = null,
+                              ?string $cle = null): bool
     {
         $actuel = $this->payeurDe($id);
         $compte = $payeur !== null ? ($payeur->estEcole() ? (int) $payeur->ecoleId : $userId)
             : ($actuel?->ecole() ? (int) ($actuel->ecoleId ?? $userId) : $userId);
 
-        return $this->sousVerrou($compte, fn (): bool => $this->reprendreAdmis($id, $userId, $plafonds, $payeur));
+        return $this->sousVerrou($compte, fn (): bool => $this->reprendreAdmis($id, $userId, $plafonds, $payeur,
+            $payeur === null ? null : $cle));
     }
 
     /**
@@ -407,7 +411,7 @@ final class RunRepository
      *
      * @param array{budget_usd?: float|int|null} $plafonds
      */
-    private function reprendreAdmis(int $id, int $userId, array $plafonds, ?Payeur $payeur): bool
+    private function reprendreAdmis(int $id, int $userId, array $plafonds, ?Payeur $payeur, ?string $cle = null): bool
     {
         $this->pdo->beginTransaction();
         try {
@@ -439,6 +443,11 @@ final class RunRepository
             if (\array_key_exists('budget_usd', $plafonds)) {
                 $reglages = $copie;
                 $reglages->profil->budget_usd = $plafonds['budget_usd'];
+            }
+            if ($cle !== null && $cle !== ($copie->profil->cle ?? 'instance')) {
+                // the lane its new payer takes (ADR-013 §4): its calls leave with that key from now on
+                $reglages = $copie;
+                $reglages->profil->cle = $cle;
             }
             $execution = self::executionGardee($row['execution']);
             $execution->reprises[] = ['at' => (string) $row['maintenant'], 'budget_usd' => $copie->profil->budget_usd ?? null];

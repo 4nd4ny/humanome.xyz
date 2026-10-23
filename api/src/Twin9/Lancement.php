@@ -131,8 +131,11 @@ final class Lancement
                 . 'portfolio — ' . implode(', ', array_map(
                     static fn (string $f): string => (string) Fournisseurs::REGISTRE[$f]['libelle'], $atteints)), 422);
         }
-        // who pays, checked again (ADR-013 §4): its school's factor frozen in the run
-        $payeur = (new Payeurs($this->pdo))->resoudre($userId, $payeurChoisi, (string) $profil->cle);
+        // who pays, checked again (ADR-013 §4): its school's factor frozen in the run — and the lane of its calls, in
+        // the run's copy of its profile: a school that has its own Anthropic key pays with it, nothing to the platform
+        // (§2 d), for a run that reaches Anthropic alone
+        ['payeur' => $payeur, 'cle' => $profil->cle] = (new Payeurs($this->pdo))->pourRun($userId, $payeurChoisi,
+            (string) $profil->cle, $atteints);
         // what its configuration block keeps besides its settings (P0-1): the prices and their reading, the engine's
         // versions
         $grille = $this->config->read();
@@ -224,7 +227,9 @@ final class Lancement
         $changees = $etats['changee'] ?? 0;
 
         $payeurs = new Payeurs($this->pdo);
-        $payeur = $payeurs->resoudre($userId, $payeurChoisi, (string) $profil->cle);
+        // who would pay, and on which lane: its school's key when it has one (Payeurs::pourRun(), as lancer() does)
+        ['payeur' => $payeur, 'cle' => $profil->cle] = $payeurs->pourRun($userId, $payeurChoisi, (string) $profil->cle,
+            (new CallSettings($profil))->fournisseurs());
         ['estimation' => $estimation, 'admission' => $admission]
             = $this->prevoir($userId, $profil, $jeu['gabarits'], $referentiel, $vue, $payeur);
 

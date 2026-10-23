@@ -109,6 +109,33 @@ final class Payeurs
     }
 
     /**
+     * The payer of a Twin9 run and the lane of its calls (ADR-013 §2 d, §4,
+     * §6), at its launch or at a resumption that names its payer: resolved
+     * on the lane its profile asks (resoudre()); then a school that has its
+     * own Anthropic key pays with it — nothing to the platform, factor 1.0 —
+     * for a run that reaches Anthropic alone, as the open cartography does
+     * (pourCartographieOuverte()): the profile's `instance`, its default,
+     * says « not my own key », never « not my school's ». A run that reaches
+     * another provider stays on the instance's key, its school's credit
+     * paying (a school's key serves Anthropic only).
+     *
+     * @param string $cle the lane the profile asks: "instance" or "ecole"
+     * @param list<string> $fournisseurs the providers the run's calls reach (CallSettings::fournisseurs())
+     * @return array{payeur: Payeur, cle: string} cle: the lane the run's calls take, "instance" or "ecole"
+     * @throws Twin9Exception 422
+     */
+    public function pourRun(int $userId, mixed $choix, string $cle, array $fournisseurs): array
+    {
+        $payeur = $this->resoudre($userId, $choix, $cle);
+        if ($cle !== 'instance' || !$payeur->estEcole() || $fournisseurs !== EcoleCles::FOURNISSEURS
+            || !EcoleCles::presente($this->pdo, (int) $payeur->ecoleId)) {
+            return ['payeur' => $payeur, 'cle' => $cle];
+        }
+
+        return ['payeur' => Payeur::ecole((int) $payeur->ecoleId, 1.0, (string) $payeur->nom), 'cle' => 'ecole'];
+    }
+
+    /**
      * The payer of a call of the open cartography on credits (ADR-013 §4):
      * chosen as a run's is, its lane the school's key when it has one, else
      * the instance's, paid from its credit.

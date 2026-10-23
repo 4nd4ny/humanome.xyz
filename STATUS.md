@@ -57,9 +57,12 @@ autre fournisseur qu'Anthropic, que l'administrateur ouvre (entrée du 2026-10-2
   reproduite aujourd'hui.
   - Vérifié : le fichier 8/8 sous Node 20.17, avec et sans détection forcée
     (`NODE_OPTIONS=--experimental-detect-module`, `--no-experimental-detect-module`) ; l'ancien
-    test : 5 échecs sans détection, 8/8 avec ; suite moteur 593 tests verts ; le vrai script,
-    lancé depuis le dépôt sous Node 20.17, passe ses imports.
-  - Non vérifié : la CI (rien n'est poussé).
+    test : 5 échecs sans détection, 8/8 avec ; moteur 593 tests verts avec `TWIN_V9_DIR` (585,
+    8 ignorés, sans) ; front 2 904 verts ; `check-publiable` vert ; le vrai script, lancé depuis
+    le dépôt sous Node 20.17, passe ses imports ; journal de la CI de `5455c44` : Node 20.20.2,
+    UC-PRO-08 8/8.
+  - Non vérifié : le test corrigé sur un vrai Node 20.20 (rien n'est poussé) ; `"type":
+    "module"` étant déclaré, la détection n'y joue plus.
 
 - 2026-10-23 — **Le commit du moteur Twin9 en SHA-256 et au format reftable (revue de
   `fix/engine-commit-espace`, même branche).** Deux défauts latents, préexistants, du même

@@ -419,7 +419,8 @@ cd engine && npx vitest run test/usecases/unit/uc-pro-08
   que la v9.8 s'en serve y est refusée.
 - Le script d'import `scripts/twin9/import-protocole.mjs` s'exécute dès son
   chargement et n'exporte aucune fonction : il est testé en sous-processus,
-  copié dans un miroir temporaire (sans `.env.deploy` : le fichier du poste
+  copié dans un miroir temporaire avec son parseur et le `web/package.json`
+  qui en fait des modules ES (sans `.env.deploy` : le fichier du poste
   n'est jamais lu), sur un faux `TWIN_V9_DIR` — un dépôt git temporaire depuis
   T18 — et contre un faux serveur local (UC-PRO-08-F19 à F22, F25) ; la route
   qu'il appelle l'est par ailleurs

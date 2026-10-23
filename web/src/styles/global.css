@@ -5406,7 +5406,9 @@ body:has([aria-modal='true'], .portfolio-editor-fullscreen)
 
 .account-respire-definition {
   grid-column: 2;
-  color: var(--ink-faint);
+  /* --ink-soft : sur --surface-2, --ink-faint reste sous 4,5:1 (4,34 en
+     clair, 4,44 en sombre) ; ce petit texte explique chaque rôle. */
+  color: var(--ink-soft);
   font-size: 0.85rem;
   line-height: 1.4;
 }

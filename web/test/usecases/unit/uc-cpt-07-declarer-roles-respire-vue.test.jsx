@@ -11,7 +11,9 @@ import { afterEach, describe, expect, it, vi } from 'vitest'
 import { act, cleanup, fireEvent, render, screen, waitFor, within } from '@testing-library/react'
 import { ApiError, ApiUnavailableError } from '../../../src/api/client.js'
 import DeclaredRolesSection from '../../../src/views/account/DeclaredRolesSection.jsx'
+import { contrast } from '../../../src/carto/ui/colors.js'
 import { phpDeclaredRoles } from '../support/declared-roles-php.js'
+import { THEMES, declOf, globalCssRules, resolveColor } from '../support/global-css.js'
 
 afterEach(cleanup)
 
@@ -158,6 +160,26 @@ describe('UC-CPT-07 — la section « Mes rôles RESPIRE » du profil', () => {
       expect(section().getByText('Une déclaration ne donne pas d’accès ; l’administrateur habilite.')).toBeDefined()
       expect(save).not.toHaveBeenCalled()
       cleanup()
+    }
+  })
+
+  it('UC-CPT-07-U23 — lisibilité : la définition de chaque rôle et la note du cercle (texte de 0,85rem, annoncé par aria-describedby) atteignent 4,5:1 sur la surface de leur carte, en clair, en sombre du système et en sombre choisi (WCAG 1.4.3)', async () => {
+    await renderSection({ roles: ['epistemiarque'] })
+    const definition = document.getElementById(box('cartographe').getAttribute('aria-describedby'))
+    const note = document.getElementById(circle().getAttribute('aria-describedby'))
+    expect(definition.closest('li').className).toBe('account-respire-item')
+    expect(note.parentElement.className).toBe('account-respire-founding')
+    for (const span of [definition, note]) expect(span.className).toBe('account-respire-definition')
+
+    const rules = globalCssRules()
+    const text = declOf(rules, '.account-respire-definition')
+    expect(text['font-size']).toBe('0.85rem') // petit texte : le seuil est 4,5:1, pas 3:1
+    for (const card of ['.account-respire-item', '.account-respire-founding']) {
+      const surface = declOf(rules, card).background ?? declOf(rules, card)['background-color']
+      for (const theme of THEMES) {
+        const ratio = contrast(resolveColor(rules, text.color, theme), resolveColor(rules, surface, theme))
+        expect(ratio, `${card}, ${theme.name} : ${text.color} sur ${surface}`).toBeGreaterThanOrEqual(4.5)
+      }
     }
   })
 })

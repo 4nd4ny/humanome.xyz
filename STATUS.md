@@ -40,10 +40,28 @@ Le 2026-10-22, le plan « P0 et multi-fournisseur » de Twin9 commence par sa PR
 (`feat/twin9-p0-configuration`, #26) : chaque run garde sa configuration et son exécution
 et les affiche, une sortie tronquée est une panne, la voie directe ne rejoue plus une passe à chaque
 réponse. Suivent la PR B (adaptateurs JS, export Twin6, #24) et la PR C (multi-fournisseur,
-`feat/twin9-multi-fournisseur`, non poussée) : chaque étape d'un run Twin9 peut partir chez un
-autre fournisseur qu'Anthropic, que l'administrateur ouvre (entrée du 2026-10-22 ci-dessous).
+#32, fusionnée le 2026-10-22) : chaque étape d'un run Twin9 peut partir chez un autre fournisseur
+qu'Anthropic, que l'administrateur ouvre. Puis les sprints de `TODO_LIST.md` (1 à 5, 7a, 8, 11,
+la phase D) et, le 2026-10-23, la première campagne réelle de Twin9 en local
+(`docs/campagne-twin9-2026-10-23.md`, entrée ci-dessous).
 
 ## Fait
+
+- 2026-10-23 — **Première campagne réelle de Twin9, en local : 1,04 $ engagés sur 10 $**
+  (`docs/campagne-twin9-2026-10-23.md`). Christian : « 10 $ max c'est parfait », puis « Garde-fous
+  locaux seuls » (aucune limite dans la console Anthropic). Plateforme `main` `11c4eae`, moteur
+  `Twin_v9` `a1d84bf`, portfolio fictif PLANT-01, profil « tout Haiku » (R0c en v9.8 fidèle).
+  - **Fait** : R0a (lots), R0b (voie directe), R0c (Sonnet par lots), R1 (PLANT-01 complet :
+    945 appels, 27 lots, 1 h 44, 0,50 $), R2 (stigmergie, trois analyses d'une journée : dépôts,
+    traces lues par le greffier, explorateurs, renforcement), R3a (Humanome V18 choisi au
+    lancement, 5 pôles), R5 (le tuteur, 10 réponses sur 10 citent l'adresse attendue). Aucune
+    sortie tronquée, aucune panne ; toutes les attestations portent le commit du moteur.
+  - **Appris** : le routage réel fait 945 appels pour PLANT-01 contre 2 740 en simulé ; un run
+    v9.8 fidèle (Sonnet à l'étage profond) coûterait environ 4,6 $ bruts par lots, extrapolé de R1
+    (le plan en estimait 9 à 26 $).
+  - **Non vérifié** : la console Anthropic (les coûts sont ceux de la plateforme) ; la recette en
+    ligne (R6 : déclencheur, mémoire d'un tick OVH) ; R4 et R7, laissés à Christian ; la qualité
+    des cartographies (aucune relecture humaine).
 
 - 2026-10-22 — **Sprint 7, lot S7a : corrections de la revue indépendante (même branche
   `feat/plafond-offerts`, rien déployé).** Dix constats confirmés, dix corrigés : six commits

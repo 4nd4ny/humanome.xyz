@@ -13,7 +13,8 @@
 //     temporaire ;
 //   - scripts/twin9/import-protocole.mjs — acteur technique de A4 : COPIÉ dans
 //     un miroir temporaire avec le parseur des fiches de pôle qu'il importe
-//     (web/src/lib/twin9/) et l'aide qui lit le commit d'un Twin_v9
+//     (web/src/lib/twin9/, et web/package.json qui en fait des modules ES)
+//     et l'aide qui lit le commit d'un Twin_v9
 //     (scripts/deploy/twin9-checkout.mjs) ; son repoRoot devient le miroir,
 //     sans .env.deploy : ni vrai jeton ni SITE_URL du poste ; il lit
 //     TWIN_V9_DIR (ici un faux Twin_v9, dépôt git temporaire), puis poste
@@ -34,6 +35,7 @@ const REPO = fileURLToPath(new URL('../../../../', import.meta.url))
 const CHECK_PUBLIABLE = join(REPO, 'scripts/check-publiable.mjs')
 const IMPORT_PROTOCOLE = join(REPO, 'scripts/twin9/import-protocole.mjs')
 const PARSEUR_DES_FICHES = join(REPO, 'web/src/lib/twin9')
+const TYPE_DU_PARSEUR = join(REPO, 'web/package.json')
 const COMMIT_DU_TWIN = join(REPO, 'scripts/deploy/twin9-checkout.mjs')
 
 const tempDirs = []
@@ -78,8 +80,11 @@ const ENV_IMPORT = { ...process.env, MIGRATE_TOKEN: 'jeton-migration-factice' }
  * Copie du script d'import dans un miroir temporaire `<tmp>/scripts/twin9/`,
  * avec le parseur qu'il importe (`<tmp>/web/src/lib/twin9/`) : son repoRoot
  * (tiré de son emplacement) devient le miroir, où il n'y a aucun .env.deploy —
- * le vrai fichier du poste n'est jamais lu. Créée à la demande (dans un it()),
- * une fois par fichier.
+ * le vrai fichier du poste n'est jamais lu. Le parseur est en `.js` : sans le
+ * `web/package.json` du dépôt (`"type": "module"`) à côté, Node le lirait en
+ * CommonJS — « Named export 'parsePole' not found » sous Node 20.17, qui ne
+ * détecte pas la syntaxe des modules (Node 20.19+ la détecte, d'où une CI
+ * verte). Créée à la demande (dans un it()), une fois par fichier.
  */
 let scriptImport
 function importProtocole() {
@@ -89,6 +94,7 @@ function importProtocole() {
     mkdirSync(dirname(scriptImport), { recursive: true })
     cpSync(IMPORT_PROTOCOLE, scriptImport)
     cpSync(PARSEUR_DES_FICHES, join(miroir, 'web/src/lib/twin9'), { recursive: true })
+    cpSync(TYPE_DU_PARSEUR, join(miroir, 'web/package.json'))
     mkdirSync(join(miroir, 'scripts/deploy'), { recursive: true })
     cpSync(COMMIT_DU_TWIN, join(miroir, 'scripts/deploy/twin9-checkout.mjs'))
   }

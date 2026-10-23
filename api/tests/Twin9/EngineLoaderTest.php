@@ -67,6 +67,71 @@ final class EngineLoaderTest extends TestCase
         }
     }
 
+    /**
+     * Paths holding a space ("13. Cartographie"), which git writes as they
+     * are: a worktree's .git file names its whole gitdir, not its first word,
+     * absolute or relative; its HEAD, detached or on a branch that only the
+     * common directory's packed-refs holds. Line ends in CRLF and a trailing
+     * blank (a checkout touched on Windows) change nothing.
+     */
+    public function testTheEnginesCommitSurvivesPathsWithASpaceAndCrlf(): void
+    {
+        $detache = str_repeat('0123456789', 4);
+        $branche = str_repeat('fedcba9876', 4);
+        $racine = sys_get_temp_dir() . '/twin v9-commit-' . bin2hex(random_bytes(4));
+        $ecrire = static function (string $chemin, string $texte) use ($racine): void {
+            @mkdir(\dirname($racine . '/' . $chemin), 0777, true);
+            file_put_contents($racine . '/' . $chemin, $texte);
+        };
+        $clone = '13. Cartographie/Twin_v9/.git';
+        try {
+            $ecrire("$clone/HEAD", "ref: refs/heads/main\n");
+            $ecrire("$clone/packed-refs", "# pack-refs with: peeled fully-peeled sorted\n$branche refs/heads/main\n");
+            self::assertSame($branche, EngineLoader::commit("$racine/13. Cartographie/Twin_v9"), 'the clone itself');
+
+            $ecrire("$clone/worktrees/t9 s2/HEAD", "$detache\n");
+            $ecrire("$clone/worktrees/t9 s2/commondir", "../..\n");
+            $ecrire('t9 s2/.git', "gitdir: $racine/$clone/worktrees/t9 s2\n");
+            self::assertSame($detache, EngineLoader::commit("$racine/t9 s2"), 'a detached worktree');
+
+            $ecrire("$clone/worktrees/branche/HEAD", "ref: refs/heads/main\n");
+            $ecrire("$clone/worktrees/branche/commondir", "../..\n");
+            $ecrire('branche/.git', "gitdir: $racine/$clone/worktrees/branche\n");
+            self::assertSame($branche, EngineLoader::commit("$racine/branche"), 'a worktree on a packed branch');
+
+            $ecrire('relatif/.git', "gitdir: ../$clone/worktrees/branche\n");
+            self::assertSame($branche, EngineLoader::commit("$racine/relatif"), 'a relative gitdir');
+
+            $windows = '14. Copie Windows/Twin_v9/.git';
+            $ecrire("$windows/packed-refs", "# pack-refs with: peeled\r\n$branche refs/heads/main\r\n");
+            $ecrire("$windows/worktrees/w/HEAD", "ref: refs/heads/main\r\n");
+            $ecrire("$windows/worktrees/w/commondir", "$racine/$windows\r\n");
+            $ecrire('crlf/.git', "gitdir: $racine/$windows/worktrees/w \r\n");
+            self::assertSame($branche, EngineLoader::commit("$racine/crlf"), 'CRLF, absolute commondir');
+        } finally {
+            exec('rm -rf ' . escapeshellarg($racine));
+        }
+    }
+
+    /**
+     * Where Twin_v9 is a git checkout (TWIN_V9_DIR, a worktree or a clone),
+     * the commit the attestation keeps is the HEAD git itself reads there.
+     */
+    public function testTheRealEnginesCommitIsTheHeadGitReads(): void
+    {
+        $directory = EngineLoader::directory();
+        $sortie = [];
+        $code = 1;
+        if (file_exists($directory . '/.git')) {
+            exec('git -C ' . escapeshellarg($directory) . ' rev-parse HEAD 2>/dev/null', $sortie, $code);
+        }
+        if ($code !== 0 || preg_match('/^[0-9a-f]{40}$/', $sortie[0] ?? '') !== 1) {
+            self::markTestSkipped('Twin_v9 is not a git checkout here (TWIN_V9_DIR): its commit is not checked.');
+        }
+
+        self::assertSame($sortie[0], EngineLoader::commit($directory));
+    }
+
     public function testDirectoryDefaultsToTwinV9NextToTheRepository(): void
     {
         TestDb::setEnv('TWIN_V9_DIR', '');

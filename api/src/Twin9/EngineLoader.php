@@ -81,8 +81,9 @@ final class EngineLoader
     {
         $directory ??= self::directory();
         $git = $directory . '/.git';
-        if (is_file($git) && preg_match('/^gitdir:\s*(\S+)/', (string) file_get_contents($git), $m) === 1) {
-            $git = str_starts_with($m[1], '/') ? $m[1] : $directory . '/' . $m[1];   // a worktree
+        // A worktree: its .git file names the whole gitdir, spaces included (git writes it unquoted).
+        if (is_file($git) && preg_match('/^gitdir:\s*(.+)$/', self::firstLine($git), $m) === 1) {
+            $git = str_starts_with($m[1], '/') ? $m[1] : $directory . '/' . $m[1];
         }
         $head = is_file($git . '/HEAD') ? trim((string) file_get_contents($git . '/HEAD')) : '';
         if (str_starts_with($head, 'ref: ')) {
@@ -110,13 +111,19 @@ final class EngineLoader
                 return trim((string) file_get_contents($dir . '/' . $ref));
             }
             if (is_file($dir . '/packed-refs')
-                && preg_match('/^([0-9a-f]{40}) ' . preg_quote($ref, '/') . '$/m',
+                && preg_match('/^([0-9a-f]{40}) ' . preg_quote($ref, '/') . '\r?$/m',
                     (string) file_get_contents($dir . '/packed-refs'), $m) === 1) {
                 return $m[1];
             }
         }
 
         return null;
+    }
+
+    /** A file's first line, without its line end (CRLF included) nor its trailing blanks. */
+    private static function firstLine(string $file): string
+    {
+        return rtrim(explode("\n", (string) file_get_contents($file), 2)[0]);
     }
 
     private static function sourceDirectory(string $directory): ?string

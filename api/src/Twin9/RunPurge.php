@@ -24,9 +24,11 @@ use PDO;
  *   deletes them (Twin9Lots).
  * - Those of a learner submitted with their school's key (ADR-013 §6): the
  *   same, the school kept with the id, so that the tick reads its key.
- * - A school erased: the batches submitted with its key — its learners'
- *   runs' and its own —, cancelled and deleted while its key is there, as a
- *   personal key's are (lotsEcole()).
+ * - A school erased, or its key withdrawn (retirerCleEcole()): the batches
+ *   submitted with its key — its learners' runs' and its own —, cancelled
+ *   and deleted while its key is there, as a personal key's are
+ *   (lotsEcole()); the tick then gives back what their calls held, no key
+ *   being left to collect them (Twin9Lots).
  *
  * A batch whose submission went unanswered (no id known yet) is out of
  * reach: Anthropic erases it at the latest 29 days after its creation.
@@ -70,6 +72,30 @@ final class RunPurge
             return;
         }
         $this->annulerEtEffacer($lots, (new EcoleCles($this->pdo, $master))->lire($ecoleId), $fin);
+    }
+
+    /**
+     * A school's key withdrawn — by the school, or with its habilitation
+     * (ADR-013 §6): the batches submitted with it, cancelled and deleted at
+     * Anthropic while it is there (lotsEcole(), until $fin), then the key
+     * erased. A batch no key can collect afterwards is lost for the tick,
+     * which gives its calls back (Twin9Lots). $fournisseur null: every key of
+     * the school.
+     *
+     * @return list<string> the providers whose key was erased
+     */
+    public function retirerCleEcole(int $ecoleId, ?string $fournisseur, float $fin): array
+    {
+        $stmt = $this->pdo->prepare('SELECT fournisseur FROM ecole_cles WHERE ecole_id = ? ORDER BY fournisseur');
+        $stmt->execute([$ecoleId]);
+        $fournisseurs = array_values(array_filter(array_map('strval', $stmt->fetchAll(PDO::FETCH_COLUMN)),
+            static fn (string $f): bool => $fournisseur === null || $f === $fournisseur));
+        if (\in_array('anthropic', $fournisseurs, true)) {
+            $this->lotsEcole($ecoleId, $fin);
+        }
+
+        return array_values(array_filter($fournisseurs,
+            fn (string $f): bool => EcoleCles::retirer($this->pdo, $ecoleId, $f)));
     }
 
     /** @param list<string> $lots Anthropic ids, cancelled then deleted with $cle, until $fin */

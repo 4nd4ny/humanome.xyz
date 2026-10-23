@@ -4,6 +4,7 @@ declare(strict_types=1);
 
 namespace Humanome\Worker;
 
+use Humanome\Etablissement\EcoleCles;
 use Humanome\Etablissement\Ecoles;
 use Humanome\Etablissement\GrandLivreLocal;
 use Humanome\Etablissement\PlafondAtteintException;
@@ -50,6 +51,9 @@ use Twin9\Run\Call;
  * - The batches of an account erased, submitted with the instance's key — or
  *   its school's (ADR-013 §6), whose key the tick reads —, are cancelled and
  *   deleted from twin9_lots_a_effacer.
+ * - A batch submitted with a school's key that the school withdrew, or of a
+ *   school erased, can no longer be collected: lost, its calls given back,
+ *   what they held too, so that its run may choose another payer.
  * - A batch keeps the key that submitted it (twin9_lots.cle): the instance's,
  *   its school's, or its owner's for a run of before ADR-013; each call's
  *   worst case is held as a direct call's is — the learner's cap for the
@@ -303,6 +307,15 @@ final class Twin9Lots
             }
             $cle = $this->cles->pour($lot['titulaire'], $lot['cle']);
             if ($cle === null) {
+                if ($this->perdu($lot)) {
+                    // the key that submitted it is gone for good — its school withdrew it, or is erased — and no
+                    // other key can collect it (ADR-013 §6): lost, as a batch Anthropic no longer knows. Its calls
+                    // given back, what they held on the learner's cap and on the school's credit goes back too, and
+                    // the run, stopped by its next slice, may choose another payer
+                    (new CallJournal($this->pdo, $lot['run_id']))->rendreLeLot($lot['id']);
+                    $this->pdo->prepare('DELETE FROM twin9_lots WHERE id = ?')->execute([$lot['id']]);
+                    $this->depasse($compteurs, $this->couts->liberer($lot['run_id']));
+                }
                 continue;
             }
             if ($lot['statut'] === 'soumission') {
@@ -341,6 +354,20 @@ final class Twin9Lots
             }
             $this->supprimer($lot, $cle, $fin, false);
         }
+    }
+
+    /**
+     * Whether a batch's key is gone for good: submitted with a school's key
+     * that the school withdrew, or of a school erased (its run's payeur_id
+     * null). Never a key that a missing master key, or a ciphertext that no
+     * longer authenticates, keeps from being read: that one waits.
+     *
+     * @param array<string, mixed> $lot
+     */
+    private function perdu(array $lot): bool
+    {
+        return $lot['cle'] === 'ecole'
+            && ($lot['titulaire'] <= 0 || !EcoleCles::presente($this->pdo, (int) $lot['titulaire']));
     }
 
     /** @param array<string, int> $compteurs the slice's: the real costs beyond what their calls held */

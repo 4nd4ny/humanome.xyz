@@ -36,6 +36,7 @@ use Humanome\Etablissement\ConfigRepository;
 use Humanome\Etablissement\EcoleCles;
 use Humanome\Etablissement\Ecoles;
 use Humanome\Twin9\CreditService;
+use Humanome\Twin9\RunPurge;
 use Humanome\Keys\KeyVault;
 use Humanome\Middleware\RequireRole;
 use Humanome\Packages\PromptPackageRepository;
@@ -464,11 +465,13 @@ return function (App $app): void {
         return $json($response, $ecole($userId));
     }))->add($etablissement);
 
-    // DELETE /api/etablissement/ecole/cle/{fournisseur} — real deletion; a run on it stops at its next slice, its
-    // learner choosing its payer again (ADR-013 §4).
+    // DELETE /api/etablissement/ecole/cle/{fournisseur} — real deletion; the batches submitted with it, which no key
+    // could collect afterwards, cancelled and deleted at Anthropic first, their calls given back by the tick; a run
+    // on it stops at its next slice, its learner choosing its payer again (ADR-013 §4, §6).
     $app->delete('/etablissement/ecole/cle/{fournisseur:[a-z]+}', $wrap(function (Request $request, Response $response, array $args) use ($json): Response {
         $userId = (int) $request->getAttribute('userId');
-        if (!EcoleCles::retirer(Db::get(), $userId, (string) $args['fournisseur'])) {
+        $retirees = (new RunPurge(Db::get()))->retirerCleEcole($userId, (string) $args['fournisseur'], microtime(true) + 10.0);
+        if ($retirees === []) {
             return $json($response, ['error' => 'Aucune clé de ce fournisseur'], 404);
         }
         Audit::record(Db::get(), $userId, 'ecole_cle_retiree', ['fournisseur' => (string) $args['fournisseur']]);

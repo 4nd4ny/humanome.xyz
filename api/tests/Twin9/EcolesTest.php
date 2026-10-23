@@ -73,6 +73,8 @@ final class EcolesTest extends TestCase
 
     private const CLE_ECOLE = 'sk-ant-ecole-fictive-2';
 
+    private const CLE_PLATANES = 'sk-ant-ecole-fictive-3';
+
     private PDO $pdo;
 
     private int $ecole;
@@ -263,6 +265,76 @@ final class EcolesTest extends TestCase
         self::assertSame(0, (int) $this->pdo->query('SELECT COUNT(*) FROM twin9_lots_a_effacer')->fetchColumn());
     }
 
+    /**
+     * ADR-013 §4, §6: the school withdraws its key while a batch submitted with it is at Anthropic. The run stops
+     * at its next slice; the batch, which no key can collect any more, is lost: its calls given back, what they
+     * held on the learner's cap too — and the run resumes on another school that has a key, no 409 for ever.
+     */
+    public function testAWithdrawnKeysBatchIsGivenBackAndItsRunChoosesAnotherPayer(): void
+    {
+        $platanes = $this->ecoleAvecCle('École des Platanes', self::CLE_PLATANES);
+        $this->deuxiemeCle();
+        $id = $this->nouveauRun(self::SONNET + ['/cle' => 'ecole', '/voie' => 'lots'], Payeur::ecole($this->ecole, 1.0));
+        $lots = new FakeBatchApi(static fn (array $r): array => FakeBatchApi::message('vu', 'claude-sonnet-5-5',
+            intdiv(\strlen((string) $r['params']['messages'][0]['content']), 2), self::SORTIE), regards: 50);
+        $this->tickLots($lots);
+        self::assertCount(1, $lots->restants());
+        self::assertGreaterThan(0, self::engage($this->pdo, $this->ecole, $this->eleve), 'le lot tient le plafond');
+
+        EcoleCles::retirer($this->pdo, $this->ecole, 'anthropic');
+        for ($n = 0; $n < 4; $n++) {
+            $this->tickLots($lots);
+        }
+
+        $runs = new RunRepository($this->pdo);
+        self::assertSame('echoue', $runs->statut($id));
+        self::assertSame(Payeurs::NE_PAIE_PLUS . ' : elle a retiré sa clé', $runs->suivi($id)['attente']);
+        self::assertSame(0, $this->journal($id)[2], 'plus rien de réservé');
+        self::assertSame(0, self::engage($this->pdo, $this->ecole, $this->eleve), 'le plafond du mois rendu');
+        self::assertSame(0, (int) $this->pdo->query('SELECT COUNT(*) FROM twin9_lots')->fetchColumn(), 'le lot perdu');
+
+        self::assertTrue($runs->reprendre($id, $this->eleve, [], Payeur::ecole($platanes, 1.0)), 'pas de 409 sans fin');
+        $suite = new FakeBatchApi(static fn (array $r): array => FakeBatchApi::message('vu', 'claude-sonnet-5-5',
+            intdiv(\strlen((string) $r['params']['messages'][0]['content']), 2), self::SORTIE));
+        for ($n = 0; $n < 30 && $runs->statut($id) === 'en_cours'; $n++) {
+            $this->tickLots($suite);
+        }
+        self::assertSame('termine', $runs->statut($id));
+        self::assertNotEmpty($suite->tailles, 'ses lots, sur la clé de l’école choisie à la reprise');
+        self::assertSame($platanes, $runs->suivi($id)['payeur']['id']);
+    }
+
+    /**
+     * ADR-013 §6: a school erased while a batch of its key is at Anthropic: its learner's run stops, the batch is
+     * lost — its calls given back — and the run resumes on another school.
+     */
+    public function testAnErasedSchoolsBatchIsGivenBack(): void
+    {
+        $platanes = $this->ecoleAvecCle('École des Platanes', self::CLE_PLATANES);
+        $this->deuxiemeCle();
+        $id = $this->nouveauRun(self::SONNET + ['/cle' => 'ecole', '/voie' => 'lots'], Payeur::ecole($this->ecole, 1.0));
+        $lots = new FakeBatchApi(static fn (array $r): array => FakeBatchApi::message('vu', 'claude-sonnet-5-5'),
+            regards: 50);
+        $this->tickLots($lots);
+        self::assertCount(1, $lots->restants());
+
+        // the account route's sequence for a school (routes/auth.php DELETE /auth/account)
+        (new RunPurge($this->pdo, $lots))->lotsEcole($this->ecole, microtime(true) + 2.0);
+        $this->pdo->beginTransaction();
+        (new RunPurge($this->pdo, $lots))->confier($this->ecole);
+        Users::purge($this->pdo, $this->ecole);
+        $this->pdo->commit();
+        for ($n = 0; $n < 4; $n++) {
+            $this->tickLots($lots);
+        }
+
+        $runs = new RunRepository($this->pdo);
+        self::assertSame('echoue', $runs->statut($id));
+        self::assertSame(0, $this->journal($id)[2], 'plus rien de réservé');
+        self::assertSame(0, (int) $this->pdo->query('SELECT COUNT(*) FROM twin9_lots')->fetchColumn(), 'le lot perdu');
+        self::assertTrue($runs->reprendre($id, $this->eleve, [], Payeur::ecole($platanes, 1.0)), 'pas de 409 sans fin');
+    }
+
     /** A new payer while a call still holds its worst case on the former one: 409, nothing changed. */
     public function testANewPayerWaitsForTheFormersReservesToSettle(): void
     {
@@ -280,6 +352,22 @@ final class EcolesTest extends TestCase
         self::assertSame('echoue', (new RunRepository($this->pdo))->statut($id));
         self::assertSame(['type' => 'ecole', 'id' => $this->ecole, 'nom' => 'École des Tilleuls'],
             (new RunRepository($this->pdo))->suivi($id)['payeur']);
+    }
+
+    /** A second school, with its key, its cap of 50 $ and its credit; the learner a member of one of its cohorts. */
+    private function ecoleAvecCle(string $nom, string $cle): int
+    {
+        $ecole = self::ecole($this->pdo, $nom, 5.0, 50.0, self::CREDIT_ECOLE);
+        self::inscrire($this->pdo, $ecole, $this->eleve, 'Licence');
+        (new EcoleCles($this->pdo, (string) KeyVault::masterKeyFromEnv()))->poser($ecole, 'anthropic', $cle);
+
+        return $ecole;
+    }
+
+    /** The first school's key. */
+    private function deuxiemeCle(): void
+    {
+        (new EcoleCles($this->pdo, (string) KeyVault::masterKeyFromEnv()))->poser($this->ecole, 'anthropic', self::CLE_ECOLE);
     }
 
     /** Anthropic, answering each call after $delai seconds: half its prompt's bytes in, 15,000 tokens out. */

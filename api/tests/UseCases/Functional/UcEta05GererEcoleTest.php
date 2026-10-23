@@ -312,4 +312,56 @@ final class UcEta05GererEcoleTest extends CartographeTestCase
             'le lot, confié au tick');
         self::assertSame(0, (int) $pdo->query('SELECT COUNT(*) FROM twin9_runs')->fetchColumn());
     }
+
+    /** Un run de Léa que l'école paie sur sa clé, par lots, avec un lot chez Anthropic ; son identifiant. */
+    private function lotDeLaCle(string $lot): int
+    {
+        $pdo = Db::get();
+        $profil = ProfilRepository::v98();
+        $profil->voie = 'lots';
+        $profil->cle = 'ecole';
+        $run = (new RunRepository($pdo))->creer($this->lea['id'], ProfilRepository::validate($profil),
+            (object) ['lecteurs' => ['a'], 'etapes' => [], 'fusion' => true], 'journal-factice.md', "## J1\nUn jour.\n",
+            'journal-factice', ['factice/lecture' => 'Lis {$TEXTE}'], new \DateTimeImmutable('2026-10-18T12:00:00+00:00'),
+            payeur: Payeur::ecole($this->ecole['id'], 1.0));
+        $pdo->prepare('INSERT INTO twin9_lots (run_id, lot, statut, cle, requetes, octets, soumis_at)
+                       VALUES (?, ?, "en_cours", "ecole", 1, 100, NOW(3))')->execute([$run, $lot]);
+
+        return $run;
+    }
+
+    /** Anthropic, pour un lot en cours : son état, son annulation, son état fini, sa suppression. */
+    private function anthropicAnnuleEtSupprime(string $lot): void
+    {
+        foreach (['in_progress', 'canceling', 'ended'] as $etat) {
+            $this->http->queueResponse(['body' => json_encode(['id' => $lot, 'type' => 'message_batch',
+                                                               'processing_status' => $etat])]);
+        }
+        $this->http->queueResponse(['body' => json_encode(['id' => $lot, 'type' => 'message_batch_deleted'])]);
+    }
+
+    /** @return list<string> ce qui a été demandé à Anthropic pour ce lot, et avec quelle clé */
+    private function demandes(string $lot): array
+    {
+        return array_values(array_map(static fn (array $r): string => $r['method'] . ' '
+            . substr($r['url'], (int) strpos($r['url'], $lot)) . ' ' . ($r['headers']['x-api-key'] ?? ''),
+            array_filter($this->http->requests, static fn (array $r): bool => str_contains($r['url'], $lot))));
+    }
+
+    #[TestDox('UC-ETA-05-F11 — A2 : l’école retire sa clé pendant qu’un lot parti avec elle est chez Anthropic : le lot est annulé puis supprimé avec elle, avant qu’elle ne soit effacée (aucune clé ne pourrait le relever ensuite)')]
+    public function testF11AWithdrawnKeysBatchesAreCancelledFirst(): void
+    {
+        $this->as_($this->ecole, 'PUT', '/api/etablissement/ecole/cle', ['cle' => 'sk-ant-ecole-fictive-0011']);
+        $this->rejoindre($this->ecole, $this->lea);
+        $this->lotDeLaCle('msgbatch_eta05_f11');
+        $this->anthropicAnnuleEtSupprime('msgbatch_eta05_f11');
+
+        self::assertSame(204, $this->as_($this->ecole, 'DELETE', '/api/etablissement/ecole/cle/anthropic')->getStatusCode());
+
+        self::assertSame(['GET msgbatch_eta05_f11 sk-ant-ecole-fictive-0011',
+                          'POST msgbatch_eta05_f11/cancel sk-ant-ecole-fictive-0011',
+                          'GET msgbatch_eta05_f11 sk-ant-ecole-fictive-0011',
+                          'DELETE msgbatch_eta05_f11 sk-ant-ecole-fictive-0011'], $this->demandes('msgbatch_eta05_f11'));
+        self::assertSame(0, (int) self::$pdo->query('SELECT COUNT(*) FROM ecole_cles')->fetchColumn());
+    }
 }

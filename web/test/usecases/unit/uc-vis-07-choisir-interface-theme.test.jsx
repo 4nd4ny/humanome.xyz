@@ -458,14 +458,16 @@ describe('UC-VIS-07 — contrastes en usage : les règles des feuilles du site, 
     expect(inherited).toBeGreaterThanOrEqual(12) // survols, modificateurs, états pressés… (14 aux correctifs du sprint 9)
   })
 
-  it('UC-VIS-07-U10 — anneau de focus : chaque règle :focus des feuilles du site trace l’anneau de l’interface (--focus), ou l’encre de la visualisation (--viz-ink) sur sa surface claire ; l’anneau atteint 3:1 sur tout fond où il peut tomber (fond, carte, surface secondaire, encart d’information, surface de la cartographie) dans les neuf contextes ; la feuille imprimable et la zone du diagramme, claires dans les deux thèmes, posent leur propre anneau (RG4)', () => {
+  it('UC-VIS-07-U10 — anneau de focus : chaque règle :focus des feuilles du site, et l’élément actif d’un composite porté par une classe (.is-focus), trace l’anneau de l’interface (--focus), ou l’encre de la visualisation (--viz-ink) sur sa surface claire ; l’anneau atteint 3:1 sur tout fond où il peut tomber (fond, carte, surface secondaire, encart d’information, surface de la cartographie) dans les neuf contextes ; la feuille imprimable et la zone du diagramme, claires dans les deux thèmes, posent leur propre anneau (RG4)', () => {
     const rules = globalCssRules()
     const cartoRules = sheetRules('src/carto/ui/carto.css')
     const failures = []
     const rings = []
     for (const sheet of SITE_SHEETS) {
       for (const rule of sheetRules(sheet)) {
-        if (rule.media?.includes('print') || !/:focus(?!-within)/.test(rule.selector)) continue
+        // :focus, ou l'élément actif d'un composite porté par une classe
+        // (.is-focus : la case de la heatmap que désigne aria-activedescendant).
+        if (rule.media?.includes('print') || !/:focus(?!-within)|\.is-focus\b/.test(rule.selector)) continue
         const where = `${sheet} ${rule.selector}`
         for (const prop of ['outline', 'outline-color', 'stroke', 'box-shadow']) {
           const value = rule.decl[prop]
@@ -491,7 +493,7 @@ describe('UC-VIS-07 — contrastes en usage : les règles des feuilles du site, 
       }
     }
     expect(failures).toEqual([])
-    expect(rings.length).toBeGreaterThanOrEqual(12) // 13 au lot S9-3
+    expect(rings.length).toBeGreaterThanOrEqual(13) // 13 au lot S9-3, 14 avec la case active de la heatmap
     // Le motif commun : liens, boutons, résumés, éléments focalisables et champs.
     const base = declOf(rules, 'button:focus-visible')
     expect(base.outline).toBe('2px solid var(--focus)')

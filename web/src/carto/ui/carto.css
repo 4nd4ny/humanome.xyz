@@ -942,8 +942,12 @@ kbd {
   stroke-width: 1.8;
   stroke-dasharray: 2 1.5;
 }
+/* Case active au clavier (aria-activedescendant) : l'anneau de l'interface,
+   pas l'accent (terre cuite en épistémiarque, de la famille de FLAMBEAU).
+   La moitié extérieure du trait tombe dans l'espace entre les cases, sur la
+   surface de la cartographie, où --focus atteint 3:1 (UC-VIS-07-U10). */
 .carto-hm-cell.is-focus {
-  stroke: var(--accent-strong);
+  stroke: var(--focus);
   stroke-width: 2;
 }
 .carto-hm-cell.is-brushed {

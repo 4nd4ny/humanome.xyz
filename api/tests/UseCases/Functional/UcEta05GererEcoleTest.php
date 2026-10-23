@@ -364,4 +364,25 @@ final class UcEta05GererEcoleTest extends CartographeTestCase
                           'DELETE msgbatch_eta05_f11 sk-ant-ecole-fictive-0011'], $this->demandes('msgbatch_eta05_f11'));
         self::assertSame(0, (int) self::$pdo->query('SELECT COUNT(*) FROM ecole_cles')->fetchColumn());
     }
+
+    #[TestDox('UC-ETA-05-F12 — l’administrateur retire l’habilitation etablissement : la clé de l’école est effacée (ses lots annulés d’abord), audit sans secret ; l’habilitation rendue ne la ramène pas')]
+    public function testF12ARevokedSchoolKeepsNoKey(): void
+    {
+        $admin = $this->registerAs('admin@example.org', 'Administratrice', ['admin']);
+        $this->as_($this->ecole, 'PUT', '/api/etablissement/ecole/cle', ['cle' => 'sk-ant-ecole-fictive-0012']);
+        $this->rejoindre($this->ecole, $this->lea);
+        $this->lotDeLaCle('msgbatch_eta05_f12');
+        $this->anthropicAnnuleEtSupprime('msgbatch_eta05_f12');
+
+        $retrait = $this->as_($admin, 'DELETE', '/api/admin/users/' . $this->ecole['id'] . '/roles/etablissement');
+        self::assertSame(200, $retrait->getStatusCode(), (string) $retrait->getBody());
+
+        self::assertSame(0, (int) self::$pdo->query('SELECT COUNT(*) FROM ecole_cles')->fetchColumn(), 'plus une école : plus de clé');
+        self::assertSame('POST msgbatch_eta05_f12/cancel sk-ant-ecole-fictive-0012', $this->demandes('msgbatch_eta05_f12')[1]);
+        self::assertEquals(['fournisseur' => 'anthropic', 'cause' => 'habilitation_retiree'],
+            self::lastAudit('ecole_cle_retiree')['details']);
+        self::assertSame(200, $this->as_($admin, 'POST', '/api/admin/users/' . $this->ecole['id'] . '/roles',
+            ['role' => 'etablissement'])->getStatusCode());
+        self::assertSame([], $this->page()['cles'], 'l’habilitation rendue ne ramène aucune clé');
+    }
 }

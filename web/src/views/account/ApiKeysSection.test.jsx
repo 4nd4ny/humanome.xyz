@@ -63,6 +63,7 @@ describe('ApiKeysSection', () => {
     deps.keyStorage.setItem(KEYS_STORAGE_KEY, JSON.stringify({ anthropic: 'sk-ant-locale-0123456789' }))
     render(<ApiKeysSection deps={deps} />)
     fireEvent.click(await screen.findByRole('button', { name: 'Supprimer du serveur' }))
+    fireEvent.click(screen.getByRole('button', { name: 'Confirmer la suppression' })) // en deux temps
     await waitFor(() => expect(deps.deleteKey).toHaveBeenCalledWith('anthropic'))
     expect(await screen.findByText('Clé Anthropic (Claude) supprimée du serveur.')).toBeTruthy()
     expect(deps.revealKey).not.toHaveBeenCalled()
@@ -112,6 +113,7 @@ describe('ApiKeysSection', () => {
     const deps = fakeDeps({ deleteKey: vi.fn(async () => { throw csrf }) })
     render(<ApiKeysSection deps={deps} />)
     fireEvent.click(await screen.findByRole('button', { name: 'Supprimer du serveur' }))
+    fireEvent.click(screen.getByRole('button', { name: 'Confirmer la suppression' })) // en deux temps
     expect((await screen.findByRole('alert')).textContent).toBe('Votre session a expiré : reconnectez-vous, puis réessayez.')
     cleanup()
 
@@ -125,6 +127,7 @@ describe('ApiKeysSection', () => {
     const deps = fakeDeps({ deleteKey: vi.fn(async () => { throw new ApiError('Boom suppression', 500) }) })
     render(<ApiKeysSection deps={deps} />)
     fireEvent.click(await screen.findByRole('button', { name: 'Supprimer du serveur' }))
+    fireEvent.click(screen.getByRole('button', { name: 'Confirmer la suppression' })) // en deux temps
 
     const alert = await screen.findByRole('alert')
     expect(alert.textContent).toBe('Boom suppression')

@@ -283,6 +283,19 @@ coexistent dans la cartographie (« Panneaux » → « Jeux de données » →
 (`twin9_cartes`), leurs mémoires à part (`twin9_memoire`) et une attestation
 par run. Le compte, supprimé, les emporte.
 
+Un second scénario, dans le même fichier, recette le **référentiel choisi au
+lancement** (sprint 5, lot C) : un autre compte, sans créer de profil, prend
+le « Profil v9.8 » et choisit « Fictif lettré » dans le menu « Référentiel »
+(le référentiel du profil n'y est proposé qu'une fois, « Celui du profil ») ;
+l'aperçu dit le référentiel lu et ses deux journées. Le profil v9.8 part par
+lots, que `WORKER_PROVIDER=mock` ne simule pas (une requête partirait chez
+Anthropic) : le scénario retient son lancement (`page.route`) et en vérifie le
+corps (`profil: null`, `referentiel: {id: 'fictif-lettre', version: null}`),
+aucun run n'est créé. Puis un profil RESPIRE par la voie directe, le
+référentiel lettré choisi au lancement : le run va au bout, sa carte s'ouvre
+avec les pôles A à E, la base range sa carte sous `fictif-lettre`, son
+attestation le dit, et le profil enregistré reste sur RESPIRE.
+
 Même API locale que pour T9 (moteur factice, Anthropic simulé). Le scénario
 publie les deux référentiels de test dans la base de développement (par
 `ReferentielRepository::importPublishedDocument`, depuis l'autoload de

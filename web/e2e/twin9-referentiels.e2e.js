@@ -21,6 +21,17 @@
 //   jeux coexistent, chacun avec son référentiel -> trois cartes, trois
 //   mémoires, trois attestations -> elle supprime son compte.
 //
+//   Le référentiel choisi au lancement (sprint 5, lot C ; S5 §7) : un autre
+//   compte, sans créer de profil, prend le « Profil v9.8 » et choisit
+//   « Fictif lettré » dans le menu « Référentiel » -> l'aperçu dit le
+//   référentiel lu et ses deux journées, le lancement le porte. Le profil
+//   v9.8 part par lots, qu'Anthropic simulé ne simule pas (une requête
+//   partirait chez Anthropic) : son lancement est retenu par le scénario,
+//   son corps vérifié. Puis un profil RESPIRE par la voie directe, le
+//   référentiel lettré choisi au lancement : le run va au bout, sa carte est
+//   celle du référentiel lettré (pôles A à E), son attestation le dit, le
+//   profil enregistré reste sur RESPIRE.
+//
 // LOCAL UNIQUEMENT : npx playwright test e2e/twin9-referentiels.e2e.js
 
 import { test, expect } from '@playwright/test'
@@ -238,5 +249,78 @@ test('trois référentiels sur un même portfolio : trois cartes qui ne partagen
     expect((await apiCall(page, 'DELETE', 'auth/account')).status).toBe(204)
     expect(Number(devSql(`SELECT COUNT(*) FROM twin9_runs WHERE user_id = ${id}`))).toBe(0)
     expect(Number(devSql(`SELECT COUNT(*) FROM twin9_cartes WHERE user_id = ${id}`))).toBe(0)
+  })
+})
+
+test('le référentiel choisi au lancement : le profil v9.8 sur le référentiel lettré, sans créer de profil (S5, lot C)', async ({ page }) => {
+  const email = `e2e-lotc-${Date.now()}@humanome.test`
+  const lettre = CARTES[1]
+  const fichier = { name: 'journal-lotc.md', mimeType: 'text/markdown', buffer: Buffer.from(PORTFOLIO) }
+
+  await test.step('compte crédité, aucun profil', async () => {
+    await registerAccount(page, { displayName: 'Lena (lot C e2e)', email })
+    devSql(`INSERT INTO twin9_credits (user_id, balance_microusd) SELECT id, 100000000 FROM users WHERE email = '${email}'`)
+  })
+
+  await test.step('« Profil v9.8 », « Fictif lettré » choisi au lancement : l’aperçu le lit, le lancement le porte', async () => {
+    await page.goto('/#/twin9')
+    await expect(page.getByLabel('Profil', { exact: true })).toHaveValue('')
+    const menu = page.getByLabel('Référentiel', { exact: true })
+    // le référentiel du profil n'est proposé qu'une fois, « Celui du profil » (la base de développement peut en publier d'autres)
+    await expect(menu.locator('option').first()).toHaveText('Celui du profil (RESPIRE v7)')
+    const options = await menu.locator('option').allTextContents()
+    expect(options).toEqual(expect.arrayContaining(['Fictif lettré', 'Fictif à neuf pôles']))
+    expect(options).not.toContain('RESPIRE v7')
+    await menu.selectOption({ label: 'Fictif lettré' })
+    await page.getByLabel('Fichier du portfolio').setInputFiles(fichier)
+    await page.getByRole('checkbox', { name: /J’accepte que mon portfolio/ }).check()
+    const avant = page.getByRole('region', { name: 'Avant de lancer' })
+    await expect(avant).toContainText('Référentiel lu : Fictif lettré, version 1.0.0.')
+    await expect(avant).toContainText('2 journées à instruire.')
+    // le profil v9.8 part par lots : retenu ici, pour qu'aucune requête ne parte chez Anthropic
+    let corps = null
+    await page.route('**/api/twin9/runs', (route) => {
+      if (route.request().method() !== 'POST') return route.continue()
+      corps = route.request().postDataJSON()
+      return route.fulfill({ status: 503, contentType: 'application/json', body: JSON.stringify({ error: 'Lancement retenu par le scénario' }) })
+    })
+    await page.getByRole('button', { name: 'Lancer l’analyse' }).click()
+    await expect.poll(() => corps).not.toBeNull()
+    expect(corps.profil).toBeNull()
+    expect(corps.referentiel).toEqual({ id: 'fictif-lettre', version: null })
+    expect(corps.portfolio.nom).toBe('journal-lotc.md')
+    await page.unroute('**/api/twin9/runs')
+    const id = devSql(`SELECT id FROM users WHERE email = '${email}'`)
+    expect(Number(devSql(`SELECT COUNT(*) FROM twin9_runs WHERE user_id = ${id}`))).toBe(0)
+  })
+
+  await test.step('un profil RESPIRE par la voie directe, le référentiel lettré choisi au lancement : sa carte, ses pôles A à E', async () => {
+    const config = await apiCall(page, 'GET', 'twin9/configuration')
+    expect(config.status).toBe(200)
+    const profil = { ...config.body.defaut, voie: 'directe', referentiel: { id: 'respire', version: '7.0.0' } }
+    expect((await apiCall(page, 'POST', 'twin9/profils', { nom: 'RESPIRE direct e2e', profil })).status).toBe(201)
+    await page.goto('/#/twin9')
+    await page.getByLabel('Profil', { exact: true }).selectOption({ label: 'RESPIRE direct e2e' })
+    await page.getByLabel('Référentiel', { exact: true }).selectOption({ label: 'Fictif lettré' })
+    await page.getByLabel('Fichier du portfolio').setInputFiles(fichier)
+    await page.getByRole('checkbox', { name: /J’accepte que mon portfolio/ }).check()
+    const avant = page.getByRole('region', { name: 'Avant de lancer' })
+    await expect(avant).toContainText('Référentiel lu : Fictif lettré, version 1.0.0.')
+    await expect(avant).toContainText('2 journées à instruire.')
+    await page.getByRole('button', { name: 'Lancer l’analyse' }).click()
+    await expect(page).toHaveURL(/#\/twin9\/\d+$/)
+    await expect(page.getByRole('status')).toHaveText('Terminé', { timeout: 60_000 })
+    await page.getByRole('button', { name: 'Ouvrir dans la cartographie' }).click()
+    await expect(page).toHaveURL(/#\/cartographie/)
+    await expect.poll(() => nomsDesPoles(page)).toEqual(lettre.poles)
+    await expect(sun(page).locator(`[role="button"][aria-label^="${lettre.competence}"]`)).toHaveCount(1)
+  })
+
+  await test.step('la carte et l’attestation du run sont du référentiel lettré ; le profil enregistré reste sur RESPIRE', async () => {
+    const id = devSql(`SELECT id FROM users WHERE email = '${email}'`)
+    expect(devSql(`SELECT referentiel FROM twin9_cartes WHERE user_id = ${id}`)).toBe('fictif-lettre')
+    expect(devSql(`SELECT r.attestation->>'$.referentiel.id' FROM twin9_runs r WHERE r.user_id = ${id}`)).toBe('fictif-lettre')
+    expect(devSql(`SELECT profil->>'$.referentiel.id' FROM twin9_profils WHERE user_id = ${id}`)).toBe('respire')
+    expect((await apiCall(page, 'DELETE', 'auth/account')).status).toBe(204)
   })
 })

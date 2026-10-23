@@ -32,10 +32,14 @@ final class UcAdm06MonitoringTest extends TestCase
 {
     private static PDO $pdo;
 
+    /** The session's own time zone, which U24 changes and tearDown gives back. */
+    private static string $sessionTimeZone;
+
     public static function setUpBeforeClass(): void
     {
         self::$pdo = TestDb::fresh();
         (new MigrationRunner(self::$pdo, MigrationRunner::defaultMigrationsDir()))->run();
+        self::$sessionTimeZone = (string) self::$pdo->query('SELECT @@session.time_zone')->fetchColumn();
     }
 
     public static function tearDownAfterClass(): void
@@ -61,7 +65,9 @@ final class UcAdm06MonitoringTest extends TestCase
         CountryResolver::setOverride(null);
         Clock::setOverride(null);
         self::$pdo->exec('SET timestamp = DEFAULT');
-        self::$pdo->exec('SET time_zone = DEFAULT');
+        // Not DEFAULT, the server's global zone: a session opened in another zone
+        // (an init command) keeps it for the tests after this one.
+        self::$pdo->exec('SET time_zone = ' . self::$pdo->quote(self::$sessionTimeZone));
         TestDb::restoreEnv();
     }
 

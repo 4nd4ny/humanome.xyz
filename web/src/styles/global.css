@@ -3988,6 +3988,16 @@ body:has([aria-modal='true'], .portfolio-editor-fullscreen)
   max-width: 44rem;
 }
 
+/* Le tableau des comptes (#/admin/roles) défile dans son conteneur, jamais
+   la page : html ne défile pas en largeur, et ses cinq colonnes dépassent un
+   téléphone. `position: relative` y retient aussi les libellés
+   .visually-hidden (absolus) des cellules, qui sinon élargiraient la page. */
+.admin-table-scroll {
+  position: relative;
+  overflow-x: auto;
+  max-width: 100%;
+}
+
 .admin-table {
   border-collapse: collapse;
   width: 100%;

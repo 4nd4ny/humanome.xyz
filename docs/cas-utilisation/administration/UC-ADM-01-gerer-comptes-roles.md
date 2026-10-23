@@ -68,7 +68,8 @@ comptes », ou carte « Rôles » de l'accueil `#/admin`).
    espaces, les rôles déclarés n'ouvrent rien), le compteur (« 3 comptes. »)
    et un tableau : compte, « Habilitations » (puces des rôles), « Rôles
    déclarés » (A7), menu d'attribution (seulement les rôles manquants), date
-   de création.
+   de création. Sur un écran étroit, le tableau défile dans son propre
+   conteneur, jamais la page (UC-ADM-01-U31).
 4. L'administrateur saisit un fragment dans « Rechercher un compte (e-mail ou
    nom) » et valide : `GET /api/admin/users?query=…` (recherche `LIKE` sur
    l'e-mail **ou** le nom, insensible à la casse, jokers `%` et `_` échappés ;
@@ -264,6 +265,7 @@ comptes », ou carte « Rôles » de l'accueil `#/admin`).
 | UC-ADM-01-U26 | `AdminView` (`deps.fetchMeFn`, `deps.fetchFn`) | Copie statique → message ; admin → onglets (« Rôles » `aria-current`) et section ; non-admin → espace réservé ; `/auth/me` en 5xx → « non connecté » (limite) | idem |
 | UC-ADM-01-U29 | `RolesSection` — `DeclaredCell` | A7 : colonnes « Habilitations » et « Rôles déclarés », libellés dans l'ordre du catalogue et case du cercle, « Habiliter » pour `grantable` seulement (jamais une habilitation détenue), « aucune déclaration » sans déclaration ou d'une API antérieure | `web/test/usecases/unit/uc-adm-01-gerer-comptes-roles.test.jsx` |
 | UC-ADM-01-U30 | `RolesSection` — `onGrant` | A7 : « Habiliter » = `POST {role}` avec CSRF, message, liste rechargée, bouton parti, déclaration intacte | idem |
+| UC-ADM-01-U31 | `RolesSection`, `global.css` | Petit écran : le tableau dans `.admin-table-scroll` (`overflow-x: auto`, `position: relative` qui retient les libellés `.visually-hidden` absolus), la page ne défilant pas en largeur (`html`, `overflow-x: hidden`) ; « Attribuer » et « Habiliter » dans le conteneur | idem |
 | UC-ADM-01-U27 | `parseHash`, `AdminView` (vue isolée, `deps.fetchMeFn`, `deps.fetchFn`) | Segment décodé (`r%C3%B4les` → « rôles ») ; hors des six sections, comparaison exacte (casse, barre finale, sous-segment) → alerte « Section inconnue de l'administration : « … ». », lien `#/admin`, onglets sans `aria-current`, aucune section montée, `fetchFn` jamais appelé ; non-admin → espace réservé, pas de message (E9) | idem |
 
 ### Tests fonctionnels

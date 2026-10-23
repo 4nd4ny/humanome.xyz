@@ -256,29 +256,33 @@ export default function RolesSection({ currentUserId, fetchFn }) {
           {data.users.length === 0 ? (
             <p>Aucun compte ne correspond.</p>
           ) : (
-            <table className="admin-table">
-              <thead>
-                <tr>
-                  <th scope="col">Compte</th>
-                  <th scope="col">Habilitations</th>
-                  <th scope="col">Rôles déclarés</th>
-                  <th scope="col">Attribuer</th>
-                  <th scope="col">Créé le</th>
-                </tr>
-              </thead>
-              <tbody>
-                {data.users.map((user) => (
-                  <UserRow
-                    key={user.id}
-                    user={user}
-                    currentUserId={currentUserId}
-                    onGrant={onGrant}
-                    onRevoke={onRevoke}
-                    busy={busy}
-                  />
-                ))}
-              </tbody>
-            </table>
+            // Cinq colonnes ne tiennent pas sur un téléphone : le tableau défile
+            // dans son conteneur, jamais la page (html ne défile pas en largeur).
+            <div className="admin-table-scroll">
+              <table className="admin-table">
+                <thead>
+                  <tr>
+                    <th scope="col">Compte</th>
+                    <th scope="col">Habilitations</th>
+                    <th scope="col">Rôles déclarés</th>
+                    <th scope="col">Attribuer</th>
+                    <th scope="col">Créé le</th>
+                  </tr>
+                </thead>
+                <tbody>
+                  {data.users.map((user) => (
+                    <UserRow
+                      key={user.id}
+                      user={user}
+                      currentUserId={currentUserId}
+                      onGrant={onGrant}
+                      onRevoke={onRevoke}
+                      busy={busy}
+                    />
+                  ))}
+                </tbody>
+              </table>
+            </div>
           )}
           {totalPages > 1 ? (
             <div className="admin-pagination">

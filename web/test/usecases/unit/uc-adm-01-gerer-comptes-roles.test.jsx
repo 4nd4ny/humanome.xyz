@@ -28,6 +28,7 @@ import {
   revokeRole,
 } from '../../../src/views/admin/admin-api.js'
 import RolesSection from '../../../src/views/admin/RolesSection.jsx'
+import { declOf, globalCssRules } from '../support/global-css.js'
 import AdminView from '../../../src/views/AdminView.jsx'
 
 afterEach(() => {
@@ -265,6 +266,33 @@ describe('UC-ADM-01 — composant RolesSection isolé', () => {
     await waitFor(() => expect(screen.queryByRole('button', { name: /^Habiliter/ })).toBeNull())
     expect(calls.filter((c) => c.url === 'api/admin/users')).toHaveLength(2)
     expect(screen.getByRole('list', { name: 'Rôles déclarés par maya@b.fr' }).textContent).toBe('Épistémiarque')
+  })
+
+  it('UC-ADM-01-U31 — petit écran : le tableau des comptes défile dans son propre conteneur (overflow-x: auto), jamais la page, que global.css ne fait pas défiler (html, overflow-x: hidden) ; « Attribuer » et « Habiliter » restent atteignables', async () => {
+    const fetchFn = vi.fn(async () =>
+      jsonResponse(200, {
+        users: [{
+          id: 5, email: 'camille.dupont-m@exemple.org', displayName: 'Camille', createdAt: '', roles: ['apprenant'],
+          declaredRoles: ['cartographe', 'promptagogue', 'epistemiarque'], foundingCircle: true,
+          grantable: ['cartographe', 'epistemiarque'],
+        }],
+        total: 1, page: 1, pageSize: 20,
+      }),
+    )
+    render(<RolesSection currentUserId={1} fetchFn={fetchFn} />)
+    await screen.findByText('Camille')
+
+    const table = screen.getByRole('table')
+    const scroller = table.parentElement
+    expect(scroller.className).toBe('admin-table-scroll')
+    expect(scroller.contains(screen.getByRole('button', { name: 'Attribuer' }))).toBe(true)
+    const rules = globalCssRules()
+    expect(declOf(rules, 'html')['overflow-x']).toBe('hidden')
+    expect(declOf(rules, '.admin-table-scroll')['overflow-x']).toBe('auto')
+    // les libellés .visually-hidden (absolus) des cellules restent dans le conteneur, sans élargir la page
+    expect(declOf(rules, '.visually-hidden').position).toBe('absolute')
+    expect(scroller.querySelector('.visually-hidden')).not.toBeNull()
+    expect(declOf(rules, '.admin-table-scroll').position).toBe('relative')
   })
 
   it('UC-ADM-01-U21 — apiFetch refuse une copie statique (file:) sans appel réseau', async () => {

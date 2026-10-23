@@ -172,6 +172,7 @@ describe('UC-VIS-07 — jetons des trois interfaces (global.css)', () => {
       '--ink': '--ds-text',
       '--ink-soft': '--ds-text-soft',
       '--ink-faint': '--ds-text-faint',
+      '--muted': '--ds-text-soft',
       '--paper': '--ds-bg',
       '--card': '--ds-surface',
       '--surface-2': '--ds-surface-2',
@@ -245,7 +246,76 @@ describe('UC-VIS-07 — jetons des trois interfaces (global.css)', () => {
     }
     expect(failures).toEqual([])
   })
+
+  it('UC-VIS-07-U08 — aucun texte blanc écrit en dur : sur l’aplat d’accent, l’encre est --on-accent (sombre quand l’aplat s’éclaircit en sombre) ; timeline.css et twin9-credit.css n’ont plus de couleur littérale (RG4)', () => {
+    const sheets = [
+      'src/styles/global.css',
+      'src/styles/configuration.css',
+      'src/styles/markdown.css',
+      'src/styles/twin9.css',
+      'src/styles/twin9-credit.css',
+      'src/styles/timeline.css',
+      'src/carto/ui/carto.css',
+    ]
+    const failures = []
+    let onAccent = 0
+    for (const sheet of sheets) {
+      const source = readFileSync(resolve(here, '../../..', sheet), 'utf8')
+      for (const rule of leafRules(source)) {
+        if (rule.media?.includes('print')) continue // le papier reste blanc, à dessein
+        const where = `${sheet} ${rule.selector}`
+        if (/^(#fff|#ffffff|white)$/i.test(rule.decl.color ?? '')) failures.push(`${where} : color ${rule.decl.color}`)
+        const fill = rule.decl.background ?? rule.decl['background-color']
+        if (/^var\(--accent-solid(-hover)?\)$/.test(fill ?? '') && 'color' in rule.decl) {
+          onAccent++
+          if (rule.decl.color !== 'var(--on-accent)') failures.push(`${where} : ${rule.decl.color} sur ${fill}`)
+        }
+      }
+    }
+    expect(failures).toEqual([])
+    expect(onAccent).toBeGreaterThanOrEqual(15) // boutons pleins, puces pressées, onglets, bulles…
+    for (const sheet of ['src/styles/timeline.css', 'src/styles/twin9-credit.css']) {
+      const source = readFileSync(resolve(here, '../../..', sheet), 'utf8').replace(/\/\*[\s\S]*?\*\//g, '')
+      expect(source.match(/#[0-9a-f]{3,8}\b|\b(rgba?|hsla?)\(|:\s*(white|black)\b/gi), sheet).toBeNull()
+    }
+  })
 })
+
+/**
+ * Règles terminales d'une feuille (texte), avec leur @media éventuel :
+ * commentaires ôtés, blocs imbriqués parcourus. Lecture du texte, sans CSSOM :
+ * jsdom ne sait pas analyser color-mix().
+ * @returns {Array<{media: string|null, selector: string, decl: Record<string, string>}>}
+ */
+function leafRules(source, media = null) {
+  const text = source.replace(/\/\*[\s\S]*?\*\//g, '')
+  const out = []
+  let i = 0
+  while (i < text.length) {
+    const open = text.indexOf('{', i)
+    if (open < 0) break
+    const head = text.slice(i, open).trim()
+    let depth = 1
+    let j = open + 1
+    while (j < text.length && depth > 0) {
+      if (text[j] === '{') depth++
+      else if (text[j] === '}') depth--
+      j++
+    }
+    const body = text.slice(open + 1, j - 1)
+    if (head.startsWith('@media')) out.push(...leafRules(body, head.slice(6).trim()))
+    else if (!head.startsWith('@')) {
+      const decl = {}
+      for (const part of body.split(';')) {
+        const at = part.indexOf(':')
+        if (at > 0) decl[part.slice(0, at).trim()] = part.slice(at + 1).trim()
+      }
+      out.push({ media, selector: head.replace(/\s+/g, ' '), decl })
+    }
+    i = j
+  }
+  return out
+}
 
 describe('UC-VIS-07 — le sélecteur (DisplaySelects)', () => {
   it('UC-VIS-07-U07 — deux listes nommées « Interface » (les trois filières, dans l’ordre) et « Thème » (Système, Clair, Sombre), au choix du contexte ; changer de valeur appelle le réglage, rien d’autre (étapes 2 à 4)', () => {

@@ -582,6 +582,10 @@
   --ink: var(--ds-text);
   --ink-soft: var(--ds-text-soft);
   --ink-faint: var(--ds-text-faint);
+  /* Lue par deux règles (.value-badge-avenir, .referentiel-choice-source)
+     sans être définie jusqu'au sprint 9 : leur texte héritait de la couleur
+     du parent au lieu d'être adouci. */
+  --muted: var(--ds-text-soft);
 
   /* Surfaces et filets : --line est DÉCORATIF ; --line-strong (>= 3:1)
      délimite un champ ou une commande. */
@@ -1034,7 +1038,7 @@ pre samp {
 .tuteur-msg-user {
   align-self: flex-end;
   background: var(--accent-solid);
-  color: #fff;
+  color: var(--on-accent);
 }
 
 .tuteur-msg-assistant {
@@ -1408,8 +1412,8 @@ body:has([aria-modal='true'], .portfolio-editor-fullscreen)
 }
 
 .avatar-initials {
-  background: var(--accent-solid, #2563eb);
-  color: #fff;
+  background: var(--accent-solid);
+  color: var(--on-accent);
   font-weight: 700;
   font-size: 0.9em;
   text-transform: uppercase;
@@ -1709,7 +1713,7 @@ body:has([aria-modal='true'], .portfolio-editor-fullscreen)
 .chip[aria-pressed='true'] {
   background: var(--accent-solid);
   border-color: var(--accent);
-  color: #fff;
+  color: var(--on-accent);
 }
 
 .families-note {
@@ -2130,12 +2134,12 @@ body:has([aria-modal='true'], .portfolio-editor-fullscreen)
 .button-primary {
   background: var(--accent-solid);
   border-color: var(--accent);
-  color: #fff;
+  color: var(--on-accent);
 }
 
 .button-primary:hover {
   background: var(--accent-solid-hover);
-  color: #fff;
+  color: var(--on-accent);
 }
 
 .button-disabled,
@@ -2282,7 +2286,7 @@ body:has([aria-modal='true'], .portfolio-editor-fullscreen)
 .view-tab-active {
   background: var(--accent-solid);
   border-color: var(--accent);
-  color: #fff;
+  color: var(--on-accent);
 }
 
 /* ---------- Disposition 2 zones ---------- */
@@ -2561,7 +2565,7 @@ body:has([aria-modal='true'], .portfolio-editor-fullscreen)
 
 /* D4 — synchro timeline : la feuille de la trame courante est surlignée. */
 .heatmap-day-current {
-  stroke: var(--accent-solid, #2563eb);
+  stroke: var(--accent-solid);
   stroke-width: 2;
 }
 
@@ -4270,7 +4274,7 @@ body:has([aria-modal='true'], .portfolio-editor-fullscreen)
 }
 
 .promptologue-prompt-list button.is-active {
-  outline: 2px solid var(--accent, #2563eb);
+  outline: 2px solid var(--accent);
 }
 
 .promptologue-variable {
@@ -4600,7 +4604,7 @@ body:has([aria-modal='true'], .portfolio-editor-fullscreen)
 .promptologue-nav a[aria-current='page'] {
   background: var(--accent-solid);
   border-color: var(--accent);
-  color: #fff;
+  color: var(--on-accent);
   font-weight: var(--fw-strong);
 }
 
@@ -4725,7 +4729,7 @@ body:has([aria-modal='true'], .portfolio-editor-fullscreen)
 .mon-periods button[aria-pressed='true'] {
   background: var(--accent-solid);
   border-color: var(--accent-solid);
-  color: #ffffff;
+  color: var(--on-accent);
 }
 
 .mon-tiles {
@@ -5000,12 +5004,15 @@ body:has([aria-modal='true'], .portfolio-editor-fullscreen)
   width: 24px;
   height: 24px;
   border-radius: 50%;
-  background: #fff;
+  /* Le pouce tranche sur sa piste dans les deux thèmes : la surface sur
+     --ink-faint (éteint), l'encre de l'aplat sur --accent-solid (allumé). */
+  background: var(--card);
   transition: transform 0.15s ease;
 }
 
 .admin-demo-toggle.is-on .admin-demo-toggle-thumb {
   transform: translateX(22px);
+  background: var(--on-accent);
 }
 
 .admin-demo-toggle.is-off .admin-demo-toggle-label strong {
@@ -5105,7 +5112,7 @@ body:has([aria-modal='true'], .portfolio-editor-fullscreen)
   border-radius: 8px;
   border: 1px solid var(--accent);
   background: var(--accent-solid);
-  color: #fff;
+  color: var(--on-accent);
   cursor: pointer;
 }
 
@@ -5629,7 +5636,7 @@ body:has([aria-modal='true'], .portfolio-editor-fullscreen)
 .epi-primary {
   background: var(--accent-solid);
   border-color: var(--accent);
-  color: #fff;
+  color: var(--on-accent);
 }
 
 .epi-primary:hover {

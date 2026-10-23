@@ -182,7 +182,7 @@
   font-size: 0.9rem;
   border: 1px solid var(--accent-solid);
   background: var(--accent-solid);
-  color: #fff;
+  color: var(--on-accent);
   border-radius: var(--carto-radius);
   padding: 0.3rem 0.7rem;
   cursor: pointer;
@@ -389,7 +389,7 @@ kbd {
   background: var(--card);
   border: 1px solid var(--line);
   border-radius: var(--carto-radius);
-  box-shadow: 0 6px 18px rgb(0 0 0 / 0.12);
+  box-shadow: var(--shadow-md);
 }
 .carto-panels-list li {
   padding: 0.15rem 0;
@@ -853,7 +853,7 @@ kbd {
 }
 .carto-seg button[aria-checked='true'] {
   background: var(--accent-solid);
-  color: #fff;
+  color: var(--on-accent);
 }
 .carto-year-nav {
   display: inline-flex;
@@ -1782,7 +1782,7 @@ kbd {
 .carto-review-buttons [aria-pressed='true'] {
   background: var(--accent-solid);
   border-color: var(--accent-solid);
-  color: #fff;
+  color: var(--on-accent);
 }
 .carto-review-note {
   display: flex;
@@ -2183,7 +2183,7 @@ kbd {
   font-size: 1rem;
 }
 .carto-sg-warning {
-  border-left: 3px solid #b45309;
+  border-left: 3px solid var(--warn);
   padding-left: 0.5rem;
 }
 .carto-sg-legend {

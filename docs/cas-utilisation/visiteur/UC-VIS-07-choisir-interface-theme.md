@@ -7,7 +7,7 @@
 | **Portée** | humanome.xyz — listes « Interface » et « Thème » au bas du menu (sous « Mode expert ») et dans la ligne « Affichage » de `#/compte` ; bascule soleil/lune de l'en-tête (UC-VIS-04 A5) ; choix gardés dans le navigateur (`localStorage` `humanome-interface`, `humanome-theme`), posés sur `<html>` (`data-interface`, `data-theme`) avant le premier rendu par le script anti-FOUC de `web/index.html` ; sans API |
 | **Niveau** | Objectif utilisateur |
 | **Cahier des charges** | Sprint 9 (TODO_LIST, charte graphique) : décision de Christian du 2026-10-23 — « Les trois propositions d'interface sont excellentes. Nous allons les conserver toutes les trois » —, chacune nommée d'après une filière : épistémiarque (proposition A), noèsiologue (B), technomancien (C) |
-| **Statut** | Implémenté (lot S9-1, 2026-10-23 : jetons de couleur, sélecteur, persistance ; lot S9-2 : polices et échelle typographique de chaque interface). Passage des couleurs littérales restantes aux jetons : lot suivant du sprint 9 |
+| **Statut** | Implémenté (lot S9-1, 2026-10-23 : jetons de couleur, sélecteur, persistance ; lot S9-2 : polices et échelle typographique de chaque interface, couleurs littérales hors données passées aux jetons) |
 
 ## Objectif
 
@@ -112,7 +112,11 @@ Aucune. Les réglages fonctionnent sans compte ni API.
   même jeu de jetons `--ds-*` ; les variables historiques du site (`--ink`,
   `--paper`, `--accent`…) en sont des alias, sans renommage. Dans les neuf
   contextes, le texte atteint 4,5:1 sur ses fonds, la bordure de commande,
-  l'anneau de focus et l'aplat d'accent 3:1.
+  l'anneau de focus et l'aplat d'accent 3:1. Les couleurs d'interface ne
+  s'écrivent plus en dur : le texte d'un aplat d'accent lit `--on-accent`
+  (blanc, ou encre sombre quand l'aplat s'éclaircit en sombre), les
+  bandeaux d'état les jetons d'état ; le lecteur de timeline, posé sur la
+  surface claire de la visualisation, en prend les encres (`--viz-*`).
 - **RG5** — Les couleurs de données (familles d'intention, séries du
   monitoring, surface des visualisations, badges gratuit / premium, pôles et
   palettes de la cartographie) ne dépendent pas de l'interface.
@@ -157,6 +161,7 @@ Aucune. Les réglages fonctionnent sans compte ni API.
 | UC-VIS-07-U05 | `global.css` | Variables historiques en alias des jetons, jamais redéfinies par une interface ; couleurs de données identiques dans les trois interfaces (RG5) | idem |
 | UC-VIS-07-U06 | `global.css` | Contrastes WCAG dans les neuf contextes : texte 4,5:1, texte sur l'aplat d'accent 4,5:1, bordure de commande, focus et aplat 3:1 (RG4) | idem |
 | UC-VIS-07-U07 | `DisplaySelects` | Deux listes nommées, options dans l'ordre, valeurs du contexte, précision annoncée, aucun groupe ; un changement appelle le réglage seul (étapes 2 et 3) | idem |
+| UC-VIS-07-U08 | Feuilles du site (`global.css`, `configuration.css`, `carto.css`, `twin9-credit.css`, `timeline.css`…) | Aucun texte blanc écrit en dur hors impression ; sur l'aplat d'accent, l'encre est `--on-accent` ; plus aucune couleur littérale dans `timeline.css` ni `twin9-credit.css` (RG4) | idem |
 
 ### Tests fonctionnels
 
@@ -199,12 +204,16 @@ cd web && npx vitest run test/usecases/unit/uc-vis-07 test/usecases/functional/u
   production : les trois interfaces × (sans choix, clair, sombre) × système
   clair ou sombre, plus une valeur inconnue, posent les bons attributs et les
   bonnes couleurs avant le bundle, sans violation de CSP.
-- **Lots S9-1 et S9-2 seulement** : le passage aux jetons des couleurs
-  littérales restantes (blancs écrits en dur sur les aplats d'accent,
-  `timeline.css`, `twin9-credit.css`) vient au lot suivant. D'ici là, en noèsiologue et en technomancien
-  sombres, le texte blanc écrit en dur sur un aplat d'accent éclairci reste
-  sous 4,5:1 : `--on-accent` (encre sombre) existe, les règles ne le lisent
-  pas encore.
+- **Couleurs laissées hors des jetons, à dessein** : les couleurs de données
+  (RG5 : surface sombre et encres de la cartographie `--viz-*` / `--hm-*` de
+  `carto.css`, surlignages des traces, comparaison, jauges de confiance,
+  hachures du soleil), l'aperçu imprimable et les règles d'impression (du
+  papier, blanc), et la surface autonome `.v3-root` de `v3.css` (spécification
+  §15, non montée par le site, figée par UC-APP-12) : dans le site, les tuiles
+  V3 lisent déjà les variables du site (`.carto-tiles`, `.carto-dashboard`).
+- **Échelle typographique** : appliquée au corps, aux titres de base, aux
+  commandes et au code ; les tailles en rem des composants restent celles
+  d'avant (pas de refonte de la mise en page).
 
 ## Anomalies constatées
 

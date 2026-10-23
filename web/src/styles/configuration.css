@@ -44,12 +44,12 @@
 .config button[type='submit'] {
   background: var(--accent-solid);
   border-color: var(--accent);
-  color: #fff;
+  color: var(--on-accent);
 }
 
 .config button[type='submit']:hover {
   background: var(--accent-solid-hover);
-  color: #fff;
+  color: var(--on-accent);
 }
 
 .config button:disabled {

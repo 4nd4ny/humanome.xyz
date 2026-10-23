@@ -1,5 +1,9 @@
 /* humanome.xyz — Crédit & factures Twin9 (chantier T4, ADR-010 §3).
-   CSS pur, sobre, aligné sur la palette neutre (ardoise) de global.css.
+   CSS pur, sobre : toutes ses couleurs sont des variables de global.css
+   (sprint 9 : plus aucun littéral), donc elles suivent l'interface et le
+   thème ; les bandeaux et étiquettes d'état prennent les jetons d'état
+   (--ok*, --warn*, --info*, --danger*), le bouton plein l'aplat d'accent
+   et son encre (--accent-solid, --on-accent).
    La règle @media print isole la facture SANS toucher au shell (App.jsx) :
    tout est masqué, seul .facture-twin9 s'imprime (astuce visibility). */
 
@@ -48,20 +52,20 @@
 }
 
 .credit-paypal--ok {
-  background: #ecfdf5;
-  border-color: #a7f3d0;
-  color: #065f46;
+  background: var(--ok-bg);
+  border-color: var(--ok-border);
+  color: var(--ok);
 }
 
 .credit-paypal--info {
-  background: #eff6ff;
-  border-color: #bfdbfe;
-  color: #1e3a8a;
+  background: var(--info-bg);
+  border-color: var(--info-border);
+  color: var(--ink);
 }
 
 .credit-paypal--erreur {
   background: var(--danger-bg);
-  border-color: #fecaca;
+  border-color: var(--danger-border);
   color: var(--danger);
 }
 
@@ -111,15 +115,15 @@
   padding: 0.5rem 1.1rem;
   font: inherit;
   font-weight: var(--fw-strong);
-  color: #fff;
-  background: var(--accent);
-  border: 1px solid var(--accent-strong);
+  color: var(--on-accent);
+  background: var(--accent-solid);
+  border: 1px solid var(--accent-solid);
   border-radius: 8px;
   cursor: pointer;
 }
 
 .btn-primaire:hover {
-  background: var(--accent-strong);
+  background: var(--accent-solid-hover);
 }
 
 .btn-primaire:disabled {
@@ -219,9 +223,9 @@
 }
 
 .credit-kind--topup {
-  background: #ecfdf5;
-  color: #065f46;
-  border-color: #a7f3d0;
+  background: var(--ok-bg);
+  color: var(--ok);
+  border-color: var(--ok-border);
 }
 
 .credit-kind--debit {
@@ -230,9 +234,9 @@
 }
 
 .credit-kind--adjust {
-  background: #fffbeb;
-  color: #92400e;
-  border-color: #fde68a;
+  background: var(--warn-bg);
+  color: var(--warn);
+  border-color: var(--warn-border);
 }
 
 /* ---------- Sélecteur de facture ---------- */

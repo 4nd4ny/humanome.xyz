@@ -276,10 +276,16 @@ les seules écritures sont :
 - `llm_pow_challenges` : `sha256(challenge)` (aucune donnée client) ;
 - `rate_limits` : bucket **haché** (jamais d'IP brute).
 
-Aucun `error_log` n'existe sur le chemin LLM ni gdoc (grep vérifié : les seuls
-`error_log` du dépôt sont dans `Middleware/CsrfMiddleware.php`, `routes/system.php`
-(migrate), `routes/system.php`/`import-referentiel` et `routes/referentiel.php` —
-tous hors chemin démo, et aucun ne journalise de contenu utilisateur). Couvert par
+Sur le chemin LLM, les `error_log` ne journalisent jamais de contenu (ni prompt,
+ni réponse, ni compte, ni IP) : une écriture de compteurs qui échoue après
+l'appel, même sur une connexion neuve, donne le nom de l'écriture et la classe de
+l'exception (`[demo] compteurs : PDOException` dans `routes/llm.php`,
+`[tuteur] offerts : …` dans `routes/tuteur.php`, revue du 2026-10-23) ; le relais
+du flux, la classe seule (`[relais]`, `Llm/RelaisAppel.php`) ; une couche de
+réglages illisible, le message de la base (`[demo-config]`). Les autres
+`error_log` du dépôt, hors chemin démo (`Middleware/CsrfMiddleware.php`, les
+routes de `system.php` et de `referentiel.php`, entre autres), ne journalisent
+pas de contenu utilisateur non plus. Couvert par
 `LlmProxyTest::testSuccessfulCallIncrementsCountersOnly` (le prompt « confidentiel »
 n'apparaît dans **aucune** table).
 

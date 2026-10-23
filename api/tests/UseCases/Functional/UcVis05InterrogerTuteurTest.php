@@ -5,6 +5,7 @@ declare(strict_types=1);
 namespace Humanome\Tests\UseCases\Functional;
 
 use Humanome\Auth\Users;
+use Humanome\Db;
 use Humanome\Llm\AnthropicProvider;
 use Humanome\Llm\FreeCreditLedger;
 use Humanome\Llm\HttpClientException;
@@ -12,6 +13,7 @@ use Humanome\Llm\PowChallenge;
 use Humanome\Llm\Pricing;
 use Humanome\Tests\LlmTestCase;
 use Humanome\Tests\TestDb;
+use PDO;
 use PHPUnit\Framework\Attributes\TestDox;
 use Psr\Http\Message\ResponseInterface;
 
@@ -564,5 +566,40 @@ final class UcVis05InterrogerTuteurTest extends LlmTestCase
         self::assertSame(502, $this->ask('Q')->getStatusCode());
         self::assertSame([$pire, 0, 1], [self::mois()['spentMicrousd'], self::mois()['reservedMicrousd'], self::mois()['calls']],
             'jamais partie : la réserve revient');
+    }
+
+    /** Pendant l'appel au fournisseur : le serveur MySQL lâche la connexion de la route (MySQL 2006 ensuite). */
+    private static function couperLaConnexionDeLaRoute(): \Closure
+    {
+        return static function (): void {
+            $id = (int) Db::get()->query('SELECT CONNECTION_ID()')->fetchColumn();
+            self::$pdo->exec('KILL ' . $id);
+        };
+    }
+
+    #[TestDox('UC-VIS-05-F27 — RG8 : après un long appel, le serveur MySQL a lâché la connexion inactive de la route (MySQL 2006) — la réponse est rendue quand même, et le compteur du jour du tuteur comme le règlement du mois s’écrivent sur une connexion neuve (Db::avecReconnexion), chacun à part ; de même pour le pire cas gardé d’un délai dépassé et la réserve rendue d’un refus du fournisseur')]
+    public function testF27TheWritesAfterALongCallReconnect(): void
+    {
+        TestDb::setEnv('DEMO_PROVIDER', 'anthropic');
+        $this->http->queueResponse(['status' => 200, 'body' => self::anthropicBody('Ouvre #/essayer.', 100, 50)],
+            self::couperLaConnexionDeLaRoute());
+        $rendue = $this->ask('Q');
+        self::assertSame(200, $rendue->getStatusCode(), (string) $rendue->getBody());
+        self::assertSame('Ouvre #/essayer.', self::json($rendue)['text']);
+        self::assertSame([350, 0, 1], [self::mois()['spentMicrousd'], self::mois()['reservedMicrousd'], self::mois()['calls']],
+            'réglée au coût réel (100 + 50 jetons de Haiku 4.5)');
+        self::assertSame(['1', '100', '50'], array_map('strval', self::$pdo->query(
+            'SELECT requests, input_tokens, output_tokens FROM tuteur_usage_daily')->fetch(PDO::FETCH_NUM)));
+
+        $this->http->queueException(new HttpClientException('timeout', true), self::couperLaConnexionDeLaRoute());
+        self::assertSame(504, $this->ask('Q')->getStatusCode());
+        $pire = $this->pireCasDuDernierAppel('Q');
+        self::assertSame([350 + $pire, 0, 2], [self::mois()['spentMicrousd'], self::mois()['reservedMicrousd'], self::mois()['calls']],
+            'délai dépassé : son pire cas dépensé, pas laissé en réserve');
+
+        $this->http->queueResponse(['status' => 500, 'body' => '{"error":{"message":"interne"}}'], self::couperLaConnexionDeLaRoute());
+        self::assertSame(502, $this->ask('Q')->getStatusCode());
+        self::assertSame([350 + $pire, 0, 2], [self::mois()['spentMicrousd'], self::mois()['reservedMicrousd'], self::mois()['calls']],
+            'refusée par le fournisseur : la réserve revient');
     }
 }

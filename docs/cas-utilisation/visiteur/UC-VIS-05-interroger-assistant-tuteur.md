@@ -228,7 +228,13 @@ dans l'en-tête, à côté du bouton d'aide « ? ».
   l'envoi complet de la requête (curl 52, 56 : `HttpClientException::
   $requestSent`, que `CurlHttpClient` pose depuis la revue du 2026-10-23) ; une
   réponse 2xx dont le corps n'est pas du JSON (facturée, comme à la démo).
-  Sans la place, `503` (E7). La clé manquante est refusée avant la réserve.
+  Après l'appel, qui peut durer jusqu'au délai amont, le compteur du jour et
+  le règlement du mois s'écrivent chacun à part, sur une connexion neuve si
+  le serveur MySQL a lâché la connexion inactive (MySQL 2006,
+  `Db::avecReconnexion`, comme la démo) ; une écriture qui échoue malgré tout
+  est journalisée (sa classe seule) et la réponse est rendue (revue du
+  2026-10-23). Sans la place, `503` (E7). La clé manquante est refusée avant
+  la réserve.
 
 ## Données et RGPD
 
@@ -317,6 +323,7 @@ dans l'en-tête, à côté du bouton d'aide « ? ».
 | UC-VIS-05-F24 | RG8, E6 | API | Un échec libère la réserve du mois (429, 500, connexion refusée) ; un délai dépassé laisse son pire cas compté (consigne, question et surcoût à un jeton par octet, 600 jetons de sortie) ; une réponse rendue (100 + 50 jetons de Haiku 4.5) se règle à 350 µ$ ; sans clé, rien réservé | idem |
 | UC-VIS-05-F25 | RG8, E6 | API | Une réponse 2xx dont le corps n'est pas du JSON : 502, son pire cas reste compté sur le mois, un appel ; une erreur 503 (même illisible) rend sa réserve | idem |
 | UC-VIS-05-F26 | RG8, E6 | API | Une erreur réseau après l'envoi complet (`requestSent`, curl 52) : 502 « injoignable », son pire cas reste compté ; une connexion refusée rend sa réserve | idem |
+| UC-VIS-05-F27 | RG8 | API | La connexion MySQL de la route coupée pendant l'appel (MySQL 2006) : la réponse est rendue (200), le compteur du jour (1 requête, 100 + 50 jetons) et le règlement du mois (350 µ$) s'écrivent sur une connexion neuve ; de même le pire cas d'un délai dépassé (504) et la réserve rendue d'un 500 | idem |
 
 ### Tests existants liés (non-régression)
 

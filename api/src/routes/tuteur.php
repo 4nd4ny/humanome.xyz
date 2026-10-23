@@ -226,6 +226,23 @@ return function (App $app): void {
                 'code' => FreeCreditLedger::REFUSAL_CODE], 503);
         }
 
+        // Les écritures d'après l'appel, qui a pu durer jusqu'au délai amont :
+        // sur une connexion neuve si le serveur MySQL a lâché celle restée
+        // inactive (MySQL 2006, Db::avecReconnexion, comme la démo), chacune à
+        // part. Une écriture qui échoue malgré tout est journalisée (sa classe,
+        // jamais de contenu) : la réponse est rendue quand même, et une réserve
+        // restée en place expire en dépense, pire cas entier (FreeCreditLedger).
+        $ecrire = static function (string $nom, callable $ecriture): void {
+            try {
+                Db::avecReconnexion($ecriture);
+            } catch (\Throwable $e) {
+                error_log('[tuteur] ' . $nom . ' : ' . $e::class); // jamais de contenu
+            }
+        };
+        $regler = static fn (int $coutMicrousd): \Closure =>
+            static fn (\PDO $p) => (new FreeCreditLedger($p))->settle($reserve, $coutMicrousd, $now);
+        $rendre = static fn (\PDO $p) => (new FreeCreditLedger($p))->release($reserve, $now);
+
         try {
             if ($config->provider === 'mock') {
                 // Le mock répond sans lire la conversation : pas de précédents.
@@ -241,11 +258,7 @@ return function (App $app): void {
             // rien : la réserve revient. Une réponse 2xx dont le corps n'est pas
             // du JSON a été facturée (AnthropicProvider::complete) : son pire cas
             // reste compté sur le mois, comme à la démo (revue du 2026-10-23).
-            if ($e->status >= 200 && $e->status < 300) {
-                $ledger->settle($reserve, $reserve, $now);
-            } else {
-                $ledger->release($reserve, $now);
-            }
+            $ecrire('offerts', $e->status >= 200 && $e->status < 300 ? $regler($reserve) : $rendre);
             if ($e->status === 429) {
                 return $json($response, ['error' => 'L’assistant est saturé, réessayez plus tard.'], 429)->withHeader('Retry-After', $e->retryAfter ?? '30');
             }
@@ -257,15 +270,11 @@ return function (App $app): void {
             // facturée — rien ne dit ce qu'elle a produit (réponse d'un bloc) :
             // son pire cas reste compté sur le mois. Jamais partie (résolution,
             // connexion refusée, poignée de main TLS) : rendue.
-            if ($e->timedOut || $e->requestSent) {
-                $ledger->settle($reserve, $reserve, $now);
-            } else {
-                $ledger->release($reserve, $now);
-            }
+            $ecrire('offerts', $e->timedOut || $e->requestSent ? $regler($reserve) : $rendre);
 
             return $json($response, ['error' => 'L’assistant est injoignable, réessayez plus tard.'], $e->timedOut ? 504 : 502);
         } catch (\Throwable $e) {
-            $ledger->release($reserve, $now);
+            $ecrire('offerts', $rendre);
             throw $e;
         }
 
@@ -273,8 +282,9 @@ return function (App $app): void {
         // coût réel sur le grand livre du mois, à la place de la réserve.
         $cout = Pricing::estimateUsd($result['model'], $result['usage']['inputTokens'],
             $result['usage']['outputTokens'], $grille);
-        $counters->record($result['usage']['inputTokens'], $result['usage']['outputTokens'], $cout);
-        $ledger->settle($reserve, FreeCreditLedger::microusd($cout), $now);
+        $ecrire('compteurs', static fn (\PDO $p) => (new UsageCounters($p, 'tuteur_usage_daily'))
+            ->record($result['usage']['inputTokens'], $result['usage']['outputTokens'], $cout));
+        $ecrire('offerts', $regler(FreeCreditLedger::microusd($cout)));
 
         return $json($response, [
             'text' => $result['text'],

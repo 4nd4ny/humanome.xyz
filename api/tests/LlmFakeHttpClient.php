@@ -18,7 +18,9 @@ use Humanome\Llm\StreamingHttpClient;
  * queued response is delivered one server-sent event per read() — a whole
  * JSON body at once —; queueStream() gives the chunks, and how the stream
  * ends, explicitly, and what happens while it is in progress ($pendant, run
- * before its second chunk).
+ * before its second chunk). A blocking request() runs the $pendant of its
+ * queued response or exception before it returns or throws: what happens
+ * while the call lasts (a connection the database server drops).
  */
 final class LlmFakeHttpClient implements HttpClient, StreamingHttpClient
 {
@@ -29,19 +31,20 @@ final class LlmFakeHttpClient implements HttpClient, StreamingHttpClient
     private array $queue = [];
 
     /** @param array{status?: int, headers?: array<string, string>, body?: string, overflow?: bool} $response */
-    public function queueResponse(array $response): void
+    public function queueResponse(array $response, ?\Closure $pendant = null): void
     {
         $this->queue[] = [
             'status' => $response['status'] ?? 200,
             'headers' => $response['headers'] ?? [],
             'body' => $response['body'] ?? '',
             'overflow' => $response['overflow'] ?? false,
+            'pendant' => $pendant,
         ];
     }
 
-    public function queueException(HttpClientException $exception): void
+    public function queueException(HttpClientException $exception, ?\Closure $pendant = null): void
     {
-        $this->queue[] = $exception;
+        $this->queue[] = $pendant === null ? $exception : ['exception' => $exception, 'pendant' => $pendant];
     }
 
     /**
@@ -71,8 +74,8 @@ final class LlmFakeHttpClient implements HttpClient, StreamingHttpClient
         if ($next === null) {
             throw new \LogicException('LlmFakeHttpClient: no queued response for ' . $method . ' ' . $url);
         }
-        if ($next instanceof HttpClientException) {
-            return new FakeHttpStream(0, [], [], $next);
+        if ($next instanceof HttpClientException || isset($next['exception'])) {
+            return new FakeHttpStream(0, [], [], $next instanceof HttpClientException ? $next : $next['exception']);
         }
         // The content-type Anthropic gives: an event stream, or a whole JSON body.
         $flux = ['content-type' => 'text/event-stream; charset=utf-8'];
@@ -113,6 +116,14 @@ final class LlmFakeHttpClient implements HttpClient, StreamingHttpClient
         if ($next instanceof HttpClientException) {
             throw $next;
         }
+        // What happens while the call lasts, before it answers or fails.
+        if (($next['pendant'] ?? null) !== null) {
+            ($next['pendant'])();
+        }
+        if (isset($next['exception'])) {
+            throw $next['exception'];
+        }
+        unset($next['pendant']);
 
         return $next;
     }

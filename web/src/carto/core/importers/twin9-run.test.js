@@ -478,6 +478,182 @@ describe('importTwin9Run : la stigmergie du greffier (S3-3)', () => {
   })
 })
 
+// C3 (sprint 4) : Twin9 range une seconde entrée du même jour sous `<date>_b`, avec la même `date`.
+const POMPE = { piece: 1, extrait: 'Je relie la pompe, la sonde et le réservoir.', date: '2026-01-05', type: 'journal', role: 'indice' }
+const deuxCartes = (b = {}) => {
+  const d = doc()
+  d.journees = {
+    '2026-01-05': { journee: '2026-01-05', date: '2026-01-05', verdicts: { '1.01': verdict() } },
+    '2026-01-05_b': { journee: '2026-01-05_b', date: '2026-01-05', verdicts: { '1.05': verdict({ code: '1.05', nom: 'Pensée systémique', jury: null, deliberation: {}, traces_probantes: [POMPE] }) }, ...b },
+  }
+  d.memoire = []
+  return d
+}
+
+describe('importTwin9Run : deux cartes du même jour (C3, sprint 4)', () => {
+  it('une journée, les compétences des deux cartes réunies, et un avertissement — aucune ne disparaît sans rien dire', () => {
+    const r = importTwin9Run(deuxCartes(), { now: '2026-10-23T10:00:00Z' })
+    const jour = r.variants.find((v) => v.date === '2026-01-05')
+    expect(r.variants.filter((v) => v.date === '2026-01-05')).toHaveLength(1)
+    expect(jour.summary.verdicts.map((v) => v.code)).toEqual(['1.01', '1.05'])
+    expect(Object.values(jour.detail.verdicts['1.05'].traces).map((t) => t.extract)).toEqual([POMPE.extrait])
+    expect(r.report).toContainEqual(expect.objectContaining({ severity: 'warning', code: 'twin9-journee-dupliquee', date: '2026-01-05' }))
+    expect(r.report.find((x) => x.code === 'twin9-journee-dupliquee').message).toBe('2026-01-05 : deux cartes du jour (2026-01-05, 2026-01-05_b) réunies en une journée — à code égal, le statut le plus fort l’emporte, leurs traces réunies')
+  })
+
+  it('à code égal, le statut le plus fort l’emporte avec son dossier ; les traces des deux sont réunies, sans doublon', () => {
+    const d = deuxCartes()
+    // la première établit 1.01, sur le capteur ; la seconde la renvoie au cartographe, sur le capteur et la pompe
+    const capteur = verdict().traces_probantes[0]
+    d.journees['2026-01-05_b'].verdicts = { '1.01': verdict({ statut: 'renvoi au cartographe', confiance: 0.3, jury: null, deliberation: {}, prescription: { pour_apprenant: 'Précise.' }, traces_probantes: [{ ...capteur }, POMPE] }) }
+    const r = importTwin9Run(d, { now: '2026-10-23T10:00:00Z' })
+    const jour = r.variants.find((v) => v.date === '2026-01-05')
+    const v = jour.summary.verdicts.find((x) => x.code === '1.01')
+    expect([v.status, v.confidence, v.proofs, v.hints]).toEqual(['established', 0.8, 1, 1])
+    const det = jour.detail.verdicts['1.01']
+    expect(det.prescription).toBe('Documente une deuxième situation.')
+    expect(Object.values(det.traces).map((t) => t.extract)).toEqual([capteur.extrait, POMPE.extrait])
+    // sa délibération, une seule, celle du verdict retenu
+    expect(r.runDetails.filter((x) => x.key.startsWith('twin9:7|2026-01-05|')).map((x) => x.key)).toEqual(['twin9:7|2026-01-05|1.01'])
+  })
+
+  it('l’ordre des cartes dans les résultats ne change rien : la journée et son identifiant sont les mêmes', () => {
+    const d = deuxCartes()
+    const inverse = { ...d, journees: { '2026-01-05_b': d.journees['2026-01-05_b'], '2026-01-05': d.journees['2026-01-05'] } }
+    const ids = (x) => importTwin9Run(x, { now: '2026-10-23T10:00:00Z' }).variants.map((v) => [v.date, v.summary.id])
+    expect(ids(inverse)).toEqual(ids(d))
+  })
+
+  it('la stigmergie des deux cartes : leurs traces réunies ; conservées si les deux le sont, non si l’une ne l’est pas', () => {
+    const d = deuxCartes({ stigmergie: { ...STIGMERGIE(), analyse: 1, run: '2026-10-23T10:00:00.b2b2b2', traces: [STIGMERGIE().traces[1]] } })
+    d.journees['2026-01-05'].stigmergie = { ...STIGMERGIE(), traces: [STIGMERGIE().traces[0]] }
+    const lire = (conservees) => importTwin9Run({ ...d, traces_conservees: conservees }, { now: '2026-10-23T10:00:00Z' }).variants.find((v) => v.date === '2026-01-05')
+    const deux = lire({ '2026-01-05': true, '2026-01-05_b': true })
+    expect(deux.detail.stigmergie.traces.map((t) => t.id)).toEqual(['t-0a1b2c3d4e5f', 't-5f4e3d2c1b0a'])
+    expect(deux.summary.stigmergie).toEqual({ analyse: 3, traces: 2, conservee: true })
+    expect(lire({ '2026-01-05': true, '2026-01-05_b': false }).detail.stigmergie.conservee).toBe(false)
+    expect(lire({ '2026-01-05': true }).detail.stigmergie.conservee).toBeNull()
+  })
+
+  it('passe par la chaîne d’import : la trace dont le passage est d’un autre jour y porte `at` (T2)', async () => {
+    const d = deuxCartes()
+    d.journees['2026-01-05_b'].verdicts['1.05'].traces_probantes = [{ ...POMPE, date: '2026-01-03' }]
+    const res = await importFiles([{ path: 'twin9-run-7.json', text: JSON.stringify(d) }], createDataset({ datasetId: 'ds-c3', title: 'Twin9', referential: REFERENTIEL, now: '2026-10-23T10:00:00Z' }), { now: '2026-10-23T10:00:00Z' })
+    const jour = res.dataset.days.find((x) => x.date === '2026-01-05')
+    expect(jour.variants).toHaveLength(1)
+    expect(jour.variants[0].verdicts.find((v) => v.code === '1.05').traces).toEqual([expect.objectContaining({ role: 'indice', at: '2026-01-03' })])
+  })
+})
+
+// C4 (sprint 4 ; D-68) : une compétence que le second ressort établit par faisceau d'indices de plusieurs
+// journées, quand aucune carte du jour ne l'établit. Valeurs inventées.
+const STATUT_FAISCEAU = 'établie par faisceau (second ressort)'
+const RESERVOIR = { piece: 2, extrait: 'Le réservoir déborde quand la sonde se tait.', date: '2026-01-06', type: 'indice', role: 'indice corroboratif' }
+const nonEtablie = { code: '1.05', nom: 'Pensée systémique', statut: 'présence non établie', etage: 'non-détectée', confiance: 0, score_preuves: 0, score_indices: 0, traces_probantes: [] }
+const avecFaisceau = (faisceau = {}) => {
+  const d = doc()
+  d.carto_evolutive.competences['1.05'] = {
+    code: '1.05',
+    nom: 'Pensée systémique',
+    pole: 1,
+    statut_temporel: STATUT_FAISCEAU,
+    attestations: [
+      { jour_index: 0, journee: '2026-01-05', date: '2026-01-05', etage: 'faisceau', confiance: 0.6, score_preuves: 0, score_indices: 1 },
+      { jour_index: 1, journee: '2026-01-06', date: '2026-01-06', etage: 'faisceau', confiance: 0.6, score_preuves: 0, score_indices: 1 },
+    ],
+    signaux: [],
+    faisceau: {
+      statut: 'présence établie',
+      confiance: 0.6,
+      motif: 'Deux indices concordants, sur deux journées.',
+      prescription: { pour_apprenant: 'Relie la pompe et le réservoir dans un schéma.', pour_cartographe: 'Faisceau à confirmer en entretien.' },
+      traces: [{ ...POMPE, type: 'indice', role: 'indice corroboratif' }, RESERVOIR],
+      jury: { mode: 'faisceau', composition: ['Linguiste', 'Ingénieur'], positions_r1: { Linguiste: 'détection', Ingénieur: 'détection' }, positions_finales: { Linguiste: 'détection', Ingénieur: 'détection' }, consensus: true, dissidences: [] },
+      gardien: null,
+      dossier_cartographe: null,
+      deliberation: {
+        greffier_md: '# Dossier de faisceau — 1.05',
+        arene: { accusation_md: 'Deux indices ne font pas une preuve.', defense_md: 'Ils se répondent.' },
+        jures: { Linguiste: { r1_md: 'Le lien est explicite.', position_r1: 'détection', position_finale: 'détection' } },
+        president_md: 'Le faisceau tient.',
+      },
+      ...faisceau,
+    },
+  }
+  d.journees['2026-01-05'].verdicts['1.05'] = { ...nonEtablie }
+  d.journees['2026-01-06'].verdicts['1.05'] = { ...nonEtablie }
+  return d
+}
+
+describe('importTwin9Run : établie par faisceau, en seconde lecture (C4, sprint 4 ; D-68)', () => {
+  it('le run rend une seconde lecture : la compétence, son statut, ses traces et leurs dates ; sa délibération à part', () => {
+    const r = importTwin9Run(avecFaisceau(), { now: '2026-10-23T10:00:00Z' })
+    expect(r.readings).toEqual([
+      {
+        id: 'twin9:7:second-ressort',
+        source: 'twin9',
+        journal: 'mon-journal',
+        analysedAt: '2026-10-19',
+        importedAt: '2026-10-23T10:00:00Z',
+        codes: { '1.05': { status: 'established', rawStatus: STATUT_FAISCEAU, confidence: 0.6, proofs: 0, hints: 2, dates: ['2026-01-05', '2026-01-06'] } },
+        poles: [],
+      },
+    ])
+    const lecture = r.runDetails.find((x) => x.key === 'twin9:7:second-ressort|1.05').value
+    expect(lecture.president).toEqual({ verdict_argumente: 'Deux indices concordants, sur deux journées.', prescription: 'Relie la pompe et le réservoir dans un schéma.' })
+    expect(lecture.traces).toEqual([
+      { pieceId: 1, role: 'indice', pieceType: 'indice', extract: POMPE.extrait, date: '2026-01-05' },
+      { pieceId: 2, role: 'indice', pieceType: 'indice', extract: RESERVOIR.extrait, date: '2026-01-06' },
+    ])
+    expect(Object.keys(lecture.jury)).toEqual(['linguiste'])
+    expect(lecture.deliberation.president.markdown).toBe('Le faisceau tient.')
+    expect(lecture.notes).toEqual([{ titre: 'Pour le cartographe', markdown: 'Faisceau à confirmer en entretien.' }])
+  })
+
+  it('sans entrer dans le soleil : aucune journée — carte du jour ou fusion — ne la porte établie', () => {
+    const d = avecFaisceau()
+    delete d.journees['2026-01-06'] // une journée sans carte : la fusion la donne
+    const r = importTwin9Run(d, { now: '2026-10-23T10:00:00Z' })
+    expect(r.variants.map((v) => v.date)).toEqual(['2026-01-05', '2026-01-06'])
+    for (const v of r.variants) expect(v.summary.verdicts.filter((x) => x.code === '1.05'), v.date).toEqual([])
+  })
+
+  it('un faisceau renvoyé au cartographe ou non retenu n’est pas une seconde lecture ; un run sans faisceau n’en a pas', () => {
+    const renvoi = avecFaisceau({ statut: 'renvoi au cartographe' })
+    renvoi.carto_evolutive.competences['1.05'].statut_temporel = 'renvoi au cartographe'
+    renvoi.carto_evolutive.competences['1.05'].attestations = []
+    expect(importTwin9Run(renvoi, { now: '2026-10-23T10:00:00Z' }).readings).toEqual([])
+    expect(importTwin9Run(doc(), { now: '2026-10-23T10:00:00Z' }).readings).toEqual([])
+  })
+
+  it('passe par la chaîne d’import et l’archive : jointe en seconde lecture, le compte rendu le dit ; conforme au schéma ; réimportée, rien n’est doublé', async () => {
+    const store = createCartoStore({ adapter: createMemoryAdapter() })
+    const base = createDataset({ datasetId: 'ds-c4', title: 'Twin9 · mon-journal', referential: REFERENTIEL, now: '2026-10-23T10:00:00Z' })
+    const fichier = { path: 'twin9-run-7.json', text: JSON.stringify(avecFaisceau()) }
+    const res = await importFiles([fichier], base, { now: '2026-10-23T10:00:00Z' })
+    expect(res.dataset.readings.map((x) => x.id)).toEqual(['twin9:7:second-ressort'])
+    expect(res.report).toContainEqual(
+      expect.objectContaining({
+        code: 'seconde-lecture',
+        message: 'Second ressort du run Twin9 twin9:7 joint en seconde lecture (1 compétence établie par faisceau) : il se lit avec chaque compétence et ne change pas le soleil',
+      }),
+    )
+    for (const day of res.dataset.days) for (const v of day.variants) expect(v.verdicts.map((x) => x.code)).not.toContain('1.05')
+    await store.commit(res)
+    const archive = buildArchive(await store.exportAll('ds-c4'), { now: '2026-10-23T10:00:00Z' })
+    expect(validateDocument('competency-map-master', archive)).toEqual({ valid: true, errors: [] })
+    expect(archive.readings[0].codes['1.05'].dates).toEqual(['2026-01-05', '2026-01-06'])
+    expect(archive.runDetails['twin9:7:second-ressort|1.05'].traces).toHaveLength(2)
+    // une date qui n'en est pas une, glissée dans une archive, est refusée par le schéma
+    const forgee = JSON.parse(JSON.stringify(archive))
+    forgee.readings[0].codes['1.05'].dates = ['5 janvier']
+    expect(validateDocument('competency-map-master', forgee).valid).toBe(false)
+    const encore = await importFiles([fichier], res.dataset, { now: '2026-10-23T11:00:00Z' })
+    expect(encore.dataset.readings).toHaveLength(1)
+    expect(encore.report).toContainEqual(expect.objectContaining({ code: 'doublon', message: 'Seconde lecture twin9:7:second-ressort déjà jointe — doublon ignoré' }))
+  })
+})
+
 // Les sorties du scénario cloud de l'oracle (Twin_v9, dépôt privé : `TWIN_V9_DIR`, par défaut cloné à côté,
 // ../Twin_v9) : sans lui, sauté.
 const TWIN_V9_DIR = process.env.TWIN_V9_DIR || join(dirname(fileURLToPath(import.meta.url)), '../../../../../../Twin_v9')
@@ -508,5 +684,24 @@ describe.skipIf(!oraclePresent)('importTwin9Run (sorties réelles de l’oracle)
     const jure = r.runDetails.find((x) => Object.keys(x.value.jury).length === 6)
     expect(jure).toBeTruthy()
     expect(Object.values(jure.value.jury).every((j) => typeof j.position === 'string')).toBe(true)
+  })
+})
+
+// Le scénario 12 de l'oracle (jury tiré au sort) : son second ressort établit 2.07 par faisceau, que
+// toutes ses cartes du jour disent « présence non établie ». Lu dans `TWIN_V9_DIR`, jamais recopié.
+const ORACLE_12 = join(TWIN_V9_DIR, 'oracle/scenarios/12-jury-random/outputs')
+describe.skipIf(!existsSync(`${ORACLE_12}/carto_evolutive.json`))('importTwin9Run (oracle, un faisceau établi : C4)', () => {
+  it('2.07 en seconde lecture, avec ses dates ; aucune journée ne la porte', () => {
+    const carto = JSON.parse(readFileSync(`${ORACLE_12}/carto_evolutive.json`, 'utf8'))
+    const journees = {}
+    for (const jour of readdirSync(`${ORACLE_12}/journees`)) journees[jour] = JSON.parse(readFileSync(`${ORACLE_12}/journees/${jour}/carto_jour.json`, 'utf8'))
+    const referentiel = { poles: REFERENTIEL.poles, competences: Object.values(carto.competences).map((c) => ({ code: c.code, nom: c.nom, pole: Number(c.pole) })) }
+    const r = importTwin9Run({ kind: 'twin9-run', run: { id: 12, journal: 'PLANT-01' }, referentiel, carto_evolutive: carto, journees })
+    const faisceaux = Object.values(carto.competences).filter((c) => c.statut_temporel === STATUT_FAISCEAU).map((c) => c.code)
+    expect(faisceaux).toContain('2.07')
+    expect(Object.keys(r.readings[0].codes)).toEqual(faisceaux)
+    const dates = [...new Set(carto.competences['2.07'].faisceau.traces.map((t) => t.date))].sort()
+    expect(r.readings[0].codes['2.07']).toMatchObject({ status: 'established', rawStatus: STATUT_FAISCEAU, dates })
+    for (const v of r.variants) expect(v.summary.verdicts.map((x) => x.code), v.date).not.toContain('2.07')
   })
 })

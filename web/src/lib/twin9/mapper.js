@@ -15,6 +15,16 @@
 // l'attestation ; fréquences, niveaux, archétypes, ipsatif et HTML sont ensuite
 // calculés par le code de merge déjà testé (parité octet sur le corpus réel).
 //
+// Le second ressort (sprint 4, C4b ; journal de la cartographie D-73) : une
+// compétence qu'il établit par faisceau reçoit une attestation par date de
+// ses traces (`etage: 'faisceau'`), au `jour_index` de repli 0 pour une date
+// qu'il ne connaît pas, à la date « - » pour une trace sans date. Ces
+// attestations n'entrent pas dans l'index jour_index → date (elles y
+// déplaceraient la première journée, ou y ouvriraient une journée « - ») ;
+// elles comptent, à leur date quand c'en est une, comme le moteur les compte
+// dans sa fusion. L'interface ne les met dans aucune journée : elle les lit
+// en seconde lecture (importers/twin9-run.js).
+//
 // Limites assumées (jamais d'invention de données, cf. convention du dépôt) :
 //   - un signal dont le jour_index ne correspond à AUCUNE date connue est
 //     ignoré dans la reconstruction par feuille (il reste porté par le
@@ -39,9 +49,13 @@
 
 import { mergeDays } from '@engine/pipeline/merge.js'
 import { buildMergeDocument } from '@engine/pipeline/merge-document.js'
+import { isIsoDate } from '../../carto/core/dates.js'
 
 const STATUT_ETABLIE = 'présence établie'
 const STATUT_RENVOI = 'renvoi au cartographe'
+
+/** Une attestation du second ressort (C4b) : son jour_index peut être de repli, sa date « - ». */
+const duFaisceau = (a) => a?.etage === 'faisceau'
 
 /** Entrée de compétence d'un document-jour (contrat cartographie-jour). */
 function competenceEntry(code, verdict) {
@@ -75,17 +89,24 @@ export function twin9ToMergeDocument(carto, referentiel, meta = {}) {
   const poleOf = new Map(referentiel.competences.map((c) => [c.code, Number(c.pole)]))
 
   // 1. jour_index → date ISO, depuis les attestations de TOUTES les compétences
-  //    (seule source datée du document — il ne porte pas de tableau `journees`).
+  //    (seule source datée du document — il ne porte pas de tableau `journees`),
+  //    hors celles du second ressort, dont le jour_index peut être de repli ;
+  //    leur date, si c'en est une, est sur la ligne de temps.
   /** @type {Map<number, string>} */
   const dateOfJour = new Map()
+  const datesDuFaisceau = new Set()
   for (const c of Object.values(competences)) {
     for (const a of c?.attestations ?? []) {
+      if (duFaisceau(a)) {
+        if (isIsoDate(a.date)) datesDuFaisceau.add(a.date)
+        continue
+      }
       if (typeof a?.jour_index === 'number' && typeof a?.date === 'string' && a.date !== '') {
         if (!dateOfJour.has(a.jour_index)) dateOfJour.set(a.jour_index, a.date)
       }
     }
   }
-  const dates = [...new Set(dateOfJour.values())].sort()
+  const dates = [...new Set([...dateOfJour.values(), ...datesDuFaisceau])].sort()
   if (dates.length === 0) {
     throw new Error(
       'twin9ToMergeDocument : aucune attestation datée dans carto_evolutive — rien à projeter sur la ligne de temps',
@@ -97,7 +118,7 @@ export function twin9ToMergeDocument(carto, referentiel, meta = {}) {
   const parDate = new Map(dates.map((d) => [d, new Map()]))
   for (const [code, c] of Object.entries(competences)) {
     for (const a of c?.attestations ?? []) {
-      const date = typeof a?.date === 'string' && a.date !== '' ? a.date : dateOfJour.get(a?.jour_index)
+      const date = typeof a?.date === 'string' && a.date !== '' ? a.date : duFaisceau(a) ? null : dateOfJour.get(a?.jour_index)
       const jour = parDate.get(date)
       if (!jour) continue
       jour.set(code, {

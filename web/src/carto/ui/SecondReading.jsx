@@ -9,6 +9,13 @@
 // par membre ; puis le raisonnement du président, le débat, les pièces. La
 // délibération n'est lue qu'à l'ouverture (D-67). Sa date est celle de
 // l'analyse, faite après le journal : dite une fois, comme telle (D-69).
+//
+// Depuis le sprint 4 (C4, D-73), le second ressort d'un run Twin9 est aussi
+// une seconde lecture (`source: 'twin9'`) : un jury réuni sur des indices de
+// plusieurs journées, qui établit une compétence par faisceau quand aucune
+// journée ne l'établit. Sa ligne dit ce statut, tel quel, et les journées
+// de ses traces ; le panneau d'un pôle nomme ses compétences, qui ne sont
+// pas dans le soleil (DetailPanel).
 
 import { useEffect, useState } from 'react'
 import { runsInDays, verdictStatusLabel } from '../core/model.js'
@@ -19,6 +26,11 @@ import { verdictDetailOf } from './Observations.jsx'
 
 const fmt = (n) => (typeof n === 'number' && Number.isFinite(n) ? n.toLocaleString('fr-FR', { maximumFractionDigits: 2 }) : '—')
 const SOURCES = { 'aurora-core': 'AuroraCore' }
+/** Le second ressort d'un run Twin9 (C4) : une seconde lecture de ce run, pas d'une autre analyse. */
+const isSecondRessort = (reading) => reading?.source === 'twin9'
+
+/** « 5 janv. 2026 », « 5 janv. 2026 et 6 janv. 2026 », « a, b et c ». */
+const frList = (items) => (items.length > 1 ? `${items.slice(0, -1).join(', ')} et ${items.at(-1)}` : (items[0] ?? ''))
 const SNIPPET = 220
 const MIN_SAME = 20 // en deçà, deux extraits qui se recoupent peuvent le faire par hasard
 
@@ -33,9 +45,23 @@ export function readingsOf(dataset, code) {
 
 const capitalized = (text) => text.charAt(0).toUpperCase() + text.slice(1)
 
-/** Nom d'une seconde lecture : « jury AuroraCore ». */
+/** Nom d'une seconde lecture : « jury AuroraCore » ; « jury du second ressort de Twin9 ». */
 export function readingName(reading) {
+  if (isSecondRessort(reading)) return 'jury du second ressort de Twin9'
   return `jury ${SOURCES[reading.source] ?? reading.source ?? 'externe'}`
+}
+
+/**
+ * Le verdict d'une seconde lecture sur sa ligne : son statut — celui du moteur
+ * pour le second ressort (« établie par faisceau (second ressort) »), jamais
+ * confondu avec une présence établie par une journée —, sa confiance, ses
+ * preuves et indices, et les journées de ses traces quand elle les dit.
+ */
+export function readingVerdict(reading, s) {
+  const statut = isSecondRessort(reading) && s.rawStatus ? s.rawStatus : verdictStatusLabel({ status: s.status })
+  const dates = Array.isArray(s.dates) ? s.dates.filter((d) => typeof d === 'string') : []
+  const journees = dates.length > 0 ? ` · traces d${dates.length > 1 ? 'es' : 'u'} ${frList(dates.map((d) => formatShort(d, { weekday: false })))}` : ''
+  return `${statut} · confiance ${fmt(s.confidence)} · ${s.proofs} preuve${s.proofs > 1 ? 's' : ''}, ${s.hints} indice${s.hints > 1 ? 's' : ''}${journees}`
 }
 
 /**
@@ -76,8 +102,7 @@ function SecondReading({ reading, code, mainTraces, dated, getRunDetail, ensureR
     <details className="carto-second-reading" onToggle={(e) => setOpen(e.currentTarget.open)}>
       <summary title={s.rawStatus ?? undefined}>
         {capitalized(readingName(reading))}
-        {dated && analysisDate(reading) ? ` (${analysisDate(reading)})` : ''} : {verdictStatusLabel({ status: s.status })} · confiance {fmt(s.confidence)} · {s.proofs} preuve
-        {s.proofs > 1 ? 's' : ''}, {s.hints} indice{s.hints > 1 ? 's' : ''}
+        {dated && analysisDate(reading) ? ` (${analysisDate(reading)})` : ''} : {readingVerdict(reading, s)}
       </summary>
       {!open ? null : run === undefined ? (
         <p className="carto-muted">Chargement de la délibération…</p>
@@ -135,14 +160,19 @@ export function SecondReadings({ dataset, code, traces = [], getDetail, getRunDe
   const mainTraces = traces.map((t) => ({ date: t.date, extract: verdictDetailOf(getDetail, t.date, t.variantId, code)?.traces?.[t.id]?.extract ?? '' }))
   // Une lecture : sa date se dit une fois, ici ; plusieurs : chacune sur sa ligne.
   const single = readings.length === 1 && readings[0].analysedAt ? formatLong(readings[0].analysedAt) : null
+  const ressort = readings.some(isSecondRessort)
+  const phrase =
+    readings.length === 1 && ressort
+      ? `Le second ressort de l’analyse Twin9${single ? ` faite le ${single}` : ''} : un jury réuni sur des indices de plusieurs journées, qui l’établit par faisceau quand aucune journée ne l’établit. Il se lit ici et ne change pas le soleil.`
+      : single
+        ? `Une autre analyse des mêmes écrits, faite le ${single} sur tout le journal d’un coup : elle se lit ici et ne change pas le soleil.`
+        : ressort
+          ? 'D’autres lectures des mêmes écrits — une autre analyse, ou le second ressort d’une analyse Twin9 —, chacune sur sa ligne : elles se lisent ici et ne changent pas le soleil.'
+          : 'D’autres analyses des mêmes écrits, faites chacune sur tout le journal d’un coup : elles se lisent ici et ne changent pas le soleil.'
   return (
     <section className="carto-second-readings" aria-label="Seconde lecture">
       <h3>Seconde lecture</h3>
-      <p className="carto-small carto-muted">
-        {single
-          ? `Une autre analyse des mêmes écrits, faite le ${single} sur tout le journal d’un coup : elle se lit ici et ne change pas le soleil.`
-          : 'D’autres analyses des mêmes écrits, faites chacune sur tout le journal d’un coup : elles se lisent ici et ne changent pas le soleil.'}
-      </p>
+      <p className="carto-small carto-muted">{phrase}</p>
       {readings.map((r) => (
         <SecondReading
           key={r.id}

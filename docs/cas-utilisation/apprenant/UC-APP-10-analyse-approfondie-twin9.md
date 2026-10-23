@@ -7,7 +7,7 @@
 | **Portée** | humanome.xyz — vues `#/twin9` et `#/twin9/<id>`, routes `/api/twin9/runs…` (`api/src/routes/twin9-runs.php`), profils de `#/configuration` (`/api/twin9/configuration`, `/api/twin9/profils`), ouverture dans l'interface de cartographie (`#/cartographie`) |
 | **Niveau** | Objectif utilisateur |
 | **Cahier des charges** | §3.2, §4.3 (découpage journalier + fusion), §4.4, §6 (RGPD), §7 (Golden Prompt payant) ; ADR-004, ADR-007, ADR-010, ADR-011 ; `docs/contrats.md` §8 |
-| **Statut** | Implémenté (T9, T10, T8 stratégie A, T16, T17 ; P0-1 : configuration et exécution du run, 2026-10-22 ; P1-5 : un fournisseur par étage, étape et lecteur, l'accord qui les nomme, 2026-10-22 ; S3-3 : les traces de la stigmergie du greffier dans la cartographie et le portfolio surligné, 2026-10-23 ; sprint 4, T0 : le portfolio envoyé découpé en les journées de l'interface, 2026-10-23) ; le moteur du navigateur et son proxy `POST /api/twin9/appel` sont retirés depuis T11 |
+| **Statut** | Implémenté (T9, T10, T8 stratégie A, T16, T17 ; P0-1 : configuration et exécution du run, 2026-10-22 ; P1-5 : un fournisseur par étage, étape et lecteur, l'accord qui les nomme, 2026-10-22 ; S3-3 : les traces de la stigmergie du greffier dans la cartographie et le portfolio surligné, 2026-10-23 ; sprint 4, T0 : le portfolio envoyé découpé en les journées de l'interface ; C3, C4 : deux cartes du même jour, le second ressort en seconde lecture, 2026-10-23) ; le moteur du navigateur et son proxy `POST /api/twin9/appel` sont retirés depuis T11 |
 
 ## Objectif
 
@@ -365,6 +365,16 @@ badge premium) ou ouvre `#/twin9`.
   une fois (RG3) : le texte envoyé ensuite est le même — et les passages
   sans date qu'il ne lit pas. Aperçu et lancement envoient le même
   texte.
+- **RG17 — Deux cartes du même jour, le second ressort** (sprint 4, C3 et
+  C4, `docs/contrats.md` §4 point 12, §8.4) : ouvert dans la cartographie,
+  un run dont deux cartes du jour portent la même date (`<date>_b`) en fait
+  une journée — à code égal, le statut le plus fort l'emporte avec son
+  dossier, les traces des deux réunies — et le rapport d'import le dit. Une
+  compétence que le second ressort établit par faisceau d'indices de
+  plusieurs journées (« établie par faisceau (second ressort) ») se lit en
+  **seconde lecture**, avec la compétence : son statut, sa confiance, ses
+  indices, les journées de ses traces, sa délibération ; elle n'entre dans
+  aucune journée ni dans le soleil, et le panneau de son pôle la nomme.
 
 ## Données et RGPD
 
@@ -394,6 +404,7 @@ badge premium) ou ouvre `#/twin9`.
 | Front | `web/src/carto/core/stigmergie.js` — `stigmergieGardee`, `tracesConserveesDuJour`, `intensitesVisibles` ; `web/src/carto/ui/Stigmergie.jsx` — `StigmergieDuJour` ; `web/src/carto/ui/highlight-dom.js` — `traceClass` ; `web/src/carto/ui/PortfolioReader.jsx` | Les traces de la stigmergie dans le jeu, la modale du jour et le volet du portfolio (RG15) |
 | Front | `web/src/carto/core/portfolio-md.js` — `buildHighlightedPortfolioMarkdown` ; `web/src/carto/ui/ExportPanel.jsx` ; `web/src/lib/twin9/marques.js` — `sansMarquesTwin9`, `retirerMarquesTwin9` | Le portfolio surligné ; ses marques retirées de tout texte importé ou envoyé (RG15) |
 | Front | `web/src/lib/twin9/portfolio-pour-twin9.js` — `portfolioPourTwin9`, `journeesLuesParTwin9` ; `web/src/carto/core/portfolio-md.js` — `keepInDay` | Le portfolio envoyé, découpé en les journées de l'interface ; ce que l'aperçu en dit (RG16) |
+| Front | `web/src/carto/core/importers/twin9-run.js` — `importTwin9Run` (`cartesReunies`, `stigmergieReunie`, `secondRessort`) ; `web/src/carto/core/import.js` — `mergeIntoDataset` ; `web/src/carto/ui/SecondReading.jsx` — `readingName`, `readingVerdict`, `SecondReadings` ; `web/src/carto/ui/DetailPanel.jsx` | Deux cartes du même jour réunies ; le second ressort en seconde lecture, sa ligne, le panneau du pôle (RG17) |
 | API | `GET/POST /api/twin9/runs`, `POST …/apercu`, `POST …/avancer`, `GET …/{id}`, `POST …/{id}/annuler`, `POST …/{id}/reprendre`, `PUT …/{id}/visibilite`, `GET …/{id}/resultats`, `GET /api/twin9/admin/runs` — `api/src/routes/twin9-runs.php` | Runs du serveur |
 | API | `api/src/Middleware/CsrfMiddleware.php` | Jeton CSRF des écritures (E1) — logique unitaire couverte par UC-CPT-02-U07 |
 | Domaine | `api/src/Twin9/Lancement.php` — `lancer`, `apercu`, `empreinte` | Lancement, aperçu, estimation, admission ; jeu d'avant T16 (RG12) |
@@ -436,6 +447,7 @@ badge premium) ou ouvre `#/twin9`.
 | UC-APP-10-U21 | `buildHighlightedPortfolioMarkdown` | Le portfolio surligné : marque par nature, intensité seulement quand elle se montre, jamais une trace non conservée ; sans ses marques, le portfolio exporté à l'octet (RG15) | idem |
 | UC-APP-10-U22 | `Twin9View` (`Lancer`) | Le texte envoyé à l'aperçu ne porte jamais les marques d'un portfolio surligné rangé dans la bibliothèque (RG15) | idem |
 | UC-APP-10-U23 | `portfolioPourTwin9`, `Twin9View` (`Lancer`, `Apercu`) | Le texte envoyé à l'aperçu et au lancement, le même, découpé selon la fiche du portfolio (une fusion faite à la main comprise) : en-tête ajouté, en-tête intérieur neutralisé ; l'aperçu nomme les journées retouchées ; un portfolio que le moteur lit déjà ainsi part à l'octet, l'aperçu n'en dit rien ; un passage sans date en tête : l'aperçu dit que le moteur ne le lit pas (RG16) | idem |
+| UC-APP-10-U24 | `importTwin9Run`, `SecondReadings` | Deux cartes du même jour : une journée, leurs compétences réunies, le rapport le dit ; une compétence établie par faisceau : une seconde lecture, sa ligne (statut du moteur, journée de ses traces), hors du soleil (RG17) | idem |
 
 ### Tests fonctionnels
 
@@ -482,6 +494,7 @@ badge premium) ou ouvre `#/twin9`.
 - `web/src/lib/archive.test.js` — l'archive du compte avec la configuration et l'exécution d'un run, sans elles pour un run ancien, invalide avec une clé inconnue (P0-1).
 - `api/tests/Twin9/StigmergieTest.php` — avec le vrai moteur (`TWIN_V9_DIR`) : deux runs d'une carte déposent puis renforcent leurs traces ; une journée dont le président d'un tribunal est en panne écrit le bloc, son analyse n'entre pas au journal, et ses résultats, le run fini (journal d'appels effacé), la disent non conservée, ceux du run d'avant conservée (RG15).
 - `web/src/carto/core/stigmergie.test.js`, `web/src/carto/ui/Stigmergie.test.jsx`, `web/src/carto/ui/highlight-dom.test.js`, `web/src/carto/core/portfolio-md.test.js`, `web/src/lib/twin9/marques.test.js` — les traces dans le jeu, la modale et le volet (marque par nature, intensité selon le mode et le rôle), le portfolio surligné et son aller-retour, le retrait des marques (sécurité : aucune trace forgée par un fichier, aucune marque dans le texte rendu) (RG15).
+- `web/src/carto/core/importers/twin9-run.test.js`, `web/src/lib/twin9/mapper.test.js`, `web/src/carto/ui/SecondReading.test.jsx` — deux cartes du même jour, le second ressort en seconde lecture, la fusion sans journée « - », la ligne et le panneau du pôle (RG17) ; l'oracle 12 de Twin9 (un faisceau établi), lu dans `TWIN_V9_DIR`.
 - `web/src/lib/twin9/portfolio-pour-twin9.test.js` — le portfolio envoyé (RG16) : les onze formes d'en-tête de l'étude du sprint 4, journées égales des deux côtés, journées retouchées ; les cinq portfolios de Twin9 à l'octet (lus dans `TWIN_V9_DIR`) et le moteur PHP lui-même quand il est là ; journal à rebours, deux entrées du même jour, fiche retouchée, passages sans date, Google Docs. `api/tests/Twin9/PortfolioPourTwin9Test.php` — le texte rendu pour les onze formes, découpé par le vrai moteur chargé par `EngineLoader` : les dix journées de l'interface.
 - `web/e2e/twin9-run.e2e.js`, `web/e2e/twin9-referentiels.e2e.js` — de bout en bout, en local (`docs/tests-e2e.md`).
 

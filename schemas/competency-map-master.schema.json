@@ -103,14 +103,14 @@
     },
     "readings": {
       "type": "array",
-      "description": "Secondes lectures (journal de la cartographie, D-68) : une autre analyse des mêmes écrits — un run AuroraCore et son jury complet — jointe à chaque compétence sans changer le soleil (les verdicts par journée le font). Par lecture, un résumé par compétence ; ses délibérations sont dans runDetails, sous « <id>|<code> » et « <id>|pole:<n> ». Ajout 4.x, facultatif.",
+      "description": "Secondes lectures (journal de la cartographie, D-68) : une autre analyse des mêmes écrits — un run AuroraCore et son jury complet — jointe à chaque compétence sans changer le soleil (les verdicts par journée le font) ; depuis le sprint 4 (C4, D-73), aussi le second ressort d'un run Twin9 (les compétences qu'il établit par faisceau). Par lecture, un résumé par compétence ; ses délibérations sont dans runDetails, sous « <id>|<code> » et « <id>|pole:<n> ». Ajout 4.x, facultatif.",
       "items": {
         "type": "object",
         "additionalProperties": true,
         "required": ["id", "codes"],
         "properties": {
-          "id": { "type": "string", "minLength": 1, "description": "Identifiant du run (« <journal>@<date d'analyse> »)." },
-          "source": { "type": "string", "description": "Chaîne d'analyse (« aurora-core »)." },
+          "id": { "type": "string", "minLength": 1, "description": "Identifiant du run (« <journal>@<date d'analyse> ») ; pour le second ressort d'un run Twin9, « twin9:<run>:second-ressort »." },
+          "source": { "type": "string", "description": "Chaîne d'analyse (« aurora-core » ; « twin9 » : le second ressort d'un run Twin9)." },
           "journal": { "type": ["string", "null"] },
           "analysedAt": { "type": ["string", "null"], "description": "Date de l'analyse (AAAA-MM-JJ)." },
           "importedAt": { "type": ["string", "null"] },
@@ -125,7 +125,12 @@
                 "rawStatus": { "type": ["string", "null"] },
                 "confidence": { "type": ["number", "null"], "minimum": 0, "maximum": 1 },
                 "proofs": { "type": "integer", "minimum": 0 },
-                "hints": { "type": "integer", "minimum": 0 }
+                "hints": { "type": "integer", "minimum": 0 },
+                "dates": {
+                  "type": "array",
+                  "items": { "$ref": "#/$defs/isoDate" },
+                  "description": "Journées de ses traces, triées (le second ressort d'un run Twin9, sprint 4, C4). Facultatif."
+                }
               }
             }
           },

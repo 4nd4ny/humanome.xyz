@@ -41,6 +41,21 @@
 // reprise ; une journée en panne, dont l'analyse n'y entre pas, les montre
 // non conservées, et sans signal elles ne sont jamais dites conservées. Ni
 // l'identifiant ni l'empreinte d'une journée ne changent.
+//
+// Depuis le sprint 4 (C3 et C4 ; journal de la cartographie D-73) :
+//   - deux cartes du jour de même date — Twin9 range une seconde entrée du
+//     même jour sous `<date>_b` — font une journée : à code égal, le statut
+//     le plus fort l'emporte avec son dossier, et leurs traces sont réunies ;
+//     leurs traces de la stigmergie aussi. Un avertissement le dit
+//     (`twin9-journee-dupliquee`) : avant, la seconde écrasait la première
+//     sans rien dire. Depuis T0, un run lancé du site n'en a plus ;
+//   - une compétence que le second ressort établit par faisceau d'indices de
+//     plusieurs journées (« établie par faisceau (second ressort) »), quand
+//     aucune carte du jour ne l'établit, entre en SECONDE LECTURE (`readings`,
+//     D-68) : son verdict, ses traces et leurs dates, sa délibération sous
+//     « <run>:second-ressort|<code> ». Elle se lit avec la compétence, sans
+//     entrer dans le soleil : ni une carte du jour ni une journée que donne
+//     la fusion (sans carte) ne la portent.
 
 import { twin9Dossier, twin9ToMergeDocument } from '../../../lib/twin9/mapper.js'
 import { importSiteMerge } from './merge.js'
@@ -91,6 +106,9 @@ function table(source, champs) {
       .map(([k, v]) => [k, choisir(v, champs)]),
   )
 }
+
+/** Le statut temporel d'une compétence que le second ressort établit (Twin_v9, Fusion::STATUT_FAISCEAU). */
+export const STATUT_FAISCEAU = 'établie par faisceau (second ressort)'
 
 /** Ce avec quoi part un appel (CallSettings::pour(), docs/contrats.md §8.9). */
 const CHAMPS_REGLAGE = ['fournisseur', 'voie', 'modele', 'budget_sortie', 'effort', 'reflexion']
@@ -224,17 +242,36 @@ export function importTwin9Run(doc, { fileName = 'twin9-run.json', now = new Dat
     }
   }
 
-  // La carte du jour de chaque date : son identifiant de journée est la date, ou elle la porte.
-  const cartes = new Map()
-  for (const [jour, carte] of Object.entries(doc.journees ?? {})) {
+  // La carte du jour de chaque date : son identifiant de journée est la date, ou elle la porte. Deux cartes
+  // de même date (`<date>_b`, C3), dans l'ordre de leurs identifiants, sont réunies en une journée.
+  const parDate = new Map()
+  for (const jour of Object.keys(doc.journees ?? {}).sort()) {
+    const carte = doc.journees[jour]
     const date = isIsoDate(carte?.date) ? carte.date : isIsoDate(jour) ? jour : null
-    if (date) cartes.set(date, { carte, jour })
+    if (!date) continue
+    if (!parDate.has(date)) parDate.set(date, [])
+    parDate.get(date).push({ carte, jour })
   }
   // Ses traces de la stigmergie sont-elles conservées ? Ce que disent les résultats, par journée ; une journée
   // que la mémoire a reprise, oui (seule une journée sans panne y entre) ; sinon, rien ne le dit (null).
   const conservees = estObjet(doc.traces_conservees) ? doc.traces_conservees : {}
   const reprises = new Set(Array.isArray(doc.memoire) ? doc.memoire : [])
   const conservation = (jour) => (typeof conservees[jour] === 'boolean' ? conservees[jour] : reprises.has(jour) ? true : null)
+  const cartes = new Map()
+  for (const [date, lues] of parDate) {
+    const stigmergie = stigmergieReunie(lues.map(({ carte, jour }) => stigmergieGardee(carte?.stigmergie, conservation(jour))))
+    cartes.set(date, { carte: lues.length === 1 ? lues[0].carte : cartesReunies(lues.map((l) => l.carte)), stigmergie })
+    if (lues.length > 1) {
+      const n = lues.length === 2 ? 'deux' : String(lues.length)
+      const message = `${date} : ${n} cartes du jour (${lues.map((l) => l.jour).join(', ')}) réunies en une journée — à code égal, le statut le plus fort l’emporte, leurs traces réunies`
+      report.push({ severity: 'warning', code: 'twin9-journee-dupliquee', message, date })
+    }
+  }
+
+  // Le second ressort (C4) : les compétences établies par faisceau, en seconde lecture, leurs délibérations à part.
+  const finiLe = typeof doc.run?.finished_at === 'string' && isIsoDate(doc.run.finished_at.slice(0, 10)) ? doc.run.finished_at.slice(0, 10) : null
+  const ressort = secondRessort(doc.carto_evolutive, { runId, journal: doc.run?.journal ?? doc.carto_evolutive?.journal_id ?? null, analysedAt: finiLe, now })
+  const parFaisceau = new Set(ressort.readings.flatMap((r) => Object.keys(r.codes)))
 
   const variants = []
   const runDetails = []
@@ -242,7 +279,7 @@ export function importTwin9Run(doc, { fileName = 'twin9-run.json', now = new Dat
   for (const date of dates) {
     const lue = cartes.get(date)
     if (lue) {
-      const stigmergie = stigmergieGardee(lue.carte?.stigmergie, conservation(lue.jour))
+      const { stigmergie } = lue
       const variant = variantDuJour(lue.carte, date, runId, provenance, runDetails, stigmergie)
       if (variant) variants.push(variant)
       if (variant && stigmergie?.traces.length > 0 && stigmergie.conservee === false) {
@@ -255,10 +292,16 @@ export function importTwin9Run(doc, { fileName = 'twin9-run.json', now = new Dat
       continue
     }
     const v = fusion.variants.find((x) => x.date === date)
+    // une compétence établie par faisceau n'est d'aucune journée : elle se lit en seconde lecture (C4)
+    const verdicts = v.summary.verdicts.filter((x) => !parFaisceau.has(x.code))
+    if (verdicts.length === 0) continue
+    v.summary.verdicts = verdicts
+    v.detail.verdicts = Object.fromEntries(Object.entries(v.detail.verdicts).filter(([code]) => !parFaisceau.has(code)))
     v.summary.provenance = { ...v.summary.provenance, source: 'twin9', run: runId, ...(trace ?? {}) }
     variants.push(v)
     report.push({ severity: 'info', code: 'twin9-sans-carte-du-jour', message: `${date} : journée sans carte du jour, ses verdicts sans dossier`, date })
   }
+  runDetails.push(...ressort.runDetails)
   if (variants.length === 0) {
     report.push({ severity: 'blocking', code: 'twin9-illisible', message: `${fileName} : aucune journée datée dans ce run` })
   }
@@ -270,7 +313,109 @@ export function importTwin9Run(doc, { fileName = 'twin9-run.json', now = new Dat
       value: { kind: 'twin9-run-meta', run: runId, configuration, execution: executionGardee(doc.run?.execution) },
     })
   }
-  return { variants, narratives: fusion.narratives, runDetails, referential, report }
+  return { variants, narratives: fusion.narratives, runDetails, readings: ressort.readings, referential, report }
+}
+
+/** Le rang d'un statut : établi, puis renvoyé, puis non établi. */
+const FORCE = { established: 3, needs_review: 2, not_established: 1, unknown: 0 }
+const force = (v) => FORCE[normalizeStatus(v?.statut)] ?? 0
+const confiance = (v) => normalizeConfidence(v?.confiance) ?? -1
+
+/** Les traces probantes de deux verdicts, celles du premier d'abord, sans en redire une (même extrait, date et rôle). */
+function tracesReunies(a, b) {
+  const vues = new Set()
+  return [...(Array.isArray(a) ? a : []), ...(Array.isArray(b) ? b : [])].filter((t) => {
+    const cle = JSON.stringify([t?.extrait ?? '', t?.date ?? null, t?.role ?? null])
+    return !vues.has(cle) && vues.add(cle)
+  })
+}
+
+/**
+ * Deux cartes du jour de même date (C3), réunies : chaque compétence de l'une
+ * ou de l'autre ; à code égal, le verdict au statut le plus fort (à statut
+ * égal, la plus forte confiance, puis la première carte) l'emporte avec son
+ * dossier, et reçoit les traces de l'autre.
+ */
+function cartesReunies(cartes) {
+  const verdicts = {}
+  for (const carte of cartes) {
+    for (const [code, v] of Object.entries(carte?.verdicts ?? {})) {
+      const deja = verdicts[code]
+      if (deja === undefined) {
+        verdicts[code] = v
+        continue
+      }
+      const fort = force(v) > force(deja) || (force(v) === force(deja) && confiance(v) > confiance(deja)) ? v : deja
+      const faible = fort === v ? deja : v
+      verdicts[code] = { ...fort, traces_probantes: tracesReunies(fort?.traces_probantes, faible?.traces_probantes) }
+    }
+  }
+  return { ...cartes[0], verdicts }
+}
+
+/**
+ * Les traces de la stigmergie de cartes réunies (C3) : celles de toutes, sans
+ * en redire une ; le rang de l'analyse la plus avancée, et son run ;
+ * conservées si toutes le sont, non conservées si l'une ne l'est pas, sinon
+ * rien ne le dit.
+ */
+function stigmergieReunie(gardees) {
+  const blocs = gardees.filter(Boolean)
+  if (blocs.length < 2) return blocs[0] ?? null
+  const premiere = [...blocs].sort((a, b) => (b.analyse ?? -1) - (a.analyse ?? -1))[0]
+  const etats = blocs.map((b) => b.conservee)
+  const vues = new Set()
+  return {
+    analyse: premiere.analyse,
+    run: premiere.run,
+    conservee: etats.includes(false) ? false : etats.every((x) => x === true) ? true : null,
+    traces: blocs.flatMap((b) => b.traces).filter((t) => !vues.has(t.id) && vues.add(t.id)),
+  }
+}
+
+/**
+ * Le second ressort d'un run (C4, sprint 4 ; journal de la cartographie D-68,
+ * D-73) : les compétences qu'il établit par faisceau, une seconde lecture du
+ * run. Par compétence, son verdict (statut, statut du moteur, confiance,
+ * preuves et indices) et les dates de ses traces ; sa délibération, sous
+ * « <lecture>|<code> » : la décision du président (motif et prescription),
+ * le jury, le débat, les pièces du greffier, la note au cartographe, et ses
+ * traces à la forme que lit la seconde lecture (`{pieceId, role, pieceType,
+ * extract, date}`).
+ * @returns {{readings: object[], runDetails: Array<{key: string, value: object}>}}
+ */
+function secondRessort(carto, { runId, journal, analysedAt, now }) {
+  const id = `${runId}:second-ressort`
+  const codes = {}
+  const details = []
+  for (const code of Object.keys(estObjet(carto?.competences) ? carto.competences : {}).sort()) {
+    const c = carto.competences[code]
+    if (c?.statut_temporel !== STATUT_FAISCEAU || !estObjet(c.faisceau)) continue
+    const f = c.faisceau
+    const dossier = twin9Dossier({
+      code,
+      nom: c.nom,
+      statut: f.statut,
+      confiance: f.confiance,
+      etage: 'faisceau',
+      motif_regle: f.motif,
+      prescription: f.prescription,
+      traces_probantes: f.traces,
+      jury: f.jury,
+      deliberation: f.deliberation,
+      dossier_cartographe: f.dossier_cartographe,
+    })
+    const traces = dossier.traces.map((t) => ({ pieceId: t.piece, role: normalizeRole(t.role).role, pieceType: t.type, extract: t.extrait, date: isIsoDate(t.date) ? t.date : null }))
+    const dates = [...new Set(traces.map((t) => t.date).filter(Boolean))].sort()
+    const preuves = traces.filter((t) => t.role === 'preuve').length
+    codes[code] = { status: normalizeStatus(dossier.statut), rawStatus: STATUT_FAISCEAU, confidence: normalizeConfidence(dossier.confiance), proofs: preuves, hints: traces.length - preuves, dates }
+    details.push({
+      key: `${id}|${code}`,
+      value: { ...runDetail(dossier, dates[0] ?? null), president: { verdict_argumente: dossier.motif, prescription: dossier.prescription }, traces },
+    })
+  }
+  if (details.length === 0) return { readings: [], runDetails: [] }
+  return { readings: [{ id, source: 'twin9', journal, analysedAt, importedAt: now, codes, poles: [] }], runDetails: details }
 }
 
 /**

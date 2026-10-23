@@ -44,6 +44,7 @@ import { sansMarquesTwin9 } from '../../../src/lib/twin9/marques.js'
 import { portfolioPourTwin9 } from '../../../src/lib/twin9/portfolio-pour-twin9.js'
 import { segmentText } from '@engine/portfolio/segment.js'
 import { StigmergieDuJour } from '../../../src/carto/ui/Stigmergie.jsx'
+import { SecondReadings } from '../../../src/carto/ui/SecondReading.jsx'
 import { jsonResponse } from '../support/twin.js'
 // un run configuré, tel que ses résultats le rendent à son propriétaire (P0-1) : valeurs inventées
 import exemple from '../../../../schemas/fixtures/twin9-configuration-exemple.json'
@@ -713,5 +714,44 @@ describe('UC-APP-10 — le portfolio envoyé à Twin9 : les journées de l’int
     expect(region.textContent).toContain('Le passage sans date, en tête du texte envoyé, n’est pas lu par Twin9.')
     expect(region.textContent).not.toContain('retouché')
     expect(corps[0].portfolio.texte).toBe(texte)
+  })
+})
+
+describe('UC-APP-10 — ouvert dans la cartographie : deux cartes du même jour, un faisceau (sprint 4, C3 et C4)', () => {
+  const carte = (jour, verdicts) => ({ journee: jour, date: '2026-01-05', verdicts })
+  const etablie = (code, extrait) => ({ code, nom: code, statut: 'présence établie', confiance: 0.8, score_preuves: 1, score_indices: 0, etage: 'tribunal', traces_probantes: [{ piece: 1, extrait, date: '2026-01-05', role: 'preuve' }] })
+  const run = () => ({
+    kind: 'twin9-run',
+    run: { id: 8, journal: 'mon-journal', finished_at: '2026-10-19 10:05:00' },
+    referentiel: { poles: [{ num: 1, nom: 'TÊTE' }], competences: [{ code: '1.01', nom: 'Analyse', pole: 1 }, { code: '1.05', nom: 'Pensée systémique', pole: 1 }, { code: '1.07', nom: 'Synthèse', pole: 1 }] },
+    carto_evolutive: {
+      journal_id: 'mon-journal',
+      competences: {
+        '1.07': {
+          code: '1.07',
+          nom: 'Synthèse',
+          statut_temporel: 'établie par faisceau (second ressort)',
+          attestations: [{ jour_index: 0, journee: '2026-01-05', date: '2026-01-05', etage: 'faisceau', confiance: 0.55, score_preuves: 0, score_indices: 1 }],
+          signaux: [],
+          faisceau: { statut: 'présence établie', confiance: 0.55, motif: 'Les indices se répondent.', prescription: { pour_apprenant: 'Fais le lien.' }, traces: [{ piece: 3, extrait: 'Je résume la semaine en trois idées.', date: '2026-01-05', role: 'indice corroboratif' }] },
+        },
+      },
+    },
+    journees: {
+      '2026-01-05': carte('2026-01-05', { '1.01': etablie('1.01', 'J’ai monté le capteur et vérifié chaque mesure.') }),
+      '2026-01-05_b': carte('2026-01-05_b', { '1.05': etablie('1.05', 'Je relie la pompe, la sonde et le réservoir.') }),
+    },
+    memoire: [],
+  })
+
+  it('UC-APP-10-U24 — importTwin9Run, SecondReadings : deux cartes du même jour font une journée, leurs compétences réunies, et le compte rendu le dit ; une compétence établie par faisceau est une seconde lecture, avec la journée de ses traces, hors du soleil', () => {
+    const r = importTwin9Run(run(), { now: '2026-10-23T10:00:00Z' })
+    expect(r.variants.map((v) => [v.date, v.summary.verdicts.map((x) => x.code)])).toEqual([['2026-01-05', ['1.01', '1.05']]])
+    expect(r.report.map((x) => x.code)).toContain('twin9-journee-dupliquee')
+    expect(r.readings.map((x) => [x.id, Object.keys(x.codes)])).toEqual([['twin9:8:second-ressort', ['1.07']]])
+    render(<SecondReadings dataset={{ days: [], readings: r.readings }} code="1.07" getDetail={() => undefined} getRunDetail={() => undefined} ensureRunDetail={() => {}} />)
+    expect(screen.getByRole('region', { name: 'Seconde lecture' }).querySelector('summary').textContent).toBe(
+      'Jury du second ressort de Twin9 : établie par faisceau (second ressort) · confiance 0,55 · 0 preuve, 1 indice · traces du 5 janv. 2026',
+    )
   })
 })

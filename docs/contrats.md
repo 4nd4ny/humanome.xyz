@@ -393,7 +393,15 @@ par `scripts/extract-referentiel.mjs`.
     (importé seul, avant) n'est pas joint une seconde fois. Les calculs
     (soleil, heatmap, comparaison) ne lisent pas `readings`. Une archive
     réimportée joint ses lectures par identifiant, sans doublon ; celles qui
-    sont déjà là gagnent.
+    sont déjà là gagnent. Depuis le sprint 4 (C4, 2026-10-23, journal D-73),
+    le **second ressort d'un run Twin9** est aussi une seconde lecture :
+    `source: "twin9"`, `id` « twin9:<run>:second-ressort », ses seules
+    compétences « établie par faisceau (second ressort) » (`rawStatus`), et
+    par compétence `dates`, les journées de ses traces (tableau de dates,
+    facultatif) ; `poles` vide ; ses délibérations sous « <id>|<code> »
+    (décision du président, jury, débat, pièces, traces `{pieceId, role,
+    pieceType, extract, date}`). Elle se joint toujours, même au jeu qui
+    reçoit ses journées dans le même lot : elle n'est d'aucune journée.
 
 13. **Archive de compte 1.2.0 : les analyses approfondies Twin9 (T10,
     ADR-011 §5).** `archive-export` gagne une seconde propriété OPTIONNELLE,
@@ -1438,7 +1446,20 @@ une suivante le relève.
   `provenance.configurationRef`). Depuis S3-3, le document porte
   `traces_conservees` des résultats (nul quand ils ne le disent pas), et
   l'interface garde le bloc `stigmergie` de chaque carte du jour par liste
-  blanche (§4, point 16).
+  blanche (§4, point 16). Depuis le sprint 4 (C3, C4 ; journal de la
+  cartographie D-73) : deux cartes du jour de même `date` (une seconde
+  entrée du même jour, que le moteur range sous `<date>_b`) font une
+  journée — à code égal, le verdict au statut le plus fort (établi, renvoyé,
+  non établi ; puis la confiance, puis la première carte) l'emporte avec son
+  dossier et reçoit les traces de l'autre, sans doublon ; leurs traces de
+  la stigmergie sont réunies, conservées si toutes le sont — et le rapport
+  d'import le dit (`twin9-journee-dupliquee`, avertissement) ; une
+  compétence « établie par faisceau (second ressort) » de la fusion entre
+  en seconde lecture (§4, point 12), et aucune journée, carte du jour ou
+  journée sans carte que donne la fusion, ne la porte. Dans la fusion
+  (`twin9ToMergeDocument`), une attestation du second ressort
+  (`etage: "faisceau"`) ne sert plus à dater un `jour_index` : son repli 0
+  déplaçait la première journée, sa date « - » en ouvrait une.
 
 ### 8.5 Coûts, plafonds, relance, purge et export (T10)
 

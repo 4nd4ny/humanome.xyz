@@ -161,6 +161,31 @@ describe('twin9ToMergeDocument (règles fines)', () => {
     expect(tete.parFeuille[0].renvois).toBe(0)
   })
 
+  // Sprint 4, C4b : le jour_index de repli (0) et la date « - » (trace sans date) d'une attestation du
+  // second ressort ne déplacent ni n'inventent une journée ; elle compte à sa date, comme dans la fusion du moteur.
+  it('le second ressort (étage « faisceau ») : ni journée « - », ni première journée déplacée ; l’attestation compte à sa date', () => {
+    const carto = base()
+    carto.competences = {
+      '1.03': {
+        attestations: [
+          { jour_index: 0, journee: '-', date: '-', etage: 'faisceau', confiance: 0.6, score_preuves: 0, score_indices: 1 },
+          { jour_index: 0, journee: '2026-01-07', date: '2026-01-07', etage: 'faisceau', confiance: 0.6, score_preuves: 0, score_indices: 1 },
+        ],
+        signaux: [],
+      },
+      '1.01': {
+        attestations: [{ jour_index: 0, date: '2026-01-05', confiance: 0.8, score_preuves: 1, score_indices: 0 }],
+        signaux: [],
+      },
+    }
+    const doc = twin9ToMergeDocument(carto, REFERENTIEL)
+    // avant : jour 0 → « - », la seule feuille, et 1.01 perdue
+    expect(doc.feuilles.map((f) => f.date)).toEqual(['2026-01-05', '2026-01-07'])
+    const tete = doc.domains.find((d) => d.id.startsWith('TÊTE'))
+    expect(tete.competences.map((c) => c.code)).toEqual(['1.01', '1.03'])
+    expect(tete.parFeuille.map((f) => f.etablies)).toEqual([1, 1])
+  })
+
   it('échoue en français sans attestation datée', () => {
     const carto = base()
     carto.competences = {

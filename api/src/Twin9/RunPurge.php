@@ -40,17 +40,45 @@ final class RunPurge
     }
 
     /**
-     * Before the account goes: its batches submitted with its own key,
-     * cancelled and deleted at Anthropic while the key is there, until $fin.
+     * Before the account goes, or its key (UserKeysPurge): its batches
+     * submitted with its own key, cancelled and deleted at Anthropic while
+     * the key is there, until $fin. Each one gone from Anthropic — deleted,
+     * or no longer known there — is marked so (`supprime`), its calls given
+     * back: what is left is still there, for restants() to say.
      */
     public function lotsPersonnels(int $userId, float $fin): void
     {
-        $lots = $this->lots($userId, 'personnelle');
+        $lots = $this->lignes($userId, 'personnelle');
         $master = KeyVault::masterKeyFromEnv();
         if ($lots === [] || $master === null) {
             return;
         }
-        $this->annulerEtEffacer($lots, (new KeyVault($this->pdo, $master))->reveal($userId, 'anthropic'), $fin);
+        $partis = $this->annulerEtEffacer(array_column($lots, 'lot'),
+            (new KeyVault($this->pdo, $master))->reveal($userId, 'anthropic'), $fin);
+        foreach ($lots as $lot) {
+            if (\in_array($lot['lot'], $partis, true)) {
+                // its calls given back as CallJournal::rendreLeLot() does — without the engine, which neither the
+                // account's route nor the purge script loads
+                $this->pdo->prepare(
+                    'UPDATE twin9_appels SET statut = "attente", tentatives = GREATEST(tentatives, 1) - 1,
+                            reprise_at = NOW(3), lot_id = NULL
+                      WHERE run_id = ? AND lot_id = ? AND statut = "envoye"'
+                )->execute([$lot['run_id'], $lot['id']]);
+                $this->pdo->prepare('UPDATE twin9_lots SET statut = "supprime", fini_at = COALESCE(fini_at, NOW(3))
+                                      WHERE id = ?')->execute([$lot['id']]);
+            }
+        }
+    }
+
+    /**
+     * How many batches of an account, submitted with its own key, may still
+     * be at Anthropic (known by their id, not marked gone): its key stays as
+     * long as there is one, the only key that can delete it (ADR-013 §8,
+     * step 4; UserKeysPurge).
+     */
+    public function restants(int $userId): int
+    {
+        return \count($this->lignes($userId, 'personnelle'));
     }
 
     /**
@@ -98,20 +126,31 @@ final class RunPurge
             fn (string $f): bool => EcoleCles::retirer($this->pdo, $ecoleId, $f)));
     }
 
-    /** @param list<string> $lots Anthropic ids, cancelled then deleted with $cle, until $fin */
-    private function annulerEtEffacer(array $lots, ?string $cle, float $fin): void
+    /**
+     * Anthropic ids, cancelled then deleted with $cle, until $fin.
+     *
+     * @param list<string> $lots
+     * @return list<string> those gone from Anthropic: deleted, or no longer known there (404, erased 29 days after
+     *                      their creation at the latest) — never one unreachable, still cancelling, or left for want
+     *                      of time
+     */
+    private function annulerEtEffacer(array $lots, ?string $cle, float $fin): array
     {
         if ($cle === null) {
-            return;
+            return [];
         }
         $api = $this->api ?? new AnthropicBatches(LlmRuntime::httpClient());
+        $partis = [];
         foreach ($lots as $lot) {
             if (microtime(true) >= $fin) {
-                return;
+                break;
             }
             $etat = $api->etat($cle, $lot, $fin);
             if (!$etat['ok']) {
-                continue; // gone, or unreachable
+                if (($etat['http'] ?? null) === 404) {
+                    $partis[] = $lot; // gone already
+                }
+                continue; // else unreachable: still there for what humanome knows
             }
             if (($etat['lot']['processing_status'] ?? '') !== 'ended') {
                 $api->annuler($cle, $lot, $fin);
@@ -120,8 +159,12 @@ final class RunPurge
                     continue;
                 }
             }
-            $api->supprimer($cle, $lot, $fin);
+            if ($api->supprimer($cle, $lot, $fin)['ok']) {
+                $partis[] = $lot;
+            }
         }
+
+        return $partis;
     }
 
     /**
@@ -139,15 +182,16 @@ final class RunPurge
         )->execute([$userId]);
     }
 
-    /** @return list<string> the Anthropic ids of an account's batches still there, submitted with this key */
-    private function lots(int $userId, string $cle): array
+    /** @return list<array{id: int, run_id: int, lot: string}> an account's batches still there, submitted with this key */
+    private function lignes(int $userId, string $cle): array
     {
         $stmt = $this->pdo->prepare(
-            'SELECT l.lot FROM twin9_lots l JOIN twin9_runs r ON r.id = l.run_id
+            'SELECT l.id, l.run_id, l.lot FROM twin9_lots l JOIN twin9_runs r ON r.id = l.run_id
               WHERE r.user_id = ? AND l.cle = ? AND l.lot IS NOT NULL AND l.statut <> "supprime" ORDER BY l.id'
         );
         $stmt->execute([$userId, $cle]);
 
-        return array_map('strval', $stmt->fetchAll(PDO::FETCH_COLUMN));
+        return array_map(static fn (array $l): array => ['id' => (int) $l['id'], 'run_id' => (int) $l['run_id'],
+                                                         'lot' => (string) $l['lot']], $stmt->fetchAll());
     }
 }

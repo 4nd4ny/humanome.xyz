@@ -13,6 +13,7 @@ use Humanome\MigrationRunner;
 use Humanome\Tests\StoredKeys;
 use Humanome\Tests\TestDb;
 use Humanome\Tests\Twin9\FakeBatchApi;
+use Humanome\Twin9\BatchApi;
 use Humanome\Twin9\RunRepository;
 use PDO;
 use PHPUnit\Framework\Attributes\TestDox;
@@ -338,6 +339,104 @@ final class UcCpt04GererClesApiTest extends TestCase
         // nothing left to do: a second purge is a no-op
         self::assertSame(['comptes' => 0, 'cles' => 0, 'reportes' => 1],
             (new UserKeysPurge(self::$pdo, new MemoryMailer(), $api))->purge(microtime(true) + 10));
+    }
+
+    #[TestDox('UC-CPT-04-U21 — UserKeysPurge::purge garde la clé d’un compte dont un lot reste chez Anthropic (injoignable, ou une annulation pas encore finie) : reporté, la clé sert à l’effacer la fois suivante ; un lot qu’Anthropic ne connaît plus (effacé après 29 jours) ne retient rien')]
+    public function testU21AKeyStaysWhileItsBatchesAreStillAtAnthropic(): void
+    {
+        TestDb::setEnv('SODIUM_MASTER_KEY', self::MASTER_HEX);
+        $ancien = (string) self::$pdo->query('SELECT NOW() - INTERVAL 31 DAY')->fetchColumn();
+        $fake = new FakeBatchApi(static fn (array $r): array => FakeBatchApi::message('vu'), regards: 5);
+        // Anthropic unreachable for one batch, a cancellation that takes its time for another
+        $api = new class($fake) implements BatchApi {
+            /** @var list<string> */
+            public array $injoignables = [];
+
+            /** @var list<string> */
+            public array $lents = [];
+
+            public function __construct(private readonly FakeBatchApi $fake)
+            {
+            }
+
+            public function verifier(string $cle, array $reglage, float $fin): array
+            {
+                return $this->fake->verifier($cle, $reglage, $fin);
+            }
+
+            public function creer(string $cle, string $corps, float $fin): array
+            {
+                return $this->fake->creer($cle, $corps, $fin);
+            }
+
+            public function etat(string $cle, string $id, float $fin): array
+            {
+                if (\in_array($id, $this->injoignables, true)) {
+                    return ['ok' => false, 'http' => 503, 'erreur' => 'erreur du fournisseur (HTTP 503)'];
+                }
+                if (\in_array($id, $this->lents, true) && \in_array($id, $this->fake->annules, true)) {
+                    return ['ok' => true, 'lot' => ['id' => $id, 'processing_status' => 'canceling']];
+                }
+
+                return $this->fake->etat($cle, $id, $fin);
+            }
+
+            public function resultats(string $cle, string $id, float $fin): array
+            {
+                return $this->fake->resultats($cle, $id, $fin);
+            }
+
+            public function annuler(string $cle, string $id, float $fin): array
+            {
+                return $this->fake->annuler($cle, $id, $fin);
+            }
+
+            public function supprimer(string $cle, string $id, float $fin): array
+            {
+                return $this->fake->supprimer($cle, $id, $fin);
+            }
+
+            public function lister(string $cle, float $depuis, float $fin): array
+            {
+                return $this->fake->lister($cle, $depuis, $fin);
+            }
+        };
+        $comptes = [];
+        $lots = [];
+        foreach (['ada' => 'injoignable', 'bob' => 'lent', 'cleo' => 'oublie'] as $nom => $cas) {
+            $userId = self::newUser($nom . '@example.org');
+            self::legacy($userId, 'anthropic', 'sk-ant-' . $nom . '-fictive', $ancien);
+            $corps = '{"requests":[{"custom_id":"x","params":{"model":"claude-haiku-5-5","max_tokens":1,'
+                . '"messages":[{"role":"user","content":"?"}]}}]}';
+            // Cléo's batch, Anthropic no longer knows (erased 29 days after its creation, at the latest)
+            $lot = $cas === 'oublie' ? 'msgbatch_oublie_u21' : $fake->creer('sk-ant-' . $nom . '-fictive', $corps,
+                microtime(true) + 5)['lot']['id'];
+            self::$pdo->prepare('INSERT INTO twin9_lots (run_id, lot, statut, cle, requetes, octets, soumis_at)
+                                 VALUES (?, ?, "en_cours", "personnelle", 1, 10, NOW(3))')
+                ->execute([self::runSur($userId, 'personnelle', 'annule'), $lot]);
+            $comptes[$nom] = $userId;
+            $lots[$nom] = $lot;
+        }
+        $api->injoignables[] = $lots['ada'];
+        $api->lents[] = $lots['bob'];
+
+        $resultat = (new UserKeysPurge(self::$pdo, new MemoryMailer(), $api))->purge(microtime(true) + 10);
+
+        self::assertSame(['comptes' => 1, 'cles' => 1, 'reportes' => 2], $resultat);
+        $restantes = self::$pdo->query('SELECT user_id FROM user_api_keys ORDER BY user_id')->fetchAll(PDO::FETCH_COLUMN);
+        self::assertSame([$comptes['ada'], $comptes['bob']], array_map('intval', $restantes),
+            'leurs clés restent : elles seules peuvent encore effacer leurs lots');
+        self::assertSame(['ada' => 'en_cours', 'bob' => 'en_cours', 'cleo' => 'supprime'], array_map(
+            static fn (string $lot): string => (string) self::$pdo->query('SELECT statut FROM twin9_lots WHERE lot = '
+                . self::$pdo->quote($lot))->fetchColumn(), $lots));
+
+        // later: Anthropic answers, Bob's cancellation has ended — both batches deleted, then the keys
+        $api->injoignables = [];
+        $api->lents = [];
+        self::assertSame(['comptes' => 2, 'cles' => 2, 'reportes' => 0],
+            (new UserKeysPurge(self::$pdo, new MemoryMailer(), $api))->purge(microtime(true) + 10));
+        self::assertSame([], $fake->restants(), 'effacés chez Anthropic avant leurs clés');
+        self::assertSame(0, (int) self::$pdo->query('SELECT COUNT(*) FROM user_api_keys')->fetchColumn());
     }
 
     #[TestDox('UC-CPT-04-U19 — le script de purge n’est jamais lancé automatiquement : ni le worker, ni la maintenance, ni une route, ni le déploiement, ni le cron, ni la CI ne le nomment ; inclus, il ne fait rien')]

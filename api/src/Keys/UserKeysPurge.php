@@ -34,8 +34,10 @@ use PDO;
  *     an account that has no run in progress on its personal key (such a run
  *     ends on it, §8 step 3): its batches submitted with that key are first
  *     cancelled, then deleted at Anthropic while the key is there (RunPurge::
- *     lotsPersonnels(), §8 step 4). One audit event per account, naming its
- *     providers, never a key.
+ *     lotsPersonnels(), §8 step 4); one that may still be there (Anthropic
+ *     unreachable, a cancellation not ended yet) puts the account off, its
+ *     key kept to delete it the next time. One audit event per account,
+ *     naming its providers, never a key.
  */
 final class UserKeysPurge
 {
@@ -134,7 +136,7 @@ final class UserKeysPurge
     /**
      * Deletes the keys notified DELAI_JOURS days ago at least, account by
      * account, until $fin; an account with a run in progress on its personal
-     * key is put off.
+     * key, or a batch of it that may still be at Anthropic, is put off.
      *
      * @param float $fin when it must stop at the latest (microtime): what is left waits for the next time
      * @return array{comptes: int, cles: int, reportes: int}
@@ -153,8 +155,15 @@ final class UserKeysPurge
                 $reportes++;
                 continue;
             }
-            // its batches submitted with its key, cancelled then deleted at Anthropic while the key is there
-            (new RunPurge($this->pdo, $this->api))->lotsPersonnels($userId, $fin);
+            // its batches submitted with its key, cancelled then deleted at Anthropic while the key is there; one still
+            // there — Anthropic unreachable, a cancellation not ended yet, no time left — keeps the key, the only one
+            // that can delete it, for the next time (ADR-013 §8, step 4)
+            $lots = new RunPurge($this->pdo, $this->api);
+            $lots->lotsPersonnels($userId, $fin);
+            if ($lots->restants($userId) > 0) {
+                $reportes++;
+                continue;
+            }
             $stmt = $this->pdo->prepare(
                 'DELETE FROM user_api_keys WHERE user_id = ? AND avis_purge_at IS NOT NULL
                     AND avis_purge_at <= NOW() - INTERVAL ' . self::DELAI_JOURS . ' DAY'

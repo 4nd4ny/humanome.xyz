@@ -45,6 +45,69 @@ autre fournisseur qu'Anthropic, que l'administrateur ouvre (entrée du 2026-10-2
 
 ## Fait
 
+- 2026-10-22 — **Phase D : corrections de la revue (même branche `feat/phase-d-twin9`, non
+  poussée, rien déployé).** Treize constats confirmés, dont deux en double (la graine, « non
+  conservées ») : huit commits `fix:`, chacun avec le test qui échouait avant lui, un `docs:`, un
+  `test(e2e):` et cette entrée. `Twin_v9` (t9-s2, a1d84bf) n'est pas modifié ; aucun appel LLM réel.
+  - `e92b0e5` — **un tableau de traces sans sa fermeture n'emporte plus les journées qui le
+    suivent** (`lib/twin9/marques.js`) : une ouverture orpheline restait appariée à la fermeture
+    du tableau d'une journée suivante, et tout le texte d'entre eux partait, en silence, de la
+    fiche, des archives restaurées et du texte envoyé à Twin9. Un tableau ne contient plus
+    d'autre ouverture ni fermeture.
+  - `f91adc1` — **la graine de la stigmergie est bornée** à ±(2^53 − 1) : `1e21`, admis comme
+    entier par le schéma, arrivait en flottant au moteur (`TypeError` : un 500 à l'aperçu, ou un
+    run en échec). Le schéma du profil n'est validé qu'en PHP : rien à régénérer.
+  - `eb16bd1` — **T0 : l'aperçu nomme les journées que Twin9 ne lit plus** dans le texte envoyé
+    (un `_b` réuni, un « Retour sur la séance du … », une date corrigée dans la fiche) et que la
+    mémoire de la carte garde : `disparues` (`portfolioPourTwin9`), `memoire` (l'aperçu de
+    l'API) ; la carte étant additive, sa fusion les compte encore.
+  - `3c47f80` — **T0, une seule journée dans l'interface** : le texte part toujours tel quel, et
+    l'aperçu dit les journées que Twin9 y lit à la place (`autres`, `nonLues`).
+  - `d51cb1c` — **« non conservées » n'accuse plus une panne** : la modale, le rapport d'import,
+    les schémas et la documentation nomment les trois causes (une panne, un texte modifié
+    depuis, une analyse trop ancienne), sans annoncer que l'analyse suivante la refera.
+  - `a5cb47e` — **un bout seul d'une trace reste orange et souligné** (la couleur de la nature
+    ne vaut que pour un passage retrouvé en entier ; « écartée » partielle, barrée et
+    pointillée) ; « forte » passe au rouge (`#fecaca`), loin de l'orange du partiel. Un test
+    calcule la cascade sur `carto.css`.
+  - `625e6d3` — **C3 : les traces sans identifiant de deux cartes réunies restent toutes.**
+  - `cd44bc2` — **docs** : aucune trace n'entre par le *texte* d'un fichier ; les traces d'un jeu
+    sont une projection d'affichage, qu'une archive ou un `twin9-run` déposé à la main reprend
+    tel quel (contrats §4 point 16, §7.4 ; UC-APP-06 RG10, UC-APP-01, UC-APP-10). Sans test :
+    documentation seule.
+  - `fb3a984` — **le menu « Référentiel » ne propose plus deux fois celui du profil** : la
+    seconde option lisait sa dernière version publiée au lieu de celle que le profil fige, sans
+    garde du jury ; le libellé dit la version figée.
+  - `671c65a` — **l'e2e du lot C** (`web/e2e/twin9-referentiels.e2e.js`) : le profil v9.8,
+    « Fictif lettré » choisi au lancement, sans créer de profil ; son lancement, par lots, est
+    retenu par le scénario (le mock ne simule pas les lots : une requête partirait chez
+    Anthropic) et son corps vérifié ; puis un profil RESPIRE direct, le référentiel lettré
+    choisi au lancement, va au bout (pôles A à E, carte et attestation `fictif-lettre`).
+  - **Vérifié** (PHP 8.5.12, MySQL 8.0 locaux, base `humanome_test_d`, `TWIN_V9_DIR` = t9-s2,
+    sur l'arbre de `671c65a`) : PHP `Tests: 1899, Assertions: 21071`, les 2 échecs connus de PHP
+    8.5 seuls (`AuthActivationTest::testExpiredCodeIsRejected`,
+    `UcCpt02…::testU17SessionCookieAttributes`), 1 dépréciation ; `PariteTest`,
+    `EmpreintesFigeesTest`, `RejeuTest`, `VoieMixteTest`, `ProfilTest`, `MoteurReglagesTest` :
+    146 tests verts ; front 3 001 tests verts (274 fichiers, 9 sautés) ; moteur 592 tests, 579
+    verts, 8 sautés et les 5 échecs locaux connus d'UC-PRO-08 (F19 à F22, F25) ; `npm run build`
+    puis `npm run test:dist` vert ; `check-publiable` OK ; catalogue des cas recompté, inchangé
+    (1 036 U, 1 193 F ; UC-APP-10 : 24 U, 28 F).
+  - **Non vérifié** : PHP 8.2 (la CI) ; un vrai navigateur (jsdom seulement : la nouvelle teinte
+    de « forte » et le partiel des traces ne sont vus qu'au calcul de la cascade) ; les e2e,
+    dont le nouveau scénario du lot C, écrits mais non lancés (pas d'API locale sur :8080) ; rien
+    n'est déployé.
+  - **À décider (Christian)** : (1) les journées que Twin9 ne lit plus restent dans la mémoire de
+    la carte, et sa fusion les compte encore (un même passage dans deux journées peut atteindre
+    le seuil du faisceau) : les retirer de la carte au lancement (`journees/<id>`,
+    `stigmergie/<id>`), ouvrir une carte neuve, ou s'en tenir à l'aperçu qui le dit ? (2) une
+    seule journée dans l'interface, des titres datés d'autres jours que Twin9 lit : neutraliser
+    ces titres (Twin9 ne daterait alors rien), ou le dire seulement, comme aujourd'hui ? (3) les
+    traces d'un jeu venues d'une archive ou d'un `twin9-run` déposé à la main : ramener
+    `conservee` à « non confirmées » (un drapeau de provenance dans la chaîne d'import), ou les
+    garder telles qu'écrites ? (4) distinguer, côté serveur, une panne d'un journal remis à
+    zéro (le journal des appels, tant qu'il existe) relève du chantier « une panne n'est jamais
+    un verdict ».
+
 - 2026-10-22 — **Phase D : l'algorithme Twin9 et ses entrées, en une seule version, avant la
   campagne payante (branche `feat/phase-d-twin9`, depuis `main` 6d44046 ; non poussée, rien
   déployé).** Plan d'ensemble (`ordre.md` §2, phase D, hors dépôt) ; designs des sprints 3, 4, 1 (lot 2) et 5 (lot C).

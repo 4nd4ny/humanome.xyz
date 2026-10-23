@@ -18,6 +18,13 @@ prompts publié et le référentiel publié à cartographier (RESPIRE par défau
 en direct (jobs par statut, coût cumulé, erreurs) et peut arrêter le run à
 tout moment.
 
+Le sprint 6 (lot S6b, ADR-013 §4) ne change pas les runs de masse : ils
+gardent le plafond, le compteur et la facturation à l'usage de leur
+configuration (UC-ETA-02), et non le crédit prépayé de l'école ni sa surtaxe,
+qui paient les usages de ses élèves (UC-ETA-05). Leur bascule vers le crédit
+prépayé de l'école, × (1 + surtaxe), touche le budget du worker de masse et
+fera un lot à part.
+
 ## Déclencheur
 
 L'établissement ouvre la page d'une cohorte (section « Lancer un run de

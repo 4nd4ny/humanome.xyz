@@ -64,11 +64,11 @@ final class UcAdm05SuperviserTwin9Test extends TestCase
     public function testU08PartialUpdateIsMergedAndPersisted(): void
     {
         self::assertNull(self::stored(), 'aucun réglage stocké : défauts');
-        $next = self::config()->update(['marge' => 1.5, 'twin9_cle_perso_ouverte' => true]);
+        $next = self::config()->update(['marge' => 1.5, 'runs_par_tick' => 4]);
         self::assertSame(1.5, $next['marge']);
         self::assertSame(1.1, $next['marge_twin6'], 'clé non fournie conservée');
         self::assertSame(1.5, self::config()->marge());
-        self::assertTrue(self::config()->clePersoOuverte());
+        self::assertSame(4, self::config()->runsParTick());
         self::assertSame(1.5, self::stored()['marge']);
         // La configuration effective COMPLÈTE est persistée, défauts compris : une
         // évolution ultérieure de defaults() ne s'appliquera plus à ces clés.
@@ -84,7 +84,7 @@ final class UcAdm05SuperviserTwin9Test extends TestCase
         self::assertSame(1.5, self::config()->marge(), 'rien écrit');
     }
 
-    #[TestDox('UC-ADM-05-U09 — bornes : contributions 1 à 5, packs 1 à 500 USD avec libellé, prix > 0, booléen ; un modèle ne porte que ses prix ; les réglages retirés le 2026-10-20 (interrupteur, rythme, pipeline) sont des clés inconnues')]
+    #[TestDox('UC-ADM-05-U09 — bornes : contributions 1 à 5, packs 1 à 500 USD avec libellé, prix > 0 ; un modèle ne porte que ses prix ; les réglages retirés le 2026-10-20 (interrupteur, rythme, pipeline) et la promotion de la clé personnelle (ADR-013) sont des clés inconnues')]
     public function testU09Bounds(): void
     {
         foreach ([
@@ -104,7 +104,7 @@ final class UcAdm05SuperviserTwin9Test extends TestCase
             [['marge' => 5.01], 'Marge hors bornes (entre 1 et 5)'],
             [['marge' => '1.5'], 'Marge invalide : nombre attendu'],
             [['marge_twin6' => 6], 'Marge Twin6 hors bornes (entre 1 et 5)'],
-            [['twin9_cle_perso_ouverte' => 1], 'Champ twin9_cle_perso_ouverte invalide : booléen attendu'],
+            [['twin9_cle_perso_ouverte' => true], 'Clé de configuration inconnue : twin9_cle_perso_ouverte'],
             [['packs' => []], 'Packs invalides : liste non vide attendue'],
             [['packs' => ['a' => ['montant_usd' => 10, 'libelle' => 'x']]], 'Packs invalides : liste non vide attendue'],
             [['packs' => [['montant_usd' => 10, 'libelle' => '  ']]], 'Pack invalide : libellé requis'],
@@ -144,7 +144,7 @@ final class UcAdm05SuperviserTwin9Test extends TestCase
         self::assertSame([10, 20, 50, 100, 200, 500], array_column(Twin9Config::defaults()['packs'], 'montant_usd'));
     }
 
-    #[TestDox('UC-ADM-05-U11 — lecture effective : défauts complétés, clés stockées inconnues ignorées, dont les réglages retirés et les étages d’un modèle ; vue publique sans marge, prix catalogue ni promotion')]
+    #[TestDox('UC-ADM-05-U11 — lecture effective : défauts complétés, clés stockées inconnues ignorées, dont les réglages retirés (la promotion de la clé personnelle comprise, ADR-013) et les étages d’un modèle ; vue publique sans marge, prix catalogue ni promotion')]
     public function testU11EffectiveReadAndPublicView(): void
     {
         (new SettingsRepository(self::$pdo))->set(Twin9Config::SETTING_KEY, [
@@ -155,10 +155,13 @@ final class UcAdm05SuperviserTwin9Test extends TestCase
             'appels_par_minute' => 30,
             'pipeline' => ['jury' => ['taille' => 5]],
             'modeles' => ['claude-sonnet-5' => ['etages' => ['tribunal'], 'prix_usd_mtok' => [3, 15]]],
+            // et une d'avant l'ADR-013 (2026-10-22)
+            'twin9_cle_perso_ouverte' => true,
         ]);
         $read = self::config()->read();
         self::assertSame(1.3, $read['marge_twin6']);
         self::assertArrayNotHasKey('cle_obsolete', $read);
+        self::assertArrayNotHasKey('twin9_cle_perso_ouverte', $read);
         self::assertSame(array_keys(Twin9Config::defaults()), array_keys($read));
         self::assertSame(['claude-sonnet-5' => ['prix_usd_mtok' => [3, 15]]], $read['modeles']);
         // …et la prochaine mise à jour enregistre la configuration sans eux (la

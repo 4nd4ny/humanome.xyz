@@ -21,8 +21,16 @@ const META = {
   referentiel: [],
   paypalConfigured: true,
   solde_microusd: 4_500_000,
-  cle_privee_disponible: false,
+  // le compte d'une école : seul un tel compte achète (ADR-013 §2 e)
+  peut_acheter: true,
+  achat_pourquoi: null,
 }
+
+/** Ce que /api/twin9/meta dit à un compte qui n'est pas une école (api/src/Etablissement/Ecole.php). */
+const POURQUOI =
+  'Pour ne pas avoir à vérifier l’âge des apprenants, seules les écoles achètent des crédits : utilisez votre ' +
+  'propre clé, dans votre navigateur, ou le crédit de votre école. Votre solde restant reste utilisable jusqu’à ' +
+  'épuisement, et remboursable sur demande.'
 
 const CREDIT = {
   solde_microusd: 4_500_000,
@@ -198,30 +206,25 @@ describe('CreditView — recharge PayPal', () => {
     expect(JSON.parse(call[1].body)).toEqual({ pack_index: 0 })
   })
 
-  it('affiche « recharge indisponible » proprement si PayPal non configuré', async () => {
+  it('affiche « recharge indisponible » proprement si PayPal non configuré, sans plus proposer de clé gardée', async () => {
     renderCredit({
-      overrides: { 'twin9/meta': json(200, { ...META, paypalConfigured: false, cle_privee_disponible: true }) },
+      overrides: { 'twin9/meta': json(200, { ...META, paypalConfigured: false }) },
     })
     const indispo = await screen.findByTestId('recharge-indispo')
-    expect(indispo.textContent).toContain('indisponible')
-    expect(indispo.textContent).toContain('clé Anthropic privée') // clé privée reste utilisable
+    expect(indispo.textContent).toBe('La recharge par carte (PayPal) est indisponible pour le moment.')
     expect(screen.queryByRole('button', { name: 'Recharger' })).toBe(null)
   })
 
-  it('la clé Anthropic privée ne vaut que pour un profil qui n’appelle qu’Anthropic (ADR-012 §5)', async () => {
+  it('un compte qui n’est pas une école ne voit aucun pack : la page dit pourquoi (ADR-013, R2), son solde reste affiché et remboursable', async () => {
     renderCredit({
-      overrides: { 'twin9/meta': json(200, { ...META, paypalConfigured: false, cle_privee_disponible: true }) },
+      overrides: { 'twin9/meta': json(200, { ...META, peut_acheter: false, achat_pourquoi: POURQUOI }) },
     })
-    const enregistree = (await screen.findByTestId('recharge-indispo')).textContent
-    expect(enregistree).toContain('pour un profil qui n’appelle qu’Anthropic')
-    expect(enregistree).toContain('un profil qui appelle un autre fournisseur part avec les clés de la plateforme et débite le crédit')
-    cleanup()
-
-    renderCredit({
-      overrides: { 'twin9/meta': json(200, { ...META, paypalConfigured: false, cle_privee_disponible: false }) },
-    })
-    const proposee = (await screen.findByTestId('recharge-indispo')).textContent
-    expect(proposee).toContain('aucun débit de crédit pour un profil qui n’appelle qu’Anthropic')
+    expect((await screen.findByTestId('achat-ecoles')).textContent).toBe(POURQUOI)
+    expect(screen.queryByText('Pack découverte — 10 $')).toBe(null)
+    expect(screen.queryByRole('button', { name: 'Recharger' })).toBe(null)
+    expect(screen.getByTestId('credit-solde').textContent).toContain('4,50')
+    fireEvent.click(screen.getByRole('button', { name: 'Se faire rembourser le solde restant' }))
+    expect(screen.getByText(/Seules les écoles rechargent\./)).toBeDefined()
   })
 })
 

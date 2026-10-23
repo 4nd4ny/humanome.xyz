@@ -15,11 +15,18 @@ import { useCallback, useEffect, useMemo, useState } from 'react'
 import { apiFetch } from '../../api/client.js'
 import { createPortfolioStore } from '../../lib/portfolio-store.js'
 
-/** Texte RGPD du consentement — affiché tel quel AVANT le bouton (contrat M8). */
+/**
+ * Texte RGPD du consentement — affiché tel quel AVANT le bouton (contrat M8). Depuis l'ADR-013 (§7, sprint 6,
+ * lot S6b), il dit aussi que l'école paie les usages payants de l'élève et en voit le montant, jamais le contenu
+ * sur humanome — et que, sur sa propre clé Anthropic, sa Console garde les résultats des appels partis par lots.
+ */
 export const CONSENT_TEXT =
   'En rejoignant cette cohorte, l’établissement verra les cartographies produites dans ce cadre ' +
   '(et uniquement celles-là). Vos portfolios restent dans votre navigateur tant que vous ne les ' +
-  'déposez pas explicitement dans la cohorte. Vous pouvez quitter la cohorte à tout moment : ' +
+  'déposez pas explicitement dans la cohorte. L’établissement peut payer vos analyses payantes : il ' +
+  'en voit alors le montant, jamais le contenu sur humanome ; s’il les paie avec sa propre clé Anthropic, les ' +
+  'résultats des appels partis par lots restent lisibles dans sa Console Anthropic. ' +
+  'Vous pouvez quitter la cohorte à tout moment : ' +
   'cela retire votre consentement pour la suite ; les cartographies déjà produites restent à vous.'
 
 /** @param {string} iso @returns {string} date française courte ('—' si vide) */

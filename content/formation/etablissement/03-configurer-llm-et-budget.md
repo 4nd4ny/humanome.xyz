@@ -79,6 +79,33 @@ Autrement dit, vous ne relirez jamais une clé saisie : notez-la ailleurs si vou
 avez besoin. Ce comportement est volontaire — une clé qu'on ne peut pas relire est
 une clé qu'on ne peut pas exfiltrer par l'écran.
 
+Depuis le 22 octobre 2026, l'école est le **seul** compte dont humanome garde une
+clé sur ses serveurs : les clés de vos apprenants restent dans leur navigateur.
+C'est aussi le seul compte qui achète des crédits (« Mon compte », « Crédit »),
+pour les analyses de ses apprenants.
+
+La section **« Mon école »**, en tête de votre espace, règle ce que vous payez
+pour vos apprenants — les membres de vos cohortes —, hors runs de masse :
+
+- **le plafond par élève**, en dollars par mois : ce que chacun peut engager à
+  vos frais. Il vaut 0 tant que vous ne l'avez pas réglé : vos apprenants ne
+  peuvent alors rien lancer de payant à vos frais ;
+- **votre surtaxe**, de 3,5 % (les frais de PayPal et de Stripe) à 10 %, à votre
+  choix : sans clé, leurs analyses approfondies et leurs cartographies ouvertes
+  sur crédits sont débitées de votre crédit au coût réel, plus cette surtaxe ;
+- **votre clé Anthropic** : avec elle, leurs analyses partent sur votre compte
+  Anthropic, que vous payez directement, la plateforme rien. Elle est chiffrée,
+  jamais réaffichée, et se retire en deux clics. Vous pouvez relire, dans votre
+  Console Anthropic, les résultats des appels partis par lots avec elle ; vos
+  apprenants en sont prévenus.
+
+La même section liste vos apprenants et ce que chacun a engagé ce mois-ci et en
+tout : des montants, jamais le contenu de leurs analyses sur humanome (seule
+votre Console Anthropic, avec votre clé, garde les résultats des appels partis
+par lots). Un apprenant qui quitte vos cohortes retire son consentement : il
+n'est plus nommé, ses montants ne comptent plus qu'avec ceux des autres
+apprenants partis.
+
 ## 4. Fixer le plafond de budget
 
 Sous « Plafond de dépense (USD) », saisissez un montant en dollars (0 ou plus).

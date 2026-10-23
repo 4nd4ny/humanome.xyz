@@ -17,6 +17,13 @@ puis de suivre, membre par membre, où en est chacun (consentement, dépôt du
 portfolio, avancement des traitements) — sans jamais voir le contenu déposé —
 et de supprimer la cohorte quand elle n'a plus lieu d'être.
 
+Depuis le sprint 6 (lot S6b, ADR-013 §3), les cohortes font aussi le
+**rattachement** des apprenants à leur école : les membres d'une cohorte sont
+les élèves dont l'école paie les usages payants (analyse approfondie,
+cartographie ouverte sur crédits), sous le plafond par élève qu'elle règle, et
+dont elle voit la dépense, en montants seulement (UC-ETA-05). Le texte de
+consentement renvoyé par l'API le dit pour les nouvelles adhésions (RG6).
+
 ## Déclencheur
 
 L'établissement ouvre l'accueil de son espace (`#/etablissement`, section
@@ -148,6 +155,15 @@ L'établissement ouvre l'accueil de son espace (`#/etablissement`, section
   cohorte.
 - **RG5** — La suppression est une purge réelle (cascade SQL de la migration
   009) ; côté site elle exige deux clics.
+- **RG6** — Être membre d'une cohorte rattache l'apprenant à l'école (ADR-013
+  §3, sans table de plus) : son école paie ses usages payants, sous son
+  plafond par élève (UC-ETA-05) ; quitter la cohorte — ou la supprimer —
+  arrête, à leur tranche suivante, les runs que l'école payait pour lui, sans
+  jamais les reporter sur son solde (UC-APP-10, E16). Le texte de
+  consentement dit, depuis le 2026-10-22 : « …et le montant de ce qu'il paie
+  pour vos analyses (jamais leur contenu sur humanome ; s'il les paie avec sa
+  propre clé Anthropic, les résultats des appels partis par lots restent
+  lisibles dans sa Console Anthropic). »
 
 ## Données et RGPD
 

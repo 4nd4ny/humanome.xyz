@@ -14,6 +14,17 @@ declare(strict_types=1);
  *   (consent withdrawal: membership + deposit purged, pending jobs
  *   cancelled; produced documents stay with the learner).
  *
+ * The school (ADR-013 §3, §5, lot S6b; role etablissement, the habilitation
+ * the administrator grants): its surtax on the instance's key, the cap per
+ * learner and per month, its key for its learners (written, erased, never
+ * read back), its learners and what each committed — amounts only:
+ *   GET    /api/etablissement/ecole                  settings, credit, keys (no material), learners and spend
+ *   PUT    /api/etablissement/ecole                  {surtaxePct?, plafondEleveUsd?}
+ *   PUT    /api/etablissement/ecole/cle              {cle, fournisseur?: "anthropic"} — encrypted, never returned
+ *   DELETE /api/etablissement/ecole/cle/{fournisseur}
+ * Its credit is bought on the credit page (#/compte/credit, PayPal, a school
+ * only).
+ *
  * All mutating routes ride the global CSRF middleware. Foreign ids answer
  * 404 exactly like missing ones (no existence oracle).
  */
@@ -22,6 +33,10 @@ use Humanome\Auth\Audit;
 use Humanome\Db;
 use Humanome\Etablissement\CohorteRepository;
 use Humanome\Etablissement\ConfigRepository;
+use Humanome\Etablissement\EcoleCles;
+use Humanome\Etablissement\Ecoles;
+use Humanome\Twin9\CreditService;
+use Humanome\Twin9\RunPurge;
 use Humanome\Keys\KeyVault;
 use Humanome\Middleware\RequireRole;
 use Humanome\Packages\PromptPackageRepository;
@@ -33,9 +48,17 @@ use Psr\Http\Message\ServerRequestInterface as Request;
 use Slim\App;
 
 return function (App $app): void {
-    /** Displayed by the front next to the join button (plan-masse §6). */
+    /**
+     * Displayed by the front next to the join button (plan-masse §6); since
+     * ADR-013 (§7), it names what the school sees of what it pays for its
+     * learners — amounts only on humanome — for the new memberships, and,
+     * when it pays with its own Anthropic key, what its Anthropic Console
+     * keeps (the results of the calls sent by batches, ADR-013 §6).
+     */
     $consentText = 'En rejoignant cette cohorte, vous acceptez que l\'établissement '
-        . 'voie les cartographies produites dans ce cadre.';
+        . 'voie les cartographies produites dans ce cadre, et le montant de ce qu’il paie pour vos analyses '
+        . '(jamais leur contenu sur humanome ; s’il les paie avec sa propre clé Anthropic, les résultats des '
+        . 'appels partis par lots restent lisibles dans sa Console Anthropic).';
 
     $maxPortfolioBytes = 4 * 1024 * 1024;
 
@@ -349,6 +372,120 @@ return function (App $app): void {
 
         return $json($response, ['workerToken' => $token], 201)
             ->withHeader('Cache-Control', 'no-store'); // M6 lesson: never cache revealed secrets
+    }))->add($etablissement);
+
+    // ==================================================================
+    // The school (ADR-013 §3, §5, lot S6b; role etablissement)
+    // ==================================================================
+
+    /**
+     * The school's page: its settings, its credit, its keys (never their material), its learners and their spend —
+     * those who left, together and without a name.
+     */
+    $ecole = static function (int $ecoleId): array {
+        $pdo = Db::get();
+        $mois = Ecoles::mois();
+        $ecoles = new Ecoles($pdo);
+        $reglages = $ecoles->reglages($ecoleId);
+        $eleves = $ecoles->eleves($ecoleId, $mois);
+        // those who left its cohorts: their amounts, together, never who (ADR-013 §7)
+        $partis = $ecoles->partis($ecoleId, $mois);
+
+        return [
+            'surtaxePct' => $reglages['surtaxe_pct'],
+            'surtaxeMin' => Ecoles::SURTAXE_MIN,
+            'surtaxeMax' => Ecoles::SURTAXE_MAX,
+            'plafondEleveMicrousd' => $reglages['plafond_eleve_microusd'],
+            'respireNumero' => $reglages['respire_numero'],
+            'creditMicrousd' => (new CreditService($pdo))->balance($ecoleId),
+            'cles' => EcoleCles::liste($pdo, $ecoleId),
+            'chiffrementDisponible' => KeyVault::masterKeyFromEnv() !== null,
+            'mois' => $mois,
+            'depenseMoisMicrousd' => array_sum(array_column($eleves, 'moisMicrousd')) + $partis['moisMicrousd'],
+            'eleves' => $eleves,
+            'partis' => $partis,
+        ];
+    };
+
+    // GET /api/etablissement/ecole — never a key, a learner's amounts only.
+    $app->get('/etablissement/ecole', $wrap(function (Request $request, Response $response) use ($json, $ecole): Response {
+        return $json($response, $ecole((int) $request->getAttribute('userId')));
+    }))->add($etablissement);
+
+    // PUT /api/etablissement/ecole {surtaxePct?, plafondEleveUsd?} — absent: kept. Surtax in [3.5 ; 10] to the
+    // hundredth (R4), the cap in dollars to the cent; a run in progress keeps the surtax of its launch.
+    $app->put('/etablissement/ecole', $wrap(function (Request $request, Response $response) use ($json, $ecole): Response {
+        $userId = (int) $request->getAttribute('userId');
+        $data = (array) ($request->getParsedBody() ?? []);
+        $ecoles = new Ecoles(Db::get());
+        $actuel = $ecoles->reglages($userId);
+        $errors = [];
+        $surtaxe = $actuel['surtaxe_pct'];
+        if (\array_key_exists('surtaxePct', $data)) {
+            $surtaxe = Ecoles::surtaxe($data['surtaxePct']);
+            if ($surtaxe === null) {
+                $errors['surtaxePct'] = Ecoles::SURTAXE_INVALIDE;
+            }
+        }
+        $plafond = $actuel['plafond_eleve_microusd'];
+        if (\array_key_exists('plafondEleveUsd', $data)) {
+            $plafond = Ecoles::plafond($data['plafondEleveUsd']);
+            if ($plafond === null) {
+                $errors['plafondEleveUsd'] = Ecoles::PLAFOND_INVALIDE;
+            }
+        }
+        if ($errors !== []) {
+            return $json($response, ['error' => 'Validation échouée', 'fields' => $errors], 422);
+        }
+        $ecoles->regler($userId, (float) $surtaxe, (int) $plafond);
+        Audit::record(Db::get(), $userId, 'ecole_reglages', [
+            'surtaxePct' => (float) $surtaxe,
+            'plafondEleveUsd' => round((int) $plafond / 1_000_000, 2),
+        ]);
+
+        return $json($response, $ecole($userId));
+    }))->add($etablissement);
+
+    // PUT /api/etablissement/ecole/cle {cle, fournisseur?} — the school's key for its learners (R1), Anthropic only,
+    // encrypted (sodium, KeyVault's layout), NEVER returned nor logged; the audit names the provider only.
+    $app->put('/etablissement/ecole/cle', $wrap(function (Request $request, Response $response) use ($json, $ecole): Response {
+        $userId = (int) $request->getAttribute('userId');
+        $data = (array) ($request->getParsedBody() ?? []);
+        $fournisseur = $data['fournisseur'] ?? 'anthropic';
+        $cle = $data['cle'] ?? null;
+        $errors = [];
+        if (!\is_string($fournisseur) || !\in_array($fournisseur, EcoleCles::FOURNISSEURS, true)) {
+            $errors['fournisseur'] = 'Fournisseur invalide : la clé d’une école ne sert que chez Anthropic';
+        }
+        if (!\is_string($cle) || trim($cle) === '' || \strlen($cle) > EcoleCles::LONGUEUR_MAX
+            || preg_match('/[\x00-\x20\x7f]/', trim($cle)) === 1) {
+            $errors['cle'] = 'Clé invalide : une clé non vide, sans espace, de 400 caractères au plus';
+        }
+        if ($errors !== []) {
+            return $json($response, ['error' => 'Validation échouée', 'fields' => $errors], 422);
+        }
+        $master = KeyVault::masterKeyFromEnv();
+        if ($master === null) {
+            return $json($response, ['error' => 'Chiffrement des clés non configuré sur ce serveur'], 503);
+        }
+        (new EcoleCles(Db::get(), $master))->poser($userId, (string) $fournisseur, trim((string) $cle));
+        Audit::record(Db::get(), $userId, 'ecole_cle_posee', ['fournisseur' => (string) $fournisseur]);
+
+        return $json($response, $ecole($userId));
+    }))->add($etablissement);
+
+    // DELETE /api/etablissement/ecole/cle/{fournisseur} — real deletion; the batches submitted with it, which no key
+    // could collect afterwards, cancelled and deleted at Anthropic first, their calls given back by the tick; a run
+    // on it stops at its next slice, its learner choosing its payer again (ADR-013 §4, §6).
+    $app->delete('/etablissement/ecole/cle/{fournisseur:[a-z]+}', $wrap(function (Request $request, Response $response, array $args) use ($json): Response {
+        $userId = (int) $request->getAttribute('userId');
+        $retirees = (new RunPurge(Db::get()))->retirerCleEcole($userId, (string) $args['fournisseur'], microtime(true) + 10.0);
+        if ($retirees === []) {
+            return $json($response, ['error' => 'Aucune clé de ce fournisseur'], 404);
+        }
+        Audit::record(Db::get(), $userId, 'ecole_cle_retiree', ['fournisseur' => (string) $args['fournisseur']]);
+
+        return $response->withStatus(204);
     }))->add($etablissement);
 
     // ==================================================================

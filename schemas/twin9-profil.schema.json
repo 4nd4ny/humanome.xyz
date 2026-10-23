@@ -351,10 +351,11 @@
     "cle": {
       "enum": [
         "instance",
-        "personnelle"
+        "personnelle",
+        "ecole"
       ],
       "default": "instance",
-      "description": "La clé de l'instance, pour chaque fournisseur du profil ; ou la clé personnelle de l'utilisateur, chez Anthropic seulement : un profil qui appelle un autre fournisseur n'admet que les clés de l'instance."
+      "description": "La clé de l'instance, pour chaque fournisseur du profil, que paie le crédit de l'utilisateur ou celui de son école ; ou « ecole », la clé de l'école qui paie, chez Anthropic seulement (ADR-013 §6 : un profil « ecole » qui appelle un autre fournisseur est refusé ; l'école qui paie se choisit au lancement). « personnelle » (la clé de l'utilisateur, chez Anthropic seulement) reste lisible, pour les profils et les runs gardés, mais ne sert plus : refusée à l'enregistrement, au lancement et à la reprise depuis l'ADR-013 (un run du serveur ne peut pas garder la clé du navigateur)."
     },
     "gabarits": {
       "type": "string",

@@ -46,9 +46,8 @@ final class CartographiesPurgeTest extends AuthTestBase
             'parcours' => 'apprenant', 'chapitre' => '01-bien-rediger', 'completed' => true,
         ], ['X-CSRF-Token' => $csrf])->getStatusCode());
 
-        self::assertSame(204, $this->request('PUT', '/api/keys', [
-            'provider' => 'anthropic', 'apiKey' => 'sk-ant-EXEMPLE-0123456789',
-        ], ['X-CSRF-Token' => $csrf])->getStatusCode());
+        // a key stored before ADR-013 (no route writes one since)
+        StoredKeys::seed(self::$pdo, $userId, 'anthropic', 'sk-ant-EXEMPLE-0123456789');
 
         // A second account proves the purge is scoped.
         $mayaSid = $this->cookieSid;

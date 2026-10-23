@@ -5,12 +5,14 @@ declare(strict_types=1);
 namespace Humanome\Tests\UseCases\Unit;
 
 use Humanome\Auth\Users;
-use Humanome\Keys\KeyVault;
 use Humanome\MigrationRunner;
 use Humanome\Packages\SettingsRepository;
+use Humanome\Tests\StoredKeys;
 use Humanome\Tests\TestDb;
 use Humanome\Tests\UseCases\Support\RunsTwin9Factices;
+use Humanome\Twin9\CallSettings;
 use Humanome\Twin9\CreditService;
+use Humanome\Twin9\Evaluations;
 use Humanome\Twin9\EngineLoader;
 use Humanome\Twin9\Lancement;
 use Humanome\Twin9\MapStore;
@@ -144,7 +146,7 @@ final class UcApp10AnalyseApprofondieTwin9Test extends TestCase
         }
     }
 
-    #[TestDox('UC-APP-10-U08 — ProfilPolicy::admettre : le profil v9.8 est admis ; clé personnelle fermée, jeu de gabarits non proposé, référentiel ou version non publiés, modèle sans prix → 422 qui nomme le choix (RG2, E4)')]
+    #[TestDox('UC-APP-10-U08 — ProfilPolicy::admettre : le profil v9.8 est admis ; clé personnelle (ADR-013), jeu de gabarits non proposé, référentiel ou version non publiés, modèle sans prix → 422 qui nomme le choix (RG2, E4)')]
     public function testU08WhatAProfileMayChoose(): void
     {
         $lea = self::utilisateur('lea@example.org');
@@ -160,7 +162,7 @@ final class UcApp10AnalyseApprofondieTwin9Test extends TestCase
             return $copie;
         };
         foreach ([
-            ['cle', 'personnelle', 'Profil refusé — /cle : les clés personnelles ne sont pas ouvertes sur cette instance'],
+            ['cle', 'personnelle', ProfilPolicy::CLE_PERSONNELLE_REFUSEE],
             ['gabarits', 'copie-inconnue', 'Profil refusé — /gabarits : ce jeu de gabarits ne vous est pas proposé'],
             ['referentiel', (object) ['id' => 'inexistant', 'version' => null],
              'Profil refusé — /referentiel/id : aucun référentiel publié sous ce nom'],
@@ -177,7 +179,7 @@ final class UcApp10AnalyseApprofondieTwin9Test extends TestCase
             self::refus(static fn () => $politique->admettre($v98, $lea)));
     }
 
-    #[TestDox('UC-APP-10-U09 — Lancement::apercu : sans évaluation, le run de référence × les pôles × la contribution, la moitié par lots, sans contribution avec sa clé personnelle ; rien n’est gardé (RG4)')]
+    #[TestDox('UC-APP-10-U09 — Lancement::apercu : sans évaluation, le run de référence × les pôles × la contribution, la moitié par lots ; un profil à clé personnelle, enregistré avant l’ADR-013, refusé même avec une clé gardée ; rien n’est gardé (RG4)')]
     public function testU09TheEstimateWithoutEvaluations(): void
     {
         $lea = self::utilisateur('lea@example.org');
@@ -196,14 +198,12 @@ final class UcApp10AnalyseApprofondieTwin9Test extends TestCase
         self::assertSame(round(3 * $parJour(1.2 * 0.5) / 1_000_000, 6), $lots['estimation']['cout_usd']);
         self::assertNull($lots['estimation']['duree_s']);
 
-        // Sa clé personnelle : sans contribution, et son crédit ne borne rien.
+        // Sa clé personnelle, d'un profil enregistré avant l'ADR-013 : refusée, même gardée.
         TestDb::setEnv('SODIUM_MASTER_KEY', str_repeat('cd', 32));
-        self::config()->update(['twin9_cle_perso_ouverte' => true]);
-        (new KeyVault(self::$pdo, (string) KeyVault::masterKeyFromEnv()))->store($lea, 'anthropic', 'sk-ant-perso-fictive');
-        $perso = self::lancement()->apercu($lea, self::profil($lea, 'Ma clé', ['cle' => 'personnelle']), 'journal-factice.md',
-            self::$portfolioFactice);
-        self::assertSame(['personnelle', null, null], [$perso['cle'], $perso['credit_usd'], $perso['admission']['limite']]);
-        self::assertSame(round(3 * $parJour(1.0) / 1_000_000, 6), $perso['estimation']['cout_usd']);
+        StoredKeys::seed(self::$pdo, $lea, 'anthropic', 'sk-ant-perso-fictive');
+        $perso = self::profil($lea, 'Ma clé', ['cle' => 'personnelle']);
+        self::assertSame(ProfilPolicy::CLE_PERSONNELLE_REFUSEE, self::refus(static fn () => self::lancement()->apercu($lea,
+            $perso, 'journal-factice.md', self::$portfolioFactice)));
 
         foreach (['twin9_runs', 'twin9_cartes', 'twin9_memoire'] as $table) {
             self::assertSame(0, self::compte($table), $table . ' : l’aperçu ne garde rien');
@@ -369,5 +369,27 @@ final class UcApp10AnalyseApprofondieTwin9Test extends TestCase
         $attestation = json_decode((string) self::$pdo->query("SELECT attestation FROM twin9_runs WHERE id = $id")->fetchColumn(),
             true);
         self::assertSame(Lancement::empreinte(self::$gabaritsFactices), $attestation['gabarits']['empreinte']);
+    }
+    #[TestDox('UC-APP-10-U27 — empreintes inchangées (ADR-013 §6) : un même profil, sur la clé de l’instance, la clé personnelle ou celle d’une école, garde la même empreinte des réglages (mémoire de la carte) et la même signature des évaluations (prévisions) — `cle` n’est pas un réglage d’appel')]
+    public function testU25TheKeyChangesNoFingerprint(): void
+    {
+        $gabarits = self::$gabaritsFactices;
+        $empreintes = [];
+        $signatures = [];
+        foreach (['instance', 'personnelle', 'ecole'] as $cle) {
+            $profil = ProfilRepository::v98();
+            $profil->cle = $cle;
+            $empreintes[$cle] = CallSettings::empreinte($profil, null, $gabarits);
+            $signatures[$cle] = Evaluations::signature($profil, 'empreinte-de-jeu-fictive', 'empreinte-de-referentiel-fictive');
+        }
+        self::assertSame(1, \count(array_unique($empreintes)), json_encode($empreintes));
+        self::assertSame(1, \count(array_unique($signatures)), json_encode($signatures));
+        self::assertMatchesRegularExpression('/^[0-9a-f]{16}$/', $empreintes['instance']);
+
+        // and a profile of before ADR-013 read back as it was saved: its choice kept, no rewriting
+        $ancien = ProfilRepository::v98();
+        $ancien->cle = 'personnelle';
+        self::assertSame('personnelle', ProfilRepository::validate($ancien)->cle);
+        self::assertSame($empreintes['instance'], CallSettings::empreinte(ProfilRepository::validate($ancien), null, $gabarits));
     }
 }

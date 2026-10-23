@@ -220,11 +220,14 @@ final class Twin9CreditTest extends CartographeTestCase
     public function testLedgerIsCountersOnly(): void
     {
         // Guard for the RGPD/secrecy imperative: the events table schema has
-        // no content-bearing column beyond the short label.
+        // no content-bearing column beyond the short label; since migration
+        // 037 (ADR-013 §3), the learner an event of their school's ledger
+        // names, an id (SET NULL at their purge).
         $columns = Db::get()->query('SHOW COLUMNS FROM twin9_credit_events')->fetchAll();
         $names = array_column($columns, 'Field');
         self::assertSame(
-            ['id', 'user_id', 'kind', 'amount_microusd', 'label', 'model', 'tokens_in', 'tokens_out', 'paypal_order_id', 'created_at'],
+            ['id', 'user_id', 'kind', 'amount_microusd', 'label', 'model', 'tokens_in', 'tokens_out', 'paypal_order_id', 'created_at',
+             'beneficiaire_id'],
             $names,
         );
     }

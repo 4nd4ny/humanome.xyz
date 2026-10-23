@@ -224,7 +224,7 @@ L'apprenant a reçu de son établissement un **code d'invitation** et ouvre
 | UC-APP-08-U05 | `CohorteRepository::depositPortfolio`, `segmentText` | Re-dépôt = remplacement complet (RG5) | idem |
 | UC-APP-08-U06 | `CohorteRepository::quit` | Jobs non terminaux annulés, dépôt et adhésion purgés, `done` conservés, rien d'autre touché (RG6) | idem |
 | UC-APP-08-U07 | `CohorteRepository::depositsForRun` | Seuls les déposants sont enfilés ; plus après départ (RG1) | idem |
-| UC-APP-08-U08 | `CONSENT_TEXT` | Ce que voit l'établissement, ce qui reste local, effet du départ | `web/test/usecases/unit/uc-app-08-rejoindre-cohorte.test.jsx` |
+| UC-APP-08-U08 | `CONSENT_TEXT` | Ce que voit l'établissement (le montant de ce qu'il paie, jamais le contenu sur humanome ; sur sa propre clé, sa Console Anthropic : ADR-013 §6, §7), ce qui reste local, effet du départ | `web/test/usecases/unit/uc-app-08-rejoindre-cohorte.test.jsx` |
 | UC-APP-08-U09 | `CohorteSection` (isolé) — `fetchMesCohortes` | Forme réelle (tableau) de `GET api/cohortes`, dates, badge, formulaire masqué si déposé | idem |
 | UC-APP-08-U10 | `CohorteSection` (isolé) — `submitJoin` | Code vide refusé localement ; code rogné et en majuscules | idem |
 | UC-APP-08-U11 | `CohorteSection` (isolé) — `onDeposit` | Portfolio local disparu → message, aucun envoi | idem |
@@ -335,5 +335,14 @@ cd web && npx vitest run test/usecases --testNamePattern UC-APP-08
   ne les restitue qu'à travers l'export d'archive (UC-APP-06).
 - Le texte de consentement renvoyé par l'API (« En rejoignant cette cohorte,
   vous acceptez que l'établissement voie les cartographies produites dans ce
-  cadre. ») diffère du texte, plus complet, affiché par l'IHM
-  (`CONSENT_TEXT`) ; seul ce dernier est montré.
+  cadre, et le montant de ce qu'il paie pour vos analyses (jamais leur
+  contenu sur humanome ; s'il les paie avec sa propre clé Anthropic, les
+  résultats des appels partis par lots restent lisibles dans sa Console
+  Anthropic). ») diffère du texte, plus complet, affiché par l'IHM
+  (`CONSENT_TEXT`) ; seul ce dernier est montré. Depuis le sprint 6 (lot S6b,
+  ADR-013 §7), l'un et l'autre disent que l'école paie les usages payants de
+  l'élève et en voit le montant, jamais le contenu sur humanome — et, depuis
+  la revue du lot S6b, ce que garde la Console Anthropic d'une école sur sa
+  propre clé (ADR-013 §6) — (UC-ETA-05) ; les adhésions antérieures n'ont pas
+  été reprises (décision laissée à Christian). Quitter la cohorte retire le
+  consentement : l'école ne nomme plus l'élève parmi ceux qu'elle paie.

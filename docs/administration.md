@@ -256,6 +256,97 @@ paquet par défaut, et la **démo publique s'édite** via `/api/admin/demo-confi
 Le monitoring (`GET /api/admin/monitoring`) ne fait que compter la liste
 (`utilisateurs.enListeAttente`) : il n'écrit rien.
 
+### Purge des clés d'API d'utilisateur (ADR-013 §8)
+
+Depuis l'ADR-013, la clé d'un utilisateur reste dans son navigateur : le
+serveur n'en écrit plus aucune (`PUT /api/keys` → `410`), et celles gardées
+avant ne servent plus à aucun run : un run lancé avant sur la clé personnelle
+s'arrête à sa première tranche après le déploiement, ses lots encore chez
+Anthropic relevés puis supprimés avec la clé (ADR-013 §8, pas 3 ; le comptage
+ci-dessous dit combien il y en a). La page « Mon compte » les montre
+« à supprimer ». Le script d'administration `scripts/purger-cles-utilisateurs.php`
+(logique : `api/src/Keys/UserKeysPurge.php`) les purge, **à la main
+seulement** : ni le worker, ni une tâche planifiée, ni le déploiement ne
+l'appellent.
+
+```sh
+php scripts/purger-cles-utilisateurs.php                     # compte, ne change rien
+php scripts/purger-cles-utilisateurs.php aviser              # écrit à chaque compte pas encore avisé
+php scripts/purger-cles-utilisateurs.php purger --confirmer  # efface les clés avisées depuis 30 jours
+```
+
+- **Compter** (défaut, et `purger` sans `--confirmer`) : des nombres seulement
+  — comptes avec une clé, clés par fournisseur, comptes avisés et purgeables,
+  runs en cours et profils sur la clé personnelle, soldes positifs (dont
+  d'écoles). C'est le pas 1 du plan de l'ADR-013 §8, à faire avant le
+  déploiement de S6a.
+- **Aviser** : un courriel par compte (fournisseurs, date de purge, comment
+  recopier ou supprimer — jamais la clé), puis `user_api_keys.avis_purge_at` ;
+  jamais deux fois ; un envoi refusé laisse le compte à aviser. Audit
+  `api_keys_purge_notice {providers}`.
+- **Purger** : les clés avisées depuis 30 jours au moins ; un compte dont un run
+  est en cours sur sa clé personnelle est reporté ; les lots soumis avec la clé
+  sont d'abord annulés puis effacés chez Anthropic, et un compte dont un lot y
+  reste peut-être (Anthropic injoignable, une annulation pas encore finie) est
+  reporté lui aussi, sa clé gardée pour l'effacer la fois suivante. Audit
+  `api_keys_purged {providers}`.
+
+En production, faute de SSH, le moyen de le lancer (une route d'administration
+protégée comme `/api/admin/maintenance`, ou le Mac sur la base de production)
+et le jour de l'avis et de la purge sont des décisions de Christian ; rien n'a
+été avisé ni purgé.
+
+### Avant un retour arrière par-dessus la migration 037 (ADR-013 §10, ADR-008)
+
+La migration 037 est une expansion : la release d'avant lit son schéma sans
+erreur. Mais elle ne connaît pas `twin9_runs.payeur` : pour elle, un run qu'une
+école paie sur la clé de l'instance est un run de son élève — chacun de ses
+règlements rendrait à l'élève ce que l'école a avancé (`RunCosts::solder`), et
+ses appels suivants seraient débités de l'élève, à la contribution — et un run
+de la voie `ecole` partirait sur la clé de l'instance, au prix catalogue, sans
+aucun débit (`RunKey`, `Twin9Run::credits()`). La release de S6a (`1f74de7`) fait
+de même. Avant `node scripts/deploy/deploy.mjs rollback` vers l'une d'elles :
+
+1. Compter, en lecture seule (phpMyAdmin) :
+   ```sql
+   SELECT COUNT(*) FROM twin9_runs WHERE payeur = 'ecole' AND statut = 'en_cours';
+   SELECT COUNT(*) FROM twin9_appels a JOIN twin9_runs r ON r.id = a.run_id
+    WHERE r.payeur = 'ecole' AND a.reserve_microusd IS NOT NULL;
+   SELECT COUNT(*) FROM twin9_runs WHERE payeur = 'ecole' AND statut IN ('annule', 'echoue');
+   ```
+2. Tant que l'un des deux premiers n'est pas nul, **ne pas revenir en arrière** :
+   attendre que ces runs finissent, ou que leurs propriétaires les annulent
+   (« Annuler » sur la page du run : ce que ses appels tiennent revient à l'école ;
+   un lot chez Anthropic, au tick qui le relève). Rien ne le vérifie à la place
+   de l'opérateur : la release d'avant ne connaît pas cette règle.
+3. Le troisième compte les runs arrêtés qu'un élève pourrait reprendre sur la
+   release d'avant, qui les prendrait pour les siens (ou, sur la voie `ecole`,
+   les ferait partir sans débit) : un retour arrière par-dessus 037 reste donc
+   bref, le temps de redéployer la release d'après.
+4. Un retour arrière fait malgré tout se corrige à la main : le grand livre de
+   l'école et le solde de l'élève (les événements « Twin9 run N · … » d'un run
+   `payeur = 'ecole'` écrits pendant ce temps).
+
+### Les écoles et RESPIRE#0 (ADR-013, lot S6b)
+
+Une école est un compte qui porte l'habilitation `etablissement`, que seul
+l'administrateur attribue (`#/admin`, UC-ADM-01) ; un rôle déclaré n'ouvre rien.
+Elle règle elle-même, dans « Mon école » (`#/etablissement`, UC-ETA-05), sa
+surtaxe sur la clé de l'instance (3,5 % à 10 %), le plafond par élève et par
+mois (0 par défaut : rien de payant pour ses élèves tant qu'elle ne l'a pas
+réglé) et sa clé Anthropic ; elle achète son crédit sur `#/compte/credit`.
+L'administrateur n'a pas de réglage d'école à part : retirer l'habilitation
+arrête, à leur tranche suivante, les runs que l'école payait, sans les reporter
+sur le solde de ses élèves.
+
+**RESPIRE#0**, l'école de démonstration (R5), n'existe qu'**en base** : ni dans
+le dépôt, ni dans une migration, ni dans un jeu d'amorçage. Elle se reconnaît à
+`ecoles.respire_numero = 0` (1 pour RESPIRE#1, plus pour les suivantes, unique).
+Son script de création est gardé hors dépôt (une adresse `.invalid`, un mot de
+passe inutilisable, l'habilitation `etablissement`, une cohorte de
+démonstration) et n'a été essayé que sur une base de test ; la créer en
+production, comme RESPIRE#1, est un geste de Christian.
+
 ---
 
 ## 4. Configuration serveur versionnable (`api/config/app.php`)

@@ -68,6 +68,7 @@ final class Twin9SecurityAuditTest extends CartographeTestCase
      */
     public function testCreditDerivesFromCapturedAmountNotRequestedPack(): void
     {
+        self::setRoles($this->user['id'], ['etablissement']); // seule une école achète (ADR-013 §2 e)
         (new CreditService(Db::get()))->recordPaypalOrder($this->user['id'], 'ORDER-A3');
         $this->queueToken();
         $this->queueCapture('ORDER-A3', '10.00'); // PayPal confirme 10,00 $

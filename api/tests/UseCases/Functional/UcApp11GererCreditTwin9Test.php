@@ -20,18 +20,22 @@ use Psr\Http\Message\ResponseInterface;
  *
  * Fiche : docs/cas-utilisation/apprenant/UC-APP-11-gerer-credit-twin9.md
  *
- * Le parcours de l'apprenant est rejoué à travers l'API HTTP (Slim en
- * processus, vraie base MySQL) : consultation, création d'ordre PayPal,
- * capture au retour, dépense réelle (un appel Twin6 facturé), suivi des
- * dépenses, facture du mois, remboursement à la demande. PayPal et Anthropic
- * sont joués par le faux client HTTP (LlmRuntime) : aucun appel réseau.
+ * Le parcours est rejoué à travers l'API HTTP (Slim en processus, vraie base
+ * MySQL) : consultation, création d'ordre PayPal, capture au retour, dépense
+ * réelle (un appel Twin6 facturé), suivi des dépenses, facture du mois,
+ * remboursement à la demande. Depuis l'ADR-013 (§2 e), seule une école
+ * achète : l'acheteur est un compte qui a l'habilitation etablissement ; un
+ * apprenant ne peut pas acheter, et son solde déjà acheté reste utilisable
+ * jusqu'à épuisement, remboursable sur demande (F30, F31). PayPal et
+ * Anthropic sont joués par le faux client HTTP (LlmRuntime) : aucun appel
+ * réseau.
  */
 final class UcApp11GererCreditTwin9Test extends CartographeTestCase
 {
     private LlmFakeHttpClient $http;
 
-    /** @var array{id: int, csrf: string, sid: string} */
-    private array $apprenant;
+    /** @var array{id: int, csrf: string, sid: string} the buyer: a school (ADR-013 §2 e) */
+    private array $ecole;
 
     protected function setUp(): void
     {
@@ -43,7 +47,7 @@ final class UcApp11GererCreditTwin9Test extends CartographeTestCase
         Db::get()->exec("DELETE FROM settings WHERE name = 'twin9_config'");
         $this->http = new LlmFakeHttpClient();
         LlmRuntime::setHttpClient($this->http);
-        $this->apprenant = $this->registerAs('lea@example.org', 'Léa', ['apprenant']);
+        $this->ecole = $this->registerAs('ecole@example.org', 'École des Tilleuls', ['etablissement']);
     }
 
     protected function tearDown(): void
@@ -54,12 +58,12 @@ final class UcApp11GererCreditTwin9Test extends CartographeTestCase
 
     private function post(string $path, array $body = [], ?array $user = null): ResponseInterface
     {
-        return $this->as_($user ?? $this->apprenant, 'POST', $path, $body);
+        return $this->as_($user ?? $this->ecole, 'POST', $path, $body);
     }
 
     private function get(string $path, ?array $user = null): ResponseInterface
     {
-        return $this->as_($user ?? $this->apprenant, 'GET', $path);
+        return $this->as_($user ?? $this->ecole, 'GET', $path);
     }
 
     /** Mois courant SELON MySQL (horodateur du grand-livre) : [AAAA-MM, annee, mois]. */
@@ -106,27 +110,29 @@ final class UcApp11GererCreditTwin9Test extends CartographeTestCase
         TwinSupport::queuePaypalCaptured($this->http, 'ORDER-F11', '20.00', 'CAP-F11');
         self::assertSame(['solde_microusd' => 20_000_000], self::json($this->post('/api/twin9/credit/paypal/capturer', ['order_id' => 'ORDER-F11'])));
 
-        // 4. Dépense réelle : un appel facturé (Twin6, +10 %).
+        // 4. Dépense réelle : un appel facturé. L'acheteur est une école : elle paie le coût réel × (1 + sa
+        // surtaxe, 3,5 % par défaut), et non la contribution des particuliers (ADR-013 §2 d, S6b) —
+        // 4 000 µUSD × 1,035.
         TwinSupport::queueAnthropic($this->http, '{"poleNum":1}', 1000, 200);
         $appel = $this->post('/api/twin6/appel', ['model' => 'claude-sonnet-5', 'prompt' => 'Scanne le pôle 1.', 'max_tokens' => 1024]);
-        self::assertSame(4400, self::json($appel)['cout_microusd']);
+        self::assertSame(4140, self::json($appel)['cout_microusd']);
 
         // 5. Grand-livre, suivi mensuel et facture : même source, compteurs seulement.
         $credit = self::json($this->get('/api/twin9/credit'));
-        self::assertSame(20_000_000 - 4400, $credit['solde_microusd']);
+        self::assertSame(20_000_000 - 4140, $credit['solde_microusd']);
         self::assertSame(['adjust', 'debit', 'topup'], array_column($credit['evenements'], 'kind'));
         self::assertSame('Recharge PayPal', $credit['evenements'][2]['label']);
 
         [$mois, $annee, $m] = self::moisCourant();
         $depenses = self::json($this->get('/api/twin9/depenses'));
-        self::assertSame([['mois' => $mois, 'recharges_microusd' => 20_000_000, 'consomme_microusd' => 4400, 'appels' => 1]], $depenses['mois']);
+        self::assertSame([['mois' => $mois, 'recharges_microusd' => 20_000_000, 'consomme_microusd' => 4140, 'appels' => 1]], $depenses['mois']);
 
         $facture = self::json($this->get('/api/twin9/facture?annee=' . $annee . '&mois=' . $m));
-        self::assertSame(sprintf('HUM-TW9-%04d%02d-%d', $annee, $m, $this->apprenant['id']), $facture['numero']);
-        self::assertSame(['nom' => 'Léa', 'email' => 'lea@example.org'], $facture['client']);
-        self::assertSame([['model' => 'claude-sonnet-5', 'appels' => 1, 'tokens_in' => 1000, 'tokens_out' => 200, 'consomme_microusd' => 4400]], $facture['lignes']);
+        self::assertSame(sprintf('HUM-TW9-%04d%02d-%d', $annee, $m, $this->ecole['id']), $facture['numero']);
+        self::assertSame(['nom' => 'École des Tilleuls', 'email' => 'ecole@example.org'], $facture['client']);
+        self::assertSame([['model' => 'claude-sonnet-5', 'appels' => 1, 'tokens_in' => 1000, 'tokens_out' => 200, 'consomme_microusd' => 4140]], $facture['lignes']);
         self::assertSame('ORDER-F11', $facture['recharges'][0]['paypal_order_id']);
-        self::assertSame(20_000_000 - 4400, $facture['solde_fin_periode_microusd']);
+        self::assertSame(20_000_000 - 4140, $facture['solde_fin_periode_microusd']);
     }
 
     #[TestDox('UC-APP-11-F12 — A2 : retour PayPal rejoué (double clic, lien rechargé) → même solde, UNE seule recharge ; RG2 : le crédit est le montant CAPTURÉ, pas celui du pack')]
@@ -140,13 +146,13 @@ final class UcApp11GererCreditTwin9Test extends CartographeTestCase
         $this->http->queueResponse(['status' => 200, 'body' => json_encode(TwinSupport::paypalCompletedBody('ORDER-F12', '10.00', 'CAP-F12'), JSON_THROW_ON_ERROR)]);
         self::assertSame(['solde_microusd' => 10_000_000], self::json($this->post('/api/twin9/credit/paypal/capturer', ['order_id' => 'ORDER-F12'])));
 
-        $events = (new CreditService(Db::get()))->events($this->apprenant['id']);
+        $events = (new CreditService(Db::get()))->events($this->ecole['id']);
         self::assertCount(1, $events);
         self::assertSame(1, (int) self::$pdo->query("SELECT COUNT(*) FROM twin9_paypal_captures WHERE capture_id = 'CAP-F12'")->fetchColumn());
 
         // RG2 : pack de 20 $ commandé, mais PayPal a capturé 12,34 $ → c'est ce montant qui est crédité.
         self::assertSame(['solde_microusd' => 22_340_000], self::json($this->recharger(1, 'ORDER-F12B', '12.34', 'CAP-F12B')));
-        self::assertSame(12_340_000, (new CreditService(Db::get()))->events($this->apprenant['id'])[0]['amount_microusd']);
+        self::assertSame(12_340_000, (new CreditService(Db::get()))->events($this->ecole['id'])[0]['amount_microusd']);
         self::assertSame(12_340_000, (int) self::$pdo->query("SELECT montant_microusd FROM twin9_paypal_captures WHERE capture_id = 'CAP-F12B'")->fetchColumn());
     }
 
@@ -160,7 +166,7 @@ final class UcApp11GererCreditTwin9Test extends CartographeTestCase
         $partiel = self::json($this->post('/api/twin9/credit/rembourser', ['montant_microusd' => 2_500_000]));
         self::assertSame(['rembourse_microusd' => 2_500_000, 'solde_microusd' => 7_500_000], $partiel);
         $refund = $this->http->requests[5];
-        self::assertSame('rf-' . $this->apprenant['id'] . '-CAP-F13-0', $refund['headers']['paypal-request-id']);
+        self::assertSame('rf-' . $this->ecole['id'] . '-CAP-F13-0', $refund['headers']['paypal-request-id']);
 
         TwinSupport::queuePaypalToken($this->http);
         TwinSupport::queuePaypalRefund($this->http, 'REF-2');
@@ -168,7 +174,7 @@ final class UcApp11GererCreditTwin9Test extends CartographeTestCase
         self::assertSame(['rembourse_microusd' => 7_500_000, 'solde_microusd' => 0], $reste);
         self::assertSame('7.50', json_decode((string) $this->http->requests[7]['body'], true)['amount']['value']);
         // Clé d'idempotence DÉCALÉE du montant déjà remboursé : la 2e portion n'est pas un rejeu de la 1re.
-        self::assertSame('rf-' . $this->apprenant['id'] . '-CAP-F13-2500000', $this->http->requests[7]['headers']['paypal-request-id']);
+        self::assertSame('rf-' . $this->ecole['id'] . '-CAP-F13-2500000', $this->http->requests[7]['headers']['paypal-request-id']);
 
         $credit = self::json($this->get('/api/twin9/credit'));
         self::assertSame(['refund', 'refund', 'topup'], array_column($credit['evenements'], 'kind'));
@@ -207,7 +213,7 @@ final class UcApp11GererCreditTwin9Test extends CartographeTestCase
         // ANOMALIE figée : la vue publique ne regarde que PAYPAL_CLIENT_ID — sans
         // secret, l'offre annonce la recharge alors que les routes répondent 503.
         self::assertTrue(self::json($this->get('/api/twin9/meta'))['paypalConfigured']);
-        (new CreditService(Db::get()))->recordCapture($this->apprenant['id'], 'CAP-X', 'ORDER-X', 1_000_000);
+        (new CreditService(Db::get()))->recordCapture($this->ecole['id'], 'CAP-X', 'ORDER-X', 1_000_000);
         self::assertSame(503, $this->post('/api/twin9/credit/paypal/creer', ['pack_index' => 0])->getStatusCode());
         self::assertSame(503, $this->post('/api/twin9/credit/paypal/capturer', ['order_id' => 'ORDER-X'])->getStatusCode());
         $rembourser = $this->post('/api/twin9/credit/rembourser');
@@ -238,7 +244,7 @@ final class UcApp11GererCreditTwin9Test extends CartographeTestCase
     #[TestDox('UC-APP-11-F17 — E4 : capturer l’ordre d’un AUTRE compte (ou un ordre jamais créé) → 403, rien ne part chez PayPal')]
     public function testF17ForeignOrderIsRefused(): void
     {
-        $mallory = $this->registerAs('mallory@example.org', 'Mallory', ['apprenant']);
+        $mallory = $this->registerAs('mallory@example.org', 'Mallory', ['etablissement']);
         TwinSupport::queuePaypalToken($this->http);
         TwinSupport::queuePaypalOrderCreated($this->http, 'ORDER-LEA');
         $this->post('/api/twin9/credit/paypal/creer', ['pack_index' => 0]);
@@ -255,7 +261,7 @@ final class UcApp11GererCreditTwin9Test extends CartographeTestCase
     #[TestDox('UC-APP-11-F18 — E5 : paiement non approuvé (422), capture non finalisée (422), montant nul (502) → aucun crédit')]
     public function testF18CaptureNotCompleted(): void
     {
-        (new CreditService(Db::get()))->recordPaypalOrder($this->apprenant['id'], 'ORDER-F18');
+        (new CreditService(Db::get()))->recordPaypalOrder($this->ecole['id'], 'ORDER-F18');
 
         TwinSupport::queuePaypalToken($this->http);
         TwinSupport::queuePaypalIssue($this->http, 'ORDER_NOT_APPROVED');
@@ -275,8 +281,8 @@ final class UcApp11GererCreditTwin9Test extends CartographeTestCase
         self::assertSame(502, $r3->getStatusCode());
         self::assertSame('Montant PayPal invalide', self::json($r3)['error']);
 
-        self::assertSame(0, (new CreditService(Db::get()))->balance($this->apprenant['id']));
-        self::assertSame([], (new CreditService(Db::get()))->events($this->apprenant['id']));
+        self::assertSame(0, (new CreditService(Db::get()))->balance($this->ecole['id']));
+        self::assertSame([], (new CreditService(Db::get()))->events($this->ecole['id']));
     }
 
     #[TestDox('UC-APP-11-F19 — E6 : PayPal en erreur à la création d’ordre ou à la capture → 502 générique, aucun ordre lié, aucun crédit')]
@@ -290,20 +296,20 @@ final class UcApp11GererCreditTwin9Test extends CartographeTestCase
         self::assertSame(0, (int) self::$pdo->query('SELECT COUNT(*) FROM twin9_paypal_orders')->fetchColumn());
 
         // Étape 5 : capture d'un ordre bien lié, PayPal en erreur → même 502 générique.
-        (new CreditService(Db::get()))->recordPaypalOrder($this->apprenant['id'], 'ORDER-F19');
+        (new CreditService(Db::get()))->recordPaypalOrder($this->ecole['id'], 'ORDER-F19');
         TwinSupport::queuePaypalToken($this->http);
         $this->http->queueResponse(['status' => 500, 'body' => '{"debug_id":"def"}']);
         $capture = $this->post('/api/twin9/credit/paypal/capturer', ['order_id' => 'ORDER-F19']);
         self::assertSame(502, $capture->getStatusCode());
         self::assertSame(['error' => 'Le service PayPal a renvoyé une erreur, réessayez plus tard.'], self::json($capture));
-        self::assertSame(0, (new CreditService(Db::get()))->balance($this->apprenant['id']));
-        self::assertSame([], (new CreditService(Db::get()))->events($this->apprenant['id']));
+        self::assertSame(0, (new CreditService(Db::get()))->balance($this->ecole['id']));
+        self::assertSame([], (new CreditService(Db::get()))->events($this->ecole['id']));
     }
 
     #[TestDox('UC-APP-11-F20 — E7 : rien de remboursable (crédit non PayPal) → 422 ; remboursement refusé par PayPal → 502, solde intact')]
     public function testF20NothingRefundableOrRefundFailure(): void
     {
-        (new CreditService(Db::get()))->adjust($this->apprenant['id'], 3_000_000, 'Crédit offert');
+        (new CreditService(Db::get()))->adjust($this->ecole['id'], 3_000_000, 'Crédit offert');
         $rien = $this->post('/api/twin9/credit/rembourser');
         self::assertSame(422, $rien->getStatusCode());
         self::assertSame(['error' => 'Aucun solde remboursable pour le moment.'], self::json($rien));
@@ -315,7 +321,7 @@ final class UcApp11GererCreditTwin9Test extends CartographeTestCase
         $echec = $this->post('/api/twin9/credit/rembourser');
         self::assertSame(502, $echec->getStatusCode());
         self::assertSame('Le remboursement PayPal a échoué, réessayez plus tard.', self::json($echec)['error']);
-        self::assertSame(13_000_000, (new CreditService(Db::get()))->balance($this->apprenant['id']));
+        self::assertSame(13_000_000, (new CreditService(Db::get()))->balance($this->ecole['id']));
     }
 
     #[TestDox('UC-APP-11-F21 — E8 : période de facture invalide → 422 ; une période FUTURE est acceptée (document vide, solde de fin = solde courant)')]
@@ -328,11 +334,11 @@ final class UcApp11GererCreditTwin9Test extends CartographeTestCase
         }
 
         // Comportement ACTUEL : aucune borne sur le futur (seulement ≤ 2100).
-        (new CreditService(Db::get()))->topup($this->apprenant['id'], 4_000_000, 'ORDER-F21', 'Recharge PayPal');
+        (new CreditService(Db::get()))->topup($this->ecole['id'], 4_000_000, 'ORDER-F21', 'Recharge PayPal');
         $futur = $this->get('/api/twin9/facture?annee=2100&mois=12');
         self::assertSame(200, $futur->getStatusCode());
         $facture = self::json($futur);
-        self::assertSame('HUM-TW9-210012-' . $this->apprenant['id'], $facture['numero']);
+        self::assertSame('HUM-TW9-210012-' . $this->ecole['id'], $facture['numero']);
         self::assertSame([], $facture['lignes']);
         self::assertSame([], $facture['recharges']);
         self::assertSame(4_000_000, $facture['solde_fin_periode_microusd']);
@@ -341,7 +347,7 @@ final class UcApp11GererCreditTwin9Test extends CartographeTestCase
     #[TestDox('UC-APP-11-F22 — E9 : trop de tentatives PayPal (EXACTEMENT 20 par minute, par compte et par route : créer, capturer, rembourser) → 429 + Retry-After')]
     public function testF22PaypalRateLimit(): void
     {
-        $id = $this->apprenant['id'];
+        $id = $this->ecole['id'];
         $routes = [
             ['/api/twin9/credit/paypal/creer', ['pack_index' => 0], 'twin9:paypal:creer:'],
             ['/api/twin9/credit/paypal/capturer', ['order_id' => 'ORDER-F22'], 'twin9:paypal:capturer:'],
@@ -399,7 +405,7 @@ final class UcApp11GererCreditTwin9Test extends CartographeTestCase
         // L'autre compte ne voit rien du premier (aucun paramètre d'identifiant).
         self::assertSame(['solde_microusd' => 0, 'evenements' => []], self::json($this->get('/api/twin9/credit', $autre)));
         [, $annee, $m] = self::moisCourant();
-        self::assertSame([], self::json($this->get('/api/twin9/facture?annee=' . $annee . '&mois=' . $m . '&user_id=' . $this->apprenant['id'], $autre))['recharges']);
+        self::assertSame([], self::json($this->get('/api/twin9/facture?annee=' . $annee . '&mois=' . $m . '&user_id=' . $this->ecole['id'], $autre))['recharges']);
         self::assertSame(403, $this->get('/api/twin9/admin/comptes')->getStatusCode(), 'la supervision est réservée à l’admin (UC-ADM-05)');
     }
 
@@ -424,7 +430,7 @@ final class UcApp11GererCreditTwin9Test extends CartographeTestCase
     #[TestDox('UC-APP-11-F24 — A3 : remboursement réparti sur plusieurs captures, la plus RÉCENTE d’abord, en centimes entiers (la fraction de centime reste au solde)')]
     public function testF24RefundSpreadsOverCapturesMostRecentFirst(): void
     {
-        $id = $this->apprenant['id'];
+        $id = $this->ecole['id'];
         $this->recharger(0, 'ORDER-F24A', '3.00', 'CAP-F24A');
         $this->recharger(0, 'ORDER-F24B', '3.00', 'CAP-F24B');
         // A est la plus récente alors que son identifiant est le plus petit : l'ordre suit la date.
@@ -460,7 +466,7 @@ final class UcApp11GererCreditTwin9Test extends CartographeTestCase
     #[TestDox('UC-APP-11-F25 — E7 : échec au milieu de plusieurs captures — 2xx non abouti → 502 AVEC le montant déjà remboursé ; erreur HTTP → 502 SANS montant (portions confirmées débitées) ; tout remboursé → 422')]
     public function testF25RefundFailuresMidLoop(): void
     {
-        $id = $this->apprenant['id'];
+        $id = $this->ecole['id'];
         $this->recharger(0, 'ORDER-F25-1', '2.00', 'CAP-F25-1');
         $this->recharger(0, 'ORDER-F25-2', '2.00', 'CAP-F25-2');
         $this->recharger(0, 'ORDER-F25-3', '2.00', 'CAP-F25-3');
@@ -507,28 +513,28 @@ final class UcApp11GererCreditTwin9Test extends CartographeTestCase
     #[TestDox('UC-APP-11-F26 — E10 : session valide mais jeton CSRF absent ou faux → 403 sur créer, capturer et rembourser ; rien chez PayPal, solde intact')]
     public function testF26CsrfTokenIsRequiredOnMoneyRoutes(): void
     {
-        (new CreditService(Db::get()))->recordPaypalOrder($this->apprenant['id'], 'ORDER-F26');
+        (new CreditService(Db::get()))->recordPaypalOrder($this->ecole['id'], 'ORDER-F26');
         foreach ([
             ['/api/twin9/credit/paypal/creer', ['pack_index' => 0]],
             ['/api/twin9/credit/paypal/capturer', ['order_id' => 'ORDER-F26']],
             ['/api/twin9/credit/rembourser', []],
         ] as [$path, $body]) {
             foreach ([[], ['X-CSRF-Token' => 'jeton-faux']] as $entetes) {
-                $this->cookieSid = $this->apprenant['sid'];
+                $this->cookieSid = $this->ecole['sid'];
                 $response = $this->request('POST', $path, $body, $entetes);
                 self::assertSame(403, $response->getStatusCode(), $path);
                 self::assertSame(['error' => 'Jeton CSRF absent ou invalide'], self::json($response));
             }
         }
         self::assertSame([], $this->http->requests);
-        self::assertSame(0, (new CreditService(Db::get()))->balance($this->apprenant['id']));
-        self::assertSame([], (new CreditService(Db::get()))->events($this->apprenant['id']));
+        self::assertSame(0, (new CreditService(Db::get()))->balance($this->ecole['id']));
+        self::assertSame([], (new CreditService(Db::get()))->events($this->ecole['id']));
     }
 
     #[TestDox('UC-APP-11-F27 — ANOMALIE figée : une dépense concurrente pendant le remboursement → PayPal rembourse, mais le grand-livre n’est PAS débité (402)')]
     public function testF27ConcurrentSpendDuringRefund(): void
     {
-        $id = $this->apprenant['id'];
+        $id = $this->ecole['id'];
         $this->recharger(0, 'ORDER-F27', '10.00', 'CAP-F27');
 
         // Faux PayPal qui, au moment où il reçoit le /refund, laisse une analyse
@@ -572,17 +578,113 @@ final class UcApp11GererCreditTwin9Test extends CartographeTestCase
     public function testF28SubCentRefundIsANoOp(): void
     {
         $credits = new CreditService(Db::get());
-        $credits->topup($this->apprenant['id'], 9_999, 'ORDER-F28', 'Recharge PayPal');
-        $credits->recordCapture($this->apprenant['id'], 'CAP-F28', 'ORDER-F28', 9_999);
+        $credits->topup($this->ecole['id'], 9_999, 'ORDER-F28', 'Recharge PayPal');
+        $credits->recordCapture($this->ecole['id'], 'CAP-F28', 'ORDER-F28', 9_999);
         self::assertSame(['rembourse_microusd' => 0, 'solde_microusd' => 9_999], self::json($this->post('/api/twin9/credit/rembourser')));
 
-        $credits->topup($this->apprenant['id'], 5_000_000, 'ORDER-F28B', 'Recharge PayPal');
-        $credits->recordCapture($this->apprenant['id'], 'CAP-F28B', 'ORDER-F28B', 5_000_000);
+        $credits->topup($this->ecole['id'], 5_000_000, 'ORDER-F28B', 'Recharge PayPal');
+        $credits->recordCapture($this->ecole['id'], 'CAP-F28B', 'ORDER-F28B', 5_000_000);
         foreach ([5_000, -5, 0] as $montant) {
             $r = $this->post('/api/twin9/credit/rembourser', ['montant_microusd' => $montant]);
             self::assertSame(200, $r->getStatusCode(), (string) $montant);
             self::assertSame(['rembourse_microusd' => 0, 'solde_microusd' => 5_009_999], self::json($r));
         }
         self::assertSame([], $this->http->requests);
+    }
+    #[TestDox('UC-APP-11-F30 — E11 : un apprenant ne peut pas acheter (ADR-013, R2) — /meta dit pourquoi, créer et capturer → 403 « Seule une école achète des crédits. », rien chez PayPal ; un rôle déclaré n’y change rien')]
+    public function testF30ALearnerCannotBuy(): void
+    {
+        $lea = $this->registerAs('lea@example.org', 'Léa', ['apprenant']);
+        self::$pdo->prepare('INSERT INTO user_declared_roles (user_id, role) VALUES (?, ?)')->execute([$lea['id'], 'promptologue']);
+
+        $meta = self::json($this->get('/api/twin9/meta', $lea));
+        self::assertFalse($meta['peut_acheter']);
+        self::assertStringContainsString('seules les écoles achètent des crédits', $meta['achat_pourquoi']);
+        self::assertTrue(self::json($this->get('/api/twin9/meta'))['peut_acheter'], 'une école, elle, achète');
+
+        foreach ([['/api/twin9/credit/paypal/creer', ['pack_index' => 0]], ['/api/twin9/credit/paypal/capturer', ['order_id' => 'ORDER-F30']]]
+                 as [$route, $corps]) {
+            $refus = $this->post($route, $corps, $lea);
+            self::assertSame(403, $refus->getStatusCode(), $route);
+            self::assertSame('Seule une école achète des crédits.', self::json($refus)['error']);
+        }
+        self::assertSame([], $this->http->requests, 'rien ne part chez PayPal');
+        self::assertSame(['solde_microusd' => 0, 'evenements' => []], self::json($this->get('/api/twin9/credit', $lea)));
+    }
+
+    #[TestDox('UC-APP-11-F31 — A4 : le solde qu’un apprenant a acheté avant l’ADR-013 reste utilisable jusqu’à épuisement (un appel Twin6 le débite), sans nouvel achat, et remboursable sur demande')]
+    public function testF31AnIndividualBalanceIsSpentDownAndRefundable(): void
+    {
+        $lea = $this->registerAs('lea@example.org', 'Léa', ['apprenant']);
+        // ce qu'avait laissé une recharge d'avant l'ADR-013 : la capture, puis le crédit
+        $credits = new CreditService(Db::get());
+        $credits->recordCapture($lea['id'], 'CAP-F30', 'ORDER-F30', 10_000_000);
+        $credits->topup($lea['id'], 10_000_000, 'ORDER-F30', 'Recharge PayPal');
+
+        TwinSupport::queueAnthropic($this->http, '{"poleNum":1}', 1000, 200);
+        $appel = $this->post('/api/twin6/appel', ['model' => 'claude-sonnet-5', 'prompt' => 'Scanne le pôle 1.', 'max_tokens' => 1024], $lea);
+        self::assertSame(200, $appel->getStatusCode(), (string) $appel->getBody());
+        self::assertSame(10_000_000 - 4400, $credits->balance($lea['id']));
+        self::assertSame(403, $this->post('/api/twin9/credit/paypal/creer', ['pack_index' => 0], $lea)->getStatusCode(),
+            'pas de nouvel achat');
+
+        TwinSupport::queuePaypalToken($this->http);
+        TwinSupport::queuePaypalRefund($this->http, 'REF-F30');
+        $rembourse = $this->post('/api/twin9/credit/rembourser', [], $lea);
+        self::assertSame(200, $rembourse->getStatusCode(), (string) $rembourse->getBody());
+        self::assertSame(['rembourse_microusd' => 9_990_000, 'solde_microusd' => 5_600], self::json($rembourse));
+    }
+
+    /** Léa rejoint une cohorte de l'école de ce test, avec son consentement. */
+    private function eleveDeLEcole(string $email = 'eleve@example.org'): array
+    {
+        $eleve = $this->registerAs($email, 'Léa', ['apprenant']);
+        $cohorte = self::json($this->post('/api/etablissement/cohortes', ['nom' => 'BTS SIO 2026']));
+        self::assertSame(201, $this->post('/api/cohortes/' . $cohorte['codeInvitation'] . '/rejoindre',
+            ['consentement' => true], $eleve)->getStatusCode());
+
+        return $eleve;
+    }
+
+    #[TestDox('UC-APP-11-F33 — A5 : un apprenant voit que son école paie (sa page du crédit) : ce qu’elle peut encore payer pour lui ce mois-ci, jamais son crédit ; son appel est payé par elle, son propre compte intact')]
+    public function testF33TheLearnerSeesThatTheirSchoolPays(): void
+    {
+        $lea = $this->eleveDeLEcole();
+        self::assertSame(200, $this->as_($this->ecole, 'PUT', '/api/etablissement/ecole', ['plafondEleveUsd' => 2])->getStatusCode());
+        (new CreditService(Db::get()))->adjust($this->ecole['id'], 50_000_000, 'crédit des tests');
+
+        $meta = self::json($this->get('/api/twin9/meta', $lea));
+        self::assertFalse($meta['peut_acheter']);
+        self::assertCount(1, $meta['payeurs'], 'sans solde à lui, son école seule');
+        $payeur = $meta['payeurs'][0];
+        self::assertSame(['ecole', $this->ecole['id'], 'École des Tilleuls', false, false, 2_000_000, 0, 2_000_000, 2_000_000],
+            [$payeur['type'], $payeur['id'], $payeur['nom'], $payeur['soi'], $payeur['cle'], $payeur['plafond_microusd'],
+             $payeur['engage_microusd'], $payeur['reste_credit_microusd'], $payeur['reste_cle_microusd']]);
+        self::assertStringNotContainsString('50000000', json_encode($meta, JSON_THROW_ON_ERROR), 'jamais le crédit de l’école');
+
+        TwinSupport::queueAnthropic($this->http, '{"poleNum":1}', 1000, 200);
+        $appel = $this->post('/api/twin6/appel', ['model' => 'claude-sonnet-5', 'prompt' => 'Scanne le pôle 1.', 'max_tokens' => 1024], $lea);
+        self::assertSame(200, $appel->getStatusCode(), (string) $appel->getBody());
+        self::assertSame(4140, self::json($appel)['cout_microusd'], 'au coût réel × 1,035, la surtaxe de son école');
+        self::assertSame(['solde_microusd' => 0, 'evenements' => []], self::json($this->get('/api/twin9/credit', $lea)));
+        self::assertSame(2_000_000 - 4140, self::json($this->get('/api/twin9/meta', $lea))['payeurs'][0]['reste_credit_microusd']);
+        self::assertSame(50_000_000 - 4140, (new CreditService(Db::get()))->balance($this->ecole['id']));
+    }
+
+    #[TestDox('UC-APP-11-F34 — E10 : le crédit de son école ne couvre pas l’appel → 402 « Crédit de votre école insuffisant », sans le solde de l’école ; rien débité, rien envoyé')]
+    public function testF34TheSchoolsCreditIsShort(): void
+    {
+        $lea = $this->eleveDeLEcole('eleve-court@example.org');
+        $this->as_($this->ecole, 'PUT', '/api/etablissement/ecole', ['plafondEleveUsd' => 2]);
+        (new CreditService(Db::get()))->adjust($this->ecole['id'], 5_000, 'crédit des tests');
+
+        $refus = $this->post('/api/twin6/appel', ['model' => 'claude-sonnet-5', 'prompt' => 'Scanne le pôle 1.', 'max_tokens' => 1024], $lea);
+        self::assertSame(402, $refus->getStatusCode());
+        self::assertSame(['error', 'code', 'requis_estime_microusd'], array_keys(self::json($refus)));
+        self::assertSame(['Crédit de votre école insuffisant', 'credit_ecole'], [self::json($refus)['error'], self::json($refus)['code']]);
+        self::assertSame([], $this->http->requests);
+        self::assertSame(5_000, (new CreditService(Db::get()))->balance($this->ecole['id']));
+        self::assertSame(0, (int) self::$pdo->query('SELECT COALESCE(SUM(engage_microusd), 0) FROM ecole_consommations')->fetchColumn(),
+            'le plafond n’est pas tenu non plus');
     }
 }

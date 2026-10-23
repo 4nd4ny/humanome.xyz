@@ -337,6 +337,7 @@ exercés par F01 côté API et par les tests IHM rendus dans `<App/>`).
 | UC-PRO-05-F27 | Anomalie AN-3 | IHM | Brouillon `engine://` au gabarit marqué : 8 appels avec les gabarits du moteur, marque jamais envoyée, aucune alerte (comportement actuel figé) | idem |
 | UC-PRO-05-F28 | A6 (en A/B) + RG5 | IHM | Une compétence : 1 appel par branche ; estimations A et B à 1 appel | idem |
 | UC-PRO-05-F29 | A10 (A/B, run simple) | IHM | A/B croisé interrompu au run 2 de B : rapport partiel 2 × 1 ; run simple interrompu : « Run interrompu. », aucun rapport | idem |
+| UC-PRO-05-F30 | A5 | IHM | Sous le champ de la clé personnelle, la règle R1 (ADR-013 §5) : la clé reste dans ce navigateur, jamais sur nos serveurs (revue du lot S6b) | idem |
 
 Les tests IHM jouent le **vrai** moteur et la **vraie** logique du banc : seul
 le réseau est simulé (API humanome, proxy `api/llm` avec preuve de travail de

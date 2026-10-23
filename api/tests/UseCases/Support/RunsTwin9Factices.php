@@ -73,6 +73,27 @@ trait RunsTwin9Factices
         return self::json($cree)['id'];
     }
 
+    /**
+     * Un profil de $user enregistré avant l'ADR-013, écrit directement en
+     * base, sans passer par la politique d'aujourd'hui : un profil à clé
+     * personnelle, par exemple, qui reste enregistré mais ne part plus.
+     *
+     * @param array<string, mixed> $changes
+     * @return int son identifiant
+     */
+    private function profilAncien(array $user, string $nom, array $changes = []): int
+    {
+        $profil = ProfilRepository::v98();
+        $profil->voie = 'directe';
+        foreach ($changes as $cle => $valeur) {
+            $profil->{$cle} = $valeur;
+        }
+        Db::get()->prepare('INSERT INTO twin9_profils (user_id, nom, profil) VALUES (?, ?, ?)')->execute(
+            [$user['id'], $nom, json_encode(ProfilRepository::validate($profil), JSON_THROW_ON_ERROR)]);
+
+        return (int) Db::get()->lastInsertId();
+    }
+
     /** @param array<string, mixed> $changes */
     private function creerProfil(array $user, string $nom, array $changes = []): \Psr\Http\Message\ResponseInterface
     {

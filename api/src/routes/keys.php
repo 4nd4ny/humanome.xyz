@@ -3,18 +3,23 @@
 declare(strict_types=1);
 
 /**
- * Per-user LLM API keys (P8, AD-4): opt-in encrypted server storage so the
- * learner can retrieve their key on another browser. Encryption model in
- * src/Keys/KeyVault.php (sodium crypto_secretbox, per-entry nonce, master
- * key SODIUM_MASTER_KEY outside the webroot).
+ * The user API keys stored before ADR-013 (P8, AD-4; ADR-013 §5). A user's
+ * keys stay in their browser and are never kept on the server: PUT answers
+ * 410 to every account — a school's too, whose key for its learners is
+ * written in its establishment space (lot S6b) and returned by no route —,
+ * and nothing writes a user key any more. What remains serves the account
+ * page, which shows the keys still stored « à supprimer » until the purge
+ * (scripts/purger-cles-utilisateurs.php, after a notice, never run
+ * automatically): the list, the owner's reveal to copy a key into this
+ * browser before deleting it, and the deletion. No run path calls the
+ * reveal any more. Encryption model in src/Keys/KeyVault.php.
  *
- * Access: any logged-in user, own keys only. GET /api/keys/{provider}
- * returns the DECRYPTED key to the authenticated owner — that is the AD-4
- * synchronization: runs execute in the browser (ADR-001) and need the key
- * client-side. The list never carries key material; keys are never logged.
+ * Access: any logged-in user, own keys only. The list never carries key
+ * material; the reveal answers no-store; keys are never logged.
  *
  * Without a valid SODIUM_MASTER_KEY every route answers an explicit 503
  * (« stockage de clés non configuré ») and the rest of the API is unaffected.
+ * Order of the guards: CSRF (global middleware), 503, 401, then 410.
  */
 
 use Humanome\Auth\Session;
@@ -68,40 +73,36 @@ return function (App $app): void {
     };
 
     // ------------------------------------------------------------------
-    // PUT /api/keys — {provider, apiKey} (CSRF via global middleware).
+    // PUT /api/keys — gone (ADR-013 §5): 410 to every account, before any
+    // look at the body, which is never read nor stored. A school is pointed
+    // to its establishment space (CSRF via global middleware).
     // ------------------------------------------------------------------
     $app->put('/keys', $withVault(function (Request $request, Response $response, array $args, int $userId, KeyVault $vault) use ($json): Response {
-        $data = (array) ($request->getParsedBody() ?? []);
-        $errors = [];
-        $provider = $data['provider'] ?? null;
-        if (!\is_string($provider) || !\in_array($provider, KeyVault::PROVIDERS, true)) {
-            $errors['provider'] = 'Fournisseur inconnu (attendu : ' . implode(', ', KeyVault::PROVIDERS) . ')';
-        }
-        $apiKey = $data['apiKey'] ?? null;
-        if (!\is_string($apiKey) || \strlen($apiKey) < 8 || \strlen($apiKey) > 4096
-            || preg_match('/[\x00-\x1f\x7f]/', $apiKey) === 1) {
-            $errors['apiKey'] = 'Clé API invalide (8 à 4096 caractères imprimables)';
-        }
-        if ($errors !== []) {
-            return $json($response, ['error' => 'Validation échouée', 'fields' => $errors], 422);
-        }
-
-        $vault->store($userId, (string) $provider, (string) $apiKey);
-
-        return $response->withStatus(204);
+        return $json($response, [
+            'error' => KeyVault::REFUS,
+            'detail' => $vault->accepte($userId)
+                ? 'La clé de votre école, pour ses élèves, se règle dans votre espace établissement.'
+                : 'Saisissez votre clé dans le navigateur, au lancement d’une cartographie : elle y reste. Seule une '
+                    . 'école garde la sienne sur le serveur, pour ses élèves.',
+        ], 410);
     }));
 
     // ------------------------------------------------------------------
-    // GET /api/keys — [{provider, createdAt}], NEVER the keys.
+    // GET /api/keys — [{provider, createdAt, avisPurgeAt}], NEVER the keys:
+    // the keys still stored, « à supprimer » (ADR-013 §5).
     // ------------------------------------------------------------------
     $app->get('/keys', $withVault(function (Request $request, Response $response, array $args, int $userId, KeyVault $vault) use ($json): Response {
         return $json($response, $vault->listForUser($userId));
     }));
 
     // ------------------------------------------------------------------
-    // GET /api/keys/{provider} — {apiKey} decrypted, OWNER ONLY (AD-4).
-    // The body carries a cleartext secret: mark it no-store so no browser
-    // disk cache or shared proxy retains the decrypted key (cf. gdoc-text).
+    // GET /api/keys/{provider} — {apiKey} decrypted, OWNER ONLY, until the
+    // purge: for the one action of the account page that copies a stored key
+    // into this browser before deleting it (ADR-013 §5), so that nobody loses
+    // a key kept nowhere else. No run path calls it. The body carries a
+    // cleartext secret: mark it no-store so no browser disk cache or shared
+    // proxy retains the decrypted key (cf. gdoc-text). It leaves with the
+    // contraction (ADR-013 §8, step 10).
     // ------------------------------------------------------------------
     $app->get('/keys/{provider:[a-z]+}', $withVault(function (Request $request, Response $response, array $args, int $userId, KeyVault $vault) use ($json): Response {
         $apiKey = $vault->reveal($userId, (string) $args['provider']);

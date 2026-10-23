@@ -77,6 +77,8 @@ export function fakeFetch(routes = {}, { user = ETAB_USER } = {}) {
     if (key === 'GET api/auth/me') {
       return user ? jsonResponse(200, { user, csrfToken: CSRF }) : jsonResponse(401, { error: 'Authentification requise' })
     }
+    // l'école (sprint 6, lot S6b) : sa page par défaut, une école neuve
+    if (key === 'GET api/etablissement/ecole') return jsonResponse(200, ecolePage())
     return jsonResponse(404, { error: 'absent' })
   })
   return {
@@ -128,7 +130,7 @@ export function cohorteDetail(overrides = {}) {
     codeInvitation: 'COHORTE7AZ',
     createdAt: '2026-07-01T10:00:00',
     consentement:
-      "En rejoignant cette cohorte, vous acceptez que l'établissement voie les cartographies produites dans ce cadre.",
+      "En rejoignant cette cohorte, vous acceptez que l'établissement voie les cartographies produites dans ce cadre, et le montant de ce qu’il paie pour vos analyses (jamais leur contenu sur humanome ; s’il les paie avec sa propre clé Anthropic, les résultats des appels partis par lots restent lisibles dans sa Console Anthropic).",
     membres: [
       membre(),
       membre({
@@ -139,6 +141,28 @@ export function cohorteDetail(overrides = {}) {
         portfolio: null,
       }),
     ],
+    ...overrides,
+  }
+}
+
+/**
+ * GET api/etablissement/ecole (sprint 6, lot S6b) : ses réglages, son crédit, ses clés (jamais leur matériau), ses
+ * élèves et leurs dépenses — par défaut une école neuve (surtaxe 3,5 %, plafond 0).
+ */
+export function ecolePage(overrides = {}) {
+  return {
+    surtaxePct: 3.5,
+    surtaxeMin: 3.5,
+    surtaxeMax: 10,
+    plafondEleveMicrousd: 0,
+    respireNumero: null,
+    creditMicrousd: 0,
+    cles: [],
+    chiffrementDisponible: true,
+    mois: '2026-10',
+    depenseMoisMicrousd: 0,
+    eleves: [],
+    partis: { nombre: 0, moisMicrousd: 0, totalMicrousd: 0 },
     ...overrides,
   }
 }

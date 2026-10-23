@@ -2,54 +2,103 @@ import { afterEach, describe, expect, it, vi } from 'vitest'
 import { cleanup, fireEvent, render, screen, waitFor } from '@testing-library/react'
 import ApiKeysSection from './ApiKeysSection.jsx'
 import { ApiError } from '../../api/client.js'
+import { KEYS_STORAGE_KEY } from '../../lib/local-keys.js'
 
 afterEach(cleanup)
 
+/** Un localStorage en mémoire ; `plein` : il refuse toute écriture. */
+function memoryStorage({ plein = false } = {}) {
+  const data = new Map()
+  return {
+    getItem: (k) => (data.has(k) ? data.get(k) : null),
+    setItem: (k, v) => {
+      if (plein) throw new Error('QuotaExceededError')
+      data.set(k, String(v))
+    },
+    removeItem: (k) => data.delete(k),
+  }
+}
+
 function fakeDeps(overrides = {}) {
   return {
-    listKeys: vi.fn(async () => [{ provider: 'anthropic', createdAt: '2026-07-15T10:00:00' }]),
-    storeKey: vi.fn(async () => null),
+    listKeys: vi.fn(async () => [{ provider: 'anthropic', createdAt: '2026-07-15T10:00:00', avisPurgeAt: null }]),
+    revealKey: vi.fn(async () => ({ apiKey: 'sk-ant-gardee-0123456789' })),
     deleteKey: vi.fn(async () => null),
+    keyStorage: memoryStorage(),
     ...overrides,
   }
 }
 
 describe('ApiKeysSection', () => {
-  it('liste les clés enregistrées (sans jamais la clé)', async () => {
-    render(<ApiKeysSection deps={fakeDeps()} />)
-    // Date unique de la ligne (« Anthropic (Claude) » figure aussi dans le select).
-    expect(await screen.findByText(/enregistrée le 2026-07-15/)).toBeTruthy()
-    expect(document.querySelector('.account-keys-provider').textContent).toBe('Anthropic (Claude)')
-  })
-
-  it('aucune clé : message dédié', async () => {
+  it('dit que la clé reste dans le navigateur (ADR-013, R1) et n’a plus de formulaire d’ajout', async () => {
     render(<ApiKeysSection deps={fakeDeps({ listKeys: vi.fn(async () => []) })} />)
-    expect(await screen.findByText('Aucune clé enregistrée.')).toBeTruthy()
+    expect(await screen.findByText('Aucune clé gardée sur le serveur.')).toBeTruthy()
+    expect(screen.getByTestId('cle-reste-navigateur').textContent).toBe(
+      'Votre clé reste dans ce navigateur : humanome ne la garde jamais sur ses serveurs. Seule une école peut y ' +
+        'garder la sienne, pour ses élèves.',
+    )
+    expect(screen.queryByLabelText('Clé API')).toBeNull()
+    expect(screen.queryByRole('button', { name: /Enregistrer/ })).toBeNull()
+    expect(screen.getByText(/L’analyse approfondie Twin9, qui tourne sur le serveur, part avec la clé de la plateforme/)).toBeTruthy()
   })
 
-  it('enregistre une clé (provider + champ) et recharge', async () => {
-    const deps = fakeDeps({ listKeys: vi.fn(async () => []) })
+  it('liste les clés gardées avant, « à supprimer », sans jamais la clé ; la date de purge quand l’avis est parti', async () => {
+    const listKeys = vi.fn(async () => [
+      { provider: 'anthropic', createdAt: '2026-07-15T10:00:00', avisPurgeAt: null },
+      { provider: 'openai', createdAt: '2026-07-16T10:00:00', avisPurgeAt: '2026-10-22T08:00:00' },
+    ])
+    render(<ApiKeysSection deps={fakeDeps({ listKeys })} />)
+    expect(await screen.findByText(/à supprimer — gardée le 2026-07-15$/)).toBeTruthy()
+    expect(screen.getByText('à supprimer — gardée le 2026-07-16, supprimée d’office à partir du 2026-11-21')).toBeTruthy()
+    expect(screen.getByTestId('cles-a-supprimer').textContent).toContain('Elles ne servent plus à aucune analyse')
+    expect(Array.from(document.querySelectorAll('.account-keys-provider')).map((n) => n.textContent)).toEqual([
+      'Anthropic (Claude)',
+      'OpenAI (GPT)',
+    ])
+    expect(document.body.textContent).not.toContain('sk-')
+  })
+
+  it('« Supprimer du serveur » supprime, recharge, et ne touche pas la clé de ce navigateur', async () => {
+    const deps = fakeDeps()
+    deps.keyStorage.setItem(KEYS_STORAGE_KEY, JSON.stringify({ anthropic: 'sk-ant-locale-0123456789' }))
     render(<ApiKeysSection deps={deps} />)
-    await screen.findByText('Aucune clé enregistrée.')
-
-    fireEvent.change(screen.getByLabelText('Clé API'), { target: { value: 'sk-ant-abcdef123456' } })
-    fireEvent.click(screen.getByRole('button', { name: 'Enregistrer la clé' }))
-    await waitFor(() => expect(deps.storeKey).toHaveBeenCalledWith({ provider: 'anthropic', apiKey: 'sk-ant-abcdef123456' }))
-    expect(await screen.findByText(/enregistrée \(chiffrée\)/)).toBeTruthy()
+    fireEvent.click(await screen.findByRole('button', { name: 'Supprimer du serveur' }))
+    fireEvent.click(screen.getByRole('button', { name: 'Confirmer la suppression' })) // en deux temps
+    await waitFor(() => expect(deps.deleteKey).toHaveBeenCalledWith('anthropic'))
+    expect(await screen.findByText('Clé Anthropic (Claude) supprimée du serveur.')).toBeTruthy()
+    expect(deps.revealKey).not.toHaveBeenCalled()
+    expect(deps.listKeys).toHaveBeenCalledTimes(2)
+    expect(JSON.parse(deps.keyStorage.getItem(KEYS_STORAGE_KEY))).toEqual({ anthropic: 'sk-ant-locale-0123456789' })
   })
 
-  it('le bouton reste désactivé pour une clé trop courte', async () => {
-    render(<ApiKeysSection deps={fakeDeps({ listKeys: vi.fn(async () => []) })} />)
-    await screen.findByText('Aucune clé enregistrée.')
-    fireEvent.change(screen.getByLabelText('Clé API'), { target: { value: 'court' } })
-    expect(screen.getByRole('button', { name: 'Enregistrer la clé' })).toHaveProperty('disabled', true)
-  })
-
-  it('supprime une clé', async () => {
+  it('« Recopier dans ce navigateur, puis supprimer » : la clé relue va dans humanome-keys, puis est supprimée du serveur', async () => {
     const deps = fakeDeps()
     render(<ApiKeysSection deps={deps} />)
-    fireEvent.click(await screen.findByRole('button', { name: 'Supprimer' }))
-    await waitFor(() => expect(deps.deleteKey).toHaveBeenCalledWith('anthropic'))
+    fireEvent.click(await screen.findByRole('button', { name: 'Recopier dans ce navigateur, puis supprimer' }))
+    expect(await screen.findByText('Clé Anthropic (Claude) recopiée dans ce navigateur, puis supprimée du serveur.')).toBeTruthy()
+    expect(deps.revealKey).toHaveBeenCalledWith('anthropic')
+    expect(deps.deleteKey).toHaveBeenCalledWith('anthropic')
+    expect(JSON.parse(deps.keyStorage.getItem(KEYS_STORAGE_KEY))).toEqual({ anthropic: 'sk-ant-gardee-0123456789' })
+    expect(document.body.textContent).not.toContain('sk-ant-gardee')
+  })
+
+  it('recopie impossible (stockage du navigateur plein, ou clé illisible) : rien n’est supprimé du serveur', async () => {
+    const plein = fakeDeps({ keyStorage: memoryStorage({ plein: true }) })
+    render(<ApiKeysSection deps={plein} />)
+    fireEvent.click(await screen.findByRole('button', { name: 'Recopier dans ce navigateur, puis supprimer' }))
+    expect((await screen.findByRole('alert')).textContent).toBe(
+      'Ce navigateur n’a pas pu garder la clé : rien n’a été supprimé du serveur.',
+    )
+    expect(plein.deleteKey).not.toHaveBeenCalled()
+    cleanup()
+
+    const introuvable = new ApiError('Aucune clé enregistrée pour ce fournisseur', 404)
+    introuvable.serverMessage = introuvable.message
+    const illisible = fakeDeps({ revealKey: vi.fn(async () => { throw introuvable }) })
+    render(<ApiKeysSection deps={illisible} />)
+    fireEvent.click(await screen.findByRole('button', { name: 'Recopier dans ce navigateur, puis supprimer' }))
+    expect((await screen.findByRole('alert')).textContent).toBe('Aucune clé enregistrée pour ce fournisseur')
+    expect(illisible.deleteKey).not.toHaveBeenCalled()
   })
 
   it('erreur de chargement : message', async () => {
@@ -58,36 +107,13 @@ describe('ApiKeysSection', () => {
     expect(await screen.findByText('Boom')).toBeTruthy()
   })
 
-  // Exigence : ajouter une clé — l'échec serveur doit être visible (role=alert),
-  // sans faux rechargement de la liste en succès.
-  it("échec d'enregistrement : message serveur en role=alert, pas de rechargement", async () => {
-    const error = new ApiError('Clé API invalide (8 à 4096 caractères imprimables)', 422)
-    error.serverMessage = error.message // posé comme le fait apiFetch (client.js)
-    const deps = fakeDeps({
-      listKeys: vi.fn(async () => []),
-      storeKey: vi.fn(async () => { throw error }),
-    })
-    render(<ApiKeysSection deps={deps} />)
-    await screen.findByText('Aucune clé enregistrée.')
-
-    fireEvent.change(screen.getByLabelText('Clé API'), { target: { value: 'sk-ant-abcdef123456' } })
-    fireEvent.click(screen.getByRole('button', { name: 'Enregistrer la clé' }))
-
-    const alert = await screen.findByRole('alert')
-    expect(alert.textContent).toBe('Clé API invalide (8 à 4096 caractères imprimables)')
-    // Pas de feedback de succès ni de rechargement : listKeys n'a servi qu'au montage.
-    expect(screen.queryByText(/enregistrée \(chiffrée\)/)).toBeNull()
-    expect(deps.listKeys).toHaveBeenCalledTimes(1)
-  })
-
   it('session perdue (403 du jeton CSRF, 401) : l’alerte dit de se reconnecter, pas « Jeton CSRF absent ou invalide »', async () => {
     const csrf = new ApiError('Jeton CSRF absent ou invalide', 403)
     csrf.serverMessage = 'Jeton CSRF absent ou invalide'
-    const deps = fakeDeps({ listKeys: vi.fn(async () => []), storeKey: vi.fn(async () => { throw csrf }) })
+    const deps = fakeDeps({ deleteKey: vi.fn(async () => { throw csrf }) })
     render(<ApiKeysSection deps={deps} />)
-    await screen.findByText('Aucune clé enregistrée.')
-    fireEvent.change(screen.getByLabelText('Clé API'), { target: { value: 'sk-ant-abcdef123456' } })
-    fireEvent.click(screen.getByRole('button', { name: 'Enregistrer la clé' }))
+    fireEvent.click(await screen.findByRole('button', { name: 'Supprimer du serveur' }))
+    fireEvent.click(screen.getByRole('button', { name: 'Confirmer la suppression' })) // en deux temps
     expect((await screen.findByRole('alert')).textContent).toBe('Votre session a expiré : reconnectez-vous, puis réessayez.')
     cleanup()
 
@@ -97,59 +123,14 @@ describe('ApiKeysSection', () => {
     expect((await screen.findByRole('alert')).textContent).toBe('Votre session a expiré : reconnectez-vous, puis réessayez.')
   })
 
-  it('échec de suppression : message en role=alert', async () => {
+  it('échec de suppression : message en role=alert, pas de rechargement', async () => {
     const deps = fakeDeps({ deleteKey: vi.fn(async () => { throw new ApiError('Boom suppression', 500) }) })
     render(<ApiKeysSection deps={deps} />)
-    fireEvent.click(await screen.findByRole('button', { name: 'Supprimer' }))
+    fireEvent.click(await screen.findByRole('button', { name: 'Supprimer du serveur' }))
+    fireEvent.click(screen.getByRole('button', { name: 'Confirmer la suppression' })) // en deux temps
 
     const alert = await screen.findByRole('alert')
     expect(alert.textContent).toBe('Boom suppression')
     expect(deps.listKeys).toHaveBeenCalledTimes(1)
-  })
-
-  // Exigence : « champ password […] jamais réaffichée » — le champ ne doit ni
-  // s'autocompléter ni conserver la clé après enregistrement.
-  it('« jamais réaffichée » : champ type=password, autoComplete=off, vidé après enregistrement', async () => {
-    const deps = fakeDeps({ listKeys: vi.fn(async () => []) })
-    render(<ApiKeysSection deps={deps} />)
-    await screen.findByText('Aucune clé enregistrée.')
-
-    const input = screen.getByLabelText('Clé API')
-    expect(input.type).toBe('password')
-    expect(input.getAttribute('autocomplete')).toBe('off')
-
-    fireEvent.change(input, { target: { value: 'sk-ant-abcdef123456' } })
-    fireEvent.click(screen.getByRole('button', { name: 'Enregistrer la clé' }))
-    await screen.findByText(/enregistrée \(chiffrée\)/)
-    expect(input.value).toBe('')
-  })
-
-  // Exigence : fournisseurs anthropic/openai/google/openrouter/xai/ollama —
-  // exactement ceux-là, sans le fournisseur de test « mock », ni Mistral AI,
-  // dont aucun parcours n'emploie la clé (minimisation).
-  it('le select Fournisseur propose exactement les 6 fournisseurs de l’exigence (sans mock ni Mistral AI)', async () => {
-    render(<ApiKeysSection deps={fakeDeps({ listKeys: vi.fn(async () => []) })} />)
-    await screen.findByText('Aucune clé enregistrée.')
-
-    const options = Array.from(screen.getByLabelText('Fournisseur').querySelectorAll('option'))
-    expect(options.map((o) => o.value)).toEqual(['anthropic', 'openai', 'google', 'openrouter', 'xai', 'ollama'])
-    expect(options.map((o) => o.textContent)).toEqual([
-      'Anthropic (Claude)',
-      'OpenAI (GPT)',
-      'Google (Gemini)',
-      'OpenRouter',
-      'xAI (Grok)',
-      'Ollama (local)',
-    ])
-  })
-
-  it('dit que Twin9 n’emploie qu’une clé personnelle Anthropic, et donne le début d’une clé de chaque fournisseur', async () => {
-    render(<ApiKeysSection deps={fakeDeps({ listKeys: vi.fn(async () => []) })} />)
-    await screen.findByText('Aucune clé enregistrée.')
-    expect(screen.getByText(/Pour l’analyse approfondie Twin9, une clé personnelle ne sert que chez Anthropic/)).toBeTruthy()
-    const cle = screen.getByLabelText('Clé API')
-    expect(cle.placeholder).toBe('ex. sk-ant-…')
-    fireEvent.change(screen.getByLabelText('Fournisseur'), { target: { value: 'google' } })
-    expect(cle.placeholder).toBe('ex. AIza…')
   })
 })

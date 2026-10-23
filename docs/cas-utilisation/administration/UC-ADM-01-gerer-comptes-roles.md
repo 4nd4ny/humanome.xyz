@@ -204,6 +204,12 @@ comptes », ou carte « Rôles » de l'accueil `#/admin`).
 - **RG8** — Seul l'administrateur habilite : une déclaration (UC-CPT-07)
   n'écrit jamais `user_roles`, et `grantable` n'est qu'une suggestion, que
   l'attribution de l'étape 5 rend effective.
+- **RG9** — Retirer `etablissement` efface aussi la clé de l'école (ADR-013,
+  R1 : seule une école garde une clé) : ses lots partis avec elle sont d'abord
+  annulés puis supprimés chez Anthropic, puis la clé est effacée, avec un
+  audit `ecole_cle_retiree {fournisseur, cause: habilitation_retiree}` par
+  fournisseur ; une habilitation rendue ne ramène aucune clé (UC-ETA-05-F12,
+  revue du lot S6b).
 
 ## Données et RGPD
 

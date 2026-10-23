@@ -6,7 +6,7 @@
 | **Acteurs secondaires** | Worker cron de la plateforme et runner Node de l'établissement (consomment la configuration et le jeton — UC-SYS-01) ; Harmonia (facturation à l'usage du service humanome, §7) |
 | **Portée** | humanome.xyz — section « Configuration LLM et budget » de `#/etablissement` ; API `PUT/GET /api/etablissement/config`, `POST /api/etablissement/worker-token` |
 | **Niveau** | Objectif utilisateur |
-| **Cahier des charges** | §3.7 (budget maximal configurable), §4.9 (clé « qualité établissement » ou infrastructure LLM propre), §6 (clés chiffrées), §7 (facturation à l'usage), ADR-004 (clés chiffrées sodium), ADR-005, docs/plan-masse.md §4-5 |
+| **Cahier des charges** | §3.7 (budget maximal configurable), §4.9 (clé « qualité établissement » ou infrastructure LLM propre), §6 (clés chiffrées), §7 (facturation à l'usage), ADR-004 (clés chiffrées sodium), ADR-005, **ADR-013** (seule une école garde une clé sur le serveur, et achète des crédits), docs/plan-masse.md §4-5 |
 | **Statut** | Implémenté (P11 / M8) — jeton worker : API seulement |
 
 ## Objectif
@@ -16,6 +16,19 @@ portfolios de ses cohortes (service humanome facturé à l'usage, ou son propre
 point d'accès compatible OpenAI), **jusqu'à quel montant** la plateforme peut
 dépenser pour lui, et d'obtenir le **jeton** qui authentifie son runner
 machine auprès de la file de jobs.
+
+Depuis l'ADR-013 (sprint 6, lot S6a), l'école — le compte qui a
+l'habilitation `etablissement`, que seul l'administrateur attribue — est le
+**seul** compte dont humanome garde une clé sur ses serveurs : celle de son
+point d'accès, ici, et, depuis le lot S6b, sa clé Anthropic pour ses élèves,
+posée dans la section « Mon école » (`ecole_cles`, UC-ETA-05 A2 ;
+`KeyVault::store` refuse la clé de tout autre compte ; les clés
+d'utilisateur restent dans leur navigateur, UC-CPT-04). Les deux ne se
+confondent pas : la clé du point d'accès ne sert qu'aux runs de masse, celle
+de l'école qu'aux usages payants de ses élèves. C'est aussi le seul
+compte qui achète des crédits (UC-APP-11, E11). Le plafond, la dépense et la
+facturation à l'usage des runs de masse décrits ici ne changent pas (ADR-013
+§4 : leur bascule vers le crédit prépayé de l'école fera un lot à part).
 
 ## Déclencheur
 
@@ -136,6 +149,10 @@ L'établissement ouvre `#/etablissement` et modifie la section
 - **RG7** — Côté site, un champ plafond vidé vaut `0` (`Number("")`) : les
   traitements plateforme s'arrêtent alors, et le runner d'un établissement en
   `endpoint` aussi dès qu'un coût non nul a été déclaré (RG3).
+- **RG8** — Une école est le seul compte dont le serveur garde une clé (ADR-013
+  §1, R1) : la clé de son point d'accès ici, chiffrée au format de `KeyVault`,
+  dont `store()` refuse désormais la clé de tout compte sans l'habilitation
+  `etablissement` (`KeyRefused`). Un rôle déclaré (UC-CPT-07) n'ouvre rien.
 
 ## Données et RGPD
 
@@ -199,6 +216,7 @@ L'établissement ouvre `#/etablissement` et modifie la section
 ### Tests existants liés (non-régression)
 
 - `api/tests/EtablissementConfigTest.php` — projection par défaut, validation, clé chiffrée conservée/effacée, jeton worker, garde de rôle.
+- `api/tests/KeysTest.php` — `testTheVaultKeepsASchoolsKeyOnly` : le coffre garde la clé d'une école, refuse celle d'un apprenant, un rôle déclaré n'ouvre rien (RG8, ADR-013) ; `UC-CPT-04-U15` de même.
 - `api/tests/MasseDoDTest.php` — `testPlafondAbaisseEnCoursDeRunPuisReactive` (plafond abaissé puis relevé en cours de run).
 - `api/tests/WorkerRouteTest.php` — `testBudgetConsommeRefuseLaReservation` (réactivation vue du runner).
 - `web/src/views/EtablissementView.test.jsx` — configuration endpoint, clé jamais réaffichée (vue isolée).

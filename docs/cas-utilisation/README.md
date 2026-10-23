@@ -118,7 +118,7 @@ rejouant les fixtures : aucun appel réseau réel).
 | [UC-CPT-01](compte/UC-CPT-01-creer-activer-compte.md) | Créer un compte et l'activer par code email | 25 | 35 | 6 |
 | [UC-CPT-02](compte/UC-CPT-02-se-connecter-deconnecter.md) | Se connecter et se déconnecter | 17 | 25 | 4 |
 | [UC-CPT-03](compte/UC-CPT-03-gerer-profil.md) | Gérer son profil (nom affiché, avatar) | 18 | 19 | 3 |
-| [UC-CPT-04](compte/UC-CPT-04-gerer-cles-api.md) | Gérer ses clés API personnelles | 14 | 22 | 1 |
+| [UC-CPT-04](compte/UC-CPT-04-gerer-cles-api.md) | Gérer ses clés API (dans le navigateur ; supprimer celles gardées sur le serveur) | 23 | 19 | 0 |
 | [UC-CPT-05](compte/UC-CPT-05-suivre-progression-formation.md) | Suivre sa progression de formation | 15 | 17 | 5 |
 | [UC-CPT-06](compte/UC-CPT-06-supprimer-compte.md) | Supprimer son compte (droit à l'effacement) | 10 | 12 | 1 |
 | [UC-CPT-07](compte/UC-CPT-07-declarer-roles-respire.md) | Déclarer ses rôles RESPIRE | 25 | 14 | 0 |
@@ -135,9 +135,9 @@ rejouant les fixtures : aucun appel réseau réel).
 | [UC-APP-06](apprenant/UC-APP-06-exporter-importer-archive.md) | Exporter et importer son archive complète | 21 | 18 | 6 |
 | [UC-APP-07](apprenant/UC-APP-07-inviter-cartographe.md) | Inviter un cartographe | 9 | 10 | 1 |
 | [UC-APP-08](apprenant/UC-APP-08-rejoindre-cohorte.md) | Rejoindre une cohorte, déposer son portfolio, quitter | 12 | 25 | 4 |
-| [UC-APP-09](apprenant/UC-APP-09-cartographie-ouverte-twin6.md) | Lancer une cartographie ouverte (Twin6) | 39 | 35 | 1 |
-| [UC-APP-10](apprenant/UC-APP-10-analyse-approfondie-twin9.md) | Lancer une analyse approfondie (Twin9) | 26 | 28 | 0 |
-| [UC-APP-11](apprenant/UC-APP-11-gerer-credit-twin9.md) | Gérer son crédit Twin9 (achat, factures, remboursement) | 17 | 29 | 3 |
+| [UC-APP-09](apprenant/UC-APP-09-cartographie-ouverte-twin6.md) | Lancer une cartographie ouverte (Twin6) | 39 | 37 | 1 |
+| [UC-APP-10](apprenant/UC-APP-10-analyse-approfondie-twin9.md) | Lancer une analyse approfondie (Twin9) | 27 | 38 | 0 |
+| [UC-APP-11](apprenant/UC-APP-11-gerer-credit-twin9.md) | Gérer son crédit Twin9 (achat par une école, factures, remboursement) | 17 | 35 | 3 |
 | [UC-APP-12](apprenant/UC-APP-12-interface-ipsative-v3.md) | Explorer sa cartographie dans l'interface ipsative V3 (retirée le 2026-10-14) | 29 | 0 | 19 |
 
 ### Cartographe
@@ -166,7 +166,7 @@ rejouant les fixtures : aucun appel réseau réel).
 | [UC-PRO-02](promptologue/UC-PRO-02-editer-brouillon-paquet.md) | Créer et éditer un brouillon de paquet de prompts | 21 | 26 | 6 |
 | [UC-PRO-03](promptologue/UC-PRO-03-publier-version-paquet.md) | Publier une version de paquet | 12 | 17 | 4 |
 | [UC-PRO-04](promptologue/UC-PRO-04-proposer-version-defaut.md) | Proposer une version par défaut | 6 | 8 | — |
-| [UC-PRO-05](promptologue/UC-PRO-05-banc-essai.md) | Évaluer un paquet au banc d'essai | 32 | 29 | 3 |
+| [UC-PRO-05](promptologue/UC-PRO-05-banc-essai.md) | Évaluer un paquet au banc d'essai | 32 | 30 | 3 |
 | [UC-PRO-06](promptologue/UC-PRO-06-retrospective.md) | Régénérer rétrospectivement des cartographies | 13 | 23 | 2 |
 | [UC-PRO-07](promptologue/UC-PRO-07-sandbox.md) | Exécuter le code d'un paquet en sandbox | 18 | 13 | 1 |
 | [UC-PRO-08](promptologue/UC-PRO-08-editer-gabarits-twin9.md) | Éditer les gabarits du Golden Prompt Twin9 | 14 | 26 | 5 |
@@ -189,6 +189,7 @@ rejouant les fixtures : aucun appel réseau réel).
 | [UC-ETA-02](etablissement/UC-ETA-02-configurer-llm-budget.md) | Configurer le moteur LLM, le budget et le jeton worker | 12 | 14 | 2 |
 | [UC-ETA-03](etablissement/UC-ETA-03-piloter-run-masse.md) | Lancer, suivre et annuler un run de masse | 15 | 31 | 6 |
 | [UC-ETA-04](etablissement/UC-ETA-04-consulter-documents-membre.md) | Consulter les documents produits pour un membre | 9 | 14 | 2 |
+| [UC-ETA-05](etablissement/UC-ETA-05-gerer-ecole.md) | Gérer son école : crédit, surtaxe, plafond par élève, clé | 23 | 13 | 0 |
 
 ### Administration
 
@@ -211,7 +212,7 @@ rejouant les fixtures : aucun appel réseau réel).
 | [UC-SYS-04](systeme/UC-SYS-04-construire-artefacts-derives.md) | Construire les données et artefacts dérivés | 9 | 19 | 3 |
 | [UC-SYS-05](systeme/UC-SYS-05-sauvegarder-restaurer.md) | Sauvegarder et restaurer la base | 0 | 8 | 6 |
 
-**Total : 62 cas d'utilisation, 1115 tests unitaires et 1246 tests fonctionnels identifiés, 192 anomalies de production documentées.**
+**Total : 63 cas d'utilisation, 1148 tests unitaires et 1275 tests fonctionnels identifiés, 191 anomalies de production documentées.**
 
 Les comptes portent sur les identifiants distincts (`UC-…-Unn`, `UC-…-Fnn`) présents dans les fichiers de tests ; un identifiant paramétré (`it.each`) compte pour un.
 <!-- catalogue:end -->

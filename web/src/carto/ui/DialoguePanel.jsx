@@ -32,6 +32,7 @@ import {
   reflectionMarkdown,
 } from '../core/dialogue.js'
 import { downloadBlob } from '../../lib/download-json.js'
+import { KEY_STAYS_IN_BROWSER } from '../../lib/local-keys.js'
 import { TwoStepButton } from './Manager.jsx'
 
 const RELAUNCH_MAX_TOKENS = 300
@@ -83,10 +84,16 @@ function RelaunchSettings({ llm, value, onChange }) {
         Version <input type="text" value={value.model} onChange={(e) => onChange({ ...value, model: e.target.value, consent: false })} />
       </label>
       {provider.requiresKey ? (
-        <label className="carto-small">
-          Clé d’API {storedKey ? '(celle enregistrée dans ce navigateur est utilisée si vous laissez vide)' : '(gardée pour cette page seulement)'}{' '}
-          <input type="password" autoComplete="off" value={value.key} onChange={(e) => onChange({ ...value, key: e.target.value, consent: false })} />
-        </label>
+        <>
+          <label className="carto-small">
+            Clé d’API {storedKey ? '(celle enregistrée dans ce navigateur est utilisée si vous laissez vide)' : '(gardée pour cette page seulement)'}{' '}
+            <input type="password" autoComplete="off" value={value.key} onChange={(e) => onChange({ ...value, key: e.target.value, consent: false })} />
+          </label>
+          {/* R1 (ADR-013 §5) : dit partout où l'on saisit une clé */}
+          <p className="carto-hint" data-testid="cle-reste-navigateur">
+            {KEY_STAYS_IN_BROWSER}
+          </p>
+        </>
       ) : (
         <p className="carto-hint">Ollama doit tourner sur cet ordinateur et accepter ce site (variable OLLAMA_ORIGINS).</p>
       )}

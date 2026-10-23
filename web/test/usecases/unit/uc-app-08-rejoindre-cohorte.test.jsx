@@ -23,8 +23,11 @@ afterEach(() => {
 })
 
 describe('UC-APP-08 — texte de consentement', () => {
-  it('UC-APP-08-U08 — le texte dit ce que voit l’établissement, ce qui reste local et l’effet du départ', () => {
+  it('UC-APP-08-U08 — le texte dit ce que voit l’établissement (le montant de ce qu’il paie, jamais le contenu sur humanome ; sur sa propre clé, sa Console Anthropic : ADR-013 §6, §7), ce qui reste local et l’effet du départ', () => {
     expect(CONSENT_TEXT).toContain('l’établissement verra les cartographies produites dans ce cadre')
+    expect(CONSENT_TEXT).toContain('il en voit alors le montant, jamais le contenu sur humanome')
+    // sur sa propre clé, ce que garde sa Console Anthropic (ADR-013 §6, §7)
+    expect(CONSENT_TEXT).toContain('les résultats des appels partis par lots restent lisibles dans sa Console Anthropic')
     expect(CONSENT_TEXT).toContain('(et uniquement celles-là)')
     expect(CONSENT_TEXT).toContain(
       'Vos portfolios restent dans votre navigateur tant que vous ne les déposez pas explicitement',

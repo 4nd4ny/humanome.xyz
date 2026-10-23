@@ -4,10 +4,13 @@ declare(strict_types=1);
 
 namespace Humanome\Tests\Twin9;
 
+use Humanome\Etablissement\EcoleCles;
+use Humanome\Etablissement\Payeur;
 use Humanome\Keys\KeyVault;
 use Humanome\MigrationRunner;
 use Humanome\Packages\SettingsRepository;
 use Humanome\Tests\TestDb;
+use Humanome\Tests\UseCases\Support\EcolesSupport;
 use Humanome\Twin9\CallSettings;
 use Humanome\Twin9\CreditService;
 use Humanome\Twin9\DirectCalls;
@@ -38,6 +41,8 @@ use stdClass;
 #[PreserveGlobalState(false)]
 final class TrancheTest extends TestCase
 {
+    use EcolesSupport;
+
     private const GABARITS = [
         'factice/lecture' => "[appel:{\$APPEL}] Lis la journée {\$JOUR} en lecteur {\$LECTEUR} :\n{\$TEXTE}",
         'factice/etape' => "[appel:{\$APPEL}] Étape {\$ETAPE} de {\$JOUR}, après : {\$PRECEDENT}",
@@ -150,20 +155,24 @@ final class TrancheTest extends TestCase
         self::assertSame(14, (new RunRepository($this->pdo))->compteursDe($id)['tentatives']);
     }
 
-    /** Two runs advance in the same slices, each with its own settings, templates and key. */
+    /**
+     * Two runs advance in the same slices, each with its own settings, templates and key — its school's for
+     * the second, a learner whose school pays on its own key (ADR-013 §6).
+     */
     public function testTwoRunsAtOnceKeepTheirSettingsAndTheirKeys(): void
     {
         TestDb::setEnv('SODIUM_MASTER_KEY', str_repeat('ab', 32));
-        (new Twin9Config(new SettingsRepository($this->pdo)))->update(['twin9_cle_perso_ouverte' => true]);
         $autre = $this->utilisateur('autre@example.test');
-        (new KeyVault($this->pdo, (string) KeyVault::masterKeyFromEnv()))->store($autre, 'anthropic', 'sk-ant-perso-test');
+        $ecole = self::ecole($this->pdo, 'École des tests', 3.5, 100.0);
+        self::inscrire($this->pdo, $ecole, $autre);
+        (new EcoleCles($this->pdo, (string) KeyVault::masterKeyFromEnv()))->poser($ecole, 'anthropic', 'sk-ant-ecole-test');
         $a = $this->nouveauRun(['lecteurs' => ['a']], ['/etapes/greffier' => (object) ['effort' => 'low']],
             gabarits: self::prefixes('A'));
         $b = $this->nouveauRun(['lecteurs' => ['x', 'y']], [
             '/etages/profond/modele' => 'claude-opus-4-8',
             '/etapes/greffier' => (object) ['budget_sortie' => 999],
-            '/cle' => 'personnelle',
-        ], user: $autre, gabarits: self::prefixes('B'));
+            '/cle' => 'ecole',
+        ], user: $autre, gabarits: self::prefixes('B'), payeur: Payeur::ecole($ecole, 1.0));
         $http = new FakeMultiHttpClient(static fn (array $r): array =>
             ['body' => FakeMultiHttpClient::message('vu'), 'delai' => 0.05]);
 
@@ -191,7 +200,7 @@ final class TrancheTest extends TestCase
         }
         foreach ($parRun['B'] as $r) {
             $appel = FakeMultiHttpClient::appel($r);
-            self::assertSame('sk-ant-perso-test', $r['headers']['x-api-key']);
+            self::assertSame('sk-ant-ecole-test', $r['headers']['x-api-key']);
             $profond = str_ends_with($appel, 'president.md') || $appel === 'fusion';
             self::assertSame($profond ? 'claude-opus-4-8' : 'claude-haiku-5-5', $r['body']['model'], $appel);
             self::assertSame(['type' => 'disabled'], $r['body']['thinking'], $appel);
@@ -539,7 +548,7 @@ final class TrancheTest extends TestCase
 
     /** @param array<string, mixed> $moteur @param array<string, mixed> $profil @param string|null $sortie the run's output, drawn at random by default */
     private function nouveauRun(array $moteur = [], array $profil = [], ?int $user = null, ?array $gabarits = null,
-                         string $portfolio = self::PORTFOLIO, ?string $sortie = null): int
+                         string $portfolio = self::PORTFOLIO, ?string $sortie = null, ?Payeur $payeur = null): int
     {
         return (new RunRepository($this->pdo))->creer(
             $user ?? $this->user,
@@ -551,6 +560,7 @@ final class TrancheTest extends TestCase
             $gabarits ?? self::GABARITS,
             new \DateTimeImmutable('2026-10-18T12:00:00+00:00'),
             $sortie,
+            payeur: $payeur,
         );
     }
 

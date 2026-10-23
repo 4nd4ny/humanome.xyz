@@ -21,6 +21,7 @@ import { useEffect, useId, useMemo, useRef, useState } from 'react'
 import { restreindreReferentiel } from '@engine/pipeline/extract.js'
 import { segmentText } from '@engine/portfolio/segment.js'
 import { getReferentiel } from '../../data/load.js'
+import { KEY_STAYS_IN_BROWSER } from '../../lib/local-keys.js'
 import {
   BUILTIN_PACKAGE,
   PROVIDERS,
@@ -136,6 +137,10 @@ function ProviderPicker({ legend, value, onChange }) {
             Modèle (vide = défaut){' '}
             <input value={value.model} onChange={(event) => set({ model: event.target.value })} />
           </label>
+          {/* R1 (ADR-013 §5) : dit partout où l'on saisit une clé */}
+          <p className="privacy-note" data-testid="cle-reste-navigateur">
+            {KEY_STAYS_IN_BROWSER}
+          </p>
         </div>
       ) : null}
     </fieldset>

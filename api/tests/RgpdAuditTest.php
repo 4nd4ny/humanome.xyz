@@ -64,6 +64,11 @@ final class RgpdAuditTest extends MasseTestCase
         'twin9_cartes.user_id' => 'CASCADE', // migration 025 (T7 : la mémoire d'une carte Twin9, registre §13)
         'twin9_runs.user_id' => 'CASCADE', // migration 025 (T7 : le run, son portfolio, son journal et ses sorties, registre §13)
         'user_declared_roles.user_id' => 'CASCADE', // migration 035 (sprint 8 : les rôles RESPIRE déclarés, registre §1 ter)
+        'ecoles.user_id' => 'CASCADE', // migration 037 (S6b : les réglages de l'école, registre §6 ter)
+        'ecole_cles.ecole_id' => 'CASCADE', // migration 037 (S6b : la clé de l'école part avec elle, registre §6 bis)
+        'ecole_consommations.ecole_id' => 'CASCADE', // migration 037 (S6b : ce que l'école a payé, avec elle)
+        'ecole_consommations.eleve_id' => 'CASCADE', // migration 037 (S6b : et avec l'élève, registre §6 ter)
+        'twin9_lots_a_effacer.ecole_id' => 'CASCADE', // migration 037 (S6b : sa clé partie, le lot reste chez Anthropic)
         // --- documented anonymisation (SET NULL) ---
         'audit_events.user_id' => 'SET NULL',
         'referentiel_versions.created_by' => 'SET NULL',
@@ -80,6 +85,8 @@ final class RgpdAuditTest extends MasseTestCase
         'twin9_jeux_gabarits.updated_by' => 'SET NULL', // migration 029 (T14)
         'twin9_jeux_versions.created_by' => 'SET NULL', // migration 029 (T14)
         'twin9_evaluations.user_id' => 'SET NULL', // migration 030 (T8): an evaluation serves the forecasts, no longer anyone's
+        'twin9_runs.payeur_id' => 'SET NULL', // migration 037 (S6b): the run is the learner's, its school may go first
+        'twin9_credit_events.beneficiaire_id' => 'SET NULL', // migration 037 (S6b): the school's ledger, its learner anonymised
     ];
 
     public function testAucuneColonneUtilisateurSansCleEtrangere(): void

@@ -23,7 +23,9 @@ import {
 import { RELAIS_INTERROMPU } from '../../../src/api/client.js'
 import { evenementRelais, relaisPilote, reponseRelais } from '../../../src/test/relais-response.js'
 import { formatUsd } from '../../../src/api/twin9.js'
-import { listKeys, revealKey } from '../../../src/api/keys.js'
+import { readFileSync } from 'node:fs'
+import { dirname, resolve } from 'node:path'
+import { fileURLToPath } from 'node:url'
 import Twin6OuverteView from '../../../src/views/Twin6OuverteView.jsx'
 import * as fakeLib from '../../../src/test/fake-sunburst-lib.js'
 import { TWIN6_PACKAGE, jsonResponse } from '../support/twin.js'
@@ -147,18 +149,23 @@ describe('UC-APP-09 — provider « clé perso » (gratuit, direct navigateur)',
 })
 
 describe('UC-APP-09 — offre et référentiel lus dans /api/twin9/meta', () => {
-  it('UC-APP-09-U18 — prix Twin6 (+10 %), référentiel et solde ; replis sûrs si absents', async () => {
+  it('UC-APP-09-U18 — prix Twin6 (+10 %), référentiel, solde, droit d’acheter et payeurs (ADR-013) ; replis sûrs si absents', async () => {
     const complet = vi.fn(async () =>
       jsonResponse(200, {
         modeles_twin6: { 'claude-sonnet-5': [2.2, 11] },
         referentiel: [{ num: 1, nom: 'TÊTE', competences: [] }],
         solde_microusd: '2500000',
+        peut_acheter: true,
+        payeurs: [{ type: 'personnel', solde_microusd: 2_500_000 }],
       }),
     )
     expect(await fetchTwin6Offer({ fetchFn: complet })).toEqual({
       modeles: { 'claude-sonnet-5': [2.2, 11] },
       referentiel: [{ num: 1, nom: 'TÊTE', competences: [] }],
       solde_microusd: 2_500_000,
+      peut_acheter: true,
+      // qui peut payer (ADR-013 §4, S6b), tel que le serveur le dit
+      payeurs: [{ type: 'personnel', solde_microusd: 2_500_000 }],
     })
     expect(complet.mock.calls[0][0]).toBe('api/twin9/meta')
 
@@ -167,6 +174,8 @@ describe('UC-APP-09 — offre et référentiel lus dans /api/twin9/meta', () => 
       modeles: {},
       referentiel: [],
       solde_microusd: 0,
+      peut_acheter: false, // seule une école achète (ADR-013) : faux sauf si le serveur le dit
+      payeurs: [],
     })
   })
 
@@ -220,18 +229,29 @@ describe('UC-APP-09 — offre et référentiel lus dans /api/twin9/meta', () => 
 })
 
 describe('UC-APP-09 — clé enregistrée et garde-fou de solde', () => {
-  it('UC-APP-09-U28 — clés du profil : liste sans la clé (GET api/keys), révélation à la demande (GET api/keys/anthropic) — la garde propriétaire relève de UC-CPT-04', async () => {
-    const fetchFn = vi.fn(async (url) =>
-      url === 'api/keys'
-        ? jsonResponse(200, [{ provider: 'anthropic', createdAt: '2026-07-15' }])
-        : jsonResponse(200, { provider: 'anthropic', apiKey: 'sk-ant-profil-fictive' }),
+  it('UC-APP-09-U28 — la clé de ce navigateur (ADR-013) : la vue pré-remplit la clé mémorisée dans humanome-keys et ne lit plus aucune clé gardée sur le serveur (elle n’importe plus le client /api/keys)', async () => {
+    const here = dirname(fileURLToPath(import.meta.url))
+    const source = readFileSync(resolve(here, '../../../src/views/Twin6OuverteView.jsx'), 'utf8')
+    expect(source).not.toMatch(/from '\.\.\/api\/keys\.js'/)
+    const keyStorage = {
+      getItem: (k) => (k === 'humanome-keys' ? JSON.stringify({ anthropic: 'sk-ant-locale-fictive' }) : null),
+      setItem: vi.fn(),
+    }
+    render(
+      <Twin6OuverteView
+        deps={{
+          fetchMeFn: async () => ({ user: { id: 1 } }),
+          loadPackage: async () => ({ ...TWIN6_PACKAGE, templates: {} }),
+          fetchOffer: async () => ({ modeles: { 'claude-sonnet-5': [2.2, 11] }, referentiel: [], solde_microusd: 0 }),
+          keyStorage,
+          lib: fakeLib,
+        }}
+      />,
     )
-    expect(await listKeys({ fetchFn })).toEqual([{ provider: 'anthropic', createdAt: '2026-07-15' }])
-    expect((await revealKey('anthropic', { fetchFn })).apiKey).toBe('sk-ant-profil-fictive')
-    expect(fetchFn.mock.calls.map(([url, init]) => [init.method, url])).toEqual([
-      ['GET', 'api/keys'],
-      ['GET', 'api/keys/anthropic'],
-    ])
+    await screen.findByLabelText(/Votre portfolio/)
+    fireEvent.click(screen.getByRole('radio', { name: /Avec ma propre clé API/ }))
+    expect(screen.getByLabelText('Clé API Anthropic').value).toBe('sk-ant-locale-fictive')
+    expect(screen.getByTestId('cle-reste-navigateur').textContent).toContain('Votre clé reste dans ce navigateur')
   })
 
   it('UC-APP-09-U29 — Twin6OuverteView isolée : poids du portfolio = ⌈octets / 1024⌉ $ (1 $ minimum), plus la réserve d’un appel — toute la sortie du modèle à son prix, 2026-10-21 —, comparés au solde, AVANT toute construction du provider', async () => {
@@ -246,7 +266,6 @@ describe('UC-APP-09 — clé enregistrée et garde-fou de solde', () => {
           loadPackage: async () => ({ ...TWIN6_PACKAGE, templates: {} }),
           // Réserve d'un appel : 128 000 tokens × 11 $ / Mtok (Sonnet 5 à 2 / 10, contribution comprise) = 1,408 $.
           fetchOffer: async () => ({ modeles: { 'claude-sonnet-5': [2.2, 11] }, referentiel: [], solde_microusd: 3_399_999 }),
-          listKeys: async () => [],
           makeCreditsProvider: creditsFactory,
           runEngine,
           lib: fakeLib,
@@ -281,7 +300,6 @@ describe('UC-APP-09 — clé enregistrée et garde-fou de solde', () => {
     const demo = { provider: { name: 'anthropic', transport: 'proxy' }, prime: vi.fn(async () => ordre.push('preuve')) }
     const makeDemoProvider = vi.fn(() => demo)
     const fetchOffer = vi.fn()
-    const listKeys = vi.fn()
     const runEngine = vi.fn(async () => {
       ordre.push('moteur')
       throw new Error('moteur non exercé dans ce test unitaire')
@@ -292,7 +310,6 @@ describe('UC-APP-09 — clé enregistrée et garde-fou de solde', () => {
           fetchMeFn: async () => ({ user: null }),
           loadPackage: async () => ({ ...TWIN6_PACKAGE, templates: {} }),
           fetchOffer,
-          listKeys,
           makeDemoProvider,
           runEngine,
           lib: fakeLib,
@@ -305,7 +322,6 @@ describe('UC-APP-09 — clé enregistrée et garde-fou de solde', () => {
     // sous charge, le test la lisait avant (['demo', false]).
     await waitFor(() => expect(screen.getAllByRole('radio').map((r) => [r.value, r.checked])).toEqual([['demo', true]]))
     expect(fetchOffer).not.toHaveBeenCalled()
-    expect(listKeys).not.toHaveBeenCalled()
     const bouton = screen.getByRole('button', { name: 'Lancer la cartographie ouverte' })
 
     // 5 001 caractères : bloqué, aucun fournisseur construit.
@@ -428,7 +444,6 @@ describe('UC-APP-09 — la réponse en flux (relais, 2026-10-21)', () => {
           fetchMeFn: async () => ({ user: { id: 1 } }),
           loadPackage: async () => ({ ...TWIN6_PACKAGE, templates: {} }),
           fetchOffer: async () => ({ modeles: { 'claude-sonnet-5': [2.2, 11] }, referentiel: [], solde_microusd: 50_000_000 }),
-          listKeys: async () => [],
           makeCreditsProvider: creditsFactory,
           runEngine,
           lib: fakeLib,

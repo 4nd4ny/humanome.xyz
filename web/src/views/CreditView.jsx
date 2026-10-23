@@ -5,6 +5,19 @@
 // cahier §6.5) et factures récapitulatives imprimables (particuliers ET
 // établissements, même compte, même grand-livre).
 //
+// Seule une école achète des crédits (ADR-013 §2 e, règle R2 de Christian :
+// pour ne pas avoir à vérifier l'âge des apprenants) : les packs ne sont
+// proposés qu'au compte que le serveur dit pouvoir acheter (`peut_acheter` de
+// /api/twin9/meta, l'habilitation etablissement) ; aux autres, la page dit
+// pourquoi (`achat_pourquoi`). Leur solde restant, acheté avant, reste
+// utilisable jusqu'à épuisement et remboursable sur demande (§2 c).
+//
+// Un apprenant voit que son école paie (sprint 6, lot S6b — ADR-013 §4) :
+// chacune de ses écoles (`payeurs` de /api/twin9/meta), ce qu'elle peut
+// encore payer pour lui ce mois-ci, et qu'elle en voit le montant — jamais
+// le crédit de l'école. Une école règle sa surtaxe, son plafond par élève et
+// sa clé dans son espace (#/etablissement).
+//
 // Garde de session : GET api/auth/me au montage (pattern EspaceView/AdminView) —
 // le reste du site reste statique. Dégradation propre en copie statique
 // (ApiUnavailableError). Toute la surface serveur passe par api/twin9.js.
@@ -29,6 +42,14 @@ import {
   formatUsd,
 } from '../api/twin9.js'
 import FactureTwin9 from './twin9/FactureTwin9.jsx'
+import {
+  CREDIT_ECOLE_BAS,
+  ECOLE_VOIT_LE_MONTANT,
+  creditEcoleBas,
+  ecolesQuiPaient,
+  listePayeurs,
+  resteMicrousd,
+} from '../lib/payeurs.js'
 import '../styles/twin9-credit.css'
 
 const MOIS_FR = [
@@ -127,9 +148,12 @@ export default function CreditView({ deps = {} }) {
     solde: 0,
     packs: [],
     paypalConfigured: false,
-    clePriveeDisponible: false,
+    peutAcheter: false,
+    achatPourquoi: '',
     evenements: [],
     depensesMois: [],
+    ecoles: [],
+    ecoleElleMeme: false,
   })
 
   const [paypal, setPaypal] = useState({ status: 'idle', message: '', solde: null })
@@ -159,9 +183,13 @@ export default function CreditView({ deps = {} }) {
           solde: credit.solde_microusd ?? meta.solde_microusd ?? 0,
           packs: Array.isArray(meta.packs) ? meta.packs : [],
           paypalConfigured: Boolean(meta.paypalConfigured),
-          clePriveeDisponible: Boolean(meta.cle_privee_disponible),
+          peutAcheter: meta.peut_acheter === true,
+          achatPourquoi: typeof meta.achat_pourquoi === 'string' ? meta.achat_pourquoi : '',
           evenements: Array.isArray(credit.evenements) ? credit.evenements : [],
           depensesMois: Array.isArray(dep.mois) ? dep.mois : [],
+          // les écoles qui paient pour lui (ADR-013 §4), et s'il est lui-même une école
+          ecoles: ecolesQuiPaient(meta.payeurs),
+          ecoleElleMeme: listePayeurs(meta.payeurs).some((p) => p.type === 'ecole' && p.soi),
         })
         setDataStatus('ready')
       } catch (error) {
@@ -363,6 +391,35 @@ export default function CreditView({ deps = {} }) {
 
       {dataStatus === 'ready' ? (
         <>
+          {/* 0. SON ÉCOLE PAIE (ADR-013 §4) */}
+          {data.ecoles.length > 0 ? (
+            <section className="credit-ecole" aria-labelledby="credit-ecole-titre" data-testid="credit-ecole">
+              <h2 id="credit-ecole-titre">{data.ecoles.length > 1 ? 'Vos écoles paient' : 'Votre école paie'}</h2>
+              <ul>
+                {data.ecoles.map((e) => (
+                  <li key={e.id}>
+                    <strong>{e.nom}</strong> paie vos analyses approfondies et vos cartographies ouvertes sur
+                    crédits{e.cle ? ', avec sa propre clé' : ''} : il vous reste{' '}
+                    <strong>{formatUsd(resteMicrousd(e, e.cle ? 'ecole' : 'instance'))}</strong> ce mois-ci, sur un
+                    plafond de {formatUsd(e.plafond_microusd ?? 0)} par mois.
+                    {Number(e.plafond_microusd ?? 0) === 0 ? ' Votre école n’a pas encore réglé ce plafond.' : ''}
+                    {creditEcoleBas(e, e.cle ? 'ecole' : 'instance') ? ` ${CREDIT_ECOLE_BAS}` : ''}
+                  </li>
+                ))}
+              </ul>
+              <p className="privacy-note">
+                {ECOLE_VOIT_LE_MONTANT} Vous ne pouvez pas acheter de crédits vous-même : votre école les achète pour
+                vous.
+              </p>
+            </section>
+          ) : null}
+          {data.ecoleElleMeme ? (
+            <p className="privacy-note" data-testid="credit-espace-ecole">
+              Votre surtaxe, le plafond de vos élèves, votre clé et leurs dépenses se règlent dans votre{' '}
+              <a href="#/etablissement">espace établissement</a>.
+            </p>
+          ) : null}
+
           {/* 1. SOLDE */}
           <section className="credit-solde" aria-labelledby="credit-solde-titre">
             <h2 id="credit-solde-titre">Solde courant</h2>
@@ -383,7 +440,10 @@ export default function CreditView({ deps = {} }) {
                   <p role="status" className="credit-refund-ok">{refund.message}</p>
                 ) : refund.status === 'confirm' ? (
                   <div className="credit-refund-confirm">
-                    <p>Rembourser votre solde restant ({formatUsd(data.solde)}) vers PayPal ? Vous pourrez recharger à tout moment.</p>
+                    <p>
+                      Rembourser votre solde restant ({formatUsd(data.solde)}) vers PayPal ?
+                      {data.peutAcheter ? ' Vous pourrez recharger à tout moment.' : ' Seules les écoles rechargent.'}
+                    </p>
                     <button type="button" className="btn-primaire" onClick={rembourser}>Confirmer le remboursement</button>{' '}
                     <button type="button" onClick={() => setRefund({ status: 'idle', message: '', erreur: '' })}>Annuler</button>
                   </div>
@@ -405,16 +465,15 @@ export default function CreditView({ deps = {} }) {
           {/* 2. RECHARGE PayPal */}
           <section className="credit-recharge" aria-labelledby="credit-recharge-titre">
             <h2 id="credit-recharge-titre">Recharger</h2>
-            {!data.paypalConfigured ? (
+            {!data.peutAcheter ? (
+              // seule une école achète (ADR-013 §2 e) : le serveur dit pourquoi, la page le montre
+              <p role="status" className="credit-indispo" data-testid="achat-ecoles">
+                {data.achatPourquoi ||
+                  'Seules les écoles achètent des crédits : utilisez votre propre clé, dans votre navigateur, ou le crédit de votre école.'}
+              </p>
+            ) : !data.paypalConfigured ? (
               <p role="status" className="credit-indispo" data-testid="recharge-indispo">
-                La recharge par carte (PayPal) est indisponible pour le moment.{' '}
-                {/* une clé personnelle ne sert que chez Anthropic (ADR-012 §5) : un autre fournisseur débite le crédit */}
-                {data.clePriveeDisponible
-                  ? 'Votre clé Anthropic privée enregistrée reste utilisable pour un profil qui n’appelle qu’Anthropic : '
-                    + 'ses appels Twin9 ne débitent alors aucun crédit ; un profil qui appelle un autre fournisseur part '
-                    + 'avec les clés de la plateforme et débite le crédit.'
-                  : 'Vous pouvez aussi enregistrer votre propre clé Anthropic depuis votre compte (aucun débit de crédit '
-                    + 'pour un profil qui n’appelle qu’Anthropic).'}
+                La recharge par carte (PayPal) est indisponible pour le moment.
               </p>
             ) : data.packs.length === 0 ? (
               <p role="status" className="credit-indispo">

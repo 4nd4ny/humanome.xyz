@@ -1,10 +1,13 @@
-// Clés API personnelles (cahier §4.5, ADR-004) — client fin du module /api/keys.
+// Clés API gardées sur le serveur avant l'ADR-013 — client fin du module /api/keys.
 //
-// Stockage serveur OPT-IN et chiffré (libsodium, clé maître hors webroot) : le
-// profil conserve la clé API privée de l'utilisateur pour lancer les
-// cartographies « clé perso » (Twin6) sans la ressaisir. La clé n'est jamais
-// renvoyée par la liste ; seul son propriétaire authentifié peut la révéler
-// (GET /api/keys/{provider}, réponse no-store) pour un usage côté navigateur.
+// Depuis l'ADR-013 (§5), les clés d'un utilisateur restent dans son navigateur
+// (localStorage 'humanome-keys', lib/run-launcher.js) : humanome n'en garde
+// plus aucune, et PUT /api/keys répond 410 — d'où l'absence d'« enregistrer ».
+// Ce qui reste sert la page du compte, qui montre les clés gardées avant,
+// « à supprimer », jusqu'à leur purge : la liste (jamais la clé), la
+// révélation à leur seul propriétaire (no-store) pour les recopier dans ce
+// navigateur avant de les supprimer, et la suppression. Aucun lancement ne
+// lit plus une clé gardée.
 
 import { apiFetch } from './client.js'
 
@@ -32,17 +35,12 @@ export function providerLabel(id) {
   return KEY_PROVIDERS.find((p) => p.id === id)?.label ?? id
 }
 
-/** GET api/keys — [{provider, createdAt}] (JAMAIS la clé). */
+/** GET api/keys — [{provider, createdAt, avisPurgeAt}] des clés gardées avant l'ADR-013 (JAMAIS la clé). */
 export function listKeys(options) {
   return apiFetch('keys', options)
 }
 
-/** PUT api/keys — stocke la clé (chiffrée côté serveur). 204. */
-export function storeKey({ provider, apiKey }, options) {
-  return apiFetch('keys', { ...options, method: 'PUT', body: { provider, apiKey } })
-}
-
-/** GET api/keys/{provider} — {apiKey} déchiffrée (propriétaire seul, no-store). */
+/** GET api/keys/{provider} — {apiKey} déchiffrée (propriétaire seul, no-store), pour la recopier dans ce navigateur. */
 export function revealKey(provider, options) {
   return apiFetch(`keys/${e(provider)}`, options)
 }

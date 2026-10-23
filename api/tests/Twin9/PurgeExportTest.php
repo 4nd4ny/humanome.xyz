@@ -4,10 +4,10 @@ declare(strict_types=1);
 
 namespace Humanome\Tests\Twin9;
 
-use Humanome\Keys\KeyVault;
 use Humanome\Referentiel\ContentHash;
 use Humanome\Referentiel\ReferentielRepository;
 use Humanome\Tests\CartographeTestCase;
+use Humanome\Tests\StoredKeys;
 use Humanome\Tests\TestDb;
 use Humanome\Tests\UseCases\Support\ReferentielsFictifs;
 use Humanome\Twin9\CallJournal;
@@ -133,8 +133,7 @@ final class PurgeExportTest extends CartographeTestCase
 
         TestDb::setEnv('SODIUM_MASTER_KEY', str_repeat('ab', 32));
         $alice = $this->registerAs('perso@example.org', 'Alice');
-        (new KeyVault(self::$pdo, (string) KeyVault::masterKeyFromEnv()))->store($alice['id'], 'anthropic',
-            'sk-ant-perso-test');
+        StoredKeys::seed(self::$pdo, $alice['id'], 'anthropic', 'sk-ant-perso-test');
         $run = $this->lancer($alice, $this->profil($alice), 'journal-perso.md');
         $perso = $api->creer('sk-ant-perso-test', $corps, microtime(true) + 5)['lot']['id'];
         self::$pdo->prepare('INSERT INTO twin9_lots (run_id, lot, statut, cle, requetes, octets, soumis_at)

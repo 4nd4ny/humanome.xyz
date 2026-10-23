@@ -30,6 +30,12 @@
 //     autre ligne que Twin9 lirait comme un titre daté, même de la même date,
 //     ou que l'interface lirait comme l'en-tête d'une autre journée, est
 //     neutralisée par « — » (comme `keepInDay`, carto/core/portfolio-md.js) ;
+//   - un texte que Twin9 lit en mode Google Docs (moins de deux titres datés,
+//     des dates seules suivies d'un trait `___`) le reste : une journée qui
+//     n'a pas sa date ainsi reçoit « JJ.MM.AAAA », une ligne vide et un
+//     trait, jamais un titre daté (qui ferait changer Twin9 de mode, et
+//     retoucherait toutes les journées) ; ce sont alors ces dates, au milieu
+//     d'une journée, qui sont neutralisées ;
 //   - les passages sans date passent en tête, leurs dates neutralisées :
 //     Twin9 ne lit rien avant son premier titre daté, l'interface ne les
 //     range dans aucune journée ;
@@ -102,6 +108,29 @@ function titresDates(texte) {
   return [...texte.matchAll(TITRE_DATE)].map((m) => ({ debut: m.index, date: iso(m[1]) }))
 }
 
+/** Les dates Google Docs que Twin9 lit à défaut de titres (Portfolio.php:58) : début et date. */
+function datesGoogleDocs(texte) {
+  return [...texte.matchAll(DATE_GDOCS)].map((m) => ({ debut: m.index, date: iso(m[1]) }))
+}
+
+/**
+ * Les deux façons dont Twin9 date ses journées : ce qu'il y lit, et l'en-tête
+ * qu'une journée y reçoit quand il ne lit pas le sien.
+ */
+const MODES = {
+  titres: { lire: titresDates, enTete: (date) => `### ${date}\n\n` },
+  'google-docs': { lire: datesGoogleDocs, enTete: (date) => `${date.slice(8, 10)}.${date.slice(5, 7)}.${date.slice(0, 4)}\n\n________________\n\n` },
+}
+
+/** Ce que Twin9 lit d'un texte : son mode (`null` s'il ne date rien) et ses journées, à leurs débuts. */
+function lecture(raw) {
+  for (const mode of ['titres', 'google-docs']) {
+    const marques = MODES[mode].lire(raw)
+    if (marques.length >= 2) return { mode, marques }
+  }
+  return { mode: null, marques: [] }
+}
+
 /**
  * Les journées datées que Twin9 lit dans un texte (`Portfolio::split`, ses
  * deux premiers modes) : chacune son identifiant (la date, `_b`, `_c` pour
@@ -113,10 +142,9 @@ function titresDates(texte) {
  * @returns {Array<{id: string, date: string, texte: string}> | null}
  */
 export function journeesLuesParTwin9(texte) {
-  const raw = String(texte ?? '').replace(/^﻿/, '').replace(/\r\n?/g, '\n')
-  let marques = titresDates(raw)
-  if (marques.length < 2) marques = [...raw.matchAll(DATE_GDOCS)].map((m) => ({ debut: m.index, date: iso(m[1]) }))
-  if (marques.length < 2) return null
+  const raw = String(texte ?? '').replace(/^\uFEFF/, '').replace(/\r\n?/g, '\n')
+  const { mode, marques } = lecture(raw)
+  if (mode === null) return null
   const vues = new Map()
   return marques.map(({ debut, date }, k) => {
     const n = vues.get(date)
@@ -139,23 +167,25 @@ function debutPremiereLigne(texte) {
 const neutraliser = (texte, debut) => `${texte.slice(0, debut)}— ${texte.slice(debut)}`
 
 /**
- * Le bloc d'une journée : son en-tête, gardé si Twin9 le lit à cette date,
- * ajouté sinon ; toute autre ligne qu'il lirait comme un titre daté, ou que
- * l'interface lirait comme l'en-tête d'une autre journée, neutralisée.
+ * Le bloc d'une journée, dans le mode où Twin9 lira le texte : son en-tête,
+ * gardé s'il le lit à cette date, ajouté sinon ; toute autre ligne qu'il y
+ * lirait comme une journée, ou que l'interface lirait comme l'en-tête d'une
+ * autre journée, neutralisée.
  */
-function blocDeLaJournee(texte, date, premier) {
+function blocDeLaJournee(texte, date, premier, mode) {
+  const { lire, enTete } = MODES[mode]
   let bloc = keepInDay(texte, date)
-  const [tete] = titresDates(bloc)
+  const [tete] = lire(bloc)
   const garde =
     tete !== undefined &&
     tete.date === date &&
     (tete.debut === debutPremiereLigne(bloc) || (premier && titreDeDocument(bloc.slice(0, tete.debut))))
-  if (!garde) bloc = `### ${date}\n\n${bloc}`
+  if (!garde) bloc = `${enTete(date)}${bloc}`
   // l'en-tête qui ouvre la journée : le sien, ou celui qu'elle vient de recevoir (au début du bloc)
   const gardee = garde ? tete.debut : 0
   // Neutraliser un titre peut en découvrir un autre (« ## » seul, suivi d'une ligne datée) : jusqu'à n'en plus trouver.
   for (;;) {
-    const autres = titresDates(bloc).filter((t) => t.debut !== gardee)
+    const autres = lire(bloc).filter((t) => t.debut !== gardee)
     if (autres.length === 0) break
     for (const t of autres.reverse()) bloc = neutraliser(bloc, t.debut)
   }
@@ -163,12 +193,12 @@ function blocDeLaJournee(texte, date, premier) {
 }
 
 /** Un passage sans date, en tête : rien n'y ouvre de journée, ni chez Twin9 ni dans l'interface. */
-function blocSansDate(texte) {
+function blocSansDate(texte, mode) {
   let bloc = keepInDay(texte, undefined)
   for (;;) {
-    const titres = titresDates(bloc)
-    if (titres.length === 0) break
-    for (const t of titres.reverse()) bloc = neutraliser(bloc, t.debut)
+    const marques = MODES[mode].lire(bloc)
+    if (marques.length === 0) break
+    for (const t of marques.reverse()) bloc = neutraliser(bloc, t.debut)
   }
   return bloc
 }
@@ -203,7 +233,7 @@ const sansBlancsFinaux = (texte) => texte.replace(/\s+$/u, '')
 export function portfolioPourTwin9(texte, { segments } = {}) {
   const brut = typeof texte === 'string' ? texte : ''
   const intact = { texte: brut, retouchees: [], sansDate: 0 }
-  const source = brut.replace(/^﻿/, '').replace(/\r\n?/g, '\n')
+  const source = brut.replace(/^\uFEFF/, '').replace(/\r\n?/g, '\n')
   const decoupage = (source === brut ? segmentsDuTexte(segments, brut) : null) ?? segmentText(source, { today: SANS_DATE })
 
   // Les journées de l'interface, une par date, dans l'ordre du texte ; les passages sans date.
@@ -234,9 +264,11 @@ export function portfolioPourTwin9(texte, { segments } = {}) {
     })
   if (dejaPareil) return { ...intact, sansDate }
 
+  // Le mode où Twin9 lisait le texte : ses titres datés, ou des dates Google Docs, qu'on garde ; s'il ne datait rien, ses titres.
+  const mode = lecture(source).mode ?? 'titres'
   const blocs = [
-    ...passagesSansDate.map(blocSansDate),
-    ...dates.map((date, i) => blocDeLaJournee(journees.get(date), date, i === 0)),
+    ...passagesSansDate.map((t) => blocSansDate(t, mode)),
+    ...dates.map((date, i) => blocDeLaJournee(journees.get(date), date, i === 0, mode)),
   ]
   const sortie = `${blocs.map(sansBlancsFinaux).join('\n\n')}\n`
   const apres = journeesLuesParTwin9(sortie) ?? []

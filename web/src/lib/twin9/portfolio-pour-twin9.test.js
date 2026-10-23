@@ -68,6 +68,25 @@ describe('portfolioPourTwin9 — les onze formes d’en-tête de l’étude du s
 const TWIN_V9_DIR = process.env.TWIN_V9_DIR || join(ICI, '../../../../../Twin_v9')
 const PORTFOLIOS = join(TWIN_V9_DIR, 'tests/portfolios')
 const avecTwin9 = existsSync(PORTFOLIOS)
+// Le moteur PHP lui-même, quand PHP et ses dépendances sont là.
+const php = (() => {
+  if (!existsSync(join(TWIN_V9_DIR, 'php/vendor/autoload.php'))) return false
+  try {
+    execFileSync('php', ['-v'], { stdio: 'ignore' })
+    return true
+  } catch {
+    return false
+  }
+})()
+/** Les identifiants des journées que le moteur PHP lit dans un texte, triés ; aucune s'il ne le date pas. */
+const idsDuMoteur = (texte) =>
+  JSON.parse(
+    execFileSync(
+      'php',
+      ['-r', 'require $argv[1] . "/php/vendor/autoload.php"; $fs = \\Twin9\\Portfolio::split($argv[2], "p.md")["feuilles"]; $ids = in_array(null, array_column($fs, "date"), true) ? [] : array_column($fs, "id"); sort($ids); echo json_encode($ids);', TWIN_V9_DIR, texte],
+      { encoding: 'utf8' },
+    ),
+  )
 
 describe.skipIf(!avecTwin9)('portfolioPourTwin9 — les cinq portfolios fictifs de Twin9 partent à l’octet', () => {
   const fichiers = avecTwin9 ? readdirSync(PORTFOLIOS).filter((f) => f.endsWith('.md')).sort() : []
@@ -84,16 +103,7 @@ describe.skipIf(!avecTwin9)('portfolioPourTwin9 — les cinq portfolios fictifs 
     })
   }
 
-  // La copie des expressions de Portfolio.php, contre le moteur lui-même quand PHP et ses dépendances sont là.
-  const php = (() => {
-    if (!existsSync(join(TWIN_V9_DIR, 'php/vendor/autoload.php'))) return false
-    try {
-      execFileSync('php', ['-v'], { stdio: 'ignore' })
-      return true
-    } catch {
-      return false
-    }
-  })()
+  // La copie des expressions de Portfolio.php, contre le moteur lui-même.
   it.skipIf(!php)('Twin9 (PHP) : mêmes identifiants de journées que la copie, pour les cinq et pour les deux fixtures', () => {
     // un portfolio que Twin9 ne date pas (ses journées F01… sans date) : aucune journée datée
     const code =
@@ -183,6 +193,17 @@ describe('portfolioPourTwin9 — passages sans date, cas limites', () => {
     expect(portfolioPourTwin9(texte)).toEqual({ texte, retouchees: [], sansDate: 0 })
   })
 
+  it('un export Google Docs dont une journée est en « 1er » : il reste en mode Google Docs, seuls le 1er et la journée qui l’absorbait sont retouchés', () => {
+    const texte = '12.03.2026\n\n________________\n\nPremier.\n\n1er.03.2026\n\n________________\n\nRetour.\n\n13.03.2026\n\n________________\n\nSecond.\n'
+    expect(idsDeTwin9(texte)).toEqual(['2026-03-12', '2026-03-13'])
+    const r = portfolioPourTwin9(texte)
+    expect(r.texte).toBe(texte.replace('1er.03.2026', '01.03.2026\n\n________________\n\n1er.03.2026'))
+    expect(r.retouchees).toEqual(['2026-03-01', '2026-03-12'])
+    expect(idsDeTwin9(r.texte)).toEqual(['2026-03-01', '2026-03-12', '2026-03-13'])
+    expect(datesDeLInterface(r.texte)).toEqual(['2026-03-01', '2026-03-12', '2026-03-13'])
+    if (php) expect(idsDuMoteur(r.texte)).toEqual(['2026-03-01', '2026-03-12', '2026-03-13'])
+  })
+
   it('« ## » seul, une date à la ligne suivante : Twin9 y lit un titre daté (ses blancs comprennent « \\n ») ; neutralisé jusqu’au bout', () => {
     expect(idsDeTwin9('##\nvu le 12.03.2026\n\n### 2026-03-11\nA.\n')).toEqual(['2026-03-11', '2026-03-12'])
     const texte = '### 2026-03-11\nA.\n##\n### 2026-03-12\nB.\n\n### 2026-03-13\nC.\n'
@@ -198,7 +219,7 @@ describe('portfolioPourTwin9 — passages sans date, cas limites', () => {
   })
 
   it('fins de ligne Windows et BOM : le texte envoyé a des fins de ligne « \\n », ses journées celles de l’interface', () => {
-    const texte = '﻿### 9.02.2026\r\nUn.\r\n\r\n### 1er.02.2026\r\nDeux.\r\n'
+    const texte = '\uFEFF### 9.02.2026\r\nUn.\r\n\r\n### 1er.02.2026\r\nDeux.\r\n'
     const r = portfolioPourTwin9(texte)
     expect(r.texte).toBe('### 9.02.2026\nUn.\n\n### 2026-02-01\n\n### 1er.02.2026\nDeux.\n')
     expect(r.retouchees).toEqual(['2026-02-01', '2026-02-09'])

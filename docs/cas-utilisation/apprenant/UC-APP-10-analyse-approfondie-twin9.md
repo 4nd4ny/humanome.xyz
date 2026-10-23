@@ -359,7 +359,8 @@ badge premium) ou ouvre `#/twin9`.
   lirait comme l'en-tête d'une autre journée, est précédée de « — » ; les
   passages sans date passent en tête, où le moteur ne lit rien. Un texte
   qu'il lit déjà en ces journées part à l'octet, comme un texte de moins de
-  deux journées datées. L'aperçu nomme les journées dont le texte change
+  deux journées datées ; un export Google Docs (des dates seules, puis un
+  trait) garde cette forme. Le run garde le texte tel qu'il a été envoyé. L'aperçu nomme les journées dont le texte change
   pour le moteur (« … : 2 journées touchées, 1er févr. 2026 et 10 févr.
   2026. ») — une journée évaluée sur le texte brut est instruite de nouveau
   une fois (RG3) : le texte envoyé ensuite est le même — et les passages

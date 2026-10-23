@@ -703,5 +703,8 @@ describe.skipIf(!existsSync(`${ORACLE_12}/carto_evolutive.json`))('importTwin9Ru
     const dates = [...new Set(carto.competences['2.07'].faisceau.traces.map((t) => t.date))].sort()
     expect(r.readings[0].codes['2.07']).toMatchObject({ status: 'established', rawStatus: STATUT_FAISCEAU, dates })
     for (const v of r.variants) expect(v.summary.verdicts.map((x) => x.code), v.date).not.toContain('2.07')
+    // son pôle a des compétences dans les journées : on le choisit, et son panneau nomme 2.07 (DetailPanel)
+    const duPole = new Set(referentiel.competences.filter((c) => c.pole === 2).map((c) => c.code))
+    expect(r.variants.some((v) => v.summary.verdicts.some((x) => duPole.has(x.code) && x.status === 'established'))).toBe(true)
   })
 })

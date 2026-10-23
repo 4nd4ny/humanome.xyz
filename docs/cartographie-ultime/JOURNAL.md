@@ -3086,7 +3086,12 @@ dix journées pour l'interface, six pour Twin9.
   l'interface lirait comme l'en-tête d'une autre journée est précédée de
   « — », comme à l'export du portfolio (D-55). Les passages sans date
   passent en tête : Twin9 ne lit rien avant son premier titre daté, et
-  l'interface ne les range dans aucune journée.
+  l'interface ne les range dans aucune journée. Un texte que Twin9 lit en
+  mode Google Docs (moins de deux titres datés ; une date seule, puis un
+  trait `___`) le reste : une journée y reçoit « JJ.MM.AAAA », une ligne
+  vide et un trait, jamais un titre daté, qui le ferait changer de mode et
+  retoucherait toutes les journées. Le run garde le texte tel qu'il a été
+  envoyé.
 - **[choix d'implémentation] Le moins de retouches possible.** La mémoire de
   la carte reconnaît une journée à son texte : une journée retouchée est
   instruite de nouveau, et payée. Un texte que Twin9 lit déjà en ces
@@ -3158,7 +3163,11 @@ jour :
   soleil et de la liste, elles ne s'ouvraient pas. Il les liste sous
   « Établies par une seconde lecture seulement, hors du soleil », et un
   clic ouvre la compétence : sa seconde lecture, ses synthèses. Cela vaut
-  aussi pour un jury AuroraCore (2.02 dans le jeu de test de Lou).
+  aussi pour un jury AuroraCore (2.02 dans le jeu de test de Lou). **Limite
+  qui demeure** : un pôle dont aucune compétence n'est dans le soleil ne se
+  choisit pas ; ses compétences établies par une seconde lecture seule ne
+  se lisent alors que dans les synthèses. Dans l'oracle 12 de Twin9, le
+  pôle de 2.07 a ses compétences du jour.
 - **[choix d'implémentation] La fusion garde le faisceau** : ses
   attestations comptent dans la fusion à leur date, comme le moteur les
   compte (une compétence « établie » dans sa synthèse) ; elles ne servent

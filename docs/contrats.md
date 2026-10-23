@@ -1373,14 +1373,20 @@ une suivante le relève.
   l'interface lirait comme l'en-tête d'une autre journée, est précédée de
   « — » ; les passages sans date passent en tête, où le moteur ne lit rien.
   Un texte que le moteur lit déjà en ces journées, chacune avec son texte,
-  part à l'octet, comme un texte de moins de deux journées datées. L'aperçu
+  part à l'octet, comme un texte de moins de deux journées datées. Un texte
+  qu'il lit en mode Google Docs le reste : une journée y reçoit
+  « JJ.MM.AAAA », une ligne vide et un trait, jamais un titre daté (deux
+  titres datés le feraient changer de mode, et toutes les journées
+  changeraient). L'aperçu
   dit les journées dont le texte, tel que le moteur le lit, change
   (`retouchees`) : évaluées sur le texte brut, leur empreinte change et la
   mémoire de la carte les instruit de nouveau, une fois (le texte envoyé
   ensuite est le même). Les expressions du moteur sont copiées, documentées,
   dans le module ; `api/tests/Twin9/PortfolioPourTwin9Test.php` passe le
   texte qu'il rend (`schemas/fixtures/twin9-portfolio/`) au `Portfolio` du
-  vrai moteur. Le serveur ne change pas : il range et analyse le texte reçu.
+  vrai moteur. Le serveur ne change pas : il range et analyse le texte reçu,
+  et le run garde ce texte tel qu'il a été envoyé (son portfolio, que
+  l'archive du compte exporte, §4 point 13).
 - **Le suivi** (`GET /api/twin9/runs/{id}`) lit le journal : appels par état,
   journées finies (cartes du jour écrites), fusion faite, lots chez Anthropic,
   run antérieur de la même carte encore en cours ; `retard` dit en mots ce qui

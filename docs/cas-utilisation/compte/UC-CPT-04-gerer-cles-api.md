@@ -198,6 +198,7 @@ le script de purge (A7).
 | Front | `web/src/lib/local-keys.js` — `readLocalKeys`, `getLocalKey`, `setLocalKey`, `KEYS_STORAGE_KEY`, `KEY_STAYS_IN_BROWSER` (réexportés par `web/src/lib/run-launcher.js`) | Clés dans ce navigateur, message R1 ; sans dépendance |
 | Front | `web/src/components/RunWizard.jsx` — étape « Fournisseur », `launch` | Pré-remplissage, mémorisation, message R1 |
 | Front | `web/src/views/Twin6OuverteView.jsx` — voie « clé perso » | Pré-remplissage, mémorisation, message R1 (A4) |
+| Front | `web/src/views/promptologue/BancEssaiSection.jsx`, `RetroSection.jsx` (UC-PRO-05, UC-PRO-06), `web/src/carto/ui/DialoguePanel.jsx` (relances du dialogue) | Message R1 sous chaque champ de clé (revue du lot S6b) |
 | Front | `web/src/views/account/ApiKeysSection.jsx` | Message R1, liste « à supprimer », recopie puis suppression, suppression, messages |
 | Front | `web/src/api/keys.js` — `listKeys`, `revealKey`, `deleteKey`, `KEY_PROVIDERS`, `providerLabel` | Client `/api/keys` (plus d'écriture) |
 | Front | `web/src/api/client.js` — `apiFetch`, `ApiError` (`serverMessage`) | Jeton CSRF sur DELETE, message serveur affiché par la section |
@@ -299,7 +300,5 @@ cd web && npx vitest run test/usecases --testNamePattern UC-CPT-04
   (UC-CPT-06).
 - La clé locale n'est pas chiffrée dans le navigateur : quiconque a accès à ce
   navigateur peut la lire.
-- Les écrans du banc d'essai et de la rétrospective du promptologue (UC-PRO-05,
-  UC-PRO-06) saisissent aussi une clé dans le navigateur, sans le message R1.
 - La purge (A7) n'a pas de route : en production, faute de SSH, le moyen de la
   lancer reste à décider (ADR-013 §8) ; aucun avis ni aucune purge n'a été fait.

@@ -309,6 +309,18 @@ describe('UC-PRO-05 — scénarios alternatifs', () => {
     expect(rowCells(ab, 'Coût réel session')).toEqual(['0.0032 $', '0.072 $'])
   })
 
+  it('UC-PRO-05-F30 — R1 (ADR-013 §5) : là où le promptologue saisit une clé, la page dit qu’elle reste dans le navigateur, jamais sur nos serveurs', async () => {
+    stubNetwork({ ...bancRoutes() })
+    openBanc()
+    await ready()
+    fireEvent.click(screen.getByRole('radio', { name: /A\/B/ }))
+    fireEvent.click(screen.getByRole('checkbox', { name: /Fournisseur\/modèle distinct pour B/ }))
+    const brancheB = screen.getByText('Fournisseur LLM — branche B').closest('fieldset')
+    fireEvent.click(within(brancheB).getByRole('radio', { name: 'Clé personnelle' }))
+    expect(within(brancheB).getByLabelText(/Clé API/)).toBeDefined()
+    expect(within(brancheB).getByTestId('cle-reste-navigateur').textContent).toBe('Votre clé reste dans ce navigateur : humanome ne la garde jamais sur ses serveurs. Seule une école peut y garder la sienne, pour ses élèves.')
+  })
+
   it('UC-PRO-05-F10 — A4 : comparaison à une référence importée — score précision/rappel/F1, journée hors score', async () => {
     const llm = serviceHumanome()
     stubNetwork({ ...bancRoutes(), ...llm.routes })

@@ -177,8 +177,9 @@ describe('P7 — aucune donnée envoyée sans consentement explicite', () => {
     // Changer de modèle retire l'accord.
     fireEvent.change(screen.getByRole('combobox', { name: /Modèle de langage/ }), { target: { value: 'anthropic' } })
     expect(screen.getByRole('checkbox', { name: /J’accepte que/ }).checked).toBe(false)
-    // Sans clé, l'accord n'est même pas proposé.
+    // Sans clé, l'accord n'est même pas proposé ; la clé reste dans ce navigateur, la page le dit (R1, ADR-013 §5).
     expect(screen.getByRole('checkbox', { name: /J’accepte que/ }).disabled).toBe(true)
+    expect(screen.getByTestId('cle-reste-navigateur').textContent).toBe('Votre clé reste dans ce navigateur : humanome ne la garde jamais sur ses serveurs. Seule une école peut y garder la sienne, pour ses élèves.')
     fireEvent.change(screen.getByLabelText(/Clé d’API/), { target: { value: 'sk-test' } })
     expect(screen.getByRole('checkbox', { name: /J’accepte que/ }).disabled).toBe(false)
   })

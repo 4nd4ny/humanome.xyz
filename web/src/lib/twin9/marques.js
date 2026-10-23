@@ -15,7 +15,7 @@
 // porte un attribut `data-twin9-*`, `data-incertitude` ou `data-intensite`
 // perd ses balises d'ouverture et de fermeture et garde son texte ; le
 // tableau des traces part en entier, avec les lignes blanches qui le
-// précèdent. Le portfolio surligné réimporté redonne ainsi, à l'octet, le
+// précèdent (un commentaire d'ouverture ou de fermeture seul reste). Le portfolio surligné réimporté redonne ainsi, à l'octet, le
 // portfolio exporté sans marques. Le reste du texte, un <mark> écrit par la
 // personne compris, ne change pas. Des fonctions pures.
 
@@ -28,8 +28,14 @@ const BALISE = /<(\/?)([A-Za-z][A-Za-z0-9:-]*)((?:\s+[^\s"'>/=]+(?:\s*=\s*(?:"[^
 /** Un attribut d'une balise : son nom. */
 const NOM_ATTRIBUT = /([^\s"'>/=]+)(?:\s*=\s*(?:"[^"]*"|'[^']*'|[^\s"'=<>`]+))?/g
 
-/** Le tableau des traces d'une journée, et les blancs qui le précèdent. */
-const TABLEAU = /\s*<!--\s*twin9-traces\s*-->[\s\S]*?<!--\s*\/twin9-traces\s*-->/gi
+/**
+ * Le tableau des traces d'une journée, et les blancs qui le précèdent : de son
+ * ouverture à sa fermeture, sans autre ouverture ni fermeture entre elles.
+ * Une ouverture sans fermeture (un portfolio surligné retouché à la main)
+ * reste alors dans le texte, et ne s'apparie jamais à la fermeture du tableau
+ * d'une journée suivante, ce qui retirerait tout le texte d'entre eux.
+ */
+const TABLEAU = /\s*<!--\s*twin9-traces\s*-->(?:(?!<!--\s*\/?twin9-traces\s*-->)[\s\S])*<!--\s*\/twin9-traces\s*-->/gi
 
 /** Ce qui annonce une marque, pour ne rien parcourir d'un texte qui n'en a pas. */
 const INDICE = /data-(?:twin9-|incertitude|intensite)|twin9-traces/i

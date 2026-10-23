@@ -40,6 +40,27 @@ describe('sansMarquesTwin9', () => {
     expect(sansMarquesTwin9('x\n<!-- twin9-traces -->\n| a |')).toBe('x\n<!-- twin9-traces -->\n| a |')
   })
 
+  it('un tableau sans sa fermeture, suivi d’un tableau fermé : le texte entre eux reste, journées comprises', () => {
+    // un portfolio surligné retouché à la main : le tableau du 05 a perdu ses lignes et sa fermeture
+    const texte = [
+      '## 2026-01-05', 'Jour 1, avec un passage.', '', '<!-- twin9-traces -->', '| a |', '',
+      '## 2026-01-06', 'Jour 2 : tout ce texte doit rester.', '',
+      '## 2026-01-07', 'Jour 3, avec son tableau.', '', '<!-- twin9-traces -->', '| b |', '<!-- /twin9-traces -->', '',
+      '## 2026-01-08', 'Jour 4.', '',
+    ].join('\n')
+    const r = retirerMarquesTwin9(texte)
+    expect(r.texte).toBe(
+      '## 2026-01-05\nJour 1, avec un passage.\n\n<!-- twin9-traces -->\n| a |\n\n## 2026-01-06\nJour 2 : tout ce texte doit rester.\n\n' +
+        '## 2026-01-07\nJour 3, avec son tableau.\n\n## 2026-01-08\nJour 4.\n',
+    )
+    // une marque d'après l'ouverture orpheline perd ses balises, comme ailleurs
+    expect(sansMarquesTwin9('<!-- twin9-traces -->\nJour <mark data-twin9-code="1">x</mark>.\n<!-- twin9-traces -->\n| b |\n<!-- /twin9-traces -->')).toBe(
+      '<!-- twin9-traces -->\nJour x.',
+    )
+    // une fermeture orpheline, avant un tableau entier, ne retire rien de plus que lui
+    expect(sansMarquesTwin9('a\n<!-- /twin9-traces -->\nb\n<!-- twin9-traces -->\n| c |\n<!-- /twin9-traces -->\nd')).toBe('a\n<!-- /twin9-traces -->\nb\nd')
+  })
+
   it('un texte sans marque revient tel quel', () => {
     const texte = '## 2026-01-05\n<mark>à moi</mark>, <span class="x">rien</span> de Twin9 ; data-autre="1".'
     expect(sansMarquesTwin9(texte)).toBe(texte)

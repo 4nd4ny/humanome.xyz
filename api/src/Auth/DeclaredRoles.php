@@ -144,6 +144,13 @@ final class DeclaredRoles
                     $fields['roles'] = 'Chaque rôle est un identifiant (chaîne)';
                     break;
                 }
+                // Never quoted below: a form-encoded body (roles[]=%C3) reaches
+                // here with raw bytes, which PHP 8.2's mb_substr copies as they
+                // are, and the 422 would fail to encode as JSON (a 500).
+                if (!mb_check_encoding($role, 'UTF-8')) {
+                    $fields['roles'] = 'Chaque rôle est un identifiant en UTF-8 valide';
+                    break;
+                }
                 if ($role === 'admin') {
                     $fields['roles'] = 'Le rôle « admin » ne se déclare pas : seul un administrateur l’attribue';
                     break;

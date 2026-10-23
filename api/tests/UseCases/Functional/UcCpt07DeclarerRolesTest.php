@@ -141,7 +141,7 @@ final class UcCpt07DeclarerRolesTest extends EpiSupport
         self::assertSame(['roles' => ['cartographe'], 'foundingCircle' => false], $this->declaration($dora));
     }
 
-    #[TestDox('UC-CPT-07-F04 — E2 : « admin », les autres habilitations, un rôle inconnu, une graphie voisine, un doublon, une liste ou une case mal formées, un corps non objet → 422 ; rien n’est écrit, aucune habilitation ne bouge')]
+    #[TestDox('UC-CPT-07-F04 — E2 : « admin », les autres habilitations, un rôle inconnu, une graphie voisine, un doublon, une liste ou une case mal formées, un corps non objet, un rôle en UTF-8 invalide (corps de formulaire) → 422 ; rien n’est écrit, aucune habilitation ne bouge')]
     public function testF04RefusedDeclarations(): void
     {
         $dora = $this->registerAs('dora@example.org', 'Dora');
@@ -162,6 +162,11 @@ final class UcCpt07DeclarerRolesTest extends EpiSupport
         self::assertSame(422, $this->as_($dora, 'PUT', self::ROUTE, [])->getStatusCode(), 'liste absente');
         self::assertSame(422, $this->rawAs($dora, 'PUT', self::ROUTE, '["cartographe"]')->getStatusCode(), 'corps non objet');
         self::assertSame(422, $this->rawAs($dora, 'PUT', self::ROUTE, '{"roles": [')->getStatusCode(), 'JSON malformé');
+        // corps de formulaire (Slim l'analyse aussi) portant un octet qui n'est pas de l'UTF-8 : 422, jamais 500
+        $form = $this->rawAs($dora, 'PUT', self::ROUTE, 'roles[]=%C3', 'application/x-www-form-urlencoded');
+        self::assertSame(422, $form->getStatusCode(), (string) $form->getBody());
+        self::assertSame(['error' => 'Validation échouée', 'fields' => ['roles' => 'Chaque rôle est un identifiant en UTF-8 valide']],
+            self::json($form));
 
         self::assertSame(['roles' => ['architecte'], 'foundingCircle' => false], $this->declaration($dora));
         self::assertSame(['apprenant'], $this->habilitations($dora));

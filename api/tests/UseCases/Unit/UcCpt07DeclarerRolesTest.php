@@ -64,7 +64,7 @@ final class UcCpt07DeclarerRolesTest extends TestCase
     private static function refused(mixed $body): array
     {
         $checked = DeclaredRoles::validate($body);
-        self::assertNull($checked['declaration'], json_encode($body));
+        self::assertNull($checked['declaration'], json_encode($body, JSON_INVALID_UTF8_SUBSTITUTE));
         self::assertNotSame([], $checked['fields']);
 
         return $checked['fields'];
@@ -122,7 +122,7 @@ final class UcCpt07DeclarerRolesTest extends TestCase
         self::assertSame(self::NEUF, DeclaredRoles::validate(['roles' => array_reverse(self::NEUF)])['declaration']['roles']);
     }
 
-    #[TestDox('UC-CPT-07-U04 — validate : corps non objet, liste absente ou non liste, rôle non textuel, « admin », autres habilitations, inconnu, casse ou accent, doublon, case non booléenne → refusés')]
+    #[TestDox('UC-CPT-07-U04 — validate : corps non objet, liste absente ou non liste, rôle non textuel ou en UTF-8 invalide (jamais cité), « admin », autres habilitations, inconnu, casse ou accent, doublon, case non booléenne → refusés')]
     public function testU04ValidateRefuses(): void
     {
         foreach ([null, 'cartographe', 42, ['cartographe']] as $body) {
@@ -139,6 +139,13 @@ final class UcCpt07DeclarerRolesTest extends TestCase
             self::assertStringStartsWith('Rôle non déclarable « ', self::refused(['roles' => [$role]])['roles'], $role);
         }
         self::assertSame('Rôle « mediateur » en double', self::refused(['roles' => ['mediateur', 'architecte', 'mediateur']])['roles']);
+        // un identifiant qui n'est pas de l'UTF-8 valide n'est jamais cité (le 422 resterait de l'UTF-8 invalide, que
+        // json_encode refuse : un 500 sous PHP 8.2, où mb_substr copie les octets bruts)
+        foreach (["\xC3", "cartographe\xFF", "\xED\xA0\x80"] as $role) {
+            $message = self::refused(['roles' => [$role]])['roles'];
+            self::assertSame('Chaque rôle est un identifiant en UTF-8 valide', $message, bin2hex($role));
+            self::assertTrue(mb_check_encoding($message, 'UTF-8'));
+        }
         foreach (['true', 1, null, []] as $box) {
             self::assertSame(['foundingCircle' => 'Case attendue (true ou false)'],
                 self::refused(['roles' => ['epistemiarque'], 'foundingCircle' => $box]), json_encode($box));

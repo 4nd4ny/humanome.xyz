@@ -100,7 +100,11 @@ rôles ») : le bloc « Mes rôles RESPIRE » suit le profil et sa ligne
   `employeur`, `etablissement`), un rôle inconnu ou d'une autre graphie
   (`Cartographe`, `épistémiarque`), un doublon, une liste absente ou mal
   formée, un rôle non textuel, une case non booléenne, un corps qui n'est pas
-  un objet JSON → `422 {error, fields}` ; rien n'est écrit.
+  un objet JSON → `422 {error, fields}` ; rien n'est écrit. Un rôle qui n'est
+  pas de l'UTF-8 valide (un corps de formulaire `roles[]=%C3`, que Slim
+  analyse aussi) est refusé sans être cité (« Chaque rôle est un identifiant
+  en UTF-8 valide ») : cité, il rendrait le `422` impossible à encoder en JSON
+  (un `500` sous PHP 8.2).
 - **E3 — Visiteur** : `401 « Authentification requise »` en lecture comme en
   écriture (et pour la session d'un compte purgé) ; `#/compte` montre alors
   la connexion, sans le bloc.
@@ -187,7 +191,7 @@ n'en garde que les libellés, pour la liste d'administration (UC-CPT-07-U15).
 | UC-CPT-07-U01 | `DeclaredRoles::CATALOGUE`, `catalogue` | Neuf rôles dans l'ordre de la liste, slugs ASCII ≤ 32, libellés, définitions d'une ligne, jamais `admin` | `api/tests/UseCases/Unit/UcCpt07DeclarerRolesTest.php` |
 | UC-CPT-07-U02 | `FOUNDING_CIRCLE_ELIGIBLE`, `HABILITATIONS` | Trois rôles éligibles ; trois habilitations, chacune un rôle de `roles`, aucune `admin` ; six déclarations sans habilitation | idem |
 | UC-CPT-07-U03 | `validate` | Ordre du catalogue, case absente = `false`, liste vide | idem |
-| UC-CPT-07-U04 | `validate` | Refus : corps non objet, liste absente ou non liste, rôle non textuel, `admin`, autres habilitations, inconnu, casse, accent, doublon, case non booléenne (RG1) | idem |
+| UC-CPT-07-U04 | `validate` | Refus : corps non objet, liste absente ou non liste, rôle non textuel, rôle en UTF-8 invalide (jamais cité), `admin`, autres habilitations, inconnu, casse, accent, doublon, case non booléenne (RG1) | idem |
 | UC-CPT-07-U05 | `validate` | Case du cercle avec chacun des trois rôles éligibles seulement (RG2) | idem |
 | UC-CPT-07-U06 | `replace`, `of` | Remplacement entier, `user_roles` intact ; compte inconnu ou supprimé → `false`, rien d'écrit (RG3) | idem |
 | UC-CPT-07-U07 | `replace` | Revérification : déclaration refusée → exception, rien d'écrit | idem |
@@ -213,7 +217,7 @@ n'en garde que les libellés, pour la liste d'administration (UC-CPT-07-U15).
 | UC-CPT-07-F01 | Nominal | API | Catalogue, déclaration avec la case, relecture ordonnée ; `/auth/me` garde ses `roles` | `api/tests/UseCases/Functional/UcCpt07DeclarerRolesTest.php` |
 | UC-CPT-07-F02 | A1, A2 | API | Remplacement entier, case absente décochée, liste vide | idem |
 | UC-CPT-07-F03 | E1 | API | Case sans rôle éligible → `422`, rien d'écrit, y compris en retirant le rôle qui la portait | idem |
-| UC-CPT-07-F04 | E2 | API | `admin` (message), autres habilitations, inconnu, graphies, doublon, formes invalides, corps non objet, JSON malformé → `422` ; rien d'écrit | idem |
+| UC-CPT-07-F04 | E2 | API | `admin` (message), autres habilitations, inconnu, graphies, doublon, formes invalides, corps non objet, JSON malformé, corps de formulaire `roles[]=%C3` (UTF-8 invalide, jamais `500`) → `422` ; rien d'écrit | idem |
 | UC-CPT-07-F05 | E3, E4 | API | Visiteur `401` ; `PUT` sans CSRF `403`, rien d'écrit | idem |
 | UC-CPT-07-F06 | RG4 | API | Les neuf rôles et la case déclarés : `403` sur les espaces cartographe, promptologue, épistémiarque et admin, aucune auto-habilitation | idem |
 | UC-CPT-07-F07 | RG4 | API | Épistémiarque déclarée : vote `403`, aucun bulletin, hors de l'électorat ; contrôle : habilitée d'un clic, elle vote | idem |

@@ -1,8 +1,10 @@
-// Lot « Compte » (UC-CPT-01 à UC-CPT-06) — utilitaires partagés des tests IHM.
+// Lot « Compte » (UC-CPT-01 à UC-CPT-07) — utilitaires partagés des tests IHM.
 // Fiches : docs/cas-utilisation/compte/
 //
 // createFakeAccountApi() simule, EN MÉMOIRE, le contrat HTTP des routes du
-// compte (api/src/routes/auth.php, keys.php, training.php) tel que le rejouent
+// compte (api/src/routes/auth.php, keys.php, training.php, declared-roles.php
+// — catalogue et validation lus dans Auth/DeclaredRoles.php,
+// support/declared-roles-php.js) tel que le rejouent
 // les tests fonctionnels PHP : un seul navigateur (une session au plus), jeton
 // CSRF exigé sur les mutations quand une session existe (CsrfMiddleware, avec
 // les mêmes exemptions), messages d'erreur français identiques à l'API. Elle
@@ -16,6 +18,7 @@
 // garde son cookie : comme CsrfMiddleware (Session::exists() ne regarde que le
 // cookie), toute mutation non exemptée reçoit alors 403, GET auth/me 401.
 import { vi } from 'vitest'
+import { declarationOf, phpDeclaredRoles, validateDeclaration } from './declared-roles-php.js'
 
 export function jsonResponse(status, data, extraHeaders = {}) {
   const headers = { 'content-type': 'application/json', ...extraHeaders }
@@ -44,7 +47,9 @@ const EMAIL_RE = /^[^\s@]+@[^\s@]+\.[^\s@]+$/
 /**
  * @param {object} [options]
  * @param {Array<object>} [options.users] comptes existants
- *   {email, password, displayName, roles?, verified?, hasAvatar?, keys?, training?}
+ *   {email, password, displayName, roles?, verified?, hasAvatar?, keys?, training?,
+ *   declared?: {roles, foundingCircle}} — `roles` : les habilitations ; `declared` :
+ *   les rôles RESPIRE déclarés (UC-CPT-07), qui n'y entrent jamais
  * @param {string|null} [options.loggedInAs] email du compte dont la session est ouverte
  * @param {string} [options.today] date ISO utilisée pour createdAt des clés
  */
@@ -73,6 +78,7 @@ export function createFakeAccountApi(options = {}) {
       hasAvatar: u.hasAvatar ?? false,
       keys: new Map(Object.entries(u.keys ?? {}).map(([p, k]) => [p, { apiKey: k, createdAt: `${today}T10:00:00` }])),
       training: new Map(Object.entries(u.training ?? {}).map(([p, list]) => [p, new Set(list)])),
+      declared: declarationOf(u.declared),
     }
     nextId = Math.max(nextId, account.id + 1)
     users.set(account.email, account)
@@ -251,6 +257,19 @@ export function createFakeAccountApi(options = {}) {
         if (Object.keys(fields).length > 0) return validation(fields)
         me.keys.set(body.provider, { apiKey, createdAt: `${today}T12:00:00` })
         return noContentResponse()
+      }
+
+      // UC-CPT-07 : la déclaration, jamais mêlée aux habilitations (`roles`).
+      case 'GET auth/me/declared-roles':
+        if (!me) return unauthorized()
+        return jsonResponse(200, { ...me.declared, catalogue: phpDeclaredRoles().catalogue })
+
+      case 'PUT auth/me/declared-roles': {
+        if (!me) return unauthorized()
+        const checked = validateDeclaration(body ?? null)
+        if (checked.declaration === null) return validation(checked.fields)
+        me.declared = checked.declaration
+        return jsonResponse(200, { ...declarationOf(me.declared), catalogue: phpDeclaredRoles().catalogue })
       }
 
       case 'GET training/progress':

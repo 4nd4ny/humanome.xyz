@@ -6,6 +6,7 @@ namespace Humanome\Tests\UseCases\Unit;
 
 use Humanome\Admin\AdminException;
 use Humanome\Admin\UserDirectory;
+use Humanome\Auth\DeclaredRoles;
 use Humanome\Auth\Session;
 use Humanome\Auth\Users;
 use Humanome\DbSessionHandler;
@@ -33,7 +34,9 @@ use Slim\Psr7\Factory\ServerRequestFactory;
  * est appelé directement, sans couche HTTP : UserDirectory (liste, recherche,
  * filtre, pagination, attribution, retrait, anti-verrouillage, audit),
  * Users::rolesOf (rôles relus en base), le garde RequireRole et le
- * middleware CsrfMiddleware (process() appelé avec un handler factice).
+ * middleware CsrfMiddleware (process() appelé avec un handler factice) ;
+ * depuis le sprint 8, les rôles RESPIRE déclarés que la liste montre à côté
+ * des habilitations (Auth\DeclaredRoles, UC-CPT-07).
  */
 final class UcAdm01GererComptesRolesTest extends TestCase
 {
@@ -95,7 +98,9 @@ final class UcAdm01GererComptesRolesTest extends TestCase
         self::assertSame(['admin', 'apprenant', 'etablissement'], $page['users'][0]['roles']);
         self::assertSame([], $page['users'][1]['roles'], 'compte sans rôle : liste vide');
         self::assertMatchesRegularExpression('/^\d{4}-\d{2}-\d{2}T\d{2}:\d{2}:\d{2}$/', $page['users'][0]['createdAt']);
-        self::assertSame(['id', 'email', 'displayName', 'createdAt', 'roles'], array_keys($page['users'][0]));
+        // sprint 8 : la déclaration RESPIRE du compte à côté de ses habilitations (UC-ADM-01-U28)
+        self::assertSame(['id', 'email', 'displayName', 'createdAt', 'roles', 'declaredRoles', 'foundingCircle', 'grantable'],
+            array_keys($page['users'][0]));
     }
 
     #[TestDox('UC-ADM-01-U02 — list : recherche e-mail OU nom, insensible à la casse, jokers LIKE échappés')]
@@ -423,5 +428,31 @@ final class UcAdm01GererComptesRolesTest extends TestCase
         // Témoin : la plus grande page sans débordement répond normalement (vide).
         $last = intdiv(PHP_INT_MAX, UserDirectory::PAGE_SIZE);
         self::assertSame([], self::directory()->list('', $last)['users']);
+    }
+
+    #[TestDox('UC-ADM-01-U28 — list : chaque compte avec ses rôles déclarés (ordre du catalogue), la case du cercle et « grantable », les habilitations que ses déclarations appellent et qu’il n’a pas ; une déclaration ne change pas « roles »')]
+    public function testU28ListShowsTheDeclarationsBesideTheHabilitations(): void
+    {
+        $maya = AdmSupport::user(self::$pdo, 'maya@example.org', 'Maya', ['apprenant', 'cartographe']);
+        $nour = AdmSupport::user(self::$pdo, 'nour@example.org', 'Nour', ['apprenant']);
+        (new DeclaredRoles(self::$pdo))->replace($maya, [
+            'roles' => ['mediateur', 'epistemiarque', 'cartographe', 'promptologue'], 'foundingCircle' => true,
+        ]);
+
+        $users = self::directory()->list()['users'];
+
+        self::assertSame($maya, $users[0]['id']);
+        self::assertSame(['apprenant', 'cartographe'], $users[0]['roles'], 'les habilitations seules');
+        self::assertSame(['cartographe', 'promptologue', 'epistemiarque', 'mediateur'], $users[0]['declaredRoles']);
+        self::assertTrue($users[0]['foundingCircle']);
+        self::assertSame(['promptologue', 'epistemiarque'], $users[0]['grantable'], 'cartographe déjà habilitée, médiateur sans habilitation');
+        self::assertSame($nour, $users[1]['id']);
+        self::assertSame([[], false, []], [$users[1]['declaredRoles'], $users[1]['foundingCircle'], $users[1]['grantable']]);
+
+        // l'habilitation d'un clic, par grant() : elle quitte « grantable », la déclaration reste
+        self::directory()->grant($nour, $maya, 'epistemiarque');
+        $maya2 = self::directory()->list('maya')['users'][0];
+        self::assertSame(['promptologue'], $maya2['grantable']);
+        self::assertSame(['cartographe', 'promptologue', 'epistemiarque', 'mediateur'], $maya2['declaredRoles']);
     }
 }

@@ -38,7 +38,7 @@ const DOCS_GROUPS = [
   ],
   [
     'RGPD & autorisations',
-    ['rgpd-registre.md', 'rgpd-verification.md', 'autorisations.md'],
+    ['rgpd-registre.md', 'rgpd-verification.md', 'autorisations.md', 'roles.md'],
   ],
   [
     'Sécurité',

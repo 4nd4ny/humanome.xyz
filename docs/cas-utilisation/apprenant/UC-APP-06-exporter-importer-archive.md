@@ -17,6 +17,12 @@
 > ses cartes (`analysesTwin9`) —, lues comme les documents de masse, par une
 > lecture `GET api/twin9/mes-analyses`. Elles ne se réimportent pas : un run
 > se relance (RG9). Voir `docs/contrats.md`, décision 13 et §8.5.
+>
+> **Mise à jour sprint 8 (2026-10-22).** L'archive passe en **1.3.0** : le bloc
+> `account` porte aussi les rôles RESPIRE que la personne se déclare
+> (`account.declaredRoles`, lus par `GET api/auth/me/declared-roles`), à part
+> de ses habilitations (`account.roles`) ; omis s'ils ne peuvent être lus,
+> jamais réimportés (RG11, UC-CPT-07). Voir `docs/contrats.md`, décision 17.
 
 | Champ | Valeur |
 |---|---|
@@ -82,8 +88,8 @@ archive ») dans la section « Mes données » du tableau de bord `#/espace`.
    de données de l'interface de cartographie (stockage local
    `humanome-carto-v4`), démonstration exceptée tant qu'elle est intacte
    (RG8).
-4. Il assemble l'archive : `schemaVersion` `1.2.0`, `kind`, `exportedAt`,
-   `account`, `portfolios` (texte intégral + segmentation des journées
+4. Il assemble l'archive : `schemaVersion` `1.3.0`, `kind`, `exportedAt`,
+   `account` (avec `declaredRoles`, RG11), `portfolios` (texte intégral + segmentation des journées
    datées), `referentiels`, `promptPackages`, `cartographies` (document +
    paquet + référentiel + `runMeta`), `jeuxCartographie` (un master v4
    complet par jeu, portfolio et carnet compris), `analysesTwin9` quand le
@@ -231,6 +237,11 @@ archive ») dans la section « Mes données » du tableau de bord `#/espace`.
   projection d'affichage, que le moteur ne lit jamais et qu'un fichier
   modifié peut forger (`docs/contrats.md` §7.4) : le serveur ne la confirme
   pas.
+- **RG11** — Rôles RESPIRE déclarés (1.3.0, sprint 8) : `account.declaredRoles`
+  `{roles, foundingCircle}`, tels que les lit `GET api/auth/me/declared-roles`,
+  à part des habilitations `account.roles` ; une lecture en échec (API
+  antérieure, réseau) les omet sans empêcher l'export. Jamais réimportés : la
+  personne se déclare de nouveau (UC-CPT-07-U12 à U14).
 
 ## Données et RGPD
 

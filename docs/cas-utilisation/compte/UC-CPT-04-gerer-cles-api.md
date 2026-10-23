@@ -128,7 +128,10 @@ personnelle ».
   remplacée. Une rotation rend aussi illisibles les clés d'établissement
   chiffrées avec la même `SODIUM_MASTER_KEY` (UC-ETA-02).
 - **E6 — Jeton CSRF absent** (étapes 3, A5) : `403`, rien n'est écrit ni
-  effacé.
+  effacé. La section du profil n'affiche pas « Jeton CSRF absent ou
+  invalide » : pour un `403` ou un `401` (session disparue), elle dit « Votre
+  session a expiré : reconnectez-vous, puis réessayez. »
+  (`ApiKeysSection.test.jsx`).
 
 ## Règles de gestion
 

@@ -31,13 +31,24 @@ function noContentResponse() {
 }
 
 /** Installe un fetch global factice et le retourne (AccountView utilise le client réel).
- *  Les appels GET api/keys (section « Clés API » du profil) sont routés HORS de la
- *  file ordonnée : ils renvoient une liste vide, sans consommer les réponses d'auth. */
+ *  Les appels GET api/keys (section « Clés API » du profil) et
+ *  api/auth/me/declared-roles (section « Mes rôles RESPIRE », sprint 8) sont
+ *  routés HORS de la file ordonnée : liste vide et déclaration vide, sans
+ *  consommer les réponses d'auth. */
 function stubFetch(...responses) {
   let i = 0
   const fetchFn = vi.fn((url) => {
     if (typeof url === 'string' && url.includes('api/keys')) {
       return Promise.resolve(jsonResponse(200, []))
+    }
+    if (typeof url === 'string' && url.includes('api/auth/me/declared-roles')) {
+      return Promise.resolve(
+        jsonResponse(200, {
+          roles: [],
+          foundingCircle: false,
+          catalogue: [{ id: 'cartographe', label: 'Cartographe', definition: 'Relit.', habilitation: 'cartographe', foundingCircleEligible: false }],
+        }),
+      )
     }
     const response = responses[i++]
     return response instanceof Error ? Promise.reject(response) : Promise.resolve(response)

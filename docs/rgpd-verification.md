@@ -107,6 +107,20 @@ colonne export : `archive` = dans l'archive « un clic », lu par
 | 029 | `twin9_jeux_gabarits`, `twin9_jeux_versions` | non (gabarits et leurs versions) | SET NULL `updated_by` / `created_by` | `—` |
 | 030 | `twin9_evaluations` ; `twin9_runs.reserve_fusion_microusd`, `engagement_microusd` ; `twin9_appels.pire_cas_microusd` | évaluation : oui tant qu'elle nomme la personne (tailles, coûts, pires cas, réglages ; aucun contenu) ; colonnes : montants seuls | évaluation : SET NULL `user_id`, elle sert les prévisions sans plus appartenir à personne ; colonnes : CASCADE avec leur run | `archive` (avec son run) |
 
+### Rôles RESPIRE déclarés (migration 035, sprint 8)
+
+La personne se déclare des rôles de la liste RESPIRE dans `#/compte`, à part
+de ses habilitations (`user_roles`) : une déclaration n'ouvre aucun droit
+(registre §1 ter, `docs/autorisations.md` principe 7).
+
+| Migration | Table | Personnelle ? | Suppression du compte | Export / accès |
+|---|---|---|---|---|
+| 035 | `user_declared_roles` | oui (rôles que la personne se déclare) | CASCADE `user_id` | `archive` (`account.declaredRoles`, schéma 1.3.0, lu par `GET /api/auth/me/declared-roles`) |
+| 035 | `users.founding_circle` | oui (case « membre du cercle des fondateurs ») | avec la ligne `users` | `archive` (`account.declaredRoles.foundingCircle`) |
+
+Preuves : `RgpdAuditTest` (règle CASCADE attendue, empreinte d'un compte
+peuplé), UC-CPT-07-U11 et UC-CPT-07-F09 (purge), UC-CPT-07-U12 (export).
+
 **Les lots encore chez Anthropic** (`DELETE /api/auth/account`,
 `Twin9\RunPurge`) : ceux de la clé personnelle sont annulés, puis supprimés
 une fois finis, avant la suppression du compte, tant que la clé existe ;

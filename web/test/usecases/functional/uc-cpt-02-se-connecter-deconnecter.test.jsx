@@ -221,7 +221,7 @@ describe('UC-CPT-02 — connexion et déconnexion', () => {
     const api = installFakeAccountApi({ users: [{ ...ADA, roles: [] }], loggedInAs: 'ada@example.org' })
     openApp()
 
-    expect((await profileShown()).getByText('Aucun rôle attribué pour l’instant')).toBeDefined()
+    expect((await profileShown()).getByText('Aucune habilitation pour l’instant')).toBeDefined()
     await waitFor(() => expect(api.callsTo('auth/me').length).toBeGreaterThanOrEqual(2)) // shell + profil
     // App.jsx déduit « connecté » de la présence d'un utilisateur de session (2026-10-22).
     expect(await nav().findByRole('button', { name: 'Se déconnecter' })).toBeDefined()

@@ -37,6 +37,39 @@ $app->post('/referentiel/versions', $handler)
    gagne rien de plus qu'un tir anonyme. Le jeton est délivré par
    `GET /api/auth/me` et à l'ouverture de session (réponses de `login` et
    `register`).
+7. **Un rôle déclaré n'ouvre rien** (sprint 8, migration 035). Deux notions
+   distinctes :
+   - l'**habilitation** est un rôle de la table `user_roles` (les sept du
+     cahier §2) : elle seule ouvre des droits — gardes `RequireRole` et
+     `RoleGuard`, familles du menu (`web/src/nav.js`), électorat du référentiel
+     (`Referentiel\Electorate`), lecture d'un run Twin9 partagé aux
+     cartographes (`routes/twin9-runs.php`, `GET /twin9/runs/{id}/resultats`).
+     Elle est attribuée par un administrateur seulement
+     (`POST /api/admin/users/{id}/roles`), jamais par la personne elle-même ;
+   - le **rôle déclaré** est une identité RESPIRE que la personne se donne
+     dans `#/compte` (`user_declared_roles`, `Auth\DeclaredRoles`) : neuf
+     rôles (cartographe, promptologue, promptagogue, éclaireur, architecte,
+     épistémiarque, médiateur, noèsiologue, maître du grimoire) et la case
+     « membre du cercle des fondateurs », acceptée par le serveur avec
+     promptagogue, épistémiarque ou maître du grimoire seulement. `admin` et
+     les autres habilitations ne se déclarent pas (`422`). Aucune garde, aucun
+     menu, aucun vote ne lit cette table ; elle est visible de la personne, de
+     l'administrateur et dans l'archive de compte.
+
+   L'administrateur voit les déclarations à côté des habilitations et habilite
+   d'un clic celle qu'une déclaration appelle (cartographe → `cartographe`,
+   promptologue → `promptologue`, épistémiarque → `epistemiarque` ; les autres
+   déclarations n'ont pas d'habilitation aujourd'hui). Propriété vérifiée par
+   UC-CPT-07-F06 à F08 : un compte qui se déclare cartographe ne lit pas un
+   run partagé aux cartographes, même lié ; un compte qui se déclare
+   épistémiarque ne vote pas et n'entre pas dans l'électorat ; aucun compte ne
+   s'habilite lui-même, `admin` compris. Côté IHM, UC-CPT-07-F10 vérifie,
+   pour six jeux d'habilitations, que déclarer les neuf rôles et la case ne
+   change ni les familles du menu, ni ses liens, ni le mode d'affichage par
+   défaut ; F11 en est le contrôle positif. Le profil le dit en tête du bloc
+   « Mes rôles RESPIRE » : « Une déclaration ne donne pas d'accès ;
+   l'administrateur habilite. » Glossaire des deux notions :
+   [`docs/roles.md`](roles.md).
 
 ## Routes actuelles (P0–P3)
 
@@ -49,6 +82,8 @@ $app->post('/referentiel/versions', $handler)
 | `/api/auth/logout` | POST | Tout utilisateur connecté | Session + CSRF |
 | `/api/auth/me` | GET | Tout utilisateur connecté | Session (401 sinon) |
 | `/api/auth/account` | DELETE | Tout utilisateur connecté (son propre compte) | Session + CSRF ; purge réelle + audit anonymisé (§6.3) |
+| `/api/auth/me/declared-roles` | GET | Tout utilisateur connecté (sa propre déclaration) | Session (401 sinon) ; `{roles, foundingCircle, catalogue}` — rôles RESPIRE déclarés, **aucun droit** (principe 7) |
+| `/api/auth/me/declared-roles` | PUT | Tout utilisateur connecté (sa propre déclaration) | Session + CSRF ; `{roles, foundingCircle?}` remplace la déclaration entière ; `422` pour `admin`, une autre habilitation, un rôle hors des neuf, un doublon, ou la case du cercle sans promptagogue, épistémiarque ni maître du grimoire ; n'écrit jamais `user_roles` |
 
 ## Routes actuelles (P8 — M6) : espace apprenant
 
@@ -204,7 +239,7 @@ l'établissement (l'accès exige l'adhésion active).
 |---|---|---|
 | Golden Prompt (import, autorisations d'accès) | GET/POST | `admin` |
 | Clés plateforme, plafonds démo, config | GET/PUT | `admin` |
-| Attribution / révocation des rôles | POST/DELETE | `admin` |
+| Attribution / révocation des rôles (les habilitations) ; la liste `GET /api/admin/users` montre à côté les rôles déclarés de chaque compte et `grantable`, les habilitations que ses déclarations appellent (sprint 8, principe 7) | GET/POST/DELETE | `admin` |
 | **Gabarits Twin9 — CONTENU** (`/api/twin9/admin/jeux/{jeu}/protocole**`, `/api/twin9/admin/jeux/{jeu}/tester`) et copie du jeu v9.8 (`POST /api/twin9/admin/jeux`) | GET/PUT/POST | **`admin` ∧ `promptologue`** (les DEUX rôles, `RequireRole::all`, AD-D2) ; écrire (`PUT`, `…/restore`) : l'auteur de la copie seul, jamais le jeu v9.8 (403, T14) |
 | Jeux de gabarits Twin9 — liste sans contenu (`GET /api/twin9/admin/jeux`) et jeu par défaut (`PUT /api/twin9/admin/jeux/defaut`) | GET/PUT | `admin` (T14) |
 | Twin9 supervision (config, contribution, promo, comptes) | GET/PUT | `admin` |
@@ -314,6 +349,13 @@ Marketplace employeur (bibliothèque payante des cartographies consenties,
 
 - Rôles en base : migration `scripts/migrations/001_users_roles.sql`
   (7 rôles seedés ; le visiteur est l'absence de session).
+- Rôles déclarés (sprint 8, principe 7) : migration
+  `scripts/migrations/035_roles_declares.sql` ; domaine
+  `api/src/Auth/DeclaredRoles.php` ; routes `api/src/routes/declared-roles.php`
+  et la liste de `api/src/Admin/UserDirectory.php` ; tests
+  `api/tests/UseCases/{Unit,Functional}/UcCpt07DeclarerRolesTest.php`
+  (propriété « une déclaration n'ouvre rien » : F06 à F08, U10) et UC-ADM-01
+  U28, F26.
 - Sessions : `api/src/DbSessionHandler.php` (cookie HttpOnly, SameSite=Lax,
   Secure hors dev, régénération d'ID à la connexion).
 - Garde : `api/src/Middleware/RequireRole.php` ; CSRF :

@@ -175,11 +175,12 @@ final class Payeurs
     /**
      * What a page offers its user (the launch of a run, the open cartography,
      * the credit page): each of their schools — whether it has a key, what it
-     * may still pay for them this month (what remains of their cap, within
-     * its credit; for a school paying for itself, its credit), never its
-     * balance to a learner —, and their own balance, when they have one or
-     * no school pays for them. The first is the default when there is a
-     * single school.
+     * may still pay for them this month (what remains of their cap; for a
+     * school paying for itself, its credit) and, for a learner, whether its
+     * credit covers that much (`credit_suffisant`), never its balance: not
+     * even bounded by it, which would tell it whenever it is the lower —,
+     * and their own balance, when they have one or no school pays for them.
+     * The first is the default when there is a single school.
      *
      * @return list<array<string, mixed>>
      */
@@ -202,11 +203,15 @@ final class Payeurs
                 'mois' => $mois,
                 'plafond_microusd' => $ecole['soi'] ? null : $reglages['plafond_eleve_microusd'],
                 'engage_microusd' => $ecole['soi'] ? null : $engage,
-                // what it may still pay for them on its credit this month: their cap left, within its credit
-                'reste_credit_microusd' => $reste === null ? $credit : min($reste, max(0, $credit)),
-                // on its key, their cap alone
+                // what it may still pay for them this month, on its credit as on its key: their cap left — a school
+                // paying for itself reads its own credit
+                'reste_credit_microusd' => $reste ?? $credit,
                 'reste_cle_microusd' => $reste,
-            ];
+            ] + ($ecole['soi'] ? [] : [
+                // whether its credit covers that much: one bit, never the credit — the 402 of a call, and the refusal
+                // of a launch, say so without an amount either
+                'credit_suffisant' => $credit >= (int) $reste,
+            ]);
         }
         $solde = $credits->balance($userId);
         // a school pays for itself as a school (its surtax), never at the contribution of private persons

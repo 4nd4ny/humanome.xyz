@@ -10,7 +10,9 @@
 import { afterEach, describe, expect, it } from 'vitest'
 import { cleanup, fireEvent, render, screen, waitFor } from '@testing-library/react'
 import {
+  CREDIT_ECOLE_BAS,
   choixParDefaut,
+  creditEcoleBas,
   ecolesQuiPaient,
   libellePayeur,
   payeurChoisi,
@@ -26,13 +28,14 @@ afterEach(() => cleanup())
 
 const TILLEULS = {
   type: 'ecole', id: 3, nom: 'École des Tilleuls', soi: false, cle: false, mois: '2026-10',
-  plafond_microusd: 5_000_000, engage_microusd: 1_200_000, reste_credit_microusd: 1_800_000, reste_cle_microusd: 3_800_000,
+  plafond_microusd: 5_000_000, engage_microusd: 1_200_000, reste_credit_microusd: 3_800_000, reste_cle_microusd: 3_800_000,
+  credit_suffisant: false,
 }
 const PLATANES = { ...TILLEULS, id: 4, nom: 'École des Platanes', cle: true }
 const SOLDE = { type: 'personnel', solde_microusd: 2_000_000 }
 
 describe('UC-ETA-05 — qui paie (lib/payeurs.js)', () => {
-  it('UC-ETA-05-U14 — défaut : la seule école, sinon le seul payeur ; deux écoles : à choisir ; la valeur d’une requête ; ce qu’une école peut encore payer, sur son crédit ou sur sa clé, jamais son crédit', () => {
+  it('UC-ETA-05-U14 — défaut : la seule école, sinon le seul payeur ; deux écoles : à choisir ; la valeur d’une requête ; ce qu’une école peut encore payer — son plafond restant, et si son crédit le couvre —, jamais son crédit', () => {
     expect(choixParDefaut([TILLEULS, SOLDE])).toBe('3')
     expect(choixParDefaut([SOLDE])).toBe('personnel')
     expect(choixParDefaut([TILLEULS, PLATANES, SOLDE])).toBe('')
@@ -40,8 +43,12 @@ describe('UC-ETA-05 — qui paie (lib/payeurs.js)', () => {
     expect([valeurPayeur(''), valeurPayeur('personnel'), valeurPayeur('3'), valeurPayeur('x')]).toEqual([null, 'personnel', 3, null])
     expect(payeurChoisi([TILLEULS, SOLDE], '3')).toBe(TILLEULS)
     expect(payeurChoisi([TILLEULS], '9')).toBeNull()
-    expect([resteMicrousd(TILLEULS), resteMicrousd(TILLEULS, 'ecole'), resteMicrousd(SOLDE)]).toEqual([1_800_000, 3_800_000, 2_000_000])
-    expect(libellePayeur(TILLEULS)).toBe('Mon école, École des Tilleuls (il me reste 1,80 $ ce mois-ci)')
+    // son plafond restant, sur le crédit comme sur la clé : le crédit de l'école ne se lit jamais, seulement s'il le couvre
+    expect([resteMicrousd(TILLEULS), resteMicrousd(TILLEULS, 'ecole'), resteMicrousd(SOLDE)]).toEqual([3_800_000, 3_800_000, 2_000_000])
+    expect(libellePayeur(TILLEULS)).toBe('Mon école, École des Tilleuls (il me reste 3,80 $ ce mois-ci)')
+    expect([creditEcoleBas(TILLEULS), creditEcoleBas(TILLEULS, 'ecole'), creditEcoleBas({ ...TILLEULS, credit_suffisant: true }),
+      creditEcoleBas({ ...TILLEULS, soi: true }), creditEcoleBas(SOLDE), creditEcoleBas(null)]).toEqual([true, false, false, false, false, false])
+    expect(CREDIT_ECOLE_BAS).not.toMatch(/\d/)
     expect(libellePayeur(SOLDE)).toBe('Mon solde restant (2,00 $)')
     expect(phrasePayeur(TILLEULS)).toBe(
       'Payé par votre école, École des Tilleuls. Elle voit le montant de ce qu’elle paie pour vous, jamais le contenu de vos analyses.',
@@ -60,8 +67,8 @@ describe('UC-ETA-05 — qui paie (lib/payeurs.js)', () => {
     rerender(<ChoixPayeur payeurs={[TILLEULS, PLATANES, SOLDE]} valeur="" onChange={(v) => (choix = v)} />)
     expect([...screen.getByLabelText('Qui paie').options].map((o) => o.textContent)).toEqual([
       'Choisir…',
-      'Mon école, École des Tilleuls (il me reste 1,80 $ ce mois-ci)',
-      'Mon école, École des Platanes (il me reste 1,80 $ ce mois-ci)',
+      'Mon école, École des Tilleuls (il me reste 3,80 $ ce mois-ci)',
+      'Mon école, École des Platanes (il me reste 3,80 $ ce mois-ci)',
       'Mon solde restant (2,00 $)',
     ])
     fireEvent.change(screen.getByLabelText('Qui paie'), { target: { value: '4' } })

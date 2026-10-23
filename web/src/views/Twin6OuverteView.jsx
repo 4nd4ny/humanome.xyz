@@ -71,7 +71,15 @@ import { DEMO_MODEL, DEMO_TEXT_MAX_CHARS, createDemoProvider, describeDemoError 
 import { createPortfolioStore } from '../lib/portfolio-store.js'
 import { computeDayGroups } from '../lib/run-launcher.js'
 import { useUiMode } from '../lib/ui-mode.js'
-import { choixParDefaut, listePayeurs, payeurChoisi, resteMicrousd, valeurPayeur } from '../lib/payeurs.js'
+import {
+  CREDIT_ECOLE_BAS,
+  choixParDefaut,
+  creditEcoleBas,
+  listePayeurs,
+  payeurChoisi,
+  resteMicrousd,
+  valeurPayeur,
+} from '../lib/payeurs.js'
 import ChoixPayeur from './twin9/ChoixPayeur.jsx'
 
 /** L'offre d'un visiteur : ni prix, ni solde, ni structure importée (RG9 : le document publié). */
@@ -622,6 +630,11 @@ export default function Twin6OuverteView({ lib: injectedLib, deps = {} }) {
                 cle={quiPaie?.type === 'ecole' && quiPaie.cle ? 'ecole' : 'instance'}
                 disabled={run.status === 'running'}
               />
+            ) : null}
+            {voie === 'credits' && creditEcoleBas(quiPaie, quiPaie?.cle ? 'ecole' : 'instance') ? (
+              <p className="twin6-hint" data-testid="credit-ecole-bas">
+                {CREDIT_ECOLE_BAS}
+              </p>
             ) : null}
             {voie === 'cle_perso' ? (
               <div className="twin6-cleperso">

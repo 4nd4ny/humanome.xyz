@@ -42,7 +42,14 @@ import {
   formatUsd,
 } from '../api/twin9.js'
 import FactureTwin9 from './twin9/FactureTwin9.jsx'
-import { ECOLE_VOIT_LE_MONTANT, ecolesQuiPaient, listePayeurs, resteMicrousd } from '../lib/payeurs.js'
+import {
+  CREDIT_ECOLE_BAS,
+  ECOLE_VOIT_LE_MONTANT,
+  creditEcoleBas,
+  ecolesQuiPaient,
+  listePayeurs,
+  resteMicrousd,
+} from '../lib/payeurs.js'
 import '../styles/twin9-credit.css'
 
 const MOIS_FR = [
@@ -396,6 +403,7 @@ export default function CreditView({ deps = {} }) {
                     <strong>{formatUsd(resteMicrousd(e, e.cle ? 'ecole' : 'instance'))}</strong> ce mois-ci, sur un
                     plafond de {formatUsd(e.plafond_microusd ?? 0)} par mois.
                     {Number(e.plafond_microusd ?? 0) === 0 ? ' Votre école n’a pas encore réglé ce plafond.' : ''}
+                    {creditEcoleBas(e, e.cle ? 'ecole' : 'instance') ? ` ${CREDIT_ECOLE_BAS}` : ''}
                   </li>
                 ))}
               </ul>

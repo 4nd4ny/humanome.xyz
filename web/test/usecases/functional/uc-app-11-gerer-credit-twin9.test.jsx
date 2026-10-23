@@ -270,7 +270,8 @@ describe('UC-APP-11 — un apprenant n’achète pas (ADR-013, R2)', () => {
   it('UC-APP-11-F35 — A5 (IHM) : un apprenant voit que son école paie — ce qu’elle peut encore payer pour lui ce mois-ci, son plafond, qu’elle en voit le montant —, jamais le crédit de l’école ; une école est renvoyée à son espace', async () => {
     const ecole = {
       type: 'ecole', id: 3, nom: 'École des Tilleuls', soi: false, cle: false, mois: '2026-10',
-      plafond_microusd: 5_000_000, engage_microusd: 1_200_000, reste_credit_microusd: 1_800_000, reste_cle_microusd: 3_800_000,
+      plafond_microusd: 5_000_000, engage_microusd: 1_200_000, reste_credit_microusd: 3_800_000, reste_cle_microusd: 3_800_000,
+      credit_suffisant: false,
     }
     stubFetch(
       routes({
@@ -284,7 +285,10 @@ describe('UC-APP-11 — un apprenant n’achète pas (ADR-013, R2)', () => {
     const section = await screen.findByTestId('credit-ecole')
     expect(within(section).getByRole('heading', { level: 2 }).textContent).toBe('Votre école paie')
     expect(section.textContent).toContain('École des Tilleuls paie vos analyses approfondies')
-    expect(section.textContent).toContain('il vous reste 1,80 $ ce mois-ci, sur un plafond de 5,00 $ par mois.')
+    expect(section.textContent).toContain('il vous reste 3,80 $ ce mois-ci, sur un plafond de 5,00 $ par mois.')
+    // its credit, lower: one sentence, never its amount
+    expect(section.textContent).toContain('Le crédit de votre école ne couvre pas tout ce qu’elle vous accorde ce mois-ci')
+    expect(section.textContent).not.toContain('1,80')
     expect(section.textContent).toContain('Elle voit le montant de ce qu’elle paie pour vous, jamais le contenu de vos analyses.')
     expect(screen.queryByRole('button', { name: 'Recharger' })).toBeNull()
     expect(screen.queryByTestId('credit-espace-ecole')).toBeNull()

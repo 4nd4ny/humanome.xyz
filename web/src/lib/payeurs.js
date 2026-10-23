@@ -4,8 +4,8 @@
 // Le serveur dit les payeurs possibles d'un compte (GET /api/twin9/meta,
 // `payeurs` ; et l'aperçu d'un run) : chacune de ses écoles — celles dont une
 // cohorte le compte, elle-même pour une école —, avec ce qu'elle peut encore
-// payer pour lui ce mois-ci (son plafond restant, borné par son crédit ; sur
-// sa clé, son plafond seul), jamais le crédit de l'école ; et son propre solde
+// payer pour lui ce mois-ci (son plafond restant) et si son crédit le couvre
+// (`credit_suffisant`), jamais le crédit de l'école ; et son propre solde
 // restant, acheté avant l'ADR-013, quand il en a un. Le serveur choisit par
 // défaut son école quand il n'en a qu'une ; avec plusieurs, l'élève choisit.
 //
@@ -30,9 +30,9 @@ export function ecolesQuiPaient(payeurs) {
 }
 
 /**
- * Ce qu'un payeur peut encore payer ce mois-ci, en micro-USD : une école sur
- * sa clé ($cle 'ecole'), le plafond restant de l'élève ; sur son crédit, ce
- * plafond borné par le crédit ; son propre solde pour l'élève.
+ * Ce qu'un payeur peut encore payer ce mois-ci, en micro-USD : une école, le
+ * plafond restant de l'élève (sur sa clé comme sur son crédit) — son crédit,
+ * pour une école qui paie pour elle-même ; son propre solde pour l'élève.
  */
 export function resteMicrousd(payeur, cle = 'instance') {
   if (!payeur) return 0
@@ -40,6 +40,21 @@ export function resteMicrousd(payeur, cle = 'instance') {
   const reste = cle === 'ecole' ? payeur.reste_cle_microusd : payeur.reste_credit_microusd
   return Number(reste ?? payeur.reste_credit_microusd ?? 0)
 }
+
+/**
+ * Le crédit de l'école qui paie pour l'élève ne couvre pas ce qui reste de
+ * son plafond, sur sa clé de l'instance ($cle 'instance') : une analyse peut
+ * s'arrêter en cours. Le serveur ne le dit que par un booléen, jamais le
+ * montant de ce crédit.
+ */
+export function creditEcoleBas(payeur, cle = 'instance') {
+  return Boolean(payeur && payeur.type === 'ecole' && !payeur.soi && cle !== 'ecole' && payeur.credit_suffisant === false)
+}
+
+/** Ce que l'élève lit quand le crédit de son école est bas (creditEcoleBas). */
+export const CREDIT_ECOLE_BAS =
+  'Le crédit de votre école ne couvre pas tout ce qu’elle vous accorde ce mois-ci : une analyse peut s’arrêter en ' +
+  'cours. Prévenez-la, pour qu’elle le recharge.'
 
 /** Le libellé d'un payeur dans un menu. */
 export function libellePayeur(payeur, cle = 'instance') {

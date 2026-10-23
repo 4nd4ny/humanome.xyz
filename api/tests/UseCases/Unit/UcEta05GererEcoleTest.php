@@ -391,7 +391,7 @@ final class UcEta05GererEcoleTest extends TestCase
         self::assertSame([null, false, 1.0], [$personnelle->compte(), $personnelle->prix(), $personnelle->marge($config)]);
     }
 
-    #[TestDox('UC-ETA-05-U13 — élèves d’une école : chaque membre une fois, ses cohortes, ce qu’il a engagé ce mois-ci et en tout ; possibles d’un élève : ce que son école peut encore payer, jamais son solde')]
+    #[TestDox('UC-ETA-05-U13 — élèves d’une école : chaque membre une fois, ses cohortes, ce qu’il a engagé ce mois-ci et en tout ; possibles d’un élève : son plafond restant et si le crédit de l’école le couvre, jamais ce crédit, même plus bas')]
     public function testU13LearnersAndTheirSpend(): void
     {
         $ecole = self::ecole(self::$pdo, 'École des Tilleuls', 3.5, 5.0, 3_000_000);
@@ -416,8 +416,13 @@ final class UcEta05GererEcoleTest extends TestCase
         self::assertCount(1, $possibles, 'sans solde, son école seule');
         self::assertSame(['type' => 'ecole', 'id' => $ecole, 'nom' => 'École des Tilleuls', 'soi' => false, 'cle' => false,
                           'mois' => Ecoles::mois(), 'plafond_microusd' => 5_000_000, 'engage_microusd' => 1_200_000,
-                          'reste_credit_microusd' => 1_800_000, 'reste_cle_microusd' => 3_800_000], $possibles[0],
-            'son plafond restant, borné par le crédit de l’école — jamais le crédit lui-même');
+                          'reste_credit_microusd' => 3_800_000, 'reste_cle_microusd' => 3_800_000,
+                          'credit_suffisant' => false], $possibles[0],
+            'son plafond restant, et si le crédit de l’école le couvre — jamais le crédit lui-même');
+        self::assertStringNotContainsString('1800000', json_encode($possibles, JSON_THROW_ON_ERROR),
+            'le crédit de l’école (3 $ moins 1,20 $ réservés), plus bas que son plafond restant, ne se lit nulle part');
+        (new CreditService(self::$pdo))->adjust($ecole, 10_000_000, 'recharge');
+        self::assertTrue((new Payeurs(self::$pdo))->possibles($lea)[0]['credit_suffisant']);
         (new CreditService(self::$pdo))->adjust($lea, 2_000_000, 'solde acheté avant');
         self::assertSame(['type' => 'personnel', 'solde_microusd' => 2_000_000], (new Payeurs(self::$pdo))->possibles($lea)[1]);
         self::assertSame([['type' => 'ecole', 'soi' => true]], array_map(

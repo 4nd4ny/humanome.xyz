@@ -2934,17 +2934,26 @@ crédits (Twin6). Ce que l'API en dit :
   son solde restant ; l'identifiant d'une de ses écoles. `422` : plusieurs
   écoles sans choix (« Choisissez qui paie cette analyse : vous êtes membre
   de plusieurs écoles »), une école dont il n'est pas membre, une valeur mal
-  formée, la clé d'école sans école ou sans clé posée.
+  formée, la clé d'école sans école ou sans clé posée, `"personnel"` envoyé
+  par une école (« Une école paie ses usages sur son crédit d'école, à sa
+  surtaxe : choisissez votre école »). Le payeur décide aussi de la voie d'un
+  run Twin9 : une école qui a sa clé Anthropic paie avec elle (facteur 1,0)
+  un run qui n'appelle qu'Anthropic, même sur un profil `cle: "instance"`, le
+  défaut — l'aperçu et la copie du profil du run disent alors
+  `cle: "ecole"` ; à une reprise qui nomme son payeur, la voie suit ce payeur
+  de même (sa clé, sinon la clé de l'instance).
 - **`GET /api/twin9/meta`** gagne `payeurs` : pour chacune de ses écoles
   `{type: "ecole", id, nom, soi, cle (une clé posée), mois, plafond_microusd,
-  engage_microusd, reste_credit_microusd (son plafond restant, borné par le
-  crédit de l'école : quand ce crédit est plus bas, c'est lui que l'élève lit,
-  le seul cas où il en apprend quelque chose), reste_cle_microusd (sur sa
-  clé : son plafond restant)}`
+  engage_microusd, reste_credit_microusd (son plafond restant),
+  reste_cle_microusd (le même : son plafond restant), credit_suffisant (le
+  crédit de l'école couvre-t-il ce plafond restant ? un booléen, jamais le
+  montant ; revue du lot S6b : le reste n'est plus borné par ce crédit, ce
+  qui le disait chaque fois qu'il était le plus bas)}`
   — `plafond_microusd`, `engage_microusd` et `reste_cle_microusd` nuls pour
-  une école elle-même, dont `reste_credit_microusd` est son crédit —, puis
-  `{type: "personnel", solde_microusd}` quand il a un solde ou aucune école
-  (jamais pour une école). Jamais le crédit d'une école à son élève.
+  une école elle-même, dont `reste_credit_microusd` est son crédit, sans
+  `credit_suffisant` —, puis `{type: "personnel", solde_microusd}` quand il a
+  un solde ou aucune école (jamais pour une école). Jamais le crédit d'une
+  école à son élève.
 - **L'aperçu d'un run** gagne `payeur` (`{type: "ecole", id, nom, soi}` ou
   `{type: "personnel"}`) et `payeurs` ; `credit_usd` est nul quand une école
   paie ; `admission.limite` peut valoir `plafond` (ce qui reste du plafond de

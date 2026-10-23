@@ -106,6 +106,39 @@ describe('UC-ADM-04 — client admin-api.js', () => {
 })
 
 describe('UC-ADM-04 — formulaire de la démo (ReglagesSection isolé)', () => {
+  it('UC-ADM-04-U31 — RG10 : le plafond mensuel des crédits offerts se règle comme les autres (origine, bornes 0 – 1000, PUT partiel) et le grand livre du mois s’affiche en lecture seule ; une API qui ne le donne pas ne montre pas le champ', async () => {
+    const mois = { month: '2026-10', capUsd: 20, spentUsd: 3.2, reservedUsd: 0.32, remainingUsd: 16.48, calls: 41, refusals: 0, exhausted: false }
+    const demo = {
+      ...DEMO,
+      effective: { ...DEMO.effective, monthlyFreeUsd: 20 },
+      sources: { ...DEMO.sources, monthlyFreeUsd: 'env' },
+      freeCreditsMonth: mois,
+    }
+    const fetchFn = reglagesFetch(demo)
+    await renderReglages(fetchFn)
+
+    const champ = screen.getByLabelText('Crédits offerts / mois (USD)')
+    expect([champ.value, champ.min, champ.max, champ.step]).toEqual(['20', '0', '1000', '0.01'])
+    expect(screen.getByTestId('demo-offerts-mois').textContent).toBe(
+      'Crédits offerts ce mois-ci (2026-10, mois UTC) : 3.20 $ dépensés, 0.32 $ réservés par les appels en cours, ' +
+        '16.48 $ restants sur 20.00 $ — 41 appels, 0 refus.',
+    )
+    fireEvent.change(champ, { target: { value: '0' } })
+    await act(async () => {
+      fireEvent.click(screen.getByRole('button', { name: 'Enregistrer' }))
+    })
+    expect(JSON.parse(puts(fetchFn)[0][1].body)).toEqual({ monthlyFreeUsd: 0 })
+    cleanup()
+
+    await renderReglages(reglagesFetch({ ...demo, freeCreditsMonth: { ...mois, capUsd: 0, remainingUsd: 0, exhausted: true } }))
+    expect(screen.getByTestId('demo-offerts-mois').textContent).toContain('Épuisés : l’Essayer, la démo et le tuteur répondent « revenez le 1er ».')
+    cleanup()
+
+    await renderReglages(reglagesFetch())
+    expect(screen.queryByLabelText('Crédits offerts / mois (USD)')).toBeNull()
+    expect(screen.queryByTestId('demo-offerts-mois')).toBeNull()
+  })
+
   it('UC-ADM-04-U15 — PUT partiel : seuls les champs modifiés partent, convertis en nombres', async () => {
     const fetchFn = reglagesFetch()
     await renderReglages(fetchFn)

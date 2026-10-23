@@ -7,6 +7,7 @@ namespace Humanome\Admin;
 use Humanome\Auth\Audit;
 use Humanome\Env;
 use Humanome\Llm\DemoConfig;
+use Humanome\Llm\FreeCreditLedger;
 use Humanome\Llm\ModelLimits;
 use Humanome\Packages\SettingsRepository;
 use PDO;
@@ -30,6 +31,10 @@ use PDO;
  *     acheté suffisamment de crédits API ou bien utilisant leur propre clé »).
  *   - the output of a call: the model's maximum, no longer capped
  *     (maxTokensPerRequest is gone; read() shows sortieMax).
+ *
+ * The monthly cap of the offered credits (monthlyFreeUsd, sprint 7) is
+ * edited here too: it bounds the demo's calls and the tutor's together, and
+ * read() shows the month's ledger beside it (FreeCreditLedger).
  */
 final class DemoConfigService
 {
@@ -56,6 +61,7 @@ final class DemoConfigService
     /** Float fields: [min, max]. */
     private const FLOAT_BOUNDS = [
         'dailyBudgetUsd' => [0.0, 1000.0],
+        'monthlyFreeUsd' => [0.0, 1000.0],
     ];
 
     /** Free-text model: sane shape, never empty (Anthropic ids). */
@@ -69,9 +75,9 @@ final class DemoConfigService
      * Effective values + per-field origin, for GET /api/admin/demo-config.
      *
      * @return array{effective: array<string, mixed>, sources: array<string, string>,
-     *   allowedModels: list<string>, apiKeyConfigured: bool}
+     *   allowedModels: list<string>, apiKeyConfigured: bool, freeCreditsMonth: array<string, mixed>}
      */
-    public function read(): array
+    public function read(?int $now = null): array
     {
         $c = DemoConfig::load();
 
@@ -88,6 +94,7 @@ final class DemoConfigService
                 'dailyBudgetUsd' => $c->dailyBudgetUsd,
                 'powDifficultyBits' => $c->powDifficultyBits,
                 'upstreamTimeoutSeconds' => $c->upstreamTimeoutSeconds,
+                'monthlyFreeUsd' => $c->monthlyFreeUsd,
             ],
             'sources' => $c->sources,
             // The layers' models that are not a Haiku, refused: the page says so.
@@ -95,6 +102,31 @@ final class DemoConfigService
             'allowedModels' => self::ALLOWED_MODELS,
             // Boolean only — the key value NEVER leaves the environment.
             'apiKeyConfigured' => Env::get('ANTHROPIC_API_KEY') !== '',
+            'freeCreditsMonth' => $this->freeCreditsMonth($c->monthlyFreeUsd, $now),
+        ];
+    }
+
+    /**
+     * The month's ledger of the offered credits, in USD: what was spent, what
+     * the calls in flight hold, what is left under the cap, the calls and
+     * the refusals. The UTC month (FreeCreditLedger::month).
+     *
+     * @return array<string, mixed>
+     */
+    private function freeCreditsMonth(float $capUsd, ?int $now): array
+    {
+        $state = (new FreeCreditLedger($this->pdo))->state(FreeCreditLedger::capMicrousd($capUsd), $now);
+        $usd = static fn (int $microusd): float => round($microusd / 1_000_000, 6);
+
+        return [
+            'month' => $state['month'],
+            'capUsd' => $usd($state['capMicrousd']),
+            'spentUsd' => $usd($state['spentMicrousd']),
+            'reservedUsd' => $usd($state['reservedMicrousd']),
+            'remainingUsd' => $usd($state['remainingMicrousd']),
+            'calls' => $state['calls'],
+            'refusals' => $state['refusals'],
+            'exhausted' => $state['exhausted'],
         ];
     }
 
@@ -198,7 +230,7 @@ final class DemoConfigService
             return $value;
         }
 
-        // dailyBudgetUsd (float bounds)
+        // dailyBudgetUsd, monthlyFreeUsd (float bounds)
         [$min, $max] = self::FLOAT_BOUNDS[$field];
         if (!\is_float($value) && !\is_int($value)) {
             throw new AdminException(sprintf('%s doit être un nombre.', $field), 422);

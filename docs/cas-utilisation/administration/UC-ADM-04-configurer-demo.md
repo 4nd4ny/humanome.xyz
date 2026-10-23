@@ -7,7 +7,7 @@
 | **Portée** | humanome.xyz — `#/admin/reglages` (bloc « Démo publique »), `#/admin/config` ; API de session `/api/admin/demo-config` |
 | **Niveau** | Objectif utilisateur |
 | **Cahier des charges** | §3.1 (démo sans compte, garde-fous anti-abus), §3.8 et §4.10 (configuration simple) ; principe RGPD n°5 — journalisation minimale (`CLAUDE.md`, `docs/rgpd-registre.md`) ; `docs/administration.md` §3-4, `api/config/demo.php` |
-| **Statut** | Implémenté (P12.1 ; édition en ligne : chantier A) |
+| **Statut** | Implémenté (P12.1 ; édition en ligne : chantier A ; plafond mensuel des crédits offerts : sprint 7, S7a) |
 
 ## Objectif
 
@@ -127,10 +127,10 @@ par exemple juste avant ou juste après une présentation.
 - **A3 — Base injoignable** (étape 6) : `DemoConfig::load` ignore la couche
   « base » (journal serveur `[demo-config] overrides unavailable…`) :
   `GET /api/llm/status` et `GET /api/llm/challenge` répondent sur env/fichier
-  (`remainingToday: false`, compteurs illisibles). `POST /api/llm` et
+  (`remainingToday: false`, `remainingThisMonth: false`, compteurs illisibles). `POST /api/llm` et
   `POST /api/tuteur`, qui ont besoin de la base (preuve de travail à usage
   unique, quotas, compteurs), échouent en `500` ; `GET /api/status` annonce
-  `db: "error"` et `demo {enabled: false, remainingToday: null}` (en
+  `db: "error"` et `demo {enabled: false, remainingToday: null, remainingThisMonth: null}` (en
   contradiction avec `/api/llm/status`) ; l'administration elle-même (étape 2)
   est indisponible (`500` : la session admin vit en base). Les surcharges
   réapparaissent au retour de la base.
@@ -152,6 +152,15 @@ par exemple juste avant ou juste après une présentation.
   la démo prend le premier Haiku des couches, sinon Haiku 5.5, et l'IHM affiche
   en alerte « Modèle refusé : claude-sonnet-5 (env) — la démo emploie
   claude-haiku-5-5. ».
+- **A8 — Le plafond mensuel des crédits offerts** (étape 3, RG10, sprint 7) :
+  le champ « Crédits offerts / mois (USD) » (0 à 1 000, origine affichée)
+  règle ce que l'instance offre en un mois UTC, l'Essayer, la démo et le
+  tuteur ensemble ; une ligne dit le grand livre du mois : « Crédits offerts
+  ce mois-ci (2026-10, mois UTC) : 3.20 $ dépensés, 0.32 $ réservés par les
+  appels en cours, 16.48 $ restants sur 20.00 $ — 41 appels, 0 refus. », et
+  « Épuisés : … » une fois le plafond atteint. À 0, effet immédiat : l'Essayer
+  et le tuteur répondent « Les crédits offerts de ce mois sont épuisés ;
+  revenez le 1er … » ; une réponse déjà en cours finit (UC-VIS-03 RG7).
 
 ## Scénarios d'erreur
 
@@ -250,6 +259,20 @@ par exemple juste avant ou juste après une présentation.
   Haiku 5.5, et signale les autres (`modelRefuse`, A7) ; `PUT` d'un modèle qui
   n'est pas un Haiku → `422`. Un Haiku est un identifiant qui commence par
   `claude-haiku-` (`ModelLimits::estHaiku`).
+- **RG10** — Le plafond mensuel des crédits offerts (sprint 7, S7a ; TODO :
+  « La somme totale des crédits offerts par mois ne doit pas dépasser 20 USD
+  pour tous les utilisateurs anonymes et enregistrés du site ») :
+  `monthlyFreeUsd`, un nombre de 0 à 1 000 (USD), base >
+  `OFFERTS_MENSUEL_USD` > `api/config/demo.php` (20) > 20. Il borne,
+  ensemble, tout ce qui passe par `POST /api/llm` et `POST /api/tuteur` sur
+  un mois UTC (`Llm\FreeCreditLedger`, UC-VIS-03 RG7, UC-VIS-05 RG8), en plus
+  des budgets du jour de la démo et du tuteur, qui restent (jusqu'à 2 $ par
+  jour à eux deux, environ 60 $ par mois, quand le plafond en tient 20). Lu à
+  chaque requête : un changement s'applique à l'appel suivant, jamais à une
+  réponse en cours. `GET /api/admin/demo-config` le rend dans `effective` et
+  `sources`, avec `freeCreditsMonth` `{month, capUsd, spentUsd, reservedUsd,
+  remainingUsd, calls, refusals, exhausted}`, au mois UTC du serveur
+  (`gmdate`, jamais `CURDATE()`).
 
 ## Données et RGPD
 
@@ -258,7 +281,7 @@ par exemple juste avant ou juste après une présentation.
 | Surcharges de la démo | `settings.demo_overrides` (JSON), aucune donnée personnelle |
 | Clé plateforme Anthropic | Environnement serveur uniquement ; exposée comme booléen |
 | Trace des modifications | `audit_events` : `demo_config_updated {fields}`, `demo_config_reset` |
-| Visiteurs de la démo | Quotas par seau d'IP haché (`rate_limits`), compteurs journaliers sans contenu (`llm_usage_daily`) |
+| Visiteurs de la démo | Quotas par seau d'IP haché (`rate_limits`), compteurs journaliers sans contenu (`llm_usage_daily`), grand livre du mois des crédits offerts sans contenu ni compte (`free_credit_monthly`, RG10) |
 
 ## Code sollicité
 
@@ -277,6 +300,7 @@ par exemple juste avant ou juste après une présentation.
 | Domaine | `api/src/Middleware/RequireRole.php` | Garde `401 « Authentification requise »` / `403 « Rôle insuffisant »` (E1, E2) |
 | Domaine | `api/src/Middleware/CsrfMiddleware.php` | `403 « Jeton CSRF absent ou invalide »` (E5) |
 | Domaine | `api/src/Llm/UsageCounters.php` — `isExhausted`, `record` | Coupe-circuit journalier (`≥` plafond de tokens ou budget, A1) |
+| Domaine | `api/src/Llm/FreeCreditLedger.php` — `state`, `capMicrousd` | Grand livre du mois des crédits offerts, montré à l'administrateur (A8, RG10) |
 | Domaine | `api/src/Llm/PowChallenge.php` | Défi de preuve de travail (`difficultyBits`, étape 6) |
 | Domaine | `api/src/Auth/RateLimiter.php` | Quota horaire par seau d'IP haché (`perIpPerHour`) |
 | Domaine | `api/src/Auth/Audit.php` | Journal `demo_config_updated` / `demo_config_reset` |
@@ -307,8 +331,10 @@ par exemple juste avant ou juste après une présentation.
 | UC-ADM-04-U24 | `DemoConfigService::update` (RG7) | Champ renvoyé à l'identique : surcharge « base » créée, audit `{fields}` quand même | idem |
 | UC-ADM-04-U28 | `DemoConfig::load` (RG9) | Un Haiku seulement : le premier Haiku des couches, sinon Haiku 5.5 ; un Sonnet ou un Opus d'une couche refusé et signalé | idem |
 | UC-ADM-04-U29 | `DemoConfig::sortieMax`, `DemoConfigService::update` (RG8) | La sortie est le maximum du modèle (128 000 pour Haiku 5.5, 64 000 pour Haiku 4.5) ; `maxTokensPerRequest`, en base ou en env, n'est plus lu et quitte la base au prochain enregistrement | idem |
+| UC-ADM-04-U30 | `DemoConfig::load`, `DemoConfigService::update`, `read` (RG10) | `monthlyFreeUsd` : 20 $ du fichier, `OFFERTS_MENSUEL_USD` par-dessus (une valeur non numérique ignorée), la base par-dessus tout ; de 0 à 1 000, un nombre ; `read($now)` rend le grand livre du mois UTC en dollars (dépensé, réservé, restant, appels, refus), un mois neuf le 1er à 0 h UTC | `api/tests/UseCases/Unit/UcAdm04ConfigurerDemoTest.php` |
 | UC-ADM-04-U13 | `fetchDemoConfig`, `saveDemoConfig`, `resetDemoConfig` | URL, méthodes, corps, CSRF sur mutations | `web/test/usecases/unit/uc-adm-04-configurer-demo.test.jsx` |
 | UC-ADM-04-U14 | `toggleDemo` | `PUT api/admin/demo-config` (méthode et URL vérifiées) avec `{enabled}` booléen seul | idem |
+| UC-ADM-04-U31 | `ReglagesSection` (A8, RG10) | Champ « Crédits offerts / mois (USD) » (valeur, bornes 0 – 1000, pas de 0,01), PUT partiel `{monthlyFreeUsd: 0}` ; la ligne du grand livre du mois, « Épuisés » au plafond ; une API qui ne le donne pas ne montre ni le champ ni la ligne | `web/test/usecases/unit/uc-adm-04-configurer-demo.test.jsx` |
 | UC-ADM-04-U15 | `ReglagesSection` | PUT partiel des seuls champs modifiés, nombres | idem |
 | UC-ADM-04-U16 | `ReglagesSection` | Modèle hors liste → « autre… » ; rien à enregistrer | idem |
 | UC-ADM-04-U17 | `ReglagesSection` | État occupé : interrupteur et boutons inactifs | idem |
@@ -337,6 +363,7 @@ par exemple juste avant ou juste après une présentation.
 | UC-ADM-04-F21 | A1 | API | `dailyGlobalTokens` 10 000 : 9 999 consommés → reste ; 10 000 → `remainingToday` faux, `503` | idem |
 | UC-ADM-04-F22 | A4 | API | `GET /api/admin/settings` : secrets `configured` sans valeur, clé absente du corps ; non-admin → `403` | idem |
 | UC-ADM-04-F23 | A7, RG9 | API | Le Sonnet 5 du `.env` de juillet est refusé et nommé, la démo appelle Haiku 5.5 avec toute sa sortie ; un `PUT` Sonnet ou Opus → `422`, rien d'écrit | idem |
+| UC-ADM-04-F24 | A8, RG10 | API | Plafond mensuel : 20 $ (fichier), `OFFERTS_MENSUEL_USD` (env), `PUT {monthlyFreeUsd: 0}` (base) → l'Essayer et le tuteur répondent aussitôt `503` « Les crédits offerts de ce mois sont épuisés ; revenez le 1er … » (`offerts_epuises`), `remainingThisMonth` faux ; `GET` montre le grand livre (1 appel, 2 refus, épuisé) ; 1 000,01, −1, texte, `null` → `422` ; Réinitialiser → l'environnement | `api/tests/UseCases/Functional/UcAdm04ConfigurerDemoTest.php` |
 | UC-ADM-04-F11 | Nominal (1-4) | IHM | `<App/>` : interrupteur → PUT `{enabled:false}` + CSRF, message, badge | `web/test/usecases/functional/uc-adm-04-configurer-demo.test.jsx` |
 | UC-ADM-04-F12 | Nominal (5) | IHM | Modèle (un Haiku) + entrée max → PUT partiel, message, badges « réglage base », sortie du modèle affichée | idem |
 | UC-ADM-04-F13 | A2 | IHM | Réinitialiser → DELETE, message, retour au fichier | idem |

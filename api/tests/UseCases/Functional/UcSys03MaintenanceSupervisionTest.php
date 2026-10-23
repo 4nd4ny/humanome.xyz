@@ -177,7 +177,7 @@ final class UcSys03MaintenanceSupervisionTest extends AdminTestCase
             'status' => 'ok',
             'version' => '2026.09.28-abc1234',
             'db' => 'ok',
-            'demo' => ['enabled' => true, 'remainingToday' => true],
+            'demo' => ['enabled' => true, 'remainingToday' => true, 'remainingThisMonth' => true],
             'worker' => ['lastActivityAt' => '2026-09-28 09:30:00', 'queued' => 2],
         ], AdmSupport::body($status));
     }
@@ -189,10 +189,10 @@ final class UcSys03MaintenanceSupervisionTest extends AdminTestCase
             "INSERT INTO llm_usage_daily (usage_date, requests, input_tokens, output_tokens, estimated_cost_usd)
              VALUES (UTC_DATE(), 900, 1500000, 600000, 1.20)"
         );
-        self::assertSame(['enabled' => true, 'remainingToday' => false], AdmSupport::body($this->probe('/status'))['demo']);
+        self::assertSame(['enabled' => true, 'remainingToday' => false, 'remainingThisMonth' => true], AdmSupport::body($this->probe('/status'))['demo']);
 
         (new SettingsRepository(self::$pdo))->set(DemoConfig::OVERRIDES_KEY, ['enabled' => false]);
-        self::assertSame(['enabled' => false, 'remainingToday' => null], AdmSupport::body($this->probe('/status'))['demo']);
+        self::assertSame(['enabled' => false, 'remainingToday' => null, 'remainingThisMonth' => null], AdmSupport::body($this->probe('/status'))['demo']);
     }
 
     #[TestDox('UC-SYS-03-F03 — E1 : base non configurée ou injoignable → /health et /status restent 200 avec un diagnostic, sans détail SQL ; échec partiel : champs déjà calculés conservés')]
@@ -203,7 +203,7 @@ final class UcSys03MaintenanceSupervisionTest extends AdminTestCase
             TestDb::setEnv('DB_HOST', '');
             self::assertSame('unconfigured', AdmSupport::body($this->probe('/health'))['db']);
             $unconfigured = AdmSupport::body($this->probe('/status'));
-            self::assertSame(['unconfigured', ['enabled' => false, 'remainingToday' => null]], [$unconfigured['db'], $unconfigured['demo']]);
+            self::assertSame(['unconfigured', ['enabled' => false, 'remainingToday' => null, 'remainingThisMonth' => null]], [$unconfigured['db'], $unconfigured['demo']]);
         } finally {
             TestDb::setEnv('DB_HOST', $originalHost);
             TestDb::overrideEnv();
@@ -224,7 +224,7 @@ final class UcSys03MaintenanceSupervisionTest extends AdminTestCase
             'status' => 'ok',
             'version' => 'v-uc-sys03',
             'db' => 'error',
-            'demo' => ['enabled' => false, 'remainingToday' => null],
+            'demo' => ['enabled' => false, 'remainingToday' => null, 'remainingThisMonth' => null],
             'worker' => ['lastActivityAt' => null, 'queued' => null],
         ], AdmSupport::body($status));
 
@@ -241,7 +241,7 @@ final class UcSys03MaintenanceSupervisionTest extends AdminTestCase
             'status' => 'ok',
             'version' => 'v-uc-sys03',
             'db' => 'error',
-            'demo' => ['enabled' => true, 'remainingToday' => true],
+            'demo' => ['enabled' => true, 'remainingToday' => true, 'remainingThisMonth' => true],
             'worker' => ['lastActivityAt' => null, 'queued' => null],
         ], AdmSupport::body($partial), 'db « error » mais démo déjà renseignée');
     }

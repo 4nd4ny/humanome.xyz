@@ -5,8 +5,11 @@ declare(strict_types=1);
 namespace Humanome\Tests\UseCases\Functional;
 
 use Humanome\Auth\Users;
+use Humanome\Llm\AnthropicProvider;
+use Humanome\Llm\FreeCreditLedger;
 use Humanome\Llm\HttpClientException;
 use Humanome\Llm\PowChallenge;
+use Humanome\Llm\Pricing;
 use Humanome\Tests\LlmTestCase;
 use Humanome\Tests\TestDb;
 use PHPUnit\Framework\Attributes\TestDox;
@@ -445,5 +448,79 @@ final class UcVis05InterrogerTuteurTest extends LlmTestCase
         $mock = $this->ask('Et ensuite ?', ['historique' => $historique]);
         self::assertSame(200, $mock->getStatusCode());
         self::assertSame('mock', self::json($mock)['model']);
+    }
+
+    /** The month's ledger of the offered credits, which the tutor shares with the demo. @return array<string, mixed> */
+    private static function mois(): array
+    {
+        return (new FreeCreditLedger(self::$pdo))->state(FreeCreditLedger::capMicrousd(0.01));
+    }
+
+    #[TestDox('UC-VIS-05-F23 — E7, RG8 : plafond du mois simulé à 0,01 $, fournisseur mock — une question de Haiku 5.5 (son pire cas : la consigne, la question et la mémoire à un jeton par octet, 600 jetons de sortie) y tient, réservée puis réglée au coût réel ; le mois dépensé (par la démo ou le tuteur) : 503 « Les crédits offerts de ce mois sont épuisés ; revenez le 1er … », code offerts_epuises, rien compté au budget du jour du tuteur ; la démo est refusée de même ; le mois répond avant le jour')]
+    public function testF23MonthlyCapIsSharedWithTheDemo(): void
+    {
+        TestDb::setEnv('OFFERTS_MENSUEL_USD', '0.01');
+        TestDb::setEnv('TUTEUR_MODEL', 'claude-haiku-5-5');
+        self::assertSame(200, $this->ask('Comment cartographier mon texte ?')->getStatusCode());
+        self::assertSame([0, 0, 1, 0], [self::mois()['spentMicrousd'], self::mois()['reservedMicrousd'],
+            self::mois()['calls'], self::mois()['refusals']], 'mock : coût réel nul, la réserve revient');
+
+        // 9 900 µ$ dépensés ce mois-ci (des Essayer, d'autres questions) : le pire cas n'a plus la place.
+        $ledger = new FreeCreditLedger(self::$pdo);
+        self::assertTrue($ledger->reserve(9_900, 10_000));
+        $ledger->settle(9_900, 9_900);
+        $jour = (int) self::$pdo->query('SELECT requests FROM tuteur_usage_daily')->fetchColumn();
+        $refused = $this->ask('Et maintenant ?');
+        self::assertSame(503, $refused->getStatusCode());
+        self::assertSame(['error' => FreeCreditLedger::refusalMessage(), 'code' => 'offerts_epuises'], self::json($refused));
+        self::assertSame($jour, (int) self::$pdo->query('SELECT requests FROM tuteur_usage_daily')->fetchColumn());
+
+        // Le même plafond pour la démo : refusée de même, avant son budget du jour.
+        $demo = $this->postLlm();
+        self::assertSame(503, $demo->getStatusCode());
+        self::assertSame('offerts_epuises', self::json($demo)['code']);
+        self::assertSame([9_900, 0, 2, 2], [self::mois()['spentMicrousd'], self::mois()['reservedMicrousd'],
+            self::mois()['calls'], self::mois()['refusals']]);
+
+        // Le mois dépensé jusqu'au bout et le jour du tuteur épuisé aussi : le mois
+        // répond (« revenez le 1er »), pas le jour (« revenez demain »).
+        self::assertTrue($ledger->reserve(100, 10_000));
+        $ledger->settle(100, 100);
+        self::$pdo->exec('UPDATE tuteur_usage_daily SET estimated_cost_usd = 5');
+        self::assertSame(['error' => FreeCreditLedger::refusalMessage(), 'code' => 'offerts_epuises'],
+            self::json($this->ask('Et demain ?')));
+        self::$pdo->exec('DELETE FROM free_credit_monthly');
+        self::assertSame('L’assistant a atteint son budget du jour, revenez demain.', self::json($this->ask('Et demain ?'))['error']);
+    }
+
+    #[TestDox('UC-VIS-05-F24 — RG8 : un échec libère la réserve du mois — 429, erreur, connexion refusée : rien ne reste ; un délai dépassé (la question a pu être reçue et facturée) laisse son pire cas compté ; une réponse rendue se règle au coût réel (100 + 50 jetons de Haiku 4.5 : 350 µ$) ; sans clé, rien n’est réservé')]
+    public function testF24AFailureReleasesTheMonthsReservation(): void
+    {
+        TestDb::setEnv('DEMO_PROVIDER', 'anthropic');
+        $this->http->queueResponse(['status' => 429, 'headers' => ['retry-after' => '12'], 'body' => '{}']);
+        self::assertSame(429, $this->ask('Q')->getStatusCode());
+        $this->http->queueResponse(['status' => 500, 'body' => '{"error":{"message":"interne"}}']);
+        self::assertSame(502, $this->ask('Q')->getStatusCode());
+        $this->http->queueException(new HttpClientException('refused', false));
+        self::assertSame(502, $this->ask('Q')->getStatusCode());
+        self::assertSame([0, 0, 0], [self::mois()['spentMicrousd'], self::mois()['reservedMicrousd'], self::mois()['calls']]);
+
+        // Délai dépassé : son pire cas — la consigne, la question et le surcoût à
+        // un jeton par octet, 600 jetons de sortie, au tarif de Haiku 4.5 — reste compté.
+        $this->http->queueException(new HttpClientException('timeout', true));
+        self::assertSame(504, $this->ask('Q')->getStatusCode());
+        $sent = json_decode((string) end($this->http->requests)['body'], true);
+        $pire = FreeCreditLedger::microusd(Pricing::estimateUsd('claude-haiku-4-5-20251001',
+            \strlen((string) $sent['system']) + \strlen('Q') + AnthropicProvider::REQUEST_OVERHEAD_TOKENS, 600));
+        self::assertSame([$pire, 0, 1], [self::mois()['spentMicrousd'], self::mois()['reservedMicrousd'], self::mois()['calls']]);
+
+        $this->http->queueResponse(['status' => 200, 'body' => self::anthropicBody('Ouvre #/essayer.', 100, 50)]);
+        self::assertSame(200, $this->ask('Q')->getStatusCode());
+        self::assertSame([$pire + 350, 0, 2], [self::mois()['spentMicrousd'], self::mois()['reservedMicrousd'], self::mois()['calls']]);
+
+        TestDb::setEnv('ANTHROPIC_API_KEY', '');
+        self::assertSame(503, $this->ask('Q')->getStatusCode());
+        self::assertSame([$pire + 350, 0, 2, 0], [self::mois()['spentMicrousd'], self::mois()['reservedMicrousd'],
+            self::mois()['calls'], self::mois()['refusals']]);
     }
 }

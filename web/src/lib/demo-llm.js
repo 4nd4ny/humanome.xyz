@@ -244,6 +244,13 @@ export function createDemoProvider({ fetchFn, onPhase, onProgression } = {}) {
   }
 }
 
+/**
+ * The refusal of POST /api/llm once the month's offered credits are spent
+ * (code `offerts_epuises`, api/src/Llm/FreeCreditLedger.php), as the engine
+ * carries it in its error's message.
+ */
+const OFFERTS_EPUISES = /Les crédits offerts de ce mois sont épuisés ; revenez le 1er [^.|]*\./
+
 /** Pause before the single retry on a transient upstream failure. */
 export const UPSTREAM_RETRY_DELAY_MS = 2500
 
@@ -286,7 +293,8 @@ export function isAbortError(error) {
  * Maps a demo run failure to a user-facing French message (P6.4).
  *
  * @param {unknown} error anything thrown by prime()/extractDay()
- * @returns {{kind: 'quota'|'unavailable'|'tronque'|'llm', message: string, canRetry: boolean}}
+ * @returns {{kind: 'quota'|'unavailable'|'tronque'|'llm', message: string, canRetry: boolean,
+ *   code?: 'offerts_epuises'}} `code` when the month's offered credits are spent (sprint 7)
  */
 export function describeDemoError(error) {
   const info = httpInfo(error)
@@ -304,6 +312,10 @@ export function describeDemoError(error) {
     }
   }
   if (info?.status === 503) {
+    // The month's offered credits are spent (sprint 7): the server's own words,
+    // which name the day they come back (« revenez le 1er novembre »).
+    const mois = OFFERTS_EPUISES.exec(collectMessages(error))
+    if (mois) return { kind: 'unavailable', canRetry: false, code: 'offerts_epuises', message: mois[0] }
     return {
       kind: 'unavailable',
       canRetry: false,

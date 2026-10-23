@@ -9,6 +9,7 @@ use Humanome\Db;
 use Humanome\DbSessionHandler;
 use Humanome\Env;
 use Humanome\Llm\DemoConfig;
+use Humanome\Llm\FreeCreditLedger;
 use Humanome\Llm\LlmRuntime;
 use Humanome\Llm\PowChallenge;
 use Humanome\Llm\UsageCounters;
@@ -46,7 +47,7 @@ final class UcAdm04ConfigurerDemoTest extends AdminTestCase
         foreach ([
             'DEMO_ENABLED', 'DEMO_MODEL', 'DEMO_MAX_TOKENS_PER_REQUEST', 'DEMO_MAX_INPUT_CHARS',
             'DEMO_PER_IP_PER_HOUR', 'DEMO_DAILY_GLOBAL_TOKENS', 'DEMO_DAILY_BUDGET_USD',
-            'DEMO_POW_DIFFICULTY_BITS', 'DEMO_UPSTREAM_TIMEOUT',
+            'DEMO_POW_DIFFICULTY_BITS', 'DEMO_UPSTREAM_TIMEOUT', 'OFFERTS_MENSUEL_USD',
         ] as $key) {
             TestDb::setEnv($key, '');
         }
@@ -55,6 +56,7 @@ final class UcAdm04ConfigurerDemoTest extends AdminTestCase
         TestDb::setEnv('ANTHROPIC_API_KEY', '');
         self::$pdo->exec('DELETE FROM llm_usage_daily');
         self::$pdo->exec('DELETE FROM llm_pow_challenges');
+        self::$pdo->exec('DELETE FROM free_credit_monthly');
         $this->admin = $this->registerAdmin('root@example.org');
     }
 
@@ -138,17 +140,17 @@ final class UcAdm04ConfigurerDemoTest extends AdminTestCase
     #[TestDox('UC-ADM-04-F02 — nominal (interrupteur) : démo éteinte d’un geste → 503 immédiat (démo et tuteur) côté visiteur ; rallumée → défi servi')]
     public function testF02KillSwitchTakesEffectImmediately(): void
     {
-        self::assertSame(['enabled' => true, 'remainingToday' => true], self::json($this->visitor('GET', '/api/llm/status')));
+        self::assertSame(['enabled' => true, 'remainingToday' => true, 'remainingThisMonth' => true], self::json($this->visitor('GET', '/api/llm/status')));
 
         $off = $this->put(['enabled' => false]);
         self::assertFalse(self::json($off)['effective']['enabled']);
 
-        self::assertSame(['enabled' => false, 'remainingToday' => false], self::json($this->visitor('GET', '/api/llm/status')));
+        self::assertSame(['enabled' => false, 'remainingToday' => false, 'remainingThisMonth' => false], self::json($this->visitor('GET', '/api/llm/status')));
         $challenge = $this->visitor('GET', '/api/llm/challenge');
         self::assertSame(503, $challenge->getStatusCode());
         self::assertSame('La démonstration est désactivée pour le moment.', self::json($challenge)['error']);
         self::assertSame(503, $this->visitor('POST', '/api/llm', ['prompt' => 'Bonjour'])->getStatusCode());
-        self::assertSame(['enabled' => false, 'remainingToday' => null], self::json($this->visitor('GET', '/api/status'))['demo']);
+        self::assertSame(['enabled' => false, 'remainingToday' => null, 'remainingThisMonth' => null], self::json($this->visitor('GET', '/api/status'))['demo']);
         // Le même interrupteur coupe l'assistant tuteur (routes/tuteur.php).
         $tuteur = $this->visitor('POST', '/api/tuteur', ['question' => 'À quoi sert humanome ?']);
         self::assertSame(503, $tuteur->getStatusCode());
@@ -190,7 +192,7 @@ final class UcAdm04ConfigurerDemoTest extends AdminTestCase
     {
         $this->put(['powDifficultyBits' => 8, 'dailyBudgetUsd' => 0]);
 
-        self::assertSame(['enabled' => true, 'remainingToday' => false], self::json($this->visitor('GET', '/api/llm/status')));
+        self::assertSame(['enabled' => true, 'remainingToday' => false, 'remainingThisMonth' => true], self::json($this->visitor('GET', '/api/llm/status')));
         self::assertFalse(self::json($this->visitor('GET', '/api/status'))['demo']['remainingToday']);
         $response = $this->askDemo('Question un jour de budget nul.');
         self::assertSame(503, $response->getStatusCode());
@@ -254,7 +256,7 @@ final class UcAdm04ConfigurerDemoTest extends AdminTestCase
         }
 
         self::assertSame(200, $status->getStatusCode());
-        self::assertSame(['enabled' => true, 'remainingToday' => false], self::json($status), 'fichier : activée ; compteurs illisibles');
+        self::assertSame(['enabled' => true, 'remainingToday' => false, 'remainingThisMonth' => false], self::json($status), 'fichier : activée ; compteurs illisibles');
         self::assertSame(200, $challenge->getStatusCode(), 'défi sans état : servi sans la base');
         self::assertSame(8, self::json($challenge)['difficultyBits']);
         self::assertSame(500, $ask->getStatusCode(), 'POST /api/llm a besoin de la base (preuve à usage unique, quotas)');
@@ -262,7 +264,7 @@ final class UcAdm04ConfigurerDemoTest extends AdminTestCase
         self::assertSame(500, $admin->getStatusCode(), 'étape 2 : la session admin vit en base');
         $healthBody = self::json($health);
         self::assertSame('error', $healthBody['db']);
-        self::assertSame(['enabled' => false, 'remainingToday' => null], $healthBody['demo'], '/api/status contredit /api/llm/status');
+        self::assertSame(['enabled' => false, 'remainingToday' => null, 'remainingThisMonth' => null], $healthBody['demo'], '/api/status contredit /api/llm/status');
 
         self::assertFalse(DemoConfig::load()->enabled, 'base revenue : la surcharge n’a pas été perdue');
     }
@@ -396,10 +398,10 @@ final class UcAdm04ConfigurerDemoTest extends AdminTestCase
         $counters = new UsageCounters(self::$pdo);
 
         $counters->record(6000, 3999, 0.0);
-        self::assertSame(['enabled' => true, 'remainingToday' => true], self::json($this->visitor('GET', '/api/llm/status')), '9 999 tokens : reste du crédit');
+        self::assertSame(['enabled' => true, 'remainingToday' => true, 'remainingThisMonth' => true], self::json($this->visitor('GET', '/api/llm/status')), '9 999 tokens : reste du crédit');
 
         $counters->record(1, 0, 0.0);
-        self::assertSame(['enabled' => true, 'remainingToday' => false], self::json($this->visitor('GET', '/api/llm/status')));
+        self::assertSame(['enabled' => true, 'remainingToday' => false, 'remainingThisMonth' => true], self::json($this->visitor('GET', '/api/llm/status')));
         $response = $this->askDemo('Question au-delà du plafond de tokens.');
         self::assertSame(503, $response->getStatusCode());
         self::assertSame('Démo épuisée pour aujourd’hui, revenez demain.', self::json($response)['error']);
@@ -468,5 +470,45 @@ final class UcAdm04ConfigurerDemoTest extends AdminTestCase
         $payload = json_decode((string) $fake->requests[0]['body'], true, 512, JSON_THROW_ON_ERROR);
         self::assertSame('claude-haiku-5-5', $payload['model']);
         self::assertSame(128000, $payload['max_tokens']);
+    }
+
+    #[TestDox('UC-ADM-04-F24 — A8, RG10 : le plafond mensuel des crédits offerts (monthlyFreeUsd) — 20 $ du fichier, OFFERTS_MENSUEL_USD par-dessus, la base par-dessus tout ; à 0, l’Essayer et le tuteur répondent aussitôt « Les crédits offerts de ce mois sont épuisés ; revenez le 1er … » ; GET montre le grand livre du mois ; hors bornes ou non numérique → 422 ; Réinitialiser rend la main à l’environnement')]
+    public function testF24MonthlyCapOfTheOfferedCredits(): void
+    {
+        // Des nombres JSON : 20.0 se lit 20 (assertEquals).
+        $read = self::json($this->as_($this->admin, 'GET', '/api/admin/demo-config'));
+        self::assertEquals([20.0, 'fichier'], [$read['effective']['monthlyFreeUsd'], $read['sources']['monthlyFreeUsd']]);
+        self::assertEquals(['month' => gmdate('Y-m'), 'capUsd' => 20.0, 'spentUsd' => 0.0, 'reservedUsd' => 0.0,
+            'remainingUsd' => 20.0, 'calls' => 0, 'refusals' => 0, 'exhausted' => false], $read['freeCreditsMonth']);
+
+        $this->put(['powDifficultyBits' => 8]);
+        self::assertSame(200, $this->askDemo('Une question offerte.')->getStatusCode());
+        TestDb::setEnv('OFFERTS_MENSUEL_USD', '5');
+        $env = self::json($this->as_($this->admin, 'GET', '/api/admin/demo-config'));
+        self::assertEquals([5.0, 'env', 5.0, 1], [$env['effective']['monthlyFreeUsd'], $env['sources']['monthlyFreeUsd'],
+            $env['freeCreditsMonth']['capUsd'], $env['freeCreditsMonth']['calls']]);
+
+        // À 0 depuis l'admin : effet immédiat, l'Essayer et le tuteur fermés.
+        $closed = $this->put(['monthlyFreeUsd' => 0]);
+        self::assertSame(200, $closed->getStatusCode());
+        self::assertEquals([0.0, 'base'], [self::json($closed)['effective']['monthlyFreeUsd'], self::json($closed)['sources']['monthlyFreeUsd']]);
+        $demo = $this->askDemo('Encore une ?');
+        self::assertSame(503, $demo->getStatusCode());
+        self::assertSame(['error' => FreeCreditLedger::refusalMessage(), 'code' => 'offerts_epuises'], self::json($demo));
+        $tuteur = $this->visitor('POST', '/api/tuteur', ['question' => 'À quoi sert humanome ?', 'website' => ''] + $this->solvedPow());
+        self::assertSame(503, $tuteur->getStatusCode());
+        self::assertSame('offerts_epuises', self::json($tuteur)['code']);
+        self::assertSame(['enabled' => true, 'remainingToday' => true, 'remainingThisMonth' => false],
+            self::json($this->visitor('GET', '/api/llm/status')));
+        $month = self::json($this->as_($this->admin, 'GET', '/api/admin/demo-config'))['freeCreditsMonth'];
+        self::assertEquals([0.0, 0.0, 0.0, 1, 2, true], [$month['capUsd'], $month['reservedUsd'], $month['remainingUsd'],
+            $month['calls'], $month['refusals'], $month['exhausted']]);
+
+        foreach ([1000.01, -1, 'vingt', null] as $value) {
+            self::assertSame(422, $this->put(['monthlyFreeUsd' => $value])->getStatusCode(), json_encode($value));
+        }
+        $this->as_($this->admin, 'DELETE', '/api/admin/demo-config');
+        $reset = self::json($this->as_($this->admin, 'GET', '/api/admin/demo-config'));
+        self::assertEquals([5.0, 'env'], [$reset['effective']['monthlyFreeUsd'], $reset['sources']['monthlyFreeUsd']]);
     }
 }

@@ -40,10 +40,15 @@ un abus avant de dépenser quoi que ce soit :
    réservation tient seule, mais une borne d'abus.
 4. **Preuve de travail** (PoW) : défi signé HMAC, à usage unique, expirant.
 5. **Quota par IP et par heure** (`perIpPerHour`, partagé avec gdoc-text).
-6. **Coupe-circuit journalier global** : plafond de tokens ET de budget USD. Le
-   **pire cas** de l'appel y est réservé, atomiquement, avant qu'il parte
-   (2026-10-21, voir l'angle 6) — son entrée et toute la sortie que le modèle peut
-   rendre — ; sans la place, 503, et rien n'est parti.
+6. **Plafond mensuel des crédits offerts** (sprint 7, `OFFERTS_MENSUEL_USD`,
+   20 $ par défaut), puis **coupe-circuit journalier global** : plafond de
+   tokens ET de budget USD. Le **pire cas** de l'appel est réservé sur le mois
+   UTC (un grand livre commun avec le tuteur, `free_credit_monthly`), puis sur
+   le jour, atomiquement, avant qu'il parte (2026-10-21, voir l'angle 6) — son
+   entrée et toute la sortie que le modèle peut rendre — ; sans la place, 503
+   (`offerts_epuises` pour le mois, « revenez le 1er … »), et rien n'est
+   parti. Ce que l'abuseur peut faire dépenser à l'instance en un mois est
+   ainsi borné, toutes IP et tous comptes confondus, tuteur compris.
 7. **Appel amont** avec fournisseur, modèle (un Haiku) et sortie (le maximum du
    modèle) **imposés serveur**, en flux (2026-10-21) : relayé à mesure au
    navigateur qui le demande (UC-VIS-03 RG6), le JSON de l'outil forcé à mesure
@@ -264,6 +269,8 @@ réponse, texte de document, IP brute) dans une table ou un log.
 **Défense :** **compteurs seulement** (cahier §6.5). Sur tout le chemin LLM/gdoc,
 les seules écritures sont :
 - `llm_usage_daily` : compteurs de tokens + coût (aucun contenu) ;
+- `free_credit_monthly` : dépense, réserve, appels et refus du mois, en
+  micro-dollars (aucun contenu, aucun compte) ;
 - `llm_pow_challenges` : `sha256(challenge)` (aucune donnée client) ;
 - `rate_limits` : bucket **haché** (jamais d'IP brute).
 
@@ -350,10 +357,11 @@ compteurs (atomicité) ; un fichier gdoc de 10 Go pour saturer la mémoire.
   `scripts/migrations/006_llm_usage.sql`.
 - **Tests :** `api/tests/{ClientIpTest,LlmProxyTest,LlmPowTest,LlmGdocTextTest,`
   `LlmMockProviderTest,AuthRateLimitTest}.php`, `api/tests/UseCases/*/UcVis03EssayerCartographieTest.php`
-  (réservation : U25, F25, F26 ; tarifs : U05, U26), `UcAdm04ConfigurerDemoTest`
+  (réservation : U25, F25, F26 ; plafond du mois : U31 à U33, F28 à F30 ; tarifs : U05, U26), `UcAdm04ConfigurerDemoTest`
   (Haiku seul, sortie du modèle : U28, U29, F23), `web/src/lib/pow.test.js`,
   `web/src/lib/gdoc.test.js`.
 - **Config d'abus :** `perIpPerHour`, `dailyGlobalTokens`, `dailyBudgetUsd`,
   `powDifficultyBits`, `maxInputChars` — tous surchargeables par variable
-  d'environnement `DEMO_*` (`api/config/demo.php`) ; le modèle aussi, s'il est un
+  d'environnement `DEMO_*` (`api/config/demo.php`) — et `monthlyFreeUsd`
+  (`OFFERTS_MENSUEL_USD`) ; le modèle aussi, s'il est un
   Haiku.

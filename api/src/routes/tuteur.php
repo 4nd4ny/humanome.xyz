@@ -6,7 +6,9 @@ declare(strict_types=1);
  * Assistant tuteur interactif (D9) — proxy Haiku DÉDIÉ, distinct de la démo
  * publique (/api/llm) mais réutilisant ses garde-fous (PoW single-use, quota IP
  * horaire, circuit breaker quotidien) avec un BUDGET PROPRE (TUTEUR_BUDGET) et
- * des compteurs séparés (tuteur_usage_daily).
+ * des compteurs séparés (tuteur_usage_daily). Le plafond MENSUEL des crédits
+ * offerts, lui, est commun avec la démo (sprint 7, FreeCreditLedger) : chaque
+ * question y réserve son pire cas avant de partir, puis le règle au coût réel.
  *
  * SÉCURITÉ / RGPD :
  *  - le prompt système est construit CÔTÉ SERVEUR (rôle(s) de la SESSION, jamais
@@ -30,6 +32,7 @@ use Humanome\Db;
 use Humanome\Env;
 use Humanome\Llm\AnthropicProvider;
 use Humanome\Llm\DemoConfig;
+use Humanome\Llm\FreeCreditLedger;
 use Humanome\Llm\HttpClientException;
 use Humanome\Llm\LlmRuntime;
 use Humanome\Llm\MockProvider;
@@ -154,6 +157,18 @@ return function (App $app): void {
             return $json($response, ['error' => 'Quota horaire atteint, réessayez plus tard.'], 429)->withHeader('Retry-After', (string) $limiter->retryAfter($attempts));
         }
 
+        // Le mois des crédits offerts déjà dépensé : il répond avant le jour,
+        // comme la démo (« revenez le 1er », pas « demain »). La réserve du
+        // pire cas, plus bas, tient le plafond ; ceci n'est que le message.
+        $ledger = new FreeCreditLedger($pdo);
+        $now = time();
+        if ($ledger->state(FreeCreditLedger::capMicrousd($config->monthlyFreeUsd), $now)['exhausted']) {
+            $ledger->refuse($now);
+
+            return $json($response, ['error' => FreeCreditLedger::refusalMessage($now),
+                'code' => FreeCreditLedger::REFUSAL_CODE], 503);
+        }
+
         // Circuit breaker quotidien PROPRE au tuteur (budget + tokens).
         $counters = new UsageCounters($pdo, 'tuteur_usage_daily');
         if ($counters->isExhausted($TUTEUR_DAILY_TOKENS, $TUTEUR_BUDGET)) {
@@ -192,37 +207,65 @@ return function (App $app): void {
             $loadDigest(),
         ]);
 
+        $apiKey = Env::get('ANTHROPIC_API_KEY');
+        if ($config->provider !== 'mock' && $apiKey === '') {
+            return $json($response, ['error' => 'Service indisponible'], 503);
+        }
+
+        // Plafond MENSUEL des crédits offerts (sprint 7), commun avec la démo :
+        // le pire cas de la question y est réservé avant l'appel, au mois de
+        // son règlement ($now). Pire cas : un jeton par octet de la consigne,
+        // de la question et de la mémoire courte (un tokenizer BPE n'en compte
+        // jamais plus), le surcoût de la requête, et les 600 jetons de sortie.
+        $grille = (new Twin9Config(new SettingsRepository($pdo)))->modeles();
+        $entreeMax = \strlen($system) + \strlen($question) + AnthropicProvider::REQUEST_OVERHEAD_TOKENS
+            + array_sum(array_map(static fn (array $tour): int => \strlen($tour['content']), $precedents));
+        $reserve = FreeCreditLedger::microusd(Pricing::estimateUsd($TUTEUR_MODEL, $entreeMax, $TUTEUR_MAX_TOKENS, $grille));
+        if (!$ledger->reserve($reserve, FreeCreditLedger::capMicrousd($config->monthlyFreeUsd), $now)) {
+            return $json($response, ['error' => FreeCreditLedger::refusalMessage($now),
+                'code' => FreeCreditLedger::REFUSAL_CODE], 503);
+        }
+
         try {
             if ($config->provider === 'mock') {
                 // Le mock répond sans lire la conversation : pas de précédents.
                 $result = (new MockProvider())->complete($TUTEUR_MODEL, $system, $question, $TUTEUR_MAX_TOKENS);
             } else {
-                $apiKey = Env::get('ANTHROPIC_API_KEY');
-                if ($apiKey === '') {
-                    return $json($response, ['error' => 'Service indisponible'], 503);
-                }
                 // forceJsonDocument:false -> réponse en TEXTE LIBRE (prose), pas
                 // un document JSON. Sinon l'outil forcé renverrait « [] ».
                 $result = (new AnthropicProvider(LlmRuntime::httpClient(), $apiKey, $config->upstreamTimeoutSeconds))
                     ->complete($TUTEUR_MODEL, $system, $question, $TUTEUR_MAX_TOKENS, false, $precedents);
             }
         } catch (UpstreamException $e) {
+            // Refusé par le fournisseur, qui ne facture rien : la réserve revient.
+            $ledger->release($reserve, $now);
             if ($e->status === 429) {
                 return $json($response, ['error' => 'L’assistant est saturé, réessayez plus tard.'], 429)->withHeader('Retry-After', $e->retryAfter ?? '30');
             }
 
             return $json($response, ['error' => 'Erreur de l’assistant, réessayez plus tard.'], 502);
         } catch (HttpClientException $e) {
+            // Délai dépassé : la question a pu être reçue, et facturée — rien ne
+            // dit ce qu'elle a produit (réponse d'un bloc) : son pire cas reste
+            // compté sur le mois. Jamais partie (connexion refusée) : rendue.
+            if ($e->timedOut) {
+                $ledger->settle($reserve, $reserve, $now);
+            } else {
+                $ledger->release($reserve, $now);
+            }
+
             return $json($response, ['error' => 'L’assistant est injoignable, réessayez plus tard.'], $e->timedOut ? 504 : 502);
+        } catch (\Throwable $e) {
+            $ledger->release($reserve, $now);
+            throw $e;
         }
 
-        // Compteurs seulement (jamais de contenu) sur le budget tuteur.
-        $counters->record(
-            $result['usage']['inputTokens'],
-            $result['usage']['outputTokens'],
-            Pricing::estimateUsd($result['model'], $result['usage']['inputTokens'], $result['usage']['outputTokens'],
-                (new Twin9Config(new SettingsRepository($pdo)))->modeles()),
-        );
+        // Compteurs seulement (jamais de contenu) sur le budget tuteur, et le
+        // coût réel sur le grand livre du mois, à la place de la réserve.
+        $cout = Pricing::estimateUsd($result['model'], $result['usage']['inputTokens'],
+            $result['usage']['outputTokens'], $grille);
+        $counters->record($result['usage']['inputTokens'], $result['usage']['outputTokens'], $cout);
+        $ledger->settle($reserve, FreeCreditLedger::microusd($cout), $now);
 
         return $json($response, [
             'text' => $result['text'],

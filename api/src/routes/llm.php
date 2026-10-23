@@ -8,10 +8,11 @@ declare(strict_types=1);
  * Visitor routes (no role guard — the visitor is the absence of a session,
  * docs/autorisations.md). Anti-abuse guards, cheapest first: enabled switch,
  * honeypot, input size, proof of work (single-use, expiring), per-IP hourly
- * quota (hashed buckets), global daily token+budget circuit breaker.
+ * quota (hashed buckets), the month's cap of the offered credits (sprint 7,
+ * FreeCreditLedger), global daily token+budget circuit breaker.
  *
  * RGPD §6: prompts, responses and document contents are NEVER logged nor
- * stored — counters only (rate_limits, llm_usage_daily). The platform API
+ * stored — counters only (rate_limits, llm_usage_daily, free_credit_monthly). The platform API
  * key (ANTHROPIC_API_KEY) travels only in the upstream request header.
  *
  * Contract of POST /api/llm — compatible with the engine 'proxy' transport
@@ -27,6 +28,7 @@ use Humanome\Db;
 use Humanome\Env;
 use Humanome\Llm\AnthropicProvider;
 use Humanome\Llm\DemoConfig;
+use Humanome\Llm\FreeCreditLedger;
 use Humanome\Llm\HttpClientException;
 use Humanome\Llm\LlmRuntime;
 use Humanome\Llm\MockProvider;
@@ -64,21 +66,31 @@ return function (App $app): void {
     $ipBucket = fn (Request $request): string => 'llm:' . hash('sha256', ClientIp::bucketIdentity($clientIp($request)));
 
     // ------------------------------------------------------------------
-    // GET /api/llm/status — public, no sensitive figures (bool only).
+    // GET /api/llm/status — public, no sensitive figures (bool only):
+    // remainingToday, the day's budget; remainingThisMonth, the month's cap of
+    // the offered credits (sprint 7), which the tutor shares.
     // ------------------------------------------------------------------
     $app->get('/llm/status', function (Request $request, Response $response) use ($json): Response {
         $config = DemoConfig::load();
         $remaining = false;
+        $remainingMonth = false;
         if ($config->enabled && Db::isConfigured()) {
             try {
                 $remaining = !(new UsageCounters(Db::get()))
                     ->isExhausted($config->dailyGlobalTokens, $config->dailyBudgetUsd);
+                $remainingMonth = !(new FreeCreditLedger(Db::get()))
+                    ->state(FreeCreditLedger::capMicrousd($config->monthlyFreeUsd))['exhausted'];
             } catch (\Throwable) {
                 $remaining = false;
+                $remainingMonth = false;
             }
         }
 
-        return $json($response, ['enabled' => $config->enabled, 'remainingToday' => $remaining]);
+        return $json($response, [
+            'enabled' => $config->enabled,
+            'remainingToday' => $remaining,
+            'remainingThisMonth' => $remainingMonth,
+        ]);
     });
 
     // ------------------------------------------------------------------
@@ -200,8 +212,9 @@ return function (App $app): void {
             return $json($response, ['error' => 'Service indisponible'], 503);
         }
 
-        // 6. Global daily circuit breaker (tokens AND estimated budget). The
-        // call's WORST CASE is reserved against both caps, atomically, before
+        // 6. The month's cap of the offered credits, then the global daily
+        // circuit breaker (tokens AND estimated budget). The
+        // call's WORST CASE is reserved against all three caps, atomically, before
         // it leaves, then settled to its real usage: concurrent calls never
         // spend more than the day's budget together (2026-10-21, « pas plus de
         // dépense journalière »). Worst case: the prompt's input — one token
@@ -234,18 +247,43 @@ return function (App $app): void {
         $reservedOutput = $sortie;
         $grille = (new Twin9Config(new SettingsRepository($pdo)))->modeles();
         $reservedUsd = Pricing::estimateUsd($config->model, $reservedInput, $reservedOutput, $grille);
+        // The month's cap of the offered credits first (sprint 7, « pas plus
+        // de 20 USD par mois »), the same worst case, in the same month as
+        // its settlement ($now): a month spent says « revenez le 1er », not
+        // « revenez demain ». The day's refusal gives the month back.
+        $ledger = new FreeCreditLedger($pdo);
+        $reservedMicrousd = FreeCreditLedger::microusd($reservedUsd);
+        if (!$ledger->reserve($reservedMicrousd, FreeCreditLedger::capMicrousd($config->monthlyFreeUsd), $now)) {
+            return $json($response, ['error' => FreeCreditLedger::refusalMessage($now),
+                'code' => FreeCreditLedger::REFUSAL_CODE], 503);
+        }
         if (!$counters->reserve($reservedInput, $reservedOutput, $reservedUsd,
             $config->dailyGlobalTokens, $config->dailyBudgetUsd, $now)) {
+            $ledger->release($reservedMicrousd, $now);
+
             return $json($response, ['error' => 'Démo épuisée pour aujourd’hui, revenez demain.'], 503);
         }
+        // Both reservations go back together when the provider bills nothing.
+        $rendre = static function () use ($counters, $ledger, $reservedInput, $reservedOutput, $reservedUsd,
+                                          $reservedMicrousd, $now): void {
+            $counters->release($reservedInput, $reservedOutput, $reservedUsd, $now);
+            $ledger->release($reservedMicrousd, $now);
+        };
 
         // 7. Upstream call. The server IMPOSES provider, model and output from
         // the config — whatever the client sent is ignored (budget safety).
         if ($provider === null) {
-            $result = (new MockProvider())->complete($config->model, $system, $prompt, $sortie);
+            try {
+                $result = (new MockProvider())->complete($config->model, $system, $prompt, $sortie);
+            } catch (\Throwable $e) {
+                $rendre();
+                throw $e;
+            }
+            $cout = Pricing::estimateUsd($result['model'], $result['usage']['inputTokens'],
+                $result['usage']['outputTokens'], $grille);
             $counters->settle($reservedInput, $reservedOutput, $reservedUsd, $result['usage']['inputTokens'],
-                $result['usage']['outputTokens'], Pricing::estimateUsd($result['model'],
-                    $result['usage']['inputTokens'], $result['usage']['outputTokens'], $grille), $now);
+                $result['usage']['outputTokens'], $cout, $now);
+            $ledger->settle($reservedMicrousd, FreeCreditLedger::microusd($cout), $now);
 
             return $json($response, [
                 'text' => $result['text'],
@@ -264,16 +302,16 @@ return function (App $app): void {
         try {
             $appel = $provider->ouvrirFlux($config->model, $system, $prompt, $sortie);
         } catch (HttpClientException) {
-            $counters->release($reservedInput, $reservedOutput, $reservedUsd, $now);
+            $rendre();
 
             return $json($response, ['error' => 'Le fournisseur LLM est injoignable, réessayez plus tard.'], 502);
         } catch (\Throwable $e) {
-            // Nothing left: the reservation goes back before the error.
-            $counters->release($reservedInput, $reservedOutput, $reservedUsd, $now);
+            // Nothing left: the reservations go back before the error.
+            $rendre();
             throw $e;
         }
         if (!$appel->parvenu()) {
-            $counters->release($reservedInput, $reservedOutput, $reservedUsd, $now);
+            $rendre();
             $statut = $appel->statut();
             if ($statut === 429) {
                 return $json($response, ['error' => 'Le fournisseur LLM est saturé, réessayez plus tard.'], 429)
@@ -294,19 +332,24 @@ return function (App $app): void {
         // Written after a call that may have lasted minutes: on a fresh
         // connection if the server dropped the idle one; failing even so, the
         // reservation stays — the worst case counted — and the answer is
-        // still given.
-        $compter = static function (callable $ecriture): void {
-            try {
-                Db::avecReconnexion(static fn (\PDO $pdo) => $ecriture(new UsageCounters($pdo)));
-            } catch (\Throwable $e) {
-                error_log('[demo] compteurs : ' . $e::class); // never content
+        // still given. The day's counters and the month's ledger each on
+        // their own: one that fails leaves the other written.
+        $compter = static function (callable $jour, callable $mois): void {
+            foreach (['compteurs' => $jour, 'offerts' => $mois] as $nom => $ecriture) {
+                try {
+                    Db::avecReconnexion(static fn (\PDO $pdo) => $nom === 'compteurs'
+                        ? $ecriture(new UsageCounters($pdo)) : $ecriture(new FreeCreditLedger($pdo)));
+                } catch (\Throwable $e) {
+                    error_log('[demo] ' . $nom . ' : ' . $e::class); // never content
+                }
             }
         };
         $conclure = static function () use ($appel, $compter, $config, $grille, $reservedInput, $reservedOutput,
-                                            $reservedUsd, $sortie, $now): array {
+                                            $reservedUsd, $reservedMicrousd, $sortie, $now): array {
             if ($appel->refuseEnFlux()) {
                 // An error before the answer began: a refusal, billed nothing (AnthropicFlux).
-                $compter(static fn (UsageCounters $c) => $c->release($reservedInput, $reservedOutput, $reservedUsd, $now));
+                $compter(static fn (UsageCounters $c) => $c->release($reservedInput, $reservedOutput, $reservedUsd, $now),
+                    static fn (FreeCreditLedger $l) => $l->release($reservedMicrousd, $now));
 
                 return [502, ['error' => 'Erreur du fournisseur LLM : '
                     . AnthropicProvider::detailErreur((string) json_encode(['error' => $appel->evenementErreur()]))]];
@@ -315,7 +358,8 @@ return function (App $app): void {
             $modele = $appel->modele($config->model);
             $cout = Pricing::estimateUsd($modele, $entree, $sortieFacturee, $grille);
             $compter(static fn (UsageCounters $c) => $c->settle($reservedInput, $reservedOutput, $reservedUsd, $entree,
-                $sortieFacturee, $cout, $now));
+                $sortieFacturee, $cout, $now),
+                static fn (FreeCreditLedger $l) => $l->settle($reservedMicrousd, FreeCreditLedger::microusd($cout), $now));
             if ($appel->complet()) {
                 return [200, [
                     'text' => $appel->document() ?? $appel->texte(),

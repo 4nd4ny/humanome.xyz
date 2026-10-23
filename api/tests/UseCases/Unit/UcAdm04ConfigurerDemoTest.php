@@ -9,6 +9,7 @@ use Humanome\Admin\DemoConfigService;
 use Humanome\Admin\PlatformStatus;
 use Humanome\Db;
 use Humanome\Llm\DemoConfig;
+use Humanome\Llm\FreeCreditLedger;
 use Humanome\MigrationRunner;
 use Humanome\Packages\SettingsRepository;
 use Humanome\Tests\TestDb;
@@ -36,7 +37,7 @@ final class UcAdm04ConfigurerDemoTest extends TestCase
     private const DEMO_ENV = [
         'DEMO_ENABLED', 'DEMO_PROVIDER', 'DEMO_MODEL', 'DEMO_MAX_TOKENS_PER_REQUEST',
         'DEMO_MAX_INPUT_CHARS', 'DEMO_PER_IP_PER_HOUR', 'DEMO_DAILY_GLOBAL_TOKENS',
-        'DEMO_DAILY_BUDGET_USD', 'DEMO_POW_DIFFICULTY_BITS', 'DEMO_UPSTREAM_TIMEOUT',
+        'DEMO_DAILY_BUDGET_USD', 'DEMO_POW_DIFFICULTY_BITS', 'DEMO_UPSTREAM_TIMEOUT', 'OFFERTS_MENSUEL_USD',
     ];
 
     private static PDO $pdo;
@@ -89,12 +90,13 @@ final class UcAdm04ConfigurerDemoTest extends TestCase
         }
     }
 
-    #[TestDox('UC-ADM-04-U01 — read : 10 valeurs effectives (dont la sortie, le maximum du modèle, en lecture seule), origine par champ, modèles refusés, liste de Haiku, clé API en booléen seulement')]
+    #[TestDox('UC-ADM-04-U01 — read : 11 valeurs effectives (dont la sortie, le maximum du modèle, en lecture seule, et le plafond mensuel des crédits offerts), origine par champ, modèles refusés, liste de Haiku, clé API en booléen seulement, grand livre du mois')]
     public function testU01ReadExposesEffectiveValuesAndNeverTheKey(): void
     {
         $data = self::service()->read();
 
-        self::assertSame(['effective', 'sources', 'modelRefuse', 'allowedModels', 'apiKeyConfigured'], array_keys($data));
+        self::assertSame(['effective', 'sources', 'modelRefuse', 'allowedModels', 'apiKeyConfigured', 'freeCreditsMonth'],
+            array_keys($data));
         self::assertSame([
             'enabled' => true,
             'provider' => 'anthropic',
@@ -106,6 +108,7 @@ final class UcAdm04ConfigurerDemoTest extends TestCase
             'dailyBudgetUsd' => 1.0,
             'powDifficultyBits' => 20,
             'upstreamTimeoutSeconds' => 150,
+            'monthlyFreeUsd' => 20.0,
         ], $data['effective']);
         // La sortie n'est pas un réglage : elle n'a pas d'origine.
         self::assertSame(array_fill_keys(array_keys(array_diff_key($data['effective'], ['sortieMax' => true])), 'fichier'),
@@ -484,5 +487,39 @@ final class UcAdm04ConfigurerDemoTest extends TestCase
             (new SettingsRepository(Db::get()))->get(DemoConfig::OVERRIDES_KEY),
             'le champ que plus rien ne lit est parti',
         );
+    }
+
+    #[TestDox('UC-ADM-04-U30 — monthlyFreeUsd, le plafond mensuel des crédits offerts : 20 $ du fichier, OFFERTS_MENSUEL_USD par-dessus, la base par-dessus tout ; un nombre de 0 à 1 000 ; read() montre le grand livre du mois UTC en dollars — dépensé, réservé, restant, appels, refus (RG10)')]
+    public function testU30MonthlyCapOfTheOfferedCredits(): void
+    {
+        self::$pdo->exec('DELETE FROM free_credit_monthly');
+        self::assertSame([20.0, 'fichier'], [DemoConfig::load()->monthlyFreeUsd, DemoConfig::load()->sources['monthlyFreeUsd']]);
+        TestDb::setEnv('OFFERTS_MENSUEL_USD', '7.5');
+        self::assertSame([7.5, 'env'], [DemoConfig::load()->monthlyFreeUsd, DemoConfig::load()->sources['monthlyFreeUsd']]);
+        TestDb::setEnv('OFFERTS_MENSUEL_USD', 'beaucoup');
+        self::assertSame([20.0, 'fichier'], [DemoConfig::load()->monthlyFreeUsd, DemoConfig::load()->sources['monthlyFreeUsd']],
+            'une valeur d’environnement non numérique est ignorée');
+
+        self::assertSame(0.0, self::service()->update($this->adminId, ['monthlyFreeUsd' => 0])['effective']['monthlyFreeUsd']);
+        self::assertSame(12.5, self::service()->update($this->adminId, ['monthlyFreeUsd' => 12.5])['effective']['monthlyFreeUsd']);
+        self::assertSame('base', self::service()->read()['sources']['monthlyFreeUsd']);
+        $message = 'monthlyFreeUsd doit être compris entre 0 et 1000.';
+        $this->assertRejected(['monthlyFreeUsd' => -0.01], $message);
+        $this->assertRejected(['monthlyFreeUsd' => 1000.5], $message);
+        $this->assertRejected(['monthlyFreeUsd' => '20'], 'monthlyFreeUsd doit être un nombre.');
+
+        // Le grand livre du mois, en dollars, au mois UTC de $now.
+        $now = gmmktime(23, 59, 59, 10, 31, 2026);
+        $ledger = new FreeCreditLedger(self::$pdo);
+        self::assertTrue($ledger->reserve(2_500_000, 12_500_000, $now));
+        $ledger->settle(2_500_000, 1_234_567, $now);
+        self::assertTrue($ledger->reserve(320_065, 12_500_000, $now));
+        self::assertFalse($ledger->reserve(12_000_000, 12_500_000, $now));
+        self::assertSame(['month' => '2026-10', 'capUsd' => 12.5, 'spentUsd' => 1.234567, 'reservedUsd' => 0.320065,
+            'remainingUsd' => 10.945368, 'calls' => 1, 'refusals' => 1, 'exhausted' => false],
+            self::service()->read($now)['freeCreditsMonth']);
+        self::assertSame(['month' => '2026-11', 'capUsd' => 12.5, 'spentUsd' => 0.0, 'reservedUsd' => 0.0,
+            'remainingUsd' => 12.5, 'calls' => 0, 'refusals' => 0, 'exhausted' => false],
+            self::service()->read($now + 1)['freeCreditsMonth'], 'le 1er à 0 h UTC, un mois neuf');
     }
 }

@@ -10,7 +10,9 @@
 //   n'est pas éditable (clé plateforme Anthropic). Depuis le 2026-10-21, le
 //   modèle est un Haiku (un Sonnet ou un Opus d'une couche est refusé, et la
 //   page le dit), et la sortie d'un appel n'est plus un réglage : le maximum
-//   du modèle, affiché.
+//   du modèle, affiché. Le plafond MENSUEL des crédits offerts (sprint 7,
+//   monthlyFreeUsd : l'Essayer, la démo et le tuteur ensemble) se règle ici
+//   aussi, avec le grand livre du mois (dépensé, réservé, restant).
 // - version de prompt par défaut (settings default_prompt_package, P10) ;
 // - état du worker de masse : jobs en file, par statut, dernière activité.
 
@@ -31,8 +33,12 @@ function money(usd) {
   return typeof usd === 'number' && Number.isFinite(usd) ? `${usd.toFixed(2)} $` : '—'
 }
 
-/** Champs numériques éditables de la démo, dans l'ordre d'affichage. */
+/**
+ * Champs numériques éditables de la démo, dans l'ordre d'affichage. Un champ
+ * `optional` n'est montré (et envoyé) que si l'API le donne.
+ */
 const DEMO_NUMERIC_FIELDS = [
+  { name: 'monthlyFreeUsd', label: 'Crédits offerts / mois (USD)', min: 0, max: 1000, float: true, optional: true },
   { name: 'dailyBudgetUsd', label: 'Budget quotidien (USD)', min: 0, max: 1000, float: true },
   { name: 'perIpPerHour', label: 'Requêtes / IP / heure', min: 1, max: 1000 },
   { name: 'powDifficultyBits', label: 'Preuve de travail (bits)', min: 8, max: 24 },
@@ -50,6 +56,11 @@ const SOURCE_LABELS = {
 
 const OTHER_MODEL = '__autre__'
 
+/** Les champs numériques que l'API donne (un champ optionnel absent est tu). */
+function numericFields(effective) {
+  return DEMO_NUMERIC_FIELDS.filter((field) => !field.optional || effective?.[field.name] !== undefined)
+}
+
 /** Brouillon de formulaire (chaînes) depuis les valeurs effectives. */
 function draftFrom(config) {
   const effective = config?.effective ?? {}
@@ -58,10 +69,24 @@ function draftFrom(config) {
     modelChoice: allowed.includes(effective.model) ? effective.model : OTHER_MODEL,
     model: effective.model ?? '',
   }
-  for (const field of DEMO_NUMERIC_FIELDS) {
+  for (const field of numericFields(effective)) {
     draft[field.name] = effective[field.name] === undefined ? '' : String(effective[field.name])
   }
   return draft
+}
+
+/** Le grand livre du mois des crédits offerts (sprint 7), en lecture seule. */
+function FreeCreditsMonth({ month }) {
+  if (!month || typeof month !== 'object') return null
+  return (
+    <p className="privacy-note" data-testid="demo-offerts-mois">
+      Crédits offerts ce mois-ci ({month.month}, mois UTC) : <strong>{money(month.spentUsd)}</strong> dépensés,{' '}
+      {money(month.reservedUsd)} réservés par les appels en cours, {money(month.remainingUsd)} restants sur{' '}
+      {money(month.capUsd)} — {month.calls ?? 0} appel{(month.calls ?? 0) > 1 ? 's' : ''},{' '}
+      {month.refusals ?? 0} refus.
+      {month.exhausted ? ' Épuisés : l’Essayer, la démo et le tuteur répondent « revenez le 1er ».' : ''}
+    </p>
+  )
 }
 
 /** Badge d'origine d'une valeur effective (base/env/fichier/défaut). */
@@ -99,7 +124,7 @@ function DemoSettings({ config, busy, onToggle, onSave, onReset }) {
     if (model === '') return { error: 'Le modèle ne peut pas être vide.' }
     if (model !== effective.model) patch.model = model
 
-    for (const field of DEMO_NUMERIC_FIELDS) {
+    for (const field of numericFields(effective)) {
       const raw = String(draft[field.name] ?? '')
         .trim()
         .replace(',', '.')
@@ -206,8 +231,9 @@ function DemoSettings({ config, busy, onToggle, onSave, onReset }) {
           <strong>{Number(effective.sortieMax ?? 0).toLocaleString('fr-FR')} jetons</strong>, sans plafond — son
           pire cas est réservé sur le budget du jour avant l’appel.
         </p>
+        <FreeCreditsMonth month={config?.freeCreditsMonth} />
 
-        {DEMO_NUMERIC_FIELDS.map((field) => (
+        {numericFields(effective).map((field) => (
           <div className="admin-field" key={field.name}>
             <label htmlFor={`demo-${field.name}`}>{field.label}</label>
             <div className="admin-field-input">

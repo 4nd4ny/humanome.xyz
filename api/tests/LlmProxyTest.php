@@ -233,18 +233,18 @@ final class LlmProxyTest extends LlmTestCase
     {
         $response = $this->request('GET', '/api/llm/status');
         self::assertSame(200, $response->getStatusCode());
-        self::assertSame(['enabled' => true, 'remainingToday' => true], self::json($response));
+        self::assertSame(['enabled' => true, 'remainingToday' => true, 'remainingThisMonth' => true], self::json($response));
 
         TestDb::setEnv('DEMO_DAILY_GLOBAL_TOKENS', '10');
         (new UsageCounters(self::$pdo))->record(100, 100, 0.0);
         self::assertSame(
-            ['enabled' => true, 'remainingToday' => false],
+            ['enabled' => true, 'remainingToday' => false, 'remainingThisMonth' => true],
             self::json($this->request('GET', '/api/llm/status')),
         );
 
         TestDb::setEnv('DEMO_ENABLED', 'false');
         self::assertSame(
-            ['enabled' => false, 'remainingToday' => false],
+            ['enabled' => false, 'remainingToday' => false, 'remainingThisMonth' => false],
             self::json($this->request('GET', '/api/llm/status')),
         );
     }
@@ -267,7 +267,7 @@ final class LlmProxyTest extends LlmTestCase
 
             // Toute requête suivante voit la démo éteinte, immédiatement.
             self::assertSame(
-                ['enabled' => false, 'remainingToday' => false],
+                ['enabled' => false, 'remainingToday' => false, 'remainingThisMonth' => false],
                 self::json($this->request('GET', '/api/llm/status')),
             );
             self::assertSame(503, $this->request('GET', '/api/llm/challenge')->getStatusCode());

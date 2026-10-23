@@ -30,7 +30,7 @@ final class AdminDemoConfigTest extends AdminTestCase
             'DEMO_MAX_TOKENS_PER_REQUEST', 'DEMO_MAX_INPUT_CHARS',
             'DEMO_PER_IP_PER_HOUR', 'DEMO_DAILY_GLOBAL_TOKENS',
             'DEMO_DAILY_BUDGET_USD', 'DEMO_POW_DIFFICULTY_BITS',
-            'DEMO_UPSTREAM_TIMEOUT',
+            'DEMO_UPSTREAM_TIMEOUT', 'OFFERTS_MENSUEL_USD',
         ] as $key) {
             TestDb::setEnv($key, '');
         }

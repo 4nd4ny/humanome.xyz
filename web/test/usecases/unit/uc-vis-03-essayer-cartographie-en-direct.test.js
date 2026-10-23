@@ -312,4 +312,15 @@ describe('UC-VIS-03 — la réponse en flux (relais, 2026-10-21)', () => {
     expect(describeDemoError(failure)).toMatchObject({ kind: 'llm', canRetry: true })
     expect(describeDemoError(failure).message).toContain(COUPE.error)
   })
+
+  it('UC-VIS-03-U34 — RG7 : les crédits offerts du mois épuisés (503 offerts_epuises), la page dit les mots du serveur — « revenez le 1er novembre » —, sans réessai, au lieu de « revenez un peu plus tard » ; un autre 503 garde le message du jour', async () => {
+    const refus = { error: 'Les crédits offerts de ce mois sont épuisés ; revenez le 1er novembre.', code: 'offerts_epuises' }
+    const server = fakeDemoServer({ createHash, difficultyBits: 2, answer: () => jsonResponse(503, refus) })
+    const { provider } = createDemoProvider({ fetchFn: server.mock })
+    const failure = await extractDay({ dayText: DAY_TEXT, date: '2026-10-28', referentiel, provider, model: 'demo', kairosOptional: true }).catch((e) => e)
+    expect(describeDemoError(failure)).toEqual({ kind: 'unavailable', canRetry: false, code: 'offerts_epuises', message: refus.error })
+    const jour = new Error('run', { cause: new ProviderError('proxy: HTTP 503 — Démo épuisée pour aujourd’hui, revenez demain.', { status: 503 }) })
+    expect(describeDemoError(jour).message).toContain('épuisée pour aujourd’hui ou momentanément désactivée')
+    expect(describeDemoError(jour).code).toBeUndefined()
+  })
 })

@@ -170,24 +170,32 @@ paquet par défaut, et la **démo publique s'édite** via `/api/admin/demo-confi
 
 | Méthode | Route | Effet |
 |---|---|---|
-| `GET` | `/api/admin/demo-config` | `{effective, sources, modelRefuse, allowedModels, apiKeyConfigured}`. |
+| `GET` | `/api/admin/demo-config` | `{effective, sources, modelRefuse, allowedModels, apiKeyConfigured, freeCreditsMonth}`. |
 | `PUT` | `/api/admin/demo-config` `{champs partiels}` | Valide (bornes ci-dessous, 422 sinon) et **fusionne** dans `demo_overrides`. Renvoie le nouvel état. Audit : `demo_config_updated` (noms de champs seulement). |
 | `DELETE` | `/api/admin/demo-config` | Supprime `demo_overrides` (retour env/fichier). Audit : `demo_config_reset`. |
 
 - `effective` : valeurs réellement appliquées par le proxy (`enabled`, `provider`,
   `model`, `maxInputChars`, `perIpPerHour`, `dailyGlobalTokens`,
-  `dailyBudgetUsd`, `powDifficultyBits`, `upstreamTimeoutSeconds`), et
-  `sortieMax`, qui n'est pas un réglage : la sortie que chaque appel demande, le
+  `dailyBudgetUsd`, `powDifficultyBits`, `upstreamTimeoutSeconds`,
+  `monthlyFreeUsd`), et `sortieMax`, qui n'est pas un réglage : la sortie que chaque appel demande, le
   maximum du modèle (128 000 jetons pour Haiku 5.5, `Llm\ModelLimits`), sans
   plafond depuis le 2026-10-21 — son pire cas est réservé sur le budget du jour
   avant l'appel (`docs/securite-demo.md`, angle 3).
 - `sources` : origine de chaque valeur — `base` (réglage admin), `env`,
   `fichier` (`config/demo.php`) ou `defaut`. L'UI l'affiche en badge.
+- `monthlyFreeUsd` (sprint 7) : le plafond **mensuel** des crédits offerts,
+  ce que l'instance paie sans le facturer sur un mois UTC — tout
+  `POST /api/llm` et l'assistant tuteur ensemble —, en plus des budgets du
+  jour ; 20 $ par défaut (`OFFERTS_MENSUEL_USD`) ; 0 ferme tout ce qui est
+  offert. `freeCreditsMonth` en donne le grand livre du mois :
+  `{month, capUsd, spentUsd, reservedUsd, remainingUsd, calls, refusals,
+  exhausted}` (`docs/contrats.md` §13).
 - `modelRefuse` : les modèles des couches qui ne sont pas un Haiku
   (`[{valeur, source}]`), refusés ; la démo prend le premier Haiku des couches,
   sinon Haiku 5.5, et l'UI nomme le modèle refusé. C'est le cas du `.env` de
   production de juillet, qui nomme Sonnet 5.
 - **Bornes** (422 hors bornes ou type invalide) : `dailyBudgetUsd` 0–1000 ;
+  `monthlyFreeUsd` 0–1000 ;
   `perIpPerHour` 1–1000 ; `powDifficultyBits` 8–24 ; `dailyGlobalTokens`
   10000–50000000 ; `upstreamTimeoutSeconds` 10–300 (sous les 165 s qu'OVH
   laisse à un script tant que la recette n'a pas mesuré mieux : un script arrêté

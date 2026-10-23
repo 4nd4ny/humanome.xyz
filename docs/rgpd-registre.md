@@ -27,7 +27,7 @@ exécution du service/contrat, **f** = intérêt légitime.
 | Base légale | **b** (exécution du service dès la création de compte) ; **a** (consentement) pour la photo de profil, facultative. |
 | Durée | Jusqu'à suppression du compte par la personne (effacement réel). La photo peut être retirée indépendamment à tout moment depuis le profil. |
 | Destinataires | Interne uniquement (aucun tiers). La photo, servie par `GET /api/users/{id}/avatar`, est visible par qui dispose du lien (cache privé). |
-| Tables | `users` (dont `avatar` MEDIUMBLOB + `avatar_mime`, migration 019), `roles`, `user_roles`, `sessions`. |
+| Tables | `users` (dont `avatar` MEDIUMBLOB + `avatar_mime`, migration 019 ; `waitlisted_at`, migration 034 : la date de mise en liste d'attente d'une inscription faite une fois les crédits offerts du mois épuisés — sprint 7, S7a —, nulle pour tout autre compte, rien de plus que ce que garde une inscription), `roles`, `user_roles`, `sessions`. |
 | Sort à la suppression | `users` supprimé (avatar inclus, colonnes de la ligne) ; `user_roles`, `sessions` en CASCADE. Retrait indépendant de la photo : `DELETE /api/auth/me/avatar`. |
 
 ### 1 bis. Vérification d'email à l'inscription (D5)
@@ -155,11 +155,11 @@ exécution du service/contrat, **f** = intérêt légitime.
 |---|---|
 | Finalité | Offrir une démonstration de cartographie à un visiteur sans compte (§3.1) : l'Essayer, et depuis le 2026-10-21 l'essai gratuit de la cartographie ouverte (Twin6), sur un portfolio de 5 000 caractères au plus. |
 | Personnes concernées | Visiteurs anonymes ; titulaires d'un compte qui choisissent l'essai gratuit de la cartographie ouverte, le « Service humanome » de l'assistant de cartographie, ou le service humanome du banc d'essai et de la rétro-ingénierie du promptologue (aucune donnée de compte n'y est liée). |
-| Données | **Compteurs anonymes uniquement** : tokens et coût estimé par jour (UTC), quotas par IP hachée (sha256, jamais d'IP brute), empreintes de défis anti-abus consommés. Aucun prompt, aucune réponse, aucune IP en clair conservés. |
+| Données | **Compteurs anonymes uniquement** : tokens et coût estimé par jour (UTC), dépense et réserve des crédits offerts par mois (UTC, démo et assistant tuteur ensemble, sprint 7), quotas par IP hachée (sha256, jamais d'IP brute), empreintes de défis anti-abus consommés. Aucun prompt, aucune réponse, aucune IP en clair conservés. |
 | Base légale | **f** (intérêt légitime : sécurité et maîtrise du budget). |
-| Durée | Compteurs journaliers (fenêtres courtes), purgés par l'entretien ; défis anti-rejeu à TTL de 2 min. |
+| Durée | Compteurs journaliers (fenêtres courtes), purgés par l'entretien ; grand livre mensuel des crédits offerts, une ligne par mois, gardée (aucune donnée personnelle) ; défis anti-rejeu à TTL de 2 min. |
 | Destinataires | Anthropic (le temps du traitement, texte non conservé côté serveur). |
-| Tables | `llm_usage_daily`, `llm_pow_challenges`, `rate_limits` (buckets hachés). |
+| Tables | `llm_usage_daily`, `free_credit_monthly` (migration 034 : mois, dépense, réserve, appels, refus), `llm_pow_challenges`, `rate_limits` (buckets hachés). |
 | Sort à la suppression | Sans objet (aucune donnée nominative ; aucune colonne `user_id`). |
 
 ## 8. Sous-traitance modèles de langage (LLM)

@@ -33,7 +33,10 @@ Cartographier mes écrits », ou le bouton du tableau de bord `#/espace`).
   du jour non épuisé — 1 $ par défaut depuis le 2026-10-21, que le Service
   partage avec l'Essayer, l'essai gratuit de la cartographie ouverte et le banc
   du promptologue (UC-ADM-04 RG8) : un run de plusieurs dizaines de journées
-  peut l'épuiser seul. Avec la configuration par défaut, au plus
+  peut l'épuiser seul. Et crédits offerts du mois UTC non épuisés : 20 $ par
+  défaut, partagés aussi avec le tuteur (sprint 7, UC-VIS-03 RG7, UC-ADM-04
+  RG10) ; épuisés, chaque appel répond `503` « Les crédits offerts de ce mois
+  sont épuisés ; revenez le 1er … » (`offerts_epuises`). Avec la configuration par défaut, au plus
   ⌊`perIpPerHour` / 8⌋ journées par heure et par IP (20/h dans
   `api/config/demo.php` ⇒ 2 journées ; 40/h, la production de juillet, ⇒ 5) et
   des journées d'au plus `maxInputChars` − ~8,5 k caractères de gabarit
@@ -342,7 +345,7 @@ Cartographier mes écrits », ou le bouton du tableau de bord `#/espace`).
 | Clé API personnelle | `localStorage` par défaut ; serveur seulement sur opt-in (chiffrée, ADR-004) ; jamais dans une URL |
 | Checkpoints, journal de run | IndexedDB `humanome-runs` |
 | Cartographies | IndexedDB `humanome-cartographies`, visibilité `privee` |
-| Usage du service humanome | Compteurs journaliers (`llm_usage_daily`) ; empreinte du défi consommé (`llm_pow_challenges`) ; seau de quota haché |
+| Usage du service humanome | Compteurs journaliers (`llm_usage_daily`) et du mois des crédits offerts (`free_credit_monthly`, UC-VIS-03 RG7) ; empreinte du défi consommé (`llm_pow_challenges`) ; seau de quota haché |
 
 ## Code sollicité
 

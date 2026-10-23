@@ -61,6 +61,8 @@ applicable.
 | 005 | `audit_events` | trace | SET NULL `user_id` (anonymisée) | `—` |
 | 006 | `llm_usage_daily` | non (compteurs anonymes) | — (entretien) | — |
 | 006 | `llm_pow_challenges` | non (empreintes anti-rejeu) | — (TTL 2 min) | — |
+| 034 | `free_credit_monthly` | non (compteurs anonymes du mois : dépense, réserve, appels, refus des crédits offerts, sprint 7) | — (une ligne par mois, gardée) | — |
+| 034 | `users.waitlisted_at` | oui (une date : la mise en liste d'attente d'une inscription, sprint 7 ; nulle pour tout autre compte) | avec la ligne `users` | `—` (lot S7a-2) |
 | 007 | `cartographies.run_meta` | oui (compteurs de run) | avec `cartographies` | `local` |
 | 008 | `cartographe_invitations` | oui (invitation) | CASCADE `apprenant_id` / SET NULL `accepted_by` | `—` |
 | 008 | `cartographe_links` | oui (lien apprenant↔cartographe) | CASCADE (deux côtés) | `—` |
@@ -247,7 +249,9 @@ aucun script shell n'est livré à la release OVH, ADR-008) appliquent :
 - **remise à zéro des compteurs démo journaliers** : suppression des lignes
   `llm_usage_daily` des jours UTC passés (la **ligne du jour** est conservée
   pour ne pas réinitialiser le coupe-circuit budgétaire en cours de journée) et
-  des défis anti-rejeu expirés.
+  des défis anti-rejeu expirés. Le grand livre mensuel des crédits offerts
+  (`free_credit_monthly`, migration 034) n'est pas purgé : une ligne de
+  compteurs anonymes par mois.
 
 **Fréquence recommandée : quotidienne** (cron OVH). Idempotent. Couvert par
 `api/tests/MaintenanceTest.php` (classe **et** route, effets identiques).

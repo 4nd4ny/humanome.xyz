@@ -17,7 +17,8 @@ use Humanome\Llm\StreamingHttpClient;
  * exception becomes a stream that fails before any answer (status 0); a
  * queued response is delivered one server-sent event per read() — a whole
  * JSON body at once —; queueStream() gives the chunks, and how the stream
- * ends, explicitly.
+ * ends, explicitly, and what happens while it is in progress ($pendant, run
+ * before its second chunk).
  */
 final class LlmFakeHttpClient implements HttpClient, StreamingHttpClient
 {
@@ -49,9 +50,10 @@ final class LlmFakeHttpClient implements HttpClient, StreamingHttpClient
      *
      * @param list<string> $chunks
      */
-    public function queueStream(array $chunks, int $status = 200, ?HttpClientException $fin = null): void
+    public function queueStream(array $chunks, int $status = 200, ?HttpClientException $fin = null,
+                                ?\Closure $pendant = null): void
     {
-        $this->queue[] = ['stream' => $chunks, 'status' => $status, 'fin' => $fin];
+        $this->queue[] = ['stream' => $chunks, 'status' => $status, 'fin' => $fin, 'pendant' => $pendant];
     }
 
     public function open(string $method, string $url, array $headers, ?string $body, int $timeoutSeconds): HttpStream
@@ -75,7 +77,7 @@ final class LlmFakeHttpClient implements HttpClient, StreamingHttpClient
         // The content-type Anthropic gives: an event stream, or a whole JSON body.
         $flux = ['content-type' => 'text/event-stream; charset=utf-8'];
         if (isset($next['stream'])) {
-            return new FakeHttpStream($next['status'], $flux, $next['stream'], $next['fin']);
+            return new FakeHttpStream($next['status'], $flux, $next['stream'], $next['fin'], $next['pendant']);
         }
         $json = str_starts_with(ltrim($next['body']), '{') || $next['status'] !== 200;
         $chunks = $json

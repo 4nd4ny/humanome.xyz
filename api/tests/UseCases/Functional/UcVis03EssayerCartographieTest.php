@@ -7,10 +7,12 @@ namespace Humanome\Tests\UseCases\Functional;
 use Humanome\Bootstrap;
 use Humanome\Llm\AnthropicFlux;
 use Humanome\Llm\AnthropicProvider;
+use Humanome\Llm\FreeCreditLedger;
 use Humanome\Llm\HttpClientException;
 use Humanome\Llm\PowChallenge;
 use Humanome\Llm\Pricing;
 use Humanome\Llm\UsageCounters;
+use Humanome\Packages\SettingsRepository;
 use Humanome\Tests\AnthropicSse;
 use Humanome\Tests\LlmTestCase;
 use Humanome\Tests\TestDb;
@@ -99,7 +101,7 @@ final class UcVis03EssayerCartographieTest extends LlmTestCase
     public function testF01NominalRunOfEightCalls(): void
     {
         $status = self::json($this->request('GET', '/api/llm/status'));
-        self::assertSame(['enabled' => true, 'remainingToday' => true], $status);
+        self::assertSame(['enabled' => true, 'remainingToday' => true, 'remainingThisMonth' => true], $status);
 
         $fixture = json_decode((string) file_get_contents(\dirname(__DIR__, 4) . '/schemas/fixtures/cartographie-jour-2026-01-06.json'), true);
         foreach (range(1, 7) as $pole) {
@@ -265,14 +267,14 @@ final class UcVis03EssayerCartographieTest extends LlmTestCase
         $response = $this->engineCall(1);
         self::assertSame(503, $response->getStatusCode());
         self::assertSame('Démo épuisée pour aujourd’hui, revenez demain.', self::json($response)['error']);
-        self::assertSame(['enabled' => true, 'remainingToday' => false], self::json($this->request('GET', '/api/llm/status')));
+        self::assertSame(['enabled' => true, 'remainingToday' => false, 'remainingThisMonth' => true], self::json($this->request('GET', '/api/llm/status')));
     }
 
     #[TestDox('UC-VIS-03-F09 — E6 : démo désactivée (ou sans secret) → défi et appel en 503, statut enabled=false')]
     public function testF09DemoDisabledOrUnconfigured(): void
     {
         TestDb::setEnv('DEMO_ENABLED', '0');
-        self::assertSame(['enabled' => false, 'remainingToday' => false], self::json($this->request('GET', '/api/llm/status')));
+        self::assertSame(['enabled' => false, 'remainingToday' => false, 'remainingThisMonth' => false], self::json($this->request('GET', '/api/llm/status')));
         self::assertSame(503, $this->request('GET', '/api/llm/challenge')->getStatusCode());
         $post = $this->request('POST', '/api/llm', ['prompt' => 'x']);
         self::assertSame(503, $post->getStatusCode());
@@ -508,5 +510,129 @@ final class UcVis03EssayerCartographieTest extends LlmTestCase
             + \strlen($premier) + AnthropicFlux::MARGE_SORTIE], [$usage['requests'], $usage['inputTokens'], $usage['outputTokens']]);
         self::assertSame('', $parti->read(8192), 'rien de plus après le départ');
         self::assertSame(4, self::usage()['requests'], 'compté une fois');
+    }
+
+    /** The month's ledger of the offered credits, under a cap (USD). @return array<string, mixed> */
+    private static function mois(float $capUsd): array
+    {
+        return (new FreeCreditLedger(self::$pdo))->state(FreeCreditLedger::capMicrousd($capUsd));
+    }
+
+    #[TestDox('UC-VIS-03-F28 — RG7, E8 : plafond du mois simulé à 0,01 $, fournisseur mock — le pire cas d’un appel (toute la sortie de Haiku 4.5, ≈ 0,32 $) n’y tient pas : 503 « Les crédits offerts de ce mois sont épuisés ; revenez le 1er … », code offerts_epuises, rien de réservé, rien au jour ; le mois passe avant le jour ; sous un plafond qui le couvre, l’appel passe et se règle au coût réel ; un mois dépensé ailleurs (le tuteur) refuse le suivant ; le statut public le dit')]
+    public function testF28MonthlyCapRefusesClearlyBeforeTheDay(): void
+    {
+        TestDb::setEnv('OFFERTS_MENSUEL_USD', '0.01');
+        $refused = $this->engineCall(1);
+        self::assertSame(503, $refused->getStatusCode());
+        self::assertSame(['error' => FreeCreditLedger::refusalMessage(), 'code' => 'offerts_epuises'], self::json($refused));
+        self::assertStringStartsWith('Les crédits offerts de ce mois sont épuisés ; revenez le 1er ', self::json($refused)['error']);
+        self::assertSame(['requests' => 0, 'inputTokens' => 0, 'outputTokens' => 0, 'estimatedCostUsd' => 0.0], self::usage(),
+            'le budget du jour n’a rien vu');
+        self::assertSame([0, 0, 0, 1], [self::mois(0.01)['spentMicrousd'], self::mois(0.01)['reservedMicrousd'],
+            self::mois(0.01)['calls'], self::mois(0.01)['refusals']]);
+
+        // Le jour épuisé lui aussi : c'est le mois qui répond (« revenez le 1er », pas « demain »).
+        TestDb::setEnv('DEMO_DAILY_BUDGET_USD', '0');
+        self::assertSame('offerts_epuises', self::json($this->engineCall(2))['code'] ?? null);
+        TestDb::setEnv('DEMO_DAILY_BUDGET_USD', '5');
+
+        // Sous 0,40 $, le pire cas (0,32 $ et l'entrée) tient : l'appel passe, et sa
+        // réserve se règle au coût réel — nul pour le mock.
+        TestDb::setEnv('OFFERTS_MENSUEL_USD', '0.40');
+        self::assertSame(200, $this->engineCall(1)->getStatusCode());
+        self::assertSame([0, 0, 1], [self::mois(0.40)['spentMicrousd'], self::mois(0.40)['reservedMicrousd'], self::mois(0.40)['calls']]);
+
+        // 0,10 $ dépensés ailleurs ce mois-ci (le tuteur partage le plafond) : 0,10 + 0,32 > 0,40.
+        $ledger = new FreeCreditLedger(self::$pdo);
+        self::assertTrue($ledger->reserve(100_000, 400_000));
+        $ledger->settle(100_000, 100_000);
+        self::assertSame(['error' => FreeCreditLedger::refusalMessage(), 'code' => 'offerts_epuises'],
+            self::json($this->engineCall(3)));
+        self::assertSame(1, self::usage()['requests'], 'aucun appel de plus');
+        self::assertSame(['enabled' => true, 'remainingToday' => true, 'remainingThisMonth' => true],
+            self::json($this->request('GET', '/api/llm/status')), 'il reste 0,30 $ : moins qu’un pire cas, mais pas rien');
+
+        // Le mois entier dépensé : le statut public passe à remainingThisMonth=false, /api/status aussi.
+        self::assertTrue($ledger->reserve(300_000, 400_000));
+        $ledger->settle(300_000, 300_000);
+        self::assertSame(['enabled' => true, 'remainingToday' => true, 'remainingThisMonth' => false],
+            self::json($this->request('GET', '/api/llm/status')));
+        self::assertFalse(self::json($this->request('GET', '/api/status'))['demo']['remainingThisMonth']);
+    }
+
+    #[TestDox('UC-VIS-03-F29 — RG7 : un échec libère la réserve du mois — 429, erreur du fournisseur, connexion refusée, délai avant l’envoi, erreur avant que la réponse commence, refus du budget du jour : rien ne reste ; une réponse rendue se règle au coût réel, une réponse coupée après l’envoi à ce qu’elle a produit ; sans clé, rien n’est réservé')]
+    public function testF29AFailureReleasesTheMonthsReservation(): void
+    {
+        TestDb::setEnv('DEMO_PROVIDER', 'anthropic');
+        $vide = static fn (): array => [self::mois(20.0)['spentMicrousd'], self::mois(20.0)['reservedMicrousd'], self::mois(20.0)['calls']];
+
+        $this->http->queueResponse(['status' => 429, 'headers' => ['retry-after' => '45'], 'body' => '{}']);
+        self::assertSame(429, $this->engineCall(1)->getStatusCode());
+        $this->http->queueResponse(['status' => 500, 'body' => '{"error":{"message":"overloaded"}}']);
+        self::assertSame(502, $this->engineCall(1)->getStatusCode());
+        $this->http->queueException(new HttpClientException('network error (curl 7)'));
+        self::assertSame(502, $this->engineCall(1)->getStatusCode());
+        $this->http->queueException(new HttpClientException('network error (curl 28)', true));
+        self::assertSame(504, $this->engineCall(1)->getStatusCode());
+        $this->http->queueStream([AnthropicSse::evenement('error', ['error' => ['type' => 'overloaded_error', 'message' => 'Overloaded']])]);
+        $refus = self::evenements((string) $this->relais(1)->getBody());
+        self::assertSame(['erreur', ['status' => 502, 'error' => 'Erreur du fournisseur LLM : Overloaded']], end($refus));
+        self::assertSame([0, 0, 0], $vide(), 'refusés par le fournisseur, qui ne facture rien : rien ne reste');
+
+        // Le budget du jour refuse après le mois : la réserve du mois revient aussi.
+        TestDb::setEnv('DEMO_DAILY_BUDGET_USD', '0.0001');
+        self::assertSame('Démo épuisée pour aujourd’hui, revenez demain.', self::json($this->engineCall(1))['error']);
+        self::assertSame([0, 0, 0], $vide());
+        TestDb::setEnv('DEMO_DAILY_BUDGET_USD', '5');
+
+        // Rendue : 1 000 + 200 tokens de Haiku 4.5, 0,002 $ = 2 000 µ$.
+        $this->http->queueResponse(['status' => 200, 'body' => self::anthropicBody('{"poleNum":"1"}', 1000, 200)]);
+        self::assertSame(200, $this->engineCall(1)->getStatusCode());
+        self::assertSame([2_000, 0, 1], $vide());
+
+        // Coupée par le délai APRÈS l'envoi : l'entrée et la marge, comme au jour.
+        $this->http->queueException(new HttpClientException('network error (curl 28)', true, true));
+        self::assertSame(504, $this->engineCall(3)->getStatusCode());
+        $worstIn = \strlen(self::SYSTEM . self::prompt(3)) + AnthropicProvider::REQUEST_OVERHEAD_TOKENS;
+        $coupe = FreeCreditLedger::microusd(Pricing::estimateUsd('claude-haiku-4-5-20251001', $worstIn, AnthropicFlux::MARGE_SORTIE));
+        self::assertSame([2_000 + $coupe, 0, 2], $vide());
+
+        TestDb::setEnv('ANTHROPIC_API_KEY', '');
+        self::assertSame(503, $this->engineCall(4)->getStatusCode());
+        self::assertSame([2_000 + $coupe, 0, 2, 0], [...$vide(), self::mois(20.0)['refusals']], 'sans clé, refus avant toute réservation');
+    }
+
+    #[TestDox('UC-VIS-03-F30 — RG7 : une réponse en cours n’est jamais coupée — pendant qu’elle arrive en flux, l’administrateur ferme les crédits offerts (plafond à 0) et le mois est dépensé ailleurs : elle arrive entière, se règle au coût réel ; l’appel suivant est refusé ; de même sans relais (JSON)')]
+    public function testF30AnAnswerInProgressIsNeverCut(): void
+    {
+        TestDb::setEnv('DEMO_PROVIDER', 'anthropic');
+        TestDb::setEnv('OFFERTS_MENSUEL_USD', '0.40');
+        $document = '{"poleNum":"1","competences":[{"nom":"Écouter"}]}';
+        $pendant = static function (): void {
+            (new SettingsRepository(self::$pdo))->set('demo_overrides', ['monthlyFreeUsd' => 0]);
+            self::$pdo->exec('UPDATE free_credit_monthly SET spent_microusd = spent_microusd + 400000');
+        };
+        $this->http->queueStream(AnthropicSse::complet($document, 900, 40, 'claude-haiku-4-5-20251001', 'tool_use', true),
+            200, null, $pendant);
+        $evenements = self::evenements((string) $this->relais(1)->getBody());
+        self::assertSame(['resultat', ['text' => $document, 'usage' => ['inputTokens' => 900, 'outputTokens' => 40],
+            'model' => 'claude-haiku-4-5-20251001', 'stopReason' => 'tool_use']], array_pop($evenements));
+        $reel = FreeCreditLedger::microusd(Pricing::estimateUsd('claude-haiku-4-5-20251001', 900, 40));
+        self::assertSame([400_000 + $reel, 0, 1], [self::mois(0.0)['spentMicrousd'], self::mois(0.0)['reservedMicrousd'],
+            self::mois(0.0)['calls']]);
+        self::assertSame('offerts_epuises', self::json($this->engineCall(2))['code'] ?? null);
+        self::assertCount(1, $this->http->requests, 'l’appel suivant n’est pas parti');
+
+        // Sans relais : la route lit le flux jusqu'au bout, puis répond en JSON.
+        self::$pdo->exec('DELETE FROM free_credit_monthly');
+        (new SettingsRepository(self::$pdo))->delete('demo_overrides');
+        $this->http->queueStream(AnthropicSse::complet($document, 900, 40, 'claude-haiku-4-5-20251001', 'tool_use', true),
+            200, null, $pendant);
+        $entiere = $this->engineCall(1);
+        self::assertSame(200, $entiere->getStatusCode());
+        self::assertSame($document, self::json($entiere)['text']);
+        self::assertSame([400_000 + $reel, 0, 1], [self::mois(0.0)['spentMicrousd'], self::mois(0.0)['reservedMicrousd'],
+            self::mois(0.0)['calls']]);
+        (new SettingsRepository(self::$pdo))->delete('demo_overrides');
     }
 }

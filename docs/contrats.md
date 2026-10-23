@@ -2652,3 +2652,82 @@ la rubrique est alors vidée, même un nom de route. Toute évolution de ces
 champs ou de leur sens touche donc aussi l'API (même commit, même release).
 UC-SYS-04-F18 vérifie ce contrat sur la carte générée, et que la carte fictive
 des tests PHP (`api/tests/fixtures/tuteur/site-map.json`) a la même forme.
+
+## 13. Le plafond mensuel des crédits offerts (sprint 7, S7a)
+
+« La somme totale des crédits offerts par mois ne doit pas dépasser 20 USD
+pour tous les utilisateurs anonymes et enregistrés du site » (`TODO_LIST.md`,
+sprint 7). Pas de schéma JSON : ce sont des réponses de l'API et une table de
+compteurs.
+
+**Ce qui compte** (décision de Christian, par délégation, 2026-10-22) : tout
+ce que l'instance paie sans le facturer à personne. Deux routes y passent, et
+elles seules : `POST /api/llm` (l'Essayer, l'essai gratuit de Twin6, le
+« Service humanome » de l'assistant de cartographie, le banc et la
+rétro-ingénierie du promptologue) et `POST /api/tuteur`. Ne comptent pas :
+`POST /api/twin6/appel` et les runs Twin9 (un crédit acheté ou une clé
+personnelle), le rendu du banc de Twin9 (aucun appel), le relevé des tarifs
+et `count_tokens` (gratuits chez Anthropic). **Reste à trancher** : le
+fournisseur `humanome` d'un établissement (`Worker/Tick`, cartographie de
+masse) part sur la clé de l'instance ; il est compté dans
+`etablissement_config.spent_usd`, sous le plafond que l'établissement règle
+lui-même, pour une facturation à l'usage (cahier §7) qu'aucun code n'émet
+encore. Il n'est pas compté ici : facturé hors du code, il ne relève pas des
+crédits offerts ; sinon, c'en est un. Aucun crédit d'accueil n'existe : aucune inscription n'écrit dans
+`twin9_credits`.
+
+**La table** `free_credit_monthly` (migration 034) : une ligne par mois UTC
+(`month`, `'AAAA-MM'`), `spent_microusd` (coûts réels réglés),
+`reserved_microusd` (pires cas des appels en cours), `calls` (appels réglés),
+`refusals` (appels refusés par le plafond). Des micro-dollars entiers, des
+compteurs seulement. Le mois est celui des budgets journaliers, UTC, calculé
+en PHP (`gmdate`), jamais par `CURDATE()` ni `NOW()` de MySQL, qui suivent
+l'heure locale du serveur. Il s'ouvre donc le 1er à 0 h UTC, soit 1 h (hiver)
+ou 2 h (été) à Paris.
+
+**Le déroulé d'un appel offert** (`Llm\FreeCreditLedger`) :
+
+1. Son pire cas (le même que celui du budget du jour pour `/api/llm` ; pour
+   le tuteur, un jeton par octet de la consigne, de la question et de la
+   mémoire courte, le surcoût de la requête et ses 600 jetons de sortie) est
+   **réservé** sur la ligne du mois avant qu'il parte, par un `UPDATE`
+   conditionnel (`spent + reserved + pire cas <= plafond`) : des appels
+   concurrents ne passent jamais le plafond ensemble. Sur `/api/llm`, le mois
+   passe avant le jour, et un refus du jour rend la réserve du mois.
+2. Rendu, l'appel **règle** sa réserve à son coût réel, sans condition : une
+   réponse commencée n'est jamais coupée, même si le plafond baisse ou si le
+   mois se remplit pendant qu'elle arrive. Coupé après l'envoi, il règle ce
+   qu'il a produit, comme au jour.
+3. Refusé par le fournisseur, ou jamais parti, il **rend** sa réserve. Une
+   question du tuteur dont le délai est dépassé la garde, pire cas entier :
+   elle a pu être reçue et facturée, et sa réponse, d'un bloc, ne dit pas ce
+   qu'elle a produit.
+
+Un appel se règle au mois où il a réservé, même s'il finit le mois suivant.
+
+**Le refus** : `503` avec
+
+```json
+{"error": "Les crédits offerts de ce mois sont épuisés ; revenez le 1er novembre.", "code": "offerts_epuises"}
+```
+
+sur les deux routes, le mois suivant nommé. Le navigateur affiche ce texte
+tel quel pour l'Essayer, l'essai de Twin6 et le service humanome
+(`describeDemoError`, `web/src/lib/demo-llm.js`), et le tuteur l'affiche comme
+tout message du serveur.
+
+**Le statut public** gagne un booléen, sans chiffre : `GET /api/llm/status`
+rend `{enabled, remainingToday, remainingThisMonth}`, et le bloc `demo` de
+`GET /api/status` aussi (`remainingThisMonth` nul quand la démo est éteinte).
+`remainingThisMonth` est faux quand le mois est dépensé (`spent + reserved >=
+plafond`) ; vrai, il ne promet pas qu'un appel de plus tienne.
+
+**Le réglage** : `monthlyFreeUsd` (USD, de 0 à 1 000), dans
+`settings.demo_overrides` (`PUT /api/admin/demo-config`), puis
+`OFFERTS_MENSUEL_USD`, puis `api/config/demo.php`, puis 20. `0` ferme tout ce
+qui est offert. `GET /api/admin/demo-config` le rend dans `effective` et
+`sources`, et ajoute `freeCreditsMonth` : `{month, capUsd, spentUsd,
+reservedUsd, remainingUsd, calls, refusals, exhausted}`.
+
+**Préparé pour le lot suivant** (S7a-2, la liste d'attente) :
+`users.waitlisted_at`, nul pour tout compte, dans la même migration 034.

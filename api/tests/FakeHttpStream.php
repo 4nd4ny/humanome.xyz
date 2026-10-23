@@ -7,7 +7,12 @@ namespace Humanome\Tests;
 use Humanome\Llm\HttpClientException;
 use Humanome\Llm\HttpStream;
 
-/** The stream LlmFakeHttpClient::open() replays: one chunk per read(), then its end. */
+/**
+ * The stream LlmFakeHttpClient::open() replays: one chunk per read(), then
+ * its end. $pendant, if given, runs once, just before the second chunk is
+ * delivered: the answer has begun, and is not finished (sprint 7: what
+ * happens elsewhere while a call is in progress).
+ */
 final class FakeHttpStream implements HttpStream
 {
     private int $next = 0;
@@ -23,6 +28,7 @@ final class FakeHttpStream implements HttpStream
         private readonly array $headers,
         private readonly array $chunks,
         private readonly ?HttpClientException $end,
+        private ?\Closure $pendant = null,
     ) {
     }
 
@@ -30,6 +36,11 @@ final class FakeHttpStream implements HttpStream
     {
         if ($this->closed || $this->next >= \count($this->chunks)) {
             return '';
+        }
+        if ($this->next === 1 && $this->pendant !== null) {
+            $pendant = $this->pendant;
+            $this->pendant = null;
+            $pendant();
         }
 
         return $this->chunks[$this->next++];

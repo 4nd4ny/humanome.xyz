@@ -103,6 +103,8 @@ export function portfolioEnFeuilles(record) {
 const ESSAI_EPUISE_COMPTE =
   'L’essai gratuit est épuisé pour aujourd’hui ou momentanément désactivé. ' +
   'Revenez un peu plus tard — ou cartographiez avec nos crédits ou votre propre clé API.'
+/** Ce qu'un compte peut faire quand les crédits offerts du mois sont épuisés (sprint 7). */
+const ESSAI_MOIS_COMPTE = 'D’ici là, cartographiez avec nos crédits ou votre propre clé API.'
 
 /** 5000 -> « 5 000 » (espace des milliers, comme la page Essayer). */
 function formatInt(n) {
@@ -429,9 +431,19 @@ export default function Twin6OuverteView({ lib: injectedLib, deps = {} }) {
       setRun((r) => ({ ...r, status: 'done', doc: out.document, done: out.calls.length, total: out.calls.length }))
     } catch (e) {
       // Quota, budget du jour, démo coupée : les messages de l'Essayer — sauf,
-      // pour un compte, l'invitation à en créer un.
+      // pour un compte, l'invitation à en créer un. Les crédits offerts du
+      // mois épuisés (sprint 7) : le message du serveur, qui nomme le 1er du
+      // mois suivant, et pour un compte ses deux autres voies.
       const demo = essai ? describeDemoError(e) : null
-      const error = !essai ? messageErreur(e) : demo.kind === 'unavailable' && !visiteur ? ESSAI_EPUISE_COMPTE : demo.message
+      const error = !essai
+        ? messageErreur(e)
+        : demo.code === 'offerts_epuises'
+          ? visiteur
+            ? demo.message
+            : `${demo.message} ${ESSAI_MOIS_COMPTE}`
+          : demo.kind === 'unavailable' && !visiteur
+            ? ESSAI_EPUISE_COMPTE
+            : demo.message
       // Sur crédits, ce que le run a coûté jusqu'à l'erreur — un appel coupé compris, facturé pour ce qu'il a produit.
       setRun((r) => ({
         ...r,

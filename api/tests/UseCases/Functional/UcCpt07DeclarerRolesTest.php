@@ -26,7 +26,9 @@ use Psr\Http\Message\ResponseInterface;
  * des routes qui ouvrent des droits : une déclaration n'ouvre rien — ni la
  * lecture d'un run partagé aux cartographes, ni le vote des épistémiarques,
  * ni aucune garde, ni « admin » — et l'habilitation de l'administrateur, elle,
- * ouvre (contrôle positif de chaque propriété). La base des tests est celle
+ * ouvre (contrôle positif de chaque propriété : F06 rejoue chaque appel refusé
+ * par un compte habilité, F07 et F08 habilitent le compte qui s'était
+ * déclaré). La base des tests est celle
  * des épistémiarques (EpiSupport : les gardes du référentiel lisent la
  * session comme sur le serveur web) ; le run Twin9 est celui du moteur
  * factice, dans un processus à lui.
@@ -183,7 +185,7 @@ final class UcCpt07DeclarerRolesTest extends EpiSupport
         self::assertSame(0, self::declaredRows($dora['id']));
     }
 
-    #[TestDox('UC-CPT-07-F06 — propriété : un compte qui déclare les neuf rôles et la case garde ses habilitations ; 403 partout où une habilitation est exigée (cartographe, promptologue, épistémiarque, admin), et il ne s’habilite pas lui-même')]
+    #[TestDox('UC-CPT-07-F06 — propriété : un compte qui déclare les neuf rôles et la case garde ses habilitations ; 403 partout où une habilitation est exigée (cartographe, promptologue, épistémiarque, admin), et il ne s’habilite pas lui-même ; contrôle : le même appel par un compte habilité passe la garde')]
     public function testF06ADeclarationOpensNoGuard(): void
     {
         $dora = $this->registerAs('dora@example.org', 'Dora');
@@ -191,21 +193,32 @@ final class UcCpt07DeclarerRolesTest extends EpiSupport
 
         self::assertSame(['apprenant'], $this->habilitations($dora));
         self::assertSame(['apprenant'], Users::rolesOf(self::$pdo, $dora['id']));
-        foreach ([
-            ['GET', '/api/cartographe/apprentis', null],
-            ['GET', '/api/cartographe/cartographies', null],
-            ['POST', '/api/cartographe/invitations/ABCDEFGH23/accept', []],
-            ['GET', '/api/prompt-packages/drafts', null],
-            ['GET', '/api/competences/proposals', null],
-            ['GET', '/api/referentiel/drafts', null],
-            ['POST', '/api/referentiel/proposals/1/votes', ['vote' => 'pour']],
-            ['GET', '/api/admin/users', null],
-            ['POST', '/api/admin/users/' . $dora['id'] . '/roles', ['role' => 'admin']],
-            ['POST', '/api/admin/users/' . $dora['id'] . '/roles', ['role' => 'cartographe']],
-        ] as [$method, $path, $body]) {
+        // [méthode, chemin, corps, habilitation du témoin, statut du témoin]
+        $gardes = [
+            ['GET', '/api/cartographe/apprentis', null, 'cartographe', 200],
+            ['GET', '/api/cartographe/cartographies', null, 'cartographe', 200],
+            ['POST', '/api/cartographe/invitations/ABCDEFGH23/accept', [], 'cartographe', 404],
+            ['GET', '/api/prompt-packages/drafts', null, 'promptologue', 200],
+            ['GET', '/api/competences/proposals', null, 'epistemiarque', 200],
+            ['GET', '/api/referentiel/drafts', null, 'epistemiarque', 200],
+            ['POST', '/api/referentiel/proposals/1/votes', ['vote' => 'pour'], 'epistemiarque', 404],
+            ['GET', '/api/admin/users', null, 'admin', 200],
+            ['POST', '/api/admin/users/' . $dora['id'] . '/roles', ['role' => 'admin'], 'admin', 200],
+            ['POST', '/api/admin/users/' . $dora['id'] . '/roles', ['role' => 'cartographe'], 'admin', 200],
+        ];
+        foreach ($gardes as [$method, $path, $body]) {
             self::assertSame(403, $this->as_($dora, $method, $path, $body)->getStatusCode(), "$method $path");
         }
         self::assertSame(['apprenant'], Users::rolesOf(self::$pdo, $dora['id']), 'aucune habilitation, admin compris');
+
+        // contrôle positif : chaque 403 vient bien de la garde de son habilitation — le même appel, par un compte
+        // qui la détient, la passe (une route disparue, une garde qui refuserait tout le monde, ne passeraient pas)
+        $temoins = [];
+        foreach ($gardes as [$method, $path, $body, $habilitation, $statut]) {
+            $temoins[$habilitation] ??= $this->registerAs("temoin-$habilitation@example.org", "Témoin $habilitation", [$habilitation]);
+            $r = $this->as_($temoins[$habilitation], $method, $path, $body);
+            self::assertSame($statut, $r->getStatusCode(), "$habilitation : $method $path " . $r->getBody());
+        }
     }
 
     #[TestDox('UC-CPT-07-F07 — propriété : un compte qui se déclare épistémiarque ne vote pas (403, aucun bulletin) et n’entre pas dans l’électorat ; habilité d’un clic par l’administrateur, il vote')]

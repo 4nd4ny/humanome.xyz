@@ -267,4 +267,34 @@ final class UcCpt07DeclarerRolesTest extends TestCase
         self::assertSame(0, self::rows("SELECT COUNT(*) FROM users WHERE id = $ada"));
         self::assertSame(['roles' => ['noesiologue'], 'foundingCircle' => false], self::declared()->of($bob));
     }
+
+    #[TestDox('UC-CPT-07-U22 — propriété, structure : hors de DeclaredRoles, seules la route de la déclaration et la liste de l’administration lisent user_declared_roles, founding_circle ou DeclaredRoles — aucune garde, ni l’électorat, ni la lecture d’un run (code PHP de api/src, commentaires exclus)')]
+    public function testU22OnlyTheDeclarationCodeReadsTheDeclaration(): void
+    {
+        $src = \dirname(__DIR__, 3) . '/src';
+        $allowed = ['Auth/DeclaredRoles.php', 'Admin/UserDirectory.php', 'routes/declared-roles.php'];
+        $readers = [];
+        $files = new \RecursiveIteratorIterator(new \RecursiveDirectoryIterator($src, \FilesystemIterator::SKIP_DOTS));
+        foreach ($files as $file) {
+            if ($file->getExtension() !== 'php') {
+                continue;
+            }
+            $code = '';
+            foreach (token_get_all((string) file_get_contents($file->getPathname())) as $token) {
+                if (\is_array($token) && \in_array($token[0], [T_COMMENT, T_DOC_COMMENT], true)) {
+                    continue;
+                }
+                $code .= \is_array($token) ? $token[1] : $token;
+            }
+            if (preg_match('/user_declared_roles|founding_circle|DeclaredRoles/', $code) === 1) {
+                $readers[] = substr($file->getPathname(), \strlen($src) + 1);
+            }
+        }
+        sort($readers);
+
+        self::assertGreaterThan(100, iterator_count($files), 'api/src parcouru');
+        self::assertSame($allowed, array_values(array_intersect($allowed, $readers)), 'les trois lecteurs attendus sont vus');
+        self::assertSame([], array_values(array_diff($readers, $allowed)),
+            'une déclaration ne doit être lue par aucune garde, ni par l’électorat, ni par la lecture d’un run');
+    }
 }

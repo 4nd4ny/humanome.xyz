@@ -131,7 +131,10 @@ rôles ») : le bloc « Mes rôles RESPIRE » suit le profil et sa ligne
   dans l'ordre du catalogue.
 - **RG4** — **Une déclaration n'ouvre rien** : aucune garde (`RequireRole`,
   `RoleGuard`), aucune famille du menu, aucun vote (`Electorate`), aucune
-  lecture de run partagé ne lit `user_declared_roles`. Trois déclarations ont
+  lecture de run partagé ne lit `user_declared_roles` : hors de
+  `DeclaredRoles`, seules la route de la déclaration et la liste de
+  l'administration la lisent (UC-CPT-07-U22, sur le code de `api/src`).
+  Trois déclarations ont
   une habilitation du même nom que l'administrateur accorde d'un clic
   (cartographe, promptologue, épistémiarque) ; les six autres n'en ont pas
   aujourd'hui.
@@ -199,6 +202,7 @@ n'en garde que les libellés, pour la liste d'administration (UC-CPT-07-U15).
 | UC-CPT-07-U09 | `grantable` | Habilitations appelées et non détenues ; jamais `admin` | idem |
 | UC-CPT-07-U10 | `replace`, `Users::rolesOf`, `Electorate::ids` | Propriété : tout déclarer ne change ni `user_roles`, ni les rôles, ni l'électorat (RG4) | idem |
 | UC-CPT-07-U11 | `Users::purge` | Déclaration et case purgées avec le compte, celles d'autrui intactes | idem |
+| UC-CPT-07-U22 | code de `api/src` | Propriété, structure : hors de `DeclaredRoles`, seuls `routes/declared-roles.php` et `Admin/UserDirectory.php` citent `user_declared_roles`, `founding_circle` ou `DeclaredRoles` (commentaires exclus) ; aucune garde, ni l'électorat, ni la lecture d'un run (RG4) | idem |
 | UC-CPT-07-U12 | `exportArchive` | `account.declaredRoles` à part de `account.roles`, archive 1.3.0 conforme, lecture seule | `web/test/usecases/unit/uc-cpt-07-declarer-roles-respire.test.js` |
 | UC-CPT-07-U13 | `exportArchive`, schéma `archive-export` | Déclaration illisible (404, 500, mal formée) → omise, l'export part ; déclaration mal formée refusée par le schéma | idem |
 | UC-CPT-07-U14 | `importArchive` | Une archive 1.3.0 s'importe, la déclaration n'est pas réimportée (aucun appel réseau) | idem |
@@ -219,7 +223,7 @@ n'en garde que les libellés, pour la liste d'administration (UC-CPT-07-U15).
 | UC-CPT-07-F03 | E1 | API | Case sans rôle éligible → `422`, rien d'écrit, y compris en retirant le rôle qui la portait | idem |
 | UC-CPT-07-F04 | E2 | API | `admin` (message), autres habilitations, inconnu, graphies, doublon, formes invalides, corps non objet, JSON malformé, corps de formulaire `roles[]=%C3` (UTF-8 invalide, jamais `500`) → `422` ; rien d'écrit | idem |
 | UC-CPT-07-F05 | E3, E4 | API | Visiteur `401` ; `PUT` sans CSRF `403`, rien d'écrit | idem |
-| UC-CPT-07-F06 | RG4 | API | Les neuf rôles et la case déclarés : `403` sur les espaces cartographe, promptologue, épistémiarque et admin, aucune auto-habilitation | idem |
+| UC-CPT-07-F06 | RG4 | API | Les neuf rôles et la case déclarés : `403` sur les espaces cartographe, promptologue, épistémiarque et admin, aucune auto-habilitation ; contrôle : chaque appel refusé, rejoué par un compte qui détient l'habilitation, passe la garde (`200`, ou `404` sur une invitation ou une proposition qui n'existe pas) | idem |
 | UC-CPT-07-F07 | RG4 | API | Épistémiarque déclarée : vote `403`, aucun bulletin, hors de l'électorat ; contrôle : habilitée d'un clic, elle vote | idem |
 | UC-CPT-07-F08 | RG4 | API | Cartographe déclarée, même liée : run Twin9 partagé aux cartographes `404` ; contrôle : habilitée, elle le lit (moteur factice, processus séparé) | idem |
 | UC-CPT-07-F09 | RGPD | API | Suppression du compte : déclaration et case effacées, celles d'autrui intactes | idem |

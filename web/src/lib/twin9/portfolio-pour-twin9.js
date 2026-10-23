@@ -44,6 +44,14 @@
 // `retouchees` dit les journées dont le texte, tel que Twin9 le lit, change
 // (comparé à ce qu'il lisait du texte d'origine) : celles qui reçoivent un
 // en-tête, et celles qui absorbaient un passage qu'elles rendent.
+// `disparues` dit les journées que Twin9 lisait dans le texte d'origine et
+// qu'il ne lit plus dans le texte envoyé (un `_b` réuni à sa date, un
+// « Retour sur la séance du … » rendu à sa journée, une date corrigée à la
+// main dans la fiche). La carte est additive (Twin_v9, php/src/Journees.php :
+// une journée de sa mémoire absente du portfolio y reste) : lue par un run
+// précédent, une telle journée reste dans la mémoire de la carte, et sa
+// fusion la compte encore, avec le même passage dans la journée qui l'a
+// reçu. La page de lancement le dit ; la retirer de la carte n'est pas fait.
 //
 // Copie documentée : les expressions de Portfolio.php (lignes 56 et 58 au
 // commit a1d84bf de Twin_v9, en lecture seule ici) sont reproduites
@@ -227,12 +235,14 @@ const sansBlancsFinaux = (texte) => texte.replace(/\s+$/u, '')
  * @param {string} texte le portfolio (sans les marques d'un portfolio surligné : `sansMarquesTwin9`)
  * @param {{segments?: Array<{date: string | null, texte: string}>}} [options] le découpage de sa fiche
  *   (portfolio-store) ; à défaut, ou s'il n'est pas celui de ce texte, `segmentText`
- * @returns {{texte: string, retouchees: string[], sansDate: number}} le texte à envoyer ; les journées dont
- *   le texte, tel que Twin9 le lit, change (AAAA-MM-JJ, dans l'ordre) ; les passages sans date, que Twin9 ne lit pas
+ * @returns {{texte: string, retouchees: string[], sansDate: number, disparues: string[]}} le texte à envoyer ;
+ *   les journées dont le texte, tel que Twin9 le lit, change (AAAA-MM-JJ, dans l'ordre) ; les passages sans date,
+ *   que Twin9 ne lit pas ; les journées que Twin9 lisait dans le texte d'origine et qu'il ne lit plus dans le texte
+ *   envoyé (ses identifiants, « AAAA-MM-JJ » ou « AAAA-MM-JJ_b », dans l'ordre)
  */
 export function portfolioPourTwin9(texte, { segments } = {}) {
   const brut = typeof texte === 'string' ? texte : ''
-  const intact = { texte: brut, retouchees: [], sansDate: 0 }
+  const intact = { texte: brut, retouchees: [], sansDate: 0, disparues: [] }
   const source = brut.replace(/^\uFEFF/, '').replace(/\r\n?/g, '\n')
   const decoupage = (source === brut ? segmentsDuTexte(segments, brut) : null) ?? segmentText(source, { today: SANS_DATE })
 
@@ -274,5 +284,7 @@ export function portfolioPourTwin9(texte, { segments } = {}) {
   const apres = journeesLuesParTwin9(sortie) ?? []
   const retouchees = apres.filter((f) => lues.get(f.id) !== f.texte).map((f) => f.date).sort()
   if (retouchees.length === 0 && apres.length === lues.size) return { ...intact, sansDate }
-  return { texte: sortie, retouchees, sansDate }
+  const luesApres = new Set(apres.map((f) => f.id))
+  const disparues = [...lues.keys()].filter((id) => !luesApres.has(id)).sort()
+  return { texte: sortie, retouchees, sansDate, disparues }
 }

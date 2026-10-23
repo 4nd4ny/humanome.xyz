@@ -1419,7 +1419,15 @@ une suivante le relève.
   dit les journées dont le texte, tel que le moteur le lit, change
   (`retouchees`) : évaluées sur le texte brut, leur empreinte change et la
   mémoire de la carte les instruit de nouveau, une fois (le texte envoyé
-  ensuite est le même). Les expressions du moteur sont copiées, documentées,
+  ensuite est le même). `disparues` dit les journées que le moteur lisait
+  dans le texte brut et qu'il ne lit plus dans le texte envoyé (leurs
+  identifiants : un `<date>_b` réuni à sa date, un « Retour sur la séance
+  du … » rendu à sa journée, une date corrigée dans la fiche) : lue par un
+  run précédent, une telle journée reste dans la mémoire de la carte, qui
+  est additive (`Journees.php` du moteur), et sa fusion la compte encore,
+  avec le même passage dans la journée qui l'a reçu ; l'aperçu nomme
+  celles que la carte garde (son `memoire`). Rien ne les retire de la
+  carte. Les expressions du moteur sont copiées, documentées,
   dans le module ; `api/tests/Twin9/PortfolioPourTwin9Test.php` passe le
   texte qu'il rend (`schemas/fixtures/twin9-portfolio/`) au `Portfolio` du
   vrai moteur. Le serveur ne change pas : il range et analyse le texte reçu,
@@ -1619,7 +1627,11 @@ une suivante le relève.
   evaluations | reference, poles}, admission: {journees, total, limite,
   instruites, en_attente, changees_en_attente, autres_usd, refus},
   plafonds: {budget_usd, duree_minutes}, credit_usd, referentiel: {id,
-  version, label}, jury_retire}` ; `referentiel` (sprint 5, lot C) est celui
+  version, label}, jury_retire, memoire}` ; `memoire` (sprint 4, T0) : les
+  identifiants des journées que la mémoire de sa carte garde au-delà de
+  celles que le run prend (la carte est additive : sa fusion les lit), que
+  la page de lancement croise avec les journées que le moteur ne lit plus
+  dans le texte envoyé ; `referentiel` (sprint 5, lot C) est celui
   que le run lirait, du profil ou choisi (§8.4), sa version figée ;
   `jury_retire`, la liste des réglages du jury que ce choix vide
   (`specialistes`, `par_competence`), vide sinon. L'estimation et

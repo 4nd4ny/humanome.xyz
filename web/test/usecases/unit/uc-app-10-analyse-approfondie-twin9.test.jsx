@@ -655,6 +655,8 @@ describe('UC-APP-10 — le portfolio envoyé à Twin9 : les journées de l’int
       texte: '### 10.02.2026\nNous avons rangé la salle.\n\n### 2026-02-01\n\n### 1er.02.2026\nCarnet neuf.\n\n— ### 3.02.2026\nLe chat a ouvert la porte.\n',
       retouchees: ['2026-02-01', '2026-02-10'],
       sansDate: 0,
+      // fusionné à la main dans le 1er, le 3 n'est plus une journée pour Twin9
+      disparues: ['2026-02-03'],
     })
 
     const corps = []
@@ -690,13 +692,13 @@ describe('UC-APP-10 — le portfolio envoyé à Twin9 : les journées de l’int
 
   it('UC-APP-10-U23 — un portfolio que Twin9 lit déjà en ses journées part à l’octet, et l’aperçu n’en dit rien', async () => {
     const region = await avantDeLancer(apercu())
-    expect(portfolioPourTwin9(PORTFOLIO)).toEqual({ texte: PORTFOLIO, retouchees: [], sansDate: 0 })
+    expect(portfolioPourTwin9(PORTFOLIO)).toEqual({ texte: PORTFOLIO, retouchees: [], sansDate: 0, disparues: [] })
     expect(region.textContent).not.toContain('retouché')
   })
 
   it('UC-APP-10-U23 — un passage sans date, en tête : le texte part à l’octet, l’aperçu dit que Twin9 ne le lit pas', async () => {
     const texte = `Mon introduction, avant toute journée.\n\n${PORTFOLIO}`
-    expect(portfolioPourTwin9(texte)).toEqual({ texte, retouchees: [], sansDate: 1 })
+    expect(portfolioPourTwin9(texte)).toEqual({ texte, retouchees: [], sansDate: 1, disparues: [] })
     const corps = []
     const fetchFn = routedFetch({
       'GET api/twin9/runs': jsonResponse(200, { disponible: true, runs: [] }),

@@ -358,6 +358,51 @@ describe('Twin9View — lancer (T9)', () => {
   })
 })
 
+// Sprint 4, T0 : le texte envoyé est retouché pour que Twin9 y lise les journées de l'interface ; une journée qu'il
+// lisait dans le texte d'origine et qu'il n'y lit plus (un « _b », un « Retour sur la séance du … ») reste dans la
+// mémoire de la carte, où un run précédent l'a lue (la carte est additive) : l'aperçu le dit.
+describe('Twin9View — les journées que Twin9 ne lit plus dans le texte envoyé (sprint 4, T0)', () => {
+  // deux entrées du 3 février : Twin9 y lisait 2026-02-03 et 2026-02-03_b
+  const TEXTE = '### 03.02.2026 matin\nLe matin.\n\n### 04.02.2026\nLe lendemain.\n\n### 03.02.2026 soir\nLe soir.\n'
+
+  async function avant(reponse) {
+    const store = createPortfolioStore(createMemoryAdapter())
+    await store.create({ titre: 'Mon journal', texte: TEXTE })
+    const fetchFn = routedFetch({
+      'GET api/twin9/runs': jsonResponse(200, { disponible: true, runs: [] }),
+      'GET api/twin9/configuration': jsonResponse(200, { profils: [] }),
+      'POST api/twin9/runs/apercu': jsonResponse(200, reponse),
+    })
+    render(<Twin9View deps={{ fetchFn, store }} />)
+    fireEvent.click(await screen.findByRole('checkbox', { name: /J’accepte que mon portfolio/ }))
+    return screen.findByRole('region', { name: 'Avant de lancer' })
+  }
+
+  it('la mémoire de la carte la garde (un run précédent l’a lue) : l’aperçu la nomme, et dit que la fusion la compte encore', async () => {
+    const region = await avant(apercu({ memoire: ['2026-01-20', '2026-02-03_b'] }))
+    expect(region.textContent).toContain(
+      'Twin9 lisait dans ce texte une journée qu’il n’y lit plus : 3 févr. 2026 (2e entrée). Lue par un run précédent, elle reste ' +
+        'dans la mémoire de la carte, et sa fusion la compte encore.',
+    )
+    // une journée que la mémoire garde pour une autre raison (retirée du portfolio) n'est pas de celles-là
+    expect(region.textContent).not.toContain('20 janv.')
+  })
+
+  it('une carte qui ne l’a jamais lue : rien à en dire', async () => {
+    const region = await avant(apercu({ memoire: [] }))
+    expect(region.textContent).toContain('1 journée touchée, 3 févr. 2026.')
+    expect(region.textContent).not.toContain('n’y lit plus')
+  })
+
+  it('un aperçu qui ne dit pas la mémoire de la carte : la phrase reste au conditionnel', async () => {
+    const region = await avant(apercu())
+    expect(region.textContent).toContain(
+      'Twin9 lisait dans ce texte une journée qu’il n’y lit plus : 3 févr. 2026 (2e entrée). Si un run précédent l’a lue, elle reste ' +
+        'dans la mémoire de la carte, et sa fusion la compte encore.',
+    )
+  })
+})
+
 // Sprint 1, lot 2 (lib/ui-mode.js) : en mode simple, la page lance avec le profil v9.8, sans liste des profils ni
 // « Régler mes profils » ; un profil choisi en mode expert ne part pas en mode simple. Hors du shell, le contexte vaut
 // « expert » : les autres tests de ce fichier voient la liste.

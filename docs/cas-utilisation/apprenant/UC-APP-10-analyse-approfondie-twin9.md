@@ -393,7 +393,17 @@ badge premium) ou ouvre `#/twin9`.
   2026. ») — une journée évaluée sur le texte brut est instruite de nouveau
   une fois (RG3) : le texte envoyé ensuite est le même — et les passages
   sans date qu'il ne lit pas. Aperçu et lancement envoient le même
-  texte.
+  texte. Une journée que le moteur lisait dans le texte brut et qu'il ne
+  lit plus dans le texte envoyé (un `<date>_b` réuni à sa date, un
+  « Retour sur la séance du … » rendu à sa journée, une date corrigée à la
+  main dans la fiche) reste dans la mémoire de la carte, si un run
+  précédent l'a lue : la carte est additive, et sa fusion la compte encore,
+  avec le même passage dans la journée qui l'a reçu. L'aperçu nomme celles
+  que la mémoire de la carte garde (`memoire` de l'aperçu ; « Twin9 lisait
+  dans ce texte une journée qu'il n'y lit plus : 3 févr. 2026 (2e entrée).
+  Lue par un run précédent, elle reste dans la mémoire de la carte, et sa
+  fusion la compte encore. ») ; les retirer de la carte, ou en ouvrir une
+  neuve, est à décider (Christian).
 - **RG17 — Deux cartes du même jour, le second ressort** (sprint 4, C3 et
   C4, `docs/contrats.md` §4 point 12, §8.4) : ouvert dans la cartographie,
   un run dont deux cartes du jour portent la même date (`<date>_b`) en fait

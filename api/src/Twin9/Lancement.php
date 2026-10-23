@@ -178,8 +178,10 @@ final class Lancement
      * cost and last, and the days its owner's credit or its budget lets in
      * (T8, prevoir()); its caps; its owner's credit when the instance's key
      * pays; the referential it would read, the one its profile names or the
-     * one chosen (S5, lot C), and the jury's overrides that choice drops.
-     * Nothing is kept.
+     * one chosen (S5, lot C), and the jury's overrides that choice drops;
+     * the days its map's memory keeps beyond those it takes, which its merge
+     * reads (the launch page names those of them Twin9 no longer reads in
+     * the text it sends: sprint 4, T0). Nothing is kept.
      *
      * @param array{id: string, version: string|null}|null $referentielChoisi as lancer() takes it
      * @return array<string, mixed>
@@ -223,6 +225,8 @@ final class Lancement
             'referentiel' => ['id' => (string) $profil->referentiel->id, 'version' => (string) $profil->referentiel->version,
                               'label' => (string) ($referentiel['label'] ?? $profil->referentiel->id)],
             'jury_retire' => $juryRetire,
+            // the days its map's memory keeps beyond those it takes (the map is additive): its merge reads them
+            'memoire' => array_values(array_map('strval', array_column($vue['memoire'] ?? [], 'id'))),
         ];
     }
 

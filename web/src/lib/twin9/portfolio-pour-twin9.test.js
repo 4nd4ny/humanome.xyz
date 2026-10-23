@@ -45,6 +45,8 @@ describe('portfolioPourTwin9 — les onze formes d’en-tête de l’étude du s
       texte: sortie,
       retouchees: ['2026-01-27', '2026-01-28', '2026-01-29', '2026-01-30', '2026-01-31', '2026-02-01', '2026-02-09'],
       sansDate: 0,
+      // Twin9 y lisait le 26 janvier (« Retour sur la séance du 26.01.2026 »), qu'il ne lit plus
+      disparues: ['2026-01-26'],
     })
     const avant = new Map(journeesLuesParTwin9(entree).map((f) => [f.id, f.texte]))
     for (const f of journeesLuesParTwin9(sortie).filter((x) => ['2026-02-10', '2026-01-25', '2026-01-24'].includes(x.id))) {
@@ -61,7 +63,7 @@ describe('portfolioPourTwin9 — les onze formes d’en-tête de l’étude du s
   })
 
   it('une seconde fois, rien ne change : le texte part tel quel', () => {
-    expect(portfolioPourTwin9(sortie)).toEqual({ texte: sortie, retouchees: [], sansDate: 0 })
+    expect(portfolioPourTwin9(sortie)).toEqual({ texte: sortie, retouchees: [], sansDate: 0, disparues: [] })
   })
 })
 
@@ -98,7 +100,7 @@ describe.skipIf(!avecTwin9)('portfolioPourTwin9 — les cinq portfolios fictifs 
   for (const f of fichiers) {
     it(`${f} : texte inchangé, aucune journée retouchée ; les journées de Twin9 sont celles de l’interface`, () => {
       const texte = readFileSync(join(PORTFOLIOS, f), 'utf8')
-      expect(portfolioPourTwin9(texte)).toEqual({ texte, retouchees: [], sansDate: 0 })
+      expect(portfolioPourTwin9(texte)).toEqual({ texte, retouchees: [], sansDate: 0, disparues: [] })
       expect(idsDeTwin9(texte)).toEqual(datesDeLInterface(texte).length > 1 ? datesDeLInterface(texte) : [])
     })
   }
@@ -141,6 +143,33 @@ describe('portfolioPourTwin9 — deux entrées du même jour, plus de « _b » (
     expect(idsDeTwin9(r.texte)).toEqual(['2026-02-03', '2026-02-04'])
     expect(r.retouchees).toEqual(['2026-02-03'])
   })
+
+  it('la journée « _b » que Twin9 lisait, et ne lit plus, est rendue : la carte d’un run d’avant la garde, et sa fusion la compte encore', () => {
+    expect(portfolioPourTwin9(texte).disparues).toEqual(['2026-02-03_b'])
+  })
+})
+
+describe('portfolioPourTwin9 — les journées que Twin9 lisait dans le texte, et qu’il ne lit plus dans le texte envoyé', () => {
+  it('un titre « Retour sur la séance du … » : sa journée disparaît, réunie à celle où l’interface la range', () => {
+    const texte = '### 25.01.2026\nUn.\n\n### Retour sur la séance du 26.01.2026\nDeux.\n\n### 27.01.2026\nTrois.\n'
+    expect(idsDeTwin9(texte)).toEqual(['2026-01-25', '2026-01-26', '2026-01-27'])
+    const r = portfolioPourTwin9(texte)
+    expect(idsDeTwin9(r.texte)).toEqual(['2026-01-25', '2026-01-27'])
+    expect(r.retouchees).toEqual(['2026-01-25'])
+    expect(r.disparues).toEqual(['2026-01-26'])
+  })
+
+  it('une date corrigée à la main dans la fiche : la journée de l’ancienne date disparaît', () => {
+    const texte = '### 2026-03-02\nLundi.\n\n### 2026-03-03\nMardi.\n\n### 2026-03-04\nMercredi.\n'
+    const auto = segmentText(texte, { today: '0000-00-00' })
+    const r = portfolioPourTwin9(texte, { segments: [auto[0], { ...auto[1], date: '2026-03-05' }, auto[2]] })
+    expect(r.disparues).toEqual(['2026-03-03'])
+  })
+
+  it('un texte qui part tel quel, ou dont Twin9 garde chaque journée : rien ne disparaît', () => {
+    expect(portfolioPourTwin9('### 10.02.2026\nA.\n\n### 1er.02.2026\nB.\n').disparues).toEqual([])
+    expect(portfolioPourTwin9('### 2026-02-01\nA.\n\n### 2026-02-02\nB.\n').disparues).toEqual([])
+  })
 })
 
 describe('portfolioPourTwin9 — le découpage de la fiche du portfolio', () => {
@@ -166,7 +195,7 @@ describe('portfolioPourTwin9 — le découpage de la fiche du portfolio', () => 
 
   it('des segments qui ne sont pas ceux du texte (une fiche d’avant, des marques retirées depuis) : le découpage du site', () => {
     const autres = [{ date: '2026-03-02', texte: 'Lundi <mark data-twin9-code="1.01">marqué</mark>.' }, { date: '2026-03-09', texte: 'Ailleurs.' }]
-    expect(portfolioPourTwin9(texte, { segments: autres })).toEqual({ texte, retouchees: [], sansDate: 0 })
+    expect(portfolioPourTwin9(texte, { segments: autres })).toEqual({ texte, retouchees: [], sansDate: 0, disparues: [] })
   })
 })
 
@@ -182,15 +211,15 @@ describe('portfolioPourTwin9 — passages sans date, cas limites', () => {
 
   it('moins de deux journées datées : le texte part tel quel (Twin9 ne date rien à moins de deux titres)', () => {
     for (const t of ['', 'Un texte sans date.\n', '#### 27.01.2026\nUn seul jour.\n', 'Sans date.\n\n### 2026-01-25\nUn.\n']) {
-      expect(portfolioPourTwin9(t)).toEqual({ texte: t, retouchees: [], sansDate: 0 })
+      expect(portfolioPourTwin9(t)).toEqual({ texte: t, retouchees: [], sansDate: 0, disparues: [] })
     }
-    expect(portfolioPourTwin9(undefined)).toEqual({ texte: '', retouchees: [], sansDate: 0 })
+    expect(portfolioPourTwin9(undefined)).toEqual({ texte: '', retouchees: [], sansDate: 0, disparues: [] })
   })
 
   it('un export Google Docs que Twin9 date déjà (une date seule, puis un trait « ___ ») part à l’octet', () => {
     const texte = '12.03.2026\n\n________________\n\nPremier.\n\n13.03.2026\n\n________________\n\nSecond.\n'
     expect(idsDeTwin9(texte)).toEqual(['2026-03-12', '2026-03-13'])
-    expect(portfolioPourTwin9(texte)).toEqual({ texte, retouchees: [], sansDate: 0 })
+    expect(portfolioPourTwin9(texte)).toEqual({ texte, retouchees: [], sansDate: 0, disparues: [] })
   })
 
   it('un export Google Docs dont une journée est en « 1er » : il reste en mode Google Docs, seuls le 1er et la journée qui l’absorbait sont retouchés', () => {

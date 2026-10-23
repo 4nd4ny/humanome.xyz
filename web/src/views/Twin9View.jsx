@@ -201,6 +201,43 @@ function phraseRetouche({ retouchees, sansDate }) {
   return phrases.join(' ')
 }
 
+/** Une journée de Twin9 par son identifiant : « 3 févr. 2026 », « 3 févr. 2026 (2e entrée) » pour « 2026-02-03_b ». */
+function nomDeJournee(id) {
+  const m = /^(\d{4}-\d{2}-\d{2})(?:_([b-z]))?$/.exec(id)
+  const date = m ? formatShort(m[1], { weekday: false }) : '—'
+  if (date === '—') return id
+  return m[2] ? `${date} (${m[2].charCodeAt(0) - 96}e entrée)` : date
+}
+
+/**
+ * Les journées que Twin9 lisait dans le texte d'origine et qu'il ne lit plus dans le texte envoyé (sprint 4, T0) :
+ * la carte est additive, une journée de sa mémoire absente du portfolio y reste, et sa fusion la compte encore, avec
+ * le même passage dans la journée qui l'a reçu. Celles que la mémoire de la carte garde, quand l'aperçu la dit
+ * (`memoire`) ; sinon toutes, au conditionnel. Vide quand il n'y en a pas.
+ */
+function phraseDisparues(disparues, memoire) {
+  const connue = Array.isArray(memoire)
+  const jours = connue ? disparues.filter((id) => memoire.includes(id)) : disparues
+  const n = jours.length
+  if (n === 0) return ''
+  const noms = jours.slice(0, DATES_NOMMEES).map(nomDeJournee)
+  const reste = n - noms.length
+  const liste = reste > 0 ? `${noms.join(', ')} et ${reste} autre${reste > 1 ? 's' : ''}` : enumeration(noms)
+  const lues =
+    n > 1
+      ? `Twin9 lisait dans ce texte ${n} journées qu’il n’y lit plus : ${liste}.`
+      : `Twin9 lisait dans ce texte une journée qu’il n’y lit plus : ${liste}.`
+  const suite =
+    n > 1
+      ? connue
+        ? 'Lues par un run précédent, elles restent dans la mémoire de la carte, et sa fusion les compte encore.'
+        : 'Si un run précédent les a lues, elles restent dans la mémoire de la carte, et sa fusion les compte encore.'
+      : connue
+        ? 'Lue par un run précédent, elle reste dans la mémoire de la carte, et sa fusion la compte encore.'
+        : 'Si un run précédent l’a lue, elle reste dans la mémoire de la carte, et sa fusion la compte encore.'
+  return `${lues} ${suite}`
+}
+
 /** Les spécialistes qu'un autre référentiel retire au jury du profil (S5, lot C) : vide quand il n'en retire aucun. */
 function phraseJury(retires) {
   const par = [
@@ -216,7 +253,8 @@ function phraseJury(retires) {
 /**
  * Avant de lancer : le référentiel lu (S5, lot C) ; les journées à instruire ; le coût estimé, en moyenne, au plus bas
  * et au plus haut, et la durée ; celles que le crédit ou le budget admet avec leur fusion (T8), ou le refus, qui dit ce
- * qu'il faudrait ; les plafonds ; ce que l'envoi change au texte (sprint 4, T0).
+ * qu'il faudrait ; les plafonds ; ce que l'envoi change au texte, et les journées que Twin9 n'y lit plus que la carte
+ * garde (sprint 4, T0).
  */
 function Apercu({ apercu, envoi }) {
   const e = apercu.estimation
@@ -243,6 +281,7 @@ function Apercu({ apercu, envoi }) {
   const { budget_usd: budget, duree_minutes: minutes } = apercu.plafonds
   const s = (n) => (n > 1 ? 's' : '')
   const retouche = envoi ? phraseRetouche(envoi) : ''
+  const disparues = envoi?.disparues ? phraseDisparues(envoi.disparues, apercu.memoire) : ''
   const ref = apercu.referentiel
   const jury = Array.isArray(apercu.jury_retire) ? phraseJury(apercu.jury_retire) : ''
   return (
@@ -255,6 +294,7 @@ function Apercu({ apercu, envoi }) {
       ) : null}
       <p>{phraseJournees(apercu.journees)}</p>
       {retouche ? <p>{retouche}</p> : null}
+      {disparues ? <p>{disparues}</p> : null}
       {a?.refus ? (
         <p role="alert">
           {a.refus}.{a.limite === 'credit' ? <> <a href="#/compte/credit">Recharger</a></> : null}

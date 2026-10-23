@@ -40,9 +40,12 @@ abstract class LlmTestCase extends AuthTestBase
         TestDb::setEnv('DEMO_DAILY_BUDGET_USD', '5');
         TestDb::setEnv('DEMO_POW_DIFFICULTY_BITS', '8');
         TestDb::setEnv('DEMO_UPSTREAM_TIMEOUT', '5');
+        // The month's cap of the offered credits (sprint 7), its default.
+        TestDb::setEnv('OFFERTS_MENSUEL_USD', '20');
 
         self::$pdo->exec('DELETE FROM llm_pow_challenges');
         self::$pdo->exec('DELETE FROM llm_usage_daily');
+        self::$pdo->exec('DELETE FROM free_credit_monthly');
 
         $this->http = new LlmFakeHttpClient();
         LlmRuntime::setHttpClient($this->http);

@@ -180,6 +180,13 @@ paquet par défaut, et la **démo publique s'édite** via `/api/admin/demo-confi
   un smartphone (grand interrupteur en tête de section). Fail-safe : base
   absente ou injoignable → retour silencieux à env/fichier (la démo ne tombe
   jamais à cause de cette couche).
+- **Liste d'attente des inscriptions** (sprint 7, S7a-2) : sous le grand
+  livre du mois, l'état des inscriptions (ouvertes, ou en liste d'attente
+  quand le plafond moins le dépensé ne couvre plus le plus petit appel de
+  l'Essayer), les comptes qui attendent dans l'ordre d'inscription, « Lever »
+  un compte et « Tout lever » ; chaque compte levé reçoit son code
+  d'activation par courriel. Sans geste, la liste est levée au 1er du mois
+  suivant (UTC). API ci-dessous ; contrat : `docs/contrats.md` §13.1.
 - **État du worker de masse** : dérivé de `mass_jobs` — « jobs en file »
   (en attente + en cours), compte par statut, runs actifs, et **dernière
   activité** (`MAX(updated_at)`, approximation du « dernier tick » : les ticks
@@ -189,24 +196,37 @@ paquet par défaut, et la **démo publique s'édite** via `/api/admin/demo-confi
 
 | Méthode | Route | Effet |
 |---|---|---|
-| `GET` | `/api/admin/demo-config` | `{effective, sources, modelRefuse, allowedModels, apiKeyConfigured}`. |
+| `GET` | `/api/admin/demo-config` | `{effective, sources, modelRefuse, allowedModels, apiKeyConfigured, freeCreditsMonth}`. |
 | `PUT` | `/api/admin/demo-config` `{champs partiels}` | Valide (bornes ci-dessous, 422 sinon) et **fusionne** dans `demo_overrides`. Renvoie le nouvel état. Audit : `demo_config_updated` (noms de champs seulement). |
 | `DELETE` | `/api/admin/demo-config` | Supprime `demo_overrides` (retour env/fichier). Audit : `demo_config_reset`. |
 
 - `effective` : valeurs réellement appliquées par le proxy (`enabled`, `provider`,
   `model`, `maxInputChars`, `perIpPerHour`, `dailyGlobalTokens`,
-  `dailyBudgetUsd`, `powDifficultyBits`, `upstreamTimeoutSeconds`), et
-  `sortieMax`, qui n'est pas un réglage : la sortie que chaque appel demande, le
+  `dailyBudgetUsd`, `powDifficultyBits`, `upstreamTimeoutSeconds`,
+  `monthlyFreeUsd`), et `sortieMax`, qui n'est pas un réglage : la sortie que chaque appel demande, le
   maximum du modèle (128 000 jetons pour Haiku 5.5, `Llm\ModelLimits`), sans
   plafond depuis le 2026-10-21 — son pire cas est réservé sur le budget du jour
   avant l'appel (`docs/securite-demo.md`, angle 3).
 - `sources` : origine de chaque valeur — `base` (réglage admin), `env`,
   `fichier` (`config/demo.php`) ou `defaut`. L'UI l'affiche en badge.
+- `monthlyFreeUsd` (sprint 7) : le plafond **mensuel** des crédits offerts,
+  ce que l'instance paie sans le facturer sur un mois UTC — tout
+  `POST /api/llm` et l'assistant tuteur ensemble —, en plus des budgets du
+  jour ; 20 $ par défaut (`OFFERTS_MENSUEL_USD`) ; 0 ferme tout ce qui est
+  offert. `freeCreditsMonth` en donne le grand livre du mois :
+  `{month, capUsd, spentUsd, reservedUsd, remainingUsd, calls, refusals,
+  exhausted, signupsOpen, signupFloorUsd}` (`docs/contrats.md` §13) :
+  `signupsOpen` faux, une nouvelle inscription part en liste d'attente, dès
+  que le plafond moins le dépensé est sous `signupFloorUsd`, le pire cas du
+  plus petit appel de l'Essayer (§13.1). `reservedUsd` : les appels en cours ;
+  une réserve que son processus n'a jamais réglée (tué en route) expire au bout
+  de 15 minutes et passe dans `spentUsd`, à son pire cas (§13).
 - `modelRefuse` : les modèles des couches qui ne sont pas un Haiku
   (`[{valeur, source}]`), refusés ; la démo prend le premier Haiku des couches,
   sinon Haiku 5.5, et l'UI nomme le modèle refusé. C'est le cas du `.env` de
   production de juillet, qui nomme Sonnet 5.
 - **Bornes** (422 hors bornes ou type invalide) : `dailyBudgetUsd` 0–1000 ;
+  `monthlyFreeUsd` 0–1000 ;
   `perIpPerHour` 1–1000 ; `powDifficultyBits` 8–24 ; `dailyGlobalTokens`
   10000–50000000 ; `upstreamTimeoutSeconds` 10–300 (sous les 165 s qu'OVH
   laisse à un script tant que la recette n'a pas mesuré mieux : un script arrêté
@@ -224,6 +244,17 @@ paquet par défaut, et la **démo publique s'édite** via `/api/admin/demo-confi
   plateforme Anthropic ; `mock` = dev uniquement) et `ANTHROPIC_API_KEY`
   (environnement serveur exclusivement — l'API ne renvoie que le booléen
   `apiKeyConfigured`, jamais la valeur).
+
+### API liste d'attente des inscriptions (session admin + CSRF, sprint 7)
+
+| Méthode | Route | Effet |
+|---|---|---|
+| `GET` | `/api/admin/waitlist` | Lève d'abord les comptes dont l'attente est finie (c'est une requête du mois), puis `{month, signupsOpen, nextLift, total, accounts}` (200 comptes au plus, ordre d'inscription). |
+| `POST` | `/api/admin/waitlist/{id}/lift` | Lève un compte : `{id, status: lifted\|unchanged}`, 404 « Compte introuvable ». Son code part par courriel. Audit : `waitlist_lifted` `{targetUserId}`. Courriel refusé par le transport : 502, le compte reste en liste d'attente (réessayer plus tard). |
+| `POST` | `/api/admin/waitlist/lift` | « Tout lever », dans l'ordre d'inscription, 200 comptes au plus par appel, arrêté au premier courriel refusé : `{lifted, failed, remaining}`. |
+
+Le monitoring (`GET /api/admin/monitoring`) ne fait que compter la liste
+(`utilisateurs.enListeAttente`) : il n'écrit rien.
 
 ---
 

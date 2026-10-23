@@ -518,6 +518,28 @@ describe('UC-APP-09 — l’apprenant lance une cartographie ouverte', () => {
     expect(posts).toHaveLength(1)
   })
 
+  it('UC-APP-09-F35 — A6, E14, RG11 : les crédits offerts du mois épuisés (503 offerts_epuises) → le message du serveur, qui nomme le 1er du mois suivant, dès le premier appel ; pour un compte, ses deux autres voies, jamais « pour aujourd’hui »', async () => {
+    const refus = { error: 'Les crédits offerts de ce mois sont épuisés ; revenez le 1er novembre.', code: 'offerts_epuises' }
+    const visiteur = serveurDeLaDemo(routes(VISITEUR), () => jsonResponse(503, refus))
+    openTwin6(null)
+    await saisirPortfolio()
+    await lancer()
+    expect((await screen.findByRole('alert')).textContent).toBe(refus.error)
+    expect(visiteur.posts).toHaveLength(1)
+    expect(screen.getByRole('button', { name: 'Lancer la cartographie ouverte' }).disabled).toBe(false)
+    cleanup()
+
+    const compte = serveurDeLaDemo(routes(), () => jsonResponse(503, refus))
+    openTwin6()
+    await saisirPortfolio()
+    fireEvent.click(screen.getByRole('radio', { name: /Essai gratuit/ }))
+    await lancer()
+    expect((await screen.findByRole('alert')).textContent).toBe(
+      'Les crédits offerts de ce mois sont épuisés ; revenez le 1er novembre. D’ici là, cartographiez avec nos crédits ou votre propre clé API.',
+    )
+    expect(compte.posts).toHaveLength(1)
+  })
+
   it('UC-APP-09-F05 — E2 : copie statique (pas d’API) → fonctionnalité indisponible, proprement', async () => {
     stubFetch({ 'GET auth/me': htmlResponse(200) })
     openTwin6(null)

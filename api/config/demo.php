@@ -70,6 +70,14 @@ declare(strict_types=1);
  *                                                fournisseur amont, reçu en flux et
  *                                                relayé à mesure (2026-10-21) ; coupé,
  *                                                il compte ce qu'il a produit.
+ *   monthlyFreeUsd     OFFERTS_MENSUEL_USD       Plafond MENSUEL (mois UTC) des crédits
+ *                                                offerts par l'instance : tout ce qui
+ *                                                passe par POST /api/llm et par
+ *                                                POST /api/tuteur, ensemble (sprint 7,
+ *                                                Llm/FreeCreditLedger). Atteint -> 503
+ *                                                « Les crédits offerts de ce mois sont
+ *                                                épuisés ; revenez le 1er <mois>. »
+ *                                                0 ferme tout ce qui est offert.
  *
  * Secret de la preuve de travail : POW_SECRET (env). S'il est absent, un
  * secret est dérivé de MIGRATE_TOKEN (sha256) — voir Llm/PowChallenge. Si ni
@@ -109,6 +117,15 @@ declare(strict_types=1);
  * au tokenizer de Haiku 5.5 (≈ 2,5 caractères par jeton selon Anthropic), dans
  * sa fenêtre d'un million. 150 s par appel ; 6 millions de jetons par jour, un
  * garde-fou qui ne dépend pas des tarifs.
+ *
+ * PLAFOND MENSUEL (sprint 7, TODO : « La somme totale des crédits offerts par
+ * mois ne doit pas dépasser 20 USD pour tous les utilisateurs anonymes et
+ * enregistrés du site ») : 20 $ par mois UTC pour tout ce que l'instance paie
+ * sans le facturer — ce budget de 1 $ par jour et celui du tuteur
+ * (TUTEUR_BUDGET), qui restent et pouvaient monter ensemble à 60 $ par mois.
+ * Chaque appel gratuit y réserve aussi son pire cas avant de partir, puis le
+ * règle au coût réel (routes/llm.php, routes/tuteur.php). Le mois s'ouvre le
+ * 1er à 0 h UTC, soit 1 h (hiver) ou 2 h (été) à Paris.
  */
 
 return [
@@ -121,4 +138,5 @@ return [
     'dailyBudgetUsd' => 1.0,
     'powDifficultyBits' => 20,
     'upstreamTimeoutSeconds' => 150,
+    'monthlyFreeUsd' => 20.0,
 ];

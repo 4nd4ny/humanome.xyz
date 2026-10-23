@@ -15,7 +15,8 @@ use PDO;
  * contenu (portfolio, cartographie, gabarit), conformément au cahier §6.5.
  *
  * Tout est calculé à la demande sur une fenêtre de `days` jours (1..365) :
- *  - utilisateurs : total, actifs à l'instant (sessions < 15 min), inscriptions ;
+ *  - utilisateurs : total, actifs à l'instant (sessions < 15 min), inscriptions,
+ *    non activés dont la liste d'attente (sprint 7) ;
  *  - cartographies : volumes, partages actifs, consultations (audit_events) ;
  *  - finances : soldes crédits, mouvements par nature, captures PayPal
  *    (micro-USD signés : topup positif, debit/refund négatifs) ;
@@ -66,6 +67,10 @@ final class Monitoring
         $nonActives = (int) $this->pdo->query(
             'SELECT COUNT(*) FROM users WHERE deleted_at IS NULL AND email_verified_at IS NULL'
         )->fetchColumn();
+        // Dont la liste d'attente (sprint 7, S7a-2) : jamais activés eux non plus.
+        $enListeAttente = (int) $this->pdo->query(
+            'SELECT COUNT(*) FROM users WHERE deleted_at IS NULL AND waitlisted_at IS NOT NULL'
+        )->fetchColumn();
 
         $cutoff = time() - self::ACTIVE_WINDOW_SECONDS;
         $stmt = $this->pdo->prepare(
@@ -100,6 +105,7 @@ final class Monitoring
         return [
             'total' => $total,
             'nonActives' => $nonActives,
+            'enListeAttente' => $enListeAttente,
             'actifsMaintenant' => (int) ($actifs['connectes'] ?? 0),
             'sessionsAnonymes' => (int) ($actifs['anonymes'] ?? 0),
             'nouveauxPeriode' => (int) $nouveaux->fetchColumn(),

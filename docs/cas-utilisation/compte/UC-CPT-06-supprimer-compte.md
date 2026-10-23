@@ -259,6 +259,7 @@ cd web && npx vitest run test/usecases --testNamePattern UC-CPT-06
 - La trace d'audit n'est pas strictement anonyme : les événements
   `login` / `login_failed` anonymisés gardent pays et réseau tronqué jusqu'à
   365 jours ; les événements d'autres acteurs (`role_granted`,
-  `role_revoked`, `invitation_accepted`, `golden_access_granted`…) gardent
-  l'identifiant numérique du compte supprimé dans `details`, hors clé
-  étrangère (pseudonyme orphelin, UC-CPT-06-F11).
+  `role_revoked`, `invitation_accepted`, `golden_access_granted`, la levée de
+  la liste d'attente `waitlist_lifted {targetUserId}`…) gardent l'identifiant
+  numérique du compte supprimé dans `details`, hors clé étrangère
+  (pseudonyme orphelin, UC-CPT-06-F11).

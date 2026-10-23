@@ -37,6 +37,11 @@ use Humanome\Packages\SettingsRepository;
  * ModelLimits), its worst case reserved on the day's budget before the call
  * (routes/llm.php). The former maxTokensPerRequest, DEMO_MAX_TOKENS_PER_REQUEST
  * included, is read nowhere.
+ *
+ * monthlyFreeUsd (sprint 7, S7a) is the cap of the credits the instance
+ * offers in a UTC month, the demo's calls and the tutor's together
+ * (FreeCreditLedger): OFFERTS_MENSUEL_USD in the environment, 20 USD by
+ * default, editable from the admin like the daily budget.
  */
 final class DemoConfig
 {
@@ -53,6 +58,7 @@ final class DemoConfig
         'dailyBudgetUsd',
         'powDifficultyBits',
         'upstreamTimeoutSeconds',
+        'monthlyFreeUsd',
     ];
 
     /**
@@ -71,6 +77,7 @@ final class DemoConfig
         public readonly float $dailyBudgetUsd,
         public readonly int $powDifficultyBits,
         public readonly int $upstreamTimeoutSeconds,
+        public readonly float $monthlyFreeUsd = FreeCreditLedger::DEFAULT_CAP_USD,
         public readonly array $sources = [],
         public readonly array $modelRefuse = [],
     ) {
@@ -150,6 +157,7 @@ final class DemoConfig
             dailyBudgetUsd: $float('dailyBudgetUsd', 'DEMO_DAILY_BUDGET_USD', 1.0),
             powDifficultyBits: $int('powDifficultyBits', 'DEMO_POW_DIFFICULTY_BITS', 20),
             upstreamTimeoutSeconds: $int('upstreamTimeoutSeconds', 'DEMO_UPSTREAM_TIMEOUT', 150),
+            monthlyFreeUsd: $float('monthlyFreeUsd', 'OFFERTS_MENSUEL_USD', FreeCreditLedger::DEFAULT_CAP_USD),
             sources: $sources,
             modelRefuse: $modelRefuse,
         );

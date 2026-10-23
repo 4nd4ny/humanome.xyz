@@ -8,10 +8,13 @@
 // vide, champ vide ou non numérique) et l'affichage de la configuration
 // serveur par ConfigSection (secrets réduits à « configuré / absent »).
 import { afterEach, describe, expect, it, vi } from 'vitest'
-import { act, cleanup, fireEvent, render, screen } from '@testing-library/react'
+import { act, cleanup, fireEvent, render, screen, within } from '@testing-library/react'
 import { fetchMe, resetApiClient } from '../../../src/api/client.js'
 import {
   fetchDemoConfig,
+  fetchWaitlist,
+  liftWaitlist,
+  liftWaitlisted,
   resetDemoConfig,
   saveDemoConfig,
   toggleDemo,
@@ -106,6 +109,39 @@ describe('UC-ADM-04 — client admin-api.js', () => {
 })
 
 describe('UC-ADM-04 — formulaire de la démo (ReglagesSection isolé)', () => {
+  it('UC-ADM-04-U31 — RG10 : le plafond mensuel des crédits offerts se règle comme les autres (origine, bornes 0 – 1000, PUT partiel) et le grand livre du mois s’affiche en lecture seule ; une API qui ne le donne pas ne montre pas le champ', async () => {
+    const mois = { month: '2026-10', capUsd: 20, spentUsd: 3.2, reservedUsd: 0.32, remainingUsd: 16.48, calls: 41, refusals: 0, exhausted: false }
+    const demo = {
+      ...DEMO,
+      effective: { ...DEMO.effective, monthlyFreeUsd: 20 },
+      sources: { ...DEMO.sources, monthlyFreeUsd: 'env' },
+      freeCreditsMonth: mois,
+    }
+    const fetchFn = reglagesFetch(demo)
+    await renderReglages(fetchFn)
+
+    const champ = screen.getByLabelText('Crédits offerts / mois (USD)')
+    expect([champ.value, champ.min, champ.max, champ.step]).toEqual(['20', '0', '1000', '0.01'])
+    expect(screen.getByTestId('demo-offerts-mois').textContent).toBe(
+      'Crédits offerts ce mois-ci (2026-10, mois UTC) : 3.20 $ dépensés, 0.32 $ réservés par les appels en cours, ' +
+        '16.48 $ restants sur 20.00 $ — 41 appels, 0 refus.',
+    )
+    fireEvent.change(champ, { target: { value: '0' } })
+    await act(async () => {
+      fireEvent.click(screen.getByRole('button', { name: 'Enregistrer' }))
+    })
+    expect(JSON.parse(puts(fetchFn)[0][1].body)).toEqual({ monthlyFreeUsd: 0 })
+    cleanup()
+
+    await renderReglages(reglagesFetch({ ...demo, freeCreditsMonth: { ...mois, capUsd: 0, remainingUsd: 0, exhausted: true } }))
+    expect(screen.getByTestId('demo-offerts-mois').textContent).toContain('Épuisés : l’Essayer, la démo et le tuteur répondent « revenez le 1er ».')
+    cleanup()
+
+    await renderReglages(reglagesFetch())
+    expect(screen.queryByLabelText('Crédits offerts / mois (USD)')).toBeNull()
+    expect(screen.queryByTestId('demo-offerts-mois')).toBeNull()
+  })
+
   it('UC-ADM-04-U15 — PUT partiel : seuls les champs modifiés partent, convertis en nombres', async () => {
     const fetchFn = reglagesFetch()
     await renderReglages(fetchFn)
@@ -219,6 +255,142 @@ describe('UC-ADM-04 — formulaire de la démo (ReglagesSection isolé)', () => 
     expect(JSON.parse(puts(fetchFn)[0][1].body)).toEqual({ enabled: false })
     // La réponse remplace la config, l'effet draftFrom(config) écrase le brouillon.
     expect(screen.getByLabelText('Entrée max (caractères)').value).toBe('20000')
+  })
+})
+
+describe('UC-ADM-04 — liste d’attente des inscriptions (sprint 7, S7a-2)', () => {
+  it('UC-ADM-04-U32 — admin-api.js : GET api/admin/waitlist normalisé, « Lever » POST …/{id}/lift et « Tout lever » POST …/lift avec le jeton CSRF', async () => {
+    await fetchMe({ fetchFn: async () => jsonResponse(200, { user: { id: 1 }, csrfToken: 'csrf-attente' }) })
+    const fetchFn = vi.fn(async (url, init = {}) => {
+      if (url === 'api/admin/waitlist' && (init.method ?? 'GET') === 'GET') {
+        return jsonResponse(200, { month: '2026-10', signupsOpen: false, nextLift: '2026-11-01', total: 1, accounts: [{ id: 7 }] })
+      }
+      return jsonResponse(200, { ok: true })
+    })
+    expect(await fetchWaitlist(fetchFn)).toEqual({
+      month: '2026-10',
+      signupsOpen: false,
+      nextLift: '2026-11-01',
+      total: 1,
+      accounts: [{ id: 7 }],
+    })
+    await liftWaitlisted(7, fetchFn)
+    await liftWaitlist(fetchFn)
+    const [, one] = fetchFn.mock.calls[1]
+    const [, all] = fetchFn.mock.calls[2]
+    expect([fetchFn.mock.calls[1][0], one.method, one.headers['X-CSRF-Token']]).toEqual(['api/admin/waitlist/7/lift', 'POST', 'csrf-attente'])
+    expect([fetchFn.mock.calls[2][0], all.method, all.headers['X-CSRF-Token']]).toEqual(['api/admin/waitlist/lift', 'POST', 'csrf-attente'])
+
+    // Réponse partielle : des valeurs sûres (inscriptions ouvertes, liste vide).
+    expect(await fetchWaitlist(async () => jsonResponse(200, {}))).toEqual({
+      month: '',
+      signupsOpen: true,
+      nextLift: '',
+      total: 0,
+      accounts: [],
+    })
+  })
+
+  it('UC-ADM-04-U33 — RG11 : ReglagesSection — le grand livre dit « Inscriptions : en liste d’attente » et le seuil ; la liste suit l’ordre d’inscription, « Lever » un compte puis « Tout lever » rechargent la liste et le disent ; une API sans la route : une note, aucune alerte', async () => {
+    await fetchMe({ fetchFn: async () => jsonResponse(200, { user: { id: 1 }, csrfToken: 'csrf-attente' }) })
+    const mois = { month: '2026-10', capUsd: 20, spentUsd: 19.8, reservedUsd: 0, remainingUsd: 0.2, calls: 900, refusals: 3,
+      exhausted: false, signupsOpen: false, signupFloorUsd: 0.320065 }
+    const demo = { ...DEMO, effective: { ...DEMO.effective, monthlyFreeUsd: 20 }, freeCreditsMonth: mois }
+    let accounts = [
+      { id: 7, email: 'ada@example.org', displayName: 'Ada', createdAt: '2026-10-20T08:00:00', waitlistedAt: '2026-10-20T06:00:00Z' },
+      { id: 9, email: 'bob@example.org', displayName: 'Bob', createdAt: '2026-10-21T08:00:00', waitlistedAt: '2026-10-21T06:00:00Z' },
+    ]
+    const base = reglagesFetch(demo)
+    const fetchFn = vi.fn(async (url, init = {}) => {
+      const key = `${init.method ?? 'GET'} ${url}`
+      if (key === 'GET api/admin/waitlist') {
+        return jsonResponse(200, { month: '2026-10', signupsOpen: false, nextLift: '2026-11-01', total: accounts.length, accounts })
+      }
+      if (key === 'POST api/admin/waitlist/7/lift') {
+        accounts = accounts.filter((a) => a.id !== 7)
+        return jsonResponse(200, { id: 7, status: 'lifted' })
+      }
+      if (key === 'POST api/admin/waitlist/lift') {
+        const lifted = accounts.length
+        accounts = []
+        return jsonResponse(200, { lifted, remaining: 0 })
+      }
+      return base(url, init)
+    })
+    await renderReglages(fetchFn)
+
+    expect(screen.getByTestId('demo-offerts-inscriptions').textContent).toBe(
+      ' Inscriptions : en liste d’attente (fermées quand le plafond moins le dépensé ne couvre plus le plus petit appel de l’Essayer, 0.32 $).',
+    )
+    const block = screen.getByTestId('admin-waitlist')
+    await within(block).findByText('ada@example.org')
+    expect(block.textContent).toContain('Inscriptions : en liste d’attente.')
+    expect(block.textContent).toContain('la liste est levée le 1er novembre 2026 (mois UTC)')
+    expect(within(block).getAllByRole('row').slice(1).map((r) => r.textContent)).toEqual([
+      expect.stringContaining('ada@example.org'),
+      expect.stringContaining('bob@example.org'),
+    ])
+
+    await act(async () => {
+      fireEvent.click(within(block).getByRole('button', { name: 'Lever ada@example.org' }))
+    })
+    expect(await within(block).findByText('ada@example.org : levé, son code d’activation part par email.')).toBeDefined()
+    expect(within(block).queryByRole('button', { name: 'Lever ada@example.org' })).toBeNull()
+    const [, init] = fetchFn.mock.calls.find(([url]) => url === 'api/admin/waitlist/7/lift')
+    expect([init.method, init.headers['X-CSRF-Token']]).toEqual(['POST', 'csrf-attente'])
+
+    await act(async () => {
+      fireEvent.click(within(block).getByRole('button', { name: 'Tout lever (1)' }))
+    })
+    expect(await within(block).findByText('1 compte levé.')).toBeDefined()
+    expect(within(block).getByTestId('waitlist-empty').textContent).toBe('Aucune inscription en attente.')
+    cleanup()
+
+    // L'API d'avant (sans la route) : le reste des réglages s'affiche, une note, aucune alerte.
+    await renderReglages(reglagesFetch(demo))
+    expect(await screen.findByTestId('waitlist-unavailable')).toBeDefined()
+    expect(screen.queryByRole('alert')).toBeNull()
+  })
+
+  it('UC-ADM-04-U34 — RG11 : ReglagesSection — un courriel de code que le transport refuse : « Lever » affiche le message du serveur (502) en alerte et le compte reste listé ; « Tout lever » arrêté au premier refus (failed) le dit, sans prétendre le compte levé', async () => {
+    await fetchMe({ fetchFn: async () => jsonResponse(200, { user: { id: 1 }, csrfToken: 'csrf-attente' }) })
+    const accounts = [
+      { id: 7, email: 'ada@example.org', displayName: 'Ada', createdAt: '2026-10-20T08:00:00', waitlistedAt: '2026-10-20T06:00:00Z' },
+      { id: 9, email: 'bob@example.org', displayName: 'Bob', createdAt: '2026-10-21T08:00:00', waitlistedAt: '2026-10-21T06:00:00Z' },
+    ]
+    const refus = 'Le courriel du code d’activation n’est pas parti : le compte reste en liste d’attente. Réessayez plus tard.'
+    const base = reglagesFetch(DEMO)
+    const fetchFn = vi.fn(async (url, init = {}) => {
+      const key = `${init.method ?? 'GET'} ${url}`
+      if (key === 'GET api/admin/waitlist') {
+        return jsonResponse(200, { month: '2026-10', signupsOpen: false, nextLift: '2026-11-01', total: accounts.length, accounts })
+      }
+      if (key === 'POST api/admin/waitlist/9/lift') {
+        return jsonResponse(502, { error: refus })
+      }
+      if (key === 'POST api/admin/waitlist/lift') {
+        return jsonResponse(200, { lifted: 0, failed: 1, remaining: 2 })
+      }
+      return base(url, init)
+    })
+    await renderReglages(fetchFn)
+    const block = screen.getByTestId('admin-waitlist')
+    await within(block).findByText('bob@example.org')
+
+    await act(async () => {
+      fireEvent.click(within(block).getByRole('button', { name: 'Lever bob@example.org' }))
+    })
+    expect((await within(block).findByRole('alert')).textContent).toBe(refus)
+    expect(within(block).queryByRole('status')).toBeNull()
+    expect(within(block).getByRole('button', { name: 'Lever bob@example.org' })).toBeDefined()
+
+    await act(async () => {
+      fireEvent.click(within(block).getByRole('button', { name: 'Tout lever (2)' }))
+    })
+    expect((await within(block).findByRole('status')).textContent).toBe(
+      '0 compte levé ; un courriel de code n’est pas parti : ce compte et les suivants restent en liste d’attente, réessayez plus tard.',
+    )
+    expect(within(block).getAllByRole('row')).toHaveLength(3)
   })
 })
 

@@ -17,6 +17,11 @@
 // (ramasse-miettes, purge depuis un autre navigateur) alors que le navigateur
 // garde son cookie : comme CsrfMiddleware (Session::exists() ne regarde que le
 // cookie), toute mutation non exemptée reçoit alors 403, GET auth/me 401.
+//
+// Liste d'attente (sprint 7, S7a-2) : `api.closeSignups()` simule des crédits
+// offerts du mois épuisés — une inscription répond 201 « waitlisted » sans code,
+// la connexion du compte 403 « waitlisted », son renvoi et son activation ne
+// donnent rien ; `api.liftWaitlist(email)` simule la levée (son code part).
 import { vi } from 'vitest'
 import { declarationOf, phpDeclaredRoles, validateDeclaration } from './declared-roles-php.js'
 
@@ -63,6 +68,10 @@ export function createFakeAccountApi(options = {}) {
   const permanent = new Map() // 'METHOD path' -> fn
   let session = null // {userId, csrf}
   let staleCookie = false // cookie d'une session que le serveur ne connaît plus
+  let signupsOpen = options.signupsOpen ?? true // crédits offerts du mois (sprint 7)
+  const waitlistMessage =
+    'Les crédits offerts de ce mois sont épuisés : votre inscription est en liste d\'attente. ' +
+    'Vous recevrez votre code d\'activation par email le 1er novembre (plus tôt si l\'administrateur lève la liste).'
   const today = options.today ?? '2026-09-28'
 
   function addUser(u) {
@@ -73,6 +82,7 @@ export function createFakeAccountApi(options = {}) {
       displayName: u.displayName ?? 'Maya',
       roles: u.roles ?? ['apprenant'],
       verified: u.verified ?? true,
+      waitlisted: u.waitlisted ?? false,
       code: u.code ?? null,
       attempts: 0,
       hasAvatar: u.hasAvatar ?? false,
@@ -141,7 +151,10 @@ export function createFakeAccountApi(options = {}) {
         }
         if (Object.keys(fields).length > 0) return validation(fields)
         if (users.has(email)) return jsonResponse(409, { error: 'Un compte existe déjà avec cette adresse email' })
-        const u = addUser({ email, password, displayName, roles: ['apprenant'], verified: false })
+        const u = addUser({ email, password, displayName, roles: ['apprenant'], verified: false, waitlisted: !signupsOpen })
+        if (u.waitlisted) {
+          return jsonResponse(201, { status: 'waitlisted', email, message: waitlistMessage })
+        }
         newCode(u)
         return jsonResponse(201, {
           status: 'pending_activation',
@@ -158,7 +171,7 @@ export function createFakeAccountApi(options = {}) {
         }
         const u = users.get(email)
         const generic = jsonResponse(401, { error: 'Code invalide ou expiré' })
-        if (!u || u.verified || u.code === null || u.attempts >= 5) return generic
+        if (!u || u.verified || u.waitlisted || u.code === null || u.attempts >= 5) return generic
         if (u.code !== code) {
           u.attempts += 1
           return generic
@@ -171,7 +184,7 @@ export function createFakeAccountApi(options = {}) {
 
       case 'POST auth/resend': {
         const u = users.get(String(body?.email ?? '').trim().toLowerCase())
-        if (u && !u.verified) newCode(u)
+        if (u && !u.verified && !u.waitlisted) newCode(u)
         return jsonResponse(200, {
           status: 'ok',
           message: 'Si un compte non activé existe pour cette adresse, un nouveau code a été envoyé.',
@@ -184,6 +197,9 @@ export function createFakeAccountApi(options = {}) {
         if (email === '' || password === '') return jsonResponse(422, { error: 'Email et mot de passe requis' })
         const u = users.get(email)
         if (!u || u.password !== password) return jsonResponse(401, { error: 'Identifiants invalides' })
+        if (u.waitlisted) {
+          return jsonResponse(403, { error: waitlistMessage, code: 'waitlisted', email: u.email })
+        }
         if (!u.verified) {
           return jsonResponse(403, {
             error: 'Compte non activé : confirmez votre email avec le code reçu.',
@@ -350,6 +366,17 @@ export function createFakeAccountApi(options = {}) {
     expireSession() {
       session = null
       staleCookie = true
+    },
+    /** Crédits offerts du mois épuisés : les inscriptions suivantes attendent. */
+    closeSignups() {
+      signupsOpen = false
+    },
+    /** La levée (1er du mois ou administrateur) : le compte reçoit son code. */
+    liftWaitlist(email) {
+      const u = users.get(email.toLowerCase())
+      if (!u || !u.waitlisted) return null
+      u.waitlisted = false
+      return newCode(u)
     },
     failNext(signature, response) {
       if (!oneShot.has(signature)) oneShot.set(signature, [])

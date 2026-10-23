@@ -7,7 +7,7 @@
 | **Portée** | humanome.xyz — vue `#/twin6-ouverte`, moteur navigateur `engine/src/twin6/`, proxy facturé `POST /api/twin6/appel`, proxy de la démo `POST /api/llm` (essai gratuit) |
 | **Niveau** | Objectif utilisateur |
 | **Cahier des charges** | §3.2 (déclencher une cartographie), §4.3 (module cartographie), §5 (clé API personnelle), §6.1-6.2 (RGPD), §7 (modèle économique) ; ADR-001, ADR-004, ADR-010 §3 |
-| **Statut** | Implémenté (cartographie ouverte Twin6, contribution +10 %) |
+| **Statut** | Implémenté (cartographie ouverte Twin6, contribution +10 % ; l’essai gratuit sous le plafond mensuel des crédits offerts : sprint 7, S7a) |
 
 ## Objectif
 
@@ -80,8 +80,9 @@ page Essayer (UC-VIS-03), ou par l'adresse.
   contribution Twin6 (×1,10), et rien d'autre.
 - Voie clé perso : aucun appel ne passe par l'API humanome, rien n'est débité.
 - Essai gratuit (A6) : rien n'est débité ; le serveur ne garde que les
-  compteurs de la démo (requêtes, jetons et coût estimé du jour, défis
-  consommés hachés, seau de quota haché).
+  compteurs de la démo (requêtes, jetons et coût estimé du jour, dépense et
+  réserve du mois des crédits offerts, défis consommés hachés, seau de quota
+  haché).
 
 ## Garanties minimales (en cas d'échec)
 
@@ -323,6 +324,11 @@ page Essayer (UC-VIS-03), ou par l'adresse.
   Pour un compte, le `503` ne l'invite pas à en créer un : « L’essai gratuit est
   épuisé pour aujourd’hui ou momentanément désactivé. Revenez un peu plus tard —
   ou cartographiez avec nos crédits ou votre propre clé API. »
+  Crédits offerts du mois épuisés (`503` `offerts_epuises`, sprint 7,
+  UC-VIS-03 E8) : le message du serveur, qui nomme le 1er du mois suivant
+  (« Les crédits offerts de ce mois sont épuisés ; revenez le 1er
+  novembre. »), suivi pour un compte de « D’ici là, cartographiez avec nos
+  crédits ou votre propre clé API. »
   Le fournisseur de la démo refait une fois un appel sur incident transitoire
   (UC-VIS-03 A4).
 
@@ -397,7 +403,12 @@ page Essayer (UC-VIS-03), ou par l'adresse.
   sorties des sept scans, qu'aucun plafond ne borne plus — des scans de 64 000
   jetons chacun y tiennent, UC-APP-09-U35). Chaque appel réserve son pire cas,
   ≈ 0,07 $ avec Haiku 5.5 : un essai commencé près de la fin du budget du jour
-  peut s'arrêter après ses premiers scans (E14).
+  peut s'arrêter après ses premiers scans (E14). Le même pire cas est réservé
+  sur le plafond **mensuel** des crédits offerts (20 $ par défaut, commun avec
+  l'Essayer, le service humanome et le tuteur, sprint 7, UC-VIS-03 RG7) :
+  un essai commencé quand le mois s'épuise s'arrête de même entre deux appels,
+  jamais au milieu d'une réponse. Les voies crédits et clé perso n'y comptent
+  pas : l'instance ne les offre pas.
 - **RG12** — Réponse en flux (2026-10-21, Christian : « Si on passe en appel en
   flux, alors on voit la réponse arriver au fur et à mesure ? […] Si oui,
   alors c'est mon choix » ; « Je ne peux pas prendre à charge les coûts
@@ -421,7 +432,7 @@ page Essayer (UC-VIS-03), ou par l'adresse.
 | Clé API personnelle | Saisie : reste dans le navigateur ; enregistrée : coffre chiffré (ADR-004), révélée au seul propriétaire |
 | Prompts | Publics (paquet AGPL téléchargeable) |
 | Grand-livre | `twin9_credit_events` : montants, modèle, tokens, libellé d'étape — jamais de contenu |
-| Essai gratuit | Compteurs de la démo seulement (`llm_usage_daily`, `llm_pow_challenges` hachés, `rate_limits` au seau haché), comme l'Essayer (UC-VIS-03) |
+| Essai gratuit | Compteurs de la démo seulement (`llm_usage_daily`, `free_credit_monthly`, `llm_pow_challenges` hachés, `rate_limits` au seau haché), comme l'Essayer (UC-VIS-03) |
 | Document produit | Reste dans le navigateur (export JSON à la demande) |
 
 ## Code sollicité
@@ -535,6 +546,7 @@ montage (`humanome-mode`), sauf F32, qui rejoue le mode simple (A8).
 | UC-APP-09-F32 | A8 | IHM | Mode simple (apprenant, aucun choix stocké), offre de deux modèles : ni liste ni champ « Modèle », ligne « Modèle : claude-sonnet-5 (par défaut… », référentiel au choix ; mode expert depuis le tiroir, Haiku choisi, retour au mode simple : les 8 appels partent sur `claude-sonnet-5` | idem |
 | UC-APP-09-F33 | A7 | IHM | Un portfolio du module portfolio aux en-têtes « Mardi 10 février 2026 », précédé d'un passage non daté : la liste le propose ; choisi, la zone de saisie reçoit deux feuilles `### 2026-02-10` et `### 2026-02-11` ; « 2 journées datées… ; 1 passage non daté laissé de côté. » ; les 8 prompts portent ce texte, jamais le passage non daté | idem |
 | UC-APP-09-F34 | A7 | IHM | Un texte déjà en feuilles est repris tel quel (« 1 journée datée ») ; un portfolio sans journée datée ne remplace rien et renvoie à « Mon portfolio » ; sans IndexedDB, pas de liste | idem |
+| UC-APP-09-F35 | A6, E14, RG11 | IHM | Crédits offerts du mois épuisés (`503` `offerts_epuises`) : le visiteur lit le message du serveur (« revenez le 1er novembre »), un compte aussi, suivi de ses deux autres voies, jamais « pour aujourd'hui » ; un seul appel, bouton de nouveau cliquable | `web/test/usecases/functional/uc-app-09-cartographie-ouverte-twin6.test.jsx` |
 | UC-APP-09-F10 | Nominal | API | 8 appels : contrat, `text` amont intact et `model`, coût 4 400 µUSD chacun (Sonnet 5 à 2 / 10), prompt public transmis tel quel, grand-livre réserve/réconciliation | `api/tests/UseCases/Functional/UcApp09CartographieOuverteTwin6Test.php` |
 | UC-APP-09-F11 | Nominal (étape 2), RG7 | API | `/api/twin9/meta` : prix Twin6, référentiel, solde ; Twin6 fonctionne sans Twin9 importé | idem |
 | UC-APP-09-F12 | E7 | API | 401 sans session, aucun appel amont | idem |

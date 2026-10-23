@@ -23,6 +23,10 @@ import { useUiMode } from '../lib/ui-mode.js'
 
 const PASSWORD_MIN_LENGTH = 10
 
+// Repli si le serveur ne donne pas son message (sprint 7 : liste d'attente).
+const WAITLIST_NOTICE =
+  'Les crédits offerts de ce mois sont épuisés : votre inscription est en liste d’attente. Vous recevrez votre code d’activation par email le 1er du mois prochain.'
+
 /**
  * Habilitations (rôles P3 du cahier §2, `user.roles`) -> libellés d'affichage.
  * Elles seules ouvrent des espaces ; les rôles RESPIRE que la personne se
@@ -178,12 +182,20 @@ export default function AccountView({ initialActivation = null }) {
     setBusy(true)
     try {
       if (mode === 'register') {
-        await register({
+        const created = await register({
           email: cleanEmail,
           emailConfirm: emailConfirm.trim(),
           password,
           displayName: displayName.trim(),
         })
+        // Crédits offerts du mois épuisés (sprint 7) : le compte attend en liste
+        // d'attente, sans code — pas d'écran d'activation, le message du serveur.
+        if (created?.status === 'waitlisted') {
+          setMode('login')
+          setPassword('')
+          setNotice(created.message ?? WAITLIST_NOTICE)
+          return
+        }
         // Compte NON activé : on passe à l'écran de saisie du code (D5).
         goToActivation(
           cleanEmail,
@@ -196,6 +208,12 @@ export default function AccountView({ initialActivation = null }) {
       setStatus('authenticated')
       setPassword('')
     } catch (error) {
+      // Compte en liste d'attente (sprint 7) : ni session ni code — le message
+      // du serveur dit quand le code arrivera, sans écran d'activation.
+      if (mode === 'login' && error instanceof ApiError && error.code === 'waitlisted') {
+        setNotice(error.message || WAITLIST_NOTICE)
+        return
+      }
       // Login d'un compte non activé -> écran d'activation + renvoi possible.
       if (mode === 'login' && error instanceof ApiError && error.code === 'email_not_verified') {
         goToActivation(

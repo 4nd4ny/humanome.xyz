@@ -7,7 +7,7 @@
 | **Portée** | humanome.xyz — bouton « 💬 » de l'en-tête, sur toutes les rubriques ; API `GET /api/llm/challenge` (partagé), `POST /api/tuteur` |
 | **Niveau** | Objectif utilisateur |
 | **Cahier des charges** | Décision D9 (plan v1.1, `STATUS.md` 2026-07-17) ; §4.6 (formation, accompagnement) ; principe RGPD n°5 de `CLAUDE.md` (journalisation minimale : compteurs, jamais de contenu) |
-| **Statut** | Implémenté (D9 ; compteurs dédiés migration 020 ; carte du site, mémoire courte et Haiku 5.5 par défaut : sprint 11, 2026-10-22) |
+| **Statut** | Implémenté (D9 ; compteurs dédiés migration 020 ; carte du site, mémoire courte et Haiku 5.5 par défaut : sprint 11, 2026-10-22 ; plafond mensuel des crédits offerts, partagé avec la démo : sprint 7, S7a, migration 034) |
 
 ## Objectif
 
@@ -31,6 +31,9 @@ dans l'en-tête, à côté du bouton d'aide « ? ».
   plateforme est en environnement.
 - Le budget journalier **du tuteur** (`TUTEUR_BUDGET`, 1 $ si absent, vide ou
   `0` ; 2 M de tokens) n'est pas épuisé.
+- Les crédits offerts du mois UTC, **communs avec la démo** (20 $ par défaut,
+  `OFFERTS_MENSUEL_USD`, UC-ADM-04 RG10), ne sont pas épuisés : le pire cas de
+  la question y tient (RG8).
 - Le digest de documentation (`scripts/data/tuteur-digest.md`, généré par
   `scripts/build-tuteur-digest.mjs` depuis la carte du site,
   `scripts/lib/site-map.mjs`, UC-SYS-04 RG8) est présent dans la release —
@@ -45,8 +48,10 @@ dans l'en-tête, à côté du bouton d'aide « ? ».
   l'onglet est gardé en `sessionStorage` (40 derniers messages), jamais sur le
   serveur ni dans le `localStorage`.
 - Côté serveur : seulement les compteurs du jour du tuteur
-  (`tuteur_usage_daily` : requêtes, tokens, coût estimé), l'empreinte du défi
-  consommé et un seau de quota haché `tuteur:…`.
+  (`tuteur_usage_daily` : requêtes, tokens, coût estimé), le coût réel de la
+  question sur le grand livre du mois des crédits offerts
+  (`free_credit_monthly`, RG8), l'empreinte du défi consommé et un seau de
+  quota haché `tuteur:…`.
 - La consigne système (profil, page courante, digest) et la clé ne sont
   **jamais renvoyées au navigateur** ; elles ne sont transmises qu'au
   fournisseur LLM (Anthropic : consigne dans le champ `system`, clé dans
@@ -136,7 +141,19 @@ dans l'en-tête, à côté du bouton d'aide « ? ».
 - **E6 — Fournisseur** : saturé → `429` « L'assistant est saturé… » +
   `Retry-After` ; erreur → `502` « Erreur de l'assistant, réessayez plus
   tard. » (aucun détail amont) ; injoignable → « L'assistant est injoignable,
-  réessayez plus tard. » en `504` (délai) ou `502`.
+  réessayez plus tard. » en `504` (délai) ou `502`. La réserve du mois revient,
+  sauf quand la question a pu être reçue et facturée — un délai dépassé, une
+  connexion coupée après son envoi complet, une réponse 2xx illisible (pas du
+  JSON) — : son pire cas reste compté (RG8).
+- **E7 — Crédits offerts du mois épuisés** (sprint 7) : le pire cas de la
+  question ne tient plus sous le plafond du mois, que la démo a pu dépenser
+  aussi → `503` « Les crédits offerts de ce mois sont épuisés ; revenez le
+  1er novembre. » (le mois suivant nommé), `code: "offerts_epuises"`, rien
+  n'est parti ni compté au jour ; le panneau affiche ce message du serveur.
+  La démo est refusée de même (UC-VIS-03 E8). Le mois répond avant le jour :
+  un mois déjà dépensé est dit dès le coupe-circuit du jour, même si celui-ci
+  est épuisé lui aussi (« revenez le 1er », pas « revenez demain ») ; le
+  refus est compté au grand livre (`refuse`).
 
 ## Règles de gestion
 
@@ -194,6 +211,30 @@ dans l'en-tête, à côté du bouton d'aide « ? ».
   conversation avant la question, jamais dans la consigne système ; rien
   n'est conservé côté serveur (RG3). Le serveur en vérifie la forme, jamais
   l'origine : voir la limite sur la mémoire courte fournie par le client.
+- **RG8** — Plafond **mensuel** des crédits offerts, commun avec la démo
+  (sprint 7, S7a ; UC-VIS-03 RG7) : en plus de son budget du jour (RG2), qui
+  reste, chaque question réserve son pire cas sur le grand livre du mois UTC
+  (`Llm\FreeCreditLedger`, `free_credit_monthly`) après la construction de la
+  consigne et avant l'appel : un jeton par octet de la consigne, de la
+  question et des textes de la mémoire courte (un tokenizer BPE n'en compte
+  jamais plus), le surcoût de la requête (1 024) et les 600 jetons de sortie,
+  au tarif du modèle du tuteur (le plus haut de la grille et de `Pricing`).
+  Rendue, la réponse règle la réserve à son coût réel ; refusée par le
+  fournisseur (un statut d'erreur), jamais partie (résolution, connexion
+  refusée, poignée de main TLS), ou toute autre erreur : la réserve revient.
+  Quand le fournisseur a pu la recevoir et la facturer, la question garde son
+  pire cas entier, compté comme un appel (la réponse vient d'un bloc, rien ne
+  dit ce qu'elle a produit) : un délai dépassé ; une connexion coupée après
+  l'envoi complet de la requête (curl 52, 56 : `HttpClientException::
+  $requestSent`, que `CurlHttpClient` pose depuis la revue du 2026-10-23) ; une
+  réponse 2xx dont le corps n'est pas du JSON (facturée, comme à la démo).
+  Après l'appel, qui peut durer jusqu'au délai amont, le compteur du jour et
+  le règlement du mois s'écrivent chacun à part, sur une connexion neuve si
+  le serveur MySQL a lâché la connexion inactive (MySQL 2006,
+  `Db::avecReconnexion`, comme la démo) ; une écriture qui échoue malgré tout
+  est journalisée (sa classe seule) et la réponse est rendue (revue du
+  2026-10-23). Sans la place, `503` (E7). La clé manquante est refusée avant
+  la réserve.
 
 ## Données et RGPD
 
@@ -203,7 +244,7 @@ dans l'en-tête, à côté du bouton d'aide « ? ».
 | Rôle de l'utilisateur | Lu dans la session à chaque question, jamais transmis par le client |
 | Question, mémoire courte, profil, page courante | Transmis au fournisseur LLM (sous-traitant, Anthropic) pour produire la réponse ; non conservés par la plateforme |
 | IP | Seau haché `tuteur:` + sha256 de l'identité (/64 en IPv6) |
-| Usage | `tuteur_usage_daily` (migration 020) : requêtes, tokens, coût estimé du jour |
+| Usage | `tuteur_usage_daily` (migration 020) : requêtes, tokens, coût estimé du jour ; `free_credit_monthly` (migration 034, RG8) : dépense, réserve, appels et refus du mois, démo comprise — ni contenu, ni compte, ni IP |
 
 ## Code sollicité
 
@@ -218,6 +259,7 @@ dans l'en-tête, à côté du bouton d'aide « ? ».
 | Domaine | `api/src/Tuteur/CarteDuSite.php` — `charger`, `lignesRubrique` (`TUTEUR_SITE_MAP` ne sert qu'aux tests) | Page courante reconnue par la carte du site : titre, adresse, aide (RG1) |
 | Domaine | `api/src/Tuteur/MemoireCourte.php` — `borner` | Mémoire courte relue, bornée et validée (RG7) |
 | Domaine | `api/src/Llm/UsageCounters.php` (table `tuteur_usage_daily`) | Budget propre (RG2) |
+| Domaine | `api/src/Llm/FreeCreditLedger.php` (table `free_credit_monthly`, migration 034) | Plafond du mois commun avec la démo (RG8, E7) |
 | Domaine | `api/src/Llm/AnthropicProvider.php` (`forceJsonDocument: false`, `precedents`), `MockProvider`, `Pricing`, `ModelLimits::HAIKU_PAR_DEFAUT` | Réponse en prose, tours précédents, modèle par défaut, coût |
 | Domaine | `api/src/Llm/PowChallenge.php`, `DemoConfig.php`, `api/src/Auth/RateLimiter.php`, `api/src/Auth/Session.php`, `Users::rolesOf` (ordre alphabétique : « apprenant, cartographe ») | Gardes partagés, profil de session |
 | Domaine | `api/src/ClientIp.php` — `bucketIdentity` | Identité du seau (/64 en IPv6) |
@@ -249,6 +291,7 @@ dans l'en-tête, à côté du bouton d'aide « ? ».
 | UC-VIS-05-U14 | `CarteDuSite` (carte fictive) | Rubrique reconnue : titre, adresse ou modèle, résumé et points de la seule page ; nom inconnu, route interne, casse, blancs internes, valeur non textuelle → rien ; sans carte, rien non plus, même un nom de route ; fichier absent, illisible ou d'une autre version → pas de carte (RG1, AN1 corrigée) | `api/tests/UseCases/Unit/UcVis05InterrogerTuteurTest.php` |
 | UC-VIS-05-U15 | `MemoireCourte::borner` | Vecteurs communs : paires question → réponse seulement, les 2 dernières, 750 / 1 500 caractères (points de code), rôle `system`, question sans réponse et autre forme écartés (RG7) | idem |
 | UC-VIS-05-U16 | `memoireCourte` | Les mêmes vecteurs que U15, côté navigateur ; idempotente | `web/test/usecases/unit/uc-vis-05-interroger-assistant-tuteur.test.js` |
+| UC-VIS-05-U17 | `CurlHttpClient::requestSent` | Sur de vrais transferts curl vers un serveur local : une connexion fermée sans réponse après la lecture du corps entier (curl 52) dit la requête partie, un octet de corps en plus non ; une connexion refusée (curl 7) non ; le client https seul refuse http et une connexion refusée sans la dire partie (RG8) | `api/tests/UseCases/Unit/UcVis05InterrogerTuteurTest.php` |
 
 ### Tests fonctionnels
 
@@ -276,6 +319,11 @@ dans l'en-tête, à côté du bouton d'aide « ? ».
 | UC-VIS-05-F20 | RG6 | API | `TUTEUR_MODEL` absent de l'environnement (le défaut de la route) ou vide (le repli) → Haiku 5.5 ; un Sonnet ou un Opus → Haiku 5.5 appelé ; un autre Haiku (4.5) servi tel quel ; `thinking: disabled` à chaque appel | `api/tests/UseCases/Functional/UcVis05InterrogerTuteurTest.php` |
 | UC-VIS-05-F21 | RG7, A4, A5 | API | Mémoire courte : les 2 derniers échanges en tours `user`/`assistant` avant la question, jamais dans la consigne ; rôle `system`, question sans réponse écartés ; message coupé à 750 caractères ; historique qui n'est pas une liste ignoré ; le mock répond sans le lire | idem |
 | UC-VIS-05-F22 | RG7, A5 | IHM | Relance après trois échanges et un refus (503) : seuls les 2 derniers échanges partent, sans la question refusée, la longue réponse coupée à 750 caractères ; le fil complet reste en `sessionStorage`, rien en `localStorage` | `web/test/usecases/functional/uc-vis-05-interroger-assistant-tuteur.test.jsx` |
+| UC-VIS-05-F23 | E7, RG8 | API | Plafond du mois à 0,01 $, fournisseur mock, Haiku 5.5 : la question y tient, réservée puis réglée (coût nul du mock) ; 9 900 µ$ dépensés → 503 « Les crédits offerts de ce mois sont épuisés ; revenez le 1er … », `offerts_epuises`, rien au budget du jour du tuteur ; la démo est refusée de même (plafond commun) ; le mois dépensé et le jour épuisé → le mois répond, le jour seul → « revenez demain » | `api/tests/UseCases/Functional/UcVis05InterrogerTuteurTest.php` |
+| UC-VIS-05-F24 | RG8, E6 | API | Un échec libère la réserve du mois (429, 500, connexion refusée) ; un délai dépassé laisse son pire cas compté (consigne, question et surcoût à un jeton par octet, 600 jetons de sortie) ; une réponse rendue (100 + 50 jetons de Haiku 4.5) se règle à 350 µ$ ; sans clé, rien réservé | idem |
+| UC-VIS-05-F25 | RG8, E6 | API | Une réponse 2xx dont le corps n'est pas du JSON : 502, son pire cas reste compté sur le mois, un appel ; une erreur 503 (même illisible) rend sa réserve | idem |
+| UC-VIS-05-F26 | RG8, E6 | API | Une erreur réseau après l'envoi complet (`requestSent`, curl 52) : 502 « injoignable », son pire cas reste compté ; une connexion refusée rend sa réserve | idem |
+| UC-VIS-05-F27 | RG8 | API | La connexion MySQL de la route coupée pendant l'appel (MySQL 2006) : la réponse est rendue (200), le compteur du jour (1 requête, 100 + 50 jetons) et le règlement du mois (350 µ$) s'écrivent sur une connexion neuve ; de même le pire cas d'un délai dépassé (504) et la réserve rendue d'un 500 | idem |
 
 ### Tests existants liés (non-régression)
 
@@ -318,7 +366,13 @@ cd web && npx vitest run test/usecases/unit/uc-vis-05 test/usecases/functional/u
 - Le quota horaire du tuteur reprend la valeur de la démo (`perIpPerHour`) :
   il n'est pas réglable séparément.
 - `TUTEUR_BUDGET` vide ou `0` retombe sur 1 $ (`?: '1'`) : le budget du tuteur
-  ne peut pas être mis à zéro.
+  ne peut pas être mis à zéro. Le plafond du mois, lui, peut l'être
+  (`monthlyFreeUsd` à 0, UC-ADM-04 RG10) : il ferme le tuteur et la démo
+  ensemble.
+- Le budget du jour du tuteur reste vérifié **après coup** (`isExhausted`,
+  puis `record`) : des questions concurrentes peuvent le passer de quelques
+  questions ; le plafond du mois, lui, réserve avant l'appel (RG8) et n'est
+  jamais passé.
 - Replis du panneau : réponse sans texte → « Je n'ai pas de réponse pour
   l'instant. » ; erreur sans message → « L'assistant est indisponible pour le
   moment. ».

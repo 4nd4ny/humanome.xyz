@@ -5,6 +5,8 @@ declare(strict_types=1);
 namespace Humanome\Tests\UseCases\Unit;
 
 use Humanome\Llm\AnthropicProvider;
+use Humanome\Llm\CurlHttpClient;
+use Humanome\Llm\HttpClientException;
 use Humanome\Llm\ModelLimits;
 use Humanome\Llm\Pricing;
 use Humanome\Llm\UsageCounters;
@@ -28,7 +30,10 @@ use PHPUnit\Framework\TestCase;
  * précédents avant la question), tarification du modèle du tuteur (le plafond
  * en dollars doit pouvoir se déclencher), carte du site qui filtre la rubrique
  * (Tuteur\CarteDuSite) et mémoire courte (Tuteur\MemoireCourte), sur des
- * fixtures FICTIVES (api/tests/fixtures/tuteur/).
+ * fixtures FICTIVES (api/tests/fixtures/tuteur/). Et ce qui décide si une
+ * question en échec a pu être facturée, mesuré sur de vrais transferts curl
+ * vers un serveur LOCAL (127.0.0.1, un processus PHP à part ; aucun appel
+ * réseau vers un fournisseur).
  */
 final class UcVis05InterrogerTuteurTest extends TestCase
 {
@@ -208,5 +213,111 @@ final class UcVis05InterrogerTuteurTest extends TestCase
                 : $message,
             $historique,
         );
+    }
+
+    #[TestDox('UC-VIS-05-U17 — CurlHttpClient::requestSent : une connexion coupée après l’envoi complet de la question (le serveur lit tout, puis ferme sans répondre : curl 52) dit la question partie — le fournisseur a pu la facturer ; une connexion refusée (curl 7) ne la dit pas partie ; un client https seul refuse le http avant tout envoi, sans la dire partie (RG8)')]
+    public function testU17RequestSentAfterTheWholeBody(): void
+    {
+        $body = json_encode(['model' => 'modele-fictif', 'messages' => [['role' => 'user', 'content' => str_repeat('q', 500)]]]);
+        self::assertIsString($body);
+        $server = self::serverThatReadsThenHangsUp();
+        try {
+            $ch = curl_init('http://' . $server['address'] . '/v1/messages');
+            self::assertNotFalse($ch);
+            curl_setopt_array($ch, [
+                CURLOPT_CUSTOMREQUEST => 'POST',
+                CURLOPT_POSTFIELDS => $body,
+                CURLOPT_HTTPHEADER => ['content-type: application/json'],
+                CURLOPT_RETURNTRANSFER => true,
+                CURLOPT_TIMEOUT => 10,
+            ]);
+            self::assertFalse(curl_exec($ch));
+            self::assertSame(CURLE_GOT_NOTHING, curl_errno($ch), 'connexion fermée sans un octet de réponse');
+            self::assertTrue(CurlHttpClient::requestSent($ch, \strlen($body)), 'la question est partie en entier');
+            self::assertFalse(CurlHttpClient::requestSent($ch, \strlen($body) + 1), 'un octet de moins que le corps : pas partie');
+        } finally {
+            [$exit, $read, $errors] = self::finish($server);
+        }
+        self::assertSame(0, $exit, $errors);
+        self::assertSame((string) \strlen($body), trim($read), 'le serveur a reçu tout le corps');
+
+        // Une connexion refusée : rien n'est parti.
+        $port = self::closedPort();
+        $refused = curl_init('http://127.0.0.1:' . $port . '/v1/messages');
+        self::assertNotFalse($refused);
+        curl_setopt_array($refused, [CURLOPT_CUSTOMREQUEST => 'POST', CURLOPT_POSTFIELDS => $body,
+            CURLOPT_RETURNTRANSFER => true, CURLOPT_TIMEOUT => 10]);
+        self::assertFalse(curl_exec($refused));
+        self::assertSame(CURLE_COULDNT_CONNECT, curl_errno($refused));
+        self::assertFalse(CurlHttpClient::requestSent($refused, \strlen($body)));
+
+        // Le client de production (https seul) : refusée avant tout envoi, ni partie ni délai dépassé.
+        foreach (['http://127.0.0.1:' . $port . '/v1/messages', 'https://127.0.0.1:' . $port . '/v1/messages'] as $url) {
+            try {
+                (new CurlHttpClient())->request('POST', $url, [], $body, 5);
+                self::fail('une exception était attendue pour ' . $url);
+            } catch (HttpClientException $e) {
+                self::assertSame([false, false], [$e->requestSent, $e->timedOut], $url);
+            }
+        }
+    }
+
+    /**
+     * A local TCP server, in a PHP process of its own: it reads one HTTP
+     * request whole (its headers, then Content-Length bytes), closes the
+     * connection without a byte of answer, and prints the body's length.
+     *
+     * @return array{process: resource, pipes: array<int, resource>, address: string}
+     */
+    private static function serverThatReadsThenHangsUp(): array
+    {
+        $code = <<<'PHP'
+            $server = stream_socket_server('tcp://127.0.0.1:0', $errno, $errstr);
+            if ($server === false) { fwrite(STDERR, $errstr); exit(1); }
+            fwrite(STDOUT, stream_socket_get_name($server, false) . "\n");
+            fflush(STDOUT);
+            $conn = stream_socket_accept($server, 10);
+            if ($conn === false) { fwrite(STDERR, 'no client'); exit(1); }
+            $data = '';
+            while (!str_contains($data, "\r\n\r\n") && !feof($conn)) { $data .= fread($conn, 8192); }
+            [$head, $rest] = explode("\r\n\r\n", $data, 2) + [1 => ''];
+            $length = preg_match('/^content-length:\s*(\d+)/mi', $head, $m) === 1 ? (int) $m[1] : 0;
+            while (strlen($rest) < $length && !feof($conn)) { $rest .= fread($conn, 8192); }
+            fclose($conn);
+            fwrite(STDOUT, strlen($rest) . "\n");
+            PHP;
+        $process = proc_open([PHP_BINARY, '-r', $code], [1 => ['pipe', 'w'], 2 => ['pipe', 'w']], $pipes);
+        self::assertIsResource($process);
+        $address = trim((string) fgets($pipes[1]));
+        self::assertMatchesRegularExpression('/^127\.0\.0\.1:\d+$/', $address);
+
+        return ['process' => $process, 'pipes' => $pipes, 'address' => $address];
+    }
+
+    /** A port of 127.0.0.1 that nothing listens on (bound, then released). */
+    private static function closedPort(): int
+    {
+        $socket = stream_socket_server('tcp://127.0.0.1:0');
+        self::assertNotFalse($socket);
+        $port = (int) substr((string) strrchr((string) stream_socket_get_name($socket, false), ':'), 1);
+        fclose($socket);
+
+        return $port;
+    }
+
+    /**
+     * Waits for the server: its exit code, the rest of its output, its errors.
+     *
+     * @param array{process: resource, pipes: array<int, resource>} $child
+     * @return array{0: int, 1: string, 2: string}
+     */
+    private static function finish(array $child): array
+    {
+        $out = (string) stream_get_contents($child['pipes'][1]);
+        $errors = (string) stream_get_contents($child['pipes'][2]);
+        fclose($child['pipes'][1]);
+        fclose($child['pipes'][2]);
+
+        return [proc_close($child['process']), $out, $errors];
     }
 }

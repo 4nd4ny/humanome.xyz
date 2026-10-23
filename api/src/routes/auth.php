@@ -10,15 +10,16 @@ declare(strict_types=1);
  * Error messages are user-facing, hence in French (convention CLAUDE.md).
  */
 
+use Humanome\Auth\ActivationMail;
 use Humanome\Auth\Audit;
 use Humanome\Auth\LoginJournal;
 use Humanome\Auth\RateLimiter;
 use Humanome\Auth\Session;
 use Humanome\Auth\Users;
+use Humanome\Auth\Waitlist;
 use Humanome\ClientIp;
+use Humanome\Clock;
 use Humanome\Db;
-use Humanome\Env;
-use Humanome\Mail\MailerFactory;
 use Humanome\Middleware\CsrfMiddleware;
 use Humanome\Twin9\RunPurge;
 use Psr\Http\Message\ResponseInterface as Response;
@@ -80,39 +81,22 @@ return function (App $app): void {
     // VRAI garde-fou du code court est le rate-limit du RENVOI (chaque renvoi
     // régénère le code et rouvre les 5 essais) : 5 × (renvois/heure) reste très
     // en-deçà de 10^4. Anti-énumération : mêmes réponses que le compte existe ou non.
-    $CODE_TTL_SECONDS = 1800; // 30 minutes
+    // Le code et son mail : Auth\ActivationMail (30 minutes), partagé avec la levée
+    // de la liste d'attente (sprint 7, S7a-2 : Auth\Waitlist).
     $MAX_CODE_ATTEMPTS = 5;
 
     /** Génère un code à 4 chiffres, le pose (hashé + expiration) et l'envoie par email. */
-    $sendVerification = function (\PDO $pdo, int $userId, string $email) use ($CODE_TTL_SECONDS): void {
-        $code = str_pad((string) random_int(0, 9999), 4, '0', STR_PAD_LEFT);
-        $expiresAt = date('Y-m-d H:i:s', time() + $CODE_TTL_SECONDS);
-        Users::setVerificationCode($pdo, $userId, Users::hashPassword($code), $expiresAt);
-
-        $site = rtrim(Env::get('SITE_URL', 'https://humanome.xyz'), '/');
-        $link = $site . '/#/activer?email=' . rawurlencode($email) . '&code=' . $code;
-        $subject = 'humanome.xyz — activez votre compte';
-        $body = implode("\n", [
-            'Bonjour,',
-            '',
-            'Bienvenue sur humanome.xyz. Pour activer votre compte, votre code de confirmation est :',
-            '',
-            '    ' . $code,
-            '',
-            'Vous pouvez aussi cliquer ce lien — il vous connecte sans ressaisir votre mot de passe :',
-            $link,
-            '',
-            'Ce code expire dans 30 minutes. Si vous n\'êtes pas à l\'origine de cette inscription, ignorez ce message.',
-            '',
-            '— L\'équipe humanome.xyz',
-        ]);
-        MailerFactory::default()->send($email, $subject, $body);
+    $sendVerification = static function (\PDO $pdo, int $userId, string $email): void {
+        ActivationMail::send($pdo, $userId, $email);
     };
 
     // ------------------------------------------------------------------
     // POST /api/auth/register — {email, emailConfirm, password, displayName}
     // Default role: apprenant (cahier §3.2). NE crée PAS de session : le compte
     // est NON activé jusqu'à /auth/activate (D5). Double saisie de l'email.
+    // Crédits offerts du mois épuisés (sprint 7, S7a-2) : le compte est créé EN
+    // LISTE D'ATTENTE (waitlisted_at), sans code — un mail le dit, la réponse
+    // aussi (201 {status: "waitlisted"}) ; son code part à la levée (Waitlist).
     // ------------------------------------------------------------------
     $app->post('/auth/register', function (Request $request, Response $response) use ($json, $clientIp, $credentials, $sendVerification): Response {
         if (!Db::isConfigured()) {
@@ -129,6 +113,13 @@ return function (App $app): void {
             return $json($response, ['error' => 'Trop de tentatives, réessayez plus tard'], 429)
                 ->withHeader('Retry-After', (string) $limiter->retryAfter($attempts));
         }
+        // L'horloge, lue une fois : la décision (le mois dépensé ?) et ce qui
+        // l'écrit — la date d'attente, le courriel, la réponse — sont du même
+        // mois, même si la création du compte (Argon2id) passe minuit le 31.
+        $now = Clock::now();
+        // La première requête du mois lève la liste d'attente des mois passés.
+        $waitlist = new Waitlist($pdo);
+        $waitlist->liftDue($now);
 
         ['email' => $email, 'password' => $password, 'displayName' => $displayName] = $credentials($request);
         $data = (array) ($request->getParsedBody() ?? []);
@@ -157,12 +148,21 @@ return function (App $app): void {
             return $json($response, ['error' => 'Un compte existe déjà avec cette adresse email'], 409);
         }
 
+        // Une décision prise une fois : ce qui reste du mois paie-t-il encore le
+        // plus petit appel de l'Essayer ? (FreeCreditLedger::signupsOpen.)
+        $waitlisted = !$waitlist->signupsOpen($now);
         try {
             $pdo->beginTransaction();
             $userId = Users::create($pdo, $email, Users::hashPassword($password), $displayName);
             Users::assignRole($pdo, $userId, 'apprenant');
             Audit::record($pdo, $userId, Audit::ACCOUNT_CREATED);
-            $sendVerification($pdo, $userId, $email); // code posé + email envoyé
+            if ($waitlisted) {
+                $waitlist->enlist($userId, $now);
+                Audit::record($pdo, $userId, Waitlist::AUDIT_WAITLISTED);
+                ActivationMail::sendWaitlisted($email, $now); // aucun code : l'activation attend la levée
+            } else {
+                $sendVerification($pdo, $userId, $email); // code posé + email envoyé
+            }
             $pdo->commit();
         } catch (\PDOException $e) {
             if ($pdo->inTransaction()) {
@@ -172,6 +172,14 @@ return function (App $app): void {
                 return $json($response, ['error' => 'Un compte existe déjà avec cette adresse email'], 409);
             }
             throw $e;
+        }
+
+        if ($waitlisted) {
+            return $json($response, [
+                'status' => 'waitlisted',
+                'email' => $email,
+                'message' => Waitlist::signupMessage($now),
+            ], 201);
         }
 
         // PAS de session : le compte n'est activé qu'après confirmation du code.
@@ -215,12 +223,14 @@ return function (App $app): void {
         $genericError = ['error' => 'Code invalide ou expiré'];
         $user = Users::findByEmail($pdo, $email);
         // Anti-énumération : même réponse si le compte est inconnu, déjà activé,
-        // sans code, expiré, sur-tenté ou si le code est faux.
+        // en liste d'attente, sans code, expiré, sur-tenté ou si le code est faux.
         if ($user === null
             || Users::isVerified($user)
+            || Waitlist::isWaitlisted($user) // en liste d'attente : son code n'est pas encore parti
             || ($user['verification_code_hash'] ?? null) === null
             || (int) ($user['verification_attempts'] ?? 0) >= $MAX_CODE_ATTEMPTS
-            || strtotime((string) ($user['verification_expires_at'] ?? '1970-01-01')) < time()) {
+            // l'expiration est en UTC (ActivationMail), quel que soit le fuseau de PHP
+            || strtotime((string) ($user['verification_expires_at'] ?? '1970-01-01') . ' UTC') < time()) {
             return $json($response, $genericError, 401);
         }
 
@@ -246,7 +256,8 @@ return function (App $app): void {
     // POST /api/auth/resend — {email}
     // Renvoie un code (régénéré, essais remis à 0). C'est le VRAI garde-fou du
     // code court : rate-limit STRICT par compte ET par IP. Anti-énumération :
-    // réponse générique quel que soit l'état du compte (D5).
+    // réponse générique quel que soit l'état du compte (D5). Un compte en liste
+    // d'attente ne reçoit rien (sprint 7) : son code part à la levée.
     // ------------------------------------------------------------------
     $app->post('/auth/resend', function (Request $request, Response $response) use ($json, $clientIp, $sendVerification): Response {
         if (!Db::isConfigured()) {
@@ -276,11 +287,21 @@ return function (App $app): void {
         }
         $ipLimiter->hit($ipBucket);
         $acctLimiter->hit($acctBucket);
+        $waitlist = new Waitlist($pdo);
+        $now = Clock::now(); // une fois, pour ce compte et la levée du mois
 
         $user = Users::findByEmail($pdo, $email);
         if ($user !== null && !Users::isVerified($user)) {
-            $sendVerification($pdo, (int) $user['id'], $email);
+            if (!Waitlist::isWaitlisted($user)) {
+                $sendVerification($pdo, (int) $user['id'], $email);
+            } elseif (Waitlist::isDue($user, $now)) {
+                $waitlist->lift((int) $user['id'], null, $now); // son attente est finie : son code part avec la levée, une fois
+            }
+            // En liste d'attente ce mois-ci : aucun code (l'activation attend la levée).
         }
+        // Puis les autres comptes dus : la première requête du mois lève la liste
+        // des mois passés (après ce compte, pour qu'il ne reçoive qu'un code).
+        $waitlist->liftDue($now);
 
         return $json($response, $generic);
     });
@@ -311,6 +332,12 @@ return function (App $app): void {
                 ->withHeader('Retry-After', (string) $limiter->retryAfter($attempts));
         }
 
+        // La première requête du mois lève la liste d'attente des mois passés
+        // (l'horloge lue une fois, pour elle et pour ce compte).
+        $now = Clock::now();
+        $waitlist = new Waitlist($pdo);
+        $waitlist->liftDue($now);
+
         $user = Users::findByEmail($pdo, $email);
         $hash = $user === null ? Users::dummyHash() : (string) $user['password_hash'];
         if (!password_verify($password, $hash) || $user === null) {
@@ -318,6 +345,31 @@ return function (App $app): void {
             LoginJournal::failure($pdo, $user === null ? null : (int) $user['id'], $clientIp($request));
 
             return $json($response, ['error' => 'Identifiants invalides'], 401);
+        }
+
+        // Compte en liste d'attente (sprint 7, S7a-2), AVANT le compte non activé
+        // qu'il est aussi : 403 {code: "waitlisted"}, sans session ni code. Son
+        // attente finie (un mois passé), il est levé ici (ou vient de l'être par
+        // une requête concurrente) : son code part, et il devient un compte non
+        // activé ordinaire — sauf si le transport refuse le courriel : il reste
+        // en attente, et la réponse le dit.
+        if (Waitlist::isWaitlisted($user)) {
+            if (!Waitlist::isDue($user, $now)) {
+                return $json($response, [
+                    'error' => Waitlist::signupMessage($now),
+                    'code' => 'waitlisted',
+                    'email' => (string) $user['email'],
+                ], 403);
+            }
+            if ($waitlist->lift((int) $user['id'], null, $now) === Waitlist::MAIL_FAILED) {
+                // Le courriel de son code n'est pas parti : il reste en liste
+                // d'attente, la prochaine connexion (ou levée) réessaie.
+                return $json($response, [
+                    'error' => Waitlist::MAIL_FAILED_MESSAGE,
+                    'code' => 'waitlisted',
+                    'email' => (string) $user['email'],
+                ], 403);
+            }
         }
 
         // Compte non activé (email non confirmé, D5) : 403 explicite + le front

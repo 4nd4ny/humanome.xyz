@@ -8,7 +8,7 @@
 // /api/admin/demo-config (fusion des surcharges, origine « base » /
 // « fichier », 422 hors bornes, CSRF exigé, DELETE = retour au fichier).
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
-import { act, cleanup, fireEvent, render, screen, waitFor } from '@testing-library/react'
+import { act, cleanup, fireEvent, render, screen, waitFor, within } from '@testing-library/react'
 import App from '../../../src/App.jsx'
 import { resetApiClient } from '../../../src/api/client.js'
 import * as fakeLib from '../../../src/test/fake-sunburst-lib.js'
@@ -241,6 +241,54 @@ describe('UC-ADM-04 — l’administrateur configure la démo publique', () => {
 
     expect(await screen.findByText('Aucune modification à enregistrer.')).toBeTruthy()
     expect(callsTo(backend.calls, 'PUT', 'api/admin/demo-config')).toHaveLength(0)
+    expect(screen.queryByRole('alert')).toBeNull()
+  })
+
+  it('UC-ADM-04-F26 — A9 : la liste d’attente des inscriptions dans #/admin/reglages — comptes en attente dans l’ordre, « Lever » un compte (POST + CSRF) le retire et le dit, « Tout lever » vide la liste ; les réglages de la démo restent là', async () => {
+    let waiting = [
+      { id: 21, email: 'ada@example.org', displayName: 'Ada', createdAt: '2026-10-20T08:00:00', waitlistedAt: '2026-10-20T06:00:00Z' },
+      { id: 22, email: 'bob@example.org', displayName: 'Bob', createdAt: '2026-10-21T08:00:00', waitlistedAt: '2026-10-21T06:00:00Z' },
+      { id: 23, email: 'cid@example.org', displayName: 'Cid', createdAt: '2026-10-22T08:00:00', waitlistedAt: '2026-10-22T06:00:00Z' },
+    ]
+    const guard = (init) => init.headers?.['X-CSRF-Token'] === CSRF
+    const routes = {
+      ...demoRoutes(),
+      'GET api/admin/waitlist': () =>
+        jsonResponse(200, { month: '2026-10', signupsOpen: false, nextLift: '2026-11-01', total: waiting.length, accounts: waiting }),
+      'POST api/admin/waitlist/22/lift': (init) => {
+        if (!guard(init)) return jsonResponse(403, { error: 'Jeton CSRF absent ou invalide' })
+        waiting = waiting.filter((a) => a.id !== 22)
+        return jsonResponse(200, { id: 22, status: 'lifted' })
+      },
+      'POST api/admin/waitlist/lift': (init) => {
+        if (!guard(init)) return jsonResponse(403, { error: 'Jeton CSRF absent ou invalide' })
+        const lifted = waiting.length
+        waiting = []
+        return jsonResponse(200, { lifted, remaining: 0 })
+      },
+    }
+    const backend = createAdminBackend({ routes })
+    openAdmin(backend)
+    await screen.findByRole('switch', DEMO_SWITCH)
+
+    const block = await screen.findByTestId('admin-waitlist')
+    await within(block).findByText('bob@example.org')
+    expect(block.textContent).toContain('Inscriptions : en liste d’attente.')
+    expect(within(block).getAllByRole('row').slice(1).map((r) => within(r).getByText(/@example\.org$/).textContent)).toEqual([
+      'ada@example.org',
+      'bob@example.org',
+      'cid@example.org',
+    ])
+
+    await click(within(block).getByRole('button', { name: 'Lever bob@example.org' }))
+    expect(await within(block).findByText('bob@example.org : levé, son code d’activation part par email.')).toBeTruthy()
+    expect(within(block).queryByText('bob@example.org')).toBeNull()
+    expect(callsTo(backend.calls, 'POST', 'api/admin/waitlist/22/lift')).toHaveLength(1)
+
+    await click(within(block).getByRole('button', { name: 'Tout lever (2)' }))
+    expect(await within(block).findByText('2 comptes levés.')).toBeTruthy()
+    expect(within(block).getByText('Aucune inscription en attente.')).toBeTruthy()
+    expect(screen.getByRole('switch', DEMO_SWITCH)).toBeTruthy()
     expect(screen.queryByRole('alert')).toBeNull()
   })
 })

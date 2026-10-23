@@ -3,11 +3,11 @@
 | Champ | Valeur |
 |---|---|
 | **Acteur principal** | Visiteur qui devient utilisateur inscrit (rôle `apprenant` par défaut) |
-| **Acteurs secondaires** | Transport email (`mail()` de l'hébergeur OVH) ; administrateur (attribue ensuite d'autres rôles, UC-ADM-01) |
-| **Portée** | humanome.xyz — `#/compte` (onglet « Inscription »), `#/activer?email=…&code=…`, `POST /api/auth/register`, `/activate`, `/resend` |
+| **Acteurs secondaires** | Transport email (`mail()` de l'hébergeur OVH) ; administrateur (attribue ensuite d'autres rôles, UC-ADM-01 ; lève la liste d'attente, UC-ADM-04 A9) ; le tick (`POST /api/admin/worker-tick`, `scripts/worker.php`), qui lève la liste au 1er du mois |
+| **Portée** | humanome.xyz — `#/compte` (onglet « Inscription »), `#/activer?email=…&code=…`, `POST /api/auth/register`, `/activate`, `/resend` ; la liste d'attente des inscriptions (sprint 7) |
 | **Niveau** | Objectif utilisateur |
 | **Cahier des charges** | §3.2 (« Créer un compte »), §4.5 (comptes), §6 (principes RGPD) ; journalisation minimale : `CLAUDE.md`, principe RGPD n° 5 ; anti-énumération et activation par code : décisions D5 / AD-D3 (`STATUS.md`) |
-| **Statut** | Implémenté (P3, durci en D5 : double saisie de l'email, activation par code) |
+| **Statut** | Implémenté (P3, durci en D5 : double saisie de l'email, activation par code ; liste d'attente au plafond des crédits offerts, sprint 7, S7a-2) |
 
 ## Objectif
 
@@ -40,6 +40,11 @@ Le visiteur ouvre `#/compte` et choisit « Inscription » — ou clique le lien
   CSRF délivré) ; la navigation du site passe en mode « connecté ».
 - Audit : `account_created` (sans détail) à l'inscription, `login`
   (`{pays, reseau}`) à l'activation — jamais d'IP brute.
+
+- **Crédits offerts du mois épuisés** (A4, RG8) : le compte est créé **en
+  liste d'attente** (`users.waitlisted_at`, UTC) ; aucun code n'est posé ni
+  envoyé, un email et la réponse le disent ; il ne peut pas se connecter
+  avant la levée (A5). Les comptes existants ne sont pas touchés.
 
 ## Garanties minimales (en cas d'échec)
 
@@ -110,6 +115,38 @@ Le visiteur ouvre `#/compte` et choisit « Inscription » — ou clique le lien
   "email_not_verified", email}` (voir UC-CPT-02 E3) et le site ouvre l'écran
   d'activation avec la notice « Ce compte n'est pas encore activé… » ; le
   scénario reprend à l'étape 7.
+- **A4 — Crédits offerts du mois épuisés** (étape 5, sprint 7) : quand le
+  plafond mensuel moins ce que le mois a dépensé ne couvre plus le plus petit
+  appel de l'Essayer (RG8), le serveur crée le compte comme à l'étape 5 (rôle
+  `apprenant`, `account_created`), pose `waitlisted_at`, journalise
+  `account_waitlisted` et n'envoie **aucun code** : un email « votre
+  inscription est en liste d'attente » nomme le 1er du mois suivant. Réponse
+  `201 {status: "waitlisted", email, message: "Les crédits offerts de ce mois
+  sont épuisés : votre inscription est en liste d'attente. Vous recevrez votre
+  code d'activation par email le 1er novembre (plus tôt si l'administrateur
+  lève la liste)."}`, sans session. Le site reste sur le formulaire de
+  connexion, le message en notice, sans écran d'activation. Tant qu'il
+  attend : la connexion, bon mot de passe, répond `403 {code: "waitlisted"}`
+  et le même message (le site l'affiche, sans écran d'activation ni
+  « Renvoyer le code ») ; le renvoi (A2) garde sa réponse générique sans rien
+  envoyer ; l'activation répond le refus générique (E5).
+- **A5 — Levée de la liste** (après A4) : au 1er du mois suivant (UTC), la
+  première requête d'authentification du mois (`register`, `login`, `resend`,
+  même ratée, même d'un autre compte), le tick ou l'ouverture de la liste par
+  l'administrateur lève les comptes dont l'attente est finie, **dans l'ordre
+  d'inscription**, par lots de 50 ; la connexion ou le renvoi d'un compte dû
+  le lève lui-même. L'administrateur peut aussi lever un compte, ou tous, à
+  tout moment (UC-ADM-04, A9). Levé, le compte est un compte non activé
+  ordinaire : son code part par email (« votre inscription sort de la liste
+  d'attente », le lien `#/activer`, 30 minutes, puis « connectez-vous et
+  Renvoyer le code »), et le scénario reprend à l'étape 7 (ou par A3). Un
+  courriel que le transport refuse (`mail()` rend `false`) laisse le compte
+  **en liste d'attente**, à sa date et sans code : la levée du mois s'arrête
+  et se retient 5 minutes, puis réessaie ; le tick le compte
+  (`listeAttenteEchecs`) ; la connexion du compte répond `403 waitlisted`
+  « Votre attente est finie, mais le courriel de votre code d'activation n'a
+  pas pu partir : réessayez de vous connecter dans quelques minutes. » (revue
+  du 2026-10-23).
 
 ## Scénarios d'erreur
 
@@ -169,6 +206,34 @@ Le visiteur ouvre `#/compte` et choisit « Inscription » — ou clique le lien
   ≥ 10) et borné en octets (≤ 1024).
 - **RG7** — `register`, `activate`, `resend` sont exemptés de CSRF (routes de
   visiteur, protégées par quotas).
+- **RG8** — Liste d'attente (sprint 7, `docs/contrats.md` §13.1) : une
+  inscription attend dès que le plafond des crédits offerts du mois
+  (`monthlyFreeUsd`, 20 $ par défaut) moins ce que le mois a **dépensé** est
+  sous le pire cas du plus petit appel de l'Essayer (entrée : le seul surcoût
+  de 1 024 jetons ; sortie : le maximum du modèle ; au tarif de la grille,
+  `Waitlist::floorMicrousd`). Les réserves des appels en vol ne comptent pas ;
+  une réserve **orpheline** (son processus mort avant de la régler) compte dès
+  qu'elle a expiré en dépense, après `FreeCreditLedger::RESERVATION_TTL_SECONDS`
+  (15 minutes ; UC-VIS-03 RG7), et non plus jamais jusqu'au 1er : les
+  inscriptions ne restent pas ouvertes quand l'offert est fermé (revue du
+  2026-10-23). Un plafond de 0 met toute inscription en attente ; la décision
+  est prise une fois, à l'inscription. Sous ce seuil, aucun appel de l'Essayer
+  ne passe plus, même sans appel en vol.
+- **RG9** — Horloge de la liste : `waitlisted_at` est écrit en **UTC** par PHP
+  (`gmdate`), jamais par `NOW()` de MySQL ; un compte est dû dès le 1er du mois
+  UTC suivant, 0 h (1 h ou 2 h à Paris), le mois du grand livre des crédits
+  offerts. Chaque requête (`register`, `login`, `resend`) lit l'horloge **une
+  fois** (`Humanome\Clock`) et la passe à la décision et à ce qui l'écrit :
+  une inscription refusée sous octobre à 23 h 59 min 59 s UTC le 31 est datée
+  d'octobre et levée le 1er novembre, même si la création du compte (le
+  hachage Argon2id) passe minuit (revue du 2026-10-23). L'expiration du code
+  (`verification_expires_at`) est elle aussi écrite en UTC (`gmdate`) et lue
+  comme telle par `/activate` : un code posé par le cron (`scripts/worker.php`,
+  qui lève la liste en ligne de commande) et lu par le PHP du web ne dépend
+  plus de leurs fuseaux. Les codes posés avant ce changement, en heure locale
+  de PHP, vivent au plus le décalage de plus (2 h 30 sous Paris), une fois. Chaque levée est un `UPDATE … WHERE waitlisted_at IS NOT NULL` :
+  deux levées simultanées n'envoient qu'un email. Audit `waitlist_lifted
+  {targetUserId}`, sans auteur pour la levée du mois.
 
 ## Données et RGPD
 
@@ -176,7 +241,8 @@ Le visiteur ouvre `#/compte` et choisit « Inscription » — ou clique le lien
 |---|---|
 | Email, nom affiché | `users` ; purgés avec le compte (UC-CPT-06). Un compte **jamais activé** n'est jamais purgé (AN3) |
 | Mot de passe | Empreinte Argon2id uniquement |
-| Code de confirmation | Empreinte Argon2id, expiration, compteur ; effacés à l'activation (registre RGPD §1 bis) ; conservés sans limite pour un compte jamais activé (AN3) |
+| Code de confirmation | Empreinte Argon2id, expiration, compteur ; effacés à l'activation (registre RGPD §1 bis) ; conservés sans limite pour un compte jamais activé (AN3). Aucun pour un compte en liste d'attente, avant sa levée |
+| Mise en liste d'attente | `users.waitlisted_at` : une date (UTC), effacée à la levée ; rien de plus que ce que garde une inscription (registre RGPD §1 et §1 bis) ; audit `account_waitlisted` (sans détail), `waitlist_lifted` (`{targetUserId}`) |
 | Empreinte d'email (quota de renvoi) | `rate_limits`, seau `resend:acct:` + sha256(email) **non salé** ; non purgé par UC-CPT-06 ; supprimé seulement au prochain renvoi vers la même adresse dans une fenêtre ultérieure (AN2) |
 | IP du visiteur | Jamais en clair, mais **empreintes sha256 non salées** : seaux `register:`, `activate:`, `resend:ip:` = sha256(« v4:a.b.c.d » ou préfixe /64) — pseudonymisation réversible par énumération pour l'IPv4 — conservés sans limite (même règle de purge) (AN2) ; journal `login` = pays + réseau tronqué (/24, /48) |
 | IP (session) | À l'activation, `sessions.ip_hash` = sha256(IP) non salé ; supprimé avec la session (UC-CPT-02) |
@@ -190,7 +256,11 @@ Le visiteur ouvre `#/compte` et choisit « Inscription » — ou clique le lien
 | Front | `web/src/App.jsx` | Route `activer` → `AccountView initialActivation` ; écoute `humanome:auth` (couvert fonctionnellement : F12, F13 ; logique d'écoute testée unitairement en UC-CPT-02-U14) |
 | Front | `web/src/views/AccountView.jsx` — `handleSubmit`, `submitErrorMessage`, `handleActivate`, `handleResend`, choix initial du mode | Formulaire d'inscription, contrôles locaux, écran d'activation, renvoi |
 | Front | `web/src/api/client.js` — `register`, `activate`, `resendCode`, `apiFetch`, `ApiError`, `notifyAuthChanged` | Appels, jeton CSRF, erreurs par champ |
-| API | `POST /api/auth/register`, `/activate`, `/resend` — `api/src/routes/auth.php` | Orchestration, `$sendVerification` (fermeture interne à la route : couverte fonctionnellement, F01 et F03), valeurs des quotas |
+| API | `POST /api/auth/register`, `/activate`, `/resend`, `/login` — `api/src/routes/auth.php` | Orchestration, `$sendVerification` (délègue à `ActivationMail::send`), valeurs des quotas ; liste d'attente à l'inscription, refus à la connexion, renvoi muet, levée paresseuse (A4, A5) |
+| Domaine | `api/src/Auth/ActivationMail.php` — `send`, `sendWaitlisted` | Code et email d'activation (aussi à la levée), email de la liste d'attente |
+| Domaine | `api/src/Auth/Waitlist.php` — `signupsOpen`, `floorMicrousd`, `enlist`, `lift`, `liftDue`, `isWaitlisted`, `isDue`, `monthStart`, `nextLift`, `signupMessage` | Liste d'attente (RG8, RG9) |
+| Domaine | `api/src/Llm/FreeCreditLedger.php` — `signupsOpen`, `nextMonthLabel` | Critère de la liste d'attente sur le grand livre du mois |
+| API | `api/src/routes/worker.php` (`POST /api/admin/worker-tick`), `scripts/worker.php` | Levée au tick (`listeAttenteLevees`) |
 | Domaine | `api/src/Auth/Users.php` — `create`, `assignRole`, `rolesOf`, `hashPassword`, `findByEmail`, `findById`, `setVerificationCode`, `bumpVerificationAttempts`, `markVerified`, `isVerified` | Compte et code |
 | Domaine | `api/src/Auth/Audit.php` | `account_created` |
 | Domaine | `api/src/Auth/RateLimiter.php`, `api/src/ClientIp.php` | Quotas |
@@ -222,6 +292,13 @@ Le visiteur ouvre `#/compte` et choisit « Inscription » — ou clique le lien
 | UC-CPT-01-U16 | `ClientIp::bucketIdentity` | IPv6 par /64, IPv4 complète, IPv4 mappée ; seau `register:` = sha256 non salé de l'identité (AN2) | `api/tests/UseCases/Unit/UcCpt01CreerActiverCompteTest.php` |
 | UC-CPT-01-U17 | `AccountView` (inscription, seul) — `handleSubmit`, `submitErrorMessage` | Quatre refus locaux sans requête ; 422 à deux champs → messages joints ; **anomalie AN6 figée** : 5 émojis passent le contrôle local | `web/test/usecases/unit/uc-cpt-01-creer-activer-compte.test.jsx` |
 | UC-CPT-01-U18 | `AccountView` (choix initial du mode) | Lien `#/activer` sans email → formulaire de connexion | idem |
+| UC-CPT-01-U19 | `Waitlist` (horloge figée) | `waitlisted_at` en UTC quel que soit le fuseau de PHP ; dû le 1er à 0 h UTC, pas une seconde avant ; prochaine levée (décembre → janvier) ; message (RG9) | `api/tests/UseCases/Unit/UcCpt01CreerActiverCompteTest.php` |
+| UC-CPT-01-U20 | `FreeCreditLedger::signupsOpen`, `Waitlist::floorMicrousd` | Seuil au micro-dollar près, réserve en vol ignorée, plafond 0, mois neuf ; seuil = pire cas du plus petit appel de l'Essayer, que tout appel réel atteint (RG8) | idem |
+| UC-CPT-01-U21 | `Waitlist::liftDue`, `lift` | Ordre d'inscription (le dernier inscrit attend depuis le plus longtemps : un tri par date échouerait), lots, levée unique (un seul email), comptes du mois courant et supprimés laissés, audit sans auteur (A5, RG9) | idem |
+| UC-CPT-01-U22 | `ActivationMail` | Email de la liste d'attente sans code ; email de la levée : code, lien, 30 minutes, « Renvoyer le code » | idem |
+| UC-CPT-01-U23 | `AccountView` (inscription, seul) | Réponse `waitlisted` : retour à la connexion, notice du serveur, pas d'écran d'activation, aucun code (A4) | `web/test/usecases/unit/uc-cpt-01-creer-activer-compte.test.jsx` |
+| UC-CPT-01-U24 | `AccountView` (connexion, seul) | `403 waitlisted` : notice du serveur, ni alerte, ni écran d'activation, ni « Renvoyer le code » (A4) | idem |
+| UC-CPT-01-U25 | `Waitlist::lift`, `liftDue`, `liftAll`, `ActivationMail::send` | Un courriel refusé par le transport : `mail_failed`, le compte remis en attente à sa date, sans code ni audit ; levée du mois arrêtée au premier refus, retenue 5 minutes sans essai, puis reprise dans l'ordre ; « Tout lever » arrêté, `failed: 1` ; l'administrateur essaie toujours (A5) | `api/tests/UseCases/Unit/UcCpt01CreerActiverCompteTest.php` |
 
 ### Tests fonctionnels
 
@@ -252,6 +329,16 @@ Le visiteur ouvre `#/compte` et choisit « Inscription » — ou clique le lien
 | UC-CPT-01-F23 | A2 | API | 11 renvois vers une adresse mal formée : réponse générique, aucun seau `resend:`, quota intact | idem |
 | UC-CPT-01-F24 | AN5 | API | **Anomalie figée** : 3 renvois + 5 codes faux d'un tiers → le titulaire a le bon code verrouillé (401) et le renvoi refusé (429) | idem |
 | UC-CPT-01-F25 | E9 | API | Base non configurée → 503 « Service indisponible » sur les trois routes, rien créé, aucun mail | idem |
+| UC-CPT-01-F26 | A4 | API | Au plafond : 201 `waitlisted`, sans session ni code, email de la liste, audits ; connexion 403 `waitlisted` sans journal ; renvoi muet ; activation refusée ; comptes existants (actif, en attente de code) intacts | idem |
+| UC-CPT-01-F27 | RG8 | API | Au seuil exact : inscription ordinaire ; réserve en vol : ordinaire ; un micro-dollar de plus dépensé : liste d'attente (et l'Essayer refusé) ; plafond 0 : liste d'attente | idem |
+| UC-CPT-01-F28 | A5 | API | Mois suivant : une connexion ratée d'un inconnu lève la liste dans l'ordre d'inscription (Bob, inscrit après Ada, attend depuis plus longtemps : Ada d'abord), le code de la levée active ; un compte du mois attend ; la connexion d'un compte dû le lève (par la levée du mois qu'elle déclenche) et son renvoi aussi, un seul email | idem |
+| UC-CPT-01-F29 | A5 | API | Le tick (`POST /api/admin/worker-tick`, jeton du déclencheur) lève la liste et le dit (`listeAttenteLevees`) ; un tick sans compte dû n'en dit rien | idem |
+| UC-CPT-01-F30 | A4, A5 | IHM | `<App/>` : inscription en liste d'attente (notice, aucun code), connexion qui le redit ; levée → connexion → écran d'activation → connecté | `web/test/usecases/functional/uc-cpt-01-creer-activer-compte.test.jsx` |
+| UC-CPT-01-F31 | RG8 | API | Une réserve orpheline du pire cas d'un Essayer, au-delà de son échéance : l'inscription part en liste d'attente, l'Essayer est refusé, le mois la montre dépensée et plus « en vol » | `api/tests/UseCases/Functional/UcCpt01CreerActiverCompteTest.php` |
+| UC-CPT-01-F32 | A5 | API | Le courriel de la levée refusé : le tick dit `listeAttenteEchecs: 1`, le compte reste en attente sans code ; sa connexion répond `403 waitlisted` « … n'a pas pu partir … », sans session ; le transport revenu, sa connexion le lève (`email_not_verified`, un code) et il s'active | `api/tests/UseCases/Functional/UcCpt01CreerActiverCompteTest.php` |
+| UC-CPT-01-F33 | RG9 | API | Horloge qui passe au 1er novembre 2030 pendant l'inscription, octobre dépensé : `waitlisted`, `waitlisted_at` du 31 octobre à 23 h 59 min 59 s, réponse et courriel « le 1er novembre » ; le 1er novembre, la connexion la lève (`email_not_verified`, un code) | `api/tests/UseCases/Functional/UcCpt01CreerActiverCompteTest.php` |
+| UC-CPT-01-F34 | RG9 | API | Un code posé sous PHP en UTC (le cron) et lu sous Paris s'active ; posé sous Paris, il vit 30 minutes en UTC ; lu sous Los Angeles, il s'active | `api/tests/UseCases/Functional/UcCpt01CreerActiverCompteTest.php` |
+| UC-CPT-01-F35 | A5 | API | 51 comptes dus (un lot + 1) : la connexion du 51e lève les 50 premiers dans l'ordre, puis le lève lui-même — `403 email_not_verified`, un seul courriel pour lui, plus personne en attente, son code l'active | idem |
 
 Les tests IHM jouent `<App/>` contre un faux serveur en mémoire qui rejoue le
 contrat HTTP des routes du compte (`web/test/usecases/support/cpt.js`).
@@ -340,3 +427,17 @@ cd web && npx vitest run test/usecases --testNamePattern UC-CPT-01
 - Un lien `#/activer` sans email ramène au formulaire de connexion (A1,
   UC-CPT-01-U18) : l'utilisateur doit se connecter pour retrouver l'écran
   d'activation (A3).
+- **Liste d'attente** (A4, A5) : sous le seuil de RG8, l'Essayer est refusé
+  mais le tuteur, au pire cas plus petit (600 jetons de sortie), peut encore
+  répondre à quelques questions ; le statut public peut dire
+  `remainingThisMonth: true` alors que les inscriptions attendent (accepté,
+  `docs/contrats.md` §13.1). La levée du mois est paresseuse : sans tick ni
+  requête d'authentification, elle attend la première ; par lots de 50, une
+  longue liste se vide en plusieurs requêtes. Levée à 0 h UTC, le code de
+  l'email expire 30 minutes plus tard : le titulaire passe alors par la
+  connexion (A3) et « Renvoyer le code ». L'email de la liste d'attente part
+  dans la transaction, comme celui du code, sans relire son booléen.
+- UC-CPT-01-F28 date des attentes « du mois dernier » contre l'horloge réelle
+  de la route : lancé à cheval sur le 1er du mois à 0 h UTC, les comptes mis
+  en attente « ce mois-ci » deviendraient dus eux aussi (une fenêtre de
+  quelques secondes, comme celle, connue, d'UC-ADM-06 entre 0 h et 2 h).

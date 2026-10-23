@@ -234,4 +234,35 @@ describe('UC-CPT-01 — le visiteur crée son compte puis l’active', () => {
     expect(await screen.findByText('Compte activé, bienvenue !')).toBeDefined()
     expect(api.session).not.toBeNull()
   })
+
+  it('UC-CPT-01-F30 — A4, A5 : crédits offerts du mois épuisés — l’inscription part en liste d’attente (notice, aucun code, pas d’écran d’activation), la connexion le redit ; levée, la connexion ouvre l’écran d’activation et le code reçu connecte', async () => {
+    const api = installFakeAccountApi()
+    api.closeSignups()
+    openApp('#/compte')
+
+    await fillRegistration()
+    expect(await screen.findByText(/votre inscription est en liste d'attente/)).toBeDefined()
+    expect(screen.queryByRole('heading', { name: 'Activer votre compte' })).toBeNull()
+    expect(api.mailbox).toHaveLength(0)
+    expect(api.session).toBeNull()
+
+    // Connexion avant la levée : le même message, ni session ni écran d'activation.
+    type('Email', 'ada@example.org')
+    type(/Mot de passe/, PASSWORD)
+    await click('Se connecter')
+    expect(api.callsTo('auth/login', 'POST')).toHaveLength(1)
+    expect(await screen.findByText(/Vous recevrez votre code d'activation par email le 1er/)).toBeDefined()
+    expect(screen.queryByRole('heading', { name: 'Activer votre compte' })).toBeNull()
+    expect(nav().getByRole('link', { name: 'Se connecter' })).toBeDefined()
+
+    // Le 1er du mois (ou l'administrateur) : la liste est levée, le code part.
+    const code = api.liftWaitlist('ada@example.org')
+    expect(code).toMatch(/^\d{4}$/)
+    await click('Se connecter')
+    expect(await screen.findByRole('heading', { name: 'Activer votre compte' })).toBeDefined()
+    type(/Code de confirmation/, code)
+    await click('Activer mon compte')
+    expect(await screen.findByText('Compte activé, bienvenue !')).toBeDefined()
+    expect(await nav().findByRole('button', { name: 'Se déconnecter' })).toBeDefined()
+  })
 })

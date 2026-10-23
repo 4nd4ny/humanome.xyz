@@ -2,6 +2,8 @@
 // sur les journaux et compteurs en base (GET /api/admin/monitoring) — activité,
 // finances, tokens (détection d'anomalies), connexions (pays + réseau tronqué,
 // jamais d'IP brute, cahier §6.5), votes de gouvernance, comptes par rôle.
+// Les inscriptions en liste d'attente (sprint 7) se comptent dans la tuile des
+// comptes ; leur levée se fait dans « Réglages » (le monitoring n'écrit rien).
 //
 // Graphiques : SVG maison, séries en variables CSS --mon-* (palette validée
 // clair/sombre), barres fines avec infobulle native <title> par jour, légende
@@ -500,7 +502,7 @@ function Dashboard({ data, fetchFn }) {
     <>
       <div className="mon-tiles">
         <Tile label="connectés maintenant" value={nb(u.actifsMaintenant)} hint={`+ ${nb(u.sessionsAnonymes)} visiteur${u.sessionsAnonymes > 1 ? 's' : ''} anonyme${u.sessionsAnonymes > 1 ? 's' : ''}`} />
-        <Tile label="comptes" value={nb(u.total)} hint={`+ ${nb(u.nouveauxPeriode)} sur la période · ${nb(u.nonActives)} non activé${u.nonActives > 1 ? 's' : ''}`} />
+        <Tile label="comptes" value={nb(u.total)} hint={`+ ${nb(u.nouveauxPeriode)} sur la période · ${nb(u.nonActives)} non activé${u.nonActives > 1 ? 's' : ''}${u.enListeAttente > 0 ? ` dont ${nb(u.enListeAttente)} en liste d’attente` : ''}`} />
         <Tile label="cartographies" value={nb(c.total)} hint={`${nb(c.parType.jour)} journée · ${nb(c.parType.merge)} merge`} />
         <Tile label="partages actifs" value={nb(c.partages.actifs)} hint={`${nb(c.partages.consultationsPeriode)} consultation${c.partages.consultationsPeriode > 1 ? 's' : ''} sur la période`} />
         <Tile label="crédits en circulation" value={usd(f.soldes.totalMicrousd)} hint={`${nb(f.soldes.comptesCredites)} compte${f.soldes.comptesCredites > 1 ? 's' : ''} crédité${f.soldes.comptesCredites > 1 ? 's' : ''}`} />

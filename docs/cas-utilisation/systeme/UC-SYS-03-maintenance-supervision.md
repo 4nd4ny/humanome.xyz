@@ -78,10 +78,12 @@ couverture RGPD de l'effacement de compte.
    le moteur, UC-SYS-02 A8).
 2. Une sonde ou un tableau de bord externe appelle `GET /api/status` (aucune
    page du front ne l'utilise à ce jour) : `200 {status, version, db,
-   demo: {enabled, remainingToday}, worker: {lastActivityAt, queued}}`, avec
-   `Cache-Control: public, max-age=30`. `demo.enabled` suit `DemoConfig`
-   (UC-ADM-04) ; `remainingToday` indique si le coupe-circuit journalier
-   (tokens ou budget, jour UTC) n'est pas encore atteint ; `worker` donne la
+   demo: {enabled, remainingToday, remainingThisMonth}, worker: {lastActivityAt,
+   queued}}`, avec `Cache-Control: public, max-age=30`. `demo.enabled` suit
+   `DemoConfig` (UC-ADM-04) ; `remainingToday` indique si le coupe-circuit
+   journalier (tokens ou budget, jour UTC) n'est pas encore atteint, et
+   `remainingThisMonth` s'il reste des crédits offerts au mois UTC (sprint 7,
+   UC-VIS-03 RG7) ; `worker` donne la
    dernière activité de la file de masse (`MAX(mass_jobs.updated_at)`) et le
    nombre de jobs en attente.
 3. Chaque jour, le planificateur appelle `POST /api/admin/maintenance` avec
@@ -104,8 +106,9 @@ couverture RGPD de l'effacement de compte.
 ## Scénarios alternatifs
 
 - **A1 — Démo épuisée ou éteinte** (étape 2) : plafond de tokens ou budget du
-  jour atteint → `remainingToday: false` ; démo éteinte → `enabled: false`,
-  `remainingToday: null`.
+  jour atteint → `remainingToday: false` ; crédits offerts du mois épuisés →
+  `remainingThisMonth: false` ; démo éteinte → `enabled: false`,
+  `remainingToday: null`, `remainingThisMonth: null`.
 - **A2 — Maintenance en ligne de commande** (étape 3 ; équivalent local/dev,
   non livré dans la release) : `php scripts/maintenance.php` exécute
   `Maintenance::run` (source de vérité des requêtes, recopiées dans la route)
@@ -131,7 +134,7 @@ couverture RGPD de l'effacement de compte.
 
 - **E1 — Base absente ou injoignable** (étapes 1-2) : `200` avec `db:
   "unconfigured"` ou `"error"` ; `/status` renvoie alors `demo: {enabled:
-  false, remainingToday: null}` et `worker: {lastActivityAt: null, queued:
+  false, remainingToday: null, remainingThisMonth: null}` et `worker: {lastActivityAt: null, queued:
   null}`. Sur **échec partiel** (`SELECT 1` passe, une requête suivante
   échoue — ex. table absente entre la bascule de release et
   `/admin/migrate`), les champs déjà calculés sont conservés : `db: "error"`

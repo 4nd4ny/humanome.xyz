@@ -77,8 +77,8 @@ $app->post('/referentiel/versions', $handler)
 |---|---|---|---|
 | `/api/health` | GET | Public (visiteur) | — |
 | `/api/admin/migrate` | POST | Technique (script de déploiement, ADR-008) | Jeton `MIGRATE_TOKEN` dédié, hors rôles |
-| `/api/auth/register` | POST | Visiteur | Rate-limit par IP (10/h) ; rôle `apprenant` attribué par défaut |
-| `/api/auth/login` | POST | Visiteur | Rate-limit par IP+email (5 / 15 min, puis 429 à délai progressif) |
+| `/api/auth/register` | POST | Visiteur | Rate-limit par IP (10/h) ; rôle `apprenant` attribué par défaut ; crédits offerts du mois épuisés : compte créé **en liste d'attente**, sans code (sprint 7, `docs/contrats.md` §13.1) |
+| `/api/auth/login` | POST | Visiteur | Rate-limit par IP+email (5 / 15 min, puis 429 à délai progressif) ; un compte en liste d'attente ne se connecte pas (`403 waitlisted`), comme un compte non activé (`403 email_not_verified`) |
 | `/api/auth/logout` | POST | Tout utilisateur connecté | Session + CSRF |
 | `/api/auth/me` | GET | Tout utilisateur connecté | Session (401 sinon) |
 | `/api/auth/account` | DELETE | Tout utilisateur connecté (son propre compte) | Session + CSRF ; purge réelle + audit anonymisé (§6.3) |
@@ -230,7 +230,7 @@ l'établissement (l'accès exige l'adhésion active).
 | `/api/worker/jobs` | GET | **Machine** (runner de l'établissement) | Jeton `X-Worker-Token` (haché en base), hors rôles et hors CSRF (aucune session, donc aucun crédit ambiant) ; réserve avec bail 5 min, jobs de SON établissement uniquement ; refus si plafond consommé |
 | `/api/worker/jobs/{id}/checkpoint` | POST | Machine, son job | Jeton ; persiste l'avancement par pôle + renouvelle le bail ; 409 si le job n'est plus `running` |
 | `/api/worker/jobs/{id}/result` | POST | Machine, son job | Jeton ; document **re-validé au schéma côté serveur**, coût déclaré borné, `spent_usd` incrémenté ; 409 en rejeu |
-| `/api/admin/worker-tick` | POST | Technique (ADR-008, ADR-011) | Jeton `WORKER_TICK_TOKEN` (`X-Worker-Tick-Token`), qui n'ouvre que cette route et la maintenance, ou `X-Migrate-Token` ; un tick borné (runs Twin9, puis masse), réponse = compteurs uniquement |
+| `/api/admin/worker-tick` | POST | Technique (ADR-008, ADR-011) | Jeton `WORKER_TICK_TOKEN` (`X-Worker-Tick-Token`), qui n'ouvre que cette route et la maintenance, ou `X-Migrate-Token` ; un tick borné (runs Twin9, puis masse ; puis, au 1er du mois, un lot de la liste d'attente des inscriptions, sprint 7), réponse = compteurs uniquement |
 | `/api/admin/maintenance` | POST | Technique (ADR-008) | `X-Migrate-Token`, ou le jeton du tick (`X-Worker-Tick-Token`, 2026-10-22) ; purge ce qui a expiré (liens de partage morts depuis 30 jours, compteurs de démo des jours passés, défis expirés), réponse = compteurs uniquement |
 
 ### P12 — Administration (cahier §3.8, §4.10)
@@ -240,6 +240,7 @@ l'établissement (l'accès exige l'adhésion active).
 | Golden Prompt (import, autorisations d'accès) | GET/POST | `admin` |
 | Clés plateforme, plafonds démo, config | GET/PUT | `admin` |
 | Attribution / révocation des rôles (les habilitations) ; la liste `GET /api/admin/users` montre à côté les rôles déclarés de chaque compte et `grantable`, les habilitations que ses déclarations appellent (sprint 8, principe 7) | GET/POST/DELETE | `admin` |
+| Liste d'attente des inscriptions (`GET /api/admin/waitlist`, `POST /api/admin/waitlist/{id}/lift`, `POST /api/admin/waitlist/lift`, sprint 7) | GET/POST | `admin` (session + CSRF) ; une levée envoie au compte son code d'activation |
 | **Gabarits Twin9 — CONTENU** (`/api/twin9/admin/jeux/{jeu}/protocole**`, `/api/twin9/admin/jeux/{jeu}/tester`) et copie du jeu v9.8 (`POST /api/twin9/admin/jeux`) | GET/PUT/POST | **`admin` ∧ `promptologue`** (les DEUX rôles, `RequireRole::all`, AD-D2) ; écrire (`PUT`, `…/restore`) : l'auteur de la copie seul, jamais le jeu v9.8 (403, T14) |
 | Jeux de gabarits Twin9 — liste sans contenu (`GET /api/twin9/admin/jeux`) et jeu par défaut (`PUT /api/twin9/admin/jeux/defaut`) | GET/PUT | `admin` (T14) |
 | Twin9 supervision (config, contribution, promo, comptes) | GET/PUT | `admin` |

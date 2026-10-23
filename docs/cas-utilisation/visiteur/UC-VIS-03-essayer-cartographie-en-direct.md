@@ -7,7 +7,7 @@
 | **Portée** | humanome.xyz — page `#/essayer` ; API publique `GET /api/llm/status`, `GET /api/llm/challenge`, `POST /api/llm` |
 | **Niveau** | Objectif utilisateur |
 | **Cahier des charges** | §3.1 (copier-coller un texte → cartographie en direct, coûts masqués, garde-fous anti-abus), §3.8 (réglages admin) ; principe RGPD n°5 de `CLAUDE.md` (journalisation minimale : compteurs, jamais de contenu) |
-| **Statut** | Implémenté (P6 ; audit adversarial `docs/securite-demo.md`) |
+| **Statut** | Implémenté (P6 ; audit adversarial `docs/securite-demo.md` ; plafond mensuel des crédits offerts : sprint 7, S7a, migration 034) |
 
 ## Objectif
 
@@ -37,15 +37,21 @@ de l'accueil.
   — l'essai gratuit de la cartographie ouverte (UC-APP-09 A6), le Service
   humanome (UC-APP-02), le banc et la rétro-ingénierie du promptologue
   (UC-ADM-04 RG8).
+- Les crédits offerts du mois UTC ne sont pas épuisés : 20 $ par défaut
+  (`OFFERTS_MENSUEL_USD`, réglable par l'administrateur, UC-ADM-04 RG10),
+  partagés par tout ce qui passe par `POST /api/llm` **et** par l'assistant
+  tuteur (UC-VIS-05 RG8), RG7.
 
 ## Garanties en cas de succès
 
 - Le visiteur voit la cartographie de son texte dans la vue journée
   (`DayView`), peut l'imprimer ou l'exporter en JSON (téléchargement local).
 - Le serveur n'a conservé **que des compteurs** : requêtes, tokens et coût
-  estimé du jour (`llm_usage_daily`), empreintes SHA-256 des défis consommés
-  (`llm_pow_challenges`), seau de quota haché (`rate_limits`). Ni le texte, ni
-  la réponse, ni l'IP en clair.
+  estimé du jour (`llm_usage_daily`), dépense et réserve du mois en
+  micro-dollars (`free_credit_monthly`, et ses réserves datées
+  `free_credit_reservations`, RG7), empreintes SHA-256 des défis
+  consommés (`llm_pow_challenges`), seau de quota haché (`rate_limits`). Ni le
+  texte, ni la réponse, ni l'IP en clair.
 - Le navigateur n'a rien écrit (ni Web Storage, ni IndexedDB) : un
   rechargement efface tout, et la page le dit.
 
@@ -132,8 +138,9 @@ de l'accueil.
 - **A5 — Annulation** (étape 4) : « Annuler l'analyse » interrompt l'appel en
   cours ; « Analyse annulée. Votre texte est toujours là, rien n'a été
   conservé. »
-- **A6 — Disponibilité** : `GET /api/llm/status` → `{enabled, remainingToday}`
-  (booléens seulement, aucun chiffre).
+- **A6 — Disponibilité** : `GET /api/llm/status` → `{enabled, remainingToday,
+  remainingThisMonth}` (booléens seulement, aucun chiffre ; `remainingThisMonth`
+  depuis le sprint 7, RG7).
 
 ## Scénarios d'erreur
 
@@ -193,6 +200,13 @@ de l'accueil.
   est trop long pour l'essai : la réponse du modèle a été coupée avant la
   fin. Raccourcissez-le, puis relancez l'analyse. », sans « Réessayer »,
   texte conservé (UC-VIS-03-U20 ; message : `web/src/lib/demo-llm.test.js`).
+- **E8 — Crédits offerts du mois épuisés** (étape 5, sprint 7) : le pire cas
+  de l'appel ne tient plus sous le plafond du mois (RG7) → `503` « Les crédits
+  offerts de ce mois sont épuisés ; revenez le 1er novembre. » (le mois
+  suivant nommé), `code: "offerts_epuises"`, rien n'est parti ni compté au
+  jour. Le mois répond avant le jour : un jour épuisé lui aussi dit
+  « revenez le 1er », pas « demain ». La page affiche ce texte tel quel, sans
+  « Réessayer » (`describeDemoError`) — après 2 POST, comme E5 (AN2).
 
 ## Règles de gestion
 
@@ -258,6 +272,35 @@ de l'accueil.
   Le navigateur qui part (annulation, page quittée) coupe l'appel, compté pour
   ce qu'il a produit. Un hébergement qui retient le flux le livre d'un bloc à
   la fin : la lecture est la même, sans progression.
+- **RG7** — Plafond **mensuel** des crédits offerts (sprint 7, S7a : « La
+  somme totale des crédits offerts par mois ne doit pas dépasser 20 USD pour
+  tous les utilisateurs anonymes et enregistrés du site ») : un grand livre
+  unique par mois UTC (`free_credit_monthly`, migration 034,
+  `Llm\FreeCreditLedger`), commun à tout ce que l'instance paie sans le
+  facturer — `POST /api/llm` et le tuteur (UC-VIS-05 RG8) —, en plus des
+  budgets du jour (RG4), qui restent. Le même pire cas que RG4 y est réservé
+  avant l'appel, au mois où il part, par un seul `UPDATE` conditionnel sur la
+  ligne du mois (`dépense + réserve + pire cas ≤ plafond`, en micro-dollars
+  entiers) : sous concurrence, jamais au-delà. Le mois passe avant le jour, et
+  un refus du jour rend la réserve du mois. Rendu, l'appel règle sa réserve au
+  coût réel, sans condition : **une réponse en cours n'est jamais coupée**,
+  même si l'administrateur baisse le plafond ou si le mois se remplit pendant
+  qu'elle arrive. Coupé après l'envoi, il règle ce qu'il a produit (comme
+  RG4) ; refusé par le fournisseur ou jamais parti, il rend sa réserve. Jamais
+  réglée — son processus mort entre la réserve et le règlement (le kill de
+  l'hébergeur, un redéploiement, une erreur fatale) —, une réserve **expire**
+  après `FreeCreditLedger::RESERVATION_TTL_SECONDS` (15 minutes, au-delà du
+  plus long appel permis) : chaque réserve est datée
+  (`free_credit_reservations`), et son pire cas passe en dépensé, compté comme
+  un appel ; toute réserve, toute lecture du mois et le critère des
+  inscriptions (UC-CPT-01 RG8) la font expirer d'abord (revue du 2026-10-23).
+  Réglée après coup, elle n'ajoute que l'excédent de son coût réel ; rendue,
+  elle ne rend rien. Il se
+  règle au mois où il a réservé, même s'il finit le mois suivant. Le mois est
+  UTC, calculé en PHP (`gmdate`), comme le jour : il s'ouvre le 1er à 0 h UTC,
+  soit 1 h (hiver) ou 2 h (été) à Paris. Plafond : 20 $ par défaut,
+  `OFFERTS_MENSUEL_USD`, réglable par l'administrateur (UC-ADM-04 RG10) ; à 0,
+  rien n'est offert.
 
 ## Données et RGPD
 
@@ -266,7 +309,7 @@ de l'accueil.
 | Texte collé, réponse du modèle | Jamais stockés ni journalisés (serveur et navigateur) |
 | IP du visiteur | Jamais stockée : seau `llm:` + sha256 de l'identité (/64 en IPv6) |
 | Défi consommé | Empreinte SHA-256 + expiration ; purgée de façon opportuniste lors d'une consommation ultérieure (démo ou tuteur), une fois expirée — aucune purge planifiée |
-| Usage | Compteurs du jour : requêtes, tokens entrée/sortie, coût estimé |
+| Usage | Compteurs du jour : requêtes, tokens entrée/sortie, coût estimé ; du mois (`free_credit_monthly`, RG7) : dépense, réserve, appels, refus, tous usages offerts confondus — ni contenu, ni compte, ni IP |
 | Clé plateforme | Environnement uniquement, en-tête amont uniquement |
 
 ## Code sollicité
@@ -281,6 +324,8 @@ de l'accueil.
 | API | `GET /api/llm/status`, `GET /api/llm/challenge`, `POST /api/llm` — `api/src/routes/llm.php` | Orchestration des gardes |
 | Domaine | `api/src/Llm/PowChallenge.php` — `issue`, `verify`, `secretFromEnv`, `leadingZeroBits` | Preuve de travail sans état |
 | Domaine | `api/src/Llm/UsageCounters.php` — `reserve`, `settle`, `release`, `today`, `isExhausted` | Coupe-circuit journalier : réservation du pire cas, règlement au réel |
+| Domaine | `api/src/Llm/FreeCreditLedger.php` — `reserve`, `settle`, `release`, `expireStale`, `refuse`, `state`, `month`, `refusalMessage` | Plafond mensuel des crédits offerts (RG7, E8) |
+| Base | `scripts/migrations/034_credits_offerts.sql` | Grand livre du mois (`free_credit_monthly`) |
 | Domaine | `api/src/Llm/Pricing.php` — `estimateUsd` | Coût estimé : le plus haut de la grille des crédits et de la table, palier long de Haiku 5.5 compris |
 | Domaine | `api/src/Llm/AnthropicProvider.php` — `countTokens`, `ouvrirFlux` | Compte d'Anthropic d'une entrée de plus de 100 000 octets (RG4) ; l'appel en flux (RG6) |
 | Domaine | `api/src/Llm/AnthropicFlux.php` — `ouvrir`, `pomper`, `fermer`, `parvenu`, `complet`, `usageAFacturer` | Lecture du flux d'Anthropic ; ce qu'un appel coupé a pu produire (RG4, E7) |
@@ -327,6 +372,11 @@ de l'accueil.
 | UC-VIS-03-U28 | `createDemoProvider` | Demande le relais ; progression en caractères ; le résultat relayé devient la réponse du moteur ; un appel coupé (délai, fournisseur, connexion perdue) échoue avec le message du serveur, sans nouvel essai de la démo (RG6, A4, E7) | `web/test/usecases/unit/uc-vis-03-essayer-cartographie-en-direct.test.js` |
 | UC-VIS-03-U29 | `createDemoProvider` + `extractDay` | Un appel coupé à chaque essai : 2 POST sur le pôle 1 (le nouvel essai du moteur seul), contre 4 pour un 504 sans flux (U22) ; le message dit la coupure (A4) | idem |
 | UC-VIS-03-U30 | `RelaisAppel::reponse` | En-têtes du flux (ni cache, ni transformation, ni tampon de proxy) ; la première progression tout de suite ; l'issue calculée une fois ; une issue qui échoue → `erreur` 500 générique ; le navigateur parti, l'appel coupé, son issue calculée une fois (RG6) | `api/tests/UseCases/Unit/UcVis03EssayerCartographieTest.php` |
+| UC-VIS-03-U31 | `FreeCreditLedger::reserve`, `settle`, `release`, `refuse`, `state`, `microusd`, `capMicrousd` | Pire cas réservé sous le plafond du mois en micro-dollars entiers, pile au plafond accepté ; un refus ne réserve rien et se compte, un refus décidé avant toute réserve aussi (`refuse`) ; une réserve de rien compte pour 1 µ$ ; réglée au coût réel, même au-delà de sa réserve et du plafond ; rendue, rien ne reste ; rendre une réserve que le mois ne tient pas (expirée) ne rend rien ni ne prend sur une autre ; un plafond relevé rouvre ; conversions vers le haut ; plafond nul, négatif ou non fini → tout fermé ; la table n'a que des compteurs (RG7) | `api/tests/UseCases/Unit/UcVis03EssayerCartographieTest.php` |
+| UC-VIS-03-U32 | `FreeCreditLedger::month`, `refusalMessage` | Mois UTC sous Kiritimati, Paris et Los Angeles ; horloge figée : le 31 octobre à 23 h 59 min 59 s UTC est octobre, le 1er novembre à 0 h UTC un mois neuf, 0 h 30 à Paris encore octobre ; l'appel d'octobre réglé en novembre l'est en octobre ; le refus nomme le 1er du mois suivant (novembre, janvier, février) (RG7) | idem |
+| UC-VIS-03-U33 | `FreeCreditLedger::reserve` sous concurrence | Une réserve en cours dans une autre connexion (transaction ouverte 2 s) verrouille la ligne du mois : la seconde attend, puis n'a plus la place ; deux processus × 20 réserves de 1 000 µ$ sous 15 000 µ$ → 15 passent, jamais une de plus (RG7) | idem |
+| UC-VIS-03-U34 | `describeDemoError` | 503 `offerts_epuises` au bout de la pile (`extractDay`) → les mots du serveur (« revenez le 1er novembre »), sans réessai ; un autre 503 garde le message du jour (E8) | `web/test/usecases/unit/uc-vis-03-essayer-cartographie-en-direct.test.js` |
+| UC-VIS-03-U35 | `FreeCreditLedger::expireStale`, `reserve`, `state`, `signupsOpen`, `settle`, `release` | Une réserve orpheline expire après `RESERVATION_TTL_SECONDS` (≥ 300 + 5 + 5 + 300 s), pas avant : son pire cas en dépensé, un appel ; une plus fraîche reste en vol ; réglée après coup, l'excédent seul ; rendue après coup, rien ; le critère des inscriptions et une réserve la font expirer ; au passage du mois, elle se dépense au mois où elle a réservé ; la table n'a que des compteurs et part avec son mois (RG7) | `api/tests/UseCases/Unit/UcVis03EssayerCartographieTest.php` |
 
 ### Tests fonctionnels
 
@@ -359,6 +409,9 @@ de l'accueil.
 | UC-VIS-03-F25 | E5, E7, RG4 | API | Un appel en vol tient 0,50 $ d'un budget de 0,80 $ : le pire cas d'un nouvel appel (toute la sortie de Haiku 4.5, ≈ 0,32 $) n'a pas la place → 503, rien n'est envoyé ; la place rendue, l'appel passe et son usage réel remplace sa réservation ; une réponse 2xx qui n'est pas un flux, illisible, compte son pire cas, un délai dépassé après l'envoi ce qu'il a pu produire ; un second pire cas, et l'appel suivant n'a plus la place, la dépense reste sous 0,80 $ | `api/tests/UseCases/Functional/UcVis03EssayerCartographieTest.php` |
 | UC-VIS-03-F26 | RG4 | API | Au-delà de 100 000 octets, la réserve prend le compte d'Anthropic (`count_tokens` sur la requête même, sans `max_tokens`) avec sa marge au jeton près (+10 % et 64 : 41 000 comptés ne tiennent pas dans 0,0685 $, 40 000 si) ; 156 000 octets comptés 40 000 tokens restent au tarif de base de Haiku 5.5 et passent sous un budget que leurs octets dépasseraient ; un compte refusé, nul, négatif, en texte, au-dessus des octets ou sans réponse → les octets, `503`, rien d'autre n'est parti ; sous 100 000 octets, aucun compte | idem |
 | UC-VIS-03-F27 | RG6, RG4, E7 | API | La réponse arrive en flux (`Accept: text/event-stream`), l'outil avec `eager_input_streaming` : progressions bornées par le document, puis le résultat du nominal, un usage réel compté ; une erreur avant que la réponse commence → `erreur` 502, rien de compté ; délai dépassé en route → événement `erreur` 504 `coupe`, l'entrée annoncée et les octets reçus + 1 024 comptés ; erreur du fournisseur en route → 502 de même ; le navigateur parti après la première progression → l'appel coupé, compté une fois pour le premier morceau reçu | idem |
+| UC-VIS-03-F28 | RG7, E8, A6 | API | Plafond du mois à 0,01 $, fournisseur mock : le pire cas d'un appel n'y tient pas → 503 « Les crédits offerts de ce mois sont épuisés ; revenez le 1er … », `offerts_epuises`, rien réservé ni compté au jour, le refus compté ; le jour épuisé aussi → le mois répond ; sous 0,40 $ l'appel passe et se règle (coût nul du mock) ; 0,10 $ dépensés ailleurs → refusé ; `remainingThisMonth` vrai tant qu'il reste, faux le mois dépensé (`/api/llm/status` et `/api/status`) | `api/tests/UseCases/Functional/UcVis03EssayerCartographieTest.php` |
+| UC-VIS-03-F29 | RG7, E7 | API | Un échec libère la réserve du mois : 429, 500, connexion refusée, délai avant l'envoi, erreur avant que la réponse commence, refus du budget du jour → rien ne reste ; réponse rendue → coût réel (2 000 µ$) ; coupée après l'envoi → ce qu'elle a produit ; sans clé, rien réservé | idem |
+| UC-VIS-03-F30 | RG7 | API | Une réponse en cours n'est jamais coupée : pendant le flux, l'administrateur met le plafond à 0 et le mois est dépensé ailleurs → la réponse arrive entière (relayée, puis en JSON), réglée au coût réel ; l'appel suivant est refusé sans partir | idem |
 
 ### Tests existants liés (non-régression)
 
@@ -367,6 +420,7 @@ de l'accueil.
 - `api/tests/CartographiesCsrfTest.php` — exemption CSRF de `/api/llm`.
 - `web/src/views/EssayerView.test.jsx` (dont les caractères reçus de l'appel en cours, RG6), `web/src/lib/demo-llm.test.js`, `web/src/lib/pow.test.js`, `web/src/api/relais.test.js` (lecture du relais).
 - `docs/securite-demo.md` — modèle de l'abuseur et résidus acceptés.
+- UC-VIS-05-F23, F24 (le tuteur sur le même plafond du mois) ; UC-ADM-04-U30, U31, F24 (le réglage du plafond).
 
 ### Exécuter
 
@@ -433,6 +487,12 @@ cd engine && npx vitest run test/usecases/unit/uc-vis-03
   commencé peut s'arrêter après ses premiers pôles payés. Sous le budget de
   1 $, une quinzaine d'appels au plus sont en vol à la fois ; au-delà, `503`
   jusqu'à ce que les premiers soient réglés.
+- Il en va de même du plafond du mois (RG7) : `remainingThisMonth` vrai dit
+  qu'il reste quelque chose, non qu'un appel de plus y tienne ; un Essayer (8
+  appels) ou un essai de Twin6 commencé peut s'arrêter entre deux appels
+  quand le mois s'épuise, sur le message E8 — jamais au milieu d'une
+  réponse. Avec Haiku 5.5, le dernier appel du mois doit pouvoir réserver
+  son pire cas, 0,064 $ environ.
 - Le compte d'un appel coupé (RG4, E7) suppose que le fournisseur cesse de
   générer quand le flux est fermé et facture ce qu'il a généré : la
   documentation d'Anthropic ne le dit pas ; d'autres le disent, lus le

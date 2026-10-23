@@ -389,4 +389,21 @@ final class UcAdm06MonitoringTest extends TestCase
         self::assertSame(2, $c['nouvellesPeriode']);
         self::assertSame(1, $c['total'], 'twin9 exclu du total : nouvellesPeriode > total');
     }
+
+    #[TestDox('UC-ADM-06-U22 — utilisateurs : enListeAttente compte les inscriptions en liste d’attente (sprint 7), hors comptes supprimés ; elles comptent aussi parmi les non activés')]
+    public function testU22WaitingListCounter(): void
+    {
+        AdmSupport::user(self::$pdo, 'ada@example.org', 'Ada', ['apprenant']); // actif
+        $enAttente = AdmSupport::user(self::$pdo, 'bob@example.org', 'Bob', ['apprenant']);
+        $nonActive = AdmSupport::user(self::$pdo, 'cid@example.org', 'Cid', ['apprenant']);
+        $parti = AdmSupport::user(self::$pdo, 'dan@example.org', 'Dan', ['apprenant']);
+        self::$pdo->exec("UPDATE users SET email_verified_at = NULL WHERE id IN ({$enAttente}, {$nonActive}, {$parti})");
+        self::$pdo->exec("UPDATE users SET waitlisted_at = '2026-10-20 08:00:00' WHERE id IN ({$enAttente}, {$parti})");
+        self::$pdo->exec("UPDATE users SET deleted_at = NOW() WHERE id = {$parti}");
+
+        $u = self::overview()['utilisateurs'];
+
+        self::assertSame([3, 2, 1], [$u['total'], $u['nonActives'], $u['enListeAttente']]);
+        self::assertSame(['total', 'nonActives', 'enListeAttente', 'actifsMaintenant'], \array_slice(array_keys($u), 0, 4));
+    }
 }

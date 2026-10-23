@@ -81,6 +81,7 @@ final class CurlHttpClient implements HttpClient, StreamingHttpClient
             throw new HttpClientException(
                 'network error (curl ' . $errno . ')',
                 timedOut: $errno === CURLE_OPERATION_TIMEDOUT,
+                requestSent: self::requestSent($ch, \strlen($body ?? '')),
             );
         }
 
@@ -90,5 +91,21 @@ final class CurlHttpClient implements HttpClient, StreamingHttpClient
             'body' => $overflow ? '' : $responseBody,
             'overflow' => $overflow,
         ];
+    }
+
+    /**
+     * Whether a request had gone out whole when its transfer failed
+     * (HttpClientException::$requestSent, review of 2026-10-23): an answer
+     * had begun (a status), or every byte of its body had been uploaded — a
+     * connection cut while waiting for the answer (curl 52, 56). The provider
+     * may then have received it, and billed it. A failure to resolve, connect,
+     * shake hands or hand the body over leaves it false, as does a request
+     * without a body short of a status (CurlHttpStream measures it the same
+     * way for a streamed call).
+     */
+    public static function requestSent(\CurlHandle $handle, int $bodyLength): bool
+    {
+        return (int) curl_getinfo($handle, CURLINFO_RESPONSE_CODE) !== 0
+            || ($bodyLength > 0 && (int) curl_getinfo($handle, CURLINFO_SIZE_UPLOAD_T) >= $bodyLength);
     }
 }

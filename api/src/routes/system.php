@@ -59,7 +59,7 @@ return function (App $app): void {
     $app->get('/status', function (Request $request, Response $response) use ($json): Response {
         $version = Bootstrap::version();
         $db = 'unconfigured';
-        $demo = ['enabled' => false, 'remainingToday' => null];
+        $demo = ['enabled' => false, 'remainingToday' => null, 'remainingThisMonth' => null];
         $worker = ['lastActivityAt' => null, 'queued' => null];
 
         if (Db::isConfigured()) {
@@ -76,6 +76,9 @@ return function (App $app): void {
                         $config->dailyGlobalTokens,
                         $config->dailyBudgetUsd,
                     );
+                    // The month's cap of the offered credits (sprint 7): a boolean, no figure.
+                    $demo['remainingThisMonth'] = !(new \Humanome\Llm\FreeCreditLedger($pdo))
+                        ->state(\Humanome\Llm\FreeCreditLedger::capMicrousd($config->monthlyFreeUsd))['exhausted'];
                 }
 
                 // Worker health without a tick journal (ADR-005): most recent

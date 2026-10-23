@@ -27,20 +27,20 @@ exécution du service/contrat, **f** = intérêt légitime.
 | Base légale | **b** (exécution du service dès la création de compte) ; **a** (consentement) pour la photo de profil, facultative. |
 | Durée | Jusqu'à suppression du compte par la personne (effacement réel). La photo peut être retirée indépendamment à tout moment depuis le profil. |
 | Destinataires | Interne uniquement (aucun tiers). La photo, servie par `GET /api/users/{id}/avatar`, est visible par qui dispose du lien (cache privé). |
-| Tables | `users` (dont `avatar` MEDIUMBLOB + `avatar_mime`, migration 019), `roles`, `user_roles`, `sessions`. |
+| Tables | `users` (dont `avatar` MEDIUMBLOB + `avatar_mime`, migration 019 ; `waitlisted_at`, migration 034 : la date de mise en liste d'attente d'une inscription faite une fois les crédits offerts du mois épuisés — sprint 7, S7a —, nulle pour tout autre compte, rien de plus que ce que garde une inscription), `roles`, `user_roles`, `sessions`. |
 | Sort à la suppression | `users` supprimé (avatar inclus, colonnes de la ligne) ; `user_roles`, `sessions` en CASCADE. Retrait indépendant de la photo : `DELETE /api/auth/me/avatar`. |
 
 ### 1 bis. Vérification d'email à l'inscription (D5)
 
 | Élément | Détail |
 |---|---|
-| Finalité | Confirmer que l'adresse email appartient bien à la personne qui s'inscrit (un compte n'est activé qu'après confirmation d'un code à 4 chiffres envoyé par email). |
+| Finalité | Confirmer que l'adresse email appartient bien à la personne qui s'inscrit (un compte n'est activé qu'après confirmation d'un code à 4 chiffres envoyé par email). Une inscription faite une fois les crédits offerts du mois épuisés attend en liste d'attente (sprint 7) : un email le lui dit, sans code, et son code part à la levée (le 1er du mois suivant, ou par l'administrateur). |
 | Personnes concernées | Toute personne créant un compte. |
-| Données | Email (destinataire du message), empreinte du code de confirmation (hash — jamais le code en clair en base), date d'expiration, compteur d'essais, date de vérification. |
+| Données | Email (destinataire du message), empreinte du code de confirmation (hash — jamais le code en clair en base), date d'expiration, compteur d'essais, date de vérification ; pour une inscription en liste d'attente, la date de sa mise en attente (UTC), rien de plus que ce que garde une inscription. |
 | Base légale | **b** (mesure précontractuelle : sécuriser la création du compte demandé). |
-| Durée | Code : 30 minutes (expiration), effacé dès l'activation. `email_verified_at` : durée de vie du compte. |
+| Durée | Code : 30 minutes (expiration), effacé dès l'activation. `email_verified_at` : durée de vie du compte. `waitlisted_at` : jusqu'à la levée de la liste, qui l'efface (une levée dont le courriel est refusé par le transport la garde : le compte reste en attente). |
 | Destinataires | Transport email : `mail()` de l'hébergeur OVH (l'email transite par l'infrastructure OVH, sous-traitant d'hébergement déjà au registre). Aucun service d'emailing tiers. |
-| Tables | Colonnes `users.email_verified_at`, `users.verification_code_hash`, `users.verification_expires_at`, `users.verification_attempts` (migration 018). |
+| Tables | Colonnes `users.email_verified_at`, `users.verification_code_hash`, `users.verification_expires_at`, `users.verification_attempts` (migration 018) ; `users.waitlisted_at` (migration 034). L'audit garde `account_waitlisted` (sans détail ; son `user_id`, le compte lui-même, passe à NULL à la purge) et `waitlist_lifted` (`{targetUserId}`, d'auteur l'administrateur ou personne pour la levée du mois) : à la purge du compte levé, son identifiant numérique reste dans `details.targetUserId`, hors clé étrangère — un pseudonyme orphelin, comme pour les attributions de rôle (§10 ; UC-CPT-06, Limites). |
 | Sort à la suppression | Colonnes de la ligne `users` : purge en même temps que le compte (aucune table séparée). |
 
 ### 1 ter. Rôles RESPIRE déclarés (sprint 8)
@@ -169,11 +169,11 @@ exécution du service/contrat, **f** = intérêt légitime.
 |---|---|
 | Finalité | Offrir une démonstration de cartographie à un visiteur sans compte (§3.1) : l'Essayer, et depuis le 2026-10-21 l'essai gratuit de la cartographie ouverte (Twin6), sur un portfolio de 5 000 caractères au plus. |
 | Personnes concernées | Visiteurs anonymes ; titulaires d'un compte qui choisissent l'essai gratuit de la cartographie ouverte, le « Service humanome » de l'assistant de cartographie, ou le service humanome du banc d'essai et de la rétro-ingénierie du promptologue (aucune donnée de compte n'y est liée). |
-| Données | **Compteurs anonymes uniquement** : tokens et coût estimé par jour (UTC), quotas par IP hachée (sha256, jamais d'IP brute), empreintes de défis anti-abus consommés. Aucun prompt, aucune réponse, aucune IP en clair conservés. |
+| Données | **Compteurs anonymes uniquement** : tokens et coût estimé par jour (UTC), dépense et réserve des crédits offerts par mois (UTC, démo et assistant tuteur ensemble, sprint 7), quotas par IP hachée (sha256, jamais d'IP brute), empreintes de défis anti-abus consommés. Aucun prompt, aucune réponse, aucune IP en clair conservés. |
 | Base légale | **f** (intérêt légitime : sécurité et maîtrise du budget). |
-| Durée | Compteurs journaliers (fenêtres courtes), purgés par l'entretien ; défis anti-rejeu à TTL de 2 min. |
+| Durée | Compteurs journaliers (fenêtres courtes), purgés par l'entretien ; grand livre mensuel des crédits offerts, une ligne par mois, gardée (aucune donnée personnelle) ; défis anti-rejeu à TTL de 2 min. |
 | Destinataires | Anthropic (le temps du traitement, texte non conservé côté serveur). |
-| Tables | `llm_usage_daily`, `llm_pow_challenges`, `rate_limits` (buckets hachés). |
+| Tables | `llm_usage_daily`, `free_credit_monthly` (migration 034 : mois, dépense, réserve, appels, refus), `free_credit_reservations` (migration 034 : les réserves en cours, un montant et une heure chacune, retirées au règlement ou à leur expiration après 15 minutes), `llm_pow_challenges`, `rate_limits` (buckets hachés). |
 | Sort à la suppression | Sans objet (aucune donnée nominative ; aucune colonne `user_id`). |
 
 ## 8. Sous-traitance modèles de langage (LLM)
@@ -220,7 +220,7 @@ exécution du service/contrat, **f** = intérêt légitime.
 | Personnes concernées | Toute personne effectuant une action tracée. |
 | Données | Type d'événement, date, `details` = faits structurés minuscules (identifiants, compteurs, valeurs de liste blanche). **Jamais** de contenu, de mot de passe, de clé, d'email. |
 | Base légale | **f** (intérêt légitime : sécurité, obligations de traçabilité). |
-| Durée | Conservé au-delà du compte, mais **anonymisé** : `user_id` passe à NULL à la purge — la trace datée subsiste sans identifier personne. |
+| Durée | Conservé au-delà du compte, mais **anonymisé** : `user_id` passe à NULL à la purge — la trace datée subsiste sans identifier personne par ce lien. Limite : un événement écrit par un autre acteur (attribution ou retrait de rôle, invitation acceptée, accès au golden prompt, levée de la liste d'attente…) garde dans `details` l'identifiant numérique du compte supprimé, hors clé étrangère — un pseudonyme orphelin (UC-CPT-06, Limites). |
 | Destinataires | Interne. |
 | Tables | `audit_events`. |
 | Sort à la suppression | `user_id` SET NULL (anonymisation légitime, pas un oubli de purge). |

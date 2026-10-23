@@ -76,6 +76,9 @@ return [
         // La démo se règle finement dans api/config/demo.php (surchargée par
         // les DEMO_* de l'env) ; l'UI admin en affiche les valeurs effectives.
         'DEMO_ENABLED' => $value('DEMO_ENABLED', '', 'Interrupteur général de la démo publique (défaut : activée si vide). Détails dans config/demo.php.'),
+        // Sprint 7 : le plafond MENSUEL des crédits offerts, la démo et le
+        // tuteur ensemble ; la page des réglages le remplace (monthlyFreeUsd).
+        'OFFERTS_MENSUEL_USD' => $value('OFFERTS_MENSUEL_USD', '20', 'Plafond mensuel (USD, mois UTC) des crédits offerts : l’Essayer, l’essai de Twin6, le service humanome, le banc et le tuteur ensemble ; 0 ferme tout ce qui est offert.'),
         // Un appel de la cartographie ouverte sur crédits arrive en flux ; coupé
         // au bout de ce délai, il est facturé pour ce qu'il a produit. OVH
         // borne un script à 165 s sur le mutualisé : 150 laisse le temps de

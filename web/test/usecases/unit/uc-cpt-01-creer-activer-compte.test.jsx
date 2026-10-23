@@ -199,4 +199,38 @@ describe('UC-CPT-01 — AccountView : formulaire d’inscription', () => {
     )
     expect(screen.getByRole('button', { name: 'Créer mon compte' })).toBeDefined()
   })
+
+  it('UC-CPT-01-U23 — handleSubmit, liste d’attente (sprint 7) : une inscription « waitlisted » n’ouvre PAS l’écran d’activation — retour à la connexion, le message du serveur en notice, aucun code', async () => {
+    const api = installFakeAccountApi()
+    api.closeSignups()
+    render(<AccountView />)
+    await screen.findByRole('button', { name: 'Se connecter' })
+    fireEvent.click(screen.getByRole('button', { name: 'Inscription' }))
+    await fill({ name: 'Ada', email: 'ada@example.org', confirm: 'ada@example.org', password: 'correct horse battery' })
+
+    const notice = await screen.findByRole('status')
+    expect(notice.textContent).toBe(
+      'Les crédits offerts de ce mois sont épuisés : votre inscription est en liste d\'attente. Vous recevrez votre code d\'activation par email le 1er novembre (plus tôt si l\'administrateur lève la liste).',
+    )
+    expect(screen.queryByText('Activer votre compte')).toBeNull()
+    expect(screen.getByRole('button', { name: 'Se connecter' })).toBeDefined()
+    expect(screen.getByLabelText(/Mot de passe/).value).toBe('') // mot de passe effacé
+    expect(api.mailbox).toHaveLength(0)
+  })
+
+  it('UC-CPT-01-U24 — handleSubmit, connexion d’un compte en liste d’attente (403 waitlisted) : le message du serveur en notice, pas d’écran d’activation ni de « Renvoyer le code »', async () => {
+    installFakeAccountApi({ users: [{ email: 'ada@example.org', password: 'correct horse battery', verified: false, waitlisted: true }] })
+    render(<AccountView />)
+    await screen.findByRole('button', { name: 'Se connecter' })
+    fireEvent.change(screen.getByLabelText('Email'), { target: { value: 'ada@example.org' } })
+    fireEvent.change(screen.getByLabelText(/Mot de passe/), { target: { value: 'correct horse battery' } })
+    await act(async () => {
+      fireEvent.click(screen.getByRole('button', { name: 'Se connecter' }))
+    })
+
+    expect((await screen.findByRole('status')).textContent).toMatch(/^Les crédits offerts de ce mois sont épuisés : votre inscription est en liste d'attente\./)
+    expect(screen.queryByRole('alert')).toBeNull()
+    expect(screen.queryByText('Activer votre compte')).toBeNull()
+    expect(screen.queryByRole('button', { name: 'Renvoyer le code' })).toBeNull()
+  })
 })

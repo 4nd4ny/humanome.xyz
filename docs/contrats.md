@@ -2679,3 +2679,184 @@ la rubrique est alors vidée, même un nom de route. Toute évolution de ces
 champs ou de leur sens touche donc aussi l'API (même commit, même release).
 UC-SYS-04-F18 vérifie ce contrat sur la carte générée, et que la carte fictive
 des tests PHP (`api/tests/fixtures/tuteur/site-map.json`) a la même forme.
+
+## 13. Le plafond mensuel des crédits offerts (sprint 7, S7a)
+
+« La somme totale des crédits offerts par mois ne doit pas dépasser 20 USD
+pour tous les utilisateurs anonymes et enregistrés du site » (`TODO_LIST.md`,
+sprint 7). Pas de schéma JSON : ce sont des réponses de l'API et une table de
+compteurs.
+
+**Ce qui compte** (décision de Christian, par délégation, 2026-10-22) : tout
+ce que l'instance paie sans le facturer à personne. Deux routes y passent, et
+elles seules : `POST /api/llm` (l'Essayer, l'essai gratuit de Twin6, le
+« Service humanome » de l'assistant de cartographie, le banc et la
+rétro-ingénierie du promptologue) et `POST /api/tuteur`. Ne comptent pas :
+`POST /api/twin6/appel` et les runs Twin9 (un crédit acheté ou une clé
+personnelle), le rendu du banc de Twin9 (aucun appel), le relevé des tarifs
+et `count_tokens` (gratuits chez Anthropic). **Reste à trancher** : le
+fournisseur `humanome` d'un établissement (`Worker/Tick`, cartographie de
+masse) part sur la clé de l'instance ; il est compté dans
+`etablissement_config.spent_usd`, sous le plafond que l'établissement règle
+lui-même, pour une facturation à l'usage (cahier §7) qu'aucun code n'émet
+encore. Il n'est pas compté ici : facturé hors du code, il ne relève pas des
+crédits offerts ; sinon, c'en est un. Aucun crédit d'accueil n'existe : aucune inscription n'écrit dans
+`twin9_credits`.
+
+**La table** `free_credit_monthly` (migration 034) : une ligne par mois UTC
+(`month`, `'AAAA-MM'`), `spent_microusd` (coûts réels réglés),
+`reserved_microusd` (pires cas des appels en cours), `calls` (appels réglés),
+`refusals` (appels refusés par le plafond). Des micro-dollars entiers, des
+compteurs seulement. Le mois est celui des budgets journaliers, UTC, calculé
+en PHP (`gmdate`), jamais par `CURDATE()` ni `NOW()` de MySQL, qui suivent
+l'heure locale du serveur. Il s'ouvre donc le 1er à 0 h UTC, soit 1 h (hiver)
+ou 2 h (été) à Paris.
+
+**La table** `free_credit_reservations` (migration 034, revue du 2026-10-23) :
+une ligne datée par réserve en cours (`id`, `month`, `microusd`,
+`reserved_at` en temps Unix), écrite dans la même transaction que l'`UPDATE`
+conditionnel, retirée au règlement ; `reserved_microusd` reste la somme des
+lignes de son mois. Compteurs seulement, comme la ligne du mois, et partie
+avec elle (`ON DELETE CASCADE`).
+
+**Le déroulé d'un appel offert** (`Llm\FreeCreditLedger`) :
+
+1. Son pire cas (le même que celui du budget du jour pour `/api/llm` ; pour
+   le tuteur, un jeton par octet de la consigne, de la question et de la
+   mémoire courte, le surcoût de la requête et ses 600 jetons de sortie) est
+   **réservé** sur la ligne du mois avant qu'il parte, par un `UPDATE`
+   conditionnel (`spent + reserved + pire cas <= plafond`) : des appels
+   concurrents ne passent jamais le plafond ensemble. Sur `/api/llm`, le mois
+   passe avant le jour, et un refus du jour rend la réserve du mois.
+2. Rendu, l'appel **règle** sa réserve à son coût réel, sans condition : une
+   réponse commencée n'est jamais coupée, même si le plafond baisse ou si le
+   mois se remplit pendant qu'elle arrive. Coupé après l'envoi, il règle ce
+   qu'il a produit, comme au jour.
+3. Refusé par le fournisseur, ou jamais parti, il **rend** sa réserve. Une
+   question du tuteur qui a pu être reçue et facturée la garde, pire cas
+   entier, comptée comme un appel : son délai dépassé, une connexion coupée
+   après l'envoi complet de la requête (`HttpClientException::$requestSent`,
+   que `CurlHttpClient` pose comme `CurlHttpStream`), une réponse 2xx dont le
+   corps n'est pas du JSON ; sa réponse, d'un bloc, ne dit pas ce qu'elle a
+   produit.
+4. Jamais réglée — son processus mort entre la réserve et le règlement (le
+   kill de l'hébergeur, un redéploiement, une erreur fatale, une écriture
+   qui échoue) —, la réserve **expire** après
+   `FreeCreditLedger::RESERVATION_TTL_SECONDS` (15 minutes, bien au-delà du
+   plus long appel permis : 300 s de délai amont au plus, le comptage, une
+   marge) : son pire cas passe en dépensé, compté comme un appel, au mois où
+   elle a réservé. Toute réserve, toute lecture du mois et le critère des
+   inscriptions la font expirer d'abord : un orphelin ne tient plus sa part
+   jusqu'au 1er en laissant les inscriptions ouvertes. Réglée après coup, une
+   réserve expirée n'ajoute que ce que son coût réel dépasse de son pire cas ;
+   rendue, elle ne rend rien.
+
+Un appel se règle au mois où il a réservé, même s'il finit le mois suivant.
+
+**Le refus** : `503` avec
+
+```json
+{"error": "Les crédits offerts de ce mois sont épuisés ; revenez le 1er novembre.", "code": "offerts_epuises"}
+```
+
+sur les deux routes, le mois suivant nommé. Le navigateur affiche ce texte
+tel quel pour l'Essayer, l'essai de Twin6 et le service humanome
+(`describeDemoError`, `web/src/lib/demo-llm.js`), et le tuteur l'affiche comme
+tout message du serveur.
+
+**Le statut public** gagne un booléen, sans chiffre : `GET /api/llm/status`
+rend `{enabled, remainingToday, remainingThisMonth}`, et le bloc `demo` de
+`GET /api/status` aussi (`remainingThisMonth` nul quand la démo est éteinte).
+`remainingThisMonth` est faux quand le mois est dépensé (`spent + reserved >=
+plafond`) ; vrai, il ne promet pas qu'un appel de plus tienne.
+
+**Le réglage** : `monthlyFreeUsd` (USD, de 0 à 1 000), dans
+`settings.demo_overrides` (`PUT /api/admin/demo-config`), puis
+`OFFERTS_MENSUEL_USD`, puis `api/config/demo.php`, puis 20. `0` ferme tout ce
+qui est offert. `GET /api/admin/demo-config` le rend dans `effective` et
+`sources`, et ajoute `freeCreditsMonth` : `{month, capUsd, spentUsd,
+reservedUsd, remainingUsd, calls, refusals, exhausted, signupsOpen,
+signupFloorUsd}` (les deux derniers : la liste d'attente, ci-dessous).
+
+### 13.1 La liste d'attente des inscriptions (S7a-2)
+
+« Après, mettre les inscriptions sur liste d'attente. » Une colonne,
+`users.waitlisted_at` (migration 034) : la date (UTC) depuis laquelle un
+compte attend, nulle pour tout autre compte. Code : `Auth\Waitlist`,
+`Auth\ActivationMail`, `FreeCreditLedger::signupsOpen`.
+
+**Le critère** (décidé une fois, à l'inscription) : les inscriptions restent
+ouvertes tant que le plafond moins ce que le mois a **dépensé** couvre le plus
+petit appel de l'Essayer — son pire cas à l'entrée nulle, le surcoût de la
+requête (1 024 jetons) et toute la sortie du modèle, au tarif de la grille,
+comme sa réserve (`Waitlist::floorMicrousd`, `signupFloorUsd`). Sous ce seuil,
+aucun appel de l'Essayer ne peut plus passer, même sans appel en vol : une
+nouvelle inscription attend. Les réserves des appels en cours ne comptent pas
+(une réserve réglée bon marché un instant après aurait mis quelqu'un en attente
+pour rien) ; un plafond de 0 met toute inscription en attente. Ce n'est pas
+`exhausted` (`spent + reserved >= plafond`), que des pires cas de quelques
+cents (6 pour Haiku 5.5) ou dizaines de cents n'atteignent presque jamais : sous le seuil, le statut
+public peut dire `remainingThisMonth: true` alors que les inscriptions
+attendent. Le tuteur, au pire cas plus petit (600 jetons de sortie), peut
+encore répondre à quelques questions dans cette bande.
+
+**L'inscription au plafond** : `POST /api/auth/register` crée le compte
+(rôle `apprenant`, audit `account_created` puis `account_waitlisted`), pose
+`waitlisted_at` et n'envoie **aucun code** : un courriel « votre inscription
+est en liste d'attente » le dit, et la réponse aussi :
+
+```json
+{"status": "waitlisted", "email": "ada@example.org",
+ "message": "Les crédits offerts de ce mois sont épuisés : votre inscription est en liste d'attente. Vous recevrez votre code d'activation par email le 1er novembre (plus tôt si l'administrateur lève la liste)."}
+```
+
+(`201`, comme `pending_activation`, sans session). Tant qu'il attend, le compte
+ne se connecte pas : `POST /api/auth/login`, bon mot de passe, répond `403
+{error: <le même message>, code: "waitlisted", email}`, testé avant
+`email_not_verified` ; `POST /api/auth/resend` garde sa réponse générique sans
+rien envoyer ; `POST /api/auth/activate` répond le refus générique. Les
+comptes existants ne sont jamais touchés.
+
+**L'horloge** : chaque requête d'authentification lit l'heure une fois
+(`Humanome\Clock`, revue du 2026-10-23) : la décision (le mois est-il
+dépensé ?) et ce qu'elle écrit (`waitlisted_at`, le courriel, la réponse)
+sont du même mois, même quand la création du compte passe minuit le 31.
+
+**La levée** : au 1er du mois suivant (UTC, le mois du grand livre), dans
+l'ordre d'inscription (`id`), par lots de 50 : à la première requête
+d'authentification du mois (`register`, `login`, `resend` — pas un
+intergiciel global), au tick (`POST /api/admin/worker-tick` et
+`scripts/worker.php`, qui ajoutent `listeAttenteLevees: n` à leurs compteurs
+quand des comptes sortent de la liste) et quand l'administrateur ouvre la
+liste. La connexion ou le renvoi d'un compte dont l'attente est finie le lève
+lui-même. Un compte levé devient un compte non activé ordinaire : son code
+part par courriel, qui rappelle qu'une fois les 30 minutes passées il suffit de
+se connecter puis de « Renvoyer le code ». Chaque levée est un `UPDATE …
+WHERE waitlisted_at = <sa date>` : deux levées simultanées n'envoient qu'un
+courriel. Audit `waitlist_lifted {targetUserId}`, d'auteur l'administrateur,
+ou nul pour la levée du mois, écrit une fois le courriel accepté par le
+transport.
+
+**Un courriel refusé** (revue du 2026-10-23 : `mail()` qui rend `false`, le
+quota de l'hébergeur, sendmail en panne) : le compte **reste en liste
+d'attente**, à sa date et sans code, et la levée suivante réessaie. La levée
+du mois s'arrête au premier refus et se retient 5 minutes
+(`Waitlist::MAIL_BACKOFF_SECONDS`, un compteur de `rate_limits` sans
+adresse) : ni chaque requête ni chaque tick ne renvoie un lot de courriels,
+chacun avec un code neuf. Le tick ajoute alors `listeAttenteEchecs: 1` à ses
+compteurs ; la connexion d'un compte dont l'attente est finie répond `403
+{error: « Votre attente est finie, mais le courriel de votre code
+d'activation n'a pas pu partir : réessayez de vous connecter dans quelques
+minutes. », code: "waitlisted", email}`. Un courriel accepté puis perdu en aval
+n'est pas visible ici : le recours reste « Renvoyer le code ».
+
+**L'administration** (session `admin` + CSRF, `docs/administration.md`) :
+
+| Méthode | Route | Réponse |
+|---|---|---|
+| `GET` | `/api/admin/waitlist` | Lève d'abord les comptes dus, puis `{month, signupsOpen, nextLift: "AAAA-MM-01", total, accounts: [{id, email, displayName, createdAt, waitlistedAt}]}` (200 comptes au plus, dans l'ordre ; `waitlistedAt` en UTC, suffixe `Z`) |
+| `POST` | `/api/admin/waitlist/{id}/lift` | `{id, status: "lifted" \| "unchanged"}` ; `404 « Compte introuvable »` ; `502 « Le courriel du code d’activation n’est pas parti : le compte reste en liste d’attente. Réessayez plus tard. »` quand le transport refuse le courriel |
+| `POST` | `/api/admin/waitlist/lift` | « Tout lever », dans l'ordre, 200 comptes au plus par appel, arrêté au premier courriel refusé : `{lifted, failed, remaining}` (`failed` : 0 ou 1) |
+
+`GET /api/admin/monitoring` compte la liste dans `utilisateurs.enListeAttente`
+(ces comptes comptent aussi dans `nonActives`).

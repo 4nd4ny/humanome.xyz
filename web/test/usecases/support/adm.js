@@ -147,6 +147,7 @@ export function emptyOverview(days = 30) {
     utilisateurs: {
       total: 0,
       nonActives: 0,
+      enListeAttente: 0,
       actifsMaintenant: 0,
       sessionsAnonymes: 0,
       nouveauxPeriode: 0,

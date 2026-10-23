@@ -207,6 +207,188 @@ autre fournisseur qu'Anthropic, que l'administrateur ouvre (entrée du 2026-10-2
     `humanome` des établissements (cartographie de masse, `Worker/Tick`) part sur la clé de
     l'instance sans être compté ici (`docs/contrats.md` §13).
 
+- 2026-10-22 — **Sprint 8 : corrections de la revue (même branche `feat/roles-declares`, rien
+  poussé ni déployé).** Huit constats confirmés : six défauts du code, un trou de test et une
+  imprécision de l'entrée ci-dessous. Six commits `fix:`, chacun avec le test qui échouait avant
+  lui ; un `test:` pour le trou de test, que rien ne pouvait faire échouer avant ; un `test:` de
+  rattrapage ; ce `docs:`.
+  Aucun appel LLM réel ; `Twin_v9` (t9-s2) n'est pas modifié.
+  - `935840c` — **un rôle déclaré qui n'est pas de l'UTF-8 valide est refusé sans être cité**
+    (`DeclaredRoles::validate`). Un corps de formulaire (`roles[]=%C3`, que Slim analyse aussi)
+    arrivait jusqu'au message « Rôle non déclarable « … » ». Sous PHP 8.2 (la CI, OVH),
+    `mb_substr` copie les octets bruts : le `422` ne s'encodait pas en JSON, d'où un `500` et une
+    trace. Le message est désormais fixe : « Chaque rôle est un identifiant en UTF-8 valide ».
+    UC-CPT-07-U04 et F04 échouaient avant (sous PHP 8.5, le message citait « ? »). Le `500`
+    lui-même n'est pas reproduit ici : aucun PHP 8.2 n'est installé.
+  - `6e62a0b` — **test : F06 a son contrôle positif, RG4 un test de structure.**
+    - Chaque appel refusé à la déclarante est rejoué par un compte qui détient l'habilitation, et
+      doit passer la garde (`200`, ou `404` sur une invitation ou une proposition qui n'existe
+      pas).
+    - UC-CPT-07-U22 (nouveau) lit le code PHP de `api/src`, commentaires exclus : hors de
+      `DeclaredRoles`, seules la route de la déclaration et `UserDirectory` citent la table, la
+      case ou la classe.
+    - Rien ne pouvait échouer avant. Vérifié par mutation, annulée : une référence à
+      `DeclaredRoles` ajoutée dans `Electorate.php` fait échouer U22 ; une garde
+      `RoleGuard::any('nobody')` sur les brouillons de paquets fait échouer le nouveau F06,
+      alors que l'ancien passait.
+  - `7f484b5` — **le tableau des comptes défile dans son conteneur** (`.admin-table-scroll`,
+    `overflow-x: auto`). La colonne « Rôles déclarés » l'avait élargi d'environ 140 px ; comme
+    `html` ne défile pas en largeur, « Attribuer » devenait inatteignable dans une fenêtre de
+    moins d'environ 530 px. `position: relative` y retient aussi les libellés `.visually-hidden`
+    des cellules : sans lui, celui du menu « rôle » élargissait encore la page (461 px à 375).
+    UC-ADM-01-U31 (nouveau) échouait avant.
+  - `837ab35` — **les définitions des rôles atteignent 4,5:1** : `--ink-soft` au lieu de
+    `--ink-faint` sur `--surface-2` (4,34 en clair et 4,44 en sombre avant ; 6,92 et 7,50 après).
+    UC-CPT-07-U23 (nouveau) calcule le contraste sur les jetons des trois thèmes de `global.css`
+    (clair, sombre du système, sombre choisi) ; il échouait avant.
+  - `1f27727` — **« Enregistrer mes rôles » garde le focus au clavier** : `aria-disabled` au lieu
+    de `disabled`, garde dans `save()`, libellé « Enregistrement… » pendant l'envoi (il valait
+    « … »). UC-CPT-07-U24 (nouveau) échouait avant : jsdom ne focalise pas un bouton `disabled`.
+  - `99a4da9`, puis `f34f40c` — **« habilitation » pour ce que l'administrateur attribue** :
+    l'aide de `#/compte`, « Aucune habilitation pour l'instant » dans le profil, les messages de
+    `#/admin/roles` (« Habilitation « x » accordée. », « … retirée. »), et le bouton
+    « Habiliter « épistémiarque » », avec le libellé de `ROLE_LABELS` au lieu de l'identifiant.
+    UC-ADM-01 U29, U30, F13, F14, F27, UC-CPT-02-F23 et UC-CPT-07-U25 (nouveau) échouaient avant.
+    `f34f40c` rattrape le test colocalisé `RolesSection.test.jsx`, oublié par `99a4da9` : ce
+    commit seul laisse ce test rouge (l'historique n'est pas réécrit).
+  - `4268de7` — **une session perdue dit de se reconnecter.** Sans détail de champ, un `403` (le
+    middleware CSRF) ou un `401` affiche « Votre session a expiré : reconnectez-vous, puis
+    enregistrez de nouveau vos rôles. » au lieu de « Jeton CSRF absent ou invalide ». La section
+    des clés API, sur la même page, dit de même (« … puis réessayez. »). UC-CPT-07-U19, F14 et un
+    cas d'`ApiKeysSection.test.jsx` échouaient avant.
+  - Ce commit `docs:` corrige l'entrée ci-dessous : U12 à U14 sont des tests web de `6364dbc`,
+    UC-ADM-01 U28 et F26 y sont cités, et cinq e2e rendent le nouveau bloc sans l'exercer.
+    Catalogue des cas recompté : 61 cas, 1 065 U, 1 209 F (UC-CPT-07 : 25 U, 14 F ; UC-ADM-01 :
+    31 U, 27 F).
+  - **Vérifié** (PHP 8.5.12, MySQL 8.0 locaux, base `humanome_test_s8`, `TWIN_V9_DIR` = t9-s2,
+    arbre de `f34f40c`) :
+    - PHP : `Tests: 1926, Assertions: 21482`, les 2 échecs connus de PHP 8.5 seuls
+      (`AuthActivationTest::testExpiredCodeIsRejected`,
+      `UcCpt02…::testU17SessionCookieAttributes`), 1 dépréciation (+1 test : U22) ;
+    - front : 3 024 tests verts et 9 sautés, sur 277 fichiers. Au premier passage complet,
+      `src/carto/ui/Tiles.test.jsx` (« le soleil dessine CŒUR un cran plus sombre… », hors de ce
+      travail) a échoué une fois ; il passe seul trois fois de suite, et au passage complet
+      suivant : instable sous charge ;
+    - moteur : 585 verts et 8 sautés (593) ;
+    - `npm run build` puis `npm run test:dist` : vert ; `check-publiable` : OK ;
+    - Chromium (Playwright, le banc de la revue reconstruit) : à 375 et 480 px, avec ou sans
+      émulation mobile, la page fait exactement la largeur de la fenêtre ; le tableau défile dans
+      son conteneur (351 px visibles sur 686 à 375) ; Tab jusqu'au menu « rôle » y fait défiler
+      le conteneur à 375 px. Bloc du compte : Espace, Tab, Entrée, et le focus reste sur le
+      bouton pendant et après l'enregistrement.
+  - **Non vérifié** :
+    - PHP 8.2 : le `500` d'origine n'est établi que par lecture des sources de PHP 8.2 ;
+    - les e2e Playwright, non relancés ; iOS Safari ; l'application servie avec son API dans un
+      vrai navigateur ;
+    - à 480 px, Chromium focalise le menu « rôle », à peine visible au bord droit, sans faire
+      défiler le conteneur. Il se montre à la molette, au pavé tactile ou au doigt.
+  - **À décider (Christian)** :
+    1. La suppression du compte (UC-CPT-06) et les autres écrans affichent encore « Jeton CSRF
+       absent ou invalide » quand la session est perdue. Faut-il traduire ce message une fois
+       pour toutes, dans `apiFetch` ou dans le middleware ?
+    2. Dans `#/admin/roles`, les puces, le menu « — rôle — » et « Retirer le rôle … » disent
+       encore « rôle » pour une habilitation. C'était hors des quatre points de la revue.
+    3. Restent ceux de l'entrée ci-dessous : la séparation déclaration / habilitation ; les
+       libellés et définitions des neuf rôles, à relire ; le cercle des fondateurs déclaratif ;
+       les jeux de tests à verser sur GitHub (une publication, non faite ici : des jeux fictifs
+       seulement) ; les rôles partagés avec EduChat.
+
+- 2026-10-22 — **Sprint 8 : les rôles RESPIRE se déclarent, les habilitations restent à
+  l'administrateur (branche `feat/roles-declares`, sur `main` 11c4eae ; rien poussé ni déployé ;
+  migration 035).** Le TODO demande des rôles « auto-attribués ». Or deux des sept rôles
+  actuels donnent des droits : un cartographe lit les runs Twin9 partagés aux cartographes, et
+  l'électorat du référentiel est fait des épistémiarques. Une auto-attribution aurait donc ouvert
+  des données d'élèves et le vote à n'importe quel compte. Décision prise par délégation
+  (recommandation de la fiche du sprint) : **séparer deux notions**, décrites dans
+  `docs/roles.md` (nouveau glossaire) et `docs/autorisations.md` (principe 7).
+  - **Le rôle déclaré** est l'identité RESPIRE que la personne se donne dans `#/compte`, parmi
+    les neuf de la liste : cartographe, promptologue, promptagogue, éclaireur, architecte,
+    épistémiarque, médiateur, noèsiologue, maître du grimoire. La case « membre du cercle des
+    fondateurs » n'est proposée et acceptée qu'avec promptagogue, épistémiarque ou maître du
+    grimoire ; le serveur la revérifie (`422`). Une déclaration n'ouvre **rien** : aucune garde,
+    aucune famille du menu, aucun mode d'affichage par défaut, aucun vote. Elle est visible de la
+    personne, de l'administrateur et dans l'archive de compte, et supprimée avec le compte.
+  - **L'habilitation** désigne les sept rôles actuels. Elle reste attribuée par l'administrateur
+    seul : personne ne s'habilite soi-même, `admin` compris.
+  - **Habiliter d'un clic** : l'écran des rôles montre les déclarations, et un bouton
+    « Habiliter » accorde celle qui y correspond (cartographe, promptologue, épistémiarque ; les
+    six autres déclarations n'ont pas d'habilitation aujourd'hui). C'est l'attribution existante,
+    auditée.
+
+  Commits :
+  - `6364dbc` — **serveur** : migration 035 (`user_declared_roles`, `users.founding_circle`) et
+    `Auth\DeclaredRoles` (catalogue, validation, écriture sous verrou, `grantable`).
+    - Routes : `GET`/`PUT /api/auth/me/declared-roles` ; `GET /api/admin/users` porte les
+      déclarations et `grantable`.
+    - Archive de compte 1.3.0 (`account.declaredRoles`, décision 17 de `docs/contrats.md`) ;
+      registre RGPD §1 ter.
+    - Tests PHP UC-CPT-07 U01 à U11 et F01 à F09, avec leurs contrôles positifs : une
+      cartographe déclarée, même liée, ne lit pas un run partagé aux cartographes ; une
+      épistémiarque déclarée ne vote pas. Tests PHP UC-ADM-01 U28 et F26 (la liste de
+      l'administration porte les déclarations). Tests **web** UC-CPT-07 U12 à U14 : export et
+      import de l'archive 1.3.0 (`uc-cpt-07-declarer-roles-respire.test.js`).
+  - `f9f9e03` — **IHM** : le bloc « Mes rôles RESPIRE » de `#/compte`, après le profil et sa
+    ligne « Affichage ».
+    - Le bloc affiche le catalogue de l'API, avec définitions, et la mention « Une déclaration ne
+      donne pas d'accès ; l'administrateur habilite. ». La case du cercle est conditionnelle.
+    - L'enregistrement n'émet aucun événement de session. La ligne « Rôles » du profil devient
+      « Habilitations ».
+    - Dans `#/admin/roles` : la colonne « Rôles déclarés » et les boutons « Habiliter ».
+    - Aide contextuelle mise à jour ; `docs/roles.md` ajouté au sommaire GitBook.
+    - Tests web : UC-CPT-07 U15 à U21 et F10 à F14, UC-ADM-01 U29, U30 et F27. **F10 est la
+      propriété du menu** : pour six jeux d'habilitations, déclarer les neuf rôles et la case ne
+      change ni les familles du menu, ni ses liens, ni le mode par défaut, à l'enregistrement
+      comme après rechargement. F11 en est le contrôle positif : l'habilitation, elle, change le
+      menu.
+    - Les faux serveurs lisent catalogue, validation et `grantable` dans `DeclaredRoles.php`. Des
+      tests de concordance lient la copie des libellés du front et le glossaire à ce fichier.
+  - Le commit `docs:` de cette entrée : fiches UC-CPT-07 et UC-ADM-01 (IHM, scénarios A4 et E5,
+    RG6, tests), `docs/autorisations.md`, `docs/administration.md`,
+    `docs/ergonomie-navigation.md`. Catalogue des cas recompté : 61 cas, 1 060 U, 1 209 F
+    (UC-CPT-07 : 21 U, 14 F ; UC-ADM-01 : 30 U, 27 F).
+  - **Vérifié** (PHP 8.5.12, MySQL 8.0 locaux, base `humanome_test_s8`, `TWIN_V9_DIR` = t9-s2,
+    arbre de `f9f9e03`) :
+    - PHP : `Tests: 1925, Assertions: 21454`, les 2 échecs connus de PHP 8.5 seuls
+      (`AuthActivationTest::testExpiredCodeIsRejected`,
+      `UcCpt02…::testU17SessionCookieAttributes`), 1 dépréciation ; UC-CPT-07 et UC-ADM-01 verts
+      (le lot IHM ne touche pas le PHP) ;
+    - front : 3 019 tests verts et 9 sautés, sur 277 fichiers (+15). Mesuré dans le même
+      environnement : 3 004 verts et 9 sautés sur `6364dbc` (+3), 3 001 verts et 9 sautés sur
+      `main` 11c4eae, comme à l'entrée « Phase D » (le « 3 015 verts » de `main` a été compté dans
+      un autre environnement) ;
+    - moteur : 585 verts et 8 sautés (593) ;
+    - `npm run build` puis `npm run test:dist` : vert ; `check-publiable` : OK ;
+    - F10 détecte une fuite. Faux serveur rendant les déclarations parmi les rôles de
+      `auth/me` : F10 échoue (mutation annulée).
+    - Rendu : le balisage produit en jsdom, avec `global.css`, dans Chromium headless. Bloc du
+      compte en clair, en sombre et à 380 px ; colonne d'administration en clair et en sombre.
+  - **Non vérifié** :
+    - PHP 8.2 (la CI) ;
+    - l'application servie avec son API dans un vrai navigateur ;
+    - les e2e Playwright, non relancés. Cinq d'entre eux ouvrent `#/compte` connecté et rendent
+      donc le nouveau bloc, sans l'exercer : `parcours-apprenant`, `parcours-cartographe`,
+      `parcours-promptologue`, `twin9-run`, `twin9-referentiels`. Aucun n'ouvre `#/admin/roles`
+      (précision apportée par la revue, entrée ci-dessus) ;
+    - rien n'est déployé, et la migration 035 n'est appliquée nulle part hors des bases de test.
+  - **« Uploader tous les jeux de tests dans GitHub » : non fait.** C'est une publication. Le
+    dépôt alimente un miroir public (`check-publiable`) ; seuls des jeux **fictifs** pourraient y
+    aller, pas le journal 300 ni la démo, qui sont réels. Il faut l'accord explicite de Christian
+    et la liste des jeux.
+  - **À décider (Christian)** :
+    1. **La séparation déclaration / habilitation**, prise par délégation. L'alternative,
+       habiliter d'office à la déclaration, ouvrirait les runs partagés aux cartographes et le
+       vote du référentiel à tout compte.
+    2. **Les libellés et définitions des neuf rôles** (`docs/roles.md`, à relire tous).
+       - Six n'ont pas de source dans le dépôt : promptagogue, éclaireur et architecte ont une
+         définition neutre ; médiateur, noèsiologue et maître du grimoire, une source indirecte
+         (`content/formation/noesiologie`, ch. 1).
+       - La graphie « noèsiologie » du catalogue suit la liste du TODO. `content/formation` écrit
+         « noésiologie ».
+    3. **Le cercle des fondateurs est déclaratif** : personne ne le vérifie. Faut-il une liste
+       fermée, tenue par l'administrateur ?
+    4. **Les jeux de tests à verser sur GitHub** (fictifs seulement).
+    5. **Les rôles partagés avec EduChat** (`is_promptagogue`, `is_teacher`, autre dépôt) : hors
+       de ce travail.
 - 2026-10-22 — **Phase D : corrections de la revue (même branche `feat/phase-d-twin9`, rien
   déployé).** Douze constats confirmés, dont deux paires en double (la graine,
   « non conservées ») : dix défauts, huit commits `fix:`, chacun avec le test qui échouait avant

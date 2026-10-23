@@ -39,12 +39,31 @@ d'attribuer ou de retirer les **rôles du référentiel §2** (`apprenant`,
 
 | Méthode | Route | Effet |
 |---|---|---|
-| `GET` | `/api/admin/users?query=&page=` | Comptes + rôles, recherche e-mail/nom, pagination (20/page). |
+| `GET` | `/api/admin/users?query=&page=` | Comptes + rôles, recherche e-mail/nom, pagination (20/page) ; à côté des rôles, les rôles RESPIRE **déclarés** par chaque compte (`declaredRoles`, `foundingCircle`) et `grantable` (ci-dessous). |
 | `POST` | `/api/admin/users/{id}/roles` `{role}` | Attribue un rôle (idempotent). |
 | `DELETE` | `/api/admin/users/{id}/roles/{role}` | Retire un rôle (idempotent). |
 
 - Les rôles sont relus en base **à chaque requête** : un changement de rôle est
   effectif immédiatement (aucune reconnexion nécessaire).
+- **Rôles déclarés et habilitations (sprint 8)** : chacun se déclare, dans
+  `#/compte`, des rôles de la liste RESPIRE (cartographe, promptologue,
+  promptagogue, éclaireur, architecte, épistémiarque, médiateur, noèsiologue,
+  maître du grimoire, et la case « membre du cercle des fondateurs » pour les
+  promptagogues, épistémiarques et maîtres du grimoire). Une déclaration
+  **n'ouvre aucun droit** (`docs/autorisations.md`, principe 7) : seuls les
+  rôles de ce tableau, les **habilitations**, en ouvrent, et seul un
+  administrateur les attribue. `grantable` nomme les habilitations que les
+  déclarations d'un compte appellent et qu'il n'a pas encore (cartographe →
+  `cartographe`, promptologue → `promptologue`, épistémiarque →
+  `epistemiarque` ; les autres déclarations n'en ont pas aujourd'hui) :
+  « habiliter d'un clic » est le `POST` d'attribution avec ce rôle, audité
+  comme toute attribution. Retirer l'habilitation ne retire pas la
+  déclaration ; l'administrateur ne modifie pas les déclarations. Dans
+  `#/admin/roles`, la colonne « Rôles déclarés » montre la déclaration de
+  chaque compte, en libellés, et un bouton « Habiliter « <libellé> » » par
+  habilitation de `grantable` ; la colonne des rôles s'intitule
+  « Habilitations », et les messages disent « Habilitation « <libellé> »
+  accordée » ou « retirée ». Glossaire : [`docs/roles.md`](roles.md).
 - **Anti-verrouillage** : un administrateur **ne peut pas retirer son propre
   rôle admin** (409). La plateforme conserve donc toujours au moins
   l'administrateur agissant. Un admin peut retirer le rôle admin d'un *autre*
@@ -278,8 +297,11 @@ les entrées secrètes, `GET /api/admin/settings` et l'UI n'exposent que l'état
   `AdminSettingsTest` (instantané, défaut publié/non-privé, secrets masqués),
   `AdminDemoConfigTest` (précédence base > env > fichier, PUT partiel + effet
   sur `DemoConfig::load()`, bornes 422, DELETE/reset, toggle `enabled`, garde
-  401/403, clé API jamais exposée).
+  401/403, clé API jamais exposée) ; rôles déclarés à côté des habilitations
+  et habilitation d'un clic : UC-ADM-01-U28 et F26, UC-CPT-07 (une
+  déclaration n'ouvre rien).
 - Web : `AdminView.test.jsx` (garde de rôle), `admin/RolesSection.test.jsx`
-  (tableau, attribution, retrait, anti-verrouillage),
+  (tableau, attribution, retrait, anti-verrouillage), UC-ADM-01-U29, U30 et
+  F27 (colonne « Rôles déclarés », « Habiliter »),
   `admin/ReglagesSection.test.jsx` (interrupteur démo, modèle menu + texte
   libre, PUT partiel, 422, badges d'origine, réinitialisation).

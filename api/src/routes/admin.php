@@ -13,7 +13,7 @@ declare(strict_types=1);
  *
  * Sections (docs/administration.md):
  *   0. Monitoring GET  /admin/monitoring?days=
- *   1. Roles      GET  /admin/users?query=&page=&role=
+ *   1. Roles      GET  /admin/users?query=&page=&role=   (+ declared roles, grantable)
  *                 POST /admin/users/{id}/roles {role}
  *                 DELETE /admin/users/{id}/roles/{role}   (anti-lockout)
  *   2. Golden     POST /admin/golden {document}           (private import)
@@ -93,7 +93,10 @@ return function (App $app): void {
     // 1. Roles
     // ==================================================================
 
-    // GET /api/admin/users?query=&page=&role= — accounts with their roles.
+    // GET /api/admin/users?query=&page=&role= — accounts with their roles, and
+    // beside them the RESPIRE roles they declare (sprint 8: a declaration opens
+    // nothing) with the habilitations those call for (`grantable`), granted in
+    // one click by the POST below.
     $app->get('/admin/users', $wrap(function (Request $request, Response $response) use ($json): Response {
         $params = $request->getQueryParams();
         $query = \is_string($params['query'] ?? null) ? $params['query'] : '';

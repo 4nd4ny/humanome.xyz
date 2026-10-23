@@ -6,7 +6,8 @@
 // admin-api.js (liste, attribution, retrait — URL, méthode, corps, jeton CSRF)
 // la pagination du composant RolesSection rendu isolément, la sonde de session
 // fetchMe, la garde de rôle d'AdminView et son repli « section inconnue »
-// (coutures deps.fetchMeFn/fetchFn).
+// (coutures deps.fetchMeFn/fetchFn) ; depuis le sprint 8 (A7), la colonne des
+// rôles déclarés et le bouton « Habiliter » de RolesSection.
 import { afterEach, describe, expect, it, vi } from 'vitest'
 import { act, cleanup, fireEvent, render, screen, waitFor } from '@testing-library/react'
 import { parseHash } from '../../../src/router.js'
@@ -27,6 +28,7 @@ import {
   revokeRole,
 } from '../../../src/views/admin/admin-api.js'
 import RolesSection from '../../../src/views/admin/RolesSection.jsx'
+import { declOf, globalCssRules } from '../support/global-css.js'
 import AdminView from '../../../src/views/AdminView.jsx'
 
 afterEach(() => {
@@ -176,6 +178,123 @@ describe('UC-ADM-01 — composant RolesSection isolé', () => {
     expect(options).toEqual(['promptologue', 'epistemiarque', 'employeur', 'etablissement', 'admin'])
     expect(screen.getAllByRole('button', { name: 'Attribuer' })[0].disabled).toBe(true)
     expect(screen.getByText('aucun')).toBeTruthy()
+  })
+
+  it('UC-ADM-01-U29 — A7 : colonne « Rôles déclarés » — libellés dans l’ordre du catalogue, case du cercle, « Habiliter » pour chaque habilitation de `grantable` seulement (jamais une déjà détenue) ; « aucune déclaration » sans déclaration ou d’une API antérieure ; habilitations et déclarations jamais mêlées', async () => {
+    const fetchFn = vi.fn(async () =>
+      jsonResponse(200, {
+        users: [
+          {
+            id: 5, email: 'maya@b.fr', displayName: 'Maya', createdAt: '', roles: ['apprenant', 'promptologue'],
+            declaredRoles: ['cartographe', 'promptologue', 'epistemiarque', 'maitre-du-grimoire'],
+            foundingCircle: true,
+            // promptologue détenu : un serveur qui l'annoncerait encore n'aurait pas de bouton
+            grantable: ['cartographe', 'promptologue', 'epistemiarque'],
+          },
+          { id: 6, email: 'noe@b.fr', displayName: 'Noé', createdAt: '', roles: ['apprenant'], declaredRoles: [], foundingCircle: false, grantable: [] },
+          { id: 8, email: 'ancien@b.fr', displayName: 'Ancien', createdAt: '', roles: ['apprenant'] },
+        ],
+        total: 3,
+        page: 1,
+        pageSize: 20,
+      }),
+    )
+    render(<RolesSection currentUserId={1} fetchFn={fetchFn} />)
+    await screen.findByText('Maya')
+
+    const headers = screen.getAllByRole('columnheader').map((th) => th.textContent)
+    expect(headers).toEqual(['Compte', 'Habilitations', 'Rôles déclarés', 'Attribuer', 'Créé le'])
+    const declared = screen.getByRole('list', { name: 'Rôles déclarés par maya@b.fr' })
+    expect([...declared.querySelectorAll('li')].map((li) => li.textContent)).toEqual([
+      'Cartographe',
+      'Promptologue',
+      'Épistémiarque',
+      'Maître du grimoire',
+      'Membre du cercle des fondateurs',
+    ])
+    const grants = screen.getAllByRole('button', { name: /^Habiliter/ })
+    expect(grants.map((b) => b.getAttribute('aria-label'))).toEqual([
+      'Habiliter « cartographe » pour maya@b.fr',
+      'Habiliter « épistémiarque » pour maya@b.fr',
+    ])
+    // le libellé de l'habilitation (ROLE_LABELS), comme la puce déclarée « Épistémiarque » de la même ligne
+    expect(grants.map((b) => b.textContent)).toEqual(['Habiliter « cartographe »', 'Habiliter « épistémiarque »'])
+    // Les puces d'habilitation restent les rôles détenus, en identifiants.
+    const mayaRow = screen.getByText('Maya').closest('tr')
+    expect([...mayaRow.querySelectorAll('.admin-role-chip span:first-child')].map((el) => el.textContent)).toEqual([
+      'apprenant',
+      'promptologue',
+    ])
+    for (const name of ['Noé', 'Ancien']) {
+      const row = screen.getByText(name).closest('tr')
+      expect(row.textContent).toContain('aucune déclaration')
+      expect(row.querySelector('button[aria-label^="Habiliter"]')).toBeNull()
+    }
+  })
+
+  it('UC-ADM-01-U30 — A7 : « Habiliter » = le POST d’attribution du rôle, avec le jeton CSRF, puis message et rechargement de la liste', async () => {
+    await withCsrf('csrf-u30')
+    const calls = []
+    let granted = false
+    const fetchFn = vi.fn(async (url, init = {}) => {
+      calls.push({ url, init })
+      if (url === 'api/admin/users') {
+        return jsonResponse(200, {
+          users: [{
+            id: 5, email: 'maya@b.fr', displayName: 'Maya', createdAt: '',
+            roles: granted ? ['apprenant', 'epistemiarque'] : ['apprenant'],
+            declaredRoles: ['epistemiarque'], foundingCircle: false,
+            grantable: granted ? [] : ['epistemiarque'],
+          }],
+          total: 1, page: 1, pageSize: 20,
+        })
+      }
+      if (url === 'api/admin/users/5/roles' && init.method === 'POST') {
+        granted = true
+        return jsonResponse(200, { id: 5, role: 'epistemiarque', status: 'granted' })
+      }
+      throw new Error(`route non mockée : ${url}`)
+    })
+    render(<RolesSection currentUserId={1} fetchFn={fetchFn} />)
+    const grant = await screen.findByRole('button', { name: 'Habiliter « épistémiarque » pour maya@b.fr' })
+    await act(async () => {
+      fireEvent.click(grant)
+    })
+
+    expect(await screen.findByText('Habilitation « épistémiarque » accordée, comme le compte l’a déclaré.')).toBeTruthy()
+    const post = calls.find((c) => c.init.method === 'POST')
+    expect(JSON.parse(post.init.body)).toEqual({ role: 'epistemiarque' })
+    expect(post.init.headers['X-CSRF-Token']).toBe('csrf-u30')
+    await waitFor(() => expect(screen.queryByRole('button', { name: /^Habiliter/ })).toBeNull())
+    expect(calls.filter((c) => c.url === 'api/admin/users')).toHaveLength(2)
+    expect(screen.getByRole('list', { name: 'Rôles déclarés par maya@b.fr' }).textContent).toBe('Épistémiarque')
+  })
+
+  it('UC-ADM-01-U31 — petit écran : le tableau des comptes défile dans son propre conteneur (overflow-x: auto), jamais la page, que global.css ne fait pas défiler (html, overflow-x: hidden) ; « Attribuer » et « Habiliter » restent atteignables', async () => {
+    const fetchFn = vi.fn(async () =>
+      jsonResponse(200, {
+        users: [{
+          id: 5, email: 'camille.dupont-m@exemple.org', displayName: 'Camille', createdAt: '', roles: ['apprenant'],
+          declaredRoles: ['cartographe', 'promptagogue', 'epistemiarque'], foundingCircle: true,
+          grantable: ['cartographe', 'epistemiarque'],
+        }],
+        total: 1, page: 1, pageSize: 20,
+      }),
+    )
+    render(<RolesSection currentUserId={1} fetchFn={fetchFn} />)
+    await screen.findByText('Camille')
+
+    const table = screen.getByRole('table')
+    const scroller = table.parentElement
+    expect(scroller.className).toBe('admin-table-scroll')
+    expect(scroller.contains(screen.getByRole('button', { name: 'Attribuer' }))).toBe(true)
+    const rules = globalCssRules()
+    expect(declOf(rules, 'html')['overflow-x']).toBe('hidden')
+    expect(declOf(rules, '.admin-table-scroll')['overflow-x']).toBe('auto')
+    // les libellés .visually-hidden (absolus) des cellules restent dans le conteneur, sans élargir la page
+    expect(declOf(rules, '.visually-hidden').position).toBe('absolute')
+    expect(scroller.querySelector('.visually-hidden')).not.toBeNull()
+    expect(declOf(rules, '.admin-table-scroll').position).toBe('relative')
   })
 
   it('UC-ADM-01-U21 — apiFetch refuse une copie statique (file:) sans appel réseau', async () => {

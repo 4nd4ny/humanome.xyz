@@ -1,7 +1,7 @@
 # Registre des traitements — humanome.xyz (RGPD art. 30)
 
 **Responsable du traitement :** Harmonia Éducation (écosystème RESPIRE).
-**Version :** M9 / P12.2 — 2026-07-12 ; fournisseurs des runs Twin9 (ADR-012) — 2026-10-22.
+**Version :** M9 / P12.2 — 2026-07-12 ; fournisseurs des runs Twin9 (ADR-012) — 2026-10-22 ; rôles RESPIRE déclarés (§1 ter, sprint 8) — 2026-10-22.
 **Principe transverse (cahier §6) :** aucune donnée de portfolio ni de
 cartographie côté serveur par défaut ; tout stockage serveur est un opt-in
 explicite et réversible de la personne concernée. Journalisation minimale :
@@ -23,7 +23,7 @@ exécution du service/contrat, **f** = intérêt légitime.
 |---|---|
 | Finalité | Authentifier la personne, rattacher ses données à son profil, porter les rôles de l'écosystème (§2). |
 | Personnes concernées | Apprenants, cartographes, promptologues, épistémiarques, employeurs, établissements, administrateurs. |
-| Données | Email, nom affiché (éditable), **photo de profil / avatar (optionnelle, D6)**, empreinte de mot de passe (Argon2id — jamais le mot de passe en clair), rôles, date de création. |
+| Données | Email, nom affiché (éditable), **photo de profil / avatar (optionnelle, D6)**, empreinte de mot de passe (Argon2id — jamais le mot de passe en clair), rôles (les habilitations ; les rôles RESPIRE que la personne se déclare : §1 ter), date de création. |
 | Base légale | **b** (exécution du service dès la création de compte) ; **a** (consentement) pour la photo de profil, facultative. |
 | Durée | Jusqu'à suppression du compte par la personne (effacement réel). La photo peut être retirée indépendamment à tout moment depuis le profil. |
 | Destinataires | Interne uniquement (aucun tiers). La photo, servie par `GET /api/users/{id}/avatar`, est visible par qui dispose du lien (cache privé). |
@@ -42,6 +42,20 @@ exécution du service/contrat, **f** = intérêt légitime.
 | Destinataires | Transport email : `mail()` de l'hébergeur OVH (l'email transite par l'infrastructure OVH, sous-traitant d'hébergement déjà au registre). Aucun service d'emailing tiers. |
 | Tables | Colonnes `users.email_verified_at`, `users.verification_code_hash`, `users.verification_expires_at`, `users.verification_attempts` (migration 018) ; `users.waitlisted_at` (migration 034). L'audit garde `account_waitlisted` (sans détail ; son `user_id`, le compte lui-même, passe à NULL à la purge) et `waitlist_lifted` (`{targetUserId}`, d'auteur l'administrateur ou personne pour la levée du mois) : à la purge du compte levé, son identifiant numérique reste dans `details.targetUserId`, hors clé étrangère — un pseudonyme orphelin, comme pour les attributions de rôle (§10 ; UC-CPT-06, Limites). |
 | Sort à la suppression | Colonnes de la ligne `users` : purge en même temps que le compte (aucune table séparée). |
+
+### 1 ter. Rôles RESPIRE déclarés (sprint 8)
+
+| Élément | Détail |
+|---|---|
+| Finalité | Laisser chaque personne dire quels rôles de l'écosystème RESPIRE elle se reconnaît (cartographe, promptologue, promptagogue, éclaireur, architecte, épistémiarque, médiateur, noèsiologue, maître du grimoire ; « membre du cercle des fondateurs » pour les promptagogues, épistémiarques et maîtres du grimoire), et à l'administrateur de les voir pour décider d'une habilitation. Une déclaration **n'ouvre aucun droit** : les droits restent les rôles du §1, attribués par l'administrateur. |
+| Personnes concernées | Tout compte qui se déclare un rôle. |
+| Données | Les rôles déclarés (identifiants de la liste), la case du cercle des fondateurs. Aucune date, aucun justificatif. Pas de journal d'audit : la déclaration n'ouvre rien. |
+| Base légale | **a** (déclaration facultative de la personne, qu'elle modifie ou retire à tout moment). |
+| Durée | Jusqu'à ce que la personne la change, ou à la suppression du compte. |
+| Destinataires | La personne (`GET /api/auth/me/declared-roles`) et l'administrateur (`GET /api/admin/users`). Aucun tiers ; jamais affichée à un autre compte. |
+| Tables | `user_declared_roles`, colonne `users.founding_circle` (migration 035). |
+| Export | Archive de compte « un clic », `account.declaredRoles` (schéma 1.3.0). |
+| Sort à la suppression | `user_declared_roles` en CASCADE ; la case, colonne de la ligne `users`, part avec elle. |
 
 ## 2. Portfolios (journal réflexif)
 

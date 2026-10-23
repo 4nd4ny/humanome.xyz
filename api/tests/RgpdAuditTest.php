@@ -63,6 +63,7 @@ final class RgpdAuditTest extends MasseTestCase
         'twin9_profils.user_id' => 'CASCADE', // migration 024 (T12 : les profils Twin9 appartiennent à leur auteur, registre §12)
         'twin9_cartes.user_id' => 'CASCADE', // migration 025 (T7 : la mémoire d'une carte Twin9, registre §13)
         'twin9_runs.user_id' => 'CASCADE', // migration 025 (T7 : le run, son portfolio, son journal et ses sorties, registre §13)
+        'user_declared_roles.user_id' => 'CASCADE', // migration 035 (sprint 8 : les rôles RESPIRE déclarés, registre §1 ter)
         // --- documented anonymisation (SET NULL) ---
         'audit_events.user_id' => 'SET NULL',
         'referentiel_versions.created_by' => 'SET NULL',
@@ -130,6 +131,8 @@ final class RgpdAuditTest extends MasseTestCase
             ->execute([$uid, 'anthropic', random_bytes(48)]);
         $pdo->prepare('INSERT INTO training_progress (user_id, parcours, chapitre) VALUES (?, ?, ?)')
             ->execute([$uid, 'apprenant', '01-introduction']);
+        $pdo->prepare('INSERT INTO user_declared_roles (user_id, role) VALUES (?, ?)')
+            ->execute([$uid, 'mediateur']);
 
         // Footprint: the tool sees the learner across every populated table
         // (direct columns + the share_links chain).
@@ -139,6 +142,7 @@ final class RgpdAuditTest extends MasseTestCase
             'cartographies.user_id',
             'user_api_keys.user_id',
             'training_progress.user_id',
+            'user_declared_roles.user_id',
             'cohorte_membres.user_id',
             'cohorte_portfolios.user_id',
             'mass_jobs.user_id',

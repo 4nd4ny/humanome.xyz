@@ -214,8 +214,8 @@ final class Users
 
     /**
      * RGPD purge (cahier §6.3): a real DELETE. Every user-owned table
-     * cascades (sessions, user_roles, cartographies, share_links,
-     * training_progress, user_api_keys); audit_events keeps its rows with
+     * cascades (sessions, user_roles, user_declared_roles, cartographies,
+     * share_links, training_progress, user_api_keys); audit_events keeps its rows with
      * user_id set to NULL (anonymized, dated trace of the deletion).
      */
     public static function purge(PDO $pdo, int $userId): void

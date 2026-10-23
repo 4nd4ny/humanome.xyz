@@ -115,6 +115,7 @@ rejouant les fixtures : aucun appel réseau réel).
 | [UC-CPT-04](compte/UC-CPT-04-gerer-cles-api.md) | Gérer ses clés API personnelles | 14 | 22 | 1 |
 | [UC-CPT-05](compte/UC-CPT-05-suivre-progression-formation.md) | Suivre sa progression de formation | 15 | 17 | 5 |
 | [UC-CPT-06](compte/UC-CPT-06-supprimer-compte.md) | Supprimer son compte (droit à l'effacement) | 10 | 12 | 1 |
+| [UC-CPT-07](compte/UC-CPT-07-declarer-roles-respire.md) | Déclarer ses rôles RESPIRE | 25 | 14 | 0 |
 
 ### Apprenant
 
@@ -187,7 +188,7 @@ rejouant les fixtures : aucun appel réseau réel).
 
 | ID | Cas d'utilisation | Tests unitaires | Tests fonctionnels | Anomalies |
 |---|---|---:|---:|---:|
-| [UC-ADM-01](administration/UC-ADM-01-gerer-comptes-roles.md) | Gérer les comptes et les rôles | 27 | 25 | 2 |
+| [UC-ADM-01](administration/UC-ADM-01-gerer-comptes-roles.md) | Gérer les comptes et les rôles | 31 | 27 | 2 |
 | [UC-ADM-02](administration/UC-ADM-02-gerer-golden-prompt.md) | Gérer le Golden Prompt et ses accès | 12 | 22 | 2 |
 | [UC-ADM-03](administration/UC-ADM-03-valider-paquet-defaut-reglages.md) | Valider le paquet par défaut et les réglages | 12 | 14 | 2 |
 | [UC-ADM-04](administration/UC-ADM-04-configurer-demo.md) | Configurer la démo publique | 34 | 27 | 2 |
@@ -204,7 +205,7 @@ rejouant les fixtures : aucun appel réseau réel).
 | [UC-SYS-04](systeme/UC-SYS-04-construire-artefacts-derives.md) | Construire les données et artefacts dérivés | 9 | 19 | 3 |
 | [UC-SYS-05](systeme/UC-SYS-05-sauvegarder-restaurer.md) | Sauvegarder et restaurer la base | 0 | 8 | 6 |
 
-**Total : 60 cas d'utilisation, 1056 tests unitaires et 1216 tests fonctionnels identifiés, 192 anomalies de production documentées.**
+**Total : 61 cas d'utilisation, 1085 tests unitaires et 1232 tests fonctionnels identifiés, 192 anomalies de production documentées.**
 
 Les comptes portent sur les identifiants distincts (`UC-…-Unn`, `UC-…-Fnn`) présents dans les fichiers de tests ; un identifiant paramétré (`it.each`) compte pour un.
 <!-- catalogue:end -->

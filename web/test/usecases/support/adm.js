@@ -8,7 +8,14 @@
 // sur les mutations, anti-verrouillage 409, 404 « Compte introuvable », rôle
 // inconnu 422. Il sert de réseau simulé via vi.stubGlobal('fetch', …) : l'IHM
 // entière (<App/>) est rendue sans aucun appel réseau réel.
+//
+// Chaque compte de la liste porte aussi, comme UserDirectory::list depuis le
+// sprint 8, les rôles RESPIRE qu'il se déclare (`declaredRoles`,
+// `foundingCircle`) et `grantable`, recalculé à chaque lecture
+// (DeclaredRoles::grantable, support/declared-roles-php.js) : une attribution
+// le vide, un retrait le rétablit, la déclaration ne bouge jamais.
 import { vi } from 'vitest'
+import { declarationOf, grantableOf } from './declared-roles-php.js'
 
 export const CSRF = 'csrf-admin-de-test'
 
@@ -34,7 +41,8 @@ const ROLES = ['apprenant', 'cartographe', 'promptologue', 'epistemiarque', 'emp
 /**
  * @param {object} options
  * @param {object|null} [options.me] utilisateur de la session (null = visiteur)
- * @param {Array<object>} [options.users] comptes {id, email, displayName, createdAt, roles}
+ * @param {Array<object>} [options.users] comptes {id, email, displayName, createdAt, roles,
+ *   declared?: {roles, foundingCircle}}
  * @param {Record<string, Function|object>} [options.routes] routes supplémentaires « MÉTHODE url »
  */
 export function createAdminBackend({ me = ADMIN_USER, users = [], routes = {} } = {}) {
@@ -52,7 +60,16 @@ export function createAdminBackend({ me = ADMIN_USER, users = [], routes = {} } 
         (role === '' || u.roles.includes(role)),
     )
     return jsonResponse(200, {
-      users: matching.slice((page - 1) * 20, page * 20).map((u) => ({ ...u, roles: [...u.roles].sort() })),
+      users: matching.slice((page - 1) * 20, page * 20).map(({ declared, ...u }) => {
+        const declaration = declarationOf(declared)
+        return {
+          ...u,
+          roles: [...u.roles].sort(),
+          declaredRoles: declaration.roles,
+          foundingCircle: declaration.foundingCircle,
+          grantable: grantableOf(declaration.roles, u.roles),
+        }
+      }),
       total: matching.length,
       page,
       pageSize: 20,

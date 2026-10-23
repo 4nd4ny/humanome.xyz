@@ -15,6 +15,7 @@ import {
   uploadAvatar,
 } from '../api/client.js'
 import ApiKeysSection from './account/ApiKeysSection.jsx'
+import DeclaredRolesSection from './account/DeclaredRolesSection.jsx'
 import Avatar from '../components/Avatar.jsx'
 import { resizeAvatar } from '../lib/resize-image.js'
 import { dropAllDrafts } from '../carto/ui/shareDrafts.js'
@@ -26,7 +27,11 @@ const PASSWORD_MIN_LENGTH = 10
 const WAITLIST_NOTICE =
   'Les crédits offerts de ce mois sont épuisés : votre inscription est en liste d’attente. Vous recevrez votre code d’activation par email le 1er du mois prochain.'
 
-/** Rôles P3 (cahier §2) -> libellés d'affichage. */
+/**
+ * Habilitations (rôles P3 du cahier §2, `user.roles`) -> libellés d'affichage.
+ * Elles seules ouvrent des espaces ; les rôles RESPIRE que la personne se
+ * déclare (sprint 8) sont à part, dans DeclaredRolesSection.
+ */
 const ROLE_LABELS = {
   apprenant: 'Apprenant',
   cartographe: 'Cartographe',
@@ -479,21 +484,27 @@ export default function AccountView({ initialActivation = null }) {
               </dd>
             </div>
             <div className="account-row">
-              <dt>Rôles</dt>
+              <dt>
+                Habilitations
+                <span className="field-hint"> — attribuées par l’administrateur</span>
+              </dt>
               <dd>
                 {roles.length > 0
                   ? roles.map((role) => ROLE_LABELS[role] ?? role).join(', ')
-                  : 'Aucun rôle attribué pour l’instant'}
+                  : 'Aucune habilitation pour l’instant'}
               </dd>
             </div>
-            {/* « Mes rôles » : ce que je fais ; « Affichage » : ce que je vois
-                (lib/ui-mode.js). Le même réglage que l'interrupteur du menu. */}
+            {/* « Habilitations » : ce que je peux faire ; « Affichage » : ce que
+                je vois (lib/ui-mode.js), le même réglage que l'interrupteur du
+                menu ; « Mes rôles RESPIRE », juste après : ce que je me
+                reconnais, sans aucun droit (sprint 8). */}
             <DisplayModeRow />
           </dl>
           <button type="button" className="button" onClick={handleLogout} disabled={busy}>
             Se déconnecter
           </button>
         </section>
+        <DeclaredRolesSection />
         <ApiKeysSection />
         <section className="account-danger" aria-label="Zone de danger">
           <h2>Zone de danger</h2>

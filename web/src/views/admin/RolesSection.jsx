@@ -4,10 +4,65 @@
 //
 // Anti-verrouillage : un admin ne peut pas retirer SON PROPRE rôle admin — le
 // serveur l'impose (409) ; l'UI retire aussi le bouton correspondant.
+//
+// Sprint 8 (UC-ADM-01 A7) : à côté des rôles — les HABILITATIONS, qui seules
+// ouvrent des droits — la colonne « Rôles déclarés » montre les rôles RESPIRE
+// que chaque compte se déclare dans #/compte (UC-CPT-07), qui n'en ouvrent
+// aucun. Pour chaque habilitation que ses déclarations appellent et qu'il n'a
+// pas (`grantable`, calculé par le serveur), un bouton « Habiliter » l'attribue
+// d'un clic : le même POST audité que « Attribuer ». L'administrateur ne
+// modifie pas les déclarations. Les messages et le bouton disent
+// « habilitation », avec son libellé (ROLE_LABELS : « épistémiarque »).
 
 import { useCallback, useEffect, useState } from 'react'
 import { ApiError, ApiUnavailableError } from '../../api/client.js'
+import { FOUNDING_CIRCLE_LABEL, declaredRoleLabel } from '../../api/declared-roles.js'
+import { ROLE_LABELS } from '../../nav.js'
 import { ASSIGNABLE_ROLES, frDate, grantRole, listUsers, revokeRole } from './admin-api.js'
+
+/** @param {string} role @returns {string} libellé de l'habilitation (« épistémiarque ») */
+const habilitationLabel = (role) => ROLE_LABELS[role] ?? role
+
+/** @param {unknown} value @returns {string[]} liste d'identifiants (vide si absente : API antérieure) */
+function slugList(value) {
+  return Array.isArray(value) ? value.filter((item) => typeof item === 'string' && item !== '') : []
+}
+
+/** Les rôles RESPIRE que le compte se déclare, et l'habilitation d'un clic. */
+function DeclaredCell({ user, onGrant, busy }) {
+  const declared = slugList(user.declaredRoles)
+  const grantable = slugList(user.grantable).filter((role) => !user.roles.includes(role))
+  const foundingCircle = user.foundingCircle === true
+
+  if (declared.length === 0 && !foundingCircle) return <em>aucune déclaration</em>
+  return (
+    <>
+      <ul className="admin-declared-chips" aria-label={`Rôles déclarés par ${user.email}`}>
+        {declared.map((role) => (
+          <li key={role} className="admin-declared-chip">
+            {declaredRoleLabel(role)}
+          </li>
+        ))}
+        {foundingCircle ? <li className="admin-declared-chip">{FOUNDING_CIRCLE_LABEL}</li> : null}
+      </ul>
+      {grantable.length > 0 ? (
+        <div className="admin-declared-grant">
+          {grantable.map((role) => (
+            <button
+              key={role}
+              type="button"
+              disabled={busy}
+              aria-label={`Habiliter « ${habilitationLabel(role)} » pour ${user.email}`}
+              onClick={() => onGrant(user.id, role, { declared: true })}
+            >
+              Habiliter « {habilitationLabel(role)} »
+            </button>
+          ))}
+        </div>
+      ) : null}
+    </>
+  )
+}
 
 /** Un compte : rôles courants + attribution/retrait. */
 function UserRow({ user, currentUserId, onGrant, onRevoke, busy }) {
@@ -54,6 +109,9 @@ function UserRow({ user, currentUserId, onGrant, onRevoke, busy }) {
             })}
           </ul>
         )}
+      </td>
+      <td>
+        <DeclaredCell user={user} onGrant={onGrant} busy={busy} />
       </td>
       <td>
         <div className="admin-role-add">
@@ -143,16 +201,25 @@ export default function RolesSection({ currentUserId, fetchFn }) {
     }
   }
 
-  const onGrant = (userId, role) =>
-    mutate(() => grantRole(userId, role, fetchFn), `Rôle « ${role} » attribué.`)
+  const onGrant = (userId, role, { declared = false } = {}) =>
+    mutate(
+      () => grantRole(userId, role, fetchFn),
+      `Habilitation « ${habilitationLabel(role)} » accordée${declared ? ', comme le compte l’a déclaré' : ''}.`,
+    )
   const onRevoke = (userId, role) =>
-    mutate(() => revokeRole(userId, role, fetchFn), `Rôle « ${role} » retiré.`)
+    mutate(() => revokeRole(userId, role, fetchFn), `Habilitation « ${habilitationLabel(role)} » retirée.`)
 
   const totalPages = data ? Math.max(1, Math.ceil(data.total / data.pageSize)) : 1
 
   return (
     <section className="admin-roles">
       <h2>Comptes et rôles</h2>
+      <p className="admin-roles-intro">
+        Les <strong>habilitations</strong> ouvrent les espaces et les droits ; seul un administrateur
+        les attribue. Les <strong>rôles déclarés</strong> sont ceux que chaque compte se reconnaît dans
+        son profil : ils n’ouvrent rien. « Habiliter » accorde l’habilitation qu’une déclaration
+        appelle (cartographe, promptologue, épistémiarque).
+      </p>
       <form
         className="admin-search"
         onSubmit={(event) => {
@@ -194,28 +261,33 @@ export default function RolesSection({ currentUserId, fetchFn }) {
           {data.users.length === 0 ? (
             <p>Aucun compte ne correspond.</p>
           ) : (
-            <table className="admin-table">
-              <thead>
-                <tr>
-                  <th scope="col">Compte</th>
-                  <th scope="col">Rôles</th>
-                  <th scope="col">Attribuer</th>
-                  <th scope="col">Créé le</th>
-                </tr>
-              </thead>
-              <tbody>
-                {data.users.map((user) => (
-                  <UserRow
-                    key={user.id}
-                    user={user}
-                    currentUserId={currentUserId}
-                    onGrant={onGrant}
-                    onRevoke={onRevoke}
-                    busy={busy}
-                  />
-                ))}
-              </tbody>
-            </table>
+            // Cinq colonnes ne tiennent pas sur un téléphone : le tableau défile
+            // dans son conteneur, jamais la page (html ne défile pas en largeur).
+            <div className="admin-table-scroll">
+              <table className="admin-table">
+                <thead>
+                  <tr>
+                    <th scope="col">Compte</th>
+                    <th scope="col">Habilitations</th>
+                    <th scope="col">Rôles déclarés</th>
+                    <th scope="col">Attribuer</th>
+                    <th scope="col">Créé le</th>
+                  </tr>
+                </thead>
+                <tbody>
+                  {data.users.map((user) => (
+                    <UserRow
+                      key={user.id}
+                      user={user}
+                      currentUserId={currentUserId}
+                      onGrant={onGrant}
+                      onRevoke={onRevoke}
+                      busy={busy}
+                    />
+                  ))}
+                </tbody>
+              </table>
+            </div>
           )}
           {totalPages > 1 ? (
             <div className="admin-pagination">

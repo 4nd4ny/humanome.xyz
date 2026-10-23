@@ -3988,6 +3988,16 @@ body:has([aria-modal='true'], .portfolio-editor-fullscreen)
   max-width: 44rem;
 }
 
+/* Le tableau des comptes (#/admin/roles) défile dans son conteneur, jamais
+   la page : html ne défile pas en largeur, et ses cinq colonnes dépassent un
+   téléphone. `position: relative` y retient aussi les libellés
+   .visually-hidden (absolus) des cellules, qui sinon élargiraient la page. */
+.admin-table-scroll {
+  position: relative;
+  overflow-x: auto;
+  max-width: 100%;
+}
+
 .admin-table {
   border-collapse: collapse;
   width: 100%;
@@ -5317,6 +5327,133 @@ body:has([aria-modal='true'], .portfolio-editor-fullscreen)
 .account-keys-ok {
   color: var(--ok);
   font-weight: 600;
+}
+
+/* « Mes rôles RESPIRE » (profil #/compte, sprint 8) : une déclaration, sans
+   aucun droit ; la mention le dit en tête du bloc. */
+.account-respire {
+  background: var(--card);
+  border: 1px solid var(--line);
+  border-radius: 12px;
+  padding: 1rem 1.25rem;
+  margin: 1rem 0;
+}
+
+.account-respire h2 {
+  margin: 0 0 0.5rem;
+  font-size: 1.05rem;
+}
+
+.account-respire-intro,
+.account-respire-notice,
+.account-respire-loading,
+.account-respire-unavailable {
+  color: var(--ink-soft);
+  font-size: 0.92rem;
+  line-height: 1.5;
+}
+
+.account-respire-notice {
+  padding: 0.5rem 0.75rem;
+  border-left: 4px solid var(--accent);
+  border-radius: 8px;
+  background: var(--surface-2);
+}
+
+.account-respire-roles {
+  border: none;
+  margin: 0;
+  padding: 0;
+  min-width: 0;
+}
+
+.account-respire-roles legend {
+  padding: 0;
+  font-size: 0.9rem;
+  color: var(--ink-soft);
+}
+
+.account-respire-list {
+  list-style: none;
+  margin: 0.5rem 0;
+  padding: 0;
+  display: grid;
+  grid-template-columns: repeat(auto-fill, minmax(min(100%, 17rem), 1fr));
+  gap: 0.5rem;
+}
+
+.account-respire-item,
+.account-respire-founding {
+  display: grid;
+  grid-template-columns: auto 1fr;
+  align-items: baseline;
+  column-gap: 0.5rem;
+  padding: 0.5rem 0.75rem;
+  border: 1px solid var(--line);
+  border-radius: 8px;
+  background: var(--surface-2);
+}
+
+.account-respire-founding {
+  margin: 0 0 0.75rem;
+  max-width: 36rem;
+}
+
+.account-respire-label {
+  font-weight: 600;
+  cursor: pointer;
+}
+
+.account-respire-definition {
+  grid-column: 2;
+  /* --ink-soft : sur --surface-2, --ink-faint reste sous 4,5:1 (4,34 en
+     clair, 4,44 en sombre) ; ce petit texte explique chaque rôle. */
+  color: var(--ink-soft);
+  font-size: 0.85rem;
+  line-height: 1.4;
+}
+
+/* « Enregistrer mes rôles » inactif : aria-disabled, pas disabled, pour
+   garder le focus au clavier ; même aspect que .button:disabled. */
+.account-respire-form .button[aria-disabled='true'] {
+  opacity: 0.4;
+  cursor: default;
+}
+
+.account-respire-form .button[aria-disabled='true']:hover {
+  border-color: var(--line);
+  color: var(--ink);
+}
+
+.account-respire-ok {
+  color: var(--ok);
+  font-weight: 600;
+}
+
+/* Rôles déclarés dans la liste d'administration (#/admin/roles) : à côté
+   des habilitations, jamais confondus avec elles. */
+.admin-declared-chips {
+  list-style: none;
+  margin: 0;
+  padding: 0;
+  display: flex;
+  flex-wrap: wrap;
+  gap: 0.3rem;
+}
+
+.admin-declared-chip {
+  padding: 0.1rem 0.5rem;
+  border: 1px dashed var(--line);
+  border-radius: 999px;
+  font-size: 0.85rem;
+  color: var(--ink-soft);
+}
+
+.admin-declared-grant {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 0.3rem;
+  margin-top: 0.35rem;
 }
 
 .twin6-cleperso {

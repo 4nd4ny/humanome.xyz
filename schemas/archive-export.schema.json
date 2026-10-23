@@ -19,7 +19,7 @@
     "schemaVersion": {
       "type": "string",
       "pattern": "^(0|[1-9]\\d*)\\.(0|[1-9]\\d*)\\.(0|[1-9]\\d*)(?:-((?:0|[1-9]\\d*|\\d*[a-zA-Z-][0-9a-zA-Z-]*)(?:\\.(?:0|[1-9]\\d*|\\d*[a-zA-Z-][0-9a-zA-Z-]*))*))?(?:\\+([0-9a-zA-Z-]+(?:\\.[0-9a-zA-Z-]+)*))?$",
-      "description": "Version (semver) du schéma d'archive auquel ce document se conforme. Une instance doit toujours pouvoir importer une archive de version antérieure (ADR-006). « 1.1.0 » ajoute « jeuxCartographie » (optionnel), « 1.2.0 » « analysesTwin9 » (optionnel) ; une archive « 1.0.0 » reste valide. Exemple : « 1.2.0 »."
+      "description": "Version (semver) du schéma d'archive auquel ce document se conforme. Une instance doit toujours pouvoir importer une archive de version antérieure (ADR-006). « 1.1.0 » ajoute « jeuxCartographie » (optionnel), « 1.2.0 » « analysesTwin9 » (optionnel), « 1.3.0 » « account.declaredRoles » (optionnel) ; une archive « 1.0.0 » reste valide. Exemple : « 1.3.0 »."
     },
     "kind": {
       "const": "archive-export",
@@ -47,11 +47,33 @@
         },
         "roles": {
           "type": "array",
-          "description": "Rôles du compte sur la plateforme (cahier §3). Valeurs connues : « apprenant », « cartographe », « promptologue », « epistemiarque », « employeur », « etablissement », « admin » — liste ouverte pour de futurs rôles.",
+          "description": "Rôles du compte sur la plateforme (cahier §3) : ses HABILITATIONS, attribuées par l'administration, qui ouvrent des droits (docs/autorisations.md). Valeurs connues : « apprenant », « cartographe », « promptologue », « epistemiarque », « employeur », « etablissement », « admin » — liste ouverte pour de futurs rôles. Les rôles RESPIRE que la personne se déclare sont à part, dans « declaredRoles ».",
           "items": {
             "type": "string",
             "minLength": 1,
             "examples": ["apprenant", "cartographe", "promptologue", "epistemiarque", "employeur", "etablissement", "admin"]
+          }
+        },
+        "declaredRoles": {
+          "type": "object",
+          "additionalProperties": false,
+          "required": ["roles", "foundingCircle"],
+          "description": "Rôles RESPIRE que la personne se déclare dans #/compte (sprint 8, depuis la version 1.3.0 de l'archive), tels que GET /api/auth/me/declared-roles les rend : une identité, qui n'ouvre AUCUN droit (docs/autorisations.md, principe 7). Optionnel : absent d'une archive antérieure, d'un export anonyme ou quand la déclaration n'a pas pu être lue. Jamais réimporté : la personne se déclare de nouveau.",
+          "properties": {
+            "roles": {
+              "type": "array",
+              "uniqueItems": true,
+              "description": "Rôles déclarés, dans l'ordre du catalogue. Valeurs connues : « cartographe », « promptologue », « promptagogue », « eclaireur », « architecte », « epistemiarque », « mediateur », « noesiologue », « maitre-du-grimoire » — jamais « admin ». Liste vide : aucun rôle déclaré.",
+              "items": {
+                "type": "string",
+                "minLength": 1,
+                "examples": ["cartographe", "promptagogue", "maitre-du-grimoire"]
+              }
+            },
+            "foundingCircle": {
+              "type": "boolean",
+              "description": "Case « membre du cercle des fondateurs », que le serveur n'accepte qu'avec promptagogue, epistemiarque ou maitre-du-grimoire déclaré."
+            }
           }
         },
         "preferences": {

@@ -140,13 +140,19 @@ abstract class EpiSupport extends CartographeTestCase
     }
 
     /**
-     * Requête AU NOM d'un compte avec un corps BRUT (JSON malformé…), mêmes
-     * cookie, jeton CSRF et adresse IP que request().
+     * Requête AU NOM d'un compte avec un corps BRUT (JSON malformé, corps
+     * application/x-www-form-urlencoded…), mêmes cookie, jeton CSRF et adresse
+     * IP que request().
      *
      * @param array{id: int, csrf: string, sid: string} $user
      */
-    protected function rawAs(array $user, string $method, string $path, string $rawBody): ResponseInterface
-    {
+    protected function rawAs(
+        array $user,
+        string $method,
+        string $path,
+        string $rawBody,
+        string $contentType = 'application/json',
+    ): ResponseInterface {
         $this->cookieSid = $user['sid'];
         if (session_status() === PHP_SESSION_ACTIVE) {
             session_write_close();
@@ -157,7 +163,7 @@ abstract class EpiSupport extends CartographeTestCase
 
         $request = (new ServerRequestFactory())
             ->createServerRequest($method, $path, ['REMOTE_ADDR' => $this->clientIp])
-            ->withHeader('Content-Type', 'application/json')
+            ->withHeader('Content-Type', $contentType)
             ->withHeader('X-CSRF-Token', $user['csrf']);
         $request->getBody()->write($rawBody);
         $request->getBody()->rewind();

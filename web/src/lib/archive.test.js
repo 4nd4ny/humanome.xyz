@@ -392,7 +392,7 @@ describe('archive 1.1.0 : les jeux de l’interface de cartographie', () => {
     const { cartoStore, portfolioStore } = makeStores()
     const interfaceStore = await interfaceWithLouAndDemo()
     const { archive, counts } = await exportArchive({ cartoStore, portfolioStore, interfaceStore, ...offlineDeps(), download: () => {} })
-    expect(archive.schemaVersion).toBe('1.2.0')
+    expect(archive.schemaVersion).toBe('1.3.0')
     expect(counts).toEqual({ portfolios: 0, cartographies: 0, jeux: 1, jeuxError: null, jeuxExclus: [], analysesTwin9: 0, twin9Error: null })
     expect(archive.jeuxCartographie.map((j) => j.datasetId)).toEqual(['ds-lou'])
     const [jeu] = archive.jeuxCartographie

@@ -5,8 +5,9 @@
 // ouvre #/admin/roles, cherche un compte, attribue et retire des rôles. Seul
 // le réseau est simulé, par un faux serveur d'administration en mémoire
 // (web/test/usecases/support/adm.js) qui applique les mêmes règles que l'API
-// (CSRF, anti-verrouillage 409, 404, 422) ; le module sunburst est le faux
-// module de test.
+// (CSRF, anti-verrouillage 409, 404, 422) et porte, comme UserDirectory::list
+// depuis le sprint 8, les rôles déclarés et `grantable` (A7) ; le module
+// sunburst est le faux module de test.
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
 import { act, cleanup, fireEvent, render, screen, waitFor, within } from '@testing-library/react'
 import App from '../../../src/App.jsx'
@@ -226,6 +227,49 @@ describe('UC-ADM-01 — l’administrateur gère les comptes et les rôles', () 
     expect(await screen.findByText('Aucun compte ne correspond.')).toBeDefined()
     expect(screen.getByText('0 compte pour « zzz ».')).toBeDefined()
     expect(screen.queryByRole('table')).toBeNull()
+  })
+})
+
+describe('UC-ADM-01 — rôles déclarés et habilitation d’un clic (A7)', () => {
+  it('UC-ADM-01-F27 — A7 : les déclarations s’affichent à côté des habilitations ; « Habiliter » accorde l’habilitation appelée (POST + CSRF), la déclaration reste et le bouton part ; retirer l’habilitation le fait revenir ; les déclarations sans habilitation n’ont pas de bouton', async () => {
+    const declarante = {
+      ...MAYA,
+      declared: { roles: ['cartographe', 'promptagogue', 'mediateur'], foundingCircle: true },
+    }
+    const backend = createAdminBackend({ users: [{ ...ADMIN_USER }, declarante, BRUNO] })
+    openAdmin(backend)
+    await screen.findByText('Maya')
+
+    const declaredOf = (name) =>
+      [...within(rowOf(name)).getByRole('list', { name: /^Rôles déclarés par/ }).querySelectorAll('li')].map((li) => li.textContent)
+    expect(declaredOf('Maya')).toEqual(['Cartographe', 'Promptagogue', 'Médiateur', 'Membre du cercle des fondateurs'])
+    expect(within(rowOf('Maya')).getAllByRole('button', { name: /^Habiliter/ }).map((b) => b.textContent)).toEqual([
+      'Habiliter « cartographe »',
+    ])
+    expect(within(rowOf('Bruno Martin')).getByText('aucune déclaration')).toBeDefined()
+    expect(within(rowOf('Root Admin')).queryByRole('button', { name: /^Habiliter/ })).toBeNull()
+
+    await act(async () => {
+      fireEvent.click(within(rowOf('Maya')).getByRole('button', { name: 'Habiliter « cartographe » pour maya@example.org' }))
+    })
+    expect(await screen.findByText('Habilitation « cartographe » accordée, comme le compte l’a déclaré.')).toBeDefined()
+    const [post] = callsTo(backend.calls, 'POST', 'api/admin/users/5/roles')
+    expect(post.init.headers['X-CSRF-Token']).toBe(CSRF)
+    expect(JSON.parse(post.init.body)).toEqual({ role: 'cartographe' })
+    await waitFor(() => expect(within(rowOf('Maya')).getByText('cartographe', { selector: 'li span' })).toBeDefined())
+    expect(within(rowOf('Maya')).queryByRole('button', { name: /^Habiliter/ })).toBeNull()
+    expect(declaredOf('Maya')).toEqual(['Cartographe', 'Promptagogue', 'Médiateur', 'Membre du cercle des fondateurs'])
+    expect(backend.state.users.find((u) => u.id === 5).roles).toEqual(['apprenant', 'cartographe'])
+
+    // Retirer l'habilitation ne touche pas la déclaration, qui l'appelle de nouveau.
+    await act(async () => {
+      fireEvent.click(within(rowOf('Maya')).getByRole('button', { name: 'Retirer le rôle cartographe de maya@example.org' }))
+    })
+    expect(await screen.findByText('Rôle « cartographe » retiré.')).toBeDefined()
+    await waitFor(() =>
+      expect(within(rowOf('Maya')).getByRole('button', { name: 'Habiliter « cartographe » pour maya@example.org' })).toBeDefined(),
+    )
+    expect(declaredOf('Maya')).toEqual(['Cartographe', 'Promptagogue', 'Médiateur', 'Membre du cercle des fondateurs'])
   })
 })
 

@@ -75,6 +75,7 @@
   * [Registre des traitements — humanome.xyz (RGPD art. 30)](docs/rgpd-registre.md)
   * [Vérification RGPD — suppression, export, journalisation](docs/rgpd-verification.md)
   * [Matrice d'autorisations — rôles → routes API](docs/autorisations.md)
+  * [Glossaire des rôles — habilitations et rôles RESPIRE déclarés](docs/roles.md)
 * Sécurité
   * [Checklist sécurité — OWASP Top 10 (2021)](docs/securite-checklist.md)
   * [Sécurité de la démo publique — modèle de l'abuseur (P6)](docs/securite-demo.md)

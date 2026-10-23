@@ -44,12 +44,12 @@
 .config button[type='submit'] {
   background: var(--accent-solid);
   border-color: var(--accent);
-  color: #fff;
+  color: var(--on-accent);
 }
 
 .config button[type='submit']:hover {
   background: var(--accent-solid-hover);
-  color: #fff;
+  color: var(--on-accent);
 }
 
 .config button:disabled {
@@ -66,7 +66,7 @@
   font: inherit;
   padding: 0.45rem 0.6rem;
   min-height: 44px;
-  border: 1px solid var(--line);
+  border: 1px solid var(--line-strong);
   border-radius: 8px;
   background: var(--card);
   color: var(--ink);
@@ -84,7 +84,7 @@
 .config-partie > summary {
   cursor: pointer;
   padding: 0.75rem 0;
-  font-weight: 600;
+  font-weight: var(--fw-strong);
   min-height: 44px;
 }
 
@@ -124,7 +124,7 @@
 .config-champ.is-modified > legend,
 .config-mode.is-modified .admin-demo-toggle-label {
   color: var(--accent-strong);
-  font-weight: 600;
+  font-weight: var(--fw-strong);
 }
 
 .config-modifie {

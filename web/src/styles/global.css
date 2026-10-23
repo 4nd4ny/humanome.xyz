@@ -2,84 +2,633 @@
    CSS pur, sobre : palette neutre (ardoise), accents portés par les couleurs
    des pôles présentes dans les données. */
 
-/* ================= TYPOGRAPHIE : iA Writer Quattro (D7 / AD-D5) =================
-   Police auto-hébergée sous licence SIL OFL 1.1 (fichiers + licence dans
-   web/public/fonts/quattro/, copiés tels quels dans le build). On ne charge
-   QUE les 4 graisses utilisées (Regular/Italic/Bold/BoldItalic, ~172 Ko woff2
-   au total, hors bundle JS). font-display:swap : le texte s'affiche tout de
-   suite en repli système puis bascule (FOUT accepté, pas de FOIT).
-   La pile MONOSPACE reste système (ui-monospace) : iA Writer Mono n'est pas
-   embarquée en v1.1 (choix : éviter ~170 Ko de plus pour du code/technique). */
+/* ================= TYPOGRAPHIE : polices des trois interfaces (sprint 9) =================
+   Chaque interface a ses polices (décision de Christian du 2026-10-23),
+   auto-hébergées sous licence SIL OFL 1.1 : CSP font-src 'self', aucune
+   origine tierce (src/styles/fonts.test.js le garde). Fichiers woff2 pris
+   tels quels dans les paquets npm Fontsource (@fontsource 5.3.x pour les
+   graisses fixes, @fontsource-variable 5.3.x pour les variables), avec la
+   licence de chaque famille, dans web/public/fonts/<famille>/ :
+     - ÉPISTÉMIARQUE : Source Serif 4 (titres, 600 ; italique 400) et
+       Source Sans 3 (texte, variable 200-900 ; italique 400) ;
+     - NOÈSIOLOGUE : Fredoka (titres, variable 300-700) et Nunito (texte,
+       variable 200-1000, romain et italique) ;
+     - TECHNOMANCIEN : Space Grotesk (texte et titres, variable 300-700 ;
+       pas d'italique, l'oblique est synthétisée) et JetBrains Mono (chasse
+       fixe, variable 100-800).
+   Sous-ensembles latin (le français entier : é, œ, « », espaces fines, €)
+   et latin-ext seulement, chacun avec la unicode-range de Fontsource : le
+   navigateur ne télécharge un fichier que si la page emploie ses caractères.
+   Comme chez Fontsource, latin-ext est déclaré AVANT latin : leurs plages
+   partagent trois diacritiques combinants (U+0304, U+0308, U+0329), et le
+   navigateur essaie d'abord la dernière face déclarée ; dans l'autre ordre,
+   un seul de ces signes ferait charger latin-ext.
+   Une déclaration @font-face ne télécharge rien : seules les familles
+   nommées par les piles de l'interface en vigueur (--font-body,
+   --font-heading, --font-mono, plus bas) sont chargées, à l'usage. Pas de
+   <link rel=preload> : il chargerait les polices de toutes les interfaces.
+   font-display: swap : le texte s'affiche tout de suite en repli système puis
+   bascule (FOUT accepté, pas de FOIT). Noms de fichiers nouveaux : les woff2
+   sont servis « immutable » un an (public/.htaccess).
+   iA Writer Quattro (D7) n'est plus employée : ses fichiers restent dans
+   web/public/fonts/quattro/ jusqu'à la décision de Christian de les retirer. */
 @font-face {
-  font-family: 'iA Writer Quattro';
+  font-family: 'Source Serif 4';
   font-style: normal;
-  font-weight: 400;
+  font-weight: 600;
   font-display: swap;
-  src: url('/fonts/quattro/iAWriterQuattroS-Regular.woff2') format('woff2');
+  src: url('/fonts/source-serif-4/source-serif-4-latin-ext-600-normal.woff2') format('woff2');
+  unicode-range: U+0100-02BA,U+02BD-02C5,U+02C7-02CC,U+02CE-02D7,U+02DD-02FF,U+0304,U+0308,U+0329,U+1D00-1DBF,U+1E00-1E9F,U+1EF2-1EFF,U+2020,U+20A0-20AB,U+20AD-20C4,U+2113,U+2C60-2C7F,U+A720-A7FF;
 }
 @font-face {
-  font-family: 'iA Writer Quattro';
+  font-family: 'Source Serif 4';
+  font-style: normal;
+  font-weight: 600;
+  font-display: swap;
+  src: url('/fonts/source-serif-4/source-serif-4-latin-600-normal.woff2') format('woff2');
+  unicode-range: U+0000-00FF,U+0131,U+0152-0153,U+02BB-02BC,U+02C6,U+02DA,U+02DC,U+0304,U+0308,U+0329,U+2000-206F,U+20AC,U+2122,U+2191,U+2193,U+2212,U+2215,U+FEFF,U+FFFD;
+}
+@font-face {
+  font-family: 'Source Serif 4';
   font-style: italic;
   font-weight: 400;
   font-display: swap;
-  src: url('/fonts/quattro/iAWriterQuattroS-Italic.woff2') format('woff2');
+  src: url('/fonts/source-serif-4/source-serif-4-latin-ext-400-italic.woff2') format('woff2');
+  unicode-range: U+0100-02BA,U+02BD-02C5,U+02C7-02CC,U+02CE-02D7,U+02DD-02FF,U+0304,U+0308,U+0329,U+1D00-1DBF,U+1E00-1E9F,U+1EF2-1EFF,U+2020,U+20A0-20AB,U+20AD-20C4,U+2113,U+2C60-2C7F,U+A720-A7FF;
 }
 @font-face {
-  font-family: 'iA Writer Quattro';
-  font-style: normal;
-  font-weight: 700;
-  font-display: swap;
-  src: url('/fonts/quattro/iAWriterQuattroS-Bold.woff2') format('woff2');
-}
-@font-face {
-  font-family: 'iA Writer Quattro';
+  font-family: 'Source Serif 4';
   font-style: italic;
-  font-weight: 700;
+  font-weight: 400;
   font-display: swap;
-  src: url('/fonts/quattro/iAWriterQuattroS-BoldItalic.woff2') format('woff2');
+  src: url('/fonts/source-serif-4/source-serif-4-latin-400-italic.woff2') format('woff2');
+  unicode-range: U+0000-00FF,U+0131,U+0152-0153,U+02BB-02BC,U+02C6,U+02DA,U+02DC,U+0304,U+0308,U+0329,U+2000-206F,U+20AC,U+2122,U+2191,U+2193,U+2212,U+2215,U+FEFF,U+FFFD;
 }
 
-/* ================= THÈME : tokens clair (défaut) =================
-   Toute la couleur du site passe par ces variables. Le thème sombre ne
-   redéfinit QUE ces valeurs (plus bas), le reste de la feuille les consomme.
-   Contraste visé >= 4.5:1 pour le texte courant sur --card et --paper. */
+@font-face {
+  font-family: 'Source Sans 3';
+  font-style: normal;
+  font-weight: 200 900;
+  font-display: swap;
+  src: url('/fonts/source-sans-3/source-sans-3-latin-ext-wght-normal.woff2') format('woff2');
+  unicode-range: U+0100-02BA,U+02BD-02C5,U+02C7-02CC,U+02CE-02D7,U+02DD-02FF,U+0304,U+0308,U+0329,U+1D00-1DBF,U+1E00-1E9F,U+1EF2-1EFF,U+2020,U+20A0-20AB,U+20AD-20C4,U+2113,U+2C60-2C7F,U+A720-A7FF;
+}
+@font-face {
+  font-family: 'Source Sans 3';
+  font-style: normal;
+  font-weight: 200 900;
+  font-display: swap;
+  src: url('/fonts/source-sans-3/source-sans-3-latin-wght-normal.woff2') format('woff2');
+  unicode-range: U+0000-00FF,U+0131,U+0152-0153,U+02BB-02BC,U+02C6,U+02DA,U+02DC,U+0304,U+0308,U+0329,U+2000-206F,U+20AC,U+2122,U+2191,U+2193,U+2212,U+2215,U+FEFF,U+FFFD;
+}
+@font-face {
+  font-family: 'Source Sans 3';
+  font-style: italic;
+  font-weight: 400;
+  font-display: swap;
+  src: url('/fonts/source-sans-3/source-sans-3-latin-ext-400-italic.woff2') format('woff2');
+  unicode-range: U+0100-02BA,U+02BD-02C5,U+02C7-02CC,U+02CE-02D7,U+02DD-02FF,U+0304,U+0308,U+0329,U+1D00-1DBF,U+1E00-1E9F,U+1EF2-1EFF,U+2020,U+20A0-20AB,U+20AD-20C4,U+2113,U+2C60-2C7F,U+A720-A7FF;
+}
+@font-face {
+  font-family: 'Source Sans 3';
+  font-style: italic;
+  font-weight: 400;
+  font-display: swap;
+  src: url('/fonts/source-sans-3/source-sans-3-latin-400-italic.woff2') format('woff2');
+  unicode-range: U+0000-00FF,U+0131,U+0152-0153,U+02BB-02BC,U+02C6,U+02DA,U+02DC,U+0304,U+0308,U+0329,U+2000-206F,U+20AC,U+2122,U+2191,U+2193,U+2212,U+2215,U+FEFF,U+FFFD;
+}
+
+@font-face {
+  font-family: 'Fredoka';
+  font-style: normal;
+  font-weight: 300 700;
+  font-display: swap;
+  src: url('/fonts/fredoka/fredoka-latin-ext-wght-normal.woff2') format('woff2');
+  unicode-range: U+0100-02BA,U+02BD-02C5,U+02C7-02CC,U+02CE-02D7,U+02DD-02FF,U+0304,U+0308,U+0329,U+1D00-1DBF,U+1E00-1E9F,U+1EF2-1EFF,U+2020,U+20A0-20AB,U+20AD-20C0,U+2113,U+2C60-2C7F,U+A720-A7FF;
+}
+@font-face {
+  font-family: 'Fredoka';
+  font-style: normal;
+  font-weight: 300 700;
+  font-display: swap;
+  src: url('/fonts/fredoka/fredoka-latin-wght-normal.woff2') format('woff2');
+  unicode-range: U+0000-00FF,U+0131,U+0152-0153,U+02BB-02BC,U+02C6,U+02DA,U+02DC,U+0304,U+0308,U+0329,U+2000-206F,U+20AC,U+2122,U+2191,U+2193,U+2212,U+2215,U+FEFF,U+FFFD;
+}
+
+@font-face {
+  font-family: 'Nunito';
+  font-style: normal;
+  font-weight: 200 1000;
+  font-display: swap;
+  src: url('/fonts/nunito/nunito-latin-ext-wght-normal.woff2') format('woff2');
+  unicode-range: U+0100-02BA,U+02BD-02C5,U+02C7-02CC,U+02CE-02D7,U+02DD-02FF,U+0304,U+0308,U+0329,U+1D00-1DBF,U+1E00-1E9F,U+1EF2-1EFF,U+2020,U+20A0-20AB,U+20AD-20C0,U+2113,U+2C60-2C7F,U+A720-A7FF;
+}
+@font-face {
+  font-family: 'Nunito';
+  font-style: normal;
+  font-weight: 200 1000;
+  font-display: swap;
+  src: url('/fonts/nunito/nunito-latin-wght-normal.woff2') format('woff2');
+  unicode-range: U+0000-00FF,U+0131,U+0152-0153,U+02BB-02BC,U+02C6,U+02DA,U+02DC,U+0304,U+0308,U+0329,U+2000-206F,U+20AC,U+2122,U+2191,U+2193,U+2212,U+2215,U+FEFF,U+FFFD;
+}
+@font-face {
+  font-family: 'Nunito';
+  font-style: italic;
+  font-weight: 200 1000;
+  font-display: swap;
+  src: url('/fonts/nunito/nunito-latin-ext-wght-italic.woff2') format('woff2');
+  unicode-range: U+0100-02BA,U+02BD-02C5,U+02C7-02CC,U+02CE-02D7,U+02DD-02FF,U+0304,U+0308,U+0329,U+1D00-1DBF,U+1E00-1E9F,U+1EF2-1EFF,U+2020,U+20A0-20AB,U+20AD-20C0,U+2113,U+2C60-2C7F,U+A720-A7FF;
+}
+@font-face {
+  font-family: 'Nunito';
+  font-style: italic;
+  font-weight: 200 1000;
+  font-display: swap;
+  src: url('/fonts/nunito/nunito-latin-wght-italic.woff2') format('woff2');
+  unicode-range: U+0000-00FF,U+0131,U+0152-0153,U+02BB-02BC,U+02C6,U+02DA,U+02DC,U+0304,U+0308,U+0329,U+2000-206F,U+20AC,U+2122,U+2191,U+2193,U+2212,U+2215,U+FEFF,U+FFFD;
+}
+
+@font-face {
+  font-family: 'Space Grotesk';
+  font-style: normal;
+  font-weight: 300 700;
+  font-display: swap;
+  src: url('/fonts/space-grotesk/space-grotesk-latin-ext-wght-normal.woff2') format('woff2');
+  unicode-range: U+0100-02BA,U+02BD-02C5,U+02C7-02CC,U+02CE-02D7,U+02DD-02FF,U+0304,U+0308,U+0329,U+1D00-1DBF,U+1E00-1E9F,U+1EF2-1EFF,U+2020,U+20A0-20AB,U+20AD-20C0,U+2113,U+2C60-2C7F,U+A720-A7FF;
+}
+@font-face {
+  font-family: 'Space Grotesk';
+  font-style: normal;
+  font-weight: 300 700;
+  font-display: swap;
+  src: url('/fonts/space-grotesk/space-grotesk-latin-wght-normal.woff2') format('woff2');
+  unicode-range: U+0000-00FF,U+0131,U+0152-0153,U+02BB-02BC,U+02C6,U+02DA,U+02DC,U+0304,U+0308,U+0329,U+2000-206F,U+20AC,U+2122,U+2191,U+2193,U+2212,U+2215,U+FEFF,U+FFFD;
+}
+
+@font-face {
+  font-family: 'JetBrains Mono';
+  font-style: normal;
+  font-weight: 100 800;
+  font-display: swap;
+  src: url('/fonts/jetbrains-mono/jetbrains-mono-latin-ext-wght-normal.woff2') format('woff2');
+  unicode-range: U+0100-02BA,U+02BD-02C5,U+02C7-02CC,U+02CE-02D7,U+02DD-02FF,U+0304,U+0308,U+0329,U+1D00-1DBF,U+1E00-1E9F,U+1EF2-1EFF,U+2020,U+20A0-20AB,U+20AD-20C0,U+2113,U+2C60-2C7F,U+A720-A7FF;
+}
+@font-face {
+  font-family: 'JetBrains Mono';
+  font-style: normal;
+  font-weight: 100 800;
+  font-display: swap;
+  src: url('/fonts/jetbrains-mono/jetbrains-mono-latin-wght-normal.woff2') format('woff2');
+  unicode-range: U+0000-00FF,U+0131,U+0152-0153,U+02BB-02BC,U+02C6,U+02DA,U+02DC,U+0304,U+0308,U+0329,U+2000-206F,U+20AC,U+2122,U+2191,U+2193,U+2212,U+2215,U+FEFF,U+FFFD;
+}
+
+/* ================= INTERFACES : jetons des trois habillages (sprint 9) =================
+   Trois interfaces au choix de chaque visiteur (décision de Christian du
+   2026-10-23), nommées d'après les filières, chacune en clair et en sombre :
+     - ÉPISTÉMIARQUE (défaut) : proposition A « Atelier du savoir » — papier
+       chaud, encre brune, un seul accent terre cuite, focus bleu de Prusse ;
+     - NOÈSIOLOGUE : proposition B « Vivant » — crème, encre brune, voix TÊTE
+       (le bleu d'humanome), focus violet ;
+     - TECHNOMANCIEN : proposition C « Voie de la machine » — ardoise
+       contrastée, accent bleu d'humanome, focus cyan.
+   Mécanique :
+   - <html data-interface> est posé par le script anti-FOUC d'index.html
+     (lib/theme.js à chaud). Le défaut vit sur :root : sans attribut, ou avec
+     une valeur inconnue, c'est l'épistémiarque.
+   - Thème : comme avant, sans choix le système décide (prefers-color-scheme),
+     un choix explicite (data-theme) prime. Chaque interface a donc un bloc
+     clair et DEUX copies sombres (système, choisi), IDENTIQUES.
+   - Spécificité : épistémiarque clair :root (0,1,0), sombre (0,2,0) ; une
+     autre interface, clair (0,2,0) puis sombre (0,3,0), écrite APRÈS : un
+     seul bloc gagne dans chaque contexte. Chaque bloc déclare le MÊME jeu de
+     jetons, sinon une valeur de l'épistémiarque fuirait dans une autre
+     interface. Gardé (jeux identiques, copies sombres identiques, contrastes
+     WCAG des neuf contextes) par
+     test/usecases/unit/uc-vis-07-choisir-interface-theme.test.jsx.
+   - Ces blocs ne portent QUE les jetons --ds-* ; les variables historiques
+     (--ink, --paper, --accent…) en deviennent des alias, juste après, sans
+     renommage : les feuilles qui les consomment ne bougent pas.
+   - Les COULEURS DE DONNÉES (familles d'intention, séries du monitoring,
+     surface des visualisations) et les badges gratuit / premium ne dépendent
+     pas de l'interface : ils restent plus bas, par thème seulement.
+   - Valeurs reprises des trois propositions de charte (jetons d'humanome) ;
+     là où une proposition ne donne pas le jeton, la valeur est dérivée et
+     signalée « dérivé ». */
+
+/* ---- Épistémiarque (défaut) : clair ---- */
 :root {
   color-scheme: light;
+  --ds-text: #211d18;
+  --ds-text-soft: #554c42;
+  --ds-text-faint: #6b6157;
+  --ds-bg: #f7f2e8;
+  --ds-surface: #fffdf8;
+  --ds-surface-2: #efe8da;
+  --ds-line: #e0d6c4;
+  --ds-line-strong: #857a6b;
+  --ds-accent: #a2401c;
+  --ds-accent-strong: #7e2f11;
+  --ds-accent-solid: #ba522c;
+  --ds-accent-solid-hover: #9c4223;
+  --ds-on-accent: #ffffff;
+  --ds-focus: #1d4e89;
+  --ds-danger: #a3203a;
+  --ds-danger-strong: #a3203a;
+  --ds-danger-bg: #f9e2e3;
+  --ds-danger-line: rgb(163 32 58 / 0.35);
+  --ds-success: #2e6b3f;
+  --ds-success-bg: #e5efe0;
+  --ds-success-bg-strong: #dee6da;
+  --ds-success-line: rgb(46 107 63 / 0.35);
+  --ds-warning: #7a5a00;
+  --ds-warning-strong: #7a5a00;
+  --ds-warning-bg: #f7eccd;
+  --ds-warning-bg-strong: #eae3d0;
+  --ds-warning-line: rgb(122 90 0 / 0.35);
+  --ds-info-bg: #e2eaf4;
+  --ds-info-line: rgb(29 78 137 / 0.35);
+  --ds-shadow-sm: 0 1px 2px rgb(60 40 20 / 0.07), 0 1px 1px rgb(60 40 20 / 0.04);
+  --ds-shadow-md: 0 4px 14px rgb(60 40 20 / 0.09), 0 1px 3px rgb(60 40 20 / 0.06);
+  --ds-shadow-panel: 0 14px 36px rgb(60 40 20 / 0.16), 0 2px 6px rgb(60 40 20 / 0.08);
+  --ds-overlay: rgb(33 29 24 / 0.45);
+}
 
+/* ---- Épistémiarque : sombre « veillée », système (copie 1) ---- */
+@media (prefers-color-scheme: dark) {
+  :root:not([data-theme='light']) {
+    color-scheme: dark;
+    --ds-text: #ede6d8;
+    --ds-text-soft: #c9bfae;
+    --ds-text-faint: #a89d8c;
+    --ds-bg: #17140f;
+    --ds-surface: #201c17;
+    --ds-surface-2: #2a251e;
+    --ds-line: #3a332a;
+    --ds-line-strong: #8c8170;
+    --ds-accent: #e8875a;
+    --ds-accent-strong: #f3a983;
+    --ds-accent-solid: #ba522c;
+    --ds-accent-solid-hover: #c0532a;
+    --ds-on-accent: #ffffff;
+    --ds-focus: #8cb8f2;
+    --ds-danger: #f2848f;
+    --ds-danger-strong: #f2848f;
+    --ds-danger-bg: #331a1c;
+    --ds-danger-line: rgb(242 132 143 / 0.35);
+    --ds-success: #86c79a;
+    --ds-success-bg: #1c2a1f;
+    --ds-success-bg-strong: #30372c;
+    --ds-success-line: rgb(134 199 154 / 0.35);
+    --ds-warning: #e3b755;
+    --ds-warning-strong: #e3b755;
+    --ds-warning-bg: #2d2412;
+    --ds-warning-bg-strong: #3f3521;
+    --ds-warning-line: rgb(227 183 85 / 0.35);
+    --ds-info-bg: #18263a;
+    --ds-info-line: rgb(140 184 242 / 0.35);
+    --ds-shadow-sm: 0 1px 2px rgb(0 0 0 / 0.4);
+    --ds-shadow-md: 0 4px 14px rgb(0 0 0 / 0.45), 0 1px 3px rgb(0 0 0 / 0.35);
+    --ds-shadow-panel: 0 14px 36px rgb(0 0 0 / 0.55), 0 2px 6px rgb(0 0 0 / 0.4);
+    --ds-overlay: rgb(8 6 4 / 0.62);
+  }
+}
+
+/* ---- Épistémiarque : sombre, choisi (copie 2, identique) ---- */
+:root[data-theme='dark'] {
+  color-scheme: dark;
+  --ds-text: #ede6d8;
+  --ds-text-soft: #c9bfae;
+  --ds-text-faint: #a89d8c;
+  --ds-bg: #17140f;
+  --ds-surface: #201c17;
+  --ds-surface-2: #2a251e;
+  --ds-line: #3a332a;
+  --ds-line-strong: #8c8170;
+  --ds-accent: #e8875a;
+  --ds-accent-strong: #f3a983;
+  --ds-accent-solid: #ba522c;
+  --ds-accent-solid-hover: #c0532a;
+  --ds-on-accent: #ffffff;
+  --ds-focus: #8cb8f2;
+  --ds-danger: #f2848f;
+  --ds-danger-strong: #f2848f;
+  --ds-danger-bg: #331a1c;
+  --ds-danger-line: rgb(242 132 143 / 0.35);
+  --ds-success: #86c79a;
+  --ds-success-bg: #1c2a1f;
+  --ds-success-bg-strong: #30372c;
+  --ds-success-line: rgb(134 199 154 / 0.35);
+  --ds-warning: #e3b755;
+  --ds-warning-strong: #e3b755;
+  --ds-warning-bg: #2d2412;
+  --ds-warning-bg-strong: #3f3521;
+  --ds-warning-line: rgb(227 183 85 / 0.35);
+  --ds-info-bg: #18263a;
+  --ds-info-line: rgb(140 184 242 / 0.35);
+  --ds-shadow-sm: 0 1px 2px rgb(0 0 0 / 0.4);
+  --ds-shadow-md: 0 4px 14px rgb(0 0 0 / 0.45), 0 1px 3px rgb(0 0 0 / 0.35);
+  --ds-shadow-panel: 0 14px 36px rgb(0 0 0 / 0.55), 0 2px 6px rgb(0 0 0 / 0.4);
+  --ds-overlay: rgb(8 6 4 / 0.62);
+}
+
+/* ---- Noèsiologue : clair ----
+   --ds-text-faint, --ds-accent-strong, --ds-danger-strong, --ds-warning-strong :
+   la proposition B n'en a pas ; ils reprennent le texte doux, l'accent, le
+   danger et l'alerte, comme son tableau d'alias. Info = la voix TÊTE. */
+:root[data-interface='noesiologue'] {
+  color-scheme: light;
+  --ds-text: #2b2019;
+  --ds-text-soft: #6b584c;
+  --ds-text-faint: #6b584c;
+  --ds-bg: #fff8f1;
+  --ds-surface: #ffffff;
+  --ds-surface-2: #faefe4;
+  --ds-line: #ecded0;
+  --ds-line-strong: #8f7a6a;
+  --ds-accent: #1d4ed8;
+  --ds-accent-strong: #1d4ed8;
+  --ds-accent-solid: #2563eb;
+  --ds-accent-solid-hover: #1d4ed8;
+  --ds-on-accent: #ffffff;
+  --ds-focus: #6d28d9;
+  --ds-danger: #b42318;
+  --ds-danger-strong: #b42318;
+  --ds-danger-bg: #fde8e6;
+  --ds-danger-line: #e8afaa;
+  --ds-success: #166534;
+  --ds-success-bg: #e3f5e8;
+  --ds-success-bg-strong: #cae4d2;
+  --ds-success-line: #a3c8b0;
+  --ds-warning: #8a4a00;
+  --ds-warning-strong: #8a4a00;
+  --ds-warning-bg: #fdf0d3;
+  --ds-warning-bg-strong: #efdbb9;
+  --ds-warning-line: #d9bc91;
+  --ds-info-bg: #e5edff;
+  --ds-info-line: #a2bdf8;
+  --ds-shadow-sm: 0 1px 2px rgb(92 52 20 / 0.07), 0 1px 1px rgb(92 52 20 / 0.04);
+  --ds-shadow-md: 0 18px 40px rgb(92 52 20 / 0.16), 0 4px 10px rgb(92 52 20 / 0.06);
+  --ds-shadow-panel: 0 18px 40px rgb(92 52 20 / 0.16), 0 4px 10px rgb(92 52 20 / 0.06);
+  --ds-overlay: rgb(43 32 25 / 0.42);
+}
+
+/* ---- Noèsiologue : sombre, système (copie 1) ----
+   Les aplats s'éclaircissent et portent une encre sombre (--ds-on-accent). */
+@media (prefers-color-scheme: dark) {
+  :root[data-interface='noesiologue']:not([data-theme='light']) {
+    color-scheme: dark;
+    --ds-text: #f7eee5;
+    --ds-text-soft: #ccbbad;
+    --ds-text-faint: #ccbbad;
+    --ds-bg: #17120f;
+    --ds-surface: #211a16;
+    --ds-surface-2: #2d241e;
+    --ds-line: #3d322a;
+    --ds-line-strong: #8a7666;
+    --ds-accent: #9db8ff;
+    --ds-accent-strong: #9db8ff;
+    --ds-accent-solid: #6f9bff;
+    --ds-accent-solid-hover: #8fb2ff;
+    --ds-on-accent: #0b1430;
+    --ds-focus: #a78bfa;
+    --ds-danger: #ff8f84;
+    --ds-danger-strong: #ff8f84;
+    --ds-danger-bg: #361816;
+    --ds-danger-line: #653430;
+    --ds-success: #6ee09a;
+    --ds-success-bg: #142b1d;
+    --ds-success-bg-strong: #1b3926;
+    --ds-success-line: #264f36;
+    --ds-warning: #f5c45c;
+    --ds-warning-strong: #f5c45c;
+    --ds-warning-bg: #30240e;
+    --ds-warning-bg-strong: #403114;
+    --ds-warning-line: #56431d;
+    --ds-info-bg: #1b2546;
+    --ds-info-line: #324578;
+    --ds-shadow-sm: 0 1px 2px rgb(0 0 0 / 0.45), 0 1px 1px rgb(0 0 0 / 0.3);
+    --ds-shadow-md: 0 18px 40px rgb(0 0 0 / 0.6), 0 4px 10px rgb(0 0 0 / 0.35);
+    --ds-shadow-panel: 0 18px 40px rgb(0 0 0 / 0.6), 0 4px 10px rgb(0 0 0 / 0.35);
+    --ds-overlay: rgb(8 5 3 / 0.62);
+  }
+}
+
+/* ---- Noèsiologue : sombre, choisi (copie 2, identique) ---- */
+:root[data-interface='noesiologue'][data-theme='dark'] {
+  color-scheme: dark;
+  --ds-text: #f7eee5;
+  --ds-text-soft: #ccbbad;
+  --ds-text-faint: #ccbbad;
+  --ds-bg: #17120f;
+  --ds-surface: #211a16;
+  --ds-surface-2: #2d241e;
+  --ds-line: #3d322a;
+  --ds-line-strong: #8a7666;
+  --ds-accent: #9db8ff;
+  --ds-accent-strong: #9db8ff;
+  --ds-accent-solid: #6f9bff;
+  --ds-accent-solid-hover: #8fb2ff;
+  --ds-on-accent: #0b1430;
+  --ds-focus: #a78bfa;
+  --ds-danger: #ff8f84;
+  --ds-danger-strong: #ff8f84;
+  --ds-danger-bg: #361816;
+  --ds-danger-line: #653430;
+  --ds-success: #6ee09a;
+  --ds-success-bg: #142b1d;
+  --ds-success-bg-strong: #1b3926;
+  --ds-success-line: #264f36;
+  --ds-warning: #f5c45c;
+  --ds-warning-strong: #f5c45c;
+  --ds-warning-bg: #30240e;
+  --ds-warning-bg-strong: #403114;
+  --ds-warning-line: #56431d;
+  --ds-info-bg: #1b2546;
+  --ds-info-line: #324578;
+  --ds-shadow-sm: 0 1px 2px rgb(0 0 0 / 0.45), 0 1px 1px rgb(0 0 0 / 0.3);
+  --ds-shadow-md: 0 18px 40px rgb(0 0 0 / 0.6), 0 4px 10px rgb(0 0 0 / 0.35);
+  --ds-shadow-panel: 0 18px 40px rgb(0 0 0 / 0.6), 0 4px 10px rgb(0 0 0 / 0.35);
+  --ds-overlay: rgb(8 5 3 / 0.62);
+}
+
+/* ---- Technomancien : clair ----
+   Filets d'état pleins (la proposition C met --danger-border à la couleur
+   du danger, --info-border à l'accent). --ds-success-bg-strong et
+   --ds-warning-bg-strong : dérivés (C n'a pas de fond appuyé), au-dessus de
+   4,5:1 pour le texte d'état ; --ds-warning-strong reprend l'alerte. */
+:root[data-interface='technomancien'] {
+  color-scheme: light;
+  --ds-text: #0d1420;
+  --ds-text-soft: #3a4558;
+  --ds-text-faint: #536075;
+  --ds-bg: #f3f5f9;
+  --ds-surface: #ffffff;
+  --ds-surface-2: #edf0f5;
+  --ds-line: #d5dbe5;
+  --ds-line-strong: #738097;
+  --ds-accent: #1d55d0;
+  --ds-accent-strong: #163f9e;
+  --ds-accent-solid: #1d55d0;
+  --ds-accent-solid-hover: #1846ad;
+  --ds-on-accent: #ffffff;
+  --ds-focus: #0a7ea4;
+  --ds-danger: #b4232b;
+  --ds-danger-strong: #8f1b22;
+  --ds-danger-bg: #fbe9ea;
+  --ds-danger-line: #b4232b;
+  --ds-success: #11703f;
+  --ds-success-bg: #e3f4ea;
+  --ds-success-bg-strong: #d3ecdd;
+  --ds-success-line: #11703f;
+  --ds-warning: #7f4f00;
+  --ds-warning-strong: #7f4f00;
+  --ds-warning-bg: #fbf0d6;
+  --ds-warning-bg-strong: #f4e3bd;
+  --ds-warning-line: #7f4f00;
+  --ds-info-bg: #e3ebfc;
+  --ds-info-line: #1d55d0;
+  --ds-shadow-sm: 0 1px 2px rgba(13, 20, 32, 0.08);
+  --ds-shadow-md: 0 2px 6px rgba(13, 20, 32, 0.08), 0 8px 24px rgba(13, 20, 32, 0.08);
+  --ds-shadow-panel: 0 12px 40px rgba(13, 20, 32, 0.18);
+  --ds-overlay: rgba(13, 20, 32, 0.45);
+}
+
+/* ---- Technomancien : sombre, système (copie 1) ---- */
+@media (prefers-color-scheme: dark) {
+  :root[data-interface='technomancien']:not([data-theme='light']) {
+    color-scheme: dark;
+    --ds-text: #e8edf4;
+    --ds-text-soft: #acb6c6;
+    --ds-text-faint: #8e9aad;
+    --ds-bg: #0a0e15;
+    --ds-surface: #10161f;
+    --ds-surface-2: #161e2a;
+    --ds-line: #263142;
+    --ds-line-strong: #6b7a92;
+    --ds-accent: #82a9ff;
+    --ds-accent-strong: #b4cbff;
+    --ds-accent-solid: #6f9bff;
+    --ds-accent-solid-hover: #94b4ff;
+    --ds-on-accent: #050b18;
+    --ds-focus: #3fd2ff;
+    --ds-danger: #ff7d7d;
+    --ds-danger-strong: #ffa8a8;
+    --ds-danger-bg: #2c1215;
+    --ds-danger-line: #ff7d7d;
+    --ds-success: #4bdb94;
+    --ds-success-bg: #0e271c;
+    --ds-success-bg-strong: #143a29;
+    --ds-success-line: #4bdb94;
+    --ds-warning: #f5c451;
+    --ds-warning-strong: #f5c451;
+    --ds-warning-bg: #2a2009;
+    --ds-warning-bg-strong: #3a2d0e;
+    --ds-warning-line: #f5c451;
+    --ds-info-bg: #132140;
+    --ds-info-line: #82a9ff;
+    --ds-shadow-sm: 0 1px 2px rgba(0, 0, 0, 0.5);
+    --ds-shadow-md: 0 2px 8px rgba(0, 0, 0, 0.45), 0 0 0 1px rgba(255, 255, 255, 0.03);
+    --ds-shadow-panel: 0 16px 48px rgba(0, 0, 0, 0.6);
+    --ds-overlay: rgba(2, 4, 8, 0.66);
+  }
+}
+
+/* ---- Technomancien : sombre, choisi (copie 2, identique) ---- */
+:root[data-interface='technomancien'][data-theme='dark'] {
+  color-scheme: dark;
+  --ds-text: #e8edf4;
+  --ds-text-soft: #acb6c6;
+  --ds-text-faint: #8e9aad;
+  --ds-bg: #0a0e15;
+  --ds-surface: #10161f;
+  --ds-surface-2: #161e2a;
+  --ds-line: #263142;
+  --ds-line-strong: #6b7a92;
+  --ds-accent: #82a9ff;
+  --ds-accent-strong: #b4cbff;
+  --ds-accent-solid: #6f9bff;
+  --ds-accent-solid-hover: #94b4ff;
+  --ds-on-accent: #050b18;
+  --ds-focus: #3fd2ff;
+  --ds-danger: #ff7d7d;
+  --ds-danger-strong: #ffa8a8;
+  --ds-danger-bg: #2c1215;
+  --ds-danger-line: #ff7d7d;
+  --ds-success: #4bdb94;
+  --ds-success-bg: #0e271c;
+  --ds-success-bg-strong: #143a29;
+  --ds-success-line: #4bdb94;
+  --ds-warning: #f5c451;
+  --ds-warning-strong: #f5c451;
+  --ds-warning-bg: #2a2009;
+  --ds-warning-bg-strong: #3a2d0e;
+  --ds-warning-line: #f5c451;
+  --ds-info-bg: #132140;
+  --ds-info-line: #82a9ff;
+  --ds-shadow-sm: 0 1px 2px rgba(0, 0, 0, 0.5);
+  --ds-shadow-md: 0 2px 8px rgba(0, 0, 0, 0.45), 0 0 0 1px rgba(255, 255, 255, 0.03);
+  --ds-shadow-panel: 0 16px 48px rgba(0, 0, 0, 0.6);
+  --ds-overlay: rgba(2, 4, 8, 0.66);
+}
+
+/* ================= THÈME : variables du site (alias des jetons) =================
+   Toute la couleur du site passe par ces variables. Les couleurs d'INTERFACE
+   sont des alias des jetons --ds-* ci-dessus (l'interface et le thème les
+   redéfinissent) ; les couleurs de DONNÉES et les badges gardent leurs
+   propres valeurs, claires ici, sombres plus bas. Contraste visé >= 4.5:1
+   pour le texte courant sur --card et --paper (vérifié par interface). */
+:root {
   /* Encres */
-  --ink: #1e293b;
-  --ink-soft: #475569;
-  --ink-faint: #64748b;
+  --ink: var(--ds-text);
+  --ink-soft: var(--ds-text-soft);
+  --ink-faint: var(--ds-text-faint);
+  /* Lue par deux règles (.value-badge-avenir, .referentiel-choice-source)
+     sans être définie jusqu'au sprint 9 : leur texte héritait de la couleur
+     du parent au lieu d'être adouci. */
+  --muted: var(--ds-text-soft);
 
-  /* Surfaces */
-  --paper: #f8fafc;
-  --card: #ffffff;
-  --surface-2: #f1f5f9;
-  --line: #e2e8f0;
+  /* Surfaces et filets : --line est DÉCORATIF ; --line-strong (>= 3:1)
+     délimite un champ ou une commande. */
+  --paper: var(--ds-bg);
+  --card: var(--ds-surface);
+  --surface-2: var(--ds-surface-2);
+  --line: var(--ds-line);
+  --line-strong: var(--ds-line-strong);
 
   /* Accent : --accent/--accent-strong servent au TEXTE, bordures, focus ;
-     --accent-solid(-hover) aux REMPLISSAGES pleins (texte blanc dessus). */
-  --accent: #2563eb;
-  --accent-strong: #1d4ed8;
-  --accent-solid: #2563eb;
-  --accent-solid-hover: #1d4ed8;
+     --accent-solid(-hover) aux REMPLISSAGES pleins, avec --on-accent dessus
+     (blanc, ou encre sombre quand l'aplat s'éclaircit en sombre). */
+  --accent: var(--ds-accent);
+  --accent-strong: var(--ds-accent-strong);
+  --accent-solid: var(--ds-accent-solid);
+  --accent-solid-hover: var(--ds-accent-solid-hover);
+  --on-accent: var(--ds-on-accent);
+
+  /* Anneau de focus propre à l'interface. */
+  --focus: var(--ds-focus);
 
   /* Statuts sémantiques : fg / fond / fond appuyé / bordure */
-  --danger: #b91c1c;
-  --danger-strong: #991b1b;
-  --danger-bg: #fef2f2;
-  --danger-border: #fecaca;
-  --ok: #166534;
-  --ok-bg: #f0fdf4;
-  --ok-bg-strong: #dcfce7;
-  --ok-border: #bbf7d0;
-  --warn: #92400e;
-  --warn-strong: #7c2d12;
-  --warn-bg: #fffbeb;
-  --warn-bg-strong: #fef3c7;
-  --warn-border: #fde68a;
-  --info-bg: #eff6ff;
-  --info-border: #bfdbfe;
+  --danger: var(--ds-danger);
+  --danger-strong: var(--ds-danger-strong);
+  --danger-bg: var(--ds-danger-bg);
+  --danger-border: var(--ds-danger-line);
+  --ok: var(--ds-success);
+  --ok-bg: var(--ds-success-bg);
+  --ok-bg-strong: var(--ds-success-bg-strong);
+  --ok-border: var(--ds-success-line);
+  --warn: var(--ds-warning);
+  --warn-strong: var(--ds-warning-strong);
+  --warn-bg: var(--ds-warning-bg);
+  --warn-bg-strong: var(--ds-warning-bg-strong);
+  --warn-border: var(--ds-warning-line);
+  --info-bg: var(--ds-info-bg);
+  --info-border: var(--ds-info-line);
+
+  /* Ombres & voile modal */
+  --shadow-sm: var(--ds-shadow-sm);
+  --shadow-md: var(--ds-shadow-md);
+  --shadow-panel: var(--ds-shadow-panel);
+  --overlay: var(--ds-overlay);
 
   /* Échelle de valeur (badges gratuit / premium ; standard = accent) */
   --gratuit-fg: #0f766e;
@@ -88,12 +637,6 @@
   --premium-fg: #be185d;
   --premium-bg: #fdf2f8;
   --premium-border: #fbcfe8;
-
-  /* Ombres & voile modal */
-  --shadow-sm: 0 4px 14px rgba(15, 23, 42, 0.08);
-  --shadow-md: 0 12px 40px rgba(15, 23, 42, 0.18);
-  --shadow-panel: 10px 0 32px rgba(15, 23, 42, 0.16);
-  --overlay: rgba(15, 23, 42, 0.35);
 
   /* Surface de la VISUALISATION : reste CLAIRE dans les deux thèmes. Le
      sunburst (dégradé central, secteurs gris allant jusqu'au noir, anneaux)
@@ -124,50 +667,21 @@
   --mon-good: #15803d;
 }
 
-/* ================= THÈME : tokens sombre =================
+/* ================= THÈME : données en sombre =================
    Appliqués (a) automatiquement si le système est sombre ET que l'utilisateur
    n'a pas explicitement choisi « clair », (b) toujours si l'utilisateur a
    choisi « sombre ». Le sélecteur :not([data-theme='light']) laisse le choix
-   explicite « clair » gagner même sous un système sombre. */
+   explicite « clair » gagner même sous un système sombre. Seules les
+   couleurs de données et les badges y sont : celles de l'interface suivent
+   les jetons --ds-* (plus haut). */
 @media (prefers-color-scheme: dark) {
   :root:not([data-theme='light']) {
-    color-scheme: dark;
-    --ink: #e7edf6;
-    --ink-soft: #adb9cd;
-    --ink-faint: #7f8da7;
-    --paper: #0b1120;
-    --card: #141d31;
-    --surface-2: #1c2740;
-    --line: #2b3b58;
-    --accent: #60a5fa;
-    --accent-strong: #93c5fd;
-    --accent-solid: #2563eb;
-    --accent-solid-hover: #1d4ed8;
-    --danger: #f87171;
-    --danger-strong: #fca5a5;
-    --danger-bg: #2a1416;
-    --danger-border: #5b2a2c;
-    --ok: #4ade80;
-    --ok-bg: #0f2a1c;
-    --ok-bg-strong: #143726;
-    --ok-border: #235640;
-    --warn: #fcd34d;
-    --warn-strong: #fde3a3;
-    --warn-bg: #2a1f08;
-    --warn-bg-strong: #3a2c0c;
-    --warn-border: #5a4514;
-    --info-bg: #14243f;
-    --info-border: #294268;
     --gratuit-fg: #2dd4bf;
     --gratuit-bg: #0a2e29;
     --gratuit-border: #14564d;
     --premium-fg: #f472b6;
     --premium-bg: #2c1122;
     --premium-border: #59223f;
-    --shadow-sm: 0 4px 14px rgba(0, 0, 0, 0.4);
-    --shadow-md: 0 14px 44px rgba(0, 0, 0, 0.55);
-    --shadow-panel: 10px 0 34px rgba(0, 0, 0, 0.55);
-    --overlay: rgba(2, 6, 23, 0.62);
     --viz-surface: #ffffff;
     --viz-ink: #1e293b;
     --viz-ink-soft: #475569;
@@ -189,43 +703,12 @@
 }
 
 :root[data-theme='dark'] {
-  color-scheme: dark;
-  --ink: #e7edf6;
-  --ink-soft: #adb9cd;
-  --ink-faint: #7f8da7;
-  --paper: #0b1120;
-  --card: #141d31;
-  --surface-2: #1c2740;
-  --line: #2b3b58;
-  --accent: #60a5fa;
-  --accent-strong: #93c5fd;
-  --accent-solid: #2563eb;
-  --accent-solid-hover: #1d4ed8;
-  --danger: #f87171;
-  --danger-strong: #fca5a5;
-  --danger-bg: #2a1416;
-  --danger-border: #5b2a2c;
-  --ok: #4ade80;
-  --ok-bg: #0f2a1c;
-  --ok-bg-strong: #143726;
-  --ok-border: #235640;
-  --warn: #fcd34d;
-  --warn-strong: #fde3a3;
-  --warn-bg: #2a1f08;
-  --warn-bg-strong: #3a2c0c;
-  --warn-border: #5a4514;
-  --info-bg: #14243f;
-  --info-border: #294268;
   --gratuit-fg: #2dd4bf;
   --gratuit-bg: #0a2e29;
   --gratuit-border: #14564d;
   --premium-fg: #f472b6;
   --premium-bg: #2c1122;
   --premium-border: #59223f;
-  --shadow-sm: 0 4px 14px rgba(0, 0, 0, 0.4);
-  --shadow-md: 0 14px 44px rgba(0, 0, 0, 0.55);
-  --shadow-panel: 10px 0 34px rgba(0, 0, 0, 0.55);
-  --overlay: rgba(2, 6, 23, 0.62);
   --viz-surface: #ffffff;
   --viz-ink: #1e293b;
   --viz-ink-soft: #475569;
@@ -243,12 +726,126 @@
   --mon-good: #16a34a;
 }
 
-/* Focus clavier visible partout (liens, boutons, résumés dépliables). */
+/* ================= TYPOGRAPHIE : piles et échelle de chaque interface =================
+   Reprises des jetons typographiques des trois propositions de charte
+   (tokens.css de chacune) : piles de polices, graisses, échelle fluide de
+   360 px à 1 280 px de large, interlignes, approche. La typographie ne
+   dépend PAS du thème : un bloc par interface, sur html (le défaut, sans
+   attribut ou avec une valeur inconnue : l'épistémiarque) puis
+   html[data-interface=...] (spécificité supérieure), et non sur les
+   sélecteurs :root[...] des jetons de couleur, dont UC-VIS-07 garde la parité
+   des neuf contextes clair / sombre. Chaque bloc déclare le MÊME jeu de
+   variables, et chaque pile ne nomme QUE les familles de son interface (une
+   interface ne télécharge que ses polices) : gardé par
+   src/styles/fonts.test.js.
+   Seuls le corps, les titres h1 à h6, l'emphase, les champs et le code les
+   lisent ici ; les tailles en rem des composants ne changent pas (pas de
+   refonte de la mise en page) et passeront à l'échelle --fs-* au fil des
+   écrans.
+   - --font-body : texte et commandes ; --font-heading : h1 à h3 ;
+     --font-mono : code et identifiants.
+   - --fw-strong : gras du texte (b, strong, les « 600 » des composants) ;
+     --fw-heading : titres h1 à h3.
+   - --font-subheading, --fw-subheading : un titre h1 à h3 qu'un composant
+     ramène sous 1,125 rem (.carto-section h3…) : la police des titres en
+     épistémiarque et en technomancien ; le texte en gras en noèsiologue,
+     dont la proposition B réserve Fredoka aux titres de 1,125 rem et plus.
+   - --fs-xs à --fs-3xl : échelle ; --fs-base : corps ; h1 = 3xl, h2 = 2xl,
+     h3 = xl.
+   - --lh-* : interlignes ; --tracking-* : approche (technomancien resserre
+     sa police large). */
+
+/* ---- Épistémiarque (défaut) : Source Serif 4 en titre, Source Sans 3 en
+   texte, chasse fixe du système. Corps de 17 à 19 px (le petit œil de
+   Source Sans) ; seules les graisses livrées : 600, pas de 700 synthétisé
+   sur les titres serif. ---- */
+html {
+  --font-body: 'Source Sans 3', system-ui, -apple-system, 'Segoe UI', Roboto, 'Helvetica Neue', Arial, sans-serif;
+  --font-heading: 'Source Serif 4', Charter, 'Bitstream Charter', 'Iowan Old Style', 'Sitka Text', Cambria, Georgia, serif;
+  --font-mono: ui-monospace, 'SF Mono', SFMono-Regular, Menlo, Consolas, 'DejaVu Sans Mono', monospace;
+  --fw-strong: 600;
+  --fw-heading: 600;
+  --font-subheading: var(--font-heading);
+  --fw-subheading: var(--fw-heading);
+  --fs-xs: clamp(0.8125rem, 0.788rem + 0.1087vw, 0.875rem);
+  --fs-sm: clamp(0.9375rem, 0.913rem + 0.1087vw, 1rem);
+  --fs-base: clamp(1.0625rem, 1.0136rem + 0.2174vw, 1.1875rem);
+  --fs-lg: clamp(1.1875rem, 1.1141rem + 0.3261vw, 1.375rem);
+  --fs-xl: clamp(1.375rem, 1.2283rem + 0.6522vw, 1.75rem);
+  --fs-2xl: clamp(1.625rem, 1.3804rem + 1.087vw, 2.25rem);
+  --fs-3xl: clamp(1.9375rem, 1.5707rem + 1.6304vw, 2.875rem);
+  --lh-tight: 1.15;
+  --lh-snug: 1.3;
+  --lh-body: 1.6;
+  --tracking-heading: normal;
+  --tracking-body: normal;
+}
+
+/* ---- Noèsiologue : Fredoka en titre (jamais en italique ni pour un
+   paragraphe), Nunito en texte ; le texte n'emploie que 400 et 700. Repli
+   arrondi du système (ui-rounded : SF Pro Rounded sur Apple). ---- */
+html[data-interface='noesiologue'] {
+  --font-body: 'Nunito', ui-rounded, 'SF Pro Rounded', system-ui, -apple-system, 'Segoe UI', Roboto, 'Helvetica Neue', Arial, sans-serif;
+  --font-heading: 'Fredoka', ui-rounded, 'SF Pro Rounded', 'Nunito', system-ui, -apple-system, 'Segoe UI', Roboto, sans-serif;
+  --font-mono: ui-monospace, SFMono-Regular, 'SF Mono', Menlo, Consolas, 'Liberation Mono', monospace;
+  --fw-strong: 700;
+  --fw-heading: 600;
+  --font-subheading: var(--font-body);
+  --fw-subheading: var(--fw-strong);
+  --fs-xs: 0.8125rem;
+  --fs-sm: 0.9375rem;
+  --fs-base: clamp(1rem, 0.96rem + 0.18vw, 1.0625rem);
+  --fs-lg: clamp(1.125rem, 1.06rem + 0.3vw, 1.3125rem);
+  --fs-xl: clamp(1.3125rem, 1.2rem + 0.5vw, 1.625rem);
+  --fs-2xl: clamp(1.5rem, 1.32rem + 0.8vw, 2.125rem);
+  --fs-3xl: clamp(1.875rem, 1.55rem + 1.45vw, 2.875rem);
+  --lh-tight: 1.15;
+  --lh-snug: 1.35;
+  --lh-body: 1.6;
+  --tracking-heading: normal;
+  --tracking-body: normal;
+}
+
+/* ---- Technomancien : Space Grotesk partout (titres resserrés), JetBrains
+   Mono pour le code et les identifiants. ---- */
+html[data-interface='technomancien'] {
+  --font-body: 'Space Grotesk', ui-sans-serif, system-ui, -apple-system, 'Segoe UI', Roboto, 'Helvetica Neue', Arial, sans-serif;
+  --font-heading: 'Space Grotesk', ui-sans-serif, system-ui, -apple-system, 'Segoe UI', Roboto, 'Helvetica Neue', Arial, sans-serif;
+  --font-mono: 'JetBrains Mono', ui-monospace, 'SF Mono', SFMono-Regular, Menlo, Consolas, 'Liberation Mono', monospace;
+  --fw-strong: 600;
+  --fw-heading: 600;
+  --font-subheading: var(--font-heading);
+  --fw-subheading: var(--fw-heading);
+  --fs-xs: clamp(0.75rem, 0.7255rem + 0.1087vw, 0.8125rem);
+  --fs-sm: clamp(0.875rem, 0.8505rem + 0.1087vw, 0.9375rem);
+  --fs-base: clamp(1rem, 0.9755rem + 0.1087vw, 1.0625rem);
+  --fs-lg: clamp(1.125rem, 1.0761rem + 0.2174vw, 1.25rem);
+  --fs-xl: clamp(1.25rem, 1.1522rem + 0.4348vw, 1.5rem);
+  --fs-2xl: clamp(1.5rem, 1.3533rem + 0.6522vw, 1.875rem);
+  --fs-3xl: clamp(1.75rem, 1.5054rem + 1.087vw, 2.375rem);
+  --lh-tight: 1.15;
+  --lh-snug: 1.35;
+  --lh-body: 1.6;
+  --tracking-heading: -0.02em;
+  --tracking-body: -0.005em;
+}
+
+/* Focus clavier visible partout (liens, boutons, résumés dépliables,
+   champs) : l'anneau de l'interface (--focus : bleu de Prusse, violet ou
+   cyan), décalé de 2 px, donc posé sur le fond qui entoure la commande et
+   jamais sur son aplat. Il atteint 3:1 sur le fond, la carte, la surface
+   secondaire et l'encart d'information dans les neuf contextes : gardé, comme
+   chaque règle :focus des feuilles du site, par UC-VIS-07-U10. Les surfaces
+   claires dans les deux thèmes (zone du diagramme, feuille imprimable de la
+   cartographie) redéfinissent --focus. */
 a:focus-visible,
 button:focus-visible,
 summary:focus-visible,
-[tabindex]:focus-visible {
-  outline: 2px solid var(--accent-strong);
+[tabindex]:focus-visible,
+input:focus-visible,
+select:focus-visible,
+textarea:focus-visible {
+  outline: 2px solid var(--focus);
   outline-offset: 2px;
 }
 
@@ -265,17 +862,72 @@ html {
 
 body {
   margin: 0;
-  /* D7 — corps en iA Writer Quattro (auto-hébergée), repli système. */
-  font-family:
-    'iA Writer Quattro',
-    system-ui,
-    -apple-system,
-    'Segoe UI',
-    Roboto,
-    sans-serif;
+  /* Sprint 9 — police, corps et interligne de l'interface (plus haut). */
+  font-family: var(--font-body);
+  font-size: var(--fs-base);
+  line-height: var(--lh-body);
+  letter-spacing: var(--tracking-body);
   color: var(--ink);
   background: var(--paper);
-  line-height: 1.55;
+}
+
+/* Titres de base : ceux qu'aucun composant ne règle prennent l'échelle de
+   l'interface ; une règle de composant (.carto-section h3…) garde la main,
+   et lit --font-subheading et --fw-subheading si elle ramène le titre sous
+   1,125 rem (gardé par src/styles/fonts.test.js). */
+h1,
+h2,
+h3 {
+  font-family: var(--font-heading);
+  font-weight: var(--fw-heading);
+  line-height: var(--lh-tight);
+  letter-spacing: var(--tracking-heading);
+}
+
+h1 {
+  font-size: var(--fs-3xl);
+}
+
+h2 {
+  font-size: var(--fs-2xl);
+}
+
+h3 {
+  font-size: var(--fs-xl);
+  line-height: var(--lh-snug);
+}
+
+h4,
+h5,
+h6,
+b,
+strong {
+  font-weight: var(--fw-strong);
+}
+
+/* Les commandes prennent la police de l'interface (sans la famille, le
+   navigateur leur donne celle du système) ; leur taille ne change pas. */
+button,
+input,
+select,
+textarea {
+  font-family: inherit;
+}
+
+/* Chasse fixe de l'interface. La taille relative remplace la réduction
+   automatique du navigateur, réservée à la seule famille « monospace ». */
+code,
+kbd,
+samp,
+pre {
+  font-family: var(--font-mono);
+  font-size: 0.92em;
+}
+
+pre code,
+pre kbd,
+pre samp {
+  font-size: inherit;
 }
 
 .app {
@@ -408,7 +1060,7 @@ body {
 .tuteur-msg-user {
   align-self: flex-end;
   background: var(--accent-solid);
-  color: #fff;
+  color: var(--on-accent);
 }
 
 .tuteur-msg-assistant {
@@ -484,7 +1136,7 @@ body {
   background: var(--card);
   color: var(--ink);
   font-size: 0.95rem;
-  font-weight: 600;
+  font-weight: var(--fw-strong);
   cursor: pointer;
 }
 
@@ -733,7 +1385,7 @@ body:has([aria-modal='true'], .portfolio-editor-fullscreen)
 .app-nav a[aria-current='page'] {
   color: var(--accent-strong);
   background: var(--info-bg);
-  font-weight: 600;
+  font-weight: var(--fw-strong);
 }
 
 /* Déconnexion : dernier groupe du panneau, même gabarit que les liens de
@@ -760,7 +1412,7 @@ body:has([aria-modal='true'], .portfolio-editor-fullscreen)
 }
 
 .app-nav-identity-name {
-  font-weight: 600;
+  font-weight: var(--fw-strong);
   overflow: hidden;
   text-overflow: ellipsis;
   white-space: nowrap;
@@ -782,8 +1434,8 @@ body:has([aria-modal='true'], .portfolio-editor-fullscreen)
 }
 
 .avatar-initials {
-  background: var(--accent-solid, #2563eb);
-  color: #fff;
+  background: var(--accent-solid);
+  color: var(--on-accent);
   font-weight: 700;
   font-size: 0.9em;
   text-transform: uppercase;
@@ -803,7 +1455,7 @@ body:has([aria-modal='true'], .portfolio-editor-fullscreen)
   color: var(--ink-soft);
   font: inherit;
   font-size: 0.98rem;
-  font-weight: 600;
+  font-weight: var(--fw-strong);
   cursor: pointer;
   text-align: left;
 }
@@ -840,7 +1492,7 @@ body:has([aria-modal='true'], .portfolio-editor-fullscreen)
   color: var(--ink-soft);
   font: inherit;
   font-size: 0.98rem;
-  font-weight: 600;
+  font-weight: var(--fw-strong);
   cursor: pointer;
   text-align: left;
 }
@@ -895,6 +1547,64 @@ body:has([aria-modal='true'], .portfolio-editor-fullscreen)
   .app-nav-mode-thumb {
     transition: none;
   }
+}
+
+/* Interface et thème (sprint 9, components/DisplaySelects.jsx) : deux listes
+   natives, au bas du tiroir (sous « Mode expert ») et dans la ligne
+   « Affichage » de #/compte. Cibles de 44 px, texte de 16 px (pas de zoom
+   iOS), bordure de commande (--line-strong, >= 3:1). */
+.display-selects {
+  display: grid;
+  gap: 0.35rem;
+}
+
+.display-select {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 0.6rem;
+  min-height: 44px;
+}
+
+.display-select-label {
+  font-weight: var(--fw-strong);
+  /* Jamais coupé au milieu du mot : dans la ligne « Affichage » de #/compte,
+     le dd coupe partout (overflow-wrap: anywhere, pour les longues adresses)
+     et, à 375 px, « Interface » devenait « Interfac / e ». La liste, elle,
+     peut rétrécir (min-width: 0). */
+  overflow-wrap: normal;
+  flex: none;
+}
+
+.display-select select {
+  flex: 0 1 11rem;
+  min-height: 44px;
+  min-width: 0;
+  max-width: 100%;
+  padding: 0.4rem 0.55rem;
+  border: 1px solid var(--line-strong);
+  border-radius: 8px;
+  background: var(--card);
+  color: var(--ink);
+  font: inherit;
+  font-size: 1rem;
+}
+
+.display-select-hint {
+  display: block;
+  font-size: 0.8rem;
+  color: var(--ink-faint);
+}
+
+.app-nav-display {
+  padding: 0.35rem 0.55rem;
+  color: var(--ink-soft);
+  font-size: 0.98rem;
+}
+
+.account-display {
+  max-width: 24rem;
+  margin-top: 0.6rem;
 }
 
 /* Badge d'échelle de valeur (gratuit / standard / premium) — porté par les
@@ -1013,7 +1723,7 @@ body:has([aria-modal='true'], .portfolio-editor-fullscreen)
 .chip {
   font: inherit;
   font-size: 0.9rem;
-  font-weight: 600;
+  font-weight: var(--fw-strong);
   cursor: pointer;
   padding: 0.35rem 0.8rem;
   border-radius: 999px;
@@ -1031,7 +1741,7 @@ body:has([aria-modal='true'], .portfolio-editor-fullscreen)
 .chip[aria-pressed='true'] {
   background: var(--accent-solid);
   border-color: var(--accent);
-  color: #fff;
+  color: var(--on-accent);
 }
 
 .families-note {
@@ -1075,7 +1785,7 @@ body:has([aria-modal='true'], .portfolio-editor-fullscreen)
 
 .family-intent {
   font-size: 0.76rem;
-  font-weight: 650;
+  font-weight: var(--fw-strong);
   color: var(--fam, var(--accent));
 }
 
@@ -1090,7 +1800,7 @@ body:has([aria-modal='true'], .portfolio-editor-fullscreen)
   color: var(--ink-faint);
   text-transform: uppercase;
   letter-spacing: 0.06em;
-  font-weight: 600;
+  font-weight: var(--fw-strong);
 }
 
 .family-note-text {
@@ -1136,7 +1846,7 @@ body:has([aria-modal='true'], .portfolio-editor-fullscreen)
 
 .route-label {
   font-size: 0.93rem;
-  font-weight: 550;
+  font-weight: var(--fw-strong);
 }
 
 .route-hint {
@@ -1179,7 +1889,7 @@ body:has([aria-modal='true'], .portfolio-editor-fullscreen)
 .callout-hint {
   margin: 0.5rem 0 0;
   font-size: 0.9rem;
-  font-weight: 600;
+  font-weight: var(--fw-strong);
   color: var(--accent-strong);
 }
 
@@ -1340,6 +2050,8 @@ body:has([aria-modal='true'], .portfolio-editor-fullscreen)
 
 .guides-family h3 {
   font-size: 1.1rem;
+  font-family: var(--font-subheading);
+  font-weight: var(--fw-subheading);
   color: var(--ink-soft);
   border-bottom: 1px solid var(--line);
   padding-bottom: 0.35rem;
@@ -1394,7 +2106,7 @@ body:has([aria-modal='true'], .portfolio-editor-fullscreen)
 
 .guides-card-cta {
   font-size: 0.9rem;
-  font-weight: 600;
+  font-weight: var(--fw-strong);
   color: var(--accent);
   margin-top: 0.2rem;
 }
@@ -1452,12 +2164,12 @@ body:has([aria-modal='true'], .portfolio-editor-fullscreen)
 .button-primary {
   background: var(--accent-solid);
   border-color: var(--accent);
-  color: #fff;
+  color: var(--on-accent);
 }
 
 .button-primary:hover {
   background: var(--accent-solid-hover);
-  color: #fff;
+  color: var(--on-accent);
 }
 
 .button-disabled,
@@ -1596,7 +2308,7 @@ body:has([aria-modal='true'], .portfolio-editor-fullscreen)
   background: var(--card);
   color: var(--ink-soft);
   font: inherit;
-  font-weight: 600;
+  font-weight: var(--fw-strong);
   cursor: pointer;
   -webkit-tap-highlight-color: transparent;
 }
@@ -1604,7 +2316,7 @@ body:has([aria-modal='true'], .portfolio-editor-fullscreen)
 .view-tab-active {
   background: var(--accent-solid);
   border-color: var(--accent);
-  color: #fff;
+  color: var(--on-accent);
 }
 
 /* ---------- Disposition 2 zones ---------- */
@@ -1640,6 +2352,9 @@ body:has([aria-modal='true'], .portfolio-editor-fullscreen)
   border-radius: 12px;
   background: var(--viz-surface);
   color: var(--viz-ink);
+  /* L'anneau d'une commande posée sur cette surface claire : l'encre de la
+     visualisation (le focus sombre d'une interface, clair, s'y perdrait). */
+  --focus: var(--viz-ink);
 }
 
 @media (max-width: 820px) {
@@ -1651,7 +2366,7 @@ body:has([aria-modal='true'], .portfolio-editor-fullscreen)
 .hover-overlay {
   min-height: 1.4em;
   font-size: 0.9rem;
-  font-weight: 600;
+  font-weight: var(--fw-strong);
   color: var(--viz-ink-soft);
   text-align: center;
 }
@@ -1683,9 +2398,13 @@ body:has([aria-modal='true'], .portfolio-editor-fullscreen)
 
 .sunburst .sector:hover,
 .sunburst .sector:focus-visible {
+  opacity: 1 !important;
+}
+
+/* Survol : liseré blanc ; le focus a le sien, sombre (plus bas). */
+.sunburst .sector:hover {
   stroke: #fff;
   stroke-width: 2;
-  opacity: 1 !important;
 }
 
 .sunburst .renvoi-sector:hover,
@@ -1785,7 +2504,7 @@ body:has([aria-modal='true'], .portfolio-editor-fullscreen)
 
 .profile-summary dd {
   margin: 0;
-  font-weight: 600;
+  font-weight: var(--fw-strong);
 }
 
 /* ---------- HTML narratif (corpus hérité) ---------- */
@@ -1809,7 +2528,7 @@ body:has([aria-modal='true'], .portfolio-editor-fullscreen)
   padding: 0.15rem 0.6rem;
   border-radius: 999px;
   font-size: 0.8rem;
-  font-weight: 600;
+  font-weight: var(--fw-strong);
   background: var(--line);
   color: var(--ink-soft);
 }
@@ -1881,9 +2600,13 @@ body:has([aria-modal='true'], .portfolio-editor-fullscreen)
   overflow-x: auto;
 }
 
-/* D4 — synchro timeline : la feuille de la trame courante est surlignée. */
+/* D4 — synchro timeline : la feuille de la trame courante est surlignée, à
+   l'encre de la visualisation comme le lecteur (l'aplat d'accent, éclairci en
+   sombre, tombait à 2,69:1 sur ce fond blanc). Elle se distingue du survol et
+   du focus (1 px, plus haut) par l'épaisseur ; survolée ou focalisée, elle
+   prend leur trait, pour que l'état reste visible. */
 .heatmap-day-current {
-  stroke: var(--accent-solid, #2563eb);
+  stroke: var(--viz-ink);
   stroke-width: 2;
 }
 
@@ -1921,6 +2644,8 @@ body:has([aria-modal='true'], .portfolio-editor-fullscreen)
 .traces h3,
 .pole-rapport h3 {
   font-size: 1rem;
+  font-family: var(--font-subheading);
+  font-weight: var(--fw-subheading);
   margin: 1rem 0 0.4rem;
 }
 
@@ -1934,7 +2659,7 @@ body:has([aria-modal='true'], .portfolio-editor-fullscreen)
 
 .pedagogue-block summary {
   cursor: pointer;
-  font-weight: 600;
+  font-weight: var(--fw-strong);
   font-size: 0.95rem;
 }
 
@@ -1958,7 +2683,7 @@ body:has([aria-modal='true'], .portfolio-editor-fullscreen)
 .passages summary,
 .exclus summary {
   cursor: pointer;
-  font-weight: 600;
+  font-weight: var(--fw-strong);
   font-size: 0.95rem;
 }
 
@@ -1974,6 +2699,8 @@ body:has([aria-modal='true'], .portfolio-editor-fullscreen)
 .exclus h3 {
   margin: 0 0 0.4rem;
   font-size: 0.95rem;
+  font-family: var(--font-subheading);
+  font-weight: var(--fw-subheading);
   color: var(--ink-soft);
 }
 
@@ -2055,7 +2782,7 @@ body:has([aria-modal='true'], .portfolio-editor-fullscreen)
 .ref-search input {
   max-width: 26rem;
   padding: 0.55rem 0.8rem;
-  border: 1px solid var(--line);
+  border: 1px solid var(--line-strong);
   border-radius: 8px;
   font: inherit;
   font-size: 1rem;
@@ -2085,6 +2812,8 @@ body:has([aria-modal='true'], .portfolio-editor-fullscreen)
   gap: 0.5rem;
   margin: 0 0 0.5rem;
   font-size: 1.05rem;
+  font-family: var(--font-subheading);
+  font-weight: var(--fw-subheading);
 }
 
 .ref-pole-count {
@@ -2121,7 +2850,7 @@ body:has([aria-modal='true'], .portfolio-editor-fullscreen)
 
 .ref-competence-code {
   font-variant-numeric: tabular-nums;
-  font-weight: 600;
+  font-weight: var(--fw-strong);
   color: var(--pole-color, var(--accent));
   text-decoration: none;
 }
@@ -2172,7 +2901,7 @@ body:has([aria-modal='true'], .portfolio-editor-fullscreen)
 .account-form input,
 .account-danger input {
   padding: 0.55rem 0.8rem;
-  border: 1px solid var(--line);
+  border: 1px solid var(--line-strong);
   border-radius: 8px;
   font: inherit;
   font-size: 1rem;
@@ -2211,6 +2940,8 @@ body:has([aria-modal='true'], .portfolio-editor-fullscreen)
 .account-profile h2 {
   margin: 0 0 0.5rem;
   font-size: 1.05rem;
+  font-family: var(--font-subheading);
+  font-weight: var(--fw-subheading);
 }
 
 /* D6 — bloc avatar (photo + actions) en tête du profil. */
@@ -2266,7 +2997,7 @@ body:has([aria-modal='true'], .portfolio-editor-fullscreen)
 
 .account-row dd {
   margin: 0;
-  font-weight: 600;
+  font-weight: var(--fw-strong);
   overflow-wrap: anywhere;
   text-align: right;
 }
@@ -2286,6 +3017,8 @@ body:has([aria-modal='true'], .portfolio-editor-fullscreen)
 .account-danger h2 {
   margin: 0;
   font-size: 1.05rem;
+  font-family: var(--font-subheading);
+  font-weight: var(--fw-subheading);
   color: var(--danger);
 }
 
@@ -2407,7 +3140,7 @@ body:has([aria-modal='true'], .portfolio-editor-fullscreen)
   width: 100%;
   min-height: 16rem;
   padding: 0.75rem;
-  border: 1px solid var(--line);
+  border: 1px solid var(--line-strong);
   border-radius: 8px;
   background: var(--card);
   color: inherit;
@@ -2425,7 +3158,7 @@ body:has([aria-modal='true'], .portfolio-editor-fullscreen)
 .char-counter-over {
   color: var(--danger);
   opacity: 1;
-  font-weight: 600;
+  font-weight: var(--fw-strong);
 }
 
 .essayer-hint {
@@ -2469,7 +3202,7 @@ body:has([aria-modal='true'], .portfolio-editor-fullscreen)
 }
 
 .essayer-step-active .essayer-step-label {
-  font-weight: 600;
+  font-weight: var(--fw-strong);
 }
 
 .essayer-step-phase {
@@ -2532,6 +3265,8 @@ body:has([aria-modal='true'], .portfolio-editor-fullscreen)
 .portfolio-sidebar h2,
 .portfolio-main h2 {
   font-size: 1.05rem;
+  font-family: var(--font-subheading);
+  font-weight: var(--fw-subheading);
   margin: 1.25rem 0 0.5rem;
 }
 
@@ -2596,10 +3331,10 @@ body:has([aria-modal='true'], .portfolio-editor-fullscreen)
   width: 100%;
   margin-top: 0.25rem;
   padding: 0.5rem 0.7rem;
-  border: 1px solid var(--line);
+  border: 1px solid var(--line-strong);
   border-radius: 8px;
   font: inherit;
-  font-weight: 600;
+  font-weight: var(--fw-strong);
 }
 
 /* Éditeur textarea améliorée (ADR-010). */
@@ -2697,7 +3432,7 @@ body:has([aria-modal='true'], .portfolio-editor-fullscreen)
 
 .portfolio-gdoc-form input {
   padding: 0.5rem 0.7rem;
-  border: 1px solid var(--line);
+  border: 1px solid var(--line-strong);
   border-radius: 8px;
   font: inherit;
 }
@@ -2751,7 +3486,7 @@ body:has([aria-modal='true'], .portfolio-editor-fullscreen)
 .portfolio-day-date input {
   width: 9.5rem;
   padding: 0.35rem 0.5rem;
-  border: 1px solid var(--line);
+  border: 1px solid var(--line-strong);
   border-radius: 6px;
   font: inherit;
 }
@@ -2761,7 +3496,7 @@ body:has([aria-modal='true'], .portfolio-editor-fullscreen)
 }
 
 .portfolio-day-titre {
-  font-weight: 600;
+  font-weight: var(--fw-strong);
 }
 
 .portfolio-day-meta {
@@ -2776,7 +3511,7 @@ body:has([aria-modal='true'], .portfolio-editor-fullscreen)
   min-height: 7rem;
   margin-top: 0.5rem;
   padding: 0.5rem 0.7rem;
-  border: 1px solid var(--line);
+  border: 1px solid var(--line-strong);
   border-radius: 6px;
   resize: vertical;
   font: inherit;
@@ -3047,7 +3782,7 @@ body:has([aria-modal='true'], .portfolio-editor-fullscreen)
 .carto-visibility select {
   margin-left: 0.3rem;
   padding: 0.3rem 0.45rem;
-  border: 1px solid var(--line);
+  border: 1px solid var(--line-strong);
   border-radius: 8px;
   background: var(--card);
   color: var(--ink);
@@ -3106,6 +3841,11 @@ body:has([aria-modal='true'], .portfolio-editor-fullscreen)
   font-size: 1rem;
 }
 
+.share-dialog-head h3 {
+  font-family: var(--font-subheading);
+  font-weight: var(--fw-subheading);
+}
+
 .share-dialog-hint,
 .share-dialog-empty {
   margin: 0;
@@ -3156,6 +3896,8 @@ body:has([aria-modal='true'], .portfolio-editor-fullscreen)
 .mes-donnees h3 {
   margin: 0;
   font-size: 1.05rem;
+  font-family: var(--font-subheading);
+  font-weight: var(--fw-subheading);
 }
 
 .mes-donnees p {
@@ -3235,7 +3977,7 @@ body:has([aria-modal='true'], .portfolio-editor-fullscreen)
 
 .share-unlock input {
   padding: 0.5rem 0.65rem;
-  border: 1px solid var(--line);
+  border: 1px solid var(--line-strong);
   border-radius: 8px;
   font: inherit;
   background: var(--paper);
@@ -3303,7 +4045,7 @@ body:has([aria-modal='true'], .portfolio-editor-fullscreen)
 
 .cartographe-invitation-form input {
   padding: 0.45rem 0.65rem;
-  border: 1px solid var(--line);
+  border: 1px solid var(--line-strong);
   border-radius: 8px;
   font: inherit;
   letter-spacing: 0.12em;
@@ -3394,7 +4136,7 @@ body:has([aria-modal='true'], .portfolio-editor-fullscreen)
 .cartographe-annoter select,
 .cartographe-comparer-selecteurs select {
   padding: 0.45rem 0.65rem;
-  border: 1px solid var(--line);
+  border: 1px solid var(--line-strong);
   border-radius: 8px;
   font: inherit;
   background: var(--paper);
@@ -3453,7 +4195,7 @@ body:has([aria-modal='true'], .portfolio-editor-fullscreen)
 }
 
 .compare-champ-divergent {
-  font-weight: 600;
+  font-weight: var(--fw-strong);
   background: var(--warn-bg-strong);
 }
 
@@ -3561,7 +4303,7 @@ body:has([aria-modal='true'], .portfolio-editor-fullscreen)
 .promptologue-field select,
 .promptologue-field textarea {
   padding: 0.45rem 0.6rem;
-  border: 1px solid var(--line);
+  border: 1px solid var(--line-strong);
   border-radius: 8px;
   font: inherit;
   background: var(--paper);
@@ -3570,7 +4312,7 @@ body:has([aria-modal='true'], .portfolio-editor-fullscreen)
 }
 
 .code-editor {
-  font-family: ui-monospace, 'SFMono-Regular', Menlo, Consolas, monospace;
+  font-family: var(--font-mono);
   font-size: 0.85rem;
   line-height: 1.45;
   tab-size: 2;
@@ -3592,7 +4334,7 @@ body:has([aria-modal='true'], .portfolio-editor-fullscreen)
 }
 
 .promptologue-prompt-list button.is-active {
-  outline: 2px solid var(--accent, #2563eb);
+  outline: 2px solid var(--accent);
 }
 
 .promptologue-variable {
@@ -3611,7 +4353,7 @@ body:has([aria-modal='true'], .portfolio-editor-fullscreen)
 
 .promptologue-variable input {
   padding: 0.3rem 0.5rem;
-  border: 1px solid var(--line);
+  border: 1px solid var(--line-strong);
   border-radius: 6px;
   font: inherit;
 }
@@ -3648,7 +4390,7 @@ body:has([aria-modal='true'], .portfolio-editor-fullscreen)
 .promptologue-cle input,
 .promptologue-cle select {
   padding: 0.35rem 0.5rem;
-  border: 1px solid var(--line);
+  border: 1px solid var(--line-strong);
   border-radius: 6px;
   font: inherit;
 }
@@ -3672,7 +4414,7 @@ body:has([aria-modal='true'], .portfolio-editor-fullscreen)
 
 .banc-carnet > summary {
   cursor: pointer;
-  font-weight: 600;
+  font-weight: var(--fw-strong);
 }
 
 .banc-carnet-texte {
@@ -3689,7 +4431,7 @@ body:has([aria-modal='true'], .portfolio-editor-fullscreen)
 
 .banc-carnet-actions input {
   padding: 0.35rem 0.5rem;
-  border: 1px solid var(--line);
+  border: 1px solid var(--line-strong);
   border-radius: 6px;
   font: inherit;
 }
@@ -3783,7 +4525,7 @@ body:has([aria-modal='true'], .portfolio-editor-fullscreen)
 .etab-cohorte select,
 .cohorte-depot select {
   padding: 0.35rem 0.5rem;
-  border: 1px solid var(--line);
+  border: 1px solid var(--line-strong);
   border-radius: 6px;
   font: inherit;
 }
@@ -3837,7 +4579,7 @@ body:has([aria-modal='true'], .portfolio-editor-fullscreen)
   box-sizing: border-box;
   width: min(28rem, 100%);
   padding: 0.35rem 0.5rem;
-  border: 1px solid var(--line);
+  border: 1px solid var(--line-strong);
   border-radius: 6px;
   font: inherit;
 }
@@ -3893,7 +4635,7 @@ body:has([aria-modal='true'], .portfolio-editor-fullscreen)
 .cohorte-consent label {
   display: block;
   margin-top: 0.5rem;
-  font-weight: 600;
+  font-weight: var(--fw-strong);
 }
 
 .cohorte-liste {
@@ -3963,8 +4705,8 @@ body:has([aria-modal='true'], .portfolio-editor-fullscreen)
 .promptologue-nav a[aria-current='page'] {
   background: var(--accent-solid);
   border-color: var(--accent);
-  color: #fff;
-  font-weight: 600;
+  color: var(--on-accent);
+  font-weight: var(--fw-strong);
 }
 
 .admin-tabs .admin-tabs-home {
@@ -4088,7 +4830,7 @@ body:has([aria-modal='true'], .portfolio-editor-fullscreen)
 .mon-periods button[aria-pressed='true'] {
   background: var(--accent-solid);
   border-color: var(--accent-solid);
-  color: #ffffff;
+  color: var(--on-accent);
 }
 
 .mon-tiles {
@@ -4302,7 +5044,7 @@ body:has([aria-modal='true'], .portfolio-editor-fullscreen)
 
 .mon-role-picker select {
   padding: 0.3rem 0.5rem;
-  border: 1px solid var(--line);
+  border: 1px solid var(--line-strong);
   border-radius: 8px;
   background: var(--card);
   color: var(--ink);
@@ -4363,12 +5105,15 @@ body:has([aria-modal='true'], .portfolio-editor-fullscreen)
   width: 24px;
   height: 24px;
   border-radius: 50%;
-  background: #fff;
+  /* Le pouce tranche sur sa piste dans les deux thèmes : la surface sur
+     --ink-faint (éteint), l'encre de l'aplat sur --accent-solid (allumé). */
+  background: var(--card);
   transition: transform 0.15s ease;
 }
 
 .admin-demo-toggle.is-on .admin-demo-toggle-thumb {
   transform: translateX(22px);
+  background: var(--on-accent);
 }
 
 .admin-demo-toggle.is-off .admin-demo-toggle-label strong {
@@ -4410,7 +5155,7 @@ body:has([aria-modal='true'], .portfolio-editor-fullscreen)
   font: inherit;
   padding: 0.5rem 0.6rem;
   min-height: 44px;
-  border: 1px solid var(--line);
+  border: 1px solid var(--line-strong);
   border-radius: 8px;
   background: var(--card);
   color: var(--ink);
@@ -4450,7 +5195,9 @@ body:has([aria-modal='true'], .portfolio-editor-fullscreen)
 
 .admin-source-env {
   border-color: var(--fam-piloter);
-  color: var(--fam-piloter);
+  /* L'encre d'alerte de l'interface : la couleur de famille (#b45309) tombe
+     sous 4,5:1 sur les fonds d'alerte des trois interfaces (UC-VIS-07-U09). */
+  color: var(--warn-strong);
   background: var(--warn-bg);
 }
 
@@ -4468,12 +5215,14 @@ body:has([aria-modal='true'], .portfolio-editor-fullscreen)
   border-radius: 8px;
   border: 1px solid var(--accent);
   background: var(--accent-solid);
-  color: #fff;
+  color: var(--on-accent);
   cursor: pointer;
 }
 
+/* Survol : l'aplat de survol, sous la même encre (--accent-strong est un
+   jeton de TEXTE, éclairci en sombre : 1,94:1 sous le blanc de l'épistémiarque). */
 .admin-demo-actions button:hover {
-  background: var(--accent-strong);
+  background: var(--accent-solid-hover);
 }
 
 .admin-demo-actions button:disabled {
@@ -4515,7 +5264,7 @@ body:has([aria-modal='true'], .portfolio-editor-fullscreen)
   font: inherit;
   min-height: 44px;
   padding: 0.5rem 0.7rem;
-  border: 1px solid var(--line);
+  border: 1px solid var(--line-strong);
   border-radius: 8px;
   background: var(--card);
   color: var(--ink);
@@ -4624,11 +5373,11 @@ body:has([aria-modal='true'], .portfolio-editor-fullscreen)
   width: 100%;
   max-width: 44rem;
   margin-top: 0.35rem;
-  font-family: ui-monospace, SFMono-Regular, Menlo, Consolas, monospace;
+  font-family: var(--font-mono);
   font-size: 0.9rem;
   line-height: 1.5;
   padding: 0.6rem 0.7rem;
-  border: 1px solid var(--line);
+  border: 1px solid var(--line-strong);
   border-radius: 8px;
   background: var(--card);
   color: var(--ink);
@@ -4674,7 +5423,7 @@ body:has([aria-modal='true'], .portfolio-editor-fullscreen)
   white-space: pre-wrap;
   word-break: break-word;
   overflow-x: auto;
-  font-family: ui-monospace, SFMono-Regular, Menlo, Consolas, monospace;
+  font-family: var(--font-mono);
   font-size: 0.9rem;
   line-height: 1.5;
   padding: 0.7rem 0.8rem;
@@ -4833,7 +5582,7 @@ body:has([aria-modal='true'], .portfolio-editor-fullscreen)
 }
 
 .epi-list-title {
-  font-weight: 600;
+  font-weight: var(--fw-strong);
 }
 
 .epi-small {
@@ -4868,7 +5617,7 @@ body:has([aria-modal='true'], .portfolio-editor-fullscreen)
 .epi-field input,
 .epi-field textarea {
   padding: 0.5rem 0.65rem;
-  border: 1px solid var(--line);
+  border: 1px solid var(--line-strong);
   border-radius: 8px;
   background: var(--card);
   color: var(--ink);
@@ -4927,7 +5676,7 @@ body:has([aria-modal='true'], .portfolio-editor-fullscreen)
 .epi-comp-desc {
   margin-left: 3.2rem;
   padding: 0.4rem 0.6rem;
-  border: 1px solid var(--line);
+  border: 1px solid var(--line-strong);
   border-radius: 8px;
   background: var(--surface-2);
   color: var(--ink-soft);
@@ -4941,7 +5690,7 @@ body:has([aria-modal='true'], .portfolio-editor-fullscreen)
   flex: 0 0 auto;
   min-width: 2.6rem;
   font-variant-numeric: tabular-nums;
-  font-weight: 600;
+  font-weight: var(--fw-strong);
   color: var(--pole-color, var(--ink-soft));
 }
 
@@ -4954,7 +5703,7 @@ body:has([aria-modal='true'], .portfolio-editor-fullscreen)
 .epi-comp-edit input {
   flex: 1 1 auto;
   padding: 0.4rem 0.6rem;
-  border: 1px solid var(--line);
+  border: 1px solid var(--line-strong);
   border-radius: 8px;
   background: var(--card);
   color: var(--ink);
@@ -4992,7 +5741,7 @@ body:has([aria-modal='true'], .portfolio-editor-fullscreen)
 .epi-primary {
   background: var(--accent-solid);
   border-color: var(--accent);
-  color: #fff;
+  color: var(--on-accent);
 }
 
 .epi-primary:hover {
@@ -5085,7 +5834,7 @@ body:has([aria-modal='true'], .portfolio-editor-fullscreen)
 }
 
 .epi-vote-who {
-  font-weight: 600;
+  font-weight: var(--fw-strong);
 }
 
 .epi-vote-choice {
@@ -5138,7 +5887,7 @@ body:has([aria-modal='true'], .portfolio-editor-fullscreen)
 
 .epi-ok {
   color: var(--ok);
-  font-weight: 600;
+  font-weight: var(--fw-strong);
 }
 
 .epi-notice {
@@ -5216,7 +5965,7 @@ body:has([aria-modal='true'], .portfolio-editor-fullscreen)
 .epi-listeditor input {
   flex: 1 1 auto;
   padding: 0.4rem 0.6rem;
-  border: 1px solid var(--line);
+  border: 1px solid var(--line-strong);
   border-radius: 8px;
   background: var(--card);
   color: var(--ink);
@@ -5239,13 +5988,13 @@ body:has([aria-modal='true'], .portfolio-editor-fullscreen)
   padding: 0.75rem;
   border-radius: 8px;
   background: var(--surface-2);
-  font-family: ui-monospace, SFMono-Regular, Menlo, Consolas, monospace;
+  font-family: var(--font-mono);
   font-size: 0.8rem;
 }
 
 .epi-modele dt {
-  font-family: ui-monospace, SFMono-Regular, Menlo, Consolas, monospace;
-  font-weight: 600;
+  font-family: var(--font-mono);
+  font-weight: var(--fw-strong);
 }
 
 .epi-modele dd {
@@ -5256,7 +6005,7 @@ body:has([aria-modal='true'], .portfolio-editor-fullscreen)
 .epi-markdown textarea {
   width: 100%;
   min-height: 14rem;
-  font-family: ui-monospace, SFMono-Regular, Menlo, Consolas, monospace;
+  font-family: var(--font-mono);
   font-size: 0.85rem;
 }
 
@@ -5314,7 +6063,7 @@ body:has([aria-modal='true'], .portfolio-editor-fullscreen)
 }
 
 .account-keys-provider {
-  font-weight: 600;
+  font-weight: var(--fw-strong);
 }
 
 .account-keys-date {
@@ -5359,7 +6108,7 @@ body:has([aria-modal='true'], .portfolio-editor-fullscreen)
 
 .account-keys-ok {
   color: var(--ok);
-  font-weight: 600;
+  font-weight: var(--fw-strong);
 }
 
 /* « Mes rôles RESPIRE » (profil #/compte, sprint 8) : une déclaration, sans
@@ -5375,6 +6124,8 @@ body:has([aria-modal='true'], .portfolio-editor-fullscreen)
 .account-respire h2 {
   margin: 0 0 0.5rem;
   font-size: 1.05rem;
+  font-family: var(--font-subheading);
+  font-weight: var(--fw-subheading);
 }
 
 .account-respire-intro,
@@ -5433,7 +6184,7 @@ body:has([aria-modal='true'], .portfolio-editor-fullscreen)
 }
 
 .account-respire-label {
-  font-weight: 600;
+  font-weight: var(--fw-strong);
   cursor: pointer;
 }
 
@@ -5460,7 +6211,7 @@ body:has([aria-modal='true'], .portfolio-editor-fullscreen)
 
 .account-respire-ok {
   color: var(--ok);
-  font-weight: 600;
+  font-weight: var(--fw-strong);
 }
 
 /* Rôles déclarés dans la liste d'administration (#/admin/roles) : à côté

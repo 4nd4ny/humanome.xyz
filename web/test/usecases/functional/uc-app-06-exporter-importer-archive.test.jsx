@@ -216,7 +216,8 @@ describe('UC-APP-06 — scénario nominal : exporter puis restaurer sur un navig
     )
     await waitFor(() => expect(screen.getAllByTestId('carto-item')).toHaveLength(4))
     expect(screen.queryByText('copie serveur')).toBeNull()
-    expect(screen.getAllByRole('combobox').map((s) => s.value)).toEqual(['privee', 'privee', 'privee', 'privee'])
+    // Les listes de la page (le tiroir porte aussi « Interface » et « Thème », UC-VIS-07).
+    expect(within(screen.getByRole('main')).getAllByRole('combobox').map((s) => s.value)).toEqual(['privee', 'privee', 'privee', 'privee'])
     const [portfolio] = idb.values('humanome-portfolios', 'portfolios')
     expect(portfolio).toMatchObject({ titre: 'Journal de Maya', source: 'colle' })
     expect(portfolio.segments.map((s) => s.date)).toEqual(['2026-01-05', '2026-01-06', '2026-01-07'])

@@ -20,15 +20,18 @@ RewriteRule ^ https://%{HTTP_HOST}%{REQUEST_URI} [R=301,L]
   #   style-src 'self' 'unsafe-inline'  React/Vite inline <style> and style=.
   #   script-src 'self' ...     the anti-FOUC hash just below, and the two
   #                             sandbox additions further down.
-  #     'sha256-VNZJ2x9PRW+GU3XSKT9vt2Pezkb2MMkrNIOKCPOuxzY='
+  #     'sha256-xdi4lkEzYjLmg/FIkP53O3LknKxMm5e6rr8bPwk3e8A='
   #                             hash of the anti-FOUC inline <script> of
-  #                             web/index.html (applies the stored light/dark
-  #                             theme BEFORE the first paint, ahead of the
-  #                             bundle). Refused by this CSP until 2026-10-14
-  #                             (journal carto, question 30): the theme only
-  #                             landed with the bundle, a visible flash. Kept in
-  #                             sync by web/src/anti-fouc.test.js — editing that
-  #                             script without updating this hash fails it.
+  #                             web/index.html (applies the stored interface —
+  #                             épistémiarque by default, noèsiologue,
+  #                             technomancien, sprint 9 — and the stored
+  #                             light/dark theme BEFORE the first paint, ahead
+  #                             of the bundle). Refused by this CSP until
+  #                             2026-10-14 (journal carto, question 30): the
+  #                             theme only landed with the bundle, a visible
+  #                             flash. Kept in sync by web/src/anti-fouc.test.js
+  #                             — editing that script without updating this
+  #                             hash fails it.
   #   connect-src 'self' + LLM  fetch/XHR/WebSocket to our API, and to the LLM
   #                             providers the browser calls DIRECTLY with the
   #                             user's own key (personal-key runs, dialogue
@@ -42,8 +45,12 @@ RewriteRule ^ https://%{HTTP_HOST}%{REQUEST_URI} [R=301,L]
   #                             web/src/lib/csp-providers.test.js checks it.
   #                             The promptologue sandbox is NOT widened: its
   #                             srcdoc keeps its own "default-src 'none'".
-  #   font-src 'self'           self-hosted iA Writer Quattro woff2 (D7). Explicit
-  #                             (default-src already covers it) — clarté + défense.
+  #   font-src 'self'           self-hosted woff2 of the three interfaces
+  #                             (sprint 9: Source Serif 4 / Source Sans 3,
+  #                             Fredoka / Nunito, Space Grotesk / JetBrains
+  #                             Mono, from Fontsource, OFL; web/public/fonts/).
+  #                             Explicit (default-src already covers it) —
+  #                             clarté + défense.
   #   worker-src blob:          see the sandbox note below.
   #   object-src 'none'; base-uri 'self'; frame-ancestors 'self'
   #
@@ -69,7 +76,7 @@ RewriteRule ^ https://%{HTTP_HOST}%{REQUEST_URI} [R=301,L]
   #   belt-and-suspenders today; it future-proofs the worker-src fallback chain.)
   #   frame-src is intentionally NOT widened: about:srcdoc is already permitted
   #   by default-src 'self', and nothing frames blob:/data:.
-  Header always set Content-Security-Policy "default-src 'self'; img-src 'self' data:; style-src 'self' 'unsafe-inline'; script-src 'self' 'sha256-VNZJ2x9PRW+GU3XSKT9vt2Pezkb2MMkrNIOKCPOuxzY=' 'sha256-7Ll8/Q7scy4XeEgF5GUsqHX5nPQqrnsVFr+cbzr/yEc=' blob:; connect-src 'self' https://api.anthropic.com https://api.openai.com https://generativelanguage.googleapis.com https://api.x.ai https://openrouter.ai http://localhost:11434; font-src 'self'; worker-src blob:; object-src 'none'; base-uri 'self'; frame-ancestors 'self'"
+  Header always set Content-Security-Policy "default-src 'self'; img-src 'self' data:; style-src 'self' 'unsafe-inline'; script-src 'self' 'sha256-xdi4lkEzYjLmg/FIkP53O3LknKxMm5e6rr8bPwk3e8A=' 'sha256-7Ll8/Q7scy4XeEgF5GUsqHX5nPQqrnsVFr+cbzr/yEc=' blob:; connect-src 'self' https://api.anthropic.com https://api.openai.com https://generativelanguage.googleapis.com https://api.x.ai https://openrouter.ai http://localhost:11434; font-src 'self'; worker-src blob:; object-src 'none'; base-uri 'self'; frame-ancestors 'self'"
 
   # Caching: hashed assets are immutable, entry points and data stay fresh
   <FilesMatch "\.(js|css|woff2?)$">

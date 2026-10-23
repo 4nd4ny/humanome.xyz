@@ -501,8 +501,8 @@ Modifié : `web/src/App.jsx` et `web/src/styles/global.css`. Comportement actuel
 - **Accessibilité** : bouton `aria-expanded` / `aria-controls`, ouverture aussi **au focus clavier**
   (`.app-nav-panel:focus-within`), **Échap** ferme et désépingle, rend le focus au bouton ; un
   `role="group"` nommé par famille ; la page courante porte `aria-current="page"`.
-- **Bas du tiroir** : l'interrupteur « Mode expert » (§5ter), puis, connecté, l'identité et
-  « Se déconnecter ».
+- **Bas du tiroir** : l'interrupteur « Mode expert » (§5ter), les listes « Interface » et
+  « Thème » (§5quater), puis, connecté, l'identité et « Se déconnecter ».
 
 Le tiroir porte le regroupement par **intention** de §3.1 : `nav.js` est la source unique des 7
 familles, et le tiroir, les tuiles de l'accueil (§5bis) et l'aide la consomment.
@@ -586,6 +586,54 @@ dans `#/compte`).
 thème (V2 par compte si le besoin se confirme). Le mot « mode expert » désigne aussi la formation
 apprenant (« Formation apprenant — mode expert ») : sans rapport, à renommer si la confusion se
 confirme.
+
+## 5quater. Les trois interfaces (câblées le 2026-10-23, sprint 9)
+
+Décision : [ADR-014](decisions/ADR-014-trois-interfaces.md) ; cas d'utilisation :
+[UC-VIS-07](cas-utilisation/visiteur/UC-VIS-07-choisir-interface-theme.md).
+
+**Principe : le rôle fixe les droits, le mode la densité, l'interface l'habillage.** Christian
+garde les trois propositions de charte et leur donne les noms des filières (2026-10-23) :
+**épistémiarque** (A, papier chaud et encre brune, accent terre cuite ; le défaut),
+**noèsiologue** (B, crème, la voix bleue d'humanome) et **technomancien** (C, ardoise
+contrastée, accent bleu). Chacune existe en clair et en sombre ; le thème reste Clair, Sombre ou
+Système. L'interface ne change ni le menu, ni les pages, ni les données : les pôles, les palettes
+de la cartographie, les familles et les séries du monitoring sont les mêmes dans les trois.
+
+**Où choisir.** Au bas du tiroir, sous « Mode expert », deux listes natives de 44 px,
+« Interface » et « Thème », et leur précision « gardés dans ce navigateur ; ils ne changent aucun
+droit » ; les mêmes dans la ligne « Affichage » de `#/compte`, sous la case « Mode expert ». Le
+bouton soleil/lune de l'en-tête reste et pose un thème explicite. Les trois commandes restent
+synchronisées ; changer ne referme pas le tiroir.
+
+**Ce qui change avec l'interface.**
+
+| | Épistémiarque | Noèsiologue | Technomancien |
+|---|---|---|---|
+| Fond clair / sombre | papier `#f7f2e8` / veillée `#17140f` | crème `#fff8f1` / `#17120f` | ardoise `#f3f5f9` / `#0a0e15` |
+| Accent (texte) | terre cuite | bleu d'humanome | bleu d'humanome |
+| Anneau de focus | bleu de Prusse | violet | cyan |
+| Titres / texte | Source Serif 4 / Source Sans 3 | Fredoka (Nunito gras sous 1,125 rem) / Nunito | Space Grotesk |
+| Chasse fixe | du système | du système | JetBrains Mono |
+
+**Ce qui ne change pas.** La mise en page : cibles de 44 px et points de rupture du sprint 1,
+tailles des composants. L'échelle typographique de l'interface ne s'applique qu'au corps, aux
+titres de base, aux commandes et au code.
+
+**Accessibilité, prouvée dans les neuf contextes** (trois interfaces × clair, sombre du système,
+sombre choisi), sur les jetons et sur chaque règle des feuilles du site qui les emploie : texte à
+4,5:1 sur son fond, y compris le fond qu'un survol ou un modificateur pose sous l'encre de sa
+règle de base, anneau de focus de l'interface à 3:1 sur tout fond où il tombe (la zone du
+diagramme et la feuille imprimable, claires dans les deux thèmes, ont le leur ; dans la zone du
+diagramme, toute couleur d'interface tracée atteint 3:1 sur sa surface blanche), bordure de champ
+à 3:1. Des captures (accueil, cartographie de démonstration, `#/compte`, à 375 et 1 280 px)
+montrent les six combinaisons sans débordement horizontal.
+
+**Limites.** Comme le mode, la préférence est celle du navigateur, pas du compte. Le contraste
+élevé (`forced-colors`), le tiroir en `<dialog>` et l'anneau de 3 px des propositions A et B
+restent à faire. À 375 px, la ligne « Habilitations » de `#/compte` coupe encore « Apprenant »
+au milieu du mot (sa règle, `overflow-wrap: anywhere` pour les longues adresses, est antérieure
+au sprint 9).
 
 ---
 

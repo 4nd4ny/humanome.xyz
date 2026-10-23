@@ -47,6 +47,136 @@ la phase D) et, le 2026-10-23, la première campagne réelle de Twin9 en local
 
 ## Fait
 
+- 2026-10-23 — **Sprint 9, correctifs de relecture (branche `feat/trois-interfaces`, rien poussé
+  ni déployé).** La relecture du sprint (entrée suivante) a confirmé des contrastes que la preuve
+  sur les règles laissait passer, et un écart à la proposition B. Chaque correctif porte le test
+  qui échouait avant lui.
+  - `b48641a` — **encre héritée d'une règle de base** : UC-VIS-07-U09 mesure aussi le fond seul
+    d'un état ou d'un modificateur (`:hover`, `[aria-pressed]`, `.is-*`, `.x--y`) sous l'encre
+    de sa règle de base (14 couples), et exige qu'un modificateur garde son fond au survol. Rouge
+    avant, il a trouvé exactement : le bouton « Confirmer : tout supprimer » de la cartographie
+    (`.carto-btn--danger`), blanc sur le danger du sombre de l'épistémiarque (2,48:1), qui
+    prenait l'aplat d'accent au survol (désormais le cramoisi en encre et en filet sur la carte,
+    le fond de danger au survol, comme le Supprimer de la proposition A) ; le survol des boutons
+    de démonstration de l'administration, blanc sur `--accent-strong` (1,94:1 ; désormais
+    `--accent-solid-hover`). Les deux défauts existaient sur `main` (2,77 et 1,8:1).
+  - `de6397d` — **repère de la feuille courante de la heatmap** (`.heatmap-day-current`) :
+    l'aplat d'accent tombait à 2,69:1 sur la surface blanche du diagramme en noèsiologue et en
+    technomancien sombres (régression de S9-1) ; désormais `--viz-ink`. Nouveau U12 : toute
+    couleur d'interface tracée dans la zone du diagramme atteint 3:1 (4,5:1 pour un texte) sur
+    `--viz-surface` dans les neuf contextes (16 tracés).
+  - `04d2d20` — **case active de la heatmap de la cartographie** (`.carto-hm-cell.is-focus`) :
+    `--focus` au lieu de l'accent (terre cuite, voisine de FLAMBEAU) ; U10 compte aussi les
+    `.is-focus` (14 anneaux).
+  - `d740018` — **champs visés par leur classe** : U11 lit aussi les classes que le JSX pose sur
+    un champ et refuse un mélange ; il a trouvé la liste « Vitesse de lecture » du lecteur de
+    timeline (environ 2,3:1, désormais `--viz-ink-soft`, 7,6:1) et deux zones de texte bordées
+    de `--line` (`.epi-comp-desc`, `.portfolio-day-texte`). 39 bordures.
+  - `91f3d8e` — **petits intertitres** : `--font-subheading` et `--fw-subheading` dans les trois
+    blocs typographiques ; les 32 titres h1 à h3 qu'un composant ramène sous 1,125 rem les
+    lisent : Nunito gras en noèsiologue (la proposition B réserve Fredoka aux titres de
+    1,125 rem et plus), sans changement en épistémiarque ni en technomancien. Gardé par
+    `fonts.test.js`.
+  - Ce `docs:` — ADR-014 (la citation de Christian, désormais littérale, avec « technomacien
+    [sic] » ; §4, §6 et conséquences) ; UC-VIS-07 (RG6, RG7, U09 à U12, limites, anomalies) ;
+    `docs/ergonomie-navigation.md` §5quater ; catalogue recompté : 1 097 U, 1 239 F (UC-VIS-07 :
+    12 U, 7 F).
+  - **Vérifié** (Node 20, sur l'arbre de ce `docs:`) : front 3 072 tests verts, 9 sautés (279
+    fichiers) ; moteur 593 verts sur 593 (avec `TWIN_V9_DIR`) ; `npm run build` puis
+    `npm run test:dist` vert ; `check-publiable` OK. Chaque test étendu a été lancé rouge avant
+    sa correction (U09 : 5 écarts, U12 : 4, U10 : 1, U11 : 3, polices : 32 titres). Dans
+    Chromium (serveur de développement, API simulée), pour les trois interfaces en clair et en
+    sombre : le bouton armé de suppression de la démonstration à 6,5:1 au moins, au survol à
+    5,5:1 au moins ; un petit intertitre de la cartographie en Nunito 700 dans la noèsiologue,
+    en Source Serif 4 et en Space Grotesk (600) ailleurs ; le repère de la heatmap et le filet de
+    « Vitesse de lecture », injectés dans la zone du diagramme, à `#1e293b` et `#475569`. PHP
+    non lancé : aucun fichier PHP touché.
+  - **Non vérifié** : le survol des boutons de l'administration et la heatmap de la feuille
+    courante dans leurs vraies pages (connexion requise ; règles calculées et cascade vérifiée
+    hors page seulement) ; un état qui ne change que l'encre sur le fond de sa règle de base
+    n'est pas mesuré (le cas inverse l'est) ; la date courante et la plage brossée de la heatmap
+    de la cartographie tracent encore l'accent, et aucun trait d'une seule couleur n'atteint
+    3:1 sur toutes les cases de niveau 5 des pôles ; le filet des boutons du lecteur de timeline
+    reste à environ 2,3:1 (des boutons, pas des champs ; leur glyphe les signale).
+  - **À décider (Christian)** : un repère à deux tons pour la heatmap de la cartographie (date
+    courante, plage brossée, case active), s'il faut l'atteindre partout à 3:1.
+
+- 2026-10-23 — **Sprint 9 : la charte graphique, trois interfaces au choix du visiteur (branche
+  `feat/trois-interfaces`, rien poussé ni déployé ; humanome.xyz seulement).** Christian, le
+  2026-10-23 : « Les trois propositions d'interface sont excellentes. Nous allons les conserver
+  toutes les trois et […] leur attribuer les noms des filières » : **épistémiarque** (proposition
+  A, le défaut), **noèsiologue** (B), **technomancien** (C ; son message écrit « technomacien »,
+  les contenus écrivent « Technomancien »). Décision : `docs/decisions/ADR-014-trois-interfaces.md`
+  (013 est pris par l'ADR des écoles du sprint 6, branche `feat/ecoles`) ; cas d'utilisation :
+  UC-VIS-07. EduChat et la Fabrica ne sont pas touchés.
+  - `13ec9b9` (S9-1) — **trois interfaces, chacune en clair et en sombre.** Les jetons `--ds-*`
+    de chaque interface dans `global.css` (clair, sombre du système, sombre choisi : neuf
+    contextes au même jeu de jetons), les variables historiques (`--ink`, `--paper`,
+    `--accent`…) en alias, sans renommage ; les couleurs de données (familles, monitoring,
+    visualisation, badges, palettes de la cartographie) ne dépendent pas de l'interface. Le
+    choix est un réglage d'affichage, jamais un droit, gardé dans le navigateur
+    (`humanome-interface`, à côté de `humanome-theme`) ; le script anti-FOUC pose toujours
+    `data-interface`, son nouveau sha256 est dans la CSP de `web/public/.htaccess`, dans
+    `docs/securite-checklist.md` et dans `anti-fouc.test.js`. Listes « Interface » et « Thème »
+    (Système, Clair, Sombre) au bas du tiroir, sous « Mode expert », et dans la ligne
+    « Affichage » de `#/compte`.
+  - `c5e6880` (S9-2) — **les polices de chaque interface, auto-hébergées** (Fontsource, SIL OFL
+    1.1, latin et latin-ext, `font-display: swap`) : Source Serif 4 et Source Sans 3, Fredoka et
+    Nunito, Space Grotesk et JetBrains Mono, dans `web/public/fonts/<famille>/` avec leur
+    licence ; piles et échelle par interface, qui ne nomment aucune famille d'une autre : une
+    interface ne charge que ses polices. iA Writer Quattro n'est plus employée (ses fichiers
+    restent). `fonts.test.js` réécrit ; la CSP ne change pas (`font-src 'self'`).
+  - `6191a82` (S9-2) — **les couleurs d'interface passent par les jetons** : `--on-accent` sur
+    chaque aplat d'accent (le blanc tombait sous 4,5:1 sur les aplats éclaircis du sombre de la
+    noèsiologue et du technomancien), plus aucune couleur littérale dans `timeline.css` ni
+    `twin9-credit.css`, `--muted` enfin défini.
+  - `339a2e6` (S9-3) — **la preuve, sur les règles et non plus seulement sur les jetons**, dans
+    les neuf contextes : chaque couple texte et fond d'une même règle des feuilles du site à
+    4,5:1, 3:1 pour un grand texte (UC-VIS-07-U09, 143 règles) ; chaque règle `:focus` trace
+    l'anneau de l'interface (`--focus`), à 3:1 sur tout fond où il tombe (U10, 13 anneaux) ;
+    chaque champ bordé de `--line-strong`, à 3:1 (U11, 36 bordures). Ils ont trouvé, et ce commit
+    corrige : les anneaux traçaient l'accent, jamais `--focus` (désormais aussi sur les champs ;
+    la zone du diagramme et la feuille imprimable, claires dans les deux thèmes, ont le leur) ;
+    34 champs bordés du filet décoratif `--line` (1,2 à 1,6:1) ; le badge « env » de
+    l'administration à 4,26:1 sur le fond d'alerte (une régression de S9-1). Les captures ont
+    montré l'intitulé « Interface » coupé en « Interfac / e » à 375 px dans `#/compte` : corrigé
+    (U07).
+  - Ce `docs:` — ADR-014 ; `docs/ergonomie-navigation.md` §5 et §5quater ; UC-VIS-06 (A5 : la
+    ligne « Affichage » porte aussi l'interface et le thème) ; UC-VIS-07 (RG7, U09 à U11,
+    captures, limites) ; catalogue des cas recompté : 1 096 U, 1 239 F (UC-VIS-07 : 11 U, 7 F) ;
+    `SUMMARY.md` (UC-VIS-07 et ADR-014, ajoutés à la main : `build-gitbook-summary.mjs`
+    retirerait la ligne de la campagne Twin9 du 2026-10-23, absente de ses groupes).
+  - **Vérifié** (Node 20, sur l'arbre de `339a2e6` ; le moteur avec ce `docs:`) : front 3 070
+    tests verts, 9 sautés (279 fichiers) ; moteur 585 verts, 8 sautés (593) ; `npm run build`
+    puis `npm run test:dist` vert ; `check-publiable` OK. U09, U10 et U11 ont été lancés rouges
+    avant leurs corrections (3, 10 et 34 écarts) ; la règle de l'intitulé, par mutation.
+    Captures Playwright (Chromium, serveur de développement, API simulée avec un compte inventé,
+    choix posé avant tout script donc par le vrai script anti-FOUC) : accueil, cartographie de
+    démonstration et `#/compte`, à 375 et 1 280 px, clair et sombre, pour chaque interface, soit
+    36 images, hors du dépôt ; sur chacune les bons attributs, aucun débordement horizontal,
+    aucune erreur de page, seules les polices de l'interface chargées. PHP non lancé : le sprint
+    ne touche ni `api/`, ni `engine/`, ni `schemas/`, ni `scripts/`.
+  - **Non vérifié** : Safari, Firefox et un vrai téléphone (Chromium seul) ; un lecteur d'écran ;
+    le contraste élevé (`forced-colors`, sans règle propre) ; les contrastes sont calculés sur
+    les règles, pas mesurés à l'écran (un texte posé sur le fond d'un parent n'est couvert qu'au
+    niveau des jetons) ; à 375 px, la ligne « Habilitations » de `#/compte` coupe encore
+    « Apprenant » au milieu du mot (sa règle, `overflow-wrap: anywhere`, est antérieure au
+    sprint ; non corrigé) ; rien n'est déployé.
+  - **Pris par délégation, à signaler à Christian** : (1) le choix est par visiteur, gardé dans
+    son navigateur, pas dans son compte (comme le mode expert) ; il ne change ni menu, ni pages,
+    ni données ; (2) les jetons remplacent les valeurs des variables existantes, sans renommage ;
+    les couleurs de données ne changent pas ; (3) les polices sont auto-hébergées et chaque
+    interface ne télécharge que les siennes ; (4) le nouveau sha256 du script anti-FOUC est dans
+    la CSP ; (5) pas de refonte de la mise en page : cibles de 44 px et points de rupture du
+    sprint 1 inchangés, anneau de focus de 2 px (les propositions A et B en prévoyaient 3).
+  - **À décider (Christian)** : (1) le défaut : l'épistémiarque, pour un visiteur sans choix ;
+    (2) iA Writer Quattro : retirer ses fichiers de `web/public/fonts/quattro/`, qu'aucune
+    interface n'emploie plus ; (3) EduChat et la Fabrica : appliquer ou non les notes de
+    migration des propositions (autres dépôts, non touchés) ; (4) le déploiement : fusion de
+    `feat/trois-interfaces` puis mise en ligne, avec le `.htaccess` qui porte le nouveau sha256
+    du script anti-FOUC (sans lui, la CSP bloque le script : l'interface et le thème choisis ne
+    se posent qu'au montage de l'application, après un éclair du défaut).
+
 - 2026-10-22 — **Sprint 6, lots S6a et S6b : corrections de la revue indépendante (même branche
   `feat/ecoles`, rien déployé).** Dix-huit constats confirmés — dix-sept défauts distincts (le retrait
   d'une clé d'école sous un lot en vol était relevé deux fois) —, tous corrigés : quinze commits

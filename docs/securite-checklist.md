@@ -122,9 +122,11 @@ Dernière revue : M9 (2026-07-12).
   non assaini (DOMPurify, ADR-007), textes de l'utilisateur rendus par React
   en texte, pas de `'unsafe-inline'` ni de `'unsafe-eval'` pour les scripts ;
   et toute nouvelle entrée de `connect-src` doit répondre à un adaptateur du
-  moteur (garde `csp-providers.test.js`). `font-src 'self'` (polices iA Writer Quattro auto-hébergées,
-  D7 — explicite bien que `default-src 'self'` les couvre déjà ; aucune origine
-  tierce de police), Permissions-Policy restrictive (ajoutée en M9).
+  moteur (garde `csp-providers.test.js`). `font-src 'self'` (polices auto-hébergées : iA Writer Quattro en D7, puis,
+  depuis le sprint 9, celles des trois interfaces, prises dans les paquets
+  Fontsource sous licence OFL et servies depuis `web/public/fonts/` ;
+  explicite bien que `default-src 'self'` les couvre déjà ; aucune origine
+  tierce de police, garde `web/src/styles/fonts.test.js`), Permissions-Policy restrictive (ajoutée en M9).
   **Correction de régression M9 (bug réel)** : la CSP de prod cassait
   *silencieusement* la sandbox promptologue (P10). Un iframe `srcdoc` **hérite de la
   CSP de la page parente** ; `script-src 'self'` refusait donc le bootstrap inline
@@ -157,13 +159,21 @@ Dernière revue : M9 (2026-07-12).
   qu'elle existe — sans qu'aucun test ne le voie (ni vitest ni le dev-server
   n'appliquent la CSP du `.htaccess`). Le choix explicite d'un visiteur (clair ou
   sombre) n'était donc pas réappliqué au chargement : la page suivait le thème du
-  système. `script-src` autorise désormais ce script **par son hash**
-  (`'sha256-VNZJ2x9PRW+GU3XSKT9vt2Pezkb2MMkrNIOKCPOuxzY='`), jamais par
+  système. `script-src` autorise désormais ce script **par son hash**, jamais par
   `'unsafe-inline'`. Garde anti-dérive : `web/src/anti-fouc.test.js` recalcule le
   hash depuis `index.html` (un seul script en ligne admis) et exige sa présence
   dans `script-src`. Vérifié dans Chromium sur le bundle construit, sous la CSP
   de production d'avant puis d'après : violation `script-src-elem`, puis aucune,
   et le thème posé pendant l'analyse du `<head>`, avant le bundle.
+  **Sprint 9 (trois interfaces, 2026-10-23)** : le script pose aussi
+  l'interface choisie (`data-interface`, clé `humanome-interface` :
+  épistémiarque par défaut, noèsiologue, technomancien ; une valeur inconnue
+  ramène au défaut). Son hash est donc devenu
+  `'sha256-xdi4lkEzYjLmg/FIkP53O3LknKxMm5e6rr8bPwk3e8A='` (il remplace
+  `'sha256-VNZJ2x9PRW+GU3XSKT9vt2Pezkb2MMkrNIOKCPOuxzY='`), dans `script-src`
+  de `web/public/.htaccess`. Toujours un seul script en ligne, sans
+  `'unsafe-inline'`. À vérifier après déploiement : la console de
+  https://humanome.xyz ne signale aucune violation `script-src-elem`.
 - **En-têtes API sur OVH** : sur le mutualisé, le `www/.htaccess` du front (`Header
   always set`) **se propage** dans `www/api/`. `api/deploy/webroot/.htaccess`
   **réaffirme** défensivement les valeurs API (CSP `default-src 'none'`, X-Frame

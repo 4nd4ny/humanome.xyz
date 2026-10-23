@@ -138,7 +138,9 @@ statique, sans API.
 - **A5 — Thème** : le bouton soleil/lune bascule clair/sombre, pose
   `data-theme` sur `<html>` et mémorise le choix (`humanome-theme`) ; tant
   qu'aucun choix n'est fait, le site suit `prefers-color-scheme` et ses
-  changements.
+  changements. Depuis le sprint 9, le tiroir et « Mon compte » offrent aussi
+  « Système » (retour au suivi du système) et le choix de l'interface
+  (épistémiarque, noèsiologue, technomancien) : UC-VIS-07.
 - **A6 — Confidentialité** : le lien du pied de page (ou « Compte →
   Confidentialité ») affiche `content/legal/confidentialite.md` rendu et
   assaini, sans requête.
@@ -188,7 +190,7 @@ statique, sans API.
 |---|---|
 | Rôles de la session | Lus à chaque montage/changement de session, jamais stockés côté client |
 | Progression des guides (visiteur) | `localStorage` du navigateur uniquement |
-| Thème, épinglage du menu, mode d'affichage | `localStorage` (préférences d'affichage : `humanome-theme`, `humanome-menu-pinned`, `humanome-mode`, UC-VIS-06) |
+| Thème, interface, épinglage du menu, mode d'affichage | `localStorage` (préférences d'affichage : `humanome-theme`, `humanome-interface` (UC-VIS-07), `humanome-menu-pinned`, `humanome-mode` (UC-VIS-06)) |
 
 ## Code sollicité
 
@@ -197,13 +199,13 @@ statique, sans API.
 | Front | `web/src/router.js` — `parseHash`, `guidesHash` | Accueil, guides, confidentialité, introuvable |
 | Front | `web/src/App.jsx` — dont `handleNavClick` ; `web/src/main.jsx` (point d'entrée : rendu de `<App/>` seulement) | Shell : session, menu (tiroir, épinglage, fermeture au clic d'un lien), aide, thème, page introuvable |
 | Front | `web/src/api/client.js` — `fetchMe`, `apiFetch` | Sonde de session : `401` → visiteur, autre erreur → `ApiError`, réseau/`file://` → `ApiUnavailableError` (étape 1, E3) |
-| Front | `web/index.html` (script anti-FOUC) | Thème mémorisé appliqué avant le premier affichage (A5, RG5) |
+| Front | `web/index.html` (script anti-FOUC) | Thème mémorisé (et, depuis le sprint 9, interface : UC-VIS-07) appliqués avant le premier affichage (A5, RG5) |
 | Front | `web/src/nav.js` — `FAMILIES`, `navGroups` (et `compteFamily`, interne), `isCurrentItem` | Plan du site par familles : liens, badges, précisions, visibilité par rôle et par mode d'affichage, page courante (RG1, RG2) |
 | Front | `web/src/lib/ui-mode.js` | Mode d'affichage du shell, interrupteur du tiroir (UC-VIS-06) |
 | Front | Vues atteintes depuis le panneau : `web/src/views/EspaceView.jsx` (`espace/DashboardSection.jsx`), `web/src/components/RunWizard.jsx`, `Twin6OuverteView.jsx`, `Twin9View.jsx`, `PromptologueView.jsx`, `Twin9AtelierView.jsx`, `AdminView.jsx` (`admin/GoldenSection.jsx`, `admin/ReglagesSection.jsx`, `admin/ConfigSection.jsx`), `CartographeView.jsx` (`cartographe/ConsistanceSection.jsx`) | Destination de chaque lien des familles de travail (A1) ; leur fonctionnement relève de leurs UC (UC-APP-02, 05, 09, 10 ; UC-PRO-01, 08 ; UC-ADM-02, 03, 04 ; UC-CAR-07) |
 | Front | `web/src/views/HomeView.jsx`, `web/src/components/FamilyTiles.jsx` — `PERSONAS` | Accueil, tuiles, profils, encart d'aide |
 | Front | `web/src/help/Help.jsx`, `web/src/help/registry.js` — `helpFor` | Aide contextuelle |
-| Front | `web/src/lib/theme.js` — `storedTheme`, `resolvedTheme`, `applyTheme`, `subscribeSystemTheme` | Thème (RG5) |
+| Front | `web/src/lib/theme.js` — `storedTheme`, `resolvedTheme`, `applyTheme`, `subscribeSystemTheme` (le choix « Système » et l'interface : UC-VIS-07) | Thème (RG5) |
 | Front | `web/src/views/GuidesView.jsx` — `guidesDeLaSession`, `web/src/views/espace/FormationSection.jsx`, `web/src/views/espace/formation-content.js` — `listChapters`, `getChapter`, `rewriteChapterLink`, `guidesBaseHash` | Guides publics, parcours de la session en tête (A4) |
 | Front | `web/src/lib/training-store.js` — `createTrainingStore` | Progression locale |
 | Front | `web/src/views/ConfidentialiteView.jsx`, `web/src/lib/md.js` — `renderMarkdown` ; `web/src/lib/narrative.js` — `renderNarrativeHtml` | Page confidentialité, chapitres ; assainissement DOMPurify (RG4, ADR-007) |

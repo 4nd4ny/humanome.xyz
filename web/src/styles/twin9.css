@@ -111,7 +111,7 @@
 
 .twin9-config-table caption {
   text-align: left;
-  font-weight: 600;
+  font-weight: var(--fw-strong);
   padding: 0.25rem 0;
 }
 

@@ -7,15 +7,26 @@
     <meta name="color-scheme" content="light dark" />
     <title>humanome.xyz — Cartographie de compétences humaines</title>
     <link rel="alternate" type="text/plain" href="/llms.txt" title="Résumé du site pour les IA" />
-    <!-- Anti-FOUC : applique le choix de thème stocké AVANT le premier paint.
-         Sans choix explicite, on ne pose rien : la media query prefers-color-scheme
-         gouverne (le site suit le système). -->
+    <!-- Anti-FOUC : applique l'interface et le thème choisis AVANT le premier
+         paint (lib/theme.js gère ensuite la bascule à chaud). L'interface est
+         toujours posée : la choisie, sinon (rien de stocké, valeur inconnue,
+         stockage illisible) l'épistémiarque. Le thème seulement s'il a été
+         choisi : sans choix, la media query prefers-color-scheme gouverne (le
+         site suit le système). Toute retouche change le sha256 de ce script,
+         autorisé par la CSP de public/.htaccess : src/anti-fouc.test.js le
+         vérifie. -->
     <script>
       (function () {
+        var d = document.documentElement
+        var I = ['epistemiarque', 'noesiologue', 'technomancien']
+        var i = I[0]
         try {
+          var s = localStorage.getItem('humanome-interface')
+          if (I.indexOf(s) > -1) i = s
           var t = localStorage.getItem('humanome-theme')
-          if (t === 'light' || t === 'dark') document.documentElement.setAttribute('data-theme', t)
+          if (t === 'light' || t === 'dark') d.setAttribute('data-theme', t)
         } catch (e) {}
+        d.setAttribute('data-interface', i)
       })()
     </script>
   </head>

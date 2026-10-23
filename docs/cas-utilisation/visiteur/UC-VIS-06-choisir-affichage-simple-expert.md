@@ -7,7 +7,7 @@
 | **Portée** | humanome.xyz — interrupteur « Mode expert » au bas du menu, ligne « Affichage » de `#/compte` ; éléments masqués en mode simple : menu (`nav.js`), assistant standard (`#/espace/nouveau-run`), Twin6 (`#/twin6-ouverte`), analyse approfondie (`#/twin9`), interface de cartographie (`#/cartographie`) et son espace Export, aide « ? » ; choix gardé dans le navigateur (`localStorage` `humanome-mode`), sans API |
 | **Niveau** | Objectif utilisateur |
 | **Cahier des charges** | Sprint 1 (TODO_LIST) : « réfléchir à l'ergonomie du site ; ne pas hésiter à masquer des fonctionnalités en créant un mode expert » ; décisions D1 à D5 du 2026-10-22 |
-| **Statut** | Implémenté (lot 1, 2026-10-22 ; lot 2, la page `#/twin9`, 2026-10-22, phase D) ; `docs/ergonomie-navigation.md` §5ter |
+| **Statut** | Implémenté (lot 1, 2026-10-22 ; lot 2, la page `#/twin9`, 2026-10-22, phase D) ; `docs/ergonomie-navigation.md` §5ter. Sprint 9 (2026-10-23) : sous l'interrupteur, le tiroir et la ligne « Affichage » portent aussi l'interface et le thème ([UC-VIS-07](UC-VIS-07-choisir-interface-theme.md), [ADR-014](../../decisions/ADR-014-trois-interfaces.md)) |
 
 ## Objectif
 
@@ -51,7 +51,8 @@ l'application (`web/src/App.jsx`).
 2. Il ouvre le menu : au bas du tiroir, entre les familles et la
    déconnexion, l'interrupteur « Mode expert » (rôle `switch`, éteint), et sa
    précision « profils Twin9, versions de prompt, modèles, comparaison,
-   réglages fins ».
+   réglages fins ». Juste dessous, les listes « Interface » et « Thème »
+   (UC-VIS-07), l'autre moitié des réglages d'affichage.
 3. Sur `#/cartographie`, l'interface de cartographie liste ses espaces sans
    « Comparaison » ; « Panneaux » ne propose pas « Réglages » ; l'espace
    Export ne propose pas « Préparer une démo ».
@@ -91,7 +92,11 @@ l'application (`web/src/App.jsx`).
 - **A5 — Depuis « Mon compte »** : la ligne « Affichage » du profil
   (`#/compte`, à côté de « Rôles » : ce que je fais, ce que je vois) porte la
   même case « Mode expert » ; les deux commandes restent synchronisées. Le
-  réglage reste celui du navigateur, pas du compte (D4, V1).
+  réglage reste celui du navigateur, pas du compte (D4, V1). Depuis le
+  sprint 9, la même ligne porte, sous la case, les listes « Interface » et
+  « Thème » et leur précision « gardés dans ce navigateur ; ils ne changent
+  aucun droit » (UC-VIS-07 A4) : densité, habillage et thème se règlent au
+  même endroit, et aucun ne touche aux droits.
 - **A6 — Pages réduites en mode simple** : l'assistant standard (étape 2
   « Référentiel », sans liste de versions de prompt, et étape 3 sans champ
   « Modèle » : UC-APP-02 A8) ; Twin6, sans liste des modèles (UC-APP-09 A8) ;
@@ -183,6 +188,7 @@ l'application (`web/src/App.jsx`).
 - `web/src/components/RunWizard.test.jsx`, `web/src/views/Twin6OuverteView.test.jsx` (blocs « mode simple ») ; UC-APP-02-F29, UC-APP-09-F32, UC-APP-06-F18.
 - `web/src/views/Twin9View.test.jsx` (bloc « mode simple (S1, lot 2) » : profil v9.8, ni liste ni lien ; un profil choisi en mode expert ne part pas en mode simple) ; UC-APP-10-F24 (lot 2, l'application entière, l'aide comprise).
 - UC-VIS-04-U13 (plan du site exhaustif dans les deux modes), UC-VIS-04-F20 (« Mes profils Twin9 » d'un compte de travail).
+- UC-VIS-07-F05 (la ligne « Affichage » porte aussi les listes « Interface » et « Thème », synchronisées avec le tiroir), UC-VIS-07-U07 (l'intitulé des listes ne se coupe pas dans la ligne).
 - `web/e2e/navigation-burger.e2e.js` (cible de 44 px de l'interrupteur au doigt), `web/e2e/parcours-apprenant.e2e.js` (étape « Référentiel » du mode simple) ; `carto-export.e2e.js` et `carto-soleil.e2e.js` posent le mode expert.
 
 ### Exécuter

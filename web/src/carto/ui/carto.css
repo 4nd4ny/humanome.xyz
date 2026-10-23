@@ -112,7 +112,7 @@
   }
 }
 .carto-app *:focus-visible {
-  outline: 2px solid var(--accent);
+  outline: 2px solid var(--focus);
   outline-offset: 2px;
 }
 /* L'espace Cartographie prend toute la largeur : ses tuiles se rangent sur la
@@ -182,7 +182,7 @@
   font-size: 0.9rem;
   border: 1px solid var(--accent-solid);
   background: var(--accent-solid);
-  color: #fff;
+  color: var(--on-accent);
   border-radius: var(--carto-radius);
   padding: 0.3rem 0.7rem;
   cursor: pointer;
@@ -206,9 +206,17 @@
 .carto-btn--quiet:hover {
   background: var(--surface-2);
 }
+/* Danger : le cramoisi en encre et en filet sur la carte, comme le bouton
+   Supprimer de la proposition A, et non en aplat (blanc sur le danger éclairci
+   du sombre de l'épistémiarque : 2,48:1). Le survol garde le cramoisi : sans
+   sa règle, .carto-btn:hover (plus spécifique) lui rendait l'aplat d'accent. */
 .carto-btn--danger {
-  background: var(--danger);
+  background: var(--card);
+  color: var(--danger);
   border-color: var(--danger);
+}
+.carto-btn--danger:hover {
+  background: var(--danger-bg);
 }
 .carto-link,
 .carto-link-btn {
@@ -389,7 +397,7 @@ kbd {
   background: var(--card);
   border: 1px solid var(--line);
   border-radius: var(--carto-radius);
-  box-shadow: 0 6px 18px rgb(0 0 0 / 0.12);
+  box-shadow: var(--shadow-md);
 }
 .carto-panels-list li {
   padding: 0.15rem 0;
@@ -638,14 +646,14 @@ kbd {
 }
 .carto-sun-sector path:first-child:focus-visible {
   outline: none;
-  stroke: var(--accent);
+  stroke: var(--focus);
   stroke-width: 2.4;
 }
 .carto-sun-center:focus {
   outline: none;
 }
 .carto-sun-center:focus-visible circle {
-  stroke: var(--accent);
+  stroke: var(--focus);
   stroke-width: 2;
 }
 .carto-sun-hatch {
@@ -668,7 +676,7 @@ kbd {
 /* Nom d'un pôle, écrit le long de son arc (D-58). */
 .carto-sun-pole-label {
   font-size: 8.5px;
-  font-weight: 600;
+  font-weight: var(--fw-strong);
   letter-spacing: 0.02em;
   text-anchor: middle;
   pointer-events: none;
@@ -696,13 +704,13 @@ kbd {
   stroke: var(--viz-guide);
 }
 .carto-sun--zoomed .carto-sun-center:focus-visible circle {
-  stroke: var(--accent);
+  stroke: var(--focus);
   stroke-width: 2;
 }
 /* Code d'une compétence du pôle ouvert (D-45). */
 .carto-sun-code-label {
   font-size: 8.5px;
-  font-weight: 600;
+  font-weight: var(--fw-strong);
   text-anchor: middle;
   dominant-baseline: middle;
   pointer-events: none;
@@ -853,7 +861,7 @@ kbd {
 }
 .carto-seg button[aria-checked='true'] {
   background: var(--accent-solid);
-  color: #fff;
+  color: var(--on-accent);
 }
 .carto-year-nav {
   display: inline-flex;
@@ -877,7 +885,7 @@ kbd {
   max-width: none;
 }
 .carto-hm:focus-visible {
-  outline: 2px solid var(--accent);
+  outline: 2px solid var(--focus);
 }
 .carto-hm-month,
 .carto-hm-weekday {
@@ -934,8 +942,12 @@ kbd {
   stroke-width: 1.8;
   stroke-dasharray: 2 1.5;
 }
+/* Case active au clavier (aria-activedescendant) : l'anneau de l'interface,
+   pas l'accent (terre cuite en épistémiarque, de la famille de FLAMBEAU).
+   La moitié extérieure du trait tombe dans l'espace entre les cases, sur la
+   surface de la cartographie, où --focus atteint 3:1 (UC-VIS-07-U10). */
 .carto-hm-cell.is-focus {
-  stroke: var(--accent-strong);
+  stroke: var(--focus);
   stroke-width: 2;
 }
 .carto-hm-cell.is-brushed {
@@ -1000,7 +1012,7 @@ kbd {
 .carto-list-search input {
   font: inherit;
   padding: 0.3rem 0.5rem;
-  border: 1px solid var(--line);
+  border: 1px solid var(--line-strong);
   border-radius: var(--carto-radius);
   background: var(--card);
   color: var(--ink);
@@ -1086,7 +1098,7 @@ kbd {
 }
 .carto-dataset-title input:hover,
 .carto-dataset-title input:focus {
-  border-color: var(--line);
+  border-color: var(--line-strong);
   background: var(--card);
 }
 .carto-manager-counts {
@@ -1114,7 +1126,7 @@ kbd {
   font: inherit;
   font-size: 0.85rem;
   padding: 0.2rem;
-  border: 1px solid var(--line);
+  border: 1px solid var(--line-strong);
   border-radius: 4px;
   background: var(--card);
   color: var(--ink);
@@ -1216,7 +1228,7 @@ kbd {
   font: inherit;
   font-size: 0.85rem;
   padding: 0.2rem 0.35rem;
-  border: 1px solid var(--line);
+  border: 1px solid var(--line-strong);
   border-radius: 4px;
   background: var(--card);
   color: var(--ink);
@@ -1232,6 +1244,8 @@ kbd {
 }
 .carto-section h3 {
   font-size: 0.95rem;
+  font-family: var(--font-subheading);
+  font-weight: var(--fw-subheading);
   margin: 0.2rem 0;
 }
 .carto-section--alert {
@@ -1336,6 +1350,8 @@ kbd {
 .carto-report-head h3 {
   margin: 0;
   font-size: 0.95rem;
+  font-family: var(--font-subheading);
+  font-weight: var(--fw-subheading);
 }
 .carto-report-filters {
   display: flex;
@@ -1435,6 +1451,8 @@ kbd {
 }
 .carto-detail h3 {
   font-size: 0.95rem;
+  font-family: var(--font-subheading);
+  font-weight: var(--fw-subheading);
   margin: 0.8rem 0 0.3rem;
 }
 .carto-member-list {
@@ -1615,6 +1633,8 @@ kbd {
 }
 .carto-covered h3 {
   font-size: 0.95rem;
+  font-family: var(--font-subheading);
+  font-weight: var(--fw-subheading);
   margin: 0.9rem 0 0.2rem;
 }
 .carto-covered .carto-verdict-list .carto-link-btn {
@@ -1623,6 +1643,8 @@ kbd {
 }
 .carto-why h3 {
   font-size: 0.95rem;
+  font-family: var(--font-subheading);
+  font-weight: var(--fw-subheading);
   margin: 0.9rem 0 0.3rem;
 }
 .carto-formulas {
@@ -1782,7 +1804,7 @@ kbd {
 .carto-review-buttons [aria-pressed='true'] {
   background: var(--accent-solid);
   border-color: var(--accent-solid);
-  color: #fff;
+  color: var(--on-accent);
 }
 .carto-review-note {
   display: flex;
@@ -1794,7 +1816,7 @@ kbd {
   font: inherit;
   font-size: 0.86rem;
   width: 100%;
-  border: 1px solid var(--line);
+  border: 1px solid var(--line-strong);
   border-radius: var(--carto-radius);
   background: var(--card);
   color: var(--ink);
@@ -1869,6 +1891,12 @@ kbd {
   font-size: 1rem;
   margin: 0.9rem 0 0.35rem;
 }
+.carto-prose h1,
+.carto-prose h2,
+.carto-prose h3 {
+  font-family: var(--font-subheading);
+  font-weight: var(--fw-subheading);
+}
 .carto-prose blockquote {
   margin: 0.4rem 0;
   padding-left: 0.7rem;
@@ -1933,6 +1961,8 @@ kbd {
   min-width: 0;
   margin: 0;
   font-size: 1.05rem;
+  font-family: var(--font-subheading);
+  font-weight: var(--fw-subheading);
   line-height: 1.25;
   text-align: center;
   text-wrap: balance;
@@ -1944,7 +1974,7 @@ kbd {
   outline: none;
 }
 .carto-reader-head h2:focus-visible {
-  outline: 2px solid var(--accent);
+  outline: 2px solid var(--focus);
 }
 .carto-reader-step,
 .carto-reader-close {
@@ -2060,6 +2090,8 @@ kbd {
 }
 .carto-reader-text h3 {
   font-size: 1.07em;
+  font-family: var(--font-subheading);
+  font-weight: var(--fw-subheading);
 }
 .carto-reader-text ul,
 .carto-reader-text ol {
@@ -2082,7 +2114,7 @@ kbd {
   border-top: 1px solid var(--line);
 }
 .carto-reader-text code {
-  font-family: ui-monospace, SFMono-Regular, Menlo, Consolas, monospace;
+  font-family: var(--font-mono);
   font-size: 0.88em;
   padding: 0.05em 0.3em;
   border-radius: 3px;
@@ -2181,9 +2213,11 @@ kbd {
 .carto-sg h3 {
   margin: 0 0 0.25rem;
   font-size: 1rem;
+  font-family: var(--font-subheading);
+  font-weight: var(--fw-subheading);
 }
 .carto-sg-warning {
-  border-left: 3px solid #b45309;
+  border-left: 3px solid var(--warn);
   padding-left: 0.5rem;
 }
 .carto-sg-legend {
@@ -2252,7 +2286,7 @@ kbd {
 .carto-field textarea {
   font: inherit;
   font-size: 0.9rem;
-  border: 1px solid var(--line);
+  border: 1px solid var(--line-strong);
   border-radius: var(--carto-radius);
   background: var(--card);
   color: var(--ink);
@@ -2391,7 +2425,7 @@ kbd {
   white-space: nowrap;
 }
 .carto-cmp-table thead th {
-  font-weight: 600;
+  font-weight: var(--fw-strong);
   color: var(--ink-soft);
   vertical-align: bottom;
   white-space: normal;
@@ -2453,6 +2487,8 @@ kbd {
 .carto-cmp-precautions h3 {
   margin: 0 0 0.3rem;
   font-size: 0.95rem;
+  font-family: var(--font-subheading);
+  font-weight: var(--fw-subheading);
 }
 .carto-cmp-precautions ul {
   margin: 0;
@@ -2533,7 +2569,7 @@ kbd {
   overflow: visible;
 }
 .carto-chart svg:focus-visible {
-  outline: 2px solid var(--accent);
+  outline: 2px solid var(--focus);
 }
 .carto-chart-grid line {
   stroke: var(--line);
@@ -2949,6 +2985,8 @@ kbd {
 .carto-export-card h3 {
   margin: 0;
   font-size: 1rem;
+  font-family: var(--font-subheading);
+  font-weight: var(--fw-subheading);
 }
 .carto-export-card p {
   margin: 0;
@@ -2982,7 +3020,7 @@ kbd {
 }
 .carto-export-fieldset legend {
   font-size: 0.85rem;
-  font-weight: 600;
+  font-weight: var(--fw-strong);
   padding: 0 0.25rem;
 }
 .carto-export-codes ul {
@@ -3026,6 +3064,8 @@ kbd {
 .carto-demo-head h3 {
   margin: 0;
   font-size: 1.05rem;
+  font-family: var(--font-subheading);
+  font-weight: var(--fw-subheading);
 }
 .carto-demo-head h3:focus {
   outline: none;
@@ -3064,7 +3104,7 @@ kbd {
 }
 .carto-demo-box legend {
   font-size: 0.85rem;
-  font-weight: 600;
+  font-weight: var(--fw-strong);
   padding: 0 0.25rem;
 }
 .carto-demo-suggestions {
@@ -3083,7 +3123,7 @@ kbd {
 }
 .carto-demo-dict caption {
   text-align: left;
-  font-weight: 600;
+  font-weight: var(--fw-strong);
   font-size: 0.85rem;
   padding-bottom: 0.25rem;
 }
@@ -3099,7 +3139,7 @@ kbd {
   width: 100%;
   min-width: 6rem;
   padding: 0.15rem 0.35rem;
-  border: 1px solid var(--line);
+  border: 1px solid var(--line-strong);
   border-radius: 4px;
   background: var(--card);
   color: var(--ink);
@@ -3179,7 +3219,7 @@ kbd {
 }
 .carto-demo .carto-mini-table caption {
   text-align: left;
-  font-weight: 600;
+  font-weight: var(--fw-strong);
   font-size: 0.85rem;
   padding-bottom: 0.2rem;
 }
@@ -3219,7 +3259,7 @@ kbd {
 .carto-demo-confirm {
   display: block;
   margin: 0.8rem 0 0.5rem;
-  font-weight: 600;
+  font-weight: var(--fw-strong);
 }
 .carto-demo-actions {
   display: flex;
@@ -3278,6 +3318,8 @@ kbd {
 .carto-print-toolbar h2 {
   margin: 0;
   font-size: 1.05rem;
+  font-family: var(--font-subheading);
+  font-weight: var(--fw-subheading);
 }
 .carto-print-toolbar p {
   margin: 0.1rem 0 0;
@@ -3289,7 +3331,7 @@ kbd {
   gap: 0.5rem;
 }
 .carto-print-overlay *:focus-visible {
-  outline: 2px solid var(--accent);
+  outline: 2px solid var(--focus);
   outline-offset: 2px;
 }
 /* La feuille reste claire dans les deux thèmes : c'est du papier. */
@@ -3304,6 +3346,9 @@ kbd {
   --line: #e2e8f0;
   --accent: #2563eb;
   --accent-strong: #1d4ed8;
+  /* Anneau fixe sur ce papier : le focus sombre d'une interface, clair, s'y
+     perdrait (UC-VIS-07-U10). */
+  --focus: #1d4ed8;
   --viz-surface: #ffffff;
   --viz-ink: #1e293b;
   --warn-bg: #fffbeb;
@@ -3332,6 +3377,8 @@ kbd {
 }
 .carto-print-page h3 {
   font-size: 12pt;
+  font-family: var(--font-subheading);
+  font-weight: var(--fw-subheading);
   margin: 1.1em 0 0.3em;
 }
 .carto-print-page h4 {
@@ -3430,7 +3477,7 @@ kbd {
 }
 .carto-print-table caption {
   text-align: left;
-  font-weight: 600;
+  font-weight: var(--fw-strong);
   font-size: 10pt;
   padding-bottom: 0.3em;
 }
@@ -3443,7 +3490,7 @@ kbd {
 }
 .carto-print-table thead th {
   border-bottom: 1px solid var(--ink-faint);
-  font-weight: 600;
+  font-weight: var(--fw-strong);
 }
 .carto-print-table tr {
   break-inside: avoid;
@@ -3516,7 +3563,7 @@ kbd {
 }
 .carto-print-sheet details > summary {
   list-style: none;
-  font-weight: 600;
+  font-weight: var(--fw-strong);
 }
 .carto-print-sheet details > summary::-webkit-details-marker {
   display: none;
@@ -3525,7 +3572,7 @@ kbd {
   margin: 0.3em 0;
 }
 .carto-print-voices dt {
-  font-weight: 600;
+  font-weight: var(--fw-strong);
   margin-top: 0.3em;
 }
 .carto-print-voices dd {
@@ -3615,6 +3662,8 @@ kbd {
 }
 .carto-share-h {
   font-size: 1.05rem;
+  font-family: var(--font-subheading);
+  font-weight: var(--fw-subheading);
   margin: 0 0 0.5rem;
 }
 .carto-share-gate {
@@ -3655,7 +3704,7 @@ kbd {
 }
 .carto-share-steps [aria-current='step'] {
   color: var(--ink);
-  font-weight: 600;
+  font-weight: var(--fw-strong);
   text-decoration: underline;
   text-decoration-color: var(--accent);
   text-decoration-thickness: 2px;
@@ -3672,6 +3721,8 @@ kbd {
 }
 .carto-share-step-title {
   font-size: 1rem;
+  font-family: var(--font-subheading);
+  font-weight: var(--fw-subheading);
   margin: 0;
 }
 .carto-app .carto-share-step-title:focus,
@@ -3694,18 +3745,18 @@ label.carto-share-field {
 }
 label.carto-share-field span {
   font-size: 0.85rem;
-  font-weight: 600;
+  font-weight: var(--fw-strong);
 }
 .carto-share-field legend {
   font-size: 0.85rem;
-  font-weight: 600;
+  font-weight: var(--fw-strong);
   padding: 0 0.25rem;
 }
 .carto-share-field input[type='text'] {
   font: inherit;
   max-width: 34rem;
   padding: 0.3rem 0.45rem;
-  border: 1px solid var(--line);
+  border: 1px solid var(--line-strong);
   border-radius: 4px;
   background: var(--paper);
   color: var(--ink);
@@ -3735,7 +3786,7 @@ label.carto-share-field span {
   color: var(--ink-faint);
 }
 .carto-share-pole {
-  font-weight: 600;
+  font-weight: var(--fw-strong);
 }
 .carto-share-picker {
   border: 1px dashed var(--line);
@@ -3936,7 +3987,7 @@ label.carto-share-field span {
 }
 .carto-shared-facts dd {
   margin: 0;
-  font-weight: 600;
+  font-weight: var(--fw-strong);
 }
 .carto-shared-grid {
   display: grid;
@@ -4023,7 +4074,7 @@ label.carto-share-field span {
   margin: 0.1rem 0;
 }
 .carto-shared-comp-name {
-  font-weight: 600;
+  font-weight: var(--fw-strong);
 }
 .carto-shared-chip {
   margin-left: 0.5rem;
@@ -4150,7 +4201,7 @@ label.carto-share-field span {
   font: inherit;
   width: 100%;
   padding: 0.45rem 0.55rem;
-  border: 1px solid var(--line);
+  border: 1px solid var(--line-strong);
   border-radius: 6px;
   background: var(--paper);
   color: var(--ink);
@@ -4182,7 +4233,7 @@ label.carto-share-field span {
 }
 .carto-dialogue-llm summary {
   cursor: pointer;
-  font-weight: 600;
+  font-weight: var(--fw-strong);
   font-size: 0.92rem;
 }
 .carto-dialogue-llm[open] {

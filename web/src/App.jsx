@@ -3,7 +3,16 @@ import { currentRoute, navigate, subscribe } from './router.js'
 import { getDemoMerge, getReferentiel, loadDay } from './data/load.js'
 import { fetchMe, logout } from './api/client.js'
 import { isCurrentItem, navGroups } from './nav.js'
-import { applyTheme, resolvedTheme, subscribeSystemTheme } from './lib/theme.js'
+import {
+  DisplayContext,
+  applyInterface,
+  applyTheme,
+  applyThemeChoice,
+  resolvedInterface,
+  resolvedTheme,
+  subscribeSystemTheme,
+  themeChoice as storedThemeChoice,
+} from './lib/theme.js'
 import { UiModeContext, defaultMode, storeMode, storedMode } from './lib/ui-mode.js'
 import Help from './help/Help.jsx'
 import HomeView from './views/HomeView.jsx'
@@ -28,6 +37,7 @@ import EssayerView from './views/EssayerView.jsx'
 import PortfolioView from './views/PortfolioView.jsx'
 import AccountView from './views/AccountView.jsx'
 import Avatar from './components/Avatar.jsx'
+import DisplaySelects from './components/DisplaySelects.jsx'
 import TuteurPanel from './components/TuteurPanel.jsx'
 import EspaceView from './views/EspaceView.jsx'
 import ShareView from './views/ShareView.jsx'
@@ -405,12 +415,43 @@ export default function App({ lib, fetchMeFn = fetchMe }) {
   // choix explicite persistant. Sans choix, on suit le système (et on réagit à
   // ses changements tant que l'utilisateur n'a rien décidé).
   const [theme, setTheme] = useState(resolvedTheme)
+  // Choix du thème des sélecteurs du tiroir et du compte : « Système » tant
+  // que rien n'est stocké. La bascule de l'en-tête pose un choix explicite.
+  const [themeChoice, setThemeChoiceState] = useState(storedThemeChoice)
   useEffect(() => subscribeSystemTheme(setTheme), [])
   function toggleTheme() {
     const next = theme === 'dark' ? 'light' : 'dark'
     setTheme(next)
+    setThemeChoiceState(next)
     applyTheme(next)
   }
+
+  // Interface (sprint 9) : épistémiarque, noèsiologue ou technomancien,
+  // réglage d'affichage de ce navigateur (jamais un droit). Le script
+  // anti-FOUC l'a déjà posée sur <html> ; le shell la tient pour les deux
+  // sélecteurs (tiroir, « Mon compte »), qui restent synchronisés.
+  const [interfaceName, setInterfaceName] = useState(resolvedInterface)
+  // Défense en profondeur : si le script en ligne n'a pas tourné (CSP qui le
+  // refuse, copie servie sans lui), l'interface arrive avec le bundle.
+  // L'attribut seul : rien n'est écrit dans le stockage sans choix explicite.
+  useEffect(() => {
+    document.documentElement.setAttribute('data-interface', interfaceName)
+  }, [interfaceName])
+  const display = useMemo(
+    () => ({
+      interfaceName,
+      setInterface(name) {
+        applyInterface(name)
+        setInterfaceName(name)
+      },
+      themeChoice,
+      setThemeChoice(choice) {
+        setTheme(applyThemeChoice(choice))
+        setThemeChoiceState(choice)
+      },
+    }),
+    [interfaceName, themeChoice],
+  )
 
   useEffect(() => subscribe(setRoute), [])
 
@@ -657,180 +698,190 @@ export default function App({ lib, fetchMeFn = fetchMe }) {
   const groups = navGroups({ roles, authenticated, expert })
 
   return (
-    <div className={`app${pinned ? ' is-menu-docked' : ''}`}>
-      <header className="app-header">
-        <div className="app-header-actions">
-          <button
-            type="button"
-            className="app-theme-toggle"
-            onClick={toggleTheme}
-            aria-label={theme === 'dark' ? 'Passer au thème clair' : 'Passer au thème sombre'}
-            title={theme === 'dark' ? 'Thème clair' : 'Thème sombre'}
-          >
-            {theme === 'dark' ? <MoonIcon /> : <SunIcon />}
-          </button>
-          <Help
-            route={route.name}
-            session={{ roles, expert }}
-            open={helpOpen}
-            onToggle={() => setHelpOpen((v) => !v)}
-            onClose={() => setHelpOpen(false)}
-          />
-          <TuteurPanel route={route.name} />
-          <div
-            className={`app-menu${menuOpen ? ' is-open' : ''}${pinned ? ' is-pinned' : ''}`}
-            ref={menuRef}
-          >
-            {/* Réglette du bord gauche : rappel visuel permanent du tiroir.
-                PUREMENT décorative (pointer-events:none, aria-hidden) : le
-                déclenchement est géométrique — la veille pointermove du
-                document, plus haut — pour fonctionner même si la souris est
-                déjà posée sur le bord au chargement ou glisse le long du
-                bord. `is-hot` = pointeur dans la zone (ouverture imminente).
-                Masquée en CSS pour les pointeurs sans survol (tactile) : le
-                bouton reste l'accès clavier/tactile. */}
-            <div className={`app-menu-edge${edgeHot ? ' is-hot' : ''}`} aria-hidden="true" />
+    <DisplayContext.Provider value={display}>
+      <div className={`app${pinned ? ' is-menu-docked' : ''}`}>
+        <header className="app-header">
+          <div className="app-header-actions">
             <button
               type="button"
-              className="app-burger"
-              ref={burgerRef}
-              aria-expanded={menuOpen || pinned}
-              aria-controls="app-nav-panel"
-              aria-haspopup="menu"
-              aria-label="Menu de navigation"
-              onPointerEnter={handleHoverTriggerEnter}
-              onPointerLeave={handleHoverTriggerLeave}
-              onClick={() => {
-                clearHoverTimers()
-                setHelpOpen(false)
-                if (hoverOpenedRef.current) {
-                  // Le panneau n'était qu'en aperçu (survol) : le clic
-                  // CONFIRME l'ouverture au lieu de la refermer.
-                  hoverOpenedRef.current = false
-                  setMenuOpen(true)
-                } else {
-                  setMenuOpen((v) => !v)
-                }
-              }}
+              className="app-theme-toggle"
+              onClick={toggleTheme}
+              aria-label={theme === 'dark' ? 'Passer au thème clair' : 'Passer au thème sombre'}
+              title={theme === 'dark' ? 'Thème clair' : 'Thème sombre'}
             >
-              <span className="app-burger-bars" aria-hidden="true">
-                <span />
-                <span />
-                <span />
-              </span>
-              <span className="app-burger-text">Menu</span>
+              {theme === 'dark' ? <MoonIcon /> : <SunIcon />}
             </button>
+            <Help
+              route={route.name}
+              session={{ roles, expert }}
+              open={helpOpen}
+              onToggle={() => setHelpOpen((v) => !v)}
+              onClose={() => setHelpOpen(false)}
+            />
+            <TuteurPanel route={route.name} />
             <div
-              className="app-nav-panel"
-              id="app-nav-panel"
-              onPointerEnter={handlePanelPointerEnter}
-              onPointerLeave={handlePanelPointerLeave}
+              className={`app-menu${menuOpen ? ' is-open' : ''}${pinned ? ' is-pinned' : ''}`}
+              ref={menuRef}
             >
-              <div className="app-nav-panel-head">
-                <span className="app-nav-panel-title">Menu</span>
-                <button
-                  type="button"
-                  className={`app-pin${pinned ? ' is-active' : ''}`}
-                  aria-pressed={pinned}
-                  aria-label={pinned ? 'Détacher le panneau' : 'Épingler le panneau ouvert'}
-                  title={pinned ? 'Détacher le panneau' : 'Épingler le panneau ouvert'}
-                  onClick={() => setPinned((v) => !v)}
-                >
-                  <PinIcon />
-                </button>
-                {/* Sous 921 px, la punaise est masquée (CSS) : cette croix
-                    la remplace ; au-delà, c'est la croix qui se retire. */}
-                <button
-                  type="button"
-                  className="app-nav-close"
-                  aria-label="Fermer le menu"
-                  title="Fermer le menu"
-                  onClick={handleCloseClick}
-                >
-                  <CloseIcon />
-                </button>
-              </div>
-              <nav className="app-nav" aria-label="Navigation principale" onClick={handleNavClick}>
-                {groups.map((family) => (
-                  // role=group : un div nu n'expose pas son aria-label aux
-                  // lecteurs d'écran (nommage interdit sur role générique).
-                  <div className="app-nav-group" key={family.id} role="group" aria-label={family.label}>
-                    <span className="app-nav-group-label" aria-hidden="true">
-                      {family.label}
-                    </span>
-                    {family.items.map((item) => (
-                      <a
-                        key={`${item.href} ${item.label}`}
-                        href={item.href}
-                        aria-current={isCurrentItem(item, route) ? 'page' : undefined}
-                      >
-                        {item.label}
-                        {item.badge ? <span className={`value-badge value-badge-${item.badge}`}>{item.badge}</span> : null}
-                      </a>
-                    ))}
-                  </div>
-                ))}
-                {/* Mode d'affichage, pour tous (visiteur compris). Un bouton,
-                    pas un lien : basculer ne referme pas le tiroir
-                    (handleNavClick ne réagit qu'aux liens), l'effet se voit
-                    aussitôt. Pas de role=group : le tiroir n'en compte qu'un
-                    par famille. */}
-                <div className="app-nav-mode">
+              {/* Réglette du bord gauche : rappel visuel permanent du tiroir.
+                  PUREMENT décorative (pointer-events:none, aria-hidden) : le
+                  déclenchement est géométrique — la veille pointermove du
+                  document, plus haut — pour fonctionner même si la souris est
+                  déjà posée sur le bord au chargement ou glisse le long du
+                  bord. `is-hot` = pointeur dans la zone (ouverture imminente).
+                  Masquée en CSS pour les pointeurs sans survol (tactile) : le
+                  bouton reste l'accès clavier/tactile. */}
+              <div className={`app-menu-edge${edgeHot ? ' is-hot' : ''}`} aria-hidden="true" />
+              <button
+                type="button"
+                className="app-burger"
+                ref={burgerRef}
+                aria-expanded={menuOpen || pinned}
+                aria-controls="app-nav-panel"
+                aria-haspopup="menu"
+                aria-label="Menu de navigation"
+                onPointerEnter={handleHoverTriggerEnter}
+                onPointerLeave={handleHoverTriggerLeave}
+                onClick={() => {
+                  clearHoverTimers()
+                  setHelpOpen(false)
+                  if (hoverOpenedRef.current) {
+                    // Le panneau n'était qu'en aperçu (survol) : le clic
+                    // CONFIRME l'ouverture au lieu de la refermer.
+                    hoverOpenedRef.current = false
+                    setMenuOpen(true)
+                  } else {
+                    setMenuOpen((v) => !v)
+                  }
+                }}
+              >
+                <span className="app-burger-bars" aria-hidden="true">
+                  <span />
+                  <span />
+                  <span />
+                </span>
+                <span className="app-burger-text">Menu</span>
+              </button>
+              <div
+                className="app-nav-panel"
+                id="app-nav-panel"
+                onPointerEnter={handlePanelPointerEnter}
+                onPointerLeave={handlePanelPointerLeave}
+              >
+                <div className="app-nav-panel-head">
+                  <span className="app-nav-panel-title">Menu</span>
                   <button
                     type="button"
-                    role="switch"
-                    className="app-nav-mode-switch"
-                    aria-checked={expert}
-                    aria-describedby="app-nav-mode-hint"
-                    onClick={() => uiMode.setExpert(!expert)}
+                    className={`app-pin${pinned ? ' is-active' : ''}`}
+                    aria-pressed={pinned}
+                    aria-label={pinned ? 'Détacher le panneau' : 'Épingler le panneau ouvert'}
+                    title={pinned ? 'Détacher le panneau' : 'Épingler le panneau ouvert'}
+                    onClick={() => setPinned((v) => !v)}
                   >
-                    <span className="app-nav-mode-track" aria-hidden="true">
-                      <span className="app-nav-mode-thumb" />
-                    </span>
-                    Mode expert
+                    <PinIcon />
                   </button>
-                  <span className="app-nav-mode-hint" id="app-nav-mode-hint">
-                    profils Twin9, versions de prompt, modèles, comparaison, réglages fins
-                  </span>
+                  {/* Sous 921 px, la punaise est masquée (CSS) : cette croix
+                      la remplace ; au-delà, c'est la croix qui se retire. */}
+                  <button
+                    type="button"
+                    className="app-nav-close"
+                    aria-label="Fermer le menu"
+                    title="Fermer le menu"
+                    onClick={handleCloseClick}
+                  >
+                    <CloseIcon />
+                  </button>
                 </div>
-                {authenticated ? (
-                  <div className="app-nav-logout">
-                    {/* D6 : avatar (ou initiales en repli) près de la déconnexion. */}
-                    <a href="#/compte" className="app-nav-identity" aria-label="Mon profil">
-                      <Avatar
-                        userId={sessionUser?.id}
-                        displayName={sessionUser?.displayName}
-                        hasAvatar={sessionUser?.hasAvatar}
-                        size={32}
-                      />
-                      {sessionUser?.displayName ? (
-                        <span className="app-nav-identity-name">{sessionUser.displayName}</span>
-                      ) : null}
-                    </a>
-                    <button type="button" className="app-logout-btn" onClick={handleLogout}>
-                      <LogoutIcon />
-                      Se déconnecter
+                <nav className="app-nav" aria-label="Navigation principale" onClick={handleNavClick}>
+                  {groups.map((family) => (
+                    // role=group : un div nu n'expose pas son aria-label aux
+                    // lecteurs d'écran (nommage interdit sur role générique).
+                    <div className="app-nav-group" key={family.id} role="group" aria-label={family.label}>
+                      <span className="app-nav-group-label" aria-hidden="true">
+                        {family.label}
+                      </span>
+                      {family.items.map((item) => (
+                        <a
+                          key={`${item.href} ${item.label}`}
+                          href={item.href}
+                          aria-current={isCurrentItem(item, route) ? 'page' : undefined}
+                        >
+                          {item.label}
+                          {item.badge ? <span className={`value-badge value-badge-${item.badge}`}>{item.badge}</span> : null}
+                        </a>
+                      ))}
+                    </div>
+                  ))}
+                  {/* Mode d'affichage, pour tous (visiteur compris). Un bouton,
+                      pas un lien : basculer ne referme pas le tiroir
+                      (handleNavClick ne réagit qu'aux liens), l'effet se voit
+                      aussitôt. Pas de role=group : le tiroir n'en compte qu'un
+                      par famille. */}
+                  <div className="app-nav-mode">
+                    <button
+                      type="button"
+                      role="switch"
+                      className="app-nav-mode-switch"
+                      aria-checked={expert}
+                      aria-describedby="app-nav-mode-hint"
+                      onClick={() => uiMode.setExpert(!expert)}
+                    >
+                      <span className="app-nav-mode-track" aria-hidden="true">
+                        <span className="app-nav-mode-thumb" />
+                      </span>
+                      Mode expert
                     </button>
+                    <span className="app-nav-mode-hint" id="app-nav-mode-hint">
+                      profils Twin9, versions de prompt, modèles, comparaison, réglages fins
+                    </span>
                   </div>
-                ) : null}
-              </nav>
+                  {/* Interface et thème (sprint 9), pour tous, à côté du mode :
+                      deux listes natives (ni lien ni groupe : le tiroir ne se
+                      referme pas et ne compte qu'un groupe par famille). */}
+                  <DisplaySelects
+                    idPrefix="app-nav"
+                    className="app-nav-display"
+                    hint="gardés dans ce navigateur ; ils ne changent aucun droit"
+                  />
+                  {authenticated ? (
+                    <div className="app-nav-logout">
+                      {/* D6 : avatar (ou initiales en repli) près de la déconnexion. */}
+                      <a href="#/compte" className="app-nav-identity" aria-label="Mon profil">
+                        <Avatar
+                          userId={sessionUser?.id}
+                          displayName={sessionUser?.displayName}
+                          hasAvatar={sessionUser?.hasAvatar}
+                          size={32}
+                        />
+                        {sessionUser?.displayName ? (
+                          <span className="app-nav-identity-name">{sessionUser.displayName}</span>
+                        ) : null}
+                      </a>
+                      <button type="button" className="app-logout-btn" onClick={handleLogout}>
+                        <LogoutIcon />
+                        Se déconnecter
+                      </button>
+                    </div>
+                  ) : null}
+                </nav>
+              </div>
             </div>
           </div>
-        </div>
-      </header>
-      {/* L'interface de cartographie occupe toute la largeur disponible. */}
-      <main className={`app-main${route.name === 'cartographie' || route.name === 'redirect' ? ' app-main--full' : ''}`}>
-        <UiModeContext.Provider value={uiMode}>{view}</UiModeContext.Provider>
-      </main>
-      <footer className="app-footer">
-        <p>
-          Cartographie de compétences humaines — écosystème RESPIRE, Harmonia Éducation ·{' '}
-          <a href="#/confidentialite">Confidentialité</a> ·{' '}
-          <a href="https://participer.harmonia.education" rel="noreferrer">
-            participer.harmonia.education
-          </a>
-        </p>
-      </footer>
-    </div>
+        </header>
+        {/* L'interface de cartographie occupe toute la largeur disponible. */}
+        <main className={`app-main${route.name === 'cartographie' || route.name === 'redirect' ? ' app-main--full' : ''}`}>
+          <UiModeContext.Provider value={uiMode}>{view}</UiModeContext.Provider>
+        </main>
+        <footer className="app-footer">
+          <p>
+            Cartographie de compétences humaines — écosystème RESPIRE, Harmonia Éducation ·{' '}
+            <a href="#/confidentialite">Confidentialité</a> ·{' '}
+            <a href="https://participer.harmonia.education" rel="noreferrer">
+              participer.harmonia.education
+            </a>
+          </p>
+        </footer>
+      </div>
+    </DisplayContext.Provider>
   )
 }

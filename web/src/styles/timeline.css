@@ -1,5 +1,12 @@
 /* Lecteur de timeline (chantier C) — importé par TimelinePlayer.jsx.
-   NE PAS fusionner dans global.css (édité en parallèle par l'agent admin). */
+   NE PAS fusionner dans global.css (édité en parallèle par l'agent admin).
+   Sprint 9 : plus aucune couleur littérale. Le lecteur vit DANS .diagram-zone,
+   la surface de la visualisation, claire dans les deux thèmes et la même dans
+   les trois interfaces (--viz-surface, --viz-ink, --viz-ink-soft de
+   global.css) : il en prend les encres. L'accent d'interface n'y sert pas :
+   éclairci en sombre, il tomberait sous 3:1 sur ce fond blanc. Les états
+   (survol, pressé) passent par l'encre de la visualisation, en filet plein et
+   en fond léger (color-mix), lisibles sans la couleur. */
 
 .timeline-player {
   display: flex;
@@ -7,9 +14,9 @@
   gap: 0.5rem;
   padding: 0.75rem 0.9rem;
   margin: 0.75rem 0;
-  border: 1px solid rgba(148, 163, 184, 0.35);
+  border: 1px solid color-mix(in srgb, var(--viz-ink-soft) 30%, transparent);
   border-radius: 10px;
-  background: rgba(248, 250, 252, 0.7);
+  background: color-mix(in srgb, var(--viz-ink) 3%, var(--viz-surface));
 }
 
 .timeline-controls {
@@ -23,13 +30,13 @@
   min-width: 2.2rem;
   height: 2.2rem;
   padding: 0 0.5rem;
-  border: 1px solid rgba(100, 116, 139, 0.45);
+  border: 1px solid color-mix(in srgb, var(--viz-ink-soft) 50%, transparent);
   border-radius: 8px;
   /* D4 — thème sombre : la surface (blanche dans les deux thèmes) ET la couleur
      du glyphe DOIVENT être explicites. Sans `color`, en sombre le glyphe hérite
      d'une couleur claire (color-scheme:dark) -> blanc sur blanc, invisible. */
-  background: var(--viz-surface, #fff);
-  color: var(--viz-ink, #1e293b);
+  background: var(--viz-surface);
+  color: var(--viz-ink);
   font-size: 0.95rem;
   line-height: 1;
   cursor: pointer;
@@ -37,18 +44,18 @@
 }
 
 .timeline-controls button:hover:not(:disabled) {
-  background: #eef2ff;
-  border-color: #6366f1;
+  background: color-mix(in srgb, var(--viz-ink) 8%, var(--viz-surface));
+  border-color: var(--viz-ink);
 }
 
 .timeline-controls button:focus-visible {
-  outline: 2px solid #6366f1;
+  outline: 2px solid var(--viz-ink);
   outline-offset: 2px;
 }
 
 .timeline-controls button[aria-pressed='true'] {
-  background: #eef2ff;
-  border-color: #6366f1;
+  background: color-mix(in srgb, var(--viz-ink) 12%, var(--viz-surface));
+  border-color: var(--viz-ink);
 }
 
 .timeline-controls button:disabled {
@@ -56,22 +63,24 @@
   cursor: not-allowed;
 }
 
+/* Un champ : sa limite à 3:1 sur la surface (l'encre douce pleine, 7,6:1 ;
+   le mélange à 50 % tombait à 2,3:1), comme les champs du site (UC-VIS-07-U11). */
 .timeline-speed {
   margin-left: auto;
   height: 2.2rem;
   padding: 0 0.4rem;
-  border: 1px solid rgba(100, 116, 139, 0.45);
+  border: 1px solid var(--viz-ink-soft);
   border-radius: 8px;
   /* D4 — même correctif que les boutons : surface + couleur explicites. */
-  background: var(--viz-surface, #fff);
-  color: var(--viz-ink, #1e293b);
+  background: var(--viz-surface);
+  color: var(--viz-ink);
   font: inherit;
   font-size: 0.85rem;
 }
 
 .timeline-scrubber {
   width: 100%;
-  accent-color: #6366f1;
+  accent-color: var(--viz-ink);
   cursor: pointer;
 }
 
@@ -81,13 +90,13 @@
   gap: 0.6rem;
   flex-wrap: wrap;
   font-size: 0.85rem;
-  color: #475569;
+  color: var(--viz-ink-soft);
 }
 
 .timeline-date {
-  font-weight: 600;
+  font-weight: var(--fw-strong);
   font-variant-numeric: tabular-nums;
-  color: #1e293b;
+  color: var(--viz-ink);
 }
 
 .timeline-counter {

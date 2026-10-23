@@ -228,7 +228,8 @@ describe('UC-ETA-05 — la section « Mon école » (EcoleSection)', () => {
     for (const formulaire of ['.etab-ecole-reglages', '.etab-ecole-cle-form']) {
       expect(declOf(regles, `${formulaire} label`).display).toBe('block')
       const champ = declOf(regles, `${formulaire} input`)
-      expect(champ.border).toBe('1px solid var(--line)')
+      // a field's edge must reach 3:1 against the page in all three interfaces (UC-VIS-07-U11)
+      expect(champ.border).toBe('1px solid var(--line-strong)')
       expect(champ.width).toBe('min(28rem, 100%)')
       expect(champ['box-sizing'] ?? 'border-box').toBe('border-box')
     }

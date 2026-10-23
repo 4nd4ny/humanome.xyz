@@ -7,7 +7,7 @@
 | **Portée** | humanome.xyz — listes « Interface » et « Thème » au bas du menu (sous « Mode expert ») et dans la ligne « Affichage » de `#/compte` ; bascule soleil/lune de l'en-tête (UC-VIS-04 A5) ; choix gardés dans le navigateur (`localStorage` `humanome-interface`, `humanome-theme`), posés sur `<html>` (`data-interface`, `data-theme`) avant le premier rendu par le script anti-FOUC de `web/index.html` ; sans API |
 | **Niveau** | Objectif utilisateur |
 | **Cahier des charges** | Sprint 9 (TODO_LIST, charte graphique) : décision de Christian du 2026-10-23 — « Les trois propositions d'interface sont excellentes. Nous allons les conserver toutes les trois » —, chacune nommée d'après une filière : épistémiarque (proposition A), noèsiologue (B), technomancien (C) |
-| **Statut** | Implémenté (lot S9-1, 2026-10-23 : jetons de couleur, sélecteur, persistance ; lot S9-2 : polices et échelle typographique de chaque interface, couleurs littérales hors données passées aux jetons ; lot S9-3 : contrastes prouvés sur les règles des feuilles du site, anneau de focus de l'interface, bordures de champ à 3:1, captures) ; décision : [ADR-014](../../decisions/ADR-014-trois-interfaces.md) |
+| **Statut** | Implémenté (lot S9-1, 2026-10-23 : jetons de couleur, sélecteur, persistance ; lot S9-2 : polices et échelle typographique de chaque interface, couleurs littérales hors données passées aux jetons ; lot S9-3 : contrastes prouvés sur les règles des feuilles du site, anneau de focus de l'interface, bordures de champ à 3:1, captures ; correctifs de relecture : encres héritées d'une règle de base, zone du diagramme, champs visés par leur classe, petits intertitres) ; décision : [ADR-014](../../decisions/ADR-014-trois-interfaces.md) |
 
 ## Objectif
 
@@ -117,16 +117,25 @@ Aucune. Les réglages fonctionnent sans compte ni API.
   (blanc, ou encre sombre quand l'aplat s'éclaircit en sombre), les
   bandeaux d'état les jetons d'état ; le lecteur de timeline, posé sur la
   surface claire de la visualisation, en prend les encres (`--viz-*`).
-- **RG7** — Contrastes en usage (lot S9-3) : dans les neuf contextes, chaque
-  règle des feuilles du site qui pose un texte sur un fond atteint 4,5:1
-  (3:1 pour un grand texte : aucune règle n'en a besoin) ; l'anneau de focus
-  est celui de l'interface (`--focus` : bleu de Prusse, violet ou cyan, 2 px
-  décalés de 2 px, sur les liens, boutons, résumés, éléments focalisables
-  et champs), ou l'encre de la visualisation sur sa surface claire, et il
-  atteint 3:1 sur tout fond où il peut tomber ; la zone du diagramme et la
-  feuille imprimable, claires dans les deux thèmes, posent leur propre
-  anneau ; chaque champ (`input`, `select`, `textarea`) est bordé de
-  `--line-strong` (3:1), jamais du filet décoratif `--line`.
+- **RG7** — Contrastes en usage (lot S9-3, étendu aux correctifs de
+  relecture) : dans les neuf contextes, chaque règle des feuilles du site qui
+  pose un texte sur un fond atteint 4,5:1 (3:1 pour un grand texte : aucune
+  règle n'en a besoin), que la couleur et le fond soient déclarés dans la
+  même règle ou qu'un état ou un modificateur (`:hover`, `[aria-pressed]`,
+  `.is-*`, `.x--y`) ne change que le fond sous l'encre de sa règle de base ;
+  un modificateur qui change le fond de sa base garde le sien au survol ;
+  l'anneau de focus est celui de l'interface (`--focus` : bleu de Prusse,
+  violet ou cyan, 2 px décalés de 2 px, sur les liens, boutons, résumés,
+  éléments focalisables et champs, et sur l'élément actif d'un composite
+  marqué par une classe, `.is-focus`), ou l'encre de la visualisation sur sa
+  surface claire, et il atteint 3:1 sur tout fond où il peut tomber ; la zone
+  du diagramme et la feuille imprimable, claires dans les deux thèmes, posent
+  leur propre anneau ; dans la zone du diagramme, toute couleur d'interface
+  tracée atteint 3:1 (4,5:1 pour un texte) sur sa surface blanche ; chaque
+  champ (`input`, `select`, `textarea`, visé par sa balise ou par une classe
+  que le JSX lui pose) est bordé de `--line-strong` (3:1), ou, dans le
+  lecteur de timeline, de l'encre douce de la visualisation, jamais du filet
+  décoratif `--line` ni d'un mélange.
 - **RG5** — Les couleurs de données (familles d'intention, séries du
   monitoring, surface des visualisations, badges gratuit / premium, pôles et
   palettes de la cartographie) ne dépendent pas de l'interface.
@@ -137,7 +146,11 @@ Aucune. Les réglages fonctionnent sans compte ni API.
   `--font-mono`) et son échelle (`--fs-*`, `--fw-*`, `--lh-*`) ne dépendent
   pas du thème et ne nomment aucune famille d'une autre interface : le
   navigateur ne télécharge que les polices de l'interface en vigueur, et
-  seulement les sous-ensembles (latin, latin-ext) que la page emploie.
+  seulement les sous-ensembles (latin, latin-ext) que la page emploie. Un
+  titre h1 à h3 qu'un composant ramène sous 1,125 rem lit
+  `--font-subheading` : la police des titres en épistémiarque et en
+  technomancien, Nunito gras en noèsiologue (la proposition B réserve
+  Fredoka aux titres de 1,125 rem et plus).
 
 ## Données et RGPD
 
@@ -157,7 +170,8 @@ Aucune. Les réglages fonctionnent sans compte ni API.
 | Front | `web/src/views/AccountView.jsx` — `DisplayModeRow` | Ligne « Affichage » (A4) |
 | Front | `web/src/styles/global.css` — jetons `--ds-*` des trois interfaces, alias, `.display-select` | Couleurs des interfaces (RG4, RG5) ; listes de 44 px |
 | Front | `web/src/styles/global.css` — `@font-face` et blocs typographiques `html[data-interface]` ; `web/public/fonts/<famille>/` (woff2 Fontsource et `OFL.txt`) | Polices et échelle de chaque interface (RG6) |
-| Front | `web/src/styles/global.css` (règle de focus commune, `.diagram-zone`, champs), `web/src/carto/ui/carto.css` (anneaux de la cartographie, `.carto-print-sheet`, champs), `configuration.css`, `twin9-credit.css` (champs) | Anneau de focus de l'interface, bordures de champ (RG7) |
+| Front | `web/src/styles/global.css` (règle de focus commune, `.diagram-zone`, `.heatmap-day-current`, champs, survol de `.admin-demo-actions`), `web/src/carto/ui/carto.css` (anneaux de la cartographie, case active de la heatmap, `.carto-btn--danger`, `.carto-print-sheet`, champs), `timeline.css` (liste « Vitesse de lecture »), `configuration.css`, `twin9-credit.css` (champs) | Anneau de focus de l'interface, bordures de champ, contrastes en usage (RG7) |
+| Front | `web/src/styles/global.css`, `carto.css`, `twin9-credit.css` — `--font-subheading`, `--fw-subheading` et les intertitres de composants sous 1,125 rem | Petits intertitres (RG6) |
 
 ## Jeux de tests
 
@@ -173,9 +187,10 @@ Aucune. Les réglages fonctionnent sans compte ni API.
 | UC-VIS-07-U06 | `global.css` | Contrastes WCAG dans les neuf contextes : texte 4,5:1, texte sur l'aplat d'accent 4,5:1, bordure de commande, focus et aplat 3:1 (RG4) | idem |
 | UC-VIS-07-U07 | `DisplaySelects` | Deux listes nommées, options dans l'ordre, valeurs du contexte, précision annoncée, aucun groupe ; un changement appelle le réglage seul ; l'intitulé ne se coupe pas au milieu du mot (étapes 2 et 3, A4) | idem |
 | UC-VIS-07-U08 | Feuilles du site (`global.css`, `configuration.css`, `carto.css`, `twin9-credit.css`, `timeline.css`…) | Aucun texte blanc écrit en dur hors impression ; sur l'aplat d'accent, l'encre est `--on-accent` ; plus aucune couleur littérale dans `timeline.css` ni `twin9-credit.css` (RG4) | idem |
-| UC-VIS-07-U09 | Feuilles du site | Chaque règle qui pose un texte sur un fond (143) : 4,5:1, 3:1 pour un grand texte, dans les neuf contextes ; couleurs posées par élément (pôles, couleurs calculées, familles, tuiles V3) hors de l'interface ; règles de `carto.css` sur la surface de la cartographie (sombre avec le site) ou sur la feuille imprimable (RG7, RG5) | idem |
-| UC-VIS-07-U10 | Feuilles du site | Chaque règle `:focus` (13 anneaux) trace `--focus`, ou `--viz-ink` sur la visualisation ; 3:1 sur le fond, la carte, la surface secondaire, l'encart d'information et la surface de la cartographie ; règle commune étendue aux champs ; `--focus` de la zone du diagramme et de la feuille imprimable (RG7) | idem |
-| UC-VIS-07-U11 | Feuilles du site | Chaque champ (36 bordures) en `--line-strong`, ou en couleur de danger s'il est invalide ; deux champs sans cadre à dessein au plus ; `--line-strong` à 3:1 sur le fond, la carte et la surface secondaire (RG7) | idem |
+| UC-VIS-07-U09 | Feuilles du site | Chaque règle qui pose un texte sur un fond (144) : 4,5:1, 3:1 pour un grand texte, dans les neuf contextes ; chaque état ou modificateur qui ne change que le fond (14), sous l'encre de sa règle de base ; un modificateur qui change le fond de sa base garde le sien au survol ; couleurs posées par élément (pôles, couleurs calculées, familles, tuiles V3) hors de l'interface ; règles de `carto.css` sur la surface de la cartographie (sombre avec le site) ou sur la feuille imprimable (RG7, RG5) | idem |
+| UC-VIS-07-U10 | Feuilles du site | Chaque règle `:focus`, et l'élément actif marqué `.is-focus` (14 anneaux), trace `--focus`, ou `--viz-ink` sur la visualisation ; 3:1 sur le fond, la carte, la surface secondaire, l'encart d'information et la surface de la cartographie ; règle commune étendue aux champs ; `--focus` de la zone du diagramme et de la feuille imprimable (RG7) | idem |
+| UC-VIS-07-U11 | Feuilles du site, JSX | Chaque champ, visé par sa balise ou par une classe que le JSX lui pose (39 bordures), en `--line-strong`, ou en couleur de danger s'il est invalide, ou en encre douce de la visualisation dans le lecteur de timeline ; aucun mélange ; deux champs sans cadre à dessein au plus ; `--line-strong` à 3:1 sur le fond, la carte et la surface secondaire, l'encre douce sur la surface de la visualisation (RG7) | idem |
+| UC-VIS-07-U12 | `global.css`, `timeline.css` | Zone du diagramme (soleil, heatmap, lecteur de timeline) : chaque couleur d'interface tracée (16) atteint 3:1, 4,5:1 pour un texte, sur `--viz-surface` dans les neuf contextes ; un mélange n'y lit que les encres `--viz-*` (RG4, RG7) | idem |
 
 ### Tests fonctionnels
 
@@ -197,7 +212,9 @@ Aucune. Les réglages fonctionnent sans compte ni API.
   son commentaire et dans `docs/securite-checklist.md`.
 - `web/src/styles/fonts.test.js` — chaque `@font-face` (woff2 présent,
   licence OFL, `swap`, `unicode-range`), mêmes variables typographiques dans
-  les trois interfaces, aucune famille partagée, aucune origine tierce (RG6).
+  les trois interfaces, aucune famille partagée, aucune origine tierce ;
+  chaque titre h1 à h3 ramené sous 1,125 rem (32) lit `--font-subheading`
+  (RG6).
 - `web/src/App.test.jsx` (bascule de thème de l'en-tête, groupes du tiroir),
   UC-VIS-06-F06 (ligne « Affichage » du compte), UC-CPT-07-U23 (contrastes
   des définitions de rôle, désormais dans les neuf contextes).
@@ -214,8 +231,11 @@ cd web && npx vitest run test/usecases/unit/uc-vis-07 test/usecases/functional/u
   choix ne suit pas le compte d'un appareil à l'autre.
 - **Affichage réel** : jsdom n'applique pas les styles ; les contrastes sont
   calculés sur les jetons et sur les règles qui les emploient, pas mesurés à
-  l'écran : un texte posé sur un fond hérité d'un parent n'est couvert qu'au
-  niveau des jetons (U06). Vérifié à la main le 2026-10-23 dans Chromium, sur
+  l'écran : un texte posé sur un fond hérité d'un PARENT n'est couvert qu'au
+  niveau des jetons (U06) ; sur un même élément, l'encre de la règle de base
+  est mesurée sous le fond d'un état ou d'un modificateur (U09), pas l'inverse
+  (un état qui ne change que l'encre, sur le fond de sa base), et la base est
+  trouvée par le sélecteur, pas par le JSX. Vérifié à la main le 2026-10-23 dans Chromium, sur
   le bundle construit servi sous la CSP de production : les trois interfaces
   × (sans choix, clair, sombre) × système clair ou sombre, plus une valeur
   inconnue, posent les bons attributs et les bonnes couleurs avant le bundle,
@@ -235,6 +255,15 @@ cd web && npx vitest run test/usecases/unit/uc-vis-07 test/usecases/functional/u
   antérieures au sprint 9 ; le rendu d'avant n'a pas été capturé.
 - **Anneau de focus** : 2 px partout ; les propositions A et B en prévoyaient
   3. Le contraste élevé (`forced-colors`) n'a pas de règle propre.
+- **Heatmap de la cartographie** : la date courante (`.is-t`) et la plage
+  brossée (`.is-brushed`) tracent encore l'accent. Aucun trait d'une seule
+  couleur (accent ou anneau) n'atteint 3:1 sur toutes les cases de niveau 5
+  des pôles ; la case active (`.is-focus`, `--focus`) l'atteint sur la
+  surface, dans l'espace entre les cases. Un repère à deux tons reste à
+  décider.
+- **Boutons du lecteur de timeline** : leur filet (mélange de l'encre douce,
+  environ 2,3:1) n'est pas une limite de champ ; leur glyphe, à l'encre de la
+  visualisation, les signale. Non changé.
 - **Couleurs laissées hors des jetons, à dessein** : les couleurs de données
   (RG5 : surface sombre et encres de la cartographie `--viz-*` / `--hm-*` de
   `carto.css`, surlignages des traces, comparaison, jauges de confiance,
@@ -252,3 +281,13 @@ Aucune en production (rien n'est déployé). Trouvés et corrigés avant
 livraison par les tests du lot S9-3 : anneaux de focus à la couleur de
 l'accent, 34 champs bordés du filet décoratif (1,2 à 1,6:1), badge « env »
 de l'administration à 4,26:1 sur le fond d'alerte de l'épistémiarque.
+Trouvés à la relecture du sprint, puis par les tests étendus (U09 à U12,
+`fonts.test.js`), et corrigés : le bouton « Confirmer : tout supprimer » de
+la cartographie, blanc sur le danger du sombre de l'épistémiarque (2,48:1),
+et rendu à l'aplat d'accent au survol ; le survol des boutons de
+démonstration de l'administration (1,94:1 dans le même contexte) ; le repère
+de la feuille courante de la heatmap, à 2,69:1 sur la surface blanche du
+diagramme en noèsiologue et en technomancien sombres ; la case active de la
+heatmap de la cartographie, à l'accent et non à l'anneau ; trois champs
+bordés sous 3:1 (« Vitesse de lecture », les zones de texte de la vue
+épistémiarque et du portfolio) ; 32 petits intertitres en Fredoka.

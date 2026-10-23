@@ -613,7 +613,7 @@ synchronisées ; changer ne referme pas le tiroir.
 | Fond clair / sombre | papier `#f7f2e8` / veillée `#17140f` | crème `#fff8f1` / `#17120f` | ardoise `#f3f5f9` / `#0a0e15` |
 | Accent (texte) | terre cuite | bleu d'humanome | bleu d'humanome |
 | Anneau de focus | bleu de Prusse | violet | cyan |
-| Titres / texte | Source Serif 4 / Source Sans 3 | Fredoka / Nunito | Space Grotesk |
+| Titres / texte | Source Serif 4 / Source Sans 3 | Fredoka (Nunito gras sous 1,125 rem) / Nunito | Space Grotesk |
 | Chasse fixe | du système | du système | JetBrains Mono |
 
 **Ce qui ne change pas.** La mise en page : cibles de 44 px et points de rupture du sprint 1,
@@ -622,8 +622,10 @@ titres de base, aux commandes et au code.
 
 **Accessibilité, prouvée dans les neuf contextes** (trois interfaces × clair, sombre du système,
 sombre choisi), sur les jetons et sur chaque règle des feuilles du site qui les emploie : texte à
-4,5:1 sur son fond, anneau de focus de l'interface à 3:1 sur tout fond où il tombe (la zone du
-diagramme et la feuille imprimable, claires dans les deux thèmes, ont le leur), bordure de champ
+4,5:1 sur son fond, y compris le fond qu'un survol ou un modificateur pose sous l'encre de sa
+règle de base, anneau de focus de l'interface à 3:1 sur tout fond où il tombe (la zone du
+diagramme et la feuille imprimable, claires dans les deux thèmes, ont le leur ; dans la zone du
+diagramme, toute couleur d'interface tracée atteint 3:1 sur sa surface blanche), bordure de champ
 à 3:1. Des captures (accueil, cartographie de démonstration, `#/compte`, à 375 et 1 280 px)
 montrent les six combinaisons sans débordement horizontal.
 

@@ -7,8 +7,9 @@
 // dans global.css (lus par le CSSOM de jsdom : jeux de jetons, copies
 // sombres, alias, couleurs de données, contrastes WCAG dans les neuf
 // contextes), les règles des feuilles du site qui les emploient (couples
-// texte et fond, anneaux de focus, bordures des champs, mesurés dans les
-// neuf contextes : lot S9-3) et les deux listes du sélecteur
+// texte et fond, encres héritées d'une règle de base, anneaux de focus,
+// bordures des champs, zone du diagramme, mesurés dans les neuf contextes :
+// lot S9-3 et correctifs de relecture) et les deux listes du sélecteur
 // (DisplaySelects). jsdom n'applique pas les styles : les contrastes sont
 // calculés sur les règles, pas mesurés à l'écran.
 import { readFileSync } from 'node:fs'

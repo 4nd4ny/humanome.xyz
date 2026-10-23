@@ -47,6 +47,60 @@ la phase D) et, le 2026-10-23, la première campagne réelle de Twin9 en local
 
 ## Fait
 
+- 2026-10-23 — **Sprint 9, correctifs de relecture (branche `feat/trois-interfaces`, rien poussé
+  ni déployé).** La relecture du sprint (entrée suivante) a confirmé des contrastes que la preuve
+  sur les règles laissait passer, et un écart à la proposition B. Chaque correctif porte le test
+  qui échouait avant lui.
+  - `b48641a` — **encre héritée d'une règle de base** : UC-VIS-07-U09 mesure aussi le fond seul
+    d'un état ou d'un modificateur (`:hover`, `[aria-pressed]`, `.is-*`, `.x--y`) sous l'encre
+    de sa règle de base (14 couples), et exige qu'un modificateur garde son fond au survol. Rouge
+    avant, il a trouvé exactement : le bouton « Confirmer : tout supprimer » de la cartographie
+    (`.carto-btn--danger`), blanc sur le danger du sombre de l'épistémiarque (2,48:1), qui
+    prenait l'aplat d'accent au survol (désormais le cramoisi en encre et en filet sur la carte,
+    le fond de danger au survol, comme le Supprimer de la proposition A) ; le survol des boutons
+    de démonstration de l'administration, blanc sur `--accent-strong` (1,94:1 ; désormais
+    `--accent-solid-hover`). Les deux défauts existaient sur `main` (2,77 et 1,8:1).
+  - `de6397d` — **repère de la feuille courante de la heatmap** (`.heatmap-day-current`) :
+    l'aplat d'accent tombait à 2,69:1 sur la surface blanche du diagramme en noèsiologue et en
+    technomancien sombres (régression de S9-1) ; désormais `--viz-ink`. Nouveau U12 : toute
+    couleur d'interface tracée dans la zone du diagramme atteint 3:1 (4,5:1 pour un texte) sur
+    `--viz-surface` dans les neuf contextes (16 tracés).
+  - `04d2d20` — **case active de la heatmap de la cartographie** (`.carto-hm-cell.is-focus`) :
+    `--focus` au lieu de l'accent (terre cuite, voisine de FLAMBEAU) ; U10 compte aussi les
+    `.is-focus` (14 anneaux).
+  - `d740018` — **champs visés par leur classe** : U11 lit aussi les classes que le JSX pose sur
+    un champ et refuse un mélange ; il a trouvé la liste « Vitesse de lecture » du lecteur de
+    timeline (environ 2,3:1, désormais `--viz-ink-soft`, 7,6:1) et deux zones de texte bordées
+    de `--line` (`.epi-comp-desc`, `.portfolio-day-texte`). 39 bordures.
+  - `91f3d8e` — **petits intertitres** : `--font-subheading` et `--fw-subheading` dans les trois
+    blocs typographiques ; les 32 titres h1 à h3 qu'un composant ramène sous 1,125 rem les
+    lisent : Nunito gras en noèsiologue (la proposition B réserve Fredoka aux titres de
+    1,125 rem et plus), sans changement en épistémiarque ni en technomancien. Gardé par
+    `fonts.test.js`.
+  - Ce `docs:` — ADR-014 (la citation de Christian, désormais littérale, avec « technomacien
+    [sic] » ; §4, §6 et conséquences) ; UC-VIS-07 (RG6, RG7, U09 à U12, limites, anomalies) ;
+    `docs/ergonomie-navigation.md` §5quater ; catalogue recompté : 1 097 U, 1 239 F (UC-VIS-07 :
+    12 U, 7 F).
+  - **Vérifié** (Node 20, sur l'arbre de ce `docs:`) : front 3 072 tests verts, 9 sautés (279
+    fichiers) ; moteur 593 verts sur 593 (avec `TWIN_V9_DIR`) ; `npm run build` puis
+    `npm run test:dist` vert ; `check-publiable` OK. Chaque test étendu a été lancé rouge avant
+    sa correction (U09 : 5 écarts, U12 : 4, U10 : 1, U11 : 3, polices : 32 titres). Dans
+    Chromium (serveur de développement, API simulée), pour les trois interfaces en clair et en
+    sombre : le bouton armé de suppression de la démonstration à 6,5:1 au moins, au survol à
+    5,5:1 au moins ; un petit intertitre de la cartographie en Nunito 700 dans la noèsiologue,
+    en Source Serif 4 et en Space Grotesk (600) ailleurs ; le repère de la heatmap et le filet de
+    « Vitesse de lecture », injectés dans la zone du diagramme, à `#1e293b` et `#475569`. PHP
+    non lancé : aucun fichier PHP touché.
+  - **Non vérifié** : le survol des boutons de l'administration et la heatmap de la feuille
+    courante dans leurs vraies pages (connexion requise ; règles calculées et cascade vérifiée
+    hors page seulement) ; un état qui ne change que l'encre sur le fond de sa règle de base
+    n'est pas mesuré (le cas inverse l'est) ; la date courante et la plage brossée de la heatmap
+    de la cartographie tracent encore l'accent, et aucun trait d'une seule couleur n'atteint
+    3:1 sur toutes les cases de niveau 5 des pôles ; le filet des boutons du lecteur de timeline
+    reste à environ 2,3:1 (des boutons, pas des champs ; leur glyphe les signale).
+  - **À décider (Christian)** : un repère à deux tons pour la heatmap de la cartographie (date
+    courante, plage brossée, case active), s'il faut l'atteindre partout à 3:1.
+
 - 2026-10-23 — **Sprint 9 : la charte graphique, trois interfaces au choix du visiteur (branche
   `feat/trois-interfaces`, rien poussé ni déployé ; humanome.xyz seulement).** Christian, le
   2026-10-23 : « Les trois propositions d'interface sont excellentes. Nous allons les conserver

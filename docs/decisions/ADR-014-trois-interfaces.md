@@ -19,13 +19,13 @@ bleue d'humanome) et C « Voie de la machine » (ardoise contrastée, accent ble
 2026-10-23 :
 
 > « Les trois propositions d'interface sont excellentes. Nous allons les conserver toutes les
-> trois et […] leur attribuer les noms des filières : épistémiarque pour l'interface A,
-> noèsiologue pour l'interface B, technomancien pour l'interface C, qui correspondent toutes les
-> trois parfaitement à l'esprit de leurs filières respectives. »
+> trois et proposer leur attribuer les noms des filières aux interfaces, c'est à dire :
+> épistémiarque pour l'interface A, noèsiologue pour l'interface B, technomacien [sic] pour
+> l'interface C, qui correspondent toutes les trois parfaitement à l'esprit de leurs filières
+> respectives. »
 
-(Son message écrit « technomacien » ; l'orthographe retenue dans les contenus est
-« Technomancien ». Une valeur `technomacien` écrite à la main dans le navigateur est inconnue :
-elle ramène au défaut, UC-VIS-07 E1.)
+(L'orthographe retenue dans les contenus est « Technomancien ». Une valeur `technomacien` écrite
+à la main dans le navigateur est inconnue : elle ramène au défaut, UC-VIS-07 E1.)
 
 Trois contraintes cadrent la mise en œuvre :
 
@@ -85,13 +85,15 @@ visualisation et l'aperçu imprimable (du papier) ne dépendent pas de l'interfa
 | Interface | Titres | Texte | Chasse fixe |
 |---|---|---|---|
 | Épistémiarque | Source Serif 4 (600) | Source Sans 3 | celle du système |
-| Noèsiologue | Fredoka | Nunito | celle du système |
+| Noèsiologue | Fredoka (1,125 rem et plus ; en dessous, Nunito gras) | Nunito | celle du système |
 | Technomancien | Space Grotesk | Space Grotesk | JetBrains Mono |
 
 Fichiers woff2 des paquets npm Fontsource (licence SIL OFL 1.1, livrée avec chaque famille dans
 `web/public/fonts/<famille>/`), sous-ensembles latin et latin-ext seulement, `font-display:
-swap`. Chaque interface a ses piles (`--font-body`, `--font-heading`, `--font-mono`) et son
-échelle (`--fs-*`, `--fw-*`, `--lh-*`), qui ne nomment aucune famille d'une autre interface : le
+swap`. Chaque interface a ses piles (`--font-body`, `--font-heading`, `--font-mono`, et
+`--font-subheading` pour un titre qu'un composant ramène sous 1,125 rem : la police des titres en
+épistémiarque et en technomancien, Nunito gras en noèsiologue, comme le veut la proposition B) et
+son échelle (`--fs-*`, `--fw-*`, `--lh-*`), qui ne nomment aucune famille d'une autre interface : le
 navigateur ne télécharge que les polices de l'interface en vigueur (latin, sur une page
 française : environ 50 Ko pour l'épistémiarque, 69 Ko pour la noèsiologue, 22 Ko pour le
 technomancien, 40 Ko de plus quand une page montre du code). Pas de `preload`, qui chargerait
@@ -113,15 +115,36 @@ Dans les neuf contextes (trois interfaces × clair, sombre du système, sombre c
 
 - les jetons (UC-VIS-07-U06) : texte courant, doux, discret, accent et états à 4,5:1 sur leurs
   fonds ; bordure de commande, anneau de focus et aplat d'accent à 3:1 ;
-- les règles qui les emploient (lot S9-3) : chaque couple texte et fond déclaré dans une même
-  règle à 4,5:1, 3:1 pour un grand texte (U09) ; chaque règle `:focus` trace `--focus`, ou l'encre
-  de la visualisation sur sa surface claire, à 3:1 sur tout fond où l'anneau peut tomber (U10) ;
-  chaque champ est bordé de `--line-strong`, à 3:1 (U11).
+- les règles qui les emploient (lot S9-3, étendu aux correctifs de relecture) : chaque couple
+  texte et fond à 4,5:1, 3:1 pour un grand texte, qu'il soit déclaré dans une même règle ou
+  qu'un état ou un modificateur (`:hover`, `[aria-pressed]`, `.is-*`, `.x--y`) ne change que le
+  fond sous l'encre de sa règle de base, et un modificateur qui change le fond de sa base garde le
+  sien au survol (U09) ; chaque règle `:focus`, et l'élément actif d'un composite porté par une
+  classe (`.is-focus`), trace `--focus`, ou l'encre de la visualisation sur sa surface claire, à
+  3:1 sur tout fond où l'anneau peut tomber (U10) ; chaque champ, visé par sa balise ou par une
+  classe que le JSX lui pose, est bordé de `--line-strong` à 3:1, ou, dans le lecteur de
+  timeline, de l'encre douce de la visualisation (U11) ; dans la zone du diagramme, claire dans
+  les deux thèmes, chaque couleur d'interface tracée atteint 3:1 (4,5:1 pour un texte) sur
+  `--viz-surface` (U12) ;
+- la typographie (`web/src/styles/fonts.test.js`) : un titre h1 à h3 qu'un composant ramène
+  sous 1,125 rem lit `--font-subheading`.
 
 Écrire la preuve sur les règles a trouvé trois écarts, corrigés au lot S9-3 : les anneaux de
 focus traçaient l'accent (`--accent-strong`, `--accent`) et non l'anneau de l'interface ; 34
 règles de champ étaient bordées du filet décoratif `--line` (1,2 à 1,6:1) ; le badge « env » de
 l'administration (`.admin-source-env`) tombait à 4,26:1 sur le fond d'alerte de l'épistémiarque.
+
+La relecture du sprint a montré que cette preuve laissait passer des cas ; étendue, elle a trouvé
+et fait corriger : le bouton « Confirmer : tout supprimer » de la cartographie
+(`.carto-btn--danger`), blanc sur le danger éclairci du sombre de l'épistémiarque (2,48:1), et
+rendu à l'aplat d'accent au survol (désormais le cramoisi en encre et en filet sur la carte, le
+fond de danger au survol, comme le bouton Supprimer de la proposition A) ; le survol des boutons
+de démonstration de l'administration, blanc sur `--accent-strong` (1,94:1) ; le repère de la
+feuille courante de la heatmap, à l'aplat d'accent, tombé à 2,69:1 sur la surface blanche du
+diagramme en noèsiologue et en technomancien sombres (désormais `--viz-ink`) ; la case active au
+clavier de la heatmap de la cartographie, à l'accent (désormais `--focus`) ; trois champs bordés
+sous 3:1 (la liste « Vitesse de lecture » du lecteur, deux zones de texte) ; les petits
+intertitres en Fredoka.
 
 Des captures Playwright (accueil, cartographie de démonstration, `#/compte` ; 375 et 1 280 px ;
 clair et sombre ; les trois interfaces, soit 36 images) montrent le rendu réel. Elles ne sont pas
@@ -134,12 +157,20 @@ dans le dépôt.
   sha256 dans la CSP) ; les tests de parité, de contraste et de polices la couvrent d'office.
 - **Un jeton nouveau** doit être déclaré dans les neuf blocs (UC-VIS-07-U04 échoue sinon) ; une
   couleur d'interface écrite en dur, une bordure de champ en `--line` ou un anneau qui n'est pas
-  `--focus` font échouer U08, U11 ou U10.
+  `--focus` font échouer U08, U11 ou U10 ; un accent d'interface tracé sur la zone du diagramme,
+  U12.
 - **Le script anti-FOUC** a changé : la CSP du serveur doit porter son nouveau sha256 au
   déploiement (le fichier `.htaccess` du dépôt le porte déjà).
 - **Les captures et les contrastes** sont calculés, pas mesurés à l'écran par un outil
-  d'audit : un composant qui pose son texte sur un fond hérité d'un parent n'est couvert qu'au
-  niveau des jetons (U06).
+  d'audit : un composant qui pose son texte sur un fond hérité d'un PARENT n'est couvert qu'au
+  niveau des jetons (U06) ; sur un même élément, l'encre héritée de la règle de base est mesurée
+  sous le fond de l'état ou du modificateur (U09), mais pas l'inverse (un état qui ne change que
+  l'encre sur le fond de sa base) ; la base est trouvée par le sélecteur (états ôtés, puis
+  modificateur BEM), pas par le JSX.
+- **Les repères de la heatmap de la cartographie** (date courante `.is-t`, plage brossée
+  `.is-brushed`) tracent encore l'accent ; aucun trait d'une seule couleur, accent ou anneau,
+  n'atteint 3:1 sur toutes les cases de niveau 5 des pôles (la case active, à `--focus`, l'atteint
+  sur la surface, dans l'espace entre les cases) : il faudrait un repère à deux tons.
 - **EduChat et la Fabrica** ne sont pas touchés : les notes de migration des trois propositions
   les décrivent, la décision de les appliquer reste à prendre.
 
@@ -150,6 +181,6 @@ dans le dépôt.
   `web/src/components/DisplaySelects.jsx`, `web/src/App.jsx`, `web/src/views/AccountView.jsx`,
   `web/public/fonts/`.
 - Cas d'utilisation : [UC-VIS-07](../cas-utilisation/visiteur/UC-VIS-07-choisir-interface-theme.md)
-  (U01 à U11, F01 à F07) ; `web/src/styles/fonts.test.js`, `web/src/anti-fouc.test.js`,
+  (U01 à U12, F01 à F07) ; `web/src/styles/fonts.test.js`, `web/src/anti-fouc.test.js`,
   `web/src/lib/theme.test.js`.
 - Ergonomie : `docs/ergonomie-navigation.md` §5quater.

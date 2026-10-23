@@ -105,6 +105,76 @@ final class ConfigurationDroitsTest extends CartographeTestCase
             ['profil' => ProfilRepository::v98()])->getStatusCode());
     }
 
+    /**
+     * The presets (the stigmergy's trial) are read by everyone, with the
+     * instance's default template set as the default profile, each with the
+     * providers its calls reach, and changed by no one: a new profile copies
+     * one, and its copy is admitted.
+     */
+    public function testThePresetsAreReadOnly(): void
+    {
+        $compte = $this->registerAs('essai@example.org', 'Essai');
+        $reponse = (string) $this->as_($compte, 'GET', '/api/twin9/configuration')->getBody();
+        $configuration = json_decode($reponse, true, 512, JSON_THROW_ON_ERROR);
+
+        self::assertSame([['id' => 'stigmergie', 'nom' => 'Stigmergie (essai)']], array_map(
+            static fn (array $p): array => ['id' => $p['id'], 'nom' => $p['nom']], $configuration['predefinis']));
+        $essai = $configuration['predefinis'][0];
+        self::assertSame(['id', 'nom', 'profil', 'fournisseurs'], array_keys($essai));
+        $attendu = json_decode(json_encode(ProfilRepository::predefini('stigmergie')), true);
+        $attendu['gabarits'] = $configuration['defaut']['gabarits'];
+        self::assertEquals($attendu, $essai['profil']);
+        self::assertSame([['id' => 'anthropic', 'libelle' => 'Anthropic', 'rgpd' => 'sous_conditions', 'voie' => 'lots']],
+            $essai['fournisseurs']);
+
+        // copied as the page copies it, its objects objects
+        $page = json_decode($reponse, false, 512, JSON_THROW_ON_ERROR);
+        $copie = $this->as_($compte, 'POST', '/api/twin9/profils', ['nom' => 'Mon essai', 'profil' => $page->predefinis[0]->profil]);
+        self::assertSame(201, $copie->getStatusCode());
+        self::assertTrue(self::json($copie)['profil']['stigmergie']['enabled']);
+        self::assertSame($configuration['predefinis'],
+            self::json($this->as_($compte, 'GET', '/api/twin9/configuration'))['predefinis'], 'le profil prédéfini reste tel quel');
+        self::assertSame(['Mon essai'],
+            array_column(self::json($this->as_($compte, 'GET', '/api/twin9/configuration'))['profils'], 'nom'));
+    }
+
+    /**
+     * The greffier's stigmergy refuses the archived layers in the consensus,
+     * at the registration as at the launch (ProfilPolicy::admettre): they
+     * vote there already, its traces would count twice (Twin_v9's
+     * spec-stigmergie.md, Q3). Off, it refuses nothing.
+     */
+    public function testTheStigmergyRefusesTheArchivedLayersInTheConsensus(): void
+    {
+        $compte = $this->registerAs('stigmergie@example.org', 'Stigmergie');
+        $profil = ProfilRepository::v98();
+        $profil->stigmergie = (object) ['enabled' => true];
+
+        $refuse = $this->as_($compte, 'POST', '/api/twin9/profils', ['nom' => 'Double compte', 'profil' => $profil]);
+        self::assertSame(422, $refuse->getStatusCode());
+        self::assertSame('Profil refusé — /stigmergie : la stigmergie demande calques.accumulation à false ; les calques '
+            . 'archivés votent déjà au consensus, ses traces y compteraient deux fois', self::json($refuse)['error']);
+        self::assertSame([], self::json($this->as_($compte, 'GET', '/api/twin9/configuration'))['profils']);
+
+        $profil->calques->accumulation = false;
+        $cree = $this->as_($compte, 'POST', '/api/twin9/profils', ['nom' => 'Stigmergie', 'profil' => $profil]);
+        self::assertSame(201, $cree->getStatusCode());
+        $id = self::json($cree)['id'];
+        $profil->calques->accumulation = true;
+        self::assertSame(422, $this->as_($compte, 'PUT', "/api/twin9/profils/$id", ['profil' => $profil])->getStatusCode());
+
+        // off, the archived layers vote as in the v9.8, its settings kept for later
+        $profil->stigmergie = (object) ['enabled' => false, 'evaporation' => 0.5];
+        self::assertSame(200, $this->as_($compte, 'PUT', "/api/twin9/profils/$id", ['profil' => $profil])->getStatusCode());
+
+        $politique = new ProfilPolicy(self::$pdo, new Twin9Config(new SettingsRepository(self::$pdo)));
+        $userId = (int) self::$pdo->query("SELECT id FROM users WHERE email = 'stigmergie@example.org'")->fetchColumn();
+        $profil->stigmergie->enabled = true;
+        $this->expectException(Twin9Exception::class);
+        $this->expectExceptionMessage('Profil refusé — /stigmergie');
+        $politique->admettre(ProfilRepository::validate($profil), $userId);
+    }
+
     public function testEachAccountSetsTheBudgetAndDurationOfItsRuns(): void
     {
         $compte = $this->registerAs('budget@example.org', 'Budget');
@@ -172,7 +242,7 @@ final class ConfigurationDroitsTest extends CartographeTestCase
     public function testOnlyAPublishedReferential(): void
     {
         $compte = $this->registerAs('ref@example.org', 'Référentiel');
-        self::assertSame([['id' => 'respire', 'versions' => ['7.0.0'], 'brouillons' => []]],
+        self::assertSame([['id' => 'respire', 'label' => 'RESPIRE v7', 'versions' => ['7.0.0'], 'brouillons' => []]],
             self::json($this->as_($compte, 'GET', '/api/twin9/configuration'))['referentiels']);
 
         foreach ([['respire', null, 201], ['respire', '7.0.0', 201], ['respire', '9.9.9', 422], ['inconnu', null, 422]]
@@ -200,10 +270,10 @@ final class ConfigurationDroitsTest extends CartographeTestCase
         $repo->createDraft('respire', '7.0.0', '7.1.0', null, $alix['id']);
         $refus = 'Profil refusé — /referentiel/version : un brouillon ne sert qu’aux runs d’essai de son auteur';
 
-        self::assertSame([['id' => 'respire', 'versions' => ['7.0.0'], 'brouillons' => ['7.1.0']],
-                          ['id' => 'fictif-neuf', 'versions' => [], 'brouillons' => ['1.0.0']]],
+        self::assertSame([['id' => 'respire', 'label' => 'RESPIRE v7', 'versions' => ['7.0.0'], 'brouillons' => ['7.1.0']],
+                          ['id' => 'fictif-neuf', 'label' => 'Fictif à neuf pôles', 'versions' => [], 'brouillons' => ['1.0.0']]],
             self::json($this->as_($alix, 'GET', '/api/twin9/configuration'))['referentiels']);
-        self::assertSame([['id' => 'respire', 'versions' => ['7.0.0'], 'brouillons' => []]],
+        self::assertSame([['id' => 'respire', 'label' => 'RESPIRE v7', 'versions' => ['7.0.0'], 'brouillons' => []]],
             self::json($this->as_($bao, 'GET', '/api/twin9/configuration'))['referentiels']);
 
         $profil = function (string $id, ?string $version, string $mode): stdClass {
@@ -230,7 +300,7 @@ final class ConfigurationDroitsTest extends CartographeTestCase
 
         // out of the épistémiarques, its author's drafts are no longer offered
         self::$pdo->prepare('DELETE FROM user_roles WHERE user_id = ?')->execute([$alix['id']]);
-        self::assertSame([['id' => 'respire', 'versions' => ['7.0.0'], 'brouillons' => []]],
+        self::assertSame([['id' => 'respire', 'label' => 'RESPIRE v7', 'versions' => ['7.0.0'], 'brouillons' => []]],
             self::json($this->as_($alix, 'GET', '/api/twin9/configuration'))['referentiels']);
         self::assertSame([422, $refus], $enregistrer($alix, $profil('fictif-neuf', '1.0.0', 'test')));
 
@@ -467,7 +537,8 @@ final class ConfigurationDroitsTest extends CartographeTestCase
      * preview, the portfolio not sent yet (ADR-012): the configuration's
      * route gives each profile's, and the default's, as the preview does —
      * label, GDPR tag, lane —, whether the instance opened them or not; a
-     * stored profile the schema no longer admits gives none.
+     * stored profile the schema no longer admits gives none. Each profile
+     * names its referential too, the launch page's default (S5, lot C).
      */
     public function testTheConfigurationNamesEachProfilesProviders(): void
     {
@@ -495,7 +566,10 @@ final class ConfigurationDroitsTest extends CartographeTestCase
                         ['id' => 'mistral', 'libelle' => 'Mistral AI', 'rgpd' => 'oui', 'voie' => 'directe']],
         ], array_column($configuration['profils'], 'fournisseurs', 'nom'));
         self::assertSame([$anthropic + ['voie' => 'lots']], $configuration['defaut_fournisseurs']);
-        self::assertSame(['id', 'nom', 'updated_at', 'fournisseurs'], array_keys($configuration['profils'][0]));
+        self::assertSame(['id', 'nom', 'updated_at', 'fournisseurs', 'referentiel'], array_keys($configuration['profils'][0]));
+        $respire = ['id' => 'respire', 'version' => null];
+        self::assertSame(['Ancien' => null, 'Direct' => $respire, 'Mixte' => $respire],
+            array_column($configuration['profils'], 'referentiel', 'nom'));
     }
 
     /**

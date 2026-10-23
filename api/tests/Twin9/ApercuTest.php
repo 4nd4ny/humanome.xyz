@@ -160,6 +160,10 @@ final class ApercuTest extends CartographeTestCase
         $retire = "## 2026-01-05\nPremier jour : j'ai monté le capteur.\n" . $ajout;
         $sans = $this->apercu($alice, $profil, $retire);
         self::assertSame(['total' => 2, 'nouvelles' => 1, 'changees' => 0], $sans['journees']);
+        // the preview names the days its map keeps beyond those it takes (the launch page names those Twin9 no longer
+        // reads in the text it sends, sprint 4, T0)
+        self::assertSame(['2026-01-06'], $sans['memoire']);
+        self::assertSame([], $apres['memoire'], 'every day of the map is in the portfolio');
         $ko = Evaluations::ko(\strlen("Deuxième jour : j'ai lu les mesures.")) + Evaluations::ko(\strlen("Premier jour : j'ai monté le capteur."))
             + Evaluations::ko(\strlen('Un de plus.'));
         $fusion = Evaluations::selon($modele['fusion'], $ko);

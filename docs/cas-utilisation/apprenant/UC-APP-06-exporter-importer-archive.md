@@ -220,6 +220,17 @@ archive ») dans la section « Mes données » du tableau de bord `#/espace`.
   filtrés contre la récitation des gabarits ; absents pour un visiteur ou un
   compte sans run ; une lecture en échec n'empêche pas l'archive de partir,
   le message le dit. Jamais réimportés : un run se relance.
+- **RG10** — Aucune trace de Twin9 n'entre par le texte d'une archive
+  (S3-3, 2026-10-23 ; UC-APP-01 RG10) : à la restauration, le texte d'un
+  portfolio perd les marques du portfolio surligné (`data-twin9-*`,
+  `data-incertitude`, `data-intensite`) et le tableau de ses traces, et les
+  bornes de ses journées sont ramenées au texte nettoyé ; le texte des jeux
+  de l'interface de même. L'archive, elle, garde ce qui est rangé : les
+  traces que portent les variantes d'un jeu (leur bloc `stigmergie`,
+  `conservee` compris) reviennent telles qu'elle les écrit. C'est une
+  projection d'affichage, que le moteur ne lit jamais et qu'un fichier
+  modifié peut forger (`docs/contrats.md` §7.4) : le serveur ne la confirme
+  pas.
 
 ## Données et RGPD
 
@@ -239,6 +250,7 @@ archive ») dans la section « Mes données » du tableau de bord `#/espace`.
 | Front | `web/src/views/espace/ExportSection.jsx` (dans `CartographiesPanel.jsx`) | Boutons, champ fichier réarmé, messages (`status` / `alert`), `onImported` en succès seulement |
 | Front | `web/src/lib/archive.js` — `exportArchive`, `importArchive` ; `browserDownload` (Blob + `<a download>`, via la couture `download`) | Assemblage, projections, lectures, restauration, dédoublonnage, téléchargement |
 | Front | `web/src/lib/carto-store.js`, `web/src/lib/portfolio-store.js` | Sources et cibles locales |
+| Front | `web/src/lib/twin9/marques.js` — `retirerMarquesTwin9`, `sansMarquesTwin9` | Marques du portfolio surligné de Twin9 retirées à la restauration, bornes ramenées (RG10) |
 | Front | `web/src/carto/core/store.js`, `archive.js` (`buildArchive`), `import.js` (`importFiles`) | Jeux de l'interface de cartographie : lecture, archive master v4, restauration |
 | Front | `web/src/api/client.js` — `fetchMe`, `apiFetch` ; `web/src/data/referentiel.js` ; `web/src/data/load.js` — `getReferentiel`, `frenchDate` | Lectures du compte, des paquets, de la masse ; référentiel publié ou embarqué ; dates des titres dérivés |
 | Front | `web/src/carto/ui/ExportPanel.jsx`, `web/src/carto/ui/DemoTool.jsx`, `web/src/carto/core/anonymize.js` | Espace Export de la cartographie, « Préparer une démo » (A6), proposé en mode expert seulement — unitaire : UC-VIS-06-U07 ; `anonymize.test.js` |
@@ -273,6 +285,7 @@ archive ») dans la section « Mes données » du tableau de bord `#/espace`.
 | UC-APP-06-U18 | idem | Un jeu non conforme rend l'archive non conforme, à son emplacement (`/jeuxCartographie/0/…`) | idem |
 | UC-APP-06-U19 | `ExportSection` (A5) | Stockage de l'interface illisible : archive téléchargée, message qui dit ce qui manque et quoi faire ; jeu non conforme laissé de côté et nommé, le reste part | `web/test/usecases/unit/uc-app-06-exporter-importer-archive.test.js` |
 | UC-APP-06-U20 | `exportArchive` (2026-10-20) | Chaque cartographie garde son référentiel : RESPIRE 7.0.0, `fictif-lettre` 1.0.0 (chargé, emporté dans `referentiels`), référentiel introuvable → `inconnu` / `0.0.0` ; archive valide au schéma | `web/test/usecases/unit/uc-app-06-exporter-importer-archive.test.js` |
+| UC-APP-06-U21 | `importArchive` (S3-3) | Un portfolio surligné rangé dans l'archive : restauré sans ses marques ni le tableau de ses traces, ses journées aux bornes ramenées au texte nettoyé (RG10) | idem |
 | — | `exportArchive`, `importArchive` (jeux de l'interface) | Export : archive complète par jeu, démonstration intacte exceptée (enrichie : exportée), conforme ; jeu non conforme exclu seul ; 1.0.0 importée sans jeux ; import : jeu retrouvé à l'identique, réimport sans effet, jeu complété compté, texte local et passages sans date gardés ; stockage illisible : export abouti et signalé, import du reste | `web/src/lib/archive.test.js` |
 | — | schéma du master v4 | Fixture = sortie exacte de l'interface ; archive sans portfolio ; champ inconnu accepté ; refus localisés ; corpus réel des 59 journées publiques conforme | `web/src/carto/core/master-schema.test.js` |
 

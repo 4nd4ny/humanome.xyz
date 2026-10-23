@@ -27,6 +27,8 @@ import { DatasetSection, DatasetTitle, DayAlerts, DayCounts, DayList, ImportSect
 import { PanelTools } from './Panels.jsx'
 import { ImportPanel, ImportReport } from './ImportPanel.jsx'
 import { PortfolioReader } from './PortfolioReader.jsx'
+import { StigmergieDuJour } from './Stigmergie.jsx'
+import { intensitesVisibles } from '../core/stigmergie.js'
 import { DayVerdictDetail, ObservationDays, TraceList, verdictDetailOf } from './Observations.jsx'
 import { PoleReports } from './PoleReports.jsx'
 import { SecondReadings } from './SecondReading.jsx'
@@ -119,6 +121,9 @@ const go = (hash) => {
  *   Gestionnaire et son point d'anomalies restent dans les deux modes.
  *   deps.llm : relances facultatives du dialogue (P7) par un modèle de langage — absent,
  *   le dialogue reste entièrement scripté et local (copie autonome).
+ *   Les intensités des traces de la stigmergie de Twin9 (S3-3) ne se lisent qu'en
+ *   mode expert (session.expert vrai) et pour un cartographe : jamais sans session,
+ *   ni dans une copie autonome (core/stigmergie.js, intensitesVisibles).
  */
 export default function CartoApp({ route = {}, deps = {}, slots = {}, mode = 'site', session = null, incoming = null, onIncomingHandled }) {
   const viewer = mode === 'viewer'
@@ -142,6 +147,7 @@ export default function CartoApp({ route = {}, deps = {}, slots = {}, mode = 'si
   // publie, à la demande d'une personne, une version garantie (journal D-42).
   const roles = session?.roles ?? []
   const expert = session?.expert ?? true
+  const intensites = intensitesVisibles(session, { viewer })
   const canShare = !viewer && shareConfig.serverEnabled && (roles.includes('apprenant') || roles.includes('cartographe'))
   const shareApi = useMemo(() => deps.shareApi ?? createShareApi(deps.fetchFn ? { fetchFn: deps.fetchFn } : {}), [deps.shareApi, deps.fetchFn])
   const [ui, dispatch] = useReducer(reducer, initialUi)
@@ -248,7 +254,15 @@ export default function CartoApp({ route = {}, deps = {}, slots = {}, mode = 'si
   const closeDay = useCallback(() => go('#/cartographie'), [])
   const onPrefs = useCallback((patch) => data.update((ds) => setPreferences(ds, patch)), [data])
   const openTrace = useCallback((code, list, index) => dispatch({ type: 'openReader', target: { kind: 'trace', code, list, index } }), [])
-  const openPassage = useCallback(({ date, extract, label }) => dispatch({ type: 'openReader', target: { kind: 'passage', date, extract, label } }), [])
+  // Le passage d'une trace de la stigmergie garde sa nature, sa conservation et, quand elle se montre, son intensité (S3-3).
+  const openPassage = useCallback(
+    ({ date, extract, label, incertitude, conservee, intensite }) =>
+      dispatch({
+        type: 'openReader',
+        target: { kind: 'passage', date, extract, label, ...(incertitude ? { incertitude, conservee: conservee ?? null } : {}), ...(intensite ? { intensite } : {}) },
+      }),
+    [],
+  )
   const closeReader = useCallback(() => dispatch({ type: 'closeReader' }), [])
   const showSourceSet = useCallback(
     (dates) => {
@@ -615,6 +629,7 @@ export default function CartoApp({ route = {}, deps = {}, slots = {}, mode = 'si
               fetchFn={deps.fetchFn}
               onOpenDataset={() => go('#/cartographie')}
               expert={expert}
+              intensites={intensites}
             />
           )
         ) : space === 'dialogue' && !slots.dialogue ? (
@@ -684,7 +699,20 @@ export default function CartoApp({ route = {}, deps = {}, slots = {}, mode = 'si
               />
             )}
           >
-            {slots.day ? (dayCtx) => slots.day({ ...ctx, ...dayCtx }) : undefined}
+            {(dayCtx) => (
+              <>
+                <StigmergieDuJour
+                  date={dayCtx.date}
+                  variant={dayCtx.variant}
+                  refl={refl}
+                  getDetail={getDetail}
+                  ensureDetails={ensureDetails}
+                  intensites={intensites}
+                  onOpenPassage={openPassage}
+                />
+                {slots.day ? slots.day({ ...ctx, ...dayCtx }) : null}
+              </>
+            )}
           </DayModal>
         ) : null}
         {ui.why && ui.selection ? (

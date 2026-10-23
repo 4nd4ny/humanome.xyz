@@ -565,6 +565,45 @@ final class RunsTest extends CartographeTestCase
     }
 
     /**
+     * A launch, or its preview, may name another referential than its
+     * profile's (S5, lot C; docs/autorisations.md, « Runs Twin9 »): any
+     * account a published one, on the v9.8's profile too; a draft serves its
+     * author's test run only, as in a profile; the referential chosen is the
+     * run's (its copy, its attestation), the profile stays as it is stored.
+     */
+    public function testALaunchMayNameAnotherReferential(): void
+    {
+        $lettre = ReferentielsFictifs::lettre();
+        $repo = new ReferentielRepository(self::$pdo);
+        $repo->importPublishedDocument(['contentHash' => ContentHash::compute($lettre)] + $lettre, 'Publié');
+        $alice = $this->registerAs('choix-ref@example.org', 'Alice');
+        $epi = $this->registerAs('choix-epi@example.org', 'Épi', ['epistemiarque']);
+        $repo->importDraft(ReferentielsFictifs::neufPoles(), null, $epi['id']);
+        $choisir = fn (array $user, ?int $profil, array $referentiel, string $route = '/api/twin9/runs')
+            => $this->as_($user, 'POST', $route, $this->lancement($profil) + ['referentiel' => $referentiel]);
+
+        foreach (['/api/twin9/runs/apercu' => 200, '/api/twin9/runs' => 201] as $route => $statut) {
+            $r = $choisir($alice, null, ['id' => 'fictif-lettre', 'version' => null], $route);
+            self::assertSame($statut, $r->getStatusCode(), (string) $r->getBody());
+        }
+        $id = self::json($r)['id'];
+        self::assertSame(['fictif-lettre', '1.0.0'], [self::json($r)['attestation']['referentiel']['id'],
+                                                     self::json($r)['attestation']['referentiel']['version']]);
+        self::assertSame('fictif-lettre', (new RunRepository(self::$pdo))->charger($id)['profil']->referentiel->id);
+
+        $brouillon = ['id' => 'fictif-neuf', 'version' => '1.0.0'];
+        $essai = ProfilRepository::v98();
+        $essai->voie = 'directe';
+        $essai->mode = 'test';
+        $deEpi = self::json($this->as_($epi, 'POST', '/api/twin9/profils', ['nom' => 'Essai', 'profil' => $essai]))['id'];
+        $dAlice = self::json($this->as_($alice, 'POST', '/api/twin9/profils', ['nom' => 'Essai', 'profil' => $essai]))['id'];
+        self::assertSame(201, $choisir($epi, $deEpi, $brouillon)->getStatusCode());
+        self::assertSame(422, $choisir($alice, $dAlice, $brouillon)->getStatusCode(), 'le brouillon d’un autre');
+        self::assertSame(422, $choisir($epi, null, $brouillon)->getStatusCode(), 'en mode complet');
+        self::assertSame('respire', (new ProfilRepository(self::$pdo))->get($deEpi)['profil']->referentiel->id);
+    }
+
+    /**
      * A run's map is read with its referential (T17): its results carry the
      * poles and the competences its engine read, in the engine's order, each
      * pole with its colour; never a fiche, a preamble nor a description. On
@@ -757,6 +796,30 @@ final class RunsTest extends CartographeTestCase
             'sans sa clé d’instance non plus');
         TestDb::setEnv('OPENAI_API_KEY', 'cle-openai-factice-runs');
         self::assertSame('en_cours', self::json($this->as_($alice, 'POST', "/api/twin9/runs/$id/reprendre"))['statut']);
+    }
+
+    /**
+     * An engine without the greffier's stigmergy (the test engine) would
+     * ignore config.stigmergie: a profile that turns it on is neither
+     * previewed nor launched, the v9.8's is.
+     */
+    public function testAnEngineWithoutTheStigmergyLaunchesNoProfileThatTurnsItOn(): void
+    {
+        self::assertFalse(class_exists(\Twin9\Stigmergie::class), 'le moteur factice n’a pas la stigmergie');
+        $alice = $this->registerAs('stigmergie@example.org', 'Alice');
+        $profil = ProfilRepository::predefini('stigmergie');
+        $profil->voie = 'directe';
+        $cree = $this->as_($alice, 'POST', '/api/twin9/profils', ['nom' => 'Stigmergie', 'profil' => $profil]);
+        self::assertSame(201, $cree->getStatusCode(), (string) $cree->getBody());
+
+        foreach (['/api/twin9/runs/apercu', '/api/twin9/runs'] as $route) {
+            $refus = $this->as_($alice, 'POST', $route, $this->lancement(self::json($cree)['id']));
+            self::assertSame(422, $refus->getStatusCode(), $route . ' : ' . $refus->getBody());
+            self::assertSame('Profil refusé — /stigmergie : le moteur de cette instance ne connaît pas la stigmergie '
+                . '(Twin_v9 à mettre à jour)', self::json($refus)['error']);
+        }
+        self::assertSame(0, (int) self::$pdo->query('SELECT COUNT(*) FROM twin9_runs')->fetchColumn());
+        self::assertSame(200, $this->as_($alice, 'POST', '/api/twin9/runs/apercu', $this->lancement(null))->getStatusCode());
     }
 
     /**

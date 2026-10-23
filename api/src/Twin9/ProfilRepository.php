@@ -18,8 +18,12 @@ use stdClass;
  *
  * The v9.8 profile is the read-only default (api/config/twin9-profil-v98.json):
  * Haiku for the readers and the fast analysis, Sonnet for the deep analysis,
- * the batch lane. A user's own profiles are rows of twin9_profils, written
- * only once valid.
+ * the batch lane, the stigmergy off. A preset, read-only too, is a starting
+ * point a new profile copies (PREDEFINIS): the stigmergy's trial, the v9.8
+ * profile with the stigmergy on, the archived layers out of the consensus
+ * and every day read again (api/config/twin9-profil-stigmergie.json, Twin_v9's
+ * docs/twin9/spec-stigmergie.md §11.3). A user's own profiles are rows of
+ * twin9_profils, written only once valid.
  *
  * A missing setting takes the default the schema gives it, as the v9.8 reads
  * its config.json with .get(key, default); a setting without default is
@@ -29,7 +33,12 @@ use stdClass;
  * as a PHP array, where an empty object ({}) and an empty list ([]) would be
  * one and the same. A setting the schema types as a number keeps a float's
  * form (1.0, not 1), as Python reads the v9.8's config.json, whatever form
- * the page sent it in (T13).
+ * the page sent it in (T13); one it types as an integer is an integer (5, not
+ * 5.0, which the schema admits as an integer) up to 2^53 in absolute value,
+ * beyond which a float stays one (1e21, or an integer of over 19 digits,
+ * which PHP decodes as a float): the stigmergy's settings refuse a float
+ * where they want an integer (Stigmergie::reglages()), so the schema bounds
+ * each of them within ±(2^53 − 1).
  *
  * Beyond the schema, the API's own rules: thinking cut refuses the efforts
  * xhigh and max, for any step the settings resolve to (T13); and the
@@ -43,6 +52,12 @@ final class ProfilRepository
     public const KIND = 'twin9-profil';
 
     public const MAX_NOM = 120;
+
+    /**
+     * The presets, by id, and their names: each the profile of
+     * api/config/twin9-profil-<id>.json, read-only, which a new profile copies.
+     */
+    public const PREDEFINIS = ['stigmergie' => 'Stigmergie (essai)'];
 
     /** Errors quoted in the message of a refused profile. */
     private const MAX_ERREURS = 5;
@@ -70,6 +85,17 @@ final class ProfilRepository
         return json_decode((string) file_get_contents($path), false, 512, JSON_THROW_ON_ERROR);
     }
 
+    /** A preset (PREDEFINIS), a fresh copy at each call; InvalidArgumentException for an unknown one. */
+    public static function predefini(string $id): stdClass
+    {
+        if (!isset(self::PREDEFINIS[$id])) {
+            throw new \InvalidArgumentException('Profil prédéfini inconnu : ' . $id);
+        }
+        $path = \dirname(__DIR__, 2) . '/config/twin9-profil-' . $id . '.json';
+
+        return json_decode((string) file_get_contents($path), false, 512, JSON_THROW_ON_ERROR);
+    }
+
     /**
      * Decodes, completes with the schema's defaults and validates a profile;
      * Twin9Exception 422 naming the first errors when it is refused. The
@@ -92,7 +118,7 @@ final class ProfilRepository
             (string) file_get_contents(Validation::schemaPath(self::KIND)), false, 512, JSON_THROW_ON_ERROR,
         );
         self::complete($profil, $schema, $schema);
-        $profil = self::flottants($profil, $schema, $schema);
+        $profil = self::nombres($profil, $schema, $schema);
 
         $result = Validation::validate(self::KIND, $profil);
         if (!$result['valid']) {
@@ -299,23 +325,32 @@ final class ProfilRepository
         }
     }
 
-    /** Each integer where the schema wants a number becomes a float: the v9.8 reads 1.0, not 1. */
-    private static function flottants(mixed $valeur, stdClass $node, stdClass $schema): mixed
+    /**
+     * Each integer where the schema wants a number becomes a float: the v9.8
+     * reads 1.0, not 1. Each float without a fraction where it wants an
+     * integer only becomes an integer: 5.0 is one for the schema, not for
+     * the engine.
+     */
+    private static function nombres(mixed $valeur, stdClass $node, stdClass $schema): mixed
     {
         $node = self::resolve($node, $schema);
         $types = (array) ($node->type ?? []);
         if (\is_int($valeur) && \in_array('number', $types, true)) {
             return (float) $valeur;
         }
+        if (\is_float($valeur) && \in_array('integer', $types, true) && !\in_array('number', $types, true)
+            && floor($valeur) === $valeur && abs($valeur) <= 2 ** 53) {
+            return (int) $valeur;
+        }
         if ($valeur instanceof stdClass) {
             foreach ((array) ($node->properties ?? []) as $cle => $enfant) {
                 if (property_exists($valeur, $cle)) {
-                    $valeur->{$cle} = self::flottants($valeur->{$cle}, $enfant, $schema);
+                    $valeur->{$cle} = self::nombres($valeur->{$cle}, $enfant, $schema);
                 }
             }
         } elseif (\is_array($valeur) && isset($node->items)) {
             foreach ($valeur as $i => $item) {
-                $valeur[$i] = self::flottants($item, $node->items, $schema);
+                $valeur[$i] = self::nombres($item, $node->items, $schema);
             }
         }
 

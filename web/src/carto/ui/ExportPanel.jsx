@@ -3,13 +3,17 @@
 // démo » (§11.1).
 //   1. archive JSON : le master complet, réimportable sans perte ;
 //   2. copie autonome : un seul fichier HTML, lisible en file:// sans réseau ;
-//   3. portfolio en Markdown, avec les dialogues versés (question 20) ;
+//   3. portfolio en Markdown, avec les dialogues versés (question 20) ; et,
+//      quand une analyse Twin9 a laissé des traces conservées de sa
+//      stigmergie, le « portfolio surligné » (S3-3), ses passages marqués
+//      selon leur nature et le tableau des traces de chaque journée ;
 //   4. rapport imprimable : pages A4 (CSS d'impression, SVG natif).
 
 import { useId, useMemo, useState } from 'react'
 import { archiveFileName, buildArchive } from '../core/archive.js'
 import { injectArchive } from '../core/standalone.js'
-import { buildPortfolioMarkdown, hasPortfolioToExport } from '../core/portfolio-md.js'
+import { buildHighlightedPortfolioMarkdown, buildPortfolioMarkdown, hasPortfolioToExport } from '../core/portfolio-md.js'
+import { hasConservedTraces } from '../core/stigmergie.js'
 import { formatLong } from '../core/dates.js'
 import { downloadBlob } from '../../lib/download-json.js'
 import { loadViewerTemplate } from './viewerTemplate.js'
@@ -31,12 +35,14 @@ function Status({ value }) {
 /**
  * @param {{dataset: object, refl: object, state: object, params: object,
  *   t: string | null, data: object, fetchFn?: typeof fetch, onOpenDataset?: () => void,
- *   expert?: boolean}} props
+ *   expert?: boolean, intensites?: boolean}} props
  *   Le soleil du rapport se dessine ici, avec l'anneau des pôles standard.
  *   `expert` (défaut : vrai) : faux — mode simple du site —, la carte « Préparer
  *   une démo » (outil d'anonymisation, §11.1) n'est pas proposée.
+ *   `intensites` (défaut : faux) : le portfolio surligné porte l'intensité de
+ *   chaque trace (mode expert, cartographe : core/stigmergie.js).
  */
-export function ExportPanel({ dataset, refl, state, params, t, data, fetchFn, onOpenDataset, expert = true }) {
+export function ExportPanel({ dataset, refl, state, params, t, data, fetchFn, onOpenDataset, expert = true, intensites = false }) {
   const uid = useId()
   const [jsonPortfolio, setJsonPortfolio] = useState(true)
   const [htmlPortfolio, setHtmlPortfolio] = useState(false)
@@ -125,6 +131,22 @@ export function ExportPanel({ dataset, refl, state, params, t, data, fetchFn, on
       return `${name} (${formatBytes(blob.size)}) téléchargé : ${parts.join(', ')}.`
     })
 
+  const canExportHighlighted = canExportPortfolio && hasConservedTraces(dataset)
+  const downloadHighlighted = () =>
+    run('mdsg', 'Préparation du portfolio surligné…', async () => {
+      await data.flush()
+      const exported = await data.store.exportAll(dataset.datasetId)
+      if (!exported) throw new Error('jeu de données introuvable')
+      const out = buildHighlightedPortfolioMarkdown(exported, { intensites, refl })
+      if (!out.text) throw new Error('Rien à exporter : importez votre portfolio.')
+      const blob = new Blob([out.text], { type: 'text/markdown' })
+      const name = archiveFileName('portfolio-surligne', new Date().toISOString(), 'md')
+      downloadBlob(blob, name)
+      const parts = [`${out.days} journée${out.days > 1 ? 's' : ''}`, `${out.traces} trace${out.traces > 1 ? 's' : ''}`]
+      if (out.marked < out.traces) parts.push(`${out.traces - out.marked} sans surlignage (passage introuvable tel quel)`)
+      return `${name} (${formatBytes(blob.size)}) téléchargé : ${parts.join(', ')}.`
+    })
+
   return (
     <section className="carto-export" aria-labelledby={`${uid}-title`}>
       <header className="carto-export-head">
@@ -196,6 +218,24 @@ export function ExportPanel({ dataset, refl, state, params, t, data, fetchFn, on
           {canExportPortfolio ? null : <p className="carto-small carto-muted">Rien à exporter : importez votre portfolio, ou versez-y un dialogue.</p>}
           <Status value={status.md} />
         </section>
+
+        {canExportHighlighted ? (
+          <section className="carto-export-card" aria-labelledby={`${uid}-mdsg`}>
+            <h3 id={`${uid}-mdsg`}>Portfolio surligné (Markdown)</h3>
+            <p className="carto-small">
+              Le même portfolio, où chaque passage qu’une analyse Twin9 a laissé en trace pour les suivantes (la stigmergie du greffier) est surligné selon sa nature
+              — l’incertitude calculée par la procédure —{intensites ? ', avec son intensité' : ''}, et chaque journée suivie du tableau de ses traces. Seules les
+              traces conservées dans la mémoire de la carte y sont.
+            </p>
+            <p className="carto-small carto-muted">
+              À lire ou à transmettre, pas à faire analyser : réimporté, il perd ses surlignages et redevient le portfolio sans marques.
+            </p>
+            <button type="button" className="carto-btn" onClick={downloadHighlighted} disabled={Boolean(busy)}>
+              Télécharger le portfolio surligné (.md)
+            </button>
+            <Status value={status.mdsg} />
+          </section>
+        ) : null}
 
         <section className="carto-export-card carto-export-card--wide" aria-labelledby={`${uid}-pdf`}>
           <h3 id={`${uid}-pdf`}>Rapport imprimable (PDF)</h3>

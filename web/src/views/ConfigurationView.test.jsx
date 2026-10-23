@@ -6,8 +6,10 @@ import { afterEach, describe, expect, it, vi } from 'vitest'
 import { cleanup, fireEvent, render, screen, waitFor, within } from '@testing-library/react'
 import ConfigurationView from './ConfigurationView.jsx'
 import { resetApiClient } from '../api/client.js'
+import { UiModeContext } from '../lib/ui-mode.js'
 import schema from '../../../schemas/twin9-profil.schema.json'
 import v98 from '../../../api/config/twin9-profil-v98.json'
+import essaiStigmergie from '../../../api/config/twin9-profil-stigmergie.json'
 
 afterEach(() => {
   cleanup()
@@ -405,5 +407,102 @@ describe('ConfigurationView — un fournisseur par étage, étape et lecteur (AD
     fireEvent.change(cle, { target: { value: 'instance' } })
     expect(within(cle).getByRole('option', { name: 'Ma clé personnelle' }).disabled).toBe(true)
     expect(champ(vue, 'cle').querySelector('.config-avertissement')).toBeNull()
+  })
+})
+
+/** Le profil prédéfini de l'essai de la stigmergie, comme GET twin9/configuration le sert. */
+const PREDEFINIS = [
+  {
+    id: 'stigmergie',
+    nom: 'Stigmergie (essai)',
+    profil: essaiStigmergie,
+    fournisseurs: [{ id: 'anthropic', libelle: 'Anthropic', rgpd: 'sous_conditions', voie: 'lots' }],
+  },
+]
+
+/** La page dans un mode donné, comme le shell la rend (App.jsx). */
+async function ouvrirEnMode(expert, routes = {}) {
+  const fetchFn = routedFetch({
+    'GET api/twin9/configuration': jsonResponse(200, configuration({ predefinis: PREDEFINIS })),
+    ...routes,
+  })
+  const vue = render(
+    <UiModeContext.Provider value={{ expert, setExpert() {} }}>
+      <ConfigurationView deps={{ fetchFn }} />
+    </UiModeContext.Provider>,
+  )
+  await waitFor(() => expect(vue.container.querySelector('[role="switch"]')).not.toBeNull())
+  return { fetchFn, vue }
+}
+
+const valeursDuProfil = () => [...barre().getByLabelText('Profil').options].map((o) => o.value)
+
+describe('ConfigurationView — la stigmergie du greffier (sprint 3)', { timeout: 15000 }, () => {
+  it('en mode expert, une partie à elle, ses libellés, la valeur du moteur pour un réglage absent', async () => {
+    const { vue } = await ouvrirEnMode(true)
+    expect(champ(vue, 'stigmergie')).not.toBeNull()
+    expect(champ(vue, 'stigmergie').querySelector('summary').textContent).toBe('Stigmergie du greffier (essai)')
+    expect(champ(vue, 'stigmergie/enabled').querySelector('label').textContent).toBe('Activer la stigmergie')
+    expect(champ(vue, 'scan_global/enabled').querySelector('label').textContent).toBe('Lancer l’Arpenteur')
+    expect(vue.container.querySelector('#config-stigmergie-enabled').checked).toBe(false)
+    expect(vue.container.querySelector('#config-stigmergie-evaporation').placeholder).toBe('0,3')
+    expect(vue.container.querySelector('#config-stigmergie-evaporation').min).toBe('0.2')
+    expect(vue.container.querySelector('#config-stigmergie-lignes').placeholder).toBe('5')
+    expect(vue.container.querySelector('#config-stigmergie-lignes').max).toBe('10')
+    expect(champ(vue, 'stigmergie').textContent).not.toMatch(/score/i)
+    expect(valeursDuProfil()).toEqual(['', 'predefini:stigmergie'])
+  })
+
+  it('en mode simple, ni sa partie ni le profil prédéfini ; un profil qui l’active la montre', async () => {
+    const allume = { ...v98, calques: { ...v98.calques, accumulation: false }, stigmergie: { enabled: true } }
+    const { vue } = await ouvrirEnMode(false, {
+      'GET api/twin9/configuration': jsonResponse(
+        200,
+        configuration({ predefinis: PREDEFINIS, profils: [{ id: 7, nom: 'Allumée', updated_at: '2026-10-22 10:00:00' }] }),
+      ),
+      'GET api/twin9/profils/7': jsonResponse(200, { id: 7, nom: 'Allumée', profil: allume }),
+    })
+    await waitFor(() => expect(barre().getByLabelText('Nom du profil').value).toBe('Allumée'))
+    expect(valeursDuProfil()).toEqual(['', '7'])
+    expect(champ(vue, 'stigmergie')).not.toBeNull()
+    expect(vue.container.querySelector('#config-stigmergie-enabled').checked).toBe(true)
+
+    fireEvent.change(barre().getByLabelText('Profil'), { target: { value: '' } })
+    await waitFor(() => expect(barre().getByLabelText('Nom du profil').value).toBe(''))
+    expect(champ(vue, 'stigmergie')).toBeNull()
+    expect(champ(vue, 'scan_global')).not.toBeNull()
+  })
+
+  it('le profil prédéfini se copie dans un nouveau profil ; ce que le serveur refuserait se dit à côté', async () => {
+    let envoye = null
+    const { vue } = await ouvrirEnMode(true, {
+      'POST api/twin9/profils': (init) => {
+        envoye = JSON.parse(init.body)
+        return jsonResponse(201, { id: 9, nom: envoye.nom, profil: envoye.profil })
+      },
+    })
+    fireEvent.change(barre().getByLabelText('Profil'), { target: { value: 'predefini:stigmergie' } })
+    await waitFor(() => expect(barre().getByLabelText('Nom du profil').value).toBe('Stigmergie (essai)'))
+    expect(barre().getByLabelText('Profil').selectedOptions[0].textContent).toBe('Nouveau, depuis « Stigmergie (essai) »')
+    expect(vue.container.querySelector('#config-stigmergie-enabled').checked).toBe(true)
+    expect(within(champ(vue, 'stigmergie')).getByText(/· 5 modifiés/)).toBeTruthy()
+    expect(within(champ(vue, 'stigmergie/evaporation')).getByTitle('Par défaut : 0,3, la valeur du moteur')).toBeTruthy()
+    const enabled = champ(vue, 'stigmergie/enabled')
+    expect(enabled.querySelector('.config-avertissement')).toBeNull()
+    expect(enabled.querySelector('.config-explication').textContent).toMatch(/Chaque run relit les journées/)
+
+    // les calques archivés de nouveau au consensus : le double compte que le serveur refuse
+    fireEvent.click(vue.container.querySelector('#config-calques-accumulation'))
+    expect(enabled.querySelector('.config-avertissement').textContent).toMatch(/Le profil serait refusé/)
+    fireEvent.click(vue.container.querySelector('#config-calques-accumulation'))
+    expect(enabled.querySelector('.config-avertissement')).toBeNull()
+    fireEvent.click(vue.container.querySelector('#config-rescan'))
+    expect(enabled.querySelector('.config-explication').textContent).toMatch(/reprise de la mémoire/)
+    fireEvent.click(vue.container.querySelector('#config-rescan'))
+
+    fireEvent.click(barre().getByRole('button', { name: 'Enregistrer' }))
+    expect(await annonce('status')).toBe('Profil enregistré.')
+    expect(envoye).toEqual({ nom: 'Stigmergie (essai)', profil: essaiStigmergie })
+    expect(barre().getByLabelText('Profil').value).toBe('')
   })
 })

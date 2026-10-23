@@ -393,7 +393,15 @@ par `scripts/extract-referentiel.mjs`.
     (importé seul, avant) n'est pas joint une seconde fois. Les calculs
     (soleil, heatmap, comparaison) ne lisent pas `readings`. Une archive
     réimportée joint ses lectures par identifiant, sans doublon ; celles qui
-    sont déjà là gagnent.
+    sont déjà là gagnent. Depuis le sprint 4 (C4, 2026-10-23, journal D-73),
+    le **second ressort d'un run Twin9** est aussi une seconde lecture :
+    `source: "twin9"`, `id` « twin9:<run>:second-ressort », ses seules
+    compétences « établie par faisceau (second ressort) » (`rawStatus`), et
+    par compétence `dates`, les journées de ses traces (tableau de dates,
+    facultatif) ; `poles` vide ; ses délibérations sous « <id>|<code> »
+    (décision du président, jury, débat, pièces, traces `{pieceId, role,
+    pieceType, extract, date}`). Elle se joint toujours, même au jeu qui
+    reçoit ses journées dans le même lot : elle n'est d'aucune journée.
 
 13. **Archive de compte 1.2.0 : les analyses approfondies Twin9 (T10,
     ADR-011 §5).** `archive-export` gagne une seconde propriété OPTIONNELLE,
@@ -513,6 +521,40 @@ par `scripts/extract-referentiel.mjs`.
       racine ; validateurs régénérés. Un lecteur 4.x qui les ignore lit le
       même jeu.
 
+16. **Master v4 : les traces de la stigmergie du greffier d'une analyse
+    Twin9, `stigmergie` (2026-10-23, sprint 3, S3-3).** Ajout 4.x
+    facultatif, présent seulement pour une analyse dont la carte du jour
+    porte le bloc `stigmergie` (spec-stigmergie.md §9 de Twin_v9, §7.4
+    ci-dessous). L'importeur d'un run (`twin9-run.js`) en garde, par liste
+    blanche (`core/stigmergie.js`) :
+    - dans le **détail** de la variante (`details[date].variants[id].stigmergie`) :
+      `analyse` (le rang k de l'analyse dans l'histoire de la journée),
+      `run`, `conservee` et `traces` — chacune `{id, code, start, end,
+      extrait, tau, incertitude, statut, voie, role, source, analyses}`,
+      valeurs simples seulement ; une trace sans code ni extrait, d'une
+      incertitude hors de `faible`, `moyenne`, `forte`, `écartée`, ou d'une
+      intensité qui n'est pas un nombre fini n'entre pas. Jamais les dépôts,
+      les rejets, les traces lues, les explorateurs ni les runs des traces ;
+    - dans l'**index** (`days[].variants[].stigmergie`) : `{analyse, traces,
+      conservee}`, pour dire sans lire le détail (D-67) qu'une journée a des
+      traces et proposer le portfolio surligné. Un jeu lu à la demande range
+      le bloc du détail dans le fichier de la journée (`jours/<date>.json`).
+    - **`conservee`** : `true` quand les résultats du run le disent
+      (`traces_conservees`, §8.4) ou pour une journée que sa mémoire a
+      reprise ; `false` quand ils disent l'analyse absente du journal de la
+      mémoire de la carte, sans en dire la cause : une journée dont un appel
+      est en panne (une panne n'est jamais un verdict), un texte modifié
+      depuis, qui remet le journal à zéro (§7.4), une analyse sortie des
+      dernières qu'il garde ; `null` quand rien ne le dit. Une archive
+      réimportée garde la valeur qu'elle porte, telle quelle (une projection
+      d'affichage, que le serveur ne confirme pas : §7.4). Seul `true` se
+      montre « conservé » ; le rapport d'import dit les autres
+      (`twin9-traces-non-conservees`, `twin9-traces-non-confirmees`).
+    - Les calculs ne le lisent pas ; l'identifiant et l'empreinte de la
+      variante ne le comptent pas (réimporter le même run ne l'ajoute pas
+      deux fois). Schéma : `stigmergie` dans la variante résumée et dans le
+      détail, incertitude par énumération ; validateurs régénérés.
+
 ## 5. Note d'outillage
 
 `engine/src/validation.js` importe les schémas en imports JSON « nus »
@@ -577,7 +619,13 @@ valide et range les profils.
   et laisse au serveur la validation, dont elle affiche le message.
 - **Nombres** : un réglage que le schéma type `number` garde la forme d'un
   flottant (`1.0`, non `1`), quelle que soit la forme reçue : le navigateur
-  ne distingue pas `1` de `1.0`, et la v9.8 lit `1.0` (T13).
+  ne distingue pas `1` de `1.0`, et la v9.8 lit `1.0` (T13). Un réglage
+  qu'il type `integer` seulement est un entier (`5`, non `5.0`, que le
+  schéma admet pourtant comme entier), jusqu'à 2^53 en valeur absolue :
+  au-delà, un flottant (`1e21`, ou un entier de plus de 19 chiffres, que
+  PHP décode en flottant) le reste ; le schéma borne donc tout entier que
+  le moteur exige tel (`stigmergie.graine`, §7.4) : les réglages de la
+  stigmergie refusent un flottant là où ils attendent un entier.
 - **Règles de l'API** : la réflexion coupée refuse les efforts `xhigh`
   et `max`, pour toute étape où les réglages se combinent ainsi
   (`CallSettings::parEtape`, T13) ; et celles des fournisseurs (ADR-012,
@@ -624,7 +672,11 @@ valide et range les profils.
   (`defaut_fournisseurs`) : `[{id, libelle, rgpd, voie}]` dans l'ordre du
   registre, comme l'aperçu (`Lancement::fournisseurs`, `voie` : `lots`,
   `directe` ou `mixte`) ; `null` pour un profil rangé que le schéma n'admet
-  plus (son lancement est refusé de toute façon). La page `#/configuration`
+  plus (son lancement est refusé de toute façon). Depuis le sprint 5, lot C
+  (phase D, 2026-10-22), chaque profil y nomme aussi son référentiel
+  (`profils[].referentiel` : `{id, version}`, `null` pour un profil rangé
+  sans référentiel lisible), que la page de lancement propose par défaut
+  (§8.4). La page `#/configuration`
   les recalcule en direct depuis le profil édité (`fournisseursDuProfil`,
   `web/src/views/configuration/profilSchema.js`, dont l'étage de chaque
   étape, les libellés, les étiquettes et les motifs de modèle sont comparés
@@ -633,6 +685,16 @@ valide et range les profils.
   par défaut, que sert `GET /api/twin9/configuration` (`defaut`) et que
   prend un run lancé sans profil, est celui de la v9.8 avec le jeu de
   gabarits par défaut.
+- **Profils prédéfinis** (`ProfilRepository::PREDEFINIS`) : des points de
+  départ en lecture seule, qu'un nouveau profil copie, comme celui de la
+  v9.8 ; `GET /api/twin9/configuration` les sert (`predefinis` :
+  `[{id, nom, profil, fournisseurs}]`, chacun avec le jeu de gabarits par
+  défaut et les fournisseurs qu'atteignent ses appels). Un seul aujourd'hui,
+  « Stigmergie (essai) » (`stigmergie`,
+  `api/config/twin9-profil-stigmergie.json`, §7.4), que la page
+  `#/configuration` ne propose qu'en mode expert. Un run se lance avec un
+  profil de son propriétaire ou celui de la v9.8 : un profil prédéfini se
+  copie d'abord.
 
 ### 7.1 Ce que la v9.8 règle, et où le profil le range
 
@@ -798,6 +860,129 @@ Les plafonds déjà réglables dans le `config.json` restent à leur place :
 `calques.max_archives`, `merge.max_histoires`,
 `scan_global.retour_max_caracteres`.
 
+### 7.4 La stigmergie du greffier (sprint 3)
+
+Un écart voulu du moteur PHP, sans équivalent dans la v9.8 ni oracle
+(`docs/twin9/spec-stigmergie.md` de `Twin_v9`, §2 et §11.3) : les passages
+que valident le juge léger ou le tribunal déposent une trace dans la
+mémoire de la carte (`stigmergie/<jour>`, sous `test/` en mode essai), qui
+s'évapore d'une analyse de la journée à l'autre ; seul le greffier la lit,
+dans le bloc des calques de son dossier. Aucun appel en plus.
+
+- **Le réglage** : `stigmergie`, une clé **de premier niveau** du profil,
+  jamais une clé de `calques` (`PariteTest` compare `calques` clé à clé avec
+  l'oracle), **hors de `required`**, de valeur par défaut
+  `{"enabled": false}` : un profil rangé avant elle la reçoit à sa
+  complétion (`ProfilRepository::validate`), rien de plus. Le profil v9.8
+  la porte, explicitement désactivée.
+
+  | Clé | Type | Bornes du schéma | Absente |
+  |---|---|---|---|
+  | `enabled` | booléen, requis dans l'objet | — | — |
+  | `evaporation` | `number` | [0,2 ; 1] | 0,3, la valeur du moteur |
+  | `exploration` | `number` | [0 ; 1] | 0,2 |
+  | `graine` | `integer` | [−(2^53 − 1) ; 2^53 − 1] | 1 |
+  | `lignes` | `integer` | [0 ; 10] | 5 |
+
+  Les quatre réglages n'ont pas de valeur par défaut au schéma : absents,
+  ils prennent celle du moteur (`Stigmergie::DEFAUTS`), que leur
+  description dit et que `ProfilTest` compare au moteur de `TWIN_V9_DIR`.
+  Les types sont stricts : le moteur ne convertit rien, une chaîne, un
+  booléen ou un flottant pour un entier ferait échouer le run ; l'API
+  ramène un flottant sans partie décimale à un entier là où le schéma
+  attend un entier (§7, « Nombres »), jusqu'à 2^53 en valeur absolue :
+  d'où les bornes de `graine`, sans quoi `1e21`, que le schéma admet comme
+  entier, arriverait en flottant au moteur (une `TypeError`, la
+  spécification du moteur, §2, demandant au schéma de l'empêcher). Le
+  plancher de l'évaporation est
+  celui que conseille la spécification du moteur : en dessous de 0,2, une
+  trace peut disparaître d'un coup quand son analyse sort des 16 que lit un
+  run.
+- **Ce que reçoit le moteur** (`MoteurReglages`, §8.1) : `config.stigmergie`,
+  l'objet du profil recopié tel quel, **seulement si `enabled` est le
+  booléen `true`** ; sinon aucune clé, et la config du profil v9.8 reste
+  celle de la v9.8 à l'octet (`PariteTest`, `EmpreintesFigeesTest`
+  inchangés). Ni `CallSettings::empreinte` (§8.2) ni
+  `Evaluations::signature` (§8.7) ne la comptent : elle n'ajoute aucun
+  appel. Le moteur la compte dans l'empreinte de la journée : l'activer, ou
+  changer ses réglages, fait relire les journées de la carte, ce que
+  l'aperçu montre.
+- **Ce que la plateforme admet** (`ProfilPolicy::admettre`, à
+  l'enregistrement, à l'aperçu et au lancement) : activée, elle demande
+  `calques.accumulation` à `false` — les calques archivés votent déjà au
+  consensus, les traces y compteraient deux fois — ; sinon « Profil refusé
+  — /stigmergie : la stigmergie demande calques.accumulation à false ; les
+  calques archivés votent déjà au consensus, ses traces y compteraient deux
+  fois ». Le renforcement d'une analyse à l'autre demande `rescan` : sans
+  lui, une journée inchangée est reprise de la mémoire, sans nouvelle
+  analyse. Un moteur qui n'a pas la stigmergie (`Twin9\Stigmergie`)
+  l'ignorerait : l'aperçu et le lancement d'un profil qui l'active sont
+  alors refusés (« Profil refusé — /stigmergie : le moteur de cette
+  instance ne connaît pas la stigmergie (Twin_v9 à mettre à jour) »).
+- **Le profil d'essai** « Stigmergie (essai) »
+  (`api/config/twin9-profil-stigmergie.json`) : le profil v9.8, la
+  stigmergie activée avec les valeurs du moteur écrites
+  (`{"enabled": true, "evaporation": 0.3, "exploration": 0.2, "graine": 1,
+  "lignes": 5}`), `calques.accumulation` à `false` et `rescan` à `true` ;
+  rien d'autre (`ProfilTest` le vérifie, et le suit quand le profil v9.8
+  change). Il reste en mode complet : le mode essai ne lit que le premier
+  pôle et la première journée, où le greffier n'est souvent pas convoqué.
+- **La page `#/configuration`** ne règle la stigmergie qu'en mode expert
+  (`lib/ui-mode.js`) ; en mode simple sa partie est masquée, sauf dans un
+  profil qui l'active. Elle dit à côté du réglage ce que le serveur
+  refuserait (l'accumulation des calques) et ce que fait `rescan`.
+- **Ce que le moteur produit**, que la plateforme lit sans code nouveau :
+  le journal `stigmergie/<jour>` de la mémoire de la carte (exporté et
+  purgé avec elle), le bloc `stigmergie` en dernière clé de
+  `carto_jour.json` (spec du moteur, §9), et `configuration.algorithme.stigmergie`
+  dans le bloc de configuration du run (§8.9). `StigmergieTest` mène deux
+  runs d'une carte par le tick, sur le scénario 16-test-mode de l'oracle :
+  la première analyse fait les appels de l'oracle et dépose, la seconde,
+  sous `rescan`, relit la première ; un troisième test met en panne le
+  président d'un tribunal de la journée.
+- **Ce que la plateforme en montre** (S3-3) :
+  - **Conservées ou non.** Les résultats d'un run (§8.4) disent, par
+    journée dont la carte porte le bloc, si son analyse est au journal de la
+    mémoire de la carte (`traces_conservees`). Une journée dont un appel est
+    en panne écrit sa carte avec le bloc, mais son analyse n'entre jamais au
+    journal (`failedUnder` du moteur) : ses traces sont dites non
+    conservées. Le signal se lit dans la mémoire, et non dans le journal des
+    appels du run, effacé à sa fin (`RunRepository::terminer`).
+  - **Dans la cartographie** (`carto/ui/Stigmergie.jsx`), sous les verdicts
+    de la modale du jour : chaque trace de l'analyse qui compte, sa
+    compétence, sa nature (l'incertitude calculée par la procédure, en mots
+    et par la marque de son surlignage : `carto-hl--trace-faible`,
+    `-moyenne`, `-forte`, `-ecartee`, une couleur et un trait), son dernier
+    verdict, ce qu'en fait le greffier suivant, son passage ; « Ouvrir dans
+    le portfolio » le surligne de sa marque, retrouvé par son extrait
+    (coupé à 240 caractères par le moteur : un long passage ne se surligne
+    qu'en tête). Son **intensité** (`tau`, de 0 à 3) ne se lit qu'en mode
+    expert et pour le cartographe (`intensitesVisibles` : jamais sans
+    session ni dans une copie autonome), et n'est jamais appelée « score ».
+  - **Le portfolio surligné** (Export de l'interface, quand une journée a
+    des traces conservées) : le portfolio en Markdown, chaque passage d'une
+    trace conservée entouré, ligne par ligne, d'un `<mark
+    data-twin9-code="…" data-incertitude="…">` (et `data-intensite` quand
+    l'intensité se montre), chaque journée suivie du tableau de ses traces
+    entre `<!-- twin9-traces -->` et `<!-- /twin9-traces -->`.
+  - **À l'import** (`lib/twin9/marques.js`) : l'import d'un portfolio dans
+    l'interface, la page « Mon portfolio » (fichier, Google Docs, texte
+    collé ou écrit), la restauration d'une archive (bornes des journées
+    ramenées) et le texte que la page Twin9 envoie retirent les éléments
+    qui portent `data-twin9-*`, `data-incertitude` ou `data-intensite`
+    (leurs balises, pas leur texte) et le tableau des traces : réimporté,
+    le portfolio surligné redonne à l'octet le portfolio sans marques, et
+    aucune trace n'entre par le texte d'un fichier. Le texte rendu d'un
+    portfolio n'en montre aucune.
+  - **Les traces du jeu, une projection d'affichage** (sprint 3, §6.4) : le
+    bloc `stigmergie` des variantes (§4 point 16), `conservee` compris,
+    n'est qu'une copie, côté navigateur, de ce qu'ont dit les résultats ; le
+    moteur ne le lit jamais. Une archive réimportée, ou un document
+    `twin9-run` déposé à la main dans l'Import, le reprend tel qu'il est
+    écrit : un fichier modifié peut le forger, et la modale du jour le
+    montrerait conservé. Seule la remise depuis la page du run
+    (`twin9RunFiles`) porte ce que le serveur dit.
+
 ## 8. Le moteur Twin9 et la plateforme (T7)
 
 Un run Twin9 s'exécute sur le serveur, par tranches (ADR-011 §2). La
@@ -917,7 +1102,8 @@ passe un lecteur (`haiku#1`…), du type de son fournisseur résolu et de sa
 famille (déclarée, sinon celle de son fournisseur), avec sa graine
 (`stable_hash("haiku|passe1")` modulo 2³¹−1) et son sel (`|passe1`) ; les
 options `jours`, `rescan`, `test` (le mode essai) et `memoire` ; `referentiel`, le référentiel du run
-tiré de la base à sa version (T16, §8.8). Le profil v9.8 donne ainsi les réglages
+tiré de la base à sa version (T16, §8.8) ; et `config.stigmergie`, la
+stigmergie du greffier du profil, **seulement si elle est activée** (§7.4). Le profil v9.8 donne ainsi les réglages
 du scénario `02-cloud` de l'oracle, au type des backends près (`mock` sous
 `--mock`), et un run qu'ils conduisent est celui de l'oracle, appel par appel
 (`PariteTest::testTheV98ProfileDrivesTheEngine`). Les autres tests de parité
@@ -1197,6 +1383,79 @@ une suivante le relève.
   de ses fournisseurs (§7.2, `admettreAuLancement`) : un fournisseur fermé
   depuis, ou sans sa clé d'instance, la refuse en `422`. Depuis P0-1, il garde aussi sa **configuration**
   (§8.9), écrite au lancement et jamais modifiée, distincte de l'attestation.
+- **Le référentiel choisi au lancement** (sprint 5, lot C ; phase D,
+  2026-10-22). `POST /api/twin9/runs` et `POST /api/twin9/runs/apercu`
+  acceptent `referentiel: {id, version?} | null`, facultatif : absent ou
+  nul, celui du profil ; sinon `id` au motif des identifiants de
+  référentiel (`ReferentielRepository::ID_PATTERN`) et `version` semver ou
+  nulle (la dernière publiée), aucune autre clé, sans quoi `422`
+  « Référentiel invalide : {id, version?} (version semver, ou null pour la
+  dernière publiée), ou null pour celui du profil ». `Lancement::preparer`
+  l'écrit dans la **copie** du profil, juste après l'avoir lue et avant
+  `ProfilPolicy::admettre` : tout ce qui vaut pour le référentiel d'un
+  profil vaut pour lui — un brouillon ne sert que le run d'essai de son
+  auteur (§9), un référentiel ou une version non publiés sont refusés
+  (`422` « Profil refusé — /referentiel/id : … » ou « …/version : … »), la
+  version est figée dans la copie, un jeu d'avant T16 le refuse (§8.8) —,
+  et il entre dans l'empreinte des réglages, l'attestation
+  (`referentiel`), la configuration (§8.9) et la carte (sa mémoire est
+  celle de ce référentiel). Le profil enregistré ne change pas.
+  **Garde du jury** : quand l'identifiant choisi n'est pas celui du profil,
+  `jury.specialistes` (un spécialiste par numéro de pôle) et
+  `jury.par_competence` (par code), réglés pour le référentiel du profil,
+  sont vidés dans la copie (`{}`, leur défaut) ; l'aperçu nomme ceux qu'il
+  a vidés (`jury_retire`). La page de lancement (`#/twin9`) propose un menu
+  « Référentiel » : « Celui du profil » par défaut (sa version figée dans
+  le libellé, quand le profil en fige une), chaque autre référentiel
+  publié (sa dernière version, `version` nulle) et, en mode expert, les
+  brouillons de chacun ; toujours en mode expert, en mode simple dès que
+  plus d'un référentiel est publié. Le référentiel du profil n'est pas
+  proposé une seconde fois : choisi ainsi, il lirait sa dernière version
+  publiée au lieu de celle que le profil fige, sans que la garde du jury
+  joue (l'identifiant est le même). Elle n'envoie donc `referentiel` que
+  pour un autre choix que celui du profil.
+- **Le portfolio envoyé** (sprint 4, T0 ; journal de la cartographie
+  D-73). Le moteur découpe le texte à sa façon (`Twin_v9/php/src/Portfolio.php` :
+  un titre `##` ou `###` qui porte une date, sinon une date Google Docs,
+  sinon rien de daté), l'interface par `segmentText` ; ils divergent
+  (« 1er.02.2026 », `####`, un titre daté au milieu d'une journée, deux
+  entrées du même jour en `_b`). La page de lancement n'envoie donc pas le
+  texte brut, à l'aperçu comme au lancement, mais `portfolioPourTwin9(texte,
+  {segments}).texte` (`web/src/lib/twin9/portfolio-pour-twin9.js`) : les
+  journées de la fiche du portfolio (ses `segments`, retouches à la main
+  comprises), sinon de `segmentText`, une par date ; un en-tête que le moteur
+  lit à la même date est gardé, sinon `### AAAA-MM-JJ` s'ajoute en tête de la
+  journée ; toute autre ligne qu'il lirait comme un titre daté, ou que
+  l'interface lirait comme l'en-tête d'une autre journée, est précédée de
+  « — » ; les passages sans date passent en tête, où le moteur ne lit rien.
+  Un texte que le moteur lit déjà en ces journées, chacune avec son texte,
+  part à l'octet, comme un texte de moins de deux journées datées : le
+  moteur ne date pas une journée seule. Il peut pourtant y lire deux titres
+  datés d'autres jours (« ### Retour sur la séance du 26.01.2026 ») ; `autres`
+  dit alors les journées qu'il y lit et que l'interface n'a pas, `nonLues`
+  celle de l'interface qu'il n'y lit pas (avant son premier titre daté), et
+  l'aperçu les nomme ; neutraliser ces titres est à décider. Un texte
+  qu'il lit en mode Google Docs le reste : une journée y reçoit
+  « JJ.MM.AAAA », une ligne vide et un trait, jamais un titre daté (deux
+  titres datés le feraient changer de mode, et toutes les journées
+  changeraient). L'aperçu
+  dit les journées dont le texte, tel que le moteur le lit, change
+  (`retouchees`) : évaluées sur le texte brut, leur empreinte change et la
+  mémoire de la carte les instruit de nouveau, une fois (le texte envoyé
+  ensuite est le même). `disparues` dit les journées que le moteur lisait
+  dans le texte brut et qu'il ne lit plus dans le texte envoyé (leurs
+  identifiants : un `<date>_b` réuni à sa date, un « Retour sur la séance
+  du … » rendu à sa journée, une date corrigée dans la fiche) : lue par un
+  run précédent, une telle journée reste dans la mémoire de la carte, qui
+  est additive (`Journees.php` du moteur), et sa fusion la compte encore,
+  avec le même passage dans la journée qui l'a reçu ; l'aperçu nomme
+  celles que la carte garde (son `memoire`). Rien ne les retire de la
+  carte. Les expressions du moteur sont copiées, documentées,
+  dans le module ; `api/tests/Twin9/PortfolioPourTwin9Test.php` passe le
+  texte qu'il rend (`schemas/fixtures/twin9-portfolio/`) au `Portfolio` du
+  vrai moteur. Le serveur ne change pas : il range et analyse le texte reçu,
+  et le run garde ce texte tel qu'il a été envoyé (son portfolio, que
+  l'archive du compte exporte, §4 point 13).
 - **Le suivi** (`GET /api/twin9/runs/{id}`) lit le journal : appels par état,
   journées finies (cartes du jour écrites), fusion faite, lots chez Anthropic,
   run antérieur de la même carte encore en cours ; `retard` dit en mots ce qui
@@ -1234,7 +1493,18 @@ une suivante le relève.
   nom, pole}]}`, jamais une fiche, un préambule ni une description ; nul pour
   un run d'avant T16. Depuis P0-1, `run` porte `configuration` et
   `execution` (§8.9), nuls pour un run d'avant elles ; un cartographe lié
-  les lit sans prix, coût, plafond ni clé.
+  les lit sans prix, coût, plafond ni clé. Depuis S3-3 (§7.4), la réponse
+  porte aussi `traces_conservees` : un objet par journée dont la carte du
+  jour (du run ou de la mémoire) porte le bloc `stigmergie` du greffier,
+  `true` si son analyse (`stigmergie.run`) est au journal de la journée dans
+  la mémoire de la carte (`stigmergie/<jour>`, sous `test/` en mode essai),
+  `false` sinon ; `{}` sans bloc. Une journée en panne n'y dépose rien : sa
+  carte garde le bloc, la réponse le dit non conservé, même après la fin du
+  run, quand son journal d'appels est effacé. Elle est lue à chaque fois
+  contre la mémoire du moment : un run suivant sur un texte modifié (qui
+  remet le journal à zéro), ou dix-sept analyses plus tard (le journal ne
+  garde que les dernières), un ancien run se lit non conservé, sans panne ;
+  la réponse ne dit pas la cause, l'interface non plus.
 - **Le document `twin9-run`** que la page remet à l'interface de cartographie
   (`twin9RunFiles`, `web/src/lib/interface-handoff.js` ; schéma
   `schemas/twin9-run.schema.json` depuis P0-1, racine souple : `kind` et
@@ -1252,7 +1522,23 @@ une suivante le relève.
   seul. Depuis P0-1, l'interface ne garde de `run.configuration` et
   `run.execution` qu'une liste blanche (§8.9), et chaque journée dit ses
   modèles et son jeu de gabarits (`provenance.model`, `provenance.prompt`,
-  `provenance.configurationRef`).
+  `provenance.configurationRef`). Depuis S3-3, le document porte
+  `traces_conservees` des résultats (nul quand ils ne le disent pas), et
+  l'interface garde le bloc `stigmergie` de chaque carte du jour par liste
+  blanche (§4, point 16). Depuis le sprint 4 (C3, C4 ; journal de la
+  cartographie D-73) : deux cartes du jour de même `date` (une seconde
+  entrée du même jour, que le moteur range sous `<date>_b`) font une
+  journée — à code égal, le verdict au statut le plus fort (établi, renvoyé,
+  non établi ; puis la confiance, puis la première carte) l'emporte avec son
+  dossier et reçoit les traces de l'autre, sans doublon ; leurs traces de
+  la stigmergie sont réunies, conservées si toutes le sont — et le rapport
+  d'import le dit (`twin9-journee-dupliquee`, avertissement) ; une
+  compétence « établie par faisceau (second ressort) » de la fusion entre
+  en seconde lecture (§4, point 12), et aucune journée, carte du jour ou
+  journée sans carte que donne la fusion, ne la porte. Dans la fusion
+  (`twin9ToMergeDocument`), une attestation du second ressort
+  (`etage: "faisceau"`) ne sert plus à dater un `jour_index` : son repli 0
+  déplaçait la première journée, sa date « - » en ouvrait une.
 
 ### 8.5 Coûts, plafonds, relance, purge et export (T10)
 
@@ -1360,13 +1646,22 @@ une suivante le relève.
   gagnent `coupures` (les coupures par la fin d'une tranche) et
   `par_fournisseur` (`{appels, pannes, tronques, coupures, cout_microusd}`
   par fournisseur).
-- **L'aperçu** (`POST /api/twin9/runs/apercu`, `{profil, portfolio}`, ce que
-  demande un lancement, l'accord excepté ; rien n'est gardé) rend
+- **L'aperçu** (`POST /api/twin9/runs/apercu`, `{profil, portfolio,
+  referentiel?}`, ce que demande un lancement, l'accord excepté ; rien n'est
+  gardé) rend
   `{journal, mode, voie, cle, fournisseurs, journees: {total, nouvelles, changees},
   estimation: {cout_usd, min_usd, max_usd, reserve_usd, duree_s,
   evaluations | reference, poles}, admission: {journees, total, limite,
   instruites, en_attente, changees_en_attente, autres_usd, refus},
-  plafonds: {budget_usd, duree_minutes}, credit_usd}`. L'estimation et
+  plafonds: {budget_usd, duree_minutes}, credit_usd, referentiel: {id,
+  version, label}, jury_retire, memoire}` ; `memoire` (sprint 4, T0) : les
+  identifiants des journées que la mémoire de sa carte garde au-delà de
+  celles que le run prend (la carte est additive : sa fusion les lit), que
+  la page de lancement croise avec les journées que le moteur ne lit plus
+  dans le texte envoyé ; `referentiel` (sprint 5, lot C) est celui
+  que le run lirait, du profil ou choisi (§8.4), sa version figée ;
+  `jury_retire`, la liste des réglages du jury que ce choix vide
+  (`specialistes`, `par_competence`), vide sinon. L'estimation et
   l'admission sont au §8.7 (T8). À défaut d'évaluation, la référence est le
   vrai run de PLANT-01 de T2, en mode essai, 0,1344 $ et 94 s, fois les
   pôles du référentiel pour un run complet, à moitié prix quand tous ses
@@ -1688,7 +1983,10 @@ T16, plan validé par Christian le 2026-10-20).
   2026-10-20) : un pôle de RESPIRE, reconnu à sa clé, assoit le spécialiste
   et la paire de la v9.8 ; un autre, le « Spécialiste du pôle », qui lit son
   domaine, et la paire (Spécialiste du pôle, Historien) — cinq sièges en
-  `socle4+1`, quatre en `socle2+2`. `jury.specialistes` du profil l'emporte.
+  `socle4+1`, quatre en `socle2+2`. `jury.specialistes` du profil l'emporte,
+  sauf quand le lancement choisit un autre référentiel que celui du profil :
+  il est alors vidé dans la copie, comme `jury.par_competence` (§8.4, garde
+  du jury).
   Sa lentille n'est pas dans la banque dont les journées gardent l'empreinte
   (`Tribunal::infosPersonas`) : un référentiel dont un pôle n'est pas de
   RESPIRE la garde avec l'empreinte des réglages de ses journées
@@ -1788,7 +2086,10 @@ refusée ; fixture inventée `schemas/fixtures/twin9-configuration-exemple.json`
     l'appel part (`budget_sortie` est le `max_tokens` envoyé) ;
   - `college` (`nom`, `famille`, `passes`, `poids`), `backends`
     (`tribunal`, `rapide` : `kind`, `model`, `model_mini`), `algorithme`
-    (les paramètres de `MoteurReglages::ALGORITHME`) ;
+    (les paramètres de `MoteurReglages::ALGORITHME`, et `stigmergie` : la
+    stigmergie du greffier telle que le moteur la lit, `config.stigmergie`
+    quand elle est activée, `{"enabled": false}` sinon, §7.4 ; absente du
+    bloc d'un run lancé avant elle, qui reste valide) ;
   - `referentiel` (`id`, `version`, `label`, `empreinte`) et `gabarits`
     (`jeu`, `versions`, `empreinte`), jamais le bloc du référentiel (fiches,
     préambules) ni un gabarit ;
@@ -1979,11 +2280,17 @@ Le schéma `referentiel` passe en **2.0.0** (`docs/plan-twin9-php.md` de
   le profil est en mode essai ; sinon `422` « Profil refusé —
   /referentiel/version : un brouillon ne sert qu’aux runs d’essai de son
   auteur ». `GET /api/twin9/configuration` rend, pour chaque référentiel,
-  `{id, versions, brouillons}` : ses versions publiées et ses propres
-  brouillons, un référentiel jamais publié n'y figurant que pour son auteur.
+  `{id, label, versions, brouillons}` : son libellé (celui de sa dernière
+  version publiée, `ReferentielRepository::catalogue()` ; pour un
+  référentiel qui n'a que des brouillons, celui du plus récent ; depuis le
+  sprint 5, lot C, pour le menu « Référentiel » du lancement Twin9), ses
+  versions publiées et ses propres brouillons, un référentiel jamais publié
+  n'y figurant que pour son auteur.
 - **Le lancement** (§8.4) : le moteur lit le référentiel de son run (T16,
   §8.8) ; un run ou son aperçu sur un autre référentiel, publié, part. Un
-  brouillon sert le run d'essai de son auteur. (De T15 à T16, le moteur
+  brouillon sert le run d'essai de son auteur. Depuis le sprint 5, lot C, le
+  lancement et l'aperçu peuvent choisir un autre référentiel que celui du
+  profil (`referentiel: {id, version?}`), soumis aux mêmes règles. (De T15 à T16, le moteur
   lisait les fiches RESPIRE de son jeu, et un autre référentiel était refusé,
   `422`.)
 - **Les annotations** (`POST /api/cartographies/{id}/annotations`) : une

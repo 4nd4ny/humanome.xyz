@@ -169,6 +169,21 @@ describe('archive : sans perte', () => {
     expect(res.report.find((r) => r.code === 'etat-illisible').message).toMatch(/^3 élément\(s\) illisible\(s\)/)
   })
 
+  it('S3-3 — le texte d’une archive réimportée perd les marques du portfolio surligné de Twin9 ; ses volumes sont ceux du texte nettoyé', async () => {
+    const store = createCartoStore({ adapter: createMemoryAdapter() })
+    await store.commit(await importFiles(louFiles(), empty('ds-src'), { now: NOW }))
+    const archive = buildArchive(await store.exportAll('ds-src'), { now: NOW })
+    const [date] = Object.keys(archive.details)
+    const propre = archive.details[date].portfolio.text
+    archive.details[date].portfolio.text = `<mark data-twin9-code="1.01" data-incertitude="faible">${propre}</mark>\n\n<!-- twin9-traces -->\n| 1.01 |\n<!-- /twin9-traces -->`
+    archive.portfolio.undated = [{ text: 'Sans date, <span data-intensite="3">forgé</span>.', source: 'x.md' }]
+    const lu = importArchive(archive)
+    expect(lu.portfolio.find((p) => p.date === date).text).toBe(propre)
+    expect(lu.undated.map((u) => u.text)).toEqual(['Sans date, forgé.'])
+    const res = await importFiles([{ path: 'archive.json', text: JSON.stringify(archive) }], empty('ds-dst'), { now: NOW })
+    expect(res.dataset.days.find((d) => d.date === date).portfolio.chars).toBe(propre.length)
+  })
+
   it('sans le portfolio : le texte part, les volumes par jour restent', async () => {
     const store = await richStore()
     const exported = await store.exportAll('ds-lou')

@@ -8,11 +8,18 @@
 // `runDetails` (clé → délibération de run), plus `exportedAt` et
 // `includesPortfolio`. Sans le portfolio, les volumes par jour restent (la
 // heatmap reste juste) mais le texte part : le surlignage devient indisponible.
+// Le texte d'une archive réimportée perd les marques du portfolio surligné de
+// Twin9 (S3-3, lib/twin9/marques.js) : aucune trace n'entre par le texte. Les
+// traces que gardent ses variantes (leur bloc `stigmergie`, `conservee`
+// compris) reviennent, elles, telles que l'archive les écrit : une projection
+// d'affichage, qu'un fichier modifié peut forger, que le moteur ne lit jamais
+// (sprint 3, §6.4) ; le serveur ne les a pas confirmées.
 
 import { KIND, SCHEMA_VERSION, variantWithPassageDates } from './model.js'
 import { isIsoDate } from './dates.js'
 import { withoutRestatements } from './restatement.js'
 import { isSplitIndex } from './split.js'
+import { sansMarquesTwin9 } from '../../lib/twin9/marques.js'
 
 /** Nom de fichier conseillé : cartographie-<type>-<date>.json */
 export function archiveFileName(type, now = new Date().toISOString(), ext = 'json') {
@@ -94,7 +101,7 @@ export function importArchive(doc, { fileName = 'archive.json' } = {}) {
       })
     }
     if (detail?.portfolio && typeof detail.portfolio.text === 'string') {
-      portfolio.push({ date: day.date, title: detail.portfolio.title ?? null, text: detail.portfolio.text, source: detail.portfolio.source ?? fileName })
+      portfolio.push({ date: day.date, title: detail.portfolio.title ?? null, text: sansMarquesTwin9(detail.portfolio.text), source: detail.portfolio.source ?? fileName })
     }
   }
   if (doc.includesPortfolio === false) report.push({ severity: 'info', code: 'archive-sans-portfolio', message: `${fileName} : archive sans le texte du portfolio (surlignage indisponible)` })
@@ -102,7 +109,7 @@ export function importArchive(doc, { fileName = 'archive.json' } = {}) {
   return {
     variants,
     portfolio,
-    undated: remote ? [] : (doc.portfolio?.undated ?? []),
+    undated: remote ? [] : (doc.portfolio?.undated ?? []).map((u) => (typeof u?.text === 'string' ? { ...u, text: sansMarquesTwin9(u.text) } : u)),
     narratives: doc.narratives ?? [],
     metrics: doc.metrics ?? null,
     runDetails: Object.entries(doc.runDetails ?? {}).map(([key, value]) => ({ key, value })),

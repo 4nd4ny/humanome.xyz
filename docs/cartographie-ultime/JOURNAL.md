@@ -2780,7 +2780,9 @@ sans effet sur le soleil.
 - **Limite** : une compétence que seule la seconde lecture établirait
   n'entre ni dans le soleil ni dans la liste (c'est le choix A) : on ne
   l'ouvre pas. Aucune sur la démonstration ; s'il le faut, le panneau du
-  pôle pourra la nommer.
+  pôle pourra la nommer. **Amendé le 2026-10-23 (D-73)** : le panneau du
+  pôle la nomme (« Établies par une seconde lecture seulement, hors du
+  soleil »), et l'ouvre ; le second ressort d'un run Twin9 en produit.
 - **Pas de seconde lecture** dans la version partagée (elle ne porte que ce
   que la personne choisit) ni dans la modale du jour (elle porte sur une
   journée).
@@ -3042,7 +3044,7 @@ l'index, pour que la journée du passage renvoie à l'analyse :
     analyse imposerait un choix ; le kairos et les rapports de pôle restent
     globaux) ;
   - T0 (envoyer à Twin9 des en-têtes que l'interface lit pareil), C3 et
-    C4 : avec le lot Twin9 ;
+    C4 : faits le 2026-10-23 (D-73) ;
   - la démonstration publique : son index déployé n'a pas `at` ; il faut la
     redécouper (`node web/scripts/carto-demo-split.mjs`, qui l'écrit) puis
     la redéployer. D'ici là, sa journée du 3 février dit « Aucune analyse
@@ -3060,6 +3062,128 @@ l'index, pour que la journée du passage renvoie à l'analyse :
   vérifiées par le moteur PHP quand il est là) ;
   `core/portfolio-md.test.js` (un `### 02.03.26` d'un autre jour est
   neutralisé à l'export).
+
+### D-73 — Twin9 reçoit les journées de l'interface ; deux cartes du même jour ; le faisceau en seconde lecture **[décidé]**
+
+Sprint 4, T0, fait le 2026-10-23 par délégation (phase D du plan) : que
+l'analyse Twin9 lancée depuis le site ne refasse pas le 10 février. Twin9
+découpe le texte qu'on lui envoie à sa façon (`Twin_v9/php/src/Portfolio.php`,
+en lecture seule) : un titre `##` ou `###` qui porte une date n'importe où
+ouvre une journée ; « 1er.02.2026 », `#### 30.01.2026`, `# 29.01.2026`,
+`**28.01.2026**`, « Mardi 27 janvier 2026 » n'en ouvrent pas, que
+l'interface lit ; « ### Retour sur la séance du 26.01.2026 », au milieu d'une
+journée, en ouvre une qu'elle n'a pas ; deux entrées du même jour deviennent
+`_b` (étude du sprint 4, §4.1, C2 et C3). Sur les onze formes de l'étude :
+dix journées pour l'interface, six pour Twin9.
+
+- **La page de lancement (`#/twin9`) envoie les journées de l'interface**,
+  à l'aperçu comme au lancement (`lib/twin9/portfolio-pour-twin9.js`) :
+  celles de la fiche du portfolio, avec ses fusions, scissions et dates
+  corrigées à la main, sinon celles du découpage du site (un fichier) ; les
+  passages d'une même date réunis. Un en-tête que Twin9 lit à la même date
+  est gardé ; sinon `### AAAA-MM-JJ` s'ajoute en tête de la journée ; une
+  ligne que Twin9 lirait comme un titre daté (même du même jour) ou que
+  l'interface lirait comme l'en-tête d'une autre journée est précédée de
+  « — », comme à l'export du portfolio (D-55). Les passages sans date
+  passent en tête : Twin9 ne lit rien avant son premier titre daté, et
+  l'interface ne les range dans aucune journée. Un texte que Twin9 lit en
+  mode Google Docs (moins de deux titres datés ; une date seule, puis un
+  trait `___`) le reste : une journée y reçoit « JJ.MM.AAAA », une ligne
+  vide et un trait, jamais un titre daté, qui le ferait changer de mode et
+  retoucherait toutes les journées. Le run garde le texte tel qu'il a été
+  envoyé.
+- **[choix d'implémentation] Le moins de retouches possible.** La mémoire de
+  la carte reconnaît une journée à son texte : une journée retouchée est
+  instruite de nouveau, et payée. Un texte que Twin9 lit déjà en ces
+  journées, chacune avec ce texte, part à l'octet — PLANT-01 (`### 02.03.26`,
+  et le titre du document avant la première journée), un export Google Docs
+  bien daté (une date seule, puis un trait `___`), les quatre SYNTH-* sans
+  date ; de même un texte de moins de deux journées datées (Twin9 ne date
+  rien à moins de deux titres). Sinon, seules changent pour Twin9 les
+  journées qui reçoivent un en-tête et celles qui absorbaient un passage
+  qu'elles rendent : pour un journal écrit à rebours comme les feuilles du
+  journal 300, le 1er (son en-tête) et le 3 (qui l'absorbait), pas les
+  autres.
+- **L'aperçu le dit** : « Pour que Twin9 y lise vos journées, le texte envoyé
+  est retouché (un en-tête de date ajouté, une date neutralisée par « — ») :
+  2 journées touchées, 1er févr. 2026 et 3 févr. 2026. » (six dates nommées,
+  puis « et N autres »), et « Le passage sans date, en tête du texte envoyé,
+  n'est pas lu par Twin9. » quand il y en a. Son compte de journées (`journees.total`,
+  le serveur découpe le texte reçu) est désormais celui de l'interface.
+- **[choix d'implémentation] Copie documentée, moteur intact.** Les deux
+  expressions de `Portfolio.php` (lignes 56 et 58 au commit a1d84bf) sont
+  recopiées dans le module, avec ce que PHP en fait (`\d` de toute écriture,
+  ses blancs, `\n` compris, `^` et `$` à `\n` seulement), plutôt que de
+  changer le moteur et sa parité avec l'oracle Python. Un test PHP passe le
+  texte rendu pour les onze formes (`schemas/fixtures/twin9-portfolio/`) au
+  `Portfolio` du vrai moteur, chargé par `EngineLoader` : ses dix journées.
+- Tests : `lib/twin9/portfolio-pour-twin9.test.js` (les onze formes et la
+  fixture, journées égales des deux côtés, journées retouchées ; les cinq
+  portfolios de Twin9, lus dans `TWIN_V9_DIR` et jamais recopiés, à
+  l'octet ; le moteur PHP lui-même sur eux et sur les fixtures quand il est
+  là ; journal à rebours ; deux entrées du même jour ; fusion et date
+  corrigées dans la fiche ; passages sans date, Google Docs, chiffres de
+  toute écriture, fins de ligne Windows) ; UC-APP-10-U23 (la page :
+  l'aperçu et le lancement envoient le même texte, l'aperçu dit les
+  journées retouchées) ; `api/tests/Twin9/PortfolioPourTwin9Test.php`.
+
+C3 et C4, dans l'importeur d'un run (`core/importers/twin9-run.js`), le même
+jour :
+
+- **Deux cartes du jour de même date font une journée** (C3). Un run d'avant
+  T0, ou d'un texte où deux entrées portent la même date, a ses cartes
+  `2026-02-03` et `2026-02-03_b`, de même `date` : la seconde écrasait la
+  première, et ses compétences disparaissaient sans rien dire. Désormais, à
+  code égal, le verdict au statut le plus fort (établi, puis renvoyé, puis
+  non établi ; à égalité la plus forte confiance, puis la première carte)
+  l'emporte avec son dossier et sa délibération, et reçoit les traces de
+  l'autre, sans doublon ; leurs traces de la stigmergie sont réunies,
+  conservées seulement si elles le sont toutes. Le rapport d'import le dit
+  (« 2026-02-03 : deux cartes du jour (2026-02-03, 2026-02-03_b) réunies en
+  une journée — … », avertissement `twin9-journee-dupliquee`). La trace dont
+  le passage est d'un autre jour y porte `at`, comme toute trace (D-72).
+- **« Établie par faisceau (second ressort) » se lit en seconde lecture**
+  (C4, D-68). Le second ressort du moteur instruit une compétence qu'aucune
+  journée n'établit mais dont les indices reviennent ; l'établie n'entrait
+  dans aucune journée ni dans le soleil, et ne se lisait que dans les
+  synthèses. Le run rend maintenant une seconde lecture (`source: twin9`,
+  « twin9:<run>:second-ressort ») : par compétence, son statut tel que le
+  moteur le dit, sa confiance, ses indices et les journées de ses traces ;
+  sa délibération à part (décision du président, jury, débat, pièces du
+  greffier, note au cartographe, traces à ouvrir dans le portfolio). Elle
+  se joint toujours, même au jeu qui reçoit les journées du run dans le
+  même lot, et ne change pas le soleil : ni une carte du jour ni une
+  journée que donne la fusion ne la portent. Sa ligne : « Jury du second
+  ressort de Twin9 : établie par faisceau (second ressort) · confiance 0,6
+  · 0 preuve, 2 indices · traces des 5 janv. 2026 et 6 janv. 2026 » ; la
+  section le dit second ressort, pas « une autre analyse … sur tout le
+  journal d'un coup » (D-69).
+- **[choix d'implémentation] Le panneau du pôle nomme les compétences
+  qu'une seconde lecture seule établit** (la limite de D-68) : hors du
+  soleil et de la liste, elles ne s'ouvraient pas. Il les liste sous
+  « Établies par une seconde lecture seulement, hors du soleil », et un
+  clic ouvre la compétence : sa seconde lecture, ses synthèses. Cela vaut
+  aussi pour un jury AuroraCore (2.02 dans le jeu de test de Lou). **Limite
+  qui demeure** : un pôle dont aucune compétence n'est dans le soleil ne se
+  choisit pas ; ses compétences établies par une seconde lecture seule ne
+  se lisent alors que dans les synthèses. Dans l'oracle 12 de Twin9, le
+  pôle de 2.07 a ses compétences du jour.
+- **[choix d'implémentation] La fusion garde le faisceau** : ses
+  attestations comptent dans la fusion à leur date, comme le moteur les
+  compte (une compétence « établie » dans sa synthèse) ; elles ne servent
+  plus à dater un `jour_index` (C4b : le repli 0 déplaçait la première
+  journée, la date « - » d'une trace sans date en ouvrait une). Les
+  écarter de la fusion aurait laissé un pôle de renvois seuls sans
+  compétence, que le schéma `cartographie-merge` refuse (oracle 02-cloud,
+  pôle 7).
+- Tests : `core/importers/twin9-run.test.js` (C3 : réunion, statut le plus
+  fort et traces sans doublon, ordre des cartes indifférent, stigmergie,
+  `at` par l'import ; C4 : la lecture et sa délibération, hors du soleil,
+  faisceau renvoyé ou non retenu, chaîne d'import, archive conforme et
+  réimportée sans doublon ; l'oracle 12, où 2.07 est établie par faisceau,
+  lu dans `TWIN_V9_DIR`) ; `lib/twin9/mapper.test.js` (C4b) ;
+  `ui/SecondReading.test.jsx` (la ligne et la phrase du second ressort,
+  avec un jury AuroraCore ; le panneau du pôle) ; UC-APP-10-U24.
 
 ---
 
@@ -4115,3 +4239,9 @@ Question posée avec D-70 (2026-10-16) :
   renvoie à l'analyse du 10 ; le découpage lit les années sur deux chiffres
   comme Twin9 (D-72). T3, répartir les traces par date de passage, reste à
   décider.
+- **2026-10-23** — Sprint 4, T0, C3 et C4, par délégation (phase D) : la
+  page de lancement de Twin9 lui envoie le portfolio découpé en les
+  journées de l'interface, en ne retouchant que les journées que Twin9
+  lisait autrement, et l'aperçu les nomme ; deux cartes du même jour font
+  une journée ; une compétence établie par le second ressort se lit en
+  seconde lecture, et le panneau de son pôle la nomme (D-73, D-68 amendée).

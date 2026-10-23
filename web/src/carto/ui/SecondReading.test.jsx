@@ -7,7 +7,7 @@ import { useEffect, useState } from 'react'
 import { cleanup, fireEvent, render, screen, waitFor, within } from '@testing-library/react'
 import { afterEach, beforeEach, describe, expect, it } from 'vitest'
 import CartoApp from './CartoApp.jsx'
-import { SecondReadings, analysisDate, matchTraces, readingName } from './SecondReading.jsx'
+import { SecondReadings, analysisDate, matchTraces, readingName, readingVerdict } from './SecondReading.jsx'
 import { createCartoStore, createMemoryAdapter } from '../core/store.js'
 import { importFiles } from '../core/import.js'
 import { createDataset } from '../core/model.js'
@@ -123,6 +123,48 @@ describe('plusieurs secondes lectures d’une compétence', () => {
   })
 })
 
+// Sprint 4, C4 (D-73) : le second ressort d'un run Twin9, une seconde lecture de ce run.
+const ressort = (codes = { '1.01': { status: 'established', rawStatus: 'établie par faisceau (second ressort)', confidence: 0.6, proofs: 0, hints: 2, dates: ['2026-01-05', '2026-01-06'] } }) => ({
+  id: 'twin9:7:second-ressort',
+  source: 'twin9',
+  journal: 'mon-journal',
+  analysedAt: '2026-10-19',
+  codes,
+  poles: [],
+})
+
+describe('le second ressort d’un run Twin9 en seconde lecture (sprint 4, C4)', () => {
+  it('son nom dit le jury du second ressort ; sa ligne, le statut du moteur — jamais « présence établie » seul — et les journées de ses traces', () => {
+    expect(readingName(ressort())).toBe('jury du second ressort de Twin9')
+    expect(readingVerdict(ressort(), ressort().codes['1.01'])).toBe('établie par faisceau (second ressort) · confiance 0,6 · 0 preuve, 2 indices · traces des 5 janv. 2026 et 6 janv. 2026')
+    expect(readingVerdict(ressort(), { ...ressort().codes['1.01'], dates: ['2026-01-05'] })).toMatch(/ · traces du 5 janv\. 2026$/)
+    // une lecture AuroraCore ne change pas
+    expect(readingVerdict({ source: 'aurora-core' }, { status: 'established', rawStatus: 'présence établie', confidence: 0.7, proofs: 2, hints: 0 })).toBe('présence établie · confiance 0,7 · 2 preuves, 0 indice')
+  })
+
+  it('seule : la phrase de la section dit le second ressort, pas « une autre analyse … sur tout le journal d’un coup »', () => {
+    render(<SecondReadings dataset={{ days: [], readings: [ressort()] }} code="1.01" getDetail={() => undefined} getRunDetail={() => undefined} ensureRunDetail={() => {}} />)
+    const section = screen.getByRole('region', { name: 'Seconde lecture' })
+    expect(section.querySelector('p').textContent).toBe(
+      'Le second ressort de l’analyse Twin9 faite le 19 octobre 2026 : un jury réuni sur des indices de plusieurs journées, qui l’établit par faisceau quand aucune journée ne l’établit. Il se lit ici et ne change pas le soleil.',
+    )
+    expect(section.querySelector('details.carto-second-reading > summary').textContent).toBe(
+      'Jury du second ressort de Twin9 : établie par faisceau (second ressort) · confiance 0,6 · 0 preuve, 2 indices · traces des 5 janv. 2026 et 6 janv. 2026',
+    )
+  })
+
+  it('avec un jury AuroraCore : chacune sur sa ligne, avec sa date ; la phrase les dit toutes deux', () => {
+    const core = { id: 'LOU@2026-04-19', source: 'aurora-core', analysedAt: '2026-04-19', codes: { '1.01': { status: 'established', rawStatus: null, confidence: 0.7, proofs: 2, hints: 0 } }, poles: [] }
+    render(<SecondReadings dataset={{ days: [], readings: [core, ressort()] }} code="1.01" getDetail={() => undefined} getRunDetail={() => undefined} ensureRunDetail={() => {}} />)
+    const section = screen.getByRole('region', { name: 'Seconde lecture' })
+    expect([...section.querySelectorAll('details.carto-second-reading > summary')].map((x) => x.textContent)).toEqual([
+      'Jury AuroraCore (analyse faite le 19 avril 2026) : présence établie · confiance 0,7 · 2 preuves, 0 indice',
+      'Jury du second ressort de Twin9 (analyse faite le 19 octobre 2026) : établie par faisceau (second ressort) · confiance 0,6 · 0 preuve, 2 indices · traces des 5 janv. 2026 et 6 janv. 2026',
+    ])
+    expect(section.querySelector('p').textContent).toMatch(/^D’autres lectures des mêmes écrits — une autre analyse, ou le second ressort d’une analyse Twin9 —/)
+  })
+})
+
 describe('seconde lecture dans le panneau de détail', () => {
   it('le soleil ne change pas : une compétence que seule la seconde lecture retient n’y entre pas', async () => {
     const { store } = await louWithReading({ reading: false })
@@ -191,6 +233,24 @@ describe('seconde lecture dans le panneau de détail', () => {
     await select('3.02 ')
     await within(detail()).findByRole('region', { name: 'Verdicts par journée' }, { timeout: 3000 })
     expect(within(detail()).queryByRole('region', { name: 'Seconde lecture' })).toBeNull()
+  })
+
+  it('un pôle nomme ses compétences qu’une seconde lecture seule établit, hors du soleil ; on les ouvre de là (D-68, D-73)', async () => {
+    const { store } = await louWithReading()
+    await mount(store)
+    await select('Pôle CŒUR')
+    const seules = await within(detail()).findByRole('region', { name: 'Établies par une seconde lecture' }, { timeout: 3000 })
+    expect(seules.textContent).toBe('Établies par une seconde lecture seulement, hors du soleil :2.02 Coopération')
+    fireEvent.click(within(seules).getByRole('button', { name: '2.02 Coopération' }))
+    const section = await within(detail()).findByRole('region', { name: 'Seconde lecture' }, { timeout: 3000 })
+    expect(section.querySelector('details.carto-second-reading > summary').textContent).toMatch(/^Jury AuroraCore : présence établie/)
+    expect(within(detail()).getByText(/^Pas de trace de cette compétence dans la sélection actuelle/)).toBeTruthy()
+    // sans seconde lecture, le pôle n'en nomme aucune
+    cleanup()
+    await mount((await louWithReading({ reading: false })).store)
+    await select('Pôle CŒUR')
+    await within(detail()).findByText('Pôle', { selector: '.carto-detail-kicker' }, { timeout: 3000 })
+    expect(within(detail()).queryByRole('region', { name: 'Établies par une seconde lecture' })).toBeNull()
   })
 
   it('un pôle : le rapport de la seconde lecture, lu à l’ouverture', async () => {

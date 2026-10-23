@@ -23,7 +23,9 @@ use stdClass;
  * days the admission took); the providers its calls reach, with their GDPR
  * tag and lane, and those its owner's consent named (P1-5); each call's
  * settings as it is sent (CallSettings::resume());
- * the college, the backends, the algorithm's parameters; the referential and
+ * the college, the backends, the algorithm's parameters — the greffier's
+ * stigmergy with them, as the engine reads it: its settings when it is on,
+ * {enabled: false} otherwise —; the referential and
  * the template set by id, version and fingerprint; the prices as billed (the
  * margin included with the instance's key), for the models its calls use.
  * Never the referential's block (its fiches, its preambles), a template, a
@@ -102,6 +104,8 @@ final class RunConfiguration
         foreach (MoteurReglages::ALGORITHME as $cle) {
             $algorithme[$cle] = self::copie($moteur->config->{$cle} ?? null);
         }
+        // sent to the engine only when it is on (MoteurReglages): off, the block says so
+        $algorithme['stigmergie'] = self::copie($moteur->config->stigmergie ?? (object) ['enabled' => false]);
         $versionsJeu = $jeu['versions'];
         ksort($versionsJeu, SORT_STRING);
 

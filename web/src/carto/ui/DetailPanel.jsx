@@ -1,5 +1,8 @@
 // Interface ultime — panneau de détail (spec §6.4) selon la sélection :
 // compétence, pôle, ou aucune (résumé du profil et légende de l'encodage).
+// Le panneau d'un pôle nomme aussi les compétences qu'une seconde lecture
+// seule établit (le second ressort d'un run Twin9, un jury AuroraCore) : hors
+// du soleil, elles s'ouvrent de là (D-68, D-73).
 
 import { formatLong, formatShort } from '../core/dates.js'
 import { DEFAULT_PARAMS, GUIDE_LEVELS } from '../core/formulas.js'
@@ -8,6 +11,7 @@ import { referentielHash } from '../../router.js'
 import { returnToPoles } from './Sun.jsx'
 import { poleVars } from './colors.js'
 import { usePalette } from './palette.js'
+import { readingsOf } from './SecondReading.jsx'
 
 const capitalize = (s) => s.charAt(0).toUpperCase() + s.slice(1)
 const fmt = (n, d = 2) => (typeof n === 'number' && Number.isFinite(n) ? n.toLocaleString('fr-FR', { minimumFractionDigits: d, maximumFractionDigits: d }) : '—')
@@ -120,6 +124,10 @@ export function DetailPanel({ refl, dataset, state, selection, t, onSelect, onWh
   if (selection?.type === 'pole') {
     const pole = refl.poleByNum.get(selection.num)
     const p = state.poles.get(selection.num)
+    // ses compétences qu'une seconde lecture établit, absentes du soleil : on les ouvre d'ici
+    const parLecture = (refl.codesByPole.get(selection.num) ?? []).filter(
+      (code) => !state.competencies.has(code) && readingsOf(dataset, code).some((r) => r.codes[code].status === 'established'),
+    )
     return (
       <article className="carto-detail carto-pole" aria-label={`Détail : pôle ${pole?.name}`} style={poleVars(pole?.color, palette)}>
         <header className="carto-detail-head">
@@ -184,6 +192,20 @@ export function DetailPanel({ refl, dataset, state, selection, t, onSelect, onWh
         ) : (
           <p className="carto-muted">Aucune compétence de ce pôle n’est observée dans la sélection actuelle.</p>
         )}
+        {parLecture.length > 0 ? (
+          <section className="carto-second-only" aria-label="Établies par une seconde lecture">
+            <p className="carto-small carto-muted">Établies par une seconde lecture seulement, hors du soleil :</p>
+            <ul className="carto-member-list">
+              {parLecture.map((code) => (
+                <li key={code}>
+                  <button type="button" className="carto-list-label" onClick={() => onSelect({ type: 'competency', code })}>
+                    <span className="carto-code">{code}</span> {refl.compByCode.get(code).name}
+                  </button>
+                </li>
+              ))}
+            </ul>
+          </section>
+        ) : null}
         {children}
       </article>
     )

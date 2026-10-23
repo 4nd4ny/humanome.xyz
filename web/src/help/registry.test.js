@@ -118,8 +118,8 @@ describe('helpFor — aide par rubrique et par rôle', () => {
 // des réglages, un point dit où les retrouver ; rien en mode expert (défaut),
 // rien ailleurs ; il se cumule avec l'astuce d'un rôle.
 describe('helpFor — mode simple', () => {
-  it('cartographie, espace et Twin6 : le point « mode expert » en mode simple seulement', () => {
-    for (const route of ['cartographie', 'espace', 'twin6ouverte']) {
+  it('cartographie, espace, Twin6 et Twin9 : le point « mode expert » en mode simple seulement', () => {
+    for (const route of ['cartographie', 'espace', 'twin6ouverte', 'twin9']) {
       const base = helpFor(route)
       expect(helpFor(route, { expert: false }).points, route).toEqual([...(base.points ?? []), SIMPLE_MODE_POINT])
       expect(helpFor(route, { expert: true }), route).toEqual(base)
@@ -128,8 +128,8 @@ describe('helpFor — mode simple', () => {
     expect(SIMPLE_MODE_POINT).toContain('« Mode expert » au bas du menu')
   })
 
-  it('les autres rubriques n’ont pas ce point (Twin9 : avec le lot 2 seulement)', () => {
-    for (const route of ['home', 'twin9', 'configuration', 'portfolio', 'guides', 'admin', 'not-found']) {
+  it('les autres rubriques n’ont pas ce point', () => {
+    for (const route of ['home', 'configuration', 'portfolio', 'guides', 'admin', 'not-found']) {
       expect(helpFor(route, { expert: false }).points ?? [], route).not.toContain(SIMPLE_MODE_POINT)
     }
   })

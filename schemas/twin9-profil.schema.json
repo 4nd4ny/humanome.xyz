@@ -2,7 +2,7 @@
   "$schema": "https://json-schema.org/draft/2020-12/schema",
   "$id": "https://humanome.xyz/schemas/twin9-profil.schema.json",
   "title": "Profil d'un run Twin9",
-  "description": "Décrit un run Twin9 de bout en bout (planning du moteur PHP, docs/plan-twin9-php.md de Twin_v9, lot 4a) : chaque paramètre d'algorithme du config.json de la v9.8, ses backends exceptés, et les options de sa ligne de commande qui règlent l'algorithme, troncatures comprises ; le collège des lecteurs ; pour chaque autre étape, le fournisseur, le modèle, le budget de sortie, l'effort et la réflexion, l'étage servant de valeur par défaut ; la voie, le parallélisme, le budget, la durée, la clé, le jeu de gabarits et le référentiel. Toute clé inconnue est refusée ; aucune température, que les modèles 5.5 refusent. Correspondance avec la v9.8 : docs/contrats.md §7.",
+  "description": "Décrit un run Twin9 de bout en bout (planning du moteur PHP, docs/plan-twin9-php.md de Twin_v9, lot 4a) : chaque paramètre d'algorithme du config.json de la v9.8, ses backends exceptés, et les options de sa ligne de commande qui règlent l'algorithme, troncatures comprises ; le collège des lecteurs ; pour chaque autre étape, le fournisseur, le modèle, le budget de sortie, l'effort et la réflexion, l'étage servant de valeur par défaut ; la voie, le parallélisme, le budget, la durée, la clé, le jeu de gabarits et le référentiel ; la stigmergie du greffier, un essai du moteur PHP, désactivée par défaut. Toute clé inconnue est refusée ; aucune température, que les modèles 5.5 refusent. Correspondance avec la v9.8 : docs/contrats.md §7.",
   "type": "object",
   "additionalProperties": false,
   "$defs": {
@@ -612,6 +612,47 @@
           "minimum": 1,
           "default": 30000,
           "description": "Taille d'un lot du retour aux sources, pas un plafond."
+        }
+      }
+    },
+    "stigmergie": {
+      "type": "object",
+      "additionalProperties": false,
+      "default": {
+        "enabled": false
+      },
+      "description": "La stigmergie du greffier (sprint 3, de type ACO ; docs/twin9/spec-stigmergie.md de Twin_v9) : les passages que valident le juge léger ou le tribunal déposent une trace dans la mémoire de la carte, qui s'évapore d'une analyse de la journée à l'autre ; seul le greffier la lit, dans le bloc des calques de son dossier. Un essai, sans équivalent dans la v9.8 : désactivée par défaut, le moteur est celui de la v9.8. Aucun appel en plus. Activée, elle demande calques.accumulation à false (les calques archivés votent déjà au consensus : les traces y compteraient deux fois) ; le renforcement d'une analyse à l'autre demande rescan. L'activer, ou changer ses réglages, fait relire les journées de la carte. Une clé de premier niveau, jamais dans calques.",
+      "required": [
+        "enabled"
+      ],
+      "properties": {
+        "enabled": {
+          "type": "boolean",
+          "description": "Seul le booléen vrai l'active."
+        },
+        "evaporation": {
+          "type": "number",
+          "minimum": 0.2,
+          "maximum": 1,
+          "description": "ρ, ce que perd une trace à chaque analyse de la journée. Absent : 0,3, la valeur du moteur. Pas moins de 0,2 : en dessous, une trace peut disparaître d'un coup quand son analyse sort des 16 que lit un run."
+        },
+        "exploration": {
+          "type": "number",
+          "minimum": 0,
+          "maximum": 1,
+          "description": "ε, la part des dossiers que monte un greffier explorateur, aveugle aux traces, par un tirage déterministe. Absent : 0,2, la valeur du moteur."
+        },
+        "graine": {
+          "type": "integer",
+          "minimum": -9007199254740991,
+          "maximum": 9007199254740991,
+          "description": "La graine des tirages des explorateurs. Absent : 1, la valeur du moteur. Entre -(2^53 - 1) et 2^53 - 1 : au-delà, un entier se lit en flottant (JSON, PHP), que le moteur refuse."
+        },
+        "lignes": {
+          "type": "integer",
+          "minimum": 0,
+          "maximum": 10,
+          "description": "K, le nombre de lignes de traces, au plus, dans le dossier d'une compétence. Absent : 5, la valeur du moteur."
         }
       }
     },

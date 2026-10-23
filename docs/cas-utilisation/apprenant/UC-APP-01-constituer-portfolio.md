@@ -202,7 +202,9 @@ ou le lien « Créer un portfolio » du tableau de bord `#/espace`).
   portfolios fictifs de Twin9 (`Twin_v9/tests/portfolios`) et sur un
   portfolio synthétique aux titres de tous niveaux, les journées de
   l'interface sont celles de Twin9 (test du moteur, sauté sans
-  `TWIN_V9_DIR`).
+  `TWIN_V9_DIR`). Pour tout autre portfolio, la page de lancement de Twin9
+  lui envoie les journées de l'interface, celles de la fiche retouchée à la
+  main comprises (UC-APP-10 RG16, sprint 4 T0).
 - **RG6** — Identifiant Google Docs. Côté navigateur, un identifiant collé
   seul doit faire 20 à 80 caractères `[A-Za-z0-9_-]` ; un identifiant extrait
   d'une URL (`/document/d/`, `/document/u/<n>/d/`, `?id=` sur **n'importe
@@ -221,6 +223,15 @@ ou le lien « Créer un portfolio » du tableau de bord `#/espace`).
   produit est faite par `web/src/lib/archive.js` (UC-APP-06) ; le moteur
   exporte aussi `toArchiveSegmentation` (journées datées seulement, en
   `{date, debut, fin}`), qu'aucune partie de l'IHM n'appelle.
+- **RG10** — Marques du portfolio surligné de Twin9 (S3-3, 2026-10-23 ;
+  `docs/contrats.md` §7.4) : tout texte qui entre dans le portfolio (fichier,
+  Google Docs, texte collé ou écrit) perd les éléments qui portent
+  `data-twin9-*`, `data-incertitude` ou `data-intensite` — leurs balises, pas
+  leur texte — et le tableau des traces (`<!-- twin9-traces -->` …
+  `<!-- /twin9-traces -->`) avant d'être rangé et découpé
+  (`web/src/lib/twin9/marques.js`) ; l'import d'un fichier ou d'un Google Docs
+  le dit. Le texte analysé n'en porte jamais : aucune trace n'entre par le
+  texte d'un fichier. Un `<mark>` écrit par la personne reste.
 
 ## Données et RGPD
 
@@ -241,6 +252,7 @@ ou le lien « Créer un portfolio » du tableau de bord `#/espace`).
 | Front | `web/src/components/PortfolioEditor.jsx` | Éditeur (compteurs, statut, plein écran) — ADR-010 |
 | Front | `web/src/lib/portfolio-store.js` — `createPortfolioStore`, `createIndexedDbAdapter` | CRUD local, base `humanome-portfolios` |
 | Front | `web/src/lib/gdoc.js` — `extractGdocId`, `fetchGdocText` | Reconnaissance de l'URL, appel du relais, messages d'erreur |
+| Front | `web/src/lib/twin9/marques.js` — `retirerMarquesTwin9` | Les marques du portfolio surligné de Twin9 retirées de tout texte entré (RG10) |
 | Moteur | `engine/src/portfolio/segment.js` — `segmentText`, `mergeSegments`, `splitSegment` | Découpage journalier et ajustements |
 | Moteur | `engine/src/portfolio/segment.js` — `toArchiveSegmentation` | API moteur exportée, **non utilisée par l'IHM** (l'archive projette via `web/src/lib/archive.js`, UC-APP-06) |
 | API | `GET /api/gdoc-text` — `api/src/routes/llm.php` | Relais d'export texte Google Docs |
@@ -273,6 +285,7 @@ ou le lien « Créer un portfolio » du tableau de bord `#/espace`).
 | UC-APP-01-U15 | `fetchGdocText` | Erreur HTML (hébergement statique) → API absente (E5) | idem |
 | UC-APP-01-U16 | `isValidIsoDate` | Date stricte AAAA-MM-JJ, calendrier réel (E6) | idem |
 | UC-APP-01-U17 | `PortfolioEditor` | Compteurs, statut, `onChange`, plein écran / Échap | idem |
+| UC-APP-01-U23 | `PortfolioView` | Texte collé et fichier : marques de Twin9 et tableau des traces retirés avant le rangement et le découpage, l'import le dit ; un `<mark>` de la personne reste (RG10) | idem |
 | UC-APP-01-U18 | `DemoConfig::load` | `perIpPerHour` : base > env > fichier (20) (RG8) | `api/tests/UseCases/Unit/UcApp01ConstituerPortfolioTest.php` |
 | UC-APP-01-U19 | `ClientIp` + `RateLimiter` | Identité IPv4 complète / préfixe /64 IPv6 ; compteur partagé par une /64 ; `Retry-After` 30 s puis doublé, plafonné (le seau haché `llm:` de la route est vérifié par F18) | idem |
 | UC-APP-01-U20 | `LlmRuntime` | Client HTTP injectable, `null` restaure cURL | idem |

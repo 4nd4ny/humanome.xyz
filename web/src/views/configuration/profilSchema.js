@@ -46,6 +46,16 @@ export function sensDeNull(node) {
   return m ? m[1].trim() : 'aucun'
 }
 
+/**
+ * La valeur que prend le moteur d'un réglage absent, comme sa description la
+ * dit (« Absent : 0,3, la valeur du moteur. ») : les réglages de la stigmergie,
+ * sans valeur par défaut au schéma ; null sinon.
+ */
+export function valeurDuMoteur(node) {
+  const m = /Absent\s*:\s*(\S+?),?\s+la valeur du moteur/.exec(resoudre(node).description ?? '')
+  return m ? m[1] : null
+}
+
 /** Un réglage qui peut manquer : son parent ne l'exige pas, et il n'a pas de valeur par défaut. */
 export function facultatif(parent, cle) {
   const p = resoudre(parent)
@@ -140,6 +150,10 @@ const LIBELLES = {
   calques: 'Calques',
   merge: 'Fusion',
   scan_global: 'Arpenteur',
+  stigmergie: 'Stigmergie du greffier (essai)',
+  evaporation: 'Évaporation (ρ)',
+  exploration: 'Exploration (ε)',
+  lignes: 'Lignes de traces par dossier (K)',
   troncatures: 'Troncatures',
   fournisseur: 'Fournisseur',
   modele: 'Modèle',
@@ -153,9 +167,16 @@ const LIBELLES = {
   enabled: 'Lancer l’Arpenteur',
 }
 
-/** Le libellé d'un réglage : connu, ou sa clé, lisible. */
-export function libelle(cle, node) {
+/** Les libellés qui dépendent du chemin : une même clé, deux réglages (« enabled »). */
+const LIBELLES_CHEMINS = {
+  'stigmergie/enabled': 'Activer la stigmergie',
+}
+
+/** Le libellé d'un réglage : celui de son chemin, connu, ou sa clé, lisible. */
+export function libelle(cle, node, chemin) {
   if (typeof cle === 'number') return `Lecteur ${cle + 1}`
+  const parChemin = Array.isArray(chemin) ? LIBELLES_CHEMINS[chemin.join('/')] : undefined
+  if (parChemin) return parChemin
   if (LIBELLES[cle]) return LIBELLES[cle]
   // une étape : sa description la nomme (« Greffier (étage rapide). »)
   const description = resoudre(node)?.description

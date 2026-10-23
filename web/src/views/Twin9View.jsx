@@ -30,13 +30,36 @@
 // chaque profil, avant tout aperçu, puisque l'aperçu emporte déjà le
 // portfolio. Il vaut pour cette liste : un profil qui en atteint d'autres le
 // redemande. Le lancement l'envoie ({fournisseurs: [ids]}), et le serveur
-// refuse une liste qui n'est pas celle du profil.
+// refuse une liste qui n'est pas celle du profil. Le texte envoyé ne porte
+// jamais les marques d'un portfolio surligné par Twin9 (S3-3,
+// lib/twin9/marques.js), qu'il vienne de la bibliothèque ou d'un fichier.
 //
 // Le moteur lit le référentiel du run (T16), et sa carte s'ouvre dans la
 // cartographie avec lui (T17) : RESPIRE, ou celui d'une autre structure, dont
 // le titre du jeu porte le nom.
+//
+// Depuis le sprint 4 (T0, journal de la cartographie D-73), Twin9 reçoit le
+// portfolio découpé en les journées de l'interface (lib/twin9/portfolio-pour-twin9.js) :
+// le découpage de la fiche du portfolio, ses fusions et dates corrigées à la
+// main comprises, ou celui du site pour un fichier ; un en-tête que Twin9 ne
+// lit pas reçoit `### AAAA-MM-JJ`, une date qu'il lirait au milieu d'une
+// journée est neutralisée par « — ». L'aperçu et le lancement envoient ce même
+// texte, et l'aperçu dit les journées dont le texte change pour Twin9.
+//
+// Mode d'affichage (sprint 1, lot 2 ; lib/ui-mode.js) : en mode simple, la
+// page lance avec le profil v9.8, sans liste des profils ni « Régler mes
+// profils » ; un profil choisi en mode expert ne part pas en mode simple. Le
+// mode n'est jamais un droit : #/configuration reste ouverte par son adresse.
+//
+// Le référentiel se choisit au lancement (sprint 5, lot C) : par défaut celui
+// du profil ; sinon un référentiel publié (sa dernière version), ou, en mode
+// expert, un de ses brouillons pour un run d'essai. Le menu « Référentiel »
+// est toujours proposé en mode expert ; en mode simple, dès que plus d'un
+// référentiel est publié. Le serveur l'écrit dans la copie du profil, avant
+// de l'admettre ; un autre référentiel retire les spécialistes que le profil
+// impose au jury par pôle ou par compétence, et l'aperçu le dit.
 
-import { useCallback, useEffect, useState } from 'react'
+import { useCallback, useEffect, useMemo, useState } from 'react'
 import { ApiError } from '../api/client.js'
 import {
   annulerRun,
@@ -53,6 +76,10 @@ import {
 } from '../api/twin9.js'
 import { createPortfolioStore } from '../lib/portfolio-store.js'
 import { twin9RunFiles } from '../lib/interface-handoff.js'
+import { sansMarquesTwin9 } from '../lib/twin9/marques.js'
+import { portfolioPourTwin9 } from '../lib/twin9/portfolio-pour-twin9.js'
+import { formatShort } from '../carto/core/dates.js'
+import { useUiMode } from '../lib/ui-mode.js'
 import { libelleRgpd, libelleVoie } from './configuration/profilSchema.js'
 import ConfigurationDuRun from './twin9/ConfigurationDuRun.jsx'
 import '../styles/twin9.css'
@@ -93,6 +120,25 @@ function fournisseursDuLancement(donnees, profil) {
   return Array.isArray(liste) && liste.length > 0 ? liste : [ANTHROPIC]
 }
 
+/**
+ * Les référentiels qu'un lancement peut choisir (S5, lot C ; `referentiels` de GET twin9/configuration) : chaque
+ * référentiel publié, sa dernière version (`version` nulle) ; en mode expert, ses brouillons, pour un run d'essai.
+ * @returns {Array<{valeur: string, id: string, version: string|null, libelle: string}>}
+ */
+function choixReferentiels(referentiels, expert) {
+  const options = []
+  for (const r of Array.isArray(referentiels) ? referentiels : []) {
+    const nom = r.label || r.id
+    if (r.versions?.length > 0) options.push({ valeur: r.id, id: r.id, version: null, libelle: nom })
+    if (expert) {
+      for (const v of r.brouillons ?? []) {
+        options.push({ valeur: `${r.id}@${v}`, id: r.id, version: v, libelle: `${nom} ${v} (brouillon, run d’essai)` })
+      }
+    }
+  }
+  return options
+}
+
 /** « Anthropic, OpenAI et Mistral AI ». */
 function enumeration(noms) {
   return noms.length < 2 ? noms.join('') : `${noms.slice(0, -1).join(', ')} et ${noms[noms.length - 1]}`
@@ -125,11 +171,118 @@ function phraseFournisseurs(fournisseurs) {
   return phrases.join(' ')
 }
 
+/** Combien de dates une phrase nomme avant de dire « et N autres ». */
+const DATES_NOMMEES = 6
+
 /**
- * Avant de lancer : les journées à instruire ; le coût estimé, en moyenne, au plus bas et au plus haut, et la durée ;
- * celles que le crédit ou le budget admet avec leur fusion (T8), ou le refus, qui dit ce qu'il faudrait ; les plafonds.
+ * Ce que l'envoi change au texte (sprint 4, T0) : les journées retouchées pour que Twin9 y lise celles de
+ * l'interface, nommées ; les passages sans date, en tête, qu'il ne lit pas. Vide quand rien ne change.
  */
-function Apercu({ apercu }) {
+function phraseRetouche({ retouchees, sansDate }) {
+  const s = (n) => (n > 1 ? 's' : '')
+  const phrases = []
+  const n = retouchees.length
+  if (n > 0) {
+    const noms = retouchees.slice(0, DATES_NOMMEES).map((d) => formatShort(d, { weekday: false }))
+    const reste = n - noms.length
+    const liste = reste > 0 ? `${noms.join(', ')} et ${reste} autre${s(reste)}` : enumeration(noms)
+    phrases.push(
+      `Pour que Twin9 y lise vos journées, le texte envoyé est retouché (un en-tête de date ajouté, une date ` +
+        `neutralisée par « — ») : ${n} journée${s(n)} touchée${s(n)}, ${liste}.`,
+    )
+  }
+  if (sansDate > 0) {
+    phrases.push(
+      sansDate > 1
+        ? `Les ${sansDate} passages sans date, en tête du texte envoyé, ne sont pas lus par Twin9.`
+        : 'Le passage sans date, en tête du texte envoyé, n’est pas lu par Twin9.',
+    )
+  }
+  return phrases.join(' ')
+}
+
+/** Une journée de Twin9 par son identifiant : « 3 févr. 2026 », « 3 févr. 2026 (2e entrée) » pour « 2026-02-03_b ». */
+function nomDeJournee(id) {
+  const m = /^(\d{4}-\d{2}-\d{2})(?:_([b-z]))?$/.exec(id)
+  const date = m ? formatShort(m[1], { weekday: false }) : '—'
+  if (date === '—') return id
+  return m[2] ? `${date} (${m[2].charCodeAt(0) - 96}e entrée)` : date
+}
+
+/**
+ * Les journées que Twin9 lisait dans le texte d'origine et qu'il ne lit plus dans le texte envoyé (sprint 4, T0) :
+ * la carte est additive, une journée de sa mémoire absente du portfolio y reste, et sa fusion la compte encore, avec
+ * le même passage dans la journée qui l'a reçu. Celles que la mémoire de la carte garde, quand l'aperçu la dit
+ * (`memoire`) ; sinon toutes, au conditionnel. Vide quand il n'y en a pas.
+ */
+function phraseDisparues(disparues, memoire) {
+  const connue = Array.isArray(memoire)
+  const jours = connue ? disparues.filter((id) => memoire.includes(id)) : disparues
+  const n = jours.length
+  if (n === 0) return ''
+  const noms = jours.slice(0, DATES_NOMMEES).map(nomDeJournee)
+  const reste = n - noms.length
+  const liste = reste > 0 ? `${noms.join(', ')} et ${reste} autre${reste > 1 ? 's' : ''}` : enumeration(noms)
+  const lues =
+    n > 1
+      ? `Twin9 lisait dans ce texte ${n} journées qu’il n’y lit plus : ${liste}.`
+      : `Twin9 lisait dans ce texte une journée qu’il n’y lit plus : ${liste}.`
+  const suite =
+    n > 1
+      ? connue
+        ? 'Lues par un run précédent, elles restent dans la mémoire de la carte, et sa fusion les compte encore.'
+        : 'Si un run précédent les a lues, elles restent dans la mémoire de la carte, et sa fusion les compte encore.'
+      : connue
+        ? 'Lue par un run précédent, elle reste dans la mémoire de la carte, et sa fusion la compte encore.'
+        : 'Si un run précédent l’a lue, elle reste dans la mémoire de la carte, et sa fusion la compte encore.'
+  return `${lues} ${suite}`
+}
+
+/**
+ * À moins de deux journées datées dans l'interface, le texte part tel quel (sprint 4, T0) : les journées que Twin9 y
+ * lit pourtant et que l'interface n'a pas (des titres datés d'autres jours), et celle de l'interface qu'il n'y lit pas
+ * (avant son premier titre daté). Vide quand Twin9 y lit les journées de l'interface, ou rien de daté.
+ */
+function phraseEcart({ autres = [], nonLues = [] }) {
+  if (autres.length === 0 && nonLues.length === 0) return ''
+  const liste = (jours) => {
+    const noms = jours.slice(0, DATES_NOMMEES).map(nomDeJournee)
+    const reste = jours.length - noms.length
+    return reste > 0 ? `${noms.join(', ')} et ${reste} autre${reste > 1 ? 's' : ''}` : enumeration(noms)
+  }
+  const parties = []
+  if (autres.length > 0) {
+    parties.push(
+      `Twin9 lit dans ce texte ${autres.length > 1 ? `${autres.length} journées` : 'une journée'} que l’interface n’a pas : ` +
+        liste(autres),
+    )
+  }
+  if (nonLues.length > 0) {
+    const quoi = nonLues.length > 1 ? `les vôtres, des ${liste(nonLues)}` : `la vôtre, du ${liste(nonLues)}`
+    parties.push(`${parties.length > 0 ? 'et ' : 'Twin9 '}ne lit pas ${quoi}`)
+  }
+  return `${parties.join(', ')}. Le texte part tel quel : à moins de deux journées datées, il n’est pas retouché.`
+}
+
+/** Les spécialistes qu'un autre référentiel retire au jury du profil (S5, lot C) : vide quand il n'en retire aucun. */
+function phraseJury(retires) {
+  const par = [
+    retires.includes('specialistes') ? 'par pôle' : null,
+    retires.includes('par_competence') ? 'par compétence' : null,
+  ].filter(Boolean)
+  return par.length === 0
+    ? ''
+    : `Les spécialistes que ce profil impose au jury ${par.join(' et ')} valent pour son référentiel : ils sont retirés ` +
+        'pour celui-ci, et le jury garde ses sièges par défaut.'
+}
+
+/**
+ * Avant de lancer : le référentiel lu (S5, lot C) ; les journées à instruire ; le coût estimé, en moyenne, au plus bas
+ * et au plus haut, et la durée ; celles que le crédit ou le budget admet avec leur fusion (T8), ou le refus, qui dit ce
+ * qu'il faudrait ; les plafonds ; ce que l'envoi change au texte, et les journées que Twin9 n'y lit plus que la carte
+ * garde (sprint 4, T0).
+ */
+function Apercu({ apercu, envoi }) {
   const e = apercu.estimation
   const a = apercu.admission
   const source =
@@ -153,9 +306,23 @@ function Apercu({ apercu }) {
         : ''
   const { budget_usd: budget, duree_minutes: minutes } = apercu.plafonds
   const s = (n) => (n > 1 ? 's' : '')
+  const retouche = envoi ? phraseRetouche(envoi) : ''
+  const disparues = envoi?.disparues ? phraseDisparues(envoi.disparues, apercu.memoire) : ''
+  const ecart = envoi ? phraseEcart(envoi) : ''
+  const ref = apercu.referentiel
+  const jury = Array.isArray(apercu.jury_retire) ? phraseJury(apercu.jury_retire) : ''
   return (
     <section className="twin9-apercu" aria-label="Avant de lancer">
+      {ref?.id ? (
+        <p>
+          Référentiel lu : {ref.label || ref.id}
+          {ref.version ? `, version ${ref.version}` : ''}.{jury ? ` ${jury}` : ''}
+        </p>
+      ) : null}
       <p>{phraseJournees(apercu.journees)}</p>
+      {retouche ? <p>{retouche}</p> : null}
+      {disparues ? <p>{disparues}</p> : null}
+      {ecart ? <p>{ecart}</p> : null}
       {a?.refus ? (
         <p role="alert">
           {a.refus}.{a.limite === 'credit' ? <> <a href="#/compte/credit">Recharger</a></> : null}
@@ -228,17 +395,23 @@ export default function Twin9View({ section = null, deps = {}, onOpenInInterface
 
 function Lancer({ deps }) {
   const { fetchFn } = deps
+  // Mode d'affichage (défaut du contexte : expert, la liste des profils est proposée).
+  const { expert } = useUiMode()
   const navigate = deps.navigate ?? ((hash) => (window.location.hash = hash))
   const [etat, setEtat] = useState({ chargement: true })
   const [donnees, setDonnees] = useState(null)
   const [portfolio, setPortfolio] = useState('')
   const [fichier, setFichier] = useState(null)
   const [profil, setProfil] = useState('')
+  // le référentiel choisi au lancement (S5, lot C) : '' pour celui du profil
+  const [referentiel, setReferentiel] = useState('')
   const [visible, setVisible] = useState(false)
   // l'accord, donné pour une liste de fournisseurs et de voies : la clé de cette liste, null sans accord
   const [accord, setAccord] = useState(null)
   const [occupe, setOccupe] = useState(false)
   const [erreur, setErreur] = useState(null)
+  // en mode simple, le profil v9.8 : un profil choisi en mode expert ne part pas (S1, lot 2)
+  const profilEffectif = expert ? profil : ''
 
   useEffect(() => {
     let actif = true
@@ -246,7 +419,14 @@ function Lancer({ deps }) {
     Promise.all([fetchRuns({ fetchFn }), fetchConfiguration({ fetchFn }), store.list().catch(() => [])])
       .then(([runs, config, portfolios]) => {
         if (!actif) return
-        setDonnees({ ...runs, profils: config.profils, defautFournisseurs: config.defaut_fournisseurs ?? null, portfolios })
+        setDonnees({
+          ...runs,
+          profils: config.profils,
+          defautFournisseurs: config.defaut_fournisseurs ?? null,
+          referentiels: config.referentiels ?? [],
+          defautReferentiel: config.defaut?.referentiel ?? null,
+          portfolios,
+        })
         setPortfolio(portfolios[0]?.id ?? 'fichier')
         setEtat({})
       })
@@ -257,7 +437,7 @@ function Lancer({ deps }) {
   }, [fetchFn, deps.store])
 
   // L'accord vaut pour les fournisseurs qu'il nomme : un profil qui en atteint d'autres, ou par une autre voie, le redemande.
-  const fournisseurs = fournisseursDuLancement(donnees, profil)
+  const fournisseurs = fournisseursDuLancement(donnees, profilEffectif)
   const cleAccord = JSON.stringify(fournisseurs.map((f) => [f.id, f.voie]))
   const accorde = accord !== null && accord === cleAccord
   // un accord donné pour d'autres fournisseurs tombe : revenir à leur profil le redemande
@@ -265,12 +445,35 @@ function Lancer({ deps }) {
     if (accord !== null && accord !== cleAccord) setAccord(null)
   }, [accord, cleAccord])
 
+  // Le référentiel (S5, lot C) : celui du profil, ou un autre ; en mode simple, ni brouillon ni menu tant qu'un seul
+  // référentiel est publié. Celui du profil, à sa version (figée ou la dernière), est « Celui du profil » : il n'est
+  // pas proposé une seconde fois, où il lirait la dernière version publiée (ses brouillons, oui). Un choix que le menu
+  // ne propose plus (un brouillon en mode simple, le référentiel du profil choisi) retombe sur le profil.
+  const tousLesReferentiels = choixReferentiels(donnees?.referentiels, expert)
+  const publies = tousLesReferentiels.filter((o) => o.version === null).length
+  const menuReferentiel = expert ? tousLesReferentiels.length > 0 : publies > 1
+  const duProfil =
+    profilEffectif === '' ? donnees?.defautReferentiel : donnees?.profils.find((p) => String(p.id) === profilEffectif)?.referentiel
+  const optionsReferentiel = tousLesReferentiels.filter((o) => !(o.version === null && o.id === duProfil?.id))
+  const referentielChoisi = menuReferentiel ? (optionsReferentiel.find((o) => o.valeur === referentiel) ?? null) : null
+  const choixRef = referentielChoisi ? { id: referentielChoisi.id, version: referentielChoisi.version } : null
+  const cleReferentiel = referentielChoisi?.valeur ?? ''
+  const nomDuProfil = duProfil?.id
+    ? `${tousLesReferentiels.find((o) => o.id === duProfil.id && o.version === null)?.libelle ?? duProfil.id}` +
+      (duProfil.version ? `, version ${duProfil.version}` : '')
+    : null
+
   // Avant de lancer, l'accord donné : ce que le run instruirait, et ce qu'il coûterait.
   const local = donnees?.portfolios.find((p) => p.id === portfolio) ?? null
-  const choisi = local ? { nom: nomDeFichier(local.titre), texte: local.texte } : fichier
+  // le texte analysé ne porte jamais les marques d'un portfolio surligné (S3-3), d'où qu'il vienne
+  const choisi = local ? { nom: nomDeFichier(local.titre), texte: sansMarquesTwin9(local.texte) } : fichier
+  // Twin9 reçoit les journées de l'interface (sprint 4, T0) : celles de la fiche, sinon celles du site.
+  const texteChoisi = choisi?.texte ?? ''
+  const segmentsLocaux = local?.segments
+  const envoi = useMemo(() => portfolioPourTwin9(texteChoisi, { segments: segmentsLocaux }), [texteChoisi, segmentsLocaux])
   const [apercu, setApercu] = useState(null)
   const nom = choisi?.nom ?? null
-  const texte = choisi?.texte ?? ''
+  const texte = envoi.texte
   useEffect(() => {
     if (!accorde || nom === null || texte.trim() === '') {
       setApercu(null)
@@ -278,13 +481,21 @@ function Lancer({ deps }) {
     }
     let actif = true
     setApercu({ chargement: true })
-    apercuRun({ profil: profil === '' ? null : Number(profil), portfolio: { nom, texte } }, { fetchFn })
+    const [id, version] = cleReferentiel === '' ? [] : [cleReferentiel.split('@')[0], cleReferentiel.split('@')[1] ?? null]
+    apercuRun(
+      {
+        profil: profilEffectif === '' ? null : Number(profilEffectif),
+        portfolio: { nom, texte },
+        ...(id ? { referentiel: { id, version } } : {}),
+      },
+      { fetchFn },
+    )
       .then((a) => actif && setApercu({ donnees: a }))
       .catch((e) => actif && setApercu({ erreur: e.message }))
     return () => {
       actif = false
     }
-  }, [accorde, profil, nom, texte, fetchFn])
+  }, [accorde, profilEffectif, cleReferentiel, nom, texte, fetchFn])
 
   if (etat.chargement) return <p>Chargement…</p>
   if (etat.erreur) {
@@ -307,10 +518,11 @@ function Lancer({ deps }) {
     try {
       const run = await lancerRun(
         {
-          profil: profil === '' ? null : Number(profil),
-          portfolio: choisi,
+          profil: profilEffectif === '' ? null : Number(profilEffectif),
+          portfolio: { nom: choisi.nom, texte: envoi.texte },
           accord: { fournisseurs: fournisseurs.map((f) => f.id) },
           visibilite: visible ? 'cartographe' : 'privee',
+          ...(choixRef ? { referentiel: choixRef } : {}),
         },
         { fetchFn },
       )
@@ -323,7 +535,7 @@ function Lancer({ deps }) {
 
   const lireFichier = (f) => {
     if (!f) return setFichier(null)
-    f.text().then((texte) => setFichier({ nom: f.name, texte }))
+    f.text().then((texte) => setFichier({ nom: f.name, texte: sansMarquesTwin9(texte) }))
   }
 
   return (
@@ -331,20 +543,41 @@ function Lancer({ deps }) {
       {donnees.disponible ? (
         <form className="twin9-lancer" onSubmit={lancer} noValidate>
           <h3>Lancer une analyse</h3>
-          <div className="config-champ">
-            <label htmlFor="twin9-profil">Profil</label>
-            <div className="config-commande">
-              <select id="twin9-profil" value={profil} onChange={(e) => setProfil(e.target.value)}>
-                <option value="">Profil v9.8</option>
-                {donnees.profils.map((p) => (
-                  <option key={p.id} value={p.id}>
-                    {p.nom}
-                  </option>
-                ))}
-              </select>{' '}
-              <a href="#/configuration">Régler mes profils</a>
+          {expert ? (
+            <div className="config-champ">
+              <label htmlFor="twin9-profil">Profil</label>
+              <div className="config-commande">
+                <select id="twin9-profil" value={profil} onChange={(e) => setProfil(e.target.value)}>
+                  <option value="">Profil v9.8</option>
+                  {donnees.profils.map((p) => (
+                    <option key={p.id} value={p.id}>
+                      {p.nom}
+                    </option>
+                  ))}
+                </select>{' '}
+                <a href="#/configuration">Régler mes profils</a>
+              </div>
             </div>
-          </div>
+          ) : (
+            <p className="privacy-note" data-testid="twin9-profil-simple">
+              Profil : Profil v9.8. Le mode expert, au bas du menu, propose vos profils et leurs réglages.
+            </p>
+          )}
+          {menuReferentiel ? (
+            <div className="config-champ">
+              <label htmlFor="twin9-referentiel">Référentiel</label>
+              <div className="config-commande">
+                <select id="twin9-referentiel" value={cleReferentiel} onChange={(e) => setReferentiel(e.target.value)}>
+                  <option value="">{nomDuProfil ? `Celui du profil (${nomDuProfil})` : 'Celui du profil'}</option>
+                  {optionsReferentiel.map((o) => (
+                    <option key={o.valeur} value={o.valeur}>
+                      {o.libelle}
+                    </option>
+                  ))}
+                </select>
+              </div>
+            </div>
+          ) : null}
           <div className="config-champ">
             <label htmlFor="twin9-portfolio">Portfolio</label>
             <div className="config-commande">
@@ -380,7 +613,7 @@ function Lancer({ deps }) {
               {phraseFournisseurs(fournisseurs)} Voir la <a href="#/confidentialite">politique de confidentialité</a>.
             </label>
           </fieldset>
-          {apercu?.donnees ? <Apercu apercu={apercu.donnees} /> : null}
+          {apercu?.donnees ? <Apercu apercu={apercu.donnees} envoi={envoi} /> : null}
           {apercu?.chargement ? <p>Estimation…</p> : null}
           {apercu?.erreur ? (
             <p className="load-error" role="alert">

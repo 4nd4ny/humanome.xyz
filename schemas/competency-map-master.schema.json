@@ -103,14 +103,14 @@
     },
     "readings": {
       "type": "array",
-      "description": "Secondes lectures (journal de la cartographie, D-68) : une autre analyse des mêmes écrits — un run AuroraCore et son jury complet — jointe à chaque compétence sans changer le soleil (les verdicts par journée le font). Par lecture, un résumé par compétence ; ses délibérations sont dans runDetails, sous « <id>|<code> » et « <id>|pole:<n> ». Ajout 4.x, facultatif.",
+      "description": "Secondes lectures (journal de la cartographie, D-68) : une autre analyse des mêmes écrits — un run AuroraCore et son jury complet — jointe à chaque compétence sans changer le soleil (les verdicts par journée le font) ; depuis le sprint 4 (C4, D-73), aussi le second ressort d'un run Twin9 (les compétences qu'il établit par faisceau). Par lecture, un résumé par compétence ; ses délibérations sont dans runDetails, sous « <id>|<code> » et « <id>|pole:<n> ». Ajout 4.x, facultatif.",
       "items": {
         "type": "object",
         "additionalProperties": true,
         "required": ["id", "codes"],
         "properties": {
-          "id": { "type": "string", "minLength": 1, "description": "Identifiant du run (« <journal>@<date d'analyse> »)." },
-          "source": { "type": "string", "description": "Chaîne d'analyse (« aurora-core »)." },
+          "id": { "type": "string", "minLength": 1, "description": "Identifiant du run (« <journal>@<date d'analyse> ») ; pour le second ressort d'un run Twin9, « twin9:<run>:second-ressort »." },
+          "source": { "type": "string", "description": "Chaîne d'analyse (« aurora-core » ; « twin9 » : le second ressort d'un run Twin9)." },
           "journal": { "type": ["string", "null"] },
           "analysedAt": { "type": ["string", "null"], "description": "Date de l'analyse (AAAA-MM-JJ)." },
           "importedAt": { "type": ["string", "null"] },
@@ -125,7 +125,12 @@
                 "rawStatus": { "type": ["string", "null"] },
                 "confidence": { "type": ["number", "null"], "minimum": 0, "maximum": 1 },
                 "proofs": { "type": "integer", "minimum": 0 },
-                "hints": { "type": "integer", "minimum": 0 }
+                "hints": { "type": "integer", "minimum": 0 },
+                "dates": {
+                  "type": "array",
+                  "items": { "$ref": "#/$defs/isoDate" },
+                  "description": "Journées de ses traces, triées (le second ressort d'un run Twin9, sprint 4, C4). Facultatif."
+                }
               }
             }
           },
@@ -410,7 +415,18 @@
             }
           }
         },
-        "anomalies": { "type": "array", "items": { "$ref": "#/$defs/anomaly" } }
+        "anomalies": { "type": "array", "items": { "$ref": "#/$defs/anomaly" } },
+        "stigmergie": {
+          "type": "object",
+          "additionalProperties": true,
+          "required": ["traces", "conservee"],
+          "description": "Analyse Twin9 dont la stigmergie du greffier est activée : ce que l'index dit de ses traces, sans lire le détail — son rang dans l'histoire de la journée, combien de traces, et si elles sont conservées dans la mémoire de la carte (vrai ; faux quand l'analyse n'est pas, ou plus, au journal de la journée : un appel en panne, un texte modifié depuis, une analyse trop ancienne ; nul quand rien ne le dit). Absent sinon. Les calculs ne le lisent pas (sprint 3, S3-3 ; ajout 4.x facultatif).",
+          "properties": {
+            "analyse": { "type": ["integer", "null"] },
+            "traces": { "type": "integer", "minimum": 0 },
+            "conservee": { "type": ["boolean", "null"] }
+          }
+        }
       }
     },
     "dayDetail": {
@@ -469,7 +485,40 @@
                   }
                 }
               },
-              "passages": { "type": "array", "items": { "type": "object" } }
+              "passages": { "type": "array", "items": { "type": "object" } },
+              "stigmergie": {
+                "type": "object",
+                "additionalProperties": true,
+                "required": ["traces", "conservee"],
+                "description": "Le bloc « stigmergie » de la carte du jour d'une analyse Twin9 (spec-stigmergie.md §9 de Twin_v9), par liste blanche : son rang (« analyse »), son run, si ses traces sont conservées dans la mémoire de la carte (vrai, faux, nul : jamais montrées conservées sans le dire), et les traces après l'analyse — compétence, bornes dans le texte de la journée du moteur, extrait verbatim (coupé à 240 caractères), intensité (« tau », de 0 à 3, montrée en mode expert et au cartographe seulement), incertitude calculée par la procédure, dernier verdict. Les calculs ne le lisent pas (sprint 3, S3-3 ; ajout 4.x facultatif).",
+                "properties": {
+                  "analyse": { "type": ["integer", "null"] },
+                  "run": { "type": ["string", "null"] },
+                  "conservee": { "type": ["boolean", "null"] },
+                  "traces": {
+                    "type": "array",
+                    "items": {
+                      "type": "object",
+                      "additionalProperties": true,
+                      "required": ["code", "extrait", "tau", "incertitude"],
+                      "properties": {
+                        "id": { "type": ["string", "null"] },
+                        "code": { "type": "string", "minLength": 1 },
+                        "start": { "type": ["integer", "null"] },
+                        "end": { "type": ["integer", "null"] },
+                        "extrait": { "type": "string" },
+                        "tau": { "type": "number" },
+                        "incertitude": { "enum": ["faible", "moyenne", "forte", "écartée"] },
+                        "statut": { "type": ["string", "null"] },
+                        "voie": { "type": ["string", "null"] },
+                        "role": { "type": ["string", "null"] },
+                        "source": { "type": ["string", "null"] },
+                        "analyses": { "type": ["integer", "null"] }
+                      }
+                    }
+                  }
+                }
+              }
             }
           }
         }

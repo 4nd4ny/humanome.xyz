@@ -4,9 +4,13 @@
 // La segmentation est celle du module Portfolio du site
 // (`engine/src/portfolio/segment.js`) ; fusion / scission / renommage de date
 // se font ensuite dans le gestionnaire. Le texte reste dans le navigateur.
+// Un portfolio surligné par Twin9 (S3-3) perd ses marques et le tableau de
+// ses traces avant tout découpage (lib/twin9/marques.js) : aucune trace n'entre
+// par le texte d'un fichier, le texte analysé n'en porte jamais.
 
 import { segmentText } from '@engine/portfolio/segment.js'
 import { isIsoDate } from '../dates.js'
+import { retirerMarquesTwin9 } from '../../../lib/twin9/marques.js'
 
 const NO_DATE = '0000-00-00'
 
@@ -28,7 +32,11 @@ export function wordCount(text) {
  */
 export function importPortfolioText(text, { fileName = 'portfolio.md' } = {}) {
   const report = []
-  const raw = segmentText(String(text ?? '').replace(/\r\n?/g, '\n'), { today: NO_DATE })
+  const nettoye = retirerMarquesTwin9(String(text ?? '').replace(/\r\n?/g, '\n'))
+  if (nettoye.retire) {
+    report.push({ severity: 'info', code: 'marques-twin9-retirees', message: `${fileName} : surlignages et tableaux de traces de Twin9 retirés — le texte analysé n’en porte jamais` })
+  }
+  const raw = segmentText(nettoye.texte, { today: NO_DATE })
   const byDate = new Map()
   const undated = []
   for (const s of raw) {

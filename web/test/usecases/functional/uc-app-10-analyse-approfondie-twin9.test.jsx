@@ -172,6 +172,12 @@ async function openApp(hash, { portfolio = null } = {}) {
 
 const ecritures = (calls, key) => calls.filter((c) => c.key === key)
 
+/**
+ * Le mode expert (UC-VIS-06), choisi dans ce navigateur : un apprenant seul est en mode simple par défaut, où la page
+ * lance avec le profil v9.8, sans liste des profils (A10).
+ */
+const modeExpert = () => localStorage.setItem('humanome-mode', 'expert')
+
 beforeEach(() => resetApiClient())
 
 afterEach(() => {
@@ -179,6 +185,7 @@ afterEach(() => {
   vi.unstubAllGlobals()
   idb.reset()
   window.location.hash = ''
+  localStorage.removeItem('humanome-mode')
   resetApiClient()
 })
 
@@ -194,6 +201,7 @@ describe('UC-APP-10 — l’apprenant lance une analyse approfondie, la suit et 
         'GET twin9/runs/7/resultats': jsonResponse(200, resultats()),
       }),
     )
+    modeExpert() // il choisit un de ses profils (A10)
     await openApp('#/twin9', { portfolio: PORTFOLIO })
 
     // Étapes 1-3 : le formulaire, le portfolio de la bibliothèque présélectionné, le lancement désactivé sans accord.
@@ -314,6 +322,7 @@ describe('UC-APP-10 — l’apprenant lance une analyse approfondie, la suit et 
         'POST twin9/runs': jsonResponse(422, { error: refus }),
       }),
     )
+    modeExpert() // il passe ensuite au profil « Direct » (A10)
     await openApp('#/twin9', { portfolio: PORTFOLIO })
     fireEvent.click(await screen.findByRole('checkbox', { name: /J’accepte que mon portfolio/ }))
 
@@ -361,6 +370,7 @@ describe('UC-APP-10 — l’apprenant lance une analyse approfondie, la suit et 
         'POST twin9/runs': jsonResponse(422, { error: refus }),
       }),
     )
+    modeExpert() // il choisit son profil multi-fournisseur (A10)
     await openApp('#/twin9', { portfolio: PORTFOLIO })
     await screen.findByRole('button', { name: 'Lancer l’analyse' })
     fireEvent.change(screen.getByLabelText('Profil'), { target: { value: '5' } })
@@ -379,6 +389,96 @@ describe('UC-APP-10 — l’apprenant lance une analyse approfondie, la suit et 
     expect(bodyOf(lance).accord).toEqual({ fournisseurs: ['anthropic', 'mistral'] })
     expect(lance.init.headers['X-CSRF-Token']).toBe(CSRF)
     expect(window.location.hash).toBe('#/twin9')
+  })
+
+  it('UC-APP-10-F24 — A10 : en mode simple, le défaut d’un apprenant, la page lance avec le profil v9.8, sans liste des profils ni « Régler mes profils » ; l’aide le dit ; en mode expert, la liste revient', async () => {
+    const { calls } = stubFetch(routes({ 'POST twin9/runs': jsonResponse(201, run()) }))
+    await openApp('#/twin9', { portfolio: PORTFOLIO })
+    const lancer = await screen.findByRole('button', { name: 'Lancer l’analyse' })
+    expect(screen.queryByLabelText('Profil')).toBeNull()
+    expect(screen.queryByRole('link', { name: 'Régler mes profils' })).toBeNull()
+    expect(screen.getByTestId('twin9-profil-simple').textContent).toContain('Profil v9.8')
+    fireEvent.click(screen.getByRole('button', { name: 'Aide sur cette rubrique' }))
+    expect(screen.getByRole('dialog').textContent).toContain('activez le « Mode expert » au bas du menu')
+    fireEvent.keyDown(document, { key: 'Escape' })
+
+    // l'accord nomme les fournisseurs du profil v9.8 ; l'aperçu et le lancement le désignent (profil nul)
+    const accord = screen.getByRole('checkbox', { name: /J’accepte que mon portfolio/ })
+    expect(accord.closest('label').textContent).toContain('Anthropic (par lots ; RGPD : sous conditions)')
+    fireEvent.click(accord)
+    await screen.findByRole('region', { name: 'Avant de lancer' })
+    fireEvent.click(lancer)
+    await waitFor(() => expect(window.location.hash).toBe('#/twin9/7'))
+    expect(ecritures(calls, 'POST twin9/runs/apercu').map((c) => bodyOf(c).profil)).toEqual([null])
+    expect(bodyOf(ecritures(calls, 'POST twin9/runs')[0])).toMatchObject({ profil: null, accord: { fournisseurs: ['anthropic'] } })
+    cleanup()
+    vi.unstubAllGlobals()
+    idb.reset()
+
+    // le mode expert, choisi dans ce navigateur : la liste et le lien reviennent ; le mode n'est jamais un droit
+    stubFetch(routes())
+    modeExpert()
+    await openApp('#/twin9', { portfolio: PORTFOLIO })
+    await screen.findByRole('button', { name: 'Lancer l’analyse' })
+    expect([...screen.getByLabelText('Profil').options].map((o) => o.textContent)).toEqual(['Profil v9.8', 'Direct'])
+    expect(screen.getByRole('link', { name: 'Régler mes profils' }).getAttribute('href')).toBe('#/configuration')
+    expect(screen.queryByTestId('twin9-profil-simple')).toBeNull()
+  })
+
+  it('UC-APP-10-F28 — A11 : le référentiel se choisit au lancement — en mode simple, le menu paraît dès deux référentiels publiés, par défaut celui du profil ; l’aperçu dit le référentiel lu et les spécialistes du jury retirés ; l’aperçu et le lancement portent le choix (CSRF)', async () => {
+    const referentiels = [
+      { id: 'respire', label: 'RESPIRE v7', versions: ['7.0.0'], brouillons: [] },
+      { id: 'humanome-fictif', label: 'Humanome fictif', versions: ['18.0.0', '17.0.0'], brouillons: [] },
+    ]
+    const { calls } = stubFetch(
+      routes({
+        'GET twin9/configuration': jsonResponse(200, {
+          profils: [],
+          defaut: { referentiel: { id: 'respire', version: null } },
+          defaut_fournisseurs: [ANTHROPIC],
+          referentiels,
+          gabarits: ['v9.8'],
+          cle_perso_ouverte: false,
+          cle_perso_enregistree: false,
+        }),
+        'POST twin9/runs/apercu': (url, init) =>
+          jsonResponse(
+            200,
+            bodyOf({ init }).referentiel
+              ? apercu({ referentiel: { id: 'humanome-fictif', version: '18.0.0', label: 'Humanome fictif' }, jury_retire: [] })
+              : apercu({ referentiel: { id: 'respire', version: '7.0.0', label: 'RESPIRE v7' }, jury_retire: [] }),
+          ),
+        'POST twin9/runs': jsonResponse(201, run()),
+      }),
+    )
+    await openApp('#/twin9', { portfolio: PORTFOLIO })
+    await screen.findByRole('button', { name: 'Lancer l’analyse' })
+    expect(screen.queryByLabelText('Profil')).toBeNull() // mode simple (A10)
+    const menu = screen.getByLabelText('Référentiel')
+    expect([...menu.options].map((o) => o.textContent)).toEqual(['Celui du profil (RESPIRE v7)', 'Humanome fictif'])
+    expect(menu.value).toBe('')
+
+    fireEvent.click(screen.getByRole('checkbox', { name: /J’accepte que mon portfolio/ }))
+    await waitFor(() => expect(screen.getByRole('region', { name: 'Avant de lancer' }).textContent).toContain('Référentiel lu : RESPIRE v7, version 7.0.0.'))
+    fireEvent.change(menu, { target: { value: 'humanome-fictif' } })
+    await waitFor(() =>
+      expect(screen.getByRole('region', { name: 'Avant de lancer' }).textContent).toContain('Référentiel lu : Humanome fictif, version 18.0.0.'),
+    )
+    const apercus = ecritures(calls, 'POST twin9/runs/apercu')
+    expect(apercus.map((c) => bodyOf(c).referentiel ?? null)).toEqual([null, { id: 'humanome-fictif', version: null }])
+    expect(apercus.every((c) => c.init.headers['X-CSRF-Token'] === CSRF)).toBe(true)
+
+    fireEvent.click(screen.getByRole('button', { name: 'Lancer l’analyse' }))
+    await waitFor(() => expect(window.location.hash).toBe('#/twin9/7'))
+    const [lance] = ecritures(calls, 'POST twin9/runs')
+    expect(bodyOf(lance)).toEqual({
+      profil: null,
+      portfolio: { nom: 'Mon journal.md', texte: PORTFOLIO },
+      accord: { fournisseurs: ['anthropic'] },
+      visibilite: 'privee',
+      referentiel: { id: 'humanome-fictif', version: null },
+    })
+    expect(lance.init.headers['X-CSRF-Token']).toBe(CSRF)
   })
 
   it('UC-APP-10-F19 — A3 : annuler puis reprendre un run en cours ; A4 : arrêté par son budget, il reprend sous un nouveau budget et va au bout ; A5 : la case du cartographe règle qui lit ses résultats (jeton CSRF à chaque écriture)', async () => {
@@ -525,6 +625,55 @@ describe('UC-APP-10 — l’apprenant lance une analyse approfondie, la suit et 
       'twin9:7|configuration',
     ])
     expect(JSON.stringify(tout)).not.toMatch(/"prix"|"grille"|"cle"|"plafonds"|"budget_usd"|"cout_microusd"|"reprises"|reserve_microusd/)
+  })
+
+  it('UC-APP-10-F23 — S3-3 : un run dont la stigmergie du greffier est activée, ouvert dans la cartographie : chaque journée garde les traces de son analyse, et la modale du jour les montre selon leur nature ; une journée en panne, non conservées ; en mode simple, sans intensité', async () => {
+    const r = resultats()
+    const bloc = (date, run) => ({
+      analyse: 2,
+      run,
+      explorateurs: [],
+      lues: {},
+      depots: [],
+      rejets: [],
+      traces: [{ id: `t-${date}`, code: '1.01', start: 0, end: 30, extrait: `Le ${date}, j’ai mesuré le CO2.`, tau: 1.7, incertitude: 'faible', statut: 'présence établie', voie: 'tribunal', role: 'preuve décisive', source: 'trace_probante', analyses: 2 }],
+    })
+    for (const date of DATES) {
+      const chemin = `journees/${date}/carto_jour.json`
+      r.sorties[chemin] = JSON.stringify({ ...JSON.parse(r.sorties[chemin]), stigmergie: bloc(date, '2026-10-20T10:00:00.a1b2c3') })
+    }
+    // le 6, un appel en panne : son analyse n'est pas entrée dans la mémoire de la carte
+    r.traces_conservees = { '2026-01-05': true, '2026-01-06': false }
+    stubFetch(routes({ 'GET twin9/runs/7': jsonResponse(200, fini()), 'GET twin9/runs/7/resultats': jsonResponse(200, r) }))
+    await openApp('#/twin9/7')
+    await waitFor(() => expect(screen.getByRole('status').textContent).toBe('Terminé'))
+    fireEvent.click(screen.getByRole('button', { name: 'Ouvrir dans la cartographie' }))
+    await waitFor(() => expect(document.querySelector('.carto-context-dataset')?.textContent).toBe('Twin9 · mon-journal · RESPIRE v7'), ATTENTE)
+
+    const store = createInterfaceStore()
+    const [jeu] = await store.listDatasets()
+    const tout = await store.exportAll(jeu.datasetId)
+    expect(tout.dataset.days.map((d) => [d.date, d.variants[0].stigmergie])).toEqual([
+      ['2026-01-05', { analyse: 2, traces: 1, conservee: true }],
+      ['2026-01-06', { analyse: 2, traces: 1, conservee: false }],
+    ])
+
+    // la modale du 5 : la trace, sa nature ; l'apprenant (mode simple par défaut) n'en lit pas l'intensité
+    window.location.hash = '#/cartographie/jour/2026-01-05'
+    const dialog = await screen.findByRole('dialog', { name: /5 janvier 2026/ }, ATTENTE)
+    const section = await within(dialog).findByRole('region', { name: 'Traces de la stigmergie (1)' })
+    await waitFor(() => expect(section.querySelector('.carto-sg-list li')).not.toBeNull())
+    const nom = REFERENTIEL_DU_RUN.competences.find((c) => c.code === '1.01').nom
+    expect(section.querySelector('.carto-sg-what').textContent).toBe(`1.01 ${nom} · incertitude faible`)
+    expect(section.textContent).toContain('Conservées dans la mémoire de la carte')
+    expect(section.textContent).not.toMatch(/intensité|score/i)
+
+    // celle du 6, en panne : ses traces ne sont pas dites conservées
+    window.location.hash = '#/cartographie/jour/2026-01-06'
+    const sixieme = await screen.findByRole('dialog', { name: /6 janvier 2026/ }, ATTENTE)
+    const traces6 = await within(sixieme).findByRole('region', { name: 'Traces de la stigmergie (1)' })
+    expect(traces6.querySelector('.carto-sg-warning').textContent).toContain('Non conservées')
+    expect(traces6.textContent).not.toContain('Conservées dans la mémoire de la carte')
   })
 })
 

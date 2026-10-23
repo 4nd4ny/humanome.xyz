@@ -17,6 +17,12 @@
 // avant P0-1 n'a pas de configuration : son exécution, partielle, s'y lit
 // seule.
 //
+// Chaque ouverture compte, même quand React ne voit pas la fermeture qui la
+// précède : un <details> fermé puis rouvert avant le rendu ne garde qu'un
+// « toggle », ouvert (spécification HTML, que jsdom suit), ou React rend d'un
+// même lot les deux « toggle ». L'état « ouvert » ne change alors pas ; le
+// compte des ouvertures, si.
+//
 // Chaque ligne tient à la présence de son champ : un cartographe lié lit les
 // blocs sans prix, coût, plafond ni clé (§8.9), dans les résultats (l'API) ;
 // la page du run, elle, n'est que celle de son propriétaire.
@@ -323,13 +329,15 @@ export function VueConfiguration({ configuration, execution, parEtape = null }) 
 
 /**
  * « Configuration » sur la page d'un run : lue dans ses résultats à l'ouverture — à chaque ouverture tant que
- * `version` (son statut) vaut `en_cours` —, relue quand `version` change tant qu'elle est ouverte ; une erreur
- * reste dans le bloc, sans toucher la page.
+ * `version` (son statut) vaut `en_cours`, chaque « toggle » ouvert comptant pour une —, relue quand `version` change
+ * tant qu'elle est ouverte ; une erreur reste dans le bloc, sans toucher la page.
  * @param {{charger: () => Promise<{configuration: object | null, execution: object | null}>, version: string,
  *   parEtape?: object | null}} props
  */
 export default function ConfigurationDuRun({ charger, version, parEtape = null }) {
   const [ouvert, setOuvert] = useState(false)
+  // chaque « toggle » ouvert : une ouverture, même fondue avec la fermeture qui la précède
+  const [ouvertures, setOuvertures] = useState(0)
   const [etat, setEtat] = useState({ blocs: null, erreur: null })
   const lue = useRef(null) // la version dont les blocs ont été lus (null : à lire)
   const demande = useRef(0) // la dernière lecture partie : seule elle s'affiche
@@ -351,10 +359,16 @@ export default function ConfigurationDuRun({ charger, version, parEtape = null }
         setEtat({ blocs: null, erreur })
       },
     )
-  }, [ouvert, version])
+  }, [ouvert, ouvertures, version])
+
+  const basculer = (e) => {
+    const open = e.currentTarget.open
+    setOuvert(open)
+    if (open) setOuvertures((n) => n + 1)
+  }
 
   return (
-    <details className="twin9-configuration" onToggle={(e) => setOuvert(e.currentTarget.open)}>
+    <details className="twin9-configuration" onToggle={basculer}>
       <summary>Configuration</summary>
       {etat.erreur ? (
         <p className="load-error">{etat.erreur.message}</p>

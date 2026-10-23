@@ -193,6 +193,8 @@ export function recognize(files, { now = new Date().toISOString(), allowRemote =
         result.variants.push(...r.variants)
         result.narratives.push(...r.narratives)
         result.runDetails.push(...r.runDetails)
+        // son second ressort (sprint 4, C4) : une seconde lecture
+        result.readings.push(...(r.readings ?? []))
         if (r.referential) result.referential = r.referential
         report.push(...r.report.map((x) => ({ ...x, file: f.path })))
       } else if (looksLikeSiteMerge(doc)) {
@@ -350,28 +352,36 @@ export function mergeIntoDataset(dataset, recognized, { now = new Date().toISOSt
   // analyses par journée (ou en reçoit dans ce même lot) n'en ajoute pas une
   // seconde à chaque journée — elles passeraient « à arbitrer » et ne
   // compteraient plus : il se joint à chaque compétence, sans changer le
-  // soleil. Seul, il fait le soleil, comme avant.
+  // soleil. Seul, il fait le soleil, comme avant. Le second ressort d'un run
+  // Twin9 (sprint 4, C4 ; D-73) se joint toujours : il n'est d'aucune journée.
   const isCoreVariant = (summary) => summary?.provenance?.source === 'aurora-core'
+  const isCoreReading = (r) => r?.source === 'aurora-core'
   const ownAnalyses = dataset.days.some((d) => d.variants.some((v) => !isCoreVariant(v))) || recognized.variants.some((v) => !isCoreVariant(v.summary))
-  const asReading = (recognized.readings ?? []).length > 0 && ownAnalyses
+  const asReading = (recognized.readings ?? []).some(isCoreReading) && ownAnalyses
+  const joined = (recognized.readings ?? []).filter((r) => !isCoreReading(r) || asReading)
   if (asReading) {
     // Ses verdicts ne sont pas répartis sur les journées : le compte rendu ne
     // le dit pas, ni qu'une trace sans date n'y est pas placée.
     for (let i = report.length - 1; i >= 0; i--) if (report[i].code === 'aurora-core' || report[i].code === 'traces-non-datees') report.splice(i, 1)
+  }
+  if (joined.length > 0) {
     const byId = new Map((ds.readings ?? []).map((r) => [r.id, r]))
     // Un run déjà réparti sur les journées (importé seul, avant) n'est pas joint une seconde fois.
     const inDays = runsInDays(dataset)
-    for (const r of recognized.readings) {
+    for (const r of joined) {
       if (byId.has(r.id) || inDays.has(r.id)) {
         counts.duplicates++
         report.push({ severity: 'info', code: 'doublon', message: byId.has(r.id) ? `Seconde lecture ${r.id} déjà jointe — doublon ignoré` : `Analyse AuroraCore ${r.id} déjà répartie sur les journées — doublon ignoré` })
         continue
       }
       byId.set(r.id, structuredClone(r))
+      const n = Object.keys(r.codes).length
       report.push({
         severity: 'info',
         code: 'seconde-lecture',
-        message: `Analyse AuroraCore ${r.id} jointe en seconde lecture (${Object.keys(r.codes).length} compétence(s)) : elle se lit avec chaque compétence et ne change pas le soleil`,
+        message: isCoreReading(r)
+          ? `Analyse AuroraCore ${r.id} jointe en seconde lecture (${n} compétence(s)) : elle se lit avec chaque compétence et ne change pas le soleil`
+          : `Second ressort du run Twin9 ${r.id.replace(/:second-ressort$/u, '')} joint en seconde lecture (${n} compétence${n > 1 ? 's' : ''} établie${n > 1 ? 's' : ''} par faisceau) : il se lit avec chaque compétence et ne change pas le soleil`,
       })
     }
     ds.readings = [...byId.values()].sort((a, b) => (a.id < b.id ? -1 : 1))

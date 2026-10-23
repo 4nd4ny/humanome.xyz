@@ -29,7 +29,10 @@ use stdClass;
  * instance, with its instance key, and another provider's model priced with
  * its caps. A profile may name a provider not open yet: it is saved, not
  * launched. The default profile, the v9.8's, takes the instance's default
- * set.
+ * set, as the presets do (ProfilRepository::PREDEFINIS). The greffier's
+ * stigmergy refuses the archived layers in the consensus (Twin_v9's
+ * docs/twin9/spec-stigmergie.md, Q3): they vote there already, its traces
+ * would count twice.
  */
 final class ProfilPolicy
 {
@@ -50,6 +53,26 @@ final class ProfilPolicy
     }
 
     /**
+     * The presets (ProfilRepository::PREDEFINIS), each with the instance's
+     * default template set, as the default profile: what a new profile
+     * copies.
+     *
+     * @return list<array{id: string, nom: string, profil: stdClass}>
+     */
+    public function predefinis(): array
+    {
+        $defaut = (new TemplateSets($this->pdo))->defaut();
+        $predefinis = [];
+        foreach (ProfilRepository::PREDEFINIS as $id => $nom) {
+            $profil = ProfilRepository::predefini($id);
+            $profil->gabarits = $defaut;
+            $predefinis[] = ['id' => $id, 'nom' => $nom, 'profil' => $profil];
+        }
+
+        return $predefinis;
+    }
+
+    /**
      * @param int $userId the profile's owner, whose template sets it may choose
      * @throws Twin9Exception 422 naming the choice refused
      */
@@ -58,6 +81,11 @@ final class ProfilPolicy
         if ($profil->cle === 'personnelle' && !$this->config->clePersoOuverte()) {
             throw new Twin9Exception('Profil refusé — /cle : les clés personnelles ne sont pas ouvertes sur cette instance',
                 422);
+        }
+        // the archived layers vote at the consensus already: the stigmergy's traces would count twice (Q3)
+        if (MoteurReglages::stigmergie($profil) && ($profil->calques->accumulation ?? true) !== false) {
+            throw new Twin9Exception('Profil refusé — /stigmergie : la stigmergie demande calques.accumulation à false ; '
+                . 'les calques archivés votent déjà au consensus, ses traces y compteraient deux fois', 422);
         }
         $combinaisons = (new CallSettings($profil))->combinaisons();
         // the holder of a key reads what is sent with it: a third party gets the platform's prompts with the
@@ -216,14 +244,17 @@ final class ProfilPolicy
     }
 
     /**
-     * What the configuration page offers its user: the published
-     * referentials and their versions, their own drafts for a test run
-     * (T15), the template sets they may choose, the personal key, and each
-     * provider with its GDPR tag and whether a run may reach it now — one
-     * boolean, never why (closed, or its instance key missing: nobody
-     * learns which keys the instance holds).
+     * What the configuration page, and the launch page, offer their user:
+     * the published referentials, each with its label — its latest
+     * version's — and its versions, their own drafts for a test run (T15;
+     * a referential with drafts only takes its latest draft's label), the
+     * template sets they may choose, the personal key, and each provider
+     * with its GDPR tag and whether a run may reach it now — one boolean,
+     * never why (closed, or its instance key missing: nobody learns which
+     * keys the instance holds).
      *
-     * @return array{referentiels: list<array{id: string, versions: list<string>, brouillons: list<string>}>,
+     * @return array{referentiels: list<array{id: string, label: string, versions: list<string>,
+     *                                        brouillons: list<string>}>,
      *               gabarits: list<string>, cle_perso_ouverte: bool, cle_perso_enregistree: bool,
      *               fournisseurs: list<array{id: string, libelle: string, rgpd: string, disponible: bool}>}
      */
@@ -231,14 +262,18 @@ final class ProfilPolicy
     {
         $repo = new ReferentielRepository($this->pdo);
         $brouillons = $this->auteur($userId) ? $repo->brouillonsDe($userId) : [];
+        $labels = array_column($repo->catalogue(), 'label', 'id');
         $referentiels = [];
         foreach ($repo->publishedSemvers() as $id => $versions) {
-            $referentiels[] = ['id' => (string) $id, 'versions' => $versions, 'brouillons' => $brouillons[$id] ?? []];
+            $referentiels[] = ['id' => (string) $id, 'label' => (string) ($labels[$id] ?? $id), 'versions' => $versions,
+                               'brouillons' => $brouillons[$id] ?? []];
             unset($brouillons[$id]);
         }
         // a referential with drafts only, never published: its author's test runs read it
         foreach ($brouillons as $id => $semvers) {
-            $referentiels[] = ['id' => (string) $id, 'versions' => [], 'brouillons' => $semvers];
+            $referentiels[] = ['id' => (string) $id,
+                               'label' => (string) ($repo->findVersion((string) $id, $semvers[0])['label'] ?? $id),
+                               'versions' => [], 'brouillons' => $semvers];
         }
         $enregistree = false;
         $master = KeyVault::masterKeyFromEnv();

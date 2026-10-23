@@ -26,6 +26,10 @@
 // server: each run — the copy of its profile, its portfolio, its journal,
 // its outputs — and the memory of its maps, as GET /api/twin9/mes-analyses gives
 // them (`analysesTwin9`). Never imported back: a run is launched again.
+//
+// A portfolio restored from an archive loses the marks of Twin9's highlighted
+// portfolio (S3-3, lib/twin9/marques.js), its segmentation's bounds moved with
+// its text: no trace comes in through a file, the analysed text never has one.
 
 import { validateDocument } from '@engine/validation.js'
 import { apiFetch, fetchMe } from '../api/client.js'
@@ -36,6 +40,7 @@ import { createPortfolioStore } from './portfolio-store.js'
 import { createCartoStore } from './carto-store.js'
 import { createCartoStore as createInterfaceStore } from '../carto/core/store.js'
 import { buildArchive as buildMasterArchive } from '../carto/core/archive.js'
+import { retirerMarquesTwin9 } from './twin9/marques.js'
 import { importFiles as importIntoInterface } from '../carto/core/import.js'
 import { createDataset, isPristineDemo } from '../carto/core/model.js'
 
@@ -484,18 +489,19 @@ export async function importArchive(source, options = {}) {
   const knownTexts = new Set(existingPortfolios.map((p) => p.texte))
   let restoredPortfolios = 0
   for (const portfolio of data.portfolios) {
-    if (knownTexts.has(portfolio.texte)) continue
-    knownTexts.add(portfolio.texte)
+    const nettoye = retirerMarquesTwin9(portfolio.texte)
+    const texte = nettoye.texte
+    if (knownTexts.has(texte)) continue
+    knownTexts.add(texte)
     await portfolioStore.create({
       titre: portfolio.titre,
       source: portfolio.source,
-      texte: portfolio.texte,
-      segments: portfolio.segmentation.map((s) => ({
-        date: s.date,
-        texte: portfolio.texte.slice(s.debut, s.fin),
-        debut: s.debut,
-        fin: s.fin,
-      })),
+      texte,
+      segments: portfolio.segmentation.map((s) => {
+        const debut = nettoye.position(s.debut)
+        const fin = nettoye.position(s.fin)
+        return { date: s.date, texte: texte.slice(debut, fin), debut, fin }
+      }),
     })
     restoredPortfolios += 1
   }

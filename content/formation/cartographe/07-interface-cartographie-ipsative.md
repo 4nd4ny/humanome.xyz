@@ -45,7 +45,12 @@ Sur `#/cartographie`, déposez les fichiers que l'apprenant vous a remis (ou
 portfolio (`.md`). Ils sont lus dans votre navigateur et rangés dans un jeu de
 données à part ; rien n'est envoyé. Une analyse AuroraCore déposée dans un jeu
 qui a déjà ses analyses par journée s'y joint en **seconde lecture** : elle
-ne touche pas aux journées (rien à arbitrer) ; seule, elle fait le soleil. Son archive complète contient aussi ses
+ne touche pas aux journées (rien à arbitrer) ; seule, elle fait le soleil.
+Une analyse approfondie Twin9 apporte de même son **second ressort** : une
+compétence qu'un jury établit par un faisceau d'indices de plusieurs
+journées, quand aucune journée ne l'établit, se lit en seconde lecture avec
+les journées de ses traces, hors du soleil ; le panneau de son pôle la
+nomme, et l'ouvre. Son archive complète contient aussi ses
 réponses, ses notes privées et son carnet de dialogue : c'est à lui de choisir
 ce qu'il vous remet.
 

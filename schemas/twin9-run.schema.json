@@ -30,6 +30,11 @@
     "carto_evolutive": { "type": ["object", "null"] },
     "journees": { "type": "object" },
     "memoire": { "type": "array" },
+    "traces_conservees": {
+      "type": ["object", "null"],
+      "additionalProperties": { "type": "boolean" },
+      "description": "Depuis S3-3 : « traces_conservees » des résultats (GET /api/twin9/runs/{id}/resultats). Par journée dont la carte du jour porte le bloc « stigmergie » du greffier, vrai si son analyse est au journal de la journée dans la mémoire de la carte (« stigmergie/<jour> », sous test/ en mode essai), faux sinon : une journée dont un appel est en panne n'y dépose rien (une panne n'est jamais un verdict), un texte modifié depuis remet le journal à zéro, et il ne garde que ses dernières analyses ; la réponse ne dit pas laquelle. Nul, ou une journée absente, quand rien ne le dit : l'interface ne montre jamais ses traces comme conservées."
+    },
     "incomplete": { "type": "boolean" }
   },
   "$defs": {
@@ -264,10 +269,23 @@
           "additionalProperties": false,
           "required": ["seuils_consensus", "juge_leger", "jury", "premiere_impression", "calques", "merge",
                        "scan_global", "troncatures"],
-          "description": "Les paramètres d'algorithme du profil, sous leurs noms du config.json de la v9.8 (MoteurReglages::ALGORITHME).",
+          "description": "Les paramètres d'algorithme du profil, sous leurs noms du config.json de la v9.8 (MoteurReglages::ALGORITHME), et la stigmergie du greffier.",
           "properties": {
             "seuils_consensus": true, "juge_leger": true, "jury": true, "premiere_impression": true, "calques": true,
-            "merge": true, "scan_global": true, "troncatures": true
+            "merge": true, "scan_global": true, "troncatures": true,
+            "stigmergie": {
+              "type": "object",
+              "additionalProperties": false,
+              "required": ["enabled"],
+              "description": "La stigmergie du greffier telle que le moteur la lit (config.stigmergie, spec-stigmergie.md de Twin_v9) : ses réglages, tels que le profil les écrit, quand elle est activée ; {\"enabled\": false} sinon. Absente du bloc d'un run lancé avant elle.",
+              "properties": {
+                "enabled": { "type": "boolean" },
+                "evaporation": { "type": "number" },
+                "exploration": { "type": "number" },
+                "graine": { "type": "integer" },
+                "lignes": { "type": "integer" }
+              }
+            }
           }
         },
         "referentiel": {

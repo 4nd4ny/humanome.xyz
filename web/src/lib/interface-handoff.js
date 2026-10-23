@@ -50,7 +50,11 @@ export async function interfaceFiles(entry, { getReferentiel = loadPublishedRefe
  * importe avec le dossier de chaque verdict, délibérations comprises
  * (carto/core/importers/twin9-run.js). Un run arrêté avant sa fin (T10 : son
  * budget, sa durée, le crédit) remet ses journées finies, sans fusion
- * peut-être, sa carte marquée incomplète.
+ * peut-être, sa carte marquée incomplète. Depuis S3-3, le document porte
+ * aussi `traces_conservees` des résultats : par journée dont la carte porte la
+ * stigmergie du greffier, si ses traces sont celles que garde la carte (une
+ * journée en panne, un journal remis à zéro depuis, non) ; nul quand le
+ * serveur ne le dit pas.
  *
  * Le référentiel est celui du run (T17) : ses pôles et ses compétences, tels
  * que son moteur les a lus ; les résultats n'en portent aucune description
@@ -58,7 +62,8 @@ export async function interfaceFiles(entry, { getReferentiel = loadPublishedRefe
  * à sa version quand le run la dit, à sa dernière sinon (2026-10-20) —
  * donne les siennes ; introuvable, le run passe sans elles. Un run d'avant
  * T16, qui ne le dit pas, a lu RESPIRE : le référentiel publié.
- * @param {{run: object, sorties: Record<string, string>, memoire?: string[], referentiel?: object | null}} resultats GET /api/twin9/runs/{id}/resultats
+ * @param {{run: object, sorties: Record<string, string>, memoire?: string[], referentiel?: object | null,
+ *   traces_conservees?: Record<string, boolean>}} resultats GET /api/twin9/runs/{id}/resultats
  * @param {{getReferentiel?: typeof loadPublishedReferentiel}} [seams]
  * @returns {Promise<Array<{path: string, text: string}>>}
  * @throws {Error} run sans fusion ni journée finie (rien à placer sur la ligne de temps)
@@ -85,6 +90,7 @@ export async function twin9RunFiles(resultats, { getReferentiel = loadPublishedR
     carto_evolutive: typeof fusion === 'string' ? JSON.parse(fusion) : null,
     journees,
     memoire: resultats.memoire ?? [],
+    traces_conservees: resultats.traces_conservees ?? null,
     incomplete: resultats.run?.statut !== 'termine',
   }
   return [{ path: `twin9-run-${resultats.run?.id ?? 'run'}.json`, text: JSON.stringify(doc) }]

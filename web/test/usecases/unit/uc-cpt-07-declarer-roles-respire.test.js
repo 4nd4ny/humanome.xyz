@@ -23,6 +23,7 @@ import {
   saveDeclaredRoles,
 } from '../../../src/api/declared-roles.js'
 import { phpDeclaredRoles } from '../support/declared-roles-php.js'
+import { HELP_ENTRIES } from '../../../src/help/registry.js'
 import { readFileSync } from 'node:fs'
 import { dirname, resolve } from 'node:path'
 import { fileURLToPath } from 'node:url'
@@ -205,5 +206,19 @@ describe('UC-CPT-07 — le glossaire des rôles (docs/roles.md)', () => {
       expect(cells[3]).toBe(entry.habilitation ? `\`${entry.habilitation}\`` : 'aucune')
       expect(cells[4]).toBe(entry.foundingCircleEligible ? 'proposée' : '—')
     }
+  })
+})
+
+describe('UC-CPT-07 — vocabulaire : l’habilitation s’attribue, le rôle se déclare', () => {
+  it('UC-CPT-07-U25 — vocabulaire de l’aide de #/compte : ce que l’administrateur attribue s’appelle « habilitation », « rôle » ne désigne que la déclaration', () => {
+    const { points } = HELP_ENTRIES.account
+    expect(points).toContain(
+      'L’habilitation « apprenant » est attribuée par défaut ; les autres habilitations le sont par l’administrateur (Harmonia Éducation).',
+    )
+    expect(points.find((point) => point.startsWith('« Mes rôles RESPIRE »'))).toBe(
+      '« Mes rôles RESPIRE » : déclarez les rôles que vous vous reconnaissez. Une déclaration ne donne pas d’accès ; l’administrateur habilite.',
+    )
+    // aucun point ne dit d'un « rôle » qu'il est attribué
+    expect(points.filter((point) => /rôles? [^;.]*attribu/i.test(point))).toEqual([])
   })
 })

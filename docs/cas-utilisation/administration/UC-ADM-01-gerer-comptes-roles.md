@@ -79,12 +79,13 @@ comptes », ou carte « Rôles » de l'accueil `#/admin`).
    `X-CSRF-Token`. `UserDirectory::grant` vérifie le rôle, puis le compte, et
    insère (`INSERT IGNORE`) : `200 {id, role, status: "granted"}` ; audit
    `role_granted`.
-6. L'IHM affiche « Rôle « cartographe » attribué. » et recharge la liste : la
-   nouvelle puce apparaît.
+6. L'IHM affiche « Habilitation « cartographe » accordée. » (le libellé de
+   l'habilitation : « épistémiarque », « administrateur ») et recharge la
+   liste : la nouvelle puce apparaît.
 7. Pour retirer un rôle, il clique sur la croix « Retirer le rôle <rôle> de
    <e-mail> » : `DELETE /api/admin/users/{id}/roles/{role}` (+ CSRF) →
-   `200 {id, role, status: "revoked"}` ; audit `role_revoked` ; message « Rôle
-   « <rôle> » retiré. » et rechargement.
+   `200 {id, role, status: "revoked"}` ; audit `role_revoked` ; message
+   « Habilitation « <libellé> » retirée. » et rechargement.
 8. Le compte cible voit l'effet à sa requête suivante (ex. `403` → `200` sur
    `/api/cartographe/cartographies` après l'attribution de `cartographe`).
 
@@ -129,10 +130,11 @@ comptes », ou carte « Rôles » de l'accueil `#/admin`).
   déclarés » liste la déclaration en libellés, dans l'ordre du catalogue, et
   la case « Membre du cercle des fondateurs » (« aucune déclaration » sinon,
   y compris d'une API antérieure qui n'en porte pas) ; sous elle, un bouton
-  « Habiliter « <rôle> » » (nom accessible « Habiliter « <rôle> » pour
-  <e-mail> ») par habilitation de `grantable` que le compte ne détient pas.
-  Le clic affiche « Habilitation « <rôle> » accordée, comme le compte l'a
-  déclaré. » et recharge la liste : la puce apparaît dans « Habilitations »,
+  « Habiliter « <libellé> » » (nom accessible « Habiliter « <libellé> » pour
+  <e-mail> », avec le libellé de l'habilitation : « épistémiarque », comme la
+  puce déclarée de la même ligne) par habilitation de `grantable` que le
+  compte ne détient pas. Le clic affiche « Habilitation « <libellé> »
+  accordée, comme le compte l'a déclaré. » et recharge la liste : la puce apparaît dans « Habilitations »,
   le bouton part ; il revient si l'habilitation est retirée.
 
 ## Scénarios d'erreur

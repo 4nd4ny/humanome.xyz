@@ -60,7 +60,7 @@ describe('UC-ADM-01 — l’administrateur gère les comptes et les rôles', () 
       fireEvent.click(row.getByRole('button', { name: 'Attribuer' }))
     })
 
-    expect(await screen.findByText('Rôle « cartographe » attribué.')).toBeDefined()
+    expect(await screen.findByText('Habilitation « cartographe » accordée.')).toBeDefined()
     const [post] = callsTo(backend.calls, 'POST', 'api/admin/users/5/roles')
     expect(post.init.headers['X-CSRF-Token']).toBe(CSRF)
     expect(JSON.parse(post.init.body)).toEqual({ role: 'cartographe' })
@@ -78,7 +78,7 @@ describe('UC-ADM-01 — l’administrateur gère les comptes et les rôles', () 
       fireEvent.click(within(rowOf('Bruno Martin')).getByRole('button', { name: 'Retirer le rôle cartographe de bruno@example.org' }))
     })
 
-    expect(await screen.findByText('Rôle « cartographe » retiré.')).toBeDefined()
+    expect(await screen.findByText('Habilitation « cartographe » retirée.')).toBeDefined()
     expect(callsTo(backend.calls, 'DELETE', 'api/admin/users/6/roles/cartographe')).toHaveLength(1)
     await waitFor(() =>
       expect(within(rowOf('Bruno Martin')).queryByText('cartographe', { selector: 'li span' })).toBeNull(),
@@ -265,7 +265,7 @@ describe('UC-ADM-01 — rôles déclarés et habilitation d’un clic (A7)', () 
     await act(async () => {
       fireEvent.click(within(rowOf('Maya')).getByRole('button', { name: 'Retirer le rôle cartographe de maya@example.org' }))
     })
-    expect(await screen.findByText('Rôle « cartographe » retiré.')).toBeDefined()
+    expect(await screen.findByText('Habilitation « cartographe » retirée.')).toBeDefined()
     await waitFor(() =>
       expect(within(rowOf('Maya')).getByRole('button', { name: 'Habiliter « cartographe » pour maya@example.org' })).toBeDefined(),
     )

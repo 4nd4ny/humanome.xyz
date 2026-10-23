@@ -63,8 +63,10 @@ rôles ») : le bloc « Mes rôles RESPIRE » suit le profil et sa ligne
    « Enregistrer mes rôles » reste inactif tant que rien ne change
    (`aria-disabled`, pas `disabled` : il reste dans l'ordre de tabulation et
    garde le focus pendant et après l'enregistrement). Plus
-   haut, la ligne « Habilitations » du profil liste les rôles attribués par
-   l'administrateur.
+   haut, la ligne « Habilitations » du profil liste les habilitations
+   attribuées par l'administrateur (« Aucune habilitation pour l'instant »
+   sinon) ; l'aide de la page dit de même « habilitation » pour ce que
+   l'administrateur attribue, « rôle » pour ce qui se déclare.
 3. L'utilisateur coche ses rôles. Dès que promptagogue, épistémiarque ou
    maître du grimoire est coché, la case « Membre du cercle des fondateurs »
    apparaît ; il peut la cocher.
@@ -212,6 +214,7 @@ n'en garde que les libellés, pour la liste d'administration (UC-CPT-07-U15).
 | UC-CPT-07-U15 | `DECLARED_ROLES`, `FOUNDING_CIRCLE_ELIGIBLE`, `FOUNDING_CIRCLE_LABEL`, `declaredRoleLabel` | Copie du front = catalogue PHP (lu dans `DeclaredRoles.php`) : ordre, libellés, rôles éligibles, libellé de la case ; aucune habilitation sans déclaration | idem |
 | UC-CPT-07-U16 | `fetchDeclaredRoles`, `saveDeclaredRoles`, `normalizeDeclaration` | `GET` normalisé, `PUT {roles, foundingCircle}` avec CSRF, `422` porteur des champs ; aucun événement `humanome:auth` (contrôle : `updateProfile` en émet un) | idem |
 | UC-CPT-07-U21 | `docs/roles.md` | Le glossaire reprend le catalogue mot pour mot : identifiants dans l'ordre, libellés, définitions, habilitations, case du cercle | idem |
+| UC-CPT-07-U25 | `HELP_ENTRIES.account` (`web/src/help/registry.js`) | Vocabulaire de l'aide de `#/compte` : l'habilitation s'attribue (« L'habilitation « apprenant » est attribuée par défaut… »), le rôle se déclare ; aucun point ne dit un rôle « attribué » | idem |
 | UC-CPT-07-U17 | `DeclaredRolesSection` | Mention, neuf cases dans l'ordre décrites par leur définition, déclaration courante cochée, bouton inactif sans changement | `web/test/usecases/unit/uc-cpt-07-declarer-roles-respire-vue.test.jsx` |
 | UC-CPT-07-U18 | `DeclaredRolesSection` | Case du cercle avec chacun des trois rôles éligibles, jamais avec les six autres ; retirée et décochée avec le dernier (A4) | idem |
 | UC-CPT-07-U19 | `DeclaredRolesSection` | Déclaration entière dans l'ordre du catalogue, message « vos accès ne changent pas » ; `422` et `403` : message en alerte, saisie gardée | idem |

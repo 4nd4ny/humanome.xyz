@@ -215,8 +215,10 @@ describe('UC-ADM-01 — composant RolesSection isolé', () => {
     const grants = screen.getAllByRole('button', { name: /^Habiliter/ })
     expect(grants.map((b) => b.getAttribute('aria-label'))).toEqual([
       'Habiliter « cartographe » pour maya@b.fr',
-      'Habiliter « epistemiarque » pour maya@b.fr',
+      'Habiliter « épistémiarque » pour maya@b.fr',
     ])
+    // le libellé de l'habilitation (ROLE_LABELS), comme la puce déclarée « Épistémiarque » de la même ligne
+    expect(grants.map((b) => b.textContent)).toEqual(['Habiliter « cartographe »', 'Habiliter « épistémiarque »'])
     // Les puces d'habilitation restent les rôles détenus, en identifiants.
     const mayaRow = screen.getByText('Maya').closest('tr')
     expect([...mayaRow.querySelectorAll('.admin-role-chip span:first-child')].map((el) => el.textContent)).toEqual([
@@ -254,12 +256,12 @@ describe('UC-ADM-01 — composant RolesSection isolé', () => {
       throw new Error(`route non mockée : ${url}`)
     })
     render(<RolesSection currentUserId={1} fetchFn={fetchFn} />)
-    const grant = await screen.findByRole('button', { name: 'Habiliter « epistemiarque » pour maya@b.fr' })
+    const grant = await screen.findByRole('button', { name: 'Habiliter « épistémiarque » pour maya@b.fr' })
     await act(async () => {
       fireEvent.click(grant)
     })
 
-    expect(await screen.findByText('Habilitation « epistemiarque » accordée, comme le compte l’a déclaré.')).toBeTruthy()
+    expect(await screen.findByText('Habilitation « épistémiarque » accordée, comme le compte l’a déclaré.')).toBeTruthy()
     const post = calls.find((c) => c.init.method === 'POST')
     expect(JSON.parse(post.init.body)).toEqual({ role: 'epistemiarque' })
     expect(post.init.headers['X-CSRF-Token']).toBe('csrf-u30')

@@ -60,9 +60,10 @@ d'attribuer ou de retirer les **rôles du référentiel §2** (`apprenant`,
   comme toute attribution. Retirer l'habilitation ne retire pas la
   déclaration ; l'administrateur ne modifie pas les déclarations. Dans
   `#/admin/roles`, la colonne « Rôles déclarés » montre la déclaration de
-  chaque compte, en libellés, et un bouton « Habiliter « <rôle> » » par
+  chaque compte, en libellés, et un bouton « Habiliter « <libellé> » » par
   habilitation de `grantable` ; la colonne des rôles s'intitule
-  « Habilitations ». Glossaire : [`docs/roles.md`](roles.md).
+  « Habilitations », et les messages disent « Habilitation « <libellé> »
+  accordée » ou « retirée ». Glossaire : [`docs/roles.md`](roles.md).
 - **Anti-verrouillage** : un administrateur **ne peut pas retirer son propre
   rôle admin** (409). La plateforme conserve donc toujours au moins
   l'administrateur agissant. Un admin peut retirer le rôle admin d'un *autre*

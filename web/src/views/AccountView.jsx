@@ -473,7 +473,7 @@ export default function AccountView({ initialActivation = null }) {
               <dd>
                 {roles.length > 0
                   ? roles.map((role) => ROLE_LABELS[role] ?? role).join(', ')
-                  : 'Aucun rôle attribué pour l’instant'}
+                  : 'Aucune habilitation pour l’instant'}
               </dd>
             </div>
             {/* « Habilitations » : ce que je peux faire ; « Affichage » : ce que

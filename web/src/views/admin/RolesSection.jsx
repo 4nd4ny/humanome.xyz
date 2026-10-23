@@ -11,12 +11,17 @@
 // aucun. Pour chaque habilitation que ses déclarations appellent et qu'il n'a
 // pas (`grantable`, calculé par le serveur), un bouton « Habiliter » l'attribue
 // d'un clic : le même POST audité que « Attribuer ». L'administrateur ne
-// modifie pas les déclarations.
+// modifie pas les déclarations. Les messages et le bouton disent
+// « habilitation », avec son libellé (ROLE_LABELS : « épistémiarque »).
 
 import { useCallback, useEffect, useState } from 'react'
 import { ApiError, ApiUnavailableError } from '../../api/client.js'
 import { FOUNDING_CIRCLE_LABEL, declaredRoleLabel } from '../../api/declared-roles.js'
+import { ROLE_LABELS } from '../../nav.js'
 import { ASSIGNABLE_ROLES, frDate, grantRole, listUsers, revokeRole } from './admin-api.js'
+
+/** @param {string} role @returns {string} libellé de l'habilitation (« épistémiarque ») */
+const habilitationLabel = (role) => ROLE_LABELS[role] ?? role
 
 /** @param {unknown} value @returns {string[]} liste d'identifiants (vide si absente : API antérieure) */
 function slugList(value) {
@@ -47,10 +52,10 @@ function DeclaredCell({ user, onGrant, busy }) {
               key={role}
               type="button"
               disabled={busy}
-              aria-label={`Habiliter « ${role} » pour ${user.email}`}
+              aria-label={`Habiliter « ${habilitationLabel(role)} » pour ${user.email}`}
               onClick={() => onGrant(user.id, role, { declared: true })}
             >
-              Habiliter « {role} »
+              Habiliter « {habilitationLabel(role)} »
             </button>
           ))}
         </div>
@@ -199,10 +204,10 @@ export default function RolesSection({ currentUserId, fetchFn }) {
   const onGrant = (userId, role, { declared = false } = {}) =>
     mutate(
       () => grantRole(userId, role, fetchFn),
-      declared ? `Habilitation « ${role} » accordée, comme le compte l’a déclaré.` : `Rôle « ${role} » attribué.`,
+      `Habilitation « ${habilitationLabel(role)} » accordée${declared ? ', comme le compte l’a déclaré' : ''}.`,
     )
   const onRevoke = (userId, role) =>
-    mutate(() => revokeRole(userId, role, fetchFn), `Rôle « ${role} » retiré.`)
+    mutate(() => revokeRole(userId, role, fetchFn), `Habilitation « ${habilitationLabel(role)} » retirée.`)
 
   const totalPages = data ? Math.max(1, Math.ceil(data.total / data.pageSize)) : 1
 

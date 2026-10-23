@@ -118,7 +118,7 @@ const BASE = {
       'Gérez votre session et vos données. Un compte permet de conserver vos cartographies, de les ' +
       'faire relire et de les partager.',
     points: [
-      'Le rôle « apprenant » est attribué par défaut ; les autres rôles sont attribués par Harmonia Éducation.',
+      'L’habilitation « apprenant » est attribuée par défaut ; les autres habilitations le sont par l’administrateur (Harmonia Éducation).',
       '« Mes rôles RESPIRE » : déclarez les rôles que vous vous reconnaissez. Une déclaration ne donne pas d’accès ; l’administrateur habilite.',
       'La suppression de compte purge réellement toutes vos données serveur (cahier §6).',
     ],

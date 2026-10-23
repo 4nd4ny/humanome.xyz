@@ -1363,8 +1363,10 @@ une suivante le relève.
   celui de la v9.8, `nom`, et `mode` depuis T10), `gabarits` (`jeu`, `versions` de chaque gabarit
   — ses versions archivées plus une —, `empreinte` du jeu), `referentiel`
   (`id`, `version`, et depuis T16 `empreinte`, §8.8), `moteur` (`commit` : la
-  tête du dépôt `TWIN_V9_DIR`, sinon
-  la première ligne de son fichier `COMMIT`, sinon nul). Il garde aussi sa
+  tête du dépôt `TWIN_V9_DIR` — 40 chiffres hexadécimaux, 64 dans un dépôt
+  SHA-256 —, lue dans les fichiers de git ou, au format reftable, demandée à
+  git sur ce seul dépôt (`--git-dir`), sinon la première ligne de son fichier
+  `COMMIT` (7 à 64 chiffres), sinon nul). Il garde aussi sa
   visibilité (`privee` ou `cartographe`) et la date de l'accord (`accord_at`),
   sans lequel rien ne part. Depuis la voie mixte (P1-5, ADR-012), l'accord
   nomme les fournisseurs : `accord: {fournisseurs: [ids]}`, comparé à ceux
@@ -2056,7 +2058,9 @@ refusée ; fixture inventée `schemas/fixtures/twin9-configuration-exemple.json`
   par champ (liste blanche), elle porte :
   - `schema` (`twin9-configuration/1`), `empreinte`, `sel` (16 octets tirés
     au hasard au lancement, en hexadécimal), `lance_at` (l'horloge du run) ;
-  - `moteur` : `commit`, `protocole` (`Journee::VERSION_PROTOCOLE`),
+  - `moteur` : `commit` (celui de l'attestation, §8.4 : 7 à 64 chiffres
+    hexadécimaux ; le motif admet depuis le 2026-10-23 les 64 d'un dépôt
+    SHA-256, élargi sans changer `twin9-configuration/1`), `protocole` (`Journee::VERSION_PROTOCOLE`),
     `personas` (`{version, empreinte}` de la banque des jurés), `scan`
     (`Arpenteur::VERSION_SCAN`) — lus par l'appelant (`Lancement`), chacun
     sous garde, nuls quand le moteur ne les donne pas (le moteur factice des

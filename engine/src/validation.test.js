@@ -293,6 +293,20 @@ describe('twin9-run', () => {
     expect(validateDocument('twin9-run', ancien).valid).toBe(true)
   })
 
+  it('names the engine’s commit in SHA-1 or SHA-256, abbreviated or not (EngineLoader::commit)', () => {
+    const avec = (commit) => {
+      const doc = fixture('twin9-configuration-exemple.json')
+      doc.run.configuration.moteur.commit = commit
+      return validateDocument('twin9-run', doc).valid
+    }
+    for (const commit of [null, 'abc1234', 'ab'.repeat(20), '0123456789abcdef'.repeat(4)]) {
+      expect(avec(commit), String(commit)).toBe(true)
+    }
+    for (const commit of ['abc123', 'a'.repeat(65), 'ABC1234', '']) {
+      expect(avec(commit), commit).toBe(false)
+    }
+  })
+
   it('lets an account’s archive carry them, whole or absent', () => {
     const { configuration, execution } = fixture('twin9-configuration-exemple.json').run
     const run = { id: 42, journal: 'journal-exemple', statut: 'termine', profil: {}, appels: [], sorties: {},

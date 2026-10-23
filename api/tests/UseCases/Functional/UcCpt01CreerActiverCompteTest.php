@@ -69,10 +69,10 @@ final class UcCpt01CreerActiverCompteTest extends CartographeTestCase
         return [$plafond];
     }
 
-    /** Date l'attente d'un compte du mois UTC précédent : son attente est finie. */
-    private static function attenteDuMoisDernier(string $email): void
+    /** Date l'attente d'un compte du mois UTC précédent (le $jour, à midi) : son attente est finie. */
+    private static function attenteDuMoisDernier(string $email, int $jour = 15): void
     {
-        $moisDernier = gmmktime(12, 0, 0, (int) gmdate('n') - 1, 15, (int) gmdate('Y'));
+        $moisDernier = gmmktime(12, 0, 0, (int) gmdate('n') - 1, $jour, (int) gmdate('Y'));
         self::$pdo->prepare('UPDATE users SET waitlisted_at = ? WHERE email = ?')
             ->execute([gmdate('Y-m-d H:i:s', $moisDernier), $email]);
     }
@@ -613,8 +613,10 @@ final class UcCpt01CreerActiverCompteTest extends CartographeTestCase
         foreach (['ada', 'bob', 'cid', 'dan', 'eve'] as $nom) {
             self::assertSame('waitlisted', self::json($this->signUp(['email' => "{$nom}@example.org", 'emailConfirm' => "{$nom}@example.org"]))['status']);
         }
-        self::attenteDuMoisDernier('bob@example.org');
-        self::attenteDuMoisDernier('ada@example.org');
+        // Bob, inscrit après Ada, attend depuis plus longtemps qu'elle : l'ordre de levée
+        // est celui de l'inscription (id), pas celui de la date d'attente.
+        self::attenteDuMoisDernier('bob@example.org', 2);
+        self::attenteDuMoisDernier('ada@example.org', 20);
         $this->mailer->clear();
 
         $this->cookieSid = null;
@@ -630,7 +632,9 @@ final class UcCpt01CreerActiverCompteTest extends CartographeTestCase
         $bobCode = preg_match('/[?&]code=(\d{4})\b/', $this->mailer->sent[1]['body'], $m) === 1 ? $m[1] : '';
         self::assertSame(200, $this->activate('bob@example.org', $bobCode)->getStatusCode());
 
-        // Cid : sa connexion, son attente finie, le lève — un code part, l'écran d'activation suit.
+        // Cid : sa connexion, son attente finie, le lève (par la levée du mois qu'elle déclenche, Cid
+        // étant le seul compte dû ; F35 couvre le compte au-delà du lot) — un code part, l'écran
+        // d'activation suit.
         self::attenteDuMoisDernier('cid@example.org');
         $this->cookieSid = null;
         $login = $this->login('cid@example.org', self::PASSWORD);
@@ -792,5 +796,32 @@ final class UcCpt01CreerActiverCompteTest extends CartographeTestCase
         } finally {
             date_default_timezone_set($zone);
         }
+    }
+
+    #[TestDox('UC-CPT-01-F35 — A5 : plus de comptes dus qu’un lot (Waitlist::LIFT_BATCH + 1) — la connexion du dernier inscrit déclenche la levée du mois, qui lève les 50 premiers dans l’ordre d’inscription, puis le lève LUI (sa propre branche) : 403 email_not_verified et un seul courriel pour lui ; aucun compte ne reste en attente')]
+    public function testF35TheLoginOfAnAccountBeyondTheBatchLiftsIt(): void
+    {
+        $hash = \Humanome\Auth\Users::hashPassword(self::PASSWORD);
+        $emails = [];
+        for ($i = 1; $i <= Waitlist::LIFT_BATCH + 1; $i++) {
+            $emails[] = $email = sprintf('attente%02d@example.org', $i);
+            \Humanome\Auth\Users::create(self::$pdo, $email, $hash, 'Attente ' . $i);
+            self::attenteDuMoisDernier($email);
+        }
+        $dernier = end($emails);
+        $this->mailer->clear();
+
+        $this->cookieSid = null;
+        $login = $this->login($dernier, self::PASSWORD);
+        self::assertSame([403, 'email_not_verified'], [$login->getStatusCode(), self::json($login)['code']]);
+        $destinataires = array_column($this->mailer->sent, 'to');
+        self::assertSame(\array_slice($emails, 0, Waitlist::LIFT_BATCH), \array_slice($destinataires, 0, Waitlist::LIFT_BATCH),
+            'la levée du mois : un lot, dans l’ordre d’inscription');
+        self::assertSame([$dernier], array_values(array_filter($destinataires, static fn (string $to): bool => $to === $dernier)),
+            'un seul courriel pour lui, de sa propre levée');
+        self::assertCount(Waitlist::LIFT_BATCH + 1, $destinataires);
+        self::assertNull(self::userRow($dernier)['waitlisted_at']);
+        self::assertSame(0, (new Waitlist(self::$pdo))->count());
+        self::assertSame(200, $this->activate($dernier, $this->lastCode())->getStatusCode());
     }
 }

@@ -358,9 +358,11 @@ final class UcCpt01CreerActiverCompteTest extends TestCase
         $waitlist = new Waitlist(self::$pdo);
         $octobre = gmmktime(10, 0, 0, 10, 10, 2026);
         $ids = [];
+        // Le dernier inscrit attend depuis le plus longtemps : l'ordre de levée est celui de
+        // l'inscription (id), jamais celui de la date d'attente.
         foreach (['un', 'deux', 'trois', 'parti'] as $i => $nom) {
             $ids[$nom] = self::account($nom . '@example.org');
-            $waitlist->enlist($ids[$nom], $octobre + $i * 86_400);
+            $waitlist->enlist($ids[$nom], $octobre - $i * 86_400);
         }
         self::$pdo->prepare('UPDATE users SET deleted_at = NOW() WHERE id = ?')->execute([$ids['parti']]);
         $novembre = gmmktime(0, 0, 0, 11, 1, 2026);

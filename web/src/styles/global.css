@@ -5141,8 +5141,10 @@ body:has([aria-modal='true'], .portfolio-editor-fullscreen)
   cursor: pointer;
 }
 
+/* Survol : l'aplat de survol, sous la même encre (--accent-strong est un
+   jeton de TEXTE, éclairci en sombre : 1,94:1 sous le blanc de l'épistémiarque). */
 .admin-demo-actions button:hover {
-  background: var(--accent-strong);
+  background: var(--accent-solid-hover);
 }
 
 .admin-demo-actions button:disabled {

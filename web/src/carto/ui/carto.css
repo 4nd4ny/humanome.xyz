@@ -206,9 +206,17 @@
 .carto-btn--quiet:hover {
   background: var(--surface-2);
 }
+/* Danger : le cramoisi en encre et en filet sur la carte, comme le bouton
+   Supprimer de la proposition A, et non en aplat (blanc sur le danger éclairci
+   du sombre de l'épistémiarque : 2,48:1). Le survol garde le cramoisi : sans
+   sa règle, .carto-btn:hover (plus spécifique) lui rendait l'aplat d'accent. */
 .carto-btn--danger {
-  background: var(--danger);
+  background: var(--card);
+  color: var(--danger);
   border-color: var(--danger);
+}
+.carto-btn--danger:hover {
+  background: var(--danger-bg);
 }
 .carto-link,
 .carto-link-btn {

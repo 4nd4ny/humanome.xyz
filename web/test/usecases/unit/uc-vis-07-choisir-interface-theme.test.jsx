@@ -325,35 +325,137 @@ function isLargeText(decl) {
   return px >= 24 || (bold && px >= 18.66)
 }
 
+/** États d'un même élément : pseudo-classes d'état et attributs d'état. */
+const STATE = /:(?:hover|focus-visible|focus-within|focus|active|disabled|checked|not\((?:[^()]|\([^()]*\))*\))|\[(?:aria|data)-[^\]]*\]/g
+
+/** Indice où commence le dernier composé d'un sélecteur (l'élément visé). */
+function subjectStart(part) {
+  let depth = 0
+  let start = 0
+  for (let i = 0; i < part.length; i++) {
+    const ch = part[i]
+    if (ch === '(' || ch === '[') depth++
+    else if (ch === ')' || ch === ']') depth--
+    else if (depth === 0 && /[\s>+~]/.test(ch)) start = i + 1
+  }
+  return start
+}
+
+/**
+ * Règles de base d'un état ou d'un modificateur, de la plus proche à la plus
+ * lointaine, sur l'élément visé (dernier composé) : le sélecteur sans ses
+ * états (« .x:hover », « .x[aria-pressed='true'] », « .x.is-focus » → « .x »),
+ * puis sans son modificateur BEM (« .x--y » → « .x »). Un pseudo-élément est
+ * un autre élément : aucune base.
+ */
+function baseSelectors(part) {
+  if (part.includes('::')) return []
+  const at = subjectStart(part)
+  const [head, subject] = [part.slice(0, at), part.slice(at)]
+  const plain = subject.replace(STATE, '').replace(/\.is-[\w-]+/g, '')
+  const bem = plain.replace(/\.([\w-]+?)--[\w-]+/g, '.$1')
+  return [...new Set([plain, bem])].filter((s) => s && s !== subject).map((s) => head + s)
+}
+
+/**
+ * Les règles des feuilles du site rangées par membre de sélecteur (« .a, .b »
+ * compte pour .a et pour .b), dans l'ordre des feuilles : la cascade d'un même
+ * élément, lue à plat. Impression et copies :root[…] exclues.
+ */
+function siteIndex() {
+  const index = new Map()
+  for (const sheet of SITE_SHEETS) {
+    for (const rule of sheetRules(sheet)) {
+      if (rule.media?.includes('print') || rule.selector.startsWith(':root')) continue
+      for (const part of rule.selector.split(',').map((p) => p.trim())) {
+        if (!index.has(part)) index.set(part, [])
+        index.get(part).push({ sheet, media: rule.media, decl: rule.decl })
+      }
+    }
+  }
+  return index
+}
+
+/**
+ * Une propriété telle que la cascade la donne à un sélecteur de base : sa
+ * dernière déclaration, hors @media ou dans le même @media que la règle lue.
+ */
+function declaredOn(index, selector, prop, media) {
+  const found = (index.get(selector) ?? []).filter((r) => (r.media === null || r.media === media) && prop in r.decl)
+  return found.length ? found[found.length - 1].decl[prop] : undefined
+}
+
+/**
+ * L'encre d'un élément dont la règle ne pose que le fond : celle de la plus
+ * proche de ses règles de base qui en déclare une (`undefined` sinon : un
+ * remplissage sans texte, piste d'interrupteur ou barre de progression).
+ */
+function inheritedInk(index, part, media) {
+  for (const base of baseSelectors(part)) {
+    const color = declaredOn(index, base, 'color', media)
+    if (color !== undefined) return { base, color }
+  }
+  return undefined
+}
+
 describe('UC-VIS-07 — contrastes en usage : les règles des feuilles du site, mesurées dans les neuf contextes (sprint 9, lot S9-3)', () => {
-  it('UC-VIS-07-U09 — chaque règle qui pose un texte sur un fond (couleur et fond dans la même règle) atteint 4,5:1, 3:1 pour un grand texte, dans les trois interfaces en clair, en sombre du système et en sombre choisi ; les couleurs de données posées par élément sont hors de l’interface (RG4, RG5)', () => {
+  it('UC-VIS-07-U09 — chaque règle qui pose un texte sur un fond atteint 4,5:1, 3:1 pour un grand texte, dans les trois interfaces en clair, en sombre du système et en sombre choisi : couleur et fond dans la même règle, ou fond seul d’un état ou d’un modificateur (:hover, [aria-pressed], .is-*, .x--y) sous l’encre de sa règle de base ; un modificateur garde son fond au survol de sa base ; les couleurs de données posées par élément sont hors de l’interface (RG4, RG5)', () => {
     const rules = globalCssRules()
     const cartoRules = sheetRules('src/carto/ui/carto.css')
+    const index = siteIndex()
     const failures = []
     let measured = 0
+    let inherited = 0
+    const measure = (sheet, selector, decl, fg, bg) => {
+      // Aucune règle d'aujourd'hui ne pose un grand texte sur son fond : toutes visent 4,5:1.
+      const min = isLargeText(decl) ? 3 : 4.5
+      for (const theme of THEMES) {
+        const extra = sheet.includes('carto') ? cartoLayer(cartoRules, theme, selector) : {}
+        const [ink, surface] = [fg, bg].map((value) => resolveColor(rules, value, theme, extra))
+        const where = `${sheet} ${selector}, ${theme.name}`
+        if (!HEX.test(ink) || !HEX.test(surface)) failures.push(`${where} : couleur non mesurable ${ink} / ${surface}`)
+        else if (!(contrast(ink, surface) >= min))
+          failures.push(`${where} : ${fg} ${ink} sur ${bg} ${surface} = ${contrast(ink, surface).toFixed(2)} < ${min}`)
+      }
+    }
     for (const sheet of SITE_SHEETS) {
       for (const rule of sheetRules(sheet)) {
         // Impression : du papier ; :root[…] : copies par thème des couleurs de données.
         if (rule.media?.includes('print') || rule.selector.startsWith(':root')) continue
         const fg = rule.decl.color
         const bg = rule.decl['background-color'] ?? rule.decl.background
-        if (!SINGLE_COLOR.test(fg ?? '') || !SINGLE_COLOR.test(bg ?? '')) continue // dégradés, color-mix, transparent…
-        if (ELEMENT_VARS.test(fg) || ELEMENT_VARS.test(bg)) continue
-        measured++
-        // Aucune règle d'aujourd'hui ne pose un grand texte sur son fond : toutes visent 4,5:1.
-        const min = isLargeText(rule.decl) ? 3 : 4.5
-        for (const theme of THEMES) {
-          const extra = sheet.includes('carto') ? cartoLayer(cartoRules, theme, rule.selector) : {}
-          const [ink, surface] = [fg, bg].map((value) => resolveColor(rules, value, theme, extra))
-          const where = `${sheet} ${rule.selector}, ${theme.name}`
-          if (!HEX.test(ink) || !HEX.test(surface)) failures.push(`${where} : couleur non mesurable ${ink} / ${surface}`)
-          else if (!(contrast(ink, surface) >= min))
-            failures.push(`${where} : ${fg} ${ink} sur ${bg} ${surface} = ${contrast(ink, surface).toFixed(2)} < ${min}`)
+        if (!SINGLE_COLOR.test(bg ?? '') || ELEMENT_VARS.test(bg)) continue // dégradés, color-mix, transparent…
+        if (fg !== undefined) {
+          if (!SINGLE_COLOR.test(fg) || ELEMENT_VARS.test(fg)) continue
+          measured++
+          measure(sheet, rule.selector, rule.decl, fg, bg)
+          continue
+        }
+        // Fond seul : l'encre vient de la règle de base du même élément
+        // (.carto-btn--danger sous l'encre de .carto-btn, un :hover sous celle
+        // de sa règle) ; sans encre de base, un remplissage sans texte.
+        for (const part of rule.selector.split(',').map((p) => p.trim())) {
+          const base = inheritedInk(index, part, rule.media)
+          if (!base || !SINGLE_COLOR.test(base.color) || ELEMENT_VARS.test(base.color)) continue
+          inherited++
+          measure(sheet, `${part} (encre de ${base.base})`, rule.decl, base.color, bg)
         }
       }
     }
+    // Un modificateur qui change le fond de sa base (« .x--y ») et dont la base
+    // a un fond de survol : son propre survol, sinon « .x:hover » l'emporte
+    // (même spécificité, ou plus haute) et lui rend le fond de la base.
+    for (const [part, entries] of index) {
+      const subject = part.slice(subjectStart(part))
+      if (!/\.[\w-]+?--[\w-]+/.test(subject) || /[:[]/.test(subject)) continue
+      if (!entries.some((r) => 'background' in r.decl || 'background-color' in r.decl)) continue
+      const baseHover = `${baseSelectors(part).at(-1)}:hover`
+      const hasBg = (sel) => (index.get(sel) ?? []).some((r) => 'background' in r.decl || 'background-color' in r.decl)
+      if (hasBg(baseHover) && !hasBg(`${part}:hover`)) failures.push(`${part} : pas de fond au survol, ${baseHover} lui rend le sien`)
+    }
     expect(failures).toEqual([])
-    expect(measured).toBeGreaterThanOrEqual(140) // boutons, onglets, puces, bandeaux, champs, badges… (143 au lot S9-3)
+    expect(measured).toBeGreaterThanOrEqual(140) // boutons, onglets, puces, bandeaux, champs, badges… (144 aux correctifs du sprint 9)
+    expect(inherited).toBeGreaterThanOrEqual(12) // survols, modificateurs, états pressés… (14 aux correctifs du sprint 9)
   })
 
   it('UC-VIS-07-U10 — anneau de focus : chaque règle :focus des feuilles du site trace l’anneau de l’interface (--focus), ou l’encre de la visualisation (--viz-ink) sur sa surface claire ; l’anneau atteint 3:1 sur tout fond où il peut tomber (fond, carte, surface secondaire, encart d’information, surface de la cartographie) dans les neuf contextes ; la feuille imprimable et la zone du diagramme, claires dans les deux thèmes, posent leur propre anneau (RG4)', () => {

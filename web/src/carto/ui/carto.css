@@ -112,7 +112,7 @@
   }
 }
 .carto-app *:focus-visible {
-  outline: 2px solid var(--accent);
+  outline: 2px solid var(--focus);
   outline-offset: 2px;
 }
 /* L'espace Cartographie prend toute la largeur : ses tuiles se rangent sur la
@@ -638,14 +638,14 @@ kbd {
 }
 .carto-sun-sector path:first-child:focus-visible {
   outline: none;
-  stroke: var(--accent);
+  stroke: var(--focus);
   stroke-width: 2.4;
 }
 .carto-sun-center:focus {
   outline: none;
 }
 .carto-sun-center:focus-visible circle {
-  stroke: var(--accent);
+  stroke: var(--focus);
   stroke-width: 2;
 }
 .carto-sun-hatch {
@@ -696,7 +696,7 @@ kbd {
   stroke: var(--viz-guide);
 }
 .carto-sun--zoomed .carto-sun-center:focus-visible circle {
-  stroke: var(--accent);
+  stroke: var(--focus);
   stroke-width: 2;
 }
 /* Code d'une compétence du pôle ouvert (D-45). */
@@ -877,7 +877,7 @@ kbd {
   max-width: none;
 }
 .carto-hm:focus-visible {
-  outline: 2px solid var(--accent);
+  outline: 2px solid var(--focus);
 }
 .carto-hm-month,
 .carto-hm-weekday {
@@ -1000,7 +1000,7 @@ kbd {
 .carto-list-search input {
   font: inherit;
   padding: 0.3rem 0.5rem;
-  border: 1px solid var(--line);
+  border: 1px solid var(--line-strong);
   border-radius: var(--carto-radius);
   background: var(--card);
   color: var(--ink);
@@ -1086,7 +1086,7 @@ kbd {
 }
 .carto-dataset-title input:hover,
 .carto-dataset-title input:focus {
-  border-color: var(--line);
+  border-color: var(--line-strong);
   background: var(--card);
 }
 .carto-manager-counts {
@@ -1114,7 +1114,7 @@ kbd {
   font: inherit;
   font-size: 0.85rem;
   padding: 0.2rem;
-  border: 1px solid var(--line);
+  border: 1px solid var(--line-strong);
   border-radius: 4px;
   background: var(--card);
   color: var(--ink);
@@ -1216,7 +1216,7 @@ kbd {
   font: inherit;
   font-size: 0.85rem;
   padding: 0.2rem 0.35rem;
-  border: 1px solid var(--line);
+  border: 1px solid var(--line-strong);
   border-radius: 4px;
   background: var(--card);
   color: var(--ink);
@@ -1794,7 +1794,7 @@ kbd {
   font: inherit;
   font-size: 0.86rem;
   width: 100%;
-  border: 1px solid var(--line);
+  border: 1px solid var(--line-strong);
   border-radius: var(--carto-radius);
   background: var(--card);
   color: var(--ink);
@@ -1944,7 +1944,7 @@ kbd {
   outline: none;
 }
 .carto-reader-head h2:focus-visible {
-  outline: 2px solid var(--accent);
+  outline: 2px solid var(--focus);
 }
 .carto-reader-step,
 .carto-reader-close {
@@ -2252,7 +2252,7 @@ kbd {
 .carto-field textarea {
   font: inherit;
   font-size: 0.9rem;
-  border: 1px solid var(--line);
+  border: 1px solid var(--line-strong);
   border-radius: var(--carto-radius);
   background: var(--card);
   color: var(--ink);
@@ -2533,7 +2533,7 @@ kbd {
   overflow: visible;
 }
 .carto-chart svg:focus-visible {
-  outline: 2px solid var(--accent);
+  outline: 2px solid var(--focus);
 }
 .carto-chart-grid line {
   stroke: var(--line);
@@ -3099,7 +3099,7 @@ kbd {
   width: 100%;
   min-width: 6rem;
   padding: 0.15rem 0.35rem;
-  border: 1px solid var(--line);
+  border: 1px solid var(--line-strong);
   border-radius: 4px;
   background: var(--card);
   color: var(--ink);
@@ -3289,7 +3289,7 @@ kbd {
   gap: 0.5rem;
 }
 .carto-print-overlay *:focus-visible {
-  outline: 2px solid var(--accent);
+  outline: 2px solid var(--focus);
   outline-offset: 2px;
 }
 /* La feuille reste claire dans les deux thèmes : c'est du papier. */
@@ -3304,6 +3304,9 @@ kbd {
   --line: #e2e8f0;
   --accent: #2563eb;
   --accent-strong: #1d4ed8;
+  /* Anneau fixe sur ce papier : le focus sombre d'une interface, clair, s'y
+     perdrait (UC-VIS-07-U10). */
+  --focus: #1d4ed8;
   --viz-surface: #ffffff;
   --viz-ink: #1e293b;
   --warn-bg: #fffbeb;
@@ -3705,7 +3708,7 @@ label.carto-share-field span {
   font: inherit;
   max-width: 34rem;
   padding: 0.3rem 0.45rem;
-  border: 1px solid var(--line);
+  border: 1px solid var(--line-strong);
   border-radius: 4px;
   background: var(--paper);
   color: var(--ink);
@@ -4150,7 +4153,7 @@ label.carto-share-field span {
   font: inherit;
   width: 100%;
   padding: 0.45rem 0.55rem;
-  border: 1px solid var(--line);
+  border: 1px solid var(--line-strong);
   border-radius: 6px;
   background: var(--paper);
   color: var(--ink);

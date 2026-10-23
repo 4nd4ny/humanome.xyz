@@ -820,12 +820,22 @@ html[data-interface='technomancien'] {
   --tracking-body: -0.005em;
 }
 
-/* Focus clavier visible partout (liens, boutons, résumés dépliables). */
+/* Focus clavier visible partout (liens, boutons, résumés dépliables,
+   champs) : l'anneau de l'interface (--focus : bleu de Prusse, violet ou
+   cyan), décalé de 2 px, donc posé sur le fond qui entoure la commande et
+   jamais sur son aplat. Il atteint 3:1 sur le fond, la carte, la surface
+   secondaire et l'encart d'information dans les neuf contextes : gardé, comme
+   chaque règle :focus des feuilles du site, par UC-VIS-07-U10. Les surfaces
+   claires dans les deux thèmes (zone du diagramme, feuille imprimable de la
+   cartographie) redéfinissent --focus. */
 a:focus-visible,
 button:focus-visible,
 summary:focus-visible,
-[tabindex]:focus-visible {
-  outline: 2px solid var(--accent-strong);
+[tabindex]:focus-visible,
+input:focus-visible,
+select:focus-visible,
+textarea:focus-visible {
+  outline: 2px solid var(--focus);
   outline-offset: 2px;
 }
 
@@ -1546,6 +1556,12 @@ body:has([aria-modal='true'], .portfolio-editor-fullscreen)
 
 .display-select-label {
   font-weight: var(--fw-strong);
+  /* Jamais coupé au milieu du mot : dans la ligne « Affichage » de #/compte,
+     le dd coupe partout (overflow-wrap: anywhere, pour les longues adresses)
+     et, à 375 px, « Interface » devenait « Interfac / e ». La liste, elle,
+     peut rétrécir (min-width: 0). */
+  overflow-wrap: normal;
+  flex: none;
 }
 
 .display-select select {
@@ -2322,6 +2338,9 @@ body:has([aria-modal='true'], .portfolio-editor-fullscreen)
   border-radius: 12px;
   background: var(--viz-surface);
   color: var(--viz-ink);
+  /* L'anneau d'une commande posée sur cette surface claire : l'encre de la
+     visualisation (le focus sombre d'une interface, clair, s'y perdrait). */
+  --focus: var(--viz-ink);
 }
 
 @media (max-width: 820px) {
@@ -2365,9 +2384,13 @@ body:has([aria-modal='true'], .portfolio-editor-fullscreen)
 
 .sunburst .sector:hover,
 .sunburst .sector:focus-visible {
+  opacity: 1 !important;
+}
+
+/* Survol : liseré blanc ; le focus a le sien, sombre (plus bas). */
+.sunburst .sector:hover {
   stroke: #fff;
   stroke-width: 2;
-  opacity: 1 !important;
 }
 
 .sunburst .renvoi-sector:hover,
@@ -2737,7 +2760,7 @@ body:has([aria-modal='true'], .portfolio-editor-fullscreen)
 .ref-search input {
   max-width: 26rem;
   padding: 0.55rem 0.8rem;
-  border: 1px solid var(--line);
+  border: 1px solid var(--line-strong);
   border-radius: 8px;
   font: inherit;
   font-size: 1rem;
@@ -2854,7 +2877,7 @@ body:has([aria-modal='true'], .portfolio-editor-fullscreen)
 .account-form input,
 .account-danger input {
   padding: 0.55rem 0.8rem;
-  border: 1px solid var(--line);
+  border: 1px solid var(--line-strong);
   border-radius: 8px;
   font: inherit;
   font-size: 1rem;
@@ -3089,7 +3112,7 @@ body:has([aria-modal='true'], .portfolio-editor-fullscreen)
   width: 100%;
   min-height: 16rem;
   padding: 0.75rem;
-  border: 1px solid var(--line);
+  border: 1px solid var(--line-strong);
   border-radius: 8px;
   background: var(--card);
   color: inherit;
@@ -3278,7 +3301,7 @@ body:has([aria-modal='true'], .portfolio-editor-fullscreen)
   width: 100%;
   margin-top: 0.25rem;
   padding: 0.5rem 0.7rem;
-  border: 1px solid var(--line);
+  border: 1px solid var(--line-strong);
   border-radius: 8px;
   font: inherit;
   font-weight: var(--fw-strong);
@@ -3379,7 +3402,7 @@ body:has([aria-modal='true'], .portfolio-editor-fullscreen)
 
 .portfolio-gdoc-form input {
   padding: 0.5rem 0.7rem;
-  border: 1px solid var(--line);
+  border: 1px solid var(--line-strong);
   border-radius: 8px;
   font: inherit;
 }
@@ -3433,7 +3456,7 @@ body:has([aria-modal='true'], .portfolio-editor-fullscreen)
 .portfolio-day-date input {
   width: 9.5rem;
   padding: 0.35rem 0.5rem;
-  border: 1px solid var(--line);
+  border: 1px solid var(--line-strong);
   border-radius: 6px;
   font: inherit;
 }
@@ -3729,7 +3752,7 @@ body:has([aria-modal='true'], .portfolio-editor-fullscreen)
 .carto-visibility select {
   margin-left: 0.3rem;
   padding: 0.3rem 0.45rem;
-  border: 1px solid var(--line);
+  border: 1px solid var(--line-strong);
   border-radius: 8px;
   background: var(--card);
   color: var(--ink);
@@ -3917,7 +3940,7 @@ body:has([aria-modal='true'], .portfolio-editor-fullscreen)
 
 .share-unlock input {
   padding: 0.5rem 0.65rem;
-  border: 1px solid var(--line);
+  border: 1px solid var(--line-strong);
   border-radius: 8px;
   font: inherit;
   background: var(--paper);
@@ -3985,7 +4008,7 @@ body:has([aria-modal='true'], .portfolio-editor-fullscreen)
 
 .cartographe-invitation-form input {
   padding: 0.45rem 0.65rem;
-  border: 1px solid var(--line);
+  border: 1px solid var(--line-strong);
   border-radius: 8px;
   font: inherit;
   letter-spacing: 0.12em;
@@ -4076,7 +4099,7 @@ body:has([aria-modal='true'], .portfolio-editor-fullscreen)
 .cartographe-annoter select,
 .cartographe-comparer-selecteurs select {
   padding: 0.45rem 0.65rem;
-  border: 1px solid var(--line);
+  border: 1px solid var(--line-strong);
   border-radius: 8px;
   font: inherit;
   background: var(--paper);
@@ -4243,7 +4266,7 @@ body:has([aria-modal='true'], .portfolio-editor-fullscreen)
 .promptologue-field select,
 .promptologue-field textarea {
   padding: 0.45rem 0.6rem;
-  border: 1px solid var(--line);
+  border: 1px solid var(--line-strong);
   border-radius: 8px;
   font: inherit;
   background: var(--paper);
@@ -4293,7 +4316,7 @@ body:has([aria-modal='true'], .portfolio-editor-fullscreen)
 
 .promptologue-variable input {
   padding: 0.3rem 0.5rem;
-  border: 1px solid var(--line);
+  border: 1px solid var(--line-strong);
   border-radius: 6px;
   font: inherit;
 }
@@ -4330,7 +4353,7 @@ body:has([aria-modal='true'], .portfolio-editor-fullscreen)
 .promptologue-cle input,
 .promptologue-cle select {
   padding: 0.35rem 0.5rem;
-  border: 1px solid var(--line);
+  border: 1px solid var(--line-strong);
   border-radius: 6px;
   font: inherit;
 }
@@ -4371,7 +4394,7 @@ body:has([aria-modal='true'], .portfolio-editor-fullscreen)
 
 .banc-carnet-actions input {
   padding: 0.35rem 0.5rem;
-  border: 1px solid var(--line);
+  border: 1px solid var(--line-strong);
   border-radius: 6px;
   font: inherit;
 }
@@ -4465,7 +4488,7 @@ body:has([aria-modal='true'], .portfolio-editor-fullscreen)
 .etab-cohorte select,
 .cohorte-depot select {
   padding: 0.35rem 0.5rem;
-  border: 1px solid var(--line);
+  border: 1px solid var(--line-strong);
   border-radius: 6px;
   font: inherit;
 }
@@ -4943,7 +4966,7 @@ body:has([aria-modal='true'], .portfolio-editor-fullscreen)
 
 .mon-role-picker select {
   padding: 0.3rem 0.5rem;
-  border: 1px solid var(--line);
+  border: 1px solid var(--line-strong);
   border-radius: 8px;
   background: var(--card);
   color: var(--ink);
@@ -5054,7 +5077,7 @@ body:has([aria-modal='true'], .portfolio-editor-fullscreen)
   font: inherit;
   padding: 0.5rem 0.6rem;
   min-height: 44px;
-  border: 1px solid var(--line);
+  border: 1px solid var(--line-strong);
   border-radius: 8px;
   background: var(--card);
   color: var(--ink);
@@ -5094,7 +5117,9 @@ body:has([aria-modal='true'], .portfolio-editor-fullscreen)
 
 .admin-source-env {
   border-color: var(--fam-piloter);
-  color: var(--fam-piloter);
+  /* L'encre d'alerte de l'interface : la couleur de famille (#b45309) tombe
+     sous 4,5:1 sur les fonds d'alerte des trois interfaces (UC-VIS-07-U09). */
+  color: var(--warn-strong);
   background: var(--warn-bg);
 }
 
@@ -5159,7 +5184,7 @@ body:has([aria-modal='true'], .portfolio-editor-fullscreen)
   font: inherit;
   min-height: 44px;
   padding: 0.5rem 0.7rem;
-  border: 1px solid var(--line);
+  border: 1px solid var(--line-strong);
   border-radius: 8px;
   background: var(--card);
   color: var(--ink);
@@ -5272,7 +5297,7 @@ body:has([aria-modal='true'], .portfolio-editor-fullscreen)
   font-size: 0.9rem;
   line-height: 1.5;
   padding: 0.6rem 0.7rem;
-  border: 1px solid var(--line);
+  border: 1px solid var(--line-strong);
   border-radius: 8px;
   background: var(--card);
   color: var(--ink);
@@ -5512,7 +5537,7 @@ body:has([aria-modal='true'], .portfolio-editor-fullscreen)
 .epi-field input,
 .epi-field textarea {
   padding: 0.5rem 0.65rem;
-  border: 1px solid var(--line);
+  border: 1px solid var(--line-strong);
   border-radius: 8px;
   background: var(--card);
   color: var(--ink);
@@ -5598,7 +5623,7 @@ body:has([aria-modal='true'], .portfolio-editor-fullscreen)
 .epi-comp-edit input {
   flex: 1 1 auto;
   padding: 0.4rem 0.6rem;
-  border: 1px solid var(--line);
+  border: 1px solid var(--line-strong);
   border-radius: 8px;
   background: var(--card);
   color: var(--ink);
@@ -5860,7 +5885,7 @@ body:has([aria-modal='true'], .portfolio-editor-fullscreen)
 .epi-listeditor input {
   flex: 1 1 auto;
   padding: 0.4rem 0.6rem;
-  border: 1px solid var(--line);
+  border: 1px solid var(--line-strong);
   border-radius: 8px;
   background: var(--card);
   color: var(--ink);
@@ -6002,7 +6027,7 @@ body:has([aria-modal='true'], .portfolio-editor-fullscreen)
 .account-keys-form select,
 .account-keys-form input {
   padding: 0.5rem 0.65rem;
-  border: 1px solid var(--line);
+  border: 1px solid var(--line-strong);
   border-radius: 8px;
   background: var(--card);
   color: var(--ink);

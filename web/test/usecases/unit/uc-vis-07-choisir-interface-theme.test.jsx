@@ -6,8 +6,11 @@
 // d'index.html (exécuté contre des doublures), jetons des trois interfaces
 // dans global.css (lus par le CSSOM de jsdom : jeux de jetons, copies
 // sombres, alias, couleurs de données, contrastes WCAG dans les neuf
-// contextes) et les deux listes du sélecteur (DisplaySelects). jsdom
-// n'applique pas les styles : rien n'est mesuré à l'écran.
+// contextes), les règles des feuilles du site qui les emploient (couples
+// texte et fond, anneaux de focus, bordures des champs, mesurés dans les
+// neuf contextes : lot S9-3) et les deux listes du sélecteur
+// (DisplaySelects). jsdom n'applique pas les styles : les contrastes sont
+// calculés sur les règles, pas mesurés à l'écran.
 import { readFileSync } from 'node:fs'
 import { dirname, resolve } from 'node:path'
 import { fileURLToPath } from 'node:url'
@@ -28,7 +31,7 @@ import {
 } from '../../../src/lib/theme.js'
 import DisplaySelects from '../../../src/components/DisplaySelects.jsx'
 import { contrast } from '../../../src/carto/ui/colors.js'
-import { THEMES, declOf, globalCssRules, resolveColor, tokensOf } from '../support/global-css.js'
+import { SITE_SHEETS, THEMES, declOf, globalCssRules, resolveColor, sheetRules, tokensOf } from '../support/global-css.js'
 
 const here = dirname(fileURLToPath(import.meta.url))
 const html = readFileSync(resolve(here, '../../../index.html'), 'utf8')
@@ -248,20 +251,10 @@ describe('UC-VIS-07 — jetons des trois interfaces (global.css)', () => {
   })
 
   it('UC-VIS-07-U08 — aucun texte blanc écrit en dur : sur l’aplat d’accent, l’encre est --on-accent (sombre quand l’aplat s’éclaircit en sombre) ; timeline.css et twin9-credit.css n’ont plus de couleur littérale (RG4)', () => {
-    const sheets = [
-      'src/styles/global.css',
-      'src/styles/configuration.css',
-      'src/styles/markdown.css',
-      'src/styles/twin9.css',
-      'src/styles/twin9-credit.css',
-      'src/styles/timeline.css',
-      'src/carto/ui/carto.css',
-    ]
     const failures = []
     let onAccent = 0
-    for (const sheet of sheets) {
-      const source = readFileSync(resolve(here, '../../..', sheet), 'utf8')
-      for (const rule of leafRules(source)) {
+    for (const sheet of SITE_SHEETS) {
+      for (const rule of sheetRules(sheet)) {
         if (rule.media?.includes('print')) continue // le papier reste blanc, à dessein
         const where = `${sheet} ${rule.selector}`
         if (/^(#fff|#ffffff|white)$/i.test(rule.decl.color ?? '')) failures.push(`${where} : color ${rule.decl.color}`)
@@ -281,41 +274,178 @@ describe('UC-VIS-07 — jetons des trois interfaces (global.css)', () => {
   })
 })
 
+/** Une couleur : un jeton (avec un repli éventuel) ou un littéral hexadécimal. */
+const SINGLE_COLOR = /^(var\(--[\w-]+(\s*,\s*(var\(--[\w-]+\)|#[0-9a-f]{3,8}))?\)|#[0-9a-f]{3,8})$/i
+const HEX = /^#([0-9a-f]{3}|[0-9a-f]{6})$/i
+
 /**
- * Règles terminales d'une feuille (texte), avec leur @media éventuel :
- * commentaires ôtés, blocs imbriqués parcourus. Lecture du texte, sans CSSOM :
- * jsdom ne sait pas analyser color-mix().
- * @returns {Array<{media: string|null, selector: string, decl: Record<string, string>}>}
+ * Variables posées par élément, pas par l'interface : couleurs calculées et
+ * pôles de la cartographie (--c, --pole-*), familles (--fam), comparaison,
+ * surlignages, tuiles V3. Ce sont des couleurs de DONNÉES (RG5) : leurs
+ * encres sont choisies à la volée (carto/ui/colors.js, labelInk).
  */
-function leafRules(source, media = null) {
-  const text = source.replace(/\/\*[\s\S]*?\*\//g, '')
-  const out = []
-  let i = 0
-  while (i < text.length) {
-    const open = text.indexOf('{', i)
-    if (open < 0) break
-    const head = text.slice(i, open).trim()
-    let depth = 1
-    let j = open + 1
-    while (j < text.length && depth > 0) {
-      if (text[j] === '{') depth++
-      else if (text[j] === '}') depth--
-      j++
-    }
-    const body = text.slice(open + 1, j - 1)
-    if (head.startsWith('@media')) out.push(...leafRules(body, head.slice(6).trim()))
-    else if (!head.startsWith('@')) {
-      const decl = {}
-      for (const part of body.split(';')) {
-        const at = part.indexOf(':')
-        if (at > 0) decl[part.slice(0, at).trim()] = part.slice(at + 1).trim()
-      }
-      out.push({ media, selector: head.replace(/\s+/g, ' '), decl })
-    }
-    i = j
-  }
-  return out
+const ELEMENT_VARS = /var\(--(c|c-dark|c-ink|c-ink-dark|pole-[\w-]+|fam|fn-color|cmp-[ab]|v3-[\w-]+|carto-hl[\w-]*)[,)]/
+
+/** Première couleur d'une valeur (« 2px solid var(--focus) » → « var(--focus) »). */
+const colorIn = (value) => /var\(--[\w-]+(?:\s*,\s*[^)]*\)?)?\)|#[0-9a-f]{3,8}\b/i.exec(value ?? '')?.[0] ?? null
+
+/**
+ * Jetons qu'un conteneur de carto.css pose par-dessus ceux du site, dans un
+ * contexte : la surface de visualisation de l'interface de cartographie
+ * (blanche en clair, sombre avec le site, D-60), ou la feuille imprimable,
+ * du papier clair dans les deux thèmes.
+ */
+function cartoLayer(cartoRules, theme, selector) {
+  const custom = (sel, media = null) =>
+    Object.fromEntries(
+      cartoRules
+        .filter((r) => r.media === media && r.selector === sel)
+        .flatMap((r) => Object.entries(r.decl))
+        .filter(([prop]) => prop.startsWith('--')),
+    )
+  if (/\.carto-print-(sheet|page|cover)\b/.test(selector)) return custom('.carto-print-sheet')
+  const base = { ...custom('.carto-app'), ...custom('.carto-app, .carto-print-sheet') }
+  if (theme.theme === 'light') return base
+  const dark =
+    theme.theme === 'dark-chosen'
+      ? custom(":root[data-theme='dark'] .carto-app", 'screen')
+      : custom(":root:not([data-theme='light']) .carto-app", 'screen and (prefers-color-scheme: dark)')
+  if (!dark['--viz-surface']) throw new Error(`Surface sombre de la cartographie introuvable (${theme.name})`)
+  return { ...base, ...dark }
 }
+
+/** Grand texte WCAG : 24 px, ou 18,66 px en gras (700), à 16 px le rem. */
+function isLargeText(decl) {
+  const size = decl['font-size'] ?? ''
+  if (/^var\(--fs-(2xl|3xl)\)$/.test(size)) return true // >= 1,5rem dans les trois interfaces
+  const match = /^([\d.]+)(rem|px)$/.exec(size)
+  if (!match) return false
+  const px = Number(match[1]) * (match[2] === 'rem' ? 16 : 1)
+  const bold = Number(decl['font-weight']) >= 700 || decl['font-weight'] === 'bold'
+  return px >= 24 || (bold && px >= 18.66)
+}
+
+describe('UC-VIS-07 — contrastes en usage : les règles des feuilles du site, mesurées dans les neuf contextes (sprint 9, lot S9-3)', () => {
+  it('UC-VIS-07-U09 — chaque règle qui pose un texte sur un fond (couleur et fond dans la même règle) atteint 4,5:1, 3:1 pour un grand texte, dans les trois interfaces en clair, en sombre du système et en sombre choisi ; les couleurs de données posées par élément sont hors de l’interface (RG4, RG5)', () => {
+    const rules = globalCssRules()
+    const cartoRules = sheetRules('src/carto/ui/carto.css')
+    const failures = []
+    let measured = 0
+    for (const sheet of SITE_SHEETS) {
+      for (const rule of sheetRules(sheet)) {
+        // Impression : du papier ; :root[…] : copies par thème des couleurs de données.
+        if (rule.media?.includes('print') || rule.selector.startsWith(':root')) continue
+        const fg = rule.decl.color
+        const bg = rule.decl['background-color'] ?? rule.decl.background
+        if (!SINGLE_COLOR.test(fg ?? '') || !SINGLE_COLOR.test(bg ?? '')) continue // dégradés, color-mix, transparent…
+        if (ELEMENT_VARS.test(fg) || ELEMENT_VARS.test(bg)) continue
+        measured++
+        // Aucune règle d'aujourd'hui ne pose un grand texte sur son fond : toutes visent 4,5:1.
+        const min = isLargeText(rule.decl) ? 3 : 4.5
+        for (const theme of THEMES) {
+          const extra = sheet.includes('carto') ? cartoLayer(cartoRules, theme, rule.selector) : {}
+          const [ink, surface] = [fg, bg].map((value) => resolveColor(rules, value, theme, extra))
+          const where = `${sheet} ${rule.selector}, ${theme.name}`
+          if (!HEX.test(ink) || !HEX.test(surface)) failures.push(`${where} : couleur non mesurable ${ink} / ${surface}`)
+          else if (!(contrast(ink, surface) >= min))
+            failures.push(`${where} : ${fg} ${ink} sur ${bg} ${surface} = ${contrast(ink, surface).toFixed(2)} < ${min}`)
+        }
+      }
+    }
+    expect(failures).toEqual([])
+    expect(measured).toBeGreaterThanOrEqual(140) // boutons, onglets, puces, bandeaux, champs, badges… (143 au lot S9-3)
+  })
+
+  it('UC-VIS-07-U10 — anneau de focus : chaque règle :focus des feuilles du site trace l’anneau de l’interface (--focus), ou l’encre de la visualisation (--viz-ink) sur sa surface claire ; l’anneau atteint 3:1 sur tout fond où il peut tomber (fond, carte, surface secondaire, encart d’information, surface de la cartographie) dans les neuf contextes ; la feuille imprimable et la zone du diagramme, claires dans les deux thèmes, posent leur propre anneau (RG4)', () => {
+    const rules = globalCssRules()
+    const cartoRules = sheetRules('src/carto/ui/carto.css')
+    const failures = []
+    const rings = []
+    for (const sheet of SITE_SHEETS) {
+      for (const rule of sheetRules(sheet)) {
+        if (rule.media?.includes('print') || !/:focus(?!-within)/.test(rule.selector)) continue
+        const where = `${sheet} ${rule.selector}`
+        for (const prop of ['outline', 'outline-color', 'stroke', 'box-shadow']) {
+          const value = rule.decl[prop]
+          if (value === undefined || /^(none|0)$/.test(value)) continue
+          const color = colorIn(value)
+          if (color === 'var(--focus)' || color === 'var(--viz-ink)') rings.push({ sheet, selector: rule.selector, color })
+          else failures.push(`${where} : ${prop} ${value} (attendu var(--focus), ou var(--viz-ink) sur la visualisation)`)
+        }
+      }
+    }
+    for (const { sheet, selector, color } of rings) {
+      const surfaces = color === 'var(--focus)' ? ['--paper', '--card', '--surface-2', '--info-bg'] : ['--viz-surface']
+      if (sheet.includes('carto') && color === 'var(--focus)') surfaces.push('--viz-surface')
+      for (const theme of THEMES) {
+        const extra = sheet.includes('carto') ? cartoLayer(cartoRules, theme, selector) : {}
+        const ring = resolveColor(rules, color, theme, extra)
+        for (const surface of surfaces) {
+          const under = resolveColor(rules, `var(${surface})`, theme, extra)
+          const where = `${sheet} ${selector}, ${theme.name} : ${color} ${ring} sur ${surface} ${under}`
+          if (!HEX.test(ring) || !HEX.test(under)) failures.push(`${where} : non mesurable`)
+          else if (!(contrast(ring, under) >= 3)) failures.push(`${where} = ${contrast(ring, under).toFixed(2)} < 3`)
+        }
+      }
+    }
+    expect(failures).toEqual([])
+    expect(rings.length).toBeGreaterThanOrEqual(12) // 13 au lot S9-3
+    // Le motif commun : liens, boutons, résumés, éléments focalisables et champs.
+    const base = declOf(rules, 'button:focus-visible')
+    expect(base.outline).toBe('2px solid var(--focus)')
+    for (const field of ['input:focus-visible', 'select:focus-visible', 'textarea:focus-visible']) {
+      expect(declOf(rules, field), field).toEqual(base)
+    }
+    // Surfaces claires dans les deux thèmes : la zone du diagramme prend l'encre
+    // de la visualisation, la feuille imprimable un anneau fixe, lisible sur son papier.
+    expect(declOf(rules, '.diagram-zone')['--focus']).toBe('var(--viz-ink)')
+    const sheet = cartoRules.find((r) => r.media === null && r.selector === '.carto-print-sheet').decl
+    for (const paper of [sheet['--paper'], sheet['--card'], sheet['--surface-2']]) {
+      expect(contrast(sheet['--focus'], paper), `${sheet['--focus']} sur ${paper}`).toBeGreaterThanOrEqual(3)
+    }
+  })
+
+  it('UC-VIS-07-U11 — commandes : la bordure de chaque champ (input, select, textarea) est --line-strong, ou la couleur d’état d’un champ invalide, jamais le filet décoratif --line ; elle atteint 3:1 sur le fond, la carte et la surface secondaire dans les neuf contextes (RG4)', () => {
+    const rules = globalCssRules()
+    const FIELD = /(^|[\s>+~(,])(input|select|textarea)(?![\w-])|\.[\w-]*-(input|textarea)(?![\w-])/
+    const failures = []
+    let fields = 0
+    const deliberate = []
+    for (const sheet of SITE_SHEETS) {
+      for (const rule of sheetRules(sheet)) {
+        if (rule.media?.includes('print') || !FIELD.test(rule.selector)) continue
+        for (const prop of ['border', 'border-color', 'border-top', 'border-right', 'border-bottom', 'border-left']) {
+          const value = rule.decl[prop]
+          if (value === undefined) continue
+          const where = `${sheet} ${rule.selector} : ${prop} ${value}`
+          if (/^(0|none)$/.test(value) || /\btransparent\b/.test(value)) {
+            deliberate.push(where) // champ sans cadre à dessein (éditeur plein cadre, titre éditable au repos)
+            continue
+          }
+          fields++
+          const color = colorIn(value)
+          const invalid = /aria-invalid|:invalid/.test(rule.selector) && color === 'var(--danger)'
+          if (color !== 'var(--line-strong)' && !invalid) failures.push(where)
+        }
+      }
+    }
+    expect(failures).toEqual([])
+    expect(fields).toBeGreaterThanOrEqual(35) // 36 au lot S9-3
+    expect(deliberate.length).toBeLessThanOrEqual(2) // l'éditeur du portfolio, le titre éditable de la cartographie
+    for (const theme of THEMES) {
+      for (const [border, surfaces] of [
+        ['--line-strong', ['--paper', '--card', '--surface-2']],
+        ['--danger', ['--paper', '--card']],
+      ]) {
+        const line = resolveColor(rules, `var(${border})`, theme)
+        for (const surface of surfaces) {
+          const under = resolveColor(rules, `var(${surface})`, theme)
+          expect(contrast(line, under), `${theme.name} : ${border} ${line} sur ${surface} ${under}`).toBeGreaterThanOrEqual(3)
+        }
+      }
+    }
+  })
+})
 
 describe('UC-VIS-07 — le sélecteur (DisplaySelects)', () => {
   it('UC-VIS-07-U07 — deux listes nommées « Interface » (les trois filières, dans l’ordre) et « Thème » (Système, Clair, Sombre), au choix du contexte ; changer de valeur appelle le réglage, rien d’autre (étapes 2 à 4)', () => {
@@ -354,5 +484,10 @@ describe('UC-VIS-07 — le sélecteur (DisplaySelects)', () => {
     expect(display.setThemeChoice).toHaveBeenCalledWith('dark')
     expect(display.setInterface).toHaveBeenCalledTimes(1)
     expect(localStorage.length).toBe(0)
+
+    // Dans la ligne « Affichage » de #/compte, le dd coupe partout (overflow-wrap:
+    // anywhere, pour les longues adresses) : l'intitulé ne se coupe jamais au milieu
+    // du mot (« Interfac / e » à 375 px, vu sur les captures du lot S9-3).
+    expect(declOf(globalCssRules(), '.display-select-label')['overflow-wrap']).toBe('normal')
   })
 })

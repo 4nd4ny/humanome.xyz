@@ -4,6 +4,8 @@
 // défile) ou un contraste calculé sur les jetons des trois thèmes (clair,
 // sombre du système, sombre choisi) de chacune des trois interfaces du
 // sprint 9 (épistémiarque, noèsiologue, technomancien), soit neuf contextes.
+// Les autres feuilles de l'habillage (SITE_SHEETS) se lisent en texte
+// (sheetRules) : couples texte et fond, anneaux de focus, bordures de champ.
 // jsdom ne calcule aucune mise en page : ces tests lisent les règles, ils ne
 // mesurent rien.
 import { readFileSync } from 'node:fs'
@@ -126,16 +128,77 @@ export function tokensOf(rules, theme) {
 /**
  * Valeur d'une couleur dans un thème : `var(--x)` résolu sur les jetons de
  * ce thème (le sombre redéfinit ceux du clair, l'interface ceux du défaut),
- * une couleur littérale telle quelle.
+ * une couleur littérale telle quelle. `var(--x, repli)` prend le repli quand
+ * le jeton n'existe pas. `extra` : jetons posés par-dessus (ceux d'un
+ * conteneur, comme `.carto-app`).
  */
-export function resolveColor(rules, value, theme) {
-  const tokens = tokensOf(rules, theme)
+export function resolveColor(rules, value, theme, extra = {}) {
+  const tokens = { ...tokensOf(rules, theme), ...extra }
   let current = value
   for (let depth = 0; depth < 5; depth++) {
-    const match = /^var\((--[\w-]+)\)$/.exec(current)
+    const match = /^var\(\s*(--[\w-]+)\s*(?:,\s*(.+))?\)$/.exec(current)
     if (!match) return current
-    if (!(match[1] in tokens)) throw new Error(`Jeton ${match[1]} absent du thème ${theme.name}`)
-    current = tokens[match[1]]
+    if (match[1] in tokens) current = tokens[match[1]]
+    else if (match[2] !== undefined) current = match[2].trim()
+    else throw new Error(`Jeton ${match[1]} absent du thème ${theme.name}`)
   }
   throw new Error(`Jeton circulaire : ${value}`)
+}
+
+/**
+ * Règles terminales d'une feuille (texte), avec leur @media éventuel :
+ * commentaires ôtés, blocs imbriqués parcourus. Lecture du texte, sans
+ * CSSOM : jsdom ne sait pas analyser color-mix(). Un @supports est traversé
+ * (ses règles s'appliquent là où il est vrai) ; les autres @-règles
+ * (@font-face, @keyframes…) sont ignorées.
+ * @returns {Array<{media: string|null, selector: string, decl: Record<string, string>}>}
+ */
+export function leafRules(source, media = null) {
+  const text = source.replace(/\/\*[\s\S]*?\*\//g, '')
+  const out = []
+  let i = 0
+  while (i < text.length) {
+    const open = text.indexOf('{', i)
+    if (open < 0) break
+    const head = text.slice(i, open).trim()
+    let depth = 1
+    let j = open + 1
+    while (j < text.length && depth > 0) {
+      if (text[j] === '{') depth++
+      else if (text[j] === '}') depth--
+      j++
+    }
+    const body = text.slice(open + 1, j - 1)
+    if (head.startsWith('@media')) out.push(...leafRules(body, head.slice(6).trim()))
+    else if (head.startsWith('@supports')) out.push(...leafRules(body, media))
+    else if (!head.startsWith('@')) {
+      const decl = {}
+      for (const part of body.split(';')) {
+        const at = part.indexOf(':')
+        if (at > 0) decl[part.slice(0, at).trim()] = part.slice(at + 1).trim()
+      }
+      out.push({ media, selector: head.replace(/\s+/g, ' '), decl })
+    }
+    i = j
+  }
+  return out
+}
+
+/**
+ * Les feuilles de l'habillage du site (chemins depuis web/) : celles dont
+ * les couleurs d'interface passent par les jetons de global.css.
+ */
+export const SITE_SHEETS = [
+  'src/styles/global.css',
+  'src/styles/configuration.css',
+  'src/styles/markdown.css',
+  'src/styles/twin9.css',
+  'src/styles/twin9-credit.css',
+  'src/styles/timeline.css',
+  'src/carto/ui/carto.css',
+]
+
+/** Règles terminales d'une feuille du site (chemin depuis web/). */
+export function sheetRules(sheet) {
+  return leafRules(readFileSync(resolve(dirname(fileURLToPath(import.meta.url)), '../../..', sheet), 'utf8'))
 }

@@ -253,7 +253,7 @@
   min-height: 44px;
   padding: 0.4rem 0.6rem;
   font: inherit;
-  border: 1px solid var(--line);
+  border: 1px solid var(--line-strong);
   border-radius: 8px;
   background: var(--card);
 }

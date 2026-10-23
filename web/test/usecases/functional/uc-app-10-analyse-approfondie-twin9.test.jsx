@@ -172,6 +172,12 @@ async function openApp(hash, { portfolio = null } = {}) {
 
 const ecritures = (calls, key) => calls.filter((c) => c.key === key)
 
+/**
+ * Le mode expert (UC-VIS-06), choisi dans ce navigateur : un apprenant seul est en mode simple par défaut, où la page
+ * lance avec le profil v9.8, sans liste des profils (A10).
+ */
+const modeExpert = () => localStorage.setItem('humanome-mode', 'expert')
+
 beforeEach(() => resetApiClient())
 
 afterEach(() => {
@@ -179,6 +185,7 @@ afterEach(() => {
   vi.unstubAllGlobals()
   idb.reset()
   window.location.hash = ''
+  localStorage.removeItem('humanome-mode')
   resetApiClient()
 })
 
@@ -194,6 +201,7 @@ describe('UC-APP-10 — l’apprenant lance une analyse approfondie, la suit et 
         'GET twin9/runs/7/resultats': jsonResponse(200, resultats()),
       }),
     )
+    modeExpert() // il choisit un de ses profils (A10)
     await openApp('#/twin9', { portfolio: PORTFOLIO })
 
     // Étapes 1-3 : le formulaire, le portfolio de la bibliothèque présélectionné, le lancement désactivé sans accord.
@@ -314,6 +322,7 @@ describe('UC-APP-10 — l’apprenant lance une analyse approfondie, la suit et 
         'POST twin9/runs': jsonResponse(422, { error: refus }),
       }),
     )
+    modeExpert() // il passe ensuite au profil « Direct » (A10)
     await openApp('#/twin9', { portfolio: PORTFOLIO })
     fireEvent.click(await screen.findByRole('checkbox', { name: /J’accepte que mon portfolio/ }))
 
@@ -361,6 +370,7 @@ describe('UC-APP-10 — l’apprenant lance une analyse approfondie, la suit et 
         'POST twin9/runs': jsonResponse(422, { error: refus }),
       }),
     )
+    modeExpert() // il choisit son profil multi-fournisseur (A10)
     await openApp('#/twin9', { portfolio: PORTFOLIO })
     await screen.findByRole('button', { name: 'Lancer l’analyse' })
     fireEvent.change(screen.getByLabelText('Profil'), { target: { value: '5' } })
@@ -379,6 +389,40 @@ describe('UC-APP-10 — l’apprenant lance une analyse approfondie, la suit et 
     expect(bodyOf(lance).accord).toEqual({ fournisseurs: ['anthropic', 'mistral'] })
     expect(lance.init.headers['X-CSRF-Token']).toBe(CSRF)
     expect(window.location.hash).toBe('#/twin9')
+  })
+
+  it('UC-APP-10-F24 — A10 : en mode simple, le défaut d’un apprenant, la page lance avec le profil v9.8, sans liste des profils ni « Régler mes profils » ; l’aide le dit ; en mode expert, la liste revient', async () => {
+    const { calls } = stubFetch(routes({ 'POST twin9/runs': jsonResponse(201, run()) }))
+    await openApp('#/twin9', { portfolio: PORTFOLIO })
+    const lancer = await screen.findByRole('button', { name: 'Lancer l’analyse' })
+    expect(screen.queryByLabelText('Profil')).toBeNull()
+    expect(screen.queryByRole('link', { name: 'Régler mes profils' })).toBeNull()
+    expect(screen.getByTestId('twin9-profil-simple').textContent).toContain('Profil v9.8')
+    fireEvent.click(screen.getByRole('button', { name: 'Aide sur cette rubrique' }))
+    expect(screen.getByRole('dialog').textContent).toContain('activez le « Mode expert » au bas du menu')
+    fireEvent.keyDown(document, { key: 'Escape' })
+
+    // l'accord nomme les fournisseurs du profil v9.8 ; l'aperçu et le lancement le désignent (profil nul)
+    const accord = screen.getByRole('checkbox', { name: /J’accepte que mon portfolio/ })
+    expect(accord.closest('label').textContent).toContain('Anthropic (par lots ; RGPD : sous conditions)')
+    fireEvent.click(accord)
+    await screen.findByRole('region', { name: 'Avant de lancer' })
+    fireEvent.click(lancer)
+    await waitFor(() => expect(window.location.hash).toBe('#/twin9/7'))
+    expect(ecritures(calls, 'POST twin9/runs/apercu').map((c) => bodyOf(c).profil)).toEqual([null])
+    expect(bodyOf(ecritures(calls, 'POST twin9/runs')[0])).toMatchObject({ profil: null, accord: { fournisseurs: ['anthropic'] } })
+    cleanup()
+    vi.unstubAllGlobals()
+    idb.reset()
+
+    // le mode expert, choisi dans ce navigateur : la liste et le lien reviennent ; le mode n'est jamais un droit
+    stubFetch(routes())
+    modeExpert()
+    await openApp('#/twin9', { portfolio: PORTFOLIO })
+    await screen.findByRole('button', { name: 'Lancer l’analyse' })
+    expect([...screen.getByLabelText('Profil').options].map((o) => o.textContent)).toEqual(['Profil v9.8', 'Direct'])
+    expect(screen.getByRole('link', { name: 'Régler mes profils' }).getAttribute('href')).toBe('#/configuration')
+    expect(screen.queryByTestId('twin9-profil-simple')).toBeNull()
   })
 
   it('UC-APP-10-F19 — A3 : annuler puis reprendre un run en cours ; A4 : arrêté par son budget, il reprend sous un nouveau budget et va au bout ; A5 : la case du cartographe règle qui lit ses résultats (jeton CSRF à chaque écriture)', async () => {

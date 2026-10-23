@@ -10,6 +10,7 @@ import { afterEach, describe, expect, it, vi } from 'vitest'
 import { cleanup, fireEvent, render, screen, waitFor, within } from '@testing-library/react'
 import Twin9View from './Twin9View.jsx'
 import { resetApiClient } from '../api/client.js'
+import { UiModeContext } from '../lib/ui-mode.js'
 import { createMemoryAdapter, createPortfolioStore } from '../lib/portfolio-store.js'
 // un run configuré tel que ses résultats le rendent à son propriétaire (P0-1) : valeurs inventées
 import exemple from '../../../schemas/fixtures/twin9-configuration-exemple.json'
@@ -354,6 +355,90 @@ describe('Twin9View — lancer (T9)', () => {
     const lien = await screen.findByRole('link', { name: 'mon-journal' })
     expect(lien.getAttribute('href')).toBe('#/twin9/7')
     expect(lien.parentElement.textContent).toContain('essai · Terminé')
+  })
+})
+
+// Sprint 1, lot 2 (lib/ui-mode.js) : en mode simple, la page lance avec le profil v9.8, sans liste des profils ni
+// « Régler mes profils » ; un profil choisi en mode expert ne part pas en mode simple. Hors du shell, le contexte vaut
+// « expert » : les autres tests de ce fichier voient la liste.
+describe('Twin9View — mode simple (S1, lot 2)', () => {
+  const simple = { expert: false, setExpert() {} }
+  const expert = { expert: true, setExpert() {} }
+
+  it('lance avec le profil v9.8, sans liste des profils ni « Régler mes profils »', async () => {
+    let envoye = null
+    const corps = []
+    const fetchFn = routedFetch({
+      'GET api/twin9/runs': jsonResponse(200, { disponible: true, runs: [] }),
+      'GET api/twin9/configuration': jsonResponse(200, {
+        profils: [{ id: 3, nom: 'Direct', fournisseurs: [ANTHROPIC_DIRECT] }],
+        defaut_fournisseurs: [ANTHROPIC_LOTS],
+      }),
+      'POST api/twin9/runs/apercu': (init) => {
+        corps.push(JSON.parse(init.body))
+        return jsonResponse(200, apercu())
+      },
+      'POST api/twin9/runs': (init) => {
+        envoye = JSON.parse(init.body)
+        return jsonResponse(201, run())
+      },
+    })
+    const navigate = vi.fn()
+    render(
+      <UiModeContext.Provider value={simple}>
+        <Twin9View deps={{ fetchFn, store: await bibliotheque(), navigate }} />
+      </UiModeContext.Provider>,
+    )
+    const lancer = await screen.findByRole('button', { name: 'Lancer l’analyse' })
+    expect(screen.queryByLabelText('Profil')).toBeNull()
+    expect(screen.queryByRole('link', { name: 'Régler mes profils' })).toBeNull()
+    expect(screen.getByTestId('twin9-profil-simple').textContent).toBe(
+      'Profil : Profil v9.8. Le mode expert, au bas du menu, propose vos profils et leurs réglages.',
+    )
+    // l'accord nomme les fournisseurs du profil v9.8, jamais rien de moins (RG2 de UC-VIS-06)
+    const accord = screen.getByRole('checkbox', { name: /J’accepte que mon portfolio/ })
+    expect(accord.closest('label').textContent).toContain('Anthropic (par lots ; RGPD : sous conditions)')
+    fireEvent.click(accord)
+    await screen.findByRole('region', { name: 'Avant de lancer' })
+    expect(corps.map((c) => c.profil)).toEqual([null])
+    fireEvent.click(lancer)
+    await waitFor(() => expect(navigate).toHaveBeenCalledWith('#/twin9/7'))
+    expect(envoye.profil).toBeNull()
+    expect(envoye.accord).toEqual({ fournisseurs: ['anthropic'] })
+  })
+
+  it('un profil choisi en mode expert ne part pas en mode simple ; il revient avec le mode expert', async () => {
+    const corps = []
+    const fetchFn = routedFetch({
+      'GET api/twin9/runs': jsonResponse(200, { disponible: true, runs: [] }),
+      'GET api/twin9/configuration': jsonResponse(200, {
+        profils: [{ id: 3, nom: 'Direct', fournisseurs: [ANTHROPIC_LOTS] }],
+        defaut_fournisseurs: [ANTHROPIC_LOTS],
+      }),
+      'POST api/twin9/runs/apercu': (init) => {
+        corps.push(JSON.parse(init.body).profil)
+        return jsonResponse(200, apercu())
+      },
+    })
+    const store = await bibliotheque()
+    const vue = (mode) => (
+      <UiModeContext.Provider value={mode}>
+        <Twin9View deps={{ fetchFn, store }} />
+      </UiModeContext.Provider>
+    )
+    const { rerender } = render(vue(expert))
+    await screen.findByRole('button', { name: 'Lancer l’analyse' })
+    fireEvent.change(screen.getByLabelText('Profil'), { target: { value: '3' } })
+    fireEvent.click(screen.getByRole('checkbox', { name: /J’accepte que mon portfolio/ }))
+    await waitFor(() => expect(corps).toEqual([3]))
+
+    rerender(vue(simple))
+    expect(screen.queryByLabelText('Profil')).toBeNull()
+    await waitFor(() => expect(corps).toEqual([3, null]))
+
+    rerender(vue(expert))
+    expect(screen.getByLabelText('Profil').value).toBe('3')
+    await waitFor(() => expect(corps).toEqual([3, null, 3]))
   })
 })
 

@@ -206,10 +206,16 @@ badge premium) ou ouvre `#/twin9`.
   (`#/configuration`, jusque-là atteinte seulement par « Régler mes
   profils ») ; en mode simple, ce lien n'est pas listé, l'adresse reste
   valide. Le tableau de bord (`#/espace`) mène aux analyses par « Mes
-  analyses approfondies » (UC-APP-03). La page `#/twin9` elle-même ne change
-  pas encore : la liste des profils et « Régler mes profils » ne passeront
-  en mode expert qu'avec le lot 2 du mode expert, après la fusion des lots
-  Twin9 en cours.
+  analyses approfondies » (UC-APP-03). Depuis le lot 2 du mode expert (phase
+  D), la page `#/twin9` le lit aussi : en mode simple, le défaut d'un
+  apprenant seul, elle lance avec le profil v9.8, sans liste des profils ni
+  « Régler mes profils » — une ligne le nomme, et dit que le mode expert
+  propose les autres ; un profil choisi en mode expert ne part pas en mode
+  simple, l'accord nomme alors les fournisseurs du profil v9.8, et l'aperçu
+  comme le lancement envoient `profil: null`. L'aide « ? » de la page le
+  dit (UC-VIS-06 A4). En mode expert, la page est celle d'avant. Le mode
+  n'est jamais un droit : le serveur ne le lit pas, et un profil reste
+  lancé par son identifiant, quel que soit le mode.
 
 ## Scénarios d'erreur
 
@@ -477,6 +483,7 @@ badge premium) ou ouvre `#/twin9`.
 | UC-APP-10-F22 | A9, RG1, E4 | IHM | `<App/>` : un profil Anthropic et Mistral AI ; l'accord nomme les deux, leur voie et leur étiquette, avant tout aperçu ; le lancement envoie `{fournisseurs: [anthropic, mistral]}` (CSRF) ; un fournisseur non ouvert fait refuser le lancement (`422`), message affiché, la page reste | `web/test/usecases/functional/uc-app-10-analyse-approfondie-twin9.test.jsx` |
 | UC-APP-10-F21 | Nominal (étapes 7-8), RG13, RG14 | IHM | `<App/>` : la page d'un run fini ouvre sa configuration, lue dans ses résultats à l'ouverture seulement, à côté de l'attestation inchangée ; le conseil de la sortie tronquée nomme son étape et dit le coût du remède ; ouvert dans la cartographie, le jeu garde la configuration par liste blanche, chaque journée dit ses modèles et son jeu, rien d'un prix, d'un coût ni de la clé | `web/test/usecases/functional/uc-app-10-analyse-approfondie-twin9.test.jsx` |
 | UC-APP-10-F23 | Nominal (étape 7), RG15 | IHM | `<App/>` : un run dont la stigmergie est activée, ouvert dans la cartographie ; le jeu garde les traces de chaque journée, conservées ou non ; la modale du 5 montre sa trace et sa nature, sans intensité pour l'apprenant en mode simple ; celle du 6, en panne, les dit non conservées | idem |
+| UC-APP-10-F24 | A10 | IHM | `<App/>`, apprenant en mode simple : ni liste des profils ni « Régler mes profils », une ligne nomme le profil v9.8 ; l'aide le dit ; l'accord nomme ses fournisseurs, l'aperçu et le lancement envoient `profil: null` ; en mode expert, la liste et le lien reviennent | `web/test/usecases/functional/uc-app-10-analyse-approfondie-twin9.test.jsx` |
 
 ### Tests existants liés (non-régression)
 
@@ -488,7 +495,7 @@ badge premium) ou ouvre `#/twin9`.
 - `api/tests/Twin9/PurgeExportTest.php` — purge du compte, lots chez Anthropic, export.
 - `api/tests/Twin9MetaTest.php` — le proxy du moteur du navigateur est parti (T11).
 - `api/tests/Twin9/RunConfigurationTest.php`, `api/tests/Twin9/RunsTest.php`, `api/tests/Twin9/PurgeExportTest.php` — configuration et exécution d'un run (P0-1) : liste blanche, vue du cartographe, tables vides en objets, reprises, export d'un run ancien.
-- `web/src/views/Twin9View.test.jsx` — lancement, aperçu, admission, page du run, carte incomplète, référentiels (T17) ; « Configuration » (P0-1) : lue à l'ouverture seulement, l'exécution partielle seule d'un run d'avant elle, relue à chaque ouverture d'un run en cours et quand il finit, erreur dans le bloc ; l'accord qui nomme les fournisseurs, tient pour les mêmes, tombe pour d'autres, la durée d'un run mixte (A9).
+- `web/src/views/Twin9View.test.jsx` — lancement, aperçu, admission, page du run, carte incomplète, référentiels (T17) ; « Configuration » (P0-1) : lue à l'ouverture seulement, l'exécution partielle seule d'un run d'avant elle, relue à chaque ouverture d'un run en cours et quand il finit, erreur dans le bloc ; l'accord qui nomme les fournisseurs, tient pour les mêmes, tombe pour d'autres, la durée d'un run mixte (A9) ; en mode simple, le profil v9.8 sans liste ni lien, un profil choisi en mode expert qui ne part pas (A10).
 - `web/src/views/ConfigurationView.test.jsx`, `web/src/views/configuration/profilSchema.test.js` — le fournisseur de chaque réglage : hérité, étiquette visible, indisponible non choisi, famille, modèle et effort qui suivent, ce que le serveur refuserait dit à côté, la voie expliquée, la clé personnelle chez Anthropic seulement ; l'héritage, les fournisseurs atteints et les tables recopiées du PHP (étages des étapes, libellés, étiquettes, motifs de modèle) comparés au code PHP (A9).
 - `api/tests/Twin9/ConfigurationDroitsTest.php` — `testTheConfigurationNamesEachProfilesProviders` (les fournisseurs de chaque profil et du profil v9.8, avant tout aperçu), `testAProviderNotOpenYetIsSavedNotLaunched` ; `api/tests/Twin9/RunsTest.php` — l'accord comparé aux fournisseurs du run, gardé dans sa configuration (A9).
 - `web/src/carto/core/importers/twin9-run.test.js`, `web/src/lib/twin9/mapper.test.js` — jeu de cartographie d'un run, dossiers ; configuration par liste blanche, variantes inchangées avec ou sans elle, jeu exporté sans prix ni clé (P0-1).
@@ -512,9 +519,6 @@ Aucune.
 
 ## Limites
 
-- A10 n'est couvert que par les tests du menu (UC-VIS-04-U13, F20 ; UC-VIS-06-U02,
-  F02) et du tableau de bord (UC-APP-03-F16) : la vue `#/twin9` ne lit pas
-  encore le mode.
 - Le moteur est le dépôt privé `Twin_v9` : sans lui, l'analyse est indisponible
   (E2) et ses tests PHP sur le vrai moteur se sautent ; les tests de ce cas
   tournent sur le moteur factice, public, et l'Anthropic simulé de l'instance.

@@ -311,9 +311,10 @@ const FALLBACK = {
  * Rubriques dont le mode simple masque des réglages avancés (lib/ui-mode.js) :
  * la cartographie (espace Comparaison, tuile Réglages, outil d'anonymisation),
  * l'espace apprenant (version de prompt et modèle de l'assistant), Twin6 (liste
- * des modèles). Twin9 (liste des profils) rejoindra la liste avec le lot 2.
+ * des modèles), Twin9 (liste des profils et « Régler mes profils », depuis le
+ * lot 2).
  */
-const SIMPLE_MODE_ROUTES = new Set(['cartographie', 'espace', 'twin6ouverte'])
+const SIMPLE_MODE_ROUTES = new Set(['cartographie', 'espace', 'twin6ouverte', 'twin9'])
 
 /** Le point d'aide du mode simple, sur ces rubriques. */
 export const SIMPLE_MODE_POINT =

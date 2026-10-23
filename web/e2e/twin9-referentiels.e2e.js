@@ -166,6 +166,12 @@ test.afterAll(() => {
   retirerFictifs()
 })
 
+// L'apprenante choisit un de ses profils : la liste n'est proposée qu'en mode expert (UC-VIS-06, UC-APP-10 A10),
+// qu'elle a choisi dans ce navigateur.
+test.beforeEach(async ({ page }) => {
+  await page.addInitScript(() => localStorage.setItem('humanome-mode', 'expert'))
+})
+
 test('trois référentiels sur un même portfolio : trois cartes qui ne partagent rien et coexistent dans la cartographie', async ({ page }) => {
   const email = `e2e-t17-${Date.now()}@humanome.test`
 

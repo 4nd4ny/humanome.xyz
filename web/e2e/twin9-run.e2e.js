@@ -100,6 +100,12 @@ test.afterAll(() => {
   devSql(`DELETE FROM twin9_protocole WHERE name LIKE 'factice/%'`)
 })
 
+// L'apprenante choisit un de ses profils : la liste n'est proposée qu'en mode expert (UC-VIS-06, UC-APP-10 A10),
+// qu'elle a choisi dans ce navigateur.
+test.beforeEach(async ({ page }) => {
+  await page.addInitScript(() => localStorage.setItem('humanome-mode', 'expert'))
+})
+
 test('analyse approfondie : lancée depuis le front, suivie, reprise, ouverte dans la cartographie', async ({ page }) => {
   const email = `e2e-twin9-${Date.now()}@humanome.test`
 

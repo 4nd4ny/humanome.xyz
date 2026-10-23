@@ -77,13 +77,13 @@ describe('UC-VIS-06 — plan du site et aide selon le mode', () => {
     expect(navGroups({ roles: ['apprenant'] })).toEqual(navGroups({ roles: ['apprenant'], expert: true }))
   })
 
-  it('UC-VIS-06-U03 — helpFor : en mode simple, la cartographie, l’espace apprenant et Twin6 disent où sont les réglages avancés ; pas en mode expert, pas ailleurs', () => {
-    for (const route of ['cartographie', 'espace', 'twin6ouverte']) {
+  it('UC-VIS-06-U03 — helpFor : en mode simple, la cartographie, l’espace apprenant, Twin6 et Twin9 disent où sont les réglages avancés ; pas en mode expert, pas ailleurs', () => {
+    for (const route of ['cartographie', 'espace', 'twin6ouverte', 'twin9']) {
       expect(helpFor(route, { expert: false }).points.at(-1), route).toBe(SIMPLE_MODE_POINT)
       expect(helpFor(route, { expert: true }).points ?? [], route).not.toContain(SIMPLE_MODE_POINT)
       expect(helpFor(route).points ?? [], route).not.toContain(SIMPLE_MODE_POINT)
     }
-    for (const route of ['home', 'twin9', 'portfolio', 'referentiel']) {
+    for (const route of ['home', 'configuration', 'portfolio', 'referentiel']) {
       expect(helpFor(route, { expert: false }).points ?? [], route).not.toContain(SIMPLE_MODE_POINT)
     }
   })

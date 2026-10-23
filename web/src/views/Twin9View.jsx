@@ -45,6 +45,11 @@
 // lit pas reçoit `### AAAA-MM-JJ`, une date qu'il lirait au milieu d'une
 // journée est neutralisée par « — ». L'aperçu et le lancement envoient ce même
 // texte, et l'aperçu dit les journées dont le texte change pour Twin9.
+//
+// Mode d'affichage (sprint 1, lot 2 ; lib/ui-mode.js) : en mode simple, la
+// page lance avec le profil v9.8, sans liste des profils ni « Régler mes
+// profils » ; un profil choisi en mode expert ne part pas en mode simple. Le
+// mode n'est jamais un droit : #/configuration reste ouverte par son adresse.
 
 import { useCallback, useEffect, useMemo, useState } from 'react'
 import { ApiError } from '../api/client.js'
@@ -66,6 +71,7 @@ import { twin9RunFiles } from '../lib/interface-handoff.js'
 import { sansMarquesTwin9 } from '../lib/twin9/marques.js'
 import { portfolioPourTwin9 } from '../lib/twin9/portfolio-pour-twin9.js'
 import { formatShort } from '../carto/core/dates.js'
+import { useUiMode } from '../lib/ui-mode.js'
 import { libelleRgpd, libelleVoie } from './configuration/profilSchema.js'
 import ConfigurationDuRun from './twin9/ConfigurationDuRun.jsx'
 import '../styles/twin9.css'
@@ -274,6 +280,8 @@ export default function Twin9View({ section = null, deps = {}, onOpenInInterface
 
 function Lancer({ deps }) {
   const { fetchFn } = deps
+  // Mode d'affichage (défaut du contexte : expert, la liste des profils est proposée).
+  const { expert } = useUiMode()
   const navigate = deps.navigate ?? ((hash) => (window.location.hash = hash))
   const [etat, setEtat] = useState({ chargement: true })
   const [donnees, setDonnees] = useState(null)
@@ -285,6 +293,8 @@ function Lancer({ deps }) {
   const [accord, setAccord] = useState(null)
   const [occupe, setOccupe] = useState(false)
   const [erreur, setErreur] = useState(null)
+  // en mode simple, le profil v9.8 : un profil choisi en mode expert ne part pas (S1, lot 2)
+  const profilEffectif = expert ? profil : ''
 
   useEffect(() => {
     let actif = true
@@ -303,7 +313,7 @@ function Lancer({ deps }) {
   }, [fetchFn, deps.store])
 
   // L'accord vaut pour les fournisseurs qu'il nomme : un profil qui en atteint d'autres, ou par une autre voie, le redemande.
-  const fournisseurs = fournisseursDuLancement(donnees, profil)
+  const fournisseurs = fournisseursDuLancement(donnees, profilEffectif)
   const cleAccord = JSON.stringify(fournisseurs.map((f) => [f.id, f.voie]))
   const accorde = accord !== null && accord === cleAccord
   // un accord donné pour d'autres fournisseurs tombe : revenir à leur profil le redemande
@@ -329,13 +339,13 @@ function Lancer({ deps }) {
     }
     let actif = true
     setApercu({ chargement: true })
-    apercuRun({ profil: profil === '' ? null : Number(profil), portfolio: { nom, texte } }, { fetchFn })
+    apercuRun({ profil: profilEffectif === '' ? null : Number(profilEffectif), portfolio: { nom, texte } }, { fetchFn })
       .then((a) => actif && setApercu({ donnees: a }))
       .catch((e) => actif && setApercu({ erreur: e.message }))
     return () => {
       actif = false
     }
-  }, [accorde, profil, nom, texte, fetchFn])
+  }, [accorde, profilEffectif, nom, texte, fetchFn])
 
   if (etat.chargement) return <p>Chargement…</p>
   if (etat.erreur) {
@@ -358,7 +368,7 @@ function Lancer({ deps }) {
     try {
       const run = await lancerRun(
         {
-          profil: profil === '' ? null : Number(profil),
+          profil: profilEffectif === '' ? null : Number(profilEffectif),
           portfolio: { nom: choisi.nom, texte: envoi.texte },
           accord: { fournisseurs: fournisseurs.map((f) => f.id) },
           visibilite: visible ? 'cartographe' : 'privee',
@@ -382,20 +392,26 @@ function Lancer({ deps }) {
       {donnees.disponible ? (
         <form className="twin9-lancer" onSubmit={lancer} noValidate>
           <h3>Lancer une analyse</h3>
-          <div className="config-champ">
-            <label htmlFor="twin9-profil">Profil</label>
-            <div className="config-commande">
-              <select id="twin9-profil" value={profil} onChange={(e) => setProfil(e.target.value)}>
-                <option value="">Profil v9.8</option>
-                {donnees.profils.map((p) => (
-                  <option key={p.id} value={p.id}>
-                    {p.nom}
-                  </option>
-                ))}
-              </select>{' '}
-              <a href="#/configuration">Régler mes profils</a>
+          {expert ? (
+            <div className="config-champ">
+              <label htmlFor="twin9-profil">Profil</label>
+              <div className="config-commande">
+                <select id="twin9-profil" value={profil} onChange={(e) => setProfil(e.target.value)}>
+                  <option value="">Profil v9.8</option>
+                  {donnees.profils.map((p) => (
+                    <option key={p.id} value={p.id}>
+                      {p.nom}
+                    </option>
+                  ))}
+                </select>{' '}
+                <a href="#/configuration">Régler mes profils</a>
+              </div>
             </div>
-          </div>
+          ) : (
+            <p className="privacy-note" data-testid="twin9-profil-simple">
+              Profil : Profil v9.8. Le mode expert, au bas du menu, propose vos profils et leurs réglages.
+            </p>
+          )}
           <div className="config-champ">
             <label htmlFor="twin9-portfolio">Portfolio</label>
             <div className="config-commande">

@@ -565,8 +565,8 @@ tout.
 | Cartographie : onglet « Comparaison » | masqué, sauf s'il est l'espace ouvert | visible |
 | Cartographie : tuile « Réglages » dans « Panneaux » | non proposée | proposée |
 | Export de la cartographie : « Préparer une démo » | masquée | visible |
-| Aide « ? » de la cartographie, de l'espace apprenant et de Twin6 | un point : « activez le « Mode expert » au bas du menu » | — |
-| Twin9 : liste des profils et « Régler mes profils » | **lot 2**, après la fusion des lots Twin9 en cours | visibles |
+| Aide « ? » de la cartographie, de l'espace apprenant, de Twin6 et de Twin9 | un point : « activez le « Mode expert » au bas du menu » | — |
+| Twin9 : liste des profils et « Régler mes profils » (lot 2, 2026-10-22) | masqués : une ligne nomme le profil v9.8, avec lequel la page lance, même si un autre profil avait été choisi en mode expert | visibles |
 | Gestionnaire et son point d'anomalies, Dialogue, Export (quatre formats), choix du référentiel, accord, estimation, familles de rôle, écrans des clés personnelles | **gardés** | gardés |
 
 Effet sur le menu : un apprenant voit 13 liens en mode simple, 15 en mode expert ; un visiteur, 7

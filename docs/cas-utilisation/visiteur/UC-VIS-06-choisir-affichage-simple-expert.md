@@ -4,10 +4,10 @@
 |---|---|
 | **Acteur principal** | Visiteur (aucun compte requis) — le même réglage vaut pour tout utilisateur connecté |
 | **Acteurs secondaires** | Tout rôle connecté (défaut selon les rôles de la session) |
-| **Portée** | humanome.xyz — interrupteur « Mode expert » au bas du menu, ligne « Affichage » de `#/compte` ; éléments masqués en mode simple : menu (`nav.js`), assistant standard (`#/espace/nouveau-run`), Twin6 (`#/twin6-ouverte`), interface de cartographie (`#/cartographie`) et son espace Export, aide « ? » ; choix gardé dans le navigateur (`localStorage` `humanome-mode`), sans API |
+| **Portée** | humanome.xyz — interrupteur « Mode expert » au bas du menu, ligne « Affichage » de `#/compte` ; éléments masqués en mode simple : menu (`nav.js`), assistant standard (`#/espace/nouveau-run`), Twin6 (`#/twin6-ouverte`), analyse approfondie (`#/twin9`), interface de cartographie (`#/cartographie`) et son espace Export, aide « ? » ; choix gardé dans le navigateur (`localStorage` `humanome-mode`), sans API |
 | **Niveau** | Objectif utilisateur |
 | **Cahier des charges** | Sprint 1 (TODO_LIST) : « réfléchir à l'ergonomie du site ; ne pas hésiter à masquer des fonctionnalités en créant un mode expert » ; décisions D1 à D5 du 2026-10-22 |
-| **Statut** | Implémenté (lot 1, 2026-10-22 ; le lot 2, la page `#/twin9`, suivra la fusion des lots Twin9 en cours) ; `docs/ergonomie-navigation.md` §5ter |
+| **Statut** | Implémenté (lot 1, 2026-10-22 ; lot 2, la page `#/twin9`, 2026-10-22, phase D) ; `docs/ergonomie-navigation.md` §5ter |
 
 ## Objectif
 
@@ -84,9 +84,10 @@ l'application (`web/src/App.jsx`).
   lecture échoue en silence, le défaut des rôles s'applique ; la bascule
   vaut pour la session ouverte et n'est pas gardée.
 - **A4 — Aide « ? »** : en mode simple, l'aide de l'espace apprenant
-  (`espace`), de la cartographie et de Twin6 ajoute « Des réglages avancés
-  existent : activez le « Mode expert » au bas du menu. » ; pas en mode
-  expert, pas sur les autres rubriques (Twin9 : avec le lot 2).
+  (`espace`), de la cartographie, de Twin6 et, depuis le lot 2, de Twin9
+  (`twin9`) ajoute « Des réglages avancés existent : activez le « Mode
+  expert » au bas du menu. » ; pas en mode expert, pas sur les autres
+  rubriques.
 - **A5 — Depuis « Mon compte »** : la ligne « Affichage » du profil
   (`#/compte`, à côté de « Rôles » : ce que je fais, ce que je vois) porte la
   même case « Mode expert » ; les deux commandes restent synchronisées. Le
@@ -94,8 +95,9 @@ l'application (`web/src/App.jsx`).
 - **A6 — Pages réduites en mode simple** : l'assistant standard (étape 2
   « Référentiel », sans liste de versions de prompt, et étape 3 sans champ
   « Modèle » : UC-APP-02 A8) ; Twin6, sans liste des modèles (UC-APP-09 A8) ;
-  l'interface de cartographie (UC-VIS-01 A8) ; « Préparer une démo »
-  (UC-APP-06 A6).
+  l'analyse approfondie, lancée avec le profil v9.8, sans liste des profils
+  ni « Régler mes profils » (lot 2, UC-APP-10 A10) ; l'interface de
+  cartographie (UC-VIS-01 A8) ; « Préparer une démo » (UC-APP-06 A6).
 
 ## Scénarios d'erreur
 
@@ -121,7 +123,8 @@ l'application (`web/src/App.jsx`).
 - **RG4** — Le mode simple n'enregistre que ce qu'il exécute : l'assistant
   standard enregistre le paquet embarqué (`aurora-v3-reconstruit@1.1.0`) et
   le modèle par défaut du fournisseur, Twin6 lance le modèle cible du
-  paquet, même si un autre choix avait été fait en mode expert.
+  paquet, Twin9 le profil v9.8 (son accord nomme les fournisseurs de ce
+  profil), même si un autre choix avait été fait en mode expert.
 
 ## Données et RGPD
 
@@ -140,6 +143,7 @@ l'application (`web/src/App.jsx`).
 | Front | `web/src/help/registry.js` — `helpFor`, `SIMPLE_MODE_POINT` | Point d'aide du mode simple (A4) |
 | Front | `web/src/carto/ui/CartoApp.jsx`, `web/src/carto/ui/ExportPanel.jsx` | « Comparaison », « Réglages », « Préparer une démo » (étape 3, A2, RG2) |
 | Front | `web/src/components/RunWizard.jsx`, `web/src/views/Twin6OuverteView.jsx` | Étapes 2 et 3 de l'assistant, liste des modèles de Twin6 (A6, RG4) |
+| Front | `web/src/views/Twin9View.jsx` — `Lancer` | Liste des profils et « Régler mes profils » ; profil v9.8 en mode simple (A6, RG4 ; lot 2) |
 | Front | `web/src/views/AccountView.jsx` — `DisplayModeRow` | Ligne « Affichage » (A5) |
 | Front | `web/src/styles/global.css` — `.app-nav-mode` | Interrupteur, cible de 44 px |
 
@@ -175,6 +179,7 @@ l'application (`web/src/App.jsx`).
 - `web/src/lib/ui-mode.test.js` — lecture, écriture, défaut, résolution, contexte.
 - `web/src/nav.test.js` (bloc « mode simple / expert »), `web/src/help/registry.test.js` (bloc « mode simple »), `web/src/App.test.jsx` (bloc « mode simple / expert » : interrupteur, persistance, défaut selon le rôle, choix stocké, lien direct).
 - `web/src/components/RunWizard.test.jsx`, `web/src/views/Twin6OuverteView.test.jsx` (blocs « mode simple ») ; UC-APP-02-F29, UC-APP-09-F32, UC-APP-06-F18.
+- `web/src/views/Twin9View.test.jsx` (bloc « mode simple (S1, lot 2) » : profil v9.8, ni liste ni lien ; un profil choisi en mode expert ne part pas en mode simple) ; UC-APP-10-F24 (lot 2, l'application entière, l'aide comprise).
 - UC-VIS-04-U13 (plan du site exhaustif dans les deux modes), UC-VIS-04-F20 (« Mes profils Twin9 » d'un compte de travail).
 - `web/e2e/navigation-burger.e2e.js` (cible de 44 px de l'interrupteur au doigt), `web/e2e/parcours-apprenant.e2e.js` (étape « Référentiel » du mode simple) ; `carto-export.e2e.js` et `carto-soleil.e2e.js` posent le mode expert.
 
@@ -190,9 +195,6 @@ cd web && npx vitest run test/usecases/unit/uc-vis-06 test/usecases/functional/u
   choix d'une personne vaut pour la suivante ; la persistance par compte
   (V2 : colonne `users.ui_mode`, `uiMode` dans `GET /api/auth/me`, export
   RGPD) est reportée au sprint 8.
-- **Lot 2** : la page `#/twin9` (liste des profils, « Régler mes profils »)
-  ignore encore le mode ; elle le lira après la fusion des lots Twin9 en
-  cours.
 - **Affichage réel** : jsdom n'applique pas les styles ; la cible de 44 px
   de l'interrupteur n'est vérifiée qu'en e2e local (Playwright).
 - Le mot « mode expert » sert aussi au titre de la formation apprenant

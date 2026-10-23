@@ -5323,7 +5323,8 @@ body:has([aria-modal='true'], .portfolio-editor-fullscreen)
   margin-right: auto;
 }
 
-.account-keys-copy {
+.account-keys-copy,
+.account-keys-cancel {
   background: none;
   border: 1px solid var(--line);
   color: var(--ink);
@@ -5343,6 +5344,12 @@ body:has([aria-modal='true'], .portfolio-editor-fullscreen)
   cursor: pointer;
   font: inherit;
   font-size: 0.85rem;
+}
+
+.account-keys-armed {
+  flex-basis: 100%;
+  color: var(--danger);
+  font-size: 0.88rem;
 }
 
 .account-keys-empty {

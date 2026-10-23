@@ -132,18 +132,41 @@ describe('UC-CPT-04 — ApiKeysSection (composant seul)', () => {
     expect(await screen.findByText('à supprimer — gardée le 2026-09-28')).toBeDefined()
     expect(screen.queryByText('Stockage de clés non configuré')).toBeNull()
 
+    fireEvent.click(screen.getByRole('button', { name: 'Supprimer du serveur' }))
     await act(async () => {
-      fireEvent.click(screen.getByRole('button', { name: 'Supprimer du serveur' }))
+      fireEvent.click(screen.getByRole('button', { name: 'Confirmer la suppression' }))
     })
     expect(screen.getAllByRole('alert').map((a) => a.textContent)).toContain('Une erreur est survenue. Réessayez.')
     expect(listKeys).toHaveBeenCalledTimes(1) // pas de rechargement après un échec
 
+    fireEvent.click(screen.getByRole('button', { name: 'Supprimer du serveur' }))
     await act(async () => {
-      fireEvent.click(screen.getByRole('button', { name: 'Supprimer du serveur' }))
+      fireEvent.click(screen.getByRole('button', { name: 'Confirmer la suppression' }))
     })
     expect(deleteKey).toHaveBeenLastCalledWith('google')
     expect(await screen.findByText('Clé Google (Gemini) supprimée du serveur.')).toBeDefined()
     expect(listKeys).toHaveBeenCalledTimes(2)
+  })
+
+  it('UC-CPT-04-U22 — « Supprimer du serveur » en deux temps : le premier toucher arme seulement et prévient que la clé ne sera plus récupérable ; « Annuler » désarme ; seule la confirmation supprime', async () => {
+    const listKeys = vi.fn().mockResolvedValue([{ provider: 'anthropic', createdAt: '2026-09-28T12:00:00', avisPurgeAt: null }])
+    const deleteKey = vi.fn().mockResolvedValue(null)
+    render(<ApiKeysSection deps={{ listKeys, deleteKey, revealKey: vi.fn() }} />)
+
+    fireEvent.click(await screen.findByRole('button', { name: 'Supprimer du serveur' }))
+    expect(deleteKey).not.toHaveBeenCalled()
+    expect(screen.getByTestId('cle-suppression-armee').textContent).toContain('ne sera plus récupérable')
+    fireEvent.click(screen.getByRole('button', { name: 'Annuler' }))
+    expect(screen.queryByTestId('cle-suppression-armee')).toBeNull()
+    expect(screen.queryByRole('button', { name: 'Confirmer la suppression' })).toBeNull()
+    expect(deleteKey).not.toHaveBeenCalled()
+
+    fireEvent.click(screen.getByRole('button', { name: 'Supprimer du serveur' }))
+    await act(async () => {
+      fireEvent.click(screen.getByRole('button', { name: 'Confirmer la suppression' }))
+    })
+    expect(deleteKey).toHaveBeenCalledTimes(1)
+    expect(deleteKey).toHaveBeenCalledWith('anthropic')
   })
 
   it('UC-CPT-04-U20 — « Recopier dans ce navigateur, puis supprimer » : la clé relue est écrite dans humanome-keys AVANT la suppression ; un navigateur qui ne la garde pas → rien n’est supprimé', async () => {

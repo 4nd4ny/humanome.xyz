@@ -5,7 +5,8 @@
 // élèves (dans son espace établissement). La section le dit, et n'a plus de
 // formulaire d'ajout. Elle montre les clés gardées sur le serveur AVANT,
 // « à supprimer », qui ne servent plus à aucune analyse, avec deux boutons :
-// « Supprimer du serveur », et « Recopier dans ce navigateur, puis supprimer »
+// « Supprimer du serveur » (en deux temps : armer, puis confirmer — elle ne
+// sera plus récupérable), et « Recopier dans ce navigateur, puis supprimer »
 // (la clé est relue une fois, mémorisée dans localStorage 'humanome-keys',
 // celui de l'assistant de run et de la cartographie ouverte, puis supprimée du
 // serveur), pour que personne ne perde une clé gardée nulle part ailleurs. Si
@@ -66,6 +67,8 @@ export default function ApiKeysSection({ deps = {} }) {
   const [busy, setBusy] = useState(false)
   const [feedback, setFeedback] = useState(null)
   const [reloadKey, setReloadKey] = useState(0)
+  // « Supprimer du serveur » en deux temps (comme le retrait de la clé d'une école) : le fournisseur armé
+  const [arme, setArme] = useState(null)
 
   useEffect(() => {
     let alive = true
@@ -90,6 +93,7 @@ export default function ApiKeysSection({ deps = {} }) {
   const reload = useCallback(() => setReloadKey((k) => k + 1), [])
 
   async function remove(prov) {
+    setArme(null)
     setBusy(true)
     setFeedback(null)
     try {
@@ -104,6 +108,7 @@ export default function ApiKeysSection({ deps = {} }) {
   }
 
   async function copyThenRemove(prov) {
+    setArme(null)
     setBusy(true)
     setFeedback(null)
     try {
@@ -169,14 +174,34 @@ export default function ApiKeysSection({ deps = {} }) {
                   >
                     Recopier dans ce navigateur, puis supprimer
                   </button>
-                  <button
-                    type="button"
-                    className="account-keys-delete"
-                    onClick={() => remove(k.provider)}
-                    disabled={busy}
-                  >
-                    Supprimer du serveur
-                  </button>
+                  {arme === k.provider ? (
+                    <>
+                      <span className="account-keys-armed" data-testid="cle-suppression-armee">
+                        Supprimée du serveur, elle ne sera plus récupérable : recopiez-la d’abord si vous ne
+                        l’avez nulle part ailleurs.
+                      </span>
+                      <button
+                        type="button"
+                        className="account-keys-delete"
+                        onClick={() => remove(k.provider)}
+                        disabled={busy}
+                      >
+                        Confirmer la suppression
+                      </button>
+                      <button type="button" className="account-keys-cancel" onClick={() => setArme(null)} disabled={busy}>
+                        Annuler
+                      </button>
+                    </>
+                  ) : (
+                    <button
+                      type="button"
+                      className="account-keys-delete"
+                      onClick={() => setArme(k.provider)}
+                      disabled={busy}
+                    >
+                      Supprimer du serveur
+                    </button>
+                  )}
                 </li>
               )
             })}

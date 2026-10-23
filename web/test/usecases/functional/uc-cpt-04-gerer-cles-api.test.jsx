@@ -175,13 +175,16 @@ describe('UC-CPT-04 — section « Clés API » du profil', () => {
     // E4 depuis la section : l'entrée a disparu entre-temps (autre navigateur).
     api.failNext('DELETE keys/anthropic', jsonResponse(404, { error: 'Aucune clé enregistrée pour ce fournisseur' }))
     const [supprimerAnthropic] = section.getAllByRole('button', { name: 'Supprimer du serveur' })
+    // en deux temps : armer, puis confirmer
+    fireEvent.click(supprimerAnthropic)
     await act(async () => {
-      fireEvent.click(supprimerAnthropic)
+      fireEvent.click(section.getByRole('button', { name: 'Confirmer la suppression' }))
     })
     expect((await section.findByRole('alert')).textContent).toBe('Aucune clé enregistrée pour ce fournisseur')
 
+    fireEvent.click(section.getAllByRole('button', { name: 'Supprimer du serveur' })[0])
     await act(async () => {
-      fireEvent.click(section.getAllByRole('button', { name: 'Supprimer du serveur' })[0])
+      fireEvent.click(section.getByRole('button', { name: 'Confirmer la suppression' }))
     })
 
     expect(await section.findByText('Clé Anthropic (Claude) supprimée du serveur.')).toBeDefined()

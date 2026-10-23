@@ -157,13 +157,21 @@ Dernière revue : M9 (2026-07-12).
   qu'elle existe — sans qu'aucun test ne le voie (ni vitest ni le dev-server
   n'appliquent la CSP du `.htaccess`). Le choix explicite d'un visiteur (clair ou
   sombre) n'était donc pas réappliqué au chargement : la page suivait le thème du
-  système. `script-src` autorise désormais ce script **par son hash**
-  (`'sha256-VNZJ2x9PRW+GU3XSKT9vt2Pezkb2MMkrNIOKCPOuxzY='`), jamais par
+  système. `script-src` autorise désormais ce script **par son hash**, jamais par
   `'unsafe-inline'`. Garde anti-dérive : `web/src/anti-fouc.test.js` recalcule le
   hash depuis `index.html` (un seul script en ligne admis) et exige sa présence
   dans `script-src`. Vérifié dans Chromium sur le bundle construit, sous la CSP
   de production d'avant puis d'après : violation `script-src-elem`, puis aucune,
   et le thème posé pendant l'analyse du `<head>`, avant le bundle.
+  **Sprint 9 (trois interfaces, 2026-10-23)** : le script pose aussi
+  l'interface choisie (`data-interface`, clé `humanome-interface` :
+  épistémiarque par défaut, noèsiologue, technomancien ; une valeur inconnue
+  ramène au défaut). Son hash est donc devenu
+  `'sha256-xdi4lkEzYjLmg/FIkP53O3LknKxMm5e6rr8bPwk3e8A='` (il remplace
+  `'sha256-VNZJ2x9PRW+GU3XSKT9vt2Pezkb2MMkrNIOKCPOuxzY='`), dans `script-src`
+  de `web/public/.htaccess`. Toujours un seul script en ligne, sans
+  `'unsafe-inline'`. À vérifier après déploiement : la console de
+  https://humanome.xyz ne signale aucune violation `script-src-elem`.
 - **En-têtes API sur OVH** : sur le mutualisé, le `www/.htaccess` du front (`Header
   always set`) **se propage** dans `www/api/`. `api/deploy/webroot/.htaccess`
   **réaffirme** défensivement les valeurs API (CSP `default-src 'none'`, X-Frame

@@ -17,6 +17,7 @@ import {
 import ApiKeysSection from './account/ApiKeysSection.jsx'
 import DeclaredRolesSection from './account/DeclaredRolesSection.jsx'
 import Avatar from '../components/Avatar.jsx'
+import DisplaySelects from '../components/DisplaySelects.jsx'
 import { resizeAvatar } from '../lib/resize-image.js'
 import { dropAllDrafts } from '../carto/ui/shareDrafts.js'
 import { useUiMode } from '../lib/ui-mode.js'
@@ -43,8 +44,9 @@ const ROLE_LABELS = {
 }
 
 /**
- * Ligne « Affichage » du profil : le mode expert, réglage de CE navigateur
- * (pas du compte, V1), qui ne change aucun droit.
+ * Ligne « Affichage » du profil : le mode expert, puis l'interface et le
+ * thème (sprint 9), réglages de CE navigateur (pas du compte, V1), qui ne
+ * changent aucun droit. Les mêmes que ceux du tiroir, synchronisés.
  */
 function DisplayModeRow() {
   const { expert, setExpert } = useUiMode()
@@ -66,6 +68,11 @@ function DisplayModeRow() {
           — profils Twin9, versions de prompt, modèles, comparaison, réglages fins. Gardé dans ce
           navigateur ; il ne change aucun droit.
         </span>
+        <DisplaySelects
+          idPrefix="account"
+          className="account-display"
+          hint="Interface et thème : gardés dans ce navigateur ; ils ne changent aucun droit."
+        />
       </dd>
     </div>
   )

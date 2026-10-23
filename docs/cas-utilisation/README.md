@@ -104,6 +104,7 @@ rejouant les fixtures : aucun appel réseau réel).
 | [UC-VIS-04](visiteur/UC-VIS-04-se-reperer-guides-aide.md) | Se repérer : accueil, navigation, guides, aide, confidentialité | 13 | 21 | 2 |
 | [UC-VIS-05](visiteur/UC-VIS-05-interroger-assistant-tuteur.md) | Interroger l'assistant tuteur | 17 | 27 | 0 |
 | [UC-VIS-06](visiteur/UC-VIS-06-choisir-affichage-simple-expert.md) | Choisir l'affichage simple ou expert | 7 | 8 | 0 |
+| [UC-VIS-07](visiteur/UC-VIS-07-choisir-interface-theme.md) | Choisir son interface (épistémiarque, noèsiologue, technomancien) et son thème | 7 | 7 | 0 |
 
 ### Compte (tout utilisateur inscrit)
 
@@ -205,7 +206,7 @@ rejouant les fixtures : aucun appel réseau réel).
 | [UC-SYS-04](systeme/UC-SYS-04-construire-artefacts-derives.md) | Construire les données et artefacts dérivés | 9 | 19 | 3 |
 | [UC-SYS-05](systeme/UC-SYS-05-sauvegarder-restaurer.md) | Sauvegarder et restaurer la base | 0 | 8 | 6 |
 
-**Total : 61 cas d'utilisation, 1085 tests unitaires et 1232 tests fonctionnels identifiés, 192 anomalies de production documentées.**
+**Total : 62 cas d'utilisation, 1092 tests unitaires et 1239 tests fonctionnels identifiés, 192 anomalies de production documentées.**
 
 Les comptes portent sur les identifiants distincts (`UC-…-Unn`, `UC-…-Fnn`) présents dans les fichiers de tests ; un identifiant paramétré (`it.each`) compte pour un.
 <!-- catalogue:end -->

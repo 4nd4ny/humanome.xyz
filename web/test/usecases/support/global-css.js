@@ -2,19 +2,74 @@
 // par le CSSOM de jsdom, comme v3Rules() d'UC-APP-12 : Vitest n'injecte pas
 // les CSS importées. Sert aux tests qui vérifient une règle (un conteneur qui
 // défile) ou un contraste calculé sur les jetons des trois thèmes (clair,
-// sombre du système, sombre choisi). jsdom ne calcule aucune mise en page :
-// ces tests lisent les règles, ils ne mesurent rien.
+// sombre du système, sombre choisi) de chacune des trois interfaces du
+// sprint 9 (épistémiarque, noèsiologue, technomancien), soit neuf contextes.
+// jsdom ne calcule aucune mise en page : ces tests lisent les règles, ils ne
+// mesurent rien.
 import { readFileSync } from 'node:fs'
 import { dirname, resolve } from 'node:path'
 import { fileURLToPath } from 'node:url'
 
 const CSS = resolve(dirname(fileURLToPath(import.meta.url)), '../../../src/styles/global.css')
 
-/** Les trois contextes où global.css définit ses jetons de couleur. */
+const DARK = '(prefers-color-scheme: dark)'
+const SYSTEM_DARK = ":root:not([data-theme='light'])"
+const CHOSEN_DARK = ":root[data-theme='dark']"
+
+/**
+ * Les neuf contextes où global.css définit ses jetons de couleur : trois
+ * interfaces × (clair, sombre du système, sombre choisi). `layers` = les
+ * règles qui s'appliquent par-dessus les règles `:root`, dans l'ordre de la
+ * cascade (spécificité puis ordre) : l'épistémiarque vit sur :root, une autre
+ * interface ajoute son clair puis son sombre. `block` = la règle propre au
+ * contexte (celle qui porte les jetons --ds-* de l'interface).
+ */
+function contexts(interfaceName, label) {
+  if (interfaceName === 'epistemiarque') {
+    return [
+      { name: `${label}, clair`, interface: interfaceName, theme: 'light', block: { selector: ':root', media: null }, layers: [] },
+      {
+        name: `${label}, sombre (système)`,
+        interface: interfaceName,
+        theme: 'dark-system',
+        block: { selector: SYSTEM_DARK, media: DARK },
+        layers: [{ selector: SYSTEM_DARK, media: DARK }],
+      },
+      {
+        name: `${label}, sombre (choisi)`,
+        interface: interfaceName,
+        theme: 'dark-chosen',
+        block: { selector: CHOSEN_DARK, media: null },
+        layers: [{ selector: CHOSEN_DARK, media: null }],
+      },
+    ]
+  }
+  const light = { selector: `:root[data-interface='${interfaceName}']`, media: null }
+  const systemDark = { selector: `:root[data-interface='${interfaceName}']:not([data-theme='light'])`, media: DARK }
+  const chosenDark = { selector: `:root[data-interface='${interfaceName}'][data-theme='dark']`, media: null }
+  return [
+    { name: `${label}, clair`, interface: interfaceName, theme: 'light', block: light, layers: [light] },
+    {
+      name: `${label}, sombre (système)`,
+      interface: interfaceName,
+      theme: 'dark-system',
+      block: systemDark,
+      layers: [{ selector: SYSTEM_DARK, media: DARK }, light, systemDark],
+    },
+    {
+      name: `${label}, sombre (choisi)`,
+      interface: interfaceName,
+      theme: 'dark-chosen',
+      block: chosenDark,
+      layers: [{ selector: CHOSEN_DARK, media: null }, light, chosenDark],
+    },
+  ]
+}
+
 export const THEMES = [
-  { name: 'clair', selector: ':root', media: null },
-  { name: 'sombre (système)', selector: ":root:not([data-theme='light'])", media: '(prefers-color-scheme: dark)' },
-  { name: 'sombre (choisi)', selector: ":root[data-theme='dark']", media: null },
+  ...contexts('epistemiarque', 'épistémiarque'),
+  ...contexts('noesiologue', 'noèsiologue'),
+  ...contexts('technomancien', 'technomancien'),
 ]
 
 /**
@@ -61,13 +116,20 @@ export function declOf(rules, selector, media = null) {
 }
 
 /**
+ * Jetons en vigueur dans un contexte de THEMES : les règles `:root`, puis ses
+ * couches dans l'ordre de la cascade.
+ */
+export function tokensOf(rules, theme) {
+  return Object.assign({}, declOf(rules, ':root'), ...theme.layers.map((layer) => declOf(rules, layer.selector, layer.media)))
+}
+
+/**
  * Valeur d'une couleur dans un thème : `var(--x)` résolu sur les jetons de
- * ce thème (le sombre redéfinit ceux du clair), une couleur littérale telle
- * quelle.
+ * ce thème (le sombre redéfinit ceux du clair, l'interface ceux du défaut),
+ * une couleur littérale telle quelle.
  */
 export function resolveColor(rules, value, theme) {
-  const light = declOf(rules, ':root')
-  const tokens = theme.selector === ':root' ? light : { ...light, ...declOf(rules, theme.selector, theme.media) }
+  const tokens = tokensOf(rules, theme)
   let current = value
   for (let depth = 0; depth < 5; depth++) {
     const match = /^var\((--[\w-]+)\)$/.exec(current)

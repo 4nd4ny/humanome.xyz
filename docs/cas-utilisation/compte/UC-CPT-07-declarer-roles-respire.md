@@ -222,7 +222,7 @@ n'en garde que les libellés, pour la liste d'administration (UC-CPT-07-U15).
 | UC-CPT-07-U18 | `DeclaredRolesSection` | Case du cercle avec chacun des trois rôles éligibles, jamais avec les six autres ; retirée et décochée avec le dernier (A4) | idem |
 | UC-CPT-07-U19 | `DeclaredRolesSection` | Déclaration entière dans l'ordre du catalogue, message « vos accès ne changent pas » ; `422` : message du champ en alerte ; `403` et `401` sans champ : « Votre session a expiré : reconnectez-vous… » ; saisie gardée | idem |
 | UC-CPT-07-U20 | `DeclaredRolesSection` | Lecture impossible (`404`, `500`, API injoignable, catalogue vide) : message discret, ni alerte ni formulaire (E5) | idem |
-| UC-CPT-07-U23 | `DeclaredRolesSection`, `global.css` | Définitions et note du cercle (0,85rem, annoncées par `aria-describedby`) à 4,5:1 au moins sur la surface de leur carte, dans les trois thèmes (clair, sombre du système, sombre choisi) | idem |
+| UC-CPT-07-U23 | `DeclaredRolesSection`, `global.css` | Définitions et note du cercle (0,85rem, annoncées par `aria-describedby`) à 4,5:1 au moins sur la surface de leur carte, dans les trois thèmes (clair, sombre du système, sombre choisi) de chacune des trois interfaces (épistémiarque, noèsiologue, technomancien, UC-VIS-07) | idem |
 | UC-CPT-07-U24 | `DeclaredRolesSection` | Au clavier : le bouton garde le focus inactif, pendant et après l'enregistrement (`aria-disabled`, jamais `disabled`) ; « Enregistrement… » pendant l'envoi ; inactif, l'activer n'envoie rien | idem |
 
 ### Tests fonctionnels

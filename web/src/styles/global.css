@@ -39,47 +39,449 @@
   src: url('/fonts/quattro/iAWriterQuattroS-BoldItalic.woff2') format('woff2');
 }
 
-/* ================= THÈME : tokens clair (défaut) =================
-   Toute la couleur du site passe par ces variables. Le thème sombre ne
-   redéfinit QUE ces valeurs (plus bas), le reste de la feuille les consomme.
-   Contraste visé >= 4.5:1 pour le texte courant sur --card et --paper. */
+/* ================= INTERFACES : jetons des trois habillages (sprint 9) =================
+   Trois interfaces au choix de chaque visiteur (décision de Christian du
+   2026-10-23), nommées d'après les filières, chacune en clair et en sombre :
+     - ÉPISTÉMIARQUE (défaut) : proposition A « Atelier du savoir » — papier
+       chaud, encre brune, un seul accent terre cuite, focus bleu de Prusse ;
+     - NOÈSIOLOGUE : proposition B « Vivant » — crème, encre brune, voix TÊTE
+       (le bleu d'humanome), focus violet ;
+     - TECHNOMANCIEN : proposition C « Voie de la machine » — ardoise
+       contrastée, accent bleu d'humanome, focus cyan.
+   Mécanique :
+   - <html data-interface> est posé par le script anti-FOUC d'index.html
+     (lib/theme.js à chaud). Le défaut vit sur :root : sans attribut, ou avec
+     une valeur inconnue, c'est l'épistémiarque.
+   - Thème : comme avant, sans choix le système décide (prefers-color-scheme),
+     un choix explicite (data-theme) prime. Chaque interface a donc un bloc
+     clair et DEUX copies sombres (système, choisi), IDENTIQUES.
+   - Spécificité : épistémiarque clair :root (0,1,0), sombre (0,2,0) ; une
+     autre interface, clair (0,2,0) puis sombre (0,3,0), écrite APRÈS : un
+     seul bloc gagne dans chaque contexte. Chaque bloc déclare le MÊME jeu de
+     jetons, sinon une valeur de l'épistémiarque fuirait dans une autre
+     interface. Gardé (jeux identiques, copies sombres identiques, contrastes
+     WCAG des neuf contextes) par
+     test/usecases/unit/uc-vis-07-choisir-interface-theme.test.jsx.
+   - Ces blocs ne portent QUE les jetons --ds-* ; les variables historiques
+     (--ink, --paper, --accent…) en deviennent des alias, juste après, sans
+     renommage : les feuilles qui les consomment ne bougent pas.
+   - Les COULEURS DE DONNÉES (familles d'intention, séries du monitoring,
+     surface des visualisations) et les badges gratuit / premium ne dépendent
+     pas de l'interface : ils restent plus bas, par thème seulement.
+   - Valeurs reprises des trois propositions de charte (jetons d'humanome) ;
+     là où une proposition ne donne pas le jeton, la valeur est dérivée et
+     signalée « dérivé ». */
+
+/* ---- Épistémiarque (défaut) : clair ---- */
 :root {
   color-scheme: light;
+  --ds-text: #211d18;
+  --ds-text-soft: #554c42;
+  --ds-text-faint: #6b6157;
+  --ds-bg: #f7f2e8;
+  --ds-surface: #fffdf8;
+  --ds-surface-2: #efe8da;
+  --ds-line: #e0d6c4;
+  --ds-line-strong: #857a6b;
+  --ds-accent: #a2401c;
+  --ds-accent-strong: #7e2f11;
+  --ds-accent-solid: #ba522c;
+  --ds-accent-solid-hover: #9c4223;
+  --ds-on-accent: #ffffff;
+  --ds-focus: #1d4e89;
+  --ds-danger: #a3203a;
+  --ds-danger-strong: #a3203a;
+  --ds-danger-bg: #f9e2e3;
+  --ds-danger-line: rgb(163 32 58 / 0.35);
+  --ds-success: #2e6b3f;
+  --ds-success-bg: #e5efe0;
+  --ds-success-bg-strong: #dee6da;
+  --ds-success-line: rgb(46 107 63 / 0.35);
+  --ds-warning: #7a5a00;
+  --ds-warning-strong: #7a5a00;
+  --ds-warning-bg: #f7eccd;
+  --ds-warning-bg-strong: #eae3d0;
+  --ds-warning-line: rgb(122 90 0 / 0.35);
+  --ds-info-bg: #e2eaf4;
+  --ds-info-line: rgb(29 78 137 / 0.35);
+  --ds-shadow-sm: 0 1px 2px rgb(60 40 20 / 0.07), 0 1px 1px rgb(60 40 20 / 0.04);
+  --ds-shadow-md: 0 4px 14px rgb(60 40 20 / 0.09), 0 1px 3px rgb(60 40 20 / 0.06);
+  --ds-shadow-panel: 0 14px 36px rgb(60 40 20 / 0.16), 0 2px 6px rgb(60 40 20 / 0.08);
+  --ds-overlay: rgb(33 29 24 / 0.45);
+}
 
+/* ---- Épistémiarque : sombre « veillée », système (copie 1) ---- */
+@media (prefers-color-scheme: dark) {
+  :root:not([data-theme='light']) {
+    color-scheme: dark;
+    --ds-text: #ede6d8;
+    --ds-text-soft: #c9bfae;
+    --ds-text-faint: #a89d8c;
+    --ds-bg: #17140f;
+    --ds-surface: #201c17;
+    --ds-surface-2: #2a251e;
+    --ds-line: #3a332a;
+    --ds-line-strong: #8c8170;
+    --ds-accent: #e8875a;
+    --ds-accent-strong: #f3a983;
+    --ds-accent-solid: #ba522c;
+    --ds-accent-solid-hover: #c0532a;
+    --ds-on-accent: #ffffff;
+    --ds-focus: #8cb8f2;
+    --ds-danger: #f2848f;
+    --ds-danger-strong: #f2848f;
+    --ds-danger-bg: #331a1c;
+    --ds-danger-line: rgb(242 132 143 / 0.35);
+    --ds-success: #86c79a;
+    --ds-success-bg: #1c2a1f;
+    --ds-success-bg-strong: #30372c;
+    --ds-success-line: rgb(134 199 154 / 0.35);
+    --ds-warning: #e3b755;
+    --ds-warning-strong: #e3b755;
+    --ds-warning-bg: #2d2412;
+    --ds-warning-bg-strong: #3f3521;
+    --ds-warning-line: rgb(227 183 85 / 0.35);
+    --ds-info-bg: #18263a;
+    --ds-info-line: rgb(140 184 242 / 0.35);
+    --ds-shadow-sm: 0 1px 2px rgb(0 0 0 / 0.4);
+    --ds-shadow-md: 0 4px 14px rgb(0 0 0 / 0.45), 0 1px 3px rgb(0 0 0 / 0.35);
+    --ds-shadow-panel: 0 14px 36px rgb(0 0 0 / 0.55), 0 2px 6px rgb(0 0 0 / 0.4);
+    --ds-overlay: rgb(8 6 4 / 0.62);
+  }
+}
+
+/* ---- Épistémiarque : sombre, choisi (copie 2, identique) ---- */
+:root[data-theme='dark'] {
+  color-scheme: dark;
+  --ds-text: #ede6d8;
+  --ds-text-soft: #c9bfae;
+  --ds-text-faint: #a89d8c;
+  --ds-bg: #17140f;
+  --ds-surface: #201c17;
+  --ds-surface-2: #2a251e;
+  --ds-line: #3a332a;
+  --ds-line-strong: #8c8170;
+  --ds-accent: #e8875a;
+  --ds-accent-strong: #f3a983;
+  --ds-accent-solid: #ba522c;
+  --ds-accent-solid-hover: #c0532a;
+  --ds-on-accent: #ffffff;
+  --ds-focus: #8cb8f2;
+  --ds-danger: #f2848f;
+  --ds-danger-strong: #f2848f;
+  --ds-danger-bg: #331a1c;
+  --ds-danger-line: rgb(242 132 143 / 0.35);
+  --ds-success: #86c79a;
+  --ds-success-bg: #1c2a1f;
+  --ds-success-bg-strong: #30372c;
+  --ds-success-line: rgb(134 199 154 / 0.35);
+  --ds-warning: #e3b755;
+  --ds-warning-strong: #e3b755;
+  --ds-warning-bg: #2d2412;
+  --ds-warning-bg-strong: #3f3521;
+  --ds-warning-line: rgb(227 183 85 / 0.35);
+  --ds-info-bg: #18263a;
+  --ds-info-line: rgb(140 184 242 / 0.35);
+  --ds-shadow-sm: 0 1px 2px rgb(0 0 0 / 0.4);
+  --ds-shadow-md: 0 4px 14px rgb(0 0 0 / 0.45), 0 1px 3px rgb(0 0 0 / 0.35);
+  --ds-shadow-panel: 0 14px 36px rgb(0 0 0 / 0.55), 0 2px 6px rgb(0 0 0 / 0.4);
+  --ds-overlay: rgb(8 6 4 / 0.62);
+}
+
+/* ---- Noèsiologue : clair ----
+   --ds-text-faint, --ds-accent-strong, --ds-danger-strong, --ds-warning-strong :
+   la proposition B n'en a pas ; ils reprennent le texte doux, l'accent, le
+   danger et l'alerte, comme son tableau d'alias. Info = la voix TÊTE. */
+:root[data-interface='noesiologue'] {
+  color-scheme: light;
+  --ds-text: #2b2019;
+  --ds-text-soft: #6b584c;
+  --ds-text-faint: #6b584c;
+  --ds-bg: #fff8f1;
+  --ds-surface: #ffffff;
+  --ds-surface-2: #faefe4;
+  --ds-line: #ecded0;
+  --ds-line-strong: #8f7a6a;
+  --ds-accent: #1d4ed8;
+  --ds-accent-strong: #1d4ed8;
+  --ds-accent-solid: #2563eb;
+  --ds-accent-solid-hover: #1d4ed8;
+  --ds-on-accent: #ffffff;
+  --ds-focus: #6d28d9;
+  --ds-danger: #b42318;
+  --ds-danger-strong: #b42318;
+  --ds-danger-bg: #fde8e6;
+  --ds-danger-line: #e8afaa;
+  --ds-success: #166534;
+  --ds-success-bg: #e3f5e8;
+  --ds-success-bg-strong: #cae4d2;
+  --ds-success-line: #a3c8b0;
+  --ds-warning: #8a4a00;
+  --ds-warning-strong: #8a4a00;
+  --ds-warning-bg: #fdf0d3;
+  --ds-warning-bg-strong: #efdbb9;
+  --ds-warning-line: #d9bc91;
+  --ds-info-bg: #e5edff;
+  --ds-info-line: #a2bdf8;
+  --ds-shadow-sm: 0 1px 2px rgb(92 52 20 / 0.07), 0 1px 1px rgb(92 52 20 / 0.04);
+  --ds-shadow-md: 0 18px 40px rgb(92 52 20 / 0.16), 0 4px 10px rgb(92 52 20 / 0.06);
+  --ds-shadow-panel: 0 18px 40px rgb(92 52 20 / 0.16), 0 4px 10px rgb(92 52 20 / 0.06);
+  --ds-overlay: rgb(43 32 25 / 0.42);
+}
+
+/* ---- Noèsiologue : sombre, système (copie 1) ----
+   Les aplats s'éclaircissent et portent une encre sombre (--ds-on-accent). */
+@media (prefers-color-scheme: dark) {
+  :root[data-interface='noesiologue']:not([data-theme='light']) {
+    color-scheme: dark;
+    --ds-text: #f7eee5;
+    --ds-text-soft: #ccbbad;
+    --ds-text-faint: #ccbbad;
+    --ds-bg: #17120f;
+    --ds-surface: #211a16;
+    --ds-surface-2: #2d241e;
+    --ds-line: #3d322a;
+    --ds-line-strong: #8a7666;
+    --ds-accent: #9db8ff;
+    --ds-accent-strong: #9db8ff;
+    --ds-accent-solid: #6f9bff;
+    --ds-accent-solid-hover: #8fb2ff;
+    --ds-on-accent: #0b1430;
+    --ds-focus: #a78bfa;
+    --ds-danger: #ff8f84;
+    --ds-danger-strong: #ff8f84;
+    --ds-danger-bg: #361816;
+    --ds-danger-line: #653430;
+    --ds-success: #6ee09a;
+    --ds-success-bg: #142b1d;
+    --ds-success-bg-strong: #1b3926;
+    --ds-success-line: #264f36;
+    --ds-warning: #f5c45c;
+    --ds-warning-strong: #f5c45c;
+    --ds-warning-bg: #30240e;
+    --ds-warning-bg-strong: #403114;
+    --ds-warning-line: #56431d;
+    --ds-info-bg: #1b2546;
+    --ds-info-line: #324578;
+    --ds-shadow-sm: 0 1px 2px rgb(0 0 0 / 0.45), 0 1px 1px rgb(0 0 0 / 0.3);
+    --ds-shadow-md: 0 18px 40px rgb(0 0 0 / 0.6), 0 4px 10px rgb(0 0 0 / 0.35);
+    --ds-shadow-panel: 0 18px 40px rgb(0 0 0 / 0.6), 0 4px 10px rgb(0 0 0 / 0.35);
+    --ds-overlay: rgb(8 5 3 / 0.62);
+  }
+}
+
+/* ---- Noèsiologue : sombre, choisi (copie 2, identique) ---- */
+:root[data-interface='noesiologue'][data-theme='dark'] {
+  color-scheme: dark;
+  --ds-text: #f7eee5;
+  --ds-text-soft: #ccbbad;
+  --ds-text-faint: #ccbbad;
+  --ds-bg: #17120f;
+  --ds-surface: #211a16;
+  --ds-surface-2: #2d241e;
+  --ds-line: #3d322a;
+  --ds-line-strong: #8a7666;
+  --ds-accent: #9db8ff;
+  --ds-accent-strong: #9db8ff;
+  --ds-accent-solid: #6f9bff;
+  --ds-accent-solid-hover: #8fb2ff;
+  --ds-on-accent: #0b1430;
+  --ds-focus: #a78bfa;
+  --ds-danger: #ff8f84;
+  --ds-danger-strong: #ff8f84;
+  --ds-danger-bg: #361816;
+  --ds-danger-line: #653430;
+  --ds-success: #6ee09a;
+  --ds-success-bg: #142b1d;
+  --ds-success-bg-strong: #1b3926;
+  --ds-success-line: #264f36;
+  --ds-warning: #f5c45c;
+  --ds-warning-strong: #f5c45c;
+  --ds-warning-bg: #30240e;
+  --ds-warning-bg-strong: #403114;
+  --ds-warning-line: #56431d;
+  --ds-info-bg: #1b2546;
+  --ds-info-line: #324578;
+  --ds-shadow-sm: 0 1px 2px rgb(0 0 0 / 0.45), 0 1px 1px rgb(0 0 0 / 0.3);
+  --ds-shadow-md: 0 18px 40px rgb(0 0 0 / 0.6), 0 4px 10px rgb(0 0 0 / 0.35);
+  --ds-shadow-panel: 0 18px 40px rgb(0 0 0 / 0.6), 0 4px 10px rgb(0 0 0 / 0.35);
+  --ds-overlay: rgb(8 5 3 / 0.62);
+}
+
+/* ---- Technomancien : clair ----
+   Filets d'état pleins (la proposition C met --danger-border à la couleur
+   du danger, --info-border à l'accent). --ds-success-bg-strong et
+   --ds-warning-bg-strong : dérivés (C n'a pas de fond appuyé), au-dessus de
+   4,5:1 pour le texte d'état ; --ds-warning-strong reprend l'alerte. */
+:root[data-interface='technomancien'] {
+  color-scheme: light;
+  --ds-text: #0d1420;
+  --ds-text-soft: #3a4558;
+  --ds-text-faint: #536075;
+  --ds-bg: #f3f5f9;
+  --ds-surface: #ffffff;
+  --ds-surface-2: #edf0f5;
+  --ds-line: #d5dbe5;
+  --ds-line-strong: #738097;
+  --ds-accent: #1d55d0;
+  --ds-accent-strong: #163f9e;
+  --ds-accent-solid: #1d55d0;
+  --ds-accent-solid-hover: #1846ad;
+  --ds-on-accent: #ffffff;
+  --ds-focus: #0a7ea4;
+  --ds-danger: #b4232b;
+  --ds-danger-strong: #8f1b22;
+  --ds-danger-bg: #fbe9ea;
+  --ds-danger-line: #b4232b;
+  --ds-success: #11703f;
+  --ds-success-bg: #e3f4ea;
+  --ds-success-bg-strong: #d3ecdd;
+  --ds-success-line: #11703f;
+  --ds-warning: #7f4f00;
+  --ds-warning-strong: #7f4f00;
+  --ds-warning-bg: #fbf0d6;
+  --ds-warning-bg-strong: #f4e3bd;
+  --ds-warning-line: #7f4f00;
+  --ds-info-bg: #e3ebfc;
+  --ds-info-line: #1d55d0;
+  --ds-shadow-sm: 0 1px 2px rgba(13, 20, 32, 0.08);
+  --ds-shadow-md: 0 2px 6px rgba(13, 20, 32, 0.08), 0 8px 24px rgba(13, 20, 32, 0.08);
+  --ds-shadow-panel: 0 12px 40px rgba(13, 20, 32, 0.18);
+  --ds-overlay: rgba(13, 20, 32, 0.45);
+}
+
+/* ---- Technomancien : sombre, système (copie 1) ---- */
+@media (prefers-color-scheme: dark) {
+  :root[data-interface='technomancien']:not([data-theme='light']) {
+    color-scheme: dark;
+    --ds-text: #e8edf4;
+    --ds-text-soft: #acb6c6;
+    --ds-text-faint: #8e9aad;
+    --ds-bg: #0a0e15;
+    --ds-surface: #10161f;
+    --ds-surface-2: #161e2a;
+    --ds-line: #263142;
+    --ds-line-strong: #6b7a92;
+    --ds-accent: #82a9ff;
+    --ds-accent-strong: #b4cbff;
+    --ds-accent-solid: #6f9bff;
+    --ds-accent-solid-hover: #94b4ff;
+    --ds-on-accent: #050b18;
+    --ds-focus: #3fd2ff;
+    --ds-danger: #ff7d7d;
+    --ds-danger-strong: #ffa8a8;
+    --ds-danger-bg: #2c1215;
+    --ds-danger-line: #ff7d7d;
+    --ds-success: #4bdb94;
+    --ds-success-bg: #0e271c;
+    --ds-success-bg-strong: #143a29;
+    --ds-success-line: #4bdb94;
+    --ds-warning: #f5c451;
+    --ds-warning-strong: #f5c451;
+    --ds-warning-bg: #2a2009;
+    --ds-warning-bg-strong: #3a2d0e;
+    --ds-warning-line: #f5c451;
+    --ds-info-bg: #132140;
+    --ds-info-line: #82a9ff;
+    --ds-shadow-sm: 0 1px 2px rgba(0, 0, 0, 0.5);
+    --ds-shadow-md: 0 2px 8px rgba(0, 0, 0, 0.45), 0 0 0 1px rgba(255, 255, 255, 0.03);
+    --ds-shadow-panel: 0 16px 48px rgba(0, 0, 0, 0.6);
+    --ds-overlay: rgba(2, 4, 8, 0.66);
+  }
+}
+
+/* ---- Technomancien : sombre, choisi (copie 2, identique) ---- */
+:root[data-interface='technomancien'][data-theme='dark'] {
+  color-scheme: dark;
+  --ds-text: #e8edf4;
+  --ds-text-soft: #acb6c6;
+  --ds-text-faint: #8e9aad;
+  --ds-bg: #0a0e15;
+  --ds-surface: #10161f;
+  --ds-surface-2: #161e2a;
+  --ds-line: #263142;
+  --ds-line-strong: #6b7a92;
+  --ds-accent: #82a9ff;
+  --ds-accent-strong: #b4cbff;
+  --ds-accent-solid: #6f9bff;
+  --ds-accent-solid-hover: #94b4ff;
+  --ds-on-accent: #050b18;
+  --ds-focus: #3fd2ff;
+  --ds-danger: #ff7d7d;
+  --ds-danger-strong: #ffa8a8;
+  --ds-danger-bg: #2c1215;
+  --ds-danger-line: #ff7d7d;
+  --ds-success: #4bdb94;
+  --ds-success-bg: #0e271c;
+  --ds-success-bg-strong: #143a29;
+  --ds-success-line: #4bdb94;
+  --ds-warning: #f5c451;
+  --ds-warning-strong: #f5c451;
+  --ds-warning-bg: #2a2009;
+  --ds-warning-bg-strong: #3a2d0e;
+  --ds-warning-line: #f5c451;
+  --ds-info-bg: #132140;
+  --ds-info-line: #82a9ff;
+  --ds-shadow-sm: 0 1px 2px rgba(0, 0, 0, 0.5);
+  --ds-shadow-md: 0 2px 8px rgba(0, 0, 0, 0.45), 0 0 0 1px rgba(255, 255, 255, 0.03);
+  --ds-shadow-panel: 0 16px 48px rgba(0, 0, 0, 0.6);
+  --ds-overlay: rgba(2, 4, 8, 0.66);
+}
+
+/* ================= THÈME : variables du site (alias des jetons) =================
+   Toute la couleur du site passe par ces variables. Les couleurs d'INTERFACE
+   sont des alias des jetons --ds-* ci-dessus (l'interface et le thème les
+   redéfinissent) ; les couleurs de DONNÉES et les badges gardent leurs
+   propres valeurs, claires ici, sombres plus bas. Contraste visé >= 4.5:1
+   pour le texte courant sur --card et --paper (vérifié par interface). */
+:root {
   /* Encres */
-  --ink: #1e293b;
-  --ink-soft: #475569;
-  --ink-faint: #64748b;
+  --ink: var(--ds-text);
+  --ink-soft: var(--ds-text-soft);
+  --ink-faint: var(--ds-text-faint);
 
-  /* Surfaces */
-  --paper: #f8fafc;
-  --card: #ffffff;
-  --surface-2: #f1f5f9;
-  --line: #e2e8f0;
+  /* Surfaces et filets : --line est DÉCORATIF ; --line-strong (>= 3:1)
+     délimite un champ ou une commande. */
+  --paper: var(--ds-bg);
+  --card: var(--ds-surface);
+  --surface-2: var(--ds-surface-2);
+  --line: var(--ds-line);
+  --line-strong: var(--ds-line-strong);
 
   /* Accent : --accent/--accent-strong servent au TEXTE, bordures, focus ;
-     --accent-solid(-hover) aux REMPLISSAGES pleins (texte blanc dessus). */
-  --accent: #2563eb;
-  --accent-strong: #1d4ed8;
-  --accent-solid: #2563eb;
-  --accent-solid-hover: #1d4ed8;
+     --accent-solid(-hover) aux REMPLISSAGES pleins, avec --on-accent dessus
+     (blanc, ou encre sombre quand l'aplat s'éclaircit en sombre). */
+  --accent: var(--ds-accent);
+  --accent-strong: var(--ds-accent-strong);
+  --accent-solid: var(--ds-accent-solid);
+  --accent-solid-hover: var(--ds-accent-solid-hover);
+  --on-accent: var(--ds-on-accent);
+
+  /* Anneau de focus propre à l'interface. */
+  --focus: var(--ds-focus);
 
   /* Statuts sémantiques : fg / fond / fond appuyé / bordure */
-  --danger: #b91c1c;
-  --danger-strong: #991b1b;
-  --danger-bg: #fef2f2;
-  --danger-border: #fecaca;
-  --ok: #166534;
-  --ok-bg: #f0fdf4;
-  --ok-bg-strong: #dcfce7;
-  --ok-border: #bbf7d0;
-  --warn: #92400e;
-  --warn-strong: #7c2d12;
-  --warn-bg: #fffbeb;
-  --warn-bg-strong: #fef3c7;
-  --warn-border: #fde68a;
-  --info-bg: #eff6ff;
-  --info-border: #bfdbfe;
+  --danger: var(--ds-danger);
+  --danger-strong: var(--ds-danger-strong);
+  --danger-bg: var(--ds-danger-bg);
+  --danger-border: var(--ds-danger-line);
+  --ok: var(--ds-success);
+  --ok-bg: var(--ds-success-bg);
+  --ok-bg-strong: var(--ds-success-bg-strong);
+  --ok-border: var(--ds-success-line);
+  --warn: var(--ds-warning);
+  --warn-strong: var(--ds-warning-strong);
+  --warn-bg: var(--ds-warning-bg);
+  --warn-bg-strong: var(--ds-warning-bg-strong);
+  --warn-border: var(--ds-warning-line);
+  --info-bg: var(--ds-info-bg);
+  --info-border: var(--ds-info-line);
+
+  /* Ombres & voile modal */
+  --shadow-sm: var(--ds-shadow-sm);
+  --shadow-md: var(--ds-shadow-md);
+  --shadow-panel: var(--ds-shadow-panel);
+  --overlay: var(--ds-overlay);
 
   /* Échelle de valeur (badges gratuit / premium ; standard = accent) */
   --gratuit-fg: #0f766e;
@@ -88,12 +490,6 @@
   --premium-fg: #be185d;
   --premium-bg: #fdf2f8;
   --premium-border: #fbcfe8;
-
-  /* Ombres & voile modal */
-  --shadow-sm: 0 4px 14px rgba(15, 23, 42, 0.08);
-  --shadow-md: 0 12px 40px rgba(15, 23, 42, 0.18);
-  --shadow-panel: 10px 0 32px rgba(15, 23, 42, 0.16);
-  --overlay: rgba(15, 23, 42, 0.35);
 
   /* Surface de la VISUALISATION : reste CLAIRE dans les deux thèmes. Le
      sunburst (dégradé central, secteurs gris allant jusqu'au noir, anneaux)
@@ -124,50 +520,21 @@
   --mon-good: #15803d;
 }
 
-/* ================= THÈME : tokens sombre =================
+/* ================= THÈME : données en sombre =================
    Appliqués (a) automatiquement si le système est sombre ET que l'utilisateur
    n'a pas explicitement choisi « clair », (b) toujours si l'utilisateur a
    choisi « sombre ». Le sélecteur :not([data-theme='light']) laisse le choix
-   explicite « clair » gagner même sous un système sombre. */
+   explicite « clair » gagner même sous un système sombre. Seules les
+   couleurs de données et les badges y sont : celles de l'interface suivent
+   les jetons --ds-* (plus haut). */
 @media (prefers-color-scheme: dark) {
   :root:not([data-theme='light']) {
-    color-scheme: dark;
-    --ink: #e7edf6;
-    --ink-soft: #adb9cd;
-    --ink-faint: #7f8da7;
-    --paper: #0b1120;
-    --card: #141d31;
-    --surface-2: #1c2740;
-    --line: #2b3b58;
-    --accent: #60a5fa;
-    --accent-strong: #93c5fd;
-    --accent-solid: #2563eb;
-    --accent-solid-hover: #1d4ed8;
-    --danger: #f87171;
-    --danger-strong: #fca5a5;
-    --danger-bg: #2a1416;
-    --danger-border: #5b2a2c;
-    --ok: #4ade80;
-    --ok-bg: #0f2a1c;
-    --ok-bg-strong: #143726;
-    --ok-border: #235640;
-    --warn: #fcd34d;
-    --warn-strong: #fde3a3;
-    --warn-bg: #2a1f08;
-    --warn-bg-strong: #3a2c0c;
-    --warn-border: #5a4514;
-    --info-bg: #14243f;
-    --info-border: #294268;
     --gratuit-fg: #2dd4bf;
     --gratuit-bg: #0a2e29;
     --gratuit-border: #14564d;
     --premium-fg: #f472b6;
     --premium-bg: #2c1122;
     --premium-border: #59223f;
-    --shadow-sm: 0 4px 14px rgba(0, 0, 0, 0.4);
-    --shadow-md: 0 14px 44px rgba(0, 0, 0, 0.55);
-    --shadow-panel: 10px 0 34px rgba(0, 0, 0, 0.55);
-    --overlay: rgba(2, 6, 23, 0.62);
     --viz-surface: #ffffff;
     --viz-ink: #1e293b;
     --viz-ink-soft: #475569;
@@ -189,43 +556,12 @@
 }
 
 :root[data-theme='dark'] {
-  color-scheme: dark;
-  --ink: #e7edf6;
-  --ink-soft: #adb9cd;
-  --ink-faint: #7f8da7;
-  --paper: #0b1120;
-  --card: #141d31;
-  --surface-2: #1c2740;
-  --line: #2b3b58;
-  --accent: #60a5fa;
-  --accent-strong: #93c5fd;
-  --accent-solid: #2563eb;
-  --accent-solid-hover: #1d4ed8;
-  --danger: #f87171;
-  --danger-strong: #fca5a5;
-  --danger-bg: #2a1416;
-  --danger-border: #5b2a2c;
-  --ok: #4ade80;
-  --ok-bg: #0f2a1c;
-  --ok-bg-strong: #143726;
-  --ok-border: #235640;
-  --warn: #fcd34d;
-  --warn-strong: #fde3a3;
-  --warn-bg: #2a1f08;
-  --warn-bg-strong: #3a2c0c;
-  --warn-border: #5a4514;
-  --info-bg: #14243f;
-  --info-border: #294268;
   --gratuit-fg: #2dd4bf;
   --gratuit-bg: #0a2e29;
   --gratuit-border: #14564d;
   --premium-fg: #f472b6;
   --premium-bg: #2c1122;
   --premium-border: #59223f;
-  --shadow-sm: 0 4px 14px rgba(0, 0, 0, 0.4);
-  --shadow-md: 0 14px 44px rgba(0, 0, 0, 0.55);
-  --shadow-panel: 10px 0 34px rgba(0, 0, 0, 0.55);
-  --overlay: rgba(2, 6, 23, 0.62);
   --viz-surface: #ffffff;
   --viz-ink: #1e293b;
   --viz-ink-soft: #475569;
@@ -895,6 +1231,58 @@ body:has([aria-modal='true'], .portfolio-editor-fullscreen)
   .app-nav-mode-thumb {
     transition: none;
   }
+}
+
+/* Interface et thème (sprint 9, components/DisplaySelects.jsx) : deux listes
+   natives, au bas du tiroir (sous « Mode expert ») et dans la ligne
+   « Affichage » de #/compte. Cibles de 44 px, texte de 16 px (pas de zoom
+   iOS), bordure de commande (--line-strong, >= 3:1). */
+.display-selects {
+  display: grid;
+  gap: 0.35rem;
+}
+
+.display-select {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 0.6rem;
+  min-height: 44px;
+}
+
+.display-select-label {
+  font-weight: 600;
+}
+
+.display-select select {
+  flex: 0 1 11rem;
+  min-height: 44px;
+  min-width: 0;
+  max-width: 100%;
+  padding: 0.4rem 0.55rem;
+  border: 1px solid var(--line-strong);
+  border-radius: 8px;
+  background: var(--card);
+  color: var(--ink);
+  font: inherit;
+  font-size: 1rem;
+}
+
+.display-select-hint {
+  display: block;
+  font-size: 0.8rem;
+  color: var(--ink-faint);
+}
+
+.app-nav-display {
+  padding: 0.35rem 0.55rem;
+  color: var(--ink-soft);
+  font-size: 0.98rem;
+}
+
+.account-display {
+  max-width: 24rem;
+  margin-top: 0.6rem;
 }
 
 /* Badge d'échelle de valeur (gratuit / standard / premium) — porté par les

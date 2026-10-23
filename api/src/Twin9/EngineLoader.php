@@ -24,6 +24,9 @@ final class EngineLoader
     /** PSR-4 prefix of the engine, as declared by Twin_v9/php/composer.json. */
     public const PREFIX = 'Twin9\\';
 
+    /** A full commit name: 40 hex digits in SHA-1, 64 in SHA-256 (git init --object-format=sha256). */
+    private const OBJECT_NAME = '(?:[0-9a-f]{40}|[0-9a-f]{64})';
+
     /** @var array<string, ClassLoader> registered autoloaders, by source directory */
     private static array $loaders = [];
 
@@ -89,13 +92,14 @@ final class EngineLoader
         if (str_starts_with($head, 'ref: ')) {
             $head = self::reference($git, substr($head, 5)) ?? '';
         }
-        if (preg_match('/^[0-9a-f]{40}$/', $head) === 1) {
+        if (preg_match('/^' . self::OBJECT_NAME . '$/', $head) === 1) {
             return $head;
         }
         $fichier = $directory . '/COMMIT';
         $commit = is_file($fichier) ? trim(strtok((string) file_get_contents($fichier), "\n") ?: '') : '';
 
-        return preg_match('/^[0-9a-f]{7,40}$/', $commit) === 1 ? $commit : null;
+        // A full name, or one abbreviated to at least 7 digits.
+        return preg_match('/^[0-9a-f]{7,64}$/', $commit) === 1 ? $commit : null;
     }
 
     /** A reference's commit: its file, else packed-refs; in a worktree, the common directory holds both. */
@@ -111,7 +115,7 @@ final class EngineLoader
                 return trim((string) file_get_contents($dir . '/' . $ref));
             }
             if (is_file($dir . '/packed-refs')
-                && preg_match('/^([0-9a-f]{40}) ' . preg_quote($ref, '/') . '\r?$/m',
+                && preg_match('/^(' . self::OBJECT_NAME . ') ' . preg_quote($ref, '/') . '\r?$/m',
                     (string) file_get_contents($dir . '/packed-refs'), $m) === 1) {
                 return $m[1];
             }

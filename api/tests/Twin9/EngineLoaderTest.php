@@ -114,6 +114,38 @@ final class EngineLoaderTest extends TestCase
     }
 
     /**
+     * A repository in SHA-256 (git init --object-format=sha256) names its
+     * commits with 64 hex digits, not 40: its HEAD, detached or on a branch,
+     * loose or packed, and the COMMIT file a release copies from it.
+     */
+    public function testTheEnginesCommitMayBeASha256(): void
+    {
+        $sha = str_repeat('0123456789abcdef', 4);
+        $racine = sys_get_temp_dir() . '/twin v9-sha256-' . bin2hex(random_bytes(4));
+        $ecrire = static function (string $chemin, string $texte) use ($racine): void {
+            @mkdir(\dirname($racine . '/' . $chemin), 0777, true);
+            file_put_contents($racine . '/' . $chemin, $texte);
+        };
+        try {
+            $ecrire('detache/.git/HEAD', "$sha\n");
+            self::assertSame($sha, EngineLoader::commit("$racine/detache"), 'a detached HEAD');
+
+            $ecrire('isolee/.git/HEAD', "ref: refs/heads/main\n");
+            $ecrire('isolee/.git/refs/heads/main', "$sha\n");
+            self::assertSame($sha, EngineLoader::commit("$racine/isolee"), 'a loose branch');
+
+            $ecrire('emballe/.git/HEAD', "ref: refs/heads/main\n");
+            $ecrire('emballe/.git/packed-refs', "# pack-refs with: peeled\r\n$sha refs/heads/main\r\n");
+            self::assertSame($sha, EngineLoader::commit("$racine/emballe"), 'a packed branch, CRLF');
+
+            $ecrire('copie/COMMIT', "$sha\n");
+            self::assertSame($sha, EngineLoader::commit("$racine/copie"), 'a copy without git');
+        } finally {
+            exec('rm -rf ' . escapeshellarg($racine));
+        }
+    }
+
+    /**
      * Where Twin_v9 is a git checkout (TWIN_V9_DIR, a worktree or a clone),
      * the commit the attestation keeps is the HEAD git itself reads there.
      */
@@ -125,7 +157,7 @@ final class EngineLoaderTest extends TestCase
         if (file_exists($directory . '/.git')) {
             exec('git -C ' . escapeshellarg($directory) . ' rev-parse HEAD 2>/dev/null', $sortie, $code);
         }
-        if ($code !== 0 || preg_match('/^[0-9a-f]{40}$/', $sortie[0] ?? '') !== 1) {
+        if ($code !== 0 || preg_match('/^(?:[0-9a-f]{40}|[0-9a-f]{64})$/', $sortie[0] ?? '') !== 1) {
             self::markTestSkipped('Twin_v9 is not a git checkout here (TWIN_V9_DIR): its commit is not checked.');
         }
 

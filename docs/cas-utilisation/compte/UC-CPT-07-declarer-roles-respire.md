@@ -60,7 +60,9 @@ rôles ») : le bloc « Mes rôles RESPIRE » suit le profil et sa ligne
    donne pas d'accès ; l'administrateur habilite.** », le nom des
    déclarations qui ont une habilitation du même nom, puis une case par rôle
    du catalogue, avec sa définition ; la déclaration courante est cochée.
-   « Enregistrer mes rôles » reste inactif tant que rien ne change. Plus
+   « Enregistrer mes rôles » reste inactif tant que rien ne change
+   (`aria-disabled`, pas `disabled` : il reste dans l'ordre de tabulation et
+   garde le focus pendant et après l'enregistrement). Plus
    haut, la ligne « Habilitations » du profil liste les rôles attribués par
    l'administrateur.
 3. L'utilisateur coche ses rôles. Dès que promptagogue, épistémiarque ou
@@ -68,7 +70,8 @@ rôles ») : le bloc « Mes rôles RESPIRE » suit le profil et sa ligne
    apparaît ; il peut la cocher.
 4. Il clique « Enregistrer mes rôles » : le client envoie
    `PUT /api/auth/me/declared-roles {roles, foundingCircle}` (rôles dans
-   l'ordre du catalogue) avec l'en-tête `X-CSRF-Token`.
+   l'ordre du catalogue) avec l'en-tête `X-CSRF-Token`. Pendant l'envoi, le
+   bouton s'annonce « Enregistrement… » et un second envoi ne part pas.
 5. `DeclaredRoles::validate` vérifie la déclaration entière (RG1 à RG4) ;
    `DeclaredRoles::replace` la revérifie et l'écrit.
 6. `200 {roles, foundingCircle, catalogue}` : les rôles dans l'ordre du
@@ -214,6 +217,7 @@ n'en garde que les libellés, pour la liste d'administration (UC-CPT-07-U15).
 | UC-CPT-07-U19 | `DeclaredRolesSection` | Déclaration entière dans l'ordre du catalogue, message « vos accès ne changent pas » ; `422` et `403` : message en alerte, saisie gardée | idem |
 | UC-CPT-07-U20 | `DeclaredRolesSection` | Lecture impossible (`404`, `500`, API injoignable, catalogue vide) : message discret, ni alerte ni formulaire (E5) | idem |
 | UC-CPT-07-U23 | `DeclaredRolesSection`, `global.css` | Définitions et note du cercle (0,85rem, annoncées par `aria-describedby`) à 4,5:1 au moins sur la surface de leur carte, dans les trois thèmes (clair, sombre du système, sombre choisi) | idem |
+| UC-CPT-07-U24 | `DeclaredRolesSection` | Au clavier : le bouton garde le focus inactif, pendant et après l'enregistrement (`aria-disabled`, jamais `disabled`) ; « Enregistrement… » pendant l'envoi ; inactif, l'activer n'envoie rien | idem |
 
 ### Tests fonctionnels
 

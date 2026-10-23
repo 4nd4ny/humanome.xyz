@@ -5413,6 +5413,18 @@ body:has([aria-modal='true'], .portfolio-editor-fullscreen)
   line-height: 1.4;
 }
 
+/* « Enregistrer mes rôles » inactif : aria-disabled, pas disabled, pour
+   garder le focus au clavier ; même aspect que .button:disabled. */
+.account-respire-form .button[aria-disabled='true'] {
+  opacity: 0.4;
+  cursor: default;
+}
+
+.account-respire-form .button[aria-disabled='true']:hover {
+  border-color: var(--line);
+  color: var(--ink);
+}
+
 .account-respire-ok {
   color: var(--ok);
   font-weight: 600;

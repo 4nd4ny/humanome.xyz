@@ -40,6 +40,11 @@ const section = () => within(screen.getByRole('region', { name: 'Mes rôles RESP
 const box = (id) => section().getByRole('checkbox', { name: labelOf(id) })
 const circle = () => section().queryByRole('checkbox', { name: 'Membre du cercle des fondateurs' })
 const saveButton = () => section().getByRole('button', { name: 'Enregistrer mes rôles' })
+/** Inactif sans quitter l'ordre de tabulation : aria-disabled, jamais l'attribut disabled. */
+const inactive = (button) => {
+  expect(button.disabled).toBe(false)
+  return button.getAttribute('aria-disabled') === 'true'
+}
 
 describe('UC-CPT-07 — la section « Mes rôles RESPIRE » du profil', () => {
   it('UC-CPT-07-U17 — rendu : la mention « une déclaration ne donne pas d’accès ; l’administrateur habilite », les neuf rôles du catalogue dans l’ordre, chacun décrit par sa définition, la déclaration courante cochée ; « Enregistrer mes rôles » inactif tant que rien ne change', async () => {
@@ -58,12 +63,12 @@ describe('UC-CPT-07 — la section « Mes rôles RESPIRE » du profil', () => {
     }
     expect(boxes.filter((b) => b.checked).map((b) => b.labels[0].textContent)).toEqual(['Cartographe', 'Noèsiologue'])
     expect(circle()).toBeNull()
-    expect(saveButton().disabled).toBe(true)
+    expect(inactive(saveButton())).toBe(true)
 
     fireEvent.click(box('architecte'))
-    expect(saveButton().disabled).toBe(false)
+    expect(inactive(saveButton())).toBe(false)
     fireEvent.click(box('architecte'))
-    expect(saveButton().disabled).toBe(true)
+    expect(inactive(saveButton())).toBe(true)
   })
 
   it('UC-CPT-07-U18 — case « Membre du cercle des fondateurs » : proposée avec chacun des trois rôles éligibles, jamais avec les six autres ; décocher le dernier rôle qui la porte la retire et la décoche', async () => {
@@ -117,7 +122,7 @@ describe('UC-CPT-07 — la section « Mes rôles RESPIRE » du profil', () => {
     expect(section().getByRole('status').textContent).toBe(
       'Rôles RESPIRE enregistrés. Vos accès ne changent pas : seul l’administrateur habilite.',
     )
-    expect(saveButton().disabled).toBe(true)
+    expect(inactive(saveButton())).toBe(true)
 
     // Refus du serveur : le message de chaque champ, la saisie reste.
     const refusal = new ApiError('Validation échouée', 422)
@@ -130,7 +135,7 @@ describe('UC-CPT-07 — la section « Mes rôles RESPIRE » du profil', () => {
     expect(section().getByRole('alert').textContent).toBe('Le cercle des fondateurs est réservé aux promptagogues.')
     expect(box('eclaireur').checked).toBe(false)
     expect(circle().checked).toBe(true)
-    expect(saveButton().disabled).toBe(false)
+    expect(inactive(saveButton())).toBe(false)
 
     // Session perdue : le message du serveur, sans détail de champ.
     const csrf = new ApiError('Jeton CSRF absent ou invalide', 403)
@@ -181,5 +186,47 @@ describe('UC-CPT-07 — la section « Mes rôles RESPIRE » du profil', () => {
         expect(ratio, `${card}, ${theme.name} : ${text.color} sur ${surface}`).toBeGreaterThanOrEqual(4.5)
       }
     }
+  })
+
+  it('UC-CPT-07-U24 — au clavier : « Enregistrer mes rôles » garde le focus pendant et après l’enregistrement (aria-disabled, jamais disabled, qui le ferait tomber sur la page) ; pendant l’envoi il s’annonce « Enregistrement… » ; inactif, l’activer n’envoie rien', async () => {
+    let finish
+    const save = vi.fn(
+      (declaration) =>
+        new Promise((resolve) => {
+          finish = () => resolve({ ...declaration, catalogue })
+        }),
+    )
+    await renderSection({ save })
+
+    // Inactif (rien n'a changé) : focalisable, et l'activer n'envoie rien.
+    saveButton().focus()
+    expect(document.activeElement).toBe(saveButton())
+    await act(async () => {
+      fireEvent.click(saveButton())
+    })
+    expect(save).not.toHaveBeenCalled()
+
+    fireEvent.click(box('noesiologue'))
+    saveButton().focus()
+    await act(async () => {
+      fireEvent.click(saveButton())
+    })
+    // Pendant l'envoi : un nom parlant, inactif, toujours focalisé ; un second envoi n'en part pas.
+    const pending = section().getByRole('button', { name: 'Enregistrement…' })
+    expect(inactive(pending)).toBe(true)
+    expect(document.activeElement).toBe(pending)
+    await act(async () => {
+      fireEvent.click(pending)
+    })
+    expect(save).toHaveBeenCalledTimes(1)
+
+    await act(async () => {
+      finish()
+    })
+    expect(section().getByRole('status').textContent).toBe(
+      'Rôles RESPIRE enregistrés. Vos accès ne changent pas : seul l’administrateur habilite.',
+    )
+    expect(inactive(saveButton())).toBe(true)
+    expect(document.activeElement).toBe(saveButton())
   })
 })

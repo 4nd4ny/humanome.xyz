@@ -12,6 +12,11 @@
 // sert l'API (Auth\DeclaredRoles::catalogue) ; le serveur revérifie la case du
 // cercle à chaque écriture (422), l'IHM la retire dès que le dernier rôle
 // éligible est décoché.
+//
+// Au clavier, « Enregistrer mes rôles » garde le focus : inactif (rien n'a
+// changé, ou l'envoi est en cours), il est aria-disabled et save() ne fait
+// rien, mais il reste dans l'ordre de tabulation — un bouton disabled
+// focalisé ferait tomber le focus sur la page à l'enregistrement.
 
 import { useEffect, useMemo, useState } from 'react'
 import { ApiError, ApiUnavailableError } from '../../api/client.js'
@@ -106,6 +111,7 @@ export default function DeclaredRolesSection({ deps = {} }) {
 
   async function save(event) {
     event.preventDefault()
+    if (busy || !dirty) return
     setBusy(true)
     setFeedback(null)
     try {
@@ -192,8 +198,8 @@ export default function DeclaredRolesSection({ deps = {} }) {
               </div>
             ) : null}
           </fieldset>
-          <button type="submit" className="button" disabled={busy || !dirty}>
-            {busy ? '…' : 'Enregistrer mes rôles'}
+          <button type="submit" className="button" aria-disabled={busy || !dirty ? 'true' : undefined}>
+            {busy ? 'Enregistrement…' : 'Enregistrer mes rôles'}
           </button>
         </form>
       ) : null}

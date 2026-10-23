@@ -49,23 +49,30 @@ la phase D) et, le 2026-10-23, la première campagne réelle de Twin9 en local
 
 - 2026-10-23 — **Trois défauts de tests de `main` (`7d2eb04`), branche `fix/tests-instables`.**
   - **Fait** : `c26bf86` — UC-APP-09-F31 était porté par deux tests (E5, PR #24 ; A4, PR #25) :
-    A4, le plus récent, devient F16 (libéré par `c527a95`) ; aucune autre collision (dix
-    identifiants couvrent plusieurs `it` d'un fichier, sur une seule ligne de fiche) ;
-    `catalogue-identifiants.test.js` refuse deux lignes au même identifiant. `a67af1b` — le
-    monitoring compte en journées UTC : entre 00 h et 02 h à Paris, `CURDATE()` excluait de
-    `days=1` les compteurs démo et tuteur du jour UTC (`gmdate`) ; U24 fige PHP et MySQL à 00 h 30.
-    `f2bed90` — `Tiles.test.jsx` : la remise à zéro de `CartoApp`, faite dans un effet, effaçait
-    un clic fait juste après le rendu du soleil ; elle se fait dans le rendu. Quatre autres tests
-    instables sous charge attendent leur vraie condition (UC-CPT-07-F10 en six cas, trois de
-    `BancEssaiSection`, `AdminView`, UC-APP-09-U34) ; `RolesSection` n'a jamais échoué, inchangé.
-    Catalogue : 1 086 U, 1 233 F ; UC-ADM-06 L2 levée.
+    A4, le plus récent, devient F16 (libéré par `c527a95`). `18f290b` — dix autres identifiants
+    étaient portés chacun par plusieurs tests d'un même fichier (UC-EPI-05-U11 à U13, F16, F17 ;
+    UC-VIS-02-U10, U13, U15, U16 ; UC-APP-10-U23) : les plus récents prennent les premiers
+    numéros libres (23 identifiants, fiches et README) ; `catalogue-identifiants.test.js` refuse
+    deux lignes de fiche et deux déclarations (`it`, `test`, `TestDox`) au même identifiant.
+    `a67af1b` — le monitoring compte en journées UTC : entre 00 h et 02 h à Paris, `CURDATE()`
+    excluait de `days=1` les compteurs démo et tuteur du jour UTC (`gmdate`) ; U24 fige PHP et
+    MySQL à 00 h 30, `51e0c47` l'étend aux cartographies, finances et partages (y remettre
+    `CURDATE()` passait la suite), `300278d` rend à la session MySQL son propre fuseau après
+    chaque test (`DEFAULT` la remettait au fuseau global). `f2bed90` — `Tiles.test.jsx` : la
+    remise à zéro de `CartoApp`, faite dans un effet, effaçait un clic fait juste après le rendu
+    du soleil ; elle se fait dans le rendu. Quatre autres tests instables sous charge attendent
+    leur vraie condition (UC-CPT-07-F10 en six cas, trois de `BancEssaiSection`, `AdminView`,
+    UC-APP-09-U34) ; `RolesSection` n'a jamais échoué, inchangé. Catalogue : 1 103 U, 1 239 F ;
+    UC-ADM-06 L2 levée.
   - **Vérifié** (PHP 8.5.12, MySQL 8.0, base `humanome_test_maint`, `TWIN_V9_DIR` = t9-s2) : PHP
-    1 959 tests, les 2 échecs connus de PHP 8.5 seuls ; UcAdm06 unitaire vert avec la session
-    MySQL à +14:00, -12:00, +00:00 et SYSTEM (rouge avant à +14:00 : U02, U04 à U07) ; moteur
-    585 + 8 sautés ; front 3 043 + 9 sautés ; `build` et `test:dist` verts ; chaque correctif
-    rouge avant ou reproduit sous charge (fichiers lancés 20 fois en parallèle à côté de 8
-    boucles actives), puis 0 échec ; deux tours de trois suites front simultanées sous charge,
-    6 sur 6 vertes.
+    1 959 tests, les 2 échecs connus de PHP 8.5 seuls ; les classes du monitoring (UcAdm06
+    unitaire et fonctionnel, `AdminMonitoringTest`, UcSys03) vertes avec la session MySQL ouverte
+    à 00 h 30 le lendemain du jour UTC, à +14:00 et à -12:00 (rouge à 00 h 30 avec le
+    `Monitoring.php` de `7d2eb04` : U02, U04 à U07, U24) ; U24 rouge sous la mutation de chacun
+    des trois blocs ; moteur 585 + 8 sautés ; front 3 045 + 9 sautés, deux fois ; le garde des
+    identifiants rouge avant `18f290b` sur les dix familles ; chaque correctif de `f2bed90`
+    reproduit sous charge (fichiers lancés 20 fois en parallèle à côté de 8 boucles actives),
+    puis 0 échec ; `build`, `test:dist` et `check-publiable` verts.
   - **Non vérifié** : la CI (PHP 8.2) ; `CONVERT_TZ` sur le MySQL d'OVH (le fuseau de sa
     session) ; pourquoi jsdom garde le dernier clic dans `window.event` après un test ; d'autres
     tests rares sous charge restent possibles (`Twin6OuverteView` coche encore sa voie dans un

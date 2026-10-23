@@ -2142,31 +2142,38 @@ kbd {
 }
 /* Traces de la stigmergie de Twin9 (S3-3) : une couleur ET un trait par nature
    (plein, tirets, pointillés, barré), lisibles sans la couleur ; fond clair et
-   encre sombre dans les deux thèmes, comme les autres surlignages. Un passage
-   approché garde son cadre sans fond. */
-.carto-hl--trace-faible:not(.carto-hl--approx) {
+   encre sombre dans les deux thèmes, comme les autres surlignages. La couleur
+   de la nature ne vaut que pour un passage retrouvé en entier : un bout seul
+   reste orange et souligné en pointillé (les légendes du lecteur le disent),
+   avec le trait de sa nature ; un passage approché garde son cadre sans fond.
+   Aucune teinte ne se confond avec l'orange du partiel (trace-css.test.js). */
+.carto-hl--trace-faible.carto-hl--complete {
   background: #bbf7d0;
 }
 .carto-hl--trace-faible {
   border-bottom: 2px solid #15803d;
 }
-.carto-hl--trace-moyenne:not(.carto-hl--approx) {
+.carto-hl--trace-moyenne.carto-hl--complete {
   background: #fde68a;
 }
 .carto-hl--trace-moyenne {
   border-bottom: 2px dashed #a16207;
 }
-.carto-hl--trace-forte:not(.carto-hl--approx) {
-  background: #fed7aa;
+.carto-hl--trace-forte.carto-hl--complete {
+  background: #fecaca;
 }
 .carto-hl--trace-forte {
-  border-bottom: 2px dotted #c2410c;
+  border-bottom: 2px dotted #b91c1c;
 }
-.carto-hl--trace-ecartee:not(.carto-hl--approx) {
+.carto-hl--trace-ecartee.carto-hl--complete {
   background: #e7e5e4;
 }
 .carto-hl--trace-ecartee {
   text-decoration: line-through #57534e;
+}
+.carto-hl--trace-ecartee.carto-hl--partial {
+  /* barré, et souligné en pointillé comme tout bout seul */
+  text-decoration: underline line-through dotted #9a3412;
 }
 .carto-sg {
   margin-top: 1rem;

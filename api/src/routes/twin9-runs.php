@@ -10,17 +10,20 @@ declare(strict_types=1);
  * « Runs Twin9 ».
  *
  *   GET  /api/twin9/runs                     own runs, and whether Twin9 runs on this instance
- *   POST /api/twin9/runs/apercu              {profil, portfolio, referentiel?}: the days new or changed, the estimated
- *                                            cost and duration, the caps, the referential read, before a launch (T10)
+ *   POST /api/twin9/runs/apercu              {profil, portfolio, referentiel?, payeur?}: the days new or changed, the
+ *                                            estimated cost and duration, the caps, the referential read, who would
+ *                                            pay and who may, before a launch (T10, ADR-013 §4)
  *   POST /api/twin9/runs                     {profil: id|null, portfolio: {nom, texte}, accord: {fournisseurs: [ids]}
  *                                            (true for a profile all Anthropic), visibilite?, referentiel?:
  *                                            {id, version?}|null — another referential than its profile's, chosen at
- *                                            the launch (S5, lot C)} -> 201
+ *                                            the launch (S5, lot C) —, payeur?: "personnel"|id of a school|null
+ *                                            (ADR-013 §4: by default their school, when they have one only)} -> 201
  *   POST /api/twin9/runs/avancer             the page advances its owner's runs (never the tick's token)
  *   GET  /api/twin9/runs/{id}                its progress, read in its journal, and its cost (owner)
  *   POST /api/twin9/runs/{id}/annuler        stop it (owner)
- *   POST /api/twin9/runs/{id}/reprendre      resume it, cancelled or stopped, {budget_usd?} a new budget (owner);
- *                                            its providers available again (ProfilPolicy::admettreAuLancement)
+ *   POST /api/twin9/runs/{id}/reprendre      resume it, cancelled or stopped, {budget_usd?} a new budget, {payeur?}
+ *                                            its payer chosen again (owner); its providers available again
+ *                                            (ProfilPolicy::admettreAuLancement), its school still paying
  *   PUT  /api/twin9/runs/{id}/visibilite     {visibilite: privee|cartographe} (owner)
  *   GET  /api/twin9/runs/{id}/resultats      its results, filtered (owner; a linked cartographe if visible)
  *   GET  /api/twin9/mes-analyses             the account's runs, journals, outputs and maps, which its archive
@@ -35,6 +38,7 @@ use Humanome\Auth\Session;
 use Humanome\Auth\Users;
 use Humanome\Cartographe\Links;
 use Humanome\Db;
+use Humanome\Etablissement\Payeurs;
 use Humanome\Middleware\RequireRole;
 use Humanome\Packages\SettingsRepository;
 use Humanome\Referentiel\ReferentielRepository;
@@ -165,10 +169,11 @@ return function (App $app): void {
     $app->post('/twin9/runs/apercu', $wrap(
         function (Request $request, Response $response, array $args, int $userId) use ($json, $corps, $choix,
                                                                                         $lancement): Response {
-            [$profil, $portfolio, $referentiel] = $choix($corps($request));
+            $c = $corps($request);
+            [$profil, $portfolio, $referentiel] = $choix($c);
 
             return $json($response, $lancement()->apercu($userId, $profil, $portfolio['nom'], $portfolio['texte'],
-                $referentiel));
+                $referentiel, $c['payeur'] ?? null));
         }
     ));
 
@@ -180,7 +185,8 @@ return function (App $app): void {
             $visibilite = $c['visibilite'] ?? 'privee';
             // the consent as sent: {fournisseurs: [ids]}, or true for a profile all Anthropic (Lancement)
             $id = $lancement()->lancer($userId, $profil, $portfolio['nom'], $portfolio['texte'],
-                $c['accord'] ?? false, \is_string($visibilite) ? $visibilite : '', null, $referentiel);
+                $c['accord'] ?? false, \is_string($visibilite) ? $visibilite : '', null, $referentiel,
+                $c['payeur'] ?? null);
 
             return $json($response, $suivi($id), 201);
         }
@@ -245,12 +251,24 @@ return function (App $app): void {
             // the guard of its providers, read again (ADR-012): one closed since, or without its key, keeps it stopped;
             // a run on the personal key no longer resumes (ADR-013 §6): it ended there, or its owner stopped it
             $copie = (new RunRepository(Db::get()))->tete($id);
+            $payeur = null;
             if ($copie !== null && \in_array($copie['statut'], ['annule', 'echoue'], true)) {
                 ProfilPolicy::refuserClePersonnelle($copie['profil']);
                 (new ProfilPolicy(Db::get(), new Twin9Config(new SettingsRepository(Db::get()))))
                     ->admettreAuLancement($copie['profil']);
+                // who pays (ADR-013 §4): chosen again when the body says so, its factor frozen again; else its
+                // school, if one paid, still paying — never its owner's balance in its place
+                $payeurs = new Payeurs(Db::get());
+                $cle = (string) ($copie['profil']->cle ?? 'instance');
+                if (\is_array($c) && \array_key_exists('payeur', $c)) {
+                    $payeur = $payeurs->resoudre($userId, $c['payeur'], $cle);
+                } elseif ($copie['payeur'] === 'ecole' && $payeurs->encorePaie($userId, $copie['payeur_id'], $cle,
+                        $copie['facteur_prix']) !== null) {
+                    throw new Twin9Exception('Votre école ne paie plus cette analyse : choisissez qui la paie pour la '
+                        . 'reprendre', 422);
+                }
             }
-            if (!(new RunRepository(Db::get()))->reprendre($id, $userId, $plafonds)) {
+            if (!(new RunRepository(Db::get()))->reprendre($id, $userId, $plafonds, $payeur)) {
                 throw new Twin9Exception('Seul un run annulé ou arrêté reprend', 409);
             }
 

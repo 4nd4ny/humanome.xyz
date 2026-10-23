@@ -82,9 +82,9 @@ final class Twin9MetaTest extends CartographeTestCase
         // Exactly these fields: the steps, the Twin9 offer, the pipeline's
         // settings and the enabled flag left with the browser's engine (T11),
         // the promotion's state, which no view read, on 2026-10-20, whether a
-        // private key is stored with the personal lane (ADR-013).
+        // private key is stored with the personal lane (ADR-013); who may pay its paid usage (ADR-013 §4, S6b).
         self::assertSame(['modeles_twin6', 'packs', 'referentiel', 'paypalConfigured',
-            'solde_microusd', 'peut_acheter', 'achat_pourquoi'], array_keys($body));
+            'solde_microusd', 'peut_acheter', 'achat_pourquoi', 'payeurs'], array_keys($body));
         // Twin6 (open) prices at its own +10 % contribution (list [2, 10] × 1.1), margin itself absent.
         self::assertSame([2.2, 11], $body['modeles_twin6']['claude-sonnet-5']); // 11.0 travels as 11 in JSON
         self::assertSame([10, 20, 50, 100, 200, 500], array_column($body['packs'], 'montant_usd'));

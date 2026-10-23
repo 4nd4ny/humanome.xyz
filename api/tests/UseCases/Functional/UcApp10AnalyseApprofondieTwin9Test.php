@@ -745,4 +745,140 @@ final class UcApp10AnalyseApprofondieTwin9Test extends CartographeTestCase
         self::assertStringContainsString('ne jamais réciter ce gabarit',
             (new RunRepository(self::$pdo))->sorties($id)['carto_evolutive.json'], 'la sortie rangée reste celle du moteur');
     }
+
+    /** Une école (habilitation etablissement), son plafond par élève et son crédit ; $eleve rejoint une de ses cohortes. */
+    private function ecolePour(array $eleve, string $email, string $nom, float $plafondUsd = 100.0,
+                               int $creditMicrousd = 1_000_000_000): array
+    {
+        $ecole = $this->registerAs($email, $nom, ['etablissement']);
+        self::assertSame(200, $this->as_($ecole, 'PUT', '/api/etablissement/ecole', ['plafondEleveUsd' => $plafondUsd])
+            ->getStatusCode());
+        $this->crediter($ecole, $creditMicrousd);
+        $cohorte = self::json($this->as_($ecole, 'POST', '/api/etablissement/cohortes', ['nom' => 'Cohorte de ' . $nom]));
+        self::assertSame(201, $this->as_($eleve, 'POST', '/api/cohortes/' . $cohorte['codeInvitation'] . '/rejoindre',
+            ['consentement' => true])->getStatusCode());
+
+        return $ecole;
+    }
+
+    private static function solde(array $user): int
+    {
+        return (new CreditService(self::$pdo))->balance($user['id']);
+    }
+
+    #[TestDox('UC-APP-10-F29 — A9 : payé par son école (API) : l’aperçu nomme l’école et les payeurs possibles, sans son crédit ; le run part, son école le paie au coût réel × (1 + surtaxe), jamais l’élève ; sa page le dit')]
+    public function testF29PaidByTheSchool(): void
+    {
+        $lea = $this->registerAs('eleve@example.org', 'Léa', ['apprenant']);
+        $ecole = $this->ecolePour($lea, 'ecole@example.org', 'École des Tilleuls');
+        $profil = $this->profilDirect($lea);
+
+        $apercu = $this->apercu($lea, $profil);
+        self::assertSame(['type' => 'ecole', 'id' => $ecole['id'], 'nom' => 'École des Tilleuls', 'soi' => false],
+            $apercu['payeur']);
+        self::assertNull($apercu['credit_usd'], 'le crédit de l’école ne se montre pas à l’élève');
+        self::assertSame(['ecole'], array_column($apercu['payeurs'], 'type'));
+        self::assertArrayNotHasKey('credit_microusd', $apercu['payeurs'][0]);
+        self::assertSame(round(Lancement::REFERENCE_MICROUSD * 7 * 1.035 * 3 / 1_000_000, 6), $apercu['estimation']['cout_usd'],
+            'deux journées et la fusion, à 1 + 3,5 %');
+
+        $run = $this->lancer($lea, $profil);
+        self::assertSame(['type' => 'ecole', 'id' => $ecole['id'], 'nom' => 'École des Tilleuls'], $run['payeur']);
+        $fin = $this->jusquAuBout($lea, $run['id']);
+        self::assertSame('termine', $fin['statut']);
+        self::assertSame(0, self::solde($lea), 'l’élève ne paie rien');
+        self::assertSame(1_000_000_000 - $fin['cout']['depense_microusd'], self::solde($ecole));
+        self::assertGreaterThan(0, $fin['cout']['depense_microusd']);
+        $page = self::json($this->as_($ecole, 'GET', '/api/etablissement/ecole'));
+        self::assertSame($fin['cout']['depense_microusd'], $page['eleves'][0]['moisMicrousd'], 'l’école voit le montant');
+    }
+
+    #[TestDox('UC-APP-10-F30 — A10 / E15 : élève de deux écoles → aperçu et lancement 422 « choisissez » ; son choix fait foi ; une école dont il n’est pas membre → 422 ; un plafond trop bas : l’aperçu le dit, le lancement est refusé')]
+    public function testF30ALearnerOfTwoSchoolsChooses(): void
+    {
+        $lea = $this->registerAs('deux-ecoles@example.org', 'Léa', ['apprenant']);
+        $tilleuls = $this->ecolePour($lea, 'tilleuls@example.org', 'École des Tilleuls');
+        $platanes = $this->ecolePour($lea, 'platanes@example.org', 'École des Platanes', 0.5);
+        $profil = $this->profilDirect($lea);
+        $corps = ['profil' => $profil, 'portfolio' => ['nom' => 'journal-factice.md', 'texte' => self::$portfolioFactice]];
+        $choisir = 'Choisissez qui paie cette analyse : vous êtes membre de plusieurs écoles';
+
+        self::assertSame([422, $choisir], [($r = $this->as_($lea, 'POST', '/api/twin9/runs/apercu', $corps))->getStatusCode(),
+            self::json($r)['error']]);
+        self::assertSame([422, $choisir], [($r = $this->as_($lea, 'POST', '/api/twin9/runs', $corps + ['accord' => true]))
+            ->getStatusCode(), self::json($r)['error']]);
+
+        // the cap of the Platanes, 0.50 $, does not cover a day and its merge
+        $apercu = self::json($this->as_($lea, 'POST', '/api/twin9/runs/apercu', $corps + ['payeur' => $platanes['id']]));
+        self::assertSame('plafond', $apercu['admission']['limite']);
+        self::assertStringStartsWith('Le plafond que votre école vous accorde ce mois-ci ne couvre pas une carte',
+            (string) $apercu['admission']['refus']);
+        self::assertSame(422, $this->as_($lea, 'POST', '/api/twin9/runs', $corps + ['accord' => true,
+            'payeur' => $platanes['id']])->getStatusCode());
+
+        $autre = $this->registerAs('autre-ecole@example.org', 'École du Port', ['etablissement']);
+        $hors = $this->as_($lea, 'POST', '/api/twin9/runs', $corps + ['accord' => true, 'payeur' => $autre['id']]);
+        self::assertSame([422, 'Cette école ne paie pas pour vous : vous n’êtes membre d’aucune de ses cohortes'],
+            [$hors->getStatusCode(), self::json($hors)['error']]);
+        self::assertSame(0, self::runs());
+
+        $lance = $this->as_($lea, 'POST', '/api/twin9/runs', $corps + ['accord' => true, 'payeur' => $tilleuls['id']]);
+        self::assertSame(201, $lance->getStatusCode(), (string) $lance->getBody());
+        self::assertSame($tilleuls['id'], self::json($lance)['payeur']['id']);
+    }
+
+    #[TestDox('UC-APP-10-F31 — A11 : sur la clé de l’école : un profil « ecole » qui appelle un autre fournisseur est refusé ; sans clé de l’école → 422 ; sa clé posée, le run part avec elle et son crédit n’est pas touché')]
+    public function testF31OnTheSchoolsKey(): void
+    {
+        TestDb::setEnv('SODIUM_MASTER_KEY', bin2hex(random_bytes(32)));
+        $lea = $this->registerAs('cle-ecole@example.org', 'Léa', ['apprenant']);
+        $ecole = $this->ecolePour($lea, 'cle@example.org', 'École des Tilleuls');
+        $etages = ProfilRepository::v98()->etages;
+        $etages->lecteurs->fournisseur = 'openai';
+        $etages->lecteurs->modele = 'modele-fictif-1';
+        $tiers = $this->creerProfil($lea, 'Tiers', ['cle' => 'ecole', 'etages' => $etages]);
+        self::assertSame(422, $tiers->getStatusCode());
+        self::assertStringStartsWith(ProfilPolicy::CLE_ECOLE_ANTHROPIC, self::json($tiers)['error']);
+
+        $profil = $this->profilDirect($lea, 'Clé de l’école', ['cle' => 'ecole']);
+        $sansCle = $this->as_($lea, 'POST', '/api/twin9/runs', $this->lancement($profil));
+        self::assertSame([422, 'Votre école n’a pas de clé : choisissez la clé de l’instance, que paie son crédit'],
+            [$sansCle->getStatusCode(), self::json($sansCle)['error']]);
+
+        self::assertSame(200, $this->as_($ecole, 'PUT', '/api/etablissement/ecole/cle', ['cle' => 'sk-ant-ecole-fictive-9'])
+            ->getStatusCode());
+        $run = $this->lancer($lea, $profil);
+        self::assertSame('termine', $this->jusquAuBout($lea, $run['id'])['statut']);
+        self::assertSame(1_000_000_000, self::solde($ecole), 'sur sa clé, l’école ne paie rien à la plateforme');
+        self::assertSame(0, self::solde($lea));
+        $engage = self::json($this->as_($ecole, 'GET', '/api/etablissement/ecole'))['eleves'][0]['moisMicrousd'];
+        self::assertGreaterThan(0, $engage, 'son plafond compte le coût');
+    }
+
+    #[TestDox('UC-APP-10-F32 — A12 / E16 : son école ne paie plus (il a quitté sa cohorte) → le run s’arrête, jamais sur son solde ; sa reprise sans payeur → 422 ; en choisissant son solde, il reprend et va au bout')]
+    public function testF32TheSchoolNoLongerPays(): void
+    {
+        $lea = $this->registerAs('quitte@example.org', 'Léa', ['apprenant']);
+        $ecole = $this->ecolePour($lea, 'quittee@example.org', 'École des Tilleuls');
+        $this->crediter($lea, 1_000_000_000);
+        $profil = $this->profilDirect($lea);
+        $run = $this->lancer($lea, $profil, null);
+        self::assertSame(['ecole', $ecole['id']], [$run['payeur']['type'], $run['payeur']['id']], 'son école, par défaut');
+        $cohorte = self::json($this->as_($lea, 'GET', '/api/cohortes'))[0]['id'];
+        self::assertSame(204, $this->as_($lea, 'DELETE', "/api/cohortes/$cohorte/quitter")->getStatusCode());
+
+        $arret = $this->jusquAuBout($lea, $run['id']);
+        self::assertSame(['echoue', 'Votre école ne paie plus cette analyse'], [$arret['statut'], $arret['retard']]);
+        self::assertSame(1_000_000_000, self::solde($lea), 'jamais son solde à la place de son école');
+
+        $refus = $this->as_($lea, 'POST', "/api/twin9/runs/{$run['id']}/reprendre");
+        self::assertSame([422, 'Votre école ne paie plus cette analyse : choisissez qui la paie pour la reprendre'],
+            [$refus->getStatusCode(), self::json($refus)['error']]);
+        $repris = $this->as_($lea, 'POST', "/api/twin9/runs/{$run['id']}/reprendre", ['payeur' => 'personnel']);
+        self::assertSame(200, $repris->getStatusCode(), (string) $repris->getBody());
+        self::assertSame(['type' => 'personnel'], self::json($repris)['payeur']);
+        self::assertSame('termine', $this->jusquAuBout($lea, $run['id'])['statut']);
+        self::assertLessThan(1_000_000_000, self::solde($lea));
+        self::assertSame(1_000_000_000, self::solde($ecole), 'l’école n’a rien payé : le run s’est arrêté avant tout appel');
+    }
 }

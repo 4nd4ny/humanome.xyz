@@ -110,27 +110,29 @@ final class UcApp11GererCreditTwin9Test extends CartographeTestCase
         TwinSupport::queuePaypalCaptured($this->http, 'ORDER-F11', '20.00', 'CAP-F11');
         self::assertSame(['solde_microusd' => 20_000_000], self::json($this->post('/api/twin9/credit/paypal/capturer', ['order_id' => 'ORDER-F11'])));
 
-        // 4. Dépense réelle : un appel facturé (Twin6, +10 %).
+        // 4. Dépense réelle : un appel facturé. L'acheteur est une école : elle paie le coût réel × (1 + sa
+        // surtaxe, 3,5 % par défaut), et non la contribution des particuliers (ADR-013 §2 d, S6b) —
+        // 4 000 µUSD × 1,035.
         TwinSupport::queueAnthropic($this->http, '{"poleNum":1}', 1000, 200);
         $appel = $this->post('/api/twin6/appel', ['model' => 'claude-sonnet-5', 'prompt' => 'Scanne le pôle 1.', 'max_tokens' => 1024]);
-        self::assertSame(4400, self::json($appel)['cout_microusd']);
+        self::assertSame(4140, self::json($appel)['cout_microusd']);
 
         // 5. Grand-livre, suivi mensuel et facture : même source, compteurs seulement.
         $credit = self::json($this->get('/api/twin9/credit'));
-        self::assertSame(20_000_000 - 4400, $credit['solde_microusd']);
+        self::assertSame(20_000_000 - 4140, $credit['solde_microusd']);
         self::assertSame(['adjust', 'debit', 'topup'], array_column($credit['evenements'], 'kind'));
         self::assertSame('Recharge PayPal', $credit['evenements'][2]['label']);
 
         [$mois, $annee, $m] = self::moisCourant();
         $depenses = self::json($this->get('/api/twin9/depenses'));
-        self::assertSame([['mois' => $mois, 'recharges_microusd' => 20_000_000, 'consomme_microusd' => 4400, 'appels' => 1]], $depenses['mois']);
+        self::assertSame([['mois' => $mois, 'recharges_microusd' => 20_000_000, 'consomme_microusd' => 4140, 'appels' => 1]], $depenses['mois']);
 
         $facture = self::json($this->get('/api/twin9/facture?annee=' . $annee . '&mois=' . $m));
         self::assertSame(sprintf('HUM-TW9-%04d%02d-%d', $annee, $m, $this->ecole['id']), $facture['numero']);
         self::assertSame(['nom' => 'École des Tilleuls', 'email' => 'ecole@example.org'], $facture['client']);
-        self::assertSame([['model' => 'claude-sonnet-5', 'appels' => 1, 'tokens_in' => 1000, 'tokens_out' => 200, 'consomme_microusd' => 4400]], $facture['lignes']);
+        self::assertSame([['model' => 'claude-sonnet-5', 'appels' => 1, 'tokens_in' => 1000, 'tokens_out' => 200, 'consomme_microusd' => 4140]], $facture['lignes']);
         self::assertSame('ORDER-F11', $facture['recharges'][0]['paypal_order_id']);
-        self::assertSame(20_000_000 - 4400, $facture['solde_fin_periode_microusd']);
+        self::assertSame(20_000_000 - 4140, $facture['solde_fin_periode_microusd']);
     }
 
     #[TestDox('UC-APP-11-F12 — A2 : retour PayPal rejoué (double clic, lien rechargé) → même solde, UNE seule recharge ; RG2 : le crédit est le montant CAPTURÉ, pas celui du pack')]
@@ -631,5 +633,58 @@ final class UcApp11GererCreditTwin9Test extends CartographeTestCase
         $rembourse = $this->post('/api/twin9/credit/rembourser', [], $lea);
         self::assertSame(200, $rembourse->getStatusCode(), (string) $rembourse->getBody());
         self::assertSame(['rembourse_microusd' => 9_990_000, 'solde_microusd' => 5_600], self::json($rembourse));
+    }
+
+    /** Léa rejoint une cohorte de l'école de ce test, avec son consentement. */
+    private function eleveDeLEcole(string $email = 'eleve@example.org'): array
+    {
+        $eleve = $this->registerAs($email, 'Léa', ['apprenant']);
+        $cohorte = self::json($this->post('/api/etablissement/cohortes', ['nom' => 'BTS SIO 2026']));
+        self::assertSame(201, $this->post('/api/cohortes/' . $cohorte['codeInvitation'] . '/rejoindre',
+            ['consentement' => true], $eleve)->getStatusCode());
+
+        return $eleve;
+    }
+
+    #[TestDox('UC-APP-11-F33 — A5 : un apprenant voit que son école paie (sa page du crédit) : ce qu’elle peut encore payer pour lui ce mois-ci, jamais son crédit ; son appel est payé par elle, son propre compte intact')]
+    public function testF33TheLearnerSeesThatTheirSchoolPays(): void
+    {
+        $lea = $this->eleveDeLEcole();
+        self::assertSame(200, $this->as_($this->ecole, 'PUT', '/api/etablissement/ecole', ['plafondEleveUsd' => 2])->getStatusCode());
+        (new CreditService(Db::get()))->adjust($this->ecole['id'], 50_000_000, 'crédit des tests');
+
+        $meta = self::json($this->get('/api/twin9/meta', $lea));
+        self::assertFalse($meta['peut_acheter']);
+        self::assertCount(1, $meta['payeurs'], 'sans solde à lui, son école seule');
+        $payeur = $meta['payeurs'][0];
+        self::assertSame(['ecole', $this->ecole['id'], 'École des Tilleuls', false, false, 2_000_000, 0, 2_000_000, 2_000_000],
+            [$payeur['type'], $payeur['id'], $payeur['nom'], $payeur['soi'], $payeur['cle'], $payeur['plafond_microusd'],
+             $payeur['engage_microusd'], $payeur['reste_credit_microusd'], $payeur['reste_cle_microusd']]);
+        self::assertStringNotContainsString('50000000', json_encode($meta, JSON_THROW_ON_ERROR), 'jamais le crédit de l’école');
+
+        TwinSupport::queueAnthropic($this->http, '{"poleNum":1}', 1000, 200);
+        $appel = $this->post('/api/twin6/appel', ['model' => 'claude-sonnet-5', 'prompt' => 'Scanne le pôle 1.', 'max_tokens' => 1024], $lea);
+        self::assertSame(200, $appel->getStatusCode(), (string) $appel->getBody());
+        self::assertSame(4140, self::json($appel)['cout_microusd'], 'au coût réel × 1,035, la surtaxe de son école');
+        self::assertSame(['solde_microusd' => 0, 'evenements' => []], self::json($this->get('/api/twin9/credit', $lea)));
+        self::assertSame(2_000_000 - 4140, self::json($this->get('/api/twin9/meta', $lea))['payeurs'][0]['reste_credit_microusd']);
+        self::assertSame(50_000_000 - 4140, (new CreditService(Db::get()))->balance($this->ecole['id']));
+    }
+
+    #[TestDox('UC-APP-11-F34 — E10 : le crédit de son école ne couvre pas l’appel → 402 « Crédit de votre école insuffisant », sans le solde de l’école ; rien débité, rien envoyé')]
+    public function testF34TheSchoolsCreditIsShort(): void
+    {
+        $lea = $this->eleveDeLEcole('eleve-court@example.org');
+        $this->as_($this->ecole, 'PUT', '/api/etablissement/ecole', ['plafondEleveUsd' => 2]);
+        (new CreditService(Db::get()))->adjust($this->ecole['id'], 5_000, 'crédit des tests');
+
+        $refus = $this->post('/api/twin6/appel', ['model' => 'claude-sonnet-5', 'prompt' => 'Scanne le pôle 1.', 'max_tokens' => 1024], $lea);
+        self::assertSame(402, $refus->getStatusCode());
+        self::assertSame(['error', 'code', 'requis_estime_microusd'], array_keys(self::json($refus)));
+        self::assertSame(['Crédit de votre école insuffisant', 'credit_ecole'], [self::json($refus)['error'], self::json($refus)['code']]);
+        self::assertSame([], $this->http->requests);
+        self::assertSame(5_000, (new CreditService(Db::get()))->balance($this->ecole['id']));
+        self::assertSame(0, (int) self::$pdo->query('SELECT COALESCE(SUM(engage_microusd), 0) FROM ecole_consommations')->fetchColumn(),
+            'le plafond n’est pas tenu non plus');
     }
 }

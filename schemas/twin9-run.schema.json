@@ -123,7 +123,7 @@
     "configuration": {
       "type": "object",
       "additionalProperties": false,
-      "description": "Configuration d'un run Twin9 (Twin9\\RunConfiguration, P0-1) : écrite au lancement, jamais modifiée, une reprise comprise. « empreinte » hache tout le bloc sauf elle-même et « lance_at » (clés triées, 1.0 gardé flottant), son « sel » compris. « sel », « prix » (tels que facturés, marge comprise avec la clé de l'instance), « execution_prevue.plafonds » et « execution_prevue.cle » manquent pour un cartographe lié.",
+      "description": "Configuration d'un run Twin9 (Twin9\\RunConfiguration, P0-1) : écrite au lancement, jamais modifiée, une reprise comprise. « empreinte » hache tout le bloc sauf elle-même et « lance_at » (clés triées, 1.0 gardé flottant), son « sel » compris. « sel », « prix » (tels que facturés à qui paie : marge comprise avec la clé de l'instance pour un particulier, facteur de l'école quand elle paie), « execution_prevue.plafonds », « execution_prevue.cle » et « execution_prevue.payeur » manquent pour un cartographe lié.",
       "required": ["schema", "empreinte", "lance_at", "moteur", "profil", "execution_prevue", "fournisseurs", "appels",
                    "college", "backends", "algorithme", "referentiel", "gabarits"],
       "properties": {
@@ -177,7 +177,11 @@
           "required": ["voie_anthropic", "parallelisme", "jours", "rescan", "memoire"],
           "properties": {
             "voie_anthropic": { "$ref": "#/$defs/voie" },
-            "cle": { "enum": ["instance", "personnelle"] },
+            "cle": { "enum": ["instance", "personnelle", "ecole"] },
+            "payeur": {
+              "enum": ["personnel", "ecole"],
+              "description": "Qui paie le run (ADR-013 §3), figé au lancement : son propriétaire, ou son école. Jamais la marge ni la surtaxe. Absent des runs lancés avant le 2026-10-22 et pour un cartographe lié."
+            },
             "parallelisme": {
               "type": "object",
               "additionalProperties": false,

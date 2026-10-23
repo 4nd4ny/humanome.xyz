@@ -4,6 +4,8 @@ declare(strict_types=1);
 
 namespace Humanome\Twin9;
 
+use Humanome\Etablissement\GrandLivreLocal;
+use Humanome\Etablissement\PlafondAtteintException;
 use Humanome\Twin9\Fournisseurs\Fournisseurs;
 use PDO;
 use stdClass;
@@ -47,6 +49,16 @@ use stdClass;
  * The ledger (twin9_credit_events) gets a reservation by call, and a
  * reconciliation or a refund by model each time calls are settled, with
  * their real tokens. Counters only, never content.
+ *
+ * Who pays (ADR-013 §3, §4, §6; RunPayeur): its owner, on their remaining
+ * balance, at the instance's contribution; or its school, at the factor its
+ * launch froze — 1 + its surtax on its credit (the instance's key), 1.0 on
+ * its key (its provider bills it) —, each call's worst case held on the
+ * learner's cap for the month, then on the school's credit, in the
+ * transaction that writes the call (the schools' ledger, GrandLivreEcoles:
+ * the cap's row first, then the credit's, then the calls'); settled in the
+ * month it was taken (twin9_appels.mois_reserve), the school's events naming
+ * the learner. A cap or a credit short stops the run the same way.
  */
 final class RunCosts
 {
@@ -67,6 +79,17 @@ final class RunCosts
 
     /** A call would eat into what its owner's other runs in progress may still spend (T8). */
     public const AUTRES = 'crédit insuffisant (engagé par vos autres analyses) : carte incomplète';
+
+    /** The same, when a school pays (ADR-013 §4): its credit, the learner's cap for the month. */
+    public const CREDIT_ECOLE = 'crédit de votre école insuffisant : carte incomplète';
+
+    public const RESERVE_CREDIT_ECOLE = 'crédit de votre école insuffisant (fusion réservée) : carte incomplète';
+
+    public const AUTRES_ECOLE = 'crédit de votre école insuffisant (engagé par d’autres analyses) : carte incomplète';
+
+    public const PLAFOND = 'plafond de votre école atteint : carte incomplète';
+
+    public const RESERVE_PLAFOND = 'plafond de votre école atteint (fusion réservée) : carte incomplète';
 
     private readonly CreditService $credits;
 
@@ -93,9 +116,14 @@ final class RunCosts
         ];
     }
 
-    /** The worst case of a call, in micro-USD; null for a model without a price on this instance. */
+    /**
+     * The worst case of a call, in micro-USD; null for a model without a price on this instance.
+     *
+     * @param bool|float $marge its price (RunPayeur::prix()): true the contribution, false the list price, a float
+     *                          a school's factor
+     */
     public function pireCas(string $fournisseur, string $modele, string $prompt, int $budgetSortie, bool $parLots,
-                            bool $marge): ?int
+                            bool|float $marge): ?int
     {
         return self::pireCasDe($this->config->read(), $fournisseur, $modele, \strlen($prompt), $budgetSortie,
             $parLots, $marge);
@@ -110,9 +138,10 @@ final class RunCosts
      * without a price — at another provider, without its caps.
      *
      * @param array<string, mixed> $config
+     * @param bool|float $marge as pireCas() takes it
      */
     public static function pireCasDe(array $config, string $fournisseur, string $modele, int $octets, int $budgetSortie,
-                                     bool $parLots, bool $marge): ?int
+                                     bool $parLots, bool|float $marge): ?int
     {
         if (!Fournisseurs::connu($fournisseur)) {
             return null;
@@ -127,17 +156,23 @@ final class RunCosts
             $budgetSortie += $entree['plafond_reflexion'];
             $parLots = false;
         }
-        $cout = Twin9Config::cout($config, $cle, max(0, $octets), max(0, $budgetSortie), 'twin9', $parLots, $marge);
+        $cout = Twin9Config::cout($config, $cle, max(0, $octets), max(0, $budgetSortie), 'twin9', $parLots,
+            $marge !== false, \is_float($marge) ? $marge : null);
 
         return $cout === null ? null : max(1, $cout);
     }
 
-    /** The real cost of a call's outcome, in micro-USD; null for a model without a price. */
+    /**
+     * The real cost of a call's outcome, in micro-USD; null for a model without a price.
+     *
+     * @param bool|float $marge as pireCas() takes it
+     */
     public function cout(string $fournisseur, string $modele, int $tokensIn, int $tokensOut, bool $parLots,
-                         bool $marge): ?int
+                         bool|float $marge): ?int
     {
         return $this->config->coutMicrousd(Fournisseurs::clePrix($fournisseur, $modele), $tokensIn, $tokensOut,
-            'twin9', $fournisseur === Fournisseurs::DEFAUT && $parLots, $marge);
+            'twin9', $fournisseur === Fournisseurs::DEFAUT && $parLots, $marge !== false,
+            \is_float($marge) ? $marge : null);
     }
 
     /**
@@ -147,7 +182,8 @@ final class RunCosts
     public function engage(int $runId): int
     {
         $stmt = $this->pdo->prepare(
-            'SELECT COALESCE(SUM(' . self::impute('', $this->parCredits($runId)) . '), 0) FROM twin9_appels WHERE run_id = ?'
+            'SELECT COALESCE(SUM(' . self::impute('', $this->payeur($runId)?->reserve() ?? true) . '), 0)
+               FROM twin9_appels WHERE run_id = ?'
         );
         $stmt->execute([$runId]);
 
@@ -157,10 +193,11 @@ final class RunCosts
     /**
      * What a call weighs on its run's budget and its owner's credit, as an
      * SQL expression over twin9_appels ($a: the table's alias and its dot):
-     * the worst case it holds; settled, its real cost — with the instance's
-     * key, at most the worst case it held (pire_cas_microusd, its reserve:
-     * solder() never debits beyond, the excess is the instance's). With its
-     * owner's own key ($credits false), its real cost, which they pay their
+     * the worst case it holds; settled, its real cost — when a ledger held
+     * it (the instance's key, or a learner's cap: RunPayeur::reserve()), at
+     * most the worst case it held (pire_cas_microusd, its reserve: solder()
+     * never debits beyond, the excess is the instance's). With a key of its
+     * own ($credits false), its real cost, which its holder pays its
      * provider.
      */
     public static function impute(string $a = '', bool $credits = true): string
@@ -180,28 +217,47 @@ final class RunCosts
             : $a . 'cout_microusd';
     }
 
-    /** Whether a run's owner's credits pay its calls (the instance's key); true for a run not found. */
-    private function parCredits(int $runId): bool
+    /** Who pays a run's calls, as its row says it (RunPayeur); null for a run not found. */
+    public function payeur(int $runId): ?RunPayeur
     {
-        $stmt = $this->pdo->prepare('SELECT reglages FROM twin9_runs WHERE id = ?');
+        $stmt = $this->pdo->prepare('SELECT user_id, reglages, payeur, payeur_id, facteur_prix FROM twin9_runs WHERE id = ?');
         $stmt->execute([$runId]);
-        $reglages = $stmt->fetchColumn();
+        $row = $stmt->fetch();
+        if ($row === false) {
+            return null;
+        }
 
-        return $reglages === false || (json_decode(RunRepository::uncompress((string) $reglages), false, 512,
-            JSON_THROW_ON_ERROR)->profil->cle ?? 'instance') === 'instance';
+        return RunPayeur::depuis($row, json_decode(RunRepository::uncompress((string) $row['reglages']), false, 512,
+            JSON_THROW_ON_ERROR)->profil);
     }
 
     /**
-     * The worst case of a call debited from its owner's credits, before it
-     * leaves with the instance's key; in the caller's transaction, which
-     * writes the call with it. $modele labels it: its price key
+     * The worst case of a call held before it leaves, in the caller's
+     * transaction, which writes the call with it: its owner's credit on the
+     * instance's key; its school's — the learner's cap for $mois first, then
+     * the school's credit on the instance's key, the cap alone on the
+     * school's key (ADR-013 §4). $modele labels it: its price key
      * (Fournisseurs::clePrix()).
      *
+     * @param string $mois the UTC month of the reservation (Ecoles::mois()), which the call keeps
      * @throws SoldeInsuffisantException the credit does not cover it
+     * @throws PlafondAtteintException the learner's cap for the month does not cover it
      */
-    public function debiter(int $userId, int $runId, string $etape, string $modele, int $reserve): void
+    public function debiter(RunPayeur $payeur, int $runId, string $etape, string $modele, int $reserve,
+                            string $mois): void
     {
-        $this->credits->debit($userId, $reserve, self::libelle($runId, $etape . ' (réserve)'), $modele);
+        $libelle = self::libelle($runId, $etape . ' (réserve)');
+        if ($payeur->ecole()) {
+            if ($payeur->ecoleId !== null && $payeur->reserve()) {
+                (new GrandLivreLocal($this->pdo))->reserver($payeur->ecoleId, $payeur->eleve(), $mois, $reserve,
+                    $payeur->compte() !== null, $libelle, $modele);
+            }
+
+            return;
+        }
+        if ($payeur->compte() !== null) {
+            $this->credits->debit($payeur->compte(), $reserve, $libelle, $modele);
+        }
     }
 
     /**
@@ -247,23 +303,22 @@ final class RunCosts
      */
     private function solder(int $runId, bool $tout, bool $horsVol = false): int
     {
-        $stmt = $this->pdo->prepare('SELECT user_id, reglages FROM twin9_runs WHERE id = ?');
-        $stmt->execute([$runId]);
-        $run = $stmt->fetch();
-        if ($run === false) {
+        $payeur = $this->payeur($runId);
+        if ($payeur === null) {
             return 0;
         }
-        $credits = (json_decode(RunRepository::uncompress((string) $run['reglages']), false, 512,
-            JSON_THROW_ON_ERROR)->profil->cle ?? 'instance') === 'instance';
+        $grandLivre = new GrandLivreLocal($this->pdo);
 
         $this->pdo->beginTransaction();
         try {
+            // the lock order of the schools' ledger: the learner's caps, then the credit, then the calls
+            $grandLivre->verrouiller($payeur->ecoleId, $payeur->eleve(), $payeur->compte());
             $stmt = $this->pdo->prepare(
                 // each call under its price key (Fournisseurs::clePrix()), as its reserve was debited
                 'SELECT appel, statut, IF(fournisseur = "anthropic", COALESCE(modele_envoye, modele),
                         CONCAT(fournisseur, ":", COALESCE(modele_envoye, modele))) AS modele, reserve_microusd AS reserve,
                         COALESCE(cout_microusd, 0) AS cout, COALESCE(jetons_entree, 0) AS entree,
-                        COALESCE(jetons_sortie, 0) AS sortie
+                        COALESCE(jetons_sortie, 0) AS sortie, mois_reserve AS mois
                    FROM twin9_appels
                   WHERE run_id = ? AND reserve_microusd IS NOT NULL
                     AND (statut IN ("repondu", "panne")'
@@ -277,7 +332,8 @@ final class RunCosts
             $depassements = [];
             foreach ($stmt->fetchAll() as $row) {
                 $final = $row['statut'] === 'repondu' || $row['statut'] === 'panne';
-                $cle = ($final ? 'réconciliation' : 'remboursement') . "\0" . $row['modele'];
+                // by the month its reserve was taken in: a learner's cap is settled in it
+                $cle = ($final ? 'réconciliation' : 'remboursement') . "\0" . $row['modele'] . "\0" . (string) $row['mois'];
                 $reserve = (int) $row['reserve'];
                 $cout = $final ? (int) $row['cout'] : 0;
                 if ($cout > $reserve) {
@@ -295,16 +351,23 @@ final class RunCosts
                 $this->pdo->prepare('UPDATE twin9_appels SET reserve_microusd = NULL WHERE run_id = ? AND appel IN ('
                     . implode(',', array_fill(0, \count($lot), '?')) . ')')->execute([$runId, ...$lot]);
             }
-            if ($credits) {
-                ksort($rendus, SORT_STRING);
-                foreach ($rendus as $cle => [$montant, $entree, $sortie]) {
-                    [$nature, $modele] = explode("\0", $cle, 2);
-                    if ($montant !== 0) {
-                        $this->credits->adjust((int) $run['user_id'], $montant,
-                            self::libelle($runId, $nature), $modele,
-                            $nature === 'réconciliation' ? $entree : null,
-                            $nature === 'réconciliation' ? $sortie : null);
+            ksort($rendus, SORT_STRING);
+            foreach ($rendus as $cle => [$montant, $entree, $sortie]) {
+                [$nature, $modele, $mois] = explode("\0", $cle, 3);
+                if ($montant === 0) {
+                    continue;
+                }
+                $tokensIn = $nature === 'réconciliation' ? $entree : null;
+                $tokensOut = $nature === 'réconciliation' ? $sortie : null;
+                if ($payeur->ecole()) {
+                    // its school's: the learner's cap of the month it was taken in, and its credit on the instance's key
+                    if ($payeur->ecoleId !== null) {
+                        $grandLivre->regler($payeur->ecoleId, $mois === '' ? null : $payeur->eleve(), $mois, $montant,
+                            $payeur->compte() !== null, self::libelle($runId, $nature), $modele, $tokensIn, $tokensOut);
                     }
+                } elseif ($payeur->compte() !== null) {
+                    $this->credits->adjust($payeur->compte(), $montant, self::libelle($runId, $nature), $modele,
+                        $tokensIn, $tokensOut);
                 }
             }
             $this->pdo->commit();

@@ -4,6 +4,9 @@ declare(strict_types=1);
 
 namespace Humanome\Twin9;
 
+use Humanome\Etablissement\Ecoles;
+use Humanome\Etablissement\Payeur;
+use Humanome\Etablissement\Payeurs;
 use Humanome\Packages\SettingsRepository;
 use Humanome\Referentiel\ReferentielRepository;
 use Humanome\Twin9\Fournisseurs\Fournisseurs;
@@ -57,6 +60,14 @@ use stdClass;
  * reserve; the others wait for a next run. Refused, it says what it would
  * take. One launch of an owner at a time: the next one counts what the
  * previous was granted.
+ *
+ * Who pays (ADR-013 §4, Payeurs): the payer the launch names, checked again —
+ * one of its owner's schools, or their remaining balance —, by default their
+ * school when they have only one; frozen in the run with the school's factor
+ * (1 + its surtax on its credit, 1.0 on its key, lane `ecole`). A school's
+ * credit bounds the run less what all its runs in progress may still spend,
+ * the learner's cap for the month too; one launch at a time per credit that
+ * pays, the school's for all its learners.
  */
 final class Lancement
 {
@@ -91,12 +102,14 @@ final class Lancement
      * @param array{id: string, version: string|null}|null $referentielChoisi another referential than the profile's,
      *                                                                         chosen at the launch (S5, lot C); null:
      *                                                                         the profile's
+     * @param mixed $payeurChoisi who pays, as the request names it (ADR-013 §4): null (the default), "personnel" or
+     *                            one of its owner's schools' id
      * @return int the run
      * @throws Twin9Exception 422 naming what is refused, 404 for another's profile, 503 without the engine
      */
     public function lancer(int $userId, ?int $profilId, string $portfolioNom, string $portfolio, mixed $accord,
                            string $visibilite = 'privee', ?\DateTimeImmutable $maintenant = null,
-                           ?array $referentielChoisi = null): int
+                           ?array $referentielChoisi = null, mixed $payeurChoisi = null): int
     {
         $accordes = self::accordes($accord);
         if ($accordes === null) {
@@ -118,6 +131,8 @@ final class Lancement
                 . 'portfolio — ' . implode(', ', array_map(
                     static fn (string $f): string => (string) Fournisseurs::REGISTRE[$f]['libelle'], $atteints)), 422);
         }
+        // who pays, checked again (ADR-013 §4): its school's factor frozen in the run
+        $payeur = (new Payeurs($this->pdo))->resoudre($userId, $payeurChoisi, (string) $profil->cle);
         // what its configuration block keeps besides its settings (P0-1): the prices and their reading, the engine's
         // versions
         $grille = $this->config->read();
@@ -126,10 +141,12 @@ final class Lancement
 
         $runs = new RunRepository($this->pdo);
         // T8, strategy A: the days that fit with the merge's reserve; the others wait for a next run. One launch
-        // of an owner at a time, for the next to count what this one is granted
-        [$id, $admission, $reserve, $engagement] = $runs->sousVerrou($userId, function () use (
+        // at a time per credit that pays — its owner's, or its school's —, for the next to count what this one is
+        // granted
+        $compte = $payeur->estEcole() ? (int) $payeur->ecoleId : $userId;
+        [$id, $admission, $reserve, $engagement] = $runs->sousVerrou($compte, function () use (
             $runs, $userId, $profil, $moteur, $portfolioNom, $portfolio, $plateforme, $jeu, $referentiel, $horloge,
-            $sortie, $profilId, $nom, $empreinteReglages, $grille, $releve, $versions, $atteints
+            $sortie, $profilId, $nom, $empreinteReglages, $grille, $releve, $versions, $atteints, $payeur
         ): array {
             $admission = null;
             $reserve = 0;
@@ -139,7 +156,7 @@ final class Lancement
                     (string) $profil->gabarits);
                 ['admission' => $admission, 'reserve' => $reserve, 'engagement' => $engagement] = $this->prevoir(
                     $userId, $profil, $jeu['gabarits'], $referentiel,
-                    $plateforme->apercu(new MapStore($this->pdo, $carte ?? 0)));
+                    $plateforme->apercu(new MapStore($this->pdo, $carte ?? 0)), $payeur);
                 if ($admission['refus'] !== null) {
                     throw new Twin9Exception($admission['refus'], 422);
                 }
@@ -152,11 +169,11 @@ final class Lancement
             // in this closure
             $configuration = RunConfiguration::depuis($profil, $profilId, $nom, $moteur, $jeu, $referentiel,
                 $empreinteReglages, $grille, $releve, $versions, $horloge, bin2hex(random_bytes(16)),
-                self::trie($atteints));
+                self::trie($atteints), $payeur);
 
             return [$runs->creer($userId, $profil, $moteur, trim($portfolioNom), $portfolio, $plateforme->journal(),
-                $jeu['gabarits'], $horloge, $sortie, $reserve, $engagement, $configuration), $admission, $reserve,
-                    $engagement];
+                $jeu['gabarits'], $horloge, $sortie, $reserve, $engagement, $configuration, $payeur), $admission,
+                    $reserve, $engagement];
         });
         $runs->attester($id, [
             'profil' => ['id' => $profilId, 'nom' => $nom, 'mode' => $profil->mode],
@@ -184,11 +201,12 @@ final class Lancement
      * the text it sends: sprint 4, T0). Nothing is kept.
      *
      * @param array{id: string, version: string|null}|null $referentielChoisi as lancer() takes it
+     * @param mixed $payeurChoisi as lancer() takes it
      * @return array<string, mixed>
      * @throws Twin9Exception as lancer() does
      */
     public function apercu(int $userId, ?int $profilId, string $portfolioNom, string $portfolio,
-                           ?array $referentielChoisi = null): array
+                           ?array $referentielChoisi = null, mixed $payeurChoisi = null): array
     {
         ['profil' => $profil, 'jeu' => $jeu, 'referentiel' => $referentiel, 'plateforme' => $plateforme,
          'jury_retire' => $juryRetire]
@@ -205,8 +223,10 @@ final class Lancement
         $nouvelles = $etats['nouvelle'] ?? 0;
         $changees = $etats['changee'] ?? 0;
 
+        $payeurs = new Payeurs($this->pdo);
+        $payeur = $payeurs->resoudre($userId, $payeurChoisi, (string) $profil->cle);
         ['estimation' => $estimation, 'admission' => $admission]
-            = $this->prevoir($userId, $profil, $jeu['gabarits'], $referentiel, $vue);
+            = $this->prevoir($userId, $profil, $jeu['gabarits'], $referentiel, $vue, $payeur);
 
         return [
             'journal' => $plateforme->journal(),
@@ -219,8 +239,16 @@ final class Lancement
             'estimation' => $estimation,
             'admission' => $admission,
             'plafonds' => ['budget_usd' => $profil->budget_usd ?? null, 'duree_minutes' => $profil->duree_minutes ?? null],
-            'credit_usd' => $profil->cle === 'instance'
+            // its owner's own balance when they pay; a school's never shows to its learner
+            'credit_usd' => $profil->cle === 'instance' && !$payeur->estEcole()
                 ? round((new CreditService($this->pdo))->balance($userId) / 1_000_000, 2) : null,
+            // who would pay (ADR-013 §4), and who may: the page lets them choose; « payé par votre école : elle voit
+            // le montant »
+            'payeur' => $payeur->estEcole()
+                ? ['type' => Payeur::ECOLE, 'id' => $payeur->ecoleId, 'nom' => $payeur->nom,
+                   'soi' => $payeur->ecoleId === $userId]
+                : ['type' => Payeur::PERSONNEL],
+            'payeurs' => $payeurs->possibles($userId),
             // the referential the run would read, its version frozen; the jury's overrides its choice drops (S5, lot C)
             'referentiel' => ['id' => (string) $profil->referentiel->id, 'version' => (string) $profil->referentiel->version,
                               'label' => (string) ($referentiel['label'] ?? $profil->referentiel->id)],
@@ -272,17 +300,29 @@ final class Lancement
      * @param array<string, mixed> $referentiel its referential, as the engine reads it (ReferentielMoteur::bloc())
      * @param array{journees: list<array{id: string, etat: string, octets?: int}>,
      *              memoire?: list<array{id: string, octets: int}>, poles: int} $vue the engine's preview
+     * Who pays (ADR-013 §4): its owner's credit, or its school's — less what
+     * all its runs in progress may still spend, at its frozen factor —, and
+     * the learner's cap for the month, what remains of it (`plafond`); on
+     * its school's key, the cap alone.
+     *
      * @return array{estimation: array<string, mixed>, admission: array<string, mixed>, reserve: int, engagement: int}
      */
-    private function prevoir(int $userId, stdClass $profil, array $gabarits, array $referentiel, array $vue): array
+    private function prevoir(int $userId, stdClass $profil, array $gabarits, array $referentiel, array $vue,
+                             ?Payeur $payeur = null): array
     {
+        $payeur ??= Payeur::personnel();
         $instance = $profil->cle === 'instance';
+        $ecole = $payeur->estEcole();
+        // its price: the contribution for an owner who pays, its school's factor, the list price on a key of its own
+        $prix = $ecole ? (float) $payeur->facteur : $instance;
+        $compte = $ecole ? (int) $payeur->ecoleId : $userId;
+        $eleve = $ecole && $payeur->ecoleId !== $userId ? $userId : null;
         // the lane of its Anthropic calls; its calls' routes, each by its provider (P1-5)
         $parLots = $profil->voie === 'lots';
         $reglages = new CallSettings($profil);
         $toutLots = $reglages->voieEffective() === 'lots';
         $aLots = $reglages->combinaisons('lots') !== [];
-        $marge = $instance ? $this->config->marge() : 1.0;
+        $marge = \is_float($prix) ? $prix : ($prix ? $this->config->marge() : 1.0);
         // by size, when the engine gives each day's (T8); an older engine, by the reference
         $tailles = array_filter($vue['journees'], static fn (array $j): bool => !isset($j['octets'])) === [];
         $modele = $tailles ? (new Evaluations($this->pdo))->modele(Evaluations::signature($profil,
@@ -292,13 +332,17 @@ final class Lancement
         $reference = self::REFERENCE_MICROUSD * $poles * ($toutLots ? 0.5 : 1.0) * $marge;
         $bornes = ['min', 'moyenne', 'max'];
 
-        // what bounds it: its owner's credit with the instance's key, less what their runs in progress may still
-        // spend of it, read together; its budget; the lower of them
+        // what bounds it: the credit that pays with the instance's key — its owner's, or its school's —, less what
+        // the runs in progress it pays may still spend of it, read together; the learner's cap for the month when a
+        // school pays for them; its budget; the lowest of them
         ['solde' => $solde, 'autres' => $autres] = $instance
-            ? (new RunRepository($this->pdo))->disponible($userId) : ['solde' => 0, 'autres' => 0];
+            ? (new RunRepository($this->pdo))->disponible($compte) : ['solde' => 0, 'autres' => 0];
         $limites = [];
         if ($instance) {
             $limites['credit'] = $solde - $autres;
+        }
+        if ($eleve !== null) {
+            $limites['plafond'] = (new Ecoles($this->pdo))->reste($compte, $eleve, Ecoles::mois());
         }
         if (($profil->budget_usd ?? null) !== null) {
             $limites['budget'] = (int) round((float) $profil->budget_usd * 1_000_000);
@@ -320,11 +364,11 @@ final class Lancement
         $grille = $this->config->read();
         // each combination at its provider's price, by its own route (half price by batches)
         $pireCas = static function (?float $observe, int $octets) use ($reference, $gabarit, $combinaisons, $grille,
-                                                                       $instance): float {
+                                                                       $prix): float {
             $pire = $observe ?? $reference;
             foreach ($combinaisons as $c) {
                 $pire = max($pire, (float) (RunCosts::pireCasDe($grille, $c['fournisseur'], $c['modele'], $gabarit + $octets,
-                    $c['budget_sortie'], $c['voie'] === 'lots', $instance) ?? 0));
+                    $c['budget_sortie'], $c['voie'] === 'lots', $prix) ?? 0));
             }
 
             return $pire;
@@ -412,9 +456,10 @@ final class Lancement
                 'instruites' => $refus === null ? $retenu['instruites'] : 0,
                 'en_attente' => $refus === null ? $retenu['attente']['nouvelle'] + $retenu['attente']['changee'] : $aInstruire,
                 'changees_en_attente' => $refus === null ? $retenu['attente']['changee'] : $etats[0]['attente']['changee'],
-                'autres_usd' => $limite === 'credit' ? $usd($autres) : 0.0,
+                // what its other runs may still spend of the credit: its owner's own, never a school's to its learner
+                'autres_usd' => $limite === 'credit' && $eleve === null ? $usd($autres) : 0.0,
                 'refus' => $refus === null ? null : self::refus($refus, (string) $limite, $retenu['besoin'],
-                    $limite === 'credit' ? $autres : 0, $observe),
+                    $limite === 'credit' && $eleve === null ? $autres : 0, $observe, $ecole),
             ],
             'reserve' => $refus === null ? (int) ceil($retenu['fusion']['max'] + $retenu['pire_fusion']) : 0,
             'engagement' => $refus === null && $instance ? (int) ceil($retenu['besoin']) : 0,
@@ -427,9 +472,14 @@ final class Lancement
      * to instruct, or a whole portfolio for a profile that reads every day
      * again (prevoir()).
      */
-    private static function refus(string $quoi, string $limite, float $besoin, int $autres, bool $observe): string
+    private static function refus(string $quoi, string $limite, float $besoin, int $autres, bool $observe,
+                                  bool $ecole = false): string
     {
-        $sujet = $limite === 'budget' ? 'le budget du profil' : 'votre crédit';
+        $sujet = match ($limite) {
+            'budget' => 'le budget du profil',
+            'plafond' => 'le plafond que votre école vous accorde ce mois-ci',
+            default => $ecole ? 'le crédit de votre école' : 'votre crédit',
+        };
         $montant = number_format(ceil($besoin / 10_000) / 100, 2, ',', '') . ' $';
         $ailleurs = $autres > 0 ? ', en plus des ' . number_format(ceil($autres / 10_000) / 100, 2, ',', '')
             . ' $ que vos analyses en cours peuvent encore dépenser' : '';

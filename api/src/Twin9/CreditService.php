@@ -23,6 +23,10 @@ use PDOException;
  *     (T10: a Twin9 run's reservation is written with its call, its
  *     settlement with the calls it settles), and leave its commit or its
  *     rollback to the caller.
+ *   * an event a learner's usage writes in their school's ledger names the
+ *     learner ($beneficiaire, twin9_credit_events.beneficiaire_id, migration
+ *     037; ADR-013 §3), so that the school sees what each spent, in amounts
+ *     only; SET NULL at the learner's purge.
  */
 final class CreditService
 {
@@ -66,6 +70,7 @@ final class CreditService
         ?int $tokensIn = null,
         ?int $tokensOut = null,
         bool $allowOverdraft = false,
+        ?int $beneficiaire = null,
     ): int {
         if ($microusd <= 0) {
             throw new \InvalidArgumentException('debit() amount must be > 0 micro-USD');
@@ -94,7 +99,7 @@ final class CreditService
                 }
             }
 
-            $this->insertEvent($userId, 'debit', -$microusd, $label, $model, $tokensIn, $tokensOut, null);
+            $this->insertEvent($userId, 'debit', -$microusd, $label, $model, $tokensIn, $tokensOut, null, $beneficiaire);
             $newBalance = $this->lockedBalance($userId);
             if ($own) {
                 $this->pdo->commit();
@@ -181,6 +186,7 @@ final class CreditService
         ?string $model = null,
         ?int $tokensIn = null,
         ?int $tokensOut = null,
+        ?int $beneficiaire = null,
     ): int {
         if ($microusd === 0) {
             throw new \InvalidArgumentException('adjust() amount must be non-zero');
@@ -192,7 +198,7 @@ final class CreditService
         }
         try {
             $this->upsertBalance($userId, $microusd);
-            $this->insertEvent($userId, 'adjust', $microusd, $label, $model, $tokensIn, $tokensOut, null);
+            $this->insertEvent($userId, 'adjust', $microusd, $label, $model, $tokensIn, $tokensOut, null, $beneficiaire);
             $newBalance = $this->lockedBalance($userId);
             if ($own) {
                 $this->pdo->commit();
@@ -379,11 +385,12 @@ final class CreditService
         ?int $tokensIn,
         ?int $tokensOut,
         ?string $paypalOrderId,
+        ?int $beneficiaire = null,
     ): void {
         $this->pdo->prepare(
             'INSERT INTO twin9_credit_events
-             (user_id, kind, amount_microusd, label, model, tokens_in, tokens_out, paypal_order_id)
-             VALUES (?, ?, ?, ?, ?, ?, ?, ?)'
+             (user_id, kind, amount_microusd, label, model, tokens_in, tokens_out, paypal_order_id, beneficiaire_id)
+             VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)'
         )->execute([
             $userId,
             $kind,
@@ -393,6 +400,7 @@ final class CreditService
             $tokensIn,
             $tokensOut,
             $paypalOrderId,
+            $beneficiaire,
         ]);
     }
 

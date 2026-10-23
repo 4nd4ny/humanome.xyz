@@ -88,7 +88,7 @@ final class RunConfigurationTest extends TestCase
                           'signature_evaluations' => Evaluations::signature($profil, Lancement::empreinte(self::GABARITS),
                               ReferentielMoteur::empreinte(self::referentiel()))],
             $bloc['profil']);
-        self::assertSame(['voie_anthropic' => 'lots', 'cle' => 'instance',
+        self::assertSame(['voie_anthropic' => 'lots', 'cle' => 'instance', 'payeur' => 'personnel',
                           'parallelisme' => ['appels_directs' => 6, 'journees' => 10],
                           'plafonds' => ['budget_usd' => null, 'duree_minutes' => null],
                           'jours' => null, 'rescan' => false, 'memoire' => true], $bloc['execution_prevue']);
@@ -239,7 +239,7 @@ final class RunConfigurationTest extends TestCase
         $profil->referentiel = (object) ['id' => 'fictif', 'version' => '1.0.0'];
 
         $bloc = self::bloc($profil);
-        self::assertSame(['voie_anthropic' => 'directe', 'cle' => 'personnelle',
+        self::assertSame(['voie_anthropic' => 'directe', 'cle' => 'personnelle', 'payeur' => 'personnel',
                           'parallelisme' => ['appels_directs' => 3, 'journees' => 4],
                           'plafonds' => ['budget_usd' => 2.5, 'duree_minutes' => 30],
                           'jours' => 2, 'rescan' => true, 'memoire' => false], $bloc['execution_prevue']);
@@ -259,7 +259,7 @@ final class RunConfigurationTest extends TestCase
 
     /**
      * A cartographe reads neither the prices, nor the caps, nor the key, nor
-     * the salt; the fingerprint they read, their owner's, does not let them
+     * who pays (ADR-013 §3), nor the salt; the fingerprint they read, their owner's, does not let them
      * find those again by trying candidates: what they read, the hidden
      * fields guessed right, still misses the salt.
      */
@@ -276,10 +276,11 @@ final class RunConfigurationTest extends TestCase
         self::assertSame($bloc->empreinte, $lu->empreinte, 'la même empreinte que son propriétaire');
         self::assertSame([], self::valider($lu));
 
-        // a search that guessed every hidden field right: the margin's prices, the key, the caps
+        // a search that guessed every hidden field right: the margin's prices, the key, who pays, the caps
         $devine = json_decode(json_encode($lu, JSON_PRESERVE_ZERO_FRACTION), false);
         $devine->prix = $bloc->prix;
         $devine->execution_prevue->cle = $bloc->execution_prevue->cle;
+        $devine->execution_prevue->payeur = $bloc->execution_prevue->payeur;
         $devine->execution_prevue->plafonds = $bloc->execution_prevue->plafonds;
         self::assertNotSame($bloc->empreinte, RunConfiguration::empreinte($devine), 'sans le sel, rien ne se vérifie');
         $devine->sel = $bloc->sel;

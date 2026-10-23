@@ -46,6 +46,12 @@ final class RgpdAudit
         'created_by',
         'granted_by',
         'etablissement_id',
+        // the school (migration 037, ADR-013): its settings, key and learners' spend, who pays a run, the learner an
+        // event of the school's ledger names
+        'ecole_id',
+        'eleve_id',
+        'payeur_id',
+        'beneficiaire_id',
     ];
 
     /**
@@ -126,6 +132,10 @@ final class RgpdAudit
         'twin9_jeux' => '—',                // copies of the v9.8's templates (migration 029): platform content, author SET NULL
         'twin9_jeux_gabarits' => '—',       // their templates (migration 029): platform content, editor SET NULL
         'twin9_jeux_versions' => '—',       // their archived versions (migration 029): platform content, author SET NULL
+        // the school (migration 037, ADR-013): its settings and its learners' spend, in amounts; its key, a secret
+        'ecoles' => 'via',                  // GET /api/etablissement/ecole (the school)
+        'ecole_cles' => 'none',             // secret, never re-exportable by design (like user_api_keys)
+        'ecole_consommations' => 'via',     // GET /api/etablissement/ecole (the school), GET /api/twin9/meta (the learner)
     ];
 
     public static function schema(PDO $pdo): string

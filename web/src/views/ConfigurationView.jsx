@@ -80,6 +80,15 @@ const ident = (chemin) => `config-${chemin.join('-')}`
  */
 const ANTHROPIC_SEUL = [{ id: FOURNISSEUR_DEFAUT, libelle: 'Anthropic', rgpd: 'sous_conditions', disponible: true }]
 
+/**
+ * La clé de l'école qui paie (ADR-013 §6, sprint 6, lot S6b) : chez Anthropic seulement ; l'école se choisit au
+ * lancement, et elle peut relire les résultats des lots dans sa Console Anthropic.
+ */
+const CLE_ECOLE =
+  'La clé de l’école qui paie votre analyse, choisie au lancement : elle doit en avoir posé une. Elle ne sert que chez ' +
+  'Anthropic : un profil sur la clé de l’école n’appelle pas d’autre fournisseur. Votre école paie Anthropic, et peut ' +
+  'relire dans sa Console Anthropic les résultats des appels partis par lots avec sa clé.'
+
 /** Ce que dit un profil enregistré avant l'ADR-013 sur la clé personnelle : le serveur le refuse au lancement. */
 const CLE_PERSONNELLE_RETIREE =
   'La clé personnelle ne sert plus aux analyses du serveur : une analyse approfondie ne peut pas garder la clé de ' +
@@ -216,6 +225,9 @@ function Champ({ chemin, valeur, defaut, peutManquer, onChange, contexte }) {
     )
     if (champ === 'cle' && valeur === 'personnelle') {
       avertissement = CLE_PERSONNELLE_RETIREE
+    }
+    if (champ === 'cle' && valeur === 'ecole') {
+      explication = CLE_ECOLE
     }
     if (cle === 'reflexion' && objet !== null) {
       const f = fournisseurDe(profil, objet)

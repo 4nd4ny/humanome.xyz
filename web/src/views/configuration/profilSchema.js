@@ -244,6 +244,7 @@ const CHOIX = {
   lots: 'Par lots',
   instance: 'Celle de l’instance',
   personnelle: 'Ma clé personnelle (ne sert plus)',
+  ecole: 'Celle de mon école (Anthropic seulement)',
   coupee: 'Coupée',
   adaptative: 'Adaptative',
   aleatoire: 'Aléatoire',

@@ -433,12 +433,14 @@ final class Twin9Config
      * A call made in a batch costs half (the Message Batches API's price, T8);
      * a prompt over a model's long prompt tier is billed at that tier's price
      * (T10); without the margin, the cost is Anthropic's (a run on its owner's
-     * key, T10).
+     * key, T10). A school's usage is priced at its own factor ($facteur:
+     * 1 + its surtax on the instance's key, 1.0 on its own; ADR-013 §2 d),
+     * which then stands for the margin.
      */
     public function coutMicrousd(string $modelId, int $tokensIn, int $tokensOut, string $protocole = 'twin9',
-                                 bool $parLots = false, bool $avecMarge = true): ?int
+                                 bool $parLots = false, bool $avecMarge = true, ?float $facteur = null): ?int
     {
-        return self::cout($this->read(), $modelId, $tokensIn, $tokensOut, $protocole, $parLots, $avecMarge);
+        return self::cout($this->read(), $modelId, $tokensIn, $tokensOut, $protocole, $parLots, $avecMarge, $facteur);
     }
 
     /**
@@ -448,7 +450,7 @@ final class Twin9Config
      * @param array<string, mixed> $config
      */
     public static function cout(array $config, string $modelId, int $tokensIn, int $tokensOut, string $protocole = 'twin9',
-                                bool $parLots = false, bool $avecMarge = true): ?int
+                                bool $parLots = false, bool $avecMarge = true, ?float $facteur = null): ?int
     {
         $modele = $config['modeles'][$modelId] ?? null;
         if (!\is_array($modele)) {
@@ -457,8 +459,8 @@ final class Twin9Config
         $palier = $modele['palier_long'] ?? null;
         [$in, $out] = \is_array($palier) && $tokensIn > (int) $palier['au_dela_de']
             ? $palier['prix_usd_mtok'] : $modele['prix_usd_mtok'];
-        $marge = !$avecMarge ? 1.0
-            : ($protocole === 'twin6' ? (float) $config['marge_twin6'] : (float) $config['marge']);
+        $marge = $facteur ?? (!$avecMarge ? 1.0
+            : ($protocole === 'twin6' ? (float) $config['marge_twin6'] : (float) $config['marge']));
         $part = $parLots ? 0.5 : 1.0;
 
         return (int) ceil($tokensIn * (float) $in * $part * $marge)

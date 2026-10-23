@@ -4,6 +4,9 @@ declare(strict_types=1);
 
 namespace Humanome\Worker;
 
+use Humanome\Etablissement\Ecoles;
+use Humanome\Etablissement\GrandLivreLocal;
+use Humanome\Etablissement\PlafondAtteintException;
 use Humanome\Twin9\AnthropicBatches;
 use Humanome\Twin9\AnthropicCaller;
 use Humanome\Twin9\BatchApi;
@@ -11,6 +14,7 @@ use Humanome\Twin9\CallJournal;
 use Humanome\Twin9\Fournisseurs\Fournisseurs;
 use Humanome\Twin9\RunCosts;
 use Humanome\Twin9\RunKey;
+use Humanome\Twin9\RunPayeur;
 use Humanome\Twin9\RunRepository;
 use Humanome\Twin9\SoldeInsuffisantException;
 use PDO;
@@ -43,8 +47,13 @@ use Twin9\Run\Call;
  * - Each call holds its worst case, at half price, when its batch is written
  *   (T10, RunCosts): a batch holds no more than its run's budget and its
  *   owner's credit leave room for, the rest waits for a next one.
- * - The batches of an account erased, submitted with the instance's key, are
- *   cancelled and deleted from twin9_lots_a_effacer.
+ * - The batches of an account erased, submitted with the instance's key — or
+ *   its school's (ADR-013 §6), whose key the tick reads —, are cancelled and
+ *   deleted from twin9_lots_a_effacer.
+ * - A batch keeps the key that submitted it (twin9_lots.cle): the instance's,
+ *   its school's, or its owner's for a run of before ADR-013; each call's
+ *   worst case is held as a direct call's is — the learner's cap for the
+ *   month first when a school pays, then the credit that pays (RunCosts).
  * - In a mixed run (P1-5), only Anthropic's calls go by batches, at most
  *   one submission a run and a slice, at its head, before its direct calls
  *   leave; while its requests wait, the slice reads the direct calls in
@@ -110,7 +119,7 @@ final class Twin9Lots
         // a batch being cancelled is a run's that was cancelled, then resumed before its batch ended: collected alike
         foreach ($this->lots('l.run_id = ? AND l.statut IN ("soumission", "en_cours", "annulation", "releve")', [$runId])
                  as $lot) {
-            $cle = $this->cles->pour($userId, $lot['cle']);
+            $cle = $this->cles->pour($lot['titulaire'], $lot['cle']);
             if ($cle === null || microtime(true) >= $fin) {
                 $raison = $cle === null ? 'clé Anthropic indisponible' : null;
                 $enVol += $lot['statut'] === 'releve' ? 0 : 1;
@@ -187,7 +196,7 @@ final class Twin9Lots
 
             return null;
         }
-        $cle = $this->cles->pour($run->userId, $run->cle);
+        $cle = $this->cles->pour($run->payeur->titulaire(), $run->cle);
         if ($cle === null) {
             $run->suspendre('lots', 'clé Anthropic indisponible');
 
@@ -202,10 +211,15 @@ final class Twin9Lots
                 return $refus;
             }
         }
-        // the room the owner's credit leaves, with the instance's key, and what their other runs in progress may
-        // still spend of it, read together (T8); the budget's is the run's to count
+        // the room the credit that pays leaves, with the instance's key, and what its other runs in progress may
+        // still spend of it, read together (T8); the learner's cap for the month when a school pays (ADR-013 §4);
+        // the budget's is the run's to count
         ['solde' => $solde, 'autres' => $autres] = $run->credits()
-            ? (new RunRepository($this->pdo))->disponible($run->userId, $run->id) : ['solde' => null, 'autres' => 0];
+            ? (new RunRepository($this->pdo))->disponible((int) $run->payeur->compte(), $run->id)
+            : ['solde' => null, 'autres' => 0];
+        $eleve = $run->payeur->eleve();
+        $plafond = $eleve === null || $run->payeur->ecoleId === null ? null
+            : (new GrandLivreLocal($this->pdo))->reste($run->payeur->ecoleId, $eleve, Ecoles::mois());
         $corps = '';
         $membres = [];
         foreach ($candidats as [$call, $tentative, $detenu]) {
@@ -217,13 +231,13 @@ final class Twin9Lots
                     continue;
                 }
                 $reserve = $this->couts->pireCas(Fournisseurs::DEFAUT, $reglage['modele'], $call->prompt,
-                    $reglage['budget_sortie'], true, $run->credits());
+                    $reglage['budget_sortie'], true, $run->prix());
                 if ($reserve === null) {
                     return 'aucun prix pour ' . $reglage['modele'] . ' sur cette instance';
                 }
                 // never into the merge's reserve for a day's call, nor into what the owner's other runs may
                 // still spend (T8)
-                $retenue = $run->retenue($call, $reserve, $solde, $autres);
+                $retenue = $run->retenue($call, $reserve, $solde, $autres, $plafond);
                 if ($retenue !== null) {
                     $run->bloque = $retenue;
                     continue;
@@ -246,6 +260,7 @@ final class Twin9Lots
             if ($reserve !== null) {
                 $run->engage += $reserve;
                 $solde = $solde === null ? null : $solde - $reserve;
+                $plafond = $plafond === null ? null : $plafond - $reserve;
             }
         }
         $refus = $this->envoyer($run, $cle, $corps, $membres, $dernier, $borne, $compteurs, $pendant);
@@ -286,7 +301,7 @@ final class Twin9Lots
             if (microtime(true) >= $fin) {
                 return;
             }
-            $cle = $this->cles->pour($lot['user_id'], $lot['cle']);
+            $cle = $this->cles->pour($lot['titulaire'], $lot['cle']);
             if ($cle === null) {
                 continue;
             }
@@ -335,26 +350,32 @@ final class Twin9Lots
     }
 
     /**
-     * The batches of accounts erased, submitted with the instance's key
-     * (twin9_lots_a_effacer): cancelled while in progress, deleted once
-     * ended; gone, forgotten.
+     * The batches of accounts erased, submitted with the instance's key or a
+     * school's (twin9_lots_a_effacer, its `ecole_id`: ADR-013 §6): cancelled
+     * while in progress, deleted once ended; gone, forgotten. A school's
+     * batch waits while its key is missing; gone with the school, its row
+     * goes too (CASCADE) and Anthropic erases the batch, 29 days at most.
      *
      * @param array<string, int> $compteurs the slice's
      */
     private function effacer(float $fin, array &$compteurs): void
     {
-        $lots = $this->pdo->query('SELECT lot FROM twin9_lots_a_effacer ORDER BY depose_at, lot LIMIT 20')
-            ->fetchAll(PDO::FETCH_COLUMN);
-        if ($lots === []) {
+        $lignes = $this->pdo->query('SELECT lot, ecole_id FROM twin9_lots_a_effacer ORDER BY depose_at, lot LIMIT 20')
+            ->fetchAll();
+        if ($lignes === []) {
             return;
         }
-        $cle = $this->cles->pour(0, 'instance');
-        if ($cle === null) {
-            return;
-        }
-        foreach ($lots as $lot) {
+        $cles = [];
+        foreach ($lignes as $ligne) {
             if (microtime(true) >= $fin) {
                 return;
+            }
+            $lot = (string) $ligne['lot'];
+            $ecole = $ligne['ecole_id'] === null ? 0 : (int) $ligne['ecole_id'];
+            $cles[$ecole] ??= $ecole === 0 ? $this->cles->pour(0, 'instance') : $this->cles->pour($ecole, 'ecole');
+            $cle = $cles[$ecole];
+            if ($cle === null) {
+                continue;
             }
             $etat = $this->api->etat($cle, (string) $lot, $fin);
             if (!$etat['ok'] && ($etat['http'] ?? null) !== 404) {
@@ -424,7 +445,7 @@ final class Twin9Lots
             if (microtime(true) >= $fin) {
                 return false;
             }
-            $this->inscrire($journal, $appel, (array) ($ligne['result'] ?? []), $lot['cle'] === 'instance', $compteurs);
+            $this->inscrire($journal, $appel, (array) ($ligne['result'] ?? []), $lot['prix'], $compteurs);
             $appels[$customId]['statut'] = 'inscrit';
         }
         foreach ($appels as $appel) {
@@ -441,13 +462,15 @@ final class Twin9Lots
 
     /**
      * One result of a batch, as a direct call's outcome is written: its real
-     * cost at half price, the margin included with the instance's key.
+     * cost at half price, at its run's price (RunPayeur::prix(): the margin
+     * with the instance's key, its school's factor when its school pays).
      *
      * @param array{appel: string, tentatives: int, modele: string} $appel
      * @param array<string, mixed> $resultat
+     * @param bool|float $marge its run's price
      * @param array<string, int> $compteurs
      */
-    private function inscrire(CallJournal $journal, array $appel, array $resultat, bool $marge,
+    private function inscrire(CallJournal $journal, array $appel, array $resultat, bool|float $marge,
                               array &$compteurs): void
     {
         $type = $resultat['type'] ?? null;
@@ -613,6 +636,8 @@ final class Twin9Lots
             return null;
         }
         $corps = '{"requests":[' . $corps . ']}';
+        // one month for the reservations and the calls that keep them: settled in it
+        $mois = Ecoles::mois();
         $this->pdo->beginTransaction();
         try {
             $this->pdo->prepare(
@@ -620,17 +645,26 @@ final class Twin9Lots
             )->execute([$run->id, $run->cle, \count($membres), \strlen($corps)]);
             $lotId = (int) $this->pdo->lastInsertId();
             foreach ($membres as [$call, $modele, $tentative, $reserve]) {
-                if ($reserve !== null && $run->credits()) {
-                    $this->couts->debiter($run->userId, $run->id, $call->step, $modele, $reserve);
+                if ($reserve !== null && $run->payeur->reserve()) {
+                    $this->couts->debiter($run->payeur, $run->id, $call->step, $modele, $reserve, $mois);
                 }
-                $run->journal->envoye($call, $modele, $tentative, $lotId, self::customId($call->id), $reserve);
+                $run->journal->envoye($call, $modele, $tentative, $lotId, self::customId($call->id), $reserve,
+                    Fournisseurs::DEFAUT, $mois);
             }
             $this->pdo->commit();
         } catch (SoldeInsuffisantException) {
             // the credit moved meanwhile: the batch waits for a next slice
             $this->pdo->rollBack();
             $run->journal->oublier();
-            $run->bloque = RunCosts::CREDIT;
+            $run->bloque = $run->payeur->ecole() ? RunCosts::CREDIT_ECOLE : RunCosts::CREDIT;
+            $run->suspendre('lots');
+
+            return null;
+        } catch (PlafondAtteintException) {
+            // the cap moved meanwhile (another run of the learner's, or the school lowered it): the same
+            $this->pdo->rollBack();
+            $run->journal->oublier();
+            $run->bloque = RunCosts::PLAFOND;
             $run->suspendre('lots');
 
             return null;
@@ -764,18 +798,24 @@ final class Twin9Lots
     {
         $stmt = $this->pdo->prepare(
             'SELECT l.id, l.run_id, r.user_id, r.statut AS run_statut, l.lot, l.statut, l.cle, l.requetes,
-                    UNIX_TIMESTAMP(l.soumis_at) AS soumis
+                    UNIX_TIMESTAMP(l.soumis_at) AS soumis, r.payeur, r.payeur_id, r.facteur_prix
                FROM twin9_lots l JOIN twin9_runs r ON r.id = l.run_id
               WHERE ' . $ou . ' ORDER BY l.id LIMIT ' . $max
         );
         $stmt->execute($params);
 
-        return array_map(static fn (array $l): array => [
-            'id' => (int) $l['id'], 'run_id' => (int) $l['run_id'], 'user_id' => (int) $l['user_id'],
-            'run_statut' => (string) $l['run_statut'], 'lot' => $l['lot'] === null ? null : (string) $l['lot'],
-            'statut' => (string) $l['statut'],
-            'cle' => (string) $l['cle'], 'requetes' => (int) $l['requetes'], 'soumis' => (float) $l['soumis'],
-        ], $stmt->fetchAll());
+        return array_map(static function (array $l): array {
+            // the key that submitted it, its holder, and its run's price (ADR-013 §6)
+            $payeur = RunPayeur::depuis($l, (string) $l['cle']);
+
+            return [
+                'id' => (int) $l['id'], 'run_id' => (int) $l['run_id'], 'user_id' => (int) $l['user_id'],
+                'run_statut' => (string) $l['run_statut'], 'lot' => $l['lot'] === null ? null : (string) $l['lot'],
+                'statut' => (string) $l['statut'],
+                'cle' => (string) $l['cle'], 'requetes' => (int) $l['requetes'], 'soumis' => (float) $l['soumis'],
+                'titulaire' => $payeur->titulaire(), 'prix' => $payeur->prix(),
+            ];
+        }, $stmt->fetchAll());
     }
 
     /** The type of an error a batch's result carries ({type: error, error: {type…}}), as a word. */

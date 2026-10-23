@@ -4,6 +4,10 @@ declare(strict_types=1);
 
 namespace Humanome\Worker;
 
+use Humanome\Etablissement\Ecoles;
+use Humanome\Etablissement\GrandLivreLocal;
+use Humanome\Etablissement\Payeurs;
+use Humanome\Etablissement\PlafondAtteintException;
 use Humanome\Twin9\BatchApi;
 use Humanome\Twin9\CallJournal;
 use Humanome\Twin9\CallSender;
@@ -12,6 +16,7 @@ use Humanome\Twin9\Fournisseurs\Fournisseurs;
 use Humanome\Twin9\MapStore;
 use Humanome\Twin9\RunCosts;
 use Humanome\Twin9\RunKey;
+use Humanome\Twin9\RunPayeur;
 use Humanome\Twin9\RunRepository;
 use Humanome\Twin9\SoldeInsuffisantException;
 use Humanome\Twin9\Twin9Config;
@@ -85,8 +90,14 @@ use Twin9\Run\Pending;
  * cost, then it stops and what its calls hold goes back; its batch still at
  * Anthropic is collected once ended, never cancelled (Twin9Lots::menage).
  *
- * A call leaves holding its worst case (T10, RunCosts): debited from its
- * owner's credits with the instance's key, counted against the run's budget.
+ * A call leaves holding its worst case (T10, RunCosts): debited from the
+ * credit that pays with the instance's key — its owner's, or its school's,
+ * after the learner's cap for the month (ADR-013 §4) —, held on the cap
+ * alone on its school's key, counted against the run's budget. A run its
+ * school paid stops as the slice opens it once that school no longer pays
+ * (Payeurs::encorePaie(): gone, its habilitation withdrawn, the learner no
+ * longer a member, its key withdrawn on its lane), never falling back on its
+ * owner's balance; its owner chooses its payer again at its resumption.
  * A call whose worst case its budget or its owner's credit cannot hold does
  * not leave, nor any new one after it; a day's call does not eat into what
  * the run keeps for its merge either, nor any call into what its owner's
@@ -272,6 +283,18 @@ final class Twin9Slice
         if ($tete === null || $tete['statut'] !== 'en_cours') {
             return null;
         }
+        // its school, if one pays, read again (ADR-013 §4): one that no longer pays stops it, for its owner to choose
+        // again at its resumption — never its owner's balance instead
+        $payeur = RunPayeur::depuis($tete, $tete['profil']);
+        if ($payeur->ecole()) {
+            $raison = (new Payeurs($this->pdo))->encorePaie($payeur->proprietaire, $payeur->ecoleId, $payeur->cle,
+                $payeur->facteur);
+            if ($raison !== null) {
+                $this->arreter($id, $raison);
+
+                return null;
+            }
+        }
         // its routes (P1-5): Anthropic's calls by batches when its profile says so, every other directly
         $routes = new CallSettings($tete['profil']);
         $routeLots = ($tete['profil']->voie ?? null) === 'lots' && $routes->combinaisons('lots') !== [];
@@ -324,6 +347,7 @@ final class Twin9Slice
             $plafonds['limite'],
             $r['reserve_fusion'],
             $routeDirecte,
+            $payeur,
         );
         $run->engage = $this->couts->engage($id);
         $run->attenteLots = $attenteLots;
@@ -366,10 +390,12 @@ final class Twin9Slice
                 if ($fournisseur === Fournisseurs::DEFAUT) {
                     $run->suspendre('lots', self::indisponible($fournisseur));
                 }
-            } elseif ($fournisseur !== Fournisseurs::DEFAUT && !$run->credits()) {
-                $run->suspendre($fournisseur, 'clé personnelle refusée chez ' . $nom);
+            } elseif ($fournisseur !== Fournisseurs::DEFAUT && !$run->instance()) {
+                // a key of its own, or its school's, never reaches another provider (ADR-012 §5, ADR-013 §6)
+                $run->suspendre($fournisseur, ($run->cle === 'ecole' ? 'clé d’école refusée chez '
+                    : 'clé personnelle refusée chez ') . $nom);
             } elseif ($fournisseur !== Fournisseurs::DEFAUT
-                && $this->cles->pour($run->userId, $run->cle, $fournisseur) === null) {
+                && $this->cles->pour($run->payeur->titulaire(), $run->cle, $fournisseur) === null) {
                 $run->suspendre($fournisseur, self::indisponible($fournisseur));
             }
         }
@@ -436,8 +462,7 @@ final class Twin9Slice
             error_log('[twin9-slice] taille des journées : ' . $e::class);
             $octets = [];
         }
-        if ($this->runs->terminer($run->id, array_map(intval(...), $octets),
-            $run->credits() ? $this->config->marge() : 1.0)) {
+        if ($this->runs->terminer($run->id, array_map(intval(...), $octets), $run->payeur->marge($this->config))) {
             $this->compteurs['termines']++;
         }
     }
@@ -508,7 +533,7 @@ final class Twin9Slice
                 $detenu = $etat['reserve'];
             }
             // the instance's key rests from a provider after its 429, for every run of the slice
-            $repos = $run->credits() ? ($this->repos[$fournisseur] ?? null) : null;
+            $repos = $run->instance() ? ($this->repos[$fournisseur] ?? null) : null;
             if ($repos !== null && $repos > microtime(true)) {
                 $run->reveil = min($run->reveil ?? INF, $repos);
                 continue;
@@ -537,7 +562,7 @@ final class Twin9Slice
                     continue;
                 }
                 $reserve = $this->couts->pireCas($fournisseur, $reglage['modele'], $call->prompt,
-                    $reglage['budget_sortie'], false, $run->credits());
+                    $reglage['budget_sortie'], false, $run->prix());
                 if ($reserve === null) {
                     // its calls in flight come back first (deferred stop)
                     $run->arret ??= 'aucun prix pour ' . Fournisseurs::clePrix($fournisseur, $reglage['modele'])
@@ -545,17 +570,18 @@ final class Twin9Slice
 
                     return;
                 }
-                // never into the merge's reserve for a day's call, nor into what the owner's other runs may
-                // still spend (T8): the credit and their commitments read together, as they are now
+                // never into the merge's reserve for a day's call, nor into what the other runs the credit pays may
+                // still spend (T8): the credit and their commitments read together, as they are now; nor beyond the
+                // learner's cap for the month when a school pays (ADR-013 §4)
                 ['solde' => $solde, 'autres' => $autres] = $run->credits()
-                    ? $this->runs->disponible($run->userId, $run->id) : ['solde' => null, 'autres' => 0];
-                $retenue = $run->retenue($call, $reserve, $solde, $autres);
+                    ? $this->runs->disponible((int) $run->payeur->compte(), $run->id) : ['solde' => null, 'autres' => 0];
+                $retenue = $run->retenue($call, $reserve, $solde, $autres, $this->plafond($run));
                 if ($retenue !== null) {
                     $run->bloque = $retenue;
                     continue;
                 }
             }
-            $cle = $this->cles->pour($run->userId, $run->cle, $fournisseur);
+            $cle = $this->cles->pour($run->payeur->titulaire(), $run->cle, $fournisseur);
             if ($cle === null) {
                 // Anthropic's, as before (a personal key may be its owner's to set); another's, never why
                 $run->suspendre($fournisseur, $tiers ? self::indisponible($fournisseur) : 'clé Anthropic indisponible');
@@ -581,10 +607,24 @@ final class Twin9Slice
     }
 
     /**
-     * A call written as sent, with the worst case it newly holds, debited
-     * from its owner's credits with the instance's key, in one transaction,
-     * under its model's price key. False when the credit does not cover it:
-     * it does not leave.
+     * What remains of a run's learner's cap for the month when a school pays
+     * for them (ADR-013 §4), read as each new call holds its worst case; null:
+     * no cap (its owner pays, or a school for itself).
+     */
+    private function plafond(Twin9Run $run): ?int
+    {
+        $eleve = $run->payeur->eleve();
+
+        return $eleve === null || $run->payeur->ecoleId === null ? null
+            : (new GrandLivreLocal($this->pdo))->reste($run->payeur->ecoleId, $eleve, Ecoles::mois());
+    }
+
+    /**
+     * A call written as sent, with the worst case it newly holds, in one
+     * transaction, under its model's price key: debited from the credit that
+     * pays with the instance's key, held on the learner's cap first when a
+     * school pays (RunCosts::debiter()). False when the credit or the cap
+     * does not cover it: it does not leave.
      */
     private function partir(Twin9Run $run, Call $call, string $fournisseur, string $modele, int $tentative,
                             ?int $reserve): bool
@@ -594,17 +634,24 @@ final class Twin9Slice
 
             return true;
         }
+        // one month for the reservation and the call that keeps it: settled in it
+        $mois = Ecoles::mois();
         $this->pdo->beginTransaction();
         try {
-            if ($run->credits()) {
-                $this->couts->debiter($run->userId, $run->id, $call->step, Fournisseurs::clePrix($fournisseur, $modele),
-                    $reserve);
+            if ($run->payeur->reserve()) {
+                $this->couts->debiter($run->payeur, $run->id, $call->step, Fournisseurs::clePrix($fournisseur, $modele),
+                    $reserve, $mois);
             }
-            $run->journal->envoye($call, $modele, $tentative, null, null, $reserve, $fournisseur);
+            $run->journal->envoye($call, $modele, $tentative, null, null, $reserve, $fournisseur, $mois);
             $this->pdo->commit();
         } catch (SoldeInsuffisantException) {
             $this->pdo->rollBack();
-            $run->bloque = RunCosts::CREDIT;
+            $run->bloque = $run->payeur->ecole() ? RunCosts::CREDIT_ECOLE : RunCosts::CREDIT;
+
+            return false;
+        } catch (PlafondAtteintException) {
+            $this->pdo->rollBack();
+            $run->bloque = RunCosts::PLAFOND;
 
             return false;
         } catch (\Throwable $e) {
@@ -658,7 +705,7 @@ final class Twin9Slice
             'tokens_out' => $issue['tokens_out'] ?? null,
             'cout_microusd' => isset($issue['tokens_in'])
                 ? $this->couts->cout($reglage['fournisseur'], $reglage['modele'], (int) $issue['tokens_in'],
-                    (int) ($issue['tokens_out'] ?? 0), false, $run->credits())
+                    (int) ($issue['tokens_out'] ?? 0), false, $run->prix())
                 : null,
             'duree_ms' => (int) round(((float) $issue['duree']) * 1000),
         ];
@@ -717,7 +764,7 @@ final class Twin9Slice
         if (!empty($issue['debit']) && ($plafond || ($issue['attendre'] ?? null) !== null)) {
             // a rate refusal spends no attempt
             $reprise = microtime(true) + ($plafond ? self::PAUSE_PLAFOND : (float) $issue['attendre']);
-            if ($run->credits() && ($plafond || ($issue['http'] ?? null) === 429)) {
+            if ($run->instance() && ($plafond || ($issue['http'] ?? null) === 429)) {
                 // the instance's key: every run of the slice rests from this provider as long
                 $this->repos[$fournisseur] = max($this->repos[$fournisseur] ?? 0.0, $reprise);
             }

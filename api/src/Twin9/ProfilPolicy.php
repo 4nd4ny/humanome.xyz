@@ -19,10 +19,11 @@ use stdClass;
  * owner's for a test run (T15: a draft serves only its author's test runs,
  * while they author drafts — AUTEURS), a template set its owner may choose
  * (T14: the v9.8's, the instance's default, a copy of theirs while they
- * belong to the atelier — TemplateSets::pour), the instance's key — never
- * the personal key since ADR-013 §6 —, the Anthropic models the instance
- * prices (T10). The schema says what a profile
- * is; this says what its owner may pick (admettre(), at its registration and
+ * belong to the atelier — TemplateSets::pour), the instance's key or its
+ * school's, at Anthropic only — never the personal key since ADR-013 §6;
+ * the school that pays is the launch's (Payeurs) —, the Anthropic models
+ * the instance prices (T10). The schema says what a profile is; this says
+ * what its owner may pick (admettre(), at its registration and
  * at its launch), and what a launch — or a resumption — asks besides
  * (admettreAuLancement()): every provider its calls reach open on the
  * instance, with its instance key, and another provider's model priced with
@@ -41,7 +42,15 @@ final class ProfilPolicy
     /** Why a profile on the personal key no longer leaves (ADR-013 §6), at its registration, launch and resumption. */
     public const CLE_PERSONNELLE_REFUSEE = 'Profil refusé — /cle : la clé personnelle ne sert plus aux analyses du '
         . 'serveur (une analyse du serveur ne peut pas garder la clé de votre navigateur, et humanome ne garde plus '
-        . 'les clés de ses utilisateurs) ; choisissez la clé de l’instance';
+        . 'les clés de ses utilisateurs) ; choisissez la clé de l’instance ou celle de votre école';
+
+    /**
+     * Why a profile on its school's key that reaches another provider than
+     * Anthropic is refused (ADR-013 §6): the guard of ADR-012 §5, now the
+     * school's, the holder of its key, who could read back what is sent with
+     * it.
+     */
+    public const CLE_ECOLE_ANTHROPIC = 'Profil refusé — /cle : la clé de votre école ne sert que chez Anthropic ; ';
 
     public function __construct(private readonly PDO $pdo, private readonly Twin9Config $config)
     {
@@ -89,6 +98,15 @@ final class ProfilPolicy
                 . 'les calques archivés votent déjà au consensus, ses traces y compteraient deux fois', 422);
         }
         $combinaisons = (new CallSettings($profil))->combinaisons();
+        // its school's key reaches Anthropic only, closed by default (ADR-013 §6); the school that pays is the launch's
+        if (($profil->cle ?? 'instance') === 'ecole') {
+            foreach ((new CallSettings($profil))->atteints() as $etape => $reglage) {
+                if ($reglage['fournisseur'] !== Fournisseurs::DEFAUT) {
+                    throw new Twin9Exception(self::CLE_ECOLE_ANTHROPIC . $etape . ' appelle '
+                        . self::libelle($reglage['fournisseur']), 422);
+                }
+            }
+        }
         // a set no longer offered (a former default, a copy out of the atelier) refuses its profile, as the
         // personal key does: the profile keeps it until its owner chooses another
         if (!\in_array($profil->gabarits, (new TemplateSets($this->pdo))->pour($userId), true)) {

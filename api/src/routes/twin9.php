@@ -35,7 +35,7 @@ declare(strict_types=1);
  * User routes (T3b — any logged-in user, ADR-010 §3/§4). The proxied call of
  * the browser's engine, POST /api/twin9/appel, left with that engine (T11):
  * the runs execute on the server (ADR-011, routes/twin9-runs.php).
- *   POST /api/twin6/appel                  open cartography (Twin6) on credits
+ *   POST /api/twin6/appel                  open cartography (Twin6) on credits: its own, or its school's (ADR-013 §4)
  *   GET  /api/twin9/meta                   what the credit page and Twin6 read (no content)
  *   GET  /api/twin9/credit                 balance + last ledger events
  *   GET  /api/twin9/facture?annee=&mois=   monthly recap invoice (own account)
@@ -55,6 +55,12 @@ use Humanome\Auth\Session;
 use Humanome\Db;
 use Humanome\Env;
 use Humanome\Etablissement\Ecole;
+use Humanome\Etablissement\EcoleCles;
+use Humanome\Etablissement\Ecoles;
+use Humanome\Etablissement\GrandLivreLocal;
+use Humanome\Etablissement\Payeurs;
+use Humanome\Etablissement\PlafondAtteintException;
+use Humanome\Keys\KeyVault;
 use Humanome\Llm\AnthropicFlux;
 use Humanome\Llm\HttpClientException;
 use Humanome\Llm\LlmRuntime;
@@ -365,15 +371,19 @@ return function (App $app): void {
     // come here — it runs client-side with the user's own key (free).
     // Response matches the engine proxy-provider contract {text, usage, model,
     // stopReason} (providers/index.js).
+    //
+    // Who pays (ADR-013 §4, §2 d): {payeur?: "personnel"|id of a school|null}
+    // — by default their school when they have one only (Payeurs). Their
+    // school pays on its key when it has one (the cap alone counts the cost,
+    // the list price), else on the instance's from its credit, at the real
+    // cost × (1 + its surtax) instead of the contribution; its learner's cap
+    // for the month first, in one transaction (GrandLivreLocal). A school's
+    // balance is never told to its learner.
     // ------------------------------------------------------------------
     $app->post('/twin6/appel', $wrap(function (Request $request, Response $response) use ($json, $parseBody, $sessionUserId, $twin6MaxPayloadBytes): Response {
         $userId = $sessionUserId();
         if ($userId === null) {
             return $json($response, ['error' => 'Authentification requise'], 401);
-        }
-        $apiKey = Env::get('ANTHROPIC_API_KEY');
-        if ($apiKey === '') {
-            return $json($response, ['error' => 'Service indisponible'], 503);
         }
 
         $raw = (string) $request->getBody();
@@ -410,18 +420,66 @@ return function (App $app): void {
         }
         $maxTokens = max(256, min($sortieMax, $maxTokens));
 
-        // Worst-case reservation at the TWIN6 margin (+10 %), atomic (no
-        // overdraft), reconciled to the real cost after (security finding A),
-        // priced with the 'twin6' protocole.
-        $credits = new CreditService(Db::get());
+        // Who pays, checked again, and with which key (ADR-013 §4): the school's own when it has one, else the
+        // instance's — whose absence answers 503 as before.
+        ['payeur' => $payeur, 'cle' => $voie] = (new Payeurs(Db::get()))->pourCartographieOuverte($userId,
+            $body['payeur'] ?? null);
+        $ecoleId = $payeur->estEcole() ? (int) $payeur->ecoleId : null;
+        $eleve = $ecoleId !== null && $ecoleId !== $userId ? $userId : null;
+        if ($voie === 'ecole') {
+            $master = KeyVault::masterKeyFromEnv();
+            $apiKey = $master === null ? null : (new EcoleCles(Db::get(), $master))->lire((int) $ecoleId);
+        } else {
+            $apiKey = Env::get('ANTHROPIC_API_KEY');
+        }
+        if ($apiKey === null || $apiKey === '') {
+            return $json($response, ['error' => 'Service indisponible'], 503);
+        }
+        // its price: the Twin6 contribution for its own balance; its school's factor (1 + surtax, 1.0 on its key)
+        $facteur = $payeur->estEcole() ? $payeur->facteur : null;
+        $mois = Ecoles::mois();
+        $credite = $voie === 'instance';
+        /** What its reservation gives back (a refund, a reconciliation), on the connection given. */
+        $rendre = static function (\PDO $pdo, int $montant, string $libelle, ?int $entree = null, ?int $sortie = null)
+                                   use ($userId, $modele, $ecoleId, $eleve, $mois, $credite): void {
+            if ($ecoleId === null) {
+                (new CreditService($pdo))->adjust($userId, $montant, $libelle, $modele, $entree, $sortie);
+
+                return;
+            }
+            (new GrandLivreLocal($pdo))->regler($ecoleId, $eleve, $mois, $montant, $credite, $libelle, $modele, $entree,
+                $sortie);
+        };
+
+        // Worst-case reservation at the TWIN6 margin (+10 %) — at its school's factor when it pays —, atomic (no
+        // overdraft), reconciled to the real cost after (security finding A), priced with the 'twin6' protocole.
         $promptBytes = \strlen($prompt) + ($system !== null ? \strlen($system) : 0);
-        $reserve = max(1, (int) Twin9Config::cout($grille, $modele, $promptBytes, $maxTokens, 'twin6'));
+        $reserve = max(1, (int) Twin9Config::cout($grille, $modele, $promptBytes, $maxTokens, 'twin6', false, true,
+            $facteur));
         try {
-            $credits->debit($userId, $reserve, 'twin6/cartographie (réserve)', $modele);
-        } catch (SoldeInsuffisantException $e) {
+            if ($ecoleId === null) {
+                (new CreditService(Db::get()))->debit($userId, $reserve, 'twin6/cartographie (réserve)', $modele);
+            } else {
+                // the learner's cap for the month first, then the school's credit on the instance's key
+                (new GrandLivreLocal(Db::get()))->reserver($ecoleId, $eleve, $mois, $reserve, $credite,
+                    'twin6/cartographie (réserve)', $modele);
+            }
+        } catch (PlafondAtteintException $e) {
             return $json($response, [
+                'error' => 'Plafond de votre école atteint pour ce mois',
+                'code' => 'plafond',
+                'reste_microusd' => $e->reste(),
+                'requis_estime_microusd' => $reserve,
+            ], 402);
+        } catch (SoldeInsuffisantException $e) {
+            // a school's balance is never told to its learner; a school paying for itself reads its own
+            return $json($response, $eleve === null ? [
                 'error' => 'Solde insuffisant',
                 'solde_microusd' => $e->getBalanceMicrousd(),
+                'requis_estime_microusd' => $reserve,
+            ] : [
+                'error' => 'Crédit de votre école insuffisant',
+                'code' => 'credit_ecole',
                 'requis_estime_microusd' => $reserve,
             ], 402);
         }
@@ -442,16 +500,16 @@ return function (App $app): void {
                 AnthropicCaller::entetes($apiKey),
                 AnthropicCaller::params($modele, $prompt, $maxTokens, 'coupee', null, $system), $delai);
         } catch (HttpClientException) {
-            $credits->adjust($userId, $reserve, 'twin6/cartographie (remboursement échec)', $modele);
+            $rendre(Db::get(), $reserve, 'twin6/cartographie (remboursement échec)');
 
             return $json($response, ['error' => 'Le fournisseur LLM est injoignable, réessayez plus tard.'], 502);
         } catch (\Throwable $e) {
             // Nothing left: the reservation goes back before the error.
-            $credits->adjust($userId, $reserve, 'twin6/cartographie (remboursement échec)', $modele);
+            $rendre(Db::get(), $reserve, 'twin6/cartographie (remboursement échec)');
             throw $e;
         }
         if (!$appel->parvenu()) {
-            $credits->adjust($userId, $reserve, 'twin6/cartographie (remboursement échec)', $modele);
+            $rendre(Db::get(), $reserve, 'twin6/cartographie (remboursement échec)');
             // Upstream error text is NOT relayed: generic messages (AnthropicCaller).
             $statut = $appel->statut();
             if ($statut === 429) {
@@ -475,13 +533,12 @@ return function (App $app): void {
         // so, the reservation stays debited — the worst case, never the site
         // — and the answer is still given, with what was really debited.
         $crediter = static function (int $montant, string $libelle, ?int $entree = null, ?int $sortie = null)
-                                     use ($userId, $modele): bool {
+                                     use ($rendre): bool {
             if ($montant === 0) {
                 return true;
             }
             try {
-                Db::avecReconnexion(static fn (\PDO $pdo) => (new CreditService($pdo))
-                    ->adjust($userId, $montant, $libelle, $modele, $entree, $sortie));
+                Db::avecReconnexion(static fn (\PDO $pdo) => $rendre($pdo, $montant, $libelle, $entree, $sortie));
 
                 return true;
             } catch (\Throwable $e) {
@@ -491,7 +548,7 @@ return function (App $app): void {
             }
         };
         $conclure = static function () use ($appel, $crediter, $grille, $reserve, $modele, $promptBytes, $maxTokens,
-                                            $delai): array {
+                                            $delai, $facteur): array {
             if ($appel->refuseEnFlux()) {
                 // An error before the answer began: a refusal, billed nothing (AnthropicFlux).
                 $crediter($reserve, 'twin6/cartographie (remboursement échec)');
@@ -499,7 +556,7 @@ return function (App $app): void {
                 return [502, ['error' => 'Erreur du fournisseur LLM, réessayez plus tard.']];
             }
             [$entree, $sortie] = $appel->usageAFacturer($promptBytes, $maxTokens);
-            $cout = (int) Twin9Config::cout($grille, $modele, $entree, $sortie, 'twin6');
+            $cout = (int) Twin9Config::cout($grille, $modele, $entree, $sortie, 'twin6', false, true, $facteur);
             if ($appel->complet()) {
                 if (!$crediter($reserve - $cout, 'twin6/cartographie (réconciliation)', $entree, $sortie)) {
                     $cout = $reserve;
@@ -542,7 +599,9 @@ return function (App $app): void {
     // (Twin6) read: the Twin6 offer (margined prices), the packs, whether
     // PayPal is configured, the referential's structure, the own balance and
     // whether this account may buy (a school only, ADR-013 §5: the server
-    // says it, the page does not guess it from the roles). NEVER content.
+    // says it, the page does not guess it from the roles), and who may pay
+    // its paid usage (ADR-013 §4: its schools, its own balance). NEVER
+    // content.
     // Since T11 it no longer lists the steps, the Twin9 offer or the
     // pipeline's settings, which only the browser's engine read; since
     // 2026-10-20, nor the promotion's state; since ADR-013, nor whether a
@@ -570,6 +629,9 @@ return function (App $app): void {
             // a school buys; another account spends its remaining balance down, and is told why (ADR-013 §2 c, e)
             'peut_acheter' => $ecole,
             'achat_pourquoi' => $ecole ? null : Ecole::ACHAT_POURQUOI,
+            // who may pay their paid usage (ADR-013 §4): each of their schools — what it may still pay for them this
+            // month, never its balance to a learner — and their own balance (Payeurs::possibles())
+            'payeurs' => (new Payeurs(Db::get()))->possibles($userId),
         ]);
     }));
 

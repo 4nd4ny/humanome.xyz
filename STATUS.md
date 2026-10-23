@@ -46,9 +46,9 @@ autre fournisseur qu'Anthropic, que l'administrateur ouvre (entrée du 2026-10-2
 ## Fait
 
 - 2026-10-22 — **Phase D : corrections de la revue (même branche `feat/phase-d-twin9`, non
-  poussée, rien déployé).** Treize constats confirmés, dont deux en double (la graine, « non
-  conservées ») : huit commits `fix:`, chacun avec le test qui échouait avant lui, un `docs:`, un
-  `test(e2e):` et cette entrée. `Twin_v9` (t9-s2, a1d84bf) n'est pas modifié ; aucun appel LLM réel.
+  poussée, rien déployé).** Douze constats confirmés, dont deux paires en double (la graine,
+  « non conservées ») : dix défauts, huit commits `fix:`, chacun avec le test qui échouait avant
+  lui, un `docs:`, un `test(e2e):` et cette entrée. `Twin_v9` (t9-s2, a1d84bf) n'est pas modifié ; aucun appel LLM réel.
   - `e92b0e5` — **un tableau de traces sans sa fermeture n'emporte plus les journées qui le
     suivent** (`lib/twin9/marques.js`) : une ouverture orpheline restait appariée à la fermeture
     du tableau d'une journée suivante, et tout le texte d'entre eux partait, en silence, de la

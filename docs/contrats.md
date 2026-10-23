@@ -2859,4 +2859,7 @@ n'est pas visible ici : le recours reste « Renvoyer le code ».
 | `POST` | `/api/admin/waitlist/lift` | « Tout lever », dans l'ordre, 200 comptes au plus par appel, arrêté au premier courriel refusé : `{lifted, failed, remaining}` (`failed` : 0 ou 1) |
 
 `GET /api/admin/monitoring` compte la liste dans `utilisateurs.enListeAttente`
-(ces comptes comptent aussi dans `nonActives`).
+(ces comptes comptent aussi dans `nonActives`). Sa fenêtre de `days` jours et
+ses séries `parJour` sont en journées UTC (2026-10-23, UC-ADM-06 RG1), comme
+les budgets journaliers et le mois des crédits offerts ; la forme de la
+réponse ne change pas.

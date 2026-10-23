@@ -197,7 +197,7 @@ rejouant les fixtures : aucun appel réseau réel).
 | [UC-ADM-03](administration/UC-ADM-03-valider-paquet-defaut-reglages.md) | Valider le paquet par défaut et les réglages | 12 | 14 | 2 |
 | [UC-ADM-04](administration/UC-ADM-04-configurer-demo.md) | Configurer la démo publique | 34 | 27 | 2 |
 | [UC-ADM-05](administration/UC-ADM-05-superviser-twin9.md) | Superviser Twin9 | 21 | 21 | 4 |
-| [UC-ADM-06](administration/UC-ADM-06-monitoring.md) | Consulter le monitoring | 23 | 17 | 3 |
+| [UC-ADM-06](administration/UC-ADM-06-monitoring.md) | Consulter le monitoring | 24 | 17 | 3 |
 
 ### Système et exploitation
 
@@ -209,7 +209,7 @@ rejouant les fixtures : aucun appel réseau réel).
 | [UC-SYS-04](systeme/UC-SYS-04-construire-artefacts-derives.md) | Construire les données et artefacts dérivés | 9 | 19 | 3 |
 | [UC-SYS-05](systeme/UC-SYS-05-sauvegarder-restaurer.md) | Sauvegarder et restaurer la base | 0 | 8 | 6 |
 
-**Total : 61 cas d'utilisation, 1085 tests unitaires et 1233 tests fonctionnels identifiés, 192 anomalies de production documentées.**
+**Total : 61 cas d'utilisation, 1086 tests unitaires et 1233 tests fonctionnels identifiés, 192 anomalies de production documentées.**
 
 Les comptes portent sur les identifiants distincts (`UC-…-Unn`, `UC-…-Fnn`) présents dans les fichiers de tests ; un identifiant paramétré (`it.each`) compte pour un.
 <!-- catalogue:end -->

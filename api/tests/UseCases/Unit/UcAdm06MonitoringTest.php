@@ -6,6 +6,7 @@ namespace Humanome\Tests\UseCases\Unit;
 
 use Humanome\Admin\Monitoring;
 use Humanome\Auth\LoginJournal;
+use Humanome\Clock;
 use Humanome\Geo\CountryResolver;
 use Humanome\Geo\IpAnonymizer;
 use Humanome\MigrationRunner;
@@ -58,6 +59,9 @@ final class UcAdm06MonitoringTest extends TestCase
     protected function tearDown(): void
     {
         CountryResolver::setOverride(null);
+        Clock::setOverride(null);
+        self::$pdo->exec('SET timestamp = DEFAULT');
+        self::$pdo->exec('SET time_zone = DEFAULT');
         TestDb::restoreEnv();
     }
 
@@ -207,12 +211,12 @@ final class UcAdm06MonitoringTest extends TestCase
         $ada = AdmSupport::user(self::$pdo, 'ada@example.org', 'Ada', ['apprenant']);
         self::$pdo->exec(
             "INSERT INTO llm_usage_daily (usage_date, requests, input_tokens, output_tokens, estimated_cost_usd) VALUES
-             (CURDATE(), 12, 30000, 8000, 0.42), (CURDATE() - INTERVAL 1 DAY, 2, 1000, 500, 0.01),
-             (CURDATE() - INTERVAL 100 DAY, 5, 10000, 2000, 0.10)"
+             (UTC_DATE(), 12, 30000, 8000, 0.42), (UTC_DATE() - INTERVAL 1 DAY, 2, 1000, 500, 0.01),
+             (UTC_DATE() - INTERVAL 100 DAY, 5, 10000, 2000, 0.10)"
         );
         self::$pdo->exec(
             "INSERT INTO tuteur_usage_daily (usage_date, requests, input_tokens, output_tokens, estimated_cost_usd)
-             VALUES (CURDATE(), 3, 900, 300, 0.002)"
+             VALUES (UTC_DATE(), 3, 900, 300, 0.002)"
         );
         self::$pdo->exec(
             "INSERT INTO twin9_credit_events (user_id, kind, amount_microusd, label, model, tokens_in, tokens_out, created_at) VALUES
@@ -405,5 +409,52 @@ final class UcAdm06MonitoringTest extends TestCase
 
         self::assertSame([3, 2, 1], [$u['total'], $u['nonActives'], $u['enListeAttente']]);
         self::assertSame(['total', 'nonActives', 'enListeAttente', 'actifsMaintenant'], \array_slice(array_keys($u), 0, 4));
+    }
+
+    #[TestDox('UC-ADM-06-U24 — journées UTC (RG1) : à 00 h 30 à Paris (22 h 30 UTC la veille), days=1 compte la journée UTC en cours — compteurs démo et tuteur (usage_date en UTC) et événements datés par MySQL à l’heure de Paris, rangés ensemble sous cette date ; la veille UTC reste dehors')]
+    public function testU24DaysAreUtcDaysAtHalfPastMidnightInParis(): void
+    {
+        // Le 23 octobre 2026 à 00 h 30 à Paris (heure d'été, UTC+2) : le 22 à 22 h 30 UTC.
+        $now = gmmktime(22, 30, 0, 10, 22, 2026);
+        $ada = AdmSupport::user(self::$pdo, 'ada@example.org', 'Ada', ['apprenant']);
+        // Les deux horloges figées au même instant : PHP (Clock) et la session MySQL,
+        // à l'heure de Paris, où NOW() écrit « 2026-10-23 00:30:00 ».
+        Clock::setOverride(static fn (): int => $now);
+        self::$pdo->exec("SET time_zone = '+02:00'");
+        self::$pdo->exec('SET timestamp = ' . $now);
+
+        // Les compteurs démo et tuteur, comme UsageCounters les date (gmdate) : le 22 et le 21.
+        self::$pdo->exec(
+            "INSERT INTO llm_usage_daily (usage_date, requests, input_tokens, output_tokens, estimated_cost_usd) VALUES
+             ('2026-10-22', 4, 1000, 200, 0.01), ('2026-10-21', 9, 9000, 900, 0.09)"
+        );
+        self::$pdo->exec(
+            "INSERT INTO tuteur_usage_daily (usage_date, requests, input_tokens, output_tokens, estimated_cost_usd)
+             VALUES ('2026-10-22', 1, 100, 50, 0.001)"
+        );
+        // Datés par MySQL : à l'instant (le 23 à 00 h 30 à Paris), et une connexion de la
+        // veille UTC (le 22 à 1 h 30 à Paris, le 21 à 23 h 30 UTC).
+        self::$pdo->exec("UPDATE users SET created_at = NOW() WHERE id = {$ada}");
+        self::$pdo->exec(
+            "INSERT INTO twin9_credit_events (user_id, kind, amount_microusd, label, model, tokens_in, tokens_out, created_at)
+             VALUES ({$ada}, 'debit', -100000, 'leger', 'claude-sonnet-5', 1000, 500, NOW())"
+        );
+        self::$pdo->exec(
+            "INSERT INTO audit_events (user_id, type, details, created_at) VALUES
+             ({$ada}, 'login', '{}', NOW()), ({$ada}, 'login', '{}', NOW() - INTERVAL 23 HOUR)"
+        );
+
+        $o = self::overview(1);
+
+        $t = $o['tokens'];
+        self::assertSame(4, $t['periode']['demo']['requetes'], 'le compteur démo de la journée UTC en cours');
+        self::assertSame(1, $t['periode']['tuteur']['requetes']);
+        self::assertSame(1, $t['periode']['twin9']['appels']);
+        self::assertSame(['2026-10-22'], array_column($t['parJour'], 'date'), 'une seule journée, la journée UTC : démo, tuteur et Twin9 ensemble');
+        self::assertSame([4, 1, 1], [$t['parJour'][0]['demo']['requetes'], $t['parJour'][0]['tuteur']['requetes'], $t['parJour'][0]['twin9']['appels']]);
+        self::assertSame([['date' => '2026-10-22', 'reussies' => 1, 'echouees' => 0]], $o['connexions']['parJour'], 'la connexion de la veille UTC est hors fenêtre');
+        self::assertSame([['date' => '2026-10-22', 'n' => 1]], $o['utilisateurs']['parJour']);
+        self::assertSame(1, $o['utilisateurs']['nouveauxPeriode']);
+        self::assertSame(13, $t['toutTemps']['demo']['requetes']);
     }
 }

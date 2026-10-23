@@ -48,6 +48,11 @@ la section Export de son espace) et utilise la « Zone de danger ».
   d'un apprenant, et les contenus collectifs d'un contributeur (versions de
   référentiel, de compétence et de prompt, accès Golden accordés, protocole
   Twin9 : A5).
+- Un élève dont l'école paie des runs Twin9 : avant que ses runs ne partent,
+  ce que leurs appels tiennent encore — un lot chez Anthropic, un appel en vol
+  ou en attente — revient au crédit de l'école, un appel répondu payé à son
+  coût réel (ADR-013 §7, revue du lot S6b ; UC-ETA-05-F10) ; l'argent d'un
+  tiers ne part jamais avec lui.
 - Le navigateur repasse en visiteur : jeton oublié, navigation rafraîchie,
   message de confirmation.
 - L'adresse email est libérée (une nouvelle inscription redevient possible).
@@ -214,6 +219,7 @@ la section Export de son espace) et utilise la « Zone de danger ».
 - `api/tests/AuthAccountDeletionTest.php` — purge de chaque table, audit anonymisé, session requise, login impossible ensuite.
 - `api/tests/CartographiesPurgeTest.php`, `api/tests/CartographePurgeTest.php`, `api/tests/MasseRgpdPurgeTest.php` — cascades par module.
 - `api/tests/RgpdAuditTest.php` — aucune colonne utilisateur sans clé étrangère, graphe conforme au registre.
+- UC-ETA-05-F10, U18 — un élève supprimé rend à son école ce que ses runs tiennent encore ; un règlement qui arrive après sa suppression rend le crédit quand même.
 - `web/src/views/AccountView.test.jsx`, `web/src/api/client.test.js` — confirmation et appel isolés.
 - `web/e2e/parcours-apprenant.e2e.js` — étapes « Suppression du compte » puis « lien de partage 404 » :
   **inatteignables** tant que l'étape « Création de compte » du même parcours, périmée depuis D5,

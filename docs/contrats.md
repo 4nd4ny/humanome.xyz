@@ -1291,9 +1291,10 @@ arrêt brut assaini (§8), modèle servi gardé s'il est un identifiant. La
 clé (`RunKey::pour`, par fournisseur) : celle de l'instance, lue dans la
 variable du registre (`OPENAI_API_KEY`, `MISTRAL_API_KEY`, `GOOGLE_API_KEY`,
 `XAI_API_KEY`, `OPENROUTER_API_KEY`, des secrets de `api/config/app.php`) ;
-pour un run lancé avant l'ADR-013 sur la clé personnelle, jusqu'à sa fin,
-celle que son propriétaire avait gardée, chez Anthropic seulement, refusée
-appel par appel pour tout autre fournisseur ; plus aucun réglage
+pour les lots d'un run lancé avant l'ADR-013 sur la clé personnelle — run
+qui s'arrête à sa première tranche depuis (revue du lot S6b) —, celle que son
+propriétaire avait gardée, chez Anthropic seulement, pour les relever puis les
+supprimer, refusée pour tout autre fournisseur ; plus aucun réglage
 d'administration ne la conditionne (`twin9_cle_perso_ouverte` est parti).
 
 ### 8.2 L'empreinte des réglages
@@ -2975,12 +2976,22 @@ crédits (Twin6). Ce que l'API en dit :
 - **Le profil** : `cle` admet `ecole` (§7) ; **la configuration du run**
   `execution_prevue.payeur` (§8.9) ; **le consentement d'une cohorte**
   (`GET /api/etablissement/cohortes/{id}`, `consentement`) dit désormais « …
-  et le montant de ce qu'il paie pour vos analyses (jamais leur contenu). ».
+  et le montant de ce qu'il paie pour vos analyses (jamais leur contenu sur
+  humanome ; s'il les paie avec sa propre clé Anthropic, les résultats des
+  appels partis par lots restent lisibles dans sa Console Anthropic). »
+  (revue du lot S6b : la Console nommée).
+- **`GET /api/etablissement/ecole`** gagne `partis` `{nombre, moisMicrousd,
+  totalMicrousd}` : ce qu'ont engagé, ensemble, les élèves qui ont quitté ses
+  cohortes — jamais qui ; `eleves` ne liste plus que les membres de ses
+  cohortes, et `depenseMoisMicrousd` compte les deux (revue du lot S6b).
 - **La base** (migration 037) : `ecoles`, `ecole_cles`, `ecole_consommations`,
   `twin9_runs.payeur` / `payeur_id` / `facteur_prix`,
   `twin9_credit_events.beneficiaire_id`, `twin9_appels.mois_reserve`,
   `twin9_lots.cle = "ecole"`, `twin9_lots_a_effacer.ecole_id` ; des
-  expansions, que la release précédente ignore.
+  expansions, dont la release précédente lit le schéma sans erreur, mais pas
+  les données (un run payé par une école y passerait pour celui de son
+  élève) : avant un retour arrière par-dessus 037, la procédure de
+  `docs/administration.md`.
 - **Ce qui ne change pas** : les runs de masse (ADR-013 §4 : leur
   facturation après coup jusqu'à un lot à part), la cartographie ouverte sur
   la clé du navigateur, la démonstration et le tuteur (les crédits offerts,

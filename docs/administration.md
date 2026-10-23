@@ -296,6 +296,37 @@ protégée comme `/api/admin/maintenance`, ou le Mac sur la base de production)
 et le jour de l'avis et de la purge sont des décisions de Christian ; rien n'a
 été avisé ni purgé.
 
+### Avant un retour arrière par-dessus la migration 037 (ADR-013 §10, ADR-008)
+
+La migration 037 est une expansion : la release d'avant lit son schéma sans
+erreur. Mais elle ne connaît pas `twin9_runs.payeur` : pour elle, un run qu'une
+école paie sur la clé de l'instance est un run de son élève — chacun de ses
+règlements rendrait à l'élève ce que l'école a avancé (`RunCosts::solder`), et
+ses appels suivants seraient débités de l'élève, à la contribution — et un run
+de la voie `ecole` partirait sur la clé de l'instance, au prix catalogue, sans
+aucun débit (`RunKey`, `Twin9Run::credits()`). La release de S6a (`1f74de7`) fait
+de même. Avant `node scripts/deploy/deploy.mjs rollback` vers l'une d'elles :
+
+1. Compter, en lecture seule (phpMyAdmin) :
+   ```sql
+   SELECT COUNT(*) FROM twin9_runs WHERE payeur = 'ecole' AND statut = 'en_cours';
+   SELECT COUNT(*) FROM twin9_appels a JOIN twin9_runs r ON r.id = a.run_id
+    WHERE r.payeur = 'ecole' AND a.reserve_microusd IS NOT NULL;
+   SELECT COUNT(*) FROM twin9_runs WHERE payeur = 'ecole' AND statut IN ('annule', 'echoue');
+   ```
+2. Tant que l'un des deux premiers n'est pas nul, **ne pas revenir en arrière** :
+   attendre que ces runs finissent, ou que leurs propriétaires les annulent
+   (« Annuler » sur la page du run : ce que ses appels tiennent revient à l'école ;
+   un lot chez Anthropic, au tick qui le relève). Rien ne le vérifie à la place
+   de l'opérateur : la release d'avant ne connaît pas cette règle.
+3. Le troisième compte les runs arrêtés qu'un élève pourrait reprendre sur la
+   release d'avant, qui les prendrait pour les siens (ou, sur la voie `ecole`,
+   les ferait partir sans débit) : un retour arrière par-dessus 037 reste donc
+   bref, le temps de redéployer la release d'après.
+4. Un retour arrière fait malgré tout se corrige à la main : le grand livre de
+   l'école et le solde de l'élève (les événements « Twin9 run N · … » d'un run
+   `payeur = 'ecole'` écrits pendant ce temps).
+
 ### Les écoles et RESPIRE#0 (ADR-013, lot S6b)
 
 Une école est un compte qui porte l'habilitation `etablissement`, que seul

@@ -210,7 +210,7 @@ Le promptologue ouvre **Rétrospective** dans la navigation de l'atelier
 | UC-PRO-06-F03 | E7 | API | Cartographie d'autrui : même 404 qu'inconnue | idem |
 | UC-PRO-06-F04 | RG1 (côté serveur) | API | Le document relu ne porte que les clés du schéma et aucune feuille ne reprend la journée ni deux paragraphes consécutifs ; témoins détectés | idem |
 | UC-PRO-06-F05 | Nominal + RG1 | IHM | Texte local retrouvé, 8 appels sur ce texte, 1.03 nouvellement détectée ; le texte ne part que vers `api/llm`, aucune autre écriture serveur | `web/test/usecases/functional/uc-pro-06-retrospective.test.jsx` |
-| UC-PRO-06-F06 | A1 + A2 | IHM | `<App/>` : texte collé, clé Anthropic, modèle par défaut ; le texte collé ne part que vers le fournisseur | idem |
+| UC-PRO-06-F06 | A1 + A2 | IHM | `<App/>` : texte collé, clé Anthropic, modèle par défaut ; la règle R1 dite sous la clé (ADR-013 §5) ; le texte collé ne part que vers le fournisseur | idem |
 | UC-PRO-06-F07 | A3 | IHM | « Aucun changement » | idem |
 | UC-PRO-06-F08 | A4 | IHM | « disparue (désormais : renvoi au cartographe) » | idem |
 | UC-PRO-06-F09 | E1 | IHM | Sans rôle : section refusée, aucune cartographie chargée | idem |

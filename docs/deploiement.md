@@ -117,6 +117,9 @@ node scripts/deploy/deploy.mjs rollback   # repointe current.txt sur la précéd
 ```
 
 Le rollback est **code-seul** (les migrations forward-only restent compatibles).
+Par-dessus la migration 037 (les écoles, ADR-013), le schéma reste compatible,
+mais pas ses données : d'abord la procédure de `docs/administration.md`
+(« Avant un retour arrière par-dessus la migration 037 »).
 Les assets front hashés des releases précédentes restent présents jusqu'à leur
 purge (N=3), donc un `index.html` antérieur reste servable ; pour revenir aussi
 le front, redéployer le `static` de la version cible.

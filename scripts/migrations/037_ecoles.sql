@@ -61,7 +61,13 @@
 --
 -- Forward-only, expand pattern (ADR-008): new tables, nullable or defaulted
 -- columns, a value appended at the end of an enumeration; the previously
--- pointed release simply ignores them.
+-- pointed release reads this schema without an error — but not its data: it
+-- knows no payer, and would take a run its school pays for its learner's (its
+-- settlements giving the learner what the school advanced, its next calls
+-- debiting the learner), and send a run of the `ecole` lane on the instance's
+-- key, free. Before any rollback over 037: the procedure of
+-- docs/administration.md (« Avant un retour arrière par-dessus la migration
+-- 037 »).
 
 CREATE TABLE ecoles (
     user_id INT UNSIGNED NOT NULL,

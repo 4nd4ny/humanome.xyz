@@ -239,10 +239,16 @@ page Essayer (UC-VIS-03), ou par l'adresse.
   expert.
 - **A9 — Son école paie** (voie crédits, étapes 3-6 ; sprint 6, lot S6b ;
   ADR-013 §2 d, §4) : un apprenant membre d'une cohorte d'une école lit
-  « Avec les crédits que paie mon école (le coût réel et sa surtaxe) » et
-  « Payé par votre école, … Elle voit le montant de ce qu'elle paie pour vous,
-  jamais le contenu de vos analyses. » ; avec plusieurs écoles, ou son école
-  et son solde restant, le menu « Qui paie » (UC-ETA-05). Chaque appel porte
+  « Avec les crédits que paie mon école (le coût réel et sa surtaxe) » — ou,
+  quand l'école a sa clé, « Avec ce que paie mon école, sur sa propre clé
+  Anthropic (le coût réel, rien de plus) », la note disant que rien n'est
+  débité ici ; son solde choisi, « Avec mon solde restant (+10 % de
+  contribution) » (revue du lot S6b) — et « Payé par votre école, … Elle voit
+  le montant de ce qu'elle paie pour vous, jamais le contenu de vos analyses
+  sur humanome ; avec sa propre clé Anthropic, elle peut relire dans sa
+  Console Anthropic les résultats des appels partis par lots. » ; avec
+  plusieurs écoles, ou son école et son solde restant, le menu « Qui paie »
+  (UC-ETA-05). Chaque appel porte
   `payeur` (l'identifiant de l'école, ou `"personnel"`) : le serveur le
   revérifie, réserve sur le plafond de l'élève du mois puis débite le crédit
   de l'école à × (1 + sa surtaxe) — ou, si l'école a sa clé, appelle Anthropic
@@ -251,7 +257,10 @@ page Essayer (UC-VIS-03), ou par l'adresse.
   mois-ci (jamais son crédit) : trop bas, le lancement est bloqué avant tout
   appel (« Ce que votre école peut encore payer pour vous ce mois-ci ne suffit
   pas… », sans proposer d'acheter, en proposant de demander à l'école de
-  relever son plafond). Un refus du serveur : `402 {code: "plafond"}` ou
+  relever son plafond — de le régler, s'il vaut encore 0 — et, s'il a un
+  solde à lui, de choisir « Mon solde restant » dans « Qui paie » ; un crédit
+  de l'école trop bas pour ce qui reste du plafond est dit sans montant).
+  Un refus du serveur : `402 {code: "plafond"}` ou
   `{code: "credit_ecole"}` (UC-ETA-05 A3, UC-APP-11 E12), `422` pour un élève
   de deux écoles sans choix (UC-ETA-05 A4).
 
@@ -572,6 +581,7 @@ montage (`humanome-mode`), sauf F32, qui rejoue le mode simple (A8).
 | UC-APP-09-F34 | A7 | IHM | Un texte déjà en feuilles est repris tel quel (« 1 journée datée ») ; un portfolio sans journée datée ne remplace rien et renvoie à « Mon portfolio » ; sans IndexedDB, pas de liste | idem |
 | UC-APP-09-F35 | A6, E14, RG11 | IHM | Crédits offerts du mois épuisés (`503` `offerts_epuises`) : le visiteur lit le message du serveur (« revenez le 1er novembre »), un compte aussi, suivi de ses deux autres voies, jamais « pour aujourd'hui » ; un seul appel, bouton de nouveau cliquable | `web/test/usecases/functional/uc-app-09-cartographie-ouverte-twin6.test.jsx` |
 | UC-APP-09-F36 | A9 | IHM | Son école paie : la voie et la phrase le disent, chaque appel porte `payeur` ; ce qu'elle peut encore payer pour lui trop bas → lancement bloqué avant tout appel, sans proposer d'acheter | idem |
+| UC-APP-09-F37 | A9 | IHM | La voie dit qui paie et comment : sur la clé de l'école (ni surtaxe ni débit ici) ; plafond non réglé (0) et un solde à lui : le refus dit de le demander et propose « Mon solde restant » ; son solde choisi, la contribution | idem |
 | UC-APP-09-F10 | Nominal | API | 8 appels : contrat, `text` amont intact et `model`, coût 4 400 µUSD chacun (Sonnet 5 à 2 / 10), prompt public transmis tel quel, grand-livre réserve/réconciliation | `api/tests/UseCases/Functional/UcApp09CartographieOuverteTwin6Test.php` |
 | UC-APP-09-F11 | Nominal (étape 2), RG7 | API | `/api/twin9/meta` : prix Twin6, référentiel, solde ; Twin6 fonctionne sans Twin9 importé | idem |
 | UC-APP-09-F12 | E7 | API | 401 sans session, aucun appel amont | idem |

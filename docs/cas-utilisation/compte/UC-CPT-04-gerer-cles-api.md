@@ -85,9 +85,12 @@ le script de purge (A7).
   /api/keys/{provider}` ; « Clé <fournisseur> recopiée dans ce navigateur, puis
   supprimée du serveur. », liste rechargée. L'assistant de run et la
   cartographie ouverte la pré-remplissent ensuite.
-- **A3 — Supprimer du serveur** : `DELETE /api/keys/{provider}` → `204` ;
-  « Clé <fournisseur> supprimée du serveur. », liste rechargée. La clé locale
-  éventuelle n'est pas touchée.
+- **A3 — Supprimer du serveur**, en deux temps (revue du lot S6b) : le premier
+  toucher arme seulement et prévient « Supprimée du serveur, elle ne sera plus
+  récupérable : recopiez-la d'abord si vous ne l'avez nulle part ailleurs. » ;
+  « Annuler » désarme ; « Confirmer la suppression » → `DELETE
+  /api/keys/{provider}` → `204` ; « Clé <fournisseur> supprimée du serveur. »,
+  liste rechargée. La clé locale éventuelle n'est pas touchée.
 - **A4 — La cartographie ouverte** (UC-APP-09 A2) : la voie « clé perso »
   pré-remplit la clé Anthropic mémorisée dans ce navigateur, dit la règle R1,
   propose « Mémoriser la clé dans ce navigateur », et ne lit plus aucune clé
@@ -99,7 +102,8 @@ le script de purge (A7).
   compte qui a l'habilitation `etablissement` (UC-ETA-02 RG8).
 - **A6 — Twin9 et les clés** (ADR-013 §6) : l'analyse approfondie, qui tourne
   sur le serveur, ne peut pas garder la clé du navigateur : elle part avec la
-  clé de la plateforme (UC-APP-10 A6) ; la section le dit. Elle ne demande
+  clé de la plateforme, ou avec celle de l'école de l'élève quand elle paie
+  pour lui et en a posé une (UC-APP-10 A6, A13) ; la section le dit. Elle ne demande
   aucune clé, Mistral AI comprise (minimisation, 2026-10-22).
 - **A7 — La purge des clés gardées** (administrateur, ADR-013 §8) :
   `php scripts/purger-cles-utilisateurs.php`, lancé à la main seulement —
@@ -114,8 +118,12 @@ le script de purge (A7).
   - `purger --confirmer` efface les clés avisées depuis 30 jours au moins,
     compte par compte, après l'annulation puis l'effacement chez Anthropic des
     lots soumis avec elles ; un compte dont un run est en cours sur sa clé
-    personnelle est reporté ; un événement d'audit par compte, ses fournisseurs
-    sans la clé ; sans `--confirmer`, il ne fait que compter.
+    personnelle est reporté, comme un compte dont un lot est peut-être encore
+    chez Anthropic (injoignable, une annulation pas encore finie : sa clé est
+    gardée, la seule qui puisse l'effacer, pour la fois suivante ; un lot
+    qu'Anthropic ne connaît plus ne retient rien) ; un événement d'audit par
+    compte, ses fournisseurs sans la clé ; sans `--confirmer`, il ne fait que
+    compter.
   Le jour de la purge et la façon de la lancer en production (pas de SSH sur
   l'hébergement) sont des décisions de Christian.
 
@@ -228,6 +236,7 @@ le script de purge (A7).
 | UC-CPT-04-U17 | `UserKeysPurge::notify` | Un courriel par compte (ses fournisseurs, la date de purge, comment recopier ou supprimer, jamais la clé), l'avis daté, un audit `{providers}` ; jamais deux fois ; un envoi refusé laisse le compte à aviser (A7, RG7) | idem |
 | UC-CPT-04-U18 | `UserKeysPurge::purge` | Les clés avisées depuis 30 jours au moins ; un lot de la clé annulé chez Anthropic avant ; un run en cours sur la clé personnelle reporte le compte ; un audit `{providers}` par compte ; rejouée, rien (A7, RG7) | idem |
 | UC-CPT-04-U19 | `scripts/purger-cles-utilisateurs.php` | Jamais lancé automatiquement : ni `api/src`, ni le déploiement, ni le cron, ni `docker`, ni la CI, ni le worker, ni la maintenance ne le nomment dans leur code ; inclus, il ne fait rien (A7) | idem |
+| UC-CPT-04-U21 | `UserKeysPurge::purge`, `RunPurge::lotsPersonnels`, `restants` | Un lot peut-être encore chez Anthropic (injoignable, annulation lente) reporte le compte, sa clé gardée ; un lot qu'Anthropic ne connaît plus ne retient rien ; plus tard, lots effacés puis clés (A7) | idem |
 | UC-CPT-04-U08 | `setLocalKey`, `getLocalKey`, `readLocalKeys` | Table `humanome-keys`, effacement (RG1) | `web/test/usecases/unit/uc-cpt-04-gerer-cles-api.test.jsx` |
 | UC-CPT-04-U09 | idem | Stockage corrompu ou plein toléré | idem |
 | UC-CPT-04-U10 | `run-launcher.js`, `keys.js`, `KEY_STAYS_IN_BROWSER` | Plus de `syncKeyToServer`, `fetchKeyFromServer` ni `storeKey` ; le message R1 (RG1) | idem |
@@ -236,6 +245,8 @@ le script de purge (A7).
 | UC-CPT-04-U13 | `ApiKeysSection` (seul, coutures `deps`) | Message serveur ou repli générique, pas de rechargement après un échec, rechargement après un succès ; un chargement réussi efface l'alerte (AN1 corrigée) | idem |
 | UC-CPT-04-U14 | `listKeys`, `revealKey`, `deleteKey` | URL (fournisseur encodé), méthode, `X-CSRF-Token` sur DELETE seulement ; plus de PUT | idem |
 | UC-CPT-04-U20 | `ApiKeysSection` — recopie | La clé écrite dans `humanome-keys` **avant** la suppression ; un stockage qui refuse → rien de supprimé (A2, E7) | idem |
+| UC-CPT-04-U22 | `ApiKeysSection` — suppression | En deux temps : armer prévient, « Annuler » désarme, seule la confirmation supprime (A3) | idem |
+| UC-CPT-04-U23 | `ApiKeysSection` — texte | Twin9 part avec la clé de la plateforme, ou celle de l'école quand elle paie et en a posé une (A6) | idem |
 
 ### Tests fonctionnels
 
@@ -255,7 +266,7 @@ le script de purge (A7).
 | UC-CPT-04-F12 | A7 | CLI | `purger --confirmer` : la clé avisée il y a 31 jours effacée, celle non avisée gardée ; des compteurs seulement | idem |
 | UC-CPT-04-F13 | Nominal | IHM | Assistant sans compte : clé locale pré-remplie, message R1, ni synchronisation ni récupération, run avec la clé, mémorisée, aucun appel `/api/keys` | `web/test/usecases/functional/uc-cpt-04-gerer-cles-api.test.jsx` |
 | UC-CPT-04-F14 | RG1 | IHM | Assistant connecté, avec une clé gardée sur le serveur : elle n'est pas lue, aucun appel `/api/keys`, la clé saisie gardée localement | idem |
-| UC-CPT-04-F15 | A1, A3, E4 | IHM | `<App/>` : message R1, plus de formulaire, clés « à supprimer » et date de purge ; 404 affiché ; « Supprimer du serveur » → DELETE + CSRF ; clé locale intacte ; aucune clé affichée | idem |
+| UC-CPT-04-F15 | A1, A3, E4 | IHM | `<App/>` : message R1, plus de formulaire, clés « à supprimer » et date de purge ; 404 affiché ; « Supprimer du serveur » puis « Confirmer la suppression » → DELETE + CSRF ; clé locale intacte ; aucune clé affichée | idem |
 | UC-CPT-04-F16 | A2 | IHM | « Recopier dans ce navigateur, puis supprimer » : GET puis DELETE, la clé dans `humanome-keys`, plus rien sur le serveur | idem |
 | UC-CPT-04-F17 | E4 | IHM | Recopie d'une clé disparue (`404`) : message, rien de supprimé ni d'écrit | idem |
 | UC-CPT-04-F18 | E1 | IHM | `503` affiché dans la section | idem |

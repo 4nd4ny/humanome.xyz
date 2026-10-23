@@ -143,13 +143,17 @@ crédit, menu du compte) ou y revient depuis PayPal.
 - **A6 — Un apprenant dont l'école paie** (étape 1, ADR-013 §4, lot S6b) :
   `GET /api/twin9/meta` dit ses payeurs possibles (`payeurs`) : chacune de ses
   écoles — son nom, si elle a une clé, son plafond par élève du mois, ce qu'il
-  en a engagé, ce qu'elle peut encore payer pour lui (`reste_credit_microusd`,
-  son plafond restant borné par le crédit de l'école ; `reste_cle_microusd`
-  sur sa clé) — jamais le crédit de l'école ; et son propre solde quand il en
-  a un. La vue montre « Votre école paie » : « École des Tilleuls paie vos
-  analyses approfondies et vos cartographies ouvertes sur crédits : il vous
-  reste 1,80 $ ce mois-ci, sur un plafond de 5,00 $ par mois », et qu'elle en
-  voit le montant, jamais le contenu. Ses appels sont débités de son école ;
+  en a engagé, ce qu'elle peut encore payer pour lui (`reste_credit_microusd`
+  et `reste_cle_microusd` : son plafond restant) et si le crédit de l'école le
+  couvre (`credit_suffisant`, un booléen) — jamais le crédit de l'école, même
+  plus bas (revue du lot S6b) ; et son propre solde quand il en a un. La vue
+  montre « Votre école paie » : « École des Tilleuls paie vos analyses
+  approfondies et vos cartographies ouvertes sur crédits : il vous reste
+  3,80 $ ce mois-ci, sur un plafond de 5,00 $ par mois » ; un crédit qui ne
+  couvre pas ce reste : « Le crédit de votre école ne couvre pas tout ce
+  qu'elle vous accorde ce mois-ci : une analyse peut s'arrêter en cours.
+  Prévenez-la, pour qu'elle le recharge. », sans montant ; et qu'elle en voit
+  le montant, jamais le contenu sur humanome. Ses appels sont débités de son école ;
   son grand livre à lui reste vide. Une école, elle, est renvoyée à son espace
   (`#/etablissement`) pour sa surtaxe, son plafond et sa clé (UC-ETA-05).
 
@@ -307,7 +311,7 @@ crédit, menu du compte) ou y revient depuis PayPal.
 | UC-APP-11-F09 | E1 | IHM | Anonyme : invitation ; copie statique : message | idem |
 | UC-APP-11-F10 | E6, E7 | IHM | Création d'ordre en `502` (PayPal en erreur), remboursement refusé : messages serveur | idem |
 | UC-APP-11-F32 | A5, E11 | IHM | Un apprenant : ni pack ni « Recharger », la raison affichée, son solde restant affiché et remboursable (« Seules les écoles rechargent. »), aucun ordre créé | idem |
-| UC-APP-11-F35 | A6 | IHM | « Votre école paie » : ce qu'elle peut encore payer pour lui ce mois-ci, son plafond, qu'elle en voit le montant ; une école est renvoyée à son espace | idem |
+| UC-APP-11-F35 | A6 | IHM | « Votre école paie » : son plafond restant ce mois-ci, son plafond, son crédit trop bas dit sans montant, qu'elle en voit le montant ; une école est renvoyée à son espace | idem |
 | UC-APP-11-F29 | A4 | IHM | `<App/>` : section inconnue, `CREDIT`, `credit/`, retour PayPal à barre finale (`credit/?paypal=retour&token=…`) → page Compte (« Profil »), aucun appel `twin9/…` (ni lecture du crédit, ni capture) ; `%63redit` → espace crédit ; `#/compte/` → page introuvable | idem |
 | UC-APP-11-F11 | Nominal | API | Crédit vide → ordre 20 $ (URLs de retour envoyées par la route) → capture → dépense réelle (l'école, au coût réel × 1,035 : RG10) → grand-livre → suivi → facture | `api/tests/UseCases/Functional/UcApp11GererCreditTwin9Test.php` |
 | UC-APP-11-F12 | A2, RG2 | API | Capture rejouée : même solde, une seule recharge ; pack de 20 $ mais capture de 12,34 $ → 12,34 $ crédités | idem |

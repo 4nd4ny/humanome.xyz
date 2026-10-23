@@ -10,8 +10,8 @@ retiré), l'ADR-010 (§3 : seule une école achète des crédits ; §4 : la clé
 plus celle de l'utilisateur, mais celle de son école) et l'ADR-012 (§5 : sa garde passe de la clé
 personnelle à la clé d'école).
 
-Mise en œuvre : les lots S6a et S6b (§10). À la date de cet ADR, le code n'a pas encore changé ;
-les références `fichier:ligne` sont celles de `main` (`9f623b1`).
+Mise en œuvre : les lots S6a et S6b (§10). Quand cet ADR a été écrit, le code n'avait pas encore
+changé : ses références `fichier:ligne` sont celles de `main` (`9f623b1`).
 
 Mis en œuvre le 2026-10-22, sur la branche `feat/ecoles` : S6a (les clés restent dans le navigateur,
 seule une école achète, migration 036) puis S6b (l'école paie, migration 037). Ce que S6b a fixé
@@ -23,6 +23,20 @@ de type `ecole` dont l'école est elle-même, sans plafond ; la surtaxe est born
 contrainte `CHECK` de la base ; un changement de payeur à la reprise attend que les lots qui tiennent
 encore une réserve de l'ancien se règlent (`409`). Le grand livre des écoles est
 `Etablissement\GrandLivreEcoles`, implémenté par `GrandLivreLocal` (§9).
+
+Revue du lot S6b (2026-10-22, même branche) : dix-huit constats confirmés (dix-sept défauts
+distincts), corrigés. Ce qu'ils ont fixé en plus, ou changé, de ce que disaient S6a et S6b : la voie d'un run suit son payeur — une école
+qui a sa clé Anthropic paie avec elle un run qui n'appelle qu'Anthropic, profil `instance` (le
+défaut) compris, et une reprise qui nomme son payeur reprend sa voie (§4, §6) ; une école ne paie
+jamais comme un particulier (`"personnel"` lui est refusé, `422`) ; l'élève lit son plafond restant
+et un booléen (`credit_suffisant`), jamais le crédit de son école, même plus bas ; un élève parti
+des cohortes n'est plus nommé à l'école, ses montants comptés avec ceux des élèves partis (§7) ;
+à la purge d'un élève, ce que tiennent encore ses runs payés par une école revient à l'école (§7) ;
+une clé d'école retirée annule d'abord ses lots, et un lot qu'aucune clé ne peut plus relever est
+perdu, ses appels et leurs réserves rendus (§6) ; retirer l'habilitation `etablissement` efface la
+clé de l'école ; un run sur une clé personnelle s'arrête à sa première tranche (§8, pas 3) ; la
+purge des clés garde celle d'un compte dont un lot est peut-être encore chez Anthropic (§8,
+pas 4) ; un retour arrière par-dessus 037 suit une procédure (§10).
 
 Les lots distants S6c (registre et grand livre communs avec EduChat) et S6d (Stripe, PayPal réel)
 ne sont pas décidés ici : chaque geste y demande l'accord de Christian. Le §9 décrit seulement
@@ -177,7 +191,7 @@ gardé, où et combien de temps.
 |---|---|---|---|---|
 | Twin9, voie `instance` | un particulier, hors de toute école | de l'instance | lui, sur son solde restant | coût réel × `marge` |
 | Twin9, voie `instance` | un élève, payeur « mon école » | de l'instance | son école | coût réel × (1 + surtaxe), sous le plafond par élève |
-| Twin9, voie `ecole` | un élève, payeur « mon école » | de l'école | l'école, chez son fournisseur | rien sur le crédit ; le coût réel compte sous le plafond par élève |
+| Twin9, voie `ecole` | un élève, payeur « mon école », son école ayant sa clé Anthropic et le run n'appelant qu'Anthropic (profil `instance` compris) | de l'école | l'école, chez son fournisseur | rien sur le crédit ; le coût réel compte sous le plafond par élève |
 | Twin9, voie `instance` ou `ecole` | un compte école, pour lui-même | selon la voie | l'école | comme un élève, sans plafond par élève |
 | Cartographie ouverte, crédits (`/api/twin6/appel`) | un particulier | de l'instance | lui, sur son solde restant | coût réel × `marge_twin6` |
 | Cartographie ouverte, crédits | un élève | de l'école si elle en a une, sinon de l'instance | son école | rien sur sa clé ; sinon × (1 + surtaxe) ; sous le plafond |
@@ -187,9 +201,15 @@ gardé, où et combien de temps.
 | Run de masse, fournisseur `endpoint` | l'école | de l'école | l'école, chez son fournisseur | rien (inchangé) |
 
 - **Le choix du payeur.** Au lancement, la page propose les payeurs possibles : chacune de ses
-  écoles — avec son crédit pour la voie `instance`, avec sa clé pour la voie `ecole` —, et son solde
-  restant s'il en a un. Par défaut, son école quand il n'en a qu'une ; plusieurs, il choisit. Le
-  serveur revérifie le choix ; le run le garde (§3).
+  écoles — avec ce qui reste de son plafond, et si le crédit de l'école le couvre (un booléen, jamais
+  le crédit) —, et son solde restant s'il en a un. Par défaut, son école quand il n'en a qu'une ;
+  plusieurs, il choisit. Le serveur revérifie le choix — une école ne paie jamais comme un
+  particulier : `"personnel"` lui est refusé (`422`) — ; le run le garde (§3). **La voie suit le
+  payeur** (revue du lot S6b) : une école qui a sa clé Anthropic paie avec elle, au facteur 1,0, un
+  run qui n'appelle qu'Anthropic, même sur un profil `cle: "instance"` — le défaut, qui veut dire
+  « pas ma clé à moi », jamais « pas celle de mon école » —, comme la cartographie ouverte ; un run
+  qui appelle un autre fournisseur reste sur la clé de l'instance, payé par son crédit. La copie du
+  profil du run garde la voie prise ; une reprise qui nomme son payeur la reprend de même.
 - **Une seule transaction.** La réserve d'un appel payé par une école vérifie, atomiquement et dans
   la transaction qui écrit l'appel, le plafond de l'élève (un `UPDATE` conditionnel de sa ligne du
   mois, verrouillée la première) puis le crédit de l'école (le débit conditionnel de
@@ -200,6 +220,9 @@ gardé, où et combien de temps.
   l'école qui paie, l'appartenance de l'élève à l'une de ses cohortes et, sur la voie `ecole`, la
   présence de sa clé. Ce qui manque suspend le run avec sa
   raison, comme une garde de fournisseur (ADR-012 §1) ; une reprise choisit de nouveau son payeur.
+  Un lot parti avec la clé d'une école qui l'a retirée, ou qui a disparu, ne peut plus être relevé :
+  il est perdu, ses appels et ce qu'ils tenaient rendus (§6), pour que la reprise puisse choisir un
+  autre payeur sans attendre (`409`) sans fin.
 - **Les runs de masse** suivent la même règle à terme : sur la clé de l'instance, un débit prépayé
   du crédit de l'école, × (1 + surtaxe). Leur bascule du compteur après coup vers le crédit prépayé
   touche le budget du worker de masse (`JobQueue`) ; elle fera un lot à part, après S6b. D'ici là,
@@ -264,9 +287,11 @@ Côté interface (S6a) — R1 demande de le dire :
   appelle un autre fournisseur qu'Anthropic est refusé à l'enregistrement (422, aujourd'hui
   `ProfilPolicy.php:91-101`) et appel par appel au moment de lire la clé (`Twin9Slice.php:370`),
   fermé par défaut. Le refus d'une clé fermée (`:81-84`) devient : au lancement, la voie `ecole`
-  demande un payeur qui est une école de l'utilisateur et qui a une clé. `choix()` (`:261-300`) rend
-  les payeurs possibles à la place de `cle_perso_ouverte` et de `cle_perso_enregistree`. La voie
-  `ecole` n'a pas d'interrupteur à part : l'habilitation que l'administrateur donne en est la garde.
+  demande un payeur qui est une école de l'utilisateur et qui a une clé. `choix()` (`:261-300`) ne
+  rend plus `cle_perso_ouverte` ni `cle_perso_enregistree` ; les payeurs possibles passent par
+  `/api/twin9/meta` (§5) et par l'aperçu du run, pas par `choix()` (écart à ce que disait d'abord
+  ce paragraphe, consigné à la revue du lot S6b). La voie `ecole` n'a pas d'interrupteur à part :
+  l'habilitation que l'administrateur donne en est la garde.
 - **`CallSettings` et les empreintes.** `cle` n'est pas un réglage d'appel : ni l'empreinte des
   réglages (`CallSettings::empreinte`, `api/src/Twin9/CallSettings.php:240-262`, mémoire de la
   carte), ni la signature des évaluations (`Evaluations::signature` et `comparables`,
@@ -292,8 +317,13 @@ Côté interface (S6a) — R1 demande de le dire :
 - **Les lots.** `twin9_lots.cle` (`ENUM('instance', 'personnelle')`, migration 026) gagne `ecole`.
   Un lot soumis avec la clé d'une école s'annule et s'efface avec elle : à la purge du compte de
   l'élève, la file des lots à effacer (`twin9_lots_a_effacer`) garde l'école avec l'identifiant
-  Anthropic, et le tick lit sa clé. Une école qui a retiré sa clé laisse ses lots chez Anthropic
-  jusqu'à ce qu'Anthropic les efface, 29 jours au plus (registre §13).
+  Anthropic, et le tick lit sa clé. Quand l'école retire sa clé — elle-même, ou avec son habilitation
+  —, ou que son compte part, ses lots sont d'abord annulés puis supprimés chez Anthropic avec elle
+  (`RunPurge::retirerCleEcole`, `lotsEcole`, 10 s au plus) ; un lot qu'aucune clé ne peut plus
+  relever ensuite est perdu pour le tick : ses appels rendus, leurs réserves aussi (plafond de
+  l'élève, crédit de l'école), comme un lot qu'Anthropic ne connaît plus — jamais sur une clé que
+  seule l'absence de la clé maîtresse empêche de lire. Un lot dont l'annulation n'a pas abouti reste
+  chez Anthropic jusqu'à ce qu'Anthropic l'efface, 29 jours au plus (registre §13).
 - **La Console de l'école.** Avec la clé d'une école, les résultats des lots restent lisibles dans
   la Console Anthropic de l'école, comme ceux d'une clé personnelle (ADR-012 §5) : l'accord du
   lancement le dit à l'élève.
@@ -315,10 +345,19 @@ Côté interface (S6a) — R1 demande de le dire :
 - **Ce que l'école voit de ses élèves** : ce que chacun a engagé de son crédit ou de sa clé, en
   montants, dates et références de run — jamais un portfolio, une sortie ni un prompt. C'est un
   traitement nouveau : la page du lancement le dit à l'élève (« payé par votre école : elle voit le
-  montant ») et le texte du consentement de la cohorte l'ajoute pour les nouvelles adhésions. À la
-  purge de l'élève, ses lignes deviennent anonymes (SET NULL) ; à la purge de l'école, tout part.
+  montant ») et le texte du consentement de la cohorte l'ajoute pour les nouvelles adhésions. Un
+  élève qui quitte ses cohortes retire son consentement (registre §9) : l'école ne le voit plus
+  nommément, ses montants ne comptent plus que parmi ceux des élèves partis, sans nom (revue du
+  lot S6b). À la purge de l'élève, ce que ses runs payés par une école tiennent encore revient à
+  l'école, avant que ses runs ne partent avec lui, puis ses lignes deviennent anonymes (SET NULL) ;
+  à la purge de l'école, tout part.
 - **Avec la clé de l'école**, les résultats des lots d'un élève restent lisibles par l'école dans
-  sa Console Anthropic (§6) : l'accord du lancement le nomme, le registre §13 aussi.
+  sa Console Anthropic (§6) : l'accord du lancement le nomme, le texte de consentement de la cohorte
+  aussi (« jamais leur contenu sur humanome ; s'il les paie avec sa propre clé Anthropic, les
+  résultats des appels partis par lots restent lisibles dans sa Console Anthropic »), le registre §13
+  aussi.
+- **Une habilitation `etablissement` retirée** efface la clé de l'école (ses lots annulés d'abord) :
+  seule une école garde une clé (R1), et une habilitation rendue ne la ramène pas.
 - **Les mineurs.** Aucun paiement n'est demandé à un particulier : l'acheteur est l'école.
 - **EduChat** : les courriels des élèves passeraient entre deux hébergeurs. Le registre et la
   sous-traitance sont à écrire avant le premier échange, dans S6c (§9).
@@ -343,7 +382,10 @@ Dans l'ordre ; chaque pas suppose le précédent fait.
    le déploiement. (Revue du lot S6b : ce pas disait d'abord qu'ils finissaient sur elle.)
 4. **Leurs lots** : avant d'effacer la clé d'un compte, le script annule puis efface chez Anthropic
    les lots soumis avec elle (`RunPurge::lotsPersonnels`, `api/src/Twin9/RunPurge.php:38`), tant
-   qu'elle existe. Une clé dont un run n'est pas fini n'est pas purgée.
+   qu'elle existe. Une clé dont un run n'est pas fini n'est pas purgée ; ni celle dont un lot est
+   peut-être encore chez Anthropic — injoignable, ou une annulation pas encore finie — : le compte
+   est reporté, sa clé gardée pour l'effacer la fois suivante (un lot qu'Anthropic ne connaît plus,
+   effacé 29 jours après sa création, ne retient rien).
 5. **L'avis** : le script, en mode `aviser`, écrit à chaque compte qui a une clé gardée et note la
    date de l'avis (`user_api_keys.avis_purge_at`, migration 036) ; un compte déjà avisé ne l'est pas
    deux fois.
@@ -429,7 +471,12 @@ chaque geste) :
   `facteur_prix`, `twin9_credit_events.beneficiaire_id`, la valeur `ecole` de `twin9_lots.cle`,
   l'école de `twin9_lots_a_effacer`. RESPIRE#0 par le script hors dépôt, en base de test.
 - 036 et 037 sont des expansions : tables nouvelles, colonnes qui peuvent être nulles, valeur
-  ajoutée en fin d'énumération ; la release précédente les ignore (ADR-008).
+  ajoutée en fin d'énumération ; la release précédente lit ce schéma sans erreur (ADR-008), mais
+  pas ses données : elle ne connaît pas le payeur d'un run, et prendrait un run payé par une école
+  pour un run de son élève — ses règlements rendraient à l'élève ce que l'école a avancé, ses appels
+  suivants débiteraient l'élève — et ferait partir un run de la voie `ecole` sur la clé de
+  l'instance, sans débit (revue du lot S6b ; la release de S6a fait de même). Avant tout retour
+  arrière par-dessus 037 : la procédure de `docs/administration.md`.
 - Documents à suivre, dans le lot qui change le comportement : `docs/autorisations.md` (routes des
   clés, des packs, de l'école), `docs/contrats.md` (le `cle` du profil et du run),
   `docs/rgpd-registre.md` (§6, §9, §11, §13), `docs/roles.md`, les cas d'utilisation.
@@ -484,5 +531,14 @@ Les décisions (a) à (h) du §2, prises par délégation, et ces détails, fix�
 10. Restent à Christian, pour S6c et S6d : prépayé ou facturé après coup, la devise et la
     conversion, le maître du registre, le plancher de la surtaxe face à celui d'EduChat, Stripe en
     test puis en réel, PayPal réel, la création de RESPIRE#0 et de RESPIRE#1 en production.
+11. Revue du lot S6b, des choix qui changent ce que S6a et S6b avaient fixé : (a) la voie d'un run
+    suit son payeur (une école qui a sa clé paie avec elle, profil par défaut compris ; la reprise
+    de même) ; (b) une école qui envoie `"personnel"` est refusée (`422`) plutôt que facturée
+    comme un particulier ; (c) l'élève ne lit plus le crédit de son école, même plus bas que son
+    plafond restant, mais un booléen ; (d) un élève parti des cohortes n'est plus nommé à l'école ;
+    (e) un run sur une clé personnelle s'arrête à sa première tranche après le déploiement, au lieu
+    de finir sur elle (§8, pas 3) ; (f) retirer une clé d'école annule ses lots en vol, et retirer
+    l'habilitation `etablissement` efface la clé ; (g) un retour arrière par-dessus 037 suit la
+    procédure de `docs/administration.md`.
 
 Décisions liées : ADR-004, ADR-005, ADR-008, ADR-010, ADR-011, ADR-012.

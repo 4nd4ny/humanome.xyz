@@ -86,24 +86,36 @@ l'espace.
    mois, puis débité du crédit de l'école à son pire cas × 1,065, réglé au
    coût réel × 1,065 ; rien sur le compte de l'élève.
 6. La page de l'école montre l'élève, ses cohortes, ce qu'il a engagé ce
-   mois-ci et en tout.
+   mois-ci et en tout ; les élèves qui ont quitté ses cohortes (leur
+   consentement retiré) ne comptent plus que sur une ligne, ensemble et sans
+   nom (`partis`).
 
 ## Scénarios alternatifs
 
 - **A1 — Bornes de la surtaxe et du plafond** (étape 4) : 3,49, 10,01, 3,555,
   une chaîne (« 5 »), un plafond négatif, au millième ou au-delà de
   100 000 $ → `422 {error, fields}` sur le champ fautif ; un champ absent est
-  gardé. Le site refuse localement une surtaxe hors bornes (« La surtaxe se
-  choisit entre 3,5 % et 10 %. »), sans appel.
+  gardé. Le site refuse sur place, sans appel, une surtaxe hors bornes (« La
+  surtaxe se choisit entre 3,5 % et 10 %. ») ou au millième, un plafond
+  négatif, au millième ou au-delà de 100 000 $, une clé avec un espace : le
+  message s'affiche sous le champ ; un `422` du serveur aussi, par champ
+  (`fields`), jamais « Validation échouée » seul ; la clé saisie n'est vidée
+  qu'une fois enregistrée. Chaque retour s'affiche sous son formulaire.
 - **A2 — La clé de l'école** : elle saisit sa clé Anthropic et clique
   « Enregistrer la clé » (`PUT /api/etablissement/ecole/cle {cle, fournisseur:
   "anthropic"}`) ; le champ est vidé, la page dit « Une clé est posée depuis
   le … — jamais réaffichée ». Les appels de ses élèves (cartographie ouverte ;
   Twin9 sur la voie `ecole`) partent alors avec elle : son crédit n'est pas
-  touché, le plafond de l'élève compte le prix de la grille (facteur 1,0).
+  touché, le plafond de l'élève compte le prix de la grille (facteur 1,0) —
+  un run Twin9 qui n'appelle qu'Anthropic prend sa clé, même sur le profil
+  par défaut (`cle: "instance"`, revue du lot S6b).
   « Retirer la clé », en deux temps, l'efface (`DELETE …/cle/anthropic` →
-  `204`, puis `404`) ; un run sur sa clé s'arrête à sa tranche suivante, et
-  son élève choisit de nouveau qui paie (UC-APP-10).
+  `204`, puis `404`), après avoir annulé puis supprimé chez Anthropic les
+  lots partis avec elle ; un run sur sa clé s'arrête à sa tranche suivante,
+  un lot qu'aucune clé ne peut plus relever est rendu (ses appels et ce
+  qu'ils tenaient sur le plafond), et son élève choisit de nouveau qui paie
+  (UC-APP-10), sans `409` sans fin. Retirer l'habilitation `etablissement`
+  (UC-ADM-01) efface la clé de même.
 - **A3 — Le plafond par élève** (étape 5) : 0 par défaut → l'appel de l'élève
   est refusé (`402 {error: "Plafond de votre école atteint pour ce mois",
   code: "plafond", reste_microusd}`) ; un plafond qui ne couvre pas le pire
@@ -118,7 +130,10 @@ l'espace.
   Règle documentée (ADR-013 §4) : chaque école ne compte sous son plafond que
   ce qu'elle paie.
 - **A5 — Une école pour elle-même** : ses propres usages sont payés par son
-  crédit à (1 + sa surtaxe), sans plafond par élève.
+  crédit à (1 + sa surtaxe), sans plafond par élève — ou par sa clé ; jamais
+  comme un particulier : `payeur: "personnel"` lui est refusé (`422` « Une
+  école paie ses usages sur son crédit d'école, à sa surtaxe : choisissez
+  votre école »).
 
 ## Scénarios d'erreur
 
@@ -140,7 +155,10 @@ l'espace.
   (ADR-013 §2 h) ; ses élèves sont les membres de ses cohortes, la ligne
   `cohorte_membres` étant leur consentement (le texte de consentement le dit
   pour les nouvelles adhésions : l'école voit le montant de ce qu'elle paie,
-  jamais le contenu).
+  jamais le contenu sur humanome — et, sur sa propre clé Anthropic, sa
+  Console garde les résultats des appels partis par lots). Un élève qui quitte
+  ses cohortes n'est plus nommé à l'école : ses montants restent comptés,
+  ensemble avec ceux des autres élèves partis.
 - **RG2** — Surtaxe de 3,5 % à 10 %, au centième ; 3,5 % par défaut ; figée au
   lancement de chaque run (`twin9_runs.facteur_prix` = 1 + surtaxe sur son
   crédit, 1,0 sur sa clé).
@@ -162,14 +180,21 @@ l'espace.
   réserver, régler, solde, reste) dont la seule implémentation est locale
   (`GrandLivreLocal`) : S6c y branchera le grand livre commun d'EduChat sans
   toucher aux runs (ADR-013 §9).
+- **RG8** — L'argent de l'école ne se perd jamais avec un élève : à la
+  suppression de son compte, ce que tiennent encore ses runs payés par
+  l'école — un lot chez Anthropic, un appel en vol ou en attente — revient à
+  l'école, un appel répondu payé à son coût réel ; un règlement qui arrive
+  après sa suppression rend le crédit quand même, sans bénéficiaire.
+- **RG9** — L'élève ne lit jamais le crédit de son école : ce qui reste de
+  son plafond, et si le crédit de l'école le couvre (un booléen).
 
 ## Données et RGPD
 
 | Donnée | Traitement |
 |---|---|
 | Réglages de l'école | `ecoles` : surtaxe, plafond par élève, `respire_numero` (NULL ; 0 pour RESPIRE#0, créée en base par un script hors dépôt) ; purgés avec le compte (CASCADE) |
-| Clé de l'école | `ecole_cles` : chiffrée (nonce ‖ secretbox), jamais rendue ni journalisée ; purgée avec le compte (CASCADE) ; ses lots chez Anthropic annulés et effacés avant la purge du compte (RunPurge::lotsEcole) |
-| Ce que chaque élève a engagé | `ecole_consommations` (école, élève, mois, montant) : CASCADE depuis l'école et depuis l'élève |
+| Clé de l'école | `ecole_cles` : chiffrée (nonce ‖ secretbox), jamais rendue ni journalisée ; effacée par l'école, avec son habilitation, ou avec son compte (CASCADE) ; ses lots chez Anthropic annulés et effacés avant (RunPurge::retirerCleEcole, lotsEcole) |
+| Ce que chaque élève a engagé | `ecole_consommations` (école, élève, mois, montant) : CASCADE depuis l'école et depuis l'élève ; nommé à l'école tant qu'il est membre d'une de ses cohortes, puis compté avec les élèves partis, sans nom |
 | Grand livre de l'école | `twin9_credit_events.beneficiaire_id` : l'élève, SET NULL à sa purge ; des montants, des jetons, des libellés — jamais un portfolio, une sortie ni un prompt |
 | Audit | `ecole_reglages`, `ecole_cle_posee`, `ecole_cle_retiree` — le fournisseur, jamais la clé |
 
@@ -211,6 +236,12 @@ l'espace.
 | UC-ETA-05-U15 | `ChoixPayeur` | Rien, une phrase, ou un menu « Qui paie » | idem |
 | UC-ETA-05-U16 | `EcoleSection` | Plafond nul d'abord, crédit, élèves, réglages (PUT), surtaxe refusée localement | idem |
 | UC-ETA-05-U17 | `EcoleSection` | Clé posée, jamais réaffichée, retirée en deux temps ; sans chiffrement, aucun champ | idem |
+| UC-ETA-05-U18 | `GrandLivreLocal::regler` | Règlement après la suppression du compte de l'élève : crédit rendu, événement sans bénéficiaire (RG8) | `api/tests/UseCases/Unit/UcEta05GererEcoleTest.php` |
+| UC-ETA-05-U19 | `Payeurs::resoudre`, `pourCartographieOuverte` | Une école ne paie jamais comme un particulier : « personnel » refusé (A5) | idem |
+| UC-ETA-05-U20 | `Payeurs::pourRun` | La voie suit le payeur : sa clé (1,0) pour un run tout Anthropic, profil `instance` compris ; un autre fournisseur, une école sans clé, son solde : la clé de l'instance | idem |
+| UC-ETA-05-U21 | `Ecoles::eleves`, `partis` | Un élève parti n'est plus nommé, ses montants comptés avec les partis, son plafond du mois tenu ; revenu, nommé | idem |
+| UC-ETA-05-U22 | `EcoleSection` | Refus sur place sous le champ (surtaxe au millième, plafond au millième ou au-delà, clé avec un espace), la clé gardée ; le `422` du serveur dit son champ (A1) | `web/test/usecases/unit/uc-eta-05-gerer-ecole.test.jsx` |
+| UC-ETA-05-U23 | `EcoleSection`, `global.css` | Chaque retour sous son formulaire ; règles CSS des deux formulaires | idem |
 
 ### Tests fonctionnels
 
@@ -225,11 +256,17 @@ l'espace.
 | UC-ETA-05-F07 | Nominal | IHM | « Mon école » en tête, plafond nul dit, réglages enregistrés (CSRF) puis relus, crédit, élèves | `web/test/usecases/functional/uc-eta-05-gerer-ecole.test.jsx` |
 | UC-ETA-05-F08 | A2 | IHM | Clé posée (CSRF), jamais réaffichée, retirée en deux temps | idem |
 | UC-ETA-05-F09 | E1 | IHM | Un apprenant ne voit pas « Mon école », rien n'est lu | idem |
+| UC-ETA-05-F10 | RG8 | API | L'élève supprime son compte pendant un run que paie son école (un lot, un appel en vol, un en attente, un répondu) : le crédit et le grand livre de l'école reviennent au seul coût réel répondu ; le lot confié au tick | `api/tests/UseCases/Functional/UcEta05GererEcoleTest.php` |
+| UC-ETA-05-F11 | A2 | API | Clé retirée avec un lot chez Anthropic : le lot annulé puis supprimé avec elle, avant qu'elle ne soit effacée | idem |
+| UC-ETA-05-F12 | A2 | API | Habilitation retirée : la clé effacée (lot annulé d'abord), audit ; l'habilitation rendue ne la ramène pas | idem |
+| UC-ETA-05-F13 | A5 | API | Une école envoie `payeur: "personnel"` à la cartographie ouverte : 422, rien débité ni envoyé ; sans payeur, × 1,035 | idem |
 
 Tests existants liés : `api/tests/Twin9/EcolesTest.php` (les runs Twin9 payés
 par une école : débit au coût réel × (1 + surtaxe), plafond qui arrête le run,
-clé de l'école et ses lots, école qui ne paie plus, purge d'un élève), UC-APP-10
-(F29–F34), UC-APP-11 (F33–F35), UC-APP-09 (F36).
+clé de l'école et ses lots, école qui ne paie plus, purge d'un élève, lot d'une
+clé retirée ou d'une école purgée rendu puis reprise sur une autre école),
+UC-APP-10 (F29–F38), UC-APP-11 (F33–F35), UC-APP-09 (F36, F37), UC-ADM-01
+(RG9).
 
 ## Limites
 
@@ -240,17 +277,16 @@ clé de l'école et ses lots, école qui ne paie plus, purge d'un élève), UC-A
   sont pas branchés : ADR-013 §9 décrit leur interface.
 - Les adhésions antérieures au nouveau texte de consentement n'ont pas été
   reprises (ADR-013, « À signaler à Christian », point 9).
-- Ce qu'un élève lit de ce que son école peut encore payer pour lui
-  (`reste_credit_microusd`) est son plafond restant borné par le crédit de
-  l'école : quand ce crédit est plus bas, c'est ce crédit qu'il lit — le seul
-  cas où il en apprend le montant. Le borner évite qu'une cartographie ouverte
-  parte pour s'arrêter, faute de crédit, après ses premiers appels payés.
-- Une école qui retire sa clé pendant qu'un lot parti avec elle est encore
-  chez Anthropic : le tick ne peut plus relever ce lot ; ses appels gardent
-  leur pire cas sur le plafond de l'élève du mois, le run arrêté ne change pas
-  de payeur (`409`) et ne reprend pas sans payeur (`422`) tant que le lot n'a
-  pas été relevé — ce qui n'arrive plus. À traiter dans un lot suivant (rendre
-  la réserve d'un lot devenu illisible, après le délai d'Anthropic).
+- Ce qu'un élève lit de ce que son école peut encore payer pour lui est son
+  plafond restant, et un booléen (`credit_suffisant`) quand le crédit de
+  l'école ne le couvre pas : la page le prévient qu'une analyse peut
+  s'arrêter en cours, sans montant (revue du lot S6b : le reste n'est plus
+  borné par ce crédit, ce qui le disait).
+- Un lot annulé à la clé retirée dont l'annulation n'aboutit pas reste chez
+  Anthropic jusqu'à ce qu'Anthropic l'efface (29 jours au plus) ; l'école peut
+  avoir payé à Anthropic des requêtes que personne ne lira.
+- Les formulaires de « Mon école » sont vérifiés dans jsdom (règles CSS lues,
+  ordre des retours), pas dans un vrai navigateur à 375 px.
 - Le plafond s'applique à l'admission d'un run par ce qui reste du plafond du
   mois, pas déduction faite de ce que les autres runs de l'élève payés par la
   même école ont été accordés : la réserve de chaque appel, elle, le tient

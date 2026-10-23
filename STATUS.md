@@ -45,6 +45,22 @@ autre fournisseur qu'Anthropic, que l'administrateur ouvre (entrée du 2026-10-2
 
 ## Fait
 
+- 2026-10-23 — **Le commit du moteur Twin9 survit aux chemins avec une espace (branche
+  `fix/engine-commit-espace`).** `afd5db9` : `EngineLoader::commit()` lisait le fichier `.git`
+  d'un worktree avec `/^gitdir:\s*(\S+)/`, coupé à la première espace (« 13. Cartographie/… ») ;
+  le commit gardé par l'attestation et le bloc configuration valait alors `null`. Il lit
+  désormais toute la première ligne, sans fin de ligne (CRLF compris) ni blancs finaux ; et
+  `packed-refs` en CRLF est reconnu (`\r?$`), ce qu'il ne faisait pas. `HEAD`, `commondir`
+  (absolu ou relatif), les refs isolées et `COMMIT` passaient déjà par `trim()` : vérifiés,
+  inchangés. Aucun autre lecteur de `.git` dans `api/` ni `scripts/` (le déploiement interroge
+  git lui-même). Comportement inchangé pour un chemin sans espace.
+  - Vérifié : `EngineLoaderTest` (faux worktree sous un chemin à espace : HEAD détaché, branche
+    par `commondir` et `packed-refs`, `gitdir` relatif, CRLF ; et le vrai moteur comparé à
+    `git rev-parse HEAD`), rouge avant le correctif ; le moteur de référence (worktree détaché dont
+    le `gitdir` contient une espace) donne `a1d84bf…` ; suite PHP complète 1 860 tests, 2 échecs
+    préexistants (PHP 8.5), `PariteTest` compris.
+  - Non vérifié : une attestation produite par un vrai run après le correctif.
+
 - 2026-10-22 — **Twin9 multi-fournisseur : corrections de la revue de la PR C (même branche
   `feat/twin9-multi-fournisseur`).** Dix-sept constats confirmés (deux en double),
   treize commits `fix:`, chacun avec le test qui échouait avant lui, et trois `docs:`. `Twin_v9`

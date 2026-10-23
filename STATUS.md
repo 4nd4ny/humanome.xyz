@@ -45,8 +45,8 @@ autre fournisseur qu'Anthropic, que l'administrateur ouvre (entrée du 2026-10-2
 
 ## Fait
 
-- 2026-10-22 — **Phase D : corrections de la revue (même branche `feat/phase-d-twin9`, non
-  poussée, rien déployé).** Douze constats confirmés, dont deux paires en double (la graine,
+- 2026-10-22 — **Phase D : corrections de la revue (même branche `feat/phase-d-twin9`, rien
+  déployé).** Douze constats confirmés, dont deux paires en double (la graine,
   « non conservées ») : dix défauts, huit commits `fix:`, chacun avec le test qui échouait avant
   lui, un `docs:`, un `test(e2e):` et cette entrée. `Twin_v9` (t9-s2, a1d84bf) n'est pas modifié ; aucun appel LLM réel.
   - `e92b0e5` — **un tableau de traces sans sa fermeture n'emporte plus les journées qui le
@@ -93,9 +93,15 @@ autre fournisseur qu'Anthropic, que l'administrateur ouvre (entrée du 2026-10-2
     puis `npm run test:dist` vert ; `check-publiable` OK ; catalogue des cas recompté, inchangé
     (1 036 U, 1 193 F ; UC-APP-10 : 24 U, 28 F).
   - **Non vérifié** : PHP 8.2 (la CI) ; un vrai navigateur (jsdom seulement : la nouvelle teinte
-    de « forte » et le partiel des traces ne sont vus qu'au calcul de la cascade) ; les e2e,
-    dont le nouveau scénario du lot C, écrits mais non lancés (pas d'API locale sur :8080) ; rien
-    n'est déployé.
+    de « forte » et le partiel des traces ne sont vus qu'au calcul de la cascade) ; rien n'est
+    déployé.
+  - **Vérifié ensuite, le 2026-10-23** : les e2e sur une base MySQL isolée (`humanome_e2e`,
+    montée selon INSTALL.md §3, moteur factice, Anthropic simulé, détruite après) —
+    `twin9-referentiels` 2/2, `twin9-run` 1/1, `navigation-burger` 7/7. Le scénario du lot C
+    échouait d'abord par deux défauts du test seul (`ef27fb3`) : un libellé « RESPIRE v7 » en dur
+    alors que la base publie la 7.1, et un `goto` vers le fragment déjà ouvert, qui ne remonte
+    pas la vue ; corrigé, il va au bout (carte aux pôles A à E, attestation sur `fictif-lettre`,
+    profil enregistré resté sur `respire`).
   - **À décider (Christian)** : (1) les journées que Twin9 ne lit plus restent dans la mémoire de
     la carte, et sa fusion les compte encore (un même passage dans deux journées peut atteindre
     le seuil du faisceau) : les retirer de la carte au lancement (`journees/<id>`,
@@ -109,8 +115,7 @@ autre fournisseur qu'Anthropic, que l'administrateur ouvre (entrée du 2026-10-2
     un verdict ».
 
 - 2026-10-22 — **Phase D : l'algorithme Twin9 et ses entrées, en une seule version, avant la
-  campagne payante (branche `feat/phase-d-twin9`, depuis `main` 6d44046 ; non poussée, rien
-  déployé).** Plan d'ensemble (`ordre.md` §2, phase D, hors dépôt) ; designs des sprints 3, 4, 1 (lot 2) et 5 (lot C).
+  campagne payante (branche `feat/phase-d-twin9`, depuis `main` 6d44046 ; rien déployé).** Plan d'ensemble (`ordre.md` §2, phase D, hors dépôt) ; designs des sprints 3, 4, 1 (lot 2) et 5 (lot C).
   Moteur de référence : `Twin_v9` a1d84bf (stigmergie du greffier désactivée par défaut,
   `--rescan` en plusieurs passes), en lecture seule, jamais modifié. Aucun appel LLM réel. Neuf
   commits ; les décisions de Christian, prises par délégation, sont appliquées telles quelles.

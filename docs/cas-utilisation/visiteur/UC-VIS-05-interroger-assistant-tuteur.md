@@ -142,8 +142,9 @@ dans l'en-tête, à côté du bouton d'aide « ? ».
   `Retry-After` ; erreur → `502` « Erreur de l'assistant, réessayez plus
   tard. » (aucun détail amont) ; injoignable → « L'assistant est injoignable,
   réessayez plus tard. » en `504` (délai) ou `502`. La réserve du mois revient,
-  sauf après un délai dépassé : la question a pu être reçue et facturée, son
-  pire cas reste compté (RG8).
+  sauf quand la question a pu être reçue et facturée — un délai dépassé, une
+  connexion coupée après son envoi complet, une réponse 2xx illisible (pas du
+  JSON) — : son pire cas reste compté (RG8).
 - **E7 — Crédits offerts du mois épuisés** (sprint 7) : le pire cas de la
   question ne tient plus sous le plafond du mois, que la démo a pu dépenser
   aussi → `503` « Les crédits offerts de ce mois sont épuisés ; revenez le
@@ -219,10 +220,15 @@ dans l'en-tête, à côté du bouton d'aide « ? ».
   jamais plus), le surcoût de la requête (1 024) et les 600 jetons de sortie,
   au tarif du modèle du tuteur (le plus haut de la grille et de `Pricing`).
   Rendue, la réponse règle la réserve à son coût réel ; refusée par le
-  fournisseur, injoignable, ou toute autre erreur : la réserve revient ; un
-  délai dépassé la laisse comptée, pire cas entier (la réponse vient d'un bloc,
-  rien ne dit ce qu'elle a produit). Sans la place, `503` (E7). La clé
-  manquante est refusée avant la réserve.
+  fournisseur (un statut d'erreur), jamais partie (résolution, connexion
+  refusée, poignée de main TLS), ou toute autre erreur : la réserve revient.
+  Quand le fournisseur a pu la recevoir et la facturer, la question garde son
+  pire cas entier, compté comme un appel (la réponse vient d'un bloc, rien ne
+  dit ce qu'elle a produit) : un délai dépassé ; une connexion coupée après
+  l'envoi complet de la requête (curl 52, 56 : `HttpClientException::
+  $requestSent`, que `CurlHttpClient` pose depuis la revue du 2026-10-23) ; une
+  réponse 2xx dont le corps n'est pas du JSON (facturée, comme à la démo).
+  Sans la place, `503` (E7). La clé manquante est refusée avant la réserve.
 
 ## Données et RGPD
 
@@ -279,6 +285,7 @@ dans l'en-tête, à côté du bouton d'aide « ? ».
 | UC-VIS-05-U14 | `CarteDuSite` (carte fictive) | Rubrique reconnue : titre, adresse ou modèle, résumé et points de la seule page ; nom inconnu, route interne, casse, blancs internes, valeur non textuelle → rien ; sans carte, rien non plus, même un nom de route ; fichier absent, illisible ou d'une autre version → pas de carte (RG1, AN1 corrigée) | `api/tests/UseCases/Unit/UcVis05InterrogerTuteurTest.php` |
 | UC-VIS-05-U15 | `MemoireCourte::borner` | Vecteurs communs : paires question → réponse seulement, les 2 dernières, 750 / 1 500 caractères (points de code), rôle `system`, question sans réponse et autre forme écartés (RG7) | idem |
 | UC-VIS-05-U16 | `memoireCourte` | Les mêmes vecteurs que U15, côté navigateur ; idempotente | `web/test/usecases/unit/uc-vis-05-interroger-assistant-tuteur.test.js` |
+| UC-VIS-05-U17 | `CurlHttpClient::requestSent` | Sur de vrais transferts curl vers un serveur local : une connexion fermée sans réponse après la lecture du corps entier (curl 52) dit la requête partie, un octet de corps en plus non ; une connexion refusée (curl 7) non ; le client https seul refuse http et une connexion refusée sans la dire partie (RG8) | `api/tests/UseCases/Unit/UcVis05InterrogerTuteurTest.php` |
 
 ### Tests fonctionnels
 
@@ -308,6 +315,8 @@ dans l'en-tête, à côté du bouton d'aide « ? ».
 | UC-VIS-05-F22 | RG7, A5 | IHM | Relance après trois échanges et un refus (503) : seuls les 2 derniers échanges partent, sans la question refusée, la longue réponse coupée à 750 caractères ; le fil complet reste en `sessionStorage`, rien en `localStorage` | `web/test/usecases/functional/uc-vis-05-interroger-assistant-tuteur.test.jsx` |
 | UC-VIS-05-F23 | E7, RG8 | API | Plafond du mois à 0,01 $, fournisseur mock, Haiku 5.5 : la question y tient, réservée puis réglée (coût nul du mock) ; 9 900 µ$ dépensés → 503 « Les crédits offerts de ce mois sont épuisés ; revenez le 1er … », `offerts_epuises`, rien au budget du jour du tuteur ; la démo est refusée de même (plafond commun) ; le mois dépensé et le jour épuisé → le mois répond, le jour seul → « revenez demain » | `api/tests/UseCases/Functional/UcVis05InterrogerTuteurTest.php` |
 | UC-VIS-05-F24 | RG8, E6 | API | Un échec libère la réserve du mois (429, 500, connexion refusée) ; un délai dépassé laisse son pire cas compté (consigne, question et surcoût à un jeton par octet, 600 jetons de sortie) ; une réponse rendue (100 + 50 jetons de Haiku 4.5) se règle à 350 µ$ ; sans clé, rien réservé | idem |
+| UC-VIS-05-F25 | RG8, E6 | API | Une réponse 2xx dont le corps n'est pas du JSON : 502, son pire cas reste compté sur le mois, un appel ; une erreur 503 (même illisible) rend sa réserve | idem |
+| UC-VIS-05-F26 | RG8, E6 | API | Une erreur réseau après l'envoi complet (`requestSent`, curl 52) : 502 « injoignable », son pire cas reste compté ; une connexion refusée rend sa réserve | idem |
 
 ### Tests existants liés (non-régression)
 

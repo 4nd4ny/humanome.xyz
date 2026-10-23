@@ -237,18 +237,27 @@ return function (App $app): void {
                     ->complete($TUTEUR_MODEL, $system, $question, $TUTEUR_MAX_TOKENS, false, $precedents);
             }
         } catch (UpstreamException $e) {
-            // Refusé par le fournisseur, qui ne facture rien : la réserve revient.
-            $ledger->release($reserve, $now);
+            // Refusé par le fournisseur (un statut d'erreur), qui ne facture
+            // rien : la réserve revient. Une réponse 2xx dont le corps n'est pas
+            // du JSON a été facturée (AnthropicProvider::complete) : son pire cas
+            // reste compté sur le mois, comme à la démo (revue du 2026-10-23).
+            if ($e->status >= 200 && $e->status < 300) {
+                $ledger->settle($reserve, $reserve, $now);
+            } else {
+                $ledger->release($reserve, $now);
+            }
             if ($e->status === 429) {
                 return $json($response, ['error' => 'L’assistant est saturé, réessayez plus tard.'], 429)->withHeader('Retry-After', $e->retryAfter ?? '30');
             }
 
             return $json($response, ['error' => 'Erreur de l’assistant, réessayez plus tard.'], 502);
         } catch (HttpClientException $e) {
-            // Délai dépassé : la question a pu être reçue, et facturée — rien ne
-            // dit ce qu'elle a produit (réponse d'un bloc) : son pire cas reste
-            // compté sur le mois. Jamais partie (connexion refusée) : rendue.
-            if ($e->timedOut) {
+            // Délai dépassé, ou connexion coupée après l'envoi complet de la
+            // question (curl 52, 56 : requestSent) : elle a pu être reçue, et
+            // facturée — rien ne dit ce qu'elle a produit (réponse d'un bloc) :
+            // son pire cas reste compté sur le mois. Jamais partie (résolution,
+            // connexion refusée, poignée de main TLS) : rendue.
+            if ($e->timedOut || $e->requestSent) {
                 $ledger->settle($reserve, $reserve, $now);
             } else {
                 $ledger->release($reserve, $now);

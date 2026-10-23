@@ -2706,9 +2706,12 @@ avec elle (`ON DELETE CASCADE`).
    mois se remplit pendant qu'elle arrive. Coupé après l'envoi, il règle ce
    qu'il a produit, comme au jour.
 3. Refusé par le fournisseur, ou jamais parti, il **rend** sa réserve. Une
-   question du tuteur dont le délai est dépassé la garde, pire cas entier :
-   elle a pu être reçue et facturée, et sa réponse, d'un bloc, ne dit pas ce
-   qu'elle a produit.
+   question du tuteur qui a pu être reçue et facturée la garde, pire cas
+   entier, comptée comme un appel : son délai dépassé, une connexion coupée
+   après l'envoi complet de la requête (`HttpClientException::$requestSent`,
+   que `CurlHttpClient` pose comme `CurlHttpStream`), une réponse 2xx dont le
+   corps n'est pas du JSON ; sa réponse, d'un bloc, ne dit pas ce qu'elle a
+   produit.
 4. Jamais réglée — son processus mort entre la réserve et le règlement (le
    kill de l'hébergeur, un redéploiement, une erreur fatale, une écriture
    qui échoue) —, la réserve **expire** après

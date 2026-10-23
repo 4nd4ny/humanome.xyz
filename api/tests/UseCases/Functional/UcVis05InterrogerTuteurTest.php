@@ -523,4 +523,46 @@ final class UcVis05InterrogerTuteurTest extends LlmTestCase
         self::assertSame([$pire + 350, 0, 2, 0], [self::mois()['spentMicrousd'], self::mois()['reservedMicrousd'],
             self::mois()['calls'], self::mois()['refusals']]);
     }
+
+    /** The worst case the tutor reserved for its last question $question (Haiku 4.5, 600 output tokens). */
+    private function pireCasDuDernierAppel(string $question): int
+    {
+        $sent = json_decode((string) end($this->http->requests)['body'], true);
+
+        return FreeCreditLedger::microusd(Pricing::estimateUsd('claude-haiku-4-5-20251001',
+            \strlen((string) $sent['system']) + \strlen($question) + AnthropicProvider::REQUEST_OVERHEAD_TOKENS, 600));
+    }
+
+    #[TestDox('UC-VIS-05-F25 — RG8 : une réponse 2xx dont le corps n’est pas du JSON (une page de proxy) a été facturée par le fournisseur : 502 pour la personne, mais la question garde son pire cas sur le mois, comptée comme un appel, au lieu de rendre sa réserve ; une erreur 5xx, refusée sans facture, la rend toujours')]
+    public function testF25ABilledNonJsonAnswerKeepsItsWorstCase(): void
+    {
+        TestDb::setEnv('DEMO_PROVIDER', 'anthropic');
+        $this->http->queueResponse(['status' => 200, 'body' => '<html>page du proxy</html>']);
+        self::assertSame(502, $this->ask('Q')->getStatusCode());
+        $pire = $this->pireCasDuDernierAppel('Q');
+        self::assertSame([$pire, 0, 1], [self::mois()['spentMicrousd'], self::mois()['reservedMicrousd'], self::mois()['calls']],
+            'facturée : son pire cas reste compté');
+
+        $this->http->queueResponse(['status' => 503, 'body' => '<html>indisponible</html>']);
+        self::assertSame(502, $this->ask('Q')->getStatusCode());
+        self::assertSame([$pire, 0, 1], [self::mois()['spentMicrousd'], self::mois()['reservedMicrousd'], self::mois()['calls']],
+            'refusée par le fournisseur : rien de plus');
+    }
+
+    #[TestDox('UC-VIS-05-F26 — RG8 : une erreur réseau survenue APRÈS l’envoi complet de la question (connexion coupée en attendant la réponse : curl 52, 56) a pu être reçue et facturée : 502, son pire cas reste compté sur le mois ; une connexion refusée (jamais partie) rend sa réserve')]
+    public function testF26ANetworkErrorAfterTheSendKeepsItsWorstCase(): void
+    {
+        TestDb::setEnv('DEMO_PROVIDER', 'anthropic');
+        $this->http->queueException(new HttpClientException('network error (curl 52)', timedOut: false, requestSent: true));
+        $coupee = $this->ask('Q');
+        self::assertSame(502, $coupee->getStatusCode());
+        self::assertSame('L’assistant est injoignable, réessayez plus tard.', self::json($coupee)['error']);
+        $pire = $this->pireCasDuDernierAppel('Q');
+        self::assertSame([$pire, 0, 1], [self::mois()['spentMicrousd'], self::mois()['reservedMicrousd'], self::mois()['calls']]);
+
+        $this->http->queueException(new HttpClientException('network error (curl 7)', timedOut: false, requestSent: false));
+        self::assertSame(502, $this->ask('Q')->getStatusCode());
+        self::assertSame([$pire, 0, 1], [self::mois()['spentMicrousd'], self::mois()['reservedMicrousd'], self::mois()['calls']],
+            'jamais partie : la réserve revient');
+    }
 }

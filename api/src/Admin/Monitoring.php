@@ -5,6 +5,7 @@ declare(strict_types=1);
 namespace Humanome\Admin;
 
 use Humanome\Auth\LoginJournal;
+use Humanome\Clock;
 use Humanome\Referentiel\Electorate;
 use Humanome\Referentiel\MajorityTally;
 use PDO;
@@ -14,7 +15,9 @@ use PDO;
  * LECTURE SEULE sur les journaux et compteurs déjà en base — jamais de
  * contenu (portfolio, cartographie, gabarit), conformément au cahier §6.5.
  *
- * Tout est calculé à la demande sur une fenêtre de `days` jours (1..365) :
+ * Tout est calculé à la demande sur une fenêtre de `days` jours (1..365), en
+ * journées UTC comme le reste du serveur (les compteurs démo et tuteur que
+ * UsageCounters date par gmdate, le mois des crédits offerts) — voir since() :
  *  - utilisateurs : total, actifs à l'instant (sessions < 15 min), inscriptions,
  *    non activés dont la liste d'attente (sprint 7) ;
  *  - cartographies : volumes, partages actifs, consultations (audit_events) ;
@@ -34,6 +37,15 @@ final class Monitoring
 
     public const RECENT_LOGINS = 50;
 
+    /**
+     * La journée UTC d'une colonne DATETIME écrite par MySQL (NOW(),
+     * CURRENT_TIMESTAMP), donc à l'heure de sa session : la série par jour.
+     */
+    private const UTC_DAY = "DATE(CONVERT_TZ(created_at, @@session.time_zone, '+00:00'))";
+
+    /** L'instant de la lecture (Clock), lu une fois par overview(). */
+    private int $now = 0;
+
     public function __construct(private readonly PDO $pdo)
     {
     }
@@ -42,6 +54,7 @@ final class Monitoring
     public function overview(int $days): array
     {
         $days = max(1, min(365, $days));
+        $this->now = Clock::now();
 
         return [
             'periode' => ['jours' => $days],
@@ -72,7 +85,7 @@ final class Monitoring
             'SELECT COUNT(*) FROM users WHERE deleted_at IS NULL AND waitlisted_at IS NOT NULL'
         )->fetchColumn();
 
-        $cutoff = time() - self::ACTIVE_WINDOW_SECONDS;
+        $cutoff = $this->now - self::ACTIVE_WINDOW_SECONDS;
         $stmt = $this->pdo->prepare(
             'SELECT COUNT(DISTINCT user_id) AS connectes,
                     COALESCE(SUM(user_id IS NULL), 0) AS anonymes
@@ -87,10 +100,10 @@ final class Monitoring
         $nouveaux->execute();
 
         $parJour = $this->pdo->prepare(
-            'SELECT DATE(created_at) AS date, COUNT(*) AS n
+            'SELECT ' . self::UTC_DAY . ' AS date, COUNT(*) AS n
                FROM users
               WHERE deleted_at IS NULL AND created_at >= ' . $this->since($days) . '
-              GROUP BY DATE(created_at) ORDER BY date'
+              GROUP BY ' . self::UTC_DAY . ' ORDER BY date'
         );
         $parJour->execute();
 
@@ -142,9 +155,9 @@ final class Monitoring
         $nouvelles->execute();
 
         $parJour = $this->pdo->prepare(
-            'SELECT DATE(created_at) AS date, COUNT(*) AS n
+            'SELECT ' . self::UTC_DAY . ' AS date, COUNT(*) AS n
                FROM cartographies WHERE created_at >= ' . $this->since($days) . '
-              GROUP BY DATE(created_at) ORDER BY date'
+              GROUP BY ' . self::UTC_DAY . ' ORDER BY date'
         );
         $parJour->execute();
 
@@ -199,9 +212,9 @@ final class Monitoring
         };
 
         $parJour = $this->pdo->prepare(
-            'SELECT DATE(created_at) AS date, kind, COALESCE(SUM(amount_microusd), 0) AS microusd
+            'SELECT ' . self::UTC_DAY . ' AS date, kind, COALESCE(SUM(amount_microusd), 0) AS microusd
                FROM twin9_credit_events WHERE created_at >= ' . $this->since($days) . '
-              GROUP BY DATE(created_at), kind ORDER BY date'
+              GROUP BY ' . self::UTC_DAY . ', kind ORDER BY date'
         );
         $parJour->execute();
         $jours = [];
@@ -270,13 +283,13 @@ final class Monitoring
         }
 
         $twin9 = $this->pdo->prepare(
-            "SELECT DATE(created_at) AS date, COUNT(*) AS n,
+            'SELECT ' . self::UTC_DAY . " AS date, COUNT(*) AS n,
                     COALESCE(SUM(tokens_in), 0) AS tin,
                     COALESCE(SUM(tokens_out), 0) AS tout,
                     COALESCE(SUM(-amount_microusd), 0) AS depense
                FROM twin9_credit_events
               WHERE kind = 'debit' AND created_at >= " . $this->since($days) . '
-              GROUP BY DATE(created_at) ORDER BY date'
+              GROUP BY ' . self::UTC_DAY . ' ORDER BY date'
         );
         $twin9->execute();
         foreach ($twin9->fetchAll() as $row) {
@@ -360,10 +373,10 @@ final class Monitoring
     private function connexions(int $days): array
     {
         $parJour = $this->pdo->prepare(
-            "SELECT DATE(created_at) AS date, type, COUNT(*) AS n
+            'SELECT ' . self::UTC_DAY . ' AS date, type, COUNT(*) AS n
                FROM audit_events
-              WHERE type IN (?, ?) AND created_at >= " . $this->since($days) . '
-              GROUP BY DATE(created_at), type ORDER BY date'
+              WHERE type IN (?, ?) AND created_at >= ' . $this->since($days) . '
+              GROUP BY ' . self::UTC_DAY . ', type ORDER BY date'
         );
         $parJour->execute([LoginJournal::LOGIN, LoginJournal::LOGIN_FAILED]);
         $jours = [];
@@ -570,10 +583,10 @@ final class Monitoring
     private function auditParJour(string $type, int $days): array
     {
         $stmt = $this->pdo->prepare(
-            'SELECT DATE(created_at) AS date, COUNT(*) AS n
+            'SELECT ' . self::UTC_DAY . ' AS date, COUNT(*) AS n
                FROM audit_events
               WHERE type = ? AND created_at >= ' . $this->since($days) . '
-              GROUP BY DATE(created_at) ORDER BY date'
+              GROUP BY ' . self::UTC_DAY . ' ORDER BY date'
         );
         $stmt->execute([$type]);
 
@@ -584,18 +597,30 @@ final class Monitoring
     }
 
     /**
-     * Borne basse DATETIME de la fenêtre : minuit il y a (days-1) jours, la
-     * fenêtre inclut donc aujourd'hui. L'entier est clampé par overview(),
-     * jamais une chaîne utilisateur (même convention que LIMIT inliné).
+     * Borne basse de la fenêtre pour les colonnes DATETIME : minuit UTC il y a
+     * (days-1) jours, la fenêtre inclut donc la journée UTC en cours. Ces
+     * colonnes sont écrites par MySQL (NOW(), CURRENT_TIMESTAMP) à l'heure de
+     * sa session, qui n'est pas forcément UTC (Europe/Paris en local) : la
+     * borne y est convertie, et la colonne reste nue (son index sert). Jamais
+     * CURDATE(), qui suit l'heure de la session : entre 00 h et 02 h à Paris,
+     * c'était déjà le lendemain du jour UTC des compteurs démo et tuteur. La
+     * date vient de gmdate sur un entier clampé par overview(), jamais d'une
+     * chaîne utilisateur (même convention que LIMIT inliné).
      */
     private function since(int $days): string
     {
-        return 'DATE_SUB(CURDATE(), INTERVAL ' . ($days - 1) . ' DAY)';
+        return "CONVERT_TZ('" . $this->sinceUtcDate($days) . " 00:00:00', '+00:00', @@session.time_zone)";
     }
 
-    /** Même borne pour les colonnes DATE (llm_usage_daily.usage_date). */
+    /** Même borne pour les colonnes DATE datées en UTC (llm_usage_daily.usage_date, gmdate). */
     private function sinceDate(int $days): string
     {
-        return $this->since($days);
+        return "'" . $this->sinceUtcDate($days) . "'";
+    }
+
+    /** Le premier jour UTC de la fenêtre, 'YYYY-MM-DD'. */
+    private function sinceUtcDate(int $days): string
+    {
+        return gmdate('Y-m-d', $this->now - ($days - 1) * 86400);
     }
 }

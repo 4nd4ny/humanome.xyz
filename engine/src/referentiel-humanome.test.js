@@ -60,7 +60,7 @@ describe('convertirHumanome', () => {
     expect(NIVEAUX[0]).toBe('capacité')
   })
 
-  it('UC-EPI-05-U11 — identité, libellé, niveaux, pôles et codes', () => {
+  it('UC-EPI-05-U29 — identité, libellé, niveaux, pôles et codes', () => {
     const { document } = convertir()
     expect([document.schemaVersion, document.kind, document.id, document.version, document.label])
       .toEqual(['2.1.0', 'referentiel', 'fictif-humanome', '2.0.0-proposition.1', 'Fictif V2'])
@@ -82,7 +82,7 @@ describe('convertirHumanome', () => {
     ])
   })
 
-  it('UC-EPI-05-U11 — compose les descriptions des seules rubriques du YAML, dans un ordre fixe', () => {
+  it('UC-EPI-05-U30 — compose les descriptions des seules rubriques du YAML, dans un ordre fixe', () => {
     const { document } = convertir()
     const [a1, , b1] = document.competences
     expect(a1.description).toBe([
@@ -111,7 +111,7 @@ describe('convertirHumanome', () => {
     }
   })
 
-  it('UC-EPI-05-U11 — dit sa provenance : titre, version, date, URL, fichier, sha256, convertisseur, licence', () => {
+  it('UC-EPI-05-U31 — dit sa provenance : titre, version, date, URL, fichier, sha256, convertisseur, licence', () => {
     const { document } = convertir()
     expect(document.source).toBe(
       `« Référentiel Fictif V2 » 2.0.0-proposition.1 du 2026-01-15, ${URL_FICTIVE}. `
@@ -122,7 +122,7 @@ describe('convertirHumanome', () => {
     expect(convertirHumanome(lireYaml()).document.source).toContain(`, ${PAGE_SOURCE}.`)
   })
 
-  it('UC-EPI-05-U11 — compte dans le contenu et avertit d’un en-tête `structure` qui le contredit, et des rubriques absentes', () => {
+  it('UC-EPI-05-U32 — compte dans le contenu et avertit d’un en-tête `structure` qui le contredit, et des rubriques absentes', () => {
     expect(convertir().avertissements).toEqual([
       'referentiel.structure.competences annonce 2 capacités, le contenu en compte 3',
       'referentiel.structure.facettes annonce 9 facettes, le contenu en compte 10',
@@ -145,7 +145,7 @@ describe('convertirHumanome', () => {
     ])
   })
 
-  it('UC-EPI-05-U11 — l’empreinte est celle de l’extracteur : sha256 du JSON compact {poles, competences}', () => {
+  it('UC-EPI-05-U33 — l’empreinte est celle de l’extracteur : sha256 du JSON compact {poles, competences}', () => {
     const { document } = convertir()
     // la formule de scripts/extract-referentiel.mjs, réécrite ici
     const corps = {
@@ -158,7 +158,7 @@ describe('convertirHumanome', () => {
     expect(convertirHumanome(lireYaml()).document).not.toHaveProperty('contentHash')
   })
 
-  it('UC-EPI-05-U11 — au niveau facette : les facettes deviennent les compétences, sous le pôle de leur capacité', () => {
+  it('UC-EPI-05-U34 — au niveau facette : les facettes deviennent les compétences, sous le pôle de leur capacité', () => {
     const { document } = convertir(lireYaml(), { niveau: 'facette' })
     expect(`${JSON.stringify(document, null, 2)}\n`).toBe(attendu('referentiel-humanome-fictif-facette.json'))
     expect(validateDocument('referentiel', document).valid).toBe(true)
@@ -174,7 +174,7 @@ describe('convertirHumanome', () => {
     expect(convertir(sansFacette).avertissements).toContain('rubrique « facettes » absente : B1')
   })
 
-  it('UC-EPI-05-U11 — refuse ce que le schéma ou le moteur ne liraient pas, chaque erreur à son chemin', () => {
+  it('UC-EPI-05-U35 — refuse ce que le schéma ou le moteur ne liraient pas, chaque erreur à son chemin', () => {
     const cas = [
       [(y) => { y.dimensions[0].competences[1].repere = 'B2' }, 'dimensions[0].competences[1].repere'],
       [(y) => { y.dimensions[0].competences[0].facettes[1].repere = 'A2.2' }, 'dimensions[0].competences[0].facettes[1].repere'],
@@ -203,7 +203,7 @@ describe('convertirHumanome', () => {
     expect(() => convertir(lireYaml(), { sha256: 'abc' })).toThrow(TypeError)
   })
 
-  it('UC-EPI-05-U11 — les fiches de scan écrites depuis le document montrent les facettes sous leur capacité', () => {
+  it('UC-EPI-05-U36 — les fiches de scan écrites depuis le document montrent les facettes sous leur capacité', () => {
     const { document } = convertir()
     const fiches = fichesDuReferentiel(document)
     expect(Object.keys(fiches)).toEqual(['1', '2'])
@@ -256,7 +256,7 @@ describe('scripts/convertir-humanome.mjs', () => {
     }
   })
 
-  it('UC-EPI-05-U12 — refuse un YAML illisible, un YAML refusé, un niveau inconnu, sans rien écrire', () => {
+  it('UC-EPI-05-U37 — refuse un YAML illisible, un YAML refusé, un niveau inconnu, sans rien écrire', () => {
     const dossier = mkdtempSync(join(tmpdir(), 'convertir-humanome-'))
     try {
       const illisible = join(dossier, 'illisible.yaml')

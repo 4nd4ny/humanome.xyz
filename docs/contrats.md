@@ -1318,7 +1318,7 @@ quoi deux profils dont les appels partent chez deux fournisseurs
 partageraient une empreinte (ADR-012 §2). `cle` n'est pas un réglage d'appel :
 ni l'empreinte ni la signature des évaluations ne la lisent, et passer de la
 clé personnelle à celle de l'instance (ADR-013 §6) ne change l'empreinte
-d'aucun profil, ni sa mémoire, ni ses prévisions (UC-APP-10-U25). Les sorties
+d'aucun profil, ni sa mémoire, ni ses prévisions (UC-APP-10-U27). Les sorties
 gardent l'empreinte de la v9.8.
 
 ### 8.3 La voie par lots (T8)
@@ -2877,7 +2877,10 @@ n'est pas visible ici : le recours reste « Renvoyer le code ».
 | `POST` | `/api/admin/waitlist/lift` | « Tout lever », dans l'ordre, 200 comptes au plus par appel, arrêté au premier courriel refusé : `{lifted, failed, remaining}` (`failed` : 0 ou 1) |
 
 `GET /api/admin/monitoring` compte la liste dans `utilisateurs.enListeAttente`
-(ces comptes comptent aussi dans `nonActives`).
+(ces comptes comptent aussi dans `nonActives`). Sa fenêtre de `days` jours et
+ses séries `parJour` sont en journées UTC (2026-10-23, UC-ADM-06 RG1), comme
+les budgets journaliers et le mois des crédits offerts ; la forme de la
+réponse ne change pas.
 
 ## 14. Les clés et l'achat de crédits (sprint 6, S6a, ADR-013)
 

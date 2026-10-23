@@ -370,7 +370,7 @@ final class UcApp10AnalyseApprofondieTwin9Test extends TestCase
             true);
         self::assertSame(Lancement::empreinte(self::$gabaritsFactices), $attestation['gabarits']['empreinte']);
     }
-    #[TestDox('UC-APP-10-U25 — empreintes inchangées (ADR-013 §6) : un même profil, sur la clé de l’instance, la clé personnelle ou celle d’une école, garde la même empreinte des réglages (mémoire de la carte) et la même signature des évaluations (prévisions) — `cle` n’est pas un réglage d’appel')]
+    #[TestDox('UC-APP-10-U27 — empreintes inchangées (ADR-013 §6) : un même profil, sur la clé de l’instance, la clé personnelle ou celle d’une école, garde la même empreinte des réglages (mémoire de la carte) et la même signature des évaluations (prévisions) — `cle` n’est pas un réglage d’appel')]
     public function testU25TheKeyChangesNoFingerprint(): void
     {
         $gabarits = self::$gabaritsFactices;

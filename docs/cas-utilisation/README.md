@@ -47,6 +47,11 @@ données et RGPD, **code sollicité**, puis **jeux de tests**.
   (lisible avec `--testdox`) ; en JS, par le libellé du `it(…)`.
 - Chaque fiche liste ses tests (identifiant, cible ou scénario, niveau, ce qui
   est vérifié, fichier) ; chaque fichier de test cite en tête sa fiche.
+- Un identifiant nomme un seul test (un test paramétré, `it.each`, compte
+  pour un) et une seule ligne de fiche :
+  `web/test/usecases/catalogue-identifiants.test.js` refuse deux lignes de
+  fiche au même identifiant, et deux déclarations (`it`, `test`, `TestDox`)
+  du même identifiant, dans un fichier ou dans deux.
 - Règle de couverture : chaque scénario de la fiche (nominal, `Ax`, `Ex`) a au
   moins un test fonctionnel ; chaque élément de logique du « code sollicité »
   a au moins un test unitaire.
@@ -99,7 +104,7 @@ rejouant les fixtures : aucun appel réseau réel).
 | ID | Cas d'utilisation | Tests unitaires | Tests fonctionnels | Anomalies |
 |---|---|---:|---:|---:|
 | [UC-VIS-01](visiteur/UC-VIS-01-explorer-cartographie-demonstration.md) | Explorer la cartographie de démonstration | 29 | 16 | 4 |
-| [UC-VIS-02](visiteur/UC-VIS-02-consulter-referentiel-public.md) | Consulter le référentiel public de compétences | 17 | 21 | 1 |
+| [UC-VIS-02](visiteur/UC-VIS-02-consulter-referentiel-public.md) | Consulter le référentiel public de compétences | 22 | 21 | 1 |
 | [UC-VIS-03](visiteur/UC-VIS-03-essayer-cartographie-en-direct.md) | Essayer la cartographie en direct, sans compte | 35 | 30 | 3 |
 | [UC-VIS-04](visiteur/UC-VIS-04-se-reperer-guides-aide.md) | Se repérer : accueil, navigation, guides, aide, confidentialité | 13 | 21 | 2 |
 | [UC-VIS-05](visiteur/UC-VIS-05-interroger-assistant-tuteur.md) | Interroger l'assistant tuteur | 17 | 27 | 0 |
@@ -129,8 +134,8 @@ rejouant les fixtures : aucun appel réseau réel).
 | [UC-APP-06](apprenant/UC-APP-06-exporter-importer-archive.md) | Exporter et importer son archive complète | 21 | 18 | 6 |
 | [UC-APP-07](apprenant/UC-APP-07-inviter-cartographe.md) | Inviter un cartographe | 9 | 10 | 1 |
 | [UC-APP-08](apprenant/UC-APP-08-rejoindre-cohorte.md) | Rejoindre une cohorte, déposer son portfolio, quitter | 12 | 25 | 4 |
-| [UC-APP-09](apprenant/UC-APP-09-cartographie-ouverte-twin6.md) | Lancer une cartographie ouverte (Twin6) | 39 | 36 | 1 |
-| [UC-APP-10](apprenant/UC-APP-10-analyse-approfondie-twin9.md) | Lancer une analyse approfondie (Twin9) | 25 | 38 | 0 |
+| [UC-APP-09](apprenant/UC-APP-09-cartographie-ouverte-twin6.md) | Lancer une cartographie ouverte (Twin6) | 39 | 37 | 1 |
+| [UC-APP-10](apprenant/UC-APP-10-analyse-approfondie-twin9.md) | Lancer une analyse approfondie (Twin9) | 27 | 38 | 0 |
 | [UC-APP-11](apprenant/UC-APP-11-gerer-credit-twin9.md) | Gérer son crédit Twin9 (achat par une école, factures, remboursement) | 17 | 35 | 3 |
 | [UC-APP-12](apprenant/UC-APP-12-interface-ipsative-v3.md) | Explorer sa cartographie dans l'interface ipsative V3 (retirée le 2026-10-14) | 29 | 0 | 19 |
 
@@ -173,7 +178,7 @@ rejouant les fixtures : aucun appel réseau réel).
 | [UC-EPI-02](epistemiarque/UC-EPI-02-voter-proposition.md) | Voter sur une proposition | 16 | 21 | 2 |
 | [UC-EPI-03](epistemiarque/UC-EPI-03-enteriner-publier.md) | Entériner et publier (compétence, release du référentiel) | 15 | 20 | 3 |
 | [UC-EPI-04](epistemiarque/UC-EPI-04-editer-version-referentiel.md) | Éditer une version complète du référentiel | 12 | 17 | 2 |
-| [UC-EPI-05](epistemiarque/UC-EPI-05-importer-referentiel.md) | Importer un référentiel d'une autre structure | 28 | 22 | — |
+| [UC-EPI-05](epistemiarque/UC-EPI-05-importer-referentiel.md) | Importer un référentiel d'une autre structure | 38 | 28 | — |
 
 ### Établissement
 
@@ -194,7 +199,7 @@ rejouant les fixtures : aucun appel réseau réel).
 | [UC-ADM-03](administration/UC-ADM-03-valider-paquet-defaut-reglages.md) | Valider le paquet par défaut et les réglages | 12 | 14 | 2 |
 | [UC-ADM-04](administration/UC-ADM-04-configurer-demo.md) | Configurer la démo publique | 34 | 27 | 2 |
 | [UC-ADM-05](administration/UC-ADM-05-superviser-twin9.md) | Superviser Twin9 | 21 | 21 | 4 |
-| [UC-ADM-06](administration/UC-ADM-06-monitoring.md) | Consulter le monitoring | 23 | 17 | 3 |
+| [UC-ADM-06](administration/UC-ADM-06-monitoring.md) | Consulter le monitoring | 24 | 17 | 3 |
 
 ### Système et exploitation
 
@@ -206,7 +211,7 @@ rejouant les fixtures : aucun appel réseau réel).
 | [UC-SYS-04](systeme/UC-SYS-04-construire-artefacts-derives.md) | Construire les données et artefacts dérivés | 9 | 19 | 3 |
 | [UC-SYS-05](systeme/UC-SYS-05-sauvegarder-restaurer.md) | Sauvegarder et restaurer la base | 0 | 8 | 6 |
 
-**Total : 62 cas d'utilisation, 1118 tests unitaires et 1261 tests fonctionnels identifiés, 191 anomalies de production documentées.**
+**Total : 62 cas d'utilisation, 1136 tests unitaires et 1268 tests fonctionnels identifiés, 191 anomalies de production documentées.**
 
 Les comptes portent sur les identifiants distincts (`UC-…-Unn`, `UC-…-Fnn`) présents dans les fichiers de tests ; un identifiant paramétré (`it.each`) compte pour un.
 <!-- catalogue:end -->

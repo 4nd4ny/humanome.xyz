@@ -692,13 +692,13 @@ describe('UC-APP-10 — le portfolio envoyé à Twin9 : les journées de l’int
     expect(lance.portfolio).toEqual({ nom: 'Mon journal.md', texte: attendu.texte })
   })
 
-  it('UC-APP-10-U23 — un portfolio que Twin9 lit déjà en ses journées part à l’octet, et l’aperçu n’en dit rien', async () => {
+  it('UC-APP-10-U25 — un portfolio que Twin9 lit déjà en ses journées part à l’octet, et l’aperçu n’en dit rien', async () => {
     const region = await avantDeLancer(apercu())
     expect(portfolioPourTwin9(PORTFOLIO)).toEqual({ texte: PORTFOLIO, retouchees: [], sansDate: 0, disparues: [], autres: [], nonLues: [] })
     expect(region.textContent).not.toContain('retouché')
   })
 
-  it('UC-APP-10-U23 — un passage sans date, en tête : le texte part à l’octet, l’aperçu dit que Twin9 ne le lit pas', async () => {
+  it('UC-APP-10-U26 — un passage sans date, en tête : le texte part à l’octet, l’aperçu dit que Twin9 ne le lit pas', async () => {
     const texte = `Mon introduction, avant toute journée.\n\n${PORTFOLIO}`
     expect(portfolioPourTwin9(texte)).toEqual({ texte, retouchees: [], sansDate: 1, disparues: [], autres: [], nonLues: [] })
     const corps = []

@@ -86,39 +86,36 @@ afterEach(() => {
 })
 
 describe('UC-CPT-07 — une déclaration ne change jamais le menu', () => {
-  it('UC-CPT-07-F10 — RG4, propriété : quelles que soient les habilitations, déclarer les neuf rôles et la case ne change ni les familles du menu, ni ses liens, ni le mode d’affichage par défaut — à l’enregistrement comme après rechargement ; le menu reste celui des habilitations, et la session n’est pas relue', async () => {
-    const habilitationSets = [
-      [],
-      ['apprenant'],
-      ['apprenant', 'employeur'],
-      ['apprenant', 'cartographe'],
-      ['etablissement'],
-      ['admin', 'promptologue'],
-    ]
-    for (const habilitations of habilitationSets) {
-      const api = await openAccount(
-        installFakeAccountApi({ users: [{ ...MAYA, roles: habilitations }], loggedInAs: MAYA.email }),
-      )
-      const before = menu()
-      expect(before.families).toEqual(menuFor(habilitations))
-      expect(before.expert).toBe(String(defaultMode(habilitations) === 'expert'))
-      const sessionReads = api.callsTo('auth/me', 'GET').length
+  // Un cas par jeu d'habilitations (deux montages de <App/> chacun), et non les
+  // six dans un seul test : ensemble, ils dépassaient les 5 s d'un test sur une
+  // machine chargée (2 s au calme, plus de 5 s sous charge ; 5 échecs sur 20
+  // passages parallèles).
+  it.each([
+    [[]],
+    [['apprenant']],
+    [['apprenant', 'employeur']],
+    [['apprenant', 'cartographe']],
+    [['etablissement']],
+    [['admin', 'promptologue']],
+  ])('UC-CPT-07-F10 — RG4, propriété (habilitations : %j) : déclarer les neuf rôles et la case ne change ni les familles du menu, ni ses liens, ni le mode d’affichage par défaut — à l’enregistrement comme après rechargement ; le menu reste celui des habilitations, et la session n’est pas relue', async (habilitations) => {
+    const api = await openAccount(
+      installFakeAccountApi({ users: [{ ...MAYA, roles: habilitations }], loggedInAs: MAYA.email }),
+    )
+    const before = menu()
+    expect(before.families).toEqual(menuFor(habilitations))
+    expect(before.expert).toBe(String(defaultMode(habilitations) === 'expert'))
+    const sessionReads = api.callsTo('auth/me', 'GET').length
 
-      await declareEverything()
+    await declareEverything()
 
-      expect(api.users.get(MAYA.email).declared).toEqual({ roles: catalogue.map((e) => e.id), foundingCircle: true })
-      expect(api.users.get(MAYA.email).roles).toEqual(habilitations)
-      expect(menu()).toEqual(before)
-      expect(api.callsTo('auth/me', 'GET')).toHaveLength(sessionReads)
+    expect(api.users.get(MAYA.email).declared).toEqual({ roles: catalogue.map((e) => e.id), foundingCircle: true })
+    expect(api.users.get(MAYA.email).roles).toEqual(habilitations)
+    expect(menu()).toEqual(before)
+    expect(api.callsTo('auth/me', 'GET')).toHaveLength(sessionReads)
 
-      await reload(api)
-      expect(section().getAllByRole('checkbox').every((b) => b.checked)).toBe(true)
-      expect(menu()).toEqual(before)
-
-      cleanup()
-      vi.unstubAllGlobals()
-      resetApiClient()
-    }
+    await reload(api)
+    expect(section().getAllByRole('checkbox').every((b) => b.checked)).toBe(true)
+    expect(menu()).toEqual(before)
   })
 
   it('UC-CPT-07-F11 — RG4, contrôle positif : la déclaration « cartographe » n’ouvre ni la famille « Encadrer et garantir » ni #/cartographe ; l’habilitation accordée par l’administrateur les ouvre à la session suivante et passe l’affichage en expert', async () => {

@@ -112,7 +112,7 @@ describe('UC-VIS-02 — chargement de l’export statique publié', () => {
     expect(result.doc.competences).toHaveLength(61)
   })
 
-  it('UC-VIS-02-U10 — file://, nom de fichier dangereux ou index au JSON invalide → repli embarqué (A6)', async () => {
+  it('UC-VIS-02-U18 — file://, nom de fichier dangereux ou index au JSON invalide → repli embarqué (A6)', async () => {
     // file:// : aucune lecture tentée.
     const neverCalled = vi.fn()
     expect((await loadPublishedReferentiel({ fetchFn: neverCalled, protocol: 'file:' })).origin).toBe('bundled')
@@ -160,7 +160,7 @@ describe('UC-VIS-02 — la base par l’API, dans un délai (S5, lot E)', () => 
     expect(API_TIMEOUT_MS).toBe(5000)
   })
 
-  it('UC-VIS-02-U15 — la page charge un référentiel puis liste le menu : le catalogue de la base n’est demandé qu’une fois ; un échec ne se garde pas, un catalogue ancien se relit', async () => {
+  it('UC-VIS-02-U21 — la page charge un référentiel puis liste le menu : le catalogue de la base n’est demandé qu’une fois ; un échec ne se garde pas, un catalogue ancien se relit', async () => {
     let panne = false
     const fetchFn = vi.fn(async (url) => {
       if (url === 'api/referentiels') {

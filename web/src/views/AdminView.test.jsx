@@ -63,7 +63,9 @@ describe('AdminView — garde de rôle', () => {
     const fetchFn = vi.fn(async () => jsonResponse(200, { users: [], total: 0, page: 1, pageSize: 20 }))
     render(<AdminView section="roles" deps={{ fetchMeFn: admin, fetchFn }} />)
     await screen.findByRole('heading', { name: /Comptes et rôles/i })
-    expect(fetchFn).toHaveBeenCalled()
+    // Le titre paraît au rendu de la section, la liste est demandée par son
+    // effet, qui passe après : sous charge, le test regardait avant.
+    await waitFor(() => expect(fetchFn).toHaveBeenCalled())
   })
 
   it('signale une section inconnue', async () => {

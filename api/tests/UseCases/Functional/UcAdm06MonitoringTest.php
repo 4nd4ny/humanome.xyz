@@ -123,7 +123,7 @@ final class UcAdm06MonitoringTest extends AdminTestCase
         $admin = $this->registerAdmin('root@example.org');
         self::$pdo->exec(
             "INSERT INTO llm_usage_daily (usage_date, requests, input_tokens, output_tokens, estimated_cost_usd) VALUES
-             (CURDATE(), 4, 1000, 200, 0.01), (CURDATE() - INTERVAL 20 DAY, 6, 3000, 600, 0.03)"
+             (UTC_DATE(), 4, 1000, 200, 0.01), (UTC_DATE() - INTERVAL 20 DAY, 6, 3000, 600, 0.03)"
         );
 
         $week = self::json($this->as_($admin, 'GET', '/api/admin/monitoring?days=7'));

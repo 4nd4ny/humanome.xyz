@@ -371,7 +371,7 @@ describe('UC-APP-09 — l’apprenant lance une cartographie ouverte', () => {
     expect(docExporte.domains.map((d) => d.id)).toEqual(REFERENTIEL_LETTRE_FICTIF.poles.map((p) => p.nom))
   })
 
-  it('UC-APP-09-F31 — A4 : les référentiels publiés en base (API publique) sont offerts sans export statique ; le run lit le document de l’API', async () => {
+  it('UC-APP-09-F16 — A4 : les référentiels publiés en base (API publique) sont offerts sans export statique ; le run lit le document de l’API', async () => {
     const { calls } = stubFetch(
       routes({
         ...referentielsEnBase([REFERENTIEL_RESPIRE_FICTIF, REFERENTIEL_LETTRE_FICTIF]),

@@ -545,7 +545,9 @@ par `scripts/extract-referentiel.mjs`.
       mémoire de la carte, sans en dire la cause : une journée dont un appel
       est en panne (une panne n'est jamais un verdict), un texte modifié
       depuis, qui remet le journal à zéro (§7.4), une analyse sortie des
-      dernières qu'il garde ; `null` quand rien ne le dit. Seul `true` se
+      dernières qu'il garde ; `null` quand rien ne le dit. Une archive
+      réimportée garde la valeur qu'elle porte, telle quelle (une projection
+      d'affichage, que le serveur ne confirme pas : §7.4). Seul `true` se
       montre « conservé » ; le rapport d'import dit les autres
       (`twin9-traces-non-conservees`, `twin9-traces-non-confirmees`).
     - Les calculs ne le lisent pas ; l'identifiant et l'empreinte de la
@@ -970,8 +972,16 @@ dans le bloc des calques de son dossier. Aucun appel en plus.
     qui portent `data-twin9-*`, `data-incertitude` ou `data-intensite`
     (leurs balises, pas leur texte) et le tableau des traces : réimporté,
     le portfolio surligné redonne à l'octet le portfolio sans marques, et
-    aucune trace n'entre par un fichier. Le texte rendu d'un portfolio
-    n'en montre aucune.
+    aucune trace n'entre par le texte d'un fichier. Le texte rendu d'un
+    portfolio n'en montre aucune.
+  - **Les traces du jeu, une projection d'affichage** (sprint 3, §6.4) : le
+    bloc `stigmergie` des variantes (§4 point 16), `conservee` compris,
+    n'est qu'une copie, côté navigateur, de ce qu'ont dit les résultats ; le
+    moteur ne le lit jamais. Une archive réimportée, ou un document
+    `twin9-run` déposé à la main dans l'Import, le reprend tel qu'il est
+    écrit : un fichier modifié peut le forger, et la modale du jour le
+    montrerait conservé. Seule la remise depuis la page du run
+    (`twin9RunFiles`) porte ce que le serveur dit.
 
 ## 8. Le moteur Twin9 et la plateforme (T7)
 

@@ -9,7 +9,11 @@
 // `includesPortfolio`. Sans le portfolio, les volumes par jour restent (la
 // heatmap reste juste) mais le texte part : le surlignage devient indisponible.
 // Le texte d'une archive réimportée perd les marques du portfolio surligné de
-// Twin9 (S3-3, lib/twin9/marques.js) : aucune trace n'entre par un fichier.
+// Twin9 (S3-3, lib/twin9/marques.js) : aucune trace n'entre par le texte. Les
+// traces que gardent ses variantes (leur bloc `stigmergie`, `conservee`
+// compris) reviennent, elles, telles que l'archive les écrit : une projection
+// d'affichage, qu'un fichier modifié peut forger, que le moteur ne lit jamais
+// (sprint 3, §6.4) ; le serveur ne les a pas confirmées.
 
 import { KIND, SCHEMA_VERSION, variantWithPassageDates } from './model.js'
 import { isIsoDate } from './dates.js'

@@ -230,8 +230,8 @@ ou le lien « Créer un portfolio » du tableau de bord `#/espace`).
   leur texte — et le tableau des traces (`<!-- twin9-traces -->` …
   `<!-- /twin9-traces -->`) avant d'être rangé et découpé
   (`web/src/lib/twin9/marques.js`) ; l'import d'un fichier ou d'un Google Docs
-  le dit. Le texte analysé n'en porte jamais : aucune trace n'entre par un
-  fichier. Un `<mark>` écrit par la personne reste.
+  le dit. Le texte analysé n'en porte jamais : aucune trace n'entre par le
+  texte d'un fichier. Un `<mark>` écrit par la personne reste.
 
 ## Données et RGPD
 

@@ -1,6 +1,6 @@
 // S3-3 — les marques du portfolio surligné de Twin9 ne vont jamais dans le
 // texte analysé : chaque import les retire (sécurité : aucune trace forgée par
-// un fichier), et le reste du texte ne change pas.
+// le texte d'un fichier), et le reste du texte ne change pas.
 import { describe, expect, it } from 'vitest'
 import { plagesTwin9, retirerMarquesTwin9, sansMarquesTwin9 } from './marques.js'
 

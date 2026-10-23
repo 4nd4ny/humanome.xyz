@@ -220,12 +220,17 @@ archive ») dans la section « Mes données » du tableau de bord `#/espace`.
   filtrés contre la récitation des gabarits ; absents pour un visiteur ou un
   compte sans run ; une lecture en échec n'empêche pas l'archive de partir,
   le message le dit. Jamais réimportés : un run se relance.
-- **RG10** — Aucune trace de Twin9 n'entre par une archive (S3-3,
-  2026-10-23 ; UC-APP-01 RG10) : à la restauration, le texte d'un portfolio
-  perd les marques du portfolio surligné (`data-twin9-*`, `data-incertitude`,
-  `data-intensite`) et le tableau de ses traces, et les bornes de ses
-  journées sont ramenées au texte nettoyé ; le texte des jeux de l'interface
-  de même. L'archive, elle, garde ce qui est rangé.
+- **RG10** — Aucune trace de Twin9 n'entre par le texte d'une archive
+  (S3-3, 2026-10-23 ; UC-APP-01 RG10) : à la restauration, le texte d'un
+  portfolio perd les marques du portfolio surligné (`data-twin9-*`,
+  `data-incertitude`, `data-intensite`) et le tableau de ses traces, et les
+  bornes de ses journées sont ramenées au texte nettoyé ; le texte des jeux
+  de l'interface de même. L'archive, elle, garde ce qui est rangé : les
+  traces que portent les variantes d'un jeu (leur bloc `stigmergie`,
+  `conservee` compris) reviennent telles qu'elle les écrit. C'est une
+  projection d'affichage, que le moteur ne lit jamais et qu'un fichier
+  modifié peut forger (`docs/contrats.md` §7.4) : le serveur ne la confirme
+  pas.
 
 ## Données et RGPD
 

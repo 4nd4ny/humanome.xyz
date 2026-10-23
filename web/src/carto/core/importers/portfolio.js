@@ -6,7 +6,7 @@
 // se font ensuite dans le gestionnaire. Le texte reste dans le navigateur.
 // Un portfolio surligné par Twin9 (S3-3) perd ses marques et le tableau de
 // ses traces avant tout découpage (lib/twin9/marques.js) : aucune trace n'entre
-// par un fichier, le texte analysé n'en porte jamais.
+// par le texte d'un fichier, le texte analysé n'en porte jamais.
 
 import { segmentText } from '@engine/portfolio/segment.js'
 import { isIsoDate } from '../dates.js'

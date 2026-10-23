@@ -444,6 +444,21 @@ final class UcEta05GererEcoleTest extends TestCase
         self::assertSame([600_000, null], [(int) $event['amount_microusd'], $event['beneficiaire_id']]);
     }
 
+    #[TestDox('UC-ETA-05-U19 — une école paie ses usages sur son crédit d’école, à sa surtaxe : « personnel » lui est refusé (422), pour un run comme pour la cartographie ouverte — jamais à la contribution des particuliers')]
+    public function testU19ASchoolNeverPaysAsAPrivatePerson(): void
+    {
+        $ecole = self::ecole(self::$pdo, 'École des Tilleuls', 6.5, 10.0, 10_000_000);
+        $payeurs = new Payeurs(self::$pdo);
+        self::refuse(fn () => $payeurs->resoudre($ecole, Payeur::PERSONNEL, 'instance'), Payeurs::ECOLE_PERSONNEL);
+        self::refuse(fn () => $payeurs->pourCartographieOuverte($ecole, Payeur::PERSONNEL), Payeurs::ECOLE_PERSONNEL);
+        $soi = $payeurs->resoudre($ecole, null, 'instance');
+        self::assertSame([Payeur::ECOLE, $ecole, 1.065], [$soi->type, $soi->ecoleId, $soi->facteur], 'elle-même, à sa surtaxe');
+        // a learner keeps the choice of their own balance
+        $lea = self::compte(self::$pdo, 'Léa');
+        self::inscrire(self::$pdo, $ecole, $lea);
+        self::assertSame(Payeur::PERSONNEL, $payeurs->resoudre($lea, Payeur::PERSONNEL, 'instance')->type);
+    }
+
     private static function refuse(\Closure $f, string $message): void
     {
         try {

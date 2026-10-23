@@ -881,4 +881,23 @@ final class UcApp10AnalyseApprofondieTwin9Test extends CartographeTestCase
         self::assertLessThan(1_000_000_000, self::solde($lea));
         self::assertSame(1_000_000_000, self::solde($ecole), 'l’école n’a rien payé : le run s’est arrêté avant tout appel');
     }
+
+    #[TestDox('UC-APP-10-F35 — A9 : une école qui envoie payeur « personnel » → aperçu et lancement 422 : elle paie ses runs à sa surtaxe, jamais à la contribution des particuliers ; sans payeur, elle-même')]
+    public function testF35ASchoolSendingPersonnelIsRefused(): void
+    {
+        $ecole = $this->registerAs('ecole-perso@example.org', 'École des Tilleuls', ['etablissement']);
+        $this->crediter($ecole, 1_000_000_000);
+        $profil = $this->profilDirect($ecole);
+        $corps = ['profil' => $profil, 'portfolio' => ['nom' => 'journal-factice.md', 'texte' => self::$portfolioFactice],
+                  'payeur' => 'personnel'];
+        $message = 'Une école paie ses usages sur son crédit d’école, à sa surtaxe : choisissez votre école';
+        foreach (['/api/twin9/runs/apercu' => $corps, '/api/twin9/runs' => $corps + ['accord' => true]] as $route => $c) {
+            $r = $this->as_($ecole, 'POST', $route, $c);
+            self::assertSame([422, $message], [$r->getStatusCode(), self::json($r)['error'] ?? null], $route);
+        }
+        self::assertSame(0, self::runs());
+        $apercu = $this->apercu($ecole, $profil);
+        self::assertSame(['type' => 'ecole', 'id' => $ecole['id'], 'nom' => 'École des Tilleuls', 'soi' => true],
+            $apercu['payeur']);
+    }
 }

@@ -21,7 +21,8 @@ use PDO;
  *   school's id. By default, their school when they have only one; with
  *   several, they choose (422 otherwise); with none, their own balance. The
  *   server checks it again: a school that does not pay for them is refused
- *   (422), the `ecole` lane asks for a school with a key.
+ *   (422), the `ecole` lane asks for a school with a key, and a school never
+ *   pays as a private person (« personnel » refused to it, 422).
  * - A learner of two schools chooses at each launch; nothing is shared
  *   between their schools: each school's cap counts what it pays only.
  * - A run of type `ecole` never falls back on the learner's balance: if its
@@ -39,6 +40,9 @@ final class Payeurs
     public const CLE_SANS_ECOLE = 'La clé d’école demande une école qui paie pour vous';
 
     public const INVALIDE = 'Payeur invalide : « personnel », l’identifiant d’une de vos écoles, ou null';
+
+    /** A school's balance is its school credit, at its surtax — never at the contribution of private persons. */
+    public const ECOLE_PERSONNEL = 'Une école paie ses usages sur son crédit d’école, à sa surtaxe : choisissez votre école';
 
     /** Why a run of type `ecole` stops when its school no longer pays (ADR-013 §3). */
     public const NE_PAIE_PLUS = 'votre école ne paie plus cette analyse';
@@ -64,6 +68,11 @@ final class Payeurs
             throw new Twin9Exception(self::INVALIDE, 422);
         }
         if ($choix === Payeur::PERSONNEL) {
+            // a school pays for itself as a school (ADR-013 §2 d, §4): its own balance is its school credit, at its
+            // surtax — possibles() never offers it « personnel », and the server checks it again
+            if (Ecole::est($this->pdo, $userId)) {
+                throw new Twin9Exception(self::ECOLE_PERSONNEL, 422);
+            }
             if ($cle === 'ecole') {
                 throw new Twin9Exception(self::CLE_SANS_ECOLE, 422);
             }

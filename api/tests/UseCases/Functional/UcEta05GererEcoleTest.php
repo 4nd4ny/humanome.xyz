@@ -385,4 +385,17 @@ final class UcEta05GererEcoleTest extends CartographeTestCase
             ['role' => 'etablissement'])->getStatusCode());
         self::assertSame([], $this->page()['cles'], 'l’habilitation rendue ne ramène aucune clé');
     }
+
+    #[TestDox('UC-ETA-05-F13 — A5 : une école qui envoie payeur « personnel » à la cartographie ouverte → 422, rien débité, rien ne part : elle paie à sa surtaxe, jamais à la contribution des particuliers')]
+    public function testF13ASchoolSendingPersonnelIsRefused(): void
+    {
+        self::crediter($this->ecole['id'], 5_000_000, 'crédit des tests');
+        $refus = $this->appelTwin6($this->ecole, ['payeur' => 'personnel']);
+        self::assertSame(422, $refus->getStatusCode(), (string) $refus->getBody());
+        self::assertSame('Une école paie ses usages sur son crédit d’école, à sa surtaxe : choisissez votre école',
+            self::json($refus)['error']);
+        self::assertSame([5_000_000, []], [self::solde($this->ecole['id']), $this->http->requests]);
+        self::assertSame(200, $this->appelTwin6($this->ecole)->getStatusCode(), 'sans payeur : elle-même');
+        self::assertSame(5_000_000 - 4140, self::solde($this->ecole['id']), 'à 1 + 3,5 %, pas à 1,1');
+    }
 }
